@@ -1,0 +1,312 @@
+//! Shared integration-test harness: spin up a real `mcphost` server on an
+//! ephemeral port against a fresh temp `$MCPHOST_DATA_DIR`, and a tiny
+//! JSON-RPC-over-streamable-HTTP client to drive it.
+//!
+//! This module is `mod`-included separately into every `tests/ac*.rs`
+//! binary (the standard Rust integration-test pattern), so any one binary
+//! uses only a subset of it — `dead_code` is expected, not a real
+//! findings.
+#![allow(dead_code)]
+
+use std::path::PathBuf;
+use std::process;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use mcphost::db::Db;
+use mcphost::kinds::KindRegistry;
+use mcphost::secrets::SecretBox;
+use mcphost::state::AppState;
+use serde_json::{Value, json};
+
+pub const ADMIN_KEY: &str = "test-admin-key-not-for-production";
+
+/// A directory under the OS temp dir, unique per call, cleaned up on drop.
+pub struct TempDataDir(pub PathBuf);
+
+impl TempDataDir {
+    pub fn new() -> Self {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir =
+            std::env::temp_dir().join(format!("mcphost-test-{}-{}-{}", process::id(), n, nanos));
+        std::fs::create_dir_all(&dir).expect("create temp data dir");
+        Self(dir)
+    }
+}
+
+impl Drop for TempDataDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+pub struct TestServer {
+    pub base_url: String,
+    pub data_dir: TempDataDir,
+    pub state: Arc<AppState>,
+}
+
+impl TestServer {
+    /// Start a server with the standard test admin key.
+    pub async fn start() -> Self {
+        Self::start_with(Some(ADMIN_KEY.to_string())).await
+    }
+
+    pub async fn start_with(admin_key: Option<String>) -> Self {
+        Self::start_full(
+            admin_key,
+            KindRegistry::with_builtin(),
+            mcphost::state::CALL_TIMEOUT,
+        )
+        .await
+    }
+
+    /// Full control for tests that need a non-default kind registry (AC15's
+    /// never-completing kind) or a short call timeout (so AC15 doesn't wait
+    /// out the real 30s deadline).
+    pub async fn start_full(
+        admin_key: Option<String>,
+        kinds: KindRegistry,
+        call_timeout: std::time::Duration,
+    ) -> Self {
+        let data_dir = TempDataDir::new();
+        let db = Db::open(&data_dir.0).expect("open db");
+        db.migrate().await.expect("migrate");
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind ephemeral port");
+        let addr = listener.local_addr().expect("local addr");
+        let base_url = format!("http://{addr}");
+
+        let state = Arc::new(AppState {
+            db,
+            kinds,
+            secrets: SecretBox::from_passphrase("test-secret-key"),
+            admin_key,
+            public_url: base_url.clone(),
+            call_timeout,
+        });
+
+        let serve_state = state.clone();
+        tokio::spawn(async move {
+            let _ = mcphost::http::serve_on_listener(listener, serve_state).await;
+        });
+
+        // Give the listener a moment to accept.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        Self {
+            base_url,
+            data_dir,
+            state,
+        }
+    }
+}
+
+/// A minimal streamable-HTTP JSON-RPC client. Every call is a fresh POST
+/// (the server is stateless per 2026-07-28), so this holds no session
+/// state beyond the base URL and an optional bearer key.
+pub struct McpClient {
+    http: reqwest::Client,
+    base_url: String,
+    pub bearer: Option<String>,
+    next_id: AtomicU64,
+}
+
+#[derive(Debug)]
+pub struct RpcError {
+    pub code: i64,
+    pub message: String,
+    pub error_code: Option<String>,
+}
+
+impl McpClient {
+    pub fn new(base_url: &str) -> Self {
+        Self {
+            http: reqwest::Client::new(),
+            base_url: base_url.to_string(),
+            bearer: None,
+            next_id: AtomicU64::new(1),
+        }
+    }
+
+    pub fn with_bearer(base_url: &str, key: &str) -> Self {
+        let mut c = Self::new(base_url);
+        c.bearer = Some(key.to_string());
+        c
+    }
+
+    /// POST with SEP-2243 `Mcp-Method`/`Mcp-Name` headers set to match the
+    /// body (`rmcp` requires this once `MCP-Protocol-Version` on the
+    /// request declares `>= 2026-07-28`, the version this client always
+    /// negotiates). `mcp_protocol_version_header` lets a test omit or
+    /// falsify that header to exercise paths gated on its absence (see the
+    /// AC13 test, which relies on it being absent so `rmcp` does not
+    /// itself reject a mismatched `Mcp-Name`).
+    async fn post_with(
+        &self,
+        body: &Value,
+        mcp_protocol_version_header: Option<&str>,
+        mcp_name_override: Option<&str>,
+    ) -> reqwest::Response {
+        let method = body.get("method").and_then(Value::as_str).unwrap_or("");
+        let mcp_name = mcp_name_override.map(str::to_string).or_else(|| {
+            body.get("params")
+                .and_then(|p| p.get("name"))
+                .and_then(Value::as_str)
+                .filter(|_| method == "tools/call")
+                .map(str::to_string)
+        });
+
+        let mut req = self
+            .http
+            .post(format!("{}/mcp", self.base_url))
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json, text/event-stream")
+            .json(body);
+        if let Some(version) = mcp_protocol_version_header {
+            req = req.header("MCP-Protocol-Version", version);
+        }
+        if method != "initialize" && !method.is_empty() {
+            req = req.header("Mcp-Method", method);
+        }
+        if let Some(name) = mcp_name {
+            req = req.header("Mcp-Name", name);
+        }
+        if let Some(key) = &self.bearer {
+            req = req.header("Authorization", format!("Bearer {key}"));
+        }
+        req.send().await.expect("send request")
+    }
+
+    async fn post(&self, body: Value) -> reqwest::Response {
+        self.post_with(&body, Some("2026-07-28"), None).await
+    }
+
+    /// Raw POST for tests that need to inspect status/headers directly.
+    pub async fn post_raw(&self, body: Value) -> reqwest::Response {
+        self.post(body).await
+    }
+
+    /// POST that omits `MCP-Protocol-Version` (so `rmcp`'s SEP-2243
+    /// enforcement is skipped) and sends the given `Mcp-Name` header
+    /// regardless of the body — for the AC13 mismatch test.
+    pub async fn post_with_mcp_name_override(
+        &self,
+        body: Value,
+        mcp_name: &str,
+    ) -> reqwest::Response {
+        self.post_with(&body, None, Some(mcp_name)).await
+    }
+
+    pub async fn initialize(&self) -> Value {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let resp = self
+            .post(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2026-07-28",
+                    "capabilities": {},
+                    "clientInfo": {"name": "mcphost-test", "version": "0.1.0"}
+                }
+            }))
+            .await;
+        let body: Value = resp.json().await.expect("parse initialize response");
+        body
+    }
+
+    async fn call(&self, method: &str, mut params: Value) -> Result<Value, RpcError> {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        // Stateless 2026-07-28 requests carry the client context SEP-2575
+        // requires on every request (no session to remember it from
+        // `initialize`), not just in `initialize` itself.
+        if let Some(obj) = params.as_object_mut() {
+            obj.insert(
+                "_meta".to_string(),
+                json!({
+                    "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                    "io.modelcontextprotocol/clientCapabilities": {},
+                }),
+            );
+        }
+        let resp = self
+            .post(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "method": method,
+                "params": params,
+            }))
+            .await;
+        let status = resp.status();
+        let body: Value = resp
+            .json()
+            .await
+            .unwrap_or_else(|e| panic!("parse {method} response ({status}): {e}"));
+        if let Some(error) = body.get("error") {
+            return Err(RpcError {
+                code: error.get("code").and_then(Value::as_i64).unwrap_or(0),
+                message: error
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                error_code: error
+                    .get("data")
+                    .and_then(|d| d.get("error_code"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+            });
+        }
+        Ok(body.get("result").cloned().unwrap_or(Value::Null))
+    }
+
+    pub async fn tools_list(&self) -> Result<Value, RpcError> {
+        self.call("tools/list", json!({})).await
+    }
+
+    pub async fn tools_call(&self, name: &str, arguments: Value) -> Result<Value, RpcError> {
+        self.call("tools/call", json!({"name": name, "arguments": arguments}))
+            .await
+    }
+}
+
+/// Sign up a fresh tenant against a running server and return
+/// `(tenant_namespace, key)`.
+pub async fn signup(base_url: &str, display_name: &str) -> (String, String) {
+    let client = McpClient::new(base_url);
+    let result = client
+        .tools_call("signup", json!({"name": display_name}))
+        .await
+        .unwrap_or_else(|e| panic!("signup failed: {} {}", e.code, e.message));
+    let structured = extract_structured(&result);
+    let tenant = structured["tenant"]
+        .as_str()
+        .expect("tenant field")
+        .to_string();
+    let key = structured["key"].as_str().expect("key field").to_string();
+    (tenant, key)
+}
+
+/// `CallToolResult::structured` puts the value in `structuredContent`;
+/// fall back to parsing the first text content block for safety.
+pub fn extract_structured(call_result: &Value) -> Value {
+    if let Some(sc) = call_result.get("structuredContent") {
+        return sc.clone();
+    }
+    if let Some(content) = call_result.get("content").and_then(Value::as_array)
+        && let Some(first) = content.first()
+        && let Some(text) = first.get("text").and_then(Value::as_str)
+    {
+        return serde_json::from_str(text).unwrap_or(Value::Null);
+    }
+    Value::Null
+}
