@@ -14,6 +14,12 @@ Built from `PRD-mcphost-endpoint.md` (vision: `visions/mcp-host.md`).
 
 ## Recent
 
+- **v0.11.0** — `host.tool_publish` reports every simultaneously-invalid
+  field at once (`data.errors`, each with its own `field`/`expected`/
+  `example`) instead of one rejection per attempt; each kind's example
+  spec/blurb and the new "Kinds" section below both render from
+  `docs/kinds/*.md`, checked to match by
+  `tests/publishfirsttry_ac06_docs_shared_source.rs`.
 - **v0.4.0** — `args_schema` (and, for `python`, `requirements`) is now
   optional on the `python` and `http` kinds: when absent, the host derives it
   deterministically and offline from the source/templates the tenant already
