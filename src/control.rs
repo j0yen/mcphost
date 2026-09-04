@@ -179,7 +179,11 @@ pub async fn tool_publish(
             requested: kind_name.clone(),
             registered: state.kinds.names(),
         })?;
-    kind.validate(&spec)?;
+    // Requirement 3 / AC2: every simultaneously-failing field is reported
+    // at once, not just the first -- see `AppError::from_kind_violations`.
+    if let Some(err) = AppError::from_kind_violations(kind.validate_all(&spec)) {
+        return Err(err);
+    }
     kind.validate_async(&spec).await?;
 
     // Requirement 3 / AC3: every `secret.<name>` the spec references must

@@ -666,11 +666,28 @@ impl Kind for HttpKind {
     }
 
     fn validate(&self, spec: &Value) -> Result<(), KindError> {
-        let parsed = parse_spec(spec)?;
+        self.validate_all(spec)
+            .into_iter()
+            .next()
+            .map_or(Ok(()), Err)
+    }
+
+    /// Requirement 3 / AC2: every field below is checked independently of
+    /// the others (no `?` short-circuit past the initial parse, which is
+    /// the one genuine prerequisite -- nothing else can be checked against
+    /// an unparseable spec), so a spec with several bad fields gets every
+    /// one of them back in a single rejection instead of one per publish
+    /// attempt.
+    fn validate_all(&self, spec: &Value) -> Vec<KindError> {
+        let parsed = match parse_spec(spec) {
+            Ok(p) => p,
+            Err(e) => return vec![e],
+        };
+        let mut errors = Vec::new();
 
         let method = parsed.method.to_ascii_uppercase();
         if !ALLOWED_METHODS.contains(&method.as_str()) {
-            return Err(KindError::InvalidSpec(format!(
+            errors.push(KindError::InvalidSpec(format!(
                 "method: must be one of {}; got '{}'",
                 ALLOWED_METHODS.join(", "),
                 parsed.method
@@ -680,7 +697,7 @@ impl Kind for HttpKind {
         if let Some(t) = parsed.timeout_s
             && !(1..=MAX_TIMEOUT_S).contains(&t)
         {
-            return Err(KindError::InvalidSpec(format!(
+            errors.push(KindError::InvalidSpec(format!(
                 "timeout_s: must be between 1 and {MAX_TIMEOUT_S}; got {t}"
             )));
         }
@@ -689,41 +706,46 @@ impl Kind for HttpKind {
             && r != "json"
             && r != "text"
         {
-            return Err(KindError::InvalidSpec(format!(
+            errors.push(KindError::InvalidSpec(format!(
                 "response: must be 'json' or 'text'; got '{r}'"
             )));
         }
 
         if parsed.body.is_some() && matches!(method.as_str(), "GET" | "DELETE") {
-            return Err(KindError::InvalidSpec(
+            errors.push(KindError::InvalidSpec(
                 "body: not allowed for GET/DELETE".into(),
             ));
         }
 
-        let (scheme, host) = split_scheme_host(&parsed.url)
-            .ok_or_else(|| KindError::InvalidSpec("url: could not parse scheme/host".into()))?;
-        if host.is_empty() {
-            return Err(KindError::InvalidSpec("url: missing host".into()));
-        }
-        if !self.scheme_allowed(scheme) {
-            return Err(KindError::structured_with(
-                "host_not_allowed",
-                "url: must use https://",
-                json!({"field": "url"}),
-            ));
-        }
-        if is_disallowed_literal_host(host, &self.own_domain, self.allow_loopback) {
-            return Err(KindError::structured_with(
-                "host_not_allowed",
-                format!("url: host '{host}' is not a publicly callable host"),
-                json!({"field": "url"}),
-            ));
+        match split_scheme_host(&parsed.url) {
+            None => errors.push(KindError::InvalidSpec(
+                "url: could not parse scheme/host".into(),
+            )),
+            Some((scheme, host)) => {
+                if host.is_empty() {
+                    errors.push(KindError::InvalidSpec("url: missing host".into()));
+                } else if !self.scheme_allowed(scheme) {
+                    errors.push(KindError::structured_with(
+                        "host_not_allowed",
+                        "url: must use https://",
+                        json!({"field": "url"}),
+                    ));
+                } else if is_disallowed_literal_host(host, &self.own_domain, self.allow_loopback) {
+                    errors.push(KindError::structured_with(
+                        "host_not_allowed",
+                        format!("url: host '{host}' is not a publicly callable host"),
+                        json!({"field": "url"}),
+                    ));
+                }
+            }
         }
 
         for key in parsed.headers.keys() {
-            reqwest::header::HeaderName::from_bytes(key.as_bytes()).map_err(|e| {
-                KindError::InvalidSpec(format!("headers.{key}: not a valid header name: {e}"))
-            })?;
+            if let Err(e) = reqwest::header::HeaderName::from_bytes(key.as_bytes()) {
+                errors.push(KindError::InvalidSpec(format!(
+                    "headers.{key}: not a valid header name: {e}"
+                )));
+            }
         }
 
         // Requirement 1: an author-supplied schema is checked exactly as
@@ -733,16 +755,20 @@ impl Kind for HttpKind {
         // `infer` module docs).
         match &parsed.args_schema {
             Some(schema) => {
-                jsonschema::validator_for(schema).map_err(|e| {
-                    KindError::InvalidSpec(format!("args_schema: not a valid JSON Schema: {e}"))
-                })?;
+                if let Err(e) = jsonschema::validator_for(schema) {
+                    errors.push(KindError::InvalidSpec(format!(
+                        "args_schema: not a valid JSON Schema: {e}"
+                    )));
+                }
             }
             None => {
-                parsed.effective_args_schema()?;
+                if let Err(e) = parsed.effective_args_schema() {
+                    errors.push(e);
+                }
             }
         }
 
-        Ok(())
+        errors
     }
 
     fn describe(&self, spec: &Value) -> ToolDescriptor {
@@ -1051,15 +1077,9 @@ impl Kind for HttpKind {
     }
 
     fn example(&self) -> KindExample {
-        KindExample {
-            spec: json!({
-                "method": "GET",
-                "url": "https://api.example.com/items/{{id}}",
-            }),
-            call_args: json!({"id": "123"}),
-            blurb: "url must be an absolute https URL; method and url are the only \
-                required fields -- args_schema is inferred from the url/header/body \
-                templates when omitted.",
-        }
+        // PRD-mcphost-publish-first-try requirement 6 / AC6: sourced from
+        // `docs/kinds/http.md`, not hand-duplicated here -- see
+        // `crate::kinds::docs`.
+        super::docs::parse_kind_doc(include_str!("../../docs/kinds/http.md"))
     }
 }
