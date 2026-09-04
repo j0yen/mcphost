@@ -179,6 +179,19 @@ pub async fn tool_publish(
             requested: kind_name.clone(),
             registered: state.kinds.names(),
         })?;
+
+    // PRD-mcphost-sandbox-ready requirement 3 (AC3): a kind whose sandbox
+    // self-test is currently failing (only `python` reports a status at
+    // all -- `sandbox_status()` is `None` for `echo`/`http`, AC4) is
+    // rejected here, before `parse_spec`/`ast_check` (inside
+    // `validate_all`/`validate_async` below) ever run -- no sandboxed
+    // process is spawned for a doomed publish.
+    if let Some(status) = kind.sandbox_status()
+        && !status.ready
+    {
+        return Err(AppError::sandbox_unavailable(&status));
+    }
+
     // Requirement 3 / AC2: every simultaneously-failing field is reported
     // at once, not just the first -- see `AppError::from_kind_violations`.
     if let Some(err) = AppError::from_kind_violations(kind.validate_all(&spec)) {

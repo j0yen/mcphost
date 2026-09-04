@@ -299,6 +299,27 @@ pub trait Kind: Send + Sync {
     /// tenant owns at once -- `kinds::python` evicts every warm sandbox
     /// keyed to `tenant_id`, regardless of tool name.
     async fn on_tenant_removed(&self, _tenant_id: i64) {}
+
+    /// PRD-mcphost-sandbox-ready requirement 1/3: this kind's most recent
+    /// sandbox self-test result, if it has one. `None` (the default) for a
+    /// kind with no sandboxed-subprocess concept (`echo`, `http`) -- neither
+    /// `/healthz` nor `host.tool_publish`'s readiness gate treat `None` as
+    /// "unready", only an explicit `Some(status)` with `ready: false` does,
+    /// so those kinds are entirely unaffected (PRD non-goal / AC4).
+    /// `/healthz` and the publish-time gate both call this through
+    /// [`KindRegistry::all`] rather than a concrete downcast, so a future
+    /// second sandboxed kind (e.g. `wasm`) gets the same reporting for free.
+    fn sandbox_status(&self) -> Option<crate::sandbox::SandboxStatus> {
+        None
+    }
+
+    /// PRD-mcphost-sandbox-ready requirement 4: re-runs this kind's sandbox
+    /// self-test immediately (`admin.sandbox_recheck`) and returns the
+    /// fresh status, having already updated whatever [`Kind::sandbox_status`]
+    /// reads from. `None` (the default) for a kind with none.
+    async fn sandbox_recheck(&self) -> Option<crate::sandbox::SandboxStatus> {
+        None
+    }
 }
 
 /// Registry of known [`Kind`]s, keyed by [`Kind::name`]. `host.tool_publish`

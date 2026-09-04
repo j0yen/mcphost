@@ -47,14 +47,28 @@ async fn healthz(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     // measure job today) is unchanged, so `tenants_total - tenants_probe`
     // is the real-tenant count.
     let tenants_probe = state.db.probe_tenant_count().await.unwrap_or(0);
-    Json(json!({
+    let mut body = json!({
         "version": env!("CARGO_PKG_VERSION"),
         "db_ok": db_ok,
         "tools_total": tools_total,
         "tenants_total": tenants_total,
         "tenants_probe": tenants_probe,
         "sandbox_mechanism": state.sandbox_mechanism,
-    }))
+    });
+    // PRD-mcphost-sandbox-ready requirement 2: additive fields, populated
+    // from an actual sandboxed-process probe rather than the `on_path`
+    // check `sandbox_mechanism` above has always been. `None` (absent
+    // fields) when no registered kind has a self-test to report -- an
+    // `echo`/`http`-only deployment is unaffected (migration note:
+    // "existing clients that ignore unknown fields are unaffected").
+    if let Some(status) = state.kinds.all().find_map(|k| k.sandbox_status())
+        && let Some(obj) = body.as_object_mut()
+    {
+        obj.insert("sandbox_ready".to_string(), json!(status.ready));
+        obj.insert("sandbox_detail".to_string(), json!(status.detail));
+        obj.insert("sandbox_checked_at".to_string(), json!(status.checked_at));
+    }
+    Json(body)
 }
 
 /// AC19: `GET /.well-known/mcp/<namespace>/server.json`, unauthenticated

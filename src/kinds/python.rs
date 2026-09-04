@@ -91,7 +91,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
 use serde::Deserialize;
@@ -324,26 +324,87 @@ else:
     print(json.dumps({"ok": True}))
 "#;
 
-async fn ast_check(source: &str, isolation: IsolationMechanism) -> Result<(), KindError> {
+/// PRD-mcphost-sandbox-ready: what interpreter `build_ast_check_spec`
+/// wires into the `RunSpec` it builds. `RealPython3` is the only variant
+/// production ever uses (`ast_check`'s own call, and the startup/periodic
+/// self-test's default) -- the other two exist purely so this crate's own
+/// tests can simulate one specific sandbox failure mode (a broken
+/// interpreter, or a wrapper binary that can't even be spawned) without
+/// needing an actually-broken host. See `PythonKind::for_test_with_selftest`.
+#[derive(Debug, Clone)]
+enum SelftestInterpreter {
+    RealPython3,
+    /// Test-only: `body` is written as an executable shell script into the
+    /// probe's own scratch dir (so it's visible inside the sandbox under
+    /// every real isolation mechanism, `--tmpfs /tmp` included) and exec'd
+    /// in place of `/usr/bin/python3`. `mechanism` on the resulting
+    /// `SandboxStatus` is honestly whatever isolation mechanism is really in
+    /// force (e.g. real `bwrap` on this repo's own build machine) -- only
+    /// the interpreter's *behavior* is faked, letting a test reproduce
+    /// e.g. the hub's exact `RTM_NEWADDR` stderr on a box where bwrap
+    /// actually works.
+    Fake(String),
+    /// Test-only (AC9's "missing bwrap/unshare" case): a nonexistent
+    /// interpreter path run with `IsolationMechanism::None` (no real
+    /// wrapper spawned at all), so `sandbox::run` fails at
+    /// `Command::spawn()` itself -- this crate cannot uninstall bwrap from
+    /// a shared dev/CI box to reproduce a genuinely-missing wrapper binary,
+    /// so this exercises the same spawn-level-`Err` code path a missing
+    /// wrapper would take (`SandboxStatus::from_probe`'s `Err` arm).
+    MissingBinarySpawnFailure,
+}
+
+/// Builds the `RunSpec` for an ast-check of `source`, shared by [`ast_check`]
+/// (the real publish-time check) and the sandbox self-test
+/// (`PythonKind::selftest_probe`) -- PRD-mcphost-sandbox-ready requirement 1:
+/// "the self-test must call `sandbox::run` with a `RunSpec` built by the
+/// same function `ast_check` uses, so a divergence between 'probe passed'
+/// and 'publish failed' cannot exist." Returns the scratch dir alongside the
+/// spec so the caller can clean it up once the run completes.
+async fn build_ast_check_spec(
+    source: &str,
+    isolation: IsolationMechanism,
+    interpreter: &SelftestInterpreter,
+) -> std::io::Result<(PathBuf, sandbox::RunSpec)> {
     let scratch = std::env::temp_dir().join(format!(
         "mcphost-astcheck-{}-{}",
         std::process::id(),
         rand::random::<u64>()
     ));
-    tokio::fs::create_dir_all(&scratch)
-        .await
-        .map_err(|e| KindError::Exec(format!("ast-check scratch dir: {e}")))?;
+    tokio::fs::create_dir_all(&scratch).await?;
     let script_path = scratch.join("ast_check.py");
-    tokio::fs::write(&script_path, AST_CHECK_SCRIPT)
-        .await
-        .map_err(|e| KindError::Exec(format!("ast-check script write: {e}")))?;
+    tokio::fs::write(&script_path, AST_CHECK_SCRIPT).await?;
+
+    let (bin, args, isolation, read_only_dirs) = match interpreter {
+        SelftestInterpreter::RealPython3 => (
+            PathBuf::from("/usr/bin/python3"),
+            vec!["-I".to_string(), "-S".to_string()],
+            isolation,
+            system_python_dirs(),
+        ),
+        SelftestInterpreter::Fake(body) => {
+            let fake_path = scratch.join("fake_interpreter.sh");
+            tokio::fs::write(&fake_path, body).await?;
+            let mut perms = tokio::fs::metadata(&fake_path).await?.permissions();
+            use std::os::unix::fs::PermissionsExt;
+            perms.set_mode(0o755);
+            tokio::fs::set_permissions(&fake_path, perms).await?;
+            (fake_path, Vec::new(), isolation, system_python_dirs())
+        }
+        SelftestInterpreter::MissingBinarySpawnFailure => (
+            PathBuf::from("/nonexistent/mcphost-sandboxready-missing-binary"),
+            Vec::new(),
+            IsolationMechanism::None,
+            Vec::new(),
+        ),
+    };
 
     let spec = sandbox::RunSpec {
-        interpreter: PathBuf::from("/usr/bin/python3"),
-        interpreter_args: vec!["-I".to_string(), "-S".to_string()],
+        interpreter: bin,
+        interpreter_args: args,
         script_path,
         scratch_dir: scratch.clone(),
-        read_only_dirs: system_python_dirs(),
+        read_only_dirs,
         stdin_payload: source.as_bytes().to_vec(),
         limits: ResourceLimits {
             cpu_seconds: 5,
@@ -356,6 +417,14 @@ async fn ast_check(source: &str, isolation: IsolationMechanism) -> Result<(), Ki
         extra_env: vec![],
         isolation,
     };
+    Ok((scratch, spec))
+}
+
+async fn ast_check(source: &str, isolation: IsolationMechanism) -> Result<(), KindError> {
+    let (scratch, spec) =
+        build_ast_check_spec(source, isolation, &SelftestInterpreter::RealPython3)
+            .await
+            .map_err(|e| KindError::Exec(format!("ast-check scratch dir: {e}")))?;
     let outcome = sandbox::run(spec).await;
     let _ = tokio::fs::remove_dir_all(&scratch).await;
     let outcome = outcome.map_err(|e| KindError::Exec(format!("ast-check spawn: {e}")))?;
@@ -388,6 +457,216 @@ fn system_python_dirs() -> Vec<PathBuf> {
         .map(PathBuf::from)
         .filter(|p| p.exists())
         .collect()
+}
+
+// ---- sandbox self-test (PRD-mcphost-sandbox-ready) -------------------------
+//
+// The host's own record of whether its sandbox actually works, proven by
+// running one sandboxed process (the same RunSpec-building path `ast_check`
+// uses -- see `build_ast_check_spec`) at start and on a schedule, rather
+// than trusting `detect_mechanism`'s "the binary is on $PATH" check
+// (module docs: this PRD's whole premise is that check alone is not
+// enough). Owns its own status cell and knows how to evict the warm pool on
+// a ready->unready flip so a warm sandbox spawned while healthy can't keep
+// answering calls once the host is known broken (requirement 4).
+
+/// Default re-probe interval while the sandbox is unready
+/// (`$MCPHOST_SANDBOX_RECHECK_SECS`, requirement 4).
+const DEFAULT_RECHECK_UNREADY_SECS: u64 = 300;
+/// Default re-probe interval while the sandbox is ready (requirement 4;
+/// not itself configurable in production -- see `SandboxSelftest::interval`
+/// for the one exception this crate's own tests take).
+const DEFAULT_RECHECK_READY_SECS: u64 = 3600;
+
+struct SandboxSelftest {
+    status: RwLock<sandbox::SandboxStatus>,
+    isolation: IsolationMechanism,
+    /// Test-only override of the interpreter the probe execs (production
+    /// always uses `SelftestInterpreter::RealPython3`); mutable so a test
+    /// can simulate the sandbox breaking or recovering mid-run (AC5/AC6)
+    /// without tearing down and re-registering the whole `Kind`.
+    interpreter: RwLock<SelftestInterpreter>,
+    recheck_unready_secs: u64,
+    /// `None` in production (fixed 3600s per requirement 4); `Some(secs)`
+    /// only from a test constructor, which needs the *ready*-state interval
+    /// configurable too so AC6 ("given sandbox_ready: true ... when the
+    /// periodic recheck runs [with a 1s interval] ... within 3s") doesn't
+    /// need a real hour-long wait to observe a ready->unready flip.
+    recheck_ready_secs_override: Option<u64>,
+    warm: Arc<WarmPool>,
+}
+
+impl SandboxSelftest {
+    fn new(isolation: IsolationMechanism, warm: Arc<WarmPool>) -> Arc<Self> {
+        let recheck_unready_secs = std::env::var("MCPHOST_SANDBOX_RECHECK_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(DEFAULT_RECHECK_UNREADY_SECS);
+        Arc::new(Self {
+            // A placeholder, never observable in production: `main.rs`
+            // awaits `PythonKind::run_startup_selftest` to completion
+            // before the HTTP listener ever starts accepting connections,
+            // so no real request can see this default. Tests that never
+            // call `run_startup_selftest` (the overwhelming majority --
+            // every pre-existing `python_ac*`/`infer_ac*`/`http_ac*` test)
+            // see `ready: true` forever, which is what they need: those
+            // tests publish and call real python tools and must not be
+            // gated by a self-test they never asked for or ran.
+            status: RwLock::new(sandbox::SandboxStatus {
+                ready: true,
+                mechanism: isolation,
+                detail: format!("{}: not yet checked", isolation.as_str()),
+                checked_at: crate::state::rfc3339_now(),
+            }),
+            isolation,
+            interpreter: RwLock::new(SelftestInterpreter::RealPython3),
+            recheck_unready_secs,
+            recheck_ready_secs_override: None,
+            warm,
+        })
+    }
+
+    fn read_status(&self) -> sandbox::SandboxStatus {
+        self.status
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    fn set_interpreter(&self, interpreter: SelftestInterpreter) {
+        *self.interpreter.write().unwrap_or_else(|e| e.into_inner()) = interpreter;
+    }
+
+    /// Requirement 1: runs one sandboxed process through the exact
+    /// RunSpec-building path `ast_check` uses, on the trivial source
+    /// `def main(args):\n    return {}\n`. Never returns an `Err` of its
+    /// own -- a probe that can't even build its `RunSpec` (e.g. the scratch
+    /// dir can't be created) is itself a `binary_missing`-classified
+    /// "not ready" status, not a crate-level failure.
+    async fn probe(&self) -> sandbox::SandboxStatus {
+        const TRIVIAL_SOURCE: &str = "def main(args):\n    return {}\n";
+        let interpreter = self
+            .interpreter
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let built = build_ast_check_spec(TRIVIAL_SOURCE, self.isolation, &interpreter).await;
+        let (scratch, spec) = match built {
+            Ok(v) => v,
+            Err(e) => {
+                return sandbox::SandboxStatus::from_probe(self.isolation, Err(e));
+            }
+        };
+        let outcome = sandbox::run(spec).await;
+        let _ = tokio::fs::remove_dir_all(&scratch).await;
+        sandbox::SandboxStatus::from_probe(self.isolation, outcome)
+    }
+
+    /// Requirement 5: the one structured log line at start.
+    fn log_startup(status: &sandbox::SandboxStatus) {
+        if status.ready {
+            tracing::info!(
+                mechanism = status.mechanism.as_str(),
+                ready = status.ready,
+                detail = %status.detail,
+                "sandbox self-test at start"
+            );
+        } else {
+            tracing::error!(
+                mechanism = status.mechanism.as_str(),
+                ready = status.ready,
+                detail = %status.detail,
+                "sandbox self-test at start"
+            );
+        }
+    }
+
+    /// Requirement 4: a transition is logged at `warn` (ready -> unready) or
+    /// `info` (unready -> ready); no line at all when the state didn't
+    /// change (a periodic recheck that finds the same answer is not a
+    /// transition).
+    fn log_transition(was_ready: bool, status: &sandbox::SandboxStatus) {
+        if was_ready == status.ready {
+            return;
+        }
+        if status.ready {
+            tracing::info!(
+                mechanism = status.mechanism.as_str(),
+                detail = %status.detail,
+                "sandbox self-test transitioned unready -> ready"
+            );
+        } else {
+            tracing::warn!(
+                mechanism = status.mechanism.as_str(),
+                detail = %status.detail,
+                "sandbox self-test transitioned ready -> unready"
+            );
+        }
+    }
+
+    /// Requirement 1/5: the startup probe. Awaited by `main.rs` before the
+    /// HTTP listener starts accepting, then spawns the periodic re-probe
+    /// task (requirement 4) -- called exactly once per process.
+    async fn startup(self: &Arc<Self>) -> sandbox::SandboxStatus {
+        let status = self.probe().await;
+        *self.status.write().unwrap_or_else(|e| e.into_inner()) = status.clone();
+        Self::log_startup(&status);
+        self.spawn_recheck_loop();
+        status
+    }
+
+    /// Requirement 4: re-runs the probe, updates the recorded status,
+    /// evicts the entire warm pool on a ready->unready flip, and logs the
+    /// transition. Shared by the periodic background task and
+    /// `admin.sandbox_recheck`'s on-demand path.
+    async fn recheck(&self) -> sandbox::SandboxStatus {
+        let was_ready = self.read_status().ready;
+        let status = self.probe().await;
+        *self.status.write().unwrap_or_else(|e| e.into_inner()) = status.clone();
+        if was_ready && !status.ready {
+            self.warm.evict_all().await;
+        }
+        Self::log_transition(was_ready, &status);
+        status
+    }
+
+    /// The interval to sleep before the next periodic recheck: an explicit
+    /// per-instance override (test-only, see `recheck_ready_secs_override`)
+    /// always wins regardless of current readiness -- this is how AC6's
+    /// "recheck runs on a 1s interval while ready" is exercised without
+    /// mutating process-wide environment (this crate's own tests avoid
+    /// that; see `state.rs`'s `signup_rate_limit_*` tests for the same
+    /// stated reason). With no override, production's own defaults apply:
+    /// `MCPHOST_SANDBOX_RECHECK_SECS` (default 300) while unready, a fixed
+    /// 3600s while ready (requirement 4).
+    fn interval(&self, ready: bool) -> Duration {
+        if let Some(secs) = self.recheck_ready_secs_override {
+            return Duration::from_secs(secs);
+        }
+        if ready {
+            Duration::from_secs(DEFAULT_RECHECK_READY_SECS)
+        } else {
+            Duration::from_secs(self.recheck_unready_secs)
+        }
+    }
+
+    fn spawn_recheck_loop(self: &Arc<Self>) {
+        // Mirrors `spawn_warm_reaper`'s own guard: a `SandboxSelftest`
+        // constructed from plain sync code with no Tokio runtime active
+        // (this crate's few sync unit tests that build a `PythonKind` just
+        // to call a synchronous method) must not panic trying to spawn.
+        if tokio::runtime::Handle::try_current().is_err() {
+            return;
+        }
+        let this = self.clone();
+        tokio::spawn(async move {
+            loop {
+                let ready = this.read_status().ready;
+                tokio::time::sleep(this.interval(ready)).await;
+                this.recheck().await;
+            }
+        });
+    }
 }
 
 // ---- environment build & cache (requirement 3) -----------------------------
@@ -792,6 +1071,30 @@ impl WarmPool {
             // `Send`, and Rust's temporary-lifetime-extension rule would
             // otherwise keep it alive for the whole `if let` block) -- so
             // the removal is its own statement, ended before the `if let`.
+            let entry = self
+                .entries
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&key);
+            if let Some(entry) = entry {
+                kill_warm_entry(entry).await;
+            }
+        }
+    }
+
+    /// PRD-mcphost-sandbox-ready requirement 4 (AC6): kill and remove every
+    /// warm entry box-wide, regardless of tenant or tool -- called on a
+    /// ready->unready sandbox flip, since no existing warm sandbox can be
+    /// trusted to keep serving once the host's own self-test says the
+    /// mechanism is broken, even one whose process happens to still be
+    /// alive.
+    async fn evict_all(&self) {
+        let victims: Vec<ToolKey> = {
+            let guard = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+            guard.keys().cloned().collect()
+        };
+        for key in victims {
+            // See the same note in `evict_tenant` below.
             let entry = self
                 .entries
                 .lock()
@@ -1266,6 +1569,8 @@ pub struct PythonKind {
     semaphore: Arc<Semaphore>,
     cpu_budget: CpuBudget,
     warm: Arc<WarmPool>,
+    /// PRD-mcphost-sandbox-ready: this kind's sandbox self-test state.
+    selftest: Arc<SandboxSelftest>,
 }
 
 impl PythonKind {
@@ -1362,6 +1667,7 @@ impl PythonKind {
     ) -> Self {
         let warm = Arc::new(WarmPool::new(warm_ttl, warm_per_tenant, warm_max));
         spawn_warm_reaper(warm.clone());
+        let selftest = SandboxSelftest::new(isolation, warm.clone());
         Self {
             envs_root: data_dir.join("envs"),
             scratch_root: data_dir.join("scratch"),
@@ -1370,7 +1676,96 @@ impl PythonKind {
             semaphore: Arc::new(Semaphore::new(max_concurrent)),
             cpu_budget: CpuBudget::new(cpu_budget_ms),
             warm,
+            selftest,
         }
+    }
+
+    /// PRD-mcphost-sandbox-ready: a python kind whose sandbox self-test
+    /// interpreter and periodic-recheck interval are both test-controlled
+    /// (`tests/sandboxready_ac*.rs`). `interpreter` starts as
+    /// `SelftestInterpreter::RealPython3`; use
+    /// [`Self::set_selftest_interpreter_for_test`] to swap it (AC5/AC6:
+    /// "swap the injected interpreter back to a working one" / "replaced by
+    /// a failing one") without re-registering the kind. `recheck_secs`
+    /// governs the periodic loop's interval in *both* the ready and
+    /// unready states (see `SandboxSelftest::interval`'s doc comment for
+    /// why one instance-level override, not the production env var, is how
+    /// this crate's tests exercise a fast periodic recheck).
+    pub fn for_test_with_selftest(data_dir: &Path, recheck_secs: u64) -> Self {
+        let mut kind = Self::build(
+            data_dir,
+            sandbox::detect_mechanism(),
+            DEFAULT_MAX_CONCURRENT_CALLS,
+            DEFAULT_CPU_BUDGET_MS_PER_HOUR,
+            Duration::from_secs(DEFAULT_WARM_TTL_S),
+            DEFAULT_WARM_PER_TENANT,
+            DEFAULT_WARM_MAX,
+        );
+        let warm = kind.warm.clone();
+        kind.selftest = Arc::new(SandboxSelftest {
+            status: RwLock::new(sandbox::SandboxStatus {
+                ready: true,
+                mechanism: kind.isolation,
+                detail: format!("{}: not yet checked", kind.isolation.as_str()),
+                checked_at: crate::state::rfc3339_now(),
+            }),
+            isolation: kind.isolation,
+            interpreter: RwLock::new(SelftestInterpreter::RealPython3),
+            recheck_unready_secs: recheck_secs,
+            recheck_ready_secs_override: Some(recheck_secs),
+            warm,
+        });
+        kind
+    }
+
+    /// Test-only: swaps the sandbox self-test's interpreter (see
+    /// `SelftestInterpreter`'s doc comment) without touching any other
+    /// state. `body` is a shell script written verbatim into the probe's
+    /// own scratch dir on the next probe -- pass `None` to switch back to
+    /// the real `/usr/bin/python3` (AC5's "swap the injected interpreter
+    /// back to a working one"), or a script that writes to stderr and exits
+    /// non-zero to simulate a specific failure (AC1/AC6/AC9).
+    pub fn set_selftest_interpreter_for_test(&self, body: Option<&str>) {
+        let interpreter = match body {
+            None => SelftestInterpreter::RealPython3,
+            Some(script) => SelftestInterpreter::Fake(script.to_string()),
+        };
+        self.selftest.set_interpreter(interpreter);
+    }
+
+    /// Test-only (AC9's "missing bwrap" case): the next probe's `RunSpec`
+    /// fails at `Command::spawn()` itself.
+    pub fn set_selftest_missing_binary_for_test(&self) {
+        self.selftest
+            .set_interpreter(SelftestInterpreter::MissingBinarySpawnFailure);
+    }
+
+    /// PRD-mcphost-sandbox-ready requirement 1/5: runs the startup
+    /// self-test synchronously (`main.rs` awaits this before the HTTP
+    /// listener starts accepting connections), records the result, logs the
+    /// required journal line, and spawns the periodic re-probe task
+    /// (requirement 4). Never fails startup: an unready sandbox is a
+    /// recorded status, not an `Err` -- the host still serves `echo` and
+    /// `http` regardless (requirement 1).
+    pub async fn run_startup_selftest(&self) -> sandbox::SandboxStatus {
+        self.selftest.startup().await
+    }
+
+    /// PRD-mcphost-sandbox-ready requirement 4: `admin.sandbox_recheck`'s
+    /// on-demand path -- re-runs the self-test immediately and returns the
+    /// fresh status.
+    pub async fn recheck_sandbox(&self) -> sandbox::SandboxStatus {
+        self.selftest.recheck().await
+    }
+
+    /// The most recently recorded sandbox self-test result, on the concrete
+    /// type (tests hold `PythonKind` directly before it's registered as
+    /// `Arc<dyn Kind>`). Named distinctly from the `Kind` trait's own
+    /// `sandbox_status` (which returns `Option<_>`, `None` for kinds with
+    /// no self-test) to avoid inherent-vs-trait-method resolution surprises
+    /// on the same type.
+    pub fn current_sandbox_status(&self) -> sandbox::SandboxStatus {
+        self.selftest.read_status()
     }
 
     /// The active isolation mechanism, for `/healthz` (requirement 5).
@@ -1990,6 +2385,17 @@ impl Kind for PythonKind {
         // `docs/kinds/python.md`, not hand-duplicated here -- see
         // `crate::kinds::docs`.
         super::docs::parse_kind_doc(include_str!("../../docs/kinds/python.md"))
+    }
+
+    /// PRD-mcphost-sandbox-ready requirement 1/3: `/healthz` and the
+    /// publish-time readiness gate both read this.
+    fn sandbox_status(&self) -> Option<sandbox::SandboxStatus> {
+        Some(self.selftest.read_status())
+    }
+
+    /// PRD-mcphost-sandbox-ready requirement 4: `admin.sandbox_recheck`.
+    async fn sandbox_recheck(&self) -> Option<sandbox::SandboxStatus> {
+        Some(self.selftest.recheck().await)
     }
 }
 

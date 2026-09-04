@@ -112,6 +112,48 @@ pub fn now_unix() -> i64 {
         .unwrap_or(0)
 }
 
+/// Days since the civil epoch (1970-01-01) -> `(year, month, day)`, per
+/// Howard Hinnant's `civil_from_days` algorithm
+/// (http://howardhinnant.github.io/date_algorithms.html). This crate has no
+/// chrono/time dependency; PRD-mcphost-sandbox-ready's `sandbox_checked_at`
+/// (an RFC 3339 UTC timestamp) doesn't need one either, so this is the
+/// whole calendar conversion this crate requires, self-contained and unit
+/// tested below rather than trusted blind.
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64; // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365; // [0, 399]
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153; // [0, 11]
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32; // [1, 31]
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32; // [1, 12]
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m, d)
+}
+
+/// A minimal RFC 3339 UTC timestamp (`"YYYY-MM-DDTHH:MM:SSZ"`) from a Unix
+/// timestamp. Pure function, separated from [`rfc3339_now`]'s `SystemTime`
+/// read for the same reason [`parse_signup_rate_limit_per_hour`] is
+/// separated from its own env read: testable without depending on wall
+/// clock.
+pub fn rfc3339_from_unix(unix_secs: i64) -> String {
+    let days = unix_secs.div_euclid(86_400);
+    let secs_of_day = unix_secs.rem_euclid(86_400);
+    let (y, m, d) = civil_from_days(days);
+    let hh = secs_of_day / 3600;
+    let mm = (secs_of_day % 3600) / 60;
+    let ss = secs_of_day % 60;
+    format!("{y:04}-{m:02}-{d:02}T{hh:02}:{mm:02}:{ss:02}Z")
+}
+
+/// PRD-mcphost-sandbox-ready requirement 1/2: `sandbox_checked_at`'s value,
+/// computed fresh each call.
+pub fn rfc3339_now() -> String {
+    rfc3339_from_unix(now_unix())
+}
+
 /// `^[a-z][a-z0-9_]{1,40}$` — a lowercase-leading identifier, 2-41 chars.
 pub fn validate_tool_name(name: &str) -> Result<(), AppError> {
     let bytes = name.as_bytes();
@@ -228,6 +270,22 @@ mod tests {
         assert_eq!(parse_signup_rate_limit_per_hour(Some("100")), 100);
     }
 
+    /// PRD-mcphost-sandbox-ready: known Unix timestamps against their known
+    /// RFC 3339 UTC rendering -- the epoch itself, and a date past the
+    /// civil-calendar algorithm's leap-year/century-boundary edges, so a
+    /// transcription slip in `civil_from_days` fails loudly here rather
+    /// than showing up as a subtly-wrong `sandbox_checked_at` on `/healthz`.
+    #[test]
+    fn rfc3339_from_unix_matches_known_timestamps() {
+        assert_eq!(rfc3339_from_unix(0), "1970-01-01T00:00:00Z");
+        assert_eq!(rfc3339_from_unix(86_400), "1970-01-02T00:00:00Z");
+        // 2000-02-29T00:00:00Z (a leap day on a century boundary that IS a
+        // leap year, 2000 % 400 == 0).
+        assert_eq!(rfc3339_from_unix(951_782_400), "2000-02-29T00:00:00Z");
+        // Round-trips through the time-of-day fields too, not just the date.
+        assert_eq!(rfc3339_from_unix(86_400 + 3661), "1970-01-02T01:01:01Z");
+    }
+
     /// PRD-mcphost-code-tools-warm-pool AC7: the 30th call in a tenant's
     /// window succeeds, the 31st does not; a different tenant's own window
     /// is unaffected.
@@ -235,7 +293,10 @@ mod tests {
     fn tool_run_limiter_allows_thirty_then_blocks() {
         let limiter = ToolRunLimiter::new();
         for i in 0..TOOL_RUN_RATE_LIMIT_PER_MINUTE {
-            assert!(limiter.allow(1), "call {i} within the limit must be allowed");
+            assert!(
+                limiter.allow(1),
+                "call {i} within the limit must be allowed"
+            );
         }
         assert!(
             !limiter.allow(1),

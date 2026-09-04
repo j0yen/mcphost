@@ -55,6 +55,11 @@ enum Command {
     },
     /// Print the version and exit.
     Version,
+    /// PRD-mcphost-sandbox-ready P2 requirement 9 / AC10: run the sandbox
+    /// self-test in-process and exit 0 (ready) or 1 (unready), printing the
+    /// same detail line `/healthz` would show -- for a shell on the host,
+    /// without hitting the HTTP surface.
+    SandboxCheck,
 }
 
 fn env_or(name: &str, default: &str) -> String {
@@ -85,6 +90,23 @@ async fn main() -> anyhow::Result<()> {
             println!("mcphost {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
+        Command::SandboxCheck => {
+            // Deliberately no `init_tracing()`: this subcommand's contract
+            // (AC10) is "prints the same detail line /healthz would show"
+            // on stdout -- a JSON log line ahead of it (tracing's default
+            // writer is stdout) would break a shell script's `$(mcphost
+            // sandbox-check)` capture. Without a global subscriber
+            // installed, `tracing::*!` calls elsewhere in this path are
+            // simply no-ops, not an error.
+            let python_kind = PythonKind::new(&data_dir());
+            let status = python_kind.run_startup_selftest().await;
+            println!("{}", status.detail);
+            if status.ready {
+                Ok(())
+            } else {
+                std::process::exit(1);
+            }
+        }
         Command::Migrate {
             check_compat,
             previous,
@@ -103,7 +125,10 @@ async fn main() -> anyhow::Result<()> {
                         Ok(())
                     }
                     Err(failure) => {
-                        eprintln!("check-compat: FAILED at step '{}': {}", failure.step, failure.detail);
+                        eprintln!(
+                            "check-compat: FAILED at step '{}': {}",
+                            failure.step, failure.detail
+                        );
                         std::process::exit(4);
                     }
                 }
@@ -154,6 +179,15 @@ async fn main() -> anyhow::Result<()> {
                 mechanism = sandbox_mechanism,
                 "python kind sandbox mechanism"
             );
+            // PRD-mcphost-sandbox-ready requirement 1: run the sandbox
+            // self-test now, after `detect_mechanism`, and await it to
+            // completion before the HTTP listener below ever starts
+            // accepting connections -- so `/healthz`'s `sandbox_ready` is
+            // never observably wrong (AC2: "checked_at is within 5s of
+            // start") and never claims a mechanism it hasn't exercised
+            // (goal 1). A failed self-test does not fail startup: `serve`
+            // still runs below regardless (requirement 1).
+            python_kind.run_startup_selftest().await;
             kinds.register(std::sync::Arc::new(python_kind));
 
             let state = Arc::new(AppState {

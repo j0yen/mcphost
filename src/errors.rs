@@ -352,6 +352,29 @@ impl AppError {
     /// `host.tool_publish` reports every failing field in a single
     /// rejection instead of one per attempt. `None` when `violations` is
     /// empty (the spec is valid).
+    /// PRD-mcphost-sandbox-ready requirement 3 (AC3/AC7): a python-kind
+    /// `host.tool_publish`/`host.tool_test`/`host.tool_run` on a host whose
+    /// sandbox self-test is failing, rejected before the spec is ever
+    /// evaluated -- never routed through `AppError::Internal` the way
+    /// `KindError::Exec` normally maps (see `From<KindError>` below), which
+    /// is exactly the bug this PRD's TL;DR describes: a real sandbox
+    /// failure surfacing as an opaque internal error an agent retries
+    /// uselessly. `data.docs` is filled in by `into_error_data`'s existing
+    /// unconditional `"host.quickstart"` insert, same as every other
+    /// rejection this crate returns -- not overridden here.
+    pub fn sandbox_unavailable(status: &crate::sandbox::SandboxStatus) -> Self {
+        AppError::Structured {
+            code: "sandbox_unavailable",
+            message: "the python kind is unavailable on this host; the spec was not evaluated"
+                .to_string(),
+            data: json!({
+                "mechanism": status.mechanism.as_str(),
+                "detail": status.detail,
+                "alternatives": ["echo", "http"],
+            }),
+        }
+    }
+
     pub fn from_kind_violations(violations: Vec<KindError>) -> Option<AppError> {
         let mut iter = violations.into_iter();
         let first = AppError::from(iter.next()?);

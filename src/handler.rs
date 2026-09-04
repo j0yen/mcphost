@@ -178,6 +178,20 @@ fn tool_publish_description(kinds: &KindRegistry) -> String {
         let example = kind.example();
         let spec_json = serde_json::to_string(&example.spec).unwrap_or_default();
         out.push_str(&format!(" {name} -- spec: {spec_json}. {}", example.blurb));
+        // PRD-mcphost-sandbox-ready P1 requirement 7 (AC8): a client that
+        // reads this description before publishing must see, right here,
+        // that this kind is currently rejected -- so it never sends the
+        // doomed call. `sandbox_status()` is `None` for every kind with no
+        // sandbox concept (`echo`, `http`), so this is a no-op for them.
+        if let Some(status) = kind.sandbox_status()
+            && !status.ready
+        {
+            out.push_str(&format!(
+                " NOTE: {name}-kind publishes are currently rejected on this host with \
+                 sandbox_unavailable ({}).",
+                status.detail
+            ));
+        }
     }
     out.push_str(
         " Name must match ^[a-z][a-z0-9_]{1,40}$. A rejection names the failing field, \
@@ -351,6 +365,13 @@ fn admin_tools() -> Vec<Tool> {
                 &["tenant", "domain_namespace"],
             ),
         ),
+        Tool::new(
+            "admin.sandbox_recheck",
+            "Re-run the sandbox self-test immediately (rather than waiting for the periodic \
+             recheck) and return the fresh SandboxStatus -- call after fixing whatever made \
+             sandbox_ready false on /healthz, to confirm without restarting the unit.",
+            schema(json!({}), &[]),
+        ),
     ]
 }
 
@@ -450,6 +471,7 @@ impl McpHostHandler {
             "admin.tenant_verify_namespace" => {
                 admin::tenant_verify_namespace(&self.state, &args).await
             }
+            "admin.sandbox_recheck" => admin::sandbox_recheck(&self.state).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         }
     }
@@ -627,6 +649,15 @@ impl McpHostHandler {
             ))
         })?;
 
+        // PRD-mcphost-sandbox-ready requirement 3 (AC3): same first-try
+        // rejection as `host.tool_publish`, before this tool's kind is ever
+        // dispatched to.
+        if let Some(status) = kind.sandbox_status()
+            && !status.ready
+        {
+            return Err(AppError::sandbox_unavailable(&status));
+        }
+
         let descriptor = kind.describe(&row.spec);
         if let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
             && let Err(e) = validator.validate(&call_args)
@@ -702,6 +733,15 @@ impl McpHostHandler {
             ))
         })?;
 
+        // PRD-mcphost-sandbox-ready requirement 3 (AC3): same first-try
+        // rejection as `host.tool_publish`, before this tool's kind is ever
+        // dispatched to.
+        if let Some(status) = kind.sandbox_status()
+            && !status.ready
+        {
+            return Err(AppError::sandbox_unavailable(&status));
+        }
+
         let descriptor = kind.describe(&row.spec);
         if let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
             && let Err(e) = validator.validate(&call_args)
@@ -772,13 +812,32 @@ impl McpHostHandler {
 
 impl ServerHandler for McpHostHandler {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
+        let mut instructions = String::from(
             "Call `signup` with a display name to receive a bearer key. The `host.*` \
                  control plane -- including `host.tool_publish` and `host.tool_call` -- is \
                  already visible in this tools/list, before you have a key. Pass the key \
                  `signup` returns as the `tenant_key` argument on every call after that; no \
                  reconnect and no Authorization header is required.",
-        )
+        );
+        // PRD-mcphost-sandbox-ready P1 requirement 7 (AC8): named here too,
+        // not just in host.tool_publish's own description -- a client that
+        // reads `host.get_info`'s instructions before publishing anything
+        // must see this before it ever tries.
+        if let Some(status) = self
+            .state
+            .kinds
+            .all()
+            .find_map(|k| k.sandbox_status())
+            .filter(|s| !s.ready)
+        {
+            instructions.push_str(&format!(
+                " NOTE: this host's sandboxed kinds are currently rejected with \
+                 sandbox_unavailable ({}) -- publish echo or http instead.",
+                status.detail
+            ));
+        }
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_instructions(instructions)
     }
 
     async fn list_tools(

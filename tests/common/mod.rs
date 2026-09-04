@@ -112,6 +112,37 @@ pub fn all_kinds_registry(data_dir: &Path) -> KindRegistry {
     kinds
 }
 
+/// PRD-mcphost-sandbox-ready: a shell script body for
+/// `PythonKind::set_selftest_interpreter_for_test` that writes
+/// `stderr_line` to stderr and exits 1 -- simulates one specific sandbox
+/// failure mode (a broken interpreter, a namespace-setup failure) without
+/// needing an actually-broken host. Reads and discards stdin first so
+/// writing to it (the self-test probe always sends its trivial source on
+/// stdin) never blocks on a full pipe.
+pub fn fake_interpreter_failing(stderr_line: &str) -> String {
+    format!(
+        "#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' '{}' >&2\nexit 1\n",
+        stderr_line.replace('\'', "'\\''")
+    )
+}
+
+/// PRD-mcphost-sandbox-ready: a `python` kind whose sandbox self-test
+/// interpreter and periodic-recheck interval are both test-controlled --
+/// see `PythonKind::for_test_with_selftest`'s doc comment. The returned
+/// `Arc<PythonKind>` lets a test call `set_selftest_interpreter_for_test`,
+/// `run_startup_selftest`, `recheck_sandbox`, etc. on the concrete type
+/// *before* it's registered as `Arc<dyn Kind>`, then hand the same
+/// registration off to `TestServer`.
+pub fn python_kind_registry_with_selftest(
+    data_dir: &Path,
+    recheck_secs: u64,
+) -> (KindRegistry, Arc<PythonKind>) {
+    let mut kinds = KindRegistry::with_builtin();
+    let py = Arc::new(PythonKind::for_test_with_selftest(data_dir, recheck_secs));
+    kinds.register(py.clone());
+    (kinds, py)
+}
+
 /// AC13: a small concurrency limit so admission control can be proven
 /// without 21 real sandboxed calls in flight.
 pub fn python_kind_registry_with_concurrency(data_dir: &Path, limit: usize) -> KindRegistry {

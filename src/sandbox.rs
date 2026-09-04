@@ -671,7 +671,10 @@ pub struct PersistentSandbox {
 /// child's stderr can be written to across many calls, and this task must
 /// keep the pipe from filling for the sandbox's entire lifetime, not just
 /// one call's.
-async fn drain_capped_into(mut reader: impl tokio::io::AsyncRead + Unpin, buf: Arc<Mutex<Vec<u8>>>) {
+async fn drain_capped_into(
+    mut reader: impl tokio::io::AsyncRead + Unpin,
+    buf: Arc<Mutex<Vec<u8>>>,
+) {
     let mut chunk = [0u8; 8192];
     loop {
         match reader.read(&mut chunk).await {
@@ -746,7 +749,11 @@ impl PersistentSandbox {
     /// The last known stderr tail (up to [`READ_CAP_BYTES`]), as of whenever
     /// this is called -- a snapshot, not consumed.
     pub fn stderr_tail(&self) -> String {
-        let buf = self.stderr_tail.lock().map(|g| g.clone()).unwrap_or_default();
+        let buf = self
+            .stderr_tail
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_default();
         tail_str(&buf)
     }
 
@@ -761,7 +768,8 @@ impl PersistentSandbox {
         payload: &[u8],
         timeout: Duration,
     ) -> std::io::Result<PersistentCallOutcome> {
-        if self.stdin.write_all(payload).await.is_err() || self.stdin.write_all(b"\n").await.is_err()
+        if self.stdin.write_all(payload).await.is_err()
+            || self.stdin.write_all(b"\n").await.is_err()
         {
             return Ok(PersistentCallOutcome::Closed);
         }
@@ -805,6 +813,235 @@ impl PersistentSandbox {
 /// caller-influenced path (a scratch/env directory name) as safe to create.
 pub fn is_within(root: &Path, path: &Path) -> bool {
     path.starts_with(root)
+}
+
+// ---- sandbox self-test (PRD-mcphost-sandbox-ready) -------------------------
+//
+// The host's own record of whether its sandbox mechanism actually works,
+// proven by running a real sandboxed process rather than checking a binary
+// is on `$PATH` (`/healthz`'s pre-existing `sandbox_mechanism` field is only
+// ever that -- see `detect_mechanism` above). `kinds::python` is the only
+// producer today (its `selftest_probe` builds the `RunSpec` this classifies);
+// this type lives here, not there, because it's plumbed through the `Kind`
+// trait (`kinds::mod::Kind::sandbox_status`) so a future second sandboxed
+// kind reports through the exact same shape with no `/healthz`/admin-tool
+// changes.
+
+/// `sandbox_detail`'s hard cap (requirement 2: "≤ 200 chars").
+const DETAIL_MAX_CHARS: usize = 200;
+
+fn cap_detail(s: String) -> String {
+    if s.chars().count() <= DETAIL_MAX_CHARS {
+        return s;
+    }
+    s.chars().take(DETAIL_MAX_CHARS).collect()
+}
+
+/// The result of actually running a sandboxed process, not just checking a
+/// binary is on `$PATH`. Reported verbatim on `/healthz` (`sandbox_ready`,
+/// `sandbox_detail`, `sandbox_checked_at`) and returned by
+/// `admin.sandbox_recheck`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SandboxStatus {
+    pub ready: bool,
+    pub mechanism: IsolationMechanism,
+    pub detail: String,
+    /// RFC 3339 UTC, e.g. `"2026-09-04T18:44:59Z"`.
+    pub checked_at: String,
+}
+
+impl SandboxStatus {
+    /// A successful probe (requirement 2: `sandbox_detail` is exactly
+    /// `"<mechanism>: ok"` on success).
+    pub fn ready(mechanism: IsolationMechanism) -> Self {
+        Self {
+            ready: true,
+            mechanism,
+            detail: format!("{}: ok", mechanism.as_str()),
+            checked_at: crate::state::rfc3339_now(),
+        }
+    }
+
+    /// A failed probe. `token` is one of the classification tokens
+    /// requirement 8 / AC9 names (`userns_denied`, `binary_missing`,
+    /// `interpreter_missing`, `timeout`, `other`); `detail_source` is
+    /// whatever raw text (a stderr tail, an I/O error, a fixed message) the
+    /// caller has to explain the failure -- only its first non-empty line is
+    /// kept, so a multi-line stderr tail doesn't blow the 200-char cap on
+    /// its own. `sandbox_detail` starts with `token` (AC9) and still
+    /// contains the mechanism and the underlying text (requirement 2's
+    /// "<mechanism> plus the first line of the child's stderr", e.g. AC1's
+    /// "contains RTM_NEWADDR") -- both requirements hold at once because the
+    /// token is a prefix, not a replacement.
+    fn unready(mechanism: IsolationMechanism, token: &'static str, detail_source: &str) -> Self {
+        let first_line = detail_source
+            .lines()
+            .find(|l| !l.trim().is_empty())
+            .unwrap_or(detail_source)
+            .trim();
+        let detail = cap_detail(format!("{token}: {}: {first_line}", mechanism.as_str()));
+        Self {
+            ready: false,
+            mechanism,
+            detail,
+            checked_at: crate::state::rfc3339_now(),
+        }
+    }
+
+    /// Classifies the outcome of one self-test probe run (`Ok`) or a
+    /// spawn-level failure (`Err` -- requirement 8's "missing bwrap" case:
+    /// the RunSpec's own top-level command couldn't even be spawned) into a
+    /// [`SandboxStatus`]. Never panics: an unrecognized shape (e.g. the
+    /// trivial probe script itself reporting `{"ok": false}`, which should
+    /// not happen for its fixed, known-good source) classifies as `other`
+    /// rather than crashing the probe.
+    pub fn from_probe(
+        mechanism: IsolationMechanism,
+        probe: std::io::Result<SandboxOutcome>,
+    ) -> Self {
+        let outcome = match probe {
+            Err(e) => return Self::unready(mechanism, "binary_missing", &e.to_string()),
+            Ok(o) => o,
+        };
+        match &outcome {
+            SandboxOutcome::Exited { stdout, .. } => {
+                match serde_json::from_slice::<serde_json::Value>(stdout) {
+                    Ok(v) if v.get("ok").and_then(serde_json::Value::as_bool) == Some(true) => {
+                        Self::ready(mechanism)
+                    }
+                    Ok(v) => Self::unready(
+                        mechanism,
+                        "other",
+                        &format!("ast-check probe reported not-ok: {v}"),
+                    ),
+                    Err(_) => Self::unready(
+                        mechanism,
+                        "other",
+                        "ast-check probe produced non-JSON output",
+                    ),
+                }
+            }
+            SandboxOutcome::TimedOut { .. } => Self::unready(
+                mechanism,
+                "timeout",
+                "sandboxed probe exceeded its wall-clock timeout",
+            ),
+            SandboxOutcome::NonZeroExit { stderr_tail, .. }
+            | SandboxOutcome::Signaled { stderr_tail, .. } => {
+                let token = classify_stderr(stderr_tail);
+                Self::unready(mechanism, token, stderr_tail)
+            }
+        }
+    }
+}
+
+/// Requirement 8 / AC9: maps a failed probe's stderr tail onto one of the
+/// stable tokens the deploy tool can match on. Matched against the exact
+/// messages this crate's own "Technical considerations" section recorded
+/// from the hub (`uid map`/`gid map`, `RTM_NEWADDR`/`loopback`) plus the
+/// generic "no such file or directory" a wrapper reports when it can't
+/// `execvp` the interpreter it was told to run.
+fn classify_stderr(stderr_tail: &str) -> &'static str {
+    let s = stderr_tail.to_lowercase();
+    if s.contains("uid map")
+        || s.contains("uid_map")
+        || s.contains("gid map")
+        || s.contains("gid_map")
+        || s.contains("rtm_newaddr")
+        || s.contains("loopback")
+    {
+        "userns_denied"
+    } else if s.contains("no such file or directory") {
+        "interpreter_missing"
+    } else {
+        "other"
+    }
+}
+
+#[cfg(test)]
+mod selftest_tests {
+    use super::*;
+
+    fn nonzero(stderr_tail: &str) -> std::io::Result<SandboxOutcome> {
+        Ok(SandboxOutcome::NonZeroExit {
+            code: 1,
+            stdout_tail: String::new(),
+            stderr_tail: stderr_tail.to_string(),
+            cpu_ms: 0,
+            peak_rss_kb: 0,
+        })
+    }
+
+    #[test]
+    fn ready_detail_is_mechanism_colon_ok() {
+        let status = SandboxStatus::ready(IsolationMechanism::Bwrap);
+        assert!(status.ready);
+        assert_eq!(status.detail, "bwrap: ok");
+    }
+
+    #[test]
+    fn classifies_loopback_and_uid_map_as_userns_denied() {
+        let status = SandboxStatus::from_probe(
+            IsolationMechanism::Bwrap,
+            nonzero("bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted"),
+        );
+        assert!(!status.ready);
+        assert!(status.detail.starts_with("userns_denied:"));
+        assert!(status.detail.contains("RTM_NEWADDR"));
+
+        let status = SandboxStatus::from_probe(
+            IsolationMechanism::UnshareSetpriv,
+            nonzero("setting up uid map: Permission denied"),
+        );
+        assert!(status.detail.starts_with("userns_denied:"));
+
+        let status = SandboxStatus::from_probe(
+            IsolationMechanism::UnshareSetpriv,
+            nonzero("write failed /proc/self/uid_map: Operation not permitted"),
+        );
+        assert!(status.detail.starts_with("userns_denied:"));
+    }
+
+    #[test]
+    fn classifies_missing_interpreter_as_interpreter_missing() {
+        let status = SandboxStatus::from_probe(
+            IsolationMechanism::Bwrap,
+            nonzero("bwrap: execvp /usr/bin/python3: No such file or directory"),
+        );
+        assert!(status.detail.starts_with("interpreter_missing:"));
+    }
+
+    #[test]
+    fn classifies_spawn_failure_as_binary_missing() {
+        let status = SandboxStatus::from_probe(
+            IsolationMechanism::Bwrap,
+            Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "No such file or directory",
+            )),
+        );
+        assert!(!status.ready);
+        assert!(status.detail.starts_with("binary_missing:"));
+    }
+
+    #[test]
+    fn classifies_timeout() {
+        let status = SandboxStatus::from_probe(
+            IsolationMechanism::Bwrap,
+            Ok(SandboxOutcome::TimedOut {
+                cpu_ms: 0,
+                peak_rss_kb: 0,
+            }),
+        );
+        assert!(status.detail.starts_with("timeout:"));
+    }
+
+    #[test]
+    fn detail_never_exceeds_200_chars() {
+        let long = "x".repeat(1000);
+        let status = SandboxStatus::from_probe(IsolationMechanism::Bwrap, nonzero(&long));
+        assert!(status.detail.chars().count() <= 200);
+    }
 }
 
 #[cfg(test)]

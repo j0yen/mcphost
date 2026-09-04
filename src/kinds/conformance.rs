@@ -107,10 +107,13 @@ pub async fn check_call(
 /// free by calling this function once per invalid-spec case in its own
 /// conformance test.
 pub fn check_rejection_shape(kind: &dyn Kind, bad_spec: &Value) -> Result<(), ConformanceFailure> {
-    let kind_err = kind.validate(bad_spec).err().ok_or_else(|| ConformanceFailure {
-        method: "validate",
-        reason: format!("expected validate to reject spec {bad_spec}, it was accepted"),
-    })?;
+    let kind_err = kind
+        .validate(bad_spec)
+        .err()
+        .ok_or_else(|| ConformanceFailure {
+            method: "validate",
+            reason: format!("expected validate to reject spec {bad_spec}, it was accepted"),
+        })?;
     let data = crate::errors::AppError::from(kind_err)
         .into_error_data()
         .data
@@ -132,6 +135,68 @@ pub fn check_rejection_shape(kind: &dyn Kind, bad_spec: &Value) -> Result<(), Co
         return Err(ConformanceFailure {
             method: "validate",
             reason: format!("rejection for spec {bad_spec} is missing docs: {data}"),
+        });
+    }
+    Ok(())
+}
+
+/// PRD-mcphost-sandbox-ready requirement 3 / AC7: reusable shape check for
+/// the `sandbox_unavailable` rejection `host.tool_publish`, `host.tool_test`
+/// and `host.tool_run` all return identically (`errors::AppError::
+/// sandbox_unavailable`) when a kind's sandbox self-test is failing.
+/// Unlike [`check_rejection_shape`] above, this doesn't run a `Kind`'s own
+/// `validate` -- the rejection this checks is built by `control.rs`/
+/// `handler.rs` directly from an injected [`crate::sandbox::SandboxStatus`]
+/// *before* any kind-level validation runs (that's the point: no ast-check
+/// process is spawned), so there is no `KindError` for a `Kind::validate`
+/// call to produce here. "The suite is exercised by injecting an unready
+/// status" (AC7's own words) means constructing a `SandboxStatus` with
+/// `ready: false` directly, exactly as this function's callers do.
+pub fn check_sandbox_unavailable_shape(
+    status: &crate::sandbox::SandboxStatus,
+) -> Result<(), ConformanceFailure> {
+    if status.ready {
+        return Err(ConformanceFailure {
+            method: "sandbox_unavailable",
+            reason: "check_sandbox_unavailable_shape must be called with an unready status"
+                .to_string(),
+        });
+    }
+    let error_data = crate::errors::AppError::sandbox_unavailable(status).into_error_data();
+    if error_data.message.trim().is_empty() {
+        return Err(ConformanceFailure {
+            method: "sandbox_unavailable",
+            reason: "message must not be empty".to_string(),
+        });
+    }
+    let data = error_data.data.unwrap_or(Value::Null);
+    let code_ok = data.get("error_code").and_then(Value::as_str) == Some("sandbox_unavailable");
+    if !code_ok {
+        return Err(ConformanceFailure {
+            method: "sandbox_unavailable",
+            reason: format!("error_code must be 'sandbox_unavailable', got: {data}"),
+        });
+    }
+    for field in ["mechanism", "detail", "docs"] {
+        let present = data
+            .get(field)
+            .and_then(Value::as_str)
+            .is_some_and(|s| !s.is_empty());
+        if !present {
+            return Err(ConformanceFailure {
+                method: "sandbox_unavailable",
+                reason: format!("data.{field} must be a non-empty string, got: {data}"),
+            });
+        }
+    }
+    let alternatives_ok = data
+        .get("alternatives")
+        .and_then(Value::as_array)
+        .is_some_and(|a| a.iter().any(|v| v == "echo") && a.iter().any(|v| v == "http"));
+    if !alternatives_ok {
+        return Err(ConformanceFailure {
+            method: "sandbox_unavailable",
+            reason: format!("data.alternatives must include 'echo' and 'http', got: {data}"),
         });
     }
     Ok(())

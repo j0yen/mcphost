@@ -104,10 +104,7 @@ pub async fn tenant_delete(state: &AppState, args: &Value) -> Result<Value, AppE
 /// identical to a single delete, just looped.
 pub async fn tenant_delete_by_prefix(state: &AppState, args: &Value) -> Result<Value, AppError> {
     let prefix = arg_str(args, "prefix")?;
-    let dry_run = args
-        .get("dry_run")
-        .and_then(Value::as_bool)
-        .unwrap_or(true);
+    let dry_run = args.get("dry_run").and_then(Value::as_bool).unwrap_or(true);
 
     if prefix.chars().count() < MIN_PREFIX_LEN {
         return Err(AppError::InvalidParams(format!(
@@ -259,6 +256,30 @@ pub async fn usage(state: &AppState, args: &Value) -> Result<Value, AppError> {
         })
         .collect();
     Ok(json!({ "window": window, "usage": usage }))
+}
+
+/// PRD-mcphost-sandbox-ready requirement 4 (AC5): re-runs the sandbox
+/// self-test on demand, on every registered kind that has one (only
+/// `python` does today -- see `Kind::sandbox_recheck`'s doc comment), and
+/// returns the first fresh status found. Admin-key gated like every other
+/// tool in this file. `sandbox_unsupported` when no registered kind has a
+/// self-test at all (a deployment with no sandboxed kind registered).
+pub async fn sandbox_recheck(state: &AppState) -> Result<Value, AppError> {
+    for kind in state.kinds.all() {
+        if let Some(status) = kind.sandbox_recheck().await {
+            return Ok(json!({
+                "ready": status.ready,
+                "mechanism": status.mechanism.as_str(),
+                "detail": status.detail,
+                "checked_at": status.checked_at,
+            }));
+        }
+    }
+    Err(AppError::Structured {
+        code: "sandbox_unsupported",
+        message: "no registered kind on this host has a sandbox self-test".to_string(),
+        data: Value::Null,
+    })
 }
 
 pub async fn tool_list(state: &AppState, args: &Value) -> Result<Value, AppError> {
