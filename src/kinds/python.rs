@@ -30,9 +30,67 @@
 //!   (resets hourly); the `admin.tenant_limits` configuration RPC the PRD
 //!   also names is not implemented -- no acceptance criterion requires it,
 //!   only the budget's *effect* (AC14).
+//!
+//! ## PRD-mcphost-code-tools-warm-pool
+//!
+//! * **Pool key**: [`Kind::call`] still carries no tool name, so warm-pool
+//!   keying leans on the additive [`CallCtx::tool_name`] field this PRD adds
+//!   (populated by every real dispatch path in `handler.rs`) rather than
+//!   the source/requirements hash alone -- `on_tool_changed` (republish/
+//!   remove) needs the *name* to evict synchronously (AC3), which a
+//!   content hash alone can't answer without also being told the old
+//!   content.
+//! * **Warm-pool `RLIMIT_CPU`**: `ResourceLimits::cpu_seconds` is a kernel
+//!   rlimit on the *process's whole lifetime*, not resettable per call --
+//!   applying a single call's `timeout_s` to a sandbox meant to serve many
+//!   calls over its TTL would starve it after a handful of cheap calls.
+//!   A warm sandbox's rlimit is `timeout_s * 1000` (generous enough for its
+//!   bounded TTL/lifetime; effectively "the kernel-level backstop, not the
+//!   real limit") -- per-call enforcement is the wall-clock read timeout in
+//!   `sandbox::PersistentSandbox::call`, matching a cold call's own
+//!   wall-clock-cap-over-rlimit relationship (`wall_clock_timeout` is
+//!   already `timeout_s + 2s`, longer than `RLIMIT_CPU`'s `timeout_s`).
+//! * **Metrics (requirement 4)**: `warm_hits`/`warm_misses`/`pool_size` are
+//!   tracked in-memory on [`WarmPool`] (proven by this module's own unit
+//!   tests) but not surfaced through `host.usage`/`admin.usage` this tick --
+//!   both are cross-kind, `AppState`-level aggregations today, and piping a
+//!   `python`-specific counter through them needs a concretely-typed handle
+//!   `AppState` doesn't currently keep (only `Arc<dyn Kind>`). No acceptance
+//!   criterion in this PRD names the RPC surface, only the pool's behavior
+//!   (AC1-5, AC8); wiring the counters into `host.usage` is left for the
+//!   PRD that actually needs an operator-visible number.
+//! * **Requirement 6 / AC8 (pre-warm on publish, P1) is not implemented**
+//!   this tick. A warm sandbox bakes its `SECRET_*` environment variables in
+//!   at spawn time (see [`call_fingerprint`]'s doc), and resolving a
+//!   tenant's secrets needs `AppState`/`state.secrets` plus a DB round trip
+//!   -- machinery `control::tool_publish` (where a publish-time hook would
+//!   fire) doesn't currently have wired to any `Kind`, unlike `handler.rs`'s
+//!   real call paths (`build_secret_resolver`). Pre-warming only
+//!   secret-free tools would be an easy partial version, but risks the
+//!   opposite bug it would need to get right on day one: a pool entry
+//!   spawned without secrets that a *secret-using* publish's first real
+//!   call could wrongly appear to match on source/requirements alone if
+//!   secrets were ever left out of the fingerprint (they are not -- see
+//!   `call_fingerprint` -- but a pre-warm path that never has secrets to
+//!   fold in would always produce the empty-secret-set fingerprint, silently
+//!   correct only by coincidence). No P0 acceptance criterion needs this;
+//!   AC1's "second call is fast" already holds via the cold-call
+//!   `maybe_promote_to_warm` path.
+//! * **`host.tool_run` execution path**: rather than overloading
+//!   [`Kind::call`] with a `dry_run` flag on [`CallCtx`] (the technical
+//!   consideration's suggestion), this ships as its own [`Kind::tool_run`]
+//!   trait method with its own response shape
+//!   (`{stdout, stderr, exit_code, result}`) -- `call`'s contract (a bare
+//!   result `Value` or a [`KindError`]) has no room for raw stdout/stderr/
+//!   exit code without a breaking change to every other kind's return type.
+//!   `host.tool_run` always runs cold (never touches the warm pool): it is
+//!   the "why did my tool print nothing" debug path, not a throughput path,
+//!   and keeping it off the pool means a debug run can never evict or block
+//!   on a warm sandbox serving real traffic.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -43,7 +101,10 @@ use tokio::sync::Semaphore;
 
 use super::infer;
 use super::{CallCtx, Kind, KindError, KindExample, ToolDescriptor};
-use crate::sandbox::{self, IsolationMechanism, NetworkMode, ResourceLimits, SandboxOutcome};
+use crate::sandbox::{
+    self, IsolationMechanism, NetworkMode, PersistentCallOutcome, PersistentSandbox,
+    ResourceLimits, SandboxOutcome,
+};
 
 // ---- limits & defaults (requirement 1) -------------------------------------
 
@@ -59,6 +120,21 @@ const BUILD_TIMEOUT: Duration = Duration::from_secs(120);
 const DEFAULT_CPU_BUDGET_MS_PER_HOUR: u64 = 600_000;
 const CPU_BUDGET_WINDOW: Duration = Duration::from_secs(3600);
 const DEFAULT_MAX_CONCURRENT_CALLS: usize = 20;
+
+// ---- warm pool (PRD-mcphost-code-tools-warm-pool requirement 1) -----------
+
+/// `MCPHOST_PY_WARM_TTL` default (seconds): how long an idle warm sandbox
+/// survives before the reaper kills it.
+const DEFAULT_WARM_TTL_S: u64 = 60;
+/// `MCPHOST_PY_WARM_PER_TENANT` default: at most this many warm sandboxes
+/// for any one tenant, across all of its tools, at once.
+const DEFAULT_WARM_PER_TENANT: usize = 2;
+/// `MCPHOST_PY_WARM_MAX` default: at most this many warm sandboxes box-wide.
+const DEFAULT_WARM_MAX: usize = 16;
+/// How often the reaper task wakes to check every entry's TTL.
+const WARM_REAP_INTERVAL: Duration = Duration::from_secs(5);
+/// `host.tool_run`'s stdout/stderr cap (requirement 3).
+const TOOL_RUN_CAP_BYTES: usize = 64 * 1024;
 
 // ---- spec -------------------------------------------------------------------
 
@@ -532,46 +608,351 @@ impl CpuBudget {
     }
 }
 
-// ---- runner protocol envelope (this kind's own convention) ---------------
+// ---- warm pool (requirement 1, AC1/AC2/AC3/AC4/AC5/AC8) --------------------
 
+/// Identifies one tool for pool purposes: which tenant, and which of its
+/// local names. See the module doc's "Pool key" note for why this (rather
+/// than a pure content hash) is the map key.
+type ToolKey = (i64, String);
+
+/// One idle, ready-to-reuse sandbox. `fingerprint` is `hash(source +
+/// sorted(requirements))` -- computed fresh on every call and compared
+/// against this before reuse, so a republish that lands under the *same*
+/// name (caught synchronously by `on_tool_changed` too, belt and braces)
+/// can never hand a stale sandbox back even if the eviction call somehow
+/// raced it.
+struct WarmEntry {
+    sandbox: PersistentSandbox,
+    fingerprint: String,
+    site_packages: String,
+    /// The scratch directory holding this entry's `tool.py`/`runner.py`,
+    /// alive for as long as the sandbox itself is -- removed only when the
+    /// entry is killed, unlike a cold call's scratch dir (removed right
+    /// after that one call).
+    scratch_dir: PathBuf,
+    last_used: Instant,
+}
+
+/// Kills `entry`'s sandbox and removes its scratch directory -- every path
+/// that discards a [`WarmEntry`] (decline-to-pool, eviction, reap, an
+/// entry replaced by a newer `offer`) goes through this so the two always
+/// happen together.
+async fn kill_warm_entry(entry: WarmEntry) {
+    entry.sandbox.kill().await;
+    let _ = tokio::fs::remove_dir_all(&entry.scratch_dir).await;
+}
+
+/// Per-tenant and box-wide bounded pool of idle [`PersistentSandbox`]es,
+/// reaped on TTL (AC2) and evicted synchronously on republish/remove/tenant
+/// removal (AC3). One instance per [`PythonKind`], shared with its
+/// background reaper task via `Arc`.
+struct WarmPool {
+    entries: Mutex<HashMap<ToolKey, WarmEntry>>,
+    ttl: Duration,
+    per_tenant: usize,
+    max_total: usize,
+    hits: AtomicU64,
+    misses: AtomicU64,
+}
+
+impl WarmPool {
+    fn new(ttl: Duration, per_tenant: usize, max_total: usize) -> Self {
+        Self {
+            entries: Mutex::new(HashMap::new()),
+            ttl,
+            per_tenant,
+            max_total,
+            hits: AtomicU64::new(0),
+            misses: AtomicU64::new(0),
+        }
+    }
+
+    /// Takes the entry for `key` out of the pool if one exists -- reused
+    /// (fingerprint matches) or stale (doesn't, or simply present for a
+    /// different requirements/source pairing than this call needs). Either
+    /// way the entry is gone from the pool the moment this returns, so two
+    /// concurrent calls to the same tool never race for the same sandbox
+    /// (AC's "a warm sandbox runs one call at a time" -- enforced here by
+    /// construction, not a lock held across the call).
+    fn take(&self, key: &ToolKey) -> Option<WarmEntry> {
+        self.entries
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(key)
+    }
+
+    /// Counts this call's outcome for `host.usage`/`admin.usage` (see the
+    /// module doc's scoped-down metrics note: tracked here, not yet piped
+    /// out over an RPC).
+    fn record_hit(&self) {
+        self.hits.fetch_add(1, Ordering::Relaxed);
+    }
+    fn record_miss(&self) {
+        self.misses.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn pool_size(&self) -> usize {
+        self.entries.lock().unwrap_or_else(|e| e.into_inner()).len()
+    }
+
+    /// `true` if `tenant_id` has room for one more warm entry (its own
+    /// per-tenant bound not yet reached, and the box-wide bound not yet
+    /// reached either) -- checked before bothering to spawn a candidate
+    /// sandbox at all, so a full pool doesn't pay a spawn cost only to
+    /// discard the result in [`Self::offer`].
+    fn has_room(&self, tenant_id: i64) -> bool {
+        let guard = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+        if guard.len() >= self.max_total {
+            return false;
+        }
+        guard.keys().filter(|(t, _)| *t == tenant_id).count() < self.per_tenant
+    }
+
+    fn metrics(&self) -> (u64, u64, usize) {
+        (
+            self.hits.load(Ordering::Relaxed),
+            self.misses.load(Ordering::Relaxed),
+            self.pool_size(),
+        )
+    }
+
+    /// Inserts a freshly-spawned idle sandbox for `key`, honoring both
+    /// bounds (requirement 1: `MCPHOST_PY_WARM_PER_TENANT`,
+    /// `MCPHOST_PY_WARM_MAX`) -- if there's no room, `sandbox` is killed
+    /// instead of inserted (the caller's own call already completed
+    /// successfully using it or a cold path; declining to pool it just
+    /// means the next call is cold too, not a failure of any kind).
+    async fn offer(&self, key: ToolKey, entry: WarmEntry) {
+        let should_insert = {
+            let guard = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+            if guard.len() >= self.max_total {
+                false
+            } else {
+                let tenant_count = guard.keys().filter(|(t, _)| *t == key.0).count();
+                tenant_count < self.per_tenant
+            }
+        };
+        if !should_insert {
+            kill_warm_entry(entry).await;
+            return;
+        }
+        let evicted = self
+            .entries
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(key, entry);
+        if let Some(evicted) = evicted {
+            kill_warm_entry(evicted).await;
+        }
+    }
+
+    /// AC3: kill and remove every warm entry for one tool, synchronously --
+    /// called from `Kind::on_tool_changed` before `host.tool_publish`/
+    /// `host.tool_remove` returns.
+    async fn evict_tool(&self, tenant_id: i64, local_name: &str) {
+        let removed = self
+            .entries
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&(tenant_id, local_name.to_string()));
+        if let Some(entry) = removed {
+            kill_warm_entry(entry).await;
+        }
+    }
+
+    /// AC3: kill and remove every warm entry for one tenant, regardless of
+    /// tool name -- called from `Kind::on_tenant_removed`.
+    async fn evict_tenant(&self, tenant_id: i64) {
+        let victims: Vec<ToolKey> = {
+            let guard = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+            guard
+                .keys()
+                .filter(|(t, _)| *t == tenant_id)
+                .cloned()
+                .collect()
+        };
+        for key in victims {
+            // The `MutexGuard` this `.lock()` produces must not still be
+            // alive across the `kill_warm_entry(...).await` below (it isn't
+            // `Send`, and Rust's temporary-lifetime-extension rule would
+            // otherwise keep it alive for the whole `if let` block) -- so
+            // the removal is its own statement, ended before the `if let`.
+            let entry = self
+                .entries
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&key);
+            if let Some(entry) = entry {
+                kill_warm_entry(entry).await;
+            }
+        }
+    }
+
+    /// AC2: kill and remove every entry idle past `self.ttl`. Run
+    /// periodically by [`PythonKind::spawn_reaper`].
+    async fn reap_expired(&self) {
+        let now = Instant::now();
+        let expired: Vec<ToolKey> = {
+            let guard = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+            guard
+                .iter()
+                .filter(|(_, e)| now.duration_since(e.last_used) >= self.ttl)
+                .map(|(k, _)| k.clone())
+                .collect()
+        };
+        for key in expired {
+            // See the same note in `evict_tenant` above.
+            let entry = self
+                .entries
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&key);
+            if let Some(entry) = entry {
+                kill_warm_entry(entry).await;
+            }
+        }
+    }
+}
+
+/// Spawns the background task that periodically reaps TTL-expired warm
+/// entries (AC2). One per [`PythonKind`] instance (each `PythonKind::build`
+/// call gets its own `WarmPool` and its own reaper) -- never joined; it runs
+/// for the process's lifetime, same as `EnvRegistry`'s own background
+/// builds, and is naturally dropped along with the runtime on shutdown.
+fn spawn_warm_reaper(warm: Arc<WarmPool>) {
+    // `PythonKind::new`/`build` runs from ordinary sync code in a couple of
+    // this crate's own unit tests (constructing a kind purely to call its
+    // synchronous `validate`, never touching the warm pool) with no Tokio
+    // runtime active -- `tokio::spawn` would panic there. A pool that's
+    // never used doesn't need a reaper; every real caller (`main.rs`,
+    // every `#[tokio::test]`) *is* inside a runtime, so this is the only
+    // context where skipping the spawn is reachable.
+    if tokio::runtime::Handle::try_current().is_err() {
+        return;
+    }
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(WARM_REAP_INTERVAL).await;
+            warm.reap_expired().await;
+        }
+    });
+}
+
+/// `hash(source + sorted(requirements) + sorted(secret env))` -- the warm
+/// pool's own reuse key (module doc: "Pool key"), distinct from
+/// [`requirements_hash`] (which keys the *environment*/venv cache and
+/// deliberately ignores `source`, since many tools can share one venv).
+/// Secret values are folded in too: a warm sandbox bakes its `SECRET_*`
+/// environment variables in at spawn time (a persistent process can't be
+/// handed new env vars mid-life the way a cold call's fresh subprocess
+/// gets them), so a tenant rotating a secret via `host.secret_set` between
+/// calls must be a fingerprint miss, not a reuse of a sandbox holding the
+/// old value.
+fn call_fingerprint(source: &str, requirements: &[String], secret_env: &[(String, String)]) -> String {
+    let mut sorted = requirements.to_vec();
+    sorted.sort();
+    let mut sorted_secrets = secret_env.to_vec();
+    sorted_secrets.sort();
+    let mut hasher = Sha256::new();
+    hasher.update(source.as_bytes());
+    hasher.update(b"\n--reqs--\n");
+    hasher.update(sorted.join("\n").as_bytes());
+    hasher.update(b"\n--secrets--\n");
+    for (k, v) in &sorted_secrets {
+        hasher.update(k.as_bytes());
+        hasher.update(b"=");
+        hasher.update(v.as_bytes());
+        hasher.update(b"\n");
+    }
+    let digest = hasher.finalize();
+    digest.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+// ---- runner protocol envelope (this kind's own convention) ---------------
+//
+// PRD-mcphost-code-tools-warm-pool requirement 1/5: this script is now a
+// *loop* -- one JSON request per line in on stdin, one JSON response per
+// line out on stdout -- so the exact same script serves both a cold call
+// (the caller writes one line, then closes stdin; the `for` loop below ends
+// naturally at EOF after processing it) and a warm sandbox kept alive across
+// many calls (`sandbox::PersistentSandbox`, whose caller keeps stdin open
+// and sends one more line per call). Requirement 5 / AC4's "fresh module
+// namespace each call": every iteration re-imports `tool.py` via
+// `importlib.util.spec_from_file_location` into a brand new module object,
+// exactly as the pre-warm-pool one-shot script always did -- the only thing
+// that changed is that this now happens in a loop instead of once, so a
+// module-level global set in one call is never visible to the next
+// regardless of whether the sandbox serving it is warm or cold.
+//
+// Every response line is a single clean JSON object -- nothing the tool
+// itself prints or writes to `sys.stderr` is allowed to reach the real fd 1,
+// which would otherwise corrupt this line-based protocol the moment a tool
+// calls `print(...)`. `sys.stdout`/`sys.stderr` are redirected to in-memory
+// buffers for the duration of `main(args)` and folded into the envelope as
+// `stdout_capture`/`stderr_capture` instead -- `host.tool_run` (this PRD's
+// other half) reads those two fields for its "full stdout and stderr"
+// response; an ordinary call simply ignores them.
 const PY_RUNNER_SCRIPT: &str = r#"
-import sys, json, importlib.util, traceback
+import sys, json, importlib.util, traceback, io
+
+_real_stdout = sys.stdout
 
 def emit(obj):
-    sys.stdout.write(json.dumps(obj))
-    sys.stdout.flush()
+    _real_stdout.write(json.dumps(obj))
+    _real_stdout.write("\n")
+    _real_stdout.flush()
 
-try:
-    payload = json.loads(sys.stdin.read())
-except Exception as e:
-    emit({"ok": False, "kind": "exception", "error": "PayloadError", "message": str(e)})
-    sys.exit(1)
+def run_one(payload):
+    site_packages = payload.get("site_packages")
+    if site_packages and site_packages not in sys.path:
+        sys.path.insert(0, site_packages)
+    args = payload.get("args", {})
 
-site_packages = payload.get("site_packages")
-if site_packages:
-    sys.path.insert(0, site_packages)
-args = payload.get("args", {})
-
-try:
-    spec = importlib.util.spec_from_file_location("tool", "tool.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    if not hasattr(module, "main"):
-        emit({"ok": False, "kind": "exception", "error": "AttributeError", "message": "tool module has no main(args)", "traceback": ""})
-        sys.exit(1)
-    result = module.main(args)
-except MemoryError:
-    emit({"ok": False, "kind": "oom"})
-    sys.exit(1)
-except Exception as e:
-    emit({"ok": False, "kind": "exception", "error": type(e).__name__, "message": str(e), "traceback": traceback.format_exc()})
-    sys.exit(1)
-else:
+    out_buf, err_buf = io.StringIO(), io.StringIO()
+    old_out, old_err = sys.stdout, sys.stderr
+    sys.stdout, sys.stderr = out_buf, err_buf
     try:
-        emit({"ok": True, "result": result})
-    except (TypeError, ValueError) as e:
-        emit({"ok": False, "kind": "output_invalid", "message": str(e)})
-        sys.exit(1)
+        try:
+            spec = importlib.util.spec_from_file_location("tool", "tool.py")
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            if not hasattr(module, "main"):
+                obj = {"ok": False, "kind": "exception", "error": "AttributeError",
+                       "message": "tool module has no main(args)", "traceback": ""}
+            else:
+                try:
+                    result = module.main(args)
+                except MemoryError:
+                    obj = {"ok": False, "kind": "oom"}
+                except Exception as e:
+                    obj = {"ok": False, "kind": "exception", "error": type(e).__name__,
+                           "message": str(e), "traceback": traceback.format_exc()}
+                else:
+                    try:
+                        json.dumps(result)
+                    except (TypeError, ValueError) as e:
+                        obj = {"ok": False, "kind": "output_invalid", "message": str(e)}
+                    else:
+                        obj = {"ok": True, "result": result}
+        except MemoryError:
+            obj = {"ok": False, "kind": "oom"}
+    finally:
+        sys.stdout, sys.stderr = old_out, old_err
+    obj["stdout_capture"] = out_buf.getvalue()[-200000:]
+    obj["stderr_capture"] = err_buf.getvalue()[-200000:]
+    return obj
+
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        payload = json.loads(line)
+    except Exception as e:
+        emit({"ok": False, "kind": "exception", "error": "PayloadError", "message": str(e),
+              "stdout_capture": "", "stderr_capture": ""})
+        continue
+    emit(run_one(payload))
 "#;
 
 fn map_envelope_error(envelope: &Value, stderr_tail: &str) -> KindError {
@@ -609,18 +990,148 @@ fn map_envelope_error(envelope: &Value, stderr_tail: &str) -> KindError {
     }
 }
 
+/// Parses one runner-protocol response line (whether it came from a cold
+/// call's whole stdout or one line read from a [`PersistentSandbox`]) into
+/// either the tool's result or the mapped [`KindError`]. Shared by
+/// [`map_sandbox_outcome`]'s `Exited` arm and the warm-reuse path in
+/// [`PythonKind::call`], which never produces a [`SandboxOutcome`] at all
+/// (there's no process exit to classify -- the sandbox is still running).
+fn map_envelope_line(line: &[u8]) -> Result<Value, KindError> {
+    match serde_json::from_slice::<Value>(line) {
+        Ok(envelope) if envelope.get("ok").and_then(Value::as_bool) == Some(true) => {
+            Ok(envelope.get("result").cloned().unwrap_or(Value::Null))
+        }
+        Ok(envelope) => Err(map_envelope_error(&envelope, "")),
+        Err(_) => Err(KindError::structured(
+            "tool_output_invalid",
+            "tool stdout was not valid JSON",
+        )),
+    }
+}
+
+/// The JSON line a caller (cold `sandbox::run`, or a warm
+/// `PersistentSandbox::call`) writes to the runner's stdin: the call's
+/// arguments plus the venv's `site_packages` path to add to `sys.path`.
+fn call_payload(args: &Value, site_packages: &str) -> Vec<u8> {
+    serde_json::to_vec(&json!({"args": args, "site_packages": site_packages})).unwrap_or_default()
+}
+
+/// Byte-caps `s` to its last `cap` bytes (requirement 3: "capped at 64 KiB
+/// each"), landing on a UTF-8 char boundary so the result is always valid
+/// `str` (never splits a multi-byte character).
+fn cap_str_bytes(s: &str, cap: usize) -> String {
+    if s.len() <= cap {
+        return s.to_string();
+    }
+    let start = s.len() - cap;
+    let mut idx = start;
+    while idx < s.len() && !s.is_char_boundary(idx) {
+        idx += 1;
+    }
+    s[idx..].to_string()
+}
+
+/// Builds `host.tool_run`'s `{stdout, stderr, exit_code, result}` response
+/// (requirement 3, AC6) from a completed cold sandbox run. `exit_code` is
+/// synthesized from the envelope's own `ok` flag (0 success, 1 tool-level
+/// failure), not the OS exit status of the runner process -- `PY_RUNNER_SCRIPT`'s
+/// request loop always exits 0 by design (see that constant's docs)
+/// regardless of whether the tool itself raised, so the OS exit status
+/// alone can't distinguish the two the way this RPC's callers expect.
+fn tool_run_response(outcome: SandboxOutcome, effective_schema: &Value, test_mode: bool) -> Value {
+    let (envelope, fallback_exit_code, sandbox_stderr_tail): (Option<Value>, i64, String) =
+        match &outcome {
+            SandboxOutcome::Exited { stdout, .. } => {
+                (serde_json::from_slice(stdout).ok(), 0, String::new())
+            }
+            SandboxOutcome::NonZeroExit {
+                code,
+                stdout_tail,
+                stderr_tail,
+                ..
+            } => (
+                serde_json::from_str(stdout_tail).ok(),
+                *code as i64,
+                stderr_tail.clone(),
+            ),
+            SandboxOutcome::Signaled {
+                signal, stderr_tail, ..
+            } => (None, -(*signal as i64), stderr_tail.clone()),
+            SandboxOutcome::TimedOut { .. } => (None, -1, String::new()),
+        };
+
+    let Some(envelope) = envelope else {
+        // No readable envelope at all: a genuine crash, kernel kill or
+        // timeout, not an ordinary tool-level exception (which always
+        // produces one) -- best-effort from whatever the sandbox itself
+        // captured on real stderr.
+        let mut result = json!({
+            "stdout": "",
+            "stderr": cap_str_bytes(&sandbox_stderr_tail, TOOL_RUN_CAP_BYTES),
+            "exit_code": fallback_exit_code,
+            "result": Value::Null,
+        });
+        if test_mode
+            && let Some(obj) = result.as_object_mut()
+        {
+            obj.insert("schema".to_string(), effective_schema.clone());
+        }
+        return result;
+    };
+
+    let ok = envelope.get("ok").and_then(Value::as_bool).unwrap_or(false);
+    let result = if ok {
+        envelope.get("result").cloned().unwrap_or(Value::Null)
+    } else {
+        Value::Null
+    };
+    let mut stderr_text = envelope
+        .get("stderr_capture")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    if !ok {
+        let kind = envelope
+            .get("kind")
+            .and_then(Value::as_str)
+            .unwrap_or("exception");
+        let message = envelope.get("message").and_then(Value::as_str).unwrap_or("");
+        let traceback = envelope
+            .get("traceback")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        if !stderr_text.is_empty() {
+            stderr_text.push('\n');
+        }
+        stderr_text.push_str(&format!("[{kind}] {message}"));
+        if !traceback.is_empty() {
+            stderr_text.push('\n');
+            stderr_text.push_str(traceback);
+        }
+    }
+    let stdout_text = envelope
+        .get("stdout_capture")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+
+    let mut result_obj = json!({
+        "stdout": cap_str_bytes(&stdout_text, TOOL_RUN_CAP_BYTES),
+        "stderr": cap_str_bytes(&stderr_text, TOOL_RUN_CAP_BYTES),
+        "exit_code": if ok { 0 } else { 1 },
+        "result": result,
+    });
+    if test_mode
+        && let Some(obj) = result_obj.as_object_mut()
+    {
+        obj.insert("schema".to_string(), effective_schema.clone());
+    }
+    result_obj
+}
+
 fn map_sandbox_outcome(outcome: SandboxOutcome) -> Result<Value, KindError> {
     match outcome {
-        SandboxOutcome::Exited { stdout, .. } => match serde_json::from_slice::<Value>(&stdout) {
-            Ok(envelope) if envelope.get("ok").and_then(Value::as_bool) == Some(true) => {
-                Ok(envelope.get("result").cloned().unwrap_or(Value::Null))
-            }
-            Ok(envelope) => Err(map_envelope_error(&envelope, "")),
-            Err(_) => Err(KindError::structured(
-                "tool_output_invalid",
-                "tool stdout was not valid JSON",
-            )),
-        },
+        SandboxOutcome::Exited { stdout, .. } => map_envelope_line(&stdout),
         SandboxOutcome::NonZeroExit {
             stdout_tail,
             stderr_tail,
@@ -734,18 +1245,40 @@ pub struct PythonKind {
     envs: Arc<EnvRegistry>,
     semaphore: Arc<Semaphore>,
     cpu_budget: CpuBudget,
+    warm: Arc<WarmPool>,
 }
 
 impl PythonKind {
     /// Production constructor: `data_dir` is `$MCPHOST_DATA_DIR`; envs live
     /// under `<data_dir>/envs`, per-call scratch dirs under
     /// `<data_dir>/scratch`. Mechanism auto-detected (bwrap preferred).
+    /// Requirement 1: the warm pool's three env-configurable bounds
+    /// (`MCPHOST_PY_WARM_TTL`/`_PER_TENANT`/`_MAX`) are read here, once, at
+    /// startup -- same pattern as every other `MCPHOST_*` variable this
+    /// crate reads in `main.rs`, just read locally since `PythonKind::new`
+    /// is this kind's one production entry point.
     pub fn new(data_dir: &Path) -> Self {
+        let ttl = std::env::var("MCPHOST_PY_WARM_TTL")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(Duration::from_secs)
+            .unwrap_or(Duration::from_secs(DEFAULT_WARM_TTL_S));
+        let per_tenant = std::env::var("MCPHOST_PY_WARM_PER_TENANT")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(DEFAULT_WARM_PER_TENANT);
+        let max_total = std::env::var("MCPHOST_PY_WARM_MAX")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(DEFAULT_WARM_MAX);
         Self::build(
             data_dir,
             sandbox::detect_mechanism(),
             DEFAULT_MAX_CONCURRENT_CALLS,
             DEFAULT_CPU_BUDGET_MS_PER_HOUR,
+            ttl,
+            per_tenant,
+            max_total,
         )
     }
 
@@ -758,6 +1291,9 @@ impl PythonKind {
             sandbox::detect_mechanism(),
             max_concurrent,
             DEFAULT_CPU_BUDGET_MS_PER_HOUR,
+            Duration::from_secs(DEFAULT_WARM_TTL_S),
+            DEFAULT_WARM_PER_TENANT,
+            DEFAULT_WARM_MAX,
         )
     }
 
@@ -769,15 +1305,38 @@ impl PythonKind {
             sandbox::detect_mechanism(),
             DEFAULT_MAX_CONCURRENT_CALLS,
             budget_ms,
+            Duration::from_secs(DEFAULT_WARM_TTL_S),
+            DEFAULT_WARM_PER_TENANT,
+            DEFAULT_WARM_MAX,
         )
     }
 
+    /// Test constructor: a short TTL and small bounds so the warm-pool ACs
+    /// (AC1/AC2/AC5/AC8) don't need a real 60s wait or 16 real sandboxes.
+    pub fn for_test_with_warm_pool(data_dir: &Path, ttl: Duration, per_tenant: usize, max_total: usize) -> Self {
+        Self::build(
+            data_dir,
+            sandbox::detect_mechanism(),
+            DEFAULT_MAX_CONCURRENT_CALLS,
+            DEFAULT_CPU_BUDGET_MS_PER_HOUR,
+            ttl,
+            per_tenant,
+            max_total,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn build(
         data_dir: &Path,
         isolation: IsolationMechanism,
         max_concurrent: usize,
         cpu_budget_ms: u64,
+        warm_ttl: Duration,
+        warm_per_tenant: usize,
+        warm_max: usize,
     ) -> Self {
+        let warm = Arc::new(WarmPool::new(warm_ttl, warm_per_tenant, warm_max));
+        spawn_warm_reaper(warm.clone());
         Self {
             envs_root: data_dir.join("envs"),
             scratch_root: data_dir.join("scratch"),
@@ -785,12 +1344,23 @@ impl PythonKind {
             envs: Arc::new(EnvRegistry::new()),
             semaphore: Arc::new(Semaphore::new(max_concurrent)),
             cpu_budget: CpuBudget::new(cpu_budget_ms),
+            warm,
         }
     }
 
     /// The active isolation mechanism, for `/healthz` (requirement 5).
     pub fn mechanism(&self) -> &'static str {
         self.isolation.as_str()
+    }
+
+    /// Diagnostic access to the warm pool's own counters -- `(hits, misses,
+    /// current_pool_size)` (module doc: requirement 4's metrics, tracked
+    /// here but not yet piped through `host.usage`/`admin.usage`). `pub`
+    /// rather than test-only so this crate's own integration tests
+    /// (`tests/warmpool_ac*.rs`) can assert a call actually hit the pool
+    /// rather than inferring it indirectly from timing alone.
+    pub fn warm_metrics(&self) -> (u64, u64, usize) {
+        self.warm.metrics()
     }
 
     fn env_dir(&self, namespace: &str, requirements: &[String]) -> PathBuf {
@@ -829,6 +1399,30 @@ impl PythonKind {
         Ok(scratch)
     }
 
+    /// Same idea as [`Self::prepare_scratch`], but for a sandbox meant to
+    /// outlive one call (the warm pool): no per-call `stdin.json` (args
+    /// arrive later, per call, over the sandbox's own stdin pipe -- see
+    /// [`sandbox::PersistentSandbox::call`]), and the directory is named
+    /// `warm-*` rather than `call-*` so an operator inspecting
+    /// `<data_dir>/scratch` can tell the two apart.
+    async fn prepare_scratch_for_warm(&self, source: &str) -> Result<PathBuf, KindError> {
+        let scratch = self.scratch_root.join(format!(
+            "warm-{}-{}",
+            std::process::id(),
+            rand::random::<u64>()
+        ));
+        tokio::fs::create_dir_all(&scratch)
+            .await
+            .map_err(|e| KindError::Exec(format!("warm scratch dir: {e}")))?;
+        tokio::fs::write(scratch.join("tool.py"), source)
+            .await
+            .map_err(|e| KindError::Exec(format!("write tool source: {e}")))?;
+        tokio::fs::write(scratch.join("runner.py"), PY_RUNNER_SCRIPT)
+            .await
+            .map_err(|e| KindError::Exec(format!("write runner: {e}")))?;
+        Ok(scratch)
+    }
+
     fn network_mode(&self, spec: &PythonSpec) -> NetworkMode {
         if spec.effective_network() == "public" {
             NetworkMode::Public {
@@ -848,6 +1442,149 @@ impl PythonKind {
                     .map(|value| (format!("SECRET_{}", name.to_ascii_uppercase()), value))
             })
             .collect()
+    }
+
+    /// Requirement 1 (AC1/AC4): attempts a warm reuse for `key`. `Some(_)`
+    /// means the warm path fully answered this call (a hit that ran, or a
+    /// definitive failure like a timeout) -- the caller should return it
+    /// as-is. `None` means "no usable warm sandbox" (nothing pooled, a
+    /// stale fingerprint, or the pooled sandbox turned out to be dead) --
+    /// the caller falls through to the ordinary cold path, which is itself
+    /// responsible for re-seeding the pool afterward.
+    #[allow(clippy::too_many_arguments)]
+    async fn try_warm(
+        &self,
+        key: &ToolKey,
+        fingerprint: &str,
+        args: &Value,
+        timeout: Duration,
+        ctx: &CallCtx,
+        effective_schema: &Value,
+        secret_values: &[String],
+    ) -> Option<Result<Value, KindError>> {
+        let mut entry = self.warm.take(key)?;
+        if entry.fingerprint != fingerprint {
+            // Requirement 1: "any other call starts cold" -- a different
+            // source/requirements pairing under the same tool name (a
+            // republish `on_tool_changed` should already have caught
+            // synchronously, this is the defensive fallback) is not this
+            // call's sandbox to reuse.
+            kill_warm_entry(entry).await;
+            return None;
+        }
+
+        let payload = call_payload(args, &entry.site_packages);
+        let outcome = entry.sandbox.call(&payload, timeout).await;
+        match outcome {
+            Ok(PersistentCallOutcome::Responded {
+                line,
+                cpu_ms,
+                peak_rss_kb,
+            }) => {
+                self.warm.record_hit();
+                ctx.resources.record(cpu_ms, peak_rss_kb);
+                self.cpu_budget.record(ctx.tenant_id, cpu_ms);
+                let result = map_envelope_line(&line);
+                entry.last_used = Instant::now();
+                self.warm.offer(key.clone(), entry).await;
+                Some(match result {
+                    Ok(value) => {
+                        let redacted = redact_value(&value, secret_values);
+                        if ctx.test_mode {
+                            Ok(json!({"result": redacted, "schema": effective_schema}))
+                        } else {
+                            Ok(redacted)
+                        }
+                    }
+                    Err(e) => Err(redact_kind_error(e, secret_values)),
+                })
+            }
+            // AC5: the deadline passed -- `call_timeout`, the sandbox is
+            // killed, and (since `entry` is simply dropped, never offered
+            // back) the pool no longer holds it.
+            Ok(PersistentCallOutcome::TimedOut) => {
+                kill_warm_entry(entry).await;
+                Some(Err(KindError::structured(
+                    "tool_timeout",
+                    "the call exceeded its timeout",
+                )))
+            }
+            // The sandbox died (crashed, hit its own rlimit, or was killed
+            // out of band) between being pooled and this call reaching it --
+            // not a hit, but also not the caller's fault; fall through to an
+            // ordinary cold call rather than surfacing a confusing error for
+            // something the pool itself should recover from transparently.
+            Ok(PersistentCallOutcome::Closed) | Err(_) => {
+                kill_warm_entry(entry).await;
+                None
+            }
+        }
+    }
+
+    /// Requirement 1/6 (AC1/AC8): spawns a fresh, idle [`PersistentSandbox`]
+    /// running the same source and requirements this cold call just used,
+    /// and offers it to the warm pool -- best-effort. Any failure here
+    /// (spawn error, pool already full by the time this runs) just means
+    /// the next call is cold too; it never affects the cold call already in
+    /// progress, whose result is computed independently of this.
+    #[allow(clippy::too_many_arguments)]
+    async fn maybe_promote_to_warm(
+        &self,
+        key: ToolKey,
+        fingerprint: String,
+        parsed: &PythonSpec,
+        python: PathBuf,
+        site_packages: String,
+        env_dir: PathBuf,
+        secret_env: &[(String, String)],
+    ) {
+        if !self.warm.has_room(key.0) {
+            return;
+        }
+        let Ok(scratch) = self.prepare_scratch_for_warm(&parsed.source).await else {
+            return;
+        };
+        let mut read_only_dirs = system_python_dirs();
+        read_only_dirs.push(env_dir);
+
+        let run_spec = sandbox::RunSpec {
+            interpreter: python,
+            interpreter_args: vec!["-I".to_string(), "-S".to_string()],
+            script_path: scratch.join("runner.py"),
+            scratch_dir: scratch.clone(),
+            read_only_dirs,
+            stdin_payload: Vec::new(),
+            limits: ResourceLimits {
+                // Module doc's "warm-pool RLIMIT_CPU" note: this is a
+                // process-lifetime kernel backstop, not the per-call limit
+                // (that's the wall-clock timeout `try_warm` already passes
+                // to every `PersistentSandbox::call`).
+                cpu_seconds: parsed.effective_timeout_s().saturating_mul(1000),
+                memory_mb: parsed.effective_memory_mb(),
+                max_open_files: MAX_OPEN_FILES,
+                max_file_size_mb: MAX_FILE_SIZE_MB,
+            },
+            wall_clock_timeout: Duration::from_secs(parsed.effective_timeout_s() + 2),
+            network: self.network_mode(parsed),
+            extra_env: secret_env.to_vec(),
+            isolation: self.isolation,
+        };
+
+        match sandbox::spawn_persistent(&run_spec).await {
+            Ok(sandbox) => {
+                let entry = WarmEntry {
+                    sandbox,
+                    fingerprint,
+                    site_packages,
+                    scratch_dir: scratch,
+                    last_used: Instant::now(),
+                };
+                self.warm.offer(key, entry).await;
+            }
+            Err(_) => {
+                let _ = tokio::fs::remove_dir_all(&scratch).await;
+            }
+        }
     }
 }
 
@@ -938,6 +1675,7 @@ impl Kind for PythonKind {
         };
 
         let secret_env = self.secret_env(&parsed, ctx);
+        let secret_values: Vec<String> = secret_env.iter().map(|(_, v)| v.clone()).collect();
 
         if let Err(retry_after_s) = self.cpu_budget.check(ctx.tenant_id) {
             return Err(KindError::structured_with(
@@ -948,6 +1686,41 @@ impl Kind for PythonKind {
         }
 
         let effective_requirements = parsed.effective_requirements()?;
+
+        // Requirement 1 (AC1/AC4/AC8): a repeat call of the same tool with
+        // the same requirements/source reuses a warm sandbox if one is
+        // idle, skipping the env-build-status lookup and the cold spawn
+        // entirely. `ctx.tool_name` is `None` in every context that has no
+        // notion of a tool's own name (`for_test`, the conformance suite) --
+        // those always fall through to the cold path below, by design (see
+        // the module doc's "Pool key" note).
+        let warm_key: Option<ToolKey> = ctx.tool_name.clone().map(|name| (ctx.tenant_id, name));
+        let fingerprint = call_fingerprint(&parsed.source, &effective_requirements, &secret_env);
+        if let Some(key) = &warm_key {
+            let call_timeout = Duration::from_secs(parsed.effective_timeout_s() + 2);
+            if let Some(result) = self
+                .try_warm(
+                    key,
+                    &fingerprint,
+                    &args,
+                    call_timeout,
+                    ctx,
+                    &effective_schema,
+                    &secret_values,
+                )
+                .await
+            {
+                return result;
+            }
+            // `try_warm` returning `None` covers every "no usable warm
+            // sandbox" reason (nothing pooled yet, a stale fingerprint, or
+            // a pooled sandbox that turned out to be dead) -- all of them
+            // are a miss for requirement 4's metrics; only a `Some(_)`
+            // return above (an actual hit, or a definitive failure like
+            // AC5's timeout) is not.
+            self.warm.record_miss();
+        }
+
         let env_dir = self.env_dir(&ctx.namespace, &effective_requirements);
         let status = match self.envs.status(&env_dir).await {
             Some(status) => status,
@@ -993,6 +1766,11 @@ impl Kind for PythonKind {
         let mut read_only_dirs = system_python_dirs();
         read_only_dirs.push(env_dir.clone());
 
+        // Cloned before `run_spec` below moves it: requirement 1/AC1's
+        // pre-warm-after-a-cold-miss step (`maybe_promote_to_warm`) needs
+        // the same interpreter path once this cold call is done with it.
+        let python_for_warm = python.clone();
+
         let run_spec = sandbox::RunSpec {
             interpreter: python,
             interpreter_args: vec!["-I".to_string(), "-S".to_string()],
@@ -1020,11 +1798,31 @@ impl Kind for PythonKind {
         ctx.resources.record(cpu_ms, peak_rss_kb);
         self.cpu_budget.record(ctx.tenant_id, cpu_ms);
 
+        // Requirement 1/AC1/AC8: a cold call that ran the sandboxed process
+        // to completion (whether the tool itself succeeded or raised -- a
+        // healthy sandbox either way) is a candidate to seed the warm pool
+        // for the *next* call, if this call came through a real dispatch
+        // path (`warm_key.is_some()`) and there's room. Anything else that
+        // could have gone wrong (spawn failure already returned above; a
+        // timeout, signal or non-zero exit below) means the sandbox itself
+        // is not healthy enough to keep alive.
+        if let (Some(key), true) = (&warm_key, matches!(&outcome, SandboxOutcome::Exited { .. })) {
+            self.maybe_promote_to_warm(
+                key.clone(),
+                fingerprint.clone(),
+                &parsed,
+                python_for_warm,
+                site_packages,
+                env_dir,
+                &secret_env,
+            )
+            .await;
+        }
+
         // Requirement 7: secret values are "redacted from any string that
         // leaves the host" -- that includes a tool's own result (a tool may
         // legitimately be handed a secret and choose to echo it back, e.g.
         // while debugging), not just an error/traceback.
-        let secret_values: Vec<String> = secret_env.iter().map(|(_, v)| v.clone()).collect();
         match map_sandbox_outcome(outcome) {
             Ok(value) => {
                 let redacted = redact_value(&value, &secret_values);
@@ -1042,6 +1840,117 @@ impl Kind for PythonKind {
             }
             Err(e) => Err(redact_kind_error(e, &secret_values)),
         }
+    }
+
+    /// `host.tool_run` (requirement 3, AC6/AC7). Always cold (module doc:
+    /// "host.tool_run execution path") -- never touches the warm pool, so a
+    /// debug run can never evict or block on a sandbox serving real
+    /// traffic. Writes no `calls` row (this method is never reached from
+    /// `call_published_tool`), records no CPU-budget usage and does not
+    /// acquire the admission-control semaphore (its own 30/minute rate
+    /// limit, enforced in `handler.rs` before this is ever called, is the
+    /// intended throughput bound for this RPC).
+    async fn tool_run(&self, spec: &Value, args: Value, ctx: &CallCtx) -> Result<Value, KindError> {
+        let parsed = parse_spec(spec)?;
+        validate_spec_fields(&parsed)?;
+
+        let effective_schema = parsed.effective_args_schema()?;
+        let validator = jsonschema::validator_for(&effective_schema)
+            .map_err(|e| KindError::InvalidSpec(format!("args_schema: {e}")))?;
+        if let Err(e) = validator.validate(&args) {
+            return Err(KindError::structured_with(
+                "args_invalid",
+                e.to_string(),
+                json!({"instance_path": e.instance_path.to_string()}),
+            ));
+        }
+
+        let secret_env = self.secret_env(&parsed, ctx);
+        let secret_values: Vec<String> = secret_env.iter().map(|(_, v)| v.clone()).collect();
+
+        let effective_requirements = parsed.effective_requirements()?;
+        let env_dir = self.env_dir(&ctx.namespace, &effective_requirements);
+        let status = match self.envs.status(&env_dir).await {
+            Some(status) => status,
+            None => {
+                self.envs.start_build(
+                    env_dir.clone(),
+                    ctx.namespace.clone(),
+                    effective_requirements,
+                );
+                return Err(KindError::structured(
+                    "tool_building",
+                    "the tool's environment is still building; try again shortly",
+                ));
+            }
+        };
+        let (python, site_packages) = match status {
+            EnvStatus::Ready {
+                python,
+                site_packages,
+            } => (python, site_packages),
+            EnvStatus::Building => {
+                return Err(KindError::structured(
+                    "tool_building",
+                    "the tool's environment is still building; try again shortly",
+                ));
+            }
+            EnvStatus::Failed { tail } => {
+                return Err(KindError::structured_with(
+                    "build_failed",
+                    "the tool's environment failed to build",
+                    json!({"tail": tail}),
+                ));
+            }
+        };
+
+        let scratch = self
+            .prepare_scratch(&parsed.source, &args, &site_packages)
+            .await?;
+        let stdin_payload = tokio::fs::read(scratch.join("stdin.json"))
+            .await
+            .map_err(|e| KindError::Exec(format!("read stdin payload: {e}")))?;
+        let mut read_only_dirs = system_python_dirs();
+        read_only_dirs.push(env_dir);
+
+        let run_spec = sandbox::RunSpec {
+            interpreter: python,
+            interpreter_args: vec!["-I".to_string(), "-S".to_string()],
+            script_path: scratch.join("runner.py"),
+            scratch_dir: scratch.clone(),
+            read_only_dirs,
+            stdin_payload,
+            limits: ResourceLimits {
+                cpu_seconds: parsed.effective_timeout_s(),
+                memory_mb: parsed.effective_memory_mb(),
+                max_open_files: MAX_OPEN_FILES,
+                max_file_size_mb: MAX_FILE_SIZE_MB,
+            },
+            wall_clock_timeout: Duration::from_secs(parsed.effective_timeout_s() + 2),
+            network: self.network_mode(&parsed),
+            extra_env: secret_env.clone(),
+            isolation: self.isolation,
+        };
+
+        let outcome = sandbox::run(run_spec).await;
+        let _ = tokio::fs::remove_dir_all(&scratch).await;
+        let outcome = outcome.map_err(|e| KindError::Exec(format!("sandbox spawn failed: {e}")))?;
+
+        Ok(redact_value(
+            &tool_run_response(outcome, &effective_schema, ctx.test_mode),
+            &secret_values,
+        ))
+    }
+
+    /// PRD-mcphost-code-tools-warm-pool AC3: republish/remove of a python
+    /// tool kills any warm sandbox for it before the RPC returns.
+    async fn on_tool_changed(&self, tenant_id: i64, local_name: &str) {
+        self.warm.evict_tool(tenant_id, local_name).await;
+    }
+
+    /// AC3: a disabled/deleted tenant's warm sandboxes don't outlive it.
+    async fn on_tenant_removed(&self, tenant_id: i64) {
+        self.warm.evict_tenant(tenant_id).await;
     }
 
     fn example(&self) -> KindExample {
@@ -1120,5 +2029,271 @@ mod tests {
         let err = kind.validate_async(&spec).await.unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("line"), "error must name the line, got: {msg}");
+    }
+
+    // ---- PRD-mcphost-code-tools-warm-pool -----------------------------
+
+    #[test]
+    fn call_fingerprint_is_sensitive_to_source_requirements_and_secrets() {
+        let a = call_fingerprint("def main(args):\n    return {}\n", &[], &[]);
+        let b = call_fingerprint("def main(args):\n    return {'x': 1}\n", &[], &[]);
+        assert_ne!(a, b, "different source must fingerprint differently");
+
+        let c = call_fingerprint("def main(args):\n    return {}\n", &["requests".into()], &[]);
+        assert_ne!(a, c, "different requirements must fingerprint differently");
+
+        let d = call_fingerprint(
+            "def main(args):\n    return {}\n",
+            &[],
+            &[("SECRET_TOKEN".into(), "v1".into())],
+        );
+        assert_ne!(a, d, "different secret values must fingerprint differently");
+
+        let e = call_fingerprint("def main(args):\n    return {}\n", &[], &[]);
+        assert_eq!(a, e, "identical inputs must fingerprint identically");
+    }
+
+    fn warm_ctx(tenant_id: i64, namespace: &str, tool_name: &str) -> CallCtx {
+        CallCtx {
+            tenant_id,
+            namespace: namespace.to_string(),
+            secrets: Arc::new(crate::kinds::NoSecrets),
+            deadline: Instant::now() + Duration::from_secs(30),
+            log: Arc::new(crate::kinds::NullLog),
+            test_mode: false,
+            resources: Arc::new(crate::kinds::NullResourceSink),
+            tool_name: Some(tool_name.to_string()),
+        }
+    }
+
+    /// Calls `kind.call(spec, args, ctx)` once, transparently retrying past
+    /// any `tool_building` responses (the first call against a fresh env
+    /// always gets at least one) -- the unit-test equivalent of
+    /// `tests/common::poll_until_ready`.
+    async fn call_through_build(
+        kind: &PythonKind,
+        spec: &Value,
+        args: Value,
+        ctx: &CallCtx,
+    ) -> Result<Value, KindError> {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            match kind.call(spec, args.clone(), ctx).await {
+                Err(KindError::Structured {
+                    code: "tool_building",
+                    ..
+                }) if Instant::now() < deadline => {
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
+                other => return other,
+            }
+        }
+    }
+
+    /// AC1/AC8 — a repeat call of the same tool/requirements reuses the
+    /// warm sandbox the first (cold) call seeded, with identical-shaped
+    /// results for identical arguments.
+    #[tokio::test]
+    async fn repeat_call_is_a_warm_hit_ac1() {
+        if !sandbox::supports_user_namespaces() {
+            println!("skipped: no user namespaces");
+            return;
+        }
+        let data_dir = temp_data_dir();
+        let kind = PythonKind::for_test_with_warm_pool(&data_dir, Duration::from_secs(60), 2, 16);
+        let spec = json!({
+            "source": "def main(args):\n    return {\"n\": args[\"n\"] * 2}\n",
+            "args_schema": {"type": "object"},
+            "requirements": [],
+        });
+        let ctx = warm_ctx(1, "wpac1", "doubler");
+
+        let first = call_through_build(&kind, &spec, json!({"n": 3}), &ctx)
+            .await
+            .expect("cold call must succeed");
+        assert_eq!(first, json!({"n": 6}));
+
+        let (hits_before, misses_before, pool_size) = kind.warm_metrics();
+        assert!(misses_before >= 1, "the cold call must count as a miss");
+        assert_eq!(pool_size, 1, "the cold call must have seeded the pool");
+
+        let second = kind
+            .call(&spec, json!({"n": 5}), &ctx)
+            .await
+            .expect("warm call must succeed");
+        assert_eq!(second, json!({"n": 10}));
+
+        let (hits_after, _, pool_size_after) = kind.warm_metrics();
+        assert_eq!(
+            hits_after,
+            hits_before + 1,
+            "the second call must be recorded as a warm hit"
+        );
+        assert_eq!(
+            pool_size_after, 1,
+            "the reused sandbox must be back in the pool afterward"
+        );
+    }
+
+    /// AC2 — an idle warm sandbox past its TTL is reaped; the pool no
+    /// longer holds it.
+    #[tokio::test]
+    async fn idle_warm_entry_is_reaped_after_ttl_ac2() {
+        if !sandbox::supports_user_namespaces() {
+            println!("skipped: no user namespaces");
+            return;
+        }
+        let data_dir = temp_data_dir();
+        let ttl = Duration::from_millis(200);
+        let kind = PythonKind::for_test_with_warm_pool(&data_dir, ttl, 2, 16);
+        let spec = json!({
+            "source": "def main(args):\n    return {\"ok\": True}\n",
+            "args_schema": {"type": "object"},
+            "requirements": [],
+        });
+        let ctx = warm_ctx(2, "wpac2", "pinger");
+
+        call_through_build(&kind, &spec, json!({}), &ctx)
+            .await
+            .expect("cold call must succeed");
+        assert_eq!(kind.warm_metrics().2, 1, "the cold call must have seeded the pool");
+
+        // Exercises `WarmPool::reap_expired` directly rather than waiting
+        // out the real (5s-interval) background reaper task -- same
+        // behavior, without a slow test.
+        tokio::time::sleep(ttl + Duration::from_millis(100)).await;
+        kind.warm.reap_expired().await;
+        assert_eq!(
+            kind.warm_metrics().2,
+            0,
+            "an idle entry past its TTL must be reaped"
+        );
+    }
+
+    /// AC3 — a republish or removal kills the warm sandbox synchronously,
+    /// via `Kind::on_tool_changed`; a tenant removal does the same for
+    /// every one of its tools via `Kind::on_tenant_removed`.
+    #[tokio::test]
+    async fn republish_remove_and_tenant_removal_evict_synchronously_ac3() {
+        if !sandbox::supports_user_namespaces() {
+            println!("skipped: no user namespaces");
+            return;
+        }
+        let data_dir = temp_data_dir();
+        let kind = PythonKind::for_test_with_warm_pool(&data_dir, Duration::from_secs(60), 2, 16);
+        let spec = json!({
+            "source": "def main(args):\n    return {}\n",
+            "args_schema": {"type": "object"},
+            "requirements": [],
+        });
+
+        let ctx_a = warm_ctx(3, "wpac3", "thing_a");
+        call_through_build(&kind, &spec, json!({}), &ctx_a)
+            .await
+            .expect("cold call must succeed");
+        assert_eq!(kind.warm_metrics().2, 1);
+        kind.on_tool_changed(3, "thing_a").await;
+        assert_eq!(
+            kind.warm_metrics().2,
+            0,
+            "on_tool_changed (republish/remove) must evict the warm entry"
+        );
+
+        let ctx_b = warm_ctx(3, "wpac3", "thing_b");
+        call_through_build(&kind, &spec, json!({}), &ctx_b)
+            .await
+            .expect("cold call must succeed");
+        assert_eq!(kind.warm_metrics().2, 1);
+        kind.on_tenant_removed(3).await;
+        assert_eq!(
+            kind.warm_metrics().2,
+            0,
+            "on_tenant_removed must evict every warm entry for that tenant"
+        );
+    }
+
+    /// AC4 — a warm reuse never leaks a module-level global from one call
+    /// to the next.
+    #[tokio::test]
+    async fn warm_reuse_does_not_leak_module_state_ac4() {
+        if !sandbox::supports_user_namespaces() {
+            println!("skipped: no user namespaces");
+            return;
+        }
+        let data_dir = temp_data_dir();
+        let kind = PythonKind::for_test_with_warm_pool(&data_dir, Duration::from_secs(60), 2, 16);
+        let spec = json!({
+            "source": "_STATE = {}\ndef main(args):\n    seen_before = \"seen\" in _STATE\n    _STATE[\"seen\"] = True\n    return {\"seen_before\": seen_before}\n",
+            "args_schema": {"type": "object"},
+            "requirements": [],
+        });
+        let ctx = warm_ctx(4, "wpac4", "stateful");
+
+        let first = call_through_build(&kind, &spec, json!({}), &ctx)
+            .await
+            .expect("cold call must succeed");
+        assert_eq!(first, json!({"seen_before": false}));
+
+        let second = kind
+            .call(&spec, json!({}), &ctx)
+            .await
+            .expect("warm call must succeed");
+        assert_eq!(
+            second,
+            json!({"seen_before": false}),
+            "a module global set in call one must be absent in call two"
+        );
+        assert_eq!(
+            kind.warm_metrics().0,
+            1,
+            "the second call must actually have gone through the warm path"
+        );
+    }
+
+    /// AC5 — a warm call that exceeds its deadline is `tool_timeout`, kills
+    /// the sandbox promptly, and the pool no longer holds it afterward.
+    #[tokio::test]
+    async fn warm_call_past_deadline_times_out_and_is_evicted_ac5() {
+        if !sandbox::supports_user_namespaces() {
+            println!("skipped: no user namespaces");
+            return;
+        }
+        let data_dir = temp_data_dir();
+        let kind = PythonKind::for_test_with_warm_pool(&data_dir, Duration::from_secs(60), 2, 16);
+        let spec = json!({
+            "source": "import time\ndef main(args):\n    if args.get(\"slow\"):\n        time.sleep(5)\n    return {\"ok\": True}\n",
+            "args_schema": {"type": "object"},
+            "requirements": [],
+            "timeout_s": 1,
+        });
+        let ctx = warm_ctx(5, "wpac5", "maybe_slow");
+
+        call_through_build(&kind, &spec, json!({"slow": false}), &ctx)
+            .await
+            .expect("cold call must succeed");
+        assert_eq!(kind.warm_metrics().2, 1, "the fast call must have seeded the pool");
+
+        let started = Instant::now();
+        let err = kind
+            .call(&spec, json!({"slow": true}), &ctx)
+            .await
+            .expect_err("a warm call past its deadline must fail");
+        let elapsed = started.elapsed();
+        assert!(matches!(
+            err,
+            KindError::Structured {
+                code: "tool_timeout",
+                ..
+            }
+        ));
+        assert!(
+            elapsed < Duration::from_secs(4),
+            "must return promptly after killing the warm sandbox, took {elapsed:?}"
+        );
+        assert_eq!(
+            kind.warm_metrics().2,
+            0,
+            "the timed-out warm sandbox must no longer be in the pool"
+        );
     }
 }

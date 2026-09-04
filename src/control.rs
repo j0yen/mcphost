@@ -210,6 +210,18 @@ pub async fn tool_publish(
         .upsert_tool(tenant.id, name.clone(), kind_name.clone(), spec)
         .await?;
 
+    // PRD-mcphost-code-tools-warm-pool AC3: a republish of an existing name
+    // must kill any warm sandbox serving the OLD source before this call
+    // returns, not merely let it idle out on its own TTL. Every kind is
+    // notified (not just `kind_name`'s own) since a name's kind cannot
+    // change across a republish anyway, and the no-op default costs nothing
+    // for kinds with no such state.
+    if already_exists {
+        for k in state.kinds.all() {
+            k.on_tool_changed(tenant.id, &name).await;
+        }
+    }
+
     Ok(json!({
         "name": format!("{}.{}", tenant.namespace, name),
         "kind": kind_name,
@@ -240,6 +252,11 @@ pub async fn tool_remove(
     let removed = state.db.remove_tool(tenant.id, name.clone()).await?;
     if !removed {
         return Err(AppError::ToolNotFound(name));
+    }
+    // PRD-mcphost-code-tools-warm-pool AC3: same "killed before the
+    // operation returns" guarantee as a republish, for an outright removal.
+    for k in state.kinds.all() {
+        k.on_tool_changed(tenant.id, &name).await;
     }
     Ok(json!({ "removed": name }))
 }

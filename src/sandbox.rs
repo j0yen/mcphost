@@ -40,8 +40,8 @@ use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::process::Command;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::process::{ChildStdin, Command};
 
 /// How this box isolates a sandboxed child. Recorded in `/healthz`
 /// (requirement 5: "the chosen mechanism is recorded in `/healthz` and the
@@ -447,6 +447,19 @@ fn no_isolation_command(spec: &RunSpec) -> Command {
     cmd
 }
 
+/// Picks the argv/env for `spec.isolation`, shared by [`run`] (one-shot) and
+/// [`spawn_persistent`] (PRD-mcphost-code-tools-warm-pool: a long-lived
+/// sandbox serving more than one call) -- the isolation wrapper's argv
+/// doesn't know or care whether its stdin will be closed after one line or
+/// kept open for many.
+fn build_isolated_command(spec: &RunSpec) -> Command {
+    match spec.isolation {
+        IsolationMechanism::Bwrap => bwrap_command(spec),
+        IsolationMechanism::UnshareSetpriv => unshare_setpriv_command(spec),
+        IsolationMechanism::None => no_isolation_command(spec),
+    }
+}
+
 /// Reads `reader` to EOF (or [`READ_CAP_BYTES`], whichever comes first) into
 /// a growable buffer. Draining past the cap keeps consuming the pipe (so a
 /// chatty child doesn't block on a full pipe buffer) without retaining the
@@ -496,11 +509,7 @@ async fn poll_usage(
 /// reported as [`std::io::Error`] for the caller to wrap in its own error
 /// taxonomy.
 pub async fn run(spec: RunSpec) -> std::io::Result<SandboxOutcome> {
-    let mut cmd = match spec.isolation {
-        IsolationMechanism::Bwrap => bwrap_command(&spec),
-        IsolationMechanism::UnshareSetpriv => unshare_setpriv_command(&spec),
-        IsolationMechanism::None => no_isolation_command(&spec),
-    };
+    let mut cmd = build_isolated_command(&spec);
     cmd.stdin(Stdio::piped());
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
@@ -605,6 +614,189 @@ pub async fn run(spec: RunSpec) -> std::io::Result<SandboxOutcome> {
             cpu_ms: final_sample.cpu_ms,
             peak_rss_kb: final_sample.rss_kb,
         }),
+    }
+}
+
+// ---- persistent sandbox (PRD-mcphost-code-tools-warm-pool) -----------------
+//
+// A long-lived counterpart to `run`: the same isolation wrapper and rlimits,
+// spawned once and kept idle between calls rather than exiting after one.
+// The runner script on the other end (`kinds::python`'s `PY_RUNNER_SCRIPT`)
+// reads one JSON request per line from stdin and writes one JSON response
+// per line to stdout in a loop, so this module's job shrinks to "write a
+// line, read a line, with a timeout" -- everything else (rlimits, the
+// process-group kill on timeout, the `/proc` usage sampling) is identical to
+// `run`'s one-shot path, just amortized across many calls instead of one.
+
+/// What one [`PersistentSandbox::call`] returned.
+#[derive(Debug)]
+pub enum PersistentCallOutcome {
+    /// One full response line (without its trailing newline).
+    Responded {
+        line: Vec<u8>,
+        cpu_ms: i64,
+        peak_rss_kb: i64,
+    },
+    /// No response within the caller's deadline. The sandbox is still
+    /// running (mid-call) and must be killed -- there is no way to know
+    /// which future line, if any, would have answered this call, so it can
+    /// never be handed to a later caller (PRD requirement 2 / AC5: "the
+    /// pool no longer holds it").
+    TimedOut,
+    /// The child exited (or its stdout pipe closed) before answering --
+    /// crashed, hit its own rlimit, or was killed out of band. Also fatal to
+    /// this sandbox instance.
+    Closed,
+}
+
+/// A spawned, still-running sandboxed child, communicating one JSON request
+/// per line in on stdin and one JSON response per line out on stdout. Owns
+/// its own stderr-draining and usage-sampling background tasks so a caller
+/// juggling many of these (the warm pool) doesn't have to.
+pub struct PersistentSandbox {
+    child: tokio::process::Child,
+    pid: i32,
+    stdin: ChildStdin,
+    stdout: tokio::io::Lines<BufReader<tokio::process::ChildStdout>>,
+    stderr_tail: Arc<Mutex<Vec<u8>>>,
+    _stderr_task: tokio::task::JoinHandle<()>,
+    /// Cumulative CPU ms as of the last call (or spawn, for the first one) --
+    /// each [`PersistentSandbox::call`] reports only the delta since this,
+    /// since `RLIMIT_CPU`-style accounting is itself cumulative for the
+    /// process's whole life, not per call.
+    baseline_cpu_ms: i64,
+}
+
+/// Drains `reader` into `buf` continuously (not just once): a persistent
+/// child's stderr can be written to across many calls, and this task must
+/// keep the pipe from filling for the sandbox's entire lifetime, not just
+/// one call's.
+async fn drain_capped_into(mut reader: impl tokio::io::AsyncRead + Unpin, buf: Arc<Mutex<Vec<u8>>>) {
+    let mut chunk = [0u8; 8192];
+    loop {
+        match reader.read(&mut chunk).await {
+            Ok(0) | Err(_) => break,
+            Ok(n) => {
+                if let Ok(mut guard) = buf.lock() {
+                    guard.extend_from_slice(&chunk[..n]);
+                    if guard.len() > READ_CAP_BYTES {
+                        let start = guard.len() - READ_CAP_BYTES;
+                        guard.drain(0..start);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Spawns `spec.interpreter`/`spec.script_path` under `spec.isolation` and
+/// leaves it running, stdin/stdout/stderr all piped, ready for
+/// [`PersistentSandbox::call`]. `spec.stdin_payload` is ignored here (a
+/// persistent sandbox's first request comes from the first `call`, not from
+/// spawn time); every other `RunSpec` field is honored exactly as `run`
+/// honors it.
+pub async fn spawn_persistent(spec: &RunSpec) -> std::io::Result<PersistentSandbox> {
+    let mut cmd = build_isolated_command(spec);
+    cmd.stdin(Stdio::piped());
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+    cmd.kill_on_drop(true);
+    let limits = spec.limits;
+    // SAFETY: pre_exec_setup upholds the fork/exec-window contract documented on it.
+    unsafe {
+        cmd.pre_exec(move || pre_exec_setup(limits));
+    }
+
+    let mut child = cmd.spawn()?;
+    let pid = child
+        .id()
+        .ok_or_else(|| std::io::Error::other("spawned child reported no pid"))?
+        as i32;
+    let stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| std::io::Error::other("stdin not piped"))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| std::io::Error::other("stdout not piped"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| std::io::Error::other("stderr not piped"))?;
+    let stderr_tail = Arc::new(Mutex::new(Vec::new()));
+    let stderr_task = tokio::spawn(drain_capped_into(stderr, stderr_tail.clone()));
+
+    Ok(PersistentSandbox {
+        child,
+        pid,
+        stdin,
+        stdout: BufReader::new(stdout).lines(),
+        stderr_tail,
+        _stderr_task: stderr_task,
+        baseline_cpu_ms: 0,
+    })
+}
+
+impl PersistentSandbox {
+    pub fn pid(&self) -> i32 {
+        self.pid
+    }
+
+    /// The last known stderr tail (up to [`READ_CAP_BYTES`]), as of whenever
+    /// this is called -- a snapshot, not consumed.
+    pub fn stderr_tail(&self) -> String {
+        let buf = self.stderr_tail.lock().map(|g| g.clone()).unwrap_or_default();
+        tail_str(&buf)
+    }
+
+    /// Writes one line (`payload` plus a trailing `\n`) to the sandbox's
+    /// stdin and waits up to `timeout` for one line back. `Ok` always --
+    /// an `Err` here is a real spawn/IO-layer failure distinct from a
+    /// timeout or a closed pipe, both of which are ordinary
+    /// [`PersistentCallOutcome`] variants the caller (the warm pool) is
+    /// expected to handle by evicting this sandbox.
+    pub async fn call(
+        &mut self,
+        payload: &[u8],
+        timeout: Duration,
+    ) -> std::io::Result<PersistentCallOutcome> {
+        if self.stdin.write_all(payload).await.is_err() || self.stdin.write_all(b"\n").await.is_err()
+        {
+            return Ok(PersistentCallOutcome::Closed);
+        }
+        if self.stdin.flush().await.is_err() {
+            return Ok(PersistentCallOutcome::Closed);
+        }
+
+        match tokio::time::timeout(timeout, self.stdout.next_line()).await {
+            Ok(Ok(Some(line))) => {
+                let sample = sample_usage(self.pid);
+                let cpu_ms = (sample.cpu_ms - self.baseline_cpu_ms).max(0);
+                self.baseline_cpu_ms = sample.cpu_ms;
+                Ok(PersistentCallOutcome::Responded {
+                    line: line.into_bytes(),
+                    cpu_ms,
+                    peak_rss_kb: sample.rss_kb,
+                })
+            }
+            Ok(Ok(None)) => Ok(PersistentCallOutcome::Closed),
+            Ok(Err(_)) => Ok(PersistentCallOutcome::Closed),
+            Err(_elapsed) => Ok(PersistentCallOutcome::TimedOut),
+        }
+    }
+
+    /// Kills this sandbox's whole process group (requirement 2: "killed on
+    /// the 30s deadline like a cold one") and reaps it. Consumes `self` --
+    /// once killed, a sandbox is never reused (the pool must not hand out a
+    /// dead or dying entry).
+    pub async fn kill(mut self) {
+        // SAFETY: pid is this sandbox's own process-group leader (set via
+        // pre_exec_setup's setsid), same as run()'s timeout-kill path.
+        unsafe {
+            libc::killpg(self.pid, libc::SIGKILL);
+        }
+        let _ = self.child.wait().await;
     }
 }
 

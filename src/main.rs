@@ -166,6 +166,7 @@ async fn main() -> anyhow::Result<()> {
                     .timeout(std::time::Duration::from_secs(10))
                     .build()?,
                 sandbox_mechanism,
+                tool_run_limiter: mcphost::state::ToolRunLimiter::new(),
             });
 
             mcphost::http::serve(bind, state).await

@@ -132,6 +132,22 @@ pub fn python_kind_registry_with_cpu_budget_ms(data_dir: &Path, budget_ms: u64) 
     kinds
 }
 
+/// PRD-mcphost-code-tools-warm-pool AC1/AC2/AC5/AC8: a short TTL and small
+/// per-tenant/box-wide bounds so the warm-pool test suite doesn't need a
+/// real 60s wait or 16 real sandboxed tools to prove reaping/bounding.
+pub fn python_kind_registry_with_warm_pool(
+    data_dir: &Path,
+    ttl: std::time::Duration,
+    per_tenant: usize,
+    max_total: usize,
+) -> KindRegistry {
+    let mut kinds = KindRegistry::with_builtin();
+    kinds.register(Arc::new(PythonKind::for_test_with_warm_pool(
+        data_dir, ttl, per_tenant, max_total,
+    )));
+    kinds
+}
+
 /// A directory under the OS temp dir, unique per call, cleaned up on drop.
 pub struct TempDataDir(pub PathBuf);
 
@@ -235,6 +251,7 @@ impl TestServer {
             registry,
             http_client: reqwest::Client::new(),
             sandbox_mechanism: None,
+            tool_run_limiter: mcphost::state::ToolRunLimiter::new(),
         });
 
         let serve_state = state.clone();
