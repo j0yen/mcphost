@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.8.0 — 2026-09-04
+
+`mcphost-deploy redeploy` switches the binary back to the previous release when the probe
+fails, but `mcphost serve` applies schema migrations at start and nothing walks them back.
+Four migrations exist today and PRD-mcphost-tenant-delete adds a fifth that rewrites five
+tables. The first time a new release migrates and then fails its probe, the old binary
+comes back to a schema it has never seen. This PRD makes migrations forward-compatible by
+rule, gives `mcphost migrate --check-compat <old-binary>` a way to prove the previous
+release still runs on the migrated schema, and makes `redeploy` run that check before
+switching, so rollback stays a real option.
+
 ## v0.7.0 — 2026-09-04
 
 The first live session to complete the five-minute path spent 83 of its 117 seconds on
