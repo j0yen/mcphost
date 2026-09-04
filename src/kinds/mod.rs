@@ -149,6 +149,18 @@ pub struct CallCtx {
     /// See [`ResourceSink`]. Defaults to [`NullResourceSink`] everywhere but
     /// `handler.rs`'s real dispatch path.
     pub resources: Arc<dyn ResourceSink>,
+    /// PRD-mcphost-code-tools-warm-pool: the tool's own local (unqualified)
+    /// name, when the caller (`handler.rs`) already knows it -- i.e. every
+    /// real dispatch path (`<namespace>.<name>`, `host.tool_call`,
+    /// `host.tool_test`, `host.tool_run`). `Kind::call`'s signature has
+    /// never carried the tool's name (see `kinds::python`'s own module docs
+    /// on why its env directories can't be keyed by it either); this field
+    /// is the additive fix, needed so a `Kind` that keeps per-tool
+    /// out-of-process state (a warm sandbox pool) can key and evict it.
+    /// `None` in every context that has no such name (`for_test`, the
+    /// conformance suite) -- a `Kind` that needs it degrades to "always
+    /// cold" rather than panicking when it's absent.
+    pub tool_name: Option<String>,
 }
 
 impl CallCtx {
@@ -162,6 +174,7 @@ impl CallCtx {
             log: Arc::new(NullLog),
             test_mode: false,
             resources: Arc::new(NullResourceSink),
+            tool_name: None,
         }
     }
 
@@ -230,6 +243,36 @@ pub trait Kind: Send + Sync {
     /// dispatch path validates first); implementations that are exercised
     /// directly by the conformance suite should still validate defensively.
     async fn call(&self, spec: &Value, args: Value, ctx: &CallCtx) -> Result<Value, KindError>;
+
+    /// PRD-mcphost-code-tools-warm-pool requirement 3: `host.tool_run` --
+    /// the same execution `call` would do, minus a `calls` row and metering,
+    /// returning whatever raw debug information (stdout, stderr, exit code,
+    /// ...) this kind can produce. Kinds with no such notion (`echo`,
+    /// `http`) don't override this; the default names the RPC unsupported
+    /// for that kind rather than silently falling back to an ordinary call
+    /// (which would defeat the "no calls row" guarantee `handler.rs` can't
+    /// itself enforce for a kind it doesn't understand).
+    async fn tool_run(&self, _spec: &Value, _args: Value, _ctx: &CallCtx) -> Result<Value, KindError> {
+        Err(KindError::structured(
+            "tool_run_unsupported",
+            "this tool's kind does not support host.tool_run",
+        ))
+    }
+
+    /// A previously-published tool under this kind is gone -- republished
+    /// (new source/spec under the same name) or removed outright. Kinds
+    /// with no out-of-process state tied to a specific tool name (`echo`,
+    /// `http`) don't override this. `kinds::python` overrides it to kill and
+    /// evict any warm sandbox for `(tenant_id, local_name)` synchronously,
+    /// so PRD-mcphost-code-tools-warm-pool AC3's "killed before the
+    /// operation returns" holds regardless of the warm sandbox's TTL.
+    async fn on_tool_changed(&self, _tenant_id: i64, _local_name: &str) {}
+
+    /// A tenant is gone (disabled or deleted). Same idea as
+    /// [`Kind::on_tool_changed`], but for every tool of this kind that
+    /// tenant owns at once -- `kinds::python` evicts every warm sandbox
+    /// keyed to `tenant_id`, regardless of tool name.
+    async fn on_tenant_removed(&self, _tenant_id: i64) {}
 }
 
 /// Registry of known [`Kind`]s, keyed by [`Kind::name`]. `host.tool_publish`
@@ -266,5 +309,17 @@ impl KindRegistry {
     /// Registered kind names, stable order, for error messages.
     pub fn names(&self) -> Vec<&'static str> {
         self.kinds.keys().copied().collect()
+    }
+
+    /// Every registered kind, for a lifecycle notification
+    /// (`on_tool_changed`/`on_tenant_removed`) that must reach whichever
+    /// kind actually owns the affected tool -- `control.rs`/`admin.rs` don't
+    /// know which kind that is at the call site (a republish's row may have
+    /// just been overwritten, and a tenant delete's cascade doesn't name
+    /// kinds at all), so both simply notify every kind and let each decide
+    /// whether it has any state to clean up (the default no-op costs
+    /// nothing for `echo`/`http`).
+    pub fn all(&self) -> impl Iterator<Item = &Arc<dyn Kind>> {
+        self.kinds.values()
     }
 }

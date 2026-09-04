@@ -69,6 +69,11 @@ pub async fn tenant_delete(state: &AppState, args: &Value) -> Result<Value, AppE
         .delete_tenant(tenant.clone())
         .await?
         .ok_or_else(|| AppError::TenantNotFound(tenant.clone()))?;
+    // PRD-mcphost-code-tools-warm-pool requirement 2 / AC3: same guarantee
+    // as `tenant_disable`, for an outright delete.
+    for k in state.kinds.all() {
+        k.on_tenant_removed(deleted.id).await;
+    }
     tracing::info!(
         tenant = %deleted.namespace,
         action = "tenant_delete",
@@ -153,6 +158,9 @@ pub async fn tenant_delete_by_prefix(state: &AppState, args: &Value) -> Result<V
     let mut deleted = Vec::with_capacity(matches.len());
     for t in &matches {
         if let Some((deleted_tenant, counts)) = state.db.delete_tenant(t.namespace.clone()).await? {
+            for k in state.kinds.all() {
+                k.on_tenant_removed(deleted_tenant.id).await;
+            }
             total.accumulate(&counts);
             tracing::info!(
                 tenant = %deleted_tenant.namespace,
@@ -182,9 +190,25 @@ pub async fn tenant_delete_by_prefix(state: &AppState, args: &Value) -> Result<V
 
 pub async fn tenant_disable(state: &AppState, args: &Value) -> Result<Value, AppError> {
     let tenant = arg_str(args, "tenant")?;
+    // PRD-mcphost-code-tools-warm-pool requirement 2 / AC3: a disabled
+    // tenant's warm sandboxes must not outlive the disable call. Looked up
+    // before the flip, not after, only so the id is available even if
+    // `set_tenant_disabled` somehow raced the row away between the two
+    // calls -- immaterial in practice (this handler holds no lock across
+    // them), just the more defensive order.
+    let tenant_id = state
+        .db
+        .find_tenant_by_namespace(tenant.clone())
+        .await?
+        .map(|t| t.id);
     let changed = state.db.set_tenant_disabled(tenant.clone(), true).await?;
     if !changed {
         return Err(AppError::ToolNotFound(format!("tenant {tenant}")));
+    }
+    if let Some(tenant_id) = tenant_id {
+        for k in state.kinds.all() {
+            k.on_tenant_removed(tenant_id).await;
+        }
     }
     Ok(json!({ "tenant": tenant, "disabled": true }))
 }

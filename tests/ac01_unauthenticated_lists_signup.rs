@@ -71,6 +71,10 @@ async fn unauthenticated_tools_list_is_signup_only() {
         "host.tool_remove",
         "host.tool_logs",
         "host.tool_test",
+        // PRD-mcphost-code-tools-warm-pool requirement 3: the debug-run RPC
+        // is discoverable unauthenticated too, same as the rest of the
+        // host.* control plane.
+        "host.tool_run",
         "host.tool_call",
         "host.usage",
         "host.secret_set",
@@ -88,7 +92,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        13,
-        "signup + the eleven host.* tools (incl. host.quickstart) + host.tool_call: {tool_names:?}"
+        14,
+        "signup + the twelve host.* tools (incl. host.quickstart and host.tool_run) + host.tool_call: {tool_names:?}"
     );
 }

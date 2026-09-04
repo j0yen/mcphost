@@ -1,7 +1,9 @@
 //! Shared server state and small pure helpers (name/limit validation, time
 //! window parsing) used by both the control plane and the admin tools.
 
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::collections::{HashMap, VecDeque};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::db::Db;
 use crate::errors::AppError;
@@ -18,6 +20,50 @@ pub const SIGNUP_RATE_LIMIT_PER_HOUR: i64 = 5;
 pub const SIGNUP_RATE_LIMIT_WINDOW_SECS: i64 = 3600;
 pub const TOOLS_LIST_TTL_GRACE_SECS: u64 = 60;
 pub const TOOLS_LIST_TTL_MS_STEADY: u64 = 30_000;
+/// PRD-mcphost-code-tools-warm-pool requirement 3 / AC7: `host.tool_run` is
+/// rate-limited per tenant independent of any kind's own metering, since it
+/// deliberately writes no `calls` row for the usual per-tenant limits to
+/// gate on.
+pub const TOOL_RUN_RATE_LIMIT_PER_MINUTE: usize = 30;
+pub const TOOL_RUN_RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
+
+/// A per-tenant sliding-window call counter for `host.tool_run`
+/// (requirement 3 / AC7). Kept in `handler.rs`'s territory (cross-kind,
+/// control-plane-level) rather than inside `kinds::python`'s own
+/// `CpuBudget`-style limiter, since `host.tool_run` is a single RPC that
+/// dispatches to whichever kind the named tool happens to be, not a
+/// python-specific concept.
+#[derive(Clone, Default)]
+pub struct ToolRunLimiter {
+    windows: Arc<Mutex<HashMap<i64, VecDeque<Instant>>>>,
+}
+
+impl ToolRunLimiter {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// `true` if `tenant_id` has room for one more call in the current
+    /// window (and records this call if so); `false` (and records nothing)
+    /// once the 31st call in 60s arrives.
+    pub fn allow(&self, tenant_id: i64) -> bool {
+        let now = Instant::now();
+        let mut guard = self.windows.lock().unwrap_or_else(|e| e.into_inner());
+        let window = guard.entry(tenant_id).or_default();
+        while let Some(&oldest) = window.front() {
+            if now.duration_since(oldest) >= TOOL_RUN_RATE_LIMIT_WINDOW {
+                window.pop_front();
+            } else {
+                break;
+            }
+        }
+        if window.len() >= TOOL_RUN_RATE_LIMIT_PER_MINUTE {
+            return false;
+        }
+        window.push_back(now);
+        true
+    }
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -43,6 +89,9 @@ pub struct AppState {
     /// or `"none"`), surfaced on `/healthz`. `None` when the `python` kind
     /// isn't registered (e.g. some future minimal deployment).
     pub sandbox_mechanism: Option<&'static str>,
+    /// PRD-mcphost-code-tools-warm-pool requirement 3 / AC7: `host.tool_run`'s
+    /// own 30-per-minute-per-tenant rate limit.
+    pub tool_run_limiter: ToolRunLimiter,
 }
 
 pub fn now_unix() -> i64 {
@@ -103,5 +152,24 @@ mod tests {
         assert_eq!(parse_window_secs("30m"), 30 * 60);
         assert_eq!(parse_window_secs("45s"), 45);
         assert_eq!(parse_window_secs("2d"), 2 * 86400);
+    }
+
+    /// PRD-mcphost-code-tools-warm-pool AC7: the 30th call in a tenant's
+    /// window succeeds, the 31st does not; a different tenant's own window
+    /// is unaffected.
+    #[test]
+    fn tool_run_limiter_allows_thirty_then_blocks() {
+        let limiter = ToolRunLimiter::new();
+        for i in 0..TOOL_RUN_RATE_LIMIT_PER_MINUTE {
+            assert!(limiter.allow(1), "call {i} within the limit must be allowed");
+        }
+        assert!(
+            !limiter.allow(1),
+            "the 31st call in the window must be refused"
+        );
+        assert!(
+            limiter.allow(2),
+            "a different tenant's own window must be independent"
+        );
     }
 }

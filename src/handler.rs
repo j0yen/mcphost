@@ -244,6 +244,18 @@ fn host_tools(kinds: &KindRegistry) -> Vec<Tool> {
             ),
         ),
         Tool::new(
+            "host.tool_run",
+            "Debug run of a published tool: the same sandbox and limits as a real call, but \
+             returns full stdout and stderr (each capped at 64 KiB) and the exit code alongside \
+             the result, and records no `calls` row and no metering. Only kinds with a notion of \
+             a subprocess (`python`) support this; other kinds return `tool_run_unsupported`. \
+             Rate-limited to 30 calls per tenant per minute, independent of `host.usage`.",
+            host_schema(
+                json!({"name": {"type": "string"}, "args": {"type": "object"}}),
+                &["name", "args"],
+            ),
+        ),
+        Tool::new(
             "host.tool_call",
             "Invoke a tool this tenant has already published, by its local name -- the \
              same real, metered call as calling it directly by its namespaced name \
@@ -414,6 +426,7 @@ impl McpHostHandler {
             "host.tool_remove" => control::tool_remove(&self.state, tenant, &args).await,
             "host.tool_logs" => control::tool_logs(&self.state, tenant, &args).await,
             "host.tool_test" => self.tool_test(tenant, args).await,
+            "host.tool_run" => self.tool_run(tenant, args).await,
             "host.tool_call" => self.host_tool_call(tenant, args).await,
             "host.usage" => control::usage(&self.state, tenant, &args).await,
             "host.secret_set" => control::secret_set(&self.state, tenant, &args).await,
@@ -484,6 +497,7 @@ impl McpHostHandler {
             log: log.clone() as Arc<dyn CallLog>,
             test_mode: false,
             resources: resources.clone() as Arc<dyn ResourceSink>,
+            tool_name: Some(local_name.to_string()),
         };
 
         let start = Instant::now();
@@ -629,6 +643,7 @@ impl McpHostHandler {
             log: Arc::new(NullLog) as Arc<dyn CallLog>,
             test_mode: true,
             resources: Arc::new(NullResourceSink),
+            tool_name: Some(local_name.clone()),
         };
 
         match tokio::time::timeout(
@@ -644,6 +659,83 @@ impl McpHostHandler {
             // returned, proving the redaction is by key name rather than by
             // matching a value the caller controls.
             Ok(Ok(value)) => Ok(crate::secrets::redact_keys(&value, &["tenant_key"])),
+            Ok(Err(kind_err)) => Err(AppError::from(kind_err)),
+            Err(_elapsed) => Err(AppError::CallTimeout),
+        }
+    }
+
+    /// `host.tool_run` (PRD-mcphost-code-tools-warm-pool requirement 3,
+    /// AC6/AC7): a debug run, dispatching to `Kind::tool_run` rather than
+    /// `Kind::call` -- distinct raw-stdout/stderr/exit-code response shape,
+    /// no `calls` row, no metering, and its own 30-per-minute-per-tenant
+    /// rate limit checked before the sandbox ever runs (so the 31st call
+    /// costs nothing, not even a build-state lookup).
+    async fn tool_run(&self, tenant: &Tenant, args: Value) -> Result<Value, AppError> {
+        if !self.state.tool_run_limiter.allow(tenant.id) {
+            return Err(AppError::Structured {
+                code: "rate_limited",
+                message: "host.tool_run is limited to 30 calls per tenant per minute".to_string(),
+                data: json!({"retry_after_s": 60}),
+            });
+        }
+
+        let local_name = args
+            .get("name")
+            .and_then(Value::as_str)
+            .ok_or_else(|| AppError::InvalidArgs("missing required argument 'name'".into()))?
+            .to_string();
+        let call_args = args
+            .get("args")
+            .cloned()
+            .unwrap_or_else(|| Value::Object(Default::default()));
+
+        let row: ToolRow = self
+            .state
+            .db
+            .get_tool(tenant.id, local_name.clone())
+            .await?
+            .ok_or_else(|| AppError::ToolNotFound(local_name.clone()))?;
+        let kind: Arc<dyn Kind> = self.state.kinds.get(&row.kind).ok_or_else(|| {
+            AppError::Internal(format!(
+                "published tool names unregistered kind '{}'",
+                row.kind
+            ))
+        })?;
+
+        let descriptor = kind.describe(&row.spec);
+        if let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
+            && let Err(e) = validator.validate(&call_args)
+        {
+            return Err(AppError::ArgsInvalid(e.to_string()));
+        }
+
+        let secrets = build_secret_resolver(&self.state, tenant.id).await?;
+        let ctx = CallCtx {
+            tenant_id: tenant.id,
+            namespace: tenant.namespace.clone(),
+            secrets,
+            deadline: Instant::now() + self.state.call_timeout,
+            log: Arc::new(NullLog) as Arc<dyn CallLog>,
+            test_mode: false,
+            resources: Arc::new(NullResourceSink),
+            tool_name: Some(local_name.clone()),
+        };
+
+        let start = Instant::now();
+        let outcome = tokio::time::timeout(
+            self.state.call_timeout,
+            kind.tool_run(&row.spec, call_args, &ctx),
+        )
+        .await;
+        let duration_ms = start.elapsed().as_millis() as i64;
+
+        match outcome {
+            Ok(Ok(mut value)) => {
+                if let Some(obj) = value.as_object_mut() {
+                    obj.insert("duration_ms".to_string(), json!(duration_ms));
+                }
+                Ok(value)
+            }
             Ok(Err(kind_err)) => Err(AppError::from(kind_err)),
             Err(_elapsed) => Err(AppError::CallTimeout),
         }
