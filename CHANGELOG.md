@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.10.0 — 2026-09-04
+
+The Python kind shipped in v0.3.0 with two P1 items deferred: a warm pool so a repeated
+call does not pay a sandbox cold start, and `host.tool_run`, a dry run that returns full
+stdout and stderr without writing a metered call. This ships them: a per-tenant pool of
+pre-started sandboxes with a bounded lifetime, and a run tool for the "why did my tool
+print nothing" moment.
+
 ## v0.9.0 — 2026-09-04
 
 PRD-mcphost-publish-first-try (deferred_acs follow-up, AC5): extends the AC17
