@@ -74,6 +74,21 @@ pub struct ToolDescriptor {
     pub input_schema: Value,
 }
 
+/// A complete, minimal, working example for this kind (PRD-mcphost-publish-first-try
+/// requirement 1 / 4): a `spec` that `host.tool_publish` accepts as-is, `call_args`
+/// that satisfy the resulting tool's own `describe`d schema, and a one-sentence
+/// `blurb` naming which fields are optional and why. `host.tool_publish`'s wire
+/// description (`handler::host_tools`) and `host.quickstart` are both built from
+/// this single source per kind, so they cannot drift from each other -- though
+/// (see the PRD's requirement 6, not attempted this tick) the crate's README is
+/// still hand-maintained separately, not rendered from this same source.
+#[derive(Debug, Clone)]
+pub struct KindExample {
+    pub spec: Value,
+    pub call_args: Value,
+    pub blurb: &'static str,
+}
+
 /// Resolves one of the calling tenant's stored secrets by name.
 pub trait SecretResolver: Send + Sync {
     fn resolve(&self, name: &str) -> Option<String>;
@@ -192,6 +207,22 @@ pub trait Kind: Send + Sync {
     /// override this; the default is "none needed."
     fn referenced_secrets(&self, _spec: &Value) -> Vec<String> {
         Vec::new()
+    }
+
+    /// A complete minimal working example for this kind (see
+    /// [`KindExample`]), used to build `host.tool_publish`'s per-kind
+    /// description and `host.quickstart`'s filled-in call sequence.
+    /// Defaults to an empty placeholder so test-only `Kind` impls (e.g.
+    /// `tests/ac15_call_timeout.rs`'s never-completing kind,
+    /// `tests/ac17_kind_conformance.rs`'s conformance fixtures) don't have
+    /// to implement it; every kind actually registered in `main.rs`
+    /// (`echo`, `http`, `python`) overrides it.
+    fn example(&self) -> KindExample {
+        KindExample {
+            spec: Value::Null,
+            call_args: serde_json::json!({}),
+            blurb: "",
+        }
     }
 
     /// Execute a call. `args` have not yet been validated against the

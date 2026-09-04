@@ -78,8 +78,8 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
     );
     assert_eq!(
         names.len(),
-        11,
-        "there must be exactly the ten host.* control-plane tools plus \
-         host.tool_call: {names:?}"
+        12,
+        "there must be exactly the eleven host.* control-plane tools \
+         (incl. host.quickstart) plus host.tool_call: {names:?}"
     );
 }

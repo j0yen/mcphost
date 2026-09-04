@@ -20,7 +20,7 @@ use crate::auth::{extract_bearer, hash_key};
 use crate::db::{Tenant, ToolRow};
 use crate::errors::AppError;
 use crate::kinds::{
-    CallCtx, CallLog, Kind, NullLog, NullResourceSink, ResourceSink, SecretResolver,
+    CallCtx, CallLog, Kind, KindRegistry, NullLog, NullResourceSink, ResourceSink, SecretResolver,
 };
 use crate::state::{AppState, TOOLS_LIST_TTL_GRACE_SECS, TOOLS_LIST_TTL_MS_STEADY, now_unix};
 use crate::{admin, control};
@@ -158,7 +158,37 @@ fn signup_tool() -> Tool {
     )
 }
 
-fn host_tools() -> Vec<Tool> {
+/// PRD-mcphost-publish-first-try requirement 1 (AC1): one paragraph per
+/// registered kind, each with a complete minimal example `spec` an agent
+/// can copy verbatim, built from that kind's own [`crate::kinds::Kind::example`]
+/// rather than hand-duplicated here -- so this can't say something a real
+/// publish would then reject. Requirement 5: names `host.tool_test` as the
+/// dry run to try first. Kept under 1,200 characters total (asserted by
+/// `tests/publishfirsttry_ac01_tool_publish_description.rs`) so it stays
+/// readable in a `tools/list` response.
+fn tool_publish_description(kinds: &KindRegistry) -> String {
+    let mut out = String::from(
+        "Publish a tool of a registered kind under this tenant's namespace. \
+         Minimal example spec per kind:",
+    );
+    for name in kinds.names() {
+        let Some(kind) = kinds.get(name) else {
+            continue;
+        };
+        let example = kind.example();
+        let spec_json = serde_json::to_string(&example.spec).unwrap_or_default();
+        out.push_str(&format!(" {name} -- spec: {spec_json}. {}", example.blurb));
+    }
+    out.push_str(
+        " Name must match ^[a-z][a-z0-9_]{1,40}$. A rejection names the failing field, \
+         what was expected, and a corrected example -- fix it and resubmit. Try \
+         `host.tool_test` on a published tool before a real call, or call \
+         `host.quickstart(kind)` for a filled-in worked example.",
+    );
+    out
+}
+
+fn host_tools(kinds: &KindRegistry) -> Vec<Tool> {
     vec![
         Tool::new(
             "host.whoami",
@@ -167,7 +197,7 @@ fn host_tools() -> Vec<Tool> {
         ),
         Tool::new(
             "host.tool_publish",
-            "Publish a tool of a registered kind under this tenant's namespace.",
+            tool_publish_description(kinds),
             host_schema(
                 json!({
                     "name": {"type": "string"},
@@ -176,6 +206,15 @@ fn host_tools() -> Vec<Tool> {
                 }),
                 &["name", "kind", "spec"],
             ),
+        ),
+        Tool::new(
+            "host.quickstart",
+            "Return the shortest ordered sequence of calls to a working tool of `kind`, \
+             with your namespace and a filled-in example already substituted in, plus the \
+             current limits. Read-only. Call this before host.tool_publish if you're not \
+             sure what a spec should look like. Unauthenticated callers get the signup \
+             step first.",
+            host_schema(json!({"kind": {"type": "string"}}), &["kind"]),
         ),
         Tool::new(
             "host.tool_list",
@@ -641,14 +680,13 @@ impl McpHostHandler {
 
 impl ServerHandler for McpHostHandler {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-            .with_instructions(
-                "Call `signup` with a display name to receive a bearer key. The `host.*` \
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
+            "Call `signup` with a display name to receive a bearer key. The `host.*` \
                  control plane -- including `host.tool_publish` and `host.tool_call` -- is \
                  already visible in this tools/list, before you have a key. Pass the key \
                  `signup` returns as the `tenant_key` argument on every call after that; no \
                  reconnect and no Authorization header is required.",
-            )
+        )
     }
 
     async fn list_tools(
@@ -680,12 +718,12 @@ impl ServerHandler for McpHostHandler {
             // this branch.
             Auth::Anonymous | Auth::Invalid => {
                 let mut tools = vec![signup_tool()];
-                tools.extend(host_tools());
+                tools.extend(host_tools(&self.state.kinds));
                 (tools, TOOLS_LIST_TTL_MS_STEADY)
             }
             Auth::Admin => (admin_tools(), TOOLS_LIST_TTL_MS_STEADY),
             Auth::Tenant(tenant) => {
-                let mut tools = host_tools();
+                let mut tools = host_tools(&self.state.kinds);
                 let rows = self
                     .state
                     .db
@@ -759,6 +797,17 @@ impl ServerHandler for McpHostHandler {
 
         let outcome: Result<Value, AppError> = match (&auth, body_name.as_str()) {
             (_, "signup") => control::signup(&self.state, &args, &source).await,
+            // Requirement 4 / AC3-4: `host.quickstart` is readable before
+            // signup, same as the rest of the `host.*` control plane in
+            // `list_tools` -- an authenticated tenant gets its own
+            // namespace filled in; anyone else gets the signup step, no
+            // tenant data. Deliberately checked before the blanket
+            // Anonymous/Invalid -> Unauthorized arm below, the same way
+            // `signup` itself is.
+            (Auth::Tenant(tenant), "host.quickstart") => {
+                control::quickstart(&self.state, Some(tenant), &args)
+            }
+            (_, "host.quickstart") => control::quickstart(&self.state, None, &args),
             (Auth::Anonymous | Auth::Invalid, _) => Err(AppError::Unauthorized),
             (Auth::Admin, name) if name.starts_with("admin.") => {
                 self.dispatch_admin_tool(name, args).await

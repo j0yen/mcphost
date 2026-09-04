@@ -162,7 +162,10 @@ async fn ac12_claude_agent_sdk_sequence_lists_signup_with_schema() {
     )
     .await;
     let status = list_resp.status();
-    assert!(status.is_success(), "tools/list must return HTTP 200: {status}");
+    assert!(
+        status.is_success(),
+        "tools/list must return HTTP 200: {status}"
+    );
     let body: Value = list_resp.json().await.expect("parse tools/list response");
     assert!(
         body.get("error").is_none(),
@@ -174,9 +177,15 @@ async fn ac12_claude_agent_sdk_sequence_lists_signup_with_schema() {
         .expect("result.tools is an array");
     // PRD-mcphost-session-key requirement 1 widened the anonymous list from
     // `signup` alone to `signup` plus the discoverable `host.*` control
-    // plane -- twelve tools total, no client can break on the growth (see
-    // that PRD's Migration/compatibility section).
-    assert_eq!(tools.len(), 12, "signup + host.* + host.tool_call: {tools:?}");
+    // plane; PRD-mcphost-publish-first-try requirement 4 added
+    // `host.quickstart` to that same plane -- thirteen tools total, no
+    // client can break on the growth (see that PRD's
+    // Migration/compatibility section).
+    assert_eq!(
+        tools.len(),
+        13,
+        "signup + host.* (incl. host.quickstart) + host.tool_call: {tools:?}"
+    );
     let tool = tools
         .iter()
         .find(|t| t["name"].as_str() == Some("signup"))

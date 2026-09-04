@@ -99,6 +99,19 @@ pub fn python_kind_registry(data_dir: &Path) -> KindRegistry {
     kinds
 }
 
+/// `echo` (base) + a test-relaxed `http` + a `python` kind rooted at
+/// `data_dir` -- every kind `main.rs` registers in production, for tests
+/// (PRD-mcphost-publish-first-try) that need to see the full
+/// `host.tool_publish`/`host.quickstart` surface across every registered
+/// kind, not just one.
+pub fn all_kinds_registry(data_dir: &Path) -> KindRegistry {
+    let mut kinds = KindRegistry::with_builtin();
+    let lookup: Arc<dyn NameLookup> = Arc::new(FixedLookup(HashMap::new()));
+    kinds.register(Arc::new(HttpKind::for_test("127.0.0.1", lookup)));
+    kinds.register(Arc::new(PythonKind::new(data_dir)));
+    kinds
+}
+
 /// AC13: a small concurrency limit so admission control can be proven
 /// without 21 real sandboxed calls in flight.
 pub fn python_kind_registry_with_concurrency(data_dir: &Path, limit: usize) -> KindRegistry {

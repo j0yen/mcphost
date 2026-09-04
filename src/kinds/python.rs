@@ -42,7 +42,7 @@ use sha2::{Digest, Sha256};
 use tokio::sync::Semaphore;
 
 use super::infer;
-use super::{CallCtx, Kind, KindError, ToolDescriptor};
+use super::{CallCtx, Kind, KindError, KindExample, ToolDescriptor};
 use crate::sandbox::{self, IsolationMechanism, NetworkMode, ResourceLimits, SandboxOutcome};
 
 // ---- limits & defaults (requirement 1) -------------------------------------
@@ -121,7 +121,7 @@ impl PythonSpec {
 
 fn parse_spec(spec: &Value) -> Result<PythonSpec, KindError> {
     if !spec.is_object() {
-        return Err(KindError::InvalidSpec("spec must be a JSON object".into()));
+        return Err(KindError::InvalidSpec("spec: must be a JSON object".into()));
     }
     serde_json::from_value(spec.clone()).map_err(|e| KindError::InvalidSpec(format!("spec: {e}")))
 }
@@ -1041,6 +1041,17 @@ impl Kind for PythonKind {
                 }
             }
             Err(e) => Err(redact_kind_error(e, &secret_values)),
+        }
+    }
+
+    fn example(&self) -> KindExample {
+        KindExample {
+            spec: json!({
+                "source": "def main(args):\n    return {\"doubled\": args[\"n\"] * 2}\n",
+            }),
+            call_args: json!({"n": 3}),
+            blurb: "only source is required -- args_schema and requirements are both \
+                inferred from it (tool-infer, v0.4.0); source must define main(args).",
         }
     }
 }

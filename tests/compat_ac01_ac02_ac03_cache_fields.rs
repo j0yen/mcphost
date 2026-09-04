@@ -42,7 +42,11 @@ async fn ac1_anonymous_tools_list_has_cache_fields() {
         .map(|t| t["name"].as_str().unwrap())
         .collect();
     assert!(names.contains(&"signup"), "{names:?}");
-    assert_eq!(names.len(), 12, "signup + host.* + host.tool_call: {names:?}");
+    assert_eq!(
+        names.len(),
+        13,
+        "signup + host.* (incl. host.quickstart) + host.tool_call: {names:?}"
+    );
 }
 
 /// AC2's whole point is to settle a discrepancy in the recorded evidence by
@@ -78,7 +82,10 @@ async fn ac2_raw_wire_json_carries_both_keys() {
         .expect("response has a top-level \"result\" key");
 
     assert!(
-        result.as_object().expect("result is an object").contains_key("ttlMs"),
+        result
+            .as_object()
+            .expect("result is an object")
+            .contains_key("ttlMs"),
         "raw wire JSON must literally contain the \"ttlMs\" key: {text}"
     );
     assert!(
@@ -116,5 +123,9 @@ async fn ac3_invalid_bearer_tools_list_has_cache_fields() {
         .map(|t| t["name"].as_str().unwrap())
         .collect();
     assert!(names.contains(&"signup"), "{names:?}");
-    assert_eq!(names.len(), 12, "signup + host.* + host.tool_call: {names:?}");
+    assert_eq!(
+        names.len(),
+        13,
+        "signup + host.* (incl. host.quickstart) + host.tool_call: {names:?}"
+    );
 }
