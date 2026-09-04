@@ -16,6 +16,16 @@ required_commands = [
 ]
 
 [[lane]]
+id = "infer-data"
+description = "Compile-time data embedded into src/kinds/infer.rs via include_str! (python stdlib/import-map JSON). Added project-locally: the shipped scaffold template's proof-lanes.toml has no lane for infer-data/ either (same gap class as the meta lane below), and these files gate rust-source behavior identically to a .rs edit."
+globs = ["infer-data/**"]
+required_commands = [
+  "cargo check --workspace",
+  "cargo clippy --workspace -- -D warnings",
+  "cargo test --workspace",
+]
+
+[[lane]]
 id = "rust-tests"
 description = "Test-only changes (only allowed via intent-card amendment)"
 globs = ["tests/**/*.rs"]
