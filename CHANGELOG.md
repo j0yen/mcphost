@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.9.0 — 2026-09-04
+
+PRD-mcphost-publish-first-try (deferred_acs follow-up, AC5): extends the AC17
+kind conformance suite (`src/kinds/conformance.rs`) with a new
+`check_rejection_shape` helper and wires it into `tests/ac17_kind_conformance.rs`
+for echo, http, and python's `validate` rejection paths. This proves, generically
+and per-kind rather than only via spot tests, that every publish rejection
+carries the structured `field`/`expected`/`docs` shape the previous tick's
+`AppError::into_error_data` change promised -- no bare `error_code`. AC2's
+multi-field aggregation and AC6's docs/kinds/*.md shared-source pipeline remain
+out of scope for this tick (still too large to land safely in one pass); the
+PRD's `deferred_acs` will be updated to drop 5 and keep 2 and 6.
+
 ## v0.8.0 — 2026-09-04
 
 `mcphost-deploy redeploy` switches the binary back to the previous release when the probe
