@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.13.0 — 2026-09-04
+
+On the deployed host, every python-kind publish fails with an internal error, and has since the
+first deploy. The first attributable truth-tier run (mcphost 0.12.0, 2026-09-04T18:44Z,
+21 sessions) recorded 45 python-kind `host.tool_publish` attempts across 13 sessions and
+0 successes; all 45 carry the same text, `ast-check did not complete cleanly … bwrap: loopback:
+Failed RTM_NEWADDR: Operation not permitted`. The cause is host policy, not the agent's spec
+(Ubuntu 24.04 confines unprivileged user namespaces through AppArmor; see Technical
+considerations), yet `/healthz` reports `sandbox_mechanism: "bwrap"` as if the sandbox were
+usable, and the rejection reads like an internal fault. Agents did what agents do with an
+opaque error: rewrote their source and retried three or four times, then either gave up
+(9 sessions) or abandoned the python kind for `echo` or `http` (4 sessions). This PRD makes the
+host test its own sandbox at start and on a schedule, publish the result on `/healthz`, and
+turn a python-kind publish against an unusable sandbox into a first-try structured rejection
+that names the host-side cause and says the spec is not at fault. The fix to the host itself
+ships separately (PRD-mcphost-deploy-python-kind-proof); this PRD is what stops the product
+from lying while that fix, or any future regression of it, is in flight.
+
 ## v0.12.0 — 2026-09-04
 
 Signup was capped at 5 per hour per source IP via a compile-time constant
