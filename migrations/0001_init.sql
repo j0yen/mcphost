@@ -1,3 +1,4 @@
+-- compat: previous -- baseline schema; nothing precedes it to be compatible with.
 -- mcphost 0001_init: tenants, tools, secrets, calls, logs, signup rate-limit ledger.
 
 CREATE TABLE IF NOT EXISTS tenants (

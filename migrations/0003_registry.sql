@@ -1,3 +1,5 @@
+-- compat: previous -- additive ALTER TABLE ADD COLUMN plus a new table; the
+-- previous release neither reads the new columns nor the new table.
 -- mcphost 0003: registry-publish support (PRD requirement 15 / AC19).
 --
 -- Adds a per-tenant "domain namespace verified" flag and the reverse-DNS

@@ -34,7 +34,25 @@ enum Command {
         registry_url: Option<String>,
     },
     /// Apply pending database migrations and exit.
-    Migrate,
+    Migrate {
+        /// PRD-mcphost-migration-safety requirement 2: instead of applying
+        /// migrations to the live database, copy it, apply pending
+        /// migrations to the copy, then prove `--previous`'s binary can
+        /// still run against the migrated copy (initialize, tools/list, a
+        /// control-plane tools/call, and /healthz). Exits 0 on success, 4
+        /// naming the failing step otherwise. The live database is never
+        /// touched.
+        #[arg(long)]
+        check_compat: bool,
+        /// Path to the previous release's `mcphost` binary. Required with
+        /// `--check-compat`.
+        #[arg(long)]
+        previous: Option<PathBuf>,
+        /// The sqlite file to check against `--check-compat`. Defaults to
+        /// `$MCPHOST_DATA_DIR/mcphost.db` (the normal live database path).
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
     /// Print the version and exit.
     Version,
 }
@@ -67,12 +85,34 @@ async fn main() -> anyhow::Result<()> {
             println!("mcphost {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
-        Command::Migrate => {
+        Command::Migrate {
+            check_compat,
+            previous,
+            db: db_path,
+        } => {
             init_tracing();
-            let db = Db::open(&data_dir())?;
-            db.migrate().await?;
-            tracing::info!("migrations applied");
-            Ok(())
+            if check_compat {
+                let Some(previous_bin) = previous else {
+                    eprintln!("mcphost migrate --check-compat requires --previous <path>");
+                    std::process::exit(2);
+                };
+                let live_db = db_path.unwrap_or_else(|| data_dir().join("mcphost.db"));
+                match mcphost::compat_check::run(&live_db, &previous_bin).await {
+                    Ok(()) => {
+                        println!("check-compat: ok (previous release runs on the migrated schema)");
+                        Ok(())
+                    }
+                    Err(failure) => {
+                        eprintln!("check-compat: FAILED at step '{}': {}", failure.step, failure.detail);
+                        std::process::exit(4);
+                    }
+                }
+            } else {
+                let db = Db::open(&data_dir())?;
+                db.migrate().await?;
+                tracing::info!("migrations applied");
+                Ok(())
+            }
         }
         Command::Serve { registry_url } => {
             init_tracing();

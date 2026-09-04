@@ -6,6 +6,7 @@
 
 pub mod admin;
 pub mod auth;
+pub mod compat_check;
 pub mod control;
 pub mod db;
 pub mod errors;
