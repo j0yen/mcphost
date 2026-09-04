@@ -91,3 +91,48 @@ pub async fn check_call(
         }),
     }
 }
+
+/// AC5 (PRD-mcphost-publish-first-try, non-functional: "the AC17 kind
+/// conformance suite extended with the structured-error contract for every
+/// kind"): checks that `validate(bad_spec)` fails, and that the resulting
+/// [`super::KindError`], run through the same `AppError` conversion the
+/// live server uses (`errors::AppError::from(KindError)` ->
+/// `into_error_data`), yields the structured rejection shape requirement 2
+/// promises -- `field` and `expected` present, not just a bare
+/// `error_code` -- rather than only spot-checking a handful of cases over
+/// the wire the way `tests/publishfirsttry_ac02_structured_error_fields.rs`
+/// does. Every kind's `validate` message already follows the shared
+/// "`<field>: <expected>`" convention (see `errors::AppError::split_field`),
+/// so no kind-specific code is needed here: a kind gains this coverage for
+/// free by calling this function once per invalid-spec case in its own
+/// conformance test.
+pub fn check_rejection_shape(kind: &dyn Kind, bad_spec: &Value) -> Result<(), ConformanceFailure> {
+    let kind_err = kind.validate(bad_spec).err().ok_or_else(|| ConformanceFailure {
+        method: "validate",
+        reason: format!("expected validate to reject spec {bad_spec}, it was accepted"),
+    })?;
+    let data = crate::errors::AppError::from(kind_err)
+        .into_error_data()
+        .data
+        .unwrap_or(Value::Null);
+    let has_str = |key: &str| {
+        data.get(key)
+            .and_then(Value::as_str)
+            .is_some_and(|s| !s.is_empty())
+    };
+    if !has_str("field") || !has_str("expected") {
+        return Err(ConformanceFailure {
+            method: "validate",
+            reason: format!(
+                "rejection for spec {bad_spec} is a bare code, missing field/expected: {data}"
+            ),
+        });
+    }
+    if !has_str("docs") {
+        return Err(ConformanceFailure {
+            method: "validate",
+            reason: format!("rejection for spec {bad_spec} is missing docs: {data}"),
+        });
+    }
+    Ok(())
+}
