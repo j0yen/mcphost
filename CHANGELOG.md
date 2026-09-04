@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.6.0 — 2026-09-04
+
+The hub's tenant count went 2 → 3 → 8 in the first three harness sessions of the night, and a
+full measurement run signs up about twenty personas. Nothing removes them: the admin control
+plane has `admin.tenant_disable` and `admin.tenant_enable` but no delete, and the schema has
+no cascade, so a tenant's tools, secrets, calls, logs and registry document outlive any
+attempt to clean up. This release adds `admin.tenant_delete` (single, transactional, cascading,
+with a dry run and a name-prefix batch form) and a health endpoint that separates probe
+tenants from real ones, so the harness can leave the hub as it found it.
+
 ## v0.5.5 — 2026-09-04
 
 Closes out PRD-mcphost-gate-green's tagging requirement (AC4) and the last
