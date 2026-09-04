@@ -62,6 +62,11 @@ async fn unauthenticated_tools_list_is_signup_only() {
     for expected in [
         "host.whoami",
         "host.tool_publish",
+        // PRD-mcphost-publish-first-try requirement 4: discoverable
+        // unauthenticated too, same as the rest of the host.* control
+        // plane -- an agent that hasn't signed up yet still gets the
+        // signup-first step from it.
+        "host.quickstart",
         "host.tool_list",
         "host.tool_remove",
         "host.tool_logs",
@@ -83,7 +88,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        12,
-        "signup + the ten host.* tools + host.tool_call: {tool_names:?}"
+        13,
+        "signup + the eleven host.* tools (incl. host.quickstart) + host.tool_call: {tool_names:?}"
     );
 }

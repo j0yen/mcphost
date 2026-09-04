@@ -5,7 +5,7 @@
 
 use serde_json::{Value, json};
 
-use super::{CallCtx, Kind, KindError, ToolDescriptor};
+use super::{CallCtx, Kind, KindError, KindExample, ToolDescriptor};
 
 pub struct EchoKind;
 
@@ -22,14 +22,19 @@ impl Kind for EchoKind {
     }
 
     fn validate(&self, spec: &Value) -> Result<(), KindError> {
+        // Messages below follow this crate's shared "<field>: <what was
+        // expected>" convention (`errors::AppError::split_field`) so
+        // `into_error_data` can derive a structured `field`/`expected`
+        // (and, via the field-name lookup table, `example`) without any
+        // special-casing here -- PRD-mcphost-publish-first-try requirement 2.
         if !spec.is_object() {
-            return Err(KindError::InvalidSpec("spec must be a JSON object".into()));
+            return Err(KindError::InvalidSpec("spec: must be a JSON object".into()));
         }
         let schema = spec
             .get("schema")
-            .ok_or_else(|| KindError::InvalidSpec("spec.schema is required".into()))?;
+            .ok_or_else(|| KindError::InvalidSpec("spec.schema: is required".into()))?;
         jsonschema::validator_for(schema).map_err(|e| {
-            KindError::InvalidSpec(format!("spec.schema is not a valid JSON Schema: {e}"))
+            KindError::InvalidSpec(format!("spec.schema: not a valid JSON Schema: {e}"))
         })?;
         Ok(())
     }
@@ -50,6 +55,21 @@ impl Kind for EchoKind {
             .validate(&args)
             .map_err(|e| KindError::InvalidArgs(e.to_string()))?;
         Ok(args)
+    }
+
+    fn example(&self) -> KindExample {
+        KindExample {
+            spec: json!({
+                "schema": {
+                    "type": "object",
+                    "properties": {"msg": {"type": "string"}},
+                    "required": ["msg"],
+                },
+            }),
+            call_args: json!({"msg": "hi"}),
+            blurb: "spec.schema is any JSON Schema; a call echoes back the arguments it \
+                was given, validated against it.",
+        }
     }
 }
 

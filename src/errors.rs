@@ -6,9 +6,39 @@
 //! test) can match on it without parsing prose.
 
 use rmcp::model::{ErrorCode, ErrorData};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use crate::kinds::KindError;
+
+/// A corrected example value for a well-known spec/argument field name,
+/// shared by every kind's rejections (PRD-mcphost-publish-first-try
+/// requirement 2, AC2). Keyed by the bare field name a `KindError`'s
+/// "<field>: <description>" message convention already exposes (see
+/// [`AppError::split_field`]) -- adding a kind's own field here is the only
+/// step needed for its rejections to start carrying a real, resubmittable
+/// `example`, no call-site changes required.
+fn field_example(field: &str) -> Option<Value> {
+    Some(match field {
+        "name" => json!("my_tool"),
+        "kind" => json!("echo"),
+        "spec.schema" | "schema" => json!({
+            "type": "object",
+            "properties": {"msg": {"type": "string"}},
+            "required": ["msg"],
+        }),
+        "method" => json!("GET"),
+        "url" => json!("https://api.example.com/items/{{id}}"),
+        "timeout_s" => json!(10),
+        "response" => json!("json"),
+        "body" => json!({"type": "object"}),
+        "args_schema" => json!({"type": "object", "properties": {}}),
+        "source" => json!("def main(args):\n    return {\"ok\": True}\n"),
+        "requirements" => json!(["requests"]),
+        "memory_mb" => json!(256),
+        "network" => json!("none"),
+        _ => return None,
+    })
+}
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum AppError {
@@ -139,19 +169,106 @@ impl AppError {
         }
     }
 
+    /// Splits a "<field>: <rest>" convention message -- the pattern every
+    /// `KindError::InvalidSpec`/`InvalidArgs`/`Structured` message in this
+    /// crate already follows (`method: must be one of ...`, `source: must
+    /// not be empty`, `url: rendered host '...' is not publicly callable`)
+    /// -- into the field name and the human-readable "expected" tail.
+    /// Guards against splitting an ordinary sentence that happens to
+    /// contain ": " (e.g. "near line 3: unexpected token") by requiring the
+    /// candidate field to look like an identifier/JSON-pointer segment, not
+    /// prose (no spaces).
+    fn split_field(message: &str) -> Option<(&str, &str)> {
+        let (field, rest) = message.split_once(": ")?;
+        if field.is_empty() || field.contains(' ') {
+            return None;
+        }
+        Some((field, rest.trim()))
+    }
+
+    /// The `field`/`expected` pair for every rejection this crate can
+    /// return (requirement 2 / AC2, AC5): named `AppError` variants get a
+    /// hand-written field and expectation naming the exact control-plane
+    /// argument at fault; `InvalidSpec`/`InvalidArgs`/`ArgsInvalid` and any
+    /// `Structured` kind error fall back to the shared "<field>: <rest>"
+    /// message convention via [`Self::split_field`] -- so a kind gains this
+    /// for free by writing its error messages the way every kind already
+    /// does, no enum change or call-site rewrite required.
+    fn field_and_expected(&self) -> (Option<String>, Option<String>) {
+        match self {
+            AppError::InvalidToolName(name) => (
+                Some("name".to_string()),
+                Some(format!("must match ^[a-z][a-z0-9_]{{1,40}}$; got '{name}'")),
+            ),
+            AppError::UnknownKind { registered, .. } => (
+                Some("kind".to_string()),
+                Some(format!("must be one of {registered:?}")),
+            ),
+            AppError::SpecTooLarge(n) => (
+                Some("spec".to_string()),
+                Some(format!(
+                    "serializes to {n} bytes; must be at most {} bytes",
+                    crate::state::MAX_SPEC_BYTES
+                )),
+            ),
+            AppError::SecretMissing(name) => (
+                Some("spec".to_string()),
+                Some(format!(
+                    "references secret.{name}, which this tenant has not set; \
+                     call host.secret_set first"
+                )),
+            ),
+            AppError::InvalidArgs(m) | AppError::ArgsInvalid(m) | AppError::InvalidSpec(m) => {
+                match Self::split_field(m) {
+                    Some((field, expected)) => {
+                        (Some(field.to_string()), Some(expected.to_string()))
+                    }
+                    None => (None, Some(m.clone())),
+                }
+            }
+            AppError::Structured { message, data, .. } => {
+                let field_from_data = data
+                    .get("field")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+                let split = Self::split_field(message);
+                let field = field_from_data.or_else(|| split.map(|(f, _)| f.to_string()));
+                let expected = split
+                    .map(|(_, e)| e.to_string())
+                    .or_else(|| Some(message.clone()));
+                (field, expected)
+            }
+            _ => (None, None),
+        }
+    }
+
     pub fn into_error_data(self) -> ErrorData {
         let code = self.code();
         let jsonrpc_code = self.jsonrpc_code();
         let message = self.to_string();
-        let data = match self {
+        let (field, expected) = self.field_and_expected();
+        let example = field.as_deref().and_then(field_example);
+        let mut obj: Map<String, Value> = match &self {
             AppError::Structured { data, .. } if data.is_object() => {
-                let mut obj = data.as_object().cloned().unwrap_or_default();
-                obj.insert("error_code".to_string(), json!(code));
-                Value::Object(obj)
+                data.as_object().cloned().unwrap_or_default()
             }
-            _ => json!({"error_code": code}),
+            _ => Map::new(),
         };
-        ErrorData::new(jsonrpc_code, message, Some(data))
+        obj.insert("error_code".to_string(), json!(code));
+        if let Some(field) = field {
+            obj.insert("field".to_string(), json!(field));
+        }
+        if let Some(expected) = expected {
+            obj.insert("expected".to_string(), json!(expected));
+        }
+        if let Some(example) = example {
+            obj.insert("example".to_string(), example);
+        }
+        // Requirement 2 / requirement 4: every rejection names the
+        // quickstart tool that gives the caller a filled-in working
+        // example for whatever it was trying to publish.
+        obj.insert("docs".to_string(), json!("host.quickstart"));
+        ErrorData::new(jsonrpc_code, message, Some(Value::Object(obj)))
     }
 }
 

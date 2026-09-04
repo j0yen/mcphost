@@ -31,7 +31,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use super::infer;
-use super::{CallCtx, Kind, KindError, ToolDescriptor};
+use super::{CallCtx, Kind, KindError, KindExample, ToolDescriptor};
 
 const DEFAULT_TIMEOUT_S: u64 = 10;
 const MAX_TIMEOUT_S: u64 = 30;
@@ -91,7 +91,7 @@ impl HttpSpec {
 
 fn parse_spec(spec: &Value) -> Result<HttpSpec, KindError> {
     if !spec.is_object() {
-        return Err(KindError::InvalidSpec("spec must be a JSON object".into()));
+        return Err(KindError::InvalidSpec("spec: must be a JSON object".into()));
     }
     serde_json::from_value(spec.clone()).map_err(|e| KindError::InvalidSpec(format!("spec: {e}")))
 }
@@ -1047,6 +1047,19 @@ impl Kind for HttpKind {
             Ok(json!({"request": request_summary, "response": result, "schema": effective_schema}))
         } else {
             Ok(result)
+        }
+    }
+
+    fn example(&self) -> KindExample {
+        KindExample {
+            spec: json!({
+                "method": "GET",
+                "url": "https://api.example.com/items/{{id}}",
+            }),
+            call_args: json!({"id": "123"}),
+            blurb: "url must be an absolute https URL; method and url are the only \
+                required fields -- args_schema is inferred from the url/header/body \
+                templates when omitted.",
         }
     }
 }

@@ -53,6 +53,94 @@ pub async fn signup(state: &AppState, args: &Value, source_ip: &str) -> Result<V
         "usage": "Pass this key as the `tenant_key` argument on every tools/call from here \
             on -- e.g. host.tool_publish, host.tool_call -- no reconnect or \
             Authorization header needed.",
+        // P1 requirement 7 / AC7: the very first response points at the
+        // shortest path to a working tool, rather than leaving the agent
+        // to discover `host.quickstart` on its own.
+        "next": "host.quickstart",
+    }))
+}
+
+/// `host.quickstart(kind)` (requirement 4, AC3/AC4): the ordered sequence
+/// to a working tool of `kind`, with the tenant's own namespace and a
+/// filled-in [`crate::kinds::KindExample`] substituted in, plus the current
+/// limits. Read-only -- no DB write, ever -- so an agent can call it as
+/// many times as it wants while iterating.
+///
+/// `tenant: None` is the unauthenticated path (AC4): no kind lookup is
+/// attempted (there is nothing tenant-specific to fill in yet), and the
+/// single step returned is `signup` itself -- no tenant data of any kind
+/// is in the response.
+///
+/// Step order deliberately differs from the PRD's requirement-4 prose
+/// (`host.tool_test` -> `host.tool_publish` -> the real call): this crate's
+/// `host.tool_test` dry-runs an *already-published* tool (`handler.rs`
+/// looks it up by name before calling it), so it cannot run before
+/// `host.tool_publish` the way the requirement's ordering implies. The
+/// order below -- publish, then test (safe to retry, doesn't count toward
+/// `host.usage`/`host.tool_logs`), then the real call -- is the sequence
+/// that actually works against this server.
+pub fn quickstart(
+    state: &AppState,
+    tenant: Option<&Tenant>,
+    args: &Value,
+) -> Result<Value, AppError> {
+    let Some(tenant) = tenant else {
+        return Ok(json!({
+            "authenticated": false,
+            "steps": [{
+                "call": "signup",
+                "arguments": {"name": "<your name>"},
+                "note": "Sign up first to get a tenant_key and namespace, then call \
+                    host.quickstart again (kind still required) with that key -- as the \
+                    tenant_key argument, or reconnected with an Authorization header -- \
+                    for a filled-in example.",
+            }],
+        }));
+    };
+
+    let kind_name = arg_str(args, "kind")?;
+    let kind = state
+        .kinds
+        .get(&kind_name)
+        .ok_or_else(|| AppError::UnknownKind {
+            requested: kind_name.clone(),
+            registered: state.kinds.names(),
+        })?;
+    let example = kind.example();
+    let tool_name = "my_tool";
+    let qualified_name = format!("{}.{}", tenant.namespace, tool_name);
+
+    Ok(json!({
+        "authenticated": true,
+        "namespace": tenant.namespace,
+        "kind": kind_name,
+        "steps": [
+            {
+                "call": "host.tool_publish",
+                "arguments": {"name": tool_name, "kind": kind_name, "spec": example.spec},
+                "note": "Publish the tool. A rejection names the field, what was expected, \
+                    and a corrected example -- fix it and resubmit.",
+            },
+            {
+                "call": "host.tool_test",
+                "arguments": {"name": tool_name, "args": example.call_args},
+                "note": "Dry-run it: the real call, but it counts toward neither \
+                    host.usage nor host.tool_logs, so it's safe to repeat while iterating.",
+            },
+            {
+                "call": qualified_name,
+                "arguments": example.call_args.clone(),
+                "alternative_call": "host.tool_call",
+                "alternative_arguments": {"name": tool_name, "args": example.call_args},
+                "note": "The real call, either by its namespaced name directly or via \
+                    host.tool_call by local name -- identical for metering and logs.",
+            },
+        ],
+        "limits": {
+            "max_spec_bytes": MAX_SPEC_BYTES,
+            "max_tools_per_tenant": MAX_TOOLS_PER_TENANT,
+            "name_pattern": "^[a-z][a-z0-9_]{1,40}$",
+        },
     }))
 }
 
