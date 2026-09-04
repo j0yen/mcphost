@@ -19,7 +19,7 @@
 mod common;
 
 use async_trait::async_trait;
-use mcphost::kinds::conformance::{check_call, check_schema};
+use mcphost::kinds::conformance::{check_call, check_rejection_shape, check_schema};
 use mcphost::kinds::echo::EchoKind;
 use mcphost::kinds::http::{HttpKind, LookupFuture, NameLookup};
 use mcphost::kinds::python::PythonKind;
@@ -41,6 +41,19 @@ async fn echo_kind_passes_call_conformance() {
     check_call(&EchoKind, &spec, json!({"msg": "hi"}), json!({"msg": 5}))
         .await
         .expect("echo kind must pass call conformance");
+}
+
+/// AC5 (PRD-mcphost-publish-first-try, non-functional): every invalid spec
+/// this kind's `validate` can reject must yield the structured
+/// field/expected/docs shape, not a bare code -- checked here via
+/// `check_rejection_shape` against every `validate` failure path in
+/// `src/kinds/echo.rs`.
+#[test]
+fn echo_kind_rejections_are_structured() {
+    check_rejection_shape(&EchoKind, &json!({}))
+        .expect("echo missing spec.schema must yield a structured rejection");
+    check_rejection_shape(&EchoKind, &json!({"schema": {"type": 123}}))
+        .expect("echo invalid spec.schema must yield a structured rejection");
 }
 
 /// The test URL's host is the literal IP `127.0.0.1`, which never reaches
@@ -82,6 +95,34 @@ async fn http_kind_passes_schema_and_call_conformance() {
     check_call(&kind, &spec, json!({"id": "abc"}), json!({"id": 5}))
         .await
         .expect("http kind must pass call conformance");
+}
+
+/// AC5: every invalid spec `HttpKind::validate` can reject must yield the
+/// structured field/expected/docs shape.
+#[test]
+fn http_kind_rejections_are_structured() {
+    let lookup: std::sync::Arc<dyn NameLookup> = std::sync::Arc::new(UnusedLookup);
+    let kind = HttpKind::for_test("127.0.0.1", lookup);
+    let base = json!({
+        "method": "GET",
+        "url": "https://127.0.0.1/v1/things/{{id}}",
+        "args_schema": {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]},
+    });
+
+    let mut bad_method = base.clone();
+    bad_method["method"] = json!("FOOBAR");
+    check_rejection_shape(&kind, &bad_method)
+        .expect("http invalid method must yield a structured rejection");
+
+    let mut bad_url = base.clone();
+    bad_url["url"] = json!("not-a-url");
+    check_rejection_shape(&kind, &bad_url)
+        .expect("http invalid url must yield a structured rejection");
+
+    let mut bad_timeout = base;
+    bad_timeout["timeout_s"] = json!(0);
+    check_rejection_shape(&kind, &bad_timeout)
+        .expect("http invalid timeout_s must yield a structured rejection");
 }
 
 /// `PRD-mcphost-code-tools.md`'s own contribution to this suite, the same
@@ -157,6 +198,30 @@ async fn python_kind_passes_schema_and_call_conformance() {
         .await
         .expect_err("call with schema-invalid arguments must fail, not panic");
     assert!(matches!(bad_args_err, KindError::Structured { .. }));
+}
+
+/// AC5: every invalid spec `PythonKind::validate` can reject (the
+/// synchronous field checks in `validate_spec_fields`; `validate_async`'s
+/// sandboxed AST/inference checks are covered separately by
+/// `src/kinds/python.rs`'s own tests) must yield the structured
+/// field/expected/docs shape.
+#[test]
+fn python_kind_rejections_are_structured() {
+    let envs_dir = common::TempDataDir::new();
+    let kind = PythonKind::new(&envs_dir.0);
+
+    check_rejection_shape(&kind, &json!({"source": ""}))
+        .expect("python empty source must yield a structured rejection");
+    check_rejection_shape(
+        &kind,
+        &json!({"source": "def main(args):\n    return args\n", "requirements": ["../evil"]}),
+    )
+    .expect("python disallowed requirement must yield a structured rejection");
+    check_rejection_shape(
+        &kind,
+        &json!({"source": "def main(args):\n    return args\n", "timeout_s": 0}),
+    )
+    .expect("python invalid timeout_s must yield a structured rejection");
 }
 
 /// A deliberately broken kind: `describe` returns a schema whose `type`
