@@ -42,11 +42,17 @@ fn advertised_protocol_version() -> Option<&'static HeaderValue> {
 async fn healthz(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let db_ok = state.db.is_writable().await;
     let (tools_total, tenants_total) = state.db.counts().await.unwrap_or((0, 0));
+    // PRD-mcphost-tenant-delete requirement 5 / AC9: `tenants_probe` is
+    // additive -- `tenants_total` (read by `mcphost-deploy probe` and the
+    // measure job today) is unchanged, so `tenants_total - tenants_probe`
+    // is the real-tenant count.
+    let tenants_probe = state.db.probe_tenant_count().await.unwrap_or(0);
     Json(json!({
         "version": env!("CARGO_PKG_VERSION"),
         "db_ok": db_ok,
         "tools_total": tools_total,
         "tenants_total": tenants_total,
+        "tenants_probe": tenants_probe,
         "sandbox_mechanism": state.sandbox_mechanism,
     }))
 }

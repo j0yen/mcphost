@@ -247,8 +247,8 @@ fn admin_tools() -> Vec<Tool> {
     vec![
         Tool::new(
             "admin.tenants",
-            "List every tenant.",
-            schema(json!({}), &[]),
+            "List every tenant, optionally filtered to display names starting with `prefix`.",
+            schema(json!({"prefix": {"type": "string"}}), &[]),
         ),
         Tool::new(
             "admin.tenant_disable",
@@ -259,6 +259,24 @@ fn admin_tools() -> Vec<Tool> {
             "admin.tenant_enable",
             "Re-enable a disabled tenant.",
             schema(json!({"tenant": {"type": "string"}}), &["tenant"]),
+        ),
+        Tool::new(
+            "admin.tenant_delete",
+            "Delete a tenant and, in the same transaction, cascade-remove every row it \
+             owns (tools, secrets, calls, logs, registry document).",
+            schema(json!({"tenant": {"type": "string"}}), &["tenant"]),
+        ),
+        Tool::new(
+            "admin.tenant_delete_by_prefix",
+            "Cascade-delete (or, by default, dry-run preview) every tenant whose display \
+             name starts with `prefix` (at least 4 characters), up to 500 per call.",
+            schema(
+                json!({
+                    "prefix": {"type": "string"},
+                    "dry_run": {"type": "boolean"},
+                }),
+                &["prefix"],
+            ),
         ),
         Tool::new(
             "admin.usage",
@@ -368,9 +386,13 @@ impl McpHostHandler {
 
     async fn dispatch_admin_tool(&self, name: &str, args: Value) -> Result<Value, AppError> {
         match name {
-            "admin.tenants" => admin::tenants(&self.state).await,
+            "admin.tenants" => admin::tenants(&self.state, &args).await,
             "admin.tenant_disable" => admin::tenant_disable(&self.state, &args).await,
             "admin.tenant_enable" => admin::tenant_enable(&self.state, &args).await,
+            "admin.tenant_delete" => admin::tenant_delete(&self.state, &args).await,
+            "admin.tenant_delete_by_prefix" => {
+                admin::tenant_delete_by_prefix(&self.state, &args).await
+            }
             "admin.usage" => admin::usage(&self.state, &args).await,
             "admin.tool_list" => admin::tool_list(&self.state, &args).await,
             "admin.tenant_verify_namespace" => {
