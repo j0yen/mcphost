@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.7.0 — 2026-09-04
+
+The first live session to complete the five-minute path spent 83 of its 117 seconds on
+four rejected `host_tool_publish` calls before the fifth was accepted. Signup took six
+seconds; the door was open, the form was the problem. This PRD makes the publish call
+self-describing: the tool description carries a complete worked example per kind, every
+rejection names the field, the expected shape, and a corrected example, a
+`host.tool_test` dry run is advertised as the first thing to try, and a new
+`host.quickstart` returns the shortest sequence to a working tool for the caller's kind.
+The metric is the one the loop already records: time to first successful publish.
+
+This tick shipped the tool_publish worked-example description (AC1), host.quickstart
+(AC3/AC4), signup's `next` field (P1/AC7), and generic single-field rejection enrichment
+(field/expected/example/docs, partial AC2/AC5). Deferred: full multi-field aggregation
+(AC2's "two invalid fields" half, requirement 3), the AC17 conformance-suite extension
+(AC5), and the docs/kinds/*.md shared-source pipeline (AC6) -- see the PRD's
+deferred_acs/mock_justifications frontmatter for why.
+
 ## v0.6.0 — 2026-09-04
 
 The hub's tenant count went 2 → 3 → 8 in the first three harness sessions of the night, and a
