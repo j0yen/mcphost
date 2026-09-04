@@ -14,6 +14,9 @@ use serde_json::Value;
 
 pub mod conformance;
 pub mod echo;
+pub mod http;
+pub mod infer;
+pub mod python;
 
 /// Error returned by a [`Kind`]'s methods. Distinct from the JSON-RPC error
 /// the host ultimately answers with; `mcphost::errors` maps this onto that.
@@ -25,6 +28,42 @@ pub enum KindError {
     InvalidArgs(String),
     #[error("execution failed: {0}")]
     Exec(String),
+    /// A kind-specific structured error carrying a stable, machine-readable
+    /// `code` its own PRD/acceptance criteria name directly (e.g.
+    /// `host_not_allowed`, `upstream_status`, `template_error`) rather than
+    /// this crate's generic `invalid_spec`/`invalid_args`/`internal`
+    /// taxonomy. `data` is merged into the JSON-RPC error's `data` field
+    /// (alongside `error_code`) so a caller can match extra fields like
+    /// `retry_after_s` or `status` without parsing prose. The `http` kind
+    /// (`mcphost::kinds::http`) is this variant's first user.
+    #[error("{message}")]
+    Structured {
+        code: &'static str,
+        message: String,
+        data: Value,
+    },
+}
+
+impl KindError {
+    /// A [`KindError::Structured`] with no extra `data` fields beyond
+    /// `error_code`.
+    pub fn structured(code: &'static str, message: impl Into<String>) -> Self {
+        Self::Structured {
+            code,
+            message: message.into(),
+            data: Value::Null,
+        }
+    }
+
+    /// A [`KindError::Structured`] carrying extra `data` fields (must be a
+    /// JSON object; merged into the error's `data` alongside `error_code`).
+    pub fn structured_with(code: &'static str, message: impl Into<String>, data: Value) -> Self {
+        Self::Structured {
+            code,
+            message: message.into(),
+            data,
+        }
+    }
 }
 
 /// What a `Kind::describe` call reports about the tool it would publish.
@@ -61,6 +100,23 @@ impl CallLog for NullLog {
     fn log(&self, _line: &str) {}
 }
 
+/// Sink a [`Kind::call`] reports a sandboxed subprocess's resource usage to
+/// (PRD-mcphost-code-tools requirement 8: the `calls` row records CPU time
+/// and peak memory). A `Kind` with no subprocess to meter (`echo`, `http`)
+/// never calls this; `handler.rs` reads back whatever was recorded (if
+/// anything) after `Kind::call` returns and writes it into the `calls` row
+/// alongside the rest of the call's metering.
+pub trait ResourceSink: Send + Sync {
+    fn record(&self, cpu_ms: i64, peak_rss_kb: i64);
+}
+
+/// A resource sink that discards everything, for contexts (tests, kinds
+/// with no subprocess) that don't need one.
+pub struct NullResourceSink;
+impl ResourceSink for NullResourceSink {
+    fn record(&self, _cpu_ms: i64, _peak_rss_kb: i64) {}
+}
+
 /// Context passed to every `Kind::call`: who is calling, how to reach their
 /// secrets, when to give up, and where to log.
 pub struct CallCtx {
@@ -69,6 +125,15 @@ pub struct CallCtx {
     pub secrets: Arc<dyn SecretResolver>,
     pub deadline: Instant,
     pub log: Arc<dyn CallLog>,
+    /// Set by `host.tool_test` (P1 requirement 9): the call still hits the
+    /// real upstream, but a `Kind` that supports test mode should include
+    /// the rendered request (secrets redacted) in its result. Kinds that
+    /// don't have a notion of a "rendered request" (e.g. `echo`) ignore
+    /// this; it defaults to `false` for every ordinary call.
+    pub test_mode: bool,
+    /// See [`ResourceSink`]. Defaults to [`NullResourceSink`] everywhere but
+    /// `handler.rs`'s real dispatch path.
+    pub resources: Arc<dyn ResourceSink>,
 }
 
 impl CallCtx {
@@ -80,6 +145,8 @@ impl CallCtx {
             secrets: Arc::new(NoSecrets),
             deadline: Instant::now() + Duration::from_secs(30),
             log: Arc::new(NullLog),
+            test_mode: false,
+            resources: Arc::new(NullResourceSink),
         }
     }
 
@@ -100,12 +167,32 @@ pub trait Kind: Send + Sync {
     /// [`KindError::InvalidSpec`] naming what's wrong.
     fn validate(&self, spec: &Value) -> Result<(), KindError>;
 
+    /// Deeper validation that needs to run out-of-process (PRD-mcphost-code-tools
+    /// requirement 2: a `python` tool's source must be parsed and checked
+    /// for `main` "in the sandbox, never in the host process", which means
+    /// a subprocess call -- something [`Kind::validate`]'s synchronous
+    /// signature can't do). Runs after `validate` succeeds, still before the
+    /// spec is stored. Kinds with no such need (`echo`, `http`) use the
+    /// default no-op.
+    async fn validate_async(&self, _spec: &Value) -> Result<(), KindError> {
+        Ok(())
+    }
+
     /// Describe the tool this `spec` would publish: its (kind-local) name,
     /// description, and JSON Schema for arguments. The host overrides
     /// `ToolDescriptor::name` with `<namespace>.<published-name>` when it
     /// builds the wire-level `Tool`; what this method returns for `name` is
     /// only ever used as a hint (e.g. in error messages).
     fn describe(&self, spec: &Value) -> ToolDescriptor;
+
+    /// Names of `secret.<name>` references this `spec` would need at call
+    /// time, so `host.tool_publish` can reject an unknown secret before the
+    /// tool is ever called (requirement 3 / AC3: `secret_missing` naming
+    /// the secret). Kinds with no secret-templating concept (`echo`) don't
+    /// override this; the default is "none needed."
+    fn referenced_secrets(&self, _spec: &Value) -> Vec<String> {
+        Vec::new()
+    }
 
     /// Execute a call. `args` have not yet been validated against the
     /// descriptor's input schema when this is invoked directly (the host's

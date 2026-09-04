@@ -1,0 +1,112 @@
+# autobuilder — adopted HLT-* rules
+#
+# Curated subset of jankurai's HLT-* stable rule IDs that autobuilder enforces.
+# Lifted from `jankurai/agent/JANKURAI_STANDARD.md` (sibling tree in
+# github.com/j0yen/autobuilder).
+#
+# Each rule has:
+#   id      — stable identifier (do not renumber)
+#   meaning — short phrase
+#   severity — "blocking" or "advisory"
+#   detectors — keys into rules/audit-checks.sh detector functions, or "manual"
+#
+# Severity = blocking → Stage 3 hard gate fails the iteration.
+# Severity = advisory → recorded in EvidencePack but does not fail the gate.
+
+[[rule]]
+id = "HLT-003-OWNERLESS-PATH"
+meaning = "Path has no owner-map route"
+severity = "blocking"
+detectors = ["check_owner_map_coverage"]
+
+[[rule]]
+id = "HLT-004-UNMAPPED-PROOF"
+meaning = "Path has no test-map proof lane"
+severity = "blocking"
+detectors = ["check_test_map_coverage"]
+
+[[rule]]
+id = "HLT-008-FALSE-GREEN-RISK"
+meaning = "Passing lane does not prove changed behavior"
+severity = "blocking"
+detectors = ["check_changed_paths_have_targeted_tests"]
+
+[[rule]]
+id = "HLT-010-SECRET-SPRAWL"
+meaning = "Secret-like value, env dump, fixture, or transcript leak"
+severity = "blocking"
+detectors = ["grep_hardcoded_secrets", "grep_secret_in_debug_impl"]
+
+[[rule]]
+id = "HLT-011-PROMPT-INJECTION"
+meaning = "Untrusted context changes trusted policy/tool behavior"
+severity = "advisory"
+detectors = ["manual"]
+
+[[rule]]
+id = "HLT-016-SUPPLY-CHAIN-DRIFT"
+meaning = "Dependency/provenance change lacks review evidence"
+severity = "blocking"
+detectors = ["cargo_deny_check", "check_cargo_lock_committed"]
+
+[[rule]]
+id = "HLT-017-OPAQUE-OBSERVABILITY"
+meaning = "Boundary failure lacks repairable telemetry"
+severity = "advisory"
+detectors = ["manual"]
+
+[[rule]]
+id = "HLT-020-CI-HARDENING-GAP"
+meaning = "CI workflow permissions, unpinned actions, or proof posture gaps"
+severity = "blocking"
+detectors = ["check_workflow_pinned_actions", "check_workflow_minimal_permissions"]
+
+[[rule]]
+id = "HLT-023-INPUT-BOUNDARY-GAP"
+meaning = "Unsafe input boundary or sink lacks deterministic negative proof"
+severity = "blocking"
+detectors = ["check_input_boundary_tests"]
+
+[[rule]]
+id = "HLT-025-RELEASE-READINESS-GAP"
+meaning = "Release/launch gate lacks artifact-backed readiness evidence"
+severity = "blocking"
+detectors = ["check_seven_receipts_present"]
+
+[[rule]]
+id = "HLT-027-HUMAN-REVIEW-EVIDENCE-GAP"
+meaning = "Review or proof claim lacks reproducible receipts"
+severity = "blocking"
+detectors = ["check_reviewer_agent_receipt_present"]
+
+[[rule]]
+id = "HLT-029-RUST-BAD-BEHAVIOR"
+meaning = "Rust code uses unsafe, unchecked, or dishonest APIs without local proof"
+severity = "blocking"
+detectors = [
+  "grep_unsafe_without_safety_comment",
+  "grep_unwrap_on_external_input",
+  "grep_box_leak",
+  "grep_static_mut",
+  "grep_mem_transmute",
+  "grep_unsafe_impl_send_sync",
+  "clippy_restriction_lints",
+]
+
+[[rule]]
+id = "HLT-034-CI-BAD-BEHAVIOR"
+meaning = "CI workflows hide unsafe, unpinned, or nonblocking security and proof behavior"
+severity = "blocking"
+detectors = ["check_workflow_pinned_actions", "check_workflow_no_nonblocking_security_steps"]
+
+[[rule]]
+id = "HLT-035-GIT-BAD-BEHAVIOR"
+meaning = "Git automation or hooks use destructive, hidden-state, or unreviewed mutation behavior"
+severity = "blocking"
+detectors = ["check_no_force_push_in_workflows", "check_no_skip_hooks_in_scripts"]
+
+[[rule]]
+id = "HLT-041-COMMENT-HYGIENE"
+meaning = "Source code contains dangerous comments admitting unsafe behavior, temporary hacks, or AI scaffolding"
+severity = "advisory"
+detectors = ["grep_dangerous_comments"]

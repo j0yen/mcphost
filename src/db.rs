@@ -14,6 +14,9 @@ use serde_json::Value;
 use crate::errors::AppError;
 
 const MIGRATION_0001: &str = include_str!("../migrations/0001_init.sql");
+const MIGRATION_0002: &str = include_str!("../migrations/0002_tenant_last_tool_change.sql");
+const MIGRATION_0003: &str = include_str!("../migrations/0003_registry.sql");
+const MIGRATION_0004: &str = include_str!("../migrations/0004_calls_resource_usage.sql");
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Tenant {
@@ -23,6 +26,17 @@ pub struct Tenant {
     pub key_hash: String,
     pub created_at: String,
     pub disabled: bool,
+    /// unix seconds of the last publish OR remove for this tenant's tools;
+    /// drives `tools/list`'s ttlMs cache hint (AC18). See migration 0002.
+    pub last_tool_change_unix: i64,
+    /// Set by `admin.tenant_verify_namespace` (AC19). The verification
+    /// METHOD (DNS/HTTP) is out of scope here -- this is just the
+    /// admin-set boolean outcome. See migration 0003.
+    pub namespace_verified: bool,
+    /// The reverse-DNS-style domain namespace `admin.tenant_verify_namespace`
+    /// recorded alongside `namespace_verified`; `None` until then. Used as
+    /// the registry `server.json`'s `name` field.
+    pub registry_namespace: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -64,6 +78,18 @@ fn now_unix() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
+}
+
+/// Stamp `tenants.last_tool_change_unix` to now for `tenant_id`. Called by
+/// both `upsert_tool` and `remove_tool` (AC18): the ttlMs cache hint in
+/// `tools/list` must go to 0 after either, and only a tenant-level stamp
+/// survives a remove deleting the tools row that carried its own timestamp.
+fn touch_tenant_tool_change(conn: &Connection, tenant_id: i64) -> Result<(), AppError> {
+    conn.execute(
+        "UPDATE tenants SET last_tool_change_unix = ?1 WHERE id = ?2",
+        params![now_unix(), tenant_id],
+    )?;
+    Ok(())
 }
 
 fn percentile(sorted: &[i64], p: f64) -> f64 {
@@ -116,7 +142,53 @@ impl Db {
             .conn
             .lock()
             .map_err(|_| AppError::Storage("db lock poisoned".into()))?;
-        conn.execute_batch(MIGRATION_0001).map_err(AppError::from)
+        conn.execute_batch(MIGRATION_0001).map_err(AppError::from)?;
+        Self::migrate_0002_tenant_last_tool_change(&conn)?;
+        Self::migrate_0003_registry(&conn)?;
+        Self::migrate_0004_calls_resource_usage(&conn)
+    }
+
+    /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
+    /// `IF NOT EXISTS` guard for, so we check `pragma_table_info` first to
+    /// keep `migrate()` idempotent (it runs at every `serve` start, per the
+    /// doc comment on `migrate()` below).
+    fn migrate_0002_tenant_last_tool_change(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare(
+                "SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'last_tool_change_unix'",
+            )?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0002)?;
+        }
+        Ok(())
+    }
+
+    /// Same idempotency pattern as 0002: `pragma_table_info` gates the
+    /// whole 0003 batch (two `ALTER TABLE`s plus the `registry_documents`
+    /// table) on whether `namespace_verified` has already been added.
+    fn migrate_0003_registry(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare(
+                "SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'namespace_verified'",
+            )?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0003)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-code-tools requirement 8 / migration 0004: same
+    /// idempotency pattern as 0002/0003, gated on `calls.cpu_ms`.
+    fn migrate_0004_calls_resource_usage(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('calls') WHERE name = 'cpu_ms'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0004)?;
+        }
+        Ok(())
     }
 
     /// Run pending migrations. Idempotent (every statement is `IF NOT
@@ -207,6 +279,9 @@ impl Db {
                 key_hash,
                 created_at,
                 disabled: false,
+                last_tool_change_unix: 0,
+                namespace_verified: false,
+                registry_namespace: None,
             })
         })
         .await
@@ -218,7 +293,8 @@ impl Db {
     ) -> Result<Option<Tenant>, AppError> {
         self.with_conn(move |conn| {
             conn.query_row(
-                "SELECT id, namespace, display_name, key_hash, created_at, disabled \
+                "SELECT id, namespace, display_name, key_hash, created_at, disabled, \
+                        last_tool_change_unix, namespace_verified, registry_namespace \
                  FROM tenants WHERE key_hash = ?1",
                 params![key_hash],
                 |r| {
@@ -229,6 +305,9 @@ impl Db {
                         key_hash: r.get(3)?,
                         created_at: r.get(4)?,
                         disabled: r.get::<_, i64>(5)? != 0,
+                        last_tool_change_unix: r.get(6)?,
+                        namespace_verified: r.get::<_, i64>(7)? != 0,
+                        registry_namespace: r.get(8)?,
                     })
                 },
             )
@@ -244,7 +323,8 @@ impl Db {
     ) -> Result<Option<Tenant>, AppError> {
         self.with_conn(move |conn| {
             conn.query_row(
-                "SELECT id, namespace, display_name, key_hash, created_at, disabled \
+                "SELECT id, namespace, display_name, key_hash, created_at, disabled, \
+                        last_tool_change_unix, namespace_verified, registry_namespace \
                  FROM tenants WHERE namespace = ?1",
                 params![namespace],
                 |r| {
@@ -255,6 +335,9 @@ impl Db {
                         key_hash: r.get(3)?,
                         created_at: r.get(4)?,
                         disabled: r.get::<_, i64>(5)? != 0,
+                        last_tool_change_unix: r.get(6)?,
+                        namespace_verified: r.get::<_, i64>(7)? != 0,
+                        registry_namespace: r.get(8)?,
                     })
                 },
             )
@@ -279,10 +362,31 @@ impl Db {
         .await
     }
 
+    /// AC19: `admin.tenant_verify_namespace` sets the per-tenant
+    /// "domain namespace verified" boolean plus the reverse-DNS-style
+    /// namespace it was verified under. The verification METHOD is not
+    /// this crate's concern (PRD Open Questions) -- this is just storage
+    /// for the admin's say-so.
+    pub async fn set_tenant_namespace_verified(
+        &self,
+        namespace: String,
+        registry_namespace: String,
+    ) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "UPDATE tenants SET namespace_verified = 1, registry_namespace = ?1 WHERE namespace = ?2",
+                params![registry_namespace, namespace],
+            )?;
+            Ok(n > 0)
+        })
+        .await
+    }
+
     pub async fn list_tenants(&self) -> Result<Vec<Tenant>, AppError> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT id, namespace, display_name, key_hash, created_at, disabled \
+                "SELECT id, namespace, display_name, key_hash, created_at, disabled, \
+                        last_tool_change_unix, namespace_verified, registry_namespace \
                  FROM tenants ORDER BY id",
             )?;
             let rows = stmt
@@ -294,6 +398,9 @@ impl Db {
                         key_hash: r.get(3)?,
                         created_at: r.get(4)?,
                         disabled: r.get::<_, i64>(5)? != 0,
+                        last_tool_change_unix: r.get(6)?,
+                        namespace_verified: r.get::<_, i64>(7)? != 0,
+                        registry_namespace: r.get(8)?,
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
@@ -394,6 +501,7 @@ impl Db {
                  ON CONFLICT(tenant_id, name) DO UPDATE SET kind = excluded.kind, spec = excluded.spec",
                 params![tenant_id, name, kind, spec_text, created_at],
             )?;
+            touch_tenant_tool_change(conn, tenant_id)?;
             Ok(())
         })
         .await
@@ -429,6 +537,13 @@ impl Db {
                 "DELETE FROM tools WHERE tenant_id = ?1 AND name = ?2",
                 params![tenant_id, name],
             )?;
+            if n > 0 {
+                // AC18: a remove is a tool-set change exactly like a publish
+                // (PRD requirement 14 says "publish or remove"), but it
+                // deletes the row a naive max(created_at)-over-surviving-rows
+                // read would need -- so the tenant carries its own stamp.
+                touch_tenant_tool_change(conn, tenant_id)?;
+            }
             Ok(n > 0)
         })
         .await
@@ -484,8 +599,62 @@ impl Db {
         .await
     }
 
+    // ---- registry publish (AC19) ---------------------------------------
+
+    /// Store (or replace) a tenant's most recently published `server.json`
+    /// document, keyed by tenant so a re-publish overwrites rather than
+    /// accumulates. Called only after the registry API itself has accepted
+    /// the document (`control::registry_publish`), so what's stored here is
+    /// always what's actually live at the registry.
+    pub async fn upsert_registry_document(
+        &self,
+        tenant_id: i64,
+        namespace: String,
+        document: Value,
+    ) -> Result<(), AppError> {
+        let published_at = now_rfc3339();
+        let doc_text = serde_json::to_string(&document)
+            .map_err(|e| AppError::Internal(format!("registry document serialize: {e}")))?;
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO registry_documents (tenant_id, namespace, document, published_at) \
+                 VALUES (?1, ?2, ?3, ?4) \
+                 ON CONFLICT(tenant_id) DO UPDATE SET namespace = excluded.namespace, \
+                     document = excluded.document, published_at = excluded.published_at",
+                params![tenant_id, namespace, doc_text, published_at],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Read back a tenant's published `server.json` by their (mcphost, not
+    /// domain) namespace -- what `GET /.well-known/mcp/<namespace>/server.json`
+    /// serves. `None` if that tenant has never successfully published.
+    pub async fn get_registry_document(
+        &self,
+        namespace: String,
+    ) -> Result<Option<Value>, AppError> {
+        self.with_conn(move |conn| {
+            let doc_text: Option<String> = conn
+                .query_row(
+                    "SELECT document FROM registry_documents WHERE namespace = ?1",
+                    params![namespace],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            Ok(doc_text.and_then(|text| serde_json::from_str(&text).ok()))
+        })
+        .await
+    }
+
     // ---- calls / metering ------------------------------------------------
 
+    // Iteration 1 (rustbuild Stage 3, 2026-09-02): clippy.toml's scaffolded
+    // too-many-arguments-threshold (5) is tighter than the default (7) this
+    // function was written against; #[allow] here is a targeted, minimal
+    // fix rather than reshaping a working, already-tested call signature.
+    #[allow(clippy::too_many_arguments)]
     pub async fn record_call(
         &self,
         tenant_id: i64,
@@ -493,16 +662,40 @@ impl Db {
         duration_ms: i64,
         ok: bool,
         error_class: Option<String>,
+        cpu_ms: Option<i64>,
+        peak_rss_kb: Option<i64>,
     ) -> Result<(), AppError> {
         let started_at = now_rfc3339();
         let started_unix = now_unix();
         self.with_conn(move |conn| {
             conn.execute(
-                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class],
+                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// The most recent call's metered `cpu_ms`/`peak_rss_kb` for a tenant's
+    /// tool -- test/AC1-only helper (PRD-mcphost-code-tools requirement 8:
+    /// "the `calls` row records cpu and memory") to read back what
+    /// `record_call` stored without adding a new RPC surface.
+    pub async fn last_call_usage(
+        &self,
+        tenant_id: i64,
+        tool_name: String,
+    ) -> Result<Option<(Option<i64>, Option<i64>)>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT cpu_ms, peak_rss_kb FROM calls WHERE tenant_id = ?1 AND tool_name = ?2 \
+                 ORDER BY id DESC LIMIT 1",
+                params![tenant_id, tool_name],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+            .map_err(AppError::from)
         })
         .await
     }
@@ -556,7 +749,12 @@ impl Db {
                 .collect::<Result<Vec<_>, _>>()?;
 
             use std::collections::BTreeMap;
-            let mut grouped: BTreeMap<(String, String), Vec<(i64, bool)>> = BTreeMap::new();
+            // Iteration 1 (rustbuild Stage 3, 2026-09-02): clippy's
+            // type-complexity threshold was scaffolded tighter (200) than
+            // default (250); factor the grouping type out per the lint's
+            // own suggestion rather than raise the read-only threshold.
+            type CallDurationsByTenantTool = BTreeMap<(String, String), Vec<(i64, bool)>>;
+            let mut grouped: CallDurationsByTenantTool = BTreeMap::new();
             for (ns, tool, dur, ok) in rows {
                 grouped.entry((ns, tool)).or_default().push((dur, ok));
             }

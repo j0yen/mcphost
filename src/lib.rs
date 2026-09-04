@@ -12,5 +12,7 @@ pub mod errors;
 pub mod handler;
 pub mod http;
 pub mod kinds;
+pub mod registry;
+pub mod sandbox;
 pub mod secrets;
 pub mod state;

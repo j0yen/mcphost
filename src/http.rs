@@ -1,18 +1,20 @@
 //! The axum app: `GET /healthz` (unauthenticated) and `POST /mcp` (the
-//! `rmcp` streamable-HTTP service, stateless per the 2026-07-28
-//! specification).
+//! `rmcp` stateless streamable-HTTP service, advertising whatever
+//! protocol version this build of `rmcp` actually negotiates -- see
+//! [`advertised_protocol_version`].
 
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
 use axum::body::Body;
-use axum::extract::State;
-use axum::http::{HeaderValue, Request};
+use axum::extract::{Path, State};
+use axum::http::{HeaderValue, Request, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
+use rmcp::model::ProtocolVersion;
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
@@ -21,7 +23,21 @@ use serde_json::json;
 use crate::handler::McpHostHandler;
 use crate::state::{AppState, MAX_REQUEST_BODY_BYTES};
 
-const MCP_PROTOCOL_VERSION: &str = "2026-07-28";
+/// The `MCP-Protocol-Version` value this server advertises, derived from
+/// `rmcp::model::ProtocolVersion::LATEST` rather than a string literal
+/// (PRD-mcphost-protocol-compat requirement 6): the version this
+/// middleware stamps onto responses must always be the version `rmcp`
+/// actually negotiates, so an `rmcp` upgrade that moves `LATEST` either
+/// moves this advertisement with it or fails requirement 7's test. The
+/// `HeaderValue` is computed once and cached, since `HeaderValue::from_str`
+/// is fallible and `HeaderValue::from_static` needs a `&'static str` we
+/// don't have at compile time.
+fn advertised_protocol_version() -> Option<&'static HeaderValue> {
+    static VALUE: OnceLock<Option<HeaderValue>> = OnceLock::new();
+    VALUE
+        .get_or_init(|| HeaderValue::from_str(ProtocolVersion::LATEST.as_str()).ok())
+        .as_ref()
+}
 
 async fn healthz(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let db_ok = state.db.is_writable().await;
@@ -31,11 +47,40 @@ async fn healthz(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         "db_ok": db_ok,
         "tools_total": tools_total,
         "tenants_total": tenants_total,
+        "sandbox_mechanism": state.sandbox_mechanism,
     }))
 }
 
-/// Ensures every `/mcp` response carries `MCP-Protocol-Version` (AC1), and
-/// emits one structured request-line log entry.
+/// AC19: `GET /.well-known/mcp/<namespace>/server.json`, unauthenticated
+/// (this is a public discovery document by design, same as the registry
+/// entry it mirrors). 404 if that tenant has never run
+/// `host.registry_publish` successfully.
+async fn well_known_server_json(
+    State(state): State<Arc<AppState>>,
+    Path(namespace): Path<String>,
+) -> impl IntoResponse {
+    match state.db.get_registry_document(namespace).await {
+        Ok(Some(doc)) => (StatusCode::OK, Json(doc)).into_response(),
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error_code": "tool_not_found", "error": "no published server.json for this namespace"})),
+        )
+            .into_response(),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error_code": "storage", "error": "storage error"})),
+        )
+            .into_response(),
+    }
+}
+
+/// Ensures every response carries `MCP-Protocol-Version` (AC1), and emits
+/// one structured request-line log entry. This layer is attached to the
+/// whole router (see `build_router` below), not just `/mcp` -- `/healthz`
+/// and `/.well-known/mcp/{ns}/server.json` get the header and the log line
+/// too. That is deliberate: it keeps one middleware as the single source
+/// of the request log, and an unauthenticated health/discovery endpoint
+/// carrying an accurate protocol-version header is harmless.
 async fn protocol_version_and_log(req: Request<Body>, next: Next) -> Response {
     let start = Instant::now();
     let method = req.method().clone();
@@ -48,11 +93,12 @@ async fn protocol_version_and_log(req: Request<Body>, next: Next) -> Response {
 
     let mut response = next.run(req).await;
 
-    if !response.headers().contains_key("MCP-Protocol-Version") {
-        response.headers_mut().insert(
-            "MCP-Protocol-Version",
-            HeaderValue::from_static(MCP_PROTOCOL_VERSION),
-        );
+    if !response.headers().contains_key("MCP-Protocol-Version")
+        && let Some(value) = advertised_protocol_version()
+    {
+        response
+            .headers_mut()
+            .insert("MCP-Protocol-Version", value.clone());
     }
 
     let duration_ms = start.elapsed().as_millis();
@@ -92,6 +138,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 
     Router::new()
         .route("/healthz", get(healthz))
+        .route(
+            "/.well-known/mcp/{namespace}/server.json",
+            get(well_known_server_json),
+        )
         .route_service("/mcp", service)
         .layer(middleware::from_fn(protocol_version_and_log))
         .with_state(state)

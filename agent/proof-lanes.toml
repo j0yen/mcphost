@@ -1,0 +1,73 @@
+# proof-lanes.toml — change-class → required-lane routing.
+# READ-ONLY after scaffold. The edit-agent must NOT modify this.
+#
+# Lifted shape from jankurai/agent/proof-lanes.toml. Each lane has a set of
+# globs that route to it. A Stage-3 advance requires every changed path to
+# resolve to ≥1 lane AND that lane's required_command must be green.
+
+[[lane]]
+id = "rust-source"
+description = "Behavior changes in src/"
+globs = ["src/**/*.rs"]
+required_commands = [
+  "cargo check --workspace",
+  "cargo clippy --workspace -- -D warnings",
+  "cargo test --workspace",
+]
+
+[[lane]]
+id = "rust-tests"
+description = "Test-only changes (only allowed via intent-card amendment)"
+globs = ["tests/**/*.rs"]
+required_commands = [
+  "cargo test --workspace",
+]
+
+[[lane]]
+id = "deps"
+description = "Cargo.toml / Cargo.lock changes"
+globs = ["Cargo.toml", "Cargo.lock"]
+required_commands = [
+  "cargo check --workspace",
+  "cargo deny check",
+]
+
+[[lane]]
+id = "ci"
+description = "GitHub Actions workflow changes"
+globs = [".github/workflows/**"]
+required_commands = [
+  "scripts/audit.sh",
+]
+
+[[lane]]
+id = "db-migrations"
+description = "Numbered SQLite migration files (requirement 7 -- applied at `mcphost migrate` and at `serve` start). Added project-locally: the shipped scaffold template has no lane for migrations/ either (same gap class as the meta lane below)."
+globs = ["migrations/**"]
+required_commands = [
+  "cargo test --workspace",
+]
+
+[[lane]]
+id = "meta"
+description = "Orchestrator-owned scaffold metadata (agent/** intent-card, program doc, owner/test maps, this file) and repo hygiene (.gitignore). Not edit-agent-owned (see owner-map.json); no build proof applies, only intent-card schema validation. Added project-locally: the shipped scaffold template's proof-lanes.toml has no lane for agent/** or .gitignore, which unroutes every Stage 2 scaffold commit's own agent/ files -- fold back via postmortem."
+globs = ["agent/**", ".gitignore", "CHANGELOG.md", "README.md", "LICENSE-*", "extended-gates.toml", "PRD-*.md", "rules/**", "scripts/gate-status.sh"]
+required_commands = [
+  "autobuilder intake --validate agent/intent-card.json",
+]
+
+[[lane]]
+id = "harness-readonly"
+description = "Harness files; should never change after scaffold"
+globs = [
+  "scripts/run-metrics.sh",
+  "scripts/audit.sh",
+  "scripts/risk-gate.sh",
+  "clippy.toml",
+  "deny.toml",
+  "rust-toolchain.toml",
+]
+required_commands = [
+  "exit 1",
+]
+note = "Any change to a harness-readonly path fails the gate. Use an intent-card amendment to legitimately modify."

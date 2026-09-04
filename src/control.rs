@@ -46,6 +46,13 @@ pub async fn signup(state: &AppState, args: &Value, source_ip: &str) -> Result<V
         "key": key,
         "namespace": namespace,
         "endpoint": format!("{}/mcp", state.public_url.trim_end_matches('/')),
+        // PRD-mcphost-session-key requirement 3 / AC4: told by the payload
+        // it is already reading, not a reconnect instruction it cannot
+        // follow (this key never attaches to a connection property; the
+        // Claude Agent SDK's mcp_servers config is fixed for the session).
+        "usage": "Pass this key as the `tenant_key` argument on every tools/call from here \
+            on -- e.g. host.tool_publish, host.tool_call -- no reconnect or \
+            Authorization header needed.",
     }))
 }
 
@@ -85,6 +92,21 @@ pub async fn tool_publish(
             registered: state.kinds.names(),
         })?;
     kind.validate(&spec)?;
+    kind.validate_async(&spec).await?;
+
+    // Requirement 3 / AC3: every `secret.<name>` the spec references must
+    // already exist for this tenant, checked before the tool is ever
+    // stored. Kinds with no secret-templating concept (`echo`) return no
+    // references here, so this is a no-op for them.
+    let referenced = kind.referenced_secrets(&spec);
+    if !referenced.is_empty() {
+        let known = state.db.list_secret_names(tenant.id).await?;
+        for secret_name in referenced {
+            if !known.contains(&secret_name) {
+                return Err(AppError::SecretMissing(secret_name));
+            }
+        }
+    }
 
     // A re-publish of an existing name must not count against the limit.
     let already_exists = state.db.get_tool(tenant.id, name.clone()).await?.is_some();
@@ -179,4 +201,64 @@ pub async fn secret_set(
 pub async fn secret_list(state: &AppState, tenant: &Tenant) -> Result<Value, AppError> {
     let names = state.db.list_secret_names(tenant.id).await?;
     Ok(json!({ "names": names }))
+}
+
+/// AC19 / requirement 15: publish this tenant's `server.json` to the
+/// configured registry API and serve it locally at
+/// `/.well-known/mcp/<namespace>/server.json`. Refuses with a distinct
+/// error when the feature flag is off (`AppError::RegistryDisabled`) or
+/// this tenant's domain namespace has not been admin-verified
+/// (`AppError::NamespaceUnverified`); a non-2xx from the registry API
+/// propagates as `AppError::RegistryRejected`, which does NOT leave a
+/// stale document being served (the DB write only happens after the
+/// registry itself accepts it).
+pub async fn registry_publish(
+    state: &AppState,
+    tenant: &Tenant,
+    _args: &Value,
+) -> Result<Value, AppError> {
+    let registry = state.registry.as_ref().ok_or(AppError::RegistryDisabled)?;
+    if !tenant.namespace_verified {
+        return Err(AppError::NamespaceUnverified);
+    }
+    let domain_namespace = tenant
+        .registry_namespace
+        .clone()
+        .ok_or(AppError::NamespaceUnverified)?;
+
+    let endpoint_url = format!("{}/mcp", state.public_url.trim_end_matches('/'));
+    let document =
+        crate::registry::build_server_json(&domain_namespace, &tenant.display_name, &endpoint_url);
+
+    let publish_url = format!("{}/v0/publish", registry.base_url.trim_end_matches('/'));
+    let resp = state
+        .http_client
+        .post(&publish_url)
+        .json(&document)
+        .send()
+        .await
+        .map_err(|e| AppError::RegistryRejected(format!("request to registry API failed: {e}")))?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(AppError::RegistryRejected(format!(
+            "registry API returned HTTP {status}"
+        )));
+    }
+
+    state
+        .db
+        .upsert_registry_document(tenant.id, tenant.namespace.clone(), document.clone())
+        .await?;
+
+    Ok(json!({
+        "namespace": tenant.namespace,
+        "domain_namespace": domain_namespace,
+        "well_known_url": format!(
+            "{}/.well-known/mcp/{}/server.json",
+            state.public_url.trim_end_matches('/'),
+            tenant.namespace,
+        ),
+        "server_json": document,
+        "registry_status": status.as_u16(),
+    }))
 }

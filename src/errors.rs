@@ -6,7 +6,7 @@
 //! test) can match on it without parsing prose.
 
 use rmcp::model::{ErrorCode, ErrorData};
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::kinds::KindError;
 
@@ -37,12 +37,44 @@ pub enum AppError {
     InvalidSpec(String),
     #[error("invalid arguments: {0}")]
     InvalidArgs(String),
+    /// The generic `tools/call` args-schema pre-check (`handler.rs`, run
+    /// before `Kind::call`) failing a published tool's own `args_schema`.
+    /// A distinct variant from [`AppError::InvalidArgs`] (used for missing
+    /// *control-plane* arguments like `host.tool_publish`'s `name`) because
+    /// the `http` kind's AC4 pins the wire code to exactly `args_invalid`.
+    #[error("invalid arguments: {0}")]
+    ArgsInvalid(String),
+    /// `host.tool_publish` rejected a spec referencing `secret.<name>` for
+    /// a secret this tenant hasn't set (AC3).
+    #[error("spec references unknown secret '{0}'")]
+    SecretMissing(String),
+    /// A [`KindError::Structured`] passed through unchanged: a kind-owned
+    /// error code (e.g. `host_not_allowed`, `upstream_status`,
+    /// `template_error`, `rate_limited`) its own acceptance criteria name
+    /// directly. `data` carries extra fields (e.g. `retry_after_s`) merged
+    /// into the JSON-RPC error's `data` alongside `error_code`.
+    #[error("{message}")]
+    Structured {
+        code: &'static str,
+        message: String,
+        data: Value,
+    },
     #[error("call timed out after the 30s deadline")]
     CallTimeout,
     #[error("storage error: {0}")]
     Storage(String),
     #[error("internal error: {0}")]
     Internal(String),
+    #[error(
+        "registry-publish is disabled; set --registry-url / $MCPHOST_REGISTRY_URL to enable it"
+    )]
+    RegistryDisabled,
+    #[error(
+        "tenant's domain namespace is not verified; ask the operator to run admin.tenant_verify_namespace"
+    )]
+    NamespaceUnverified,
+    #[error("registry API rejected the publish: {0}")]
+    RegistryRejected(String),
 }
 
 impl AppError {
@@ -60,9 +92,15 @@ impl AppError {
             AppError::TooManyTools(_) => "too_many_tools",
             AppError::InvalidSpec(_) => "invalid_spec",
             AppError::InvalidArgs(_) => "invalid_args",
+            AppError::ArgsInvalid(_) => "args_invalid",
+            AppError::SecretMissing(_) => "secret_missing",
+            AppError::Structured { code, .. } => code,
             AppError::CallTimeout => "call_timeout",
             AppError::Storage(_) => "storage",
             AppError::Internal(_) => "internal",
+            AppError::RegistryDisabled => "registry_disabled",
+            AppError::NamespaceUnverified => "namespace_unverified",
+            AppError::RegistryRejected(_) => "registry_rejected",
         }
     }
 
@@ -74,25 +112,46 @@ impl AppError {
             | AppError::SpecTooLarge(_)
             | AppError::TooManyTools(_)
             | AppError::InvalidSpec(_)
-            | AppError::InvalidArgs(_) => ErrorCode::INVALID_PARAMS,
-            AppError::Storage(_) | AppError::Internal(_) | AppError::CallTimeout => {
-                ErrorCode::INTERNAL_ERROR
-            }
+            | AppError::InvalidArgs(_)
+            | AppError::ArgsInvalid(_)
+            | AppError::SecretMissing(_) => ErrorCode::INVALID_PARAMS,
+            AppError::Storage(_)
+            | AppError::Internal(_)
+            | AppError::CallTimeout
+            | AppError::RegistryRejected(_) => ErrorCode::INTERNAL_ERROR,
             AppError::Unauthorized
             | AppError::Forbidden
             | AppError::TenantDisabled
-            | AppError::RateLimited => ErrorCode::INVALID_REQUEST,
+            | AppError::RateLimited
+            | AppError::RegistryDisabled
+            | AppError::NamespaceUnverified => ErrorCode::INVALID_REQUEST,
+            // `host_not_allowed`/`args_invalid`/`template_error` are caller
+            // (or spec-author) input problems; `rate_limited` mirrors
+            // AppError::RateLimited above; the remaining `upstream_*` /
+            // `response_too_large` codes are upstream-side failures the
+            // host itself didn't cause, so they line up with the other
+            // INTERNAL_ERROR-mapped variants above.
+            AppError::Structured { code, .. } => match *code {
+                "rate_limited" => ErrorCode::INVALID_REQUEST,
+                "host_not_allowed" | "args_invalid" | "template_error" => ErrorCode::INVALID_PARAMS,
+                _ => ErrorCode::INTERNAL_ERROR,
+            },
         }
     }
 
     pub fn into_error_data(self) -> ErrorData {
         let code = self.code();
+        let jsonrpc_code = self.jsonrpc_code();
         let message = self.to_string();
-        ErrorData::new(
-            self.jsonrpc_code(),
-            message,
-            Some(json!({"error_code": code})),
-        )
+        let data = match self {
+            AppError::Structured { data, .. } if data.is_object() => {
+                let mut obj = data.as_object().cloned().unwrap_or_default();
+                obj.insert("error_code".to_string(), json!(code));
+                Value::Object(obj)
+            }
+            _ => json!({"error_code": code}),
+        };
+        ErrorData::new(jsonrpc_code, message, Some(data))
     }
 }
 
@@ -101,6 +160,15 @@ impl From<KindError> for AppError {
         match e {
             KindError::InvalidSpec(m) => AppError::InvalidSpec(m),
             KindError::InvalidArgs(m) => AppError::InvalidArgs(m),
+            KindError::Structured {
+                code,
+                message,
+                data,
+            } => AppError::Structured {
+                code,
+                message,
+                data,
+            },
             KindError::Exec(m) => AppError::Internal(m),
         }
     }

@@ -7,9 +7,41 @@
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use rand::RngCore;
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::errors::AppError;
+
+/// Redact by key name, recursively, anywhere in `value`'s tree: every
+/// object entry whose key is in `keys` has its value replaced with `"***"`,
+/// at any depth, regardless of what that value actually is.
+///
+/// This is deliberately a different mechanism from `kinds::http`'s and
+/// `kinds::python`'s own `redact_value`, which scrub a known *secret
+/// value* out of a string wherever it appears -- that works for a tenant
+/// secret (the host knows the value up front and never needs to know its
+/// location). It does not work for `tenant_key` (PRD-mcphost-session-key
+/// requirement 17): the argument can be nested anywhere inside an
+/// arbitrary tool's own `args`, and the whole point of the requirement is
+/// that redaction must find it by its key name rather than by matching a
+/// value the caller controls.
+pub fn redact_keys(value: &Value, keys: &[&str]) -> Value {
+    match value {
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .map(|(k, v)| {
+                    if keys.contains(&k.as_str()) {
+                        (k.clone(), Value::String("***".to_string()))
+                    } else {
+                        (k.clone(), redact_keys(v, keys))
+                    }
+                })
+                .collect(),
+        ),
+        Value::Array(arr) => Value::Array(arr.iter().map(|v| redact_keys(v, keys)).collect()),
+        other => other.clone(),
+    }
+}
 
 #[derive(Clone)]
 pub struct SecretBox {
@@ -74,5 +106,31 @@ mod tests {
         let sb2 = SecretBox::from_passphrase("key-two");
         let (ct, nonce) = sb1.encrypt("hunter2").unwrap();
         assert!(sb2.decrypt(&ct, &nonce).is_err());
+    }
+
+    #[test]
+    fn redact_keys_scrubs_top_level_and_nested_occurrences() {
+        let value = serde_json::json!({
+            "name": "hello",
+            "tenant_key": "top-secret",
+            "args": {
+                "foo": {"tenant_key": "nested-secret", "other": "kept"},
+            },
+        });
+        let redacted = redact_keys(&value, &["tenant_key"]);
+        assert_eq!(redacted["tenant_key"], "***");
+        assert_eq!(redacted["args"]["foo"]["tenant_key"], "***");
+        assert_eq!(redacted["args"]["foo"]["other"], "kept");
+        assert_eq!(redacted["name"], "hello");
+        let dump = redacted.to_string();
+        assert!(!dump.contains("top-secret"));
+        assert!(!dump.contains("nested-secret"));
+    }
+
+    #[test]
+    fn redact_keys_no_op_when_key_absent() {
+        let value = serde_json::json!({"name": "hello", "args": {"msg": "hi"}});
+        let redacted = redact_keys(&value, &["tenant_key"]);
+        assert_eq!(redacted, value);
     }
 }

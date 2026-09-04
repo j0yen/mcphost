@@ -8,7 +8,9 @@
 //! findings.
 #![allow(dead_code)]
 
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::net::IpAddr;
+use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -16,11 +18,106 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use mcphost::db::Db;
 use mcphost::kinds::KindRegistry;
+use mcphost::kinds::http::{HttpKind, LookupFuture, NameLookup};
+use mcphost::kinds::python::PythonKind;
+use mcphost::registry::RegistryConfig;
 use mcphost::secrets::SecretBox;
 use mcphost::state::AppState;
 use serde_json::{Value, json};
 
 pub const ADMIN_KEY: &str = "test-admin-key-not-for-production";
+
+/// A [`NameLookup`] with a fixed set of hostname -> address answers, so a
+/// test can make a DNS name resolve to an arbitrary (including private)
+/// address without depending on real network DNS (used by the AC9
+/// DNS-rebinding test). A lookup miss is a resolution failure, matching a
+/// real resolver's `NXDOMAIN` behavior.
+pub struct FixedLookup(pub HashMap<String, Vec<IpAddr>>);
+
+impl NameLookup for FixedLookup {
+    fn lookup(&self, host: String) -> LookupFuture {
+        let answer = self.0.get(&host).cloned();
+        Box::pin(async move {
+            answer.ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("no fixture for {host}"),
+                )
+            })
+        })
+    }
+}
+
+/// `echo` (base) + a *relaxed* `http` kind: loopback and plain `http://`
+/// both allowed, so a test can call a local `wiremock` stub upstream while
+/// exercising the real template/redaction/rate-limit/error-code paths, not
+/// a bypassed version of them. Used by every `http`-kind test except the
+/// SSRF-specific ones (AC2, AC9), which need the production-strict policy
+/// (see [`http_kind_registry_strict`]) to prove the block actually happens.
+pub fn http_kind_registry() -> KindRegistry {
+    let mut kinds = KindRegistry::with_builtin();
+    let lookup: Arc<dyn NameLookup> = Arc::new(FixedLookup(HashMap::new()));
+    kinds.register(Arc::new(HttpKind::for_test("127.0.0.1", lookup)));
+    kinds
+}
+
+/// Same, but the rate limit is overridden to `limit_per_minute` (AC13
+/// doesn't need 600 real HTTP calls to prove the limiter wires up end to
+/// end through the real dispatch path).
+pub fn http_kind_registry_with_rate_limit(limit_per_minute: u32) -> KindRegistry {
+    let mut kinds = KindRegistry::with_builtin();
+    let lookup: Arc<dyn NameLookup> = Arc::new(FixedLookup(HashMap::new()));
+    kinds.register(Arc::new(HttpKind::for_test_with_rate_limit(
+        "127.0.0.1",
+        lookup,
+        limit_per_minute,
+    )));
+    kinds
+}
+
+/// `echo` (base) + the *production* (https-only, loopback-blocked) `http`
+/// kind policy, with `lookup` standing in for real DNS. AC2 (publish-time)
+/// and AC9 (call-time) both reject before any connection is attempted, so
+/// neither needs a reachable upstream.
+pub fn http_kind_registry_strict(lookup: FixedLookup) -> KindRegistry {
+    let mut kinds = KindRegistry::with_builtin();
+    kinds.register(Arc::new(HttpKind::for_test_strict(
+        "127.0.0.1",
+        Arc::new(lookup),
+    )));
+    kinds
+}
+
+/// `echo` (base) + a `python` kind rooted at `data_dir` (the caller's own
+/// [`TempDataDir`], kept alive for the test's duration -- `PythonKind` only
+/// needs a writable directory for `envs/`/`scratch/`, independent of
+/// whatever data dir `TestServer` builds its own SQLite database in). Used
+/// by the `python`-kind AC test suite (`python_ac*.rs`).
+pub fn python_kind_registry(data_dir: &Path) -> KindRegistry {
+    let mut kinds = KindRegistry::with_builtin();
+    kinds.register(Arc::new(PythonKind::new(data_dir)));
+    kinds
+}
+
+/// AC13: a small concurrency limit so admission control can be proven
+/// without 21 real sandboxed calls in flight.
+pub fn python_kind_registry_with_concurrency(data_dir: &Path, limit: usize) -> KindRegistry {
+    let mut kinds = KindRegistry::with_builtin();
+    kinds.register(Arc::new(PythonKind::for_test_with_concurrency(
+        data_dir, limit,
+    )));
+    kinds
+}
+
+/// AC14: a tiny CPU budget so the rate limit can be proven without 600 real
+/// CPU-seconds of calls.
+pub fn python_kind_registry_with_cpu_budget_ms(data_dir: &Path, budget_ms: u64) -> KindRegistry {
+    let mut kinds = KindRegistry::with_builtin();
+    kinds.register(Arc::new(PythonKind::for_test_with_cpu_budget_ms(
+        data_dir, budget_ms,
+    )));
+    kinds
+}
 
 /// A directory under the OS temp dir, unique per call, cleaned up on drop.
 pub struct TempDataDir(pub PathBuf);
@@ -63,17 +160,47 @@ impl TestServer {
             admin_key,
             KindRegistry::with_builtin(),
             mcphost::state::CALL_TIMEOUT,
+            None,
+        )
+        .await
+    }
+
+    /// AC19: a server with the registry feature flag on, pointed at a
+    /// mocked registry API base URL (typically a `wiremock::MockServer`'s
+    /// `.uri()`).
+    /// A server with a caller-supplied `KindRegistry` (the `http`-kind test
+    /// suite's usual entry point: `http_kind_registry()` or
+    /// `http_kind_registry_strict(...)`).
+    pub async fn start_with_kinds(kinds: KindRegistry) -> Self {
+        Self::start_full(
+            Some(ADMIN_KEY.to_string()),
+            kinds,
+            mcphost::state::CALL_TIMEOUT,
+            None,
+        )
+        .await
+    }
+
+    pub async fn start_with_registry(registry_base_url: String) -> Self {
+        Self::start_full(
+            Some(ADMIN_KEY.to_string()),
+            KindRegistry::with_builtin(),
+            mcphost::state::CALL_TIMEOUT,
+            Some(RegistryConfig {
+                base_url: registry_base_url,
+            }),
         )
         .await
     }
 
     /// Full control for tests that need a non-default kind registry (AC15's
-    /// never-completing kind) or a short call timeout (so AC15 doesn't wait
-    /// out the real 30s deadline).
+    /// never-completing kind), a short call timeout (so AC15 doesn't wait
+    /// out the real 30s deadline), or the registry feature flag on (AC19).
     pub async fn start_full(
         admin_key: Option<String>,
         kinds: KindRegistry,
         call_timeout: std::time::Duration,
+        registry: Option<RegistryConfig>,
     ) -> Self {
         let data_dir = TempDataDir::new();
         let db = Db::open(&data_dir.0).expect("open db");
@@ -92,6 +219,9 @@ impl TestServer {
             admin_key,
             public_url: base_url.clone(),
             call_timeout,
+            registry,
+            http_client: reqwest::Client::new(),
+            sandbox_mechanism: None,
         });
 
         let serve_state = state.clone();
@@ -125,6 +255,11 @@ pub struct RpcError {
     pub code: i64,
     pub message: String,
     pub error_code: Option<String>,
+    /// The full JSON-RPC error `data` object (`error_code` plus whatever
+    /// extra fields the error carries, e.g. `retry_after_s`, `status`,
+    /// `schema_path`) -- `error_code` above is just `data.error_code`
+    /// pulled out for convenience.
+    pub data: Value,
 }
 
 impl McpClient {
@@ -264,6 +399,7 @@ impl McpClient {
                     .and_then(|d| d.get("error_code"))
                     .and_then(Value::as_str)
                     .map(str::to_string),
+                data: error.get("data").cloned().unwrap_or(Value::Null),
             });
         }
         Ok(body.get("result").cloned().unwrap_or(Value::Null))
@@ -294,6 +430,30 @@ pub async fn signup(base_url: &str, display_name: &str) -> (String, String) {
         .to_string();
     let key = structured["key"].as_str().expect("key field").to_string();
     (tenant, key)
+}
+
+/// Polls `tools_call(qualified_name, args)` until it stops returning
+/// `tool_building`, or `timeout` elapses. `kinds::python`'s first call to a
+/// tool with no ready environment kicks off a background build and returns
+/// `tool_building` immediately (see that module's docs); every
+/// `python_ac*.rs` test that needs the tool to actually *run* polls through
+/// that state with this helper rather than sleeping a fixed guess.
+pub async fn poll_until_ready(
+    client: &McpClient,
+    qualified_name: &str,
+    args: Value,
+    timeout: std::time::Duration,
+) -> Result<Value, RpcError> {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        let result = client.tools_call(qualified_name, args.clone()).await;
+        let is_building =
+            matches!(&result, Err(e) if e.error_code.as_deref() == Some("tool_building"));
+        if !is_building || std::time::Instant::now() >= deadline {
+            return result;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
 }
 
 /// `CallToolResult::structured` puts the value in `structuredContent`;

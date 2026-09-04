@@ -1,0 +1,50 @@
+name: ci
+
+on:
+  push:
+    branches: [main, "autobuilder/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: autobuilder gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: install rust toolchain (pinned by rust-toolchain.toml)
+        uses: actions-rust-lang/setup-rust-toolchain@9d7e65c320fdb52dcd45ffaa68deb6c02c8754d9 # v1.10.1
+
+      - name: install cargo-deny
+        uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b # v2.87.4
+        with:
+          tool: cargo-deny@0.20.2
+
+      - name: cargo check
+        run: cargo check --workspace
+
+      - name: cargo clippy
+        run: cargo clippy --workspace -- -D warnings
+
+      - name: install bubblewrap and uv
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: cargo test
+        run: cargo test --workspace
+
+      - name: cargo deny check
+        run: cargo deny check
+
+      - name: bad-rust audit
+        run: ./scripts/audit.sh

@@ -69,6 +69,7 @@ async fn hung_call_times_out_and_drops_its_future() {
         Some(common::ADMIN_KEY.to_string()),
         kinds,
         Duration::from_millis(200),
+        None,
     )
     .await;
 

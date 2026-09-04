@@ -2,8 +2,8 @@
 //! any `Kind` implementation — this crate's `echo`, and the REST-wrapper and
 //! code kinds shipped by the feature PRDs that extend this crate's
 //! registry — must pass. Exposed from the library so those crates can run
-//! it against their own kinds in their own `tests/kind_conformance.rs`,
-//! per the PRD's technical considerations.
+//! it against their own kinds in their own copy of this crate's
+//! `tests/ac17_kind_conformance.rs`, per the PRD's technical considerations.
 
 use serde_json::Value;
 

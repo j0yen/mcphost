@@ -6,6 +6,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use crate::db::Db;
 use crate::errors::AppError;
 use crate::kinds::KindRegistry;
+use crate::registry::RegistryConfig;
 use crate::secrets::SecretBox;
 
 pub const MAX_TOOLS_PER_TENANT: i64 = 50;
@@ -29,6 +30,19 @@ pub struct AppState {
     /// than only the [`CALL_TIMEOUT`] constant so integration tests can
     /// shrink it (AC15) without a real 30-second wait.
     pub call_timeout: Duration,
+    /// `Some` only when `--registry-url` / `$MCPHOST_REGISTRY_URL` enabled
+    /// the P1 registry-publish feature (requirement 15 / AC19); `None`
+    /// makes `host.registry_publish` refuse with a distinct error.
+    pub registry: Option<RegistryConfig>,
+    /// Shared outbound client `host.registry_publish` POSTs the
+    /// `server.json` document with; one client per process, per the usual
+    /// `reqwest` connection-pooling advice.
+    pub http_client: reqwest::Client,
+    /// PRD-mcphost-code-tools requirement 5: the sandbox isolation
+    /// mechanism the `python` kind is using (`"bwrap"`, `"unshare+setpriv"`,
+    /// or `"none"`), surfaced on `/healthz`. `None` when the `python` kind
+    /// isn't registered (e.g. some future minimal deployment).
+    pub sandbox_mechanism: Option<&'static str>,
 }
 
 pub fn now_unix() -> i64 {

@@ -4,6 +4,8 @@ use std::sync::Arc;
 use clap::{Parser, Subcommand};
 use mcphost::db::Db;
 use mcphost::kinds::KindRegistry;
+use mcphost::kinds::http::HttpKind;
+use mcphost::kinds::python::PythonKind;
 use mcphost::secrets::SecretBox;
 use mcphost::state::AppState;
 
@@ -21,7 +23,16 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Run the streamable-HTTP MCP server.
-    Serve,
+    Serve {
+        /// Enable the P1 registry-publish feature (`host.registry_publish`,
+        /// `GET /.well-known/mcp/<namespace>/server.json`) and name the
+        /// registry API's base URL, e.g.
+        /// `https://registry.modelcontextprotocol.io`. Off by default (PRD
+        /// requirement 15's feature flag). Also settable via
+        /// `$MCPHOST_REGISTRY_URL`; this flag takes precedence.
+        #[arg(long)]
+        registry_url: Option<String>,
+    },
     /// Apply pending database migrations and exit.
     Migrate,
     /// Print the version and exit.
@@ -63,7 +74,7 @@ async fn main() -> anyhow::Result<()> {
             tracing::info!("migrations applied");
             Ok(())
         }
-        Command::Serve => {
+        Command::Serve { registry_url } => {
             init_tracing();
 
             let bind: std::net::SocketAddr = env_or("MCPHOST_BIND", "127.0.0.1:8080").parse()?;
@@ -75,16 +86,46 @@ async fn main() -> anyhow::Result<()> {
                 tracing::warn!("MCPHOST_ADMIN_KEY is unset; admin.* tools are unreachable");
             }
 
+            // AC19 / requirement 15: off by default. `--registry-url` wins
+            // over `$MCPHOST_REGISTRY_URL` when both are given.
+            let registry_url = registry_url.or_else(|| std::env::var("MCPHOST_REGISTRY_URL").ok());
+            let registry =
+                registry_url.map(|base_url| mcphost::registry::RegistryConfig { base_url });
+            if registry.is_none() {
+                tracing::info!(
+                    "registry-publish is disabled (no --registry-url / $MCPHOST_REGISTRY_URL)"
+                );
+            }
+
             let db = Db::open(&data_dir())?;
             db.migrate().await?;
 
+            // Requirement 3's "the host's own domain" SSRF rule: a
+            // published `http` tool may never target this host's own
+            // public endpoint.
+            let mut kinds = KindRegistry::with_builtin();
+            let own_domain = mcphost::kinds::http::own_domain_from_url(&public_url);
+            kinds.register(std::sync::Arc::new(HttpKind::new(own_domain)?));
+            let python_kind = PythonKind::new(&data_dir());
+            let sandbox_mechanism = Some(python_kind.mechanism());
+            tracing::info!(
+                mechanism = sandbox_mechanism,
+                "python kind sandbox mechanism"
+            );
+            kinds.register(std::sync::Arc::new(python_kind));
+
             let state = Arc::new(AppState {
                 db,
-                kinds: KindRegistry::with_builtin(),
+                kinds,
                 secrets: SecretBox::from_passphrase(&secret_key),
                 admin_key,
                 public_url,
                 call_timeout: mcphost::state::CALL_TIMEOUT,
+                registry,
+                http_client: reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(10))
+                    .build()?,
+                sandbox_mechanism,
             });
 
             mcphost::http::serve(bind, state).await

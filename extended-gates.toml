@@ -1,0 +1,3 @@
+# Config for the rustbuild extended-gates producers (Stage 4).
+prd_path = "PRD-mcphost-endpoint.md"
+mutation_kill_min_pct = 50.0

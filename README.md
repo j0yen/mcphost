@@ -12,6 +12,18 @@ path end to end.
 
 Built from `PRD-mcphost-endpoint.md` (vision: `visions/mcp-host.md`).
 
+## Recent
+
+- **v0.4.0** — `args_schema` (and, for `python`, `requirements`) is now
+  optional on the `python` and `http` kinds: when absent, the host derives it
+  deterministically and offline from the source/templates the tenant already
+  wrote (`src/kinds/infer.rs`). An explicit `args_schema` is used unchanged.
+- **v0.1.2** — `synthorg consume --preflight` now has a real integration
+  test (AC12); the `Kind` conformance suite moved to
+  `tests/ac17_kind_conformance.rs`; `host.registry_publish` + `GET
+  /.well-known/mcp/<namespace>/server.json` are implemented behind the
+  `--registry-url` flag (AC19, see "Registry publish (P1)" below).
+
 ## Install
 
 ```
@@ -35,16 +47,38 @@ cargo build --release
 | `MCPHOST_ADMIN_KEY` | Bearer key that unlocks `admin.*` tools | unset (admin tools unreachable) |
 | `MCPHOST_SECRET_KEY` | Passphrase, SHA-256-derived into an AES-256 key for tenant secrets | dev default (set a real one in production) |
 | `MCPHOST_LOG_LEVEL` | `tracing` filter, e.g. `info` | `info` |
+| `MCPHOST_REGISTRY_URL` | Enables `host.registry_publish` (P1) and names the registry API's base URL; `mcphost serve --registry-url <url>` takes precedence | unset (registry-publish disabled) |
 
 `mcphost migrate` applies pending SQL migrations and exits. `mcphost version`
-prints the version and exits.
+prints the version and exits. `mcphost serve --registry-url <url>` is the
+CLI-flag form of `MCPHOST_REGISTRY_URL` above.
+
+### Registry publish (P1)
+
+Off by default. Once `--registry-url` / `$MCPHOST_REGISTRY_URL` names a
+registry API base (e.g. `https://registry.modelcontextprotocol.io`):
+
+1. The operator verifies a tenant's domain namespace by whatever method
+   they trust (the PRD leaves the verification METHOD itself — DNS vs
+   HTTP record — as an open question owned by Joe; this crate does not
+   implement one) and records the outcome with `admin.tenant_verify_namespace`:
+   `admin.tenant_verify_namespace(tenant="t_xxxxxxxx", domain_namespace="io.github.example.myserver")`.
+2. That tenant can then call `host.registry_publish()` (no arguments): it
+   POSTs a `server.json` document (`name`/`description`/`version`/`remotes:
+   [{type: "streamable-http", url}]`) to `<registry-url>/v0/publish`, and
+   the same document becomes servable, unauthenticated, at
+   `GET /.well-known/mcp/<namespace>/server.json`.
+3. `host.registry_publish` refuses with a distinct, machine-readable error
+   in `data.error_code`: `registry_disabled` (flag off),
+   `namespace_unverified` (step 1 not done for this tenant), or
+   `registry_rejected` (the registry API answered non-2xx).
 
 ## Acceptance
 
 Every P0 acceptance criterion is paired with a real `cargo test` (integration
 tests under `tests/` spin up the server on an ephemeral port against a temp
-`$MCPHOST_DATA_DIR`), except AC11 and AC12 which are hardware/external-tool
-dependent and are recorded as smoke results below.
+`$MCPHOST_DATA_DIR`), except AC11 which is hardware-dependent and is
+recorded as a smoke result below.
 
 | AC | Requirement | Test |
 |---|---|---|
@@ -59,14 +93,14 @@ dependent and are recorded as smoke results below.
 | 9 (P0) | 6th signup/hour/IP is `rate_limited`, no tenant created | `tests/ac09_signup_rate_limit.rs` |
 | 10 (P0) | Unregistered kind / invalid name / oversized spec each fail distinctly, nothing written | `tests/ac10_publish_validation_errors.rs` |
 | 11 (P0, non-functional) | 200 concurrent `echo` calls, p95 < 50ms, 0 errors, RSS < 100MiB | `tests/ac11_load_smoke.rs` (`#[ignore]`d — hardware-dependent; run with `cargo test --release --test ac11_load_smoke -- --ignored --nocapture`). Measured on the build box: **p95 = 34.20ms, 0 errors, RSS = 37.3MiB** |
-| 12 (P0) | `synthorg consume --preflight <url>` exits 0 | Smoke-verified: `uv run synthorg consume --preflight http://127.0.0.1:<port>/mcp` against a live `mcphost serve` → `ok — protocol 2026-07-28, 1 tools listed`, exit 0 |
+| 12 (P0) | `synthorg consume --preflight <url>` exits 0 | `tests/ac12_preflight.rs` — an always-run in-process half exercises the same two requests `run_preflight` makes; a second half spawns the real `mcphost` binary and the real `synthorg` CLI when available (bare binary or `uv run --project`) and asserts exit 0 |
 | 13 (P0) | Mismatched `Mcp-Name` header vs. body is recorded by body name and flagged | `tests/ac13_mcp_name_mismatch_metering.rs` |
 | 14 (P0) | Unwritable database: `storage` error, `/healthz` `db_ok: false`, process stays up | `tests/ac14_storage_unwritable.rs` |
 | 15 (P0) | A call that never completes times out at the deadline, future dropped | `tests/ac15_call_timeout.rs` |
 | 16 (P0) | 2MiB request body rejected with HTTP 413 | `tests/ac16_request_body_too_large.rs` |
-| 17 (P0) | `Kind` conformance suite passes `echo`, fails naming `describe` for a bad schema | `tests/kind_conformance.rs` (reusable checker at `mcphost::kinds::conformance`) |
+| 17 (P0) | `Kind` conformance suite passes `echo`, fails naming `describe` for a bad schema | `tests/ac17_kind_conformance.rs` (reusable checker at `mcphost::kinds::conformance`) |
 | 18 (P1) | `tools/list` carries `ttlMs`/`cacheScope`, `ttlMs: 0` within 60s of a publish | `tests/ac18_tools_list_ttl.rs` |
-| 19 (P1) | `host.registry_publish()` + `/.well-known/mcp/<ns>/server.json` | **Deferred** — feature-flagged registry publish depends on the PRD's own open question ("registry namespace verification method... before P1 item 15"); no `host.registry_publish` tool or well-known route shipped this iteration |
+| 19 (P1) | `host.registry_publish()` + `/.well-known/mcp/<ns>/server.json` | `tests/ac19_registry_publish.rs` (mocks the registry API with `wiremock`; see "Registry publish (P1)" above — the namespace-verification METHOD stays out of scope, "verified" is an admin-set boolean) |
 
 ## Related fleet work
 

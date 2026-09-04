@@ -1,6 +1,6 @@
 [package]
 name = "mcphost"
-version = "0.1.0"
+version = "0.5.4"
 edition = "2024"
 rust-version = "1.88"
 description = "One MCP endpoint an agent can join and administer without a human"
@@ -34,7 +34,19 @@ anyhow = "1"
 thiserror = "2"
 http = "1"
 async-trait = "0.1"
+# AC19 / requirement 15: host.registry_publish POSTs a tenant's server.json
+# to the configured registry API base URL at runtime, not just in tests.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+minijinja = { version = "2.24.0", features = ["json", "urlencode"] }
+hickory-resolver = { version = "0.26.1", features = ["tokio"] }
+futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
+# PRD-mcphost-code-tools: `src/sandbox.rs`'s pre_exec rlimits (setrlimit),
+# process-group signalling (killpg/setsid) and `/proc` resource sampling.
+libc = "0.2"
 
 [dev-dependencies]
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 tokio = { version = "1", features = ["full", "test-util"] }
+proptest = "1"
+# AC19: mocks the registry API in tests/ac19_registry_publish.rs (the
+# fleet's standard HTTP-mock crate).
+wiremock = "0.6"

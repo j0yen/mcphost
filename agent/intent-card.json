@@ -1,0 +1,171 @@
+{
+  "schema": "autobuilder.intent_card.v1",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-gate-green.md",
+  "intent_slug": "mcphost-protocol-compat",
+  "root_motivation": "The deployed mcphost endpoint is healthy and reachable, yet the one client the product exists for -- the Claude Agent SDK -- sees a connected server with zero tools, so no agent has ever reached signup (tenants_total is 0 after two days) and the buildloop's wow_rate metric is structurally unmeasurable. The endpoint advertises MCP 2026-07-28 while rmcp 3.2.0 negotiates 2025-11-25, and tools/list omits the ttlMs/cacheScope fields that version makes mandatory for every caller except a tenant. Both are self-inflicted and verifiable at the protocol level.",
+  "user_persona": "An AI agent connecting to mcphost for the first time over streamable HTTP with default client configuration (Claude Agent SDK / Claude Code), which must be able to read a well-formed tool list before it can do anything else; secondarily the operator who probes the endpoint after a redeploy.",
+  "unfakeable_metric": {
+    "name": "acceptance_tests_passing_count",
+    "lower_is_better": false,
+    "harness_command": "scripts/run-metrics.sh",
+    "target": 15
+  },
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "level": "MUST",
+      "test": "tests/compat_ac01_ac02_ac03_cache_fields.rs::ac1_anonymous_tools_list_has_cache_fields",
+      "description": "An unauthenticated tools/list result carries a numeric ttlMs and cacheScope 'private' alongside exactly one tool named signup."
+    },
+    {
+      "id": "AC2",
+      "level": "MUST",
+      "test": "tests/compat_ac01_ac02_ac03_cache_fields.rs::ac2_raw_wire_json_carries_both_keys",
+      "description": "The raw HTTP response body, parsed as JSON with no client-side model defaults applied, contains both the ttlMs and cacheScope keys."
+    },
+    {
+      "id": "AC3",
+      "level": "MUST",
+      "test": "tests/compat_ac01_ac02_ac03_cache_fields.rs::ac3_invalid_bearer_tools_list_has_cache_fields",
+      "description": "A client sending an unrecognised bearer token gets a tools/list result with numeric ttlMs and cacheScope 'private', listing only signup."
+    },
+    {
+      "id": "AC4",
+      "level": "MUST",
+      "test": "tests/compat_ac04_ac05_admin_and_tenant_cache_fields.rs::ac4_admin_tools_list_has_cache_fields",
+      "description": "An admin-authenticated tools/list result carries numeric ttlMs and cacheScope 'private' and lists the admin.* tools."
+    },
+    {
+      "id": "AC5",
+      "level": "MUST",
+      "test": "tests/compat_ac04_ac05_admin_and_tenant_cache_fields.rs::ac5_fresh_tenant_tools_list_has_cache_fields",
+      "description": "A tenant with no published tools gets a tools/list result with numeric ttlMs and cacheScope 'private' listing the host.* tools."
+    },
+    {
+      "id": "AC6",
+      "level": "MUST",
+      "test": "tests/ac18_tools_list_ttl.rs::ttl_is_zero_right_after_publish_and_positive_once_steady",
+      "description": "A tenant that published within the grace window still sees ttlMs 0, preserving the behaviour ac18 already asserted."
+    },
+    {
+      "id": "AC7",
+      "level": "MUST",
+      "test": "tests/ac18_tools_list_ttl.rs::ttl_is_zero_right_after_publish_and_positive_once_steady",
+      "description": "A tenant whose last tool change is older than the grace window sees ttlMs equal to the steady TTL."
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "test": "tests/compat_ac08_ac09_ac10_advertised_version.rs::ac8_initialize_header_matches_negotiated_protocol_version",
+      "description": "The initialize response carries MCP-Protocol-Version 2025-11-25, matching the protocolVersion in the initialize result body."
+    },
+    {
+      "id": "AC9",
+      "level": "MUST",
+      "test": "tests/compat_ac08_ac09_ac10_advertised_version.rs::ac9_advertised_version_equals_rmcp_latest_and_no_literal_remains",
+      "description": "The advertised header value equals rmcp ProtocolVersion::LATEST.as_str() and no 2026-07-28 string literal remains as the advertised version in src/http.rs."
+    },
+    {
+      "id": "AC10",
+      "level": "MUST",
+      "test": "tests/compat_ac08_ac09_ac10_advertised_version.rs::ac10_advertised_version_is_strictly_below_standard_headers",
+      "description": "The advertised version is strictly lower than ProtocolVersion::STANDARD_HEADERS, so SEP-2243 validation is never triggered by mcphost's own advertisement."
+    },
+    {
+      "id": "AC11",
+      "level": "MUST",
+      "test": "tests/compat_ac11_ac12_claude_sdk_replay.rs::ac11_echoed_negotiated_version_is_accepted_with_no_sep2243_headers",
+      "description": "A client that echoes the advertised version on tools/list with no Mcp-Method header and no _meta receives a successful result rather than -32020 or -32602."
+    },
+    {
+      "id": "AC12",
+      "level": "MUST",
+      "test": "tests/compat_ac11_ac12_claude_sdk_replay.rs::ac12_claude_agent_sdk_sequence_lists_signup_with_schema",
+      "description": "A replay of the exact Claude Agent SDK request sequence returns HTTP 200 with a single tool signup whose inputSchema declares the required property name."
+    },
+    {
+      "id": "AC13",
+      "level": "SHOULD",
+      "test": "tests/compat_ac13_ac14_middleware_logging_and_scope.rs::ac13_refused_request_still_gets_one_structured_log_line",
+      "description": "A request refused by rmcp still produces one structured request log line recording the non-200 status."
+    },
+    {
+      "id": "AC14",
+      "level": "SHOULD",
+      "test": "tests/compat_ac13_ac14_middleware_logging_and_scope.rs::ac14_healthz_header_presence_matches_the_module_doc_comment",
+      "description": "The documented scope of the MCP-Protocol-Version layer matches the observed behaviour on GET /healthz."
+    },
+    {
+      "id": "AC15",
+      "level": "MUST",
+      "test": "cargo test --release: 124 passed, 0 failed",
+      "description": "The full pre-existing suite passes alongside the new tests, with no test deleted or weakened."
+    }
+  ],
+  "scope": [
+    "Derive the advertised MCP-Protocol-Version from rmcp::model::ProtocolVersion::LATEST instead of a string literal.",
+    "Emit ttlMs and cacheScope on every tools/list response in all four authentication states, set in one place all branches flow through.",
+    "Correct the protocol_version_and_log doc comment to match the layer's actual router-wide scope."
+  ],
+  "non_goals": [
+    "Adding real support for protocol 2026-07-28 (SEP-2243 Mcp-Method / Mcp-Param-* headers and per-request _meta).",
+    "The tenant-key hand-off, which is PRD-mcphost-session-key and depends on this PRD.",
+    "Any consumer-facing feature candidate; no measured baseline exists to rank one against.",
+    "Changes to synthorg, whose preflight asserts only that the protocol header is present, not its value."
+  ],
+  "hard_constraints": {
+    "rust_edition": "2024",
+    "target_kind": "cli",
+    "deny_unsafe": false,
+    "max_deps": null,
+    "msrv": null,
+    "additional": {
+      "no_panic_in_src": "BAD_RUST denies unwrap/expect/panic in src/; HeaderValue::from_str is fallible and must be handled without panicking.",
+      "single_application_point": "Requirement 5: the cache fields must be applied once for all Auth branches, not chained per branch.",
+      "no_existing_test_weakened": "AC15: no pre-existing test may be deleted, ignored, or weakened.",
+      "unsafe_scope": "unsafe is confined to src/sandbox.rs pre_exec_setup, where only async-signal-safe libc calls run between fork and exec; this PRD adds none."
+    }
+  },
+  "five_whys_trace": [
+    {
+      "why": 1,
+      "q": "Why can no agent use the deployed mcphost endpoint?",
+      "a": "Its client connects and initializes successfully but sees an empty tool list, so there is nothing to call."
+    },
+    {
+      "why": 2,
+      "q": "Why is the tool list empty for that client?",
+      "a": "The client's tools/list request is refused before mcphost's handler runs, and the error body it parses has no ttlMs or cacheScope, so it reports the result invalid and shows zero tools."
+    },
+    {
+      "why": 3,
+      "q": "Why is the request refused, and why are those fields missing?",
+      "a": "The client sends MCP-Protocol-Version 2026-07-28, which trips rmcp's SEP-2243 validators demanding an Mcp-Method header and per-request _meta; and list_tools sets the cache fields only on the Auth::Tenant branch, so the anonymous branch every new agent hits omits them."
+    },
+    {
+      "why": 4,
+      "q": "Why does the client send 2026-07-28 when rmcp negotiates 2025-11-25?",
+      "a": "Because mcphost's own middleware stamps a hardcoded 2026-07-28 onto every response including initialize, and rmcp never writes that response header itself, so mcphost is the sole source of an advertisement it cannot honour."
+    },
+    {
+      "why": 5,
+      "q": "Why was the constant hardcoded to a version the server cannot serve?",
+      "a": "The vision's Lineage section asserted that rmcp 3.2.0 serves 2026-07-28 statelessly by default; in fact ProtocolVersion::LATEST is 2025-11-25 and 2026-07-28 is only the SEP-2243 threshold. The literal encoded a mistaken belief, and the tests that would have caught it only ever exercised the authenticated branch."
+    }
+  ],
+  "ambiguities_resolved": [
+    {
+      "question": "The findings file records the reference Python client seeing well-formed ttlMs/cacheScope on an unauthenticated tools/list, which the code says is impossible. Which is right?",
+      "resolution": "Almost certainly a client-side deserialization default printed where the wire had nothing (rmcp's own mirror of that shape defaults to ttl_ms 0 / cache_scope Private). Settled by a test rather than an argument: AC2 asserts on the serialized wire JSON, not a deserialized model."
+    },
+    {
+      "question": "Requirement 9 offers two ways to fix the middleware doc/scope mismatch: re-scope the layer to /mcp, or correct the comment to say it is router-wide. Which?",
+      "resolution": "Correct the comment. It is the smaller behavioural change, and an unauthenticated health endpoint carrying an accurate protocol-version header is harmless."
+    },
+    {
+      "question": "reviewer-agent block reason 'diff-scope-not-covered-by-reviewed-intent-card' (receipt target/autobuilder/receipts/reviewer-agent.json, captured_at 2026-09-03T22:11:04Z): b382f7d (v0.5.3) and 11c83a0 (v0.5.2) both implement PRD-mcphost-gate-green requirement 8/9 (CI-scoped sandbox test skip), not the mcphost-protocol-compat work this card's AC1-AC15/five_whys_trace/scope describe -- prd_source still named PRD-mcphost-protocol-compat with no paper trail to the PRD that actually authorized those two commits. Amend in place, or file agent/intent_card_amendment_request.json?",
+      "resolution": "Amended in place: prd_source now points at /home/jsy/Documents/PRDs/build-queue/PRD-mcphost-gate-green.md (operator decision 2026-09-03). intent_card_amendment_request.json's four kinds (add_ac/relax_must/widen_constraint/out_of_scope) are for an edit-agent halting mid-iteration over a Stage-3 conflict it can't resolve itself; there is no Stage-3 conflict here -- v0.5.2/v0.5.3 touch zero src/ files and change none of AC1-AC15, which remain valid and unmodified (target/autobuilder/results.tsv: ac_pass=19/19 unchanged at b382f7d). This closes the paper-trail gap the reviewer-agent flagged without reopening the protocol-compat contract or halting the loop for a decision already made."
+    }
+  ],
+  "created_at": "2026-09-03T18:04:17Z"
+}

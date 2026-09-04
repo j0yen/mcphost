@@ -64,7 +64,7 @@ mod tests {
         kind.validate(&spec).expect("valid spec");
         let ctx = CallCtx::for_test(1, "t_deadbeef");
         let args = json!({"msg": "hi"});
-        let result = kind.call(&spec, args.clone(), &ctx).await.expect("call ok");
+        let result = kind.call(&spec, args.clone(), &ctx).await.expect("call ok"); // allowlist: test-only expect inside #[cfg(test)]
         assert_eq!(result, args);
     }
 

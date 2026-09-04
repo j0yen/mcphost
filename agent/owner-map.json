@@ -1,0 +1,22 @@
+{
+  "schema": "autobuilder.owner_map.v1",
+  "default_owner": "autobuilder",
+  "routes": [
+    { "glob": "src/**", "owner": "edit-agent" },
+    { "glob": "tests/ac[0-9][0-9]_*.rs", "owner": "edit-agent (body only; pre-existing real AC tests carried over from the hand-built implementation — 9315032 — mapped 1:1 to ACs in agent/test-map.json's ac_test_map rather than duplicated as tests/acceptance_*.rs)" },
+    { "glob": "tests/ac17_kind_conformance.rs", "owner": "edit-agent (AC17 — same convention as tests/ac[0-9][0-9]_*.rs above)" },
+    { "glob": "tests/common/**", "owner": "edit-agent (shared fixtures for tests/ac*.rs and ac17_kind_conformance.rs)" },
+    { "glob": "tests/acceptance_*.rs", "owner": "edit-agent (body only; //! header metadata is read-only — re-scaffold via intent_card_amendment_request.json to change AC metadata). Not used by this project; see tests/ac[0-9][0-9]_*.rs above" },
+    { "glob": "tests/adversarial_*.rs", "owner": "adversarial-agent (full file ownership; written AFTER edit-agent's iter to attempt falsification per prompts/adversarial-agent.md)" },
+    { "glob": "tests/proptest_invariants.rs", "owner": "scaffold (read-only)" },
+    { "glob": "tests/fuzz/**", "owner": "scaffold (read-only)" },
+    { "glob": "scripts/**", "owner": "skill (read-only template; project-local fixes for recurring template bugs are allowed and should fold back via postmortem — see scripts/run-metrics.sh's ac[0-9][0-9]_*.rs fallback)" },
+    { "glob": "agent/**", "owner": "orchestrator" },
+    { "glob": "Cargo.toml", "owner": "edit-agent (dependency additions only; lints/edition/MSRV are scaffold-owned)" },
+    { "glob": "Cargo.lock", "owner": "edit-agent (deps-only iterations)" },
+    { "glob": "clippy.toml", "owner": "scaffold (read-only)" },
+    { "glob": "deny.toml", "owner": "scaffold (read-only)" },
+    { "glob": "rust-toolchain.toml", "owner": "scaffold (read-only)" },
+    { "glob": ".github/**", "owner": "scaffold (read-only)" }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "schema": "autobuilder.test_map.v1",
+  "note": "This project's real AC tests are tests/ac<NN>_*.rs + tests/ac17_kind_conformance.rs (from the hand-built implementation, commit 9315032), NOT the tests/acceptance_<id>.rs the scaffold template generates. ac_test_map below is the 1:1 AC-to-test mapping; scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
+  "routes": [
+    {
+      "glob": "src/**",
+      "required_proof": [
+        "cargo test --workspace",
+        "tests/ac[0-9][0-9]_*.rs",
+        "tests/ac17_kind_conformance.rs",
+        "tests/proptest_invariants.rs"
+      ]
+    },
+    {
+      "glob": "Cargo.toml",
+      "required_proof": ["cargo check --workspace", "cargo deny check"]
+    },
+    {
+      "glob": "Cargo.lock",
+      "required_proof": ["cargo deny check"]
+    }
+  ],
+  "ac_test_map": {
+    "AC1": "tests/ac01_unauthenticated_lists_signup.rs",
+    "AC2": "tests/ac02_signup_creates_hashed_tenant.rs",
+    "AC3": "tests/ac03_tenant_lists_control_plane_only.rs",
+    "AC4": "tests/ac04_publish_list_and_call.rs",
+    "AC5": "tests/ac05_cross_tenant_isolation.rs",
+    "AC6": "tests/ac06_remove_tool.rs",
+    "AC7": "tests/ac07_usage_metering.rs",
+    "AC8": "tests/ac08_admin_disable_and_forbidden.rs",
+    "AC9": "tests/ac09_signup_rate_limit.rs",
+    "AC10": "tests/ac10_publish_validation_errors.rs",
+    "AC11": "tests/ac11_load_smoke.rs (#[ignore]d hardware-relative load test)",
+    "AC12": "no unit test file; live smoke — mcphost serve + synthorg consume --preflight <url>, recorded as target/autobuilder/ac12-preflight-smoke.json",
+    "AC13": "tests/ac13_mcp_name_mismatch_metering.rs",
+    "AC14": "tests/ac14_storage_unwritable.rs",
+    "AC15": "tests/ac15_call_timeout.rs",
+    "AC16": "tests/ac16_request_body_too_large.rs",
+    "AC17": "tests/ac17_kind_conformance.rs",
+    "AC18": "tests/ac18_tools_list_ttl.rs",
+    "AC19": "deferred — no test; see agent/intent-card.json acceptance_criteria AC19.test and PRD Open Questions (registry namespace verification not yet resolved)"
+  }
+}

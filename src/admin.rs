@@ -50,6 +50,25 @@ pub async fn tenant_enable(state: &AppState, args: &Value) -> Result<Value, AppE
     Ok(json!({ "tenant": tenant, "disabled": false }))
 }
 
+/// AC19: mark a tenant's domain namespace as verified so
+/// `host.registry_publish` will run for it. The verification METHOD (DNS
+/// or HTTP) is deliberately not this crate's concern (PRD Open Questions,
+/// owned by Joe) -- this tool is the minimal admin-set boolean path the
+/// PRD's registry-publish requirement can be implemented against without
+/// deciding that question.
+pub async fn tenant_verify_namespace(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let tenant = arg_str(args, "tenant")?;
+    let domain_namespace = arg_str(args, "domain_namespace")?;
+    let changed = state
+        .db
+        .set_tenant_namespace_verified(tenant.clone(), domain_namespace.clone())
+        .await?;
+    if !changed {
+        return Err(AppError::ToolNotFound(format!("tenant {tenant}")));
+    }
+    Ok(json!({ "tenant": tenant, "domain_namespace": domain_namespace, "verified": true }))
+}
+
 pub async fn usage(state: &AppState, args: &Value) -> Result<Value, AppError> {
     let window = arg_str_opt(args, "window").unwrap_or_else(|| "24h".to_string());
     let secs = crate::state::parse_window_secs(&window);
