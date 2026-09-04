@@ -7,9 +7,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::errors::AppError;
 
@@ -17,6 +17,26 @@ const MIGRATION_0001: &str = include_str!("../migrations/0001_init.sql");
 const MIGRATION_0002: &str = include_str!("../migrations/0002_tenant_last_tool_change.sql");
 const MIGRATION_0003: &str = include_str!("../migrations/0003_registry.sql");
 const MIGRATION_0004: &str = include_str!("../migrations/0004_calls_resource_usage.sql");
+const MIGRATION_0005: &str = include_str!("../migrations/0005_cascade_delete.sql");
+
+/// Shared by every query that selects a whole tenant row, so the column
+/// list and [`tenant_from_row`] stay in lockstep with each other.
+const TENANT_COLUMNS: &str = "id, namespace, display_name, key_hash, created_at, disabled, \
+    last_tool_change_unix, namespace_verified, registry_namespace";
+
+fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
+    Ok(Tenant {
+        id: r.get(0)?,
+        namespace: r.get(1)?,
+        display_name: r.get(2)?,
+        key_hash: r.get(3)?,
+        created_at: r.get(4)?,
+        disabled: r.get::<_, i64>(5)? != 0,
+        last_tool_change_unix: r.get(6)?,
+        namespace_verified: r.get::<_, i64>(7)? != 0,
+        registry_namespace: r.get(8)?,
+    })
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Tenant {
@@ -62,6 +82,27 @@ pub struct ToolUsage {
     pub namespace: String,
     pub tool_name: String,
     pub stats: UsageStats,
+}
+
+/// PRD-mcphost-tenant-delete requirement 1/2: what a single tenant's
+/// cascade removes, or (for the batch call's dry run) would remove.
+/// `registry_documents` is cascaded too but isn't part of the wire
+/// response shape the PRD specifies, so it isn't counted here.
+#[derive(Debug, Clone, Copy, Default, Serialize)]
+pub struct TenantDeleteCounts {
+    pub tools_removed: i64,
+    pub secrets_removed: i64,
+    pub calls_removed: i64,
+    pub logs_removed: i64,
+}
+
+impl TenantDeleteCounts {
+    pub fn accumulate(&mut self, other: &TenantDeleteCounts) {
+        self.tools_removed += other.tools_removed;
+        self.secrets_removed += other.secrets_removed;
+        self.calls_removed += other.calls_removed;
+        self.logs_removed += other.logs_removed;
+    }
 }
 
 fn now_rfc3339() -> String {
@@ -145,7 +186,8 @@ impl Db {
         conn.execute_batch(MIGRATION_0001).map_err(AppError::from)?;
         Self::migrate_0002_tenant_last_tool_change(&conn)?;
         Self::migrate_0003_registry(&conn)?;
-        Self::migrate_0004_calls_resource_usage(&conn)
+        Self::migrate_0004_calls_resource_usage(&conn)?;
+        Self::migrate_0005_cascade_delete(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -187,6 +229,24 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0004)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-tenant-delete requirement 3 / AC6: gated on whether
+    /// `tools`' foreign key to `tenants` already carries `ON DELETE
+    /// CASCADE` -- unlike 0002-0004's `ADD COLUMN`, this migration
+    /// recreates tables, so it needs its own idempotency signal rather
+    /// than a column check.
+    fn migrate_0005_cascade_delete(conn: &Connection) -> Result<(), AppError> {
+        let has_cascade: bool = conn
+            .prepare(
+                "SELECT 1 FROM pragma_foreign_key_list('tools') \
+                 WHERE \"table\" = 'tenants' AND on_delete = 'CASCADE'",
+            )?
+            .exists([])?;
+        if !has_cascade {
+            conn.execute_batch(MIGRATION_0005)?;
         }
         Ok(())
     }
@@ -252,6 +312,26 @@ impl Db {
             let tools: i64 = conn.query_row("SELECT COUNT(*) FROM tools", [], |r| r.get(0))?;
             let tenants: i64 = conn.query_row("SELECT COUNT(*) FROM tenants", [], |r| r.get(0))?;
             Ok((tools, tenants))
+        })
+        .await
+    }
+
+    /// PRD-mcphost-tenant-delete requirement 5 / AC9: tenants whose
+    /// `display_name` starts with `panel_` or `probe-` -- the two prefixes
+    /// the harness's synthetic personas use (see `admin.tenant_delete_by_prefix`
+    /// and the PRD's user stories). Both prefixes are 6 bytes/characters,
+    /// so a plain `substr` comparison avoids needing to escape `LIKE`
+    /// wildcards a prefix might itself contain.
+    pub async fn probe_tenant_count(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM tenants \
+                 WHERE substr(display_name, 1, 6) = 'panel_' \
+                    OR substr(display_name, 1, 6) = 'probe-'",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
         })
         .await
     }
@@ -405,6 +485,159 @@ impl Db {
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-tenant-delete requirement 2/7 (AC3/AC4/AC10):
+    /// tenants whose `display_name` starts with `prefix`, ordered by id.
+    /// `limit` is the batch-delete call's 500-tenant cap (requirement 6);
+    /// `None` (used by `admin.tenants(prefix)`, which carries no such cap)
+    /// returns every match. Returns `(matches, truncated)`, `truncated`
+    /// true only when `limit` was given and more rows matched than it
+    /// allowed.
+    pub async fn list_tenants_by_prefix(
+        &self,
+        prefix: String,
+        limit: Option<i64>,
+    ) -> Result<(Vec<Tenant>, bool), AppError> {
+        self.with_conn(move |conn| {
+            let prefix_len = prefix.chars().count() as i64;
+            let mut rows: Vec<Tenant> = if let Some(lim) = limit {
+                let sql = format!(
+                    "SELECT {TENANT_COLUMNS} FROM tenants \
+                     WHERE substr(display_name, 1, ?1) = ?2 ORDER BY id LIMIT ?3"
+                );
+                let mut stmt = conn.prepare(&sql)?;
+                stmt.query_map(params![prefix_len, prefix, lim + 1], tenant_from_row)?
+                    .collect::<Result<Vec<_>, _>>()?
+            } else {
+                let sql = format!(
+                    "SELECT {TENANT_COLUMNS} FROM tenants \
+                     WHERE substr(display_name, 1, ?1) = ?2 ORDER BY id"
+                );
+                let mut stmt = conn.prepare(&sql)?;
+                stmt.query_map(params![prefix_len, prefix], tenant_from_row)?
+                    .collect::<Result<Vec<_>, _>>()?
+            };
+            let truncated = match limit {
+                Some(lim) if rows.len() as i64 > lim => {
+                    rows.truncate(lim as usize);
+                    true
+                }
+                _ => false,
+            };
+            Ok((rows, truncated))
+        })
+        .await
+    }
+
+    fn query_tenant_by_namespace(conn: &Connection, namespace: &str) -> Result<Option<Tenant>, AppError> {
+        let sql = format!("SELECT {TENANT_COLUMNS} FROM tenants WHERE namespace = ?1");
+        conn.query_row(&sql, params![namespace], tenant_from_row)
+            .optional()
+            .map_err(AppError::from)
+    }
+
+    /// PRD-mcphost-tenant-delete requirement 1/2: the row counts a delete
+    /// of `tenant_id` would remove, without mutating anything -- used both
+    /// by the batch call's dry run and internally by [`Db::delete_tenant`]
+    /// itself (counted before the delete, since the rows won't exist to
+    /// count afterward).
+    fn count_tenant_child_rows(conn: &Connection, tenant_id: i64) -> Result<TenantDeleteCounts, AppError> {
+        let tools_removed: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM tools WHERE tenant_id = ?1",
+            params![tenant_id],
+            |r| r.get(0),
+        )?;
+        let secrets_removed: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM secrets WHERE tenant_id = ?1",
+            params![tenant_id],
+            |r| r.get(0),
+        )?;
+        let calls_removed: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM calls WHERE tenant_id = ?1",
+            params![tenant_id],
+            |r| r.get(0),
+        )?;
+        let logs_removed: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM logs WHERE tenant_id = ?1",
+            params![tenant_id],
+            |r| r.get(0),
+        )?;
+        Ok(TenantDeleteCounts {
+            tools_removed,
+            secrets_removed,
+            calls_removed,
+            logs_removed,
+        })
+    }
+
+    /// AC3's dry-run counts, by namespace: `None` if no such tenant.
+    pub async fn tenant_delete_preview(
+        &self,
+        namespace: String,
+    ) -> Result<Option<(Tenant, TenantDeleteCounts)>, AppError> {
+        self.with_conn(move |conn| {
+            let tenant = match Self::query_tenant_by_namespace(conn, &namespace)? {
+                Some(t) => t,
+                None => return Ok(None),
+            };
+            let counts = Self::count_tenant_child_rows(conn, tenant.id)?;
+            Ok(Some((tenant, counts)))
+        })
+        .await
+    }
+
+    /// PRD-mcphost-tenant-delete requirement 1/3/4 (AC1/AC7/AC8): delete
+    /// `namespace` and, in the same transaction, cascade every row that
+    /// references it (migration 0005's `ON DELETE CASCADE` on tools,
+    /// secrets, calls, logs, registry_documents), plus write one
+    /// `admin_events` audit row. `None` if no such tenant exists --
+    /// `admin.rs` turns that into `tenant_not_found`.
+    ///
+    /// Uses a hand-rolled `BEGIN IMMEDIATE` / `COMMIT` (rather than
+    /// `Connection::transaction`, which needs `&mut Connection`) because
+    /// this runs inside `with_conn`'s `&Connection` closure, behind the
+    /// single shared connection's mutex.
+    pub async fn delete_tenant(
+        &self,
+        namespace: String,
+    ) -> Result<Option<(Tenant, TenantDeleteCounts)>, AppError> {
+        self.with_conn(move |conn| {
+            let tenant = match Self::query_tenant_by_namespace(conn, &namespace)? {
+                Some(t) => t,
+                None => return Ok(None),
+            };
+            let counts = Self::count_tenant_child_rows(conn, tenant.id)?;
+
+            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
+            let outcome: Result<(), AppError> = (|| {
+                conn.execute("DELETE FROM tenants WHERE id = ?1", params![tenant.id])?;
+                let detail = json!({
+                    "namespace": tenant.namespace,
+                    "tools_removed": counts.tools_removed,
+                    "secrets_removed": counts.secrets_removed,
+                    "calls_removed": counts.calls_removed,
+                    "logs_removed": counts.logs_removed,
+                })
+                .to_string();
+                conn.execute(
+                    "INSERT INTO admin_events (ts, action, tenant, detail) VALUES (?1, ?2, ?3, ?4)",
+                    params![now_rfc3339(), "tenant_delete", tenant.namespace, detail],
+                )?;
+                Ok(())
+            })();
+            match outcome {
+                Ok(()) => {
+                    conn.execute("COMMIT", []).map_err(AppError::from)?;
+                }
+                Err(e) => {
+                    let _ = conn.execute("ROLLBACK", []);
+                    return Err(e);
+                }
+            }
+            Ok(Some((tenant, counts)))
         })
         .await
     }

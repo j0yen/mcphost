@@ -22,6 +22,18 @@ pub enum AppError {
     RateLimited,
     #[error("tool not found: {0}")]
     ToolNotFound(String),
+    /// PRD-mcphost-tenant-delete AC7: distinct from [`AppError::ToolNotFound`]
+    /// so `admin.tenant_delete` on an unknown tenant reads as
+    /// `tenant_not_found`, not `tool_not_found`.
+    #[error("tenant not found: {0}")]
+    TenantNotFound(String),
+    /// PRD-mcphost-tenant-delete AC5: `admin.tenant_delete_by_prefix`'s
+    /// `prefix` must be at least 4 characters, so a typo (or an omitted
+    /// argument) cannot empty the box. Distinct from
+    /// [`AppError::InvalidArgs`] because the PRD pins the wire code to
+    /// exactly `invalid_params`.
+    #[error("invalid params: {0}")]
+    InvalidParams(String),
     #[error("kind '{requested}' is not registered; registered kinds: {registered:?}")]
     UnknownKind {
         requested: String,
@@ -86,6 +98,8 @@ impl AppError {
             AppError::TenantDisabled => "tenant_disabled",
             AppError::RateLimited => "rate_limited",
             AppError::ToolNotFound(_) => "tool_not_found",
+            AppError::TenantNotFound(_) => "tenant_not_found",
+            AppError::InvalidParams(_) => "invalid_params",
             AppError::UnknownKind { .. } => "unknown_kind",
             AppError::InvalidToolName(_) => "invalid_tool_name",
             AppError::SpecTooLarge(_) => "spec_too_large",
@@ -106,7 +120,9 @@ impl AppError {
 
     fn jsonrpc_code(&self) -> ErrorCode {
         match self {
-            AppError::ToolNotFound(_) => ErrorCode::RESOURCE_NOT_FOUND,
+            AppError::ToolNotFound(_) | AppError::TenantNotFound(_) => {
+                ErrorCode::RESOURCE_NOT_FOUND
+            }
             AppError::UnknownKind { .. }
             | AppError::InvalidToolName(_)
             | AppError::SpecTooLarge(_)
@@ -114,6 +130,7 @@ impl AppError {
             | AppError::InvalidSpec(_)
             | AppError::InvalidArgs(_)
             | AppError::ArgsInvalid(_)
+            | AppError::InvalidParams(_)
             | AppError::SecretMissing(_) => ErrorCode::INVALID_PARAMS,
             AppError::Storage(_)
             | AppError::Internal(_)
