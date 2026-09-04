@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.5.5 — 2026-09-04
+
+Closes out PRD-mcphost-gate-green's tagging requirement (AC4) and the last
+vti-plan blocker found while regenerating head-bound receipts at v0.5.4.
+
+- Tagging policy lands: `v0.1.0` at `9315032` (the crate's first commit,
+  kept as a historical marker), `v0.5.1` (alias of `v0.1.0`, satisfying the
+  PRD's literal base-tag name after a same-day squash left only
+  `9315032..a4f1083` reachable — the PRD's named base commit `3c6470c` is
+  no longer reachable from `HEAD`), and `v0.5.4` at `a4f1083`, the previous
+  shipped-quality point. From here forward the rollback base is always the
+  newest `v*` tag, not `v0.1.0`, per the PRD's own stated policy.
+- `agent/proof-lanes.toml`: added an `infer-data` lane for
+  `infer-data/**` (the two JSON files `include_str!`'d into
+  `src/kinds/infer.rs`). `vti-plan` flagged both as unrouted
+  (confidence=0.0) at `a4f1083` — the shipped scaffold's proof-lanes.toml
+  never had a lane for this directory, the same gap class already noted
+  for `meta` and `db-migrations`. Routes to the same three commands as
+  `rust-source` since these files gate compiled behavior identically to a
+  `.rs` change.
+- This fix is a new commit on top of `a4f1083`, not a rewrite: `a4f1083`
+  is not individually revert-clean against this commit (both touch the
+  same region of `proof-lanes.toml`), which is exactly the "keep
+  squashing and hope" trap this PRD's AC4 was written to avoid. Rather
+  than rewrite history a fourth time today, `a4f1083` keeps its `v0.5.4`
+  tag as the new rollback base and this commit ships as `v0.5.5`, giving
+  `rollback-plan --base v0.5.4` a clean one-commit range.
+
 ## v0.5.4 — 2026-09-03
 
 Clears the two remaining PRD-mcphost-gate-green blockers (gate pass=23/block=2
