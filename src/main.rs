@@ -137,6 +137,8 @@ async fn main() -> anyhow::Result<()> {
                 );
             }
 
+            let signup_rate_limit_per_hour = mcphost::state::signup_rate_limit_per_hour_from_env();
+
             let db = Db::open(&data_dir())?;
             db.migrate().await?;
 
@@ -167,6 +169,7 @@ async fn main() -> anyhow::Result<()> {
                     .build()?,
                 sandbox_mechanism,
                 tool_run_limiter: mcphost::state::ToolRunLimiter::new(),
+                signup_rate_limit_per_hour,
             });
 
             mcphost::http::serve(bind, state).await

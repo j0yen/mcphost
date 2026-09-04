@@ -28,7 +28,7 @@ pub async fn signup(state: &AppState, args: &Value, source_ip: &str) -> Result<V
         .db
         .signup_count_since(source_ip.to_string(), since)
         .await?;
-    if recent >= crate::state::SIGNUP_RATE_LIMIT_PER_HOUR {
+    if recent >= state.signup_rate_limit_per_hour {
         return Err(AppError::RateLimited);
     }
 

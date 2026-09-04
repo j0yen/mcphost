@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.12.0 — 2026-09-04
+
+Signup was capped at 5 per hour per source IP via a compile-time constant
+(`state.rs:19`). The measurement harness runs all 21 consumer sessions from
+one IP (RedBaron), so at most five could ever sign up -- the rest failed
+before publishing anything, floor-ing the 2026-09-04 calibration run's
+satisfaction/wow_rate at 0.0 with 21/21 publish failures: a measurement of
+the rate limiter, not of any tool. This moves the cap into
+`AppState::signup_rate_limit_per_hour`, read once at startup from
+`$MCPHOST_SIGNUP_RATE_LIMIT_PER_HOUR` (absent or non-integer falls back to
+5, logged once either way), so a single-source measure run can raise it
+without a rebuild while production's default-5 behavior is unchanged.
+`mcphost-deploy`'s env-file contract documents the new var as an optional
+override.
+
 ## v0.11.0 — 2026-09-04
 
 The first live session to complete the five-minute path spent 83 of its 117 seconds on

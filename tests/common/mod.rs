@@ -194,6 +194,23 @@ impl TestServer {
         .await
     }
 
+    /// PRD-mcphost-signup-rate-configurable AC2/requirement 6: a server
+    /// whose signup rate limit is overridden directly on `AppState`, the
+    /// same field `$MCPHOST_SIGNUP_RATE_LIMIT_PER_HOUR` feeds at real
+    /// startup -- set via the field rather than the env var itself, since
+    /// mutating process environment from one of several test functions
+    /// racing in the same test binary would be flaky.
+    pub async fn start_with_signup_rate_limit(limit: i64) -> Self {
+        Self::start_full_with_signup_rate_limit(
+            Some(ADMIN_KEY.to_string()),
+            KindRegistry::with_builtin(),
+            mcphost::state::CALL_TIMEOUT,
+            None,
+            limit,
+        )
+        .await
+    }
+
     /// AC19: a server with the registry feature flag on, pointed at a
     /// mocked registry API base URL (typically a `wiremock::MockServer`'s
     /// `.uri()`).
@@ -231,6 +248,25 @@ impl TestServer {
         call_timeout: std::time::Duration,
         registry: Option<RegistryConfig>,
     ) -> Self {
+        Self::start_full_with_signup_rate_limit(
+            admin_key,
+            kinds,
+            call_timeout,
+            registry,
+            mcphost::state::SIGNUP_RATE_LIMIT_PER_HOUR,
+        )
+        .await
+    }
+
+    /// Same as [`Self::start_full`], with the signup rate limit also
+    /// overridable (PRD-mcphost-signup-rate-configurable).
+    pub async fn start_full_with_signup_rate_limit(
+        admin_key: Option<String>,
+        kinds: KindRegistry,
+        call_timeout: std::time::Duration,
+        registry: Option<RegistryConfig>,
+        signup_rate_limit_per_hour: i64,
+    ) -> Self {
         let data_dir = TempDataDir::new();
         let db = Db::open(&data_dir.0).expect("open db");
         db.migrate().await.expect("migrate");
@@ -252,6 +288,7 @@ impl TestServer {
             http_client: reqwest::Client::new(),
             sandbox_mechanism: None,
             tool_run_limiter: mcphost::state::ToolRunLimiter::new(),
+            signup_rate_limit_per_hour,
         });
 
         let serve_state = state.clone();

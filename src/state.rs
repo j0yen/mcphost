@@ -16,6 +16,9 @@ pub const MAX_SPEC_BYTES: usize = 64 * 1024;
 pub const MAX_REQUEST_BODY_BYTES: usize = 1024 * 1024;
 pub const MAX_CALL_RESULT_BYTES: usize = 1024 * 1024;
 pub const CALL_TIMEOUT: Duration = Duration::from_secs(30);
+/// PRD-mcphost-signup-rate-configurable requirement 1: the fallback used
+/// when `$MCPHOST_SIGNUP_RATE_LIMIT_PER_HOUR` is absent or unparseable.
+/// Also the crate's default when nothing overrides it.
 pub const SIGNUP_RATE_LIMIT_PER_HOUR: i64 = 5;
 pub const SIGNUP_RATE_LIMIT_WINDOW_SECS: i64 = 3600;
 pub const TOOLS_LIST_TTL_GRACE_SECS: u64 = 60;
@@ -92,6 +95,14 @@ pub struct AppState {
     /// PRD-mcphost-code-tools-warm-pool requirement 3 / AC7: `host.tool_run`'s
     /// own 30-per-minute-per-tenant rate limit.
     pub tool_run_limiter: ToolRunLimiter,
+    /// PRD-mcphost-signup-rate-configurable requirement 1: how many
+    /// `signup` calls a single source IP may make per
+    /// [`SIGNUP_RATE_LIMIT_WINDOW_SECS`] window. Read once at startup from
+    /// `$MCPHOST_SIGNUP_RATE_LIMIT_PER_HOUR` (see
+    /// [`signup_rate_limit_per_hour_from_env`]); a field rather than only
+    /// the [`SIGNUP_RATE_LIMIT_PER_HOUR`] constant so a single-IP measure
+    /// run can raise the cap without a rebuild.
+    pub signup_rate_limit_per_hour: i64,
 }
 
 pub fn now_unix() -> i64 {
@@ -131,6 +142,42 @@ pub fn parse_window_secs(window: &str) -> i64 {
     }
 }
 
+/// Parses the signup rate limit override from a raw string (`None` when
+/// `$MCPHOST_SIGNUP_RATE_LIMIT_PER_HOUR` is unset), falling back to
+/// [`SIGNUP_RATE_LIMIT_PER_HOUR`] when absent or unparseable
+/// (PRD-mcphost-signup-rate-configurable requirement 1 / AC3). Pure
+/// function, deliberately separated from the `std::env::var` read in
+/// [`signup_rate_limit_per_hour_from_env`], so it's testable without
+/// mutating process environment (racy across the parallel test threads
+/// `cargo test` runs within one binary).
+pub fn parse_signup_rate_limit_per_hour(raw: Option<&str>) -> i64 {
+    match raw {
+        None => SIGNUP_RATE_LIMIT_PER_HOUR,
+        Some(raw) => raw.parse::<i64>().unwrap_or_else(|_| {
+            tracing::warn!(
+                raw,
+                default = SIGNUP_RATE_LIMIT_PER_HOUR,
+                "MCPHOST_SIGNUP_RATE_LIMIT_PER_HOUR is not a valid integer; falling back to default"
+            );
+            SIGNUP_RATE_LIMIT_PER_HOUR
+        }),
+    }
+}
+
+/// Reads `$MCPHOST_SIGNUP_RATE_LIMIT_PER_HOUR` once at startup and logs the
+/// effective value (PRD-mcphost-signup-rate-configurable requirement 4 /
+/// AC4), so a deployed hub's cap is visible in `journalctl` without
+/// reading the binary's environment directly.
+pub fn signup_rate_limit_per_hour_from_env() -> i64 {
+    let raw = std::env::var("MCPHOST_SIGNUP_RATE_LIMIT_PER_HOUR").ok();
+    let limit = parse_signup_rate_limit_per_hour(raw.as_deref());
+    tracing::info!(
+        signup_rate_limit_per_hour = limit,
+        "signup rate limit configured"
+    );
+    limit
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,6 +199,33 @@ mod tests {
         assert_eq!(parse_window_secs("30m"), 30 * 60);
         assert_eq!(parse_window_secs("45s"), 45);
         assert_eq!(parse_window_secs("2d"), 2 * 86400);
+    }
+
+    /// PRD-mcphost-signup-rate-configurable requirement 1: absent falls
+    /// back to the default.
+    #[test]
+    fn signup_rate_limit_absent_falls_back_to_default() {
+        assert_eq!(
+            parse_signup_rate_limit_per_hour(None),
+            SIGNUP_RATE_LIMIT_PER_HOUR
+        );
+    }
+
+    /// AC3: a non-integer value falls back to the default (the log call is
+    /// exercised, not asserted on here -- this crate has no log-capture
+    /// harness; the effective value is what's contractually observable).
+    #[test]
+    fn signup_rate_limit_unparseable_falls_back_to_default() {
+        assert_eq!(
+            parse_signup_rate_limit_per_hour(Some("not-a-number")),
+            SIGNUP_RATE_LIMIT_PER_HOUR
+        );
+    }
+
+    /// AC2: a valid override is honored verbatim.
+    #[test]
+    fn signup_rate_limit_valid_override_is_honored() {
+        assert_eq!(parse_signup_rate_limit_per_hour(Some("100")), 100);
     }
 
     /// PRD-mcphost-code-tools-warm-pool AC7: the 30th call in a tenant's

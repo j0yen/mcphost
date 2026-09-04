@@ -54,6 +54,7 @@ cargo build --release
 | `MCPHOST_SECRET_KEY` | Passphrase, SHA-256-derived into an AES-256 key for tenant secrets | dev default (set a real one in production) |
 | `MCPHOST_LOG_LEVEL` | `tracing` filter, e.g. `info` | `info` |
 | `MCPHOST_REGISTRY_URL` | Enables `host.registry_publish` (P1) and names the registry API's base URL; `mcphost serve --registry-url <url>` takes precedence | unset (registry-publish disabled) |
+| `MCPHOST_SIGNUP_RATE_LIMIT_PER_HOUR` | Overrides the per-source-IP `signup` rate limit (PRD-mcphost-signup-rate-configurable) — raise it for a many-session measure run from one IP; absent or non-integer falls back to the default. Effective value is logged once at startup | `5` |
 
 `mcphost migrate` applies pending SQL migrations and exits. `mcphost version`
 prints the version and exits. `mcphost serve --registry-url <url>` is the
