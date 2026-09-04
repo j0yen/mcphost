@@ -22,21 +22,32 @@ impl Kind for EchoKind {
     }
 
     fn validate(&self, spec: &Value) -> Result<(), KindError> {
+        self.validate_all(spec)
+            .into_iter()
+            .next()
+            .map_or(Ok(()), Err)
+    }
+
+    fn validate_all(&self, spec: &Value) -> Vec<KindError> {
         // Messages below follow this crate's shared "<field>: <what was
         // expected>" convention (`errors::AppError::split_field`) so
         // `into_error_data` can derive a structured `field`/`expected`
         // (and, via the field-name lookup table, `example`) without any
         // special-casing here -- PRD-mcphost-publish-first-try requirement 2.
         if !spec.is_object() {
-            return Err(KindError::InvalidSpec("spec: must be a JSON object".into()));
+            return vec![KindError::InvalidSpec("spec: must be a JSON object".into())];
         }
-        let schema = spec
-            .get("schema")
-            .ok_or_else(|| KindError::InvalidSpec("spec.schema: is required".into()))?;
-        jsonschema::validator_for(schema).map_err(|e| {
-            KindError::InvalidSpec(format!("spec.schema: not a valid JSON Schema: {e}"))
-        })?;
-        Ok(())
+        match spec.get("schema") {
+            None => vec![KindError::InvalidSpec("spec.schema: is required".into())],
+            Some(schema) => jsonschema::validator_for(schema)
+                .err()
+                .map(|e| {
+                    vec![KindError::InvalidSpec(format!(
+                        "spec.schema: not a valid JSON Schema: {e}"
+                    ))]
+                })
+                .unwrap_or_default(),
+        }
     }
 
     fn describe(&self, spec: &Value) -> ToolDescriptor {
@@ -58,18 +69,10 @@ impl Kind for EchoKind {
     }
 
     fn example(&self) -> KindExample {
-        KindExample {
-            spec: json!({
-                "schema": {
-                    "type": "object",
-                    "properties": {"msg": {"type": "string"}},
-                    "required": ["msg"],
-                },
-            }),
-            call_args: json!({"msg": "hi"}),
-            blurb: "spec.schema is any JSON Schema; a call echoes back the arguments it \
-                was given, validated against it.",
-        }
+        // PRD-mcphost-publish-first-try requirement 6 / AC6: sourced from
+        // `docs/kinds/echo.md`, not hand-duplicated here -- see
+        // `crate::kinds::docs`.
+        super::docs::parse_kind_doc(include_str!("../../docs/kinds/echo.md"))
     }
 }
 

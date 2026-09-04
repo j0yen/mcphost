@@ -73,6 +73,89 @@ registry API base (e.g. `https://registry.modelcontextprotocol.io`):
    `namespace_unverified` (step 1 not done for this tenant), or
    `registry_rejected` (the registry API answered non-2xx).
 
+## Kinds
+
+Every registered kind's minimal example spec, below, and `host.tool_publish`'s
+on-wire description (visible from `tools/list` before signup) are both
+rendered from the same `docs/kinds/*.md` files (PRD-mcphost-publish-first-try
+requirement 6) -- `tests/publishfirsttry_ac06_docs_shared_source.rs`
+regenerates this section from those files and fails CI if it's drifted from
+what's checked in below. Call `host.quickstart(kind)` for the same example
+with your own namespace already filled in.
+
+<!-- kinds:start -->
+### `echo`
+
+spec.schema is any JSON Schema; a call echoes back the arguments it was given, validated against it.
+
+Example spec:
+
+```json
+{
+  "schema": {
+    "properties": {
+      "msg": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "msg"
+    ],
+    "type": "object"
+  }
+}
+```
+
+Example call arguments:
+
+```json
+{
+  "msg": "hi"
+}
+```
+
+### `http`
+
+url must be an absolute https URL; method and url are the only required fields -- args_schema is inferred from the url/header/body templates when omitted.
+
+Example spec:
+
+```json
+{
+  "method": "GET",
+  "url": "https://api.example.com/items/{{id}}"
+}
+```
+
+Example call arguments:
+
+```json
+{
+  "id": "123"
+}
+```
+
+### `python`
+
+only source is required -- args_schema and requirements are both inferred from it (tool-infer, v0.4.0); source must define main(args).
+
+Example spec:
+
+```json
+{
+  "source": "def main(args):\n    return {\"doubled\": args[\"n\"] * 2}\n"
+}
+```
+
+Example call arguments:
+
+```json
+{
+  "n": 3
+}
+```
+<!-- kinds:end -->
+
 ## Acceptance
 
 Every P0 acceptance criterion is paired with a real `cargo test` (integration

@@ -101,6 +101,22 @@ pub enum AppError {
         message: String,
         data: Value,
     },
+    /// Requirement 3 / AC2: two or more simultaneously-invalid fields from
+    /// one `Kind::validate_all` call, reported together instead of one per
+    /// publish attempt. Built only by [`AppError::from_kind_violations`],
+    /// never constructed directly -- `message` is a short summary computed
+    /// there ("N fields invalid: a, b"); `errors` holds each violation
+    /// already converted to its own `AppError` so [`Self::code`],
+    /// [`Self::field_and_expected`] and [`Self::into_error_data`] can reuse
+    /// the same per-field logic every other variant already has, keyed off
+    /// `errors[0]` for the top-level (back-compat) `error_code`/`field`/
+    /// `expected`/`example`, and `errors` in full for the new `data.errors`
+    /// array an agent should actually read.
+    #[error("{message}")]
+    MultiInvalid {
+        message: String,
+        errors: Vec<AppError>,
+    },
     #[error("call timed out after the 30s deadline")]
     CallTimeout,
     #[error("storage error: {0}")]
@@ -139,6 +155,9 @@ impl AppError {
             AppError::ArgsInvalid(_) => "args_invalid",
             AppError::SecretMissing(_) => "secret_missing",
             AppError::Structured { code, .. } => code,
+            AppError::MultiInvalid { errors, .. } => {
+                errors.first().map(AppError::code).unwrap_or("invalid_spec")
+            }
             AppError::CallTimeout => "call_timeout",
             AppError::Storage(_) => "storage",
             AppError::Internal(_) => "internal",
@@ -183,6 +202,10 @@ impl AppError {
                 "host_not_allowed" | "args_invalid" | "template_error" => ErrorCode::INVALID_PARAMS,
                 _ => ErrorCode::INTERNAL_ERROR,
             },
+            AppError::MultiInvalid { errors, .. } => errors
+                .first()
+                .map(AppError::jsonrpc_code)
+                .unwrap_or(ErrorCode::INVALID_PARAMS),
         }
     }
 
@@ -255,6 +278,14 @@ impl AppError {
                     .or_else(|| Some(message.clone()));
                 (field, expected)
             }
+            // Back-compat top-level field/expected (requirement 2): the
+            // first violation's own, same as if it had been the only one.
+            // Every violation (including this first one again) also gets
+            // its own entry in `into_error_data`'s `errors` array below.
+            AppError::MultiInvalid { errors, .. } => errors
+                .first()
+                .map(AppError::field_and_expected)
+                .unwrap_or((None, None)),
             _ => (None, None),
         }
     }
@@ -281,11 +312,61 @@ impl AppError {
         if let Some(example) = example {
             obj.insert("example".to_string(), example);
         }
+        // Requirement 3 / AC2: every simultaneously-failing field, not just
+        // the first -- one entry per violation, each with its own
+        // `field`/`expected`/`example` built the same way the top-level
+        // ones above are.
+        if let AppError::MultiInvalid { errors, .. } = &self {
+            let entries: Vec<Value> = errors
+                .iter()
+                .map(|e| {
+                    let (field, expected) = e.field_and_expected();
+                    let example = field.as_deref().and_then(field_example);
+                    let mut entry = Map::new();
+                    if let Some(field) = field {
+                        entry.insert("field".to_string(), json!(field));
+                    }
+                    if let Some(expected) = expected {
+                        entry.insert("expected".to_string(), json!(expected));
+                    }
+                    if let Some(example) = example {
+                        entry.insert("example".to_string(), example);
+                    }
+                    Value::Object(entry)
+                })
+                .collect();
+            obj.insert("errors".to_string(), Value::Array(entries));
+        }
         // Requirement 2 / requirement 4: every rejection names the
         // quickstart tool that gives the caller a filled-in working
         // example for whatever it was trying to publish.
         obj.insert("docs".to_string(), json!("host.quickstart"));
         ErrorData::new(jsonrpc_code, message, Some(Value::Object(obj)))
+    }
+
+    /// Requirement 3 / AC2: builds the single-field error exactly as before
+    /// when [`Kind::validate_all`](crate::kinds::Kind::validate_all) found
+    /// exactly one violation (unchanged wire shape -- every existing test
+    /// asserting on it keeps passing), or an [`AppError::MultiInvalid`]
+    /// carrying every violation at once when it found more than one, so
+    /// `host.tool_publish` reports every failing field in a single
+    /// rejection instead of one per attempt. `None` when `violations` is
+    /// empty (the spec is valid).
+    pub fn from_kind_violations(violations: Vec<KindError>) -> Option<AppError> {
+        let mut iter = violations.into_iter();
+        let first = AppError::from(iter.next()?);
+        let rest: Vec<AppError> = iter.map(AppError::from).collect();
+        if rest.is_empty() {
+            return Some(first);
+        }
+        let mut errors = vec![first];
+        errors.extend(rest);
+        let fields: Vec<String> = errors
+            .iter()
+            .filter_map(|e| e.field_and_expected().0)
+            .collect();
+        let message = format!("{} fields invalid: {}", errors.len(), fields.join(", "));
+        Some(AppError::MultiInvalid { message, errors })
     }
 }
 

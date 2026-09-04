@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 
 pub mod conformance;
+pub mod docs;
 pub mod echo;
 pub mod http;
 pub mod infer;
@@ -86,7 +87,12 @@ pub struct ToolDescriptor {
 pub struct KindExample {
     pub spec: Value,
     pub call_args: Value,
-    pub blurb: &'static str,
+    /// Owned, not `&'static str` (2026-09-04, requirement 6 / AC6): every
+    /// registered kind's real `example()` now derives this from its own
+    /// `docs/kinds/<name>.md` file via [`docs::parse_kind_doc`] rather than
+    /// a hand-duplicated literal, so the crate's README and the on-wire
+    /// description can't drift from each other -- see the `docs` module.
+    pub blurb: String,
 }
 
 /// Resolves one of the calling tenant's stored secrets by name.
@@ -195,6 +201,21 @@ pub trait Kind: Send + Sync {
     /// [`KindError::InvalidSpec`] naming what's wrong.
     fn validate(&self, spec: &Value) -> Result<(), KindError>;
 
+    /// Every simultaneously-failing field, not just the first (requirement 3
+    /// / AC2): a `Kind` that can cheaply check more than one field
+    /// independently should override this to collect every violation
+    /// instead of returning at the first with `?`, so `host.tool_publish`
+    /// reports every failing field in one round trip instead of one per
+    /// attempt. Defaults to running [`Kind::validate`] and wrapping its
+    /// single `Err` in a one-element vec (empty on `Ok`) -- every existing
+    /// `Kind` gets this for free with no behavior change until it opts in.
+    fn validate_all(&self, spec: &Value) -> Vec<KindError> {
+        match self.validate(spec) {
+            Ok(()) => Vec::new(),
+            Err(e) => vec![e],
+        }
+    }
+
     /// Deeper validation that needs to run out-of-process (PRD-mcphost-code-tools
     /// requirement 2: a `python` tool's source must be parsed and checked
     /// for `main` "in the sandbox, never in the host process", which means
@@ -234,7 +255,7 @@ pub trait Kind: Send + Sync {
         KindExample {
             spec: Value::Null,
             call_args: serde_json::json!({}),
-            blurb: "",
+            blurb: String::new(),
         }
     }
 
@@ -252,7 +273,12 @@ pub trait Kind: Send + Sync {
     /// for that kind rather than silently falling back to an ordinary call
     /// (which would defeat the "no calls row" guarantee `handler.rs` can't
     /// itself enforce for a kind it doesn't understand).
-    async fn tool_run(&self, _spec: &Value, _args: Value, _ctx: &CallCtx) -> Result<Value, KindError> {
+    async fn tool_run(
+        &self,
+        _spec: &Value,
+        _args: Value,
+        _ctx: &CallCtx,
+    ) -> Result<Value, KindError> {
         Err(KindError::structured(
             "tool_run_unsupported",
             "this tool's kind does not support host.tool_run",

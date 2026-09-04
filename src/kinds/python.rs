@@ -226,56 +226,64 @@ fn requirement_is_allowed(req: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
 }
 
-fn validate_requirements(reqs: &[String]) -> Result<(), KindError> {
+/// Requirement 3 / AC2: every `requirements` entry is checked independently
+/// -- collects every disallowed entry instead of stopping at the first --
+/// so [`PythonKind::validate_all`] can report them all in one rejection.
+fn validate_requirements_all(reqs: &[String]) -> Vec<KindError> {
+    let mut errors = Vec::new();
     if reqs.len() > MAX_REQUIREMENTS {
-        return Err(KindError::InvalidSpec(format!(
+        errors.push(KindError::InvalidSpec(format!(
             "requirements: at most {MAX_REQUIREMENTS} entries; got {}",
             reqs.len()
         )));
     }
     for req in reqs {
         if !requirement_is_allowed(req) {
-            return Err(KindError::structured_with(
+            errors.push(KindError::structured_with(
                 "requirement_not_allowed",
                 format!("requirements: '{req}' is not an allowed PyPI requirement"),
                 json!({"requirement": req}),
             ));
         }
     }
-    Ok(())
+    errors
 }
 
-fn validate_spec_fields(parsed: &PythonSpec) -> Result<(), KindError> {
+/// Requirement 3 / AC2: same fields [`validate_spec_fields`] checks, but
+/// collecting every violation instead of returning at the first with `?`.
+fn validate_spec_fields_all(parsed: &PythonSpec) -> Vec<KindError> {
+    let mut errors = Vec::new();
     if parsed.source.is_empty() {
-        return Err(KindError::InvalidSpec("source: must not be empty".into()));
-    }
-    if parsed.source.len() > MAX_SOURCE_BYTES {
-        return Err(KindError::InvalidSpec(format!(
+        errors.push(KindError::InvalidSpec("source: must not be empty".into()));
+    } else if parsed.source.len() > MAX_SOURCE_BYTES {
+        errors.push(KindError::InvalidSpec(format!(
             "source: {} bytes, over the {MAX_SOURCE_BYTES}-byte limit",
             parsed.source.len()
         )));
     }
-    validate_requirements(&parsed.requirements)?;
+    errors.extend(validate_requirements_all(&parsed.requirements));
     // Requirement 1: an author-supplied schema is checked exactly as
     // before; an absent one is left to `validate_async` (and later,
     // `describe`/`call`) to infer -- inference needs the sandboxed AST
     // check to have run first (AC16), which this synchronous fn can't do.
-    if let Some(schema) = &parsed.args_schema {
-        jsonschema::validator_for(schema).map_err(|e| {
-            KindError::InvalidSpec(format!("args_schema: not a valid JSON Schema: {e}"))
-        })?;
+    if let Some(schema) = &parsed.args_schema
+        && let Err(e) = jsonschema::validator_for(schema)
+    {
+        errors.push(KindError::InvalidSpec(format!(
+            "args_schema: not a valid JSON Schema: {e}"
+        )));
     }
     if let Some(t) = parsed.timeout_s
         && !(1..=MAX_TIMEOUT_S).contains(&t)
     {
-        return Err(KindError::InvalidSpec(format!(
+        errors.push(KindError::InvalidSpec(format!(
             "timeout_s: must be between 1 and {MAX_TIMEOUT_S}; got {t}"
         )));
     }
     if let Some(m) = parsed.memory_mb
         && !(1..=MAX_MEMORY_MB).contains(&m)
     {
-        return Err(KindError::InvalidSpec(format!(
+        errors.push(KindError::InvalidSpec(format!(
             "memory_mb: must be between 1 and {MAX_MEMORY_MB}; got {m}"
         )));
     }
@@ -283,11 +291,18 @@ fn validate_spec_fields(parsed: &PythonSpec) -> Result<(), KindError> {
         && n != "none"
         && n != "public"
     {
-        return Err(KindError::InvalidSpec(format!(
+        errors.push(KindError::InvalidSpec(format!(
             "network: must be 'none' or 'public'; got '{n}'"
         )));
     }
-    Ok(())
+    errors
+}
+
+fn validate_spec_fields(parsed: &PythonSpec) -> Result<(), KindError> {
+    validate_spec_fields_all(parsed)
+        .into_iter()
+        .next()
+        .map_or(Ok(()), Err)
 }
 
 // ---- publish-time source check, in the sandbox (requirement 2) ------------
@@ -848,7 +863,11 @@ fn spawn_warm_reaper(warm: Arc<WarmPool>) {
 /// gets them), so a tenant rotating a secret via `host.secret_set` between
 /// calls must be a fingerprint miss, not a reuse of a sandbox holding the
 /// old value.
-fn call_fingerprint(source: &str, requirements: &[String], secret_env: &[(String, String)]) -> String {
+fn call_fingerprint(
+    source: &str,
+    requirements: &[String],
+    secret_env: &[(String, String)],
+) -> String {
     let mut sorted = requirements.to_vec();
     sorted.sort();
     let mut sorted_secrets = secret_env.to_vec();
@@ -1055,7 +1074,9 @@ fn tool_run_response(outcome: SandboxOutcome, effective_schema: &Value, test_mod
                 stderr_tail.clone(),
             ),
             SandboxOutcome::Signaled {
-                signal, stderr_tail, ..
+                signal,
+                stderr_tail,
+                ..
             } => (None, -(*signal as i64), stderr_tail.clone()),
             SandboxOutcome::TimedOut { .. } => (None, -1, String::new()),
         };
@@ -1071,9 +1092,7 @@ fn tool_run_response(outcome: SandboxOutcome, effective_schema: &Value, test_mod
             "exit_code": fallback_exit_code,
             "result": Value::Null,
         });
-        if test_mode
-            && let Some(obj) = result.as_object_mut()
-        {
+        if test_mode && let Some(obj) = result.as_object_mut() {
             obj.insert("schema".to_string(), effective_schema.clone());
         }
         return result;
@@ -1095,7 +1114,10 @@ fn tool_run_response(outcome: SandboxOutcome, effective_schema: &Value, test_mod
             .get("kind")
             .and_then(Value::as_str)
             .unwrap_or("exception");
-        let message = envelope.get("message").and_then(Value::as_str).unwrap_or("");
+        let message = envelope
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("");
         let traceback = envelope
             .get("traceback")
             .and_then(Value::as_str)
@@ -1121,9 +1143,7 @@ fn tool_run_response(outcome: SandboxOutcome, effective_schema: &Value, test_mod
         "exit_code": if ok { 0 } else { 1 },
         "result": result,
     });
-    if test_mode
-        && let Some(obj) = result_obj.as_object_mut()
-    {
+    if test_mode && let Some(obj) = result_obj.as_object_mut() {
         obj.insert("schema".to_string(), effective_schema.clone());
     }
     result_obj
@@ -1313,7 +1333,12 @@ impl PythonKind {
 
     /// Test constructor: a short TTL and small bounds so the warm-pool ACs
     /// (AC1/AC2/AC5/AC8) don't need a real 60s wait or 16 real sandboxes.
-    pub fn for_test_with_warm_pool(data_dir: &Path, ttl: Duration, per_tenant: usize, max_total: usize) -> Self {
+    pub fn for_test_with_warm_pool(
+        data_dir: &Path,
+        ttl: Duration,
+        per_tenant: usize,
+        max_total: usize,
+    ) -> Self {
         Self::build(
             data_dir,
             sandbox::detect_mechanism(),
@@ -1597,6 +1622,13 @@ impl Kind for PythonKind {
     fn validate(&self, spec: &Value) -> Result<(), KindError> {
         let parsed = parse_spec(spec)?;
         validate_spec_fields(&parsed)
+    }
+
+    fn validate_all(&self, spec: &Value) -> Vec<KindError> {
+        match parse_spec(spec) {
+            Ok(parsed) => validate_spec_fields_all(&parsed),
+            Err(e) => vec![e],
+        }
     }
 
     async fn validate_async(&self, spec: &Value) -> Result<(), KindError> {
@@ -1954,14 +1986,10 @@ impl Kind for PythonKind {
     }
 
     fn example(&self) -> KindExample {
-        KindExample {
-            spec: json!({
-                "source": "def main(args):\n    return {\"doubled\": args[\"n\"] * 2}\n",
-            }),
-            call_args: json!({"n": 3}),
-            blurb: "only source is required -- args_schema and requirements are both \
-                inferred from it (tool-infer, v0.4.0); source must define main(args).",
-        }
+        // PRD-mcphost-publish-first-try requirement 6 / AC6: sourced from
+        // `docs/kinds/python.md`, not hand-duplicated here -- see
+        // `crate::kinds::docs`.
+        super::docs::parse_kind_doc(include_str!("../../docs/kinds/python.md"))
     }
 }
 
@@ -2039,7 +2067,11 @@ mod tests {
         let b = call_fingerprint("def main(args):\n    return {'x': 1}\n", &[], &[]);
         assert_ne!(a, b, "different source must fingerprint differently");
 
-        let c = call_fingerprint("def main(args):\n    return {}\n", &["requests".into()], &[]);
+        let c = call_fingerprint(
+            "def main(args):\n    return {}\n",
+            &["requests".into()],
+            &[],
+        );
         assert_ne!(a, c, "different requirements must fingerprint differently");
 
         let d = call_fingerprint(
@@ -2156,7 +2188,11 @@ mod tests {
         call_through_build(&kind, &spec, json!({}), &ctx)
             .await
             .expect("cold call must succeed");
-        assert_eq!(kind.warm_metrics().2, 1, "the cold call must have seeded the pool");
+        assert_eq!(
+            kind.warm_metrics().2,
+            1,
+            "the cold call must have seeded the pool"
+        );
 
         // Exercises `WarmPool::reap_expired` directly rather than waiting
         // out the real (5s-interval) background reaper task -- same
@@ -2271,7 +2307,11 @@ mod tests {
         call_through_build(&kind, &spec, json!({"slow": false}), &ctx)
             .await
             .expect("cold call must succeed");
-        assert_eq!(kind.warm_metrics().2, 1, "the fast call must have seeded the pool");
+        assert_eq!(
+            kind.warm_metrics().2,
+            1,
+            "the fast call must have seeded the pool"
+        );
 
         let started = Instant::now();
         let err = kind
