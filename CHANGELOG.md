@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.11.0 — 2026-09-04
+
+The first live session to complete the five-minute path spent 83 of its 117 seconds on
+four rejected `host_tool_publish` calls before the fifth was accepted. This release adds
+requirement 3's multi-error aggregation (host.tool_publish now reports every
+simultaneously-invalid field at once, with field/expected/example for each, instead of
+one rejection per attempt) and requirement 6's shared docs source (each kind's example
+spec/blurb is parsed at compile time from docs/kinds/<name>.md, and README.md's Kinds
+section is regenerated from and tested against the same files, so the two can't drift).
+
 ## v0.10.0 — 2026-09-04
 
 The Python kind shipped in v0.3.0 with two P1 items deferred: a warm pool so a repeated
