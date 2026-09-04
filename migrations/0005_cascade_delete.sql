@@ -1,3 +1,7 @@
+-- compat: previous -- PRD-mcphost-migration-safety requirement 4: the previous
+-- release reads the same columns in every rebuilt table; only the foreign-key
+-- clauses (ON DELETE CASCADE) change, plus a wholly new admin_events table an
+-- old release simply never queries.
 -- mcphost 0005_cascade_delete: PRD-mcphost-tenant-delete requirements 3/4.
 --
 -- SQLite cannot ALTER a foreign key in place, so each child table that
