@@ -1395,6 +1395,7 @@ dependencies = [
  "http",
  "jsonschema",
  "libc",
+ "mcphost",
  "minijinja",
  "proptest",
  "rand 0.8.8",

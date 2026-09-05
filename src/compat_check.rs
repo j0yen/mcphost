@@ -45,9 +45,10 @@ impl std::fmt::Display for CompatCheckFailure {
 
 impl std::error::Error for CompatCheckFailure {}
 
-/// A scratch directory under the OS temp dir, removed on drop -- same
-/// pattern as the integration tests' `TempDataDir`, but living in `src/`
-/// since the CLI needs it outside `#[cfg(test)]`.
+/// A scratch directory under `std::env::temp_dir()`, removed on drop --
+/// same pattern as the integration tests' `TempDataDir`, but living in
+/// `src/` because `mcphost migrate --check-compat` runs this in production
+/// (via the real CLI binary), not only under `cargo test`.
 struct ScratchDir(PathBuf);
 
 impl ScratchDir {

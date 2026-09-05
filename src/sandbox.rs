@@ -937,9 +937,20 @@ impl SandboxStatus {
 /// Requirement 8 / AC9: maps a failed probe's stderr tail onto one of the
 /// stable tokens the deploy tool can match on. Matched against the exact
 /// messages this crate's own "Technical considerations" section recorded
-/// from the hub (`uid map`/`gid map`, `RTM_NEWADDR`/`loopback`) plus the
-/// generic "no such file or directory" a wrapper reports when it can't
-/// `execvp` the interpreter it was told to run.
+/// from the hub (`uid map`/`gid map`, `RTM_NEWADDR`/`loopback`) plus the two
+/// causes bwrap's own "No such file or directory" text can mean --
+/// PRD-mcphost-classify-precision: that bare substring alone is ambiguous
+/// (the reviewer's counter-attack at 5fda62b: a missing bind-mount *source*
+/// -- an ephemeral host dir, a provisioning race -- produced the same text
+/// as a genuinely missing interpreter and got misclassified as
+/// `interpreter_missing`), so `interpreter_missing` now requires evidence
+/// naming the exec target itself (`execvp`/`execve`) and a bind-mount
+/// failure requires its own frame (`can't bind mount` / `can't bind-mount`).
+/// Ordered by specificity: `userns_denied`'s frames first (unambiguous),
+/// then the bind-mount frame (per PRD requirement 45, mount wins over a
+/// bare interpreter guess when *its* frame is present), then the exec
+/// frame; anything else -- including the bare "no such file or directory"
+/// with neither frame -- falls to `other` rather than guessing.
 fn classify_stderr(stderr_tail: &str) -> &'static str {
     let s = stderr_tail.to_lowercase();
     if s.contains("uid map")
@@ -950,11 +961,32 @@ fn classify_stderr(stderr_tail: &str) -> &'static str {
         || s.contains("loopback")
     {
         "userns_denied"
-    } else if s.contains("no such file or directory") {
+    } else if is_bind_mount_source_missing(&s) {
+        "mount_source_missing"
+    } else if is_interpreter_exec_missing(&s) {
         "interpreter_missing"
     } else {
         "other"
     }
+}
+
+/// `true` for bwrap's own report that a bind mount's *source* doesn't exist
+/// on the host, e.g. `"bwrap: Can't bind mount /usr/lib/python3.12: No such
+/// file or directory"` -- the exact shape AC1 pins. `lowercased_stderr` is
+/// already lowercased by the caller so both checks share one pass.
+fn is_bind_mount_source_missing(lowercased_stderr: &str) -> bool {
+    (lowercased_stderr.contains("bind mount") || lowercased_stderr.contains("bind-mount"))
+        && lowercased_stderr.contains("no such file or directory")
+}
+
+/// `true` only when the stderr names the exec target directly -- bwrap's
+/// `execvp`/`execve` failure, e.g. `"bwrap: execvp /usr/bin/python3: No
+/// such file or directory"`. This is the fix: previously *any* "no such
+/// file or directory" text qualified, which is what let a bind-mount-source
+/// failure masquerade as a missing interpreter.
+fn is_interpreter_exec_missing(lowercased_stderr: &str) -> bool {
+    (lowercased_stderr.contains("execvp") || lowercased_stderr.contains("execve"))
+        && lowercased_stderr.contains("no such file or directory")
 }
 
 #[cfg(test)]
@@ -1010,6 +1042,75 @@ mod selftest_tests {
         assert!(status.detail.starts_with("interpreter_missing:"));
     }
 
+    // PRD-mcphost-classify-precision AC1: the reviewer's counter-attack at
+    // 5fda62b, turned into a test. bwrap failing on a missing bind-mount
+    // *source* -- not the interpreter -- must not be misclassified as
+    // interpreter_missing, even though both share the bare "no such file or
+    // directory" substring and python3 is otherwise present on the box.
+    #[test]
+    fn classifies_missing_bind_mount_source_as_mount_source_missing_not_interpreter() {
+        let status = SandboxStatus::from_probe(
+            IsolationMechanism::Bwrap,
+            nonzero("bwrap: Can't bind mount /usr/lib/python3.12: No such file or directory"),
+        );
+        assert!(status.detail.starts_with("mount_source_missing:"));
+        assert!(!status.detail.starts_with("interpreter_missing:"));
+        assert!(status.detail.contains("/usr/lib/python3.12"));
+    }
+
+    // AC3 / edge case: ambiguous "no such file or directory" text carrying
+    // neither a bind-mount frame nor an interpreter-exec frame must not
+    // guess -- it falls to `other`.
+    #[test]
+    fn classifies_ambiguous_enoent_as_other() {
+        let status = SandboxStatus::from_probe(
+            IsolationMechanism::Bwrap,
+            nonzero("some/path: No such file or directory"),
+        );
+        assert!(status.detail.starts_with("other:"));
+    }
+
+    // Edge case: both an interpreter-exec frame and a bind-mount frame
+    // present in the same tail -- the bind-mount frame wins because it's
+    // the more specific, unambiguous evidence (requirement 45).
+    #[test]
+    fn mount_frame_wins_over_interpreter_frame_when_both_present() {
+        let status = SandboxStatus::from_probe(
+            IsolationMechanism::Bwrap,
+            nonzero(
+                "bwrap: execvp /usr/bin/python3 failed elsewhere; \
+                 Can't bind mount /usr/lib/python3.12: No such file or directory",
+            ),
+        );
+        assert!(status.detail.starts_with("mount_source_missing:"));
+    }
+
+    // AC6: empty stderr never panics and classifies as `other`.
+    #[test]
+    fn classifies_empty_stderr_as_other_without_panicking() {
+        let status = SandboxStatus::from_probe(IsolationMechanism::Bwrap, nonzero(""));
+        assert!(status.detail.starts_with("other:"));
+    }
+
+    // AC10: non-UTF8 bytes in the raw stderr stream go through `tail_str`'s
+    // lossy conversion (this module's own boundary between raw child bytes
+    // and the `&str` `classify_stderr` operates on) before classification;
+    // the result must not panic and must be a defined kind.
+    #[test]
+    fn classifies_non_utf8_stderr_bytes_without_panicking() {
+        let raw: &[u8] = b"bwrap: execvp /usr/bin/python3\xFF\xFE: No such file or directory";
+        let lossy = tail_str(raw);
+        assert!(lossy.contains('\u{FFFD}'), "lossy conversion must have run");
+        let status = SandboxStatus::from_probe(IsolationMechanism::Bwrap, nonzero(&lossy));
+        assert!(!status.ready);
+        for token in ["userns_denied", "mount_source_missing", "interpreter_missing", "other"] {
+            if status.detail.starts_with(&format!("{token}:")) {
+                return;
+            }
+        }
+        panic!("classification did not return a defined kind: {}", status.detail);
+    }
+
     #[test]
     fn classifies_spawn_failure_as_binary_missing() {
         let status = SandboxStatus::from_probe(
@@ -1040,6 +1141,85 @@ mod selftest_tests {
         let long = "x".repeat(1000);
         let status = SandboxStatus::from_probe(IsolationMechanism::Bwrap, nonzero(&long));
         assert!(status.detail.chars().count() <= 200);
+    }
+}
+
+// PRD-mcphost-classify-precision P2 / AC9: proptest density seed. Both
+// `classify_stderr` and `is_within` are pure functions over caller-adjacent
+// text (arbitrary child stderr) or paths (a scratch/env directory name,
+// per `is_within`'s own doc comment), so both are exactly the shape this
+// audit's density check wants covered.
+#[cfg(test)]
+mod classify_proptests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// `classify_stderr` is total and never panics for any stderr text
+        /// a child process could produce (AC9: "arbitrary byte-string
+        /// stderr inputs" -- proptest's `\PC*` already covers arbitrary
+        /// valid-Unicode text; `classify_stderr` never sees raw bytes
+        /// directly since `tail_str` lossy-converts first, see
+        /// `classifies_non_utf8_stderr_bytes_without_panicking` above for
+        /// the raw-bytes boundary).
+        #[test]
+        fn classify_stderr_is_total_and_never_panics(s in "\\PC{0,500}") {
+            let token = classify_stderr(&s);
+            prop_assert!(
+                matches!(token, "userns_denied" | "mount_source_missing" | "interpreter_missing" | "other"),
+                "unexpected token: {token}"
+            );
+        }
+
+        /// A bind-mount frame combined with "no such file or directory"
+        /// always classifies as `mount_source_missing`, regardless of what
+        /// surrounds it (AC1's invariant, generalized).
+        #[test]
+        fn any_bind_mount_frame_with_enoent_classifies_as_mount_source_missing(
+            prefix in "\\PC{0,50}",
+            path in "/[a-zA-Z0-9/_.-]{1,80}",
+            suffix in "\\PC{0,50}",
+        ) {
+            let stderr = format!("{prefix} can't bind mount {path}: no such file or directory {suffix}");
+            prop_assert_eq!(classify_stderr(&stderr), "mount_source_missing");
+        }
+    }
+}
+
+#[cfg(test)]
+mod is_within_proptests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// A root is always within itself.
+        #[test]
+        fn root_is_within_itself(segs in prop::collection::vec("[a-zA-Z0-9_-]{1,12}", 0..4)) {
+            let mut root = PathBuf::from("/tmp/mcphost-proptest-root");
+            for seg in &segs {
+                root.push(seg);
+            }
+            prop_assert!(is_within(&root, &root));
+        }
+
+        /// Any single child segment appended to root stays within root --
+        /// the exact case `python.rs` uses `is_within` to check (a
+        /// caller-influenced scratch/env directory name under a fixed
+        /// root).
+        #[test]
+        fn child_of_root_is_within_root(child in "[a-zA-Z0-9_-]{1,32}") {
+            let root = PathBuf::from("/tmp/mcphost-proptest-root");
+            let path = root.join(&child);
+            prop_assert!(is_within(&root, &path));
+        }
+
+        /// A path under a disjoint sibling root is never within root.
+        #[test]
+        fn disjoint_sibling_is_not_within_root(child in "[a-zA-Z0-9_-]{1,32}") {
+            let root = PathBuf::from("/tmp/mcphost-proptest-root-a");
+            let other = PathBuf::from("/tmp/mcphost-proptest-root-b").join(&child);
+            prop_assert!(!is_within(&root, &other));
+        }
     }
 }
 

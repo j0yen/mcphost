@@ -44,9 +44,25 @@ futures-util = { version = "0.3.34", default-features = false, features = ["std"
 # process-group signalling (killpg/setsid) and `/proc` resource sampling.
 libc = "0.2"
 
+[features]
+# PRD-mcphost-classify-precision: gates PythonKind's test-only selftest
+# constructor/setters (`for_test_with_selftest`,
+# `set_selftest_interpreter_for_test`, `set_selftest_missing_binary_for_test`)
+# so they're unreachable from an ordinary `cargo build`/default-features
+# consumer of this lib. `cfg(test)` alone hides them from `tests/*.rs`
+# integration tests too (those link the lib built *without* `--cfg test`),
+# so this feature is what those tests enable instead -- see the
+# self-referential `[dev-dependencies]` entry below. Must never be pulled
+# in by `default` (the existing supply-chain audit denies that).
+test-support = []
+
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }
 proptest = "1"
 # AC19: mocks the registry API in tests/ac19_registry_publish.rs (the
 # fleet's standard HTTP-mock crate).
 wiremock = "0.6"
+# Self-dependency (standard Cargo idiom): enables `test-support` only for
+# the lib crate integration tests (`tests/*.rs`) link against, without
+# leaking it into `default` for ordinary consumers/binaries.
+mcphost = { path = ".", features = ["test-support"] }

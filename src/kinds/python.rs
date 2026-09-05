@@ -1691,6 +1691,14 @@ impl PythonKind {
     /// unready states (see `SandboxSelftest::interval`'s doc comment for
     /// why one instance-level override, not the production env var, is how
     /// this crate's tests exercise a fast periodic recheck).
+    ///
+    /// PRD-mcphost-classify-precision: gated behind `cfg(test)` (this
+    /// crate's own unit tests) or the `test-support` feature (this crate's
+    /// `tests/*.rs` integration tests, which link the lib built *without*
+    /// `--cfg test` -- see the `[dev-dependencies]` self-reference in
+    /// `Cargo.toml`) so it is not reachable from an ordinary
+    /// default-features consumer of this lib.
+    #[cfg(any(test, feature = "test-support"))]
     pub fn for_test_with_selftest(data_dir: &Path, recheck_secs: u64) -> Self {
         let mut kind = Self::build(
             data_dir,
@@ -1725,6 +1733,10 @@ impl PythonKind {
     /// the real `/usr/bin/python3` (AC5's "swap the injected interpreter
     /// back to a working one"), or a script that writes to stderr and exits
     /// non-zero to simulate a specific failure (AC1/AC6/AC9).
+    ///
+    /// PRD-mcphost-classify-precision: gated the same way as
+    /// [`Self::for_test_with_selftest`] (`cfg(test)` or `test-support`).
+    #[cfg(any(test, feature = "test-support"))]
     pub fn set_selftest_interpreter_for_test(&self, body: Option<&str>) {
         let interpreter = match body {
             None => SelftestInterpreter::RealPython3,
@@ -1735,6 +1747,10 @@ impl PythonKind {
 
     /// Test-only (AC9's "missing bwrap" case): the next probe's `RunSpec`
     /// fails at `Command::spawn()` itself.
+    ///
+    /// PRD-mcphost-classify-precision: gated the same way as
+    /// [`Self::for_test_with_selftest`] (`cfg(test)` or `test-support`).
+    #[cfg(any(test, feature = "test-support"))]
     pub fn set_selftest_missing_binary_for_test(&self) {
         self.selftest
             .set_interpreter(SelftestInterpreter::MissingBinarySpawnFailure);
