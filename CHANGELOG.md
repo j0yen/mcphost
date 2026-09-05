@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.13.2 — 2026-09-05
+
+The 2026-09-05 gate reviewer (receipt at 5fda62b) wrote a concrete counter-attack: bwrap failing on a missing bind-mount source emits "No such file or directory", and `classify_stderr`'s substring branch tags it `interpreter_missing` even when python3 is present — sending an operator to reinstall an interpreter that was never the problem. Publish failures are the fleet's dominant defect family (9 of 21 sessions on the last measurement); misnaming their cause corrupts the one diagnostic signal the loop now captures. This PRD makes the classification precise and cleans up the reviewer's three adjacent concerns in the same pass.
+
 ## v0.13.1 — 2026-09-05
 
 The 2026-09-05 reviewer receipt documents that the sandbox-ready suites finished in 0.00 s on the hosted runner: require_user_namespaces_or_ci_skip() short-circuits whenever CI=true, so the green CI badge never exercises the PRD-mcphost-sandbox-ready behavior it appears to certify. Make CI capable (userns available in the job) and make the skip a capability probe, so a hosted-runner regression in sandbox behavior turns CI red.
