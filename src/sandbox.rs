@@ -799,8 +799,7 @@ impl PersistentSandbox {
     /// once killed, a sandbox is never reused (the pool must not hand out a
     /// dead or dying entry).
     pub async fn kill(mut self) {
-        // SAFETY: pid is this sandbox's own process-group leader (set via
-        // pre_exec_setup's setsid), same as run()'s timeout-kill path.
+        // SAFETY: pid is this sandbox's own process-group leader (setsid via pre_exec_setup), same as run()'s timeout-kill path.
         unsafe {
             libc::killpg(self.pid, libc::SIGKILL);
         }
