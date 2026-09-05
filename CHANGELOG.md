@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.13.1 — 2026-09-05
+
+The 2026-09-05 reviewer receipt documents that the sandbox-ready suites finished in 0.00 s on the hosted runner: require_user_namespaces_or_ci_skip() short-circuits whenever CI=true, so the green CI badge never exercises the PRD-mcphost-sandbox-ready behavior it appears to certify. Make CI capable (userns available in the job) and make the skip a capability probe, so a hosted-runner regression in sandbox behavior turns CI red.
+
 ## v0.13.0 — 2026-09-04
 
 On the deployed host, every python-kind publish fails with an internal error, and has since the
