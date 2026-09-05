@@ -170,6 +170,21 @@ tests under `tests/` spin up the server on an ephemeral port against a temp
 `$MCPHOST_DATA_DIR`), except AC11 which is hardware-dependent and is
 recorded as a smoke result below.
 
+### Sandbox suite: user namespace requirement
+
+The `python` kind's sandbox suites (`tests/sandboxready_*`, `python_ac*`,
+`infer_ac*`, `warmpool_ac*`, `ac17_kind_conformance`) spawn real `bwrap`/
+`unshare` isolation and need unprivileged user namespaces
+(`unshare --user --map-root-user -- true` must succeed) to run for real. If
+your box denies that (Ubuntu's default AppArmor policy on some kernels, some
+container runtimes), running `cargo test` fails loudly by design outside
+CI, naming the fix: `sysctl kernel.unprivileged_userns_clone=1` on older
+kernels, or `sysctl kernel.apparmor_restrict_unprivileged_userns=0` on
+Ubuntu 24.04+. See `sandbox::require_user_namespaces_or_ci_skip`'s doc
+comment for the full contract, and `.github/workflows/ci.yml` for how the
+hosted CI runner grants the same capability (PRD-mcphost-ci-sandbox-coverage)
+instead of silently skipping.
+
 | AC | Requirement | Test |
 |---|---|---|
 | 1 (P0) | Unauthenticated `tools/list` shows only `signup`; response carries `MCP-Protocol-Version` | `tests/ac01_unauthenticated_lists_signup.rs` |

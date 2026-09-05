@@ -40,8 +40,64 @@ jobs:
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      # PRD-mcphost-ci-sandbox-coverage. Ubuntu 24.04 runner images restrict
+      # unprivileged CLONE_NEWUSER via AppArmor by default
+      # (kernel.apparmor_restrict_unprivileged_userns=1), which makes both
+      # `bwrap` and `unshare -Urn` fail even with the binaries installed --
+      # the sandbox suites' capability probe (`sandbox::supports_user_namespaces`)
+      # then genuinely reports "unavailable" and every sandbox test skips via
+      # `require_user_namespaces_or_ci_skip`'s CI branch, so a green run never
+      # actually exercised the isolation code. This step grants the capability
+      # for real, runner-session-only and reversible (the runner VM is
+      # destroyed after the job either way). Best-effort (`|| true`): a
+      # forked-PR job or a future image without this sysctl must still run
+      # rather than hard-fail here -- the non-vacuous assertion step below is
+      # what actually catches a runner that can't do this.
+      - name: enable unprivileged user namespaces for the sandbox suites
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+
+      # PRD-mcphost-ci-sandbox-coverage P1. The sandbox suites (sandboxready_*,
+      # python_ac*, infer_ac*, warmpool_ac*, ac17_kind_conformance) are now
+      # part of every `cargo test --workspace` run rather than skipping, so
+      # this measures and logs the whole step's wall time as a superset bound
+      # on their added cost (a tighter per-suite figure needs `cargo test`'s
+      # own per-binary timing, not available on stable without extra tooling).
+      # A run over 5 minutes doesn't fail the job -- it's a signal to split
+      # the sandbox suites into their own parallel job in a follow-up, per
+      # the PRD's P1 requirement, once a real number exists to act on.
       - name: cargo test
-        run: cargo test --workspace
+        run: |
+          set -o pipefail
+          start=$(date +%s)
+          cargo test --workspace -- --nocapture 2>&1 | tee /tmp/cargo-test.log
+          status=$?
+          elapsed=$(( $(date +%s) - start ))
+          echo "cargo test wall time: ${elapsed}s" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$elapsed" -gt 300 ]; then
+            echo "::warning::cargo test --workspace took ${elapsed}s (>5min); consider splitting the sandbox suites into a parallel job (PRD-mcphost-ci-sandbox-coverage P1)."
+          fi
+          exit "$status"
+
+      # PRD-mcphost-ci-sandbox-coverage P0#3. `require_user_namespaces_or_ci_skip`
+      # skips cleanly (does not fail the test binary) whenever CI lacks the
+      # capability, which means a runner image regression that silently drops
+      # userns support would otherwise still show cargo test's own summary as
+      # all-green. Fail the job explicitly instead: any sandbox test that
+      # printed its "skipped: no user namespaces" line means the suites did
+      # not run for real this time, and that must turn CI red, not stay green.
+      - name: assert sandbox suites executed for real (non-vacuous)
+        run: |
+          skipped=$(grep -c "skipped: no user namespaces" /tmp/cargo-test.log || true)
+          executed=$(grep -c '^test .* \.\.\. ok$' /tmp/cargo-test.log || true)
+          echo "sandbox suite non-vacuous check: skipped=$skipped total-executed-ok=$executed"
+          if [ "$skipped" -gt 0 ]; then
+            echo "::error::$skipped sandbox test(s) skipped for capability reasons on a runner that this workflow just granted unprivileged user namespaces to -- the sandbox suites did not run for real. See PRD-mcphost-ci-sandbox-coverage."
+            exit 1
+          fi
+          if [ "$executed" -eq 0 ]; then
+            echo "::error::cargo test reported zero executed ('... ok') tests -- the suite did not run at all."
+            exit 1
+          fi
 
       - name: cargo deny check
         run: cargo deny check
