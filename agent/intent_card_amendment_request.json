@@ -1,0 +1,24 @@
+{
+  "schema": "autobuilder.intent_card_amendment_request.v1",
+  "requested_at": "2026-09-05T00:15:00Z",
+  "amends": "agent/intent-card.json (intent_slug mcphost-protocol-compat)",
+  "reason": "The checked-in intent card still describes the protocol-compat work (PRD-mcphost-gate-green), which shipped and went green before v0.12.0. Later extends landed under their own PRDs without refreshing the card. This request records the drift and its approval so the reviewer scope-check has its documented amendment.",
+  "scope_additions": [
+    {
+      "slug": "mcphost-sandbox-ready",
+      "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-sandbox-ready.md",
+      "landed": "v0.13.0 (commit 96c1e4e)",
+      "summary": "sandbox self-test, /healthz sandbox_ready field, first-try sandbox_unavailable rejection; 19 acceptance tests green per proof receipt at dcdb87e"
+    },
+    {
+      "slug": "safety-comment-reflow",
+      "landed": "dcdb87e",
+      "summary": "comment-only reflow of PersistentSandbox::kill SAFETY comment onto one line so the BAD_RUST single-line detector sees it; no code change"
+    }
+  ],
+  "approval": {
+    "approved_by": "Joe Yen",
+    "channel": "interactive Claude Code session, carbon, 2026-09-04/05",
+    "record": "Joe directed the gate fix explicitly: chose comment fix over history rewrite, approved proceeding without further confirmation."
+  }
+}
