@@ -774,10 +774,11 @@ fn ensure_uv_discoverable_for_test() {
         let mut dirs: Vec<PathBuf> = vec![uv_dir];
         dirs.extend(std::env::split_paths(&existing));
         if let Ok(joined) = std::env::join_paths(dirs) {
-            // SAFETY: `Once` guarantees this runs at most once, and only
-            // ever prepends a directory to `$PATH` -- see the doc comment
-            // above for why no other test-owned code can be racing a read
-            // of `$PATH` at this point in a test's lifetime.
+            // `Once` guarantees this runs at most once, and it only ever
+            // prepends a directory to `$PATH` -- see the doc comment above
+            // for why no other test-owned code can be racing a read of
+            // `$PATH` at this point in a test's lifetime.
+            // SAFETY: single-shot, prepend-only mutation with no concurrent readers.
             unsafe {
                 std::env::set_var("PATH", joined);
             }
