@@ -343,6 +343,13 @@ enum SelftestInterpreter {
     /// the interpreter's *behavior* is faked, letting a test reproduce
     /// e.g. the hub's exact `RTM_NEWADDR` stderr on a box where bwrap
     /// actually works.
+    ///
+    /// PRD-mcphost-classify-precision: gated the same way as the
+    /// constructors that are this variant's only source (`Self::Fake` is
+    /// built only in `set_selftest_interpreter_for_test`) -- an ungated
+    /// variant is "constructed" nowhere in a default-features build, which
+    /// `-D warnings` correctly flags as dead code.
+    #[cfg(any(test, feature = "test-support"))]
     Fake(String),
     /// Test-only (AC9's "missing bwrap/unshare" case): a nonexistent
     /// interpreter path run with `IsolationMechanism::None` (no real
@@ -351,6 +358,9 @@ enum SelftestInterpreter {
     /// a shared dev/CI box to reproduce a genuinely-missing wrapper binary,
     /// so this exercises the same spawn-level-`Err` code path a missing
     /// wrapper would take (`SandboxStatus::from_probe`'s `Err` arm).
+    ///
+    /// PRD-mcphost-classify-precision: gated the same way as `Fake` above.
+    #[cfg(any(test, feature = "test-support"))]
     MissingBinarySpawnFailure,
 }
 
@@ -382,6 +392,7 @@ async fn build_ast_check_spec(
             isolation,
             system_python_dirs(),
         ),
+        #[cfg(any(test, feature = "test-support"))]
         SelftestInterpreter::Fake(body) => {
             let fake_path = scratch.join("fake_interpreter.sh");
             tokio::fs::write(&fake_path, body).await?;
@@ -391,6 +402,7 @@ async fn build_ast_check_spec(
             tokio::fs::set_permissions(&fake_path, perms).await?;
             (fake_path, Vec::new(), isolation, system_python_dirs())
         }
+        #[cfg(any(test, feature = "test-support"))]
         SelftestInterpreter::MissingBinarySpawnFailure => (
             PathBuf::from("/nonexistent/mcphost-sandboxready-missing-binary"),
             Vec::new(),
@@ -533,6 +545,14 @@ impl SandboxSelftest {
             .clone()
     }
 
+    /// Test-only: this method's only callers
+    /// (`set_selftest_interpreter_for_test`,
+    /// `set_selftest_missing_binary_for_test`) are themselves gated behind
+    /// `cfg(test)`/`test-support`, so a default-features build never calls
+    /// it -- gate it the same way rather than leaving it dead.
+    ///
+    /// PRD-mcphost-classify-precision.
+    #[cfg(any(test, feature = "test-support"))]
     fn set_interpreter(&self, interpreter: SelftestInterpreter) {
         *self.interpreter.write().unwrap_or_else(|e| e.into_inner()) = interpreter;
     }
