@@ -699,6 +699,72 @@ fn failed_marker(env_dir: &Path) -> PathBuf {
     env_dir.join(".failed")
 }
 
+/// True if `bin` resolves via the process's current `$PATH` -- the same
+/// lookup `std::process::Command` itself does when given a bare program
+/// name, duplicated here so [`ensure_uv_discoverable_for_test`] can check
+/// before mutating anything.
+fn resolves_on_path(bin: &str) -> bool {
+    std::env::var_os("PATH")
+        .map(|path| std::env::split_paths(&path).any(|dir| dir.join(bin).is_file()))
+        .unwrap_or(false)
+}
+
+/// Test-only fixture: makes `uv` discoverable via `$PATH` for the rest of
+/// this process, if it is not already.
+///
+/// `run_build_steps` below spawns `uv` (bare name, PATH-resolved) to build
+/// each test's real warm-pool sandbox environment -- there is no test
+/// double for it, by design (these are AC1-5 correctness tests for the
+/// warm pool itself, not for `uv`). `uv`'s official installer places the
+/// binary in `~/.local/bin`, which only a *login* shell's rc file adds to
+/// `$PATH`; a bare non-login invocation of `cargo test` (e.g. over
+/// `ssh host cargo test`, or from a harness that execs cargo directly)
+/// inherits a `$PATH` without it, so the very first cold call in any of
+/// these tests fails to spawn `uv` with `ENOENT` -- deterministically,
+/// regardless of test order, since nothing else in this process ever
+/// changes `$PATH` on its behalf. Confirmed by reproducing the reported
+/// failure with `env -i PATH=<default, no ~/.local/bin> cargo test`.
+///
+/// This is additive-only (it only prepends a directory to the existing
+/// `$PATH`, never removes or overrides anything already resolvable) and
+/// runs at most once per process via [`std::sync::Once`], called from the
+/// very first line of [`PythonKind::for_test_with_warm_pool`] -- i.e.
+/// before any of these tests has had a chance to reach an actual `spawn`
+/// several `await`s later (semaphore/build-queue acquire, then
+/// `tokio::fs::create_dir_all`), so the mutation is settled well before
+/// any concurrently-running sibling test could be spawning a process that
+/// reads `$PATH`.
+fn ensure_uv_discoverable_for_test() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        if resolves_on_path("uv") {
+            return;
+        }
+        let Some(home) = std::env::var_os("HOME") else {
+            return;
+        };
+        let candidates = [
+            PathBuf::from(&home).join(".local/bin"),
+            PathBuf::from(&home).join(".cargo/bin"),
+        ];
+        let Some(uv_dir) = candidates.into_iter().find(|dir| dir.join("uv").is_file()) else {
+            return;
+        };
+        let existing = std::env::var_os("PATH").unwrap_or_default();
+        let mut dirs: Vec<PathBuf> = vec![uv_dir];
+        dirs.extend(std::env::split_paths(&existing));
+        if let Ok(joined) = std::env::join_paths(dirs) {
+            // SAFETY: `Once` guarantees this runs at most once, and only
+            // ever prepends a directory to `$PATH` -- see the doc comment
+            // above for why no other test-owned code can be racing a read
+            // of `$PATH` at this point in a test's lifetime.
+            unsafe {
+                std::env::set_var("PATH", joined);
+            }
+        }
+    });
+}
+
 /// Runs `uv venv` + (if any) `uv pip install`, all under the PRD's 120s
 /// build timeout, and writes the durable disk marker so a process restart
 /// doesn't rebuild an already-good environment.
@@ -1638,12 +1704,22 @@ impl PythonKind {
 
     /// Test constructor: a short TTL and small bounds so the warm-pool ACs
     /// (AC1/AC2/AC5/AC8) don't need a real 60s wait or 16 real sandboxes.
+    ///
+    /// Also self-sufficient about `uv`: every warm-pool test drives a real
+    /// cold build (`run_build_steps` spawns `uv venv`/`uv pip install`
+    /// bare, relying on `$PATH`), and `uv`'s own installer puts it in
+    /// `~/.local/bin`, which a *login* shell's rc file adds to `$PATH` but
+    /// a bare non-login process (e.g. an `ssh host cmd` invocation, or a
+    /// harness that execs `cargo test` directly) does not. Without this,
+    /// these tests only pass by accident of whatever shell happened to
+    /// launch `cargo test` -- see [`ensure_uv_discoverable_for_test`].
     pub fn for_test_with_warm_pool(
         data_dir: &Path,
         ttl: Duration,
         per_tenant: usize,
         max_total: usize,
     ) -> Self {
+        ensure_uv_discoverable_for_test();
         Self::build(
             data_dir,
             sandbox::detect_mechanism(),
