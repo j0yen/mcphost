@@ -147,5 +147,6 @@
       "question": "reviewer-agent block reason 'diff-scope-not-covered-by-reviewed-intent-card' (receipt target/autobuilder/receipts/reviewer-agent.json, captured_at 2026-09-03T22:11:04Z): b382f7d (v0.5.3) and 11c83a0 (v0.5.2) both implement PRD-mcphost-gate-green requirement 8/9 (CI-scoped sandbox test skip), not the mcphost-protocol-compat work this card's AC1-AC15/five_whys_trace/scope describe -- prd_source still named PRD-mcphost-protocol-compat with no paper trail to the PRD that actually authorized those two commits. Amend in place, or file agent/intent_card_amendment_request.json?",
       "resolution": "Amended in place: prd_source now points at /home/jsy/Documents/PRDs/build-queue/PRD-mcphost-gate-green.md (operator decision 2026-09-03). intent_card_amendment_request.json's four kinds (add_ac/relax_must/widen_constraint/out_of_scope) are for an edit-agent halting mid-iteration over a Stage-3 conflict it can't resolve itself; there is no Stage-3 conflict here -- v0.5.2/v0.5.3 touch zero src/ files and change none of AC1-AC15, which remain valid and unmodified (target/autobuilder/results.tsv: ac_pass=19/19 unchanged at b382f7d). This closes the paper-trail gap the reviewer-agent flagged without reopening the protocol-compat contract or halting the loop for a decision already made."
     }
-  ]
+  ],
+  "rollback_model": "redeploy-tag"
 }
