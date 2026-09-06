@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-grand-loop-billing.md",
-  "intent_slug": "grand-loop-billing",
-  "root_motivation": "Nothing on mcphost can take money. Tenants have `id`, `namespace`, `display_name`, `key_hash`, `created_at`, `disabled` and nothing else (`migrations/0001_init.sql`); the only limit is `MAX_TOOLS_PER_TENANT` at publish (`src/state.rs`) and the signup rate of 5 per IP per hour (`src/state.rs:22`); `host.quickstart` returns a `limits` object with no plan behind it (`src/control.rs:139`). There is no plan column, no quota on calls, no price, no checkout, no webhook, no ledger, and no `billing` mode on `/healthz`. The grand loop's metric is `paid_mrr_usd` (visions/grand-loop.md) and its ground truth is the payment processor's records; on this host that number is zero by construction, not by market verdict.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-ci-sandbox-coverage.md",
+  "intent_slug": "mcphost-ci-sandbox-coverage",
+  "root_motivation": "Joe's deploy gate treats CI green as evidence. For the sandbox suites \u2014 self-test, failure classification, warm-pool eviction, the core of v0.13.0 \u2014 that evidence is vacuous: the guard skips on the `CI` environment variable, not on actual capability, so the suites run only on dev boxes with working user namespaces. The 2026-09-03 operator answer scoped the guard to CI deliberately as a stopgap when runners lacked userns; the stopgap now hides all sandbox regressions from every CI run (0.00 s suite time in the actual Actions run at head 6932b87). A sandbox regression merged tomorrow would ship with a green badge and surface only as hub publish failures \u2014 the loop's worst and slowest failure family to diagnose.",
   "user_persona": "An AI agent connecting to mcphost for the first time over streamable HTTP with default client configuration (Claude Agent SDK / Claude Code), which must be able to read a well-formed tool list before it can do anything else; secondarily the operator who probes the endpoint after a redeploy.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,86 +14,44 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a fresh data dir, When mcphost starts, Then `plans.toml` exists with `free` and `pro` rows and `billing.plans` returns both with prices and quotas and `billing_mode: off`.",
+      "description": "Given a push to main, When the ci workflow runs on the hosted runner, Then the sandbox-ready suites execute with >0 tests run and their assertions evaluated.",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a `free` tenant with 3 tools, When it calls `host.tool_publish`, Then the error is `quota_exceeded` with `plan: free`, `limit: {name: tools_max, value: 3}`, `used: 3`, and `next: billing.checkout`, and no tool is created.",
+      "description": "Given the capability probe on a userns-capable environment, When tests start, Then no suite skips for capability reasons.",
       "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a `free` tenant with 500 ok calls today, When it calls one of its tools again, Then the call is rejected with `quota_exceeded`, `limit.name: calls_per_day`, and a `resets_at` at the next UTC midnight, and no `calls` row with `ok = 1` is written.",
+      "description": "Given a runner where userns creation genuinely fails, When the suite runs in CI, Then affected tests skip with the capability reason in the log AND the non-vacuous assertion fails the job.",
       "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given no `MCPHOST_STRIPE_SECRET_KEY`, When a tenant calls `billing.checkout`, Then the error is `billing_unavailable` with `billing_mode: off` and `/healthz` reports `billing_mode: \"off\"`.",
+      "description": "Given a dev box without userns and CI unset, When the suite runs, Then the guard fails loudly (no silent skip), unchanged from the 2026-09-03 contract.",
       "test": "tests/ac04_publish_list_and_call.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a fake billing client and a test-mode key, When a tenant calls `billing.checkout`, Then the result has a `url`, an `expires_at` about 24 h ahead, `mode: test`, and `instructions` text, and the fake received `mode=subscription`, the pro price id, and `client_reference_id` equal to the tenant namespace.",
+      "description": "Given the CI env var set but capability present, When the suite runs, Then tests execute \u2014 the variable alone never causes a skip.",
       "test": "tests/ac05_cross_tenant_isolation.rs"
     },
     {
       "id": "AC6",
-      "level": "MUST",
-      "description": "Given a signed `checkout.session.completed` event for that tenant, When it is POSTed to `/billing/webhook`, Then the response is 200, the tenant's `plan` is `pro` with `plan_since` set, one `billing_events` row exists with `mode: test`, and a second POST of the same event changes nothing and returns 200.",
+      "level": "SHOULD",
+      "description": "Given the full workflow on a clean cache, When it completes, Then total added wall time for sandbox suites is \u22645 minutes or the suites run as a parallel job.",
       "test": "tests/ac06_remove_tool.rs"
     },
     {
       "id": "AC7",
-      "level": "MUST",
-      "description": "Given an event with a bad signature or a timestamp older than 300 s, When it is POSTed, Then the response is 400 and no row is written.",
+      "level": "MAY",
+      "description": "Given the repo docs, When a contributor reads local-test requirements, Then the userns capability requirement and probe behavior are stated.",
       "test": "tests/ac07_usage_metering.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "MUST",
-      "description": "Given a `pro` tenant, When a signed `customer.subscription.deleted` arrives, Then the tenant's `plan` is `free`, a row is ledgered, and `billing.status` reports `plan: free`.",
-      "test": "tests/ac08_admin_disable_and_forbidden.rs"
-    },
-    {
-      "id": "AC9",
-      "level": "MUST",
-      "description": "Given three ledgered events across two tenants, When an admin calls `admin.billing_ledger` with `since` before them, Then all three are returned newest first with `mode`, and `tenant` filtering returns only that tenant's rows.",
-      "test": "tests/ac09_signup_rate_limit.rs"
-    },
-    {
-      "id": "AC10",
-      "level": "MUST",
-      "description": "Given a live-mode key and a webhook event with `livemode: false`, When it is POSTed, Then the event is ledgered with `event_type` suffixed `.mode_mismatch` and the tenant's plan is unchanged.",
-      "test": "tests/ac10_publish_validation_errors.rs"
-    },
-    {
-      "id": "AC11",
-      "level": "MUST",
-      "description": "Given `/healthz` after two tenants are `pro`, When it is read, Then `paying_tenants: 2` and `billing_mode` reflects the key prefix.",
-      "test": "tests/ac11_load_smoke.rs (#[ignore]d hardware-relative load test)"
-    },
-    {
-      "id": "AC12",
-      "level": "MUST",
-      "description": "Given the full test suite and `autobuilder gate --project .`, When they run after the change, Then every previously passing test passes and the gate exits 0.",
-      "test": "no unit test file; live smoke \u2014 mcphost serve + synthorg consume --preflight <url>, recorded as target/autobuilder/ac12-preflight-smoke.json"
-    },
-    {
-      "id": "AC13",
-      "level": "SHOULD",
-      "description": "Given an open unexpired checkout for a tenant, When it calls `billing.checkout` again for the same plan, Then the same `url` is returned and the fake client received no second create.",
-      "test": "tests/ac13_mcp_name_mismatch_metering.rs"
-    },
-    {
-      "id": "AC14",
-      "level": "SHOULD",
-      "description": "Given a tenant at 500 calls at 23:59 UTC, When the clock passes midnight, Then `billing.status.used.calls_per_day` is 0 and a call succeeds.",
-      "test": "tests/ac14_storage_unwritable.rs"
     }
   ],
   "scope": [
