@@ -13,6 +13,8 @@ fn test_billing_config() -> BillingConfig {
         secret_key: Some("sk_test_reuse".to_string()),
         webhook_secret: Some("whsec_reuse".to_string()),
         price_pro: Some("price_pro_test".to_string()),
+        metered_price_id: None,
+        meter_event_name: None,
     }
 }
 

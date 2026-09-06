@@ -19,11 +19,13 @@ const MIGRATION_0003: &str = include_str!("../migrations/0003_registry.sql");
 const MIGRATION_0004: &str = include_str!("../migrations/0004_calls_resource_usage.sql");
 const MIGRATION_0005: &str = include_str!("../migrations/0005_cascade_delete.sql");
 const MIGRATION_0006: &str = include_str!("../migrations/0006_billing.sql");
+const MIGRATION_0007: &str = include_str!("../migrations/0007_metering.sql");
 
 /// Shared by every query that selects a whole tenant row, so the column
 /// list and [`tenant_from_row`] stay in lockstep with each other.
 const TENANT_COLUMNS: &str = "id, namespace, display_name, key_hash, created_at, disabled, \
-    last_tool_change_unix, namespace_verified, registry_namespace, plan, plan_since, billing_ref";
+    last_tool_change_unix, namespace_verified, registry_namespace, plan, plan_since, billing_ref, \
+    stripe_customer_id";
 
 fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
     Ok(Tenant {
@@ -39,6 +41,7 @@ fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
         plan: r.get(9)?,
         plan_since: r.get(10)?,
         billing_ref: r.get(11)?,
+        stripe_customer_id: r.get(12)?,
     })
 }
 
@@ -74,6 +77,12 @@ pub struct Tenant {
     /// `customer.subscription.deleted` / `invoice.payment_failed` events
     /// back to a tenant when they carry no `client_reference_id`.
     pub billing_ref: Option<String>,
+    /// PRD-mcphost-metered-overage migration 0007: the Stripe *customer* id
+    /// (never a subscription id), set only from a `checkout.session.completed`
+    /// event's own `customer` field -- distinct from [`Self::billing_ref`],
+    /// which falls back to `subscription` when `customer` is absent and so
+    /// isn't reliable as the meter-events `payload[stripe_customer_id]`.
+    pub stripe_customer_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -236,7 +245,8 @@ impl Db {
         Self::migrate_0003_registry(&conn)?;
         Self::migrate_0004_calls_resource_usage(&conn)?;
         Self::migrate_0005_cascade_delete(&conn)?;
-        Self::migrate_0006_billing(&conn)
+        Self::migrate_0006_billing(&conn)?;
+        Self::migrate_0007_metering(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -308,6 +318,20 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0006)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-metered-overage migration 0007: same idempotency pattern
+    /// as 0002-0006, gated on `tenants.stripe_customer_id`.
+    fn migrate_0007_metering(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare(
+                "SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'stripe_customer_id'",
+            )?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0007)?;
         }
         Ok(())
     }
@@ -426,6 +450,7 @@ impl Db {
                 plan: "free".to_string(),
                 plan_since: None,
                 billing_ref: None,
+                stripe_customer_id: None,
             })
         })
         .await
@@ -1291,4 +1316,194 @@ impl Db {
         })
         .await
     }
+
+    // ---- metered overage (PRD-mcphost-metered-overage) ------------------
+
+    /// AC2: `process_webhook`'s `checkout.session.completed` handler stores
+    /// the event's own `customer` id here (never a `subscription` fallback
+    /// -- see [`Tenant::stripe_customer_id`]'s doc comment).
+    pub async fn set_stripe_customer_id(
+        &self,
+        tenant_id: i64,
+        stripe_customer_id: String,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tenants SET stripe_customer_id = ?1 WHERE id = ?2",
+                params![stripe_customer_id, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `meter_state`'s single row: `(last_call_id, updated_at)`. The row is
+    /// seeded by migration 0007, so this always finds one.
+    pub async fn get_meter_state(&self) -> Result<(i64, Option<String>), AppError> {
+        self.with_conn(|conn| {
+            conn.query_row(
+                "SELECT last_call_id, updated_at FROM meter_state WHERE id = 1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Advance the high-water mark. Called only after a batch's POST(s) have
+    /// all succeeded (requirement: "advances `last_call_id` only after a
+    /// 2xx").
+    pub async fn advance_meter_state(&self, last_call_id: i64) -> Result<(), AppError> {
+        let updated_at = now_rfc3339();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE meter_state SET last_call_id = ?1, updated_at = ?2 WHERE id = 1",
+                params![last_call_id, updated_at],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// One pro tenant's unemitted span: every `ok = 1` call above
+    /// `after_call_id`, grouped per tenant (requirement: "groups per
+    /// tenant"), for a tenant on `plan = 'pro'` with a
+    /// `stripe_customer_id` on file (a pro tenant upgraded before this
+    /// migration, or via `admin.plan_set`, has none yet and is silently
+    /// skipped until the webhook -- or an operator -- backfills one).
+    pub async fn pending_meter_groups(&self, after_call_id: i64) -> Result<Vec<MeterGroup>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT c.tenant_id, t.stripe_customer_id, COUNT(*), MIN(c.id), MAX(c.id) \
+                 FROM calls c JOIN tenants t ON t.id = c.tenant_id \
+                 WHERE c.ok = 1 AND c.id > ?1 AND t.plan = 'pro' AND t.stripe_customer_id IS NOT NULL \
+                 GROUP BY c.tenant_id ORDER BY c.tenant_id",
+            )?;
+            let rows = stmt
+                .query_map(params![after_call_id], |r| {
+                    Ok(MeterGroup {
+                        tenant_id: r.get(0)?,
+                        stripe_customer_id: r.get(1)?,
+                        count: r.get(2)?,
+                        first_call_id: r.get(3)?,
+                        last_call_id: r.get(4)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// `/healthz`'s `meter_lag` (AC8): the total count of pro-tenant ok
+    /// calls still above the high-water mark, across every tenant --
+    /// [`Self::pending_meter_groups`]'s counts summed, but a single `COUNT`
+    /// rather than a per-tenant `GROUP BY` since `/healthz` only needs the
+    /// scalar.
+    pub async fn meter_lag(&self, after_call_id: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM calls c JOIN tenants t ON t.id = c.tenant_id \
+                 WHERE c.ok = 1 AND c.id > ?1 AND t.plan = 'pro' AND t.stripe_customer_id IS NOT NULL",
+                params![after_call_id],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Ledger one batch's span, detecting a replay (AC5) by whether a row
+    /// already exists for this exact `(tenant_id, first_call_id,
+    /// last_call_id)` triple -- the shape a crash between a batch's POST(s)
+    /// and [`Self::advance_meter_state`] leaves behind: the ledger row from
+    /// the interrupted run is still absent (it's written in the same pass
+    /// as the POST, before the crash point in this scenario) *or* present
+    /// depending on exactly when the crash landed, so this check is what
+    /// makes the rerun's outcome correct either way -- a rerun after the
+    /// interrupted run got far enough to ledger its own row now finds that
+    /// row and reports `"replay"` instead of double-ledgering a fresh
+    /// `"sent"`. Returns the mode actually written.
+    // Same targeted #[allow] convention as `record_call` above:
+    // clippy.toml's scaffolded too-many-arguments-threshold (5) is tighter
+    // than the default (7); the batch/span/count/mode shape here reads
+    // more clearly as separate parameters than as a wrapper struct built
+    // only to satisfy the lint.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_meter_event_ledger_detecting_replay(
+        &self,
+        batch_id: String,
+        tenant_id: i64,
+        first_call_id: i64,
+        last_call_id: i64,
+        count: i64,
+    ) -> Result<&'static str, AppError> {
+        let created_at = now_rfc3339();
+        self.with_conn(move |conn| {
+            let existed: bool = conn
+                .prepare(
+                    "SELECT 1 FROM meter_events \
+                     WHERE tenant_id = ?1 AND first_call_id = ?2 AND last_call_id = ?3 LIMIT 1",
+                )?
+                .exists(params![tenant_id, first_call_id, last_call_id])?;
+            let mode: &'static str = if existed { "replay" } else { "sent" };
+            conn.execute(
+                "INSERT INTO meter_events \
+                 (batch_id, tenant_id, first_call_id, last_call_id, count, mode, created_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![batch_id, tenant_id, first_call_id, last_call_id, count, mode, created_at],
+            )?;
+            Ok(mode)
+        })
+        .await
+    }
+
+    /// The number of ledgered `meter_events` rows, optionally scoped to one
+    /// tenant -- used by `tests/metering_ac*.rs` to assert "one ledger row
+    /// per batch span" (AC4/AC5) and by the future P1 `admin.meter_status`.
+    pub async fn count_meter_events(&self, tenant_id: Option<i64>) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            match tenant_id {
+                Some(id) => conn.query_row(
+                    "SELECT COUNT(*) FROM meter_events WHERE tenant_id = ?1",
+                    params![id],
+                    |r| r.get(0),
+                ),
+                None => conn.query_row("SELECT COUNT(*) FROM meter_events", [], |r| r.get(0)),
+            }
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// P1 `admin.meter_status` / `billing.status`: a tenant's total emitted
+    /// call count from ledgered batches since `since_unix`.
+    pub async fn emitted_call_count_for_tenant(
+        &self,
+        tenant_id: i64,
+        since_unix: i64,
+    ) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COALESCE(SUM(count), 0) FROM meter_events \
+                 WHERE tenant_id = ?1 AND CAST(substr(created_at, 6) AS REAL) >= ?2",
+                params![tenant_id, since_unix],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+}
+
+/// One pro tenant's pending (unemitted) span, as
+/// [`Db::pending_meter_groups`] reads it back.
+#[derive(Debug, Clone, Serialize)]
+pub struct MeterGroup {
+    pub tenant_id: i64,
+    pub stripe_customer_id: String,
+    pub count: i64,
+    pub first_call_id: i64,
+    pub last_call_id: i64,
 }

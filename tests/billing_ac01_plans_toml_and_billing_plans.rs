@@ -27,16 +27,17 @@ fn fresh_data_dir_gets_plans_toml_with_free_and_pro() {
     let catalog = PlanCatalog::load_or_init(&path).expect("load_or_init");
     assert!(path.exists(), "plans.toml must exist after startup");
 
+    // PRD-mcphost-metered-overage AC13: the published-numbers alignment.
     let free = catalog.get("free").expect("free plan row");
     assert_eq!(free.price_usd_month, 0);
-    assert_eq!(free.tools_max, 3);
+    assert_eq!(free.tools_max, 50);
     assert_eq!(free.calls_per_day, 500);
     assert_eq!(free.secrets_max, 2);
 
     let pro = catalog.get("pro").expect("pro plan row");
-    assert_eq!(pro.price_usd_month, 29);
-    assert_eq!(pro.tools_max, 25);
-    assert_eq!(pro.calls_per_day, 20_000);
+    assert_eq!(pro.price_usd_month, 19);
+    assert_eq!(pro.tools_max, 50);
+    assert_eq!(pro.calls_per_day, 100_000);
     assert_eq!(pro.secrets_max, 20);
 
     std::fs::remove_dir_all(&dir).ok();
@@ -65,14 +66,14 @@ async fn billing_plans_lists_both_rows_with_billing_mode_off() {
 
     let free = plans.iter().find(|p| p["name"] == "free").unwrap();
     assert_eq!(free["price_usd_month"], json!(0));
-    assert_eq!(free["tools_max"], json!(3));
+    assert_eq!(free["tools_max"], json!(50));
     assert_eq!(free["calls_per_day"], json!(500));
     assert_eq!(free["secrets_max"], json!(2));
 
     let pro = plans.iter().find(|p| p["name"] == "pro").unwrap();
-    assert_eq!(pro["price_usd_month"], json!(29));
-    assert_eq!(pro["tools_max"], json!(25));
-    assert_eq!(pro["calls_per_day"], json!(20_000));
+    assert_eq!(pro["price_usd_month"], json!(19));
+    assert_eq!(pro["tools_max"], json!(50));
+    assert_eq!(pro["calls_per_day"], json!(100_000));
     assert_eq!(pro["secrets_max"], json!(20));
 }
 

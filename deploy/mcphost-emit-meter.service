@@ -1,0 +1,18 @@
+[Unit]
+Description=mcphost billing emit-meter (Stripe usage metering for pro tenants)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Provide MCPHOST_DATA_DIR, MCPHOST_STRIPE_SECRET_KEY, and (optionally)
+# MCPHOST_STRIPE_METERED_PRICE_ID / MCPHOST_STRIPE_METER_EVENT_NAME here.
+# The `-` prefix makes a missing file non-fatal; systemd-analyze verify
+# still passes without one on disk. User-scope unit (installed under
+# ~/.config/systemd/user/), matching this host's other mcphost-* units
+# (see mcphost-backup.service) -- `%h` expands to the invoking user's home.
+EnvironmentFile=-%h/.config/mcphost/emit-meter.env
+ExecStart=%h/.local/bin/mcphost billing emit-meter
+# The subcommand's own file lock (data_dir/.meter-emit.lock) already
+# refuses an overlapping run; this just keeps systemd from stacking one on
+# top regardless.

@@ -165,6 +165,45 @@ Example call arguments:
 ```
 <!-- kinds:end -->
 
+## Metered overage (billing emit-meter)
+
+PRD-mcphost-metered-overage: pro tenants' successful calls past the plan's
+50,000 included calls/month bill themselves through Stripe's
+`mcphost_tool_calls` meter and its graduated metered price. Set these
+env vars from `~/.config/mcphost/stripe-objects.json` (unset means the
+same v0.14.0 behavior -- no metering, no `meter_lag`):
+
+- `MCPHOST_STRIPE_METERED_PRICE_ID` -- the metered price id `billing.checkout`
+  attaches alongside the base price.
+- `MCPHOST_STRIPE_METER_EVENT_NAME` -- defaults to `mcphost_tool_calls`.
+
+Then run `mcphost billing emit-meter` on a timer (every five minutes is the
+shipped default): it reads pro tenants' unemitted `ok` calls, POSTs one
+Stripe meter event per tenant (chunked at 100 events/request), ledgers each
+batch, and advances its own high-water mark only once every event in the
+run has been accepted -- safe to rerun after a crash or a failed POST (see
+`src/metering.rs`'s doc comment for the replay/idempotency contract).
+
+Install the shipped systemd **user** units (`~/.config/systemd/user/`,
+matching this host's other `mcphost-*` units):
+
+```
+cp deploy/mcphost-emit-meter.service deploy/mcphost-emit-meter.timer \
+   ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now mcphost-emit-meter.timer
+```
+
+`mcphost-emit-meter.service` reads `~/.config/mcphost/emit-meter.env` (via
+`EnvironmentFile=-`, so a missing file is not an error) for
+`MCPHOST_DATA_DIR` / `MCPHOST_STRIPE_SECRET_KEY` / the two vars above.
+Both unit files pass `systemd-analyze verify --user` (AC9;
+`tests/metering_ac09_deploy_units_verify.rs`).
+
+`/healthz`'s `meter_lag` field (present only when `MCPHOST_STRIPE_METERED_PRICE_ID`
+is set) is the count of pro-tenant `ok` calls still above the high-water
+mark -- watch it for emission health at a glance.
+
 ## Acceptance
 
 Every P0 acceptance criterion is paired with a real `cargo test` (integration

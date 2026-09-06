@@ -172,11 +172,26 @@ pub fn event_mode(livemode: bool) -> &'static str {
 /// "Configuration"), read once at startup. `None` fields are the
 /// documented "billing absent" state (goal 4): quotas still enforce,
 /// `billing.checkout` says `billing_unavailable`, `/healthz` says `off`.
+/// PRD-mcphost-metered-overage: the meter event name every meter event this
+/// crate emits carries, unless `$MCPHOST_STRIPE_METER_EVENT_NAME` overrides
+/// it -- matches the live Stripe account's `mcphost_tool_calls` meter.
+pub const DEFAULT_METER_EVENT_NAME: &str = "mcphost_tool_calls";
+
 #[derive(Clone, Default)]
 pub struct BillingConfig {
     pub secret_key: Option<String>,
     pub webhook_secret: Option<String>,
     pub price_pro: Option<String>,
+    /// PRD-mcphost-metered-overage requirement 48: the graduated metered
+    /// price (`price_1UCZQRIPqmv0aTON9zg3eZ38` in production) `billing.checkout`
+    /// attaches alongside the base price, and whose presence is also what
+    /// gates `/healthz`'s `meter_lag` field. `None` (absent
+    /// `$MCPHOST_STRIPE_METERED_PRICE_ID`) reproduces v0.14.0 behavior
+    /// exactly: a single-price checkout, no `meter_lag`.
+    pub metered_price_id: Option<String>,
+    /// `$MCPHOST_STRIPE_METER_EVENT_NAME`; `None` (the common case) means
+    /// "use [`DEFAULT_METER_EVENT_NAME`]" -- see [`Self::meter_event_name`].
+    pub meter_event_name: Option<String>,
 }
 
 impl BillingConfig {
@@ -185,6 +200,8 @@ impl BillingConfig {
             secret_key: std::env::var("MCPHOST_STRIPE_SECRET_KEY").ok(),
             webhook_secret: std::env::var("MCPHOST_STRIPE_WEBHOOK_SECRET").ok(),
             price_pro: std::env::var("MCPHOST_STRIPE_PRICE_PRO").ok(),
+            metered_price_id: std::env::var("MCPHOST_STRIPE_METERED_PRICE_ID").ok(),
+            meter_event_name: std::env::var("MCPHOST_STRIPE_METER_EVENT_NAME").ok(),
         }
     }
 
@@ -201,6 +218,14 @@ impl BillingConfig {
             _ => None,
         }
     }
+
+    /// The event name `mcphost billing emit-meter` reports batches under:
+    /// the configured override, or [`DEFAULT_METER_EVENT_NAME`].
+    pub fn meter_event_name(&self) -> &str {
+        self.meter_event_name
+            .as_deref()
+            .unwrap_or(DEFAULT_METER_EVENT_NAME)
+    }
 }
 
 // ---- outbound: Stripe Checkout -------------------------------------------
@@ -208,10 +233,22 @@ impl BillingConfig {
 /// What `billing.checkout` asks the processor to create.
 pub struct CheckoutSessionRequest {
     pub price_id: String,
+    /// PRD-mcphost-metered-overage AC3: `Some` (the base price plus this
+    /// metered price, no quantity on the second line item) whenever
+    /// `BillingConfig::metered_price_id` is configured; `None` reproduces
+    /// v0.14.0's single-price shape exactly.
+    pub metered_price_id: Option<String>,
     pub client_reference_id: String,
     pub tenant_namespace: String,
     pub success_url: String,
     pub cancel_url: String,
+    /// AC3: `true` whenever billing is configured at all (Stripe Tax is
+    /// active on the live account, defaults exclusive, products carry
+    /// `txcd_10103001`) -- `checkout()` only builds a request once billing
+    /// is confirmed configured, so this is unconditionally `true` at every
+    /// call site today, but it's a field (not a hardcoded `"true"` at the
+    /// HTTP layer) so [`FakeBillingClient`] can assert on it directly.
+    pub automatic_tax: bool,
 }
 
 /// What the processor (real or fake) hands back: enough to build
@@ -225,7 +262,23 @@ pub struct CheckoutSessionResponse {
     pub expires_at: i64,
 }
 
-/// The outbound half of billing: creating a Checkout Session. A trait
+/// One Stripe meter event `mcphost billing emit-meter` (`src/metering.rs`)
+/// asks a [`BillingClient`] to record: one per pro tenant's pending span
+/// (requirement 51's "groups per tenant").
+#[derive(Debug, Clone)]
+pub struct MeterEventRequest {
+    pub event_name: String,
+    /// `mcphost-<tenant_id>-<first_call_id>-<last_call_id>` -- Stripe-side
+    /// dedup key (requirement 51); identical across a crash-and-rerun of
+    /// the same unadvanced span (AC5).
+    pub identifier: String,
+    pub stripe_customer_id: String,
+    /// The call count this event reports (`payload[value]`).
+    pub value: i64,
+}
+
+/// The outbound half of billing: creating a Checkout Session, and (PRD-
+/// mcphost-metered-overage) emitting Stripe meter events. A trait
 /// (technical considerations: "Tests never reach the network") so
 /// `AppState` can hold a [`FakeBillingClient`] in every test and a
 /// [`StripeClient`] in production, with `billing.checkout`'s own logic
@@ -236,6 +289,14 @@ pub trait BillingClient: Send + Sync {
         &self,
         req: &CheckoutSessionRequest,
     ) -> Result<CheckoutSessionResponse, AppError>;
+
+    /// POST one meter event per entry in `events` (real Stripe's
+    /// `/v1/billing/meter_events` creates exactly one event per call; the
+    /// caller in `src/metering.rs` is what caps `events.len()` at 100 per
+    /// invocation, per requirement 51). Any single event's rejection fails
+    /// the whole call -- `src/metering.rs` treats that as "this chunk did
+    /// not go through," ledgering and advancing state for nothing in it.
+    async fn emit_meter_events(&self, events: &[MeterEventRequest]) -> Result<(), AppError>;
 }
 
 /// The real implementation: `POST https://api.stripe.com/v1/checkout/sessions`,
@@ -259,7 +320,7 @@ impl BillingClient for StripeClient {
         &self,
         req: &CheckoutSessionRequest,
     ) -> Result<CheckoutSessionResponse, AppError> {
-        let params = [
+        let mut params: Vec<(&str, &str)> = vec![
             ("mode", "subscription"),
             ("line_items[0][price]", req.price_id.as_str()),
             ("line_items[0][quantity]", "1"),
@@ -271,6 +332,17 @@ impl BillingClient for StripeClient {
             ("success_url", req.success_url.as_str()),
             ("cancel_url", req.cancel_url.as_str()),
         ];
+        // AC3: the metered price rides alongside the base price with no
+        // `quantity` field -- Stripe reports usage for it via meter events,
+        // not a line-item quantity.
+        if let Some(metered_price_id) = req.metered_price_id.as_deref() {
+            params.push(("line_items[1][price]", metered_price_id));
+        }
+        // AC3: Stripe Tax is active on the account whenever billing is
+        // configured at all.
+        if req.automatic_tax {
+            params.push(("automatic_tax[enabled]", "true"));
+        }
         let resp = self
             .http
             .post("https://api.stripe.com/v1/checkout/sessions")
@@ -303,6 +375,42 @@ impl BillingClient for StripeClient {
             expires_at: body.get("expires_at").and_then(Value::as_i64).unwrap_or(0),
         })
     }
+
+    /// PRD-mcphost-metered-overage: one real POST per event -- Stripe's
+    /// `/v1/billing/meter_events` has no bulk-create shape, so
+    /// `src/metering.rs`'s "no more than 100 events per request" (AC7)
+    /// caps how many of these this call issues per invocation, not a
+    /// single request's payload size.
+    async fn emit_meter_events(&self, events: &[MeterEventRequest]) -> Result<(), AppError> {
+        for event in events {
+            let value = event.value.to_string();
+            let params = [
+                ("event_name", event.event_name.as_str()),
+                (
+                    "payload[stripe_customer_id]",
+                    event.stripe_customer_id.as_str(),
+                ),
+                ("payload[value]", value.as_str()),
+                ("identifier", event.identifier.as_str()),
+            ];
+            let resp = self
+                .http
+                .post("https://api.stripe.com/v1/billing/meter_events")
+                .bearer_auth(&self.secret_key)
+                .form(&params)
+                .send()
+                .await
+                .map_err(|e| AppError::Internal(format!("Stripe meter event request: {e}")))?;
+            let status = resp.status();
+            if !status.is_success() {
+                let body: Value = resp.json().await.unwrap_or(Value::Null);
+                return Err(AppError::Internal(format!(
+                    "Stripe rejected the meter event: HTTP {status}: {body}"
+                )));
+            }
+        }
+        Ok(())
+    }
 }
 
 /// The test double every `billing_ac*.rs` test injects instead of
@@ -316,6 +424,15 @@ pub struct FakeBillingClient {
     pub last_request: std::sync::Mutex<Option<CheckoutSessionRequestSnapshot>>,
     pub calls: std::sync::atomic::AtomicUsize,
     now_unix: i64,
+    /// PRD-mcphost-metered-overage: every `emit_meter_events` invocation
+    /// this fake received, in order -- one `Vec<MeterEventRequest>` per
+    /// call, so a test can assert both "how many requests" (AC7's
+    /// 100-per-request cap) and "what each one carried" (AC4/AC5's
+    /// identifiers).
+    pub meter_batches: std::sync::Mutex<Vec<Vec<MeterEventRequest>>>,
+    /// AC6: when set, every `emit_meter_events` call fails as if Stripe
+    /// returned 500 -- set via [`Self::set_fail_meter_events`].
+    fail_meter_events: std::sync::atomic::AtomicBool,
 }
 
 /// An owned, `Clone`/inspectable copy of a [`CheckoutSessionRequest`] (the
@@ -326,10 +443,12 @@ pub struct FakeBillingClient {
 #[derive(Debug, Clone)]
 pub struct CheckoutSessionRequestSnapshot {
     pub price_id: String,
+    pub metered_price_id: Option<String>,
     pub client_reference_id: String,
     pub tenant_namespace: String,
     pub success_url: String,
     pub cancel_url: String,
+    pub automatic_tax: bool,
 }
 
 /// A test-only signer, sharing the exact same HMAC construction
@@ -351,11 +470,36 @@ impl FakeBillingClient {
             last_request: std::sync::Mutex::new(None),
             calls: std::sync::atomic::AtomicUsize::new(0),
             now_unix,
+            meter_batches: std::sync::Mutex::new(Vec::new()),
+            fail_meter_events: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
     pub fn call_count(&self) -> usize {
         self.calls.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// AC6: make the next (and every subsequent) `emit_meter_events` call
+    /// fail as if Stripe returned 500.
+    pub fn set_fail_meter_events(&self, fail: bool) {
+        self.fail_meter_events
+            .store(fail, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// How many separate `emit_meter_events` calls ("requests", AC7) this
+    /// fake has received.
+    pub fn meter_request_count(&self) -> usize {
+        self.meter_batches.lock().map(|b| b.len()).unwrap_or(0)
+    }
+
+    /// Every event across every `emit_meter_events` call, flattened -- for
+    /// assertions that don't care about request boundaries (AC4's total
+    /// count, AC5's identifier comparison).
+    pub fn all_meter_events(&self) -> Vec<MeterEventRequest> {
+        self.meter_batches
+            .lock()
+            .map(|b| b.iter().flatten().cloned().collect())
+            .unwrap_or_default()
     }
 }
 
@@ -370,10 +514,12 @@ impl BillingClient for FakeBillingClient {
         if let Ok(mut guard) = self.last_request.lock() {
             *guard = Some(CheckoutSessionRequestSnapshot {
                 price_id: req.price_id.clone(),
+                metered_price_id: req.metered_price_id.clone(),
                 client_reference_id: req.client_reference_id.clone(),
                 tenant_namespace: req.tenant_namespace.clone(),
                 success_url: req.success_url.clone(),
                 cancel_url: req.cancel_url.clone(),
+                automatic_tax: req.automatic_tax,
             });
         }
         let n = self.call_count();
@@ -382,6 +528,21 @@ impl BillingClient for FakeBillingClient {
             url: format!("https://checkout.stripe.com/c/pay/cs_test_fake_{n}"),
             expires_at: self.now_unix + 24 * 3600,
         })
+    }
+
+    async fn emit_meter_events(&self, events: &[MeterEventRequest]) -> Result<(), AppError> {
+        if self
+            .fail_meter_events
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            return Err(AppError::Internal(
+                "Stripe rejected the meter event: HTTP 500: {}".to_string(),
+            ));
+        }
+        if let Ok(mut guard) = self.meter_batches.lock() {
+            guard.push(events.to_vec());
+        }
+        Ok(())
     }
 }
 
@@ -547,10 +708,17 @@ pub async fn checkout(state: &AppState, tenant: &Tenant, args: &Value) -> Result
     let cancel_url = format!("{}/billing/cancel", state.public_url.trim_end_matches('/'));
     let req = CheckoutSessionRequest {
         price_id: price_id.to_string(),
+        // AC3: rides alongside the base price whenever configured; absent
+        // reproduces v0.14.0's single-price shape exactly.
+        metered_price_id: state.billing_config.metered_price_id.clone(),
         client_reference_id: tenant.namespace.clone(),
         tenant_namespace: tenant.namespace.clone(),
         success_url,
         cancel_url,
+        // AC3: this whole function only reaches here once billing is
+        // confirmed configured (the `secret_key` check above), which is
+        // exactly the condition Stripe Tax should be on for.
+        automatic_tax: true,
     };
     let session = state.billing_client.create_checkout_session(&req).await?;
 
@@ -738,6 +906,14 @@ async fn apply_checkout_completed(
     };
     let (amount_cents, currency) = amount_and_currency(&event.object);
     let plan_since = crate::state::rfc3339_now();
+    // PRD-mcphost-metered-overage AC2: the event's own `customer` field,
+    // specifically -- never the `subscription` fallback `billing_ref`
+    // (above) accepts, since meter events need a real customer id.
+    let stripe_customer_id = event
+        .object
+        .get("customer")
+        .and_then(Value::as_str)
+        .map(str::to_string);
 
     if let Some(tenant) = &tenant {
         state
@@ -749,6 +925,9 @@ async fn apply_checkout_completed(
                 billing_ref.clone(),
             )
             .await?;
+        if let Some(customer_id) = stripe_customer_id {
+            state.db.set_stripe_customer_id(tenant.id, customer_id).await?;
+        }
     }
 
     state

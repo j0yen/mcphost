@@ -613,6 +613,60 @@ pub async fn poll_until_ready(
     }
 }
 
+/// PRD-mcphost-metered-overage's `metering_ac*.rs` suite: sign up a fresh
+/// tenant, then directly promote it to `pro` with a `stripe_customer_id` on
+/// file (the state `mcphost billing emit-meter` requires per tenant) --
+/// bypassing a real Stripe checkout/webhook round trip, since these tests
+/// are about the meter-emission path, not the upgrade path (grand-loop-
+/// billing's `billing_ac*.rs` suite already covers that). Returns
+/// `(tenant_namespace, key, tenant_id)`.
+pub async fn signup_and_make_pro(
+    server: &TestServer,
+    display_name: &str,
+    stripe_customer_id: &str,
+) -> (String, String, i64) {
+    let (ns, key) = signup(&server.base_url, display_name).await;
+    let tenant = server
+        .state
+        .db
+        .find_tenant_by_namespace(ns.clone())
+        .await
+        .expect("find tenant")
+        .expect("tenant exists");
+    server
+        .state
+        .db
+        .upgrade_tenant_plan(
+            tenant.id,
+            "pro".to_string(),
+            mcphost::state::rfc3339_now(),
+            None,
+        )
+        .await
+        .expect("upgrade to pro");
+    server
+        .state
+        .db
+        .set_stripe_customer_id(tenant.id, stripe_customer_id.to_string())
+        .await
+        .expect("set stripe_customer_id");
+    (ns, key, tenant.id)
+}
+
+/// Record `n` successful (`ok = 1`) calls for `tenant_id` directly against
+/// the database -- the metering suite doesn't need a real tool call per
+/// row, just rows in `calls` for `Db::pending_meter_groups` to read.
+pub async fn record_ok_calls(server: &TestServer, tenant_id: i64, tool_name: &str, n: usize) {
+    for _ in 0..n {
+        server
+            .state
+            .db
+            .record_call(tenant_id, tool_name.to_string(), 1, true, None, None, None)
+            .await
+            .expect("record_call");
+    }
+}
+
 /// `CallToolResult::structured` puts the value in `structuredContent`;
 /// fall back to parsing the first text content block for safety.
 pub fn extract_structured(call_result: &Value) -> Value {

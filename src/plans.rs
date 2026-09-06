@@ -27,28 +27,33 @@ pub struct PlanCatalog {
 }
 
 impl PlanCatalog {
-    /// Requirement 1's documented defaults: `free` (0, 3, 500, 2) and `pro`
-    /// (29, 25, 20000, 20) -- price_usd_month, tools_max, calls_per_day,
-    /// secrets_max.
+    /// PRD-mcphost-metered-overage requirement 55: the published-numbers
+    /// alignment (decided 2026-09-06) -- `free` (0, 50, 500, 2) and `pro`
+    /// (19, 50, 100000, 20, with 50,000 calls/month included before usage
+    /// billing) -- price_usd_month, tools_max, calls_per_day, secrets_max.
+    /// mcphost-1 already carries this catalog as a hand-placed
+    /// `plans.toml`, which [`Self::load_or_init`] honors over these
+    /// defaults; this is only what seeds a *fresh* data dir (AC13).
     pub fn default_catalog() -> Self {
         Self {
             plans: vec![
                 Plan {
                     name: "free".to_string(),
                     price_usd_month: 0,
-                    tools_max: 3,
+                    tools_max: 50,
                     calls_per_day: 500,
                     secrets_max: 2,
-                    description: "Free: 3 tools, 500 calls/day, 2 secrets. No card required."
+                    description: "Free: 50 tools, 500 calls/day, 2 secrets. No card required."
                         .to_string(),
                 },
                 Plan {
                     name: "pro".to_string(),
-                    price_usd_month: 29,
-                    tools_max: 25,
-                    calls_per_day: 20_000,
+                    price_usd_month: 19,
+                    tools_max: 50,
+                    calls_per_day: 100_000,
                     secrets_max: 20,
-                    description: "Pro: 25 tools, 20,000 calls/day, 20 secrets. $29/month."
+                    description: "Pro: 50 tools, 100,000 calls/day, 20 secrets. $19/month, \
+                        50,000 calls included per month, then usage-billed."
                         .to_string(),
                 },
             ],
@@ -191,19 +196,26 @@ impl PlanBuilder {
 mod tests {
     use super::*;
 
+    /// PRD-mcphost-metered-overage AC13: the published-numbers alignment,
+    /// not grand-loop-billing's original defaults.
     #[test]
     fn default_catalog_has_free_and_pro_with_documented_values() {
         let catalog = PlanCatalog::default_catalog();
         let free = catalog.get("free").expect("free plan");
         assert_eq!(free.price_usd_month, 0);
-        assert_eq!(free.tools_max, 3);
+        assert_eq!(free.tools_max, 50);
         assert_eq!(free.calls_per_day, 500);
         assert_eq!(free.secrets_max, 2);
         let pro = catalog.get("pro").expect("pro plan");
-        assert_eq!(pro.price_usd_month, 29);
-        assert_eq!(pro.tools_max, 25);
-        assert_eq!(pro.calls_per_day, 20_000);
+        assert_eq!(pro.price_usd_month, 19);
+        assert_eq!(pro.tools_max, 50);
+        assert_eq!(pro.calls_per_day, 100_000);
         assert_eq!(pro.secrets_max, 20);
+        assert!(
+            pro.description.contains("50,000"),
+            "pro's description must name the included monthly call volume: {}",
+            pro.description
+        );
     }
 
     #[test]

@@ -82,6 +82,17 @@ async fn healthz(State(state): State<Arc<AppState>>) -> impl IntoResponse {
             json!(state.db.count_paying_tenants().await.unwrap_or(0)),
         );
     }
+    // PRD-mcphost-metered-overage AC8: `meter_lag` only appears when
+    // metering is configured (`metered_price_id` set) -- unconfigured, the
+    // key is absent entirely, not present-and-zero, so a caller can
+    // distinguish "no overage billing on this host" from "0 calls behind."
+    if state.billing_config.metered_price_id.is_some()
+        && let Some(obj) = body.as_object_mut()
+    {
+        let (last_call_id, _) = state.db.get_meter_state().await.unwrap_or((0, None));
+        let lag = state.db.meter_lag(last_call_id).await.unwrap_or(0);
+        obj.insert("meter_lag".to_string(), json!(lag));
+    }
     Json(body)
 }
 
