@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.14.0 — 2026-09-06
+
+mcphost gains plans (`free`, `pro`), quotas enforced at publish and at call time with a structured error that names the upgrade path, three `billing.*` tools, a Stripe Checkout webhook that flips a tenant to `pro`, and a billing ledger the measure command reads. Every ledger row records whether the payment was test or live.
+
 ## v0.13.4 — 2026-09-06
 
 PRD-mcphost-ci-sandbox-coverage AC6 (P1), closing the last open criterion from the v0.13.1 landing. With the sandbox suites actually executing instead of skipping, `cargo test --workspace` measured 336 s (run 33955331814) and 313 s (run 33995726792) against the PRD's own 300 s budget, so AC6's first branch is out of reach and its second — "the suites run as a parallel job" — is now in force: `ci.yml` declares `gate` (static analysis + core suites + doctests) and `sandbox` (userns grant + sandbox suites) with no `needs:` between them, so wall time is max(), not sum(). The split is derived, never hand-listed — `scripts/ci-test-partition.sh` classifies every `tests/*.rs` by whether it touches the sandbox-execution surface and proves the partition total and disjoint, and both jobs fail on any capability-skip in their log, so a target filed into the wrong half turns CI red instead of passing vacuously.
