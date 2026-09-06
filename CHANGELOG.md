@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.16.0 — 2026-09-06
+
+Pro tenants' successful calls now flow to Stripe's `mcphost_tool_calls` billing meter, so usage past the plan's included volume invoices itself through the live graduated price. Adds a `mcphost billing emit-meter` subcommand (idempotent, crash-safe, capped at 100 events/request), a metered-price line item on checkout, webhook capture of the Stripe customer id, `/healthz` meter_lag, and the published-numbers plan catalog (free 50 tools/500 calls/day, pro $19/50,000 included calls).
+
 ## v0.15.1 — 2026-09-06
 
 Harden supports_user_namespaces() to retry the unshare probe once before deciding incapable, closing out the flake-audit finding (exit codes [0,101,0] over 3 runs) with a plausible-root-cause fix (EAGAIN under concurrent process creation vs. genuine policy denial) after 12+ repro attempts across two ticks failed to catch the flake red-handed.
