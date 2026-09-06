@@ -26,7 +26,7 @@ async fn healthz(base_url: &str) -> serde_json::Value {
 #[tokio::test]
 async fn unready_sandbox_reports_at_healthz_and_the_host_still_serves() {
     if sandbox::require_user_namespaces_or_ci_skip() {
-        println!("skipped: no user namespaces (CI)");
+        println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
     let data_dir = common::TempDataDir::new();
@@ -64,7 +64,7 @@ async fn unready_sandbox_reports_at_healthz_and_the_host_still_serves() {
 #[tokio::test]
 async fn ready_sandbox_reports_ok_within_5s_of_start() {
     if sandbox::require_user_namespaces_or_ci_skip() {
-        println!("skipped: no user namespaces (CI)");
+        println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
     let data_dir = common::TempDataDir::new();

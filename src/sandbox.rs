@@ -106,6 +106,56 @@ pub fn supports_user_namespaces() -> bool {
         .unwrap_or(false)
 }
 
+/// The exact line a sandbox-dependent test prints when it skips for want of
+/// user namespaces.
+///
+/// PRD-mcphost-ci-sandbox-coverage AC3: `.github/workflows/ci.yml`'s
+/// non-vacuous assertion greps the job log for this text to turn CI red when
+/// the suites skipped instead of running. That grep and these `println!`s are
+/// one contract across two files in two languages, and nothing but this
+/// constant ties them together -- reword the message in Rust alone and the
+/// grep silently stops matching, which is exactly the false-green this PRD
+/// exists to remove. `tests/ci_sandbox_ac03_incapable_in_ci_skips_and_fails_job.rs`
+/// asserts the workflow still contains this literal.
+pub const USERNS_SKIP_MARKER: &str = "skipped: no user namespaces";
+
+/// What a sandbox-dependent test should do, given whether this box can create
+/// an unprivileged user namespace and whether it is running under CI.
+///
+/// PRD-mcphost-ci-sandbox-coverage ACs 2-5 are statements about this decision,
+/// so it lives in its own total function over the two booleans rather than
+/// inline in [`require_user_namespaces_or_ci_skip`]: probing the capability
+/// and reading `$CI` are both environment reads a test cannot vary safely
+/// (edition-2024 `set_var` is `unsafe` and racy across a threaded test
+/// binary), which is what left ACs 3 and 4 with no automated regression test
+/// at all through v0.13.3 -- only a manual code read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UsernsDecision {
+    /// Capability present: run the test for real.
+    Run,
+    /// Capability absent but we are in CI: skip cleanly, printing
+    /// [`USERNS_SKIP_MARKER`] so the workflow's assertion can fail the job.
+    SkipInCi,
+    /// Capability absent outside CI: a broken box, not something to skip
+    /// past quietly. Panic naming the fix.
+    FailLoudly,
+}
+
+/// The decision table behind [`require_user_namespaces_or_ci_skip`].
+///
+/// Note that `ci` is only ever consulted when `capable` is false -- AC5's
+/// "the variable alone never causes a skip" is this function's first line,
+/// not an emergent property of the caller.
+pub fn decide_userns(capable: bool, ci: bool) -> UsernsDecision {
+    if capable {
+        return UsernsDecision::Run;
+    }
+    if ci {
+        return UsernsDecision::SkipInCi;
+    }
+    UsernsDecision::FailLoudly
+}
+
 /// `true` if a python-kind sandbox test should skip on this box, `false` if
 /// it should run for real.
 ///
@@ -125,11 +175,13 @@ pub fn supports_user_namespaces() -> bool {
 /// or misconfigured environment, not something to skip past quietly, so
 /// this panics with a message naming the fix instead of returning `true`.
 pub fn require_user_namespaces_or_ci_skip() -> bool {
-    if supports_user_namespaces() {
-        return false;
-    }
-    if std::env::var_os("CI").is_some() {
-        return true;
+    match decide_userns(
+        supports_user_namespaces(),
+        std::env::var_os("CI").is_some(),
+    ) {
+        UsernsDecision::Run => return false,
+        UsernsDecision::SkipInCi => return true,
+        UsernsDecision::FailLoudly => {}
     }
     panic!(
         "python-kind sandbox tests require unprivileged user namespaces; \
@@ -1239,7 +1291,7 @@ mod tests {
     #[tokio::test]
     async fn runs_a_trivial_script_and_reports_exit_0() {
         if !supports_user_namespaces() {
-            println!("skipped: no user namespaces");
+            println!("{USERNS_SKIP_MARKER}");
             return;
         }
         let scratch =
@@ -1283,7 +1335,7 @@ mod tests {
     #[tokio::test]
     async fn kills_the_group_on_timeout() {
         if !supports_user_namespaces() {
-            println!("skipped: no user namespaces");
+            println!("{USERNS_SKIP_MARKER}");
             return;
         }
         let scratch =

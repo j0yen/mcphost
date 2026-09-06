@@ -24,7 +24,7 @@ async fn tool_run_returns_full_output_with_no_calls_row_then_rate_limits_the_31s
     // namespaces -- see the identical guard in every other python_ac*.rs
     // test / require_user_namespaces_or_ci_skip's own doc comment.
     if sandbox::require_user_namespaces_or_ci_skip() {
-        println!("skipped: no user namespaces (CI)");
+        println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
     let envs_dir = common::TempDataDir::new();

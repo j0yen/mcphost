@@ -27,7 +27,7 @@ async fn the_call_over_the_limit_gets_capacity_immediately() {
     // sandbox-dependent unit tests in src/kinds/python.rs and
     // src/sandbox.rs, and as tests/ac17_kind_conformance.rs.
     if sandbox::require_user_namespaces_or_ci_skip() {
-        println!("skipped: no user namespaces (CI)");
+        println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
     let envs_dir = common::TempDataDir::new();

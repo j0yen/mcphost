@@ -185,6 +185,16 @@ comment for the full contract, and `.github/workflows/ci.yml` for how the
 hosted CI runner grants the same capability (PRD-mcphost-ci-sandbox-coverage)
 instead of silently skipping.
 
+CI runs these suites as their own `sandbox` job, in parallel with the `gate`
+job that carries static analysis and everything else — once the suites stopped
+skipping, a single `cargo test --workspace` step measured 313–336 s against a
+300 s budget. Which targets go where is derived, not hand-listed:
+`scripts/ci-test-partition.sh core|sandbox` classifies every `tests/*.rs` by
+whether it touches the sandbox-execution surface, and `check` proves the split
+is total and disjoint. Both jobs then fail on any capability-skip in their log,
+so a target filed into the wrong half turns CI red rather than passing
+vacuously.
+
 | AC | Requirement | Test |
 |---|---|---|
 | 1 (P0) | Unauthenticated `tools/list` shows only `signup`; response carries `MCP-Protocol-Version` | `tests/ac01_unauthenticated_lists_signup.rs` |

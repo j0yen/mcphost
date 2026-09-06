@@ -20,7 +20,7 @@ async fn dynamic_subscript_with_no_literal_key_fails_publish() {
     // sandbox-dependent unit tests in src/kinds/python.rs and
     // src/sandbox.rs, and as tests/ac17_kind_conformance.rs.
     if sandbox::require_user_namespaces_or_ci_skip() {
-        println!("skipped: no user namespaces (CI)");
+        println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
     let envs_dir = common::TempDataDir::new();
@@ -59,7 +59,7 @@ async fn a_source_that_never_touches_args_is_not_an_inference_error() {
     // sandbox-dependent unit tests in src/kinds/python.rs and
     // src/sandbox.rs, and as tests/ac17_kind_conformance.rs.
     if sandbox::require_user_namespaces_or_ci_skip() {
-        println!("skipped: no user namespaces (CI)");
+        println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
     let envs_dir = common::TempDataDir::new();

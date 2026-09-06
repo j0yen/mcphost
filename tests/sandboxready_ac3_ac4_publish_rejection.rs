@@ -91,7 +91,7 @@ fn assert_sandbox_unavailable_shape(err: &common::RpcError) {
 #[tokio::test]
 async fn tool_publish_is_rejected_fast_with_the_structured_shape() {
     if sandbox::require_user_namespaces_or_ci_skip() {
-        println!("skipped: no user namespaces (CI)");
+        println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
     let data_dir = common::TempDataDir::new();
@@ -123,7 +123,7 @@ async fn tool_publish_is_rejected_fast_with_the_structured_shape() {
 #[tokio::test]
 async fn tool_test_and_tool_run_reject_an_already_published_python_tool() {
     if sandbox::require_user_namespaces_or_ci_skip() {
-        println!("skipped: no user namespaces (CI)");
+        println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
     // Publish the python tool while the sandbox is READY, then flip it to
@@ -171,7 +171,7 @@ async fn tool_test_and_tool_run_reject_an_already_published_python_tool() {
 #[tokio::test]
 async fn echo_and_http_publish_unaffected_by_an_unready_python_sandbox() {
     if sandbox::require_user_namespaces_or_ci_skip() {
-        println!("skipped: no user namespaces (CI)");
+        println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
     let data_dir = common::TempDataDir::new();

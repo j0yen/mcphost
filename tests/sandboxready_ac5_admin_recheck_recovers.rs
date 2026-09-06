@@ -22,7 +22,7 @@ async fn healthz(base_url: &str) -> serde_json::Value {
 #[tokio::test]
 async fn admin_sandbox_recheck_flips_unready_to_ready_without_a_restart() {
     if sandbox::require_user_namespaces_or_ci_skip() {
-        println!("skipped: no user namespaces (CI)");
+        println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
     let data_dir = common::TempDataDir::new();

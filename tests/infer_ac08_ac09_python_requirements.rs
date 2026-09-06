@@ -21,7 +21,7 @@ async fn stdlib_only_import_needs_no_requirements_listed() {
     // sandbox-dependent unit tests in src/kinds/python.rs and
     // src/sandbox.rs, and as tests/ac17_kind_conformance.rs.
     if sandbox::require_user_namespaces_or_ci_skip() {
-        println!("skipped: no user namespaces (CI)");
+        println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
     let envs_dir = common::TempDataDir::new();
@@ -62,7 +62,7 @@ async fn mapped_import_is_installed_and_callable_without_requirements_listed() {
     // sandbox-dependent unit tests in src/kinds/python.rs and
     // src/sandbox.rs, and as tests/ac17_kind_conformance.rs.
     if sandbox::require_user_namespaces_or_ci_skip() {
-        println!("skipped: no user namespaces (CI)");
+        println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
     let envs_dir = common::TempDataDir::new();

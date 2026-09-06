@@ -23,7 +23,7 @@ use std::process::Command;
 #[test]
 fn sandbox_check_exits_0_and_prints_the_healthz_detail_line_on_a_ready_box() {
     if sandbox::require_user_namespaces_or_ci_skip() {
-        println!("skipped: no user namespaces (CI)");
+        println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
     let data_dir = std::env::temp_dir().join(format!(

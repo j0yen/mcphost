@@ -141,7 +141,7 @@ async fn python_kind_passes_schema_and_call_conformance() {
     // sandbox-dependent unit tests in src/kinds/python.rs and
     // src/sandbox.rs.
     if sandbox::require_user_namespaces_or_ci_skip() {
-        println!("skipped: no user namespaces (CI)");
+        println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
     let uv_present = std::process::Command::new("uv")

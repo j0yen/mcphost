@@ -13,7 +13,7 @@ use serde_json::json;
 #[tokio::test]
 async fn get_info_and_tool_publish_description_both_note_the_unready_sandbox() {
     if sandbox::require_user_namespaces_or_ci_skip() {
-        println!("skipped: no user namespaces (CI)");
+        println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
     let data_dir = common::TempDataDir::new();

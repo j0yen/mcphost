@@ -13,7 +13,7 @@ use mcphost::sandbox;
 #[tokio::test]
 async fn each_canonical_failure_message_classifies_to_its_documented_token() {
     if sandbox::require_user_namespaces_or_ci_skip() {
-        println!("skipped: no user namespaces (CI)");
+        println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
 

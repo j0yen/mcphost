@@ -27,7 +27,7 @@ async fn tool_test_response_carries_the_inferred_python_schema() {
     // sandbox-dependent unit tests in src/kinds/python.rs and
     // src/sandbox.rs, and as tests/ac17_kind_conformance.rs.
     if sandbox::require_user_namespaces_or_ci_skip() {
-        println!("skipped: no user namespaces (CI)");
+        println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
     let envs_dir = common::TempDataDir::new();

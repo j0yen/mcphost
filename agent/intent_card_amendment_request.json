@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card_amendment_request.v1",
-  "requested_at": "2026-09-05T00:15:00Z",
-  "amends": "agent/intent-card.json (intent_slug mcphost-protocol-compat)",
-  "reason": "The checked-in intent card still describes the protocol-compat work (PRD-mcphost-gate-green), which shipped and went green before v0.12.0. Later extends landed under their own PRDs without refreshing the card. This request records the drift and its approval so the reviewer scope-check has its documented amendment.",
+  "requested_at": "2026-09-06T05:00:00Z",
+  "amends": "agent/intent-card.json (intent_slug mcphost-ci-sandbox-coverage; scope/non_goals/hard_constraints still carried forward from mcphost-protocol-compat, per intent-card-refresh.sh's never-fabricate rule)",
+  "reason": "agent/intent-card.json's scope array is carried forward byte-for-byte by intent-card-refresh.sh -- it is not PRD-sourceable, so a refresh renames the card's intent_slug and acceptance_criteria but leaves scope describing whatever PRD last set it by hand (here: mcphost-protocol-compat). This file is where the scope a landed diff adds gets recorded. The gate blocked at c173882 with ci-workflow-change-not-covered-by-intent-card-amendment for exactly the first entry below.",
   "scope_additions": [
     {
       "slug": "mcphost-sandbox-ready",
@@ -14,6 +14,18 @@
       "slug": "safety-comment-reflow",
       "landed": "dcdb87e",
       "summary": "comment-only reflow of PersistentSandbox::kill SAFETY comment onto one line so the BAD_RUST single-line detector sees it; no code change"
+    },
+    {
+      "slug": "mcphost-ci-sandbox-coverage",
+      "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-ci-sandbox-coverage.md",
+      "landed": "v0.13.1 (commits 08a0d44, 490d8dc, c173882)",
+      "summary": "CI grants unprivileged user namespaces to the runner session (`sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`, best-effort) and installs bwrap explicitly, so the sandbox suites execute instead of skipping; require_user_namespaces_or_ci_skip became a capability probe rather than a $CI check; a non-vacuous assertion fails the job when any suite skipped for capability reasons or zero tests executed. Authority: the PRD's own P0 requirements 1-3 and ACs 1-5, not a separate approval -- this IS the queued PRD's specified change, and the ci.yml edit is the only way to satisfy it."
+    },
+    {
+      "slug": "mcphost-ci-sandbox-coverage-ac6",
+      "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-ci-sandbox-coverage.md",
+      "landed": "v0.13.4",
+      "summary": "Same PRD, its last open criterion. ci.yml splits into two jobs with no `needs:` between them (`gate`: static analysis + core suites + doctests; `sandbox`: userns grant + sandbox suites), because the measured single-job wall time was 313-336 s against the PRD's 300 s budget; scripts/ci-test-partition.sh derives and proves the split total and disjoint. Adds sandbox::decide_userns (the (capability, $CI) truth table) and sandbox::USERNS_SKIP_MARKER (one constant behind both the Rust println! and the workflow's grep), plus tests/ci_sandbox_ac01..ac07 -- the ACs' first real tests, the declared `ci_sandbox` prefix having matched no file through v0.13.3. Authority: the PRD's P1 requirement / AC6 and P2 / AC7."
     }
   ],
   "approval": {

@@ -2546,7 +2546,7 @@ mod tests {
     #[tokio::test]
     async fn ast_check_rejects_source_without_main() {
         if !sandbox::supports_user_namespaces() {
-            println!("skipped: no user namespaces");
+            println!("{}", sandbox::USERNS_SKIP_MARKER);
             return;
         }
         let data_dir = temp_data_dir();
@@ -2564,7 +2564,7 @@ mod tests {
     #[tokio::test]
     async fn ast_check_names_the_syntax_error_line() {
         if !sandbox::supports_user_namespaces() {
-            println!("skipped: no user namespaces");
+            println!("{}", sandbox::USERNS_SKIP_MARKER);
             return;
         }
         let data_dir = temp_data_dir();
@@ -2647,7 +2647,7 @@ mod tests {
     #[tokio::test]
     async fn repeat_call_is_a_warm_hit_ac1() {
         if !sandbox::supports_user_namespaces() {
-            println!("skipped: no user namespaces");
+            println!("{}", sandbox::USERNS_SKIP_MARKER);
             return;
         }
         let data_dir = temp_data_dir();
@@ -2691,7 +2691,7 @@ mod tests {
     #[tokio::test]
     async fn idle_warm_entry_is_reaped_after_ttl_ac2() {
         if !sandbox::supports_user_namespaces() {
-            println!("skipped: no user namespaces");
+            println!("{}", sandbox::USERNS_SKIP_MARKER);
             return;
         }
         let data_dir = temp_data_dir();
@@ -2731,7 +2731,7 @@ mod tests {
     #[tokio::test]
     async fn republish_remove_and_tenant_removal_evict_synchronously_ac3() {
         if !sandbox::supports_user_namespaces() {
-            println!("skipped: no user namespaces");
+            println!("{}", sandbox::USERNS_SKIP_MARKER);
             return;
         }
         let data_dir = temp_data_dir();
@@ -2772,7 +2772,7 @@ mod tests {
     #[tokio::test]
     async fn warm_reuse_does_not_leak_module_state_ac4() {
         if !sandbox::supports_user_namespaces() {
-            println!("skipped: no user namespaces");
+            println!("{}", sandbox::USERNS_SKIP_MARKER);
             return;
         }
         let data_dir = temp_data_dir();
@@ -2810,7 +2810,7 @@ mod tests {
     #[tokio::test]
     async fn warm_call_past_deadline_times_out_and_is_evicted_ac5() {
         if !sandbox::supports_user_namespaces() {
-            println!("skipped: no user namespaces");
+            println!("{}", sandbox::USERNS_SKIP_MARKER);
             return;
         }
         let data_dir = temp_data_dir();

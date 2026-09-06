@@ -38,7 +38,7 @@ async fn publish_with_requirement(name: &str, requirement: &str) -> common::RpcE
 #[tokio::test]
 async fn url_requirement_is_rejected() {
     if sandbox::require_user_namespaces_or_ci_skip() {
-        println!("skipped: no user namespaces (CI)");
+        println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
     let err = publish_with_requirement("bad_req_url", "pkg @ https://example.com/pkg.whl").await;
@@ -48,7 +48,7 @@ async fn url_requirement_is_rejected() {
 #[tokio::test]
 async fn vcs_requirement_is_rejected() {
     if sandbox::require_user_namespaces_or_ci_skip() {
-        println!("skipped: no user namespaces (CI)");
+        println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
     let err = publish_with_requirement("bad_req_vcs", "git+https://github.com/example/pkg").await;
@@ -58,7 +58,7 @@ async fn vcs_requirement_is_rejected() {
 #[tokio::test]
 async fn path_requirement_is_rejected() {
     if sandbox::require_user_namespaces_or_ci_skip() {
-        println!("skipped: no user namespaces (CI)");
+        println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
     let err = publish_with_requirement("bad_req_path", "../local-package").await;

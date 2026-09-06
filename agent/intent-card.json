@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-classify-precision.md",
-  "intent_slug": "mcphost-classify-precision",
-  "root_motivation": "An operator (or the harness's failure-family rollup) reading `sandbox_unavailable` detail strings needs the classification to be causally correct. Today `classify_stderr` matches the bare substring \"no such file or directory\", which is emitted for at least two unrelated causes: the interpreter genuinely missing, and any bind-mount source momentarily absent (ephemeral host dir, provisioning race \u2014 the reviewer's written scenario). The same review flagged three hygiene debts riding the module: `PythonKind::for_test_with_selftest` / `set_selftest_interpreter_for_test` / `set_selftest_missing_binary_for_test` are `pub` without `#[cfg(...)]` gating (reachable by any lib consumer), an HLT-041 dangerous-comment marker sits unresolved at `src/compat_check.rs:48`, and three advisory BAD_RUST findings ship with no written explanation. All four are cited in `target/autobuilder/receipts/reviewer-agent.json` at head 5fda62b.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-ci-sandbox-coverage.md",
+  "intent_slug": "mcphost-ci-sandbox-coverage",
+  "root_motivation": "Joe's deploy gate treats CI green as evidence. For the sandbox suites \u2014 self-test, failure classification, warm-pool eviction, the core of v0.13.0 \u2014 that evidence is vacuous: the guard skips on the `CI` environment variable, not on actual capability, so the suites run only on dev boxes with working user namespaces. The 2026-09-03 operator answer scoped the guard to CI deliberately as a stopgap when runners lacked userns; the stopgap now hides all sandbox regressions from every CI run (0.00 s suite time in the actual Actions run at head 6932b87). A sandbox regression merged tomorrow would ship with a green badge and surface only as hub publish failures \u2014 the loop's worst and slowest failure family to diagnose.",
   "user_persona": "An AI agent connecting to mcphost for the first time over streamable HTTP with default client configuration (Claude Agent SDK / Claude Code), which must be able to read a well-formed tool list before it can do anything else; secondarily the operator who probes the endpoint after a redeploy.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,62 +14,44 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given stderr \"bwrap: Can't bind mount /usr/lib/python3.12: No such file or directory\", When classify_stderr runs, Then the result is the mount-source-missing kind carrying \"/usr/lib/python3.12\" and not interpreter_missing.",
-      "test": "tests/ac01_unauthenticated_lists_signup.rs"
+      "description": "Given a push to main, When the ci workflow runs on the hosted runner, Then the sandbox-ready suites execute with >0 tests run and their assertions evaluated.",
+      "test": "tests/ci_sandbox_ac01_workflow_executes_sandbox_suites.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given stderr naming the interpreter binary itself as not found, When classify_stderr runs, Then interpreter_missing is returned.",
-      "test": "tests/ac02_signup_creates_hashed_tenant.rs"
+      "description": "Given the capability probe on a userns-capable environment, When tests start, Then no suite skips for capability reasons.",
+      "test": "tests/ci_sandbox_ac02_capable_env_never_skips.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given ambiguous stderr containing \"no such file or directory\" with neither a bind-mount frame nor an interpreter name, When classify_stderr runs, Then the result is other.",
-      "test": "tests/ac03_tenant_lists_control_plane_only.rs"
+      "description": "Given a runner where userns creation genuinely fails, When the suite runs in CI, Then affected tests skip with the capability reason in the log AND the non-vacuous assertion fails the job.",
+      "test": "tests/ci_sandbox_ac03_incapable_in_ci_skips_and_fails_job.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given the lib crate compiled with default features, When its public API is enumerated, Then for_test_with_selftest, set_selftest_interpreter_for_test, and set_selftest_missing_binary_for_test are absent.",
-      "test": "tests/ac04_publish_list_and_call.rs"
+      "description": "Given a dev box without userns and CI unset, When the suite runs, Then the guard fails loudly (no silent skip), unchanged from the 2026-09-03 contract.",
+      "test": "tests/ci_sandbox_ac04_incapable_outside_ci_fails_loudly.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the existing test suite with the gating in place, When cargo test runs, Then all previously green tests remain green.",
-      "test": "tests/ac05_cross_tenant_isolation.rs"
+      "description": "Given the CI env var set but capability present, When the suite runs, Then tests execute \u2014 the variable alone never causes a skip.",
+      "test": "tests/ci_sandbox_ac05_ci_var_alone_never_skips.rs"
     },
     {
       "id": "AC6",
-      "level": "MUST",
-      "description": "Given empty stderr, When classify_stderr runs, Then it returns other without panicking.",
-      "test": "tests/ac06_remove_tool.rs"
+      "level": "SHOULD",
+      "description": "Given the full workflow on a clean cache, When it completes, Then total added wall time for sandbox suites is \u22645 minutes or the suites run as a parallel job.",
+      "test": "tests/ci_sandbox_ac06_sandbox_suites_run_as_a_parallel_job.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given the repaired src/compat_check.rs comment, When scripts/audit.sh runs, Then no HLT-041 finding fires for that file.",
-      "test": "tests/ac07_usage_metering.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "SHOULD",
-      "description": "Given the shipped commit(s), When the next reviewer-agent runs, Then bad-rust-advisory-findings-unexplained does not appear among its concerns.",
-      "test": "tests/ac08_admin_disable_and_forbidden.rs"
-    },
-    {
-      "id": "AC9",
       "level": "MAY",
-      "description": "Given arbitrary byte-string stderr inputs, When the classify property test runs, Then classification never panics and always returns a defined kind.",
-      "test": "tests/ac09_signup_rate_limit.rs"
-    },
-    {
-      "id": "AC10",
-      "level": "MUST",
-      "description": "Given non-UTF8 bytes in stderr, When classify_stderr runs, Then lossy conversion is applied and a defined kind returns.",
-      "test": "tests/ac10_publish_validation_errors.rs"
+      "description": "Given the repo docs, When a contributor reads local-test requirements, Then the userns capability requirement and probe behavior are stated.",
+      "test": "tests/ci_sandbox_ac07_docs_state_the_capability_requirement.rs"
     }
   ],
   "scope": [
@@ -147,6 +129,5 @@
       "question": "reviewer-agent block reason 'diff-scope-not-covered-by-reviewed-intent-card' (receipt target/autobuilder/receipts/reviewer-agent.json, captured_at 2026-09-03T22:11:04Z): b382f7d (v0.5.3) and 11c83a0 (v0.5.2) both implement PRD-mcphost-gate-green requirement 8/9 (CI-scoped sandbox test skip), not the mcphost-protocol-compat work this card's AC1-AC15/five_whys_trace/scope describe -- prd_source still named PRD-mcphost-protocol-compat with no paper trail to the PRD that actually authorized those two commits. Amend in place, or file agent/intent_card_amendment_request.json?",
       "resolution": "Amended in place: prd_source now points at /home/jsy/Documents/PRDs/build-queue/PRD-mcphost-gate-green.md (operator decision 2026-09-03). intent_card_amendment_request.json's four kinds (add_ac/relax_must/widen_constraint/out_of_scope) are for an edit-agent halting mid-iteration over a Stage-3 conflict it can't resolve itself; there is no Stage-3 conflict here -- v0.5.2/v0.5.3 touch zero src/ files and change none of AC1-AC15, which remain valid and unmodified (target/autobuilder/results.tsv: ac_pass=19/19 unchanged at b382f7d). This closes the paper-trail gap the reviewer-agent flagged without reopening the protocol-compat contract or halting the loop for a decision already made."
     }
-  ],
-  "rollback_model": "redeploy-tag"
+  ]
 }

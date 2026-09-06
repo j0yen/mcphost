@@ -22,7 +22,7 @@ async fn two_tools_from_identical_source_get_byte_identical_inferred_schemas() {
     // sandbox-dependent unit tests in src/kinds/python.rs and
     // src/sandbox.rs, and as tests/ac17_kind_conformance.rs.
     if sandbox::require_user_namespaces_or_ci_skip() {
-        println!("skipped: no user namespaces (CI)");
+        println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
     let envs_dir = common::TempDataDir::new();

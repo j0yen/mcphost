@@ -8,9 +8,25 @@ on:
 permissions:
   contents: read
 
+# PRD-mcphost-ci-sandbox-coverage AC6 (P1). `gate` and `sandbox` declare no
+# `needs:` on each other, so GitHub schedules them concurrently and the
+# workflow's wall time is max(gate, sandbox) rather than their sum. That is
+# the AC's second branch ("or the suites run as a parallel job"), taken
+# because its first branch is now measurably out of reach: with the sandbox
+# suites executing for real instead of skipping, the single `cargo test
+# --workspace` step measured 336s (v0.13.1, run 33955331814) and 313s (v0.13.3,
+# run 33995726792), both over the PRD's own 300s budget.
+#
+# Which targets go to which job is DERIVED, not listed here -- see
+# `scripts/ci-test-partition.sh`. Both jobs run that script's `check` before
+# testing (total + disjoint over `tests/*.rs`) and both assert zero
+# capability-skips afterwards, so a target filed into the wrong job turns CI
+# red instead of skipping silently. Only `sandbox` grants the userns
+# capability; a userns-dependent target left in `gate` therefore skips, and
+# `gate`'s own assertion fails the job.
 jobs:
   gate:
-    name: autobuilder gate
+    name: static analysis + core suites
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -32,6 +48,70 @@ jobs:
 
       - name: cargo clippy
         run: cargo clippy --workspace -- -D warnings
+
+      # Kept identical to the sandbox job's environment except for the userns
+      # grant: the only intended difference between the two jobs is the
+      # capability, not which binaries exist.
+      - name: install bubblewrap and uv
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: verify test partition is total and disjoint
+        run: ./scripts/ci-test-partition.sh check
+
+      - name: cargo test (core suites)
+        run: |
+          set -o pipefail
+          start=$(date +%s)
+          cargo test $(./scripts/ci-test-partition.sh core) -- --nocapture 2>&1 | tee /tmp/cargo-test.log
+          status=$?
+          echo "core suites wall time: $(( $(date +%s) - start ))s" | tee -a "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      # `--doc` cannot be combined with any other target selector, so doctests
+      # are their own invocation rather than part of either partition.
+      - name: cargo test --doc
+        run: cargo test --doc
+
+      # PRD-mcphost-ci-sandbox-coverage P0#3, core half. This job deliberately
+      # does NOT grant unprivileged user namespaces, so any capability-skip
+      # here means `ci-test-partition.sh` filed a userns-dependent target into
+      # the core partition -- where it would have passed vacuously forever.
+      - name: assert no core suite skipped for capability reasons
+        run: |
+          skipped=$(grep -c "skipped: no user namespaces" /tmp/cargo-test.log || true)
+          executed=$(grep -c '^test .* \.\.\. ok$' /tmp/cargo-test.log || true)
+          echo "core non-vacuous check: skipped=$skipped executed-ok=$executed"
+          if [ "$skipped" -gt 0 ]; then
+            echo "::error::$skipped core-partition test(s) skipped for user-namespace reasons. A userns-dependent target is misfiled into the core partition -- it needs the sandbox job's capability grant. See scripts/ci-test-partition.sh."
+            exit 1
+          fi
+          if [ "$executed" -eq 0 ]; then
+            echo "::error::cargo test reported zero executed ('... ok') tests -- the core suites did not run at all."
+            exit 1
+          fi
+
+      - name: cargo deny check
+        run: cargo deny check
+
+      - name: bad-rust audit
+        run: ./scripts/audit.sh
+
+  sandbox:
+    name: sandbox suites (user namespaces)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: install rust toolchain (pinned by rust-toolchain.toml)
+        uses: actions-rust-lang/setup-rust-toolchain@9d7e65c320fdb52dcd45ffaa68deb6c02c8754d9 # v1.10.1
 
       - name: install bubblewrap and uv
         run: |
@@ -56,25 +136,19 @@ jobs:
       - name: enable unprivileged user namespaces for the sandbox suites
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
 
-      # PRD-mcphost-ci-sandbox-coverage P1. The sandbox suites (sandboxready_*,
-      # python_ac*, infer_ac*, warmpool_ac*, ac17_kind_conformance) are now
-      # part of every `cargo test --workspace` run rather than skipping, so
-      # this measures and logs the whole step's wall time as a superset bound
-      # on their added cost (a tighter per-suite figure needs `cargo test`'s
-      # own per-binary timing, not available on stable without extra tooling).
-      # A run over 5 minutes doesn't fail the job -- it's a signal to split
-      # the sandbox suites into their own parallel job in a follow-up, per
-      # the PRD's P1 requirement, once a real number exists to act on.
-      - name: cargo test
+      - name: verify test partition is total and disjoint
+        run: ./scripts/ci-test-partition.sh check
+
+      - name: cargo test (sandbox suites)
         run: |
           set -o pipefail
           start=$(date +%s)
-          cargo test --workspace -- --nocapture 2>&1 | tee /tmp/cargo-test.log
+          cargo test $(./scripts/ci-test-partition.sh sandbox) -- --nocapture 2>&1 | tee /tmp/cargo-test.log
           status=$?
           elapsed=$(( $(date +%s) - start ))
-          echo "cargo test wall time: ${elapsed}s" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "sandbox suites wall time: ${elapsed}s" | tee -a "$GITHUB_STEP_SUMMARY"
           if [ "$elapsed" -gt 300 ]; then
-            echo "::warning::cargo test --workspace took ${elapsed}s (>5min); consider splitting the sandbox suites into a parallel job (PRD-mcphost-ci-sandbox-coverage P1)."
+            echo "::warning::the sandbox suites alone took ${elapsed}s (>5min) even as their own parallel job; the next split has to be within the suites (matrix by target group), not between them."
           fi
           exit "$status"
 
@@ -85,6 +159,8 @@ jobs:
       # all-green. Fail the job explicitly instead: any sandbox test that
       # printed its "skipped: no user namespaces" line means the suites did
       # not run for real this time, and that must turn CI red, not stay green.
+      # The grepped literal is `sandbox::USERNS_SKIP_MARKER`; the Rust side is
+      # pinned to it by tests/ci_sandbox_ac03_*.rs.
       - name: assert sandbox suites executed for real (non-vacuous)
         run: |
           skipped=$(grep -c "skipped: no user namespaces" /tmp/cargo-test.log || true)
@@ -98,9 +174,3 @@ jobs:
             echo "::error::cargo test reported zero executed ('... ok') tests -- the suite did not run at all."
             exit 1
           fi
-
-      - name: cargo deny check
-        run: cargo deny check
-
-      - name: bad-rust audit
-        run: ./scripts/audit.sh
