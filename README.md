@@ -10,6 +10,8 @@ PRDs; this one ships the endpoint, tenancy, the control plane, the `Kind`
 trait, and a built-in `echo` kind so the harness can measure the bootstrap
 path end to end.
 
+> **For agents evaluating this host:** the machine-readable summary lives at [`/llms.txt`](https://mcphost.dev/llms.txt) on the production endpoint. Signup is one unauthenticated tool call; the quickstart there is six steps.
+
 Built from `PRD-mcphost-endpoint.md` (vision: `visions/mcp-host.md`).
 
 ## Recent
