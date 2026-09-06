@@ -60,6 +60,22 @@ enum Command {
     /// same detail line `/healthz` would show -- for a shell on the host,
     /// without hitting the HTTP surface.
     SandboxCheck,
+    /// PRD-mcphost-metered-overage: offline billing-related subcommands.
+    Billing {
+        #[command(subcommand)]
+        action: BillingCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum BillingCommand {
+    /// Requirement 51: read pro tenants' unemitted `ok` calls, POST one
+    /// Stripe meter event per tenant (chunked at 100 events/request), and
+    /// advance the high-water mark only once every event in this run has
+    /// been ledgered. Meant to run from `deploy/mcphost-emit-meter.timer`
+    /// every five minutes; exits non-zero (leaving state untouched) on any
+    /// POST failure.
+    EmitMeter,
 }
 
 fn env_or(name: &str, default: &str) -> String {
@@ -139,6 +155,50 @@ async fn main() -> anyhow::Result<()> {
                 Ok(())
             }
         }
+        Command::Billing { action } => match action {
+            BillingCommand::EmitMeter => {
+                init_tracing();
+                let dir = data_dir();
+                // Requirement 51: a timer overlap must not double-read the
+                // same span -- held for the whole subcommand, dropped (and
+                // so released) when this match arm returns.
+                let _lock = match mcphost::metering::acquire_lock(&dir) {
+                    Ok(lock) => lock,
+                    Err(e) => {
+                        eprintln!("emit-meter: {e}");
+                        std::process::exit(3);
+                    }
+                };
+                let db = Db::open(&dir)?;
+                db.migrate().await?;
+                let billing_config = mcphost::billing::BillingConfig::from_env();
+                let Some(secret_key) = billing_config.secret_key.clone() else {
+                    eprintln!("emit-meter: MCPHOST_STRIPE_SECRET_KEY is not set");
+                    std::process::exit(2);
+                };
+                let http_client = reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(10))
+                    .build()?;
+                let client = mcphost::billing::StripeClient::new(http_client, secret_key);
+                let event_name = billing_config.meter_event_name().to_string();
+                match mcphost::metering::run_once(&db, &client, &event_name).await {
+                    Ok(outcome) => {
+                        println!(
+                            "emit-meter: batch {} sent {} event(s) across {} request(s) covering {} call(s)",
+                            outcome.batch_id,
+                            outcome.events_sent,
+                            outcome.requests_sent,
+                            outcome.calls_covered
+                        );
+                        Ok(())
+                    }
+                    Err(e) => {
+                        eprintln!("emit-meter: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+        },
         Command::Serve { registry_url } => {
             init_tracing();
 

@@ -17,6 +17,8 @@ fn billing_config() -> BillingConfig {
         secret_key: Some("sk_test_ac6".to_string()),
         webhook_secret: Some(WEBHOOK_SECRET.to_string()),
         price_pro: Some("price_pro_ac6".to_string()),
+        metered_price_id: None,
+        meter_event_name: None,
     }
 }
 

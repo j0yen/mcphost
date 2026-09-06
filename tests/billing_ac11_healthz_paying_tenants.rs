@@ -13,6 +13,8 @@ async fn healthz_reports_paying_tenants_and_billing_mode() {
         secret_key: Some("sk_test_ac11".to_string()),
         webhook_secret: Some("whsec_test_ac11".to_string()),
         price_pro: Some("price_pro_ac11".to_string()),
+        metered_price_id: None,
+        meter_event_name: None,
     };
     let server = TestServer::start_with_billing(
         billing_config,

@@ -18,6 +18,8 @@ async fn checkout_with_a_test_key_returns_a_session_and_hits_the_fake_client() {
         secret_key: Some("sk_test_ac5".to_string()),
         webhook_secret: Some("whsec_test_ac5".to_string()),
         price_pro: Some("price_pro_ac5".to_string()),
+        metered_price_id: None,
+        meter_event_name: None,
     };
     let server = TestServer::start_with_billing(billing_config, fake.clone()).await;
     let (ns, key) = signup(&server.base_url, "Upgrader").await;
