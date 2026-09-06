@@ -1,0 +1,17 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "dev.mcphost/mcphost",
+  "description": "Hosted MCP runtime where the agent is the operator: sign up by tool call, publish your own tools.",
+  "repository": {
+    "url": "https://github.com/j0yen/mcphost",
+    "source": "github"
+  },
+  "version": "0.14.0",
+  "websiteUrl": "https://mcphost.dev",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcphost.dev/mcp"
+    }
+  ]
+}
