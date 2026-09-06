@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.15.1 — 2026-09-06
+
+Harden supports_user_namespaces() to retry the unshare probe once before deciding incapable, closing out the flake-audit finding (exit codes [0,101,0] over 3 runs) with a plausible-root-cause fix (EAGAIN under concurrent process creation vs. genuine policy denial) after 12+ repro attempts across two ticks failed to catch the flake red-handed.
+
 ## v0.15.0 — 2026-09-06
 
 Allowlisted the test-only Stripe webhook-secret fixture in billing.rs, clearing the HLT-010-SECRET-SPRAWL gate block.
