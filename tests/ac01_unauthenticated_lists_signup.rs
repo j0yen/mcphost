@@ -80,6 +80,14 @@ async fn unauthenticated_tools_list_is_signup_only() {
         "host.secret_set",
         "host.secret_list",
         "host.registry_publish",
+        // PRD-grand-loop-billing AC1: billing.plans is anonymous-and-tenant
+        // reachable, discoverable here for the same reason host.quickstart
+        // is -- billing.status/billing.checkout are tenant-only in what
+        // they return but their descriptors are discoverable pre-auth too,
+        // same as every other host.*-style tool above.
+        "billing.plans",
+        "billing.status",
+        "billing.checkout",
     ] {
         assert!(
             tool_names.contains(&expected),
@@ -92,7 +100,8 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        14,
-        "signup + the twelve host.* tools (incl. host.quickstart and host.tool_run) + host.tool_call: {tool_names:?}"
+        17,
+        "signup + the twelve host.* tools (incl. host.quickstart and host.tool_run) + \
+         host.tool_call + the three billing.* tools: {tool_names:?}"
     );
 }

@@ -7,12 +7,12 @@ use std::net::SocketAddr;
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
-use axum::body::Body;
+use axum::body::{Body, Bytes};
 use axum::extract::{Path, State};
-use axum::http::{HeaderValue, Request, StatusCode};
+use axum::http::{HeaderMap, HeaderValue, Request, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use rmcp::model::ProtocolVersion;
 use rmcp::transport::streamable_http_server::{
@@ -68,7 +68,68 @@ async fn healthz(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         obj.insert("sandbox_detail".to_string(), json!(status.detail));
         obj.insert("sandbox_checked_at".to_string(), json!(status.checked_at));
     }
+    // PRD-grand-loop-billing AC4/AC11: `off` with no Stripe key, else
+    // `test`/`live` from the key prefix, plus a live count of tenants on
+    // any paid plan -- additive fields, ignored by an old client the same
+    // way the sandbox fields above are.
+    if let Some(obj) = body.as_object_mut() {
+        obj.insert(
+            "billing_mode".to_string(),
+            json!(state.billing_config.billing_mode()),
+        );
+        obj.insert(
+            "paying_tenants".to_string(),
+            json!(state.db.count_paying_tenants().await.unwrap_or(0)),
+        );
+    }
     Json(body)
+}
+
+/// `POST /billing/webhook` (AC6/AC7/AC8/AC10): verifies `Stripe-Signature`
+/// and applies the event via `billing::process_webhook`. Deliberately
+/// takes the raw `Bytes` body (not a `Json<Value>` extractor) because
+/// signature verification is over the *exact* bytes Stripe sent, before
+/// any re-serialization could change them.
+async fn billing_webhook(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> impl IntoResponse {
+    let signature = headers
+        .get("Stripe-Signature")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
+    match crate::billing::process_webhook(&state, &body, signature).await {
+        Ok(value) => (StatusCode::OK, Json(value)).into_response(),
+        Err(err) => {
+            let data = err.into_error_data();
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error_code": "invalid_webhook_signature", "error": data.message})),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// `GET /billing/done` / `GET /billing/cancel` (requirement: "plain text
+/// pages"): the `success_url`/`cancel_url` a Checkout Session redirects a
+/// human's browser to after they finish (or abandon) payment. This host
+/// has no UI (Non-goals: "A pricing page or any UI"), so these are the
+/// whole experience -- a short, honest sentence, not a redirect back into
+/// the MCP surface a browser can't call anyway.
+async fn billing_done() -> impl IntoResponse {
+    (
+        [("Content-Type", "text/plain; charset=utf-8")],
+        "Payment received. Ask your agent to call billing.status to confirm the upgrade.",
+    )
+}
+
+async fn billing_cancel() -> impl IntoResponse {
+    (
+        [("Content-Type", "text/plain; charset=utf-8")],
+        "Checkout canceled. No changes were made to your plan.",
+    )
 }
 
 /// AC19: `GET /.well-known/mcp/<namespace>/server.json`, unauthenticated
@@ -162,6 +223,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/.well-known/mcp/{namespace}/server.json",
             get(well_known_server_json),
         )
+        .route("/billing/webhook", post(billing_webhook))
+        .route("/billing/done", get(billing_done))
+        .route("/billing/cancel", get(billing_cancel))
         .route_service("/mcp", service)
         .layer(middleware::from_fn(protocol_version_and_log))
         .with_state(state)

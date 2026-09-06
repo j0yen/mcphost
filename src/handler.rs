@@ -34,7 +34,14 @@ enum Auth {
     /// tenant's key hash.
     Invalid,
     Admin,
-    Tenant(Tenant),
+    /// PRD-grand-loop-billing: `Tenant` grew three billing columns
+    /// (`plan`/`plan_since`/`billing_ref`), pushing this enum over
+    /// clippy's `large_enum_variant` threshold when carried by value
+    /// alongside the zero-sized `Anonymous`/`Invalid`/`Admin` variants --
+    /// boxed per the lint's own suggestion rather than shrinking `Tenant`
+    /// itself (every other variant is unaffected; every call site already
+    /// takes `&Tenant`, which `Box<Tenant>` derefs to for free).
+    Tenant(Box<Tenant>),
 }
 
 fn value_to_json_object(v: Value) -> Map<String, Value> {
@@ -64,7 +71,7 @@ async fn resolve_auth(state: &AppState, parts: &http::request::Parts) -> Result<
     let hash = hash_key(&key);
     match state.db.find_tenant_by_key_hash(hash).await? {
         Some(t) if t.disabled => Err(AppError::TenantDisabled),
-        Some(t) => Ok(Auth::Tenant(t)),
+        Some(t) => Ok(Auth::Tenant(Box::new(t))),
         None => Ok(Auth::Invalid),
     }
 }
@@ -86,7 +93,7 @@ async fn resolve_tenant_key_auth(state: &AppState, args: &Value) -> Result<Auth,
     let hash = hash_key(key);
     match state.db.find_tenant_by_key_hash(hash).await? {
         Some(t) if t.disabled => Err(AppError::TenantDisabled),
-        Some(t) => Ok(Auth::Tenant(t)),
+        Some(t) => Ok(Auth::Tenant(Box::new(t))),
         None => Ok(Auth::Invalid),
     }
 }
@@ -305,6 +312,25 @@ fn host_tools(kinds: &KindRegistry) -> Vec<Tool> {
              (requires --registry-url and admin.tenant_verify_namespace first).",
             host_schema(json!({}), &[]),
         ),
+        Tool::new(
+            "billing.plans",
+            "The plan catalog (price and quotas per plan) and whether Stripe billing is \
+             configured on this host. Anonymous callers get the same answer as tenants.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "billing.status",
+            "This tenant's plan, usage against each quota, and when the daily call quota \
+             resets.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "billing.checkout",
+            "Create (or reuse an open one for the same plan) a Stripe Checkout URL to \
+             upgrade this tenant, defaulting to the pro plan. Returns billing_unavailable \
+             if this host has no Stripe key configured -- call billing.plans first to check.",
+            host_schema(json!({"plan": {"type": "string"}}), &[]),
+        ),
     ]
 }
 
@@ -371,6 +397,32 @@ fn admin_tools() -> Vec<Tool> {
              recheck) and return the fresh SandboxStatus -- call after fixing whatever made \
              sandbox_ready false on /healthz, to confirm without restarting the unit.",
             schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "admin.billing_ledger",
+            "Every ledgered billing event (webhook or admin.plan_set), newest first, capped \
+             at 1000, optionally filtered by since/until (unix seconds) and tenant.",
+            schema(
+                json!({
+                    "since": {"type": "integer"},
+                    "until": {"type": "integer"},
+                    "tenant": {"type": "string"},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "admin.plan_set",
+            "Support override: set a tenant's plan directly, ledgered as event_type \
+             admin.plan_set.",
+            schema(
+                json!({
+                    "tenant": {"type": "string"},
+                    "plan": {"type": "string"},
+                    "reason": {"type": "string"},
+                }),
+                &["tenant", "plan"],
+            ),
         ),
     ]
 }
@@ -453,6 +505,8 @@ impl McpHostHandler {
             "host.secret_set" => control::secret_set(&self.state, tenant, &args).await,
             "host.secret_list" => control::secret_list(&self.state, tenant).await,
             "host.registry_publish" => control::registry_publish(&self.state, tenant, &args).await,
+            "billing.status" => crate::billing::status(&self.state, tenant).await,
+            "billing.checkout" => crate::billing::checkout(&self.state, tenant, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         }
     }
@@ -472,8 +526,40 @@ impl McpHostHandler {
                 admin::tenant_verify_namespace(&self.state, &args).await
             }
             "admin.sandbox_recheck" => admin::sandbox_recheck(&self.state).await,
+            "admin.billing_ledger" => admin::billing_ledger(&self.state, &args).await,
+            "admin.plan_set" => admin::plan_set(&self.state, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         }
+    }
+
+    /// PRD-grand-loop-billing AC3: reject with `quota_exceeded` when
+    /// `tenant` has already made `plan.calls_per_day` (or more) successful
+    /// calls since the most recent UTC midnight. Shared by every path that
+    /// reaches [`Self::call_published_tool`] (a direct namespaced call and
+    /// `host.tool_call` both go through it); `host.tool_test`/`host.tool_run`
+    /// deliberately do not call this -- neither writes a `calls` row or
+    /// counts toward this quota (same distinction `host.usage` already
+    /// draws).
+    async fn check_calls_quota(&self, tenant: &Tenant) -> Result<(), AppError> {
+        let plan = self.state.plans.get(&tenant.plan).ok_or_else(|| {
+            AppError::Internal(format!(
+                "tenant's plan '{}' is not in the loaded plan catalog",
+                tenant.plan
+            ))
+        })?;
+        let midnight = crate::state::utc_midnight_unix(crate::state::now_unix());
+        let used = self.state.db.count_calls_since(tenant.id, midnight, true).await?;
+        if used >= plan.calls_per_day {
+            let resets_at = crate::state::rfc3339_from_unix(midnight + 86_400);
+            return Err(crate::billing::quota_exceeded(
+                &tenant.plan,
+                "calls_per_day",
+                plan.calls_per_day,
+                used,
+                Some(resets_at),
+            ));
+        }
+        Ok(())
     }
 
     /// Execute a published tenant tool (`<namespace>.<local-name>`),
@@ -507,6 +593,13 @@ impl McpHostHandler {
             // (used for missing control-plane arguments elsewhere).
             return Err(AppError::ArgsInvalid(e.to_string()));
         }
+
+        // PRD-grand-loop-billing AC3: `calls_per_day` enforcement, checked
+        // before the call ever dispatches (same "rejected before any
+        // sandboxed work happens" shape as the sandbox_unavailable check
+        // elsewhere in this file) -- a rejected call writes no `calls` row
+        // at all, a stronger guarantee than "no row with ok = 1".
+        self.check_calls_quota(tenant).await?;
 
         let secrets = build_secret_resolver(&self.state, tenant.id).await?;
         let log = Arc::new(BufferedLog(std::sync::Mutex::new(Vec::new())));
@@ -959,6 +1052,11 @@ impl ServerHandler for McpHostHandler {
                 control::quickstart(&self.state, Some(tenant), &args)
             }
             (_, "host.quickstart") => control::quickstart(&self.state, None, &args),
+            // PRD-grand-loop-billing AC1: "billing.plans (anonymous and
+            // tenant)" -- reachable exactly like host.quickstart, before
+            // signup and regardless of auth, since it carries no
+            // tenant-specific data.
+            (_, "billing.plans") => Ok(crate::billing::plans(&self.state)),
             (Auth::Anonymous | Auth::Invalid, _) => Err(AppError::Unauthorized),
             (Auth::Admin, name) if name.starts_with("admin.") => {
                 self.dispatch_admin_tool(name, args).await
@@ -968,7 +1066,9 @@ impl ServerHandler for McpHostHandler {
                 let _ = name;
                 Err(AppError::Forbidden)
             }
-            (Auth::Tenant(tenant), name) if name.starts_with("host.") => {
+            (Auth::Tenant(tenant), name)
+                if name.starts_with("host.") || name.starts_with("billing.") =>
+            {
                 self.dispatch_tenant_tool(tenant, name, args).await
             }
             (Auth::Tenant(tenant), name) => match name.split_once('.') {

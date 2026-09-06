@@ -73,13 +73,16 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
         .map(|t| t["name"].as_str().unwrap())
         .collect();
     assert!(
-        names.iter().all(|n| n.starts_with("host.")),
-        "a tenant with no published tools must see only host.* tools: {names:?}"
+        names
+            .iter()
+            .all(|n| n.starts_with("host.") || n.starts_with("billing.")),
+        "a tenant with no published tools must see only host.*/billing.* tools: {names:?}"
     );
     assert_eq!(
         names.len(),
-        13,
+        16,
         "there must be exactly the twelve host.* control-plane tools \
-         (incl. host.quickstart and host.tool_run) plus host.tool_call: {names:?}"
+         (incl. host.quickstart and host.tool_run) plus host.tool_call plus the \
+         three billing.* tools: {names:?}"
     );
 }

@@ -44,8 +44,9 @@ async fn ac1_anonymous_tools_list_has_cache_fields() {
     assert!(names.contains(&"signup"), "{names:?}");
     assert_eq!(
         names.len(),
-        14,
-        "signup + host.* (incl. host.quickstart and host.tool_run) + host.tool_call: {names:?}"
+        17,
+        "signup + host.* (incl. host.quickstart and host.tool_run) + host.tool_call + \
+         billing.* (3 tools): {names:?}"
     );
 }
 
@@ -125,7 +126,8 @@ async fn ac3_invalid_bearer_tools_list_has_cache_fields() {
     assert!(names.contains(&"signup"), "{names:?}");
     assert_eq!(
         names.len(),
-        14,
-        "signup + host.* (incl. host.quickstart and host.tool_run) + host.tool_call: {names:?}"
+        17,
+        "signup + host.* (incl. host.quickstart and host.tool_run) + host.tool_call + \
+         billing.* (3 tools): {names:?}"
     );
 }
