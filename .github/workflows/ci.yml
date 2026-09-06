@@ -17,13 +17,21 @@ permissions:
 # --workspace` step measured 336s (v0.13.1, run 33955331814) and 313s (v0.13.3,
 # run 33995726792), both over the PRD's own 300s budget.
 #
+# That first split was not enough on its own: even isolated as its own job,
+# the sandbox partition's `cargo test` step alone measured 313s -- over budget
+# by itself. So `sandbox` is a 3-way matrix (`strategy.matrix.shard`), each
+# shard running `scripts/ci-test-partition.sh sandbox-shard <n> 3`, and
+# `sandbox-required` gates on every shard succeeding so a shard failure still
+# fails the workflow instead of being silently ignored (GitHub does not fail
+# a run just because one matrix job failed unless something depends on it).
+#
 # Which targets go to which job is DERIVED, not listed here -- see
-# `scripts/ci-test-partition.sh`. Both jobs run that script's `check` before
-# testing (total + disjoint over `tests/*.rs`) and both assert zero
-# capability-skips afterwards, so a target filed into the wrong job turns CI
-# red instead of skipping silently. Only `sandbox` grants the userns
-# capability; a userns-dependent target left in `gate` therefore skips, and
-# `gate`'s own assertion fails the job.
+# `scripts/ci-test-partition.sh`. All jobs run that script's `check` before
+# testing (total + disjoint over `tests/*.rs`, AND total + disjoint over the
+# sandbox shards) and assert zero capability-skips afterwards, so a target
+# filed into the wrong job/shard turns CI red instead of skipping silently.
+# Only `sandbox` grants the userns capability; a userns-dependent target left
+# in `gate` therefore skips, and `gate`'s own assertion fails the job.
 jobs:
   gate:
     name: static analysis + core suites
@@ -101,9 +109,13 @@ jobs:
         run: ./scripts/audit.sh
 
   sandbox:
-    name: sandbox suites (user namespaces)
+    name: sandbox suites (user namespaces, shard ${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - name: checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -139,16 +151,17 @@ jobs:
       - name: verify test partition is total and disjoint
         run: ./scripts/ci-test-partition.sh check
 
-      - name: cargo test (sandbox suites)
+      - name: cargo test (sandbox suites, shard ${{ matrix.shard }}/3)
         run: |
           set -o pipefail
           start=$(date +%s)
-          cargo test $(./scripts/ci-test-partition.sh sandbox) -- --nocapture 2>&1 | tee /tmp/cargo-test.log
+          cargo test $(./scripts/ci-test-partition.sh sandbox-shard ${{ matrix.shard }} 3) -- --nocapture 2>&1 | tee /tmp/cargo-test.log
           status=$?
           elapsed=$(( $(date +%s) - start ))
-          echo "sandbox suites wall time: ${elapsed}s" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "sandbox shard ${{ matrix.shard }}/3 wall time: ${elapsed}s" | tee -a "$GITHUB_STEP_SUMMARY"
           if [ "$elapsed" -gt 300 ]; then
-            echo "::warning::the sandbox suites alone took ${elapsed}s (>5min) even as their own parallel job; the next split has to be within the suites (matrix by target group), not between them."
+            echo "::error::sandbox shard ${{ matrix.shard }}/3 took ${elapsed}s (>5min budget) even after the 3-way matrix split. See PRD-mcphost-ci-sandbox-coverage AC6 -- widen SANDBOX_SHARDS in scripts/ci-test-partition.sh and the matrix here."
+            exit 1
           fi
           exit "$status"
 
@@ -172,5 +185,26 @@ jobs:
           fi
           if [ "$executed" -eq 0 ]; then
             echo "::error::cargo test reported zero executed ('... ok') tests -- the suite did not run at all."
+            exit 1
+          fi
+
+  # PRD-mcphost-ci-sandbox-coverage AC6. `sandbox` is a 3-way matrix, and a
+  # matrix job failing does not by itself fail the workflow unless some other
+  # job depends on it -- GitHub reports the run red only because THIS job
+  # reads `needs.sandbox.result`. `if: always()` makes it run even when a
+  # shard failed (the default `if` would skip it, and a skipped required job
+  # reads as "not failed" to some branch-protection configurations).
+  sandbox-required:
+    name: sandbox suites (all shards)
+    needs: sandbox
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: fail if any sandbox shard did not succeed
+        run: |
+          echo "sandbox matrix result: ${{ needs.sandbox.result }}"
+          if [ "${{ needs.sandbox.result }}" != "success" ]; then
+            echo "::error::one or more sandbox matrix shards did not succeed (result=${{ needs.sandbox.result }}) -- see the sandbox job's shard runs above."
             exit 1
           fi

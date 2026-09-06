@@ -105,7 +105,13 @@ fn the_partition_is_total_and_disjoint_over_every_test_target() {
 
 #[test]
 fn both_jobs_verify_the_partition_before_testing() {
+    // `sandbox-required` runs no tests of its own -- it only gates on the
+    // `sandbox` matrix's aggregate result (AC6's shard split) -- so it has no
+    // partition to trust and is exempt from this invariant.
     for (name, body) in support::jobs(&support::workflow()) {
+        if !body.contains("cargo test") {
+            continue;
+        }
         assert!(
             body.contains("ci-test-partition.sh check"),
             "job `{name}` must verify the partition before it trusts it"
