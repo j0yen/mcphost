@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.15.0 — 2026-09-06
+
+Allowlisted the test-only Stripe webhook-secret fixture in billing.rs, clearing the HLT-010-SECRET-SPRAWL gate block.
+
 ## v0.14.0 — 2026-09-06
 
 mcphost gains plans (`free`, `pro`), quotas enforced at publish and at call time with a structured error that names the upgrade path, three `billing.*` tools, a Stripe Checkout webhook that flips a tenant to `pro`, and a billing ledger the measure command reads. Every ledger row records whether the payment was test or live.
