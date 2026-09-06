@@ -282,6 +282,87 @@ pub async fn sandbox_recheck(state: &AppState) -> Result<Value, AppError> {
     })
 }
 
+/// `admin.billing_ledger(since?, until?, tenant?)` (AC9): every ledgered
+/// billing event, newest first, capped at 1000 by `Db::list_billing_events`
+/// -- read-only, and (technical considerations) the same rows the
+/// `measure` command reads without ever needing Stripe credentials.
+pub async fn billing_ledger(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let since = args.get("since").and_then(Value::as_i64);
+    let until = args.get("until").and_then(Value::as_i64);
+    let tenant = arg_str_opt(args, "tenant");
+    let rows = state.db.list_billing_events(since, until, tenant).await?;
+    let events: Vec<Value> = rows
+        .into_iter()
+        .map(|r| {
+            json!({
+                "event_id": r.event_id,
+                "event_type": r.event_type,
+                "tenant": r.tenant,
+                "plan": r.plan,
+                "amount_cents": r.amount_cents,
+                "currency": r.currency,
+                "mode": r.mode,
+                "received_at": r.received_at,
+            })
+        })
+        .collect();
+    Ok(json!({ "events": events }))
+}
+
+/// `admin.plan_set(tenant, plan, reason)`: a support override, ledgered as
+/// `event_type: admin.plan_set` with `mode` = the host's current billing
+/// mode (requirement: "the billing tools" / P0 admin surface) -- so a
+/// support-granted upgrade shows up in the same ledger a real payment
+/// would, distinguishable only by its `event_type`.
+pub async fn plan_set(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let tenant_ns = arg_str(args, "tenant")?;
+    let plan_name = arg_str(args, "plan")?;
+    let reason = arg_str_opt(args, "reason").unwrap_or_default();
+
+    if state.plans.get(&plan_name).is_none() {
+        return Err(AppError::InvalidParams(format!(
+            "unknown plan '{plan_name}'"
+        )));
+    }
+    let tenant = state
+        .db
+        .find_tenant_by_namespace(tenant_ns.clone())
+        .await?
+        .ok_or_else(|| AppError::TenantNotFound(tenant_ns.clone()))?;
+
+    let plan_since = crate::state::rfc3339_now();
+    state
+        .db
+        .upgrade_tenant_plan(tenant.id, plan_name.clone(), plan_since, None)
+        .await?;
+
+    let mode = state.billing_config.billing_mode();
+    // A support override is ledgered under a synthetic, always-unique
+    // event id (there is no processor event backing it) so it lands in
+    // the same `billing_events` table `admin.billing_ledger` reads.
+    let event_id = format!(
+        "admin.plan_set:{}:{}",
+        tenant.namespace,
+        crate::state::now_unix()
+    );
+    let payload = json!({"tenant": tenant.namespace, "plan": plan_name, "reason": reason});
+    state
+        .db
+        .insert_billing_event(crate::db::BillingEventInsert {
+            event_id,
+            event_type: "admin.plan_set".to_string(),
+            tenant_id: Some(tenant.id),
+            plan: Some(plan_name.clone()),
+            amount_cents: None,
+            currency: None,
+            mode: if mode == "off" { "test".to_string() } else { mode.to_string() },
+            payload_sha256: crate::billing::sha256_hex(payload.to_string().as_bytes()),
+        })
+        .await?;
+
+    Ok(json!({ "tenant": tenant.namespace, "plan": plan_name }))
+}
+
 pub async fn tool_list(state: &AppState, args: &Value) -> Result<Value, AppError> {
     let tenant_ns = arg_str(args, "tenant")?;
     let tenant = state

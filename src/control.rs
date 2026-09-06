@@ -110,6 +110,20 @@ pub fn quickstart(
     let tool_name = "my_tool";
     let qualified_name = format!("{}.{}", tenant.namespace, tool_name);
 
+    // PRD-grand-loop-billing requirement "host.quickstart's limits object
+    // reports the tenant's plan quotas": additive, best-effort -- a plan
+    // name plans.toml no longer carries (should never happen; the plan
+    // column and the catalog are both this host's own state) degrades to
+    // omitting the block rather than failing an otherwise read-only call.
+    let plan_limits = state.plans.get(&tenant.plan).map(|plan| {
+        json!({
+            "name": tenant.plan,
+            "tools_max": plan.tools_max,
+            "calls_per_day": plan.calls_per_day,
+            "secrets_max": plan.secrets_max,
+        })
+    });
+
     Ok(json!({
         "authenticated": true,
         "namespace": tenant.namespace,
@@ -140,6 +154,7 @@ pub fn quickstart(
             "max_spec_bytes": MAX_SPEC_BYTES,
             "max_tools_per_tenant": MAX_TOOLS_PER_TENANT,
             "name_pattern": "^[a-z][a-z0-9_]{1,40}$",
+            "plan": plan_limits,
         },
     }))
 }
@@ -151,6 +166,10 @@ pub fn whoami(tenant: &Tenant) -> Value {
         "display_name": tenant.display_name,
         "created_at": tenant.created_at,
         "disabled": tenant.disabled,
+        // PRD-grand-loop-billing goal: an agent's own identity call
+        // already tells it what plan it's on, with no extra round trip.
+        "plan": tenant.plan,
+        "plan_since": tenant.plan_since,
     })
 }
 
@@ -217,8 +236,24 @@ pub async fn tool_publish(
     let already_exists = state.db.get_tool(tenant.id, name.clone()).await?.is_some();
     if !already_exists {
         let count = state.db.count_tools(tenant.id).await?;
-        if count >= MAX_TOOLS_PER_TENANT {
-            return Err(AppError::TooManyTools(count as usize));
+        // PRD-grand-loop-billing requirement 3: `MAX_TOOLS_PER_TENANT`
+        // becomes the ceiling of any plan's `tools_max` -- an operator
+        // hand-editing plans.toml cannot raise a plan past this hard cap.
+        let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
+            AppError::Internal(format!(
+                "tenant's plan '{}' is not in the loaded plan catalog",
+                tenant.plan
+            ))
+        })?;
+        let effective_max = plan.tools_max.min(MAX_TOOLS_PER_TENANT);
+        if count >= effective_max {
+            return Err(crate::billing::quota_exceeded(
+                &tenant.plan,
+                "tools_max",
+                effective_max,
+                count,
+                None,
+            ));
         }
     }
 
@@ -312,6 +347,31 @@ pub async fn secret_set(
 ) -> Result<Value, AppError> {
     let name = arg_str(args, "name")?;
     let value = arg_str(args, "value")?;
+
+    // PRD-grand-loop-billing requirement 3: `secrets_max` enforcement,
+    // same shape as `tool_publish`'s `tools_max` check above. A re-set of
+    // an existing secret name must not count against the limit, same
+    // rationale as a tool republish.
+    let already_exists = state.db.list_secret_names(tenant.id).await?.contains(&name);
+    if !already_exists {
+        let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
+            AppError::Internal(format!(
+                "tenant's plan '{}' is not in the loaded plan catalog",
+                tenant.plan
+            ))
+        })?;
+        let count = state.db.count_secrets(tenant.id).await?;
+        if count >= plan.secrets_max {
+            return Err(crate::billing::quota_exceeded(
+                &tenant.plan,
+                "secrets_max",
+                plan.secrets_max,
+                count,
+                None,
+            ));
+        }
+    }
+
     let (ct, nonce) = state.secrets.encrypt(&value)?;
     state
         .db

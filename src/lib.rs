@@ -6,6 +6,7 @@
 
 pub mod admin;
 pub mod auth;
+pub mod billing;
 pub mod compat_check;
 pub mod control;
 pub mod db;
@@ -13,6 +14,7 @@ pub mod errors;
 pub mod handler;
 pub mod http;
 pub mod kinds;
+pub mod plans;
 pub mod registry;
 pub mod sandbox;
 pub mod secrets;

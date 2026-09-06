@@ -18,11 +18,12 @@ const MIGRATION_0002: &str = include_str!("../migrations/0002_tenant_last_tool_c
 const MIGRATION_0003: &str = include_str!("../migrations/0003_registry.sql");
 const MIGRATION_0004: &str = include_str!("../migrations/0004_calls_resource_usage.sql");
 const MIGRATION_0005: &str = include_str!("../migrations/0005_cascade_delete.sql");
+const MIGRATION_0006: &str = include_str!("../migrations/0006_billing.sql");
 
 /// Shared by every query that selects a whole tenant row, so the column
 /// list and [`tenant_from_row`] stay in lockstep with each other.
 const TENANT_COLUMNS: &str = "id, namespace, display_name, key_hash, created_at, disabled, \
-    last_tool_change_unix, namespace_verified, registry_namespace";
+    last_tool_change_unix, namespace_verified, registry_namespace, plan, plan_since, billing_ref";
 
 fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
     Ok(Tenant {
@@ -35,6 +36,9 @@ fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
         last_tool_change_unix: r.get(6)?,
         namespace_verified: r.get::<_, i64>(7)? != 0,
         registry_namespace: r.get(8)?,
+        plan: r.get(9)?,
+        plan_since: r.get(10)?,
+        billing_ref: r.get(11)?,
     })
 }
 
@@ -57,6 +61,19 @@ pub struct Tenant {
     /// recorded alongside `namespace_verified`; `None` until then. Used as
     /// the registry `server.json`'s `name` field.
     pub registry_namespace: Option<String>,
+    /// PRD-grand-loop-billing: `free` until a webhook (or
+    /// `admin.plan_set`) says otherwise. See migration 0006.
+    pub plan: String,
+    /// When `plan` last changed via billing (webhook `checkout.session.completed`
+    /// or `invoice.paid`, or `admin.plan_set`); `None` for a tenant that
+    /// has never been anything but its migration-time default.
+    pub plan_since: Option<String>,
+    /// The payment processor's own id for this tenant (a Stripe customer
+    /// or subscription id) -- the only processor identifier stored
+    /// (technical considerations), used to resolve `invoice.paid` /
+    /// `customer.subscription.deleted` / `invoice.payment_failed` events
+    /// back to a tenant when they carry no `client_reference_id`.
+    pub billing_ref: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -103,6 +120,37 @@ impl TenantDeleteCounts {
         self.calls_removed += other.calls_removed;
         self.logs_removed += other.logs_removed;
     }
+}
+
+/// PRD-grand-loop-billing: one row to insert into `billing_events`
+/// (migration 0006). `tenant_id: None` for an event this host couldn't (or
+/// deliberately didn't) resolve to a tenant -- an unknown event type, or a
+/// `.mode_mismatch`-suffixed one.
+#[derive(Debug, Clone)]
+pub struct BillingEventInsert {
+    pub event_id: String,
+    pub event_type: String,
+    pub tenant_id: Option<i64>,
+    pub plan: Option<String>,
+    pub amount_cents: Option<i64>,
+    pub currency: Option<String>,
+    pub mode: String,
+    pub payload_sha256: String,
+}
+
+/// A `billing_events` row read back for `admin.billing_ledger` (AC9), with
+/// `tenant_id` resolved to the tenant's namespace (`None` when the event
+/// carried no tenant).
+#[derive(Debug, Clone, Serialize)]
+pub struct BillingEventRow {
+    pub event_id: String,
+    pub event_type: String,
+    pub tenant: Option<String>,
+    pub plan: Option<String>,
+    pub amount_cents: Option<i64>,
+    pub currency: Option<String>,
+    pub mode: String,
+    pub received_at: String,
 }
 
 fn now_rfc3339() -> String {
@@ -187,7 +235,8 @@ impl Db {
         Self::migrate_0002_tenant_last_tool_change(&conn)?;
         Self::migrate_0003_registry(&conn)?;
         Self::migrate_0004_calls_resource_usage(&conn)?;
-        Self::migrate_0005_cascade_delete(&conn)
+        Self::migrate_0005_cascade_delete(&conn)?;
+        Self::migrate_0006_billing(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -247,6 +296,18 @@ impl Db {
             .exists([])?;
         if !has_cascade {
             conn.execute_batch(MIGRATION_0005)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-grand-loop-billing migration 0006: same idempotency pattern as
+    /// 0002-0004, gated on `tenants.plan`.
+    fn migrate_0006_billing(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'plan'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0006)?;
         }
         Ok(())
     }
@@ -362,6 +423,9 @@ impl Db {
                 last_tool_change_unix: 0,
                 namespace_verified: false,
                 registry_namespace: None,
+                plan: "free".to_string(),
+                plan_since: None,
+                billing_ref: None,
             })
         })
         .await
@@ -372,27 +436,10 @@ impl Db {
         key_hash: String,
     ) -> Result<Option<Tenant>, AppError> {
         self.with_conn(move |conn| {
-            conn.query_row(
-                "SELECT id, namespace, display_name, key_hash, created_at, disabled, \
-                        last_tool_change_unix, namespace_verified, registry_namespace \
-                 FROM tenants WHERE key_hash = ?1",
-                params![key_hash],
-                |r| {
-                    Ok(Tenant {
-                        id: r.get(0)?,
-                        namespace: r.get(1)?,
-                        display_name: r.get(2)?,
-                        key_hash: r.get(3)?,
-                        created_at: r.get(4)?,
-                        disabled: r.get::<_, i64>(5)? != 0,
-                        last_tool_change_unix: r.get(6)?,
-                        namespace_verified: r.get::<_, i64>(7)? != 0,
-                        registry_namespace: r.get(8)?,
-                    })
-                },
-            )
-            .optional()
-            .map_err(AppError::from)
+            let sql = format!("SELECT {TENANT_COLUMNS} FROM tenants WHERE key_hash = ?1");
+            conn.query_row(&sql, params![key_hash], tenant_from_row)
+                .optional()
+                .map_err(AppError::from)
         })
         .await
     }
@@ -402,27 +449,28 @@ impl Db {
         namespace: String,
     ) -> Result<Option<Tenant>, AppError> {
         self.with_conn(move |conn| {
-            conn.query_row(
-                "SELECT id, namespace, display_name, key_hash, created_at, disabled, \
-                        last_tool_change_unix, namespace_verified, registry_namespace \
-                 FROM tenants WHERE namespace = ?1",
-                params![namespace],
-                |r| {
-                    Ok(Tenant {
-                        id: r.get(0)?,
-                        namespace: r.get(1)?,
-                        display_name: r.get(2)?,
-                        key_hash: r.get(3)?,
-                        created_at: r.get(4)?,
-                        disabled: r.get::<_, i64>(5)? != 0,
-                        last_tool_change_unix: r.get(6)?,
-                        namespace_verified: r.get::<_, i64>(7)? != 0,
-                        registry_namespace: r.get(8)?,
-                    })
-                },
-            )
-            .optional()
-            .map_err(AppError::from)
+            let sql = format!("SELECT {TENANT_COLUMNS} FROM tenants WHERE namespace = ?1");
+            conn.query_row(&sql, params![namespace], tenant_from_row)
+                .optional()
+                .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-grand-loop-billing: resolve a tenant by the payment processor's
+    /// own id (`billing_ref` -- a Stripe customer or subscription id),
+    /// used by webhook events (`invoice.paid`,
+    /// `customer.subscription.deleted`, `invoice.payment_failed`) that
+    /// carry no `client_reference_id` of their own.
+    pub async fn find_tenant_by_billing_ref(
+        &self,
+        billing_ref: String,
+    ) -> Result<Option<Tenant>, AppError> {
+        self.with_conn(move |conn| {
+            let sql = format!("SELECT {TENANT_COLUMNS} FROM tenants WHERE billing_ref = ?1");
+            conn.query_row(&sql, params![billing_ref], tenant_from_row)
+                .optional()
+                .map_err(AppError::from)
         })
         .await
     }
@@ -464,27 +512,77 @@ impl Db {
 
     pub async fn list_tenants(&self) -> Result<Vec<Tenant>, AppError> {
         self.with_conn(|conn| {
-            let mut stmt = conn.prepare(
-                "SELECT id, namespace, display_name, key_hash, created_at, disabled, \
-                        last_tool_change_unix, namespace_verified, registry_namespace \
-                 FROM tenants ORDER BY id",
-            )?;
+            let sql = format!("SELECT {TENANT_COLUMNS} FROM tenants ORDER BY id");
+            let mut stmt = conn.prepare(&sql)?;
             let rows = stmt
-                .query_map([], |r| {
-                    Ok(Tenant {
-                        id: r.get(0)?,
-                        namespace: r.get(1)?,
-                        display_name: r.get(2)?,
-                        key_hash: r.get(3)?,
-                        created_at: r.get(4)?,
-                        disabled: r.get::<_, i64>(5)? != 0,
-                        last_tool_change_unix: r.get(6)?,
-                        namespace_verified: r.get::<_, i64>(7)? != 0,
-                        registry_namespace: r.get(8)?,
-                    })
-                })?
+                .query_map([], tenant_from_row)?
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-grand-loop-billing AC11: tenants whose `plan` is not `free`.
+    pub async fn count_paying_tenants(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM tenants WHERE plan != 'free'",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// AC6 / requirement "checkout.session.completed": set `plan`,
+    /// `plan_since`, and `billing_ref` together -- also reused by
+    /// `admin.plan_set`'s support override.
+    pub async fn upgrade_tenant_plan(
+        &self,
+        tenant_id: i64,
+        plan: String,
+        plan_since: String,
+        billing_ref: Option<String>,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tenants SET plan = ?1, plan_since = ?2, \
+                 billing_ref = COALESCE(?3, billing_ref) WHERE id = ?4",
+                params![plan, plan_since, billing_ref, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// AC8: `customer.subscription.deleted` / `invoice.payment_failed` --
+    /// the tenant returns to `free` (Non-goals: "keeps its tools within
+    /// the free quota", so nothing else about the tenant changes here).
+    pub async fn downgrade_tenant_plan(&self, tenant_id: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tenants SET plan = 'free' WHERE id = ?1",
+                params![tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `invoice.paid`: refresh `plan_since` without touching `plan` or
+    /// `billing_ref` (the subscription is simply renewing, not changing).
+    pub async fn refresh_plan_since(
+        &self,
+        tenant_id: i64,
+        plan_since: String,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tenants SET plan_since = ?1 WHERE id = ?2",
+                params![plan_since, tenant_id],
+            )?;
+            Ok(())
         })
         .await
     }
@@ -803,6 +901,20 @@ impl Db {
         .await
     }
 
+    /// PRD-grand-loop-billing: `secrets_max` enforcement in
+    /// `control::secret_set`.
+    pub async fn count_secrets(&self, tenant_id: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM secrets WHERE tenant_id = ?1",
+                params![tenant_id],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
     pub async fn list_secret_names(&self, tenant_id: i64) -> Result<Vec<String>, AppError> {
         self.with_conn(move |conn| {
             let mut stmt =
@@ -933,6 +1045,32 @@ impl Db {
         .await
     }
 
+    /// PRD-grand-loop-billing `calls_per_day` enforcement: the number of
+    /// this tenant's calls at or after `since_unix` (requirement:
+    /// "counted from the existing `calls` table", `idx_calls_tenant_started`
+    /// already indexes exactly this). `ok_only` counts successful calls
+    /// only (the quota this crate enforces, AC3: "500 ok calls"); passing
+    /// `false` would count every attempt including rejections, which
+    /// nothing here currently needs but is a one-argument distinction
+    /// worth keeping explicit rather than silently picking one.
+    pub async fn count_calls_since(
+        &self,
+        tenant_id: i64,
+        since_unix: i64,
+        ok_only: bool,
+    ) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            let sql = if ok_only {
+                "SELECT COUNT(*) FROM calls WHERE tenant_id = ?1 AND started_unix >= ?2 AND ok = 1"
+            } else {
+                "SELECT COUNT(*) FROM calls WHERE tenant_id = ?1 AND started_unix >= ?2"
+            };
+            conn.query_row(sql, params![tenant_id, since_unix], |r| r.get(0))
+                .map_err(AppError::from)
+        })
+        .await
+    }
+
     pub async fn usage(&self, tenant_id: i64, window_secs: i64) -> Result<UsageStats, AppError> {
         let since = now_unix() - window_secs;
         self.with_conn(move |conn| {
@@ -1049,6 +1187,106 @@ impl Db {
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
             rows.reverse();
+            Ok(rows)
+        })
+        .await
+    }
+
+    // ---- billing ledger (PRD-grand-loop-billing) ------------------------
+
+    /// AC6: idempotency check before `process_webhook` applies anything --
+    /// a second delivery of the same `event_id` is a no-op.
+    pub async fn billing_event_exists(&self, event_id: String) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            conn.prepare("SELECT 1 FROM billing_events WHERE event_id = ?1")?
+                .exists(params![event_id])
+                .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Insert one ledger row. Callers check [`Self::billing_event_exists`]
+    /// first (so a duplicate delivery is detected and short-circuited
+    /// *before* any tenant mutation is attempted, not merely before the
+    /// ledger write) -- this uses a plain `INSERT`, not `INSERT OR IGNORE`,
+    /// so a UNIQUE-constraint violation here is a real bug (a check that
+    /// should have caught it didn't), not a silently-swallowed race.
+    pub async fn insert_billing_event(&self, event: BillingEventInsert) -> Result<(), AppError> {
+        let received_at = now_rfc3339();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO billing_events \
+                 (event_id, event_type, tenant_id, plan, amount_cents, currency, mode, received_at, payload_sha256) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    event.event_id,
+                    event.event_type,
+                    event.tenant_id,
+                    event.plan,
+                    event.amount_cents,
+                    event.currency,
+                    event.mode,
+                    received_at,
+                    event.payload_sha256,
+                ],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// AC9: `admin.billing_ledger(since?, until?, tenant?)` -- newest first,
+    /// capped at 1000 rows. `since`/`until` are unix seconds compared
+    /// against `received_at`'s own `unix:<secs>.<nanos>` sort-friendly
+    /// encoding (see `now_rfc3339`), so the comparison is done on the
+    /// numeric column each row's `id` already orders by (monotonic with
+    /// insertion time on this single-writer connection) rather than a
+    /// string comparison on `received_at` itself.
+    pub async fn list_billing_events(
+        &self,
+        since_unix: Option<i64>,
+        until_unix: Option<i64>,
+        tenant_namespace: Option<String>,
+    ) -> Result<Vec<BillingEventRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut sql = String::from(
+                "SELECT be.event_id, be.event_type, t.namespace, be.plan, be.amount_cents, \
+                        be.currency, be.mode, be.received_at, be.id \
+                 FROM billing_events be LEFT JOIN tenants t ON t.id = be.tenant_id \
+                 WHERE 1 = 1",
+            );
+            let mut bind: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+            if let Some(since) = since_unix {
+                sql.push_str(" AND CAST(substr(be.received_at, 6) AS REAL) >= ?");
+                bind.push(Box::new(since));
+            }
+            if let Some(until) = until_unix {
+                sql.push_str(" AND CAST(substr(be.received_at, 6) AS REAL) <= ?");
+                bind.push(Box::new(until));
+            }
+            if let Some(ns) = tenant_namespace {
+                sql.push_str(" AND t.namespace = ?");
+                bind.push(Box::new(ns));
+            }
+            sql.push_str(" ORDER BY be.id DESC LIMIT 1000");
+
+            let params_refs: Vec<&dyn rusqlite::ToSql> =
+                bind.iter().map(|b| b.as_ref()).collect();
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(params_refs.as_slice(), |r| {
+                    Ok(BillingEventRow {
+                        event_id: r.get(0)?,
+                        event_type: r.get(1)?,
+                        tenant: r.get(2)?,
+                        plan: r.get(3)?,
+                        amount_cents: r.get(4)?,
+                        currency: r.get(5)?,
+                        mode: r.get(6)?,
+                        received_at: r.get(7)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
             Ok(rows)
         })
         .await

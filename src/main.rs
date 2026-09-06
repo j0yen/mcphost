@@ -164,6 +164,29 @@ async fn main() -> anyhow::Result<()> {
 
             let signup_rate_limit_per_hour = mcphost::state::signup_rate_limit_per_hour_from_env();
 
+            // PRD-grand-loop-billing requirement 1 (AC1): loaded once at
+            // startup, writing plans.toml with defaults if this data dir
+            // has never seen one.
+            let plans_path = mcphost::plans::PlanCatalog::path_from_env(&data_dir());
+            let plans = mcphost::plans::PlanCatalog::load_or_init(&plans_path)?;
+            let billing_config = mcphost::billing::BillingConfig::from_env();
+            if billing_config.secret_key.is_none() {
+                tracing::info!(
+                    "billing is disabled (no MCPHOST_STRIPE_SECRET_KEY); quotas still enforce"
+                );
+            }
+            let billing_http_client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(10))
+                .build()?;
+            // No key configured: `billing.checkout` always refuses with
+            // `billing_unavailable` before this client would ever be
+            // called (AC4), but `AppState` still needs a concrete value
+            // for the field, so an empty secret key is a harmless stand-in.
+            let stripe_secret_key = billing_config.secret_key.clone().unwrap_or_default();
+            let billing_client: Arc<dyn mcphost::billing::BillingClient> = Arc::new(
+                mcphost::billing::StripeClient::new(billing_http_client, stripe_secret_key),
+            );
+
             let db = Db::open(&data_dir())?;
             db.migrate().await?;
 
@@ -204,6 +227,9 @@ async fn main() -> anyhow::Result<()> {
                 sandbox_mechanism,
                 tool_run_limiter: mcphost::state::ToolRunLimiter::new(),
                 signup_rate_limit_per_hour,
+                plans,
+                billing_config,
+                billing_client,
             });
 
             mcphost::http::serve(bind, state).await

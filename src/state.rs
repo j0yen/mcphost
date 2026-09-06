@@ -103,6 +103,18 @@ pub struct AppState {
     /// the [`SIGNUP_RATE_LIMIT_PER_HOUR`] constant so a single-IP measure
     /// run can raise the cap without a rebuild.
     pub signup_rate_limit_per_hour: i64,
+    /// PRD-grand-loop-billing requirement 1: the loaded `plans.toml` --
+    /// price and quotas per plan. Loaded once at startup
+    /// ([`crate::plans::PlanCatalog::load_or_init`]); every quota check
+    /// reads a [`crate::plans::Plan`] out of this rather than a constant.
+    pub plans: crate::plans::PlanCatalog,
+    /// The `MCPHOST_STRIPE_*` settings; `None` fields are the supported
+    /// "billing absent" state (goal 4).
+    pub billing_config: crate::billing::BillingConfig,
+    /// The outbound Checkout-Session client `billing.checkout` calls --
+    /// `StripeClient` in production, `FakeBillingClient` in every test
+    /// (technical considerations: "Tests never reach the network").
+    pub billing_client: std::sync::Arc<dyn crate::billing::BillingClient>,
 }
 
 pub fn now_unix() -> i64 {
@@ -152,6 +164,20 @@ pub fn rfc3339_from_unix(unix_secs: i64) -> String {
 /// computed fresh each call.
 pub fn rfc3339_now() -> String {
     rfc3339_from_unix(now_unix())
+}
+
+/// The unix timestamp of the most recent UTC midnight at or before
+/// `now_unix` -- PRD-grand-loop-billing's `calls_per_day` window start
+/// (requirement: "counted from the existing `calls` table" by
+/// `started_unix`, UTC day).
+pub fn utc_midnight_unix(now_unix: i64) -> i64 {
+    now_unix.div_euclid(86_400) * 86_400
+}
+
+/// The next UTC midnight after `now_unix` -- `billing.status`'s
+/// `resets_at` (AC3/AC14).
+pub fn next_utc_midnight_unix(now_unix: i64) -> i64 {
+    utc_midnight_unix(now_unix) + 86_400
 }
 
 /// `^[a-z][a-z0-9_]{1,40}$` — a lowercase-leading identifier, 2-41 chars.
@@ -306,5 +332,15 @@ mod tests {
             limiter.allow(2),
             "a different tenant's own window must be independent"
         );
+    }
+
+    /// PRD-grand-loop-billing: `utc_midnight_unix`/`next_utc_midnight_unix`
+    /// against known timestamps -- exact midnight, and a time mid-day.
+    #[test]
+    fn utc_midnight_matches_known_timestamps() {
+        assert_eq!(utc_midnight_unix(0), 0);
+        assert_eq!(utc_midnight_unix(86_400), 86_400);
+        assert_eq!(utc_midnight_unix(86_400 + 3661), 86_400);
+        assert_eq!(next_utc_midnight_unix(86_400 + 3661), 2 * 86_400);
     }
 }

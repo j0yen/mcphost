@@ -289,6 +289,31 @@ impl TestServer {
         .await
     }
 
+    /// PRD-grand-loop-billing: a server with billing configured (a real
+    /// `MCPHOST_STRIPE_SECRET_KEY`-equivalent and/or webhook secret) and a
+    /// caller-supplied [`mcphost::billing::BillingClient`] -- pass an
+    /// `Arc<FakeBillingClient>` cloned before this call so the test can
+    /// still inspect `last_request`/`call_count` afterward (the clone
+    /// shares the same underlying `Mutex`/`AtomicUsize`, per
+    /// `FakeBillingClient`'s own interior-mutability design). Every other
+    /// `start_*` helper above defaults to `BillingConfig::default()` (no
+    /// keys, `billing_mode: off`) and a fresh, uninspected fake client.
+    pub async fn start_with_billing(
+        billing_config: mcphost::billing::BillingConfig,
+        billing_client: Arc<dyn mcphost::billing::BillingClient>,
+    ) -> Self {
+        Self::start_full_with_billing(
+            Some(ADMIN_KEY.to_string()),
+            KindRegistry::with_builtin(),
+            mcphost::state::CALL_TIMEOUT,
+            None,
+            mcphost::state::SIGNUP_RATE_LIMIT_PER_HOUR,
+            billing_config,
+            billing_client,
+        )
+        .await
+    }
+
     /// Same as [`Self::start_full`], with the signup rate limit also
     /// overridable (PRD-mcphost-signup-rate-configurable).
     pub async fn start_full_with_signup_rate_limit(
@@ -297,6 +322,34 @@ impl TestServer {
         call_timeout: std::time::Duration,
         registry: Option<RegistryConfig>,
         signup_rate_limit_per_hour: i64,
+    ) -> Self {
+        Self::start_full_with_billing(
+            admin_key,
+            kinds,
+            call_timeout,
+            registry,
+            signup_rate_limit_per_hour,
+            mcphost::billing::BillingConfig::default(),
+            Arc::new(mcphost::billing::FakeBillingClient::new(
+                mcphost::state::now_unix(),
+            )),
+        )
+        .await
+    }
+
+    /// The one real constructor every `start_*` helper above funnels
+    /// into -- billing config and client are the two fields
+    /// PRD-grand-loop-billing added to `AppState`; every other field is
+    /// unchanged from before this PRD.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn start_full_with_billing(
+        admin_key: Option<String>,
+        kinds: KindRegistry,
+        call_timeout: std::time::Duration,
+        registry: Option<RegistryConfig>,
+        signup_rate_limit_per_hour: i64,
+        billing_config: mcphost::billing::BillingConfig,
+        billing_client: Arc<dyn mcphost::billing::BillingClient>,
     ) -> Self {
         let data_dir = TempDataDir::new();
         let db = Db::open(&data_dir.0).expect("open db");
@@ -320,6 +373,9 @@ impl TestServer {
             sandbox_mechanism: None,
             tool_run_limiter: mcphost::state::ToolRunLimiter::new(),
             signup_rate_limit_per_hour,
+            plans: mcphost::plans::PlanCatalog::default_catalog(),
+            billing_config,
+            billing_client,
         });
 
         let serve_state = state.clone();
