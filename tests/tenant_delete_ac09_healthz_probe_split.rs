@@ -4,10 +4,15 @@
 //! `tenants_total - tenants_probe` equals the real count.
 
 mod common;
-use common::{TestServer, signup};
+use common::{ADMIN_KEY, TestServer, signup};
 
+// PRD-mcphost-healthz-minimal: `tenants_probe`/`tenants_total` moved behind
+// the admin bearer -- the anonymous body is just `{"ok": true/false}` now.
 async fn healthz(base_url: &str) -> serde_json::Value {
-    reqwest::get(format!("{base_url}/healthz"))
+    reqwest::Client::new()
+        .get(format!("{base_url}/healthz"))
+        .bearer_auth(ADMIN_KEY)
+        .send()
         .await
         .expect("GET /healthz")
         .json()

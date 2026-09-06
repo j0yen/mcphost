@@ -3,7 +3,7 @@
 //! `billing_mode: off` and `/healthz` reports `billing_mode: "off"`.
 
 mod common;
-use common::{McpClient, TestServer, signup};
+use common::{ADMIN_KEY, McpClient, TestServer, signup};
 use serde_json::json;
 
 #[tokio::test]
@@ -21,7 +21,12 @@ async fn checkout_without_stripe_keys_is_billing_unavailable() {
     assert_eq!(err.error_code.as_deref(), Some("billing_unavailable"));
     assert_eq!(err.data["billing_mode"], json!("off"));
 
-    let health: serde_json::Value = reqwest::get(format!("{}/healthz", server.base_url))
+    // PRD-mcphost-healthz-minimal: `billing_mode` moved behind the admin
+    // bearer -- the anonymous body is `{"ok": true/false}`.
+    let health: serde_json::Value = reqwest::Client::new()
+        .get(format!("{}/healthz", server.base_url))
+        .bearer_auth(ADMIN_KEY)
+        .send()
         .await
         .expect("GET /healthz")
         .json()
