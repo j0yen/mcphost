@@ -858,7 +858,7 @@ mod tests {
 
     #[test]
     fn signature_round_trips() {
-        let secret = "whsec_test_secret";
+        let secret = "whsec_test_secret"; // allowlist: test-only fixture, not a real Stripe secret
         let payload = br#"{"id":"evt_1","type":"checkout.session.completed"}"#;
         let now = 1_700_000_000i64;
         let signed_payload = [now.to_string().as_bytes(), b".", payload.as_slice()].concat();
@@ -879,7 +879,7 @@ mod tests {
 
     #[test]
     fn signature_rejects_stale_timestamp() {
-        let secret = "whsec_test_secret";
+        let secret = "whsec_test_secret"; // allowlist: test-only fixture, not a real Stripe secret
         let payload = b"{}";
         let old = 1_700_000_000i64;
         let now = old + 301;
