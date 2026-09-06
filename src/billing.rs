@@ -481,6 +481,26 @@ fn arg_str(args: &Value, name: &str) -> Option<String> {
     args.get(name).and_then(Value::as_str).map(str::to_string)
 }
 
+/// An open, not-yet-expired Checkout Session `billing.checkout` created for
+/// a `(tenant, plan)` pair, cached in [`AppState::checkout_sessions`] so a
+/// second call before it expires returns the same URL instead of asking
+/// the processor to mint another one (P1 AC13). Held in memory only --
+/// scoped to this process's lifetime, same as every other in-flight-request
+/// cache in this crate; a restart simply lets the next call create a fresh
+/// session, which is a safe (if slightly wasteful) outcome, not a
+/// correctness one.
+#[derive(Debug, Clone)]
+pub struct OpenCheckoutSession {
+    pub url: String,
+    pub expires_at: i64,
+}
+
+/// The type [`AppState::checkout_sessions`](crate::state::AppState::checkout_sessions)
+/// holds -- named here (rather than spelled out inline) to keep
+/// clippy's `type_complexity` lint happy.
+pub type CheckoutSessionCache =
+    std::sync::Arc<std::sync::Mutex<std::collections::HashMap<(i64, String), OpenCheckoutSession>>>;
+
 /// `billing.checkout` (tenant, `plan` defaulting to `pro`, AC4/AC5): create
 /// (or reuse -- P1 AC13) a Stripe Checkout Session and return its URL,
 /// expiry, mode, and one paragraph of instructions.
@@ -501,6 +521,27 @@ pub async fn checkout(state: &AppState, tenant: &Tenant, args: &Value) -> Result
             "no Stripe price is configured for plan '{plan_name}'"
         )));
     };
+    let mode = key_mode(Some(secret_key));
+    let cache_key = (tenant.id, plan_name.clone());
+    let now = crate::state::now_unix();
+
+    // P1 AC13: reuse an open, unexpired session for the same tenant and
+    // plan instead of creating a second one. A poisoned mutex (a prior
+    // panic while holding the lock) is treated as "no cache" rather than
+    // propagated -- losing the reuse optimization is not worth failing a
+    // paying tenant's checkout over.
+    if let Ok(cache) = state.checkout_sessions.lock() {
+        if let Some(open) = cache.get(&cache_key) {
+            if open.expires_at > now {
+                return Ok(json!({
+                    "url": open.url,
+                    "expires_at": open.expires_at,
+                    "mode": mode,
+                    "instructions": CHECKOUT_INSTRUCTIONS,
+                }));
+            }
+        }
+    }
 
     let success_url = format!("{}/billing/done", state.public_url.trim_end_matches('/'));
     let cancel_url = format!("{}/billing/cancel", state.public_url.trim_end_matches('/'));
@@ -512,7 +553,17 @@ pub async fn checkout(state: &AppState, tenant: &Tenant, args: &Value) -> Result
         cancel_url,
     };
     let session = state.billing_client.create_checkout_session(&req).await?;
-    let mode = key_mode(Some(secret_key));
+
+    if let Ok(mut cache) = state.checkout_sessions.lock() {
+        cache.insert(
+            cache_key,
+            OpenCheckoutSession {
+                url: session.url.clone(),
+                expires_at: session.expires_at,
+            },
+        );
+    }
+
     Ok(json!({
         "url": session.url,
         "expires_at": session.expires_at,

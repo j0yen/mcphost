@@ -376,6 +376,9 @@ impl TestServer {
             plans: mcphost::plans::PlanCatalog::default_catalog(),
             billing_config,
             billing_client,
+            checkout_sessions: std::sync::Arc::new(std::sync::Mutex::new(
+                std::collections::HashMap::new(),
+            )),
         });
 
         let serve_state = state.clone();

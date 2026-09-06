@@ -115,6 +115,15 @@ pub struct AppState {
     /// `StripeClient` in production, `FakeBillingClient` in every test
     /// (technical considerations: "Tests never reach the network").
     pub billing_client: std::sync::Arc<dyn crate::billing::BillingClient>,
+    /// P1 AC13: open, unexpired Checkout Sessions keyed by
+    /// `(tenant_id, plan)`, so a second `billing.checkout` call for the
+    /// same pair before expiry returns the cached URL instead of asking
+    /// the processor to mint another session. In-memory only -- see
+    /// [`crate::billing::OpenCheckoutSession`]. `Arc`-wrapped (like
+    /// [`AppState::db`] and every other shared-mutable field here) so
+    /// `AppState`'s own `#[derive(Clone)]` stays cheap and every clone
+    /// keeps seeing the same cache rather than a forked copy.
+    pub checkout_sessions: crate::billing::CheckoutSessionCache,
 }
 
 pub fn now_unix() -> i64 {
