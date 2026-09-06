@@ -95,15 +95,34 @@ pub fn detect_mechanism() -> IsolationMechanism {
 /// probe to skip cleanly in that environment rather than fail; on any box
 /// that does support user namespaces (every `mcphost-deploy`-provisioned
 /// host, and this developer's machine) they keep running for real.
+///
+/// PRD-mcphost-ci-sandbox-coverage flake-audit: a single failed
+/// `unshare --user` attempt is ambiguous between "this environment's policy
+/// genuinely denies `CLONE_NEWUSER`" (the case this probe exists to detect)
+/// and "this one attempt hit transient fork/clone pressure" -- `unshare`'s
+/// own `clone()` call can return `EAGAIN` under heavy concurrent process
+/// creation (many test binaries each spawning children at once is exactly
+/// that shape) with no relation to whether namespaces are actually
+/// supported. `require_user_namespaces_or_ci_skip`'s caller-visible contract
+/// (skip-with-reason in CI, panic naming the fix outside CI -- see its own
+/// doc comment and the 2026-09-03 dev-box decision) is about *persistent*
+/// incapability; a lone transient probe failure should not trip either
+/// branch. Retrying once, immediately, turns a one-shot flake into a real
+/// two-strikes signal without changing what either branch asserts or when
+/// the caller decides to run vs. skip vs. fail -- only how confidently this
+/// probe answers "capable?" before that decision is made.
 pub fn supports_user_namespaces() -> bool {
-    std::process::Command::new("unshare")
-        .args(["--user", "--map-root-user", "--", "true"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
+    let attempt = || {
+        std::process::Command::new("unshare")
+            .args(["--user", "--map-root-user", "--", "true"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    };
+    attempt() || attempt()
 }
 
 /// The exact line a sandbox-dependent test prints when it skips for want of
