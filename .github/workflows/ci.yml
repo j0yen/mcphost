@@ -62,6 +62,20 @@ jobs:
       - name: verify test partition is total and disjoint
         run: ./scripts/ci-test-partition.sh check
 
+      # PRD-mcphost-metered-overage AC9. `metering_ac09_deploy_units_verify`
+      # runs `systemd-analyze verify` on deploy/mcphost-emit-meter.service,
+      # whose ExecStart (`%h/.local/bin/mcphost billing emit-meter`) is
+      # resolved and checked for an executable file at verify time -- on a
+      # runner with no prior install step that path is empty and verify
+      # fails with "is not executable: No such file or directory" (run
+      # 34078778358), not a metering logic bug. Build once and place the
+      # binary at the exact path the unit expects, matching what a real
+      # mcphost-1 install does before enabling the timer.
+      - name: build mcphost binary for deploy-unit verification
+        run: |
+          cargo build --bin mcphost
+          install -Dm755 target/debug/mcphost "$HOME/.local/bin/mcphost"
+
       - name: cargo test (core suites)
         run: |
           set -o pipefail
