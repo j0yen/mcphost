@@ -496,11 +496,31 @@ async fn ast_check(source: &str, isolation: IsolationMechanism) -> Result<(), Ki
         .and_then(Value::as_str)
         .unwrap_or("source is not a valid python tool");
     let message = enhance_syntax_message(message);
+    // PRD-mcphost-tool-test AC13: a publish-time validation failure carries
+    // the same structured detail fields `host.spec_test`'s own failure
+    // response does (`describe_test_failure`'s `exception_class`) -- here
+    // taken straight from `AST_CHECK_SCRIPT`'s own `error` field
+    // ("SyntaxError" or "NoMain") rather than re-derived, and reused by
+    // both `host.tool_publish` and `host.spec_test` since both funnel
+    // through this same `validate_async` -> `ast_check` call. Kept as
+    // `KindError::structured_with("invalid_spec", ..)` rather than a new
+    // code so the wire `error_code` -- and every existing assertion on
+    // `err.message` -- is unchanged; only `data` gains fields.
+    let exception_class = envelope
+        .get("error")
+        .and_then(Value::as_str)
+        .unwrap_or("InvalidSpec");
     match envelope.get("line").and_then(Value::as_i64) {
-        Some(line) => Err(KindError::InvalidSpec(format!(
-            "source: syntax error at line {line}: {message}"
-        ))),
-        None => Err(KindError::InvalidSpec(format!("source: {message}"))),
+        Some(line) => Err(KindError::structured_with(
+            "invalid_spec",
+            format!("source: syntax error at line {line}: {message}"),
+            json!({"field": "source", "exception_class": exception_class, "line": line}),
+        )),
+        None => Err(KindError::structured_with(
+            "invalid_spec",
+            format!("source: {message}"),
+            json!({"field": "source", "exception_class": exception_class}),
+        )),
     }
 }
 

@@ -1023,12 +1023,27 @@ impl McpHostHandler {
         let call_timeout = self.state.call_timeout;
         let tenant_id = tenant.id;
         let namespace = tenant.namespace.clone();
+        // AC12: unlike `host.tool_test`/`host.bridge_test` (deliberately
+        // out-of-band debug calls, see `Self::tool_test`'s own doc comment),
+        // a `host.spec_test` invocation's log output IS captured and
+        // persisted -- one `BufferedLog` per invocation, built up front so
+        // `ctx_factory` (called once per invocation, in order, by
+        // `run_spec_test`) can hand each its own and this function can read
+        // every one back once `run_spec_test` returns.
+        let log_bufs: Vec<Arc<BufferedLog>> = invocations
+            .iter()
+            .map(|_| Arc::new(BufferedLog(std::sync::Mutex::new(Vec::new()))))
+            .collect();
+        let mut log_bufs_iter = log_bufs.iter().cloned();
         let results = run_spec_test(&kind, &spec, &invocations, call_timeout, || CallCtx {
             tenant_id,
             namespace: namespace.clone(),
             secrets: secrets.clone(),
             deadline: Instant::now() + call_timeout,
-            log: Arc::new(NullLog) as Arc<dyn CallLog>,
+            log: log_bufs_iter
+                .next()
+                .map(|buf| buf as Arc<dyn CallLog>)
+                .unwrap_or_else(|| Arc::new(NullLog)),
             test_mode: true,
             resources: Arc::new(NullResourceSink),
             tool_name: None,
@@ -1037,7 +1052,11 @@ impl McpHostHandler {
 
         // AC6: each executed invocation is metered like a normal call (a
         // `calls` row, counting toward `calls_per_day`) even though no
-        // `tools` row is ever written for this ad hoc spec.
+        // `tools` row is ever written for this ad hoc spec. AC12: the same
+        // synthetic per-kind name also buckets this call's persisted log
+        // lines (below), so `host.tool_logs` can serve them back without a
+        // `tools` row existing for it.
+        let test_log_name = format!("__spec_test__.{kind_name}");
         for result in &results {
             let ok = result.get("ok").and_then(Value::as_bool).unwrap_or(false);
             let error_class = result
@@ -1053,7 +1072,7 @@ impl McpHostHandler {
                 .db
                 .record_call(
                     tenant.id,
-                    format!("__spec_test__.{kind_name}"),
+                    test_log_name.clone(),
                     duration_ms,
                     ok,
                     error_class,
@@ -1061,6 +1080,20 @@ impl McpHostHandler {
                     None,
                 )
                 .await;
+        }
+
+        // AC12: each invocation's captured log lines, marked `[test]` so
+        // they read as distinguishable from a production call's own lines
+        // in the same `host.tool_logs` bucket.
+        for buf in &log_bufs {
+            let lines = buf.0.lock().map(|g| g.clone()).unwrap_or_default();
+            for line in lines {
+                let _ = self
+                    .state
+                    .db
+                    .append_log(tenant.id, test_log_name.clone(), format!("[test] {line}"))
+                    .await;
+            }
         }
 
         Ok(crate::secrets::redact_keys(
