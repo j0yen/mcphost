@@ -8,8 +8,14 @@ mod common;
 use common::{ADMIN_KEY, McpClient, TestServer, signup};
 use serde_json::json;
 
+// PRD-mcphost-healthz-minimal: the full diagnostics document (including
+// `tenants_synthetic`/`tenants_real`/`tenants_total`) is gated behind the
+// admin bearer -- an unauthenticated GET gets only `{"ok": true/false}`.
 async fn healthz(base_url: &str) -> serde_json::Value {
-    reqwest::get(format!("{base_url}/healthz"))
+    reqwest::Client::new()
+        .get(format!("{base_url}/healthz"))
+        .bearer_auth(ADMIN_KEY)
+        .send()
         .await
         .expect("GET /healthz")
         .json()

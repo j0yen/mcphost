@@ -8,8 +8,14 @@ use mcphost::billing::{BillingConfig, FakeBillingClient};
 use serde_json::json;
 use std::sync::Arc;
 
+// PRD-mcphost-healthz-minimal: the full diagnostics document (including
+// `paying_tenants`/`paying_tenants_real`) is gated behind the admin bearer
+// -- an unauthenticated GET gets only `{"ok": true/false}`.
 async fn healthz(base_url: &str) -> serde_json::Value {
-    reqwest::get(format!("{base_url}/healthz"))
+    reqwest::Client::new()
+        .get(format!("{base_url}/healthz"))
+        .bearer_auth(ADMIN_KEY)
+        .send()
         .await
         .expect("GET /healthz")
         .json()
