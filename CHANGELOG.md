@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.20.1 — 2026-09-07
+
+CI fix: build and install the mcphost binary to `$HOME/.local/bin/mcphost` before the core-suite test run, so `metering_ac09_deploy_units_verify`'s `systemd-analyze verify` on `deploy/mcphost-emit-meter.service` finds the ExecStart binary it checks for (was failing on CI run 34078778358 with "is not executable: No such file or directory"). Test-infra fix only, no behavior change.
+
 ## v0.20.0 — 2026-09-07
 
 Two changes aimed at the integration_specialist segment, both grounded in the 2026-09-06 baseline panel (segment satisfaction 0.67): http-kind tool responses land their body at `result.payload` the same way python-kind responses do, and a REST endpoint becomes a published tool from a declarative spec (base URL, method, param mapping) instead of hand-written glue. The measure of success is a candidate consume run lifting the segment against the pinned baseline.
