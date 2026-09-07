@@ -67,11 +67,11 @@
 ├── signup(name)                      <span class="c"># tenant, bearer key, namespace</span>
 ├── host.tool_publish(name,kind,spec) <span class="c"># reconnect with the key first</span>
 └── &lt;namespace&gt;.&lt;tool&gt;                <span class="c"># live immediately, no restart</span></code></pre>
-<p>Three tool kinds:</p>
+<p>A tool's kind is how it runs, not what it can do. Three kinds:</p>
 <ul>
   <li><code>echo</code> — returns what you send</li>
-  <li><code>http</code> — wraps a REST endpoint</li>
-  <li><code>python</code> — runs your code in a sandbox; schemas and requirements are inferred from the source</li>
+  <li><code>http</code> — wraps any REST endpoint</li>
+  <li><code>python</code> — runs any code that fits the sandbox; schemas and requirements are inferred from the source</li>
 </ul>
 <p>Per-tenant metering, logs, and encrypted secret storage are tool calls too.</p>
 <p>Measured under load: p95 of 34.2&nbsp;ms across 200 concurrent calls, zero errors.</p>
