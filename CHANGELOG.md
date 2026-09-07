@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.21.0 — 2026-09-07
+
+`host.spec_test`: dry-run a `kind`+`spec` pair before publishing it. Runs up
+to 5 example invocations through the exact sandboxed `Kind::call` path a
+published tool uses, returning per-invocation `ok`/`output`/`duration_ms`
+alongside the inferred `args_schema` and `requirements` -- no `tools` row is
+ever written. Failures are structured (bounded exception/traceback for
+python, same error taxonomy as `host.tool_publish` for validation errors).
+Test invocations are metered like normal calls and marked `[test]` in
+`host.tool_logs`. A `python` publish that fails validation now carries the
+same structured `exception_class` detail a failed test's response does.
+
 ## v0.20.2 — 2026-09-07
 
 The CI sandbox job is a 3-way `strategy.matrix.shard` split (`scripts/ci-test-partition.sh sandbox-shard <n> 3`) closing AC6's ≤5min-or-parallel-job budget: the prior single sandbox job alone measured 313s (v0.13.3, over the 300s budget), and the new `sandbox-required` aggregator (`needs: sandbox`, `if: always()`) fails the workflow if any shard fails, since GitHub does not fail a run over one matrix leg by default. Each shard now hard-fails (not just `::warning::`) past 300s. `ci-test-partition.sh` gains `sandbox-shard`/`shard_names`, assigning the 41 sandbox targets by `index mod 3` so slow `python_ac*` targets interleave across shards instead of clustering; `check` verifies the shards stay total+disjoint over the sandbox partition. Two ci_sandbox_ac03/ac06 regression tests were rescoped to jobs that actually run `cargo test`, since the new aggregator job runs none.
