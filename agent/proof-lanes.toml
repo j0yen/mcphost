@@ -83,6 +83,14 @@ required_commands = [
 ]
 
 [[lane]]
+id = "www"
+description = "Static marketing/legal site served alongside the API (index/terms/privacy/aup/llms.txt). Added project-locally: the shipped scaffold template's proof-lanes.toml has no lane for www/** either (same gap class as db-migrations, infer-data and deploy above) -- the www-redesign commits' 5 changed paths (www/index.html, www/terms.html, www/privacy.html, www/aup.html, www/llms.txt) were unrouted, blocking PRD-mcphost-healthz-minimal's vti-plan gate receipt though they were not part of that PRD's own diff. No JS build tooling or HTML linter exists in this repo (no node/npm, no tidy/xmllint on the build host), so proof is scripts/www-check.sh: a minimal Python-stdlib (html.parser) check that each www/*.html file is valid UTF-8, non-empty, and parses without error, and that llms.txt is valid non-empty UTF-8 text. Not a style/accessibility linter -- an honest floor, not a fake pass."
+globs = ["www/**"]
+required_commands = [
+  "scripts/www-check.sh",
+]
+
+[[lane]]
 id = "harness-readonly"
 description = "Harness files; should never change after scaffold"
 globs = [
