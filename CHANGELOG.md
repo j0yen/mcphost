@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.22.0 — 2026-09-07
+
+PRD-mcphost-healthz-minimal: unblock archive gate by adding the missing `www`
+proof-lane (routes www/** to scripts/www-check.sh, a minimal Python-stdlib
+HTML/UTF-8 sanity check) so the 5 previously-unrouted www-redesign paths no
+longer trip the vti-plan gate for this PRD's healthz split.
+
 ## v0.21.0 — 2026-09-07
 
 `host.spec_test`: dry-run a `kind`+`spec` pair before publishing it. Runs up
