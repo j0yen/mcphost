@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.88"
 description = "One MCP endpoint an agent can join and administer without a human"
 license = "MIT OR Apache-2.0"
-authors = ["Joe Yen <jyen.tech@gmail.com>"]
+authors = ["j0yen <hello@mcphost.dev>"]
 
 [lib]
 name = "mcphost"

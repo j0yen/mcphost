@@ -8,7 +8,7 @@
 - publish: j0yen/private
 - Vision: visions/mcp-host.md
 - Loop: mcphost-buildloop: wow_rate — clears the `bootstrap` failure family at the transport layer
-- PM: Joe Yen
+- PM: j0yen
 - Drafted: 2026-09-03
 - Engineering target: /home/jsy/wintermute/mcphost (Rust, rmcp 3.2.0)
 
