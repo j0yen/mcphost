@@ -363,6 +363,32 @@ pub async fn plan_set(state: &AppState, args: &Value) -> Result<Value, AppError>
     Ok(json!({ "tenant": tenant.namespace, "plan": plan_name }))
 }
 
+/// `admin.meter_status` (P1 AC11): last ledgered batch span, current
+/// `meter_lag`, and per-tenant emitted counts for the current UTC month --
+/// the operator-facing view of `mcphost billing emit-meter`'s health that
+/// AC9's timer runs unattended.
+pub async fn meter_status(state: &AppState) -> Result<Value, AppError> {
+    let (last_call_id, _updated_at) = state.db.get_meter_state().await?;
+    let lag = state.db.meter_lag(last_call_id).await?;
+    let last_batch = state.db.last_meter_batch_span().await?;
+    let month_start = crate::state::utc_month_start_unix(crate::state::now_unix());
+    let by_tenant = state.db.monthly_emitted_counts_by_tenant(month_start).await?;
+    Ok(json!({
+        "last_batch": last_batch.map(|b| json!({
+            "batch_id": b.batch_id,
+            "first_call_id": b.first_call_id,
+            "last_call_id": b.last_call_id,
+            "count": b.count,
+            "created_at": b.created_at,
+        })),
+        "meter_lag": lag,
+        "emitted_this_month": by_tenant
+            .into_iter()
+            .map(|(namespace, count)| json!({"tenant": namespace, "count": count}))
+            .collect::<Vec<_>>(),
+    }))
+}
+
 pub async fn tool_list(state: &AppState, args: &Value) -> Result<Value, AppError> {
     let tenant_ns = arg_str(args, "tenant")?;
     let tenant = state

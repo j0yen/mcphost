@@ -189,6 +189,28 @@ pub fn next_utc_midnight_unix(now_unix: i64) -> i64 {
     utc_midnight_unix(now_unix) + 86_400
 }
 
+/// The inverse of [`civil_from_days`] (same Howard Hinnant algorithm,
+/// `days_from_civil`): a UTC calendar date -> days since the civil epoch
+/// (1970-01-01). Only [`utc_month_start_unix`] needs this direction of the
+/// conversion.
+fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = (y - era * 400) as u64; // [0, 399]
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) as u64 + 2) / 5 + d as u64 - 1; // [0, 365]
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy; // [0, 146096]
+    era * 146_097 + doe as i64 - 719_468
+}
+
+/// The unix timestamp of `now_unix`'s UTC month, day 1, 00:00:00 --
+/// PRD-mcphost-metered-overage's "current month" boundary for
+/// `admin.meter_status`'s per-tenant emitted counts and `billing.status`'s
+/// ledgered emitted-call count.
+pub fn utc_month_start_unix(now_unix: i64) -> i64 {
+    let (y, m, _d) = civil_from_days(now_unix.div_euclid(86_400));
+    days_from_civil(y, m, 1) * 86_400
+}
+
 /// `^[a-z][a-z0-9_]{1,40}$` — a lowercase-leading identifier, 2-41 chars.
 pub fn validate_tool_name(name: &str) -> Result<(), AppError> {
     let bytes = name.as_bytes();
@@ -319,6 +341,40 @@ mod tests {
         assert_eq!(rfc3339_from_unix(951_782_400), "2000-02-29T00:00:00Z");
         // Round-trips through the time-of-day fields too, not just the date.
         assert_eq!(rfc3339_from_unix(86_400 + 3661), "1970-01-02T01:01:01Z");
+    }
+
+    /// PRD-mcphost-metered-overage: `utc_month_start_unix` against known
+    /// timestamps, including the same leap-year/century-boundary edge
+    /// `rfc3339_from_unix_matches_known_timestamps` exercises for
+    /// `civil_from_days`, since `days_from_civil` is its hand-derived
+    /// inverse and deserves the same suspicion.
+    #[test]
+    fn utc_month_start_unix_matches_known_timestamps() {
+        // The last day of February in a leap year -> 2000-02-01T00:00:00Z,
+        // not into March.
+        assert_eq!(utc_month_start_unix(951_782_400), 949_363_200);
+        assert_eq!(
+            rfc3339_from_unix(utc_month_start_unix(951_782_400)),
+            "2000-02-01T00:00:00Z"
+        );
+        // The epoch itself is already a month start.
+        assert_eq!(utc_month_start_unix(0), 0);
+        // A December timestamp rolls the month start into December, not
+        // into the next year.
+        assert_eq!(
+            rfc3339_from_unix(utc_month_start_unix(rfc3339_to_test_unix_dec_15_2025())),
+            "2025-12-01T00:00:00Z"
+        );
+    }
+
+    /// Test-only helper: 2025-12-15T00:00:00Z as a unix timestamp, derived
+    /// independently of `civil_from_days`/`days_from_civil` (plain day
+    /// arithmetic from the epoch) so the assertion above doesn't just check
+    /// the two functions agree with each other.
+    fn rfc3339_to_test_unix_dec_15_2025() -> i64 {
+        // 2025-12-15 is 20,437 days after 1970-01-01 (55 years incl. 14
+        // leap years * 365/366 days, plus Jan-Nov 2025 (334 days) + 14).
+        20_437 * 86_400
     }
 
     /// PRD-mcphost-code-tools-warm-pool AC7: the 30th call in a tenant's

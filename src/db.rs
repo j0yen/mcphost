@@ -1478,23 +1478,99 @@ impl Db {
     }
 
     /// P1 `admin.meter_status` / `billing.status`: a tenant's total emitted
-    /// call count from ledgered batches since `since_unix`.
+    /// call count from ledgered batches since `since_unix`. `created_at` is
+    /// an RFC 3339 UTC string (`now_rfc3339()`), which sorts lexicographically
+    /// in the same order it sorts chronologically -- comparing it against
+    /// `since_unix` rendered the same way avoids pulling in a date-parsing
+    /// dependency this crate otherwise has no need for.
     pub async fn emitted_call_count_for_tenant(
         &self,
         tenant_id: i64,
         since_unix: i64,
     ) -> Result<i64, AppError> {
+        let since = crate::state::rfc3339_from_unix(since_unix);
         self.with_conn(move |conn| {
             conn.query_row(
                 "SELECT COALESCE(SUM(count), 0) FROM meter_events \
-                 WHERE tenant_id = ?1 AND CAST(substr(created_at, 6) AS REAL) >= ?2",
-                params![tenant_id, since_unix],
+                 WHERE tenant_id = ?1 AND created_at >= ?2",
+                params![tenant_id, since],
                 |r| r.get(0),
             )
             .map_err(AppError::from)
         })
         .await
     }
+
+    /// `admin.meter_status` (AC11): every tenant with at least one ledgered
+    /// event since `since_unix`, namespace plus summed `count`, newest
+    /// emitter first. Same RFC 3339 string-comparison approach as
+    /// [`Self::emitted_call_count_for_tenant`], grouped instead of scoped to
+    /// one tenant.
+    pub async fn monthly_emitted_counts_by_tenant(
+        &self,
+        since_unix: i64,
+    ) -> Result<Vec<(String, i64)>, AppError> {
+        let since = crate::state::rfc3339_from_unix(since_unix);
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT t.namespace, SUM(me.count) FROM meter_events me \
+                 JOIN tenants t ON t.id = me.tenant_id \
+                 WHERE me.created_at >= ?1 \
+                 GROUP BY me.tenant_id ORDER BY SUM(me.count) DESC",
+            )?;
+            let rows = stmt
+                .query_map(params![since], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// `admin.meter_status` (AC11): the most recently ledgered batch's span
+    /// -- its `batch_id`, the covered `first_call_id..last_call_id` range
+    /// across every group that batch sent, the total call count, and when it
+    /// landed. `None` when no batch has ever been ledgered. "Most recent" is
+    /// the ledger's own insertion order (`rowid`), which matches wall-clock
+    /// order since rows are only ever appended, never reordered.
+    pub async fn last_meter_batch_span(&self) -> Result<Option<MeterBatchSpan>, AppError> {
+        self.with_conn(|conn| {
+            let latest_batch_id: Option<String> = conn
+                .query_row(
+                    "SELECT batch_id FROM meter_events ORDER BY rowid DESC LIMIT 1",
+                    [],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            let Some(batch_id) = latest_batch_id else {
+                return Ok(None);
+            };
+            let (first_call_id, last_call_id, count, created_at) = conn.query_row(
+                "SELECT MIN(first_call_id), MAX(last_call_id), SUM(count), MAX(created_at) \
+                 FROM meter_events WHERE batch_id = ?1",
+                params![batch_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )?;
+            Ok(Some(MeterBatchSpan {
+                batch_id,
+                first_call_id,
+                last_call_id,
+                count,
+                created_at,
+            }))
+        })
+        .await
+    }
+}
+
+/// [`Db::last_meter_batch_span`]'s return shape -- one ledgered batch's
+/// covered span across every tenant group it sent.
+#[derive(Debug, Clone, Serialize)]
+pub struct MeterBatchSpan {
+    pub batch_id: String,
+    pub first_call_id: i64,
+    pub last_call_id: i64,
+    pub count: i64,
+    pub created_at: String,
 }
 
 /// One pro tenant's pending (unemitted) span, as
