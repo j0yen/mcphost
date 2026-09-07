@@ -15,3 +15,5 @@ Call arguments:
 ```json
 {"msg": "hi"}
 ```
+
+Dry-run before publishing: `host.spec_test("echo", spec, invocations)` runs the example invocations above through the same path a real call would use and returns each one's output verbatim -- no tool row is written.

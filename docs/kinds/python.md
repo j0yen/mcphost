@@ -11,3 +11,5 @@ Call arguments:
 ```json
 {"n": 3}
 ```
+
+Dry-run before publishing: `host.spec_test("python", spec, invocations)` runs the example invocations above in the same sandbox a real call would use and returns each one's output or a bounded exception, plus the inferred args_schema and requirements -- no tool row is written.

@@ -12,3 +12,5 @@ Call arguments:
 ```json
 {"id": "123"}
 ```
+
+Dry-run before publishing: `host.spec_test("http", spec, invocations)` calls the wrapped endpoint through the same outbound path a real call would use and returns each invocation's status code and a bounded body excerpt -- no tool row is written.
