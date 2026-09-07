@@ -72,6 +72,7 @@ async fn two_hundred_concurrent_echo_calls() {
             format!("Load Tenant {i}"),
             namespace.clone(),
             hash_key(&key),
+            None,
         )
         .await
         .expect("seed tenant");

@@ -224,6 +224,36 @@ Both unit files pass `systemd-analyze verify --user` (AC9;
 is set) is the count of pro-tenant `ok` calls still above the high-water
 mark -- watch it for emission health at a glance.
 
+## Synthetic tenants (`admin.*_synthetic`)
+
+PRD-mcphost-synthetic-flag: a tenant a test harness creates carries a
+free-form `synthetic` label (e.g. `synthorg:<run_id>`) from signup onward,
+set by the harness sending `x-mcphost-synthetic: <label>` on its `signup`
+call -- no behavior change, metadata only. `/healthz`'s `tenants_real` /
+`tenants_synthetic` split, and `admin.tenants`' `synthetic` filter
+(`true`/`false`/`all`, default `all`), read this column so
+`synthorg candidates --measure` can exclude panel traffic from "real
+tenant" evidence.
+
+**Backfilling the existing census** (every tenant predates this column, so
+all load with `synthetic: null` until tagged): use `admin.tenants_set_synthetic`,
+previewed with `dry_run: true` before the `dry_run: false` that applies it.
+The recipe this host's own census used:
+
+```
+admin.tenants_set_synthetic(name_like: 'joe-%',  label: 'operator',                    dry_run: true)
+admin.tenants_set_synthetic(name_like: 'joe-%',  label: 'operator',                    dry_run: false)
+admin.tenants_set_synthetic(name_like: '%',      label: 'synthorg:backfill-20260906',  dry_run: true)
+admin.tenants_set_synthetic(name_like: '%',      label: 'synthorg:backfill-20260906',  dry_run: false)
+```
+
+Run the `joe-*` pass first -- the second call's broader `%` pattern would
+otherwise overwrite those rows' label too, since a tenant re-tagged by a
+later call simply gets the later label (there is no "already labeled, skip"
+guard by design: retagging is how a label ever gets corrected). A single
+tenant can be corrected at any time with `admin.tenant_set_synthetic(tenant,
+label)` (`label: null` clears it).
+
 ## Acceptance
 
 Every P0 acceptance criterion is paired with a real `cargo test` (integration

@@ -232,6 +232,23 @@ pub fn validate_tool_name(name: &str) -> Result<(), AppError> {
     }
 }
 
+/// PRD-mcphost-synthetic-flag requirement 2: `^[a-z0-9][a-z0-9:_-]{0,63}$` --
+/// shared by the signup header path (`control::signup`) and both admin
+/// retro-tag tools (`admin::tenant_set_synthetic`, `admin::tenants_set_synthetic`),
+/// so a label is either valid everywhere it can be set or invalid
+/// everywhere, never accepted by one path and stored malformed by another.
+pub fn is_valid_synthetic_label(label: &str) -> bool {
+    let bytes = label.as_bytes();
+    let len_ok = (1..=64).contains(&bytes.len());
+    let first_ok = bytes
+        .first()
+        .is_some_and(|b| b.is_ascii_lowercase() || b.is_ascii_digit());
+    let rest_ok = bytes[1.min(bytes.len())..].iter().all(|b| {
+        b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b':' || *b == b'_' || *b == b'-'
+    });
+    len_ok && first_ok && rest_ok
+}
+
 /// Parse a window like `"24h"`, `"30m"`, `"45s"`, `"2d"` into seconds.
 /// Unparseable input defaults to 24h (the PRD's only documented value).
 pub fn parse_window_secs(window: &str) -> i64 {
@@ -296,6 +313,21 @@ mod tests {
         assert!(validate_tool_name("hello-world").is_err()); // dash not allowed
         assert!(validate_tool_name(&"a".repeat(42)).is_err()); // too long
         assert!(validate_tool_name(&"a".repeat(41)).is_ok());
+    }
+
+    #[test]
+    fn synthetic_label_rules() {
+        assert!(is_valid_synthetic_label("operator"));
+        assert!(is_valid_synthetic_label("synthorg:mcp-host-project-gtm"));
+        assert!(is_valid_synthetic_label("synthorg:backfill-20260906"));
+        assert!(is_valid_synthetic_label("a"));
+        assert!(is_valid_synthetic_label(&"a".repeat(64))); // max length
+        assert!(!is_valid_synthetic_label("")); // empty
+        assert!(!is_valid_synthetic_label(&"a".repeat(65))); // too long
+        assert!(!is_valid_synthetic_label("Bad Label!")); // space, uppercase, punctuation
+        assert!(!is_valid_synthetic_label(":leading-colon")); // must start alnum
+        assert!(!is_valid_synthetic_label("-leading-dash"));
+        assert!(!is_valid_synthetic_label("Synthorg:run")); // uppercase first char
     }
 
     #[test]

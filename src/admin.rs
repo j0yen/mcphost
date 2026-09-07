@@ -28,20 +28,36 @@ fn arg_str_opt(args: &Value, name: &str) -> Option<String> {
 /// the original unfiltered list; with one, the same `display_name`-prefix
 /// filter the batch delete uses, minus its counts, so an operator can see
 /// what a batch would target before running `tenant_delete_by_prefix`.
+///
+/// PRD-mcphost-synthetic-flag requirement 4 / AC8: every row carries
+/// `synthetic` (null for unlabeled) -- this is the listing `tenants.jsonl`-style
+/// exports read, so the field rides along without a second query.
+/// PRD-mcphost-synthetic-flag P1 requirement 5 / AC9: `synthetic: "true"|"false"|"all"`
+/// (default `"all"`) filters the same rows in-process, after the `prefix`
+/// filter above, rather than a second SQL predicate -- both filters already
+/// fetch full `Tenant` rows, so composing them here avoids a query variant
+/// per combination.
 pub async fn tenants(state: &AppState, args: &Value) -> Result<Value, AppError> {
     let prefix = arg_str_opt(args, "prefix");
+    let synthetic_filter = arg_str_opt(args, "synthetic").unwrap_or_else(|| "all".to_string());
     let rows = match prefix {
         Some(p) => state.db.list_tenants_by_prefix(p, None).await?.0,
         None => state.db.list_tenants().await?,
     };
     let tenants: Vec<Value> = rows
         .into_iter()
+        .filter(|t| match synthetic_filter.as_str() {
+            "true" => t.synthetic.is_some(),
+            "false" => t.synthetic.is_none(),
+            _ => true,
+        })
         .map(|t| {
             json!({
                 "tenant": t.namespace,
                 "display_name": t.display_name,
                 "created_at": t.created_at,
                 "disabled": t.disabled,
+                "synthetic": t.synthetic,
             })
         })
         .collect();
@@ -408,4 +424,101 @@ pub async fn tool_list(state: &AppState, args: &Value) -> Result<Value, AppError
         })
         .collect();
     Ok(json!({ "tenant": tenant_ns, "tools": tools }))
+}
+
+/// PRD-mcphost-synthetic-flag requirement 3 / AC5: `label` is required in
+/// the schema but its *value* carries the set/clear distinction -- JSON
+/// `null` clears, a valid string sets, anything else (missing key,
+/// non-string/non-null value, or a string failing
+/// [`crate::state::is_valid_synthetic_label`]) is rejected outright. Unlike
+/// the signup header (requirement 2: invalid degrades to null, signup still
+/// succeeds), an admin explicitly calling this tool with a bad label gets
+/// an error, not a silent no-op.
+fn arg_synthetic_label(args: &Value) -> Result<Option<String>, AppError> {
+    match args.get("label") {
+        None => Err(AppError::InvalidArgs(
+            "missing required argument 'label'".to_string(),
+        )),
+        Some(Value::Null) => Ok(None),
+        Some(Value::String(s)) => {
+            if crate::state::is_valid_synthetic_label(s) {
+                Ok(Some(s.clone()))
+            } else {
+                Err(AppError::InvalidParams(format!(
+                    "invalid synthetic label '{s}'"
+                )))
+            }
+        }
+        Some(_) => Err(AppError::InvalidArgs(
+            "'label' must be a string or null".to_string(),
+        )),
+    }
+}
+
+/// `admin.tenant_set_synthetic(tenant, label)` (AC5): set or clear one
+/// tenant's `synthetic` label by namespace -- same identifier every other
+/// single-tenant admin tool uses.
+pub async fn tenant_set_synthetic(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let tenant = arg_str(args, "tenant")?;
+    let label = arg_synthetic_label(args)?;
+    let changed = state
+        .db
+        .set_tenant_synthetic(tenant.clone(), label.clone())
+        .await?;
+    if !changed {
+        return Err(AppError::ToolNotFound(format!("tenant {tenant}")));
+    }
+    tracing::info!(
+        tenant = %tenant,
+        action = "tenant_set_synthetic",
+        label = label.as_deref().unwrap_or(""),
+        "admin set tenant synthetic label"
+    );
+    Ok(json!({ "tenant": tenant, "synthetic": label }))
+}
+
+/// `admin.tenants_set_synthetic(name_like, label, dry_run)` (AC6): the
+/// current-census backfill recipe (README operator section) runs this
+/// twice -- `name_like: 'joe-%'` / `label: 'operator'`, then
+/// `name_like: '%'` (or a narrower panel-matching pattern) /
+/// `label: 'synthorg:backfill-20260906'` -- each call previewed with
+/// `dry_run: true` before the `dry_run: false` that applies it.
+pub async fn tenants_set_synthetic(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let name_like = arg_str(args, "name_like")?;
+    let label = arg_str(args, "label")?;
+    if !crate::state::is_valid_synthetic_label(&label) {
+        return Err(AppError::InvalidParams(format!(
+            "invalid synthetic label '{label}'"
+        )));
+    }
+    let dry_run = args.get("dry_run").and_then(Value::as_bool).unwrap_or(true);
+
+    let matches = state
+        .db
+        .set_tenants_synthetic_by_name_like(name_like.clone(), label.clone(), dry_run)
+        .await?;
+    let matched: Vec<Value> = matches
+        .iter()
+        .map(|t| {
+            json!({
+                "tenant": t.namespace,
+                "display_name": t.display_name,
+                "synthetic": t.synthetic,
+            })
+        })
+        .collect();
+    tracing::info!(
+        name_like = %name_like,
+        action = "tenants_set_synthetic",
+        dry_run,
+        matched = matched.len(),
+        label = %label,
+        "admin bulk synthetic tag"
+    );
+    Ok(json!({
+        "dry_run": dry_run,
+        "label": label,
+        "count": matched.len(),
+        "matched": matched,
+    }))
 }

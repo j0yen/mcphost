@@ -20,7 +20,32 @@ fn arg_str_opt(args: &Value, name: &str) -> Option<String> {
     args.get(name).and_then(Value::as_str).map(str::to_string)
 }
 
-pub async fn signup(state: &AppState, args: &Value, source_ip: &str) -> Result<Value, AppError> {
+/// PRD-mcphost-synthetic-flag requirement 2: read only at signup, never
+/// later. An absent or empty header is silent (this is the overwhelmingly
+/// common case -- every real signup) and returns `None`; a present-but-invalid
+/// one also returns `None` but logs a warning, since the caller sent a
+/// header and it was silently ignored rather than acted on. Never returns
+/// `Err` -- an invalid label must never fail the signup it's attached to
+/// (requirement 2: "signup proceeds exactly as today").
+fn validate_synthetic_header(raw: Option<&str>) -> Option<String> {
+    let raw = raw?;
+    if raw.is_empty() {
+        return None;
+    }
+    if crate::state::is_valid_synthetic_label(raw) {
+        Some(raw.to_string())
+    } else {
+        tracing::warn!(label = %raw, "invalid x-mcphost-synthetic header on signup; storing null");
+        None
+    }
+}
+
+pub async fn signup(
+    state: &AppState,
+    args: &Value,
+    source_ip: &str,
+    synthetic_header: Option<&str>,
+) -> Result<Value, AppError> {
     let display_name = arg_str(args, "name")?;
 
     let since = crate::state::now_unix() - crate::state::SIGNUP_RATE_LIMIT_WINDOW_SECS;
@@ -32,13 +57,17 @@ pub async fn signup(state: &AppState, args: &Value, source_ip: &str) -> Result<V
         return Err(AppError::RateLimited);
     }
 
+    let synthetic = validate_synthetic_header(synthetic_header);
     let key = generate_key();
     let namespace = generate_namespace();
     let key_hash = hash_key(&key);
-    state.db.record_signup_event(source_ip.to_string()).await?;
+    state
+        .db
+        .record_signup_event(source_ip.to_string(), synthetic.clone())
+        .await?;
     let tenant = state
         .db
-        .create_tenant(display_name, namespace.clone(), key_hash)
+        .create_tenant(display_name, namespace.clone(), key_hash, synthetic)
         .await?;
 
     Ok(json!({
@@ -453,4 +482,24 @@ pub async fn registry_publish(
         "server_json": document,
         "registry_status": status.as_u16(),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn synthetic_header_validation() {
+        assert_eq!(validate_synthetic_header(None), None);
+        assert_eq!(validate_synthetic_header(Some("")), None);
+        assert_eq!(
+            validate_synthetic_header(Some("synthorg:run-a")),
+            Some("synthorg:run-a".to_string())
+        );
+        assert_eq!(validate_synthetic_header(Some("operator")), Some("operator".to_string()));
+        // Invalid input degrades to null (and logs a warning -- see the
+        // integration test AC3 for the warning itself), never an error.
+        assert_eq!(validate_synthetic_header(Some("Bad Label!")), None);
+        assert_eq!(validate_synthetic_header(Some(" ")), None);
+    }
 }
