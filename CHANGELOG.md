@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.19.0 — 2026-09-07
+
+Three fixes aimed at the rag_indexer segment (baseline satisfaction 0.62, the panel's weakest), each grounded in a recorded baseline session: a call that died with a bare `TypeError: int() argument ... not 'range'` returns a structured, actionable error naming its phase (`args_coercion`/`tool_code`), argument or exception class, and location -- confirmed to be a tool_code fault, since mcphost has no argument-coercion step that could produce a Python `range` object; publish and first-call latency are now instrumented (tracing) and measured at 44ms/95ms on a warm sandbox, comfortably inside the 10s/5s budget; and the python spec validator's message on a rejected assignment-expression target now names the accepted alternative in the same sentence.
+
 ## v0.18.0 — 2026-09-07
 
 Anonymous `GET /healthz` now returns only `{"ok": true}` (200) or `{"ok": false}` (503) — the paying_tenants/tenants_total/tools_total/billing_mode/sandbox_*/version diagnostics document moves behind the admin bearer key (MCPHOST_ADMIN_KEY, constant-time compare). A wrong or missing bearer, or a tenant key, gets the byte-identical anonymous body — no auth-format oracle.
