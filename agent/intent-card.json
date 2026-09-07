@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-ci-sandbox-coverage.md",
-  "intent_slug": "mcphost-ci-sandbox-coverage",
-  "root_motivation": "Joe's deploy gate treats CI green as evidence. For the sandbox suites \u2014 self-test, failure classification, warm-pool eviction, the core of v0.13.0 \u2014 that evidence is vacuous: the guard skips on the `CI` environment variable, not on actual capability, so the suites run only on dev boxes with working user namespaces. The 2026-09-03 operator answer scoped the guard to CI deliberately as a stopgap when runners lacked userns; the stopgap now hides all sandbox regressions from every CI run (0.00 s suite time in the actual Actions run at head 6932b87). A sandbox regression merged tomorrow would ship with a green badge and surface only as hub publish failures \u2014 the loop's worst and slowest failure family to diagnose.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-metered-overage.md",
+  "intent_slug": "mcphost-metered-overage",
+  "root_motivation": "grand-loop-billing (v0.14.0) gave mcphost plans, quotas, checkout, and the webhook that flips a tenant to `pro`. What it does not do is bill usage: the live Stripe account has a meter (`mcphost_tool_calls`) and a graduated metered price (`price_1UCZQRIPqmv0aTON9zg3eZ38`, zero to 50,000 then $0.001 per call) that nothing feeds. Checkout creates a subscription on the base price alone, the webhook discards the session's `customer` id, and no code reads the `calls` table for billing. A pro tenant at 10 million calls a month pays $19. The catalog ids live in `~/.config/mcphost/stripe-objects.json`; the price is attached to the same product checkout already sells.",
   "user_persona": "An AI agent connecting to mcphost for the first time over streamable HTTP with default client configuration (Claude Agent SDK / Claude Code), which must be able to read a well-formed tool list before it can do anything else; secondarily the operator who probes the endpoint after a redeploy.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,44 +14,80 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a push to main, When the ci workflow runs on the hosted runner, Then the sandbox-ready suites execute with >0 tests run and their assertions evaluated.",
+      "description": "Given migration 0007 on a v0.14.0 data dir, When `mcphost serve` starts, Then existing tenants load with null `stripe_customer_id` and the full prior suite passes unchanged.",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the capability probe on a userns-capable environment, When tests start, Then no suite skips for capability reasons.",
+      "description": "Given a signed `checkout.session.completed` with a `customer` id, When the webhook processes it, Then the tenant row stores that id and the upgrade behavior of AC6 (grand-loop-billing) is unchanged.",
       "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a runner where userns creation genuinely fails, When the suite runs in CI, Then affected tests skip with the capability reason in the log AND the non-vacuous assertion fails the job.",
+      "description": "Given `metered_price_id` configured and a fake billing client, When `billing.checkout` runs, Then the fake receives two line items, base with quantity 1 and metered without quantity; and Given no `metered_price_id`, Then it receives exactly the single-price call shape from v0.14.0.",
       "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a dev box without userns and CI unset, When the suite runs, Then the guard fails loudly (no silent skip), unchanged from the 2026-09-03 contract.",
+      "description": "Given 250 ok pro calls, 40 ok free calls, and 10 failed pro calls above the high-water mark, When `billing emit-meter` runs against the fake, Then the fake receives events summing to 250 for the pro tenant only, `meter_state.last_call_id` is the newest pro ok call id, and one ledger row records the batch span.",
       "test": "tests/ac04_publish_list_and_call.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the CI env var set but capability present, When the suite runs, Then tests execute \u2014 the variable alone never causes a skip.",
+      "description": "Given a run that crashes after the POST but before the state write (test injects the fault), When `emit-meter` reruns, Then the resent batch carries identical `identifier` values and the ledger marks it a replay.",
       "test": "tests/ac05_cross_tenant_isolation.rs"
     },
     {
       "id": "AC6",
-      "level": "SHOULD",
-      "description": "Given the full workflow on a clean cache, When it completes, Then total added wall time for sandbox suites is \u22645 minutes or the suites run as a parallel job.",
+      "level": "MUST",
+      "description": "Given the fake returns 500, When `emit-meter` runs, Then it exits non-zero, `meter_state` is unmoved, and no ledger row is written.",
       "test": "tests/ac06_remove_tool.rs"
     },
     {
       "id": "AC7",
-      "level": "MAY",
-      "description": "Given the repo docs, When a contributor reads local-test requirements, Then the userns capability requirement and probe behavior are stated.",
+      "level": "MUST",
+      "description": "Given 120 pending pro tenants' batches, When one run executes, Then no request carries more than 100 events and all pending spans are covered across requests.",
       "test": "tests/ac07_usage_metering.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given metering configured and 30 unemitted pro ok calls, When `/healthz` is read, Then `meter_lag` is 30; and Given metering unconfigured, Then the key is absent.",
+      "test": "tests/ac08_admin_disable_and_forbidden.rs"
+    },
+    {
+      "id": "AC9",
+      "level": "MUST",
+      "description": "Given `deploy/mcphost-emit-meter.timer`, When `systemd-analyze verify` runs on both unit files, Then it exits clean, and the README operator section documents installation.",
+      "test": "tests/ac09_signup_rate_limit.rs"
+    },
+    {
+      "id": "AC10",
+      "level": "MUST",
+      "description": "Given the full suite and `autobuilder gate --project .` at the landed HEAD, When they run, Then every previously passing test passes and the gate reports pass=25 block=0.",
+      "test": "tests/ac10_publish_validation_errors.rs"
+    },
+    {
+      "id": "AC11",
+      "level": "SHOULD",
+      "description": "Given three ledgered batches, When an admin calls `admin.meter_status`, Then it reports last batch span, current lag, and per-tenant emitted counts for the month.",
+      "test": "tests/ac11_load_smoke.rs (#[ignore]d hardware-relative load test)"
+    },
+    {
+      "id": "AC12",
+      "level": "SHOULD",
+      "description": "Given a configured key and a pro tenant, When `billing.status` runs with the fake returning an accepted-usage total, Then the response includes that total labeled as Stripe-reported.",
+      "test": "no unit test file; live smoke \u2014 mcphost serve + synthorg consume --preflight <url>, recorded as target/autobuilder/ac12-preflight-smoke.json"
+    },
+    {
+      "id": "AC13",
+      "level": "MUST",
+      "description": "Given a fresh data dir with no `plans.toml`, When mcphost starts, Then `billing.plans` reports free with `tools_max` 50 and price 0, and pro with price 19 and a description naming 50,000 included monthly calls.",
+      "test": "tests/ac13_mcp_name_mismatch_metering.rs"
     }
   ],
   "scope": [
