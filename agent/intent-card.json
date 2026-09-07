@@ -142,16 +142,6 @@
     }
   ],
   "created_at": "2026-09-03T18:04:17Z",
-  "carried_forward": {
-    "user_persona": true,
-    "unfakeable_metric": true,
-    "scope": true,
-    "non_goals": true,
-    "hard_constraints": true,
-    "five_whys_trace": true,
-    "created_at": true,
-    "ambiguities_resolved": true
-  },
   "ambiguities_resolved": [
     {
       "question": "The findings file records the reference Python client seeing well-formed ttlMs/cacheScope on an unauthenticated tools/list, which the code says is impossible. Which is right?",
