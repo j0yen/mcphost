@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.26.0 — 2026-09-07
+
+A tenant created by a test harness carries a `synthetic` label from its first request: the harness sets one transport header (`x-mcphost-synthetic`) that the signup path records, an admin tool tags the existing census retroactively, and `/healthz` reports `tenants_real` beside `tenants_synthetic`. Synthetic tenants behave identically in every other respect — same plans, quotas, billing paths — the label exists so counts and downstream measurement can tell a synthorg persona from a person.
+
 ## v0.25.0 — 2026-09-07
 
 Fix shared mcphost gate debt (secret Debug leak + test expect false-positive in http.rs, 5 unrouted vti-plan paths, misfiled sandbox CI tests) blocking mcphost-healthz-minimal's own already-done /healthz split.
