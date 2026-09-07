@@ -613,6 +613,39 @@ pub async fn poll_until_ready(
     }
 }
 
+/// PRD-mcphost-tool-test: `host.spec_test`'s own cold-start equivalent of
+/// [`poll_until_ready`] -- a `python` spec's first invocation hits the same
+/// "environment still building" state a published call's first invocation
+/// would (see that function's docs), but `host.spec_test` never propagates
+/// it as an `RpcError`: it's captured per-invocation as `{"ok": false,
+/// "code": "tool_building", ...}` inside an otherwise-successful response
+/// (PRD-mcphost-tool-test AC2's "the JSON-RPC call as a whole succeeds").
+/// Polls the whole `host.spec_test` call until no invocation in the
+/// response still reports `tool_building`, or `timeout` elapses.
+pub async fn poll_spec_test_until_ready(
+    client: &McpClient,
+    body: Value,
+    timeout: std::time::Duration,
+) -> Value {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        let result = client
+            .tools_call("host.spec_test", body.clone())
+            .await
+            .expect("host.spec_test ok");
+        let structured = extract_structured(&result);
+        let still_building = structured["invocations"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|inv| inv["code"] == json!("tool_building"));
+        if !still_building || std::time::Instant::now() >= deadline {
+            return result;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+}
+
 /// PRD-mcphost-metered-overage's `metering_ac*.rs` suite: sign up a fresh
 /// tenant, then directly promote it to `pro` with a `stripe_customer_id` on
 /// file (the state `mcphost billing emit-meter` requires per tenant) --

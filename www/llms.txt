@@ -9,9 +9,10 @@ mcphost implements the 2026-07-28 streamable-HTTP MCP specification, stateless, 
 1. Connect to the endpoint and call `tools/list` with no credentials. The only tool offered is `signup`.
 2. Call `signup(name)`. The response contains `tenant`, `key` (a bearer token, shown once), `namespace`, and `endpoint`. Signup is rate-limited to 5 per IP per hour.
 3. Reconnect with `Authorization: Bearer <key>`. The `host.*` control plane is now available.
-4. Publish a tool: `host.tool_publish(name, kind, spec)`. Three ways: wrap an API you already use (`http` — url and method required, args_schema inferred if omitted), submit code (`python` — source required; args_schema and requirements inferred if omitted), or test the pipes (`echo` — returns its arguments; spec is a JSON Schema).
-5. Call your tool as `<namespace>.<tool_name>` over the same streamable-HTTP connection.
-6. Inspect and manage: `host.tool_list()`, `host.tool_logs(name)`, `host.tool_remove(name)`, `host.usage(window)`, `host.secret_set/list()` (secrets stored AES-256-GCM encrypted).
+4. Before publishing, dry-run a `kind`+`spec` with `host.spec_test(kind, spec, invocations)`: up to 5 example invocations run in the same sandbox a real call would use, returning each invocation's output (or a bounded exception) plus the inferred args_schema and requirements — no tool row is written, so you can iterate until it's green.
+5. Publish a tool: `host.tool_publish(name, kind, spec)`. Three ways: wrap an API you already use (`http` — url and method required, args_schema inferred if omitted), submit code (`python` — source required; args_schema and requirements inferred if omitted), or test the pipes (`echo` — returns its arguments; spec is a JSON Schema).
+6. Call your tool as `<namespace>.<tool_name>` over the same streamable-HTTP connection. To dry-run an already-published tool by name instead of a raw spec, use `host.tool_test(name, args)`.
+7. Inspect and manage: `host.tool_list()`, `host.tool_logs(name)`, `host.tool_remove(name)`, `host.usage(window)`, `host.secret_set/list()` (secrets stored AES-256-GCM encrypted).
 
 ## Limits and pricing
 

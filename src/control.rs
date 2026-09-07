@@ -315,7 +315,17 @@ pub async fn tool_remove(
 
 pub async fn tool_logs(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let name = arg_str(args, "name")?;
-    if state.db.get_tool(tenant.id, name.clone()).await?.is_none() {
+    // PRD-mcphost-tool-test AC12: `host.spec_test`'s invocations are logged
+    // under a per-kind synthetic bucket name (`__spec_test__.<kind>`),
+    // never a `tools` row -- accept that bucket here too (for a currently
+    // registered kind) so a tenant can read test-invocation logs back
+    // through this same RPC rather than needing a second one. A tenant's
+    // own published tool still satisfies the lookup on its own terms
+    // either way, so this is purely additive.
+    let is_test_bucket = name
+        .strip_prefix("__spec_test__.")
+        .is_some_and(|kind| state.kinds.get(kind).is_some());
+    if !is_test_bucket && state.db.get_tool(tenant.id, name.clone()).await?.is_none() {
         return Err(AppError::ToolNotFound(name));
     }
     let limit = args

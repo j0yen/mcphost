@@ -496,11 +496,31 @@ async fn ast_check(source: &str, isolation: IsolationMechanism) -> Result<(), Ki
         .and_then(Value::as_str)
         .unwrap_or("source is not a valid python tool");
     let message = enhance_syntax_message(message);
+    // PRD-mcphost-tool-test AC13: a publish-time validation failure carries
+    // the same structured detail fields `host.spec_test`'s own failure
+    // response does (`describe_test_failure`'s `exception_class`) -- here
+    // taken straight from `AST_CHECK_SCRIPT`'s own `error` field
+    // ("SyntaxError" or "NoMain") rather than re-derived, and reused by
+    // both `host.tool_publish` and `host.spec_test` since both funnel
+    // through this same `validate_async` -> `ast_check` call. Kept as
+    // `KindError::structured_with("invalid_spec", ..)` rather than a new
+    // code so the wire `error_code` -- and every existing assertion on
+    // `err.message` -- is unchanged; only `data` gains fields.
+    let exception_class = envelope
+        .get("error")
+        .and_then(Value::as_str)
+        .unwrap_or("InvalidSpec");
     match envelope.get("line").and_then(Value::as_i64) {
-        Some(line) => Err(KindError::InvalidSpec(format!(
-            "source: syntax error at line {line}: {message}"
-        ))),
-        None => Err(KindError::InvalidSpec(format!("source: {message}"))),
+        Some(line) => Err(KindError::structured_with(
+            "invalid_spec",
+            format!("source: syntax error at line {line}: {message}"),
+            json!({"field": "source", "exception_class": exception_class, "line": line}),
+        )),
+        None => Err(KindError::structured_with(
+            "invalid_spec",
+            format!("source: {message}"),
+            json!({"field": "source", "exception_class": exception_class}),
+        )),
     }
 }
 
@@ -1538,8 +1558,11 @@ fn call_payload(args: &Value, site_packages: &str) -> Vec<u8> {
 
 /// Byte-caps `s` to its last `cap` bytes (requirement 3: "capped at 64 KiB
 /// each"), landing on a UTF-8 char boundary so the result is always valid
-/// `str` (never splits a multi-byte character).
-fn cap_str_bytes(s: &str, cap: usize) -> String {
+/// `str` (never splits a multi-byte character). `pub(crate)` (PRD-mcphost-tool-test):
+/// `kinds::describe_test_failure` reuses this exact tail-capping for a
+/// `host.spec_test` exception traceback (bounded to 8 KiB there) rather
+/// than a second, slightly-different truncation helper.
+pub(crate) fn cap_str_bytes(s: &str, cap: usize) -> String {
     if s.len() <= cap {
         return s.to_string();
     }
@@ -2320,6 +2343,19 @@ impl Kind for PythonKind {
 
     fn referenced_secrets(&self, spec: &Value) -> Vec<String> {
         parse_spec(spec).map(|p| p.secrets).unwrap_or_default()
+    }
+
+    /// PRD-mcphost-tool-test AC1: `host.spec_test`'s reported `requirements`
+    /// for a python spec -- the author's own, or inferred from `source`,
+    /// exactly like [`Kind::call`]/`describe` would build the environment
+    /// with (`PythonSpec::effective_requirements`). `Vec::new()` on an
+    /// unparseable spec: `spec_test`'s own `validate_all`/`validate_async`
+    /// gate already reject that spec before this is ever reached in
+    /// practice, so this fallback exists only so `requirements` never panics.
+    fn requirements(&self, spec: &Value) -> Vec<String> {
+        parse_spec(spec)
+            .and_then(|parsed| parsed.effective_requirements())
+            .unwrap_or_default()
     }
 
     async fn call(&self, spec: &Value, args: Value, ctx: &CallCtx) -> Result<Value, KindError> {

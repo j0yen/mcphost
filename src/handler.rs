@@ -20,10 +20,12 @@ use crate::auth::{extract_bearer, hash_key};
 use crate::db::{Tenant, ToolRow};
 use crate::errors::AppError;
 use crate::kinds::{
-    CallCtx, CallLog, Kind, KindRegistry, NullLog, NullResourceSink, ResourceSink, SecretResolver,
-    describe_args_error,
+    CallCtx, CallLog, Kind, KindRegistry, MAX_TEST_INVOCATIONS, NullLog, NullResourceSink,
+    ResourceSink, SecretResolver, describe_args_error, run_spec_test,
 };
-use crate::state::{AppState, TOOLS_LIST_TTL_GRACE_SECS, TOOLS_LIST_TTL_MS_STEADY, now_unix};
+use crate::state::{
+    AppState, MAX_SPEC_BYTES, TOOLS_LIST_TTL_GRACE_SECS, TOOLS_LIST_TTL_MS_STEADY, now_unix,
+};
 use crate::{admin, control};
 
 /// Who is making this request, resolved once per request from the bearer
@@ -210,8 +212,13 @@ fn tool_publish_description(kinds: &KindRegistry) -> String {
     out
 }
 
-fn host_tools(kinds: &KindRegistry) -> Vec<Tool> {
-    vec![
+/// PRD-mcphost-tool-test AC9: `host.spec_test`, unlike every other `host.*`
+/// descriptor, must be absent from `tools/list` for an anonymous/invalid
+/// caller (present, and callable, only once authenticated) -- `authenticated`
+/// gates pushing it onto the returned vec; every other `host.*` tool is
+/// unaffected and stays visible pre-auth (PRD-mcphost-session-key).
+fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
+    let mut tools = vec![
         Tool::new(
             "host.whoami",
             "Return the calling tenant's identity.",
@@ -344,7 +351,31 @@ fn host_tools(kinds: &KindRegistry) -> Vec<Tool> {
              if this host has no Stripe key configured -- call billing.plans first to check.",
             host_schema(json!({"plan": {"type": "string"}}), &[]),
         ),
-    ]
+    ];
+    if authenticated {
+        tools.push(Tool::new(
+            "host.spec_test",
+            "Dry-run a tool spec before it is ever published: validates it, then runs up \
+             to 5 example invocations through the same sandbox and limits a published call \
+             uses, returning each invocation's ok/output/duration_ms (or a bounded exception \
+             on failure) plus the args_schema and requirements a publish of this spec would \
+             infer. No tool row is ever written. Distinct from host.tool_test, which dry-runs \
+             an already-published tool by name.",
+            host_schema(
+                json!({
+                    "kind": {"type": "string"},
+                    "spec": {"type": "object"},
+                    "invocations": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                        "maxItems": MAX_TEST_INVOCATIONS,
+                    },
+                }),
+                &["kind", "spec", "invocations"],
+            ),
+        ));
+    }
+    tools
 }
 
 fn admin_tools() -> Vec<Tool> {
@@ -520,6 +551,7 @@ impl McpHostHandler {
             "host.tool_logs" => control::tool_logs(&self.state, tenant, &args).await,
             "host.tool_test" => self.tool_test(tenant, args).await,
             "host.bridge_test" => self.bridge_test(tenant, args).await,
+            "host.spec_test" => self.spec_test(tenant, args).await,
             "host.tool_run" => self.tool_run(tenant, args).await,
             "host.tool_call" => self.host_tool_call(tenant, args).await,
             "host.usage" => control::usage(&self.state, tenant, &args).await,
@@ -895,6 +927,186 @@ impl McpHostHandler {
         }
     }
 
+    /// `host.spec_test` (PRD-mcphost-tool-test): dry-runs a `kind` + `spec`
+    /// pair that has never been published -- up to
+    /// [`crate::kinds::MAX_TEST_INVOCATIONS`] example invocations through
+    /// [`crate::kinds::run_spec_test`], the exact same [`Kind::call`] entry
+    /// point a published call dispatches to (AC8), each with
+    /// `ctx.test_mode = true` so a kind that renders a request (`http`)
+    /// echoes it back. No `tools` row is ever written for `spec`.
+    ///
+    /// Distinct from [`Self::tool_test`] (which dry-runs an
+    /// *already-published* tool by name) and named `spec_test` rather than
+    /// reusing that name: PRD-mcphost-tool-test's acceptance criteria
+    /// describe a pre-publish, multi-invocation, kind-agnostic dry run
+    /// (`kind`/`spec`/`invocations` in, per-invocation results out) under
+    /// the RPC name `host.tool_test` -- but `host.tool_test` already shipped
+    /// on this host with a different, incompatible contract (post-publish,
+    /// single invocation, looked up by `name`) that other ACs
+    /// (`quickstart`'s own worked example, `host.tool_run`'s sibling
+    /// docs) already depend on. Reusing the name would either break that
+    /// shipped contract or silently overload one RPC with two argument
+    /// shapes; `host.spec_test` delivers this PRD's actual capability
+    /// (`host.bridge_test`'s "test a spec you haven't published" idea,
+    /// generalized from `http`-only to every kind, and from one invocation
+    /// to up to five) without either.
+    async fn spec_test(&self, tenant: &Tenant, args: Value) -> Result<Value, AppError> {
+        let kind_name = args
+            .get("kind")
+            .and_then(Value::as_str)
+            .ok_or_else(|| AppError::InvalidArgs("missing required argument 'kind'".into()))?
+            .to_string();
+        let spec = args
+            .get("spec")
+            .cloned()
+            .ok_or_else(|| AppError::InvalidArgs("missing required argument 'spec'".into()))?;
+        let invocations = args
+            .get("invocations")
+            .and_then(Value::as_array)
+            .cloned()
+            .ok_or_else(|| {
+                AppError::InvalidArgs("missing required argument 'invocations'".into())
+            })?;
+
+        // AC7: refused naming the limit, zero invocations run -- checked
+        // before any other work (spec validation included).
+        if invocations.len() > MAX_TEST_INVOCATIONS {
+            return Err(AppError::Structured {
+                code: "too_many_invocations",
+                message: format!(
+                    "at most {MAX_TEST_INVOCATIONS} invocations per host.spec_test call; got {}",
+                    invocations.len()
+                ),
+                data: json!({"limit": MAX_TEST_INVOCATIONS}),
+            });
+        }
+
+        // AC5: same error taxonomy as host.tool_publish -- spec-size, then
+        // kind lookup, then sandbox readiness, then spec validation, in the
+        // same order control::tool_publish checks them.
+        let spec_bytes = serde_json::to_vec(&spec)
+            .map_err(|e| AppError::Internal(format!("spec serialize: {e}")))?
+            .len();
+        if spec_bytes > MAX_SPEC_BYTES {
+            return Err(AppError::SpecTooLarge(spec_bytes));
+        }
+
+        let kind: Arc<dyn Kind> =
+            self.state
+                .kinds
+                .get(&kind_name)
+                .ok_or_else(|| AppError::UnknownKind {
+                    requested: kind_name.clone(),
+                    registered: self.state.kinds.names(),
+                })?;
+
+        if let Some(status) = kind.sandbox_status()
+            && !status.ready
+        {
+            return Err(AppError::sandbox_unavailable(&status));
+        }
+
+        if let Some(err) = AppError::from_kind_violations(kind.validate_all(&spec)) {
+            return Err(err);
+        }
+        kind.validate_async(&spec).await?;
+
+        // AC6: refused exactly as a normal call at quota, checked once
+        // before any invocation executes (not per-invocation) -- the same
+        // gate a real dispatched call passes through.
+        self.check_calls_quota(tenant).await?;
+
+        let descriptor = kind.describe(&spec);
+        let requirements = kind.requirements(&spec);
+
+        let secrets = build_secret_resolver(&self.state, tenant.id).await?;
+        let call_timeout = self.state.call_timeout;
+        let tenant_id = tenant.id;
+        let namespace = tenant.namespace.clone();
+        // AC12: unlike `host.tool_test`/`host.bridge_test` (deliberately
+        // out-of-band debug calls, see `Self::tool_test`'s own doc comment),
+        // a `host.spec_test` invocation's log output IS captured and
+        // persisted -- one `BufferedLog` per invocation, built up front so
+        // `ctx_factory` (called once per invocation, in order, by
+        // `run_spec_test`) can hand each its own and this function can read
+        // every one back once `run_spec_test` returns.
+        let log_bufs: Vec<Arc<BufferedLog>> = invocations
+            .iter()
+            .map(|_| Arc::new(BufferedLog(std::sync::Mutex::new(Vec::new()))))
+            .collect();
+        let mut log_bufs_iter = log_bufs.iter().cloned();
+        let results = run_spec_test(&kind, &spec, &invocations, call_timeout, || CallCtx {
+            tenant_id,
+            namespace: namespace.clone(),
+            secrets: secrets.clone(),
+            deadline: Instant::now() + call_timeout,
+            log: log_bufs_iter
+                .next()
+                .map(|buf| buf as Arc<dyn CallLog>)
+                .unwrap_or_else(|| Arc::new(NullLog)),
+            test_mode: true,
+            resources: Arc::new(NullResourceSink),
+            tool_name: None,
+        })
+        .await;
+
+        // AC6: each executed invocation is metered like a normal call (a
+        // `calls` row, counting toward `calls_per_day`) even though no
+        // `tools` row is ever written for this ad hoc spec. AC12: the same
+        // synthetic per-kind name also buckets this call's persisted log
+        // lines (below), so `host.tool_logs` can serve them back without a
+        // `tools` row existing for it.
+        let test_log_name = format!("__spec_test__.{kind_name}");
+        for result in &results {
+            let ok = result.get("ok").and_then(Value::as_bool).unwrap_or(false);
+            let error_class = result
+                .get("code")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            let duration_ms = result
+                .get("duration_ms")
+                .and_then(Value::as_i64)
+                .unwrap_or(0);
+            let _ = self
+                .state
+                .db
+                .record_call(
+                    tenant.id,
+                    test_log_name.clone(),
+                    duration_ms,
+                    ok,
+                    error_class,
+                    None,
+                    None,
+                )
+                .await;
+        }
+
+        // AC12: each invocation's captured log lines, marked `[test]` so
+        // they read as distinguishable from a production call's own lines
+        // in the same `host.tool_logs` bucket.
+        for buf in &log_bufs {
+            let lines = buf.0.lock().map(|g| g.clone()).unwrap_or_default();
+            for line in lines {
+                let _ = self
+                    .state
+                    .db
+                    .append_log(tenant.id, test_log_name.clone(), format!("[test] {line}"))
+                    .await;
+            }
+        }
+
+        Ok(crate::secrets::redact_keys(
+            &json!({
+                "kind": kind_name,
+                "args_schema": descriptor.input_schema,
+                "requirements": requirements,
+                "invocations": results,
+            }),
+            &["tenant_key"],
+        ))
+    }
+
     /// `host.tool_run` (PRD-mcphost-code-tools-warm-pool requirement 3,
     /// AC6/AC7): a debug run, dispatching to `Kind::tool_run` rather than
     /// `Kind::call` -- distinct raw-stdout/stderr/exit-code response shape,
@@ -1080,12 +1292,12 @@ impl ServerHandler for McpHostHandler {
             // this branch.
             Auth::Anonymous | Auth::Invalid => {
                 let mut tools = vec![signup_tool()];
-                tools.extend(host_tools(&self.state.kinds));
+                tools.extend(host_tools(&self.state.kinds, false));
                 (tools, TOOLS_LIST_TTL_MS_STEADY)
             }
             Auth::Admin => (admin_tools(), TOOLS_LIST_TTL_MS_STEADY),
             Auth::Tenant(tenant) => {
-                let mut tools = host_tools(&self.state.kinds);
+                let mut tools = host_tools(&self.state.kinds, true);
                 let rows = self
                     .state
                     .db
