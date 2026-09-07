@@ -21,6 +21,7 @@ use crate::db::{Tenant, ToolRow};
 use crate::errors::AppError;
 use crate::kinds::{
     CallCtx, CallLog, Kind, KindRegistry, NullLog, NullResourceSink, ResourceSink, SecretResolver,
+    describe_args_error,
 };
 use crate::state::{AppState, TOOLS_LIST_TTL_GRACE_SECS, TOOLS_LIST_TTL_MS_STEADY, now_unix};
 use crate::{admin, control};
@@ -599,7 +600,18 @@ impl McpHostHandler {
             // AC4: the wire code for a schema-invalid call to a *published*
             // tool is `args_invalid`, distinct from `AppError::InvalidArgs`
             // (used for missing control-plane arguments elsewhere).
-            return Err(AppError::ArgsInvalid(e.to_string()));
+            // Requirement 1/AC3 (PRD-mcphost-python-kind-runtime): phase
+            // `args_coercion`, naming the argument and both types -- shared
+            // with every kind via `describe_args_error`, wired through
+            // `AppError::Structured` (not `ArgsInvalid`) so the extra `data`
+            // fields survive into the JSON-RPC response; the wire code stays
+            // pinned to exactly `args_invalid` either way.
+            let data = describe_args_error(&e);
+            return Err(AppError::Structured {
+                code: "args_invalid",
+                message: e.to_string(),
+                data,
+            });
         }
 
         // PRD-grand-loop-billing AC3: `calls_per_day` enforcement, checked
@@ -763,7 +775,18 @@ impl McpHostHandler {
         if let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
             && let Err(e) = validator.validate(&call_args)
         {
-            return Err(AppError::ArgsInvalid(e.to_string()));
+            // Requirement 1/AC3 (PRD-mcphost-python-kind-runtime): phase
+            // `args_coercion`, naming the argument and both types -- shared
+            // with every kind via `describe_args_error`, wired through
+            // `AppError::Structured` (not `ArgsInvalid`) so the extra `data`
+            // fields survive into the JSON-RPC response; the wire code stays
+            // pinned to exactly `args_invalid` either way.
+            let data = describe_args_error(&e);
+            return Err(AppError::Structured {
+                code: "args_invalid",
+                message: e.to_string(),
+                data,
+            });
         }
 
         let secrets = build_secret_resolver(&self.state, tenant.id).await?;
@@ -847,7 +870,18 @@ impl McpHostHandler {
         if let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
             && let Err(e) = validator.validate(&call_args)
         {
-            return Err(AppError::ArgsInvalid(e.to_string()));
+            // Requirement 1/AC3 (PRD-mcphost-python-kind-runtime): phase
+            // `args_coercion`, naming the argument and both types -- shared
+            // with every kind via `describe_args_error`, wired through
+            // `AppError::Structured` (not `ArgsInvalid`) so the extra `data`
+            // fields survive into the JSON-RPC response; the wire code stays
+            // pinned to exactly `args_invalid` either way.
+            let data = describe_args_error(&e);
+            return Err(AppError::Structured {
+                code: "args_invalid",
+                message: e.to_string(),
+                data,
+            });
         }
 
         let secrets = build_secret_resolver(&self.state, tenant.id).await?;

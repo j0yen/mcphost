@@ -432,6 +432,46 @@ async fn build_ast_check_spec(
     Ok((scratch, spec))
 }
 
+/// PRD-mcphost-python-kind-runtime requirement 1/AC5: CPython's own
+/// `SyntaxError.msg` already *names* several restricted constructs
+/// precisely (e.g. `"cannot use assignment expressions with subscript"`
+/// for `d[k := v]`, since Python's grammar only allows a plain name as an
+/// assignment-expression target -- see `PRD-mcphost-python-kind-runtime`'s
+/// AC6 analysis in `docs/kinds/python.md`) but never says what to do
+/// instead. This appends the accepted alternative to the messages the
+/// AST-check rejection path is known to see, so the whole rejection is one
+/// self-contained sentence naming both the offending construct and the
+/// fix. A message this table doesn't recognize passes through unchanged --
+/// CPython's raw `msg` is already the best information mcphost has for an
+/// error shape nobody has named an alternative for yet.
+fn enhance_syntax_message(message: &str) -> String {
+    const ASSIGNMENT_EXPR_ALTERNATIVES: &[(&str, &str)] = &[
+        (
+            "cannot use assignment expressions with subscript",
+            "assign to a plain name first, then set the subscript in a separate statement (e.g. `tmp = value; d[key] = tmp`)",
+        ),
+        (
+            "cannot use assignment expressions with attribute",
+            "assign to a plain name first, then set the attribute in a separate statement (e.g. `tmp = value; obj.attr = tmp`)",
+        ),
+    ];
+    for (needle, alternative) in ASSIGNMENT_EXPR_ALTERNATIVES {
+        if message.contains(needle) {
+            return format!("{message} -- {alternative}");
+        }
+    }
+    if message.contains("assignment expression") {
+        // Any other assignment-expression restriction CPython reports
+        // that isn't in the table above still gets a generic, honest
+        // fallback naming the construct and a safe general alternative,
+        // rather than leaving the sentence without one.
+        return format!(
+            "{message} -- use a separate assignment statement instead (`:=` may only target a plain name)"
+        );
+    }
+    message.to_string()
+}
+
 async fn ast_check(source: &str, isolation: IsolationMechanism) -> Result<(), KindError> {
     let (scratch, spec) =
         build_ast_check_spec(source, isolation, &SelftestInterpreter::RealPython3)
@@ -455,6 +495,7 @@ async fn ast_check(source: &str, isolation: IsolationMechanism) -> Result<(), Ki
         .get("message")
         .and_then(Value::as_str)
         .unwrap_or("source is not a valid python tool");
+    let message = enhance_syntax_message(message);
     match envelope.get("line").and_then(Value::as_i64) {
         Some(line) => Err(KindError::InvalidSpec(format!(
             "source: syntax error at line {line}: {message}"
@@ -1364,6 +1405,54 @@ for line in sys.stdin:
     emit(run_one(payload))
 "#;
 
+/// PRD-mcphost-python-kind-runtime, requirement 1/AC2: pulls the single
+/// most-specific `tool.py` frame (the LAST one -- the innermost, closest to
+/// where the exception was actually raised, since `main`'s own body may
+/// call further into helper functions also defined in `tool.py`) out of a
+/// CPython `traceback.format_exc()` dump. Traceback frames from `runner.py`
+/// or Python's own `importlib` machinery are never `tool.py` frames, so
+/// this can't accidentally attribute the failure to host code. Returns the
+/// 1-based line number and (when the frame carries a source excerpt, which
+/// CPython includes whenever the file is readable from disk -- true here,
+/// since `tool.py` still exists in the scratch dir at exception time) the
+/// stripped source text of that line.
+fn extract_tool_source_line(traceback: &str) -> (Option<i64>, Option<String>) {
+    let mut found: (Option<i64>, Option<String>) = (None, None);
+    let mut lines = traceback.lines().peekable();
+    while let Some(line) = lines.next() {
+        let Some(after_file) = line.trim_start().strip_prefix("File \"") else {
+            continue;
+        };
+        // CPython always renders the frame's path exactly as it was
+        // passed to `compile`/`exec_module` -- `run_one`'s
+        // `spec_from_file_location("tool", "tool.py")` uses a bare
+        // relative name relative to the runner's cwd (the scratch dir),
+        // but the sandbox wrapper may report an absolute path instead
+        // (observed: `/tmp/.../scratch/tool.py`) -- match on the
+        // filename, not the whole path, so either form is recognized.
+        let Some(quote_end) = after_file.find('"') else {
+            continue;
+        };
+        let path = &after_file[..quote_end];
+        if !(path == "tool.py" || path.ends_with("/tool.py")) {
+            continue;
+        }
+        let Some(after_line) = after_file[quote_end + 1..].strip_prefix(", line ") else {
+            continue;
+        };
+        let comma = after_line.find(',').unwrap_or(after_line.len());
+        let Ok(line_no) = after_line[..comma].trim().parse::<i64>() else {
+            continue;
+        };
+        let source_line = lines
+            .peek()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty() && !s.starts_with("File \""));
+        found = (Some(line_no), source_line);
+    }
+    found
+}
+
 fn map_envelope_error(envelope: &Value, stderr_tail: &str) -> KindError {
     let kind = envelope.get("kind").and_then(Value::as_str).unwrap_or("");
     match kind {
@@ -1390,11 +1479,33 @@ fn map_envelope_error(envelope: &Value, stderr_tail: &str) -> KindError {
                 .get("traceback")
                 .and_then(Value::as_str)
                 .unwrap_or("");
-            KindError::structured_with(
-                "tool_exception",
-                format!("{error}: {message}"),
-                json!({"traceback": traceback, "stderr_tail": stderr_tail}),
-            )
+            // Requirement 1/AC2: every exception that escapes the tool's
+            // own code is `phase: tool_code`, carries the exception class
+            // separately from the message (`error`), and -- when
+            // attributable -- the tool-source line the failure actually
+            // happened at, not just the full traceback blob (still kept in
+            // `data.traceback` for anyone who wants it, but the message
+            // itself is a clean one-liner, never a bare traceback
+            // fragment).
+            let (tool_line, source_line) = extract_tool_source_line(traceback);
+            let located = tool_line
+                .map(|n| format!(" at tool.py:{n}"))
+                .unwrap_or_default();
+            let mut data = json!({
+                "phase": "tool_code",
+                "exception_class": error,
+                "traceback": traceback,
+                "stderr_tail": stderr_tail,
+            });
+            if let Some(obj) = data.as_object_mut() {
+                if let Some(n) = tool_line {
+                    obj.insert("line".to_string(), json!(n));
+                }
+                if let Some(src) = source_line {
+                    obj.insert("source_line".to_string(), json!(src));
+                }
+            }
+            KindError::structured_with("tool_exception", format!("{error}: {message}{located}"), data)
         }
     }
 }
@@ -2140,23 +2251,42 @@ impl Kind for PythonKind {
     }
 
     async fn validate_async(&self, spec: &Value) -> Result<(), KindError> {
-        let parsed = parse_spec(spec)?;
-        // AC16: a syntax error must surface as the existing spec-validation
-        // error, never an inference error -- so this runs first, and
-        // inference (below) is only reached once the source is known-valid
-        // Python with a `main`.
-        ast_check(&parsed.source, self.isolation).await?;
-        // Requirement 7/AC11 and requirement 6/AC10: gate publish on
-        // inference actually succeeding when the tenant omitted the field.
-        // The derived value itself is discarded here -- `describe`/`call`
-        // recompute it deterministically (see `infer` module docs).
-        if parsed.args_schema.is_none() {
-            infer::infer_python_args_schema(&parsed.source)?;
+        // PRD-mcphost-python-kind-runtime requirement 1/AC4: instrument
+        // publish latency end-to-end (spec parse, the sandboxed AST check,
+        // and schema/requirements inference when the tenant omitted
+        // either) -- this is the entire cost of `host.tool_publish` for a
+        // python-kind tool, and the number the AC's ≤10s budget is judged
+        // against. The `async {}` block lets every `?` inside still early-
+        // return normally while one `tracing::info!` after it covers both
+        // the success and failure path -- a rejected publish still cost
+        // real wall time worth recording.
+        let started = Instant::now();
+        let result = async {
+            let parsed = parse_spec(spec)?;
+            // AC16: a syntax error must surface as the existing spec-validation
+            // error, never an inference error -- so this runs first, and
+            // inference (below) is only reached once the source is known-valid
+            // Python with a `main`.
+            ast_check(&parsed.source, self.isolation).await?;
+            // Requirement 7/AC11 and requirement 6/AC10: gate publish on
+            // inference actually succeeding when the tenant omitted the field.
+            // The derived value itself is discarded here -- `describe`/`call`
+            // recompute it deterministically (see `infer` module docs).
+            if parsed.args_schema.is_none() {
+                infer::infer_python_args_schema(&parsed.source)?;
+            }
+            if parsed.requirements.is_empty() {
+                infer::infer_python_requirements(&parsed.source)?;
+            }
+            Ok(())
         }
-        if parsed.requirements.is_empty() {
-            infer::infer_python_requirements(&parsed.source)?;
-        }
-        Ok(())
+        .await;
+        tracing::info!(
+            publish_ms = started.elapsed().as_millis() as u64,
+            ok = result.is_ok(),
+            "python publish (validate_async) complete"
+        );
+        result
     }
 
     fn describe(&self, spec: &Value) -> ToolDescriptor {
@@ -2200,11 +2330,10 @@ impl Kind for PythonKind {
         let validator = jsonschema::validator_for(&effective_schema)
             .map_err(|e| KindError::InvalidSpec(format!("args_schema: {e}")))?;
         if let Err(e) = validator.validate(&args) {
-            return Err(KindError::structured_with(
-                "args_invalid",
-                e.to_string(),
-                json!({"instance_path": e.instance_path.to_string()}),
-            ));
+            // Requirement 1/AC3: phase `args_coercion`, naming the
+            // argument and both types -- see `describe_args_error`.
+            let data = super::describe_args_error(&e);
+            return Err(KindError::structured_with("args_invalid", e.to_string(), data));
         }
 
         let Ok(_permit) = self.semaphore.clone().try_acquire_owned() else {
@@ -2261,6 +2390,14 @@ impl Kind for PythonKind {
             self.warm.record_miss();
         }
 
+        // PRD-mcphost-python-kind-runtime requirement 1/AC4: everything
+        // from here down only runs on the cold path (a warm-pool hit
+        // above already returned) -- this is exactly "first call" cost:
+        // env-status lookup, scratch prep, and the sandboxed run itself.
+        // Logged unconditionally (including the `tool_building`/
+        // `build_failed` early returns) since even a rejected cold call
+        // spent real wall time getting there.
+        let cold_call_started = Instant::now();
         let env_dir = self.env_dir(&ctx.namespace, &effective_requirements);
         let status = match self.envs.status(&env_dir).await {
             Some(status) => status,
@@ -2332,6 +2469,13 @@ impl Kind for PythonKind {
 
         let outcome = sandbox::run(run_spec).await;
         let _ = tokio::fs::remove_dir_all(&scratch).await;
+        // Requirement 1/AC4: the cold-path number the AC's ≤5s budget is
+        // judged against, logged before the spawn-error `?` so a genuine
+        // spawn failure is still timed and visible.
+        tracing::info!(
+            cold_call_ms = cold_call_started.elapsed().as_millis() as u64,
+            "python cold call (env lookup + sandboxed run) complete"
+        );
         let outcome = outcome.map_err(|e| KindError::Exec(format!("sandbox spawn failed: {e}")))?;
 
         let (cpu_ms, peak_rss_kb) = outcome_usage(&outcome);
@@ -2398,11 +2542,10 @@ impl Kind for PythonKind {
         let validator = jsonschema::validator_for(&effective_schema)
             .map_err(|e| KindError::InvalidSpec(format!("args_schema: {e}")))?;
         if let Err(e) = validator.validate(&args) {
-            return Err(KindError::structured_with(
-                "args_invalid",
-                e.to_string(),
-                json!({"instance_path": e.instance_path.to_string()}),
-            ));
+            // Requirement 1/AC3: phase `args_coercion`, naming the
+            // argument and both types -- see `describe_args_error`.
+            let data = super::describe_args_error(&e);
+            return Err(KindError::structured_with("args_invalid", e.to_string(), data));
         }
 
         let secret_env = self.secret_env(&parsed, ctx);
