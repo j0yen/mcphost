@@ -51,8 +51,9 @@ async fn every_host_star_descriptor_declares_an_optional_tenant_key() {
         .collect();
     assert_eq!(
         host_tools.len(),
-        13,
-        "the twelve host.* control tools (incl. host.quickstart and host.tool_run) plus host.tool_call: {entries:?}"
+        14,
+        "the thirteen host.* control tools (incl. host.quickstart, host.tool_run, and \
+         host.bridge_test) plus host.tool_call: {entries:?}"
     );
 
     for tool in host_tools {

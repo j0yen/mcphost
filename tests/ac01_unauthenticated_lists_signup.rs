@@ -71,6 +71,10 @@ async fn unauthenticated_tools_list_is_signup_only() {
         "host.tool_remove",
         "host.tool_logs",
         "host.tool_test",
+        // PRD-mcphost-rest-bridge P1 requirement: "test before deploy" for
+        // an unpublished spec, discoverable unauthenticated too, same as
+        // the rest of the host.* control plane.
+        "host.bridge_test",
         // PRD-mcphost-code-tools-warm-pool requirement 3: the debug-run RPC
         // is discoverable unauthenticated too, same as the rest of the
         // host.* control plane.
@@ -100,8 +104,8 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        17,
-        "signup + the twelve host.* tools (incl. host.quickstart and host.tool_run) + \
-         host.tool_call + the three billing.* tools: {tool_names:?}"
+        18,
+        "signup + the thirteen host.* tools (incl. host.quickstart, host.tool_run, and \
+         host.bridge_test) + host.tool_call + the three billing.* tools: {tool_names:?}"
     );
 }
