@@ -6,10 +6,6 @@
     {
       "name": "reviewer-agent",
       "reason": "reviewer decision=block not in [\"pass\", \"concern\"]"
-    },
-    {
-      "name": "rollback-plan",
-      "reason": "verdict=block not in [\"pass\"]"
     }
   ]
 }
