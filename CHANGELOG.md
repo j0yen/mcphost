@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.26.1 — 2026-09-07
+
+PRD-mcphost-metered-overage AC1 archive proof: a new test
+(`tests/metering_ac01_stripe_customer_id_null_default.rs`) exercises
+migration 0007 directly and asserts a pre-existing tenant reloads with a
+null `stripe_customer_id`. No behavior change — the migration already
+defaulted the column to null; this closes the archive checklist's missing
+test-coverage gap.
+
 ## v0.26.0 — 2026-09-07
 
 A tenant created by a test harness carries a `synthetic` label from its first request: the harness sets one transport header (`x-mcphost-synthetic`) that the signup path records, an admin tool tags the existing census retroactively, and `/healthz` reports `tenants_real` beside `tenants_synthetic`. Synthetic tenants behave identically in every other respect — same plans, quotas, billing paths — the label exists so counts and downstream measurement can tell a synthorg persona from a person.
