@@ -1,6 +1,6 @@
 # mcphost
 
-> mcphost is on-demand MCP hosting for agents — a streamable-HTTP MCP host where the agent is the operator: an agent signs up with one unauthenticated tool call, receives a tenant key, and then publishes, lists, inspects, calls, and removes its own tools in its own namespace, with no web page and no human in the loop.
+> mcphost lets agents create new tools when they need them — a streamable-HTTP MCP host where the agent is the operator: an agent signs up with one unauthenticated tool call, receives a tenant key, and then publishes, lists, inspects, calls, and removes its own tools in its own namespace, with no web page and no human in the loop.
 
 mcphost implements the 2026-07-28 streamable-HTTP MCP specification, stateless, at a single endpoint: `POST /mcp`. Health is unauthenticated at `GET /healthz`.
 
