@@ -147,7 +147,7 @@ struct UpstreamParamSpec {
 /// ([`referenced_secrets_in_spec`] finds it via [`compile_upstream`]'s
 /// generated header template), so secret redaction (requirement 6) covers
 /// it identically to a hand-written spec.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 struct UpstreamAuthSpec {
     /// The header name to set, e.g. `"Authorization"`.
     header: String,
@@ -156,6 +156,22 @@ struct UpstreamAuthSpec {
     /// Prepended to the resolved secret value, e.g. `"Bearer "`.
     #[serde(default)]
     prefix: Option<String>,
+}
+
+/// Hand-written rather than derived: `secret` is only ever a *reference
+/// name* (resolved through `secret.<name>`, never the resolved value
+/// itself -- see the struct doc), but risk-gate's HLT-010-SECRET-SPRAWL
+/// detector flags any `secret`-named field on a `#[derive(Debug)]` struct
+/// on sight, and a reference name is still worth keeping out of logs on
+/// principle. Redact it unconditionally so `{:?}` can never leak it.
+impl std::fmt::Debug for UpstreamAuthSpec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UpstreamAuthSpec")
+            .field("header", &self.header)
+            .field("secret", &"[redacted]")
+            .field("prefix", &self.prefix)
+            .finish()
+    }
 }
 
 /// The declarative REST-bridge spec (PRD-mcphost-rest-bridge requirement:
@@ -1372,7 +1388,7 @@ mod tests {
             compiled.headers.get("Authorization").map(String::as_str),
             Some("Bearer {{ secret.api_key }}")
         );
-        let schema = compiled.args_schema.expect("schema derived");
+        let schema = compiled.args_schema.expect("schema derived"); // allowlist: test-only expect on a value this same test just constructed (false-positive substring match on "args")
         let required = schema["required"].as_array().expect("required array");
         assert_eq!(required.len(), 3);
     }

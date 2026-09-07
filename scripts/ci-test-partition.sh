@@ -62,8 +62,22 @@ SANDBOX_SHARDS=3
 # `require_user_namespaces_or_ci_skip` are the capability guard itself;
 # `PythonKind`/`kinds::python` is the only caller that spawns sandboxed
 # children today (`src/sandbox.rs`'s module doc: "python.rs is this module's
-# first, and so far only, caller").
-SANDBOX_SURFACE='require_user_namespaces_or_ci_skip|supports_user_namespaces|PythonKind|kinds::python'
+# first, and so far only, caller"). `python_kind_registry` (and its
+# `_with_*` variants in tests/common/mod.rs) and the `"kind": "python"` spec
+# literal are added 2026-09-07 (CI gate-job failure, run 34102334108:
+# `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted`): a test
+# file that only calls a `tests/common/mod.rs` helper or writes the kind
+# name into a JSON literal never mentions `PythonKind`/`kinds::python` in
+# its OWN source, so `classify` (which greps only the test file, not the
+# shared `common` module it `mod`s in) was under-including exactly the
+# targets this split exists to catch -- 3 of them
+# (tooltest_ac1_python_two_invocations, tooltest_ac2_python_exception_other_still_runs,
+# publishfirsttry_ac03_ac04_quickstart) ran real bwrap children in the `gate`
+# job, which has no userns grant, instead of `sandbox`. Under the
+# over-inclusion-is-harmless rule above, matching the literal is fine even
+# for a target that only asks the server to run *a* python tool without
+# calling the registry helper directly (host.quickstart).
+SANDBOX_SURFACE='require_user_namespaces_or_ci_skip|supports_user_namespaces|PythonKind|kinds::python|python_kind_registry|"kind":[[:space:]]*"python"'
 
 classify() { # <file> -> prints "sandbox" or "core"
   if grep -qE "$SANDBOX_SURFACE" "$1"; then echo sandbox; else echo core; fi
