@@ -125,6 +125,20 @@ fn mcp_name_header(parts: &http::request::Parts) -> Option<String> {
         .map(str::to_string)
 }
 
+/// PRD-mcphost-synthetic-flag requirement 2: the raw `x-mcphost-synthetic`
+/// header value, unvalidated -- `control::signup` (via
+/// `validate_synthetic_header`) is where the charset/length check and the
+/// "invalid logs a warning" behavior live, same division of labor as
+/// `source_ip`/`mcp_name_header` above (HTTP-layer extraction here,
+/// business-logic validation in `control.rs`).
+fn synthetic_header(parts: &http::request::Parts) -> Option<String> {
+    parts
+        .headers
+        .get("x-mcphost-synthetic")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string)
+}
+
 // ---- static control-plane / admin tool descriptors -----------------------
 
 fn schema(props: Value, required: &[&str]) -> Map<String, Value> {
@@ -382,8 +396,17 @@ fn admin_tools() -> Vec<Tool> {
     vec![
         Tool::new(
             "admin.tenants",
-            "List every tenant, optionally filtered to display names starting with `prefix`.",
-            schema(json!({"prefix": {"type": "string"}}), &[]),
+            "List every tenant, optionally filtered to display names starting with `prefix` \
+             and/or by `synthetic` (`true`: only labeled tenants, `false`: only unlabeled, \
+             `all`: no filter -- the default). Every row carries a `synthetic` field, null \
+             for unlabeled.",
+            schema(
+                json!({
+                    "prefix": {"type": "string"},
+                    "synthetic": {"type": "string", "enum": ["true", "false", "all"]},
+                }),
+                &[],
+            ),
         ),
         Tool::new(
             "admin.tenant_disable",
@@ -474,6 +497,33 @@ fn admin_tools() -> Vec<Tool> {
              batch's span, the current meter_lag, and per-tenant emitted call counts for the \
              current UTC month.",
             schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "admin.tenant_set_synthetic",
+            "Set or clear (`label: null`) one tenant's `synthetic` label. `label`, when a \
+             string, must match ^[a-z0-9][a-z0-9:_-]{0,63}$.",
+            schema(
+                json!({
+                    "tenant": {"type": "string"},
+                    "label": {"type": ["string", "null"]},
+                }),
+                &["tenant", "label"],
+            ),
+        ),
+        Tool::new(
+            "admin.tenants_set_synthetic",
+            "Bulk retro-tag: apply `label` to every tenant whose display name matches the \
+             SQL LIKE pattern `name_like` (e.g. `%Chen%`). `dry_run` (default true) only \
+             returns the matched tenants and count; `dry_run: false` applies the label and \
+             returns the same list.",
+            schema(
+                json!({
+                    "name_like": {"type": "string"},
+                    "label": {"type": "string"},
+                    "dry_run": {"type": "boolean"},
+                }),
+                &["name_like", "label"],
+            ),
         ),
     ]
 }
@@ -582,6 +632,10 @@ impl McpHostHandler {
             "admin.billing_ledger" => admin::billing_ledger(&self.state, &args).await,
             "admin.plan_set" => admin::plan_set(&self.state, &args).await,
             "admin.meter_status" => admin::meter_status(&self.state).await,
+            "admin.tenant_set_synthetic" => admin::tenant_set_synthetic(&self.state, &args).await,
+            "admin.tenants_set_synthetic" => {
+                admin::tenants_set_synthetic(&self.state, &args).await
+            }
             other => Err(AppError::ToolNotFound(other.to_string())),
         }
     }
@@ -1370,7 +1424,10 @@ impl ServerHandler for McpHostHandler {
         let args = crate::secrets::redact_keys(&raw_args, &["tenant_key"]);
 
         let outcome: Result<Value, AppError> = match (&auth, body_name.as_str()) {
-            (_, "signup") => control::signup(&self.state, &args, &source).await,
+            (_, "signup") => {
+                control::signup(&self.state, &args, &source, synthetic_header(parts).as_deref())
+                    .await
+            }
             // Requirement 4 / AC3-4: `host.quickstart` is readable before
             // signup, same as the rest of the `host.*` control plane in
             // `list_tools` -- an authenticated tenant gets its own

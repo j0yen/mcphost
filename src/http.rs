@@ -93,12 +93,20 @@ async fn healthz(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl
     // measure job today) is unchanged, so `tenants_total - tenants_probe`
     // is the real-tenant count.
     let tenants_probe = state.db.probe_tenant_count().await.unwrap_or(0);
+    // PRD-mcphost-synthetic-flag AC7: always present (0 when none), unlike
+    // the conditional fields below -- an operator reading `tenants_real`
+    // needs it to mean "0" on a box with no labeled tenants yet, not be
+    // absent and easily confused with "not supported here."
+    let tenants_synthetic = state.db.count_synthetic_tenants().await.unwrap_or(0);
+    let tenants_real = tenants_total - tenants_synthetic;
     let mut body = json!({
         "version": env!("CARGO_PKG_VERSION"),
         "db_ok": db_ok,
         "tools_total": tools_total,
         "tenants_total": tenants_total,
         "tenants_probe": tenants_probe,
+        "tenants_synthetic": tenants_synthetic,
+        "tenants_real": tenants_real,
         "sandbox_mechanism": state.sandbox_mechanism,
     });
     // PRD-mcphost-sandbox-ready requirement 2: additive fields, populated
@@ -127,6 +135,17 @@ async fn healthz(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl
             "paying_tenants".to_string(),
             json!(state.db.count_paying_tenants().await.unwrap_or(0)),
         );
+    }
+    // PRD-mcphost-synthetic-flag P1 requirement 6 / AC10: `paying_tenants_real`
+    // appears only once a labeled tenant has actually gone paid -- absent,
+    // not present-and-equal, on every host where it can never have
+    // differed from `paying_tenants` yet (same absent-until-relevant
+    // pattern as `meter_lag` below).
+    if let Ok((paying_real, paying_synthetic)) = state.db.paying_tenant_synthetic_split().await
+        && paying_synthetic > 0
+        && let Some(obj) = body.as_object_mut()
+    {
+        obj.insert("paying_tenants_real".to_string(), json!(paying_real));
     }
     // PRD-mcphost-metered-overage AC8: `meter_lag` only appears when
     // metering is configured (`metered_price_id` set) -- unconfigured, the

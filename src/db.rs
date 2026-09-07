@@ -20,12 +20,13 @@ const MIGRATION_0004: &str = include_str!("../migrations/0004_calls_resource_usa
 const MIGRATION_0005: &str = include_str!("../migrations/0005_cascade_delete.sql");
 const MIGRATION_0006: &str = include_str!("../migrations/0006_billing.sql");
 const MIGRATION_0007: &str = include_str!("../migrations/0007_metering.sql");
+const MIGRATION_0008: &str = include_str!("../migrations/0008_synthetic.sql");
 
 /// Shared by every query that selects a whole tenant row, so the column
 /// list and [`tenant_from_row`] stay in lockstep with each other.
 const TENANT_COLUMNS: &str = "id, namespace, display_name, key_hash, created_at, disabled, \
     last_tool_change_unix, namespace_verified, registry_namespace, plan, plan_since, billing_ref, \
-    stripe_customer_id";
+    stripe_customer_id, synthetic";
 
 fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
     Ok(Tenant {
@@ -42,6 +43,7 @@ fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
         plan_since: r.get(10)?,
         billing_ref: r.get(11)?,
         stripe_customer_id: r.get(12)?,
+        synthetic: r.get(13)?,
     })
 }
 
@@ -83,6 +85,15 @@ pub struct Tenant {
     /// which falls back to `subscription` when `customer` is absent and so
     /// isn't reliable as the meter-events `payload[stripe_customer_id]`.
     pub stripe_customer_id: Option<String>,
+    /// PRD-mcphost-synthetic-flag migration 0008: a free-form label
+    /// (`synthorg:<run_id>`, `operator`, ...) set at signup from the
+    /// `x-mcphost-synthetic` header, or later by `admin.tenant_set_synthetic`
+    /// / `admin.tenants_set_synthetic`. `None` is "unlabeled" -- a real
+    /// tenant, or a synthetic one from before this column existed. Metadata
+    /// only: never consulted by plan/quota/billing/sandbox logic, and never
+    /// surfaced in a tenant-facing response (only `admin.*` tools and
+    /// `/healthz` read it).
+    pub synthetic: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -246,7 +257,8 @@ impl Db {
         Self::migrate_0004_calls_resource_usage(&conn)?;
         Self::migrate_0005_cascade_delete(&conn)?;
         Self::migrate_0006_billing(&conn)?;
-        Self::migrate_0007_metering(&conn)
+        Self::migrate_0007_metering(&conn)?;
+        Self::migrate_0008_synthetic(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -332,6 +344,20 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0007)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-synthetic-flag migration 0008: same idempotency pattern
+    /// as 0002-0007, gated on `tenants.synthetic` (the batch also adds
+    /// `signup_events.synthetic`, which has no independent gate -- both
+    /// columns land together, atomically, the first time this runs).
+    fn migrate_0008_synthetic(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'synthetic'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0008)?;
         }
         Ok(())
     }
@@ -428,13 +454,14 @@ impl Db {
         display_name: String,
         namespace: String,
         key_hash: String,
+        synthetic: Option<String>,
     ) -> Result<Tenant, AppError> {
         let created_at = now_rfc3339();
         self.with_conn(move |conn| {
             conn.execute(
-                "INSERT INTO tenants (namespace, display_name, key_hash, created_at, disabled) \
-                 VALUES (?1, ?2, ?3, ?4, 0)",
-                params![namespace, display_name, key_hash, created_at],
+                "INSERT INTO tenants (namespace, display_name, key_hash, created_at, disabled, synthetic) \
+                 VALUES (?1, ?2, ?3, ?4, 0, ?5)",
+                params![namespace, display_name, key_hash, created_at, synthetic],
             )?;
             let id = conn.last_insert_rowid();
             Ok(Tenant {
@@ -451,6 +478,7 @@ impl Db {
                 plan_since: None,
                 billing_ref: None,
                 stripe_customer_id: None,
+                synthetic,
             })
         })
         .await
@@ -515,6 +543,25 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-synthetic-flag AC5: `admin.tenant_set_synthetic` sets or
+    /// clears (`label: None`) one tenant's `synthetic` label by namespace,
+    /// same identifier every other single-tenant admin tool in this file
+    /// uses (`tenant_disable`, `tenant_enable`, `tenant_verify_namespace`).
+    pub async fn set_tenant_synthetic(
+        &self,
+        namespace: String,
+        label: Option<String>,
+    ) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "UPDATE tenants SET synthetic = ?1 WHERE namespace = ?2",
+                params![label, namespace],
+            )?;
+            Ok(n > 0)
+        })
+        .await
+    }
+
     /// AC19: `admin.tenant_verify_namespace` sets the per-tenant
     /// "domain namespace verified" boolean plus the reverse-DNS-style
     /// namespace it was verified under. The verification METHOD is not
@@ -554,6 +601,43 @@ impl Db {
                 "SELECT COUNT(*) FROM tenants WHERE plan != 'free'",
                 [],
                 |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-synthetic-flag AC7: labeled-tenant count for
+    /// `/healthz`'s `tenants_synthetic` (`tenants_real` is `tenants_total`
+    /// minus this, computed by the caller since `counts()` already reads
+    /// `tenants_total`).
+    pub async fn count_synthetic_tenants(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM tenants WHERE synthetic IS NOT NULL",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-synthetic-flag AC10 / P1 requirement 10: `(real, synthetic)`
+    /// paying-tenant counts in one query, so `/healthz` can add
+    /// `paying_tenants_real` only when the synthetic half is nonzero
+    /// (guards against a synthetic tenant ever polluting the revenue count
+    /// while keeping the field absent -- not present-and-equal -- on a host
+    /// where it can never have differed from `paying_tenants`).
+    pub async fn paying_tenant_synthetic_split(&self) -> Result<(i64, i64), AppError> {
+        self.with_conn(|conn| {
+            conn.query_row(
+                "SELECT \
+                    SUM(CASE WHEN plan != 'free' AND synthetic IS NULL THEN 1 ELSE 0 END), \
+                    SUM(CASE WHEN plan != 'free' AND synthetic IS NOT NULL THEN 1 ELSE 0 END) \
+                 FROM tenants",
+                [],
+                |r| Ok((r.get::<_, Option<i64>>(0)?.unwrap_or(0), r.get::<_, Option<i64>>(1)?.unwrap_or(0))),
             )
             .map_err(AppError::from)
         })
@@ -651,6 +735,43 @@ impl Db {
                 _ => false,
             };
             Ok((rows, truncated))
+        })
+        .await
+    }
+
+    /// PRD-mcphost-synthetic-flag AC6: `admin.tenants_set_synthetic`'s
+    /// retro-tag -- `name_like` is a raw SQL `LIKE` pattern against
+    /// `display_name` (the operator supplies its own `%`/`_` wildcards,
+    /// e.g. `%Chen%`), unlike the prefix-only substr match
+    /// `list_tenants_by_prefix` uses for `tenant_delete_by_prefix`, since
+    /// this tool's job is finding panel personas by name shape rather than
+    /// a fixed prefix. `dry_run` returns the matches unmodified; otherwise
+    /// every match is updated to `label` (already validated by the caller)
+    /// before being returned, so the response reflects the post-write state
+    /// either way.
+    pub async fn set_tenants_synthetic_by_name_like(
+        &self,
+        name_like: String,
+        label: String,
+        dry_run: bool,
+    ) -> Result<Vec<Tenant>, AppError> {
+        self.with_conn(move |conn| {
+            let sql =
+                format!("SELECT {TENANT_COLUMNS} FROM tenants WHERE display_name LIKE ?1 ORDER BY id");
+            let mut stmt = conn.prepare(&sql)?;
+            let mut matches: Vec<Tenant> = stmt
+                .query_map(params![name_like], tenant_from_row)?
+                .collect::<Result<Vec<_>, _>>()?;
+            if !dry_run {
+                for t in &mut matches {
+                    conn.execute(
+                        "UPDATE tenants SET synthetic = ?1 WHERE id = ?2",
+                        params![label, t.id],
+                    )?;
+                    t.synthetic = Some(label.clone());
+                }
+            }
+            Ok(matches)
         })
         .await
     }
@@ -783,12 +904,20 @@ impl Db {
         .await
     }
 
-    pub async fn record_signup_event(&self, source_ip: String) -> Result<(), AppError> {
+    /// `synthetic` (P2 requirement 8) is the same validated-or-null label
+    /// `create_tenant` stores on the tenant row, recorded here too so the
+    /// ledger of signup attempts is independently auditable even for a
+    /// tenant later deleted or retro-tagged differently.
+    pub async fn record_signup_event(
+        &self,
+        source_ip: String,
+        synthetic: Option<String>,
+    ) -> Result<(), AppError> {
         let ts = now_unix();
         self.with_conn(move |conn| {
             conn.execute(
-                "INSERT INTO signup_events (source_ip, created_unix) VALUES (?1, ?2)",
-                params![source_ip, ts],
+                "INSERT INTO signup_events (source_ip, created_unix, synthetic) VALUES (?1, ?2, ?3)",
+                params![source_ip, ts, synthetic],
             )?;
             Ok(())
         })

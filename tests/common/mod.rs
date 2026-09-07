@@ -448,6 +448,22 @@ impl McpClient {
         mcp_protocol_version_header: Option<&str>,
         mcp_name_override: Option<&str>,
     ) -> reqwest::Response {
+        self.post_with_extra(body, mcp_protocol_version_header, mcp_name_override, None)
+            .await
+    }
+
+    /// Same as [`Self::post_with`], plus one arbitrary extra header --
+    /// PRD-mcphost-synthetic-flag's `x-mcphost-synthetic` is the only user
+    /// today (see [`Self::tools_call_with_header`]), kept generic rather
+    /// than hardcoding that name so a future header-driven AC doesn't need
+    /// its own copy of this method.
+    async fn post_with_extra(
+        &self,
+        body: &Value,
+        mcp_protocol_version_header: Option<&str>,
+        mcp_name_override: Option<&str>,
+        extra_header: Option<(&str, &str)>,
+    ) -> reqwest::Response {
         let method = body.get("method").and_then(Value::as_str).unwrap_or("");
         let mcp_name = mcp_name_override.map(str::to_string).or_else(|| {
             body.get("params")
@@ -474,6 +490,9 @@ impl McpClient {
         }
         if let Some(key) = &self.bearer {
             req = req.header("Authorization", format!("Bearer {key}"));
+        }
+        if let Some((name, value)) = extra_header {
+            req = req.header(name, value);
         }
         req.send().await.expect("send request")
     }
@@ -516,7 +535,16 @@ impl McpClient {
         body
     }
 
-    async fn call(&self, method: &str, mut params: Value) -> Result<Value, RpcError> {
+    async fn call(&self, method: &str, params: Value) -> Result<Value, RpcError> {
+        self.call_with_extra_header(method, params, None).await
+    }
+
+    async fn call_with_extra_header(
+        &self,
+        method: &str,
+        mut params: Value,
+        extra_header: Option<(&str, &str)>,
+    ) -> Result<Value, RpcError> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         // Stateless 2026-07-28 requests carry the client context SEP-2575
         // requires on every request (no session to remember it from
@@ -530,13 +558,14 @@ impl McpClient {
                 }),
             );
         }
+        let body = json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": method,
+            "params": params,
+        });
         let resp = self
-            .post(json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "method": method,
-                "params": params,
-            }))
+            .post_with_extra(&body, Some("2026-07-28"), None, extra_header)
             .await;
         let status = resp.status();
         let body: Value = resp
@@ -570,6 +599,24 @@ impl McpClient {
         self.call("tools/call", json!({"name": name, "arguments": arguments}))
             .await
     }
+
+    /// PRD-mcphost-synthetic-flag: a `tools/call` carrying one extra raw
+    /// header, e.g. `("x-mcphost-synthetic", "synthorg:run-a")` on a
+    /// `signup` call -- the only header this suite needs to set outside
+    /// `Mcp-Name`/`Authorization`, which `post_with_extra` already handles.
+    pub async fn tools_call_with_header(
+        &self,
+        name: &str,
+        arguments: Value,
+        header: (&str, &str),
+    ) -> Result<Value, RpcError> {
+        self.call_with_extra_header(
+            "tools/call",
+            json!({"name": name, "arguments": arguments}),
+            Some(header),
+        )
+        .await
+    }
 }
 
 /// Sign up a fresh tenant against a running server and return
@@ -587,6 +634,28 @@ pub async fn signup(base_url: &str, display_name: &str) -> (String, String) {
         .to_string();
     let key = structured["key"].as_str().expect("key field").to_string();
     (tenant, key)
+}
+
+/// Same as [`signup`], but the `signup` call carries an
+/// `x-mcphost-synthetic: <header_value>` header -- returns the raw
+/// `signup` result `Value` (not just `(tenant, key)`) so a test can also
+/// assert on its shape (AC2's "byte-identical to an unlabeled signup's
+/// shape" needs the whole response).
+pub async fn signup_with_synthetic_header(
+    base_url: &str,
+    display_name: &str,
+    header_value: &str,
+) -> Value {
+    let client = McpClient::new(base_url);
+    let result = client
+        .tools_call_with_header(
+            "signup",
+            json!({"name": display_name}),
+            ("x-mcphost-synthetic", header_value),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("signup failed: {} {}", e.code, e.message));
+    extract_structured(&result)
 }
 
 /// Polls `tools_call(qualified_name, args)` until it stops returning
