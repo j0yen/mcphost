@@ -1,0 +1,4 @@
+# deploy-manifest marker — opts mcphost into the redeploy-tag rollback model
+# (rollback-plan verdict = tag lineage, not per-commit revert-cleanliness).
+# See rustbuild README "Rollback models" + PRD-rollback-redeploy-tag-onboard AC1/AC2.
+# Stamped 2026-09-07 per operator instruction (go anytime).
