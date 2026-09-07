@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.18.0 — 2026-09-07
+
+Anonymous `GET /healthz` now returns only `{"ok": true}` (200) or `{"ok": false}` (503) — the paying_tenants/tenants_total/tools_total/billing_mode/sandbox_*/version diagnostics document moves behind the admin bearer key (MCPHOST_ADMIN_KEY, constant-time compare). A wrong or missing bearer, or a tenant key, gets the byte-identical anonymous body — no auth-format oracle.
+
 ## v0.17.0 — 2026-09-07
 
 Pro tenants' successful calls flow to Stripe's `mcphost_tool_calls` billing
