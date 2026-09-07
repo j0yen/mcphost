@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.25.0 — 2026-09-07
+
+Fix shared mcphost gate debt (secret Debug leak + test expect false-positive in http.rs, 5 unrouted vti-plan paths, misfiled sandbox CI tests) blocking mcphost-healthz-minimal's own already-done /healthz split.
+
 ## v0.24.0 — 2026-09-07
 
 Pro tenants' successful calls flow to Stripe's `mcphost_tool_calls` billing meter, so usage past the plan's included volume invoices itself through the live graduated price (50,000 calls included, then per-call). A new `mcphost billing emit-meter` subcommand ships batches idempotently from the `calls` table behind a high-water mark, checkout sessions carry the metered price beside the base price, and tenants learn their Stripe customer id from the webhook that upgrades them.

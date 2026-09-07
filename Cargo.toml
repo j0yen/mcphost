@@ -1,6 +1,6 @@
 [package]
 name = "mcphost"
-version = "0.24.0"
+version = "0.25.0"
 edition = "2024"
 rust-version = "1.88"
 description = "One MCP endpoint an agent can join and administer without a human"
