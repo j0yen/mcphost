@@ -614,7 +614,12 @@ pub fn plans(state: &AppState) -> Value {
 }
 
 /// `billing.status` (tenant): plan, usage against each quota, and
-/// `resets_at` for the daily counter.
+/// `resets_at` for the daily counter. PRD-mcphost-metered-overage requirement
+/// 53: a pro tenant's response also carries `metered_usage.emitted_this_month`
+/// -- the ledgered call count `mcphost billing emit-meter` has already sent
+/// to Stripe this UTC month, so what a pro tenant owes past the included
+/// volume is inspectable by tool call, not just by invoice. Absent for every
+/// other plan (nothing has ever emitted a meter event for them).
 pub async fn status(state: &AppState, tenant: &Tenant) -> Result<Value, AppError> {
     let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
         AppError::Internal(format!(
@@ -624,10 +629,11 @@ pub async fn status(state: &AppState, tenant: &Tenant) -> Result<Value, AppError
     })?;
     let tools_used = state.db.count_tools(tenant.id).await?;
     let secrets_used = state.db.count_secrets(tenant.id).await?;
-    let midnight = crate::state::utc_midnight_unix(crate::state::now_unix());
+    let now = crate::state::now_unix();
+    let midnight = crate::state::utc_midnight_unix(now);
     let calls_used = state.db.count_calls_since(tenant.id, midnight, true).await?;
     let resets_at = crate::state::rfc3339_from_unix(midnight + 86_400);
-    Ok(json!({
+    let mut result = json!({
         "plan": tenant.plan,
         "plan_since": tenant.plan_since,
         "usage": {
@@ -635,7 +641,21 @@ pub async fn status(state: &AppState, tenant: &Tenant) -> Result<Value, AppError
             "secrets_max": {"used": secrets_used, "limit": plan.secrets_max},
             "calls_per_day": {"used": calls_used, "limit": plan.calls_per_day, "resets_at": resets_at},
         },
-    }))
+    });
+    if tenant.plan == "pro" {
+        let month_start = crate::state::utc_month_start_unix(now);
+        let emitted = state
+            .db
+            .emitted_call_count_for_tenant(tenant.id, month_start)
+            .await?;
+        if let Some(obj) = result.as_object_mut() {
+            obj.insert(
+                "metered_usage".to_string(),
+                json!({"emitted_this_month": emitted}),
+            );
+        }
+    }
+    Ok(result)
 }
 
 fn arg_str(args: &Value, name: &str) -> Option<String> {

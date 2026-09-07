@@ -424,6 +424,13 @@ fn admin_tools() -> Vec<Tool> {
                 &["tenant", "plan"],
             ),
         ),
+        Tool::new(
+            "admin.meter_status",
+            "PRD-mcphost-metered-overage P1 AC11: the last ledgered `mcphost billing emit-meter` \
+             batch's span, the current meter_lag, and per-tenant emitted call counts for the \
+             current UTC month.",
+            schema(json!({}), &[]),
+        ),
     ]
 }
 
@@ -528,6 +535,7 @@ impl McpHostHandler {
             "admin.sandbox_recheck" => admin::sandbox_recheck(&self.state).await,
             "admin.billing_ledger" => admin::billing_ledger(&self.state, &args).await,
             "admin.plan_set" => admin::plan_set(&self.state, &args).await,
+            "admin.meter_status" => admin::meter_status(&self.state).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         }
     }
