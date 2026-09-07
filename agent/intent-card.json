@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tool-test.md",
-  "intent_slug": "mcphost-tool-test",
-  "root_motivation": "The landing page promises \"create new tools when you need them\", and the mechanic is real: `host.tool_publish` accepts source and the tool is live immediately. What the loop lacks is convergence feedback. An agent whose python source raises, or whose http wrapper hits the wrong path, learns it only by publishing, calling the broken tool, reading a thin error, deleting, and republishing \u2014 every round trip mutates the namespace and pollutes logs with failed versions. The tenants on the box today tell the same story from the demand side: the synthorg panel published `cold_start_scaffold`, `five_minute_wow`, and `skip_boilerplate_glue` \u2014 fast first success is what agent tenants value. mcphost already has the pieces (sandbox execution, schema inference in `src/kinds/infer.rs`, spec validation in publish); nothing exposes them as a dry run.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-rest-bridge.md",
+  "intent_slug": "mcphost-rest-bridge",
+  "root_motivation": "The baseline panel ran 3 integration_specialist sessions against mcphost.dev v0.14.0. Two scored 0.5 with the same shape: the published bridge worked (judge: \"REST-to-tool bridge mechanism works\"; \"result demonstrably includes the isolation_result field\") but the response body sat outside `result.payload`, where every consumer checks for it \u2014 the http kind wraps responses differently from the python kind, so a working tool reads as a broken one to any caller with expectations. Separately, the corpus task the segment cares most about (rest-to-tool-bridge: \"eliminate the n8n deployment tax across 40+ workflows\") required the persona to hand-author bridging logic; the discover pack rates this segment's switch intent on exactly that glue disappearing.",
   "user_persona": "An AI agent connecting to mcphost for the first time over streamable HTTP with default client configuration (Claude Agent SDK / Claude Code), which must be able to read a well-formed tool list before it can do anything else; secondarily the operator who probes the endpoint after a redeploy.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,80 +14,44 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given an authenticated tenant and a valid `python` spec with two example invocations, When it calls `host.tool_test`, Then both invocations run in the sandbox and the response carries per-invocation `ok`, output, and `duration_ms`, plus the inferred `args_schema` and `requirements`, and no tool row is persisted.",
+      "description": "Given the recorded call shapes from baseline sessions panel_integration_specialist_01 and _03 as fixtures, When each runs against the fixed http kind, Then `result.payload.bridge_status` and `result.payload.isolation_result` are present and the sessions' success criteria evaluate true.",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a `python` source that raises on one invocation, When tested, Then that invocation returns `ok: false` with the exception type and a traceback excerpt bounded to 8 KiB, the other invocation still runs, and the JSON-RPC call as a whole succeeds.",
+      "description": "Given every existing http-kind test at HEAD, When the suite runs, Then no assertion about current response shapes breaks, and a newly published http tool's call result carries its body at `result.payload`.",
       "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given an `http` spec with example args, When tested, Then the wrapped endpoint is called once per invocation through the same outbound path and restrictions as a published `http` tool, and the response carries status code and a bounded body excerpt.",
+      "description": "Given a spec with `upstream` mapping params to query and path and a secret-referenced auth header, When published and called against a local mock upstream, Then no user request code was involved and `result.payload` carries status and parsed body with the mapped request observed by the mock.",
       "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given an `echo` spec, When tested, Then each invocation returns its arguments verbatim.",
+      "description": "Given upstream timeout, 500-with-body, and connection-refused cases on the mock, When the bridge tool is called, Then each returns a structured tool error naming the failure class and excerpting the body where one exists.",
       "test": "tests/ac04_publish_list_and_call.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a spec that fails validation (malformed schema, oversized source, unknown kind), When tested, Then the error is structured, names the offending field, and uses the same error taxonomy as `host.tool_publish`.",
+      "description": "Given the http kind's current egress policy tests, When bridge calls run, Then the same policy verdicts apply to `upstream` requests.",
       "test": "tests/ac05_cross_tenant_isolation.rs"
     },
     {
       "id": "AC6",
-      "level": "MUST",
-      "description": "Given a tenant at its daily call quota, When it calls `host.tool_test`, Then the call is refused exactly as a normal tool call is, and Given a tenant under quota, each executed invocation increments the tenant's metered call count by one.",
+      "level": "SHOULD",
+      "description": "Given a valid and an invalid bridge spec, When `host.bridge_test` runs each, Then the valid one reports the mock's response without creating a tool and the invalid one reports the failure class.",
       "test": "tests/ac06_remove_tool.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given a request with more than five invocations, When tested, Then it is refused with an error naming the limit, and zero invocations run.",
+      "description": "Given the full suite and `autobuilder gate --project .` at the landed HEAD, When they run, Then every previously passing test passes and the gate reports no new blocks.",
       "test": "tests/ac07_usage_metering.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "MUST",
-      "description": "Given the test execution path, When a `python` test invocation runs, Then it uses the same sandbox entry point and resource limits as a published python call, asserted by a test that exercises the shared function rather than a copy.",
-      "test": "tests/ac08_admin_disable_and_forbidden.rs"
-    },
-    {
-      "id": "AC9",
-      "level": "SHOULD",
-      "description": "Given an unauthenticated connection, When it lists tools, Then `host.tool_test` is absent, and calling it is refused like any other `host.*` tool.",
-      "test": "tests/ac09_signup_rate_limit.rs"
-    },
-    {
-      "id": "AC10",
-      "level": "SHOULD",
-      "description": "Given an authenticated tenant, When it lists tools, Then `host.tool_test` appears with an input schema documenting `kind`, `spec`, and `invocations`.",
-      "test": "tests/ac10_publish_validation_errors.rs"
-    },
-    {
-      "id": "AC11",
-      "level": "SHOULD",
-      "description": "Given the docs surfaces, When the feature ships, Then `docs/kinds/*.md` and `www/llms.txt` show a test-before-publish step in the quickstart flow.",
-      "test": "tests/ac11_load_smoke.rs (#[ignore]d hardware-relative load test)"
-    },
-    {
-      "id": "AC12",
-      "level": "SHOULD",
-      "description": "Given a tenant that ran tests, When it reads its logs through the existing log tool, Then test invocations appear marked as tests and are distinguishable from production calls.",
-      "test": "no unit test file; live smoke \u2014 mcphost serve + synthorg consume --preflight <url>, recorded as target/autobuilder/ac12-preflight-smoke.json"
-    },
-    {
-      "id": "AC13",
-      "level": "MAY",
-      "description": "Given a `python` publish that fails validation, When the error returns, Then it carries the same structured detail fields as the `tool_test` response, so a failed publish teaches as much as a failed test.",
-      "test": "tests/ac13_mcp_name_mismatch_metering.rs"
     }
   ],
   "scope": [
