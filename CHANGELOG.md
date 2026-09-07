@@ -1,3 +1,7 @@
+## v0.26.2
+
+- redeploy-tag rollback model onboarding: agent/deploy-manifest.toml marker + v0.26.1 tag-lineage backfill (PRD-rollback-redeploy-tag-onboard AC1/AC2 un-deferral).
+
 # Changelog
 
 ## v0.26.1 — 2026-09-07
