@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-healthz-minimal.md",
-  "intent_slug": "mcphost-healthz-minimal",
-  "root_motivation": "Anonymous `GET https://mcphost.dev/healthz` currently returns `paying_tenants`, `tenants_total`, `tools_total`, `billing_mode`, sandbox mechanism/detail, and the exact server version \u2014 live business metrics and reconnaissance-grade facts on a Stripe-live product. Joe flagged it 2026-09-06. Keep the endpoint (the site footer and uptime checks link it) but make the anonymous response `{\"ok\": true}`; the full document moves behind the admin bearer key the server already holds (MCPHOST_ADMIN_KEY, rotated via mcphost-deploy).",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-synthetic-flag.md",
+  "intent_slug": "mcphost-synthetic-flag",
+  "root_motivation": "All 55 tenants on mcphost.dev today trace to the operator: 4 explicit joe-* test accounts and ~51 synthorg panel personas (Alex Chen \u00d78, Panel_RAG_Indexer_03, cold-start-skeptic, bulk signup waves matching `synthorg consume` runs). The database has no column that records this. Two consequences: the day a real user signs up, nothing distinguishes them from the panel; and `synthorg candidates --measure` (PRD-grand-loop-rank) overrides activation/conversion with \"real tenant\" data at 5 or more tenants matched by kind \u2014 a threshold the panel personas already satisfy, so the grand-loop ranking would treat synthetic traffic as market evidence. Name-pattern guessing is the only current signal and it is unreliable by design: the panel exists to look like real users.",
   "user_persona": "An AI agent connecting to mcphost for the first time over streamable HTTP with default client configuration (Claude Agent SDK / Claude Code), which must be able to read a well-formed tool list before it can do anything else; secondarily the operator who probes the endpoint after a redeploy.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,38 +14,68 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a running server, When `GET /healthz` arrives with no Authorization header, Then the body is exactly `{\"ok\": true}` and none of paying_tenants/tenants_total/tools_total/billing_mode/sandbox_*/version appear.",
+      "description": "Given a data dir from the metered-overage HEAD, When the new migration applies and `mcphost serve` starts, Then existing tenants load with null `synthetic` and the full prior suite passes unchanged.",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the configured admin key, When `GET /healthz` carries it as a bearer, Then the response contains the full diagnostics document with the same fields the current release publishes.",
+      "description": "Given a signup request with header `x-mcphost-synthetic: synthorg:run-a`, When signup completes, Then the tenant row stores `synthorg:run-a` and the signup response is byte-identical to an unlabeled signup's shape.",
       "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a wrong bearer, When the request is handled, Then the response is byte-identical to the anonymous response.",
+      "description": "Given signup requests with no header, an empty header, and an invalid header (`Bad Label!`), When each completes, Then all three tenants store null, all three signups succeed, and the invalid case logs a warning.",
       "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a failed liveness condition (e.g. db unavailable in test), When anonymous `/healthz` is hit, Then it returns `{\"ok\": false}` with a 5xx status and still no diagnostic fields.",
+      "description": "Given a labeled and an unlabeled tenant with identical state, When each calls `billing.status`, `tools/list`, and publishes a tool, Then the responses differ only in tenant-identifying fields \u2014 the label appears in none of them.",
       "test": "tests/ac04_publish_list_and_call.rs"
     },
     {
       "id": "AC5",
-      "level": "SHOULD",
-      "description": "Given a valid tenant key, When it is presented on /healthz, Then the anonymous body is returned (tenant keys are not admin).",
+      "level": "MUST",
+      "description": "Given `admin.tenant_set_synthetic` with a label and then with null, When applied to one tenant, Then the row updates each time and `admin.tenants` reflects it.",
       "test": "tests/ac05_cross_tenant_isolation.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given the finished diff, When `cargo test` and clippy run, Then the suite is fully green, clippy is clean on the diff, and the version is bumped per build_version_bump.",
+      "description": "Given 10 tenants of which 6 match `name_like: '%Chen%'`, When `admin.tenants_set_synthetic` runs with `dry_run: true`, Then the 6 are listed and no row changes; and When rerun with `dry_run: false`, Then exactly those 6 store the label.",
       "test": "tests/ac06_remove_tool.rs"
+    },
+    {
+      "id": "AC7",
+      "level": "MUST",
+      "description": "Given 3 labeled and 2 unlabeled tenants, When `/healthz` is read, Then `tenants_synthetic` is 3, `tenants_real` is 2, and `tenants_total` is 5; and Given zero labeled tenants, Then both new keys are present with `tenants_synthetic` 0.",
+      "test": "tests/ac07_usage_metering.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given the admin tenant listing used for exports, When read with labeled and unlabeled tenants present, Then every row carries the `synthetic` field, null for unlabeled.",
+      "test": "tests/ac08_admin_disable_and_forbidden.rs"
+    },
+    {
+      "id": "AC9",
+      "level": "SHOULD",
+      "description": "Given the metering listing with `synthetic: false`, When read, Then only unlabeled tenants' rows return; `true` returns only labeled; `all` returns both.",
+      "test": "tests/ac09_signup_rate_limit.rs"
+    },
+    {
+      "id": "AC10",
+      "level": "SHOULD",
+      "description": "Given one labeled tenant on a paid plan, When `/healthz` is read, Then `paying_tenants_real` is present and excludes it.",
+      "test": "tests/ac10_publish_validation_errors.rs"
+    },
+    {
+      "id": "AC11",
+      "level": "MUST",
+      "description": "Given the full suite and `autobuilder gate --project .` at the landed HEAD, When they run, Then every previously passing test passes and the gate reports no new blocks.",
+      "test": "tests/ac11_load_smoke.rs (#[ignore]d hardware-relative load test)"
     }
   ],
   "scope": [
