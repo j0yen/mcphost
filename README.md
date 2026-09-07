@@ -165,6 +165,26 @@ Example call arguments:
 ```
 <!-- kinds:end -->
 
+### Python spec-language notes
+
+PRD-mcphost-python-kind-runtime (AC6): the AST-check that gates
+`host.tool_publish` accepts assignment expressions (`:=`, PEP 572) in
+general -- CPython has parsed them since 3.8, and mcphost's publish-time
+check and the tool's own runtime both compile `source` with the same
+CPython grammar, so there is no mcphost-added restriction to relax. The
+one thing that *is* rejected is a restriction Python's own grammar
+enforces: an assignment expression's target must be a plain name.
+`(obj.attr := 1)` and `(d[key] := 1)` are both invalid Python syntax
+(`cannot use assignment expressions with attribute` / `...with
+subscript`) and would fail identically whether or not mcphost validated
+them first -- the tool's own `main(args)` would refuse to even parse.
+Because this is executor-level, not validator-level, there is nothing for
+mcphost to loosen; the fix here is that the publish-time rejection now
+names the construct and the accepted alternative in one sentence (assign
+to a plain name first, then set the attribute/subscript in a separate
+statement) instead of leaving CPython's bare grammar message to speak for
+itself.
+
 ## Metered overage (billing emit-meter)
 
 PRD-mcphost-metered-overage: pro tenants' successful calls past the plan's

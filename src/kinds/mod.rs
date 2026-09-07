@@ -10,7 +10,8 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use serde_json::Value;
+use jsonschema::error::{TypeKind, ValidationErrorKind};
+use serde_json::{Value, json};
 
 pub mod conformance;
 pub mod docs;
@@ -65,6 +66,78 @@ impl KindError {
             data,
         }
     }
+}
+
+/// JSON type name for a [`Value`], in the same vocabulary JSON Schema's
+/// `type` keyword uses (`"integer"` distinct from `"number"`, matching
+/// [`jsonschema`]'s own [`jsonschema::primitive_type::PrimitiveType`]
+/// naming) -- so an `args_coercion` error's `actual_type` and
+/// `expected_type` are directly comparable strings.
+fn json_type_name(v: &Value) -> &'static str {
+    match v {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(n) if n.is_i64() || n.is_u64() => "integer",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
+}
+
+/// PRD-mcphost-python-kind-runtime requirement 1/AC3: the host's only
+/// argument-type check across every kind is [`jsonschema`] validation at
+/// call time -- there is no separate coercion step anywhere in this crate
+/// (a kind's own module doc may say "schema-driven argument coercion", but
+/// that always turns out to mean *schema inference*, never runtime type
+/// coercion; args reach a kind's `call` exactly as the caller sent them).
+/// This validation gate is therefore the `args_coercion` phase the AC
+/// names: a call whose arguments don't match the published `args_schema`
+/// fails here, before any kind-specific work (a sandbox spawn, an upstream
+/// HTTP request, ...) even starts. Shared by every call site that runs
+/// this same "validate args against the tool's schema" check --
+/// `handler.rs`'s three `tools/call` pre-checks (which run ahead of
+/// `Kind::call` for every kind, python included) and `kinds::python`'s own
+/// `call`/`tool_run` (kept for direct `Kind::call` callers that bypass
+/// `handler.rs`, e.g. the conformance suite) -- so every one of them
+/// reports the same shape instead of `handler.rs`'s callers getting a bare
+/// `e.to_string()` while python's direct callers got the full structure.
+///
+/// Names the failing top-level argument (the first JSON-pointer path
+/// segment) and both types when the failure is a `type` mismatch; other
+/// schema violations (pattern, enum, range, ...) still get `phase` +
+/// `argument` but no `expected_type`/`actual_type`, since those keywords
+/// don't name a single expected JSON type.
+pub fn describe_args_error(err: &jsonschema::ValidationError<'_>) -> Value {
+    let path = err.instance_path.as_str();
+    let argument = path
+        .trim_start_matches('/')
+        .split('/')
+        .next()
+        .filter(|s| !s.is_empty());
+    let mut data = json!({"phase": "args_coercion", "instance_path": path});
+    let Some(obj) = data.as_object_mut() else {
+        unreachable!("json!({{...}}) always builds an object")
+    };
+    if let Some(argument) = argument {
+        obj.insert("argument".to_string(), json!(argument));
+    }
+    if let ValidationErrorKind::Type { kind } = &err.kind {
+        let expected = match kind {
+            TypeKind::Single(t) => t.to_string(),
+            TypeKind::Multiple(bitmap) => (*bitmap)
+                .into_iter()
+                .map(|t| t.to_string())
+                .collect::<Vec<_>>()
+                .join(" or "),
+        };
+        obj.insert("expected_type".to_string(), json!(expected));
+        obj.insert(
+            "actual_type".to_string(),
+            json!(json_type_name(&err.instance)),
+        );
+    }
+    data
 }
 
 /// What a `Kind::describe` call reports about the tool it would publish.
