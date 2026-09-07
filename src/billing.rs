@@ -297,6 +297,22 @@ pub trait BillingClient: Send + Sync {
     /// the whole call -- `src/metering.rs` treats that as "this chunk did
     /// not go through," ledgering and advancing state for nothing in it.
     async fn emit_meter_events(&self, events: &[MeterEventRequest]) -> Result<(), AppError>;
+
+    /// PRD-mcphost-metered-overage P1 requirement 60 / AC12: Stripe's own
+    /// accepted-usage total for `stripe_customer_id` on the
+    /// `meter_event_name` meter, summed from `period_start` (unix seconds,
+    /// the current UTC month's start) to now. This is deliberately a
+    /// separate read from [`Self::emit_meter_events`] -- it reports what
+    /// Stripe has *accepted and aggregated* server-side, which can lag or
+    /// (after a dedup) undercount raw emitted events, and is exactly the
+    /// number `billing.status` labels "Stripe-reported" rather than
+    /// reusing the ledger's own `emitted_this_month` count.
+    async fn accepted_usage(
+        &self,
+        stripe_customer_id: &str,
+        meter_event_name: &str,
+        period_start: i64,
+    ) -> Result<i64, AppError>;
 }
 
 /// The real implementation: `POST https://api.stripe.com/v1/checkout/sessions`,
@@ -411,6 +427,85 @@ impl BillingClient for StripeClient {
         }
         Ok(())
     }
+
+    /// Two real reads: `GET /v1/billing/meters` to resolve `event_name` to
+    /// the meter id Stripe's usage-summary endpoint actually keys on, then
+    /// `GET /v1/billing/meters/{id}/event_summaries` for the customer's
+    /// aggregated value over the period. Summed across whatever windows
+    /// the summary endpoint returns -- `billing.status` only wants one
+    /// number for the period, not Stripe's own bucketing.
+    async fn accepted_usage(
+        &self,
+        stripe_customer_id: &str,
+        meter_event_name: &str,
+        period_start: i64,
+    ) -> Result<i64, AppError> {
+        let list_resp = self
+            .http
+            .get("https://api.stripe.com/v1/billing/meters")
+            .bearer_auth(&self.secret_key)
+            .send()
+            .await
+            .map_err(|e| AppError::Internal(format!("Stripe meter list request: {e}")))?;
+        let list_status = list_resp.status();
+        let list_body: Value = list_resp
+            .json()
+            .await
+            .map_err(|e| AppError::Internal(format!("Stripe meter list response: {e}")))?;
+        if !list_status.is_success() {
+            return Err(AppError::Internal(format!(
+                "Stripe rejected the meter list request: HTTP {list_status}: {list_body}"
+            )));
+        }
+        let meter_id = list_body
+            .get("data")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .find(|m| m.get("event_name").and_then(Value::as_str) == Some(meter_event_name))
+            .and_then(|m| m.get("id").and_then(Value::as_str))
+            .ok_or_else(|| {
+                AppError::Internal(format!(
+                    "no Stripe meter found with event_name '{meter_event_name}'"
+                ))
+            })?
+            .to_string();
+
+        let now = crate::state::now_unix().to_string();
+        let start = period_start.to_string();
+        let summary_resp = self
+            .http
+            .get(format!(
+                "https://api.stripe.com/v1/billing/meters/{meter_id}/event_summaries"
+            ))
+            .bearer_auth(&self.secret_key)
+            .query(&[
+                ("customer", stripe_customer_id),
+                ("start_time", start.as_str()),
+                ("end_time", now.as_str()),
+            ])
+            .send()
+            .await
+            .map_err(|e| AppError::Internal(format!("Stripe meter summary request: {e}")))?;
+        let summary_status = summary_resp.status();
+        let summary_body: Value = summary_resp
+            .json()
+            .await
+            .map_err(|e| AppError::Internal(format!("Stripe meter summary response: {e}")))?;
+        if !summary_status.is_success() {
+            return Err(AppError::Internal(format!(
+                "Stripe rejected the meter summary request: HTTP {summary_status}: {summary_body}"
+            )));
+        }
+        let total = summary_body
+            .get("data")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|entry| entry.get("aggregated_value").and_then(Value::as_i64))
+            .sum();
+        Ok(total)
+    }
 }
 
 /// The test double every `billing_ac*.rs` test injects instead of
@@ -433,6 +528,11 @@ pub struct FakeBillingClient {
     /// AC6: when set, every `emit_meter_events` call fails as if Stripe
     /// returned 500 -- set via [`Self::set_fail_meter_events`].
     fail_meter_events: std::sync::atomic::AtomicBool,
+    /// AC12: what [`BillingClient::accepted_usage`] returns -- `None`
+    /// (the default) reports `0`, same as "Stripe has accepted nothing
+    /// yet"; a test sets this via [`Self::set_accepted_usage`] to assert
+    /// `billing.status` surfaces it labeled Stripe-reported.
+    accepted_usage: std::sync::Mutex<Option<i64>>,
 }
 
 /// An owned, `Clone`/inspectable copy of a [`CheckoutSessionRequest`] (the
@@ -472,6 +572,7 @@ impl FakeBillingClient {
             now_unix,
             meter_batches: std::sync::Mutex::new(Vec::new()),
             fail_meter_events: std::sync::atomic::AtomicBool::new(false),
+            accepted_usage: std::sync::Mutex::new(None),
         }
     }
 
@@ -500,6 +601,15 @@ impl FakeBillingClient {
             .lock()
             .map(|b| b.iter().flatten().cloned().collect())
             .unwrap_or_default()
+    }
+
+    /// AC12: make the next (and every subsequent) `accepted_usage` call
+    /// return `value`, as if Stripe had accepted and aggregated that many
+    /// events for the queried customer/meter/period.
+    pub fn set_accepted_usage(&self, value: i64) {
+        if let Ok(mut guard) = self.accepted_usage.lock() {
+            *guard = Some(value);
+        }
     }
 }
 
@@ -543,6 +653,19 @@ impl BillingClient for FakeBillingClient {
             guard.push(events.to_vec());
         }
         Ok(())
+    }
+
+    async fn accepted_usage(
+        &self,
+        _stripe_customer_id: &str,
+        _meter_event_name: &str,
+        _period_start: i64,
+    ) -> Result<i64, AppError> {
+        Ok(self
+            .accepted_usage
+            .lock()
+            .map(|g| g.unwrap_or(0))
+            .unwrap_or(0))
     }
 }
 
@@ -648,11 +771,50 @@ pub async fn status(state: &AppState, tenant: &Tenant) -> Result<Value, AppError
             .db
             .emitted_call_count_for_tenant(tenant.id, month_start)
             .await?;
+        let mut metered_usage = json!({"emitted_this_month": emitted});
+        // P1 requirement 60 / AC12: Stripe's own accepted-usage total,
+        // labeled distinctly from the ledger's `emitted_this_month` --
+        // only reachable with a configured key and a customer id on file
+        // (nothing to query Stripe about otherwise).
+        if let (Some(_), Some(stripe_customer_id)) = (
+            state.billing_config.secret_key.as_deref(),
+            tenant.stripe_customer_id.as_deref(),
+        ) {
+            let cached = state
+                .accepted_usage_cache
+                .lock()
+                .ok()
+                .and_then(|cache| cache.get(&tenant.id).copied())
+                .filter(|c| now - c.fetched_at < crate::billing::ACCEPTED_USAGE_CACHE_TTL_SECS);
+            let stripe_reported = match cached {
+                Some(c) => c.value,
+                None => {
+                    let value = state
+                        .billing_client
+                        .accepted_usage(
+                            stripe_customer_id,
+                            state.billing_config.meter_event_name(),
+                            month_start,
+                        )
+                        .await?;
+                    if let Ok(mut cache) = state.accepted_usage_cache.lock() {
+                        cache.insert(
+                            tenant.id,
+                            CachedAcceptedUsage {
+                                value,
+                                fetched_at: now,
+                            },
+                        );
+                    }
+                    value
+                }
+            };
+            if let Some(obj) = metered_usage.as_object_mut() {
+                obj.insert("stripe_reported".to_string(), json!(stripe_reported));
+            }
+        }
         if let Some(obj) = result.as_object_mut() {
-            obj.insert(
-                "metered_usage".to_string(),
-                json!({"emitted_this_month": emitted}),
-            );
+            obj.insert("metered_usage".to_string(), metered_usage);
         }
     }
     Ok(result)
@@ -681,6 +843,27 @@ pub struct OpenCheckoutSession {
 /// clippy's `type_complexity` lint happy.
 pub type CheckoutSessionCache =
     std::sync::Arc<std::sync::Mutex<std::collections::HashMap<(i64, String), OpenCheckoutSession>>>;
+
+/// P1 requirement 60 / AC12: how long a `billing.status` call trusts a
+/// prior [`BillingClient::accepted_usage`] read for the same tenant before
+/// asking Stripe again. Chosen so a burst of `billing.status` polling
+/// (an agent checking its own overage) does not turn into a burst of
+/// Stripe reads, while staying well inside "the current period" -- a
+/// cached number is at most this many seconds stale.
+pub const ACCEPTED_USAGE_CACHE_TTL_SECS: i64 = 60;
+
+/// One cached [`BillingClient::accepted_usage`] read: the value and the
+/// unix time it was fetched at.
+#[derive(Debug, Clone, Copy)]
+pub struct CachedAcceptedUsage {
+    pub value: i64,
+    pub fetched_at: i64,
+}
+
+/// The type [`AppState::accepted_usage_cache`](crate::state::AppState::accepted_usage_cache)
+/// holds -- keyed by tenant id, same in-process/in-memory-only shape as
+/// [`CheckoutSessionCache`].
+pub type AcceptedUsageCache = std::sync::Arc<std::sync::Mutex<std::collections::HashMap<i64, CachedAcceptedUsage>>>;
 
 /// `billing.checkout` (tenant, `plan` defaulting to `pro`, AC4/AC5): create
 /// (or reuse -- P1 AC13) a Stripe Checkout Session and return its URL,

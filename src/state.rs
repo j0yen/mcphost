@@ -124,6 +124,12 @@ pub struct AppState {
     /// `AppState`'s own `#[derive(Clone)]` stays cheap and every clone
     /// keeps seeing the same cache rather than a forked copy.
     pub checkout_sessions: crate::billing::CheckoutSessionCache,
+    /// P1 requirement 60 / AC12: `billing.status`'s cache of Stripe's own
+    /// accepted-usage read per tenant, so repeated polling within
+    /// [`crate::billing::ACCEPTED_USAGE_CACHE_TTL_SECS`] doesn't turn into
+    /// repeated Stripe reads. In-memory only, same lifetime and
+    /// `Arc`-sharing rationale as [`AppState::checkout_sessions`].
+    pub accepted_usage_cache: crate::billing::AcceptedUsageCache,
 }
 
 pub fn now_unix() -> i64 {
