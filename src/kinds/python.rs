@@ -1538,8 +1538,11 @@ fn call_payload(args: &Value, site_packages: &str) -> Vec<u8> {
 
 /// Byte-caps `s` to its last `cap` bytes (requirement 3: "capped at 64 KiB
 /// each"), landing on a UTF-8 char boundary so the result is always valid
-/// `str` (never splits a multi-byte character).
-fn cap_str_bytes(s: &str, cap: usize) -> String {
+/// `str` (never splits a multi-byte character). `pub(crate)` (PRD-mcphost-tool-test):
+/// `kinds::describe_test_failure` reuses this exact tail-capping for a
+/// `host.spec_test` exception traceback (bounded to 8 KiB there) rather
+/// than a second, slightly-different truncation helper.
+pub(crate) fn cap_str_bytes(s: &str, cap: usize) -> String {
     if s.len() <= cap {
         return s.to_string();
     }
@@ -2320,6 +2323,19 @@ impl Kind for PythonKind {
 
     fn referenced_secrets(&self, spec: &Value) -> Vec<String> {
         parse_spec(spec).map(|p| p.secrets).unwrap_or_default()
+    }
+
+    /// PRD-mcphost-tool-test AC1: `host.spec_test`'s reported `requirements`
+    /// for a python spec -- the author's own, or inferred from `source`,
+    /// exactly like [`Kind::call`]/`describe` would build the environment
+    /// with (`PythonSpec::effective_requirements`). `Vec::new()` on an
+    /// unparseable spec: `spec_test`'s own `validate_all`/`validate_async`
+    /// gate already reject that spec before this is ever reached in
+    /// practice, so this fallback exists only so `requirements` never panics.
+    fn requirements(&self, spec: &Value) -> Vec<String> {
+        parse_spec(spec)
+            .and_then(|parsed| parsed.effective_requirements())
+            .unwrap_or_default()
     }
 
     async fn call(&self, spec: &Value, args: Value, ctx: &CallCtx) -> Result<Value, KindError> {

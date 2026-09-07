@@ -140,6 +140,101 @@ pub fn describe_args_error(err: &jsonschema::ValidationError<'_>) -> Value {
     data
 }
 
+/// PRD-mcphost-tool-test AC7: `host.spec_test` refuses a request naming more
+/// than this many example invocations, before any of them run.
+pub const MAX_TEST_INVOCATIONS: usize = 5;
+
+/// PRD-mcphost-tool-test AC2: a `host.spec_test` invocation's exception
+/// traceback is bounded to this many bytes (tail-capped, same convention as
+/// `python::TOOL_RUN_CAP_BYTES`) so a runaway recursive traceback can't blow
+/// up the JSON-RPC response.
+pub const TEST_TRACEBACK_CAP_BYTES: usize = 8 * 1024;
+
+/// Turns a per-invocation [`KindError`] from [`Kind::call`] into
+/// `host.spec_test`'s per-invocation error detail (PRD-mcphost-tool-test
+/// AC2): exception class and a bounded traceback excerpt when the kind's
+/// own error carries them (today only `python`, via
+/// `KindError::Structured { code: "tool_exception", data, .. }` --
+/// `kinds::python::map_envelope_error`), else just the error's own code and
+/// message, so `echo`/`http` failures still report something rather than a
+/// missing field.
+pub fn describe_test_failure(err: &KindError) -> Value {
+    match err {
+        KindError::Structured {
+            code,
+            message,
+            data,
+        } => {
+            let mut out = json!({"code": code, "message": message});
+            if let Some(obj) = out.as_object_mut() {
+                if let Some(exception_class) = data.get("exception_class") {
+                    obj.insert("exception_class".to_string(), exception_class.clone());
+                }
+                if let Some(tb) = data.get("traceback").and_then(Value::as_str)
+                    && !tb.is_empty()
+                {
+                    obj.insert(
+                        "traceback".to_string(),
+                        json!(python::cap_str_bytes(tb, TEST_TRACEBACK_CAP_BYTES)),
+                    );
+                }
+            }
+            out
+        }
+        KindError::InvalidArgs(m) => json!({"code": "invalid_args", "message": m}),
+        KindError::InvalidSpec(m) => json!({"code": "invalid_spec", "message": m}),
+        KindError::Exec(m) => json!({"code": "exec_error", "message": m}),
+    }
+}
+
+/// `host.spec_test`'s shared execution core (PRD-mcphost-tool-test AC8): runs
+/// each of `invocations` through the exact same [`Kind::call`] entry point a
+/// published call dispatches to via `handler::call_published_tool` -- not a
+/// second, weaker profile -- under the same per-call `timeout`. `ctx_factory`
+/// builds a fresh [`CallCtx`] per invocation (so each gets its own deadline);
+/// callers should set `test_mode: true` on it so a kind that renders a
+/// request (`http`) echoes it back same as `host.tool_test`/`host.bridge_test`.
+///
+/// A per-invocation failure (an exception, an upstream error, a timeout) is
+/// captured as `{"ok": false, ...}` in that invocation's own slot (AC2) --
+/// it never aborts the remaining invocations, and this function itself never
+/// returns an `Err`: the caller's overall JSON-RPC call succeeds regardless
+/// of how many invocations failed.
+pub async fn run_spec_test(
+    kind: &Arc<dyn Kind>,
+    spec: &Value,
+    invocations: &[Value],
+    timeout: Duration,
+    mut ctx_factory: impl FnMut() -> CallCtx,
+) -> Vec<Value> {
+    let mut out = Vec::with_capacity(invocations.len());
+    for args in invocations {
+        let ctx = ctx_factory();
+        let start = Instant::now();
+        let outcome = tokio::time::timeout(timeout, kind.call(spec, args.clone(), &ctx)).await;
+        let duration_ms = start.elapsed().as_millis() as i64;
+        out.push(match outcome {
+            Ok(Ok(output)) => json!({"ok": true, "output": output, "duration_ms": duration_ms}),
+            Ok(Err(e)) => {
+                let mut v = json!({"ok": false, "duration_ms": duration_ms});
+                if let (Some(obj), Value::Object(err_fields)) =
+                    (v.as_object_mut(), describe_test_failure(&e))
+                {
+                    obj.extend(err_fields);
+                }
+                v
+            }
+            Err(_elapsed) => json!({
+                "ok": false,
+                "duration_ms": duration_ms,
+                "code": "call_timeout",
+                "message": "invocation exceeded the call timeout",
+            }),
+        });
+    }
+    out
+}
+
 /// What a `Kind::describe` call reports about the tool it would publish.
 #[derive(Debug, Clone)]
 pub struct ToolDescriptor {
@@ -313,6 +408,16 @@ pub trait Kind: Send + Sync {
     /// the secret). Kinds with no secret-templating concept (`echo`) don't
     /// override this; the default is "none needed."
     fn referenced_secrets(&self, _spec: &Value) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// PRD-mcphost-tool-test AC1: the pip requirements a publish of this
+    /// `spec` would build its environment with -- reported by
+    /// `host.spec_test` alongside `describe`'s `input_schema` so a
+    /// pre-publish dry run sees both halves of what publishing would infer.
+    /// `Vec::new()` (the default) for a kind with no such notion (`echo`,
+    /// `http`); only `python` overrides it.
+    fn requirements(&self, _spec: &Value) -> Vec<String> {
         Vec::new()
     }
 
