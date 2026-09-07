@@ -10,12 +10,19 @@
 //! `sandbox_checked_at` is within 5s of start.
 
 mod common;
-use common::{TestServer, fake_interpreter_failing, python_kind_registry_with_selftest, signup};
+use common::{
+    ADMIN_KEY, TestServer, fake_interpreter_failing, python_kind_registry_with_selftest, signup,
+};
 use mcphost::sandbox;
 use serde_json::json;
 
+// PRD-mcphost-healthz-minimal: `sandbox_ready`/`sandbox_detail` moved behind
+// the admin bearer -- the anonymous body is just `{"ok": true/false}` now.
 async fn healthz(base_url: &str) -> serde_json::Value {
-    reqwest::get(format!("{base_url}/healthz"))
+    reqwest::Client::new()
+        .get(format!("{base_url}/healthz"))
+        .bearer_auth(ADMIN_KEY)
+        .send()
         .await
         .expect("GET /healthz")
         .json()

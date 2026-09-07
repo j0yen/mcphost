@@ -5,15 +5,20 @@
 //! `/healthz` reports `sandbox_ready: false` and the warm pool is empty.
 
 mod common;
-use common::{fake_interpreter_failing, poll_until_ready, signup};
+use common::{ADMIN_KEY, fake_interpreter_failing, poll_until_ready, signup};
 use mcphost::kinds::python::PythonKind;
 use mcphost::sandbox;
 use serde_json::json;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+// PRD-mcphost-healthz-minimal: `sandbox_ready` moved behind the admin
+// bearer -- the anonymous body is just `{"ok": true/false}` now.
 async fn healthz(base_url: &str) -> serde_json::Value {
-    reqwest::get(format!("{base_url}/healthz"))
+    reqwest::Client::new()
+        .get(format!("{base_url}/healthz"))
+        .bearer_auth(ADMIN_KEY)
+        .send()
         .await
         .expect("GET /healthz")
         .json()

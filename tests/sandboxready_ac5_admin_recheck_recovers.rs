@@ -10,8 +10,13 @@ use common::{ADMIN_KEY, fake_interpreter_failing, python_kind_registry_with_self
 use mcphost::sandbox;
 use serde_json::json;
 
+// PRD-mcphost-healthz-minimal: `sandbox_ready` moved behind the admin
+// bearer -- the anonymous body is just `{"ok": true/false}` now.
 async fn healthz(base_url: &str) -> serde_json::Value {
-    reqwest::get(format!("{base_url}/healthz"))
+    reqwest::Client::new()
+        .get(format!("{base_url}/healthz"))
+        .bearer_auth(ADMIN_KEY)
+        .send()
         .await
         .expect("GET /healthz")
         .json()

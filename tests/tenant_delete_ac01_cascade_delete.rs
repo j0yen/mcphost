@@ -8,8 +8,13 @@ mod common;
 use common::{ADMIN_KEY, McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 
+// PRD-mcphost-healthz-minimal: `tenants_total`/`tools_total` moved behind
+// the admin bearer -- the anonymous body is `{"ok": true/false}`.
 async fn healthz(base_url: &str) -> serde_json::Value {
-    reqwest::get(format!("{base_url}/healthz"))
+    reqwest::Client::new()
+        .get(format!("{base_url}/healthz"))
+        .bearer_auth(ADMIN_KEY)
+        .send()
         .await
         .expect("GET /healthz")
         .json()

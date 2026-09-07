@@ -36,7 +36,12 @@ async fn healthz_reports_paying_tenants_and_billing_mode() {
             .expect("admin.plan_set");
     }
 
-    let health: serde_json::Value = reqwest::get(format!("{}/healthz", server.base_url))
+    // PRD-mcphost-healthz-minimal: `paying_tenants`/`billing_mode` moved
+    // behind the admin bearer -- the anonymous body is `{"ok": true/false}`.
+    let health: serde_json::Value = reqwest::Client::new()
+        .get(format!("{}/healthz", server.base_url))
+        .bearer_auth(ADMIN_KEY)
+        .send()
         .await
         .expect("GET /healthz")
         .json()

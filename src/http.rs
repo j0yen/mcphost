@@ -39,8 +39,54 @@ fn advertised_protocol_version() -> Option<&'static HeaderValue> {
         .as_ref()
 }
 
-async fn healthz(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
+/// PRD-mcphost-healthz-minimal requirements 2-4: only the configured
+/// `MCPHOST_ADMIN_KEY` bearer unlocks the full diagnostics document. A
+/// tenant key hashes against `state.db`, not `state.admin_key`, so it is
+/// deliberately never checked here (requirement 5/AC5) -- widening this to
+/// "any known key" would let a paying tenant read every tenant's counts.
+/// Comparison is constant-time so a wrong key takes the same time as no key
+/// (requirement 4).
+fn is_admin_request(state: &AppState, headers: &HeaderMap) -> bool {
+    let Some(admin_key) = state.admin_key.as_deref() else {
+        return false;
+    };
+    let Some(bearer) = crate::auth::extract_bearer(headers) else {
+        return false;
+    };
+    constant_time_eq(bearer.as_bytes(), admin_key.as_bytes())
+}
+
+/// PRD-mcphost-healthz-minimal requirement 1: the anonymous body is
+/// `{"ok": true}` (200) or `{"ok": false}` (503) and nothing else --
+/// `paying_tenants`/`tenants_total`/`tools_total`/`billing_mode`/
+/// `sandbox_*`/`version` are business metrics and reconnaissance-grade
+/// facts that used to leak to any unauthenticated caller. The full
+/// document (unchanged shape from before this PRD) now requires the admin
+/// bearer; a wrong or absent key both fall through to the same anonymous
+/// body (requirement 3/AC3) since [`is_admin_request`] doesn't distinguish
+/// "no header" from "wrong header".
+async fn healthz(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl IntoResponse {
     let db_ok = state.db.is_writable().await;
+
+    if !is_admin_request(&state, &headers) {
+        return if db_ok {
+            (StatusCode::OK, Json(json!({"ok": true}))).into_response()
+        } else {
+            (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"ok": false}))).into_response()
+        };
+    }
+
     let (tools_total, tenants_total) = state.db.counts().await.unwrap_or((0, 0));
     // PRD-mcphost-tenant-delete requirement 5 / AC9: `tenants_probe` is
     // additive -- `tenants_total` (read by `mcphost-deploy probe` and the
@@ -93,7 +139,7 @@ async fn healthz(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         let lag = state.db.meter_lag(last_call_id).await.unwrap_or(0);
         obj.insert("meter_lag".to_string(), json!(lag));
     }
-    Json(body)
+    Json(body).into_response()
 }
 
 /// `POST /billing/webhook` (AC6/AC7/AC8/AC10): verifies `Stripe-Signature`
