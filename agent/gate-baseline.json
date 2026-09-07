@@ -1,0 +1,15 @@
+{
+  "schema": "autobuilder.gate_baseline.v1",
+  "recorded_at": "2026-09-07T12:16:28Z",
+  "head_sha": "d3668a0c60248129dcad37194caff8ab42c0c43e",
+  "receipts": [
+    {
+      "name": "reviewer-agent",
+      "reason": "reviewer decision=block not in [\"pass\", \"concern\"]"
+    },
+    {
+      "name": "rollback-plan",
+      "reason": "verdict=block not in [\"pass\"]"
+    }
+  ]
+}
