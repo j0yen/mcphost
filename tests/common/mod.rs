@@ -379,6 +379,9 @@ impl TestServer {
             checkout_sessions: std::sync::Arc::new(std::sync::Mutex::new(
                 std::collections::HashMap::new(),
             )),
+            accepted_usage_cache: std::sync::Arc::new(std::sync::Mutex::new(
+                std::collections::HashMap::new(),
+            )),
         });
 
         let serve_state = state.clone();
