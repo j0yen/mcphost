@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.20.2 — 2026-09-07
+
+The CI sandbox job is a 3-way `strategy.matrix.shard` split (`scripts/ci-test-partition.sh sandbox-shard <n> 3`) closing AC6's ≤5min-or-parallel-job budget: the prior single sandbox job alone measured 313s (v0.13.3, over the 300s budget), and the new `sandbox-required` aggregator (`needs: sandbox`, `if: always()`) fails the workflow if any shard fails, since GitHub does not fail a run over one matrix leg by default. Each shard now hard-fails (not just `::warning::`) past 300s. `ci-test-partition.sh` gains `sandbox-shard`/`shard_names`, assigning the 41 sandbox targets by `index mod 3` so slow `python_ac*` targets interleave across shards instead of clustering; `check` verifies the shards stay total+disjoint over the sandbox partition. Two ci_sandbox_ac03/ac06 regression tests were rescoped to jobs that actually run `cargo test`, since the new aggregator job runs none.
+
 ## v0.20.1 — 2026-09-07
 
 CI fix: build and install the mcphost binary to `$HOME/.local/bin/mcphost` before the core-suite test run, so `metering_ac09_deploy_units_verify`'s `systemd-analyze verify` on `deploy/mcphost-emit-meter.service` finds the ExecStart binary it checks for (was failing on CI run 34078778358 with "is not executable: No such file or directory"). Test-infra fix only, no behavior change.
