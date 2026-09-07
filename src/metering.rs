@@ -226,9 +226,7 @@ pub fn acquire_lock(data_dir: &Path) -> Result<MeterLock, AppError> {
         use std::os::fd::AsRawFd;
         file.as_raw_fd()
     };
-    // SAFETY: `fd` is a valid, open file descriptor owned by `file` for the
-    // duration of this call; `flock` neither reads nor writes through the
-    // pointer-free fd-only API beyond the kernel's own lock table.
+    // SAFETY: `fd` is a valid, open file descriptor owned by `file` for the duration of this call; `flock` touches no memory through a pointer, acting solely through the kernel's lock table via this fd-only syscall.
     let rc = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
     if rc != 0 {
         return Err(AppError::Structured {
