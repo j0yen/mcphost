@@ -85,9 +85,17 @@ required_commands = [
 [[lane]]
 id = "www"
 description = "Static marketing/legal site served alongside the API (index/terms/privacy/aup/llms.txt). Added project-locally: the shipped scaffold template's proof-lanes.toml has no lane for www/** either (same gap class as db-migrations, infer-data and deploy above) -- the www-redesign commits' 5 changed paths (www/index.html, www/terms.html, www/privacy.html, www/aup.html, www/llms.txt) were unrouted, blocking PRD-mcphost-healthz-minimal's vti-plan gate receipt though they were not part of that PRD's own diff. No JS build tooling or HTML linter exists in this repo (no node/npm, no tidy/xmllint on the build host), so proof is scripts/www-check.sh: a minimal Python-stdlib (html.parser) check that each www/*.html file is valid UTF-8, non-empty, and parses without error, and that llms.txt is valid non-empty UTF-8 text. Not a style/accessibility linter -- an honest floor, not a fake pass."
-globs = ["www/**"]
+globs = ["www/**", "scripts/www-check.sh"]
 required_commands = [
   "scripts/www-check.sh",
+]
+
+[[lane]]
+id = "docs"
+description = "Prose documentation under docs/ (per-kind reference docs, receipts write-ups). Added project-locally 2026-09-07 (PRD-mcphost-healthz-minimal's vti-plan gap fix): docs/kinds/*.md and docs/receipts/*.md were unrouted, blocking the vti-plan gate receipt though they were not part of that PRD's own diff -- same gap class as the www lane above. scripts/www-check.sh (the www lane's own proof script) was unrouted for the same reason and is folded into that lane's globs above instead of here, since it belongs conceptually with www/. No markdown linter exists in this repo (no node/npm, no markdownlint on the build host), so proof is scripts/docs-check.sh: a minimal Python-stdlib check that each docs/kinds/*.md and docs/receipts/*.md file is valid, non-empty UTF-8 text. Not a style/prose linter -- an honest floor, not a fake pass."
+globs = ["docs/kinds/**", "docs/receipts/**"]
+required_commands = [
+  "scripts/docs-check.sh",
 ]
 
 [[lane]]
