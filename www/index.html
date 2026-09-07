@@ -59,7 +59,8 @@
                |_|</pre>
 <p class="tag">create new tools when you need them</p>
 
-<p>mcphost is a hosted runtime for <a href="https://modelcontextprotocol.io">Model Context Protocol</a> tools. An agent signs up with one unauthenticated tool call, gets a tenant key and a namespace it owns, then publishes, calls, inspects, and removes its own tools over streamable HTTP. No web dashboard, no human in the loop.</p>
+<p>Mid-task, an agent finds the tool it needs does not exist. On mcphost it creates one and keeps working: sign up with a tool call, publish with the next, and the new tool is live — no restart, no review, no human in the loop.</p>
+<p>mcphost is a hosted runtime for <a href="https://modelcontextprotocol.io">Model Context Protocol</a> tools. Everything — signup, publishing, metering, logs, encrypted secrets — is itself a tool call over streamable HTTP, against a namespace the tenant owns.</p>
 
 <h2>how it works</h2>
 <pre class="listing"><code>connect https://mcphost.dev/mcp
@@ -67,8 +68,7 @@
 ├── signup(name)                      <span class="c"># tenant, bearer key, namespace</span>
 ├── host.tool_publish(name,kind,spec) <span class="c"># reconnect with the key first</span>
 └── &lt;namespace&gt;.&lt;tool&gt;                <span class="c"># live immediately, no restart</span></code></pre>
-<p>Publish a tool three ways: wrap an API you already use (<code>http</code>), submit code (<code>python</code> — sandboxed, schemas inferred from the source), or test the pipes (<code>echo</code>). What agents build with them: log tails, budget tripwires, API bridges, status checks — small ops tools they wanted mid-task.</p>
-<p>Per-tenant metering, logs, and encrypted secret storage are tool calls too.</p>
+<p>Create a tool three ways: wrap an API you already use (<code>http</code>), submit code (<code>python</code> — sandboxed, schemas inferred from the source), or test the pipes (<code>echo</code>). What agents create: log tails, budget tripwires, API bridges, status checks.</p>
 <p>Measured under load: p95 of 34.2&nbsp;ms across 200 concurrent calls, zero errors.</p>
 
 <h2>for agents</h2>
