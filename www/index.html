@@ -6,89 +6,83 @@
 <title>mcphost — where agents host their own tools</title>
 <meta name="description" content="A hosted MCP runtime: AI agents sign up by tool call, get a namespace, and publish and run their own tools. No dashboard, no human in the loop.">
 <style>
-  /* Committed single look: C64 boot screen. Deliberately no light theme. */
+  /* Committed single look: simple modern terminal. Deliberately no light theme. */
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
-  body { margin: 0; background: #7869C4; color: #C8C2FF;
+  body { margin: 0; background: #0b0d0e; color: #c9cdd1;
          font-family: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
-         font-size: 16px; line-height: 1.55; letter-spacing: .02em; }
-  .screen { position: relative; max-width: 46rem; margin: 0 auto; min-height: 100vh;
-            background: #40318D; padding: 2.5rem 1.4rem 4rem;
-            border-left: 12px solid #7869C4; border-right: 12px solid #7869C4; }
-  .screen::after { content: ""; position: absolute; inset: 0; pointer-events: none;
-                   background: repeating-linear-gradient(to bottom, rgba(0,0,0,.14) 0 1px, transparent 1px 3px);
-                   opacity: .35; }
-  pre { margin: 0 0 1.2rem; overflow-x: auto; color: #C8C2FF; }
-  .boot { text-align: center; color: #E8E5FF; }
-  .cursor { display: inline-block; width: .6em; height: 1em; vertical-align: text-bottom;
-            background: #C8C2FF; animation: blink 1.1s steps(1) infinite; }
+         font-size: 15px; line-height: 1.65; }
+  .wrap { max-width: 44rem; margin: 0 auto; padding: 3.5rem 1.4rem 4rem; }
+  pre { margin: 0 0 1.2rem; overflow-x: auto; color: #c9cdd1; }
+  .prompt { color: #8b949e; }
+  .prompt .path { color: #e6edf3; }
+  .cursor { display: inline-block; width: .55em; height: 1.1em; vertical-align: text-bottom;
+            background: #c9cdd1; animation: blink 1.2s steps(1) infinite; }
   @keyframes blink { 50% { opacity: 0; } }
   @media (prefers-reduced-motion: reduce) { .cursor { animation: none; } }
-  h1 { font-size: 1.05rem; font-weight: 700; color: #FFFFFF; margin: 2rem 0 .5rem;
-       text-transform: uppercase; }
-  h1::before { content: "=== "; color: #8A7DDB; }
-  h1::after  { content: " ==="; color: #8A7DDB; }
-  h2 { font-size: 1rem; font-weight: 700; color: #FFFFFF; margin: 2rem 0 .5rem;
-       text-transform: uppercase; }
-  h2::before { content: "** "; color: #8A7DDB; }
-  h2::after  { content: " **"; color: #8A7DDB; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden;
+        clip-path: inset(50%); white-space: nowrap; margin: 0; }
+  .banner { color: #e6edf3; margin: 1.6rem 0 .4rem; line-height: 1.25;
+            font-size: clamp(9px, 2.9vw, 15px); }
+  h2 { font-size: .95rem; font-weight: 600; color: #e6edf3; margin: 2.4rem 0 .6rem; }
+  h2::before { content: "## "; color: #484f58; font-weight: 400; }
+  .tag { color: #8b949e; margin: 0 0 2.2rem; }
   p, ul { margin: 0 0 1rem; }
-  code { color: #E8E5FF; }
-  .listing { border: 2px solid #7869C4; padding: .9rem 1rem; background: #362A78; }
-  a { color: #A8E4A0; text-decoration-thickness: 1px; text-underline-offset: 3px; }
-  a:hover { background: #A8E4A0; color: #40318D; text-decoration: none; }
-  ul { list-style: none; padding-left: 1.4rem; }
-  li::before { content: "> "; color: #8A7DDB; margin-left: -1.4rem; }
-  footer { margin-top: 3.5rem; padding-top: 1rem; border-top: 2px solid #7869C4;
-           color: #A29AE0; font-size: .9em; }
-  .ready { color: #E8E5FF; margin-top: 1.5rem; }
-  .snd { background: none; border: none; padding: 0; margin: 0 0 1rem;
-         font: inherit; letter-spacing: inherit; color: #A8E4A0; cursor: pointer;
-         text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
-  .snd:hover { background: #A8E4A0; color: #40318D; text-decoration: none; }
+  code { color: #e6edf3; background: #161b22; padding: .1em .35em; border-radius: 4px; }
+  pre code { background: none; padding: 0; }
+  .listing { border: 1px solid #21262d; border-radius: 6px; padding: 1rem 1.1rem;
+             background: #0d1117; }
+  .listing .c { color: #8b949e; }
+  a { color: #58a6ff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ul { list-style: none; padding-left: 1.3rem; }
+  li::before { content: "- "; color: #484f58; margin-left: -1.3rem; }
+  footer { margin-top: 3.5rem; padding-top: 1.2rem; border-top: 1px solid #21262d;
+           color: #8b949e; font-size: .9em; }
+  .snd { background: none; border: 1px solid #21262d; border-radius: 6px;
+         padding: .35rem .8rem; margin: 1.6rem 0 0; font: inherit; color: #8b949e;
+         cursor: pointer; }
+  .snd:hover { color: #e6edf3; border-color: #484f58; }
 </style>
 </head>
 <body>
-<main class="screen">
-<pre class="boot" aria-hidden="true">
-**** MCPHOST — MCP RUNTIME V2 ****
+<main class="wrap">
 
- 38911 TOOL SLOTS FREE
+<pre class="prompt" aria-hidden="true">$ <span class="path">mcphost</span> --about<span class="cursor"></span></pre>
 
-READY.
-LOAD "MCPHOST",8,1
-</pre>
-
-<h1>mcphost</h1>
-<p>Where agents host their own tools.</p>
+<h1 class="sr">mcphost</h1>
+<pre class="banner" aria-hidden="true">                      _               _
+ _ __ ___   ___ _ __ | |__   ___  ___| |_
+| '_ ` _ \ / __| '_ \| '_ \ / _ \/ __| __|
+| | | | | | (__| |_) | | | | (_) \__ \ |_
+|_| |_| |_|\___| .__/|_| |_|\___/|___/\__|
+               |_|</pre>
+<p class="tag">where agents host their own tools</p>
 
 <p>mcphost is a hosted runtime for <a href="https://modelcontextprotocol.io">Model Context Protocol</a> tools. An AI agent signs up with one unauthenticated tool call, receives a tenant key and a namespace it owns, and then publishes, calls, inspects, and removes its own tools over streamable HTTP. No web dashboard, no human in the loop.</p>
 
-<h2>How it works</h2>
-<pre class="listing">10 TOOLS/LIST (NO CREDENTIALS)   : REM ONE TOOL OFFERED: SIGNUP
-20 SIGNUP(NAME)                  : REM TENANT, BEARER KEY, NAMESPACE
-30 RECONNECT WITH THE KEY        : REM HOST.* CONTROL PLANE
-40 HOST.TOOL_PUBLISH(NAME,KIND,SPEC)
-50 CALL &lt;NAMESPACE&gt;.&lt;TOOL&gt;       : REM LIVE IMMEDIATELY, NO RESTART
-RUN</pre>
+<h2>how it works</h2>
+<pre class="listing"><code>connect https://mcphost.dev/mcp
+├── tools/list                        <span class="c"># no credentials — one tool: signup</span>
+├── signup(name)                      <span class="c"># tenant, bearer key, namespace</span>
+├── host.tool_publish(name,kind,spec) <span class="c"># reconnect with the key first</span>
+└── &lt;namespace&gt;.&lt;tool&gt;                <span class="c"># live immediately, no restart</span></code></pre>
 <p>Tool kinds: <code>echo</code>, <code>http</code> (wrap a REST endpoint), and <code>python</code> (sandboxed, schemas and requirements inferred from source). Per-tenant metering, logs, and encrypted secret storage are tool calls too.</p>
 <p>Measured under load: p95 of 34.2&nbsp;ms across 200 concurrent calls, zero errors.</p>
 
-<h2>For agents</h2>
+<h2>for agents</h2>
 <p>The endpoint is <code>https://mcphost.dev/mcp</code>. The machine-readable summary is at <a href="/llms.txt">/llms.txt</a>.</p>
 
-<h2>Pricing</h2>
+<h2>pricing</h2>
 <p>Free during early access: 50 tools per tenant, 500 calls per day, no card required. Pro is $19/month with 50,000 calls included, then $0.001 per call. Early tenants keep the free tier when early access ends.</p>
 
-<h2>Source and contact</h2>
+<h2>source and contact</h2>
 <ul>
   <li>Source: <a href="https://github.com/j0yen/mcphost">github.com/j0yen/mcphost</a></li>
   <li>Contact: <a href="mailto:hello@mcphost.dev">hello@mcphost.dev</a> or <a href="https://github.com/j0yen/mcphost/issues">GitHub issues</a></li>
 </ul>
 
-<button id="snd" class="snd" type="button" aria-pressed="false">SOUND: OFF</button>
-
-<p class="ready" aria-hidden="true">READY.<br><span class="cursor"></span></p>
+<button id="snd" class="snd" type="button" aria-pressed="false">[ sound: off ]</button>
 
 <footer>mcphost · operated by Joe Yen · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/aup">Acceptable Use</a> · status at <a href="/healthz">/healthz</a></footer>
 </main>
@@ -98,11 +92,11 @@ RUN</pre>
   var btn = document.getElementById("snd");
   if (!btn) return;
   var ctx = null, master = null, delaySend = null, timer = null, on = false;
-  var chordAt = 0, chordIdx = 0, bellAt = 0;
+  var chordAt = 0, chordIdx = 0, blipAt = 0;
   function freq(m) { return 440 * Math.pow(2, (m - 69) / 12); }
   /* ambient drift: four lush voicings, ~13s each, swells overlap so chords melt together */
   var CHORDS = [[48,55,62,64,71],[45,52,59,64,67],[41,48,57,60,64],[43,50,57,62,66]];
-  var BELLS = [72,76,79,81,84,88];
+  var NOTES = [72,76,79,81,84,88];
   var CHORD_DUR = 13;
   function pad(t, midi, dur, gain) {
     /* two detuned voices per note for slow chorus shimmer */
@@ -119,31 +113,18 @@ RUN</pre>
       o.start(t); o.stop(t + dur + 0.1);
     }
   }
-  function blip(t, midi, dur) {
-    /* one SID pulse-wave voice: hard on, fast decay */
-    var o = ctx.createOscillator(), g = ctx.createGain();
-    o.type = "square"; o.frequency.value = freq(midi);
-    g.gain.setValueAtTime(0.03, t);
-    g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
-    o.connect(g); g.connect(master); g.connect(delaySend);
-    o.start(t); o.stop(t + dur + 0.02);
-  }
-  function beep(t, midi) {
-    /* C64 game beeps: pickup blip, arpeggio chirp, or falling zap */
-    var r = Math.random(), i;
-    if (r < 0.4) {
-      blip(t, midi, 0.09);
-    } else if (r < 0.75) {
-      for (i = 0; i < 3; i++) blip(t + i * 0.055, midi + [0, 7, 12][i], 0.05);
-    } else {
+  function blip(t, midi) {
+    /* soft sine blip, echoed into the delay — occasionally answered a fifth up */
+    var n = Math.random() < 0.3 ? 2 : 1, i;
+    for (i = 0; i < n; i++) {
       var o = ctx.createOscillator(), g = ctx.createGain();
-      o.type = "square";
-      o.frequency.setValueAtTime(freq(midi + 12), t);
-      o.frequency.exponentialRampToValueAtTime(freq(midi - 12), t + 0.22);
-      g.gain.setValueAtTime(0.025, t);
-      g.gain.exponentialRampToValueAtTime(0.0008, t + 0.22);
+      var tt = t + i * 0.28;
+      o.type = "sine"; o.frequency.value = freq(midi + i * 7);
+      g.gain.setValueAtTime(0, tt);
+      g.gain.linearRampToValueAtTime(0.04, tt + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0006, tt + 1.6);
       o.connect(g); g.connect(master); g.connect(delaySend);
-      o.start(t); o.stop(t + 0.25);
+      o.start(tt); o.stop(tt + 1.8);
     }
   }
   function wash() {
@@ -168,15 +149,15 @@ RUN</pre>
       pad(chordAt, c[0] - 12, CHORD_DUR * 1.35, 0.045);
       chordIdx += 1; chordAt += CHORD_DUR;
     }
-    while (bellAt < now + 1) {
-      if (bellAt > now) beep(bellAt, BELLS[Math.floor(Math.random() * BELLS.length)]);
-      bellAt += 4 + Math.random() * 6;
+    while (blipAt < now + 1) {
+      if (blipAt > now) blip(blipAt, NOTES[Math.floor(Math.random() * NOTES.length)]);
+      blipAt += 5 + Math.random() * 7;
     }
   }
   function start() {
     if (!ctx) {
       var AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) { btn.textContent = "SOUND: N/A"; btn.disabled = true; return; }
+      if (!AC) { btn.textContent = "[ sound: n/a ]"; btn.disabled = true; return; }
       ctx = new AC();
       master = ctx.createGain(); master.gain.value = 0.5;
       var warm = ctx.createBiquadFilter(); warm.type = "lowpass"; warm.frequency.value = 2400;
@@ -191,14 +172,14 @@ RUN</pre>
       wash();
     }
     ctx.resume();
-    chordIdx = 0; chordAt = ctx.currentTime + 0.1; bellAt = ctx.currentTime + 6;
+    chordIdx = 0; chordAt = ctx.currentTime + 0.1; blipAt = ctx.currentTime + 6;
     timer = setInterval(schedule, 250);
-    on = true; btn.textContent = "SOUND: ON"; btn.setAttribute("aria-pressed", "true");
+    on = true; btn.textContent = "[ sound: on ]"; btn.setAttribute("aria-pressed", "true");
   }
   function stop() {
     if (timer) { clearInterval(timer); timer = null; }
     if (ctx) ctx.suspend();
-    on = false; btn.textContent = "SOUND: OFF"; btn.setAttribute("aria-pressed", "false");
+    on = false; btn.textContent = "[ sound: off ]"; btn.setAttribute("aria-pressed", "false");
   }
   btn.addEventListener("click", function () { if (on) { stop(); } else { start(); } });
 })();
