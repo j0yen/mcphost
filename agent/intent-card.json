@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-rest-bridge.md",
-  "intent_slug": "mcphost-rest-bridge",
-  "root_motivation": "The baseline panel ran 3 integration_specialist sessions against mcphost.dev v0.14.0. Two scored 0.5 with the same shape: the published bridge worked (judge: \"REST-to-tool bridge mechanism works\"; \"result demonstrably includes the isolation_result field\") but the response body sat outside `result.payload`, where every consumer checks for it \u2014 the http kind wraps responses differently from the python kind, so a working tool reads as a broken one to any caller with expectations. Separately, the corpus task the segment cares most about (rest-to-tool-bridge: \"eliminate the n8n deployment tax across 40+ workflows\") required the persona to hand-author bridging logic; the discover pack rates this segment's switch intent on exactly that glue disappearing.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-ci-sandbox-coverage.md",
+  "intent_slug": "mcphost-ci-sandbox-coverage",
+  "root_motivation": "Joe's deploy gate treats CI green as evidence. For the sandbox suites \u2014 self-test, failure classification, warm-pool eviction, the core of v0.13.0 \u2014 that evidence is vacuous: the guard skips on the `CI` environment variable, not on actual capability, so the suites run only on dev boxes with working user namespaces. The 2026-09-03 operator answer scoped the guard to CI deliberately as a stopgap when runners lacked userns; the stopgap now hides all sandbox regressions from every CI run (0.00 s suite time in the actual Actions run at head 6932b87). A sandbox regression merged tomorrow would ship with a green badge and surface only as hub publish failures \u2014 the loop's worst and slowest failure family to diagnose.",
   "user_persona": "An AI agent connecting to mcphost for the first time over streamable HTTP with default client configuration (Claude Agent SDK / Claude Code), which must be able to read a well-formed tool list before it can do anything else; secondarily the operator who probes the endpoint after a redeploy.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,43 +14,43 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the recorded call shapes from baseline sessions panel_integration_specialist_01 and _03 as fixtures, When each runs against the fixed http kind, Then `result.payload.bridge_status` and `result.payload.isolation_result` are present and the sessions' success criteria evaluate true.",
+      "description": "Given a push to main, When the ci workflow runs on the hosted runner, Then the sandbox-ready suites execute with >0 tests run and their assertions evaluated.",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given every existing http-kind test at HEAD, When the suite runs, Then no assertion about current response shapes breaks, and a newly published http tool's call result carries its body at `result.payload`.",
+      "description": "Given the capability probe on a userns-capable environment, When tests start, Then no suite skips for capability reasons.",
       "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a spec with `upstream` mapping params to query and path and a secret-referenced auth header, When published and called against a local mock upstream, Then no user request code was involved and `result.payload` carries status and parsed body with the mapped request observed by the mock.",
+      "description": "Given a runner where userns creation genuinely fails, When the suite runs in CI, Then affected tests skip with the capability reason in the log AND the non-vacuous assertion fails the job.",
       "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given upstream timeout, 500-with-body, and connection-refused cases on the mock, When the bridge tool is called, Then each returns a structured tool error naming the failure class and excerpting the body where one exists.",
+      "description": "Given a dev box without userns and CI unset, When the suite runs, Then the guard fails loudly (no silent skip), unchanged from the 2026-09-03 contract.",
       "test": "tests/ac04_publish_list_and_call.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the http kind's current egress policy tests, When bridge calls run, Then the same policy verdicts apply to `upstream` requests.",
+      "description": "Given the CI env var set but capability present, When the suite runs, Then tests execute \u2014 the variable alone never causes a skip.",
       "test": "tests/ac05_cross_tenant_isolation.rs"
     },
     {
       "id": "AC6",
       "level": "SHOULD",
-      "description": "Given a valid and an invalid bridge spec, When `host.bridge_test` runs each, Then the valid one reports the mock's response without creating a tool and the invalid one reports the failure class.",
+      "description": "Given the full workflow on a clean cache, When it completes, Then total added wall time for sandbox suites is \u22645 minutes or the suites run as a parallel job.",
       "test": "tests/ac06_remove_tool.rs"
     },
     {
       "id": "AC7",
-      "level": "MUST",
-      "description": "Given the full suite and `autobuilder gate --project .` at the landed HEAD, When they run, Then every previously passing test passes and the gate reports no new blocks.",
+      "level": "MAY",
+      "description": "Given the repo docs, When a contributor reads local-test requirements, Then the userns capability requirement and probe behavior are stated.",
       "test": "tests/ac07_usage_metering.rs"
     }
   ],
