@@ -61,7 +61,14 @@ fn the_workflow_greps_for_the_marker_the_rust_side_actually_prints() {
          silent false green"
     );
 
+    // Only jobs that actually invoke `cargo test` can skip a test for
+    // capability reasons; a job like `sandbox-required` that merely gates on
+    // another job's aggregate matrix result (see AC6's shard split) has no
+    // per-test skip to detect and is exempt from this invariant.
     for (name, body) in support::jobs(&workflow) {
+        if !body.contains("cargo test") {
+            continue;
+        }
         assert!(
             body.contains(r#"if [ "$skipped" -gt 0 ]; then"#) && body.contains("exit 1"),
             "job `{name}` must fail when any test skipped for capability reasons"

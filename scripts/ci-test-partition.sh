@@ -35,11 +35,28 @@
 # Usage:
 #   ci-test-partition.sh sandbox   # --lib --test a --test b ...
 #   ci-test-partition.sh core      # --bins --test x --test y ...
+#   ci-test-partition.sh sandbox-shard <n> <of>   # this shard's slice of the
+#                                                  # sandbox partition, same
+#                                                  # flag shape as `sandbox`
 #   ci-test-partition.sh list <sandbox|core>   # bare target names, one per line
 #   ci-test-partition.sh check     # exit 0 iff total, disjoint, and unshadowed
+#
+# AC6 follow-up: even run as its own job, the sandbox partition alone measured
+# 313s (v0.13.3) against the 300s budget -- one job wasn't enough, so the
+# sandbox job is further split into SANDBOX_SHARDS matrix jobs, each running
+# `sandbox-shard <n> <SANDBOX_SHARDS>`. Targets are assigned to shards by
+# `index-in-the-sorted-list mod SANDBOX_SHARDS`, which interleaves the (mostly
+# alphabetically-adjacent, individually slow) `python_ac*` targets across
+# shards rather than clustering them in one. `--lib` (the sandbox-surface unit
+# tests) only ships in shard 1, so it runs once per CI run, not once per shard.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Single source of truth for how many matrix jobs `.github/workflows/ci.yml`
+# fans the sandbox partition out to; `check` verifies this many shards are
+# still total+disjoint over the sandbox partition.
+SANDBOX_SHARDS=3
 
 # The sandbox-execution surface. `supports_user_namespaces` and
 # `require_user_namespaces_or_ci_skip` are the capability guard itself;
@@ -71,6 +88,52 @@ emit() { # <sandbox|core> -> the cargo target-selection flags for that job
     [ -n "$name" ] || continue
     printf -- ' --test %s' "$name"
   done < <(targets "$want")
+  printf '\n'
+}
+
+validate_shard_args() { # <idx> <count> -> exit 0 iff both are ints and 1<=idx<=count
+  local idx="$1" count="$2"
+  case "$idx$count" in
+    *[!0-9]*|'')
+      echo "ci-test-partition: shard index and count must be positive integers (got '$idx' '$count')" >&2
+      return 2
+      ;;
+  esac
+  if [ "$idx" -lt 1 ] || [ "$idx" -gt "$count" ]; then
+    echo "ci-test-partition: shard index $idx out of range 1..$count" >&2
+    return 2
+  fi
+}
+
+shard_names() { # <sandbox|core> <index, 1-based> <count> -> bare target names, one per line
+  local want="$1" idx="$2" count="$3" i=0 name
+  validate_shard_args "$idx" "$count" || return "$?"
+  while read -r name; do
+    [ -n "$name" ] || continue
+    if [ $(( i % count )) -eq $(( idx - 1 )) ]; then
+      printf '%s\n' "$name"
+    fi
+    i=$((i + 1))
+  done < <(targets "$want")
+}
+
+shard() { # <sandbox|core> <index, 1-based> <count> -> this shard's cargo flags
+  local want="$1" idx="$2" count="$3" name
+
+  validate_shard_args "$idx" "$count" || return "$?"
+
+  # Only shard 1 carries the unit-test surface, so `--lib` runs once per CI
+  # run rather than once per shard.
+  if [ "$idx" -eq 1 ]; then
+    case "$want" in
+      sandbox) printf -- '--lib' ;;
+      core)    printf -- '--bins' ;;
+    esac
+  fi
+  while read -r name; do
+    [ -n "$name" ] || continue
+    printf -- ' --test %s' "$name"
+  done < <(shard_names "$want" "$idx" "$count")
   printf '\n'
 }
 
@@ -109,13 +172,35 @@ check() {
     rc=1
   fi
 
-  [ "$rc" -eq 0 ] && echo "ci-test-partition: ok ($(printf '%s\n' "$sandbox" | wc -l) sandbox, $(printf '%s\n' "$core" | wc -l) core)"
+  # The matrix split within the sandbox partition (AC6's second job-split) has
+  # the same total/disjoint obligation as the sandbox/core split itself: a
+  # target that fell out of every shard would silently stop running in CI.
+  local n shard_union shard_targets
+  shard_union=""
+  for n in $(seq 1 "$SANDBOX_SHARDS"); do
+    shard_targets="$(shard_names sandbox "$n" "$SANDBOX_SHARDS" | LC_ALL=C sort)"
+    if [ -z "$shard_targets" ]; then
+      echo "ci-test-partition: sandbox shard $n/$SANDBOX_SHARDS is empty -- reduce" >&2
+      echo "  SANDBOX_SHARDS or the matrix will run a vacuous job." >&2
+      rc=1
+    fi
+    shard_union="$(printf '%s\n%s\n' "$shard_union" "$shard_targets" | sed '/^$/d')"
+  done
+  shard_union="$(printf '%s\n' "$shard_union" | LC_ALL=C sort)"
+  if [ "$shard_union" != "$(printf '%s\n' "$sandbox" | sed '/^$/d')" ]; then
+    echo "ci-test-partition: the $SANDBOX_SHARDS sandbox shards are not total+disjoint over the sandbox partition" >&2
+    diff <(printf '%s\n' "$sandbox") <(printf '%s\n' "$shard_union") >&2
+    rc=1
+  fi
+
+  [ "$rc" -eq 0 ] && echo "ci-test-partition: ok ($(printf '%s\n' "$sandbox" | wc -l) sandbox across $SANDBOX_SHARDS shards, $(printf '%s\n' "$core" | wc -l) core)"
   return "$rc"
 }
 
 case "${1:-}" in
   sandbox|core) emit "$1" ;;
+  sandbox-shard) shard sandbox "${2:?usage: ci-test-partition.sh sandbox-shard <n> <of>}" "${3:?usage: ci-test-partition.sh sandbox-shard <n> <of>}" ;;
   list)         targets "${2:?usage: ci-test-partition.sh list <sandbox|core>}" ;;
   check)        check ;;
-  *) echo "usage: $(basename "$0") <sandbox|core|list <p>|check>" >&2; exit 2 ;;
+  *) echo "usage: $(basename "$0") <sandbox|core|sandbox-shard <n> <of>|list <p>|check>" >&2; exit 2 ;;
 esac
