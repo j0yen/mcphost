@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-python-kind-runtime.md",
-  "intent_slug": "mcphost-python-kind-runtime",
-  "root_motivation": "The baseline panel's rag_indexer sessions lost points to the platform, not to missing features. Session panel_rag_indexer_01 scored 0.0: the persona published `retrieval_latency_check` and the call failed with `int() argument must be a string, a bytes-like object or a real number, not 'range'` \u2014 an error that names no argument, no line, and no side (caller, tool code, or mcphost's schema coercion from PRD-mcphost-tool-infer). Session _03 scored 0.85 with the only deduction being timeliness: 88.4 s to publish, 95.3 s to first call. A workflow_orchestrator session on the same python kind additionally hit `invalid spec: source: syntax error at line 27: cannot use assignment expressions with expression` and had to work around it. The segment's tasks (retrieval latency, ingestion status) are exactly \"publish a small python tool and call it\" \u2014 the kind's runtime quality is the product for this segment.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-rest-bridge.md",
+  "intent_slug": "mcphost-rest-bridge",
+  "root_motivation": "The baseline panel ran 3 integration_specialist sessions against mcphost.dev v0.14.0. Two scored 0.5 with the same shape: the published bridge worked (judge: \"REST-to-tool bridge mechanism works\"; \"result demonstrably includes the isolation_result field\") but the response body sat outside `result.payload`, where every consumer checks for it \u2014 the http kind wraps responses differently from the python kind, so a working tool reads as a broken one to any caller with expectations. Separately, the corpus task the segment cares most about (rest-to-tool-bridge: \"eliminate the n8n deployment tax across 40+ workflows\") required the persona to hand-author bridging logic; the discover pack rates this segment's switch intent on exactly that glue disappearing.",
   "user_persona": "An AI agent connecting to mcphost for the first time over streamable HTTP with default client configuration (Claude Agent SDK / Claude Code), which must be able to read a well-formed tool list before it can do anything else; secondarily the operator who probes the endpoint after a redeploy.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,37 +14,37 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given session panel_rag_indexer_01's recorded publish and call as a fixture, When replayed at HEAD, Then the failure reproduces before the fix; and When replayed after, Then the call either succeeds or returns the structured error naming the argument, expected/actual type, and phase.",
+      "description": "Given the recorded call shapes from baseline sessions panel_integration_specialist_01 and _03 as fixtures, When each runs against the fixed http kind, Then `result.payload.bridge_status` and `result.payload.isolation_result` are present and the sessions' success criteria evaluate true.",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a python tool whose code raises ValueError at a known line, When called, Then the result is a structured tool error with phase `tool_code`, the exception class, and that line \u2014 no bare traceback fragment.",
+      "description": "Given every existing http-kind test at HEAD, When the suite runs, Then no assertion about current response shapes breaks, and a newly published http tool's call result carries its body at `result.payload`.",
       "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a call whose argument fails schema coercion, When it runs, Then the error's phase is `args_coercion` and it names the argument and both types.",
+      "description": "Given a spec with `upstream` mapping params to query and path and a secret-referenced auth header, When published and called against a local mock upstream, Then no user request code was involved and `result.payload` carries status and parsed body with the mapped request observed by the mock.",
       "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a dependency-free python tool of corpus-task size in the local sandbox, When published and called with instrumentation on, Then measured publish \u2264 10 s and first call \u2264 5 s, and the receipt records the pre-fix measurements beside them.",
+      "description": "Given upstream timeout, 500-with-body, and connection-refused cases on the mock, When the bridge tool is called, Then each returns a structured tool error naming the failure class and excerpting the body where one exists.",
       "test": "tests/ac04_publish_list_and_call.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the recorded assignment-expression spec, When validated, Then the rejection message names assignment expressions and the accepted alternative in one sentence.",
+      "description": "Given the http kind's current egress policy tests, When bridge calls run, Then the same policy verdicts apply to `upstream` requests.",
       "test": "tests/ac05_cross_tenant_isolation.rs"
     },
     {
       "id": "AC6",
       "level": "SHOULD",
-      "description": "Given the validator restriction analysis, When assignment expressions are executor-safe, Then the recorded spec validates and executes; otherwise the README spec-language section documents the restriction and why.",
+      "description": "Given a valid and an invalid bridge spec, When `host.bridge_test` runs each, Then the valid one reports the mock's response without creating a tool and the invalid one reports the failure class.",
       "test": "tests/ac06_remove_tool.rs"
     },
     {
