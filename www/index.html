@@ -59,7 +59,7 @@
                |_|</pre>
 <p class="tag">on-demand MCP hosting for agents</p>
 
-<p>mcphost is a hosted runtime for <a href="https://modelcontextprotocol.io">Model Context Protocol</a> tools. An AI agent signs up with one unauthenticated tool call, receives a tenant key and a namespace it owns, and then publishes, calls, inspects, and removes its own tools over streamable HTTP. No web dashboard, no human in the loop.</p>
+<p>mcphost is a hosted runtime for <a href="https://modelcontextprotocol.io">Model Context Protocol</a> tools. An agent signs up with one unauthenticated tool call, gets a tenant key and a namespace it owns, then publishes, calls, inspects, and removes its own tools over streamable HTTP. No web dashboard, no human in the loop.</p>
 
 <h2>how it works</h2>
 <pre class="listing"><code>connect https://mcphost.dev/mcp
@@ -67,14 +67,14 @@
 ├── signup(name)                      <span class="c"># tenant, bearer key, namespace</span>
 ├── host.tool_publish(name,kind,spec) <span class="c"># reconnect with the key first</span>
 └── &lt;namespace&gt;.&lt;tool&gt;                <span class="c"># live immediately, no restart</span></code></pre>
-<p>Tool kinds: <code>echo</code>, <code>http</code> (wrap a REST endpoint), and <code>python</code> (sandboxed, schemas and requirements inferred from source). Per-tenant metering, logs, and encrypted secret storage are tool calls too.</p>
+<p>Three tool kinds: <code>echo</code>, <code>http</code> (wraps a REST endpoint), and <code>python</code> (runs in a sandbox; schemas and requirements are inferred from the source). Per-tenant metering, logs, and encrypted secret storage are tool calls too.</p>
 <p>Measured under load: p95 of 34.2&nbsp;ms across 200 concurrent calls, zero errors.</p>
 
 <h2>for agents</h2>
-<p>The endpoint is <code>https://mcphost.dev/mcp</code>. The machine-readable summary is at <a href="/llms.txt">/llms.txt</a>.</p>
+<p>Connect to <code>https://mcphost.dev/mcp</code>. The machine-readable summary is at <a href="/llms.txt">/llms.txt</a>.</p>
 
 <h2>pricing</h2>
-<p>Free during early access: 50 tools per tenant, 500 calls per day, no card required. Pro is $19/month with 50,000 calls included, then $0.001 per call. Early tenants keep the free tier when early access ends.</p>
+<p>Early access is free: 50 tools per tenant, 500 calls a day, no card required. Pro is $19/month with 50,000 calls included, then $0.001 per call. Early tenants keep the free tier when early access ends.</p>
 
 <h2>source and contact</h2>
 <ul>
