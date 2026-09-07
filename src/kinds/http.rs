@@ -89,11 +89,233 @@ impl HttpSpec {
     }
 }
 
+/// Wire-level shape a `spec` may arrive in: either the original
+/// hand-templated form (`method`+`url` required, same as [`HttpSpec`]) or
+/// the declarative `upstream` form PRD-mcphost-rest-bridge adds -- never
+/// both. `method`/`url` are optional here specifically so an
+/// `upstream`-only spec doesn't fail to parse before [`parse_spec`] gets a
+/// chance to give the friendlier "declare `upstream` OR `method`/`url`"
+/// error.
+#[derive(Debug, Clone, Deserialize)]
+struct HttpSpecRaw {
+    #[serde(default)]
+    method: Option<String>,
+    #[serde(default)]
+    url: Option<String>,
+    #[serde(default)]
+    headers: BTreeMap<String, String>,
+    #[serde(default)]
+    query: BTreeMap<String, String>,
+    #[serde(default)]
+    body: Option<Value>,
+    #[serde(default)]
+    args_schema: Option<Value>,
+    #[serde(default)]
+    timeout_s: Option<u64>,
+    #[serde(default)]
+    response: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    /// PRD-mcphost-rest-bridge requirement: a single-endpoint REST bridge
+    /// declared by upstream URL/method/param-mapping instead of
+    /// hand-written `{{ }}` templates. See [`compile_upstream`].
+    #[serde(default)]
+    upstream: Option<UpstreamSpec>,
+}
+
+/// Where a call argument goes when compiling an [`UpstreamSpec`] -- into
+/// the URL path, a query parameter, or a JSON body field. Exactly one
+/// location per parameter (P0 scope: mirroring one param into two
+/// locations, or header injection beyond `auth`, is P2 OpenAPI-import
+/// territory, not this PRD).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum UpstreamParamLocation {
+    Path,
+    Query,
+    Body,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct UpstreamParamSpec {
+    #[serde(rename = "in")]
+    location: UpstreamParamLocation,
+}
+
+/// Requirement (AC3): "a secret reference for auth" -- resolved through the
+/// same `secret.<name>` mechanism every other template field uses
+/// ([`referenced_secrets_in_spec`] finds it via [`compile_upstream`]'s
+/// generated header template), so secret redaction (requirement 6) covers
+/// it identically to a hand-written spec.
+#[derive(Debug, Clone, Deserialize)]
+struct UpstreamAuthSpec {
+    /// The header name to set, e.g. `"Authorization"`.
+    header: String,
+    /// The secret name (`secret.<name>` in the resolved template context).
+    secret: String,
+    /// Prepended to the resolved secret value, e.g. `"Bearer "`.
+    #[serde(default)]
+    prefix: Option<String>,
+}
+
+/// The declarative REST-bridge spec (PRD-mcphost-rest-bridge requirement:
+/// "an http-kind spec may declare `upstream`"). [`compile_upstream`] turns
+/// this into an ordinary [`HttpSpec`] so publishing one requires no
+/// user-supplied request code, and calling it runs through exactly the same
+/// SSRF/rate-limit/redaction/error-mapping pipeline as any other `http`
+/// tool -- the bridge adds no new egress surface.
+#[derive(Debug, Clone, Deserialize)]
+struct UpstreamSpec {
+    /// The upstream URL, with `{param}` placeholders for `path`-located
+    /// params (OpenAPI-style single braces -- deliberately distinct from
+    /// this file's `{{ jinja }}` template syntax, since an upstream spec's
+    /// whole point is that its author writes no template expressions).
+    url: String,
+    method: String,
+    #[serde(default)]
+    params: BTreeMap<String, UpstreamParamSpec>,
+    /// Static headers -- no templating; an upstream spec's headers are
+    /// either literal or come from `auth` below.
+    #[serde(default)]
+    headers: BTreeMap<String, String>,
+    #[serde(default)]
+    auth: Option<UpstreamAuthSpec>,
+}
+
+/// `{name}` -- an OpenAPI-style single-brace path placeholder.
+fn path_placeholder(name: &str) -> String {
+    format!("{{{name}}}")
+}
+
+/// `{{ name }}` -- this file's own `{{ }}` template syntax (see the module
+/// doc's "template variable scanning" section); [`iter_expressions`] trims
+/// whitespace, so the inner spacing here is cosmetic only.
+fn jinja_var(name: &str) -> String {
+    format!("{{{{ {name} }}}}")
+}
+
+fn is_valid_upstream_param_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// Compiles a declarative [`UpstreamSpec`] into an ordinary [`HttpSpec`]:
+/// path/query/body param mappings become `{{ }}` templates in the right
+/// place, an `auth` block becomes a templated header referencing
+/// `secret.<name>`, and an `args_schema` is derived (every declared param,
+/// required, typed `string` -- P0 scope; widening a param's type or making
+/// it optional is P1/P2). Once compiled, the result runs through the exact
+/// same `validate`/`call` code as a hand-templated spec.
+fn compile_upstream(upstream: &UpstreamSpec, raw: &HttpSpecRaw) -> Result<HttpSpec, KindError> {
+    let mut url = upstream.url.clone();
+    let mut query = BTreeMap::new();
+    let mut body_fields = Map::new();
+    let mut properties = Map::new();
+    let mut required = Vec::new();
+
+    for (name, param) in &upstream.params {
+        if !is_valid_upstream_param_name(name) {
+            return Err(KindError::InvalidSpec(format!(
+                "upstream.params.{name}: must match ^[a-zA-Z_][a-zA-Z0-9_]*$"
+            )));
+        }
+        properties.insert(name.clone(), json!({"type": "string"}));
+        required.push(Value::String(name.clone()));
+        match param.location {
+            UpstreamParamLocation::Path => {
+                let placeholder = path_placeholder(name);
+                if !url.contains(&placeholder) {
+                    return Err(KindError::InvalidSpec(format!(
+                        "upstream.params.{name}: declared `in: path` but '{placeholder}' \
+                         does not appear in upstream.url"
+                    )));
+                }
+                url = url.replace(&placeholder, &jinja_var(name));
+            }
+            UpstreamParamLocation::Query => {
+                query.insert(name.clone(), jinja_var(name));
+            }
+            UpstreamParamLocation::Body => {
+                body_fields.insert(name.clone(), Value::String(jinja_var(name)));
+            }
+        }
+    }
+
+    let mut headers = upstream.headers.clone();
+    if let Some(auth) = &upstream.auth {
+        if !is_valid_upstream_param_name(&auth.secret) {
+            return Err(KindError::InvalidSpec(format!(
+                "upstream.auth.secret: '{}' must match ^[a-zA-Z_][a-zA-Z0-9_]*$",
+                auth.secret
+            )));
+        }
+        let prefix = auth.prefix.clone().unwrap_or_default();
+        let var = jinja_var(&format!("secret.{}", auth.secret));
+        headers.insert(auth.header.clone(), format!("{prefix}{var}"));
+    }
+
+    let body = if body_fields.is_empty() {
+        None
+    } else {
+        Some(Value::Object(body_fields))
+    };
+    let args_schema = Some(json!({
+        "type": "object",
+        "properties": Value::Object(properties),
+        "required": required,
+        "additionalProperties": false,
+    }));
+
+    Ok(HttpSpec {
+        method: upstream.method.clone(),
+        url,
+        headers,
+        query,
+        body,
+        args_schema,
+        timeout_s: raw.timeout_s,
+        response: raw.response.clone(),
+        description: raw.description.clone(),
+    })
+}
+
 fn parse_spec(spec: &Value) -> Result<HttpSpec, KindError> {
     if !spec.is_object() {
         return Err(KindError::InvalidSpec("spec: must be a JSON object".into()));
     }
-    serde_json::from_value(spec.clone()).map_err(|e| KindError::InvalidSpec(format!("spec: {e}")))
+    let raw: HttpSpecRaw = serde_json::from_value(spec.clone())
+        .map_err(|e| KindError::InvalidSpec(format!("spec: {e}")))?;
+    match (&raw.upstream, raw.method.is_some() || raw.url.is_some()) {
+        (Some(_), true) => Err(KindError::InvalidSpec(
+            "spec: cannot declare both `upstream` and `method`/`url` directly".into(),
+        )),
+        (Some(upstream), false) => compile_upstream(upstream, &raw),
+        (None, true) => {
+            let method = raw
+                .method
+                .clone()
+                .ok_or_else(|| KindError::InvalidSpec("spec: missing field `method`".into()))?;
+            let url = raw
+                .url
+                .clone()
+                .ok_or_else(|| KindError::InvalidSpec("spec: missing field `url`".into()))?;
+            Ok(HttpSpec {
+                method,
+                url,
+                headers: raw.headers,
+                query: raw.query,
+                body: raw.body,
+                args_schema: raw.args_schema,
+                timeout_s: raw.timeout_s,
+                response: raw.response,
+                description: raw.description,
+            })
+        }
+        (None, false) => Err(KindError::InvalidSpec(
+            "spec: `method` and `url` are required (or declare `upstream`)".into(),
+        )),
+    }
 }
 
 /// Every template string in `spec`, paired with a dotted field path used in
@@ -1056,7 +1278,7 @@ impl Kind for HttpKind {
             }
         }
 
-        let result = redact_value(
+        let mut result = redact_value(
             &json!({
                 "status": status.as_u16(),
                 "headers": Value::Object(headers_out),
@@ -1064,6 +1286,15 @@ impl Kind for HttpKind {
             }),
             &secret_values,
         );
+        // PRD-mcphost-rest-bridge AC1/AC2: every call additionally carries
+        // its (already-redacted) response body at `result.payload` -- the
+        // flat, no-wrapper location a python-kind tool's own return value
+        // already occupies -- added alongside the existing `body` location
+        // so no current caller's `result.body...` assertion breaks (AC2).
+        if let Value::Object(map) = &mut result {
+            let payload = map.get("body").cloned().unwrap_or(Value::Null);
+            map.insert("payload".to_string(), payload);
+        }
 
         if ctx.test_mode {
             // Requirement 10 / AC15: `host.tool_test` shows the schema the
@@ -1081,5 +1312,100 @@ impl Kind for HttpKind {
         // `docs/kinds/http.md`, not hand-duplicated here -- see
         // `crate::kinds::docs`.
         super::docs::parse_kind_doc(include_str!("../../docs/kinds/http.md"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn placeholders_render_the_expected_brace_shapes() {
+        assert_eq!(path_placeholder("order_id"), "{order_id}");
+        assert_eq!(jinja_var("order_id"), "{{ order_id }}");
+        assert_eq!(jinja_var("secret.api_key"), "{{ secret.api_key }}");
+    }
+
+    #[test]
+    fn upstream_param_names_reject_dots_and_leading_digits() {
+        assert!(is_valid_upstream_param_name("order_id"));
+        assert!(is_valid_upstream_param_name("_ok"));
+        assert!(!is_valid_upstream_param_name("1bad"));
+        assert!(!is_valid_upstream_param_name("bad.name"));
+        assert!(!is_valid_upstream_param_name(""));
+    }
+
+    #[test]
+    fn compile_upstream_maps_path_query_body_and_auth() {
+        let upstream: UpstreamSpec = serde_json::from_value(json!({
+            "url": "https://api.example.com/orders/{order_id}",
+            "method": "POST",
+            "params": {
+                "order_id": {"in": "path"},
+                "status": {"in": "query"},
+                "note": {"in": "body"},
+            },
+            "headers": {"X-Static": "yes"},
+            "auth": {"header": "Authorization", "secret": "api_key", "prefix": "Bearer "},
+        }))
+        .expect("valid upstream json");
+        let raw: HttpSpecRaw =
+            serde_json::from_value(json!({})).expect("an empty raw spec parses (all optional)");
+
+        let compiled = compile_upstream(&upstream, &raw).expect("compiles");
+
+        assert_eq!(compiled.method, "POST");
+        assert_eq!(
+            compiled.url,
+            "https://api.example.com/orders/{{ order_id }}"
+        );
+        assert_eq!(
+            compiled.query.get("status").map(String::as_str),
+            Some("{{ status }}")
+        );
+        assert_eq!(compiled.body, Some(json!({"note": "{{ note }}"})));
+        assert_eq!(
+            compiled.headers.get("X-Static").map(String::as_str),
+            Some("yes")
+        );
+        assert_eq!(
+            compiled.headers.get("Authorization").map(String::as_str),
+            Some("Bearer {{ secret.api_key }}")
+        );
+        let schema = compiled.args_schema.expect("schema derived");
+        let required = schema["required"].as_array().expect("required array");
+        assert_eq!(required.len(), 3);
+    }
+
+    #[test]
+    fn compile_upstream_rejects_a_path_param_missing_from_the_url() {
+        let upstream: UpstreamSpec = serde_json::from_value(json!({
+            "url": "https://api.example.com/orders",
+            "method": "GET",
+            "params": {"order_id": {"in": "path"}},
+        }))
+        .expect("valid upstream json");
+        let raw: HttpSpecRaw =
+            serde_json::from_value(json!({})).expect("an empty raw spec parses (all optional)");
+
+        let err = compile_upstream(&upstream, &raw).unwrap_err();
+        assert!(matches!(err, KindError::InvalidSpec(_)));
+    }
+
+    #[test]
+    fn parse_spec_rejects_both_upstream_and_direct_fields() {
+        let spec = json!({
+            "upstream": {"url": "https://api.example.com/x", "method": "GET", "params": {}},
+            "method": "GET",
+            "url": "https://api.example.com/y",
+        });
+        let err = parse_spec(&spec).unwrap_err();
+        assert!(matches!(err, KindError::InvalidSpec(_)));
+    }
+
+    #[test]
+    fn parse_spec_rejects_neither_upstream_nor_direct_fields() {
+        let err = parse_spec(&json!({})).unwrap_err();
+        assert!(matches!(err, KindError::InvalidSpec(_)));
     }
 }

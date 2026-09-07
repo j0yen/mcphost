@@ -179,15 +179,16 @@ async fn ac12_claude_agent_sdk_sequence_lists_signup_with_schema() {
     // `signup` alone to `signup` plus the discoverable `host.*` control
     // plane; PRD-mcphost-publish-first-try requirement 4 added
     // `host.quickstart`, PRD-mcphost-code-tools-warm-pool requirement 3
-    // added `host.tool_run`, and PRD-grand-loop-billing added the three
-    // `billing.*` tools, to that same plane -- seventeen tools total, no
+    // added `host.tool_run`, PRD-grand-loop-billing added the three
+    // `billing.*` tools, and PRD-mcphost-rest-bridge P1 requirement added
+    // `host.bridge_test`, to that same plane -- eighteen tools total, no
     // client can break on the growth (see that PRD's
     // Migration/compatibility section).
     assert_eq!(
         tools.len(),
-        17,
-        "signup + host.* (incl. host.quickstart and host.tool_run) + host.tool_call + \
-         billing.* (3 tools): {tools:?}"
+        18,
+        "signup + host.* (incl. host.quickstart, host.tool_run, host.bridge_test) + \
+         host.tool_call + billing.* (3 tools): {tools:?}"
     );
     let tool = tools
         .iter()

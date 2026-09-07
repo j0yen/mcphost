@@ -266,6 +266,18 @@ fn host_tools(kinds: &KindRegistry) -> Vec<Tool> {
             ),
         ),
         Tool::new(
+            "host.bridge_test",
+            "Dry-run an `http`-kind spec (typically a declarative REST-bridge `upstream` \
+             spec) against its real upstream without publishing it: no tool is created, no \
+             `calls` row is written, and the rendered request is echoed back with secrets \
+             redacted, same as host.tool_test but for a spec you haven't published yet. An \
+             invalid spec reports the same failure class host.tool_publish would.",
+            host_schema(
+                json!({"spec": {"type": "object"}, "args": {"type": "object"}}),
+                &["spec", "args"],
+            ),
+        ),
+        Tool::new(
             "host.tool_run",
             "Debug run of a published tool: the same sandbox and limits as a real call, but \
              returns full stdout and stderr (each capped at 64 KiB) and the exit code alongside \
@@ -507,6 +519,7 @@ impl McpHostHandler {
             "host.tool_remove" => control::tool_remove(&self.state, tenant, &args).await,
             "host.tool_logs" => control::tool_logs(&self.state, tenant, &args).await,
             "host.tool_test" => self.tool_test(tenant, args).await,
+            "host.bridge_test" => self.bridge_test(tenant, args).await,
             "host.tool_run" => self.tool_run(tenant, args).await,
             "host.tool_call" => self.host_tool_call(tenant, args).await,
             "host.usage" => control::usage(&self.state, tenant, &args).await,
@@ -813,6 +826,69 @@ impl McpHostHandler {
             // key name inside whatever the kind's own (by-value) redaction
             // returned, proving the redaction is by key name rather than by
             // matching a value the caller controls.
+            Ok(Ok(value)) => Ok(crate::secrets::redact_keys(&value, &["tenant_key"])),
+            Ok(Err(kind_err)) => Err(AppError::from(kind_err)),
+            Err(_elapsed) => Err(AppError::CallTimeout),
+        }
+    }
+
+    /// `host.bridge_test` (PRD-mcphost-rest-bridge P1 requirement, AC6):
+    /// `host.tool_test`'s sibling for a spec that hasn't been published
+    /// yet -- "test before deploy" for a REST-bridge `upstream` spec (or
+    /// any `http`-kind spec). Unlike `tool_test`, it takes the `spec`
+    /// argument directly rather than looking a tool up by name, so nothing
+    /// is stored in the tenant's tool table: an invalid spec fails at
+    /// `validate` and a valid one performs the real dry-run call exactly
+    /// like `tool_test` (real upstream, no `calls` row, no persisted
+    /// logs, secrets redacted from the echoed request).
+    async fn bridge_test(&self, tenant: &Tenant, args: Value) -> Result<Value, AppError> {
+        let spec = args
+            .get("spec")
+            .cloned()
+            .ok_or_else(|| AppError::InvalidArgs("missing required argument 'spec'".into()))?;
+        let call_args = args
+            .get("args")
+            .cloned()
+            .unwrap_or_else(|| Value::Object(Default::default()));
+
+        let kind: Arc<dyn Kind> = self.state.kinds.get("http").ok_or_else(|| {
+            AppError::Internal("the 'http' kind is not registered on this host".into())
+        })?;
+
+        // AC6's "invalid bridge spec ... reports the failure class": the
+        // same `validate` a real `host.tool_publish` would run, so a spec
+        // that would be rejected at publish time fails identically here,
+        // before any request is attempted.
+        if let Err(e) = kind.validate(&spec) {
+            return Err(AppError::from(e));
+        }
+
+        let descriptor = kind.describe(&spec);
+        if let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
+            && let Err(e) = validator.validate(&call_args)
+        {
+            let data = describe_args_error(&e);
+            return Err(AppError::Structured {
+                code: "args_invalid",
+                message: e.to_string(),
+                data,
+            });
+        }
+
+        let secrets = build_secret_resolver(&self.state, tenant.id).await?;
+        let ctx = CallCtx {
+            tenant_id: tenant.id,
+            namespace: tenant.namespace.clone(),
+            secrets,
+            deadline: Instant::now() + self.state.call_timeout,
+            log: Arc::new(NullLog) as Arc<dyn CallLog>,
+            test_mode: true,
+            resources: Arc::new(NullResourceSink),
+            tool_name: None,
+        };
+
+        match tokio::time::timeout(self.state.call_timeout, kind.call(&spec, call_args, &ctx)).await
+        {
             Ok(Ok(value)) => Ok(crate::secrets::redact_keys(&value, &["tenant_key"])),
             Ok(Err(kind_err)) => Err(AppError::from(kind_err)),
             Err(_elapsed) => Err(AppError::CallTimeout),
