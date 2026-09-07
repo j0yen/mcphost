@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.23.0 — 2026-09-07
+
+
+Two changes aimed at the integration_specialist segment, both grounded in the 2026-09-06 baseline panel (segment satisfaction 0.67): http-kind tool responses land their body at `result.payload` the same way python-kind responses do, and a REST endpoint becomes a published tool from a declarative spec (base URL, method, param mapping) instead of hand-written glue. The measure of success is a candidate consume run lifting the segment against the pinned baseline.
+
 ## v0.22.0 — 2026-09-07
 
 PRD-mcphost-healthz-minimal: unblock archive gate by adding the missing `www`
