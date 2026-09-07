@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.20.0 — 2026-09-07
+
+Two changes aimed at the integration_specialist segment, both grounded in the 2026-09-06 baseline panel (segment satisfaction 0.67): http-kind tool responses land their body at `result.payload` the same way python-kind responses do, and a REST endpoint becomes a published tool from a declarative spec (base URL, method, param mapping) instead of hand-written glue. The measure of success is a candidate consume run lifting the segment against the pinned baseline.
+
 ## v0.19.0 — 2026-09-07
 
 Three fixes aimed at the rag_indexer segment (baseline satisfaction 0.62, the panel's weakest), each grounded in a recorded baseline session: a call that died with a bare `TypeError: int() argument ... not 'range'` returns a structured, actionable error naming its phase (`args_coercion`/`tool_code`), argument or exception class, and location -- confirmed to be a tool_code fault, since mcphost has no argument-coercion step that could produce a Python `range` object; publish and first-call latency are now instrumented (tracing) and measured at 44ms/95ms on a warm sandbox, comfortably inside the 10s/5s budget; and the python spec validator's message on a rejected assignment-expression target now names the accepted alternative in the same sentence.
