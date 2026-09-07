@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mcphost — Privacy Policy</title>
+<style>
+  /* Committed single look: matches the mcphost.dev C64 screen. */
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #7869C4; color: #C8C2FF;
+         font-family: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+         font-size: 16px; line-height: 1.6; letter-spacing: .02em; }
+  .screen { position: relative; max-width: 46rem; margin: 0 auto; min-height: 100vh;
+            background: #40318D; padding: 2.5rem 1.4rem 4rem;
+            border-left: 12px solid #7869C4; border-right: 12px solid #7869C4; }
+  .screen::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+                   background: repeating-linear-gradient(to bottom, rgba(0,0,0,.14) 0 1px, transparent 1px 3px);
+                   opacity: .35; }
+  h1 { font-size: 1.05rem; font-weight: 700; color: #FFFFFF; margin: 0 0 .5rem;
+       text-transform: uppercase; }
+  h1::before { content: "=== "; color: #8A7DDB; }
+  h1::after  { content: " ==="; color: #8A7DDB; }
+  h2 { font-size: 1rem; font-weight: 700; color: #FFFFFF; margin: 1.8rem 0 .4rem;
+       text-transform: uppercase; }
+  h2::before { content: "** "; color: #8A7DDB; }
+  h2::after  { content: " **"; color: #8A7DDB; }
+  p, ul { margin: 0 0 1rem; }
+  .meta { color: #A29AE0; margin: 0 0 2rem; font-size: .9em; }
+  code { color: #E8E5FF; }
+  pre { overflow-x: auto; }
+  a { color: #A8E4A0; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  a:hover { background: #A8E4A0; color: #40318D; text-decoration: none; }
+  ul { list-style: none; padding-left: 1.4rem; }
+  li::before { content: "> "; color: #8A7DDB; margin-left: -1.4rem; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 2px solid #7869C4;
+           color: #A29AE0; font-size: .9em; }
+</style>
+</head>
+<body>
+<main class="screen">
+<h1>Privacy Policy</h1>
+<p class="meta">mcphost.dev · Last updated September 6, 2026</p>
+
+<p>mcphost is operated by Joseph Yen (contact below). This page describes what the service stores and why. The design principle is minimal collection: signup asks for a name string and nothing else — no email, no web forms, no analytics scripts, no advertising trackers.</p>
+
+<h2>What we store</h2>
+<ul>
+  <li><strong>Tenant records</strong>: the display name given at signup, a tenant id, timestamps, plan, and a SHA-256 hash of the bearer key (never the key itself).</li>
+  <li><strong>Tools</strong>: the specifications and code a tenant publishes, as required to execute them.</li>
+  <li><strong>Secrets</strong>: values a tenant stores via <code>host.secret_set</code>, encrypted at rest with AES-256-GCM.</li>
+  <li><strong>Call and usage records</strong>: per-call metadata (tenant, tool, timestamp, duration, outcome) and tool logs, used for metering, quotas, billing, debugging, and abuse prevention.</li>
+  <li><strong>Network data</strong>: IP addresses appear in rate-limiting state and short-lived server logs, used for abuse prevention.</li>
+  <li><strong>Billing data</strong>: payments are processed by Stripe; we store plan status, Stripe customer and event identifiers, and a ledger of billing events. We never see or store card numbers. Stripe's handling is described in its own privacy policy.</li>
+</ul>
+
+<h2>Where it lives</h2>
+<p>Service data is stored on servers we rent from Hetzner in Germany (EU). Backups are kept on the same infrastructure. Our subprocessors are Hetzner (hosting), Cloudflare (DNS and, if enabled, email forwarding), and Stripe (payments).</p>
+
+<h2>What we do with it</h2>
+<p>We use stored data to run the service, meter and bill usage, enforce quotas and the acceptable-use policy, debug problems, and secure the platform. We do not sell data, share it for advertising, or use tenant code or data to train models.</p>
+
+<h2>Legal basis and your rights</h2>
+<p>We process data to perform the contract created at signup and for our legitimate interests in securing and improving the service. If you are in the EU/EEA, in California (CCPA/CPRA), or in a jurisdiction with similar rights, you can request access to, correction of, or deletion of data associated with your tenant by contacting us from a position that demonstrates control of the tenant (a signed request via the tenant's key, or the billing identity). Deleting a tenant removes its tools, secrets, and records except ledger entries we must keep for tax and accounting.</p>
+
+<h2>Retention</h2>
+<p>Tenant data persists while the tenant exists. Terminated or deleted tenants' data is removed within 30 days, except billing ledgers retained as legally required. Server logs rotate on a short schedule.</p>
+
+<h2>Changes</h2>
+<p>Updates appear on this page with a new date.</p>
+
+<h2>Contact</h2>
+<p><a href="mailto:hello@mcphost.dev">hello@mcphost.dev</a></p>
+
+<footer><a href="/">mcphost</a> · <a href="/terms">Terms</a> · <a href="/aup">Acceptable Use</a></footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,39 @@
+# mcphost
+
+> mcphost is a streamable-HTTP MCP host where the agent is the operator: an agent signs up with one unauthenticated tool call, receives a tenant key, and then publishes, lists, inspects, calls, and removes its own tools in its own namespace, with no web page and no human in the loop.
+
+mcphost implements the 2026-07-28 streamable-HTTP MCP specification, stateless, at a single endpoint: `POST /mcp`. Health is unauthenticated at `GET /healthz`.
+
+## Quickstart for agents
+
+1. Connect to the endpoint and call `tools/list` with no credentials. The only tool offered is `signup`.
+2. Call `signup(name)`. The response contains `tenant`, `key` (a bearer token, shown once), `namespace`, and `endpoint`. Signup is rate-limited to 5 per IP per hour.
+3. Reconnect with `Authorization: Bearer <key>`. The `host.*` control plane is now available.
+4. Publish a tool: `host.tool_publish(name, kind, spec)`. Kinds: `echo` (returns its arguments; spec is a JSON Schema), `http` (wraps a REST endpoint; url and method required, args_schema inferred if omitted), `python` (source required; args_schema and requirements inferred if omitted).
+5. Call your tool as `<namespace>.<tool_name>` over the same streamable-HTTP connection.
+6. Inspect and manage: `host.tool_list()`, `host.tool_logs(name)`, `host.tool_remove(name)`, `host.usage(window)`, `host.secret_set/list()` (secrets stored AES-256-GCM encrypted).
+
+## Limits and pricing
+
+- 50 tools per tenant; tool names match `^[a-z][a-z0-9_]{1,40}$`
+- Spec at most 64 KiB; request and call result at most 1 MiB; call timeout 30 s
+- Keys are 32-byte random bearer tokens, stored as SHA-256 hashes
+- Free plan (early access, default at signup): 500 calls per day, no card required
+- Pro plan: $19/month, 50,000 calls per month included, then $0.001 per call
+
+## Billing (tool calls, no dashboard)
+
+- `billing.plans()`: the plan catalog and `billing_mode` (`test` or `live`). Works anonymously.
+- `billing.status()`: this tenant's plan and usage against each quota, with `resets_at` for the daily call quota.
+- `billing.checkout(plan="pro")`: returns a Stripe Checkout `url` (valid about 24 hours). Hand it to the human who authorized you; when they pay, a webhook flips the tenant to `pro` within seconds. Call `billing.status` to confirm.
+- A call past a quota fails with `error_code: quota_exceeded`, `plan`, `limit {name, value}`, `used`, and `next: "billing.checkout"`. Do not retry; upgrade or wait for `resets_at`.
+
+## Measured performance
+
+- 200 concurrent `echo` calls: p95 34.20 ms, 0 errors, 37.3 MiB RSS (acceptance test AC11, Hetzner CPX21-class box)
+- Published tools appear in `tools/list` immediately; no cache layer
+
+## Operator notes
+
+- Admin runs through `admin.*` tools on the same endpoint with an admin key; there is no web UI by design.
+- Per-tenant metering (p50/p95 durations, call counts) via `host.usage` and `admin.usage`.

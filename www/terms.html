@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mcphost — Terms of Service</title>
+<style>
+  /* Committed single look: matches the mcphost.dev C64 screen. */
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #7869C4; color: #C8C2FF;
+         font-family: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+         font-size: 16px; line-height: 1.6; letter-spacing: .02em; }
+  .screen { position: relative; max-width: 46rem; margin: 0 auto; min-height: 100vh;
+            background: #40318D; padding: 2.5rem 1.4rem 4rem;
+            border-left: 12px solid #7869C4; border-right: 12px solid #7869C4; }
+  .screen::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+                   background: repeating-linear-gradient(to bottom, rgba(0,0,0,.14) 0 1px, transparent 1px 3px);
+                   opacity: .35; }
+  h1 { font-size: 1.05rem; font-weight: 700; color: #FFFFFF; margin: 0 0 .5rem;
+       text-transform: uppercase; }
+  h1::before { content: "=== "; color: #8A7DDB; }
+  h1::after  { content: " ==="; color: #8A7DDB; }
+  h2 { font-size: 1rem; font-weight: 700; color: #FFFFFF; margin: 1.8rem 0 .4rem;
+       text-transform: uppercase; }
+  h2::before { content: "** "; color: #8A7DDB; }
+  h2::after  { content: " **"; color: #8A7DDB; }
+  p, ul { margin: 0 0 1rem; }
+  .meta { color: #A29AE0; margin: 0 0 2rem; font-size: .9em; }
+  code { color: #E8E5FF; }
+  pre { overflow-x: auto; }
+  a { color: #A8E4A0; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  a:hover { background: #A8E4A0; color: #40318D; text-decoration: none; }
+  ul { list-style: none; padding-left: 1.4rem; }
+  li::before { content: "> "; color: #8A7DDB; margin-left: -1.4rem; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 2px solid #7869C4;
+           color: #A29AE0; font-size: .9em; }
+</style>
+</head>
+<body>
+<main class="screen">
+<h1>Terms of Service</h1>
+<p class="meta">mcphost.dev · Last updated September 6, 2026</p>
+
+<p>These terms govern use of mcphost, a hosted runtime for Model Context Protocol (MCP) tools operated by Joseph Yen, sole proprietor, doing business as mcphost ("we", "us"). By signing up — including when an AI agent signs up programmatically — you accept these terms.</p>
+
+<h2>1. Accounts and agents</h2>
+<p>A tenant is created by the <code>signup</code> tool call and controlled by its bearer key. mcphost is designed to be operated by AI agents; the person or entity that runs, authorizes, or benefits from an agent is the account holder and is responsible for everything done with the tenant's key, including charges. Keep the key secret; we store only a hash and cannot recover it.</p>
+
+<h2>2. The service</h2>
+<p>mcphost lets a tenant publish, call, and manage tools (echo, HTTP wrappers, and Python code) in an isolated namespace, subject to the published limits and the plan quotas returned by <code>billing.plans</code>. The service is in early access: features, limits, and pricing may change, and we may modify or discontinue parts of the service with reasonable notice where practical.</p>
+
+<h2>3. Your code and data</h2>
+<p>You retain ownership of tool specifications, code, and data you submit. You grant us the rights needed to store and execute them to provide the service. You are responsible for having the rights to anything you submit, and for what your published tools do when called.</p>
+
+<h2>4. Acceptable use</h2>
+<p>Use of the service is subject to the <a href="/aup">Acceptable Use Policy</a>, which is part of these terms. We may throttle, suspend, or terminate tenants that violate it, that create security or legal risk, or that abuse resources; where reasonable we will notify the contact we have and describe the cause.</p>
+
+<h2>5. Fees and billing</h2>
+<p>The free plan requires no payment. Paid plans are billed by Stripe on a subscription basis plus metered usage as described at signup and on <a href="/">the pricing section</a>. Metered usage is invoiced per the published per-call rate beyond the included volume. Price changes apply from your next billing period after notice. Taxes are added where required.</p>
+
+<h2>6. Sandboxing and security</h2>
+<p>Tenant code runs in an isolated sandbox with resource limits. We work to keep tenants isolated from each other and from the host, but no sandbox is guaranteed impenetrable. Do not test or probe the sandbox or the service's security except with our prior written permission.</p>
+
+<h2>7. Availability</h2>
+<p>The service is provided without an uptime commitment during early access. We take backups of service data but recommend you keep your own copies of tool specifications and code.</p>
+
+<h2>8. Disclaimer of warranties</h2>
+<p>The service is provided "as is" and "as available", without warranties of any kind, express or implied, including merchantability, fitness for a particular purpose, and non-infringement.</p>
+
+<h2>9. Limitation of liability</h2>
+<p>To the maximum extent permitted by law, our total liability arising out of or related to the service is limited to the amounts you paid us in the twelve months before the claim, and we are not liable for indirect, incidental, special, consequential, or exemplary damages, or for lost profits, data, or goodwill.</p>
+
+<h2>10. Indemnification</h2>
+<p>You will defend and indemnify us against claims arising from your tools, your use of the service, or your violation of these terms.</p>
+
+<h2>11. Termination</h2>
+<p>You can stop using the service at any time; contact us to delete a tenant. We may suspend or terminate tenants as described in section 4, and may delete a terminated tenant's data after 30 days.</p>
+
+<h2>12. Changes to these terms</h2>
+<p>We may update these terms; material changes will be reflected on this page with a new date, and continued use after the change is acceptance. The machine-readable service description at <a href="/llms.txt">/llms.txt</a> is kept consistent with these terms.</p>
+
+<h2>13. Governing law</h2>
+<p>These terms are governed by the laws of the State of California, USA, excluding conflict-of-law rules, and disputes belong to the state and federal courts located in California.</p>
+
+<h2>14. Contact</h2>
+<p><a href="mailto:hello@mcphost.dev">hello@mcphost.dev</a></p>
+
+<footer><a href="/">mcphost</a> · <a href="/privacy">Privacy</a> · <a href="/aup">Acceptable Use</a></footer>
+</main>
+</body>
+</html>

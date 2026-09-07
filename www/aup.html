@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mcphost — Acceptable Use Policy</title>
+<style>
+  /* Committed single look: matches the mcphost.dev C64 screen. */
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #7869C4; color: #C8C2FF;
+         font-family: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+         font-size: 16px; line-height: 1.6; letter-spacing: .02em; }
+  .screen { position: relative; max-width: 46rem; margin: 0 auto; min-height: 100vh;
+            background: #40318D; padding: 2.5rem 1.4rem 4rem;
+            border-left: 12px solid #7869C4; border-right: 12px solid #7869C4; }
+  .screen::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+                   background: repeating-linear-gradient(to bottom, rgba(0,0,0,.14) 0 1px, transparent 1px 3px);
+                   opacity: .35; }
+  h1 { font-size: 1.05rem; font-weight: 700; color: #FFFFFF; margin: 0 0 .5rem;
+       text-transform: uppercase; }
+  h1::before { content: "=== "; color: #8A7DDB; }
+  h1::after  { content: " ==="; color: #8A7DDB; }
+  h2 { font-size: 1rem; font-weight: 700; color: #FFFFFF; margin: 1.8rem 0 .4rem;
+       text-transform: uppercase; }
+  h2::before { content: "** "; color: #8A7DDB; }
+  h2::after  { content: " **"; color: #8A7DDB; }
+  p, ul { margin: 0 0 1rem; }
+  .meta { color: #A29AE0; margin: 0 0 2rem; font-size: .9em; }
+  code { color: #E8E5FF; }
+  pre { overflow-x: auto; }
+  a { color: #A8E4A0; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  a:hover { background: #A8E4A0; color: #40318D; text-decoration: none; }
+  ul { list-style: none; padding-left: 1.4rem; }
+  li::before { content: "> "; color: #8A7DDB; margin-left: -1.4rem; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 2px solid #7869C4;
+           color: #A29AE0; font-size: .9em; }
+</style>
+</head>
+<body>
+<main class="screen">
+<h1>Acceptable Use Policy</h1>
+<p class="meta">mcphost.dev · Last updated September 6, 2026 · Part of the <a href="/terms">Terms of Service</a></p>
+
+<p>mcphost executes code that tenants — usually AI agents — publish. That only works if every tenant stays within these rules. They apply to the account holder: the person or entity operating the agent.</p>
+
+<h2>Do not use mcphost to</h2>
+<ul>
+  <li>Break the law, or store or transmit unlawful material.</li>
+  <li>Create, host, or distribute malware, or run phishing, credential-harvesting, or fraud flows.</li>
+  <li>Attack third parties: no denial of service, no port scanning or vulnerability probing of systems you do not control, no circumventing another service's authentication, rate limits, or terms via the <code>http</code> tool kind.</li>
+  <li>Send spam or bulk unsolicited messages.</li>
+  <li>Mine cryptocurrency or run compute-burning workloads unrelated to tool calls.</li>
+  <li>Probe, scan, or attempt to escape the sandbox or otherwise test mcphost's security without prior written permission.</li>
+  <li>Evade quotas, rate limits, or suspensions — including by creating tenants in bulk.</li>
+  <li>Process others' personal data in ways they have not authorized.</li>
+</ul>
+
+<h2>Resource fairness</h2>
+<p>Plan quotas are the primary limit. Beyond them, sustained patterns that degrade the service for other tenants (pathological call shapes, storage abuse, timeout-riding) may be throttled even inside quota.</p>
+
+<h2>Enforcement</h2>
+<p>Depending on severity we throttle, suspend, or terminate tenants, and where the law requires it we report. We aim to warn first for good-faith mistakes; deliberate abuse skips the warning.</p>
+
+<h2>Reporting abuse</h2>
+<p>If a tool hosted here is attacking you or doing something it should not, email <a href="mailto:hello@mcphost.dev">hello@mcphost.dev</a> with the namespace or URL involved. Security researchers: coordinated disclosure to the same address is welcome; testing against the live service requires permission first.</p>
+
+<footer><a href="/">mcphost</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a></footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mcphost — where agents host their own tools</title>
+<meta name="description" content="A hosted MCP runtime: AI agents sign up by tool call, get a namespace, and publish and run their own tools. No dashboard, no human in the loop.">
+<style>
+  /* Committed single look: C64 boot screen. Deliberately no light theme. */
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #7869C4; color: #C8C2FF;
+         font-family: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+         font-size: 16px; line-height: 1.55; letter-spacing: .02em; }
+  .screen { position: relative; max-width: 46rem; margin: 0 auto; min-height: 100vh;
+            background: #40318D; padding: 2.5rem 1.4rem 4rem;
+            border-left: 12px solid #7869C4; border-right: 12px solid #7869C4; }
+  .screen::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+                   background: repeating-linear-gradient(to bottom, rgba(0,0,0,.14) 0 1px, transparent 1px 3px);
+                   opacity: .35; }
+  pre { margin: 0 0 1.2rem; overflow-x: auto; color: #C8C2FF; }
+  .boot { text-align: center; color: #E8E5FF; }
+  .cursor { display: inline-block; width: .6em; height: 1em; vertical-align: text-bottom;
+            background: #C8C2FF; animation: blink 1.1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .cursor { animation: none; } }
+  h1 { font-size: 1.05rem; font-weight: 700; color: #FFFFFF; margin: 2rem 0 .5rem;
+       text-transform: uppercase; }
+  h1::before { content: "=== "; color: #8A7DDB; }
+  h1::after  { content: " ==="; color: #8A7DDB; }
+  h2 { font-size: 1rem; font-weight: 700; color: #FFFFFF; margin: 2rem 0 .5rem;
+       text-transform: uppercase; }
+  h2::before { content: "** "; color: #8A7DDB; }
+  h2::after  { content: " **"; color: #8A7DDB; }
+  p, ul { margin: 0 0 1rem; }
+  code { color: #E8E5FF; }
+  .listing { border: 2px solid #7869C4; padding: .9rem 1rem; background: #362A78; }
+  a { color: #A8E4A0; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  a:hover { background: #A8E4A0; color: #40318D; text-decoration: none; }
+  ul { list-style: none; padding-left: 1.4rem; }
+  li::before { content: "> "; color: #8A7DDB; margin-left: -1.4rem; }
+  footer { margin-top: 3.5rem; padding-top: 1rem; border-top: 2px solid #7869C4;
+           color: #A29AE0; font-size: .9em; }
+  .ready { color: #E8E5FF; margin-top: 1.5rem; }
+  .snd { background: none; border: none; padding: 0; margin: 0 0 1rem;
+         font: inherit; letter-spacing: inherit; color: #A8E4A0; cursor: pointer;
+         text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  .snd:hover { background: #A8E4A0; color: #40318D; text-decoration: none; }
+</style>
+</head>
+<body>
+<main class="screen">
+<pre class="boot" aria-hidden="true">
+**** MCPHOST — MCP RUNTIME V2 ****
+
+ 38911 TOOL SLOTS FREE
+
+READY.
+LOAD "MCPHOST",8,1
+</pre>
+
+<h1>mcphost</h1>
+<p>Where agents host their own tools.</p>
+
+<p>mcphost is a hosted runtime for <a href="https://modelcontextprotocol.io">Model Context Protocol</a> tools. An AI agent signs up with one unauthenticated tool call, receives a tenant key and a namespace it owns, and then publishes, calls, inspects, and removes its own tools over streamable HTTP. No web dashboard, no human in the loop.</p>
+
+<h2>How it works</h2>
+<pre class="listing">10 TOOLS/LIST (NO CREDENTIALS)   : REM ONE TOOL OFFERED: SIGNUP
+20 SIGNUP(NAME)                  : REM TENANT, BEARER KEY, NAMESPACE
+30 RECONNECT WITH THE KEY        : REM HOST.* CONTROL PLANE
+40 HOST.TOOL_PUBLISH(NAME,KIND,SPEC)
+50 CALL &lt;NAMESPACE&gt;.&lt;TOOL&gt;       : REM LIVE IMMEDIATELY, NO RESTART
+RUN</pre>
+<p>Tool kinds: <code>echo</code>, <code>http</code> (wrap a REST endpoint), and <code>python</code> (sandboxed, schemas and requirements inferred from source). Per-tenant metering, logs, and encrypted secret storage are tool calls too.</p>
+<p>Measured under load: p95 of 34.2&nbsp;ms across 200 concurrent calls, zero errors.</p>
+
+<h2>For agents</h2>
+<p>The endpoint is <code>https://mcphost.dev/mcp</code>. The machine-readable summary is at <a href="/llms.txt">/llms.txt</a>.</p>
+
+<h2>Pricing</h2>
+<p>Free during early access: 50 tools per tenant, 500 calls per day, no card required. Pro is $19/month with 50,000 calls included, then $0.001 per call. Early tenants keep the free tier when early access ends.</p>
+
+<h2>Source and contact</h2>
+<ul>
+  <li>Source: <a href="https://github.com/j0yen/mcphost">github.com/j0yen/mcphost</a></li>
+  <li>Contact: <a href="mailto:hello@mcphost.dev">hello@mcphost.dev</a> or <a href="https://github.com/j0yen/mcphost/issues">GitHub issues</a></li>
+</ul>
+
+<button id="snd" class="snd" type="button" aria-pressed="false">SOUND: OFF</button>
+
+<p class="ready" aria-hidden="true">READY.<br><span class="cursor"></span></p>
+
+<footer>mcphost · operated by Joe Yen · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/aup">Acceptable Use</a> · status at <a href="/healthz">/healthz</a></footer>
+</main>
+<script>
+(function () {
+  "use strict";
+  var btn = document.getElementById("snd");
+  if (!btn) return;
+  var ctx = null, master = null, delaySend = null, timer = null, on = false;
+  var chordAt = 0, chordIdx = 0, bellAt = 0;
+  function freq(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+  /* ambient drift: four lush voicings, ~13s each, swells overlap so chords melt together */
+  var CHORDS = [[48,55,62,64,71],[45,52,59,64,67],[41,48,57,60,64],[43,50,57,62,66]];
+  var BELLS = [72,76,79,81,84,88];
+  var CHORD_DUR = 13;
+  function pad(t, midi, dur, gain) {
+    /* two detuned voices per note for slow chorus shimmer */
+    var det = [-5, 4], types = ["triangle", "sine"], i;
+    for (i = 0; i < 2; i++) {
+      var o = ctx.createOscillator(), g = ctx.createGain(), fl = ctx.createBiquadFilter();
+      o.type = types[i]; o.frequency.value = freq(midi); o.detune.value = det[i];
+      fl.type = "lowpass"; fl.frequency.value = 1400;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(gain, t + dur * 0.35);
+      g.gain.setValueAtTime(gain, t + dur * 0.6);
+      g.gain.linearRampToValueAtTime(0, t + dur);
+      o.connect(fl); fl.connect(g); g.connect(master); g.connect(delaySend);
+      o.start(t); o.stop(t + dur + 0.1);
+    }
+  }
+  function blip(t, midi, dur) {
+    /* one SID pulse-wave voice: hard on, fast decay */
+    var o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = "square"; o.frequency.value = freq(midi);
+    g.gain.setValueAtTime(0.03, t);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+    o.connect(g); g.connect(master); g.connect(delaySend);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+  function beep(t, midi) {
+    /* C64 game beeps: pickup blip, arpeggio chirp, or falling zap */
+    var r = Math.random(), i;
+    if (r < 0.4) {
+      blip(t, midi, 0.09);
+    } else if (r < 0.75) {
+      for (i = 0; i < 3; i++) blip(t + i * 0.055, midi + [0, 7, 12][i], 0.05);
+    } else {
+      var o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = "square";
+      o.frequency.setValueAtTime(freq(midi + 12), t);
+      o.frequency.exponentialRampToValueAtTime(freq(midi - 12), t + 0.22);
+      g.gain.setValueAtTime(0.025, t);
+      g.gain.exponentialRampToValueAtTime(0.0008, t + 0.22);
+      o.connect(g); g.connect(master); g.connect(delaySend);
+      o.start(t); o.stop(t + 0.25);
+    }
+  }
+  function wash() {
+    /* looped filtered noise bed, filter swept by a very slow LFO — distant air */
+    var n = ctx.sampleRate * 4, buf = ctx.createBuffer(1, n, ctx.sampleRate);
+    var d = buf.getChannelData(0);
+    for (var i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+    var src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+    var fl = ctx.createBiquadFilter(); fl.type = "lowpass"; fl.frequency.value = 480;
+    var g = ctx.createGain(); g.gain.value = 0.012;
+    var lfo = ctx.createOscillator(), lg = ctx.createGain();
+    lfo.type = "sine"; lfo.frequency.value = 0.05; lg.gain.value = 220;
+    lfo.connect(lg); lg.connect(fl.frequency);
+    src.connect(fl); fl.connect(g); g.connect(master);
+    src.start(); lfo.start();
+  }
+  function schedule() {
+    var now = ctx.currentTime, i;
+    while (chordAt < now + 1) {
+      var c = CHORDS[chordIdx % CHORDS.length];
+      for (i = 0; i < c.length; i++) pad(chordAt, c[i], CHORD_DUR * 1.35, 0.026);
+      pad(chordAt, c[0] - 12, CHORD_DUR * 1.35, 0.045);
+      chordIdx += 1; chordAt += CHORD_DUR;
+    }
+    while (bellAt < now + 1) {
+      if (bellAt > now) beep(bellAt, BELLS[Math.floor(Math.random() * BELLS.length)]);
+      bellAt += 4 + Math.random() * 6;
+    }
+  }
+  function start() {
+    if (!ctx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) { btn.textContent = "SOUND: N/A"; btn.disabled = true; return; }
+      ctx = new AC();
+      master = ctx.createGain(); master.gain.value = 0.5;
+      var warm = ctx.createBiquadFilter(); warm.type = "lowpass"; warm.frequency.value = 2400;
+      master.connect(warm); warm.connect(ctx.destination);
+      /* long damped feedback delay stands in for reverb */
+      delaySend = ctx.createGain(); delaySend.gain.value = 0.55;
+      var dl = ctx.createDelay(2); dl.delayTime.value = 0.62;
+      var damp = ctx.createBiquadFilter(); damp.type = "lowpass"; damp.frequency.value = 1200;
+      var fb = ctx.createGain(); fb.gain.value = 0.5;
+      delaySend.connect(dl); dl.connect(damp); damp.connect(fb); fb.connect(dl);
+      damp.connect(warm);
+      wash();
+    }
+    ctx.resume();
+    chordIdx = 0; chordAt = ctx.currentTime + 0.1; bellAt = ctx.currentTime + 6;
+    timer = setInterval(schedule, 250);
+    on = true; btn.textContent = "SOUND: ON"; btn.setAttribute("aria-pressed", "true");
+  }
+  function stop() {
+    if (timer) { clearInterval(timer); timer = null; }
+    if (ctx) ctx.suspend();
+    on = false; btn.textContent = "SOUND: OFF"; btn.setAttribute("aria-pressed", "false");
+  }
+  btn.addEventListener("click", function () { if (on) { stop(); } else { start(); } });
+})();
+</script>
+<!-- mcphost-deploy: static site marker, do not remove -->
+</body>
+</html>
