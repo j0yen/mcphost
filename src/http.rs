@@ -160,6 +160,19 @@ async fn healthz(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl
         obj.insert("sandbox_detail".to_string(), json!(status.detail));
         obj.insert("sandbox_checked_at".to_string(), json!(status.checked_at));
     }
+    // PRD-mcphost-client-ip-behind-proxy requirement 5 / AC6: additive,
+    // always present (0 on a box with no signups in the last 24h) --
+    // `count_distinct_source_ips_since` reads the same `signup_events`
+    // table the rate limiter and `resolve_source_ip` now populate with the
+    // Caddy-forwarded address instead of the shared loopback one.
+    if let Some(obj) = body.as_object_mut() {
+        let distinct = state
+            .db
+            .count_distinct_source_ips_since(crate::state::now_unix() - 86_400)
+            .await
+            .unwrap_or(0);
+        obj.insert("distinct_source_ips_24h".to_string(), json!(distinct));
+    }
     // PRD-grand-loop-billing AC4/AC11: `off` with no Stripe key, else
     // `test`/`live` from the key prefix, plus a live count of tenants on
     // any paid plan -- additive fields, ignored by an old client the same

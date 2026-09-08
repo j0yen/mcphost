@@ -107,14 +107,26 @@ fn get_parts(ctx: &RequestContext<RoleServer>) -> Result<&http::request::Parts, 
     })
 }
 
-/// The source IP used for signup rate limiting: the TCP peer address axum's
-/// `ConnectInfo` extractor attaches to every incoming request.
+/// The source address used for signup rate limiting, `signup_events`, and
+/// every other per-source read (requirement 4: one call site, funneling
+/// through [`crate::state::resolve_source_ip`]). PRD-mcphost-client-ip-behind-proxy:
+/// mcphost.dev runs behind Caddy on the same box, so the TCP peer axum's
+/// `ConnectInfo` extractor attaches is loopback for every proxied request --
+/// `resolve_source_ip` reads `X-Forwarded-For` in that case and falls back
+/// to the peer address otherwise (or when the header is missing or
+/// unparseable). HTTP header lookup is case-insensitive, so
+/// `X-Forwarded-For` (Caddy's default casing) matches the lowercase name
+/// here.
 fn source_ip(parts: &http::request::Parts) -> String {
-    parts
+    let peer = parts
         .extensions
         .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
-        .map(|ci| ci.0.ip().to_string())
-        .unwrap_or_else(|| "unknown".to_string())
+        .map(|ci| ci.0.ip().to_string());
+    let forwarded_for = parts
+        .headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok());
+    crate::state::resolve_source_ip(peer.as_deref(), forwarded_for)
 }
 
 fn mcp_name_header(parts: &http::request::Parts) -> Option<String> {

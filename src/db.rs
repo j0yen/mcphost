@@ -1240,6 +1240,23 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-client-ip-behind-proxy requirement 5 / AC6: `/healthz`'s
+    /// `distinct_source_ips_24h` -- the count of distinct
+    /// `signup_events.source_ip` values recorded in the last 24 hours, so
+    /// the per-source-address fix (one shared bucket becoming per-caller)
+    /// is visible from outside without a direct `sqlite3` query.
+    pub async fn count_distinct_source_ips_since(&self, since_unix: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(DISTINCT source_ip) FROM signup_events WHERE created_unix >= ?1",
+                params![since_unix],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
     /// `synthetic` (P2 requirement 8) is the same validated-or-null label
     /// `create_tenant` stores on the tenant row, recorded here too so the
     /// ledger of signup attempts is independently auditable even for a
