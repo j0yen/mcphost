@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tool-kind-honor.md",
-  "intent_slug": "mcphost-tool-kind-honor",
-  "root_motivation": "An agent publishing on mcphost describes a tool and gets whichever kind the spec shape implies; when the task (or a human) requires a specific kind \u2014 http for a network-latency benchmark, python for computation \u2014 the agent has no lever and no early signal. Measured: discovery run 2026-09-08T04:03Z at v0.14.0 (`evidence/mcp-host/discovery/2026-09-08-0.14.0/ledger.jsonl`), `panel_cost_optimizer_02` 0.429, judge: \"violated the explicit http-kind requirement by publishing a python-kind tool instead\"; measure at v0.26.3 (`evidence/mcp-host/measure/0.26.3-20260908T065427Z/ledger.jsonl`), the same session id 0.5: \"published the wrong tool kind (python instead of http) despite successfully measuring and returning real cold-start data\". A repeat across versions on one task is a product gap, not persona noise; a minor kind mismatch also appeared once in data_pipeline_builder in the discovery run.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-first-call-reliability.md",
+  "intent_slug": "mcphost-first-call-reliability",
+  "root_motivation": "An agent that publishes a Python tool on mcphost and calls it a few seconds later is the product's core loop; today that call can fail twice over. Measured 2026-09-08 (`evidence/mcp-host/measure/0.26.3-20260908T065427Z/ledger.jsonl`): `data_pipeline_builder_01` satisfaction 0.0 with `call_error` \"the tool's environment is still building; try again shortly\"; `data_pipeline_builder_03` 0.0, judge: \"The tool was correctly published to specification but the only attempt to call it failed with HTTP 403, so no task-relevant result\u2026 was ever obtained.\" Discovery run 2026-09-08T04:03Z at v0.14.0 (`evidence/mcp-host/discovery/2026-09-08-0.14.0/ledger.jsonl`): `rag_indexer_02` the same \"still building\" failure, then a null judge. Production confirms the scale (read-only query of `/var/lib/mcphost/mcphost.db` on mcphost-1, 2026-09-08): of 131 calls by unlabeled tenants, 51 failed, and 46 of those 51 carry `error_class = tool_building` \u2014 35% of all calls die on \"environment still building\";...",
   "user_persona": "An AI agent connecting to mcphost for the first time over streamable HTTP with default client configuration (Claude Agent SDK / Claude Code), which must be able to read a well-formed tool list before it can do anything else; secondarily the operator who probes the endpoint after a redeploy.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,37 +14,37 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a spec with `upstream` (http shape) published with `kind: http`, When publish runs, Then the tool is http-kind and `tools/list` (P1) or the publish response says so.",
+      "description": "Given a python-kind tool whose environment finishes building 5 s after a call arrives, When the call is made with the default bound, Then it returns the tool's real result and the call record shows `waited_ms` \u2265 5000.",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a spec with inline Python code published with `kind: http`, When publish runs, Then it returns `kind_mismatch` with `inferred: python` and a `reason` naming the inline code, and nothing is published.",
+      "description": "Given an environment that is not ready within the bound, When the call is made, Then the result is `{status:\"building\", retry_after_ms, ready_check}` as a JSON-RPC result, and no free-text \"try again shortly\" string is returned.",
       "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given `host.tool_test` on any spec, When it runs, Then the report includes `kind.resolved` and, if a kind was requested, `kind.requested` with a `reason` on disagreement.",
+      "description": "Given the recorded `panel_data_pipeline_builder_03` publish\u2192call sequence with one tenant key, When replayed against the fix, Then the first call returns 200-class success with a task-relevant payload (no 403).",
       "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given the `initialize` response, When its instructions text is read, Then it states how kind is chosen and how to request one explicitly.",
+      "description": "Given a successful python-kind publish, When no call has yet been made, Then the environment build has already been requested (pool state shows it building or ready).",
       "test": "tests/ac04_publish_list_and_call.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given `panel_cost_optimizer_02`'s recorded publish shape with `kind: http`, When replayed, Then the outcome is an http-kind tool or a `kind_mismatch` error \u2014 not a python-kind publish.",
+      "description": "Given the three recorded first-call-failure sessions replayed, When each first call is made, Then each returns a task-relevant result.",
       "test": "tests/ac05_cross_tenant_isolation.rs"
     },
     {
       "id": "AC6",
       "level": "SHOULD",
-      "description": "Given a published tool, When `tools/list` is read, Then its metadata includes `kind`.",
+      "description": "Given a call that waited or returned `building`, When the calls table is read, Then its outcome is recorded as `waited` or `building`, distinct from `ok`.",
       "test": "tests/ac06_remove_tool.rs"
     }
   ],
