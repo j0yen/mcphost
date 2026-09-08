@@ -66,6 +66,12 @@ struct HttpSpec {
     response: Option<String>,
     #[serde(default)]
     description: Option<String>,
+    /// PRD-mcphost-result-envelope-contract requirement 1: field names this
+    /// tool's caller can expect to read at `result.payload.<field>`. Optional
+    /// -- a spec that omits it (every spec published before this PRD) gets
+    /// no envelope changes (Migration/compatibility: additive).
+    #[serde(default)]
+    outputs: Vec<String>,
 }
 
 impl HttpSpec {
@@ -116,6 +122,8 @@ struct HttpSpecRaw {
     response: Option<String>,
     #[serde(default)]
     description: Option<String>,
+    #[serde(default)]
+    outputs: Vec<String>,
     /// PRD-mcphost-rest-bridge requirement: a single-endpoint REST bridge
     /// declared by upstream URL/method/param-mapping instead of
     /// hand-written `{{ }}` templates. See [`compile_upstream`].
@@ -293,6 +301,7 @@ fn compile_upstream(upstream: &UpstreamSpec, raw: &HttpSpecRaw) -> Result<HttpSp
         timeout_s: raw.timeout_s,
         response: raw.response.clone(),
         description: raw.description.clone(),
+        outputs: raw.outputs.clone(),
     })
 }
 
@@ -326,6 +335,7 @@ fn parse_spec(spec: &Value) -> Result<HttpSpec, KindError> {
                 timeout_s: raw.timeout_s,
                 response: raw.response,
                 description: raw.description,
+                outputs: raw.outputs,
             })
         }
         (None, false) => Err(KindError::InvalidSpec(
@@ -1046,6 +1056,19 @@ impl Kind for HttpKind {
             .unwrap_or_default()
     }
 
+    fn declared_outputs(&self, spec: &Value) -> Vec<String> {
+        parse_spec(spec).map(|parsed| parsed.outputs).unwrap_or_default()
+    }
+
+    fn payload_from_call_result<'a>(&self, call_result: &'a Value) -> Option<&'a Value> {
+        // Requirement 10 / AC15's test-mode echo nests the ordinary result
+        // (and its `payload`) under `response` -- see `call`'s
+        // `ctx.test_mode` branch below.
+        call_result
+            .get("payload")
+            .or_else(|| call_result.get("response").and_then(|r| r.get("payload")))
+    }
+
     async fn call(&self, spec: &Value, args: Value, ctx: &CallCtx) -> Result<Value, KindError> {
         let parsed = parse_spec(spec)?;
         let method_str = parsed.method.to_ascii_uppercase();
@@ -1307,9 +1330,26 @@ impl Kind for HttpKind {
         // flat, no-wrapper location a python-kind tool's own return value
         // already occupies -- added alongside the existing `body` location
         // so no current caller's `result.body...` assertion breaks (AC2).
+        //
+        // PRD-mcphost-result-envelope-contract requirement 1/2, AC1: when
+        // this spec declares `outputs`, `result.payload` is always an
+        // object, and each declared field is promoted into it from the
+        // body (including one level of common wrapping -- `data`,
+        // `result`, `response`) when not already present at the top level.
+        // A spec with no declared outputs keeps the exact prior shape
+        // (`payload` mirrors `body` unchanged, whatever its type).
         if let Value::Object(map) = &mut result {
-            let payload = map.get("body").cloned().unwrap_or(Value::Null);
-            map.insert("payload".to_string(), payload);
+            let body_clone = map.get("body").cloned().unwrap_or(Value::Null);
+            if parsed.outputs.is_empty() {
+                map.insert("payload".to_string(), body_clone);
+            } else {
+                let mut payload_map = match &body_clone {
+                    Value::Object(m) => m.clone(),
+                    _ => Map::new(),
+                };
+                super::promote_declared_outputs(&mut payload_map, &body_clone, &parsed.outputs);
+                map.insert("payload".to_string(), Value::Object(payload_map));
+            }
         }
 
         if ctx.test_mode {
