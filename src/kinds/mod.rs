@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use jsonschema::error::{TypeKind, ValidationErrorKind};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 pub mod conformance;
 pub mod docs;
@@ -233,6 +233,131 @@ pub async fn run_spec_test(
         });
     }
     out
+}
+
+// ---- result envelope contract (PRD-mcphost-result-envelope-contract) ------
+//
+// A spec that declares `outputs` (field names its tool promises to emit)
+// gets those fields promoted to `result.payload.<field>` regardless of kind
+// or how deep the tool's own response nests them -- the class of defect the
+// PRD's Problem statement measured: a working tool scored half-credit
+// because its judge's gold check looked for a field at a path the tool
+// never populated.
+
+/// One level of common API-response wrapping a declared field is searched
+/// under, beyond the source object's own top level (requirement 2, `http`).
+const ENVELOPE_WRAPPER_KEYS: [&str; 3] = ["data", "result", "response"];
+
+/// Finds `field` in `source`: at its top level, or nested one level inside
+/// `wrapper_keys` -- `Some(&ENVELOPE_WRAPPER_KEYS)` for requirement 2's
+/// `http` promotion (`data`/`result`/`response` only, an upstream REST
+/// response's own common shapes), `None` for requirement 3's `python`
+/// promotion (any single nested object key -- AC2's own example wraps
+/// `diagnosis` in `analysis`, a key with no fixed name to enumerate, since
+/// a python tool's return shape is the tool author's own code, not a
+/// third-party API's). `None` (not found) when the field is at neither
+/// depth.
+fn find_declared_field<'a>(
+    source: &'a Value,
+    field: &str,
+    wrapper_keys: Option<&[&str]>,
+) -> Option<&'a Value> {
+    let obj = source.as_object()?;
+    if let Some(v) = obj.get(field) {
+        return Some(v);
+    }
+    match wrapper_keys {
+        Some(keys) => {
+            for wrapper in keys {
+                if let Some(v) = obj
+                    .get(*wrapper)
+                    .and_then(|w| w.as_object())
+                    .and_then(|w| w.get(field))
+                {
+                    return Some(v);
+                }
+            }
+        }
+        None => {
+            for wrapper_val in obj.values() {
+                if let Some(v) = wrapper_val.as_object().and_then(|w| w.get(field)) {
+                    return Some(v);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Requirement 2, AC1: promotes every `declared` field found in `source` --
+/// at its top level or nested one level inside `data`/`result`/`response`
+/// -- into `payload`, skipping any field already present there (a tool that
+/// already places a field correctly is unchanged -- Migration/compatibility:
+/// additive, existing nested shapes stay). A no-op when `declared` is
+/// empty, so a tool with no declared outputs sees no envelope changes at
+/// all. Used by the `http` kind, whose body is a third-party upstream's own
+/// response shape (see [`find_declared_field`]'s doc for why `python` uses
+/// [`promote_declared_outputs_any_wrapper`] instead).
+pub fn promote_declared_outputs(payload: &mut Map<String, Value>, source: &Value, declared: &[String]) {
+    promote_declared_outputs_with(payload, source, declared, Some(&ENVELOPE_WRAPPER_KEYS));
+}
+
+/// Requirement 3, AC2: same as [`promote_declared_outputs`], but searches
+/// one level deep under *any* key, not just `data`/`result`/`response` --
+/// the `python` kind's tool code returns its own shape, so there is no
+/// fixed set of "common wrapper" names to check.
+pub fn promote_declared_outputs_any_wrapper(
+    payload: &mut Map<String, Value>,
+    source: &Value,
+    declared: &[String],
+) {
+    promote_declared_outputs_with(payload, source, declared, None);
+}
+
+fn promote_declared_outputs_with(
+    payload: &mut Map<String, Value>,
+    source: &Value,
+    declared: &[String],
+    wrapper_keys: Option<&[&str]>,
+) {
+    for field in declared {
+        if payload.contains_key(field) {
+            continue;
+        }
+        if let Some(v) = find_declared_field(source, field, wrapper_keys) {
+            payload.insert(field.clone(), v.clone());
+        }
+    }
+}
+
+/// Requirement 4: `host.tool_test`'s per-declared-field report -- which
+/// fields the contract path (`result.payload.<field>`) actually carries
+/// after a real call, and which are missing (the defect that docks a
+/// caller's judge half-credit, per the Problem statement). `payload` is
+/// whatever [`Kind::payload_from_call_result`] located, `None` when this
+/// kind's result had no `payload` at all. Returns `None` when `declared` is
+/// empty -- a tool with no declared outputs gets no envelope section.
+pub fn envelope_report(declared: &[String], payload: Option<&Value>) -> Option<Value> {
+    if declared.is_empty() {
+        return None;
+    }
+    let mut found = Vec::new();
+    let mut missing = Vec::new();
+    for field in declared {
+        let present = payload.and_then(|p| p.as_object()).is_some_and(|p| p.contains_key(field));
+        if present {
+            found.push(field.clone());
+        } else {
+            missing.push(field.clone());
+        }
+    }
+    let green = missing.is_empty();
+    Some(json!({
+        "declared": declared,
+        "found_at_contract_path": found,
+        "missing": missing,
+        "green": green,
+    }))
 }
 
 /// What a `Kind::describe` call reports about the tool it would publish.
@@ -497,6 +622,32 @@ pub trait Kind: Send + Sync {
     /// reads from. `None` (the default) for a kind with none.
     async fn sandbox_recheck(&self) -> Option<crate::sandbox::SandboxStatus> {
         None
+    }
+
+    /// PRD-mcphost-result-envelope-contract requirement 1: the output field
+    /// names this `spec` declares (its own `outputs`, when present) --
+    /// `Kind::call` promotes each to `result.payload.<field>` and
+    /// `host.tool_test` reports any that never land there. `Vec::new()`
+    /// (the default) for a kind with no declared-outputs concept, or an
+    /// unparseable spec (publish-time validation already rejects that spec
+    /// before this is ever reached in practice; this fallback exists only
+    /// so the method never panics) -- a tool that declares nothing gets no
+    /// envelope changes at all (additive, see Migration/compatibility).
+    fn declared_outputs(&self, _spec: &Value) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// PRD-mcphost-result-envelope-contract requirement 4: locates the
+    /// envelope contract's `payload` object inside whatever `Value`
+    /// `Kind::call` returned, so `host.tool_test` can check declared
+    /// fields against it without knowing each kind's own test-mode
+    /// wrapping. The default covers an ordinary (non-test-mode) call,
+    /// where `payload` sits at the result's own top level; a kind whose
+    /// `test_mode` echo nests the response elsewhere (`http`'s
+    /// `response.payload`, `python`'s `result.payload`) overrides this to
+    /// also check that path.
+    fn payload_from_call_result<'a>(&self, call_result: &'a Value) -> Option<&'a Value> {
+        call_result.get("payload")
     }
 }
 

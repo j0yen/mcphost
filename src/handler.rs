@@ -912,7 +912,24 @@ impl McpHostHandler {
             // key name inside whatever the kind's own (by-value) redaction
             // returned, proving the redaction is by key name rather than by
             // matching a value the caller controls.
-            Ok(Ok(value)) => Ok(crate::secrets::redact_keys(&value, &["tenant_key"])),
+            Ok(Ok(value)) => {
+                let mut value = crate::secrets::redact_keys(&value, &["tenant_key"]);
+                // PRD-mcphost-result-envelope-contract requirement 4, AC4:
+                // before publish, name any declared output field this
+                // spec's implementation buries -- `kind.declared_outputs`
+                // is `Vec::new()` (no report at all) for a spec that
+                // declares none, so this is invisible to every tool
+                // published before this PRD.
+                let declared = kind.declared_outputs(&row.spec);
+                if !declared.is_empty()
+                    && let Some(envelope) =
+                        crate::kinds::envelope_report(&declared, kind.payload_from_call_result(&value))
+                    && let Value::Object(map) = &mut value
+                {
+                    map.insert("envelope".to_string(), envelope);
+                }
+                Ok(value)
+            }
             Ok(Err(kind_err)) => Err(AppError::from(kind_err)),
             Err(_elapsed) => Err(AppError::CallTimeout),
         }
@@ -1294,7 +1311,11 @@ impl ServerHandler for McpHostHandler {
                  control plane -- including `host.tool_publish` and `host.tool_call` -- is \
                  already visible in this tools/list, before you have a key. Pass the key \
                  `signup` returns as the `tenant_key` argument on every call after that; no \
-                 reconnect and no Authorization header is required.",
+                 reconnect and no Authorization header is required. Result envelope contract: \
+                 when a spec declares `outputs` (field names its tool emits), each is readable \
+                 at `result.payload.<field>` for every kind, regardless of how deep the tool's \
+                 own response nests it -- run `host.tool_test` before publishing to see which \
+                 declared fields your implementation buries.",
         );
         // PRD-mcphost-sandbox-ready P1 requirement 7 (AC8): named here too,
         // not just in host.tool_publish's own description -- a client that

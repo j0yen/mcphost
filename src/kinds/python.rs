@@ -95,7 +95,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use tokio::sync::Semaphore;
 
@@ -158,6 +158,12 @@ struct PythonSpec {
     secrets: Vec<String>,
     #[serde(default)]
     description: Option<String>,
+    /// PRD-mcphost-result-envelope-contract requirement 1: field names this
+    /// tool's caller can expect to read at `result.payload.<field>`.
+    /// Optional -- a spec that omits it (every spec published before this
+    /// PRD) gets no envelope changes (Migration/compatibility: additive).
+    #[serde(default)]
+    outputs: Vec<String>,
 }
 
 impl PythonSpec {
@@ -1705,6 +1711,67 @@ fn map_sandbox_outcome(outcome: SandboxOutcome) -> Result<Value, KindError> {
     }
 }
 
+// ---- result envelope contract (PRD-mcphost-result-envelope-contract) ------
+
+/// A `Value`'s JSON type name, for the AC3 scalar-promotion warning message.
+fn value_type_name(v: &Value) -> &'static str {
+    match v {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
+}
+
+/// Requirement 3: promotes `declared` output fields into `result.payload`
+/// for a python tool's own returned value -- the same contract `http`'s
+/// `call` applies to its response body (requirement 2), but starting from a
+/// value that (unlike `http`'s always-object body) may be a bare
+/// scalar/list/string. A no-op (returns `value` unchanged) when `declared`
+/// is empty, so a tool with no declared outputs sees no envelope changes at
+/// all (Migration/compatibility: additive).
+///
+/// AC2: an object return gets `payload` alongside its existing top-level
+/// fields, mirroring the whole value plus any promoted (nested-one-level)
+/// field -- same shape `http`'s `body`+`payload` pair already has.
+///
+/// AC3: a bare scalar/list has no object keys to search, so the whole
+/// value is promoted to the *first* declared field, with a structured
+/// `_envelope_warning` naming the scalar promotion rather than silently
+/// guessing which declared field the raw value represents.
+fn apply_declared_outputs(value: Value, declared: &[String]) -> Value {
+    if declared.is_empty() {
+        return value;
+    }
+    match value {
+        Value::Object(obj) => {
+            let source = Value::Object(obj.clone());
+            let mut payload_map = obj.clone();
+            super::promote_declared_outputs_any_wrapper(&mut payload_map, &source, declared);
+            let mut out = obj;
+            out.insert("payload".to_string(), Value::Object(payload_map));
+            Value::Object(out)
+        }
+        other => {
+            let first = declared[0].clone();
+            let type_name = value_type_name(&other);
+            let mut payload_map = Map::new();
+            payload_map.insert(first.clone(), other.clone());
+            payload_map.insert(
+                "_envelope_warning".to_string(),
+                json!(format!(
+                    "tool returned a bare {type_name} but declares outputs {declared:?}; the \
+                     whole value was promoted to '{first}' since there are no object keys to \
+                     match the rest against -- return an object with matching keys instead"
+                )),
+            );
+            json!({"value": other, "payload": Value::Object(payload_map)})
+        }
+    }
+}
+
 // ---- secret redaction (requirement 7, AC11) --------------------------------
 //
 // Same shape as `kinds::http`'s own redaction (that module can't be reused
@@ -2345,6 +2412,19 @@ impl Kind for PythonKind {
         parse_spec(spec).map(|p| p.secrets).unwrap_or_default()
     }
 
+    fn declared_outputs(&self, spec: &Value) -> Vec<String> {
+        parse_spec(spec).map(|p| p.outputs).unwrap_or_default()
+    }
+
+    fn payload_from_call_result<'a>(&self, call_result: &'a Value) -> Option<&'a Value> {
+        // Requirement 10 / AC15's test-mode echo nests the ordinary result
+        // (and its `payload`) under `result` -- see `call`'s
+        // `ctx.test_mode` branch above.
+        call_result
+            .get("payload")
+            .or_else(|| call_result.get("result").and_then(|r| r.get("payload")))
+    }
+
     /// PRD-mcphost-tool-test AC1: `host.spec_test`'s reported `requirements`
     /// for a python spec -- the author's own, or inferred from `source`,
     /// exactly like [`Kind::call`]/`describe` would build the environment
@@ -2546,6 +2626,11 @@ impl Kind for PythonKind {
         match map_sandbox_outcome(outcome) {
             Ok(value) => {
                 let redacted = redact_value(&value, &secret_values);
+                // PRD-mcphost-result-envelope-contract requirement 1/3,
+                // AC2/AC3: declared output fields promoted to
+                // `result.payload.<field>` -- a no-op when this spec
+                // declares none.
+                let redacted = apply_declared_outputs(redacted, &parsed.outputs);
                 // Requirement 10 / AC15: `host.tool_test` shows the schema
                 // the host inferred (or the author's own, unchanged) so a
                 // tenant can inspect it before relying on it. Same pattern
