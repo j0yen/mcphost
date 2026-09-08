@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.31.0 — 2026-09-08
+
+Every row in the live `signup_events` table carries `source_ip=127.0.0.1`. mcphost.dev runs behind Caddy on the same box, so the TCP peer of every request is loopback, and the handler takes the source address from `ConnectInfo` alone. Two things break. The signup rate limiter, keyed per source, is one shared bucket for the whole internet: the first hundred signups per hour from anyone exhaust it for everyone. And the tenant-attribution work that classifies sources as real or synthetic has no address to classify. This PRD reads the client address from `X-Forwarded-For` when, and only when, the peer is loopback, and uses that address wherever the source address is used today.
+
 ## v0.30.0 — 2026-09-08
 
 mcphost now derives a real vs synthetic source_class for every tenant at signup instead of trusting a hand-set flag: loopback and known fleet keys are classified synthetic, everything else is external, and migration 0010_tenant_attribution backfills the 95 previously unlabeled tenants under that same rule. Signup and the MCP initialize handshake now capture clientInfo (name, version) and the caller's source class, and /healthz reports honest attribution counts alongside a new tenants_by_client breakdown. A mcphost funnel CLI command reports signups, publishes, successful calls, returns, cap hits, and upgrades split by real vs synthetic tenants, and a host.whoami tool lets a client confirm how it was classified. The P1 agorabus event for first daily external signup is deferred and not part of this ship.
