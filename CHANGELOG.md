@@ -1,3 +1,11 @@
+# Changelog
+
+## v0.27.0 — 2026-09-08
+
+Four of the twenty-one sessions in the 2026-09-08 measure at v0.26.3 lost roughly half their credit for the same reason: the tool did the job and the judge said so, but the field the task's gold check looks for sat somewhere else in the response — "nested in response data", "the gold check's literal field path was not matched", "despite the structural deviation in where the diagnosis field appears". rest-bridge (v0.20) fixed one instance of this by placing http bodies at `result.payload`; the class survived because nothing defines where a *declared* output field must land, so each kind and each tool nests differently. This PRD makes the envelope a contract: a field the tool spec declares as output is present at `result.payload.<field>` for every kind, `host.tool_test` reports any declared field that is missing at that path before publish, and callers get one documented shape.
+
+P1 (AC6 — publish-time structured warning when a preceding tool_test showed missing declared fields) is deferred: it needs a cross-cutting persistence/execution decision (whether to persist the last tool_test's envelope verdict per tool row, or have host.tool_publish itself perform a live call) this PRD's Technical considerations section does not scope.
+
 ## v0.26.3
 
 - chore release: gate baseline shrunk to reviewer-agent only after rollback-plan passed under redeploy-tag; tagged so HEAD stays taggable under that model.
