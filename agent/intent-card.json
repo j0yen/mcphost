@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tenant-attribution.md",
-  "intent_slug": "mcphost-tenant-attribution",
-  "root_motivation": "Joe is optimizing a product for a customer that, as far as the host can tell, has never arrived \u2014 and the host says the opposite. Read-only query of `/var/lib/mcphost/mcphost.db` on 2026-09-08: 120 tenants, 25 labeled `synthorg:mcp-host-project-consume`, 95 with `synthetic` NULL; those 95 have persona display names, `signup_events.source_ip` is 127.0.0.1 for all 139 events (zero non-loopback signups ever), and per-day counts are 3/29/21/21/21. `/healthz` computes `tenants_real=95` from the NULL label. Consequence: the grand loop's leading indicators are fiction, a genuine signup would be indistinguishable from the next panel run, and if one came from, say, Claude Code vs Cursor vs a custom SDK client, nothing would record it \u2014 the one fact distribution work needs.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-client-ip-behind-proxy.md",
+  "intent_slug": "mcphost-client-ip-behind-proxy",
+  "root_motivation": "Facts from 2026-09-08:",
   "user_persona": "An AI agent connecting to mcphost for the first time over streamable HTTP with default client configuration (Claude Agent SDK / Claude Code), which must be able to read a well-formed tool list before it can do anything else; secondarily the operator who probes the endpoint after a redeploy.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,44 +14,38 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a signup from 127.0.0.1 with no stamp, When it completes, Then the tenant has `source_class = loopback` and `synthetic = harness:unstamped`, and `/healthz tenants_real` does not count it.",
+      "description": "Given a request whose peer is `127.0.0.1` and whose `X-Forwarded-For` is `203.0.113.7, 10.0.0.1`, When the handler resolves the source, Then the source is `203.0.113.7`.",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a signup whose `initialize` carried `clientInfo {name:\"claude-code\", version:\"2.1\"}`, When it completes, Then the tenant row stores that client name and version and `tenants_by_client` on `/healthz` counts it.",
+      "description": "Given a request whose peer is `198.51.100.4` and whose `X-Forwarded-For` is `203.0.113.7`, When the handler resolves the source, Then the source is `198.51.100.4`.",
       "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the production DB state of 2026-09-08 (95 unlabeled loopback tenants), When the backfill migration runs, Then all 95 are classified synthetic (`classified_by = backfill`), `wintermute-hub` is `fleet`, and `/healthz` reports `tenants_real = 0`.",
+      "description": "Given a request whose peer is loopback and whose header is `not-an-ip`, When the handler resolves the source, Then the source is the peer address and the request is not rejected.",
       "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a signup from a non-loopback IP with no stamp and an unknown client, When it completes, Then `source_class = external` and `tenants_real` increments by one.",
+      "description": "Given `MCPHOST_SIGNUP_RATE_LIMIT_PER_HOUR=2` and two signups from loopback with `X-Forwarded-For: 203.0.113.7` followed by one from loopback with `X-Forwarded-For: 203.0.113.8`, When they run in one hour, Then the third succeeds and a fourth from `203.0.113.7` is rate-limited.",
       "test": "tests/ac04_publish_list_and_call.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the tables as they exist, When `mcphost funnel --json` runs, Then it reports the six stages for real and synthetic tenants and the median signup\u2192first-successful-call time, in under 2 s on the current DB.",
+      "description": "Given a signup proxied from loopback with a forwarded address, When it completes, Then the `signup_events` row for it stores the forwarded address.",
       "test": "tests/ac05_cross_tenant_isolation.rs"
     },
     {
       "id": "AC6",
       "level": "SHOULD",
-      "description": "Given an authenticated tenant, When it calls `host.whoami`, Then the response includes its `source_class` and recorded client name.",
+      "description": "Given the authenticated `/healthz`, When read after AC4's signups, Then `distinct_source_ips_24h` is 2.",
       "test": "tests/ac06_remove_tool.rs"
-    },
-    {
-      "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given the first external signup of a day, When it completes, Then one `tenant.external_signup` event is emitted (or a journal line when no bus is configured).",
-      "test": "tests/ac07_usage_metering.rs"
     }
   ],
   "scope": [
