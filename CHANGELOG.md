@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.29.0 — 2026-09-08
+
+Two of the twenty-one sessions in the 2026-09-08 measure at v0.26.3 scored zero, both on the first call after a successful publish: `panel_data_pipeline_builder_01` got "the tool's environment is still building; try again shortly" and never retried; `panel_data_pipeline_builder_03` published to spec and its only call failed with HTTP 403. The same "still building" shape zeroed `panel_rag_indexer_02` in the 2026-09-08 discovery run at v0.14.0. sandbox-ready and python-kind-runtime made *publish* fast and honest; the *call* path still hands an agent a bare retry hint it cannot act on. This PRD makes a call during environment build wait (bounded) for readiness instead of failing, returns a structured `building` result with `retry_after_ms` and a readiness handle when the bound is exceeded, and diagnoses and fixes the same-tenant 403.
+
 ## v0.28.0 — 2026-09-08
 
 In both 2026-09-08 runs the cost_optimizer persona's cold-start-benchmark task published a python-kind tool when the task explicitly required http-kind, and the judge docked the session to 0.429 / 0.5 for it — twice, on the same task, across a version jump from 0.14.0 to 0.26.3, with the tool otherwise correct ("successfully measuring and returning real cold-start data with the required field name"). Nothing in the publish path lets a publisher assert the kind and be refused when the spec contradicts it, and nothing in `host.tool_test` reports which kind the spec will produce. This PRD adds an explicit `kind` on publish that is honored or refused with a structured reason, a kind line in the tool_test report, and one sentence in the `initialize` instructions telling agents how kind is chosen — so a kind mismatch becomes a publish-time error, not a judge's verdict.
