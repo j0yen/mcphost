@@ -65,7 +65,7 @@ async fn delete_writes_one_log_line_one_admin_event_and_leaves_usage_untouched()
     server
         .state
         .db
-        .record_call(tenant.id, "tool0".to_string(), 5, true, None, None, None)
+        .record_call(tenant.id, "tool0".to_string(), 5, true, None, None, None, "ok")
         .await
         .expect("record_call");
 
@@ -87,7 +87,7 @@ async fn delete_writes_one_log_line_one_admin_event_and_leaves_usage_untouched()
     server
         .state
         .db
-        .record_call(other_tenant.id, "toolX".to_string(), 5, true, None, None, None)
+        .record_call(other_tenant.id, "toolX".to_string(), 5, true, None, None, None, "ok")
         .await
         .expect("record_call for bystander");
     let usage_before = admin
