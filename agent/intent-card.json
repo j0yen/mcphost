@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-result-envelope-contract.md",
-  "intent_slug": "mcphost-result-envelope-contract",
-  "root_motivation": "Joe's panel personas (and any real agent) read tool results by field name at a path they can predict; mcphost tools return correct content at unpredictable depths, so a working tool reads as a broken one. Measured 2026-09-08 (`evidence/mcp-host/measure/0.26.3-20260908T065427Z/ledger.jsonl`): `panel_rag_indexer_03` 0.462 (\"real, substantive ingestion status metrics\u2026 despite GOLD CHECK format mismatch\"), `panel_workflow_orchestrator_01` 0.492 (\"real backend content containing the blocking_tool value\u2026 the gold check's literal field path was not matched\"), `panel_integration_specialist_01` 0.5 (\"returned the required bridge_status field (nested in response data)\"), `panel_integration_specialist_02` 0.444 (\"despite the structural deviation in where the diagnosis field appears\"). Four sessions \u00d7 ~0.5 lost = the single largest recoverable satisfaction deficit in the run, and the same shape the 2026-09-06 baseline showed on `integration_specialist_01/_03` before rest-bridge.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tool-kind-honor.md",
+  "intent_slug": "mcphost-tool-kind-honor",
+  "root_motivation": "An agent publishing on mcphost describes a tool and gets whichever kind the spec shape implies; when the task (or a human) requires a specific kind \u2014 http for a network-latency benchmark, python for computation \u2014 the agent has no lever and no early signal. Measured: discovery run 2026-09-08T04:03Z at v0.14.0 (`evidence/mcp-host/discovery/2026-09-08-0.14.0/ledger.jsonl`), `panel_cost_optimizer_02` 0.429, judge: \"violated the explicit http-kind requirement by publishing a python-kind tool instead\"; measure at v0.26.3 (`evidence/mcp-host/measure/0.26.3-20260908T065427Z/ledger.jsonl`), the same session id 0.5: \"published the wrong tool kind (python instead of http) despite successfully measuring and returning real cold-start data\". A repeat across versions on one task is a product gap, not persona noise; a minor kind mismatch also appeared once in data_pipeline_builder in the discovery run.",
   "user_persona": "An AI agent connecting to mcphost for the first time over streamable HTTP with default client configuration (Claude Agent SDK / Claude Code), which must be able to read a well-formed tool list before it can do anything else; secondarily the operator who probes the endpoint after a redeploy.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,37 +14,37 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given an http-kind tool whose spec declares output field `bridge_status` and whose upstream returns `{\"data\":{\"bridge_status\":\"ok\"}}`, When it is called, Then `result.payload.bridge_status` equals `\"ok\"` and the original body remains present.",
+      "description": "Given a spec with `upstream` (http shape) published with `kind: http`, When publish runs, Then the tool is http-kind and `tools/list` (P1) or the publish response says so.",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a python-kind tool declaring `diagnosis` that returns `{\"analysis\":{\"diagnosis\":\"\u2026\"}}`, When called, Then `result.payload.diagnosis` is present with that value.",
+      "description": "Given a spec with inline Python code published with `kind: http`, When publish runs, Then it returns `kind_mismatch` with `inferred: python` and a `reason` naming the inline code, and nothing is published.",
       "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a python-kind tool declaring `row_count` that returns the bare integer 42, When called, Then `result.payload.row_count` is 42 and `result.payload._envelope_warning` names the scalar promotion.",
+      "description": "Given `host.tool_test` on any spec, When it runs, Then the report includes `kind.resolved` and, if a kind was requested, `kind.requested` with a `reason` on disagreement.",
       "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given `host.tool_test` on a spec declaring `blocking_tool` whose implementation never emits it, When the test runs, Then the report's `envelope.missing` contains `blocking_tool` and the run is not green.",
+      "description": "Given the `initialize` response, When its instructions text is read, Then it states how kind is chosen and how to request one explicitly.",
       "test": "tests/ac04_publish_list_and_call.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the four recorded 2026-09-08 sessions' call shapes replayed against the fix, When each tool is called, Then each session's checked field is found at `result.payload.<field>`.",
+      "description": "Given `panel_cost_optimizer_02`'s recorded publish shape with `kind: http`, When replayed, Then the outcome is an http-kind tool or a `kind_mismatch` error \u2014 not a python-kind publish.",
       "test": "tests/ac05_cross_tenant_isolation.rs"
     },
     {
       "id": "AC6",
       "level": "SHOULD",
-      "description": "Given a publish whose preceding tool_test showed `envelope.missing` non-empty, When publish completes, Then the response carries a structured warning naming those fields and the tool is still published.",
+      "description": "Given a published tool, When `tools/list` is read, Then its metadata includes `kind`.",
       "test": "tests/ac06_remove_tool.rs"
     }
   ],
