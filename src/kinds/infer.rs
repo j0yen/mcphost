@@ -501,6 +501,65 @@ pub fn infer_http_args_schema(fields: &[(String, String)]) -> Result<Value, Kind
     Ok(schema)
 }
 
+// ---- kind derivation (PRD-mcphost-tool-kind-honor requirement 1) ----------
+
+/// What a raw `spec`'s own shape says it can only be, independent of
+/// whatever `kind` a caller requested it be published under -- e.g. an
+/// inline `source` field is meaningless to anything but the `python` kind;
+/// `upstream` (or `method`/`url`) is meaningless to anything but `http`'s
+/// request template. `reason` names the exact spec element that forces it,
+/// for a `kind_mismatch` error's `data.reason` (requirement 1) or
+/// `host.spec_test`'s `kind.reason` (requirement 2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KindSignal {
+    pub kind: &'static str,
+    pub reason: String,
+}
+
+/// Requirement 1: a constraint check against a spec's own shape, not a
+/// second inference engine -- `python`'s `source` and `http`'s
+/// `upstream`/`method`/`url` are each already the field the corresponding
+/// `Kind::validate` requires (`kinds::python::PythonSpec::source`,
+/// `kinds::http::HttpSpecRaw::{upstream,method,url}`), so this only reads
+/// the raw JSON for their presence rather than re-deriving anything
+/// `python`/`http` themselves already own.
+///
+/// `None` when `spec` isn't an object, or carries neither signal (an empty
+/// or malformed spec -- left entirely to the requested kind's own
+/// `validate` to reject on its own terms) or, per the PRD's open question,
+/// carries *both* (a spec mixing `source` with `upstream`/`method`/`url` is
+/// already self-contradictory; arbitrating that mix is out of scope here,
+/// so it is not second-guessed and falls through to the requested kind's
+/// own validation instead of a `kind_mismatch` this function can't justify
+/// picking a side for).
+pub fn infer_kind_signal(spec: &Value) -> Option<KindSignal> {
+    let obj = spec.as_object()?;
+    let has_source = obj.get("source").is_some_and(Value::is_string);
+    let has_upstream = obj.contains_key("upstream");
+    let has_http_fields = has_upstream || obj.contains_key("method") || obj.contains_key("url");
+    match (has_source, has_http_fields) {
+        (true, false) => Some(KindSignal {
+            kind: "python",
+            reason: "spec.source (inline code) is present, which only the python kind runs"
+                .to_string(),
+        }),
+        (false, true) => {
+            let element = if has_upstream {
+                "spec.upstream"
+            } else {
+                "spec.method/spec.url"
+            };
+            Some(KindSignal {
+                kind: "http",
+                reason: format!(
+                    "{element} is present, which only the http kind's request template accepts"
+                ),
+            })
+        }
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -642,5 +701,48 @@ mod tests {
                 "customer_name".to_string(),
             ])
         );
+    }
+
+    #[test]
+    fn kind_signal_from_source_is_python() {
+        let spec = json!({"source": "def main(args):\n    return {}\n"});
+        let signal = infer_kind_signal(&spec).expect("signal");
+        assert_eq!(signal.kind, "python");
+        assert!(signal.reason.contains("source"));
+    }
+
+    #[test]
+    fn kind_signal_from_upstream_is_http() {
+        let spec = json!({"upstream": {"url": "https://api.example.com", "method": "GET"}});
+        let signal = infer_kind_signal(&spec).expect("signal");
+        assert_eq!(signal.kind, "http");
+        assert!(signal.reason.contains("upstream"));
+    }
+
+    #[test]
+    fn kind_signal_from_method_and_url_is_http() {
+        let spec = json!({"method": "GET", "url": "https://api.example.com"});
+        let signal = infer_kind_signal(&spec).expect("signal");
+        assert_eq!(signal.kind, "http");
+        assert!(signal.reason.contains("method"));
+    }
+
+    #[test]
+    fn kind_signal_absent_for_neither_shape() {
+        let spec = json!({"schema": {"type": "object"}});
+        assert!(infer_kind_signal(&spec).is_none());
+    }
+
+    #[test]
+    fn kind_signal_absent_when_both_shapes_present() {
+        // Self-contradictory spec (open question in the PRD): not this
+        // function's call to arbitrate, so no signal either way.
+        let spec = json!({"source": "def main(args):\n    return {}\n", "url": "https://x"});
+        assert!(infer_kind_signal(&spec).is_none());
+    }
+
+    #[test]
+    fn kind_signal_absent_for_non_object_spec() {
+        assert!(infer_kind_signal(&json!("not an object")).is_none());
     }
 }

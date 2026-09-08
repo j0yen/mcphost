@@ -9,6 +9,7 @@ use rmcp::model::{ErrorCode, ErrorData};
 use serde_json::{Map, Value, json};
 
 use crate::kinds::KindError;
+use crate::kinds::infer::KindSignal;
 
 /// A corrected example value for a well-known spec/argument field name,
 /// shared by every kind's rejections (PRD-mcphost-publish-first-try
@@ -199,7 +200,9 @@ impl AppError {
             // INTERNAL_ERROR-mapped variants above.
             AppError::Structured { code, .. } => match *code {
                 "rate_limited" => ErrorCode::INVALID_REQUEST,
-                "host_not_allowed" | "args_invalid" | "template_error" => ErrorCode::INVALID_PARAMS,
+                "host_not_allowed" | "args_invalid" | "template_error" | "kind_mismatch" => {
+                    ErrorCode::INVALID_PARAMS
+                }
                 _ => ErrorCode::INTERNAL_ERROR,
             },
             AppError::MultiInvalid { errors, .. } => errors
@@ -371,6 +374,29 @@ impl AppError {
                 "mechanism": status.mechanism.as_str(),
                 "detail": status.detail,
                 "alternatives": ["echo", "http"],
+            }),
+        }
+    }
+
+    /// PRD-mcphost-tool-kind-honor requirement 1 (AC2): the caller's own
+    /// requested `kind` disagrees with what the spec's shape can only be
+    /// (see [`crate::kinds::infer::infer_kind_signal`]) -- refused before
+    /// the spec is ever validated against (let alone stored under) the
+    /// wrong `Kind` impl, naming the disagreeing element so the caller can
+    /// fix either the spec or the request, instead of getting whichever
+    /// kind's own `validate` happened to fail with a generic message (or,
+    /// worse, silently succeed under the wrong kind).
+    pub fn kind_mismatch(requested: &str, signal: &KindSignal) -> Self {
+        AppError::Structured {
+            code: "kind_mismatch",
+            message: format!(
+                "kind: requested '{requested}' but the spec's shape is only valid as '{}': {}",
+                signal.kind, signal.reason
+            ),
+            data: json!({
+                "requested": requested,
+                "inferred": signal.kind,
+                "reason": signal.reason,
             }),
         }
     }

@@ -1167,9 +1167,26 @@ impl McpHostHandler {
             }
         }
 
+        // PRD-mcphost-tool-kind-honor requirement 2 (AC3): unlike
+        // `host.tool_publish`, a disagreement here never aborts the dry
+        // run (a spec whose required fields actually contradict the
+        // requested kind already fails `validate_all` above, same as
+        // publish would) -- this only surfaces what the spec's shape
+        // implies alongside what was requested, for a spec that validates
+        // under the requested kind despite also carrying the other kind's
+        // signal (e.g. an echo spec with a stray `source` field).
+        let kind_report = match crate::kinds::infer::infer_kind_signal(&spec) {
+            Some(signal) if signal.kind != kind_name => json!({
+                "resolved": signal.kind,
+                "requested": kind_name.clone(),
+                "reason": signal.reason,
+            }),
+            _ => json!({"resolved": kind_name.clone(), "requested": kind_name.clone()}),
+        };
+
         Ok(crate::secrets::redact_keys(
             &json!({
-                "kind": kind_name,
+                "kind": kind_report,
                 "args_schema": descriptor.input_schema,
                 "requirements": requirements,
                 "invocations": results,
@@ -1315,7 +1332,12 @@ impl ServerHandler for McpHostHandler {
                  when a spec declares `outputs` (field names its tool emits), each is readable \
                  at `result.payload.<field>` for every kind, regardless of how deep the tool's \
                  own response nests it -- run `host.tool_test` before publishing to see which \
-                 declared fields your implementation buries.",
+                 declared fields your implementation buries. \
+                 host.tool_publish's `kind` argument is honored exactly as given -- an inline \
+                 `source` field only publishes as `python` and `upstream`/`method`+`url` fields \
+                 only publish as `http` -- so request the kind your task needs and a mismatch \
+                 returns a `kind_mismatch` error naming the disagreeing spec element instead of \
+                 silently publishing the other kind.",
         );
         // PRD-mcphost-sandbox-ready P1 requirement 7 (AC8): named here too,
         // not just in host.tool_publish's own description -- a client that
@@ -1382,11 +1404,22 @@ impl ServerHandler for McpHostHandler {
                 for row in rows {
                     if let Some(kind) = self.state.kinds.get(&row.kind) {
                         let descriptor = kind.describe(&row.spec);
-                        tools.push(Tool::new(
-                            format!("{}.{}", tenant.namespace, row.name),
-                            descriptor.description,
-                            value_to_json_object(descriptor.input_schema),
-                        ));
+                        // PRD-mcphost-tool-kind-honor requirement 5 (AC6):
+                        // additive `_meta.kind` on the wire `Tool` -- the
+                        // same value `host.tool_list` already reports for
+                        // this row -- so a caller reading the standard
+                        // `tools/list` response, not just `host.tool_list`,
+                        // can verify what kind actually shipped.
+                        let mut meta = rmcp::model::MetaObject::new();
+                        meta.0.insert("kind".to_string(), json!(row.kind));
+                        tools.push(
+                            Tool::new(
+                                format!("{}.{}", tenant.namespace, row.name),
+                                descriptor.description,
+                                value_to_json_object(descriptor.input_schema),
+                            )
+                            .with_meta(meta),
+                        );
                     }
                 }
                 // AC18 / PRD requirement 14: ttlMs must go to 0 for the 60s
