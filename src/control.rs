@@ -228,6 +228,21 @@ pub async fn tool_publish(
             registered: state.kinds.names(),
         })?;
 
+    // PRD-mcphost-tool-kind-honor requirement 1 (AC1/AC2/AC5): an explicit
+    // `kind` of `http` or `python` is a constraint checked against what the
+    // spec's own shape can only be -- honored (nothing changes below) when
+    // they agree, refused with `kind_mismatch` naming the disagreeing
+    // element when they don't, before the spec is ever validated against
+    // (let alone stored under) the wrong `Kind` impl. Scoped to `http`/
+    // `python` (the two kinds this PRD's incident confused); `echo` publishes
+    // are unaffected.
+    if matches!(kind_name.as_str(), "http" | "python")
+        && let Some(signal) = crate::kinds::infer::infer_kind_signal(&spec)
+        && signal.kind != kind_name
+    {
+        return Err(AppError::kind_mismatch(&kind_name, &signal));
+    }
+
     // PRD-mcphost-sandbox-ready requirement 3 (AC3): a kind whose sandbox
     // self-test is currently failing (only `python` reports a status at
     // all -- `sandbox_status()` is `None` for `echo`/`http`, AC4) is
