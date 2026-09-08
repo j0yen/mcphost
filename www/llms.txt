@@ -74,3 +74,9 @@ mcphost implements the 2026-07-28 streamable-HTTP MCP specification, stateless, 
 
 - Admin runs through `admin.*` tools on the same endpoint with an admin key; there is no web UI by design.
 - Per-tenant metering (p50/p95 durations, call counts) via `host.usage` and `admin.usage`.
+
+## Full documentation
+
+- [llms-full.txt](/llms-full.txt) — this file's content plus every tool kind
+  (echo, http, python), all measured benchmarks, and supporting receipts,
+  concatenated into one markdown file per the llms.txt convention.

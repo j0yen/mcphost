@@ -49,8 +49,9 @@ if "<html" not in text.lower():
 PY
 done
 
-if [ -f www/llms.txt ]; then
-  python3 - www/llms.txt <<'PY' || status=1
+for f in www/llms.txt www/llms-full.txt; do
+  [ -f "$f" ] || continue
+  python3 - "$f" <<'PY' || status=1
 import sys
 path = sys.argv[1]
 with open(path, "rb") as fh:
@@ -64,6 +65,14 @@ if not text.strip():
     print(f"{path}: empty file", file=sys.stderr)
     sys.exit(1)
 PY
+done
+
+# www/llms-full.txt (requirement 7, PRD-mcphost-agent-findability) is
+# generated from README.md + docs/kinds + docs/benchmarks + docs/receipts;
+# fail if it has drifted from its source, same shape as gen-agent-docs.sh
+# --check for README.md/www/llms.txt.
+if [ -f scripts/gen-llms-full.sh ]; then
+  scripts/gen-llms-full.sh --check || status=1
 fi
 
 exit "$status"
