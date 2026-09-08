@@ -1,0 +1,23 @@
+# deploy/listings/launch/variants.yaml — PRD-mcphost-agent-findability P1#6.
+#
+# Candidate headlines for the launch kit posts (Show HN, Anthropic Discord
+# #mcp, r/mcp), panel-tested verbatim via:
+#   synthorg gtm deploy/listings/launch/brief.md \
+#     --out deploy/listings/launch/panel-run \
+#     --test-variants deploy/listings/launch/variants.yaml --only-test
+#
+# Deliberately avoids the two claims copy-claims.sh and the gtm Critic both
+# rejected ("under five minutes" — untested against real p95 latency; "the
+# only runtime" — uncited superlative). These use the measured numbers from
+# docs/benchmarks/measure-0.26.3-20260908T085001Z.md (same run README.md
+# cites) instead of a round, unbacked estimate.
+#
+# One line per variant (2-24 lines, blank/# ignored). The winning line (by
+# wow_share, ties to the earlier line) is the shared headline in each of
+# the three launch posts in this directory.
+
+Your agent can host its own MCP tool: sign up, publish, call — median 30.7s to first publish, 42.4s to first call, measured.
+
+mcphost: an MCP endpoint where signup is one tool call and the tool your agent just published is live immediately — no restart, no review queue.
+
+Ship an MCP tool from inside your agent's own task, not a separate deployment project — no infra to stand up first.

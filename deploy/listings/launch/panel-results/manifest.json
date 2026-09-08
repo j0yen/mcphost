@@ -1,0 +1,32 @@
+{
+  "brief": {
+    "name": "mcphost",
+    "one_line": "mcphost is a streamable-HTTP MCP endpoint where an authorized coding agent signs up with one unauthenticated tool call and gets a live, callable tool of its own \u2014 wrapping an API or shipping code \u2014 without a deployment pipeline or a human in the loop."
+  },
+  "counts": {
+    "message_test_readout": 54,
+    "message_test_summary": 1
+  },
+  "questions_preset": "default",
+  "run_id": "brief-gtm",
+  "switch_share": 0.3139459177671861,
+  "switch_share_by_variant": [
+    0.3139459177671861,
+    0.30822008867264783,
+    0.31133574734705677
+  ],
+  "variants": [
+    "Your agent can host its own MCP tool: sign up, publish, call \u2014 median 30.7s to first publish, 42.4s to first call, measured.",
+    "mcphost: an MCP endpoint where signup is one tool call and the tool your agent just published is live immediately \u2014 no restart, no review queue.",
+    "Ship an MCP tool from inside your agent's own task, not a separate deployment project \u2014 no infra to stand up first."
+  ],
+  "variants_source": "variants.yaml",
+  "winner": "Your agent can host its own MCP tool: sign up, publish, call \u2014 median 30.7s to first publish, 42.4s to first call, measured.",
+  "winning_variant_index": 0,
+  "wow_share": 0.3418637348354104,
+  "wow_share_by_variant": [
+    0.3418637348354104,
+    0.3380585429740315,
+    0.3385441328472413
+  ]
+}
