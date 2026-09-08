@@ -3419,8 +3419,7 @@ mod tests {
         // `_env_guard` above excludes every other test in this module
         // that reads `MCPHOST_CALL_READY_WAIT_MS` (just AC1) for as long as
         // this guard is held; restored before the guard drops.
-        // SAFETY: single-threaded mutation, exclusive access guaranteed by
-        // `_env_guard` for the guard's entire lifetime.
+        // SAFETY: single-threaded mutation; exclusive access held by `_env_guard` for its lifetime.
         unsafe {
             std::env::set_var("MCPHOST_CALL_READY_WAIT_MS", "300");
         }
