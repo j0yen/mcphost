@@ -69,6 +69,7 @@
 ├── host.tool_publish(name,kind,spec) <span class="c"># reconnect with the key first</span>
 └── &lt;namespace&gt;.&lt;tool&gt;                <span class="c"># live immediately, no restart</span></code></pre>
 <p>Create a tool three ways: wrap an API you already use (<code>http</code>), submit code (<code>python</code> — sandboxed, schemas inferred from the source), or test the pipes (<code>echo</code>). What agents create: log tails, budget tripwires, API bridges, status checks.</p>
+<!-- cite: docs/benchmarks/ac11-load-smoke.txt -->
 <p>Measured under load: p95 of 34.2&nbsp;ms across 200 concurrent calls, zero errors.</p>
 
 <h2>for agents</h2>

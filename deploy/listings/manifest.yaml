@@ -1,0 +1,124 @@
+# deploy/listings/manifest.yaml — PRD-mcphost-agent-findability P0#2.
+#
+# One entry per place an agent (or its operator) might look for mcphost.
+# scripts/listings-check.sh reads this file and probes `check_url` against
+# the live web; scripts/listings-submit.sh reads it to prepare (and, only
+# under PUBLISH-OK, execute) each submission.
+#
+# Fields:
+#   id            stable slug, used in ledger lines and CLI output
+#   name          human-readable target name
+#   method        pr | form | api — how a listing gets created there
+#   check_kind    registry-json (parses the official registry's JSON,
+#                 compares the `version` field to CURRENT_VERSION) |
+#                 text-search (fetches check_url, looks for search_text)
+#   check_url     URL listings-check.sh fetches
+#   search_text   only for check_kind: text-search — substring that proves
+#                 mcphost is listed
+#   artifact      path (relative to repo root) to the prepared submission
+#                 file — the PR branch content or the form payload text
+#   submitted     ISO date this entry was actually submitted, or null;
+#                 written by listings-submit.sh under PUBLISH-OK, never
+#                 hand-edited
+#   notes         free text
+#
+# Directory URLs below (smithery/glama/pulsemcp/mcp.so) are the slugs
+# mcphost *should* resolve to once listed, guessed from each site's public
+# URL convention — none of the four has mcphost listed yet (verified
+# 2026-09-08: 308/301/403/404 respectively), so these are placeholders a
+# human corrects at actual submission time, not confirmed listing URLs.
+
+- id: registry
+  name: Official MCP Registry
+  method: api
+  check_kind: registry-json
+  check_url: https://registry.modelcontextprotocol.io/v0/servers?search=mcphost
+  artifact: server.json
+  submitted: "2026-09-06"
+  notes: >
+    Published as dev.mcphost/mcphost under the grand-loop PUBLISH-OK grant
+    (~/repos/PRDs/grand-loop/PUBLISH-OK); republished by mcphost-deploy's
+    redeploy reconcile (PRD-mcphost-listing-freshness) whenever the
+    deployed version changes. Verified 2026-09-08: registry shows 0.14.0
+    against a locally-checked-out 0.27.0 — reconcile has not run since;
+    that gap is what makes this entry `stale` today.
+
+- id: awesome-mcp-servers-punkpeye
+  name: awesome-mcp-servers (punkpeye)
+  method: pr
+  check_kind: text-search
+  check_url: https://raw.githubusercontent.com/punkpeye/awesome-mcp-servers/main/README.md
+  search_text: j0yen/mcphost
+  artifact: deploy/listings/prs/awesome-mcp-servers-punkpeye.md
+  submitted: null
+  notes: "Verified 2026-09-08: not listed (0 mentions of mcphost or j0yen)."
+
+- id: awesome-mcp-wong2
+  name: awesome-mcp (wong2)
+  method: pr
+  check_kind: text-search
+  check_url: https://raw.githubusercontent.com/wong2/awesome-mcp-servers/main/README.md
+  search_text: j0yen/mcphost
+  artifact: deploy/listings/prs/awesome-mcp-wong2.md
+  submitted: null
+  notes: "Verified 2026-09-08: not listed (0 mentions of mcphost or j0yen)."
+
+- id: smithery
+  name: Smithery
+  method: form
+  check_kind: text-search
+  check_url: https://smithery.ai/server/j0yen/mcphost
+  search_text: mcphost.dev
+  artifact: deploy/listings/forms/smithery.md
+  submitted: null
+  notes: >
+    URL slug is a guess pending real submission. Site is a client-rendered
+    SPA that returns 200 with a generic app shell for any /servers/<slug>
+    path (the shell even echoes the requested slug into a login-redirect
+    link), so a bare "mcphost" substring search false-positives on every
+    unlisted slug too -- search_text is mcphost.dev (only present in
+    real, server-rendered listing content) to avoid that. Verified
+    2026-09-08: page has no mcphost.dev, streamable-http, or other
+    listing-specific content -- genuinely not listed.
+
+- id: glama
+  name: Glama MCP directory
+  method: form
+  check_kind: text-search
+  check_url: https://glama.ai/mcp/servers/@j0yen/mcphost
+  search_text: mcphost.dev
+  artifact: deploy/listings/forms/glama.md
+  submitted: null
+  notes: >
+    URL slug is a guess pending real submission, but this one already
+    resolves: Glama auto-indexes public GitHub repos carrying an
+    `mcp`/`mcp-server` topic (verified 2026-09-08 -- the page contains
+    real listing content: "mcphost.dev", "streamable-http"). Likely
+    already effectively listed once requirement 5's topics land; this
+    entry's `submitted` stays null since nothing was actively submitted
+    by us, and listings-check.sh will report `listed (version unknown)`
+    on its own.
+
+- id: pulsemcp
+  name: PulseMCP
+  method: form
+  check_kind: text-search
+  check_url: https://www.pulsemcp.com/servers/j0yen-mcphost
+  search_text: mcphost
+  artifact: deploy/listings/forms/pulsemcp.md
+  submitted: null
+  notes: >
+    URL slug is a guess pending real submission; site returns 403 to
+    scripted probes as of 2026-09-08 (likely bot-blocking, not evidence of
+    absence) — listings-check.sh reports this as `missing` like any other
+    non-2xx, which undercounts confidence here specifically.
+
+- id: mcpso
+  name: mcp.so
+  method: form
+  check_kind: text-search
+  check_url: https://mcp.so/server/mcphost/j0yen
+  search_text: mcphost
+  artifact: deploy/listings/forms/mcpso.md
+  submitted: null
+  notes: "URL slug is a guess pending real submission; 404 as of 2026-09-08."

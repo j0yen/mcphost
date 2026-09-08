@@ -1,5 +1,53 @@
 # mcphost
 
+<!-- agent-quickstart:start -->
+Ship an MCP tool, not a deployment project.
+
+mcphost lets an agent create the tool it needs, mid-task, without a human
+in the loop: sign up with one unauthenticated tool call, publish with the
+next, and the new tool is live immediately — no restart, no deploy, no
+review queue.
+
+**Measured** (panel run `0.26.3-20260908T085001Z`, 21 sessions): median
+time from signup to a tenant's first successful `host.tool_publish` is
+**30.7s**; median time from signup to a successful call on that tenant's
+own tool is **42.4s**.
+<!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
+
+## Quickstart for agents
+
+1. Connect to the endpoint and call `tools/list` with no credentials. The
+   only tool offered is `signup`.
+2. Call `signup(name)`. The response contains `tenant`, `key` (a bearer
+   token, shown once), `namespace`, and `endpoint`. Signup is rate-limited
+   to 5 per IP per hour.
+3. Reconnect with `Authorization: Bearer <key>`. The `host.*` control
+   plane is now available.
+4. Publish a tool: `host.tool_publish(name, kind, spec)`. Three ways: wrap
+   an API you already use (`http` — url and method required, `args_schema`
+   inferred if omitted), submit code (`python` — source required,
+   `args_schema`/`requirements` inferred if omitted), or test the pipes
+   (`echo` — returns its arguments; spec is a JSON Schema). Dry-run first
+   with `host.spec_test(kind, spec, invocations)` — up to 5 example calls
+   through the same sandbox a real call uses, no tool row written until
+   you're green.
+5. Call your tool. Two equivalent ways over the same streamable-HTTP
+   connection: as `<namespace>.<tool_name>` (its own entry in
+   `tools/list`), or `host.tool_call(name, args)` (same dispatch path,
+   useful when your client doesn't refresh `tools/list` between publish
+   and call). `host.tool_test(name, args)` dry-runs an already-published
+   tool by name instead of a raw spec.
+6. Check the plan and quota before you rely on volume:
+   `billing.plans()` — the plan catalog, works anonymously.
+   `billing.status()` — this tenant's plan and usage against each quota.
+7. Inspect and manage: `host.tool_list()`, `host.tool_logs(name)`,
+   `host.tool_remove(name)`, `host.usage(window)`,
+   `host.secret_set`/`host.secret_list()` (secrets stored AES-256-GCM
+   encrypted).
+
+<!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
+<!-- agent-quickstart:end -->
+
 `mcphost serve` is a streamable-HTTP MCP server, stateless per the 2026-07-28
 specification, on which an agent signs up with one unauthenticated tool call,
 receives a tenant key, and then owns a namespace of tools it publishes, lists,
@@ -10,7 +58,9 @@ PRDs; this one ships the endpoint, tenancy, the control plane, the `Kind`
 trait, and a built-in `echo` kind so the harness can measure the bootstrap
 path end to end.
 
-> **For agents evaluating this host:** the machine-readable summary lives at [`/llms.txt`](https://mcphost.dev/llms.txt) on the production endpoint. Signup is one unauthenticated tool call; the quickstart there is six steps.
+> The machine-readable summary lives at [`/llms.txt`](https://mcphost.dev/llms.txt)
+> on the production endpoint — generated from the same source as the
+> quickstart above (`docs/agent-quickstart.md`, `scripts/gen-agent-docs.sh`).
 
 Built from `PRD-mcphost-endpoint.md` (vision: `visions/mcp-host.md`).
 
@@ -279,7 +329,7 @@ instead of silently skipping.
 CI runs these suites as their own `sandbox` job, in parallel with the `gate`
 job that carries static analysis and everything else — once the suites stopped
 skipping, a single `cargo test --workspace` step measured 313–336 s against a
-300 s budget. Which targets go where is derived, not hand-listed:
+300 s budget <!-- cite: .github/workflows/ci.yml -->. Which targets go where is derived, not hand-listed:
 `scripts/ci-test-partition.sh core|sandbox` classifies every `tests/*.rs` by
 whether it touches the sandbox-execution surface, and `check` proves the split
 is total and disjoint. Both jobs then fail on any capability-skip in their log,
@@ -298,7 +348,7 @@ vacuously.
 | 8 (P0) | `admin.tenant_disable` locks out a key; tenant key is `forbidden` on `admin.tenants` | `tests/ac08_admin_disable_and_forbidden.rs` |
 | 9 (P0) | 6th signup/hour/IP is `rate_limited`, no tenant created | `tests/ac09_signup_rate_limit.rs` |
 | 10 (P0) | Unregistered kind / invalid name / oversized spec each fail distinctly, nothing written | `tests/ac10_publish_validation_errors.rs` |
-| 11 (P0, non-functional) | 200 concurrent `echo` calls, p95 < 50ms, 0 errors, RSS < 100MiB | `tests/ac11_load_smoke.rs` (`#[ignore]`d — hardware-dependent; run with `cargo test --release --test ac11_load_smoke -- --ignored --nocapture`). Measured on the build box: **p95 = 34.20ms, 0 errors, RSS = 37.3MiB** |
+| 11 (P0, non-functional) | 200 concurrent `echo` calls, p95 < 50ms, 0 errors, RSS < 100MiB | `tests/ac11_load_smoke.rs` (`#[ignore]`d — hardware-dependent; run with `cargo test --release --test ac11_load_smoke -- --ignored --nocapture`). Measured on the build box: **p95 = 34.20ms, 0 errors, RSS = 37.3MiB** <!-- cite: docs/benchmarks/ac11-load-smoke.txt --> |
 | 12 (P0) | `synthorg consume --preflight <url>` exits 0 | `tests/ac12_preflight.rs` — an always-run in-process half exercises the same two requests `run_preflight` makes; a second half spawns the real `mcphost` binary and the real `synthorg` CLI when available (bare binary or `uv run --project`) and asserts exit 0 |
 | 13 (P0) | Mismatched `Mcp-Name` header vs. body is recorded by body name and flagged | `tests/ac13_mcp_name_mismatch_metering.rs` |
 | 14 (P0) | Unwritable database: `storage` error, `/healthz` `db_ok: false`, process stays up | `tests/ac14_storage_unwritable.rs` |

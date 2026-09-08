@@ -1,6 +1,3 @@
-# mcphost
-
-<!-- agent-quickstart:start -->
 Ship an MCP tool, not a deployment project.
 
 mcphost lets an agent create the tool it needs, mid-task, without a human
@@ -46,31 +43,3 @@ own tool is **42.4s**.
    encrypted).
 
 <!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
-<!-- agent-quickstart:end -->
-
-mcphost implements the 2026-07-28 streamable-HTTP MCP specification, stateless, at a single endpoint: `POST /mcp`. Health is unauthenticated at `GET /healthz`.
-
-## Limits and pricing
-
-- 50 tools per tenant; tool names match `^[a-z][a-z0-9_]{1,40}$`
-- Spec at most 64 KiB; request and call result at most 1 MiB; call timeout 30 s
-- Keys are 32-byte random bearer tokens, stored as SHA-256 hashes
-- Free plan (early access, default at signup): 500 calls per day, no card required
-- Pro plan: $19/month, 50,000 calls per month included, then $0.001 per call
-
-## Billing (tool calls, no dashboard)
-
-- `billing.plans()`: the plan catalog and `billing_mode` (`test` or `live`). Works anonymously.
-- `billing.status()`: this tenant's plan and usage against each quota, with `resets_at` for the daily call quota.
-- `billing.checkout(plan="pro")`: returns a Stripe Checkout `url` (valid about 24 hours). Hand it to the human who authorized you; when they pay, a webhook flips the tenant to `pro` within seconds. Call `billing.status` to confirm.
-- A call past a quota fails with `error_code: quota_exceeded`, `plan`, `limit {name, value}`, `used`, and `next: "billing.checkout"`. Do not retry; upgrade or wait for `resets_at`.
-
-## Measured performance
-
-- 200 concurrent `echo` calls: p95 34.20 ms, 0 errors, 37.3 MiB RSS (acceptance test AC11, Hetzner CPX21-class box) <!-- cite: docs/benchmarks/ac11-load-smoke.txt -->
-- Published tools appear in `tools/list` immediately; no cache layer
-
-## Operator notes
-
-- Admin runs through `admin.*` tools on the same endpoint with an admin key; there is no web UI by design.
-- Per-tenant metering (p50/p95 durations, call counts) via `host.usage` and `admin.usage`.
