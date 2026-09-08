@@ -40,11 +40,33 @@ fn validate_synthetic_header(raw: Option<&str>) -> Option<String> {
     }
 }
 
+/// PRD-mcphost-tenant-attribution: everything [`signup`] needs from the
+/// HTTP/MCP layer beyond `args`/`source_ip`, bundled into one struct
+/// rather than growing the positional parameter list past what a call
+/// site can read. `synthetic_header`'s presence (any value, even one that
+/// later fails [`is_valid_synthetic_label`]) doubles as requirement 1's
+/// "harness marker" signal -- see `state::classify_source_class`'s doc
+/// comment for why this crate reuses that header rather than adding a
+/// second one.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SignupAttribution<'a> {
+    pub synthetic_header: Option<&'a str>,
+    /// The caller's `clientInfo.name` (requirement 2) -- `handler.rs`
+    /// reads it via `RequestContext::client_info`, which is either this
+    /// call's own `_meta["io.modelcontextprotocol/clientInfo"]` (stateless
+    /// requests -- see `peer_client_info`'s doc comment) or, for a
+    /// stateful/legacy peer, whatever `initialize` set.
+    pub client_name: Option<&'a str>,
+    pub client_version: Option<&'a str>,
+    /// The transport's `User-Agent` header, when it exposes one.
+    pub user_agent: Option<&'a str>,
+}
+
 pub async fn signup(
     state: &AppState,
     args: &Value,
     source_ip: &str,
-    synthetic_header: Option<&str>,
+    attribution: SignupAttribution<'_>,
 ) -> Result<Value, AppError> {
     let display_name = arg_str(args, "name")?;
 
@@ -57,17 +79,47 @@ pub async fn signup(
         return Err(AppError::RateLimited);
     }
 
-    let synthetic = validate_synthetic_header(synthetic_header);
+    // Requirement 1: `source_class` first (loopback IP or the harness
+    // marker header; known-fleet display name or synthorg client name;
+    // else external), then `tenants.synthetic` from it -- the explicit
+    // stamp when the header carried a valid one, else `harness:unstamped`
+    // for loopback/fleet, else `None` for a real (`external`) tenant.
+    let explicit_label = validate_synthetic_header(attribution.synthetic_header);
+    let harness_marker_present = attribution.synthetic_header.is_some();
+    let class = crate::state::classify_source_class(
+        source_ip,
+        harness_marker_present,
+        &display_name,
+        attribution.client_name,
+    );
+    let synthetic = if class.is_synthetic() {
+        Some(explicit_label.unwrap_or_else(|| "harness:unstamped".to_string()))
+    } else {
+        None
+    };
+
     let key = generate_key();
     let namespace = generate_namespace();
     let key_hash = hash_key(&key);
     state
         .db
-        .record_signup_event(source_ip.to_string(), synthetic.clone())
+        .record_signup_event_attributed(
+            source_ip.to_string(),
+            synthetic.clone(),
+            attribution.user_agent.map(str::to_string),
+        )
         .await?;
     let tenant = state
         .db
-        .create_tenant(display_name, namespace.clone(), key_hash, synthetic)
+        .create_tenant_attributed(
+            display_name,
+            namespace.clone(),
+            key_hash,
+            synthetic,
+            Some(class.as_str().to_string()),
+            attribution.client_name.map(str::to_string),
+            attribution.client_version.map(str::to_string),
+        )
         .await?;
 
     Ok(json!({
@@ -199,6 +251,13 @@ pub fn whoami(tenant: &Tenant) -> Value {
         // already tells it what plan it's on, with no extra round trip.
         "plan": tenant.plan,
         "plan_since": tenant.plan_since,
+        // PRD-mcphost-tenant-attribution P1 requirement 6 / AC6: how this
+        // host classified the caller, and the client it recorded for it --
+        // an agent (or a human testing) can confirm how it was seen
+        // without reaching for `admin.tenants`.
+        "source_class": tenant.source_class,
+        "client_name": tenant.client_name,
+        "client_version": tenant.client_version,
     })
 }
 

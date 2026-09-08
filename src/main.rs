@@ -65,6 +65,21 @@ enum Command {
         #[command(subcommand)]
         action: BillingCommand,
     },
+    /// PRD-mcphost-tenant-attribution P0 requirement 4 (AC5): signups ->
+    /// published -> first successful call -> returned -> hit the daily
+    /// cap -> upgraded, split real (`source_class = external`) from
+    /// synthetic -- an admin CLI report on the box, same binary, reading
+    /// only the `tenants`/`tools`/`calls` tables. Meant to run ad hoc or
+    /// from the measure job after each run (technical considerations).
+    Funnel {
+        /// Only tenants that signed up on or after this UTC date
+        /// (`YYYY-MM-DD`). Unset reports on every tenant.
+        #[arg(long)]
+        since: Option<String>,
+        /// Print the report as JSON instead of the default text table.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -199,6 +214,49 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         },
+        Command::Funnel { since, json } => {
+            // Deliberately no `init_tracing()`: same rationale as
+            // `SandboxCheck` above -- this subcommand's whole contract is
+            // stdout output a shell (or the measure job) parses, and a
+            // JSON log line ahead of it would break `--json` output the
+            // same way it would break `$(mcphost sandbox-check)`.
+            let since_unix = match since.as_deref() {
+                Some(s) => match mcphost::state::parse_date_ymd_unix(s) {
+                    Some(u) => Some(u),
+                    None => {
+                        eprintln!("funnel: --since '{s}' is not a valid YYYY-MM-DD date");
+                        std::process::exit(2);
+                    }
+                },
+                None => None,
+            };
+            let dir = data_dir();
+            let db = Db::open(&dir)?;
+            db.migrate().await?;
+            let plans_path = mcphost::plans::PlanCatalog::path_from_env(&dir);
+            let plans = mcphost::plans::PlanCatalog::load_or_init(&plans_path)?;
+            let report = mcphost::funnel::compute(&db, &plans, since_unix).await?;
+            if json {
+                println!("{}", serde_json::to_string(&report.to_json())?);
+            } else {
+                for (label, stage) in [("real", &report.real), ("synthetic", &report.synthetic)] {
+                    println!(
+                        "{label}: signed_up={} published={} called={} returned={} hit_cap={} upgraded={} median_signup_to_first_call_secs={}",
+                        stage.signed_up,
+                        stage.published,
+                        stage.called,
+                        stage.returned,
+                        stage.hit_cap,
+                        stage.upgraded,
+                        stage
+                            .median_signup_to_first_call_secs
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "n/a".to_string()),
+                    );
+                }
+            }
+            Ok(())
+        }
         Command::Serve { registry_url } => {
             init_tracing();
 

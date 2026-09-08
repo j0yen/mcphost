@@ -408,6 +408,15 @@ pub struct McpClient {
     base_url: String,
     pub bearer: Option<String>,
     next_id: AtomicU64,
+    /// PRD-mcphost-tenant-attribution: this client's own `clientInfo`,
+    /// sent on `initialize` and (since this host runs every `tools/call`
+    /// as its own stateless request, per `with_legacy_session_mode(false)`
+    /// -- see `call_with_extra_header`'s existing `_meta` injection) on
+    /// every subsequent call too, not just `initialize`. Defaults to what
+    /// `initialize()` has always hardcoded, so every pre-existing test
+    /// that never asked for a specific client keeps seeing that value.
+    client_name: String,
+    client_version: String,
 }
 
 #[derive(Debug)]
@@ -429,6 +438,8 @@ impl McpClient {
             base_url: base_url.to_string(),
             bearer: None,
             next_id: AtomicU64::new(1),
+            client_name: "mcphost-test".to_string(),
+            client_version: "0.1.0".to_string(),
         }
     }
 
@@ -436,6 +447,16 @@ impl McpClient {
         let mut c = Self::new(base_url);
         c.bearer = Some(key.to_string());
         c
+    }
+
+    /// PRD-mcphost-tenant-attribution attrib_ac2/attrib_ac6: override the
+    /// `clientInfo` this client sends, e.g. `{"name": "claude-code",
+    /// "version": "2.1"}` -- everything else about the client is
+    /// unaffected (chain onto `new`/`with_bearer`).
+    pub fn with_client_info(mut self, name: &str, version: &str) -> Self {
+        self.client_name = name.to_string();
+        self.client_version = version.to_string();
+        self
     }
 
     /// POST with SEP-2243 `Mcp-Method`/`Mcp-Name` headers set to match the
@@ -530,7 +551,7 @@ impl McpClient {
                 "params": {
                     "protocolVersion": "2026-07-28",
                     "capabilities": {},
-                    "clientInfo": {"name": "mcphost-test", "version": "0.1.0"}
+                    "clientInfo": {"name": self.client_name, "version": self.client_version}
                 }
             }))
             .await;
@@ -551,13 +572,22 @@ impl McpClient {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         // Stateless 2026-07-28 requests carry the client context SEP-2575
         // requires on every request (no session to remember it from
-        // `initialize`), not just in `initialize` itself.
+        // `initialize`), not just in `initialize` itself. PRD-mcphost-tenant-attribution:
+        // `io.modelcontextprotocol/clientInfo` rides along here too, now
+        // that `host::peer_client_info` (via `RequestContext::client_info`)
+        // reads it -- every pre-existing test that never called
+        // `with_client_info` keeps sending the same `mcphost-test`/`0.1.0`
+        // pair `initialize` has always hardcoded.
         if let Some(obj) = params.as_object_mut() {
             obj.insert(
                 "_meta".to_string(),
                 json!({
                     "io.modelcontextprotocol/protocolVersion": "2026-07-28",
                     "io.modelcontextprotocol/clientCapabilities": {},
+                    "io.modelcontextprotocol/clientInfo": {
+                        "name": self.client_name,
+                        "version": self.client_version,
+                    },
                 }),
             );
         }

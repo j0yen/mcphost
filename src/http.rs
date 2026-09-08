@@ -93,12 +93,16 @@ async fn healthz(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl
     // measure job today) is unchanged, so `tenants_total - tenants_probe`
     // is the real-tenant count.
     let tenants_probe = state.db.probe_tenant_count().await.unwrap_or(0);
-    // PRD-mcphost-synthetic-flag AC7: always present (0 when none), unlike
-    // the conditional fields below -- an operator reading `tenants_real`
-    // needs it to mean "0" on a box with no labeled tenants yet, not be
-    // absent and easily confused with "not supported here."
-    let tenants_synthetic = state.db.count_synthetic_tenants().await.unwrap_or(0);
-    let tenants_real = tenants_total - tenants_synthetic;
+    // PRD-mcphost-tenant-attribution requirement 3 / AC1/AC3/AC4:
+    // `tenants_real` now counts only `source_class = 'external'` --
+    // `synthetic IS NULL` (PRD-mcphost-synthetic-flag's original
+    // definition) stopped being a safe proxy for "real" the moment
+    // migration 0010 started labeling every loopback/fleet signup
+    // `harness:unstamped` too, which is exactly the correction this PRD's
+    // TL;DR describes ("95 real tenants; there are zero"). `tenants_synthetic`
+    // is always present (0 when none), same as before.
+    let tenants_real = state.db.count_external_tenants().await.unwrap_or(0);
+    let tenants_synthetic = tenants_total - tenants_real;
     let mut body = json!({
         "version": env!("CARGO_PKG_VERSION"),
         "db_ok": db_ok,
@@ -109,6 +113,40 @@ async fn healthz(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl
         "tenants_real": tenants_real,
         "sandbox_mechanism": state.sandbox_mechanism,
     });
+    // PRD-mcphost-tenant-attribution requirement 3: `tenants_by_source_class`
+    // (every class present, most common first) and `tenants_by_client`
+    // (top 10 `clientInfo.name` values by tenant count) -- both additive,
+    // both empty arrays (not absent) on a box with nothing classified yet.
+    if let Some(obj) = body.as_object_mut() {
+        let by_class = state
+            .db
+            .count_tenants_by_source_class()
+            .await
+            .unwrap_or_default();
+        obj.insert(
+            "tenants_by_source_class".to_string(),
+            json!(
+                by_class
+                    .into_iter()
+                    .map(|(class, count)| json!({"source_class": class, "count": count}))
+                    .collect::<Vec<_>>()
+            ),
+        );
+        let by_client = state
+            .db
+            .count_tenants_by_client(10)
+            .await
+            .unwrap_or_default();
+        obj.insert(
+            "tenants_by_client".to_string(),
+            json!(
+                by_client
+                    .into_iter()
+                    .map(|(name, count)| json!({"client_name": name, "count": count}))
+                    .collect::<Vec<_>>()
+            ),
+        );
+    }
     // PRD-mcphost-sandbox-ready requirement 2: additive fields, populated
     // from an actual sandboxed-process probe rather than the `on_path`
     // check `sandbox_mechanism` above has always been. `None` (absent

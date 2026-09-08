@@ -22,12 +22,14 @@ const MIGRATION_0006: &str = include_str!("../migrations/0006_billing.sql");
 const MIGRATION_0007: &str = include_str!("../migrations/0007_metering.sql");
 const MIGRATION_0008: &str = include_str!("../migrations/0008_synthetic.sql");
 const MIGRATION_0009: &str = include_str!("../migrations/0009_call_outcome.sql");
+const MIGRATION_0010: &str = include_str!("../migrations/0010_tenant_attribution.sql");
 
 /// Shared by every query that selects a whole tenant row, so the column
 /// list and [`tenant_from_row`] stay in lockstep with each other.
 const TENANT_COLUMNS: &str = "id, namespace, display_name, key_hash, created_at, disabled, \
     last_tool_change_unix, namespace_verified, registry_namespace, plan, plan_since, billing_ref, \
-    stripe_customer_id, synthetic";
+    stripe_customer_id, synthetic, source_class, client_name, client_version, classified_by, \
+    created_unix";
 
 fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
     Ok(Tenant {
@@ -45,6 +47,11 @@ fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
         billing_ref: r.get(11)?,
         stripe_customer_id: r.get(12)?,
         synthetic: r.get(13)?,
+        source_class: r.get(14)?,
+        client_name: r.get(15)?,
+        client_version: r.get(16)?,
+        classified_by: r.get(17)?,
+        created_unix: r.get(18)?,
     })
 }
 
@@ -95,6 +102,29 @@ pub struct Tenant {
     /// surfaced in a tenant-facing response (only `admin.*` tools and
     /// `/healthz` read it).
     pub synthetic: Option<String>,
+    /// PRD-mcphost-tenant-attribution migration 0010: this host's own
+    /// derived `loopback`/`fleet`/`external` read of where the signup came
+    /// from (`state::classify_source_class`'s output, stored as text --
+    /// `None` only for a row somehow missed by both live classification
+    /// and the migration's backfill, which should never happen after
+    /// `migrate()` runs). `/healthz`'s `tenants_real` and `mcphost funnel`
+    /// both key off this, not `synthetic`.
+    pub source_class: Option<String>,
+    /// The MCP `initialize` request's `clientInfo.name`, captured at
+    /// signup or on first authenticated call after (requirement 2).
+    /// `None` until either happens.
+    pub client_name: Option<String>,
+    /// `clientInfo.version`, captured alongside `client_name`.
+    pub client_version: Option<String>,
+    /// `"backfill"` for a tenant `migrate_0010_tenant_attribution`
+    /// reclassified from before this column existed (AC3); `None` for
+    /// every tenant classified live at signup.
+    pub classified_by: Option<String>,
+    /// `created_at` (an opaque `"unix:<secs>.<nanos>"` string) as plain
+    /// epoch seconds, for `mcphost funnel`'s `--since` filter and
+    /// signup-to-first-call latency. `None` only for a row the backfill
+    /// couldn't parse (never true for a `created_at` this crate wrote).
+    pub created_unix: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -190,6 +220,70 @@ fn now_unix() -> i64 {
         .unwrap_or(0)
 }
 
+/// The inverse of [`now_rfc3339`]'s `"unix:<secs>.<nanos>"` shape --
+/// `None` for anything that doesn't match (a row from before this format
+/// existed isn't a real case here: every `created_at` this crate has ever
+/// written used this shape). PRD-mcphost-tenant-attribution migration
+/// 0010's backfill and `mcphost funnel` both need `created_at` as an
+/// integer, and re-parsing an opaque string at every funnel run is worse
+/// than storing it once (`tenants.created_unix`).
+fn parse_created_at_unix(created_at: &str) -> Option<i64> {
+    created_at
+        .strip_prefix("unix:")?
+        .split('.')
+        .next()?
+        .parse()
+        .ok()
+}
+
+/// PRD-mcphost-tenant-attribution requirement 5 / AC3: reclassify every
+/// `tenants` row with `source_class IS NULL`, in place -- `id`/`class`/
+/// `synthetic`/`created_unix` follow exactly requirement 1's rule
+/// (`state::is_known_fleet_display_name`) and requirement 5's backfill
+/// rule ("all loopback ⇒ synthetic", `classified_by = 'backfill'`). Every
+/// signup before this PRD shipped came from 127.0.0.1 (verified
+/// 2026-09-08: `signup_events.source_ip` is 127.0.0.1 for all 139 rows),
+/// and `tenants` never stored a row's source IP -- so a pre-existing row's
+/// class is derived from `display_name` alone, never a guess at an IP
+/// this table doesn't have. Returns the number of rows reclassified.
+///
+/// Extracted out of [`Db::migrate_0010_tenant_attribution`] so the
+/// migration's one-shot gate and this function's own logic are two
+/// separable concerns: the migration decides *when* to backfill (once,
+/// right after the columns land), this function decides *how*. Also lets
+/// an integration test exercise the backfill rule directly against
+/// `source_class IS NULL` fixture rows, without needing a genuine
+/// pre-0010 database file (`Db::open` always runs every migration, so a
+/// test can't otherwise catch this crate between 0009 and 0010).
+fn backfill_unclassified_tenants_sync(conn: &Connection) -> Result<i64, AppError> {
+    let rows: Vec<(i64, String, String, Option<String>)> = {
+        let mut stmt = conn.prepare(
+            "SELECT id, display_name, created_at, synthetic FROM tenants \
+             WHERE source_class IS NULL",
+        )?;
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    let count = rows.len() as i64;
+    for (id, display_name, created_at, existing_synthetic) in rows {
+        let class = if crate::state::is_known_fleet_display_name(&display_name) {
+            "fleet"
+        } else {
+            "loopback"
+        };
+        // Requirement 1: an explicit stamp this tenant already carried
+        // always wins over the backfill default.
+        let synthetic = existing_synthetic.unwrap_or_else(|| "harness:unstamped".to_string());
+        let created_unix = parse_created_at_unix(&created_at);
+        conn.execute(
+            "UPDATE tenants SET source_class = ?1, synthetic = ?2, classified_by = 'backfill', \
+             created_unix = ?3 WHERE id = ?4",
+            params![class, synthetic, created_unix, id],
+        )?;
+    }
+    Ok(count)
+}
+
 /// Stamp `tenants.last_tool_change_unix` to now for `tenant_id`. Called by
 /// both `upsert_tool` and `remove_tool` (AC18): the ttlMs cache hint in
 /// `tools/list` must go to 0 after either, and only a tenant-level stamp
@@ -260,7 +354,8 @@ impl Db {
         Self::migrate_0006_billing(&conn)?;
         Self::migrate_0007_metering(&conn)?;
         Self::migrate_0008_synthetic(&conn)?;
-        Self::migrate_0009_call_outcome(&conn)
+        Self::migrate_0009_call_outcome(&conn)?;
+        Self::migrate_0010_tenant_attribution(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -376,6 +471,26 @@ impl Db {
         Ok(())
     }
 
+    /// PRD-mcphost-tenant-attribution migration 0010 (requirements 1, 2,
+    /// 5): same idempotency pattern as 0002-0009, gated on
+    /// `tenants.source_class`. The `ALTER TABLE`s land first, then --
+    /// still inside this one gate, so it only ever runs once -- every
+    /// pre-existing tenant (the rows that are `source_class IS NULL`
+    /// immediately after the `ALTER TABLE`) is reclassified in place
+    /// (requirement 5 / AC3, "backfill" section of the migration file
+    /// doc-comment).
+    fn migrate_0010_tenant_attribution(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'source_class'")?
+            .exists([])?;
+        if has_column {
+            return Ok(());
+        }
+        conn.execute_batch(MIGRATION_0010)?;
+        backfill_unclassified_tenants_sync(conn)?;
+        Ok(())
+    }
+
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
     /// subcommand.
@@ -470,12 +585,50 @@ impl Db {
         key_hash: String,
         synthetic: Option<String>,
     ) -> Result<Tenant, AppError> {
+        self.create_tenant_attributed(display_name, namespace, key_hash, synthetic, None, None, None)
+            .await
+    }
+
+    /// PRD-mcphost-tenant-attribution requirements 1-2: [`Self::create_tenant`]
+    /// plus the derived `source_class` and captured `clientInfo`, all set
+    /// atomically with the row's insert rather than in a follow-up
+    /// `UPDATE` -- so a tenant is never, even briefly, in the
+    /// unclassified state migration 0010's backfill exists to clean up.
+    /// `classified_by` is always `None` here: only the migration's
+    /// one-shot backfill ever writes `"backfill"` (requirement 5 / AC3).
+    /// `synthetic` is the caller's already-fully-derived value (an
+    /// explicit stamp, or `Some("harness:unstamped")`, or `None` for
+    /// `external` -- see `control::signup`), stored as given, same as
+    /// [`Self::create_tenant`] always has.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_tenant_attributed(
+        &self,
+        display_name: String,
+        namespace: String,
+        key_hash: String,
+        synthetic: Option<String>,
+        source_class: Option<String>,
+        client_name: Option<String>,
+        client_version: Option<String>,
+    ) -> Result<Tenant, AppError> {
         let created_at = now_rfc3339();
+        let created_unix = now_unix();
         self.with_conn(move |conn| {
             conn.execute(
-                "INSERT INTO tenants (namespace, display_name, key_hash, created_at, disabled, synthetic) \
-                 VALUES (?1, ?2, ?3, ?4, 0, ?5)",
-                params![namespace, display_name, key_hash, created_at, synthetic],
+                "INSERT INTO tenants (namespace, display_name, key_hash, created_at, disabled, \
+                 synthetic, source_class, client_name, client_version, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    namespace,
+                    display_name,
+                    key_hash,
+                    created_at,
+                    synthetic,
+                    source_class,
+                    client_name,
+                    client_version,
+                    created_unix
+                ],
             )?;
             let id = conn.last_insert_rowid();
             Ok(Tenant {
@@ -493,7 +646,43 @@ impl Db {
                 billing_ref: None,
                 stripe_customer_id: None,
                 synthetic,
+                source_class,
+                client_name,
+                client_version,
+                classified_by: None,
+                created_unix: Some(created_unix),
             })
+        })
+        .await
+    }
+
+    /// PRD-mcphost-tenant-attribution requirement 5 / AC3: the public,
+    /// directly-testable entry point for [`backfill_unclassified_tenants_sync`]
+    /// -- also what `migrate_0010_tenant_attribution` calls once, right
+    /// after the migration's `ALTER TABLE`s land. Returns the number of
+    /// rows reclassified (0 once nothing is left `source_class IS NULL`).
+    pub async fn backfill_unclassified_tenants(&self) -> Result<i64, AppError> {
+        self.with_conn(backfill_unclassified_tenants_sync).await
+    }
+
+    /// PRD-mcphost-tenant-attribution requirement 2's "first authenticated
+    /// session if signup preceded capture" fallback: sets `client_name`/
+    /// `client_version` only if the row still has neither (the `WHERE
+    /// client_name IS NULL` guard), so a later session's `clientInfo`
+    /// never overwrites the one captured at signup.
+    pub async fn set_tenant_client_info(
+        &self,
+        tenant_id: i64,
+        client_name: String,
+        client_version: String,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tenants SET client_name = ?1, client_version = ?2 \
+                 WHERE id = ?3 AND client_name IS NULL",
+                params![client_name, client_version, tenant_id],
+            )?;
+            Ok(())
         })
         .await
     }
@@ -637,18 +826,151 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-tenant-attribution requirement 3 / AC1/AC3/AC4:
+    /// `tenants_real`'s new definition -- `source_class = 'external'`,
+    /// not "has no `synthetic` label" (the old, buggy definition
+    /// [`Self::count_synthetic_tenants`] backed -- every loopback/fleet
+    /// signup now carries a `synthetic` label too, per migration 0010, so
+    /// that column alone can no longer answer "is this tenant real").
+    pub async fn count_external_tenants(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM tenants WHERE source_class = 'external'",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-tenant-attribution requirement 3: `tenants_by_source_class`
+    /// -- every distinct `source_class` value present, counted, most
+    /// common first. A `NULL` (a tenant somehow missed by both live
+    /// classification and the migration 0010 backfill -- should never
+    /// happen after `migrate()` runs) groups under `"unclassified"` rather
+    /// than silently vanishing from the total.
+    pub async fn count_tenants_by_source_class(&self) -> Result<Vec<(String, i64)>, AppError> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT COALESCE(source_class, 'unclassified'), COUNT(*) FROM tenants \
+                 GROUP BY 1 ORDER BY 2 DESC, 1 ASC",
+            )?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-tenant-attribution requirement 3: `tenants_by_client`
+    /// -- the top `limit` distinct `client_name` values by tenant count,
+    /// most common first; ties break alphabetically so the result is
+    /// deterministic. Tenants with no captured `client_name` yet are
+    /// excluded, not grouped under a placeholder -- "which clients are our
+    /// tenants using" shouldn't be diluted by "we don't know yet".
+    pub async fn count_tenants_by_client(&self, limit: i64) -> Result<Vec<(String, i64)>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT client_name, COUNT(*) FROM tenants WHERE client_name IS NOT NULL \
+                 GROUP BY client_name ORDER BY COUNT(*) DESC, client_name ASC LIMIT ?1",
+            )?;
+            let rows = stmt
+                .query_map(params![limit], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-tenant-attribution requirement 4 (`mcphost funnel`):
+    /// every tenant's funnel-relevant fields, optionally restricted to
+    /// tenants created at or after `since_unix`. Deliberately every column
+    /// the funnel needs in one pass rather than reusing [`Self::list_tenants`]'s
+    /// full `Tenant` -- this crate's small DB makes the difference moot
+    /// today, but it keeps the funnel's own query independent of
+    /// `TENANT_COLUMNS`' shape.
+    pub async fn funnel_tenants(
+        &self,
+        since_unix: Option<i64>,
+    ) -> Result<Vec<(i64, Option<String>, String, Option<i64>)>, AppError> {
+        self.with_conn(move |conn| {
+            let sql = match since_unix {
+                Some(_) => {
+                    "SELECT id, source_class, plan, created_unix FROM tenants \
+                     WHERE created_unix IS NOT NULL AND created_unix >= ?1"
+                }
+                None => "SELECT id, source_class, plan, created_unix FROM tenants",
+            };
+            let mut stmt = conn.prepare(sql)?;
+            let rows = match since_unix {
+                Some(since) => stmt
+                    .query_map(params![since], |r| {
+                        Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+                    })?
+                    .collect::<rusqlite::Result<Vec<_>>>()?,
+                None => stmt
+                    .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+                    .collect::<rusqlite::Result<Vec<_>>>()?,
+            };
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// The distinct set of tenant ids with at least one published tool
+    /// (funnel stage "published") -- `mcphost funnel` needs the whole set
+    /// once, not a per-tenant existence check.
+    pub async fn published_tenant_ids(&self) -> Result<std::collections::HashSet<i64>, AppError> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare("SELECT DISTINCT tenant_id FROM tools")?;
+            let ids = stmt
+                .query_map([], |r| r.get(0))?
+                .collect::<rusqlite::Result<std::collections::HashSet<i64>>>()?;
+            Ok(ids)
+        })
+        .await
+    }
+
+    /// Every call's `(tenant_id, started_unix, ok)`, oldest first --
+    /// `mcphost funnel`'s only read of `calls`, used to derive "first
+    /// successful call", "returned on a later day", and "hit the daily
+    /// cap" (a day whose ok-call count reaches the tenant's plan quota;
+    /// see `funnel::compute`) without a second table this PRD's technical
+    /// considerations rule out.
+    pub async fn funnel_calls(&self) -> Result<Vec<(i64, i64, bool)>, AppError> {
+        self.with_conn(|conn| {
+            let mut stmt =
+                conn.prepare("SELECT tenant_id, started_unix, ok FROM calls ORDER BY tenant_id, started_unix")?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get::<_, i64>(2)? != 0)))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
     /// PRD-mcphost-synthetic-flag AC10 / P1 requirement 10: `(real, synthetic)`
     /// paying-tenant counts in one query, so `/healthz` can add
     /// `paying_tenants_real` only when the synthetic half is nonzero
     /// (guards against a synthetic tenant ever polluting the revenue count
     /// while keeping the field absent -- not present-and-equal -- on a host
     /// where it can never have differed from `paying_tenants`).
+    ///
+    /// PRD-mcphost-tenant-attribution: "real" here now matches `/healthz`'s
+    /// `tenants_real` (`source_class = 'external'`), not `synthetic IS
+    /// NULL` -- migration 0010 means a loopback/fleet tenant always
+    /// carries a `synthetic` label now, so the old predicate would read
+    /// every paying tenant as "synthetic" the moment a real one existed
+    /// alongside them, the same bug this PRD's TL;DR describes for
+    /// `tenants_real` itself.
     pub async fn paying_tenant_synthetic_split(&self) -> Result<(i64, i64), AppError> {
         self.with_conn(|conn| {
             conn.query_row(
                 "SELECT \
-                    SUM(CASE WHEN plan != 'free' AND synthetic IS NULL THEN 1 ELSE 0 END), \
-                    SUM(CASE WHEN plan != 'free' AND synthetic IS NOT NULL THEN 1 ELSE 0 END) \
+                    SUM(CASE WHEN plan != 'free' AND source_class = 'external' THEN 1 ELSE 0 END), \
+                    SUM(CASE WHEN plan != 'free' AND source_class != 'external' THEN 1 ELSE 0 END) \
                  FROM tenants",
                 [],
                 |r| Ok((r.get::<_, Option<i64>>(0)?.unwrap_or(0), r.get::<_, Option<i64>>(1)?.unwrap_or(0))),
@@ -927,11 +1249,26 @@ impl Db {
         source_ip: String,
         synthetic: Option<String>,
     ) -> Result<(), AppError> {
+        self.record_signup_event_attributed(source_ip, synthetic, None)
+            .await
+    }
+
+    /// PRD-mcphost-tenant-attribution requirement 2: [`Self::record_signup_event`]
+    /// plus the transport's `User-Agent`, when it exposes one -- the
+    /// durable per-signup ledger this PRD's technical considerations call
+    /// out separately from `tenants.synthetic`'s current-state column.
+    pub async fn record_signup_event_attributed(
+        &self,
+        source_ip: String,
+        synthetic: Option<String>,
+        user_agent: Option<String>,
+    ) -> Result<(), AppError> {
         let ts = now_unix();
         self.with_conn(move |conn| {
             conn.execute(
-                "INSERT INTO signup_events (source_ip, created_unix, synthetic) VALUES (?1, ?2, ?3)",
-                params![source_ip, ts, synthetic],
+                "INSERT INTO signup_events (source_ip, created_unix, synthetic, user_agent) \
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![source_ip, ts, synthetic, user_agent],
             )?;
             Ok(())
         })

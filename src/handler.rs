@@ -139,6 +139,37 @@ fn synthetic_header(parts: &http::request::Parts) -> Option<String> {
         .map(str::to_string)
 }
 
+/// PRD-mcphost-tenant-attribution requirement 2: `signup_events.user_agent`,
+/// when the transport exposes one -- best-effort, same as `mcp_name_header`
+/// above (an absent or non-UTF-8 header is silently `None`, never an
+/// error).
+fn user_agent_header(parts: &http::request::Parts) -> Option<String> {
+    parts
+        .headers
+        .get(http::header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string)
+}
+
+/// PRD-mcphost-tenant-attribution requirement 2: the caller's
+/// `clientInfo.name`/`version`. `RequestContext::client_info` (`rmcp`'s own
+/// SEP-2575-aware accessor) is deliberately used instead of reading
+/// `ctx.peer.peer_info()` directly: this host's streamable-HTTP config
+/// (`with_legacy_session_mode(false)`) runs every `tools/call` as its own
+/// stateless request rather than a session `initialize` persists across
+/// (this crate's own `tests/common`'s `_meta` injection on every call, not
+/// just `initialize`, is the other side of the same fact) -- `client_info`
+/// reads the per-request `_meta["io.modelcontextprotocol/clientInfo"]` a
+/// SEP-2575 client sends on that call in that case, falling back to the
+/// session-persisted value only for a genuinely stateful/legacy peer.
+/// `None` when neither is present (a client that doesn't send `clientInfo`
+/// at all -- signup still succeeds, requirement 2 doesn't make this
+/// mandatory).
+fn peer_client_info(ctx: &RequestContext<RoleServer>) -> Option<(String, String)> {
+    ctx.client_info()
+        .map(|info| (info.name.clone(), info.version.clone()))
+}
+
 // ---- static control-plane / admin tool descriptors -----------------------
 
 fn schema(props: Value, required: &[&str]) -> Map<String, Value> {
@@ -1506,6 +1537,20 @@ impl ServerHandler for McpHostHandler {
                 .await
                 .map_err(AppError::into_error_data)?;
         }
+        // PRD-mcphost-tenant-attribution requirement 2's "first
+        // authenticated session if signup preceded capture" fallback: an
+        // already-authenticated tenant with no captured client yet gets
+        // one more chance, on whatever call this happens to be, from this
+        // same session's peer info. `Db::set_tenant_client_info` itself
+        // guards against a race with signup's own capture (its `WHERE
+        // client_name IS NULL` only ever writes once). Best-effort: a
+        // failure here must never fail the call it rides along with.
+        if let Auth::Tenant(tenant) = &auth
+            && tenant.client_name.is_none()
+            && let Some((name, version)) = peer_client_info(&ctx)
+        {
+            let _ = self.state.db.set_tenant_client_info(tenant.id, name, version).await;
+        }
         // Requirements 16/17: redacted by key name, recursively, exactly
         // once here, so every dispatch branch below -- a `host.*` tool, an
         // `admin.*` tool, or a direct namespaced call -- works from
@@ -1515,8 +1560,22 @@ impl ServerHandler for McpHostHandler {
 
         let outcome: Result<Value, AppError> = match (&auth, body_name.as_str()) {
             (_, "signup") => {
-                control::signup(&self.state, &args, &source, synthetic_header(parts).as_deref())
-                    .await
+                let (client_name, client_version) = match peer_client_info(&ctx) {
+                    Some((name, version)) => (Some(name), Some(version)),
+                    None => (None, None),
+                };
+                control::signup(
+                    &self.state,
+                    &args,
+                    &source,
+                    control::SignupAttribution {
+                        synthetic_header: synthetic_header(parts).as_deref(),
+                        client_name: client_name.as_deref(),
+                        client_version: client_version.as_deref(),
+                        user_agent: user_agent_header(parts).as_deref(),
+                    },
+                )
+                .await
             }
             // Requirement 4 / AC3-4: `host.quickstart` is readable before
             // signup, same as the rest of the `host.*` control plane in

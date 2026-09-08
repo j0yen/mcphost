@@ -249,6 +249,116 @@ pub fn is_valid_synthetic_label(label: &str) -> bool {
     len_ok && first_ok && rest_ok
 }
 
+/// PRD-mcphost-tenant-attribution requirement 1: this host's own derived
+/// read of where a signup came from -- independent of, but read alongside,
+/// `tenants.synthetic`'s free-form harness label (migration 0008). `real`
+/// on `/healthz` and in `mcphost funnel` means exactly `External`; every
+/// other class counts as synthetic there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SourceClass {
+    Loopback,
+    Fleet,
+    External,
+}
+
+impl SourceClass {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SourceClass::Loopback => "loopback",
+            SourceClass::Fleet => "fleet",
+            SourceClass::External => "external",
+        }
+    }
+
+    pub fn is_synthetic(self) -> bool {
+        !matches!(self, SourceClass::External)
+    }
+}
+
+impl std::fmt::Display for SourceClass {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// requirement 1: the source IP itself is loopback -- `"127.0.0.1"`,
+/// `"::1"`, or anything else `std::net::IpAddr::is_loopback` recognizes.
+/// An address this process can't parse (e.g. `handler::source_ip`'s
+/// `"unknown"` fallback when axum's `ConnectInfo` is missing) is never
+/// treated as loopback: an unclassifiable signup should read as external
+/// and visible, not quietly disappear into the synthetic bucket.
+pub fn is_loopback_source_ip(ip: &str) -> bool {
+    ip.parse::<std::net::IpAddr>()
+        .map(|a| a.is_loopback())
+        .unwrap_or(false)
+}
+
+/// requirement 1's "known fleet set": the fleet's own tenant
+/// (`wintermute-hub`, by display name -- every tenant's namespace is
+/// server-generated, so a human/deploy-script-driven signup can only name
+/// itself via `display_name`) plus the two prefixes
+/// `Db::probe_tenant_count` already uses for the harness's synthetic
+/// personas (PRD-mcphost-tenant-delete's `panel_`/`probe-`) -- the same
+/// rule, reused rather than reinvented, so "probe tenant" means one thing
+/// across this crate.
+pub fn is_known_fleet_display_name(display_name: &str) -> bool {
+    display_name == "wintermute-hub"
+        || display_name.starts_with("panel_")
+        || display_name.starts_with("probe-")
+}
+
+/// Open question answered at build time: "should a tenant that signs up
+/// from a cloud egress IP but with a synthorg `clientInfo.name` be
+/// synthetic? Rule: explicit stamp or client name match ⇒ synthetic." A
+/// `clientInfo.name` starting with `synthorg` (case-insensitive) matches --
+/// this is exactly the case requirement 1's header defense exists for: a
+/// future non-loopback harness that doesn't (yet) send the marker header
+/// either.
+pub fn is_known_synthorg_client(client_name: &str) -> bool {
+    client_name.to_ascii_lowercase().starts_with("synthorg")
+}
+
+/// requirement 1's full derivation. `harness_marker_present` is the
+/// `x-mcphost-synthetic` header's presence on the request (any value,
+/// including one that later fails [`is_valid_synthetic_label`] and stores
+/// no label) -- named here per the requirement's "name the exact header in
+/// the build": no other header carrying "this is a harness/prober" exists
+/// in this crate or `deploy/` today (grep confirms it), so the header
+/// PRD-mcphost-synthetic-flag already defined for the explicit-stamp path
+/// is reused as the marker rather than adding a second one. Its presence
+/// classifies `Loopback` even from a non-loopback IP -- the class name is
+/// the common case, not a literal claim about every request this branch
+/// covers.
+pub fn classify_source_class(
+    source_ip: &str,
+    harness_marker_present: bool,
+    display_name: &str,
+    client_name: Option<&str>,
+) -> SourceClass {
+    if is_loopback_source_ip(source_ip) || harness_marker_present {
+        return SourceClass::Loopback;
+    }
+    if is_known_fleet_display_name(display_name)
+        || client_name.is_some_and(is_known_synthorg_client)
+    {
+        return SourceClass::Fleet;
+    }
+    SourceClass::External
+}
+
+/// `mcphost funnel --since <date>`'s `<date>` (a plain `YYYY-MM-DD`, UTC) --
+/// unix seconds at that day's start, or `None` if it doesn't parse.
+pub fn parse_date_ymd_unix(s: &str) -> Option<i64> {
+    let mut parts = s.splitn(3, '-');
+    let y: i64 = parts.next()?.parse().ok()?;
+    let m: u32 = parts.next()?.parse().ok()?;
+    let d: u32 = parts.next()?.parse().ok()?;
+    if parts.next().is_some() || !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return None;
+    }
+    Some(days_from_civil(y, m, d) * 86_400)
+}
+
 /// Parse a window like `"24h"`, `"30m"`, `"45s"`, `"2d"` into seconds.
 /// Unparseable input defaults to 24h (the PRD's only documented value).
 pub fn parse_window_secs(window: &str) -> i64 {
@@ -328,6 +438,72 @@ mod tests {
         assert!(!is_valid_synthetic_label(":leading-colon")); // must start alnum
         assert!(!is_valid_synthetic_label("-leading-dash"));
         assert!(!is_valid_synthetic_label("Synthorg:run")); // uppercase first char
+    }
+
+    #[test]
+    fn source_class_derivation() {
+        // AC1: loopback IP, no header -> Loopback.
+        assert_eq!(
+            classify_source_class("127.0.0.1", false, "Some Agent", None),
+            SourceClass::Loopback
+        );
+        assert_eq!(
+            classify_source_class("::1", false, "Some Agent", None),
+            SourceClass::Loopback
+        );
+        // Header presence alone -> Loopback, even from a non-loopback IP.
+        assert_eq!(
+            classify_source_class("8.8.8.8", true, "Some Agent", None),
+            SourceClass::Loopback
+        );
+        // Known fleet display name, non-loopback IP, no header -> Fleet.
+        assert_eq!(
+            classify_source_class("8.8.8.8", false, "wintermute-hub", None),
+            SourceClass::Fleet
+        );
+        assert_eq!(
+            classify_source_class("8.8.8.8", false, "panel_gtm_specialist_03", None),
+            SourceClass::Fleet
+        );
+        assert_eq!(
+            classify_source_class("8.8.8.8", false, "probe-smoke-test", None),
+            SourceClass::Fleet
+        );
+        // Synthorg client name, non-loopback IP, no header, unknown display
+        // name -> Fleet (the open question's resolution).
+        assert_eq!(
+            classify_source_class("8.8.8.8", false, "Real Sounding Name", Some("synthorg-runner")),
+            SourceClass::Fleet
+        );
+        assert_eq!(
+            classify_source_class("8.8.8.8", false, "Real Sounding Name", Some("SynthOrg")),
+            SourceClass::Fleet
+        );
+        // AC4: non-loopback IP, no header, unknown client, unknown name -> External.
+        assert_eq!(
+            classify_source_class("8.8.8.8", false, "Joe's Real Company", Some("claude-code")),
+            SourceClass::External
+        );
+        assert_eq!(
+            classify_source_class("8.8.8.8", false, "Joe's Real Company", None),
+            SourceClass::External
+        );
+    }
+
+    #[test]
+    fn source_class_is_synthetic() {
+        assert!(!SourceClass::External.is_synthetic());
+        assert!(SourceClass::Loopback.is_synthetic());
+        assert!(SourceClass::Fleet.is_synthetic());
+    }
+
+    #[test]
+    fn date_ymd_parsing() {
+        assert_eq!(parse_date_ymd_unix("1970-01-01"), Some(0));
+        assert_eq!(parse_date_ymd_unix("2026-09-08"), Some(1_788_825_600));
+        assert_eq!(parse_date_ymd_unix("not-a-date"), None);
+        assert_eq!(parse_date_ymd_unix("2026-13-01"), None); // bad month
+        assert_eq!(parse_date_ymd_unix("2026-09-08-extra"), None);
     }
 
     #[test]

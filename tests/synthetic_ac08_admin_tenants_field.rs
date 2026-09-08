@@ -44,5 +44,9 @@ async fn every_row_carries_synthetic_null_for_unlabeled() {
         .iter()
         .find(|t| t["tenant"] == json!(ns_unlabeled))
         .expect("unlabeled row");
-    assert_eq!(unlabeled_row["synthetic"], json!(null));
+    // PRD-mcphost-tenant-attribution requirement 1 / AC1: this suite's
+    // test server is always loopback-sourced, so the "unlabeled" signup
+    // still derives `synthetic = harness:unstamped`, not null -- null is
+    // reserved for a genuinely `external` tenant now.
+    assert_eq!(unlabeled_row["synthetic"], json!("harness:unstamped"));
 }
