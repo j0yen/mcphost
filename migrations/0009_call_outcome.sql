@@ -1,3 +1,6 @@
+-- compat: previous -- additive column with DEFAULT 'ok', every pre-existing
+-- row and every prior release reads it as before (PRD-mcphost-migration-safety
+-- requirement 4).
 -- mcphost 0009_call_outcome: PRD-mcphost-first-call-reliability requirement 6
 -- (P1, AC6).
 --

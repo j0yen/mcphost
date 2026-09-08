@@ -661,12 +661,19 @@ pub async fn signup_with_synthetic_header(
     extract_structured(&result)
 }
 
-/// Polls `tools_call(qualified_name, args)` until it stops returning
-/// `tool_building`, or `timeout` elapses. `kinds::python`'s first call to a
-/// tool with no ready environment kicks off a background build and returns
-/// `tool_building` immediately (see that module's docs); every
-/// `python_ac*.rs` test that needs the tool to actually *run* polls through
-/// that state with this helper rather than sleeping a fixed guess.
+/// Polls `tools_call(qualified_name, args)` until it stops reporting a
+/// still-building environment, or `timeout` elapses.
+///
+/// PRD-mcphost-first-call-reliability requirement 1 made `kinds::python`'s
+/// `call` itself wait (bounded by `MCPHOST_CALL_READY_WAIT_MS`, default
+/// 20s) for a building environment before giving up, so a not-yet-ready
+/// environment no longer surfaces as a `tool_building`-coded `RpcError` --
+/// it comes back as a successful JSON-RPC response carrying the structured
+/// `{status: "building", retry_after_ms, ready_check}` result (requirement
+/// 2). This helper still recognizes the old error-coded shape too (belt-
+/// and-suspenders, same reasoning as `call_through_build` in
+/// `kinds/python.rs`'s own tests) so it keeps working unmodified if a
+/// future kind reintroduces it.
 pub async fn poll_until_ready(
     client: &McpClient,
     qualified_name: &str,
@@ -676,8 +683,10 @@ pub async fn poll_until_ready(
     let deadline = std::time::Instant::now() + timeout;
     loop {
         let result = client.tools_call(qualified_name, args.clone()).await;
-        let is_building =
-            matches!(&result, Err(e) if e.error_code.as_deref() == Some("tool_building"));
+        let is_building = match &result {
+            Err(e) => e.error_code.as_deref() == Some("tool_building"),
+            Ok(v) => extract_structured(v)["status"] == json!("building"),
+        };
         if !is_building || std::time::Instant::now() >= deadline {
             return result;
         }

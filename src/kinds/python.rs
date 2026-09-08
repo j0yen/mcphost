@@ -3326,7 +3326,13 @@ mod tests {
     /// the var to 300ms mid-run raced AC1's default-bound wait and made
     /// it time out early. Every other test in this module never touches
     /// the var, so a lock shared between just this pair is sufficient.
-    static READY_WAIT_ENV_LOCK: Mutex<()> = Mutex::new(());
+    // `tokio::sync::Mutex`, not `std::sync::Mutex` -- this guard is held
+    // across `.await` points in both tests below, and clippy's
+    // `await_holding_lock` correctly flags a std mutex for that (a
+    // same-thread task that awaited while holding it could deadlock
+    // itself); the async-aware mutex is designed to be held across
+    // awaits and gives the same cross-test exclusion.
+    static READY_WAIT_ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
     /// AC1 — a call arriving while the environment is building waits
     /// (rather than failing) and returns the tool's real result once the
@@ -3348,7 +3354,7 @@ mod tests {
         // Held for the whole test: relies on the *default*
         // `MCPHOST_CALL_READY_WAIT_MS`, which only holds if AC2 (below)
         // isn't concurrently overriding it.
-        let _env_guard = READY_WAIT_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _env_guard = READY_WAIT_ENV_LOCK.lock().await;
         let data_dir = temp_data_dir();
         let kind = PythonKind::new(&data_dir);
         let spec = json!({
@@ -3409,10 +3415,12 @@ mod tests {
         // it must exclude AC1 (which relies on the default) for the
         // entire time the var is set, not just around the set/remove
         // calls themselves.
-        let _env_guard = READY_WAIT_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        // SAFETY: `_env_guard` above excludes every other test in this
-        // module that reads `MCPHOST_CALL_READY_WAIT_MS` (just AC1) for
-        // as long as this guard is held; restored before the guard drops.
+        let _env_guard = READY_WAIT_ENV_LOCK.lock().await;
+        // `_env_guard` above excludes every other test in this module
+        // that reads `MCPHOST_CALL_READY_WAIT_MS` (just AC1) for as long as
+        // this guard is held; restored before the guard drops.
+        // SAFETY: single-threaded mutation, exclusive access guaranteed by
+        // `_env_guard` for the guard's entire lifetime.
         unsafe {
             std::env::set_var("MCPHOST_CALL_READY_WAIT_MS", "300");
         }

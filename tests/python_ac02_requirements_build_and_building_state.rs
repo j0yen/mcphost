@@ -1,7 +1,8 @@
 //! AC2 (P0) — Given a tool with `requirements: ["pydantic", "httpx"]`, When
 //! published, Then `tools/list` shows it immediately, a call during the
-//! build returns `tool_building`, and after the build (under 60 s on the
-//! reference box) a call succeeds.
+//! build waits (bounded) and reports a structured `building` result if it
+//! isn't done in time, and after the build (under 60 s on the reference
+//! box) a call succeeds.
 
 mod common;
 use common::{TestServer, extract_structured, poll_until_ready, python_kind_registry, signup};
@@ -55,14 +56,36 @@ async fn requirements_build_then_call_succeeds() {
     );
 
     // The very first call finds no ready/failed environment, kicks off the
-    // build in the background, and returns `tool_building` immediately —
-    // this *is* "a call during the build" (see kinds::python module docs).
-    let first = client.tools_call(&format!("{ns}.deps"), json!({})).await;
-    assert_eq!(
-        first.unwrap_err().error_code.as_deref(),
-        Some("tool_building"),
-        "the first call while the env is building must return tool_building"
-    );
+    // build in the background, and -- per PRD-mcphost-first-call-reliability
+    // requirement 1 -- waits up to MCPHOST_CALL_READY_WAIT_MS (default 20s)
+    // for it to become ready before giving up. Either the wait resolves the
+    // build in time and the call already succeeds, or it doesn't and the
+    // call returns the structured `{status: "building", retry_after_ms,
+    // ready_check}` result (requirement 2) instead of the old free-text /
+    // `tool_building`-coded error -- both are "a call during the build",
+    // just at different points along the wait.
+    let first = client
+        .tools_call(&format!("{ns}.deps"), json!({}))
+        .await
+        .expect("a not-yet-ready environment is a structured Ok result now, never an error");
+    let first_structured = extract_structured(&first);
+    if first_structured["status"] == json!("building") {
+        assert!(
+            first_structured["retry_after_ms"].as_u64().is_some(),
+            "building result must include retry_after_ms, got: {first_structured:?}"
+        );
+        assert_eq!(
+            first_structured["ready_check"]["method"],
+            json!("host.tool_call"),
+            "building result must name a ready_check RPC, got: {first_structured:?}"
+        );
+    } else {
+        assert!(
+            first_structured["has_httpx"].as_bool().unwrap_or(false),
+            "if the first call already succeeded (build finished inside the wait \
+             bound), it must carry the real result, got: {first_structured:?}"
+        );
+    }
 
     let started = Instant::now();
     let result = poll_until_ready(
