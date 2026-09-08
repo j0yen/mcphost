@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.28.0 — 2026-09-08
+
+In both 2026-09-08 runs the cost_optimizer persona's cold-start-benchmark task published a python-kind tool when the task explicitly required http-kind, and the judge docked the session to 0.429 / 0.5 for it — twice, on the same task, across a version jump from 0.14.0 to 0.26.3, with the tool otherwise correct ("successfully measuring and returning real cold-start data with the required field name"). Nothing in the publish path lets a publisher assert the kind and be refused when the spec contradicts it, and nothing in `host.tool_test` reports which kind the spec will produce. This PRD adds an explicit `kind` on publish that is honored or refused with a structured reason, a kind line in the tool_test report, and one sentence in the `initialize` instructions telling agents how kind is chosen — so a kind mismatch becomes a publish-time error, not a judge's verdict.
+
 ## v0.27.0 — 2026-09-08
 
 Four of the twenty-one sessions in the 2026-09-08 measure at v0.26.3 lost roughly half their credit for the same reason: the tool did the job and the judge said so, but the field the task's gold check looks for sat somewhere else in the response — "nested in response data", "the gold check's literal field path was not matched", "despite the structural deviation in where the diagnosis field appears". rest-bridge (v0.20) fixed one instance of this by placing http bodies at `result.payload`; the class survived because nothing defines where a *declared* output field must land, so each kind and each tool nests differently. This PRD makes the envelope a contract: a field the tool spec declares as output is present at `result.payload.<field>` for every kind, `host.tool_test` reports any declared field that is missing at that path before publish, and callers get one documented shape.
