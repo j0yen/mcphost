@@ -78,6 +78,11 @@ async fn absent_empty_and_invalid_headers_all_store_null_and_succeed() {
         .expect("tenant field")
         .to_string();
 
+    // PRD-mcphost-tenant-attribution requirement 1 / AC1: all three come
+    // from this suite's loopback test server with no valid explicit
+    // stamp, so all three derive `source_class = loopback` and default
+    // `synthetic` to `harness:unstamped` -- `None` is reserved for a
+    // genuinely `external` tenant now, not "no valid header".
     for ns in [&ns_absent, &ns_empty, &ns_invalid] {
         let tenant = server
             .state
@@ -87,8 +92,9 @@ async fn absent_empty_and_invalid_headers_all_store_null_and_succeed() {
             .expect("query")
             .unwrap_or_else(|| panic!("{ns} must exist"));
         assert_eq!(
-            tenant.synthetic, None,
-            "{ns} must store null synthetic (got {:?})",
+            tenant.synthetic.as_deref(),
+            Some("harness:unstamped"),
+            "{ns} must default to harness:unstamped (got {:?})",
             tenant.synthetic
         );
     }

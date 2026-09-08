@@ -67,5 +67,13 @@ async fn labeled_signup_stores_label_and_matches_response_shape() {
         .await
         .expect("query")
         .expect("unlabeled tenant exists");
-    assert_eq!(unlabeled_tenant.synthetic, None);
+    // PRD-mcphost-tenant-attribution requirement 1 / AC1: a signup with no
+    // explicit stamp from this suite's loopback test server derives
+    // `source_class = loopback` and defaults `synthetic` to
+    // `harness:unstamped`, not `None` -- `None` is reserved for a
+    // genuinely `external` tenant now.
+    assert_eq!(
+        unlabeled_tenant.synthetic.as_deref(),
+        Some("harness:unstamped")
+    );
 }

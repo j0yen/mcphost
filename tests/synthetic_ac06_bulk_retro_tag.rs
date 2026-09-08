@@ -47,7 +47,11 @@ async fn dry_run_previews_then_apply_tags_exactly_the_matches() {
         assert!(matched_names.contains(&ns.as_str()), "{ns} must be matched");
     }
 
-    // Dry run must not have written anything.
+    // Dry run must not have written anything. PRD-mcphost-tenant-attribution
+    // requirement 1 / AC1: every signup here came from this suite's
+    // loopback test server with no explicit stamp, so the untouched value
+    // is `harness:unstamped`, not `None` -- the dry run's job is to leave
+    // that default value exactly as signup left it.
     for ns in chen_namespaces.iter().chain(other_namespaces.iter()) {
         let tenant = server
             .state
@@ -56,7 +60,11 @@ async fn dry_run_previews_then_apply_tags_exactly_the_matches() {
             .await
             .expect("query")
             .expect("tenant exists");
-        assert_eq!(tenant.synthetic, None, "{ns} must be untouched by dry run");
+        assert_eq!(
+            tenant.synthetic.as_deref(),
+            Some("harness:unstamped"),
+            "{ns} must be untouched by dry run"
+        );
     }
 
     let apply_result = admin
@@ -96,6 +104,10 @@ async fn dry_run_previews_then_apply_tags_exactly_the_matches() {
             .await
             .expect("query")
             .expect("tenant exists");
-        assert_eq!(tenant.synthetic, None, "{ns} must remain unlabeled");
+        assert_eq!(
+            tenant.synthetic.as_deref(),
+            Some("harness:unstamped"),
+            "{ns} must remain at its signup-time default, untouched by the name_like apply"
+        );
     }
 }

@@ -5,6 +5,13 @@
 //!
 //! `admin.tenants` is this host's listing equivalent (requirement 5's
 //! parenthetical) -- there is no separate `admin.metering` tool.
+//!
+//! PRD-mcphost-tenant-attribution requirement 1: every loopback signup now
+//! defaults `synthetic` to `harness:unstamped` (never null) -- this
+//! suite's test server is always loopback-sourced, so a genuinely
+//! unlabeled (`null`) tenant here needs a genuinely `external` signup,
+//! made via `control::signup` directly (bypassing the HTTP layer, same as
+//! `attrib_ac4`) rather than the `signup()` HTTP helper.
 
 mod common;
 use common::{ADMIN_KEY, McpClient, TestServer, extract_structured, signup};
@@ -16,7 +23,18 @@ async fn synthetic_filter_splits_true_false_all() {
     let admin = McpClient::with_bearer(&server.base_url, ADMIN_KEY);
 
     let (ns_labeled, _) = signup(&server.base_url, "Filter Labeled").await;
-    let (ns_unlabeled, _) = signup(&server.base_url, "Filter Unlabeled").await;
+    let unlabeled_result = mcphost::control::signup(
+        &server.state,
+        &json!({"name": "Filter Unlabeled"}),
+        "8.8.8.8",
+        mcphost::control::SignupAttribution::default(),
+    )
+    .await
+    .expect("external signup");
+    let ns_unlabeled = unlabeled_result["tenant"]
+        .as_str()
+        .expect("tenant field")
+        .to_string();
     admin
         .tools_call(
             "admin.tenant_set_synthetic",

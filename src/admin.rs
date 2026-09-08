@@ -58,6 +58,14 @@ pub async fn tenants(state: &AppState, args: &Value) -> Result<Value, AppError> 
                 "created_at": t.created_at,
                 "disabled": t.disabled,
                 "synthetic": t.synthetic,
+                // PRD-mcphost-tenant-attribution: rides along with the
+                // export the same way `synthetic` already does -- an
+                // operator auditing this listing shouldn't need a second
+                // query to see how a row was classified or what client it
+                // recorded.
+                "source_class": t.source_class,
+                "client_name": t.client_name,
+                "client_version": t.client_version,
             })
         })
         .collect();

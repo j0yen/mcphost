@@ -1,6 +1,12 @@
 //! PRD-mcphost-synthetic-flag
 //! AC10 (P1) — Given one labeled tenant on a paid plan, When `/healthz` is
 //! read, Then `paying_tenants_real` is present and excludes it.
+//!
+//! PRD-mcphost-tenant-attribution: `paying_tenant_synthetic_split` now
+//! keys off `source_class = external`, not `synthetic IS NULL` (every
+//! loopback signup carries a `synthetic` label now). The "real" payer here
+//! is made via `control::signup` directly with a non-loopback IP (this
+//! suite's real TCP test server is always loopback), same as `attrib_ac4`.
 
 mod common;
 use common::{ADMIN_KEY, McpClient, TestServer, signup};
@@ -39,7 +45,15 @@ async fn absent_until_a_synthetic_tenant_pays_then_excludes_it() {
     .await;
     let admin = McpClient::with_bearer(&server.base_url, ADMIN_KEY);
 
-    let (ns_real, _) = signup(&server.base_url, "Real Payer").await;
+    let real_result = mcphost::control::signup(
+        &server.state,
+        &json!({"name": "Real Payer"}),
+        "8.8.8.8",
+        mcphost::control::SignupAttribution::default(),
+    )
+    .await
+    .expect("external signup");
+    let ns_real = real_result["tenant"].as_str().expect("tenant field").to_string();
     admin
         .tools_call(
             "admin.plan_set",

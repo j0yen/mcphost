@@ -11,6 +11,7 @@ pub mod compat_check;
 pub mod control;
 pub mod db;
 pub mod errors;
+pub mod funnel;
 pub mod handler;
 pub mod http;
 pub mod kinds;
