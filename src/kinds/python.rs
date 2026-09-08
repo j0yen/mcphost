@@ -17,10 +17,12 @@
 //! * **Build trigger**: rather than a separate publish-time hook (the
 //!   `Kind` trait has none, and [`Kind::validate_async`] doesn't carry
 //!   tenant/tool context either), a build starts on the *first call* that
-//!   finds no ready/failed environment on disk, which returns `tool_building`
-//!   immediately without waiting -- satisfying AC2's "a call during the
-//!   build returns `tool_building`" literally, since that first call *is*
-//!   during the build it just started.
+//!   finds no ready/failed environment on disk. PRD-mcphost-first-call-reliability
+//!   requirement 1 changed what that call does next: rather than failing
+//!   immediately, it waits (bounded by `MCPHOST_CALL_READY_WAIT_MS`,
+//!   default 20s) via [`EnvRegistry::wait_ready`] for the build it just
+//!   started, and only past that bound returns the structured `building`
+//!   result (never a free-text error) built by [`building_result`].
 //! * **`network: public`**: no SSRF-filtering egress proxy ships with this
 //!   PRD (see `crate::sandbox::NetworkMode` docs); `network: public` grants
 //!   full outbound access unless `$MCPHOST_EGRESS_PROXY` is set. No
@@ -133,6 +135,18 @@ const DEFAULT_WARM_PER_TENANT: usize = 2;
 const DEFAULT_WARM_MAX: usize = 16;
 /// How often the reaper task wakes to check every entry's TTL.
 const WARM_REAP_INTERVAL: Duration = Duration::from_secs(5);
+
+/// PRD-mcphost-first-call-reliability requirement 1: how long a call waits
+/// for a building environment to become ready before it falls back to the
+/// structured `building` result -- default 20s, env-configurable per the
+/// PRD's migration note ("Default bound is env-configurable").
+const DEFAULT_CALL_READY_WAIT_MS: u64 = 20_000;
+
+/// Poll interval `wait_ready` sleeps between `EnvRegistry::status` checks.
+/// Short enough that `waited_ms` is a reasonably tight bound, cheap enough
+/// (no lock contention or filesystem cost beyond a `HashMap` lookup on the
+/// common in-memory-hit path) to not matter against a multi-second build.
+const READY_POLL_INTERVAL: Duration = Duration::from_millis(100);
 /// `host.tool_run`'s stdout/stderr cap (requirement 3).
 const TOOL_RUN_CAP_BYTES: usize = 64 * 1024;
 
@@ -997,6 +1011,121 @@ impl EnvRegistry {
             this.set(&env_dir, status);
         });
     }
+
+    /// PRD-mcphost-first-call-reliability requirement 1: polls `env_dir`'s
+    /// status (never the free-text error string -- the readiness *signal*
+    /// sandbox-ready's env markers already provide) until it leaves
+    /// `Building`/unknown or `bound` elapses, whichever comes first.
+    ///
+    /// Returns the terminal status (`Ready`/`Failed`) and how long this
+    /// call actually waited if it resolved inside the bound, or `None`
+    /// (still building) with the elapsed time capped at `bound` otherwise.
+    /// Callers are expected to have already called [`Self::start_build`]
+    /// (or to know the environment is already known/building) -- this
+    /// method never starts a build itself, so a caller that races two
+    /// calls onto an unknown `env_dir` without one of them starting the
+    /// build first would wait out the full bound and report `None`.
+    async fn wait_ready(&self, env_dir: &Path, bound: Duration) -> (Option<EnvStatus>, u64) {
+        let start = Instant::now();
+        loop {
+            if let Some(status) = self.status(env_dir).await
+                && !matches!(status, EnvStatus::Building)
+            {
+                return (Some(status), start.elapsed().as_millis() as u64);
+            }
+            let elapsed = start.elapsed();
+            if elapsed >= bound {
+                return (None, elapsed.as_millis() as u64);
+            }
+            tokio::time::sleep(READY_POLL_INTERVAL.min(bound - elapsed)).await;
+        }
+    }
+}
+
+/// Outcome of resolving a python-kind tool's environment for a call:
+/// either it's ready to run on (possibly after waiting), it failed to
+/// build, or it's still building past the wait bound.
+enum EnvReadiness {
+    Ready {
+        python: PathBuf,
+        site_packages: String,
+        waited_ms: u64,
+    },
+    Building {
+        retry_after_ms: u64,
+    },
+    Failed {
+        tail: String,
+    },
+}
+
+/// PRD-mcphost-first-call-reliability requirement 1: the single helper
+/// both `call` and `tool_run` route through instead of each hand-rolling
+/// its own status-lookup-then-fail. Starts the build if `env_dir` isn't
+/// already known, then waits up to `MCPHOST_CALL_READY_WAIT_MS` (default
+/// 20s) for it to become ready before giving up and reporting `Building`.
+async fn resolve_env_readiness(
+    envs: &Arc<EnvRegistry>,
+    env_dir: &Path,
+    namespace: &str,
+    requirements: Vec<String>,
+) -> EnvReadiness {
+    if envs.status(env_dir).await.is_none() {
+        envs.start_build(env_dir.to_path_buf(), namespace.to_string(), requirements);
+    }
+    let bound = call_ready_wait_bound();
+    let (status, waited_ms) = envs.wait_ready(env_dir, bound).await;
+    match status {
+        Some(EnvStatus::Ready {
+            python,
+            site_packages,
+        }) => EnvReadiness::Ready {
+            python,
+            site_packages,
+            waited_ms,
+        },
+        Some(EnvStatus::Failed { tail }) => EnvReadiness::Failed { tail },
+        // `wait_ready` never returns `Some(Building)` -- it only stops
+        // early on a non-`Building` status, or times out to `None`.
+        Some(EnvStatus::Building) | None => EnvReadiness::Building {
+            retry_after_ms: bound.as_millis() as u64,
+        },
+    }
+}
+
+/// PRD-mcphost-first-call-reliability requirement 1: `MCPHOST_CALL_READY_WAIT_MS`,
+/// default [`DEFAULT_CALL_READY_WAIT_MS`]. Read fresh on every call rather
+/// than cached at startup -- consistent with how this module reads its
+/// other `MCPHOST_*` env vars (see `PythonKind::new`), and cheap enough
+/// (one env lookup) that per-call freshness is worth it for a knob
+/// operators may want to tune without a restart... except a restart is
+/// required anyway since nothing else re-reads it; freshness here mainly
+/// keeps tests independent of process-wide state.
+fn call_ready_wait_bound() -> Duration {
+    let ms = std::env::var("MCPHOST_CALL_READY_WAIT_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(DEFAULT_CALL_READY_WAIT_MS);
+    Duration::from_millis(ms)
+}
+
+/// PRD-mcphost-first-call-reliability requirement 2: the one place that
+/// builds the structured `building` result -- `{status, retry_after_ms,
+/// ready_check}` -- so `call` and `tool_run` never hand a caller the bare
+/// free-text "try again shortly" string past the wait bound.
+/// `ready_check` names `host.tool_call` (the same RPC the caller already
+/// used) with the tool's own local name, since retrying that call is
+/// exactly how a caller finds out whether the environment is ready now --
+/// no separate poll endpoint exists for a single tool's build status.
+fn building_result(retry_after_ms: u64, tool_name: Option<&str>) -> Value {
+    json!({
+        "status": "building",
+        "retry_after_ms": retry_after_ms,
+        "ready_check": {
+            "method": "host.tool_call",
+            "args": { "name": tool_name },
+        },
+    })
 }
 
 // ---- per-tenant CPU budget (requirement 8, AC14) ---------------------------
@@ -2430,44 +2559,45 @@ impl Kind for PythonKind {
         // from here down only runs on the cold path (a warm-pool hit
         // above already returned) -- this is exactly "first call" cost:
         // env-status lookup, scratch prep, and the sandboxed run itself.
-        // Logged unconditionally (including the `tool_building`/
-        // `build_failed` early returns) since even a rejected cold call
+        // Logged unconditionally (including the `building`/`build_failed`
+        // early returns) since even a call that never reaches the sandbox
         // spent real wall time getting there.
         let cold_call_started = Instant::now();
         let env_dir = self.env_dir(&ctx.namespace, &effective_requirements);
-        let status = match self.envs.status(&env_dir).await {
-            Some(status) => status,
-            None => {
-                self.envs.start_build(
-                    env_dir.clone(),
-                    ctx.namespace.clone(),
-                    effective_requirements,
-                );
-                return Err(KindError::structured(
-                    "tool_building",
-                    "the tool's environment is still building; try again shortly",
-                ));
-            }
-        };
-        let (python, site_packages) = match status {
-            EnvStatus::Ready {
-                python,
-                site_packages,
-            } => (python, site_packages),
-            EnvStatus::Building => {
-                return Err(KindError::structured(
-                    "tool_building",
-                    "the tool's environment is still building; try again shortly",
-                ));
-            }
-            EnvStatus::Failed { tail } => {
-                return Err(KindError::structured_with(
-                    "build_failed",
-                    "the tool's environment failed to build",
-                    json!({"tail": tail}),
-                ));
-            }
-        };
+        // PRD-mcphost-first-call-reliability requirement 1/2: waits (bounded)
+        // for a building environment instead of failing the call outright;
+        // past the bound, returns the structured `building` result rather
+        // than the old free-text "try again shortly" error.
+        let (python, site_packages) =
+            match resolve_env_readiness(&self.envs, &env_dir, &ctx.namespace, effective_requirements)
+                .await
+            {
+                EnvReadiness::Ready {
+                    python,
+                    site_packages,
+                    waited_ms,
+                } => {
+                    if waited_ms > 0 {
+                        ctx.log.log(&format!("waited_ms={waited_ms}"));
+                        tracing::info!(
+                            waited_ms,
+                            "python call waited for environment readiness"
+                        );
+                    }
+                    (python, site_packages)
+                }
+                EnvReadiness::Building { retry_after_ms } => {
+                    ctx.log.log(&format!("status=building retry_after_ms={retry_after_ms}"));
+                    return Ok(building_result(retry_after_ms, ctx.tool_name.as_deref()));
+                }
+                EnvReadiness::Failed { tail } => {
+                    return Err(KindError::structured_with(
+                        "build_failed",
+                        "the tool's environment failed to build",
+                        json!({"tail": tail}),
+                    ));
+                }
+            };
 
         let scratch = self
             .prepare_scratch(&parsed.source, &args, &site_packages)
@@ -2589,39 +2719,40 @@ impl Kind for PythonKind {
 
         let effective_requirements = parsed.effective_requirements()?;
         let env_dir = self.env_dir(&ctx.namespace, &effective_requirements);
-        let status = match self.envs.status(&env_dir).await {
-            Some(status) => status,
-            None => {
-                self.envs.start_build(
-                    env_dir.clone(),
-                    ctx.namespace.clone(),
-                    effective_requirements,
-                );
-                return Err(KindError::structured(
-                    "tool_building",
-                    "the tool's environment is still building; try again shortly",
-                ));
-            }
-        };
-        let (python, site_packages) = match status {
-            EnvStatus::Ready {
-                python,
-                site_packages,
-            } => (python, site_packages),
-            EnvStatus::Building => {
-                return Err(KindError::structured(
-                    "tool_building",
-                    "the tool's environment is still building; try again shortly",
-                ));
-            }
-            EnvStatus::Failed { tail } => {
-                return Err(KindError::structured_with(
-                    "build_failed",
-                    "the tool's environment failed to build",
-                    json!({"tail": tail}),
-                ));
-            }
-        };
+        // PRD-mcphost-first-call-reliability requirement 1/2: same bounded
+        // wait + structured `building` result as `call` above, through the
+        // same helper -- `host.tool_run` duplicated the same free-text
+        // "try again shortly" sites `call` did.
+        let (python, site_packages) =
+            match resolve_env_readiness(&self.envs, &env_dir, &ctx.namespace, effective_requirements)
+                .await
+            {
+                EnvReadiness::Ready {
+                    python,
+                    site_packages,
+                    waited_ms,
+                } => {
+                    if waited_ms > 0 {
+                        ctx.log.log(&format!("waited_ms={waited_ms}"));
+                        tracing::info!(
+                            waited_ms,
+                            "python tool_run waited for environment readiness"
+                        );
+                    }
+                    (python, site_packages)
+                }
+                EnvReadiness::Building { retry_after_ms } => {
+                    ctx.log.log(&format!("status=building retry_after_ms={retry_after_ms}"));
+                    return Ok(building_result(retry_after_ms, ctx.tool_name.as_deref()));
+                }
+                EnvReadiness::Failed { tail } => {
+                    return Err(KindError::structured_with(
+                        "build_failed",
+                        "the tool's environment failed to build",
+                        json!({"tail": tail}),
+                    ));
+                }
+            };
 
         let scratch = self
             .prepare_scratch(&parsed.source, &args, &site_packages)
@@ -2797,9 +2928,14 @@ mod tests {
     }
 
     /// Calls `kind.call(spec, args, ctx)` once, transparently retrying past
-    /// any `tool_building` responses (the first call against a fresh env
-    /// always gets at least one) -- the unit-test equivalent of
-    /// `tests/common::poll_until_ready`.
+    /// any `tool_building`-coded error. PRD-mcphost-first-call-reliability
+    /// requirement 1 made `call` itself wait (bounded) for a building
+    /// environment, so this loop no longer fires in practice against a
+    /// real (fast, dependency-free) test build -- kept as a harmless
+    /// belt-and-suspenders retry (and to avoid rewriting every existing
+    /// caller) rather than deleted; a `building` result now comes back as
+    /// `Ok(_)`, not this error, and is asserted on directly where it
+    /// matters (see the `firstcall` tests below).
     async fn call_through_build(
         kind: &PythonKind,
         spec: &Value,
@@ -3032,6 +3168,186 @@ mod tests {
             kind.warm_metrics().2,
             0,
             "the timed-out warm sandbox must no longer be in the pool"
+        );
+    }
+
+    // ---- PRD-mcphost-first-call-reliability ---------------------------
+
+    /// A `CallLog` that keeps every logged line, so a test can assert on
+    /// what ended up in the call record (`waited_ms`, `status=building`)
+    /// the way `host.tool_logs` would surface it to a caller.
+    #[derive(Default)]
+    struct RecordingLog(std::sync::Mutex<Vec<String>>);
+    impl crate::kinds::CallLog for RecordingLog {
+        fn log(&self, line: &str) {
+            self.0.lock().unwrap_or_else(|e| e.into_inner()).push(line.to_string());
+        }
+    }
+    impl RecordingLog {
+        fn lines(&self) -> Vec<String> {
+            self.0.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        }
+    }
+
+    fn firstcall_ctx(namespace: &str, tool_name: &str, log: Arc<RecordingLog>) -> CallCtx {
+        CallCtx {
+            tenant_id: 1,
+            namespace: namespace.to_string(),
+            secrets: Arc::new(crate::kinds::NoSecrets),
+            deadline: Instant::now() + Duration::from_secs(30),
+            log,
+            test_mode: false,
+            resources: Arc::new(crate::kinds::NullResourceSink),
+            tool_name: Some(tool_name.to_string()),
+        }
+    }
+
+    /// Serializes the two tests below that read or mutate the
+    /// process-global `MCPHOST_CALL_READY_WAIT_MS` env var. `cargo test`
+    /// runs `#[tokio::test]` fns as parallel OS threads within one
+    /// process, and this was a real (not theoretical) flake: AC2 setting
+    /// the var to 300ms mid-run raced AC1's default-bound wait and made
+    /// it time out early. Every other test in this module never touches
+    /// the var, so a lock shared between just this pair is sufficient.
+    static READY_WAIT_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    /// AC1 — a call arriving while the environment is building waits
+    /// (rather than failing) and returns the tool's real result once the
+    /// build finishes, with `waited_ms` >= 5000 observable in the call
+    /// record.
+    ///
+    /// The environment is pre-marked `Building` so `call` never starts its
+    /// own (real, typically sub-second) build; instead this test starts a
+    /// real build itself after a 5s delay, so the 5s the PRD's AC asks for
+    /// is deterministic rather than racing `uv venv`'s own duration --
+    /// `call` still runs the real interpreter the real build produces, so
+    /// the result really is the tool's own, not a fake.
+    #[tokio::test]
+    async fn call_waits_for_building_env_and_returns_real_result_firstcall_ac1() {
+        if !sandbox::supports_user_namespaces() {
+            println!("{}", sandbox::USERNS_SKIP_MARKER);
+            return;
+        }
+        // Held for the whole test: relies on the *default*
+        // `MCPHOST_CALL_READY_WAIT_MS`, which only holds if AC2 (below)
+        // isn't concurrently overriding it.
+        let _env_guard = READY_WAIT_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let data_dir = temp_data_dir();
+        let kind = PythonKind::new(&data_dir);
+        let spec = json!({
+            "source": "def main(args):\n    return {\"n\": args[\"n\"] * 2}\n",
+            "args_schema": {"type": "object"},
+            "requirements": [],
+        });
+        let requirements: Vec<String> = vec![];
+        let env_dir = kind.env_dir("firstcall1", &requirements);
+
+        kind.envs.set(&env_dir, EnvStatus::Building);
+        let envs = kind.envs.clone();
+        let build_env_dir = env_dir.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            let status = build_env(build_env_dir.clone(), Vec::new()).await;
+            envs.set(&build_env_dir, status);
+        });
+
+        let log = Arc::new(RecordingLog::default());
+        let ctx = firstcall_ctx("firstcall1", "doubler", log.clone());
+
+        let started = Instant::now();
+        let result = kind
+            .call(&spec, json!({"n": 3}), &ctx)
+            .await
+            .expect("call must wait out the build and return the real result");
+        assert_eq!(result, json!({"n": 6}));
+        assert!(
+            started.elapsed() >= Duration::from_secs(5),
+            "call must actually have waited for the build, took {:?}",
+            started.elapsed()
+        );
+
+        let waited_ms = log
+            .lines()
+            .iter()
+            .find_map(|l| l.strip_prefix("waited_ms="))
+            .and_then(|v| v.parse::<u64>().ok())
+            .expect("call record must show a waited_ms line");
+        assert!(
+            waited_ms >= 5000,
+            "waited_ms must be >= 5000, got {waited_ms}"
+        );
+    }
+
+    /// AC2 — an environment not ready within the bound returns a
+    /// structured JSON-RPC result (`Ok`, not a transport/`KindError`
+    /// error), never the old free-text "try again shortly" string.
+    #[tokio::test]
+    async fn call_past_bound_returns_structured_building_result_firstcall_ac2() {
+        if !sandbox::supports_user_namespaces() {
+            println!("{}", sandbox::USERNS_SKIP_MARKER);
+            return;
+        }
+        // Held for the whole test -- see `READY_WAIT_ENV_LOCK`'s doc
+        // comment: this is the test that mutates the shared env var, so
+        // it must exclude AC1 (which relies on the default) for the
+        // entire time the var is set, not just around the set/remove
+        // calls themselves.
+        let _env_guard = READY_WAIT_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // SAFETY: `_env_guard` above excludes every other test in this
+        // module that reads `MCPHOST_CALL_READY_WAIT_MS` (just AC1) for
+        // as long as this guard is held; restored before the guard drops.
+        unsafe {
+            std::env::set_var("MCPHOST_CALL_READY_WAIT_MS", "300");
+        }
+        let data_dir = temp_data_dir();
+        let kind = PythonKind::new(&data_dir);
+        let spec = json!({
+            "source": "def main(args):\n    return {\"ok\": True}\n",
+            "args_schema": {"type": "object"},
+            "requirements": [],
+        });
+        let log = Arc::new(RecordingLog::default());
+        let ctx = firstcall_ctx("firstcall2", "slow_build", log.clone());
+
+        // Never resolves within the 300ms bound -- `envs` never sees this
+        // `env_dir` reach `Ready`/`Failed`, so the wait always times out.
+        let requirements: Vec<String> = vec![];
+        let env_dir = kind.env_dir("firstcall2", &requirements);
+        kind.envs.set(&env_dir, EnvStatus::Building);
+
+        let result = kind
+            .call(&spec, json!({}), &ctx)
+            .await
+            .expect("past the bound this must be Ok(building), not an Err");
+        // SAFETY: restoring the var this test set above, same thread.
+        unsafe {
+            std::env::remove_var("MCPHOST_CALL_READY_WAIT_MS");
+        }
+
+        assert_eq!(result["status"], json!("building"));
+        let retry_after_ms = result["retry_after_ms"]
+            .as_u64()
+            .expect("retry_after_ms must be a number");
+        assert!(retry_after_ms > 0);
+        assert_eq!(
+            result["ready_check"]["method"],
+            json!("host.tool_call"),
+            "ready_check must name a real, callable RPC"
+        );
+        assert_eq!(result["ready_check"]["args"]["name"], json!("slow_build"));
+
+        let rendered = result.to_string();
+        assert!(
+            !rendered.contains("try again shortly"),
+            "must never fall back to the old free-text string: {rendered}"
+        );
+
+        let logged = log.lines();
+        assert!(
+            logged
+                .iter()
+                .any(|l| l.starts_with("status=building")),
+            "call record must show the building status, got {logged:?}"
         );
     }
 }
