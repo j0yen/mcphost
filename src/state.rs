@@ -293,6 +293,47 @@ pub fn is_loopback_source_ip(ip: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// PRD-mcphost-client-ip-behind-proxy requirement 1: the single function
+/// every per-source call site (the signup rate limiter, `signup_events`,
+/// and any future `ConnectInfo`/`source_ip` reader) funnels through to
+/// resolve "the source address" for a request. `peer_ip` is the TCP peer's
+/// address as `handler::source_ip` reads it off axum's `ConnectInfo`
+/// (`None` when the extractor found nothing -- the same case that string
+/// has always reported as `"unknown"`); `forwarded_for` is the raw,
+/// unparsed `X-Forwarded-For` header value, if the request carried one.
+///
+/// mcphost.dev runs behind Caddy on the same box, so the TCP peer of every
+/// proxied request is loopback and only loopback -- this deployment trusts
+/// that one proxy, never a configurable trusted-proxy list (see the PRD's
+/// non-goals). A non-loopback peer's header is therefore never consulted
+/// (requirement/AC2: a forged header from a real remote peer changes
+/// nothing). When the peer is loopback and a header is present, the first
+/// address in it (a proxy chain is `client, proxy1, proxy2, ...`) is parsed
+/// as an `IpAddr`; an unparseable value falls back to the peer address,
+/// logged once at debug level rather than rejecting the request (AC3) --
+/// the same "never disappear a signup" posture as
+/// [`is_loopback_source_ip`]'s own doc comment above.
+pub fn resolve_source_ip(peer_ip: Option<&str>, forwarded_for: Option<&str>) -> String {
+    let peer_str = peer_ip.unwrap_or("unknown").to_string();
+    if !is_loopback_source_ip(&peer_str) {
+        return peer_str;
+    }
+    let Some(header) = forwarded_for else {
+        return peer_str;
+    };
+    let first = header.split(',').next().unwrap_or("").trim();
+    match first.parse::<std::net::IpAddr>() {
+        Ok(ip) => ip.to_string(),
+        Err(_) => {
+            tracing::debug!(
+                header = %header,
+                "unparseable X-Forwarded-For from loopback peer; using peer address"
+            );
+            peer_str
+        }
+    }
+}
+
 /// requirement 1's "known fleet set": the fleet's own tenant
 /// (`wintermute-hub`, by display name -- every tenant's namespace is
 /// server-generated, so a human/deploy-script-driven signup can only name
