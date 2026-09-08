@@ -753,6 +753,31 @@ impl McpHostHandler {
 
         match outcome {
             Ok(Ok(value)) => {
+                // PRD-mcphost-first-call-reliability requirement 6 (P1,
+                // AC6): a call that waited (bounded) for a building
+                // environment, or came back past the bound as the
+                // structured `building` result, is metered distinctly from
+                // an ordinary `ok` -- so billing/measure can tell readiness
+                // cost apart from real work. `building` is read straight
+                // off the result shape `building_result` builds; `waited`
+                // is read off the `waited_ms=` call-record line
+                // `resolve_env_readiness`'s callers log only when they
+                // actually waited (waited_ms > 0).
+                let call_outcome = if value.get("status").and_then(Value::as_str)
+                    == Some("building")
+                {
+                    "building"
+                } else if log
+                    .0
+                    .lock()
+                    .map(|g| g.iter().any(|l| l.starts_with("waited_ms=")))
+                    .unwrap_or(false)
+                {
+                    "waited"
+                } else {
+                    "ok"
+                };
+
                 // Requirement 8: every `tools/call` writes a `calls` row.
                 // If that write fails (AC14: an unwritable database), the
                 // call must not silently succeed with unmetered usage —
@@ -769,6 +794,7 @@ impl McpHostHandler {
                         None,
                         cpu_ms,
                         peak_rss_kb,
+                        call_outcome,
                     )
                     .await
                 {
@@ -780,7 +806,7 @@ impl McpHostHandler {
                 }
                 tracing::info!(
                     tenant = %tenant.namespace, method = "tools/call", tool = %local_name,
-                    duration_ms, status = "ok", mcp_name_mismatch,
+                    duration_ms, status = "ok", outcome = call_outcome, mcp_name_mismatch,
                 );
                 Ok(value)
             }
@@ -797,6 +823,7 @@ impl McpHostHandler {
                         Some(app_err.code().to_string()),
                         cpu_ms,
                         peak_rss_kb,
+                        "error",
                     )
                     .await;
                 tracing::info!(
@@ -817,6 +844,7 @@ impl McpHostHandler {
                         Some("call_timeout".to_string()),
                         cpu_ms,
                         peak_rss_kb,
+                        "timeout",
                     )
                     .await;
                 tracing::info!(
@@ -1121,6 +1149,13 @@ impl McpHostHandler {
                 .get("duration_ms")
                 .and_then(Value::as_i64)
                 .unwrap_or(0);
+            // `host.spec_test` runs a pre-publish spec, so a `building`
+            // result here is possible (a fresh spec against a
+            // never-before-seen requirements set) but not the common case
+            // requirement 6 targets; `ok`/`error` covers it -- no
+            // `waited_ms=` inspection since this loop has no per-invocation
+            // log buffer handle at this point.
+            let call_outcome = if ok { "ok" } else { "error" };
             let _ = self
                 .state
                 .db
@@ -1132,6 +1167,7 @@ impl McpHostHandler {
                     error_class,
                     None,
                     None,
+                    call_outcome,
                 )
                 .await;
         }

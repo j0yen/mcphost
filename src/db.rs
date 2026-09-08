@@ -21,6 +21,7 @@ const MIGRATION_0005: &str = include_str!("../migrations/0005_cascade_delete.sql
 const MIGRATION_0006: &str = include_str!("../migrations/0006_billing.sql");
 const MIGRATION_0007: &str = include_str!("../migrations/0007_metering.sql");
 const MIGRATION_0008: &str = include_str!("../migrations/0008_synthetic.sql");
+const MIGRATION_0009: &str = include_str!("../migrations/0009_call_outcome.sql");
 
 /// Shared by every query that selects a whole tenant row, so the column
 /// list and [`tenant_from_row`] stay in lockstep with each other.
@@ -258,7 +259,8 @@ impl Db {
         Self::migrate_0005_cascade_delete(&conn)?;
         Self::migrate_0006_billing(&conn)?;
         Self::migrate_0007_metering(&conn)?;
-        Self::migrate_0008_synthetic(&conn)
+        Self::migrate_0008_synthetic(&conn)?;
+        Self::migrate_0009_call_outcome(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -358,6 +360,18 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0008)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-first-call-reliability migration 0009 (requirement 6):
+    /// same idempotency pattern as 0002-0008, gated on `calls.outcome`.
+    fn migrate_0009_call_outcome(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('calls') WHERE name = 'outcome'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0009)?;
         }
         Ok(())
     }
@@ -1163,14 +1177,16 @@ impl Db {
         error_class: Option<String>,
         cpu_ms: Option<i64>,
         peak_rss_kb: Option<i64>,
+        outcome: &str,
     ) -> Result<(), AppError> {
         let started_at = now_rfc3339();
         let started_unix = now_unix();
+        let outcome = outcome.to_string();
         self.with_conn(move |conn| {
             conn.execute(
-                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb],
+                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome],
             )?;
             Ok(())
         })
@@ -1192,6 +1208,29 @@ impl Db {
                  ORDER BY id DESC LIMIT 1",
                 params![tenant_id, tool_name],
                 |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// The most recent call's `outcome` (`ok`/`waited`/`building`/`error`/
+    /// `timeout`) for a tenant's tool -- test-only helper (PRD-mcphost-
+    /// first-call-reliability requirement 6, AC6) to read back what
+    /// `record_call` stored without adding a new RPC surface, mirroring
+    /// [`Self::last_call_usage`].
+    pub async fn last_call_outcome(
+        &self,
+        tenant_id: i64,
+        tool_name: String,
+    ) -> Result<Option<String>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT outcome FROM calls WHERE tenant_id = ?1 AND tool_name = ?2 \
+                 ORDER BY id DESC LIMIT 1",
+                params![tenant_id, tool_name],
+                |r| r.get(0),
             )
             .optional()
             .map_err(AppError::from)

@@ -1,0 +1,13 @@
+-- mcphost 0009_call_outcome: PRD-mcphost-first-call-reliability requirement 6
+-- (P1, AC6).
+--
+-- `calls.ok`/`error_class` already distinguish success from failure, but
+-- not *why* a successful call took the shape it did: a call that waited
+-- (bounded) for a building environment, or one that returned the
+-- structured `building` result past that bound, both write `ok = 1` today
+-- -- indistinguishable from a call that ran on a warm/ready environment the
+-- whole time. Billing and measure both want to know readiness cost apart
+-- from real work, so `outcome` records it directly: `ok` (the default, and
+-- every pre-existing row via `DEFAULT 'ok'`), `waited`, `building`,
+-- `error`, or `timeout`.
+ALTER TABLE calls ADD COLUMN outcome TEXT NOT NULL DEFAULT 'ok';

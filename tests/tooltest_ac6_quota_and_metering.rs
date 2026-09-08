@@ -28,7 +28,7 @@ async fn spec_test_over_the_daily_quota_is_refused_like_a_normal_call() {
         server
             .state
             .db
-            .record_call(tenant.id, "echoer".to_string(), 1, true, None, None, None)
+            .record_call(tenant.id, "echoer".to_string(), 1, true, None, None, None, "ok")
             .await
             .expect("seed call");
     }

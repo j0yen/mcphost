@@ -472,6 +472,23 @@ pub trait Kind: Send + Sync {
     /// operation returns" holds regardless of the warm sandbox's TTL.
     async fn on_tool_changed(&self, _tenant_id: i64, _local_name: &str) {}
 
+    /// PRD-mcphost-first-call-reliability requirement 4: a tool of this kind
+    /// was just published (or republished) successfully -- pre-provision
+    /// whatever out-of-process state (e.g. a build) the common "publish,
+    /// then call a few seconds later" case would otherwise pay for at call
+    /// time. Called with the freshly-stored `spec` right after
+    /// `host.tool_publish` writes it, never awaited by the caller (a slow
+    /// or failed provision here must not delay or fail the publish RPC).
+    /// Kinds with no such notion (`echo`, `http`) don't override this.
+    async fn on_tool_published(
+        &self,
+        _tenant_id: i64,
+        _namespace: &str,
+        _local_name: &str,
+        _spec: &Value,
+    ) {
+    }
+
     /// A tenant is gone (disabled or deleted). Same idea as
     /// [`Kind::on_tool_changed`], but for every tool of this kind that
     /// tenant owns at once -- `kinds::python` evicts every warm sandbox

@@ -288,7 +288,7 @@ pub async fn tool_publish(
 
     state
         .db
-        .upsert_tool(tenant.id, name.clone(), kind_name.clone(), spec)
+        .upsert_tool(tenant.id, name.clone(), kind_name.clone(), spec.clone())
         .await?;
 
     // PRD-mcphost-code-tools-warm-pool AC3: a republish of an existing name
@@ -302,6 +302,20 @@ pub async fn tool_publish(
             k.on_tool_changed(tenant.id, &name).await;
         }
     }
+
+    // PRD-mcphost-first-call-reliability requirement 4: pre-provision this
+    // tool's environment (python-kind: request the build) right after the
+    // publish that made it exist, so a call arriving a few seconds later
+    // finds it already building/ready instead of discovering "unknown" at
+    // call time. Fire only for `kind`, not every registered kind (unlike
+    // the eviction above, this isn't a "this name might belong to a
+    // different kind now" concern -- it's a fresh provision for the kind
+    // that was actually just published) and never awaited past this point
+    // by the caller in spirit: `Kind::on_tool_published` impls are expected
+    // to spawn/detach their own work (as `PythonKind`'s does via
+    // `EnvRegistry::start_build`) rather than block the publish response.
+    kind.on_tool_published(tenant.id, &tenant.namespace, &name, &spec)
+        .await;
 
     Ok(json!({
         "name": format!("{}.{}", tenant.namespace, name),

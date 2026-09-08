@@ -2798,6 +2798,38 @@ impl Kind for PythonKind {
         self.warm.evict_tool(tenant_id, local_name).await;
     }
 
+    /// PRD-mcphost-first-call-reliability requirement 4: request the
+    /// environment build immediately on a successful publish, mirroring
+    /// `resolve_env_readiness`'s own "start only if not already known"
+    /// check -- a republish onto requirements this namespace already has an
+    /// env for (building, ready, or even failed) is a no-op here; a
+    /// genuinely new requirements set starts building right away instead of
+    /// waiting for the first call to discover it's unknown. Best-effort: an
+    /// unparseable spec or uninferrable requirements just skip pre-warming
+    /// silently (`host.tool_publish`'s own validation already rejected
+    /// those before this ever runs, so this is defense in depth, not the
+    /// primary error path) rather than fail a publish that already
+    /// succeeded.
+    async fn on_tool_published(
+        &self,
+        _tenant_id: i64,
+        namespace: &str,
+        _local_name: &str,
+        spec: &Value,
+    ) {
+        let Ok(parsed) = parse_spec(spec) else {
+            return;
+        };
+        let Ok(requirements) = parsed.effective_requirements() else {
+            return;
+        };
+        let env_dir = self.env_dir(namespace, &requirements);
+        if self.envs.status(&env_dir).await.is_none() {
+            self.envs
+                .start_build(env_dir, namespace.to_string(), requirements);
+        }
+    }
+
     /// AC3: a disabled/deleted tenant's warm sandboxes don't outlive it.
     async fn on_tenant_removed(&self, tenant_id: i64) {
         self.warm.evict_tenant(tenant_id).await;
@@ -3349,5 +3381,78 @@ mod tests {
                 .any(|l| l.starts_with("status=building")),
             "call record must show the building status, got {logged:?}"
         );
+    }
+
+    /// AC4 — a successful python-kind publish requests the environment
+    /// build immediately, before any call is ever made: `host.tool_publish`
+    /// (`control::tool_publish`) calls `Kind::on_tool_published`, which
+    /// `PythonKind` overrides to mirror `resolve_env_readiness`'s own
+    /// "start only if not already known" check. `EnvRegistry::start_build`
+    /// marks the env `Building` synchronously before spawning the real
+    /// (backgrounded) build, so this assertion needs no sleep/poll to be
+    /// deterministic -- it is exactly the state a call arriving moments
+    /// later would find instead of `None`/"unknown".
+    #[tokio::test]
+    async fn publish_requests_build_before_first_call_firstcall_ac4() {
+        let data_dir = temp_data_dir();
+        let kind = PythonKind::new(&data_dir);
+        let spec = json!({
+            "source": "def main(args):\n    return {\"ok\": True}\n",
+            "args_schema": {"type": "object"},
+            "requirements": ["requests"],
+        });
+        let requirements = vec!["requests".to_string()];
+        let env_dir = kind.env_dir("firstcall4", &requirements);
+
+        assert!(
+            kind.envs.status(&env_dir).await.is_none(),
+            "precondition: this env must be genuinely unknown before publish"
+        );
+
+        kind.on_tool_published(1, "firstcall4", "prebuilder", &spec)
+            .await;
+
+        assert!(
+            kind.envs.status(&env_dir).await.is_some(),
+            "a successful publish must request the build immediately -- the \
+             pool state must show it building (or already resolved), not \
+             unknown, before any call is made"
+        );
+    }
+
+    /// AC4 (negative half): a republish onto a requirements set this
+    /// namespace already has a *resolved* env for (here: `Ready`, planted
+    /// directly so the test needs no real build) must not restart it --
+    /// `on_tool_published` only calls `start_build` when the status is
+    /// unknown, same guard `resolve_env_readiness` uses at call time.
+    #[tokio::test]
+    async fn republish_onto_known_env_does_not_restart_build_firstcall_ac4() {
+        let data_dir = temp_data_dir();
+        let kind = PythonKind::new(&data_dir);
+        let spec = json!({
+            "source": "def main(args):\n    return {\"ok\": True}\n",
+            "args_schema": {"type": "object"},
+            "requirements": [],
+        });
+        let requirements: Vec<String> = vec![];
+        let env_dir = kind.env_dir("firstcall4b", &requirements);
+        let planted = EnvStatus::Ready {
+            python: env_dir.join("bin").join("python"),
+            site_packages: "already-here".to_string(),
+        };
+        kind.envs.set(&env_dir, planted);
+
+        kind.on_tool_published(1, "firstcall4b", "prebuilder", &spec)
+            .await;
+
+        match kind.envs.status(&env_dir).await {
+            Some(EnvStatus::Ready { site_packages, .. }) => {
+                assert_eq!(
+                    site_packages, "already-here",
+                    "an already-resolved env must be left untouched, not rebuilt"
+                );
+            }
+            other => panic!("expected the planted Ready status to survive untouched, got {other:?}"),
+        }
     }
 }
