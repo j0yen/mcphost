@@ -84,6 +84,18 @@ async fn unauthenticated_tools_list_is_signup_only() {
         "host.secret_set",
         "host.secret_list",
         "host.registry_publish",
+        // PRD-mcphost-tenant-state requirement 2: the host.state.* control
+        // plane is discoverable unauthenticated too, same as every other
+        // host.*-style tool above.
+        "host.state.get",
+        "host.state.set",
+        "host.state.delete",
+        "host.state.list",
+        "host.state.table_create",
+        "host.state.table_drop",
+        "host.state.insert",
+        "host.state.query",
+        "host.state.delete_rows",
         // PRD-grand-loop-billing AC1: billing.plans is anonymous-and-tenant
         // reachable, discoverable here for the same reason host.quickstart
         // is -- billing.status/billing.checkout are tenant-only in what
@@ -104,8 +116,9 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        18,
+        27,
         "signup + the thirteen host.* tools (incl. host.quickstart, host.tool_run, and \
-         host.bridge_test) + host.tool_call + the three billing.* tools: {tool_names:?}"
+         host.bridge_test) + host.tool_call + the nine host.state.* tools (PRD-mcphost-tenant-state) \
+         + the three billing.* tools: {tool_names:?}"
     );
 }
