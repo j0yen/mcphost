@@ -174,7 +174,9 @@ pub fn quickstart(
                 "note": "Sign up first to get a tenant_key and namespace, then call \
                     host.quickstart again (kind still required) with that key -- as the \
                     tenant_key argument, or reconnected with an Authorization header -- \
-                    for a filled-in example.",
+                    for a filled-in example. A host.* call with no tenant_key fails with \
+                    tenant_key_missing; one that doesn't match any tenant fails with \
+                    tenant_key_invalid.",
             }],
         }));
     };

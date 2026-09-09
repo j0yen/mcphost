@@ -45,6 +45,20 @@ fn field_example(field: &str) -> Option<Value> {
 pub enum AppError {
     #[error("missing or invalid Authorization: Bearer key")]
     Unauthorized,
+    /// PRD-mcphost-auth-error-names-argument requirement 1 / AC1: a
+    /// `host.*` call with no `Authorization` header and no `tenant_key`
+    /// argument (or a non-string one) -- the argument-only auth path
+    /// (mcphost-session-key) has no header to be "missing or invalid", so
+    /// this names the argument the caller can actually pass instead of
+    /// reusing [`AppError::Unauthorized`]'s header-shaped text.
+    #[error("tenant_key is required: pass the key that signup returned as the tenant_key argument")]
+    TenantKeyMissing,
+    /// PRD-mcphost-auth-error-names-argument requirement 2 / AC2-3: a
+    /// `tenant_key` argument present but matching no tenant (or a disabled
+    /// one, which stays [`AppError::TenantDisabled`] -- unchanged, see
+    /// `resolve_tenant_key_auth`). Never interpolates the offending key.
+    #[error("tenant_key was not recognized; call signup for a new key or check the value")]
+    TenantKeyInvalid,
     #[error("forbidden")]
     Forbidden,
     #[error("tenant is disabled")]
@@ -140,7 +154,13 @@ impl AppError {
     /// The machine-readable code every AC-facing test matches on.
     pub fn code(&self) -> &'static str {
         match self {
-            AppError::Unauthorized => "unauthorized",
+            // PRD-mcphost-auth-error-names-argument requirement 3 / AC4:
+            // renamed from "unauthorized" -- the header path's own code,
+            // distinct from the two argument-path codes below now that
+            // there are three ways to fail auth instead of one.
+            AppError::Unauthorized => "bearer_invalid",
+            AppError::TenantKeyMissing => "tenant_key_missing",
+            AppError::TenantKeyInvalid => "tenant_key_invalid",
             AppError::Forbidden => "forbidden",
             AppError::TenantDisabled => "tenant_disabled",
             AppError::RateLimited => "rate_limited",
@@ -187,6 +207,8 @@ impl AppError {
             | AppError::CallTimeout
             | AppError::RegistryRejected(_) => ErrorCode::INTERNAL_ERROR,
             AppError::Unauthorized
+            | AppError::TenantKeyMissing
+            | AppError::TenantKeyInvalid
             | AppError::Forbidden
             | AppError::TenantDisabled
             | AppError::RateLimited

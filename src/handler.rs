@@ -96,7 +96,15 @@ async fn resolve_tenant_key_auth(state: &AppState, args: &Value) -> Result<Auth,
     };
     let hash = hash_key(key);
     match state.db.find_tenant_by_key_hash(hash).await? {
-        Some(t) if t.disabled => Err(AppError::TenantDisabled),
+        // PRD-mcphost-auth-error-names-argument requirement 2 / AC3: unlike
+        // the header path's `AppError::TenantDisabled` (unchanged --
+        // ac08_admin_disable_and_forbidden.rs pins that), a disabled
+        // tenant's key sent as the `tenant_key` argument reads as
+        // `tenant_key_invalid`, the same as any other unrecognized key --
+        // it never distinguishes "exists but disabled" from "doesn't
+        // exist" for this path, so nothing about a guessed key's validity
+        // leaks through it.
+        Some(t) if t.disabled => Err(AppError::TenantKeyInvalid),
         Some(t) => Ok(Auth::Tenant(Box::new(t))),
         None => Ok(Auth::Invalid),
     }
@@ -1774,7 +1782,9 @@ impl ServerHandler for McpHostHandler {
                  control plane -- including `host.tool_publish` and `host.tool_call` -- is \
                  already visible in this tools/list, before you have a key. Pass the key \
                  `signup` returns as the `tenant_key` argument on every call after that; no \
-                 reconnect and no Authorization header is required. Result envelope contract: \
+                 reconnect and no Authorization header is required. A `host.*` call with no \
+                 `tenant_key` at all fails with `tenant_key_missing`, and one that doesn't \
+                 match any tenant fails with `tenant_key_invalid`. Result envelope contract: \
                  when a spec declares `outputs` (field names its tool emits, or a map from \
                  field name to the exact `$.a.b[0].c`-style path to read it from), each is \
                  readable at `result.payload.<field>` for every kind, regardless of how deep \
@@ -1912,7 +1922,16 @@ impl ServerHandler for McpHostHandler {
         // ever consulted when `resolve_auth` found no `Authorization`
         // header to resolve in the first place. Requirement 9: this is
         // `call_tool` only, never `list_tools`, which never reaches here.
-        if matches!(auth, Auth::Anonymous) {
+        //
+        // PRD-mcphost-auth-error-names-argument requirement 1-3: this flag
+        // is what lets the final `(Auth::Anonymous | Auth::Invalid, _)` arm
+        // below tell a missing/invalid `tenant_key` argument apart from a
+        // missing/invalid `Authorization` header -- `resolve_auth` only
+        // ever returns `Anonymous` when no header was sent at all, so
+        // reaching this branch already proves the header path isn't in
+        // play for whatever `auth` becomes next.
+        let via_tenant_key_arg = matches!(auth, Auth::Anonymous);
+        if via_tenant_key_arg {
             auth = resolve_tenant_key_auth(&self.state, &raw_args)
                 .await
                 .map_err(AppError::into_error_data)?;
@@ -1962,7 +1981,7 @@ impl ServerHandler for McpHostHandler {
             // `list_tools` -- an authenticated tenant gets its own
             // namespace filled in; anyone else gets the signup step, no
             // tenant data. Deliberately checked before the blanket
-            // Anonymous/Invalid -> Unauthorized arm below, the same way
+            // Anonymous/Invalid -> auth-error arm below, the same way
             // `signup` itself is.
             (Auth::Tenant(tenant), "host.quickstart") => {
                 match control::quickstart(&self.state, Some(tenant), &args) {
@@ -2007,7 +2026,33 @@ impl ServerHandler for McpHostHandler {
             // signup and regardless of auth, since it carries no
             // tenant-specific data.
             (_, "billing.plans") => Ok(crate::billing::plans(&self.state)),
-            (Auth::Anonymous | Auth::Invalid, _) => Err(AppError::Unauthorized),
+            // PRD-mcphost-auth-error-names-argument requirement 1-3 /
+            // AC1-4: three distinct auth failures now, not one. A header
+            // was sent and didn't resolve (`!via_tenant_key_arg`) keeps the
+            // original bearer-shaped text and its own `bearer_invalid`
+            // code (AC4). No header at all falls through to the
+            // `tenant_key` argument -- absent (or non-string) is
+            // `tenant_key_missing` (AC1), present but unrecognized is
+            // `tenant_key_invalid` (AC2/AC3, message never echoes the key).
+            // Requirement 5 / AC6: the journal line carries the code and
+            // the tool name -- never the key itself, which never appears
+            // in `body_name` (the requested tool's name, not its
+            // arguments).
+            (Auth::Anonymous, _) if via_tenant_key_arg => {
+                let err = AppError::TenantKeyMissing;
+                tracing::warn!(code = err.code(), tool = %body_name, "host.* call refused: tenant_key missing");
+                Err(err)
+            }
+            (Auth::Invalid, _) if via_tenant_key_arg => {
+                let err = AppError::TenantKeyInvalid;
+                tracing::warn!(code = err.code(), tool = %body_name, "host.* call refused: tenant_key invalid");
+                Err(err)
+            }
+            (Auth::Anonymous | Auth::Invalid, _) => {
+                let err = AppError::Unauthorized;
+                tracing::warn!(code = err.code(), tool = %body_name, "call refused: missing or invalid Authorization header");
+                Err(err)
+            }
             (Auth::Admin, name) if name.starts_with("admin.") => {
                 self.dispatch_admin_tool(name, args).await
             }
