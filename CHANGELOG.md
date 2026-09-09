@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.35.0 — 2026-09-09
+
+Tenants can now remember things between tool calls. A per-tenant key-value
+store and typed tables (host.state.get/set/delete/list, table_create,
+insert, query, delete_rows) are backed by SQLite, quota-bound per plan,
+and reachable from a python tool's own code via `import mcphost` with
+network: none. host.tool_test/host.tool_run report state reads/writes,
+host.tool_logs shows write lines, and host.usage carries state_bytes.
+Export/import (AC11) and admin.tenants state_bytes (AC12) are explicitly
+P1 in the PRD and deferred to a follow-on tick.
+
 ## v0.34.0 — 2026-09-09
 
 Tenant state: a python tool can now remember something between calls. A per-tenant key-value store and typed tables (`tenant_state_kv`/`tenant_state_tables`, cascade-deleted with the tenant), `host.state.*` control-plane tools (get/set/delete/list/table_create/table_drop/query/insert/delete_rows), an in-sandbox `mcphost.state` module for the python kind under `network: none`, per-plan byte/row/op quotas with a structured `state_quota_exceeded` error, and observability: `host.tool_test`/`host.tool_run` report `state: {reads, writes, keys, tables}`, `host.tool_logs` carries one `state_write` line per write (key/table + byte delta), and `host.usage` gains `state_bytes`. `host.quickstart(kind="python")` and `llms.txt` document the new tools. Export/import (`host.state.export`/`import`) and `admin.tenants`' own `state_bytes` column are P1 and deferred to a follow-on tick.
