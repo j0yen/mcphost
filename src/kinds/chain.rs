@@ -269,7 +269,7 @@ impl Kind for ChainKind {
                             (*code, message.clone(), data.clone())
                         }
                         KindError::InvalidSpec(m) => ("invalid_spec", m.clone(), Value::Null),
-                        KindError::InvalidArgs(m) => ("invalid_args", m.clone(), Value::Null),
+                        KindError::InvalidArgs(m) => ("args_invalid", m.clone(), Value::Null),
                         KindError::Exec(m) => ("exec", m.clone(), Value::Null),
                     };
                     if let Some(obj) = data.as_object_mut() {

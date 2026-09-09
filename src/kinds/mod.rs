@@ -34,7 +34,7 @@ pub enum KindError {
     /// A kind-specific structured error carrying a stable, machine-readable
     /// `code` its own PRD/acceptance criteria name directly (e.g.
     /// `host_not_allowed`, `upstream_status`, `template_error`) rather than
-    /// this crate's generic `invalid_spec`/`invalid_args`/`internal`
+    /// this crate's generic `invalid_spec`/`args_invalid`/`internal`
     /// taxonomy. `data` is merged into the JSON-RPC error's `data` field
     /// (alongside `error_code`) so a caller can match extra fields like
     /// `retry_after_s` or `status` without parsing prose. The `http` kind
@@ -200,7 +200,7 @@ pub fn describe_test_failure(err: &KindError) -> Value {
             }
             out
         }
-        KindError::InvalidArgs(m) => json!({"code": "invalid_args", "message": m}),
+        KindError::InvalidArgs(m) => json!({"code": "args_invalid", "message": m}),
         KindError::InvalidSpec(m) => json!({"code": "invalid_spec", "message": m}),
         KindError::Exec(m) => json!({"code": "exec_error", "message": m}),
     }
