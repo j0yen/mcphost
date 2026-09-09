@@ -7,7 +7,10 @@ use serde_json::{Value, json};
 use crate::auth::{generate_key, generate_namespace, hash_key};
 use crate::db::Tenant;
 use crate::errors::AppError;
-use crate::state::{AppState, MAX_SPEC_BYTES, MAX_TOOLS_PER_TENANT, validate_tool_name};
+use crate::state::{
+    AppState, CALL_TIMEOUT, MAX_REQUEST_BODY_BYTES, MAX_SPEC_BYTES, MAX_TOOL_OUTPUT_BYTES,
+    MAX_TOOLS_PER_TENANT, validate_tool_name,
+};
 
 fn arg_str(args: &Value, name: &str) -> Result<String, AppError> {
     args.get(name)
@@ -70,15 +73,6 @@ pub async fn signup(
 ) -> Result<Value, AppError> {
     let display_name = arg_str(args, "name")?;
 
-    let since = crate::state::now_unix() - crate::state::SIGNUP_RATE_LIMIT_WINDOW_SECS;
-    let recent = state
-        .db
-        .signup_count_since(source_ip.to_string(), since)
-        .await?;
-    if recent >= state.signup_rate_limit_per_hour {
-        return Err(AppError::RateLimited);
-    }
-
     // Requirement 1: `source_class` first (loopback IP or the harness
     // marker header; known-fleet display name or synthorg client name;
     // else external), then `tenants.synthetic` from it -- the explicit
@@ -98,17 +92,29 @@ pub async fn signup(
         None
     };
 
-    let key = generate_key();
-    let namespace = generate_namespace();
-    let key_hash = hash_key(&key);
-    state
+    // PRD-mcphost-call-limits-honest requirement 4 (AC5): the rate-limit
+    // check and the signup-event write are now one atomic DB call
+    // (`Db::try_admit_signup`) -- see that method's doc comment for why the
+    // old check-then-insert sequence let a concurrent burst overshoot the
+    // cap.
+    let since = crate::state::now_unix() - crate::state::SIGNUP_RATE_LIMIT_WINDOW_SECS;
+    let admitted = state
         .db
-        .record_signup_event_attributed(
+        .try_admit_signup(
             source_ip.to_string(),
+            since,
+            state.signup_rate_limit_per_hour,
             synthetic.clone(),
             attribution.user_agent.map(str::to_string),
         )
         .await?;
+    if !admitted {
+        return Err(AppError::RateLimited);
+    }
+
+    let key = generate_key();
+    let namespace = generate_namespace();
+    let key_hash = hash_key(&key);
     let tenant = state
         .db
         .create_tenant_attributed(
@@ -210,6 +216,17 @@ pub fn quickstart(
             "state_ops_per_call_max": plan.state_ops_per_call_max,
         })
     });
+    // PRD-mcphost-call-limits-honest requirement 5 / AC6: the six limits an
+    // agent would set or read at call time, read straight from the same
+    // constants/catalog entry the enforcement path reads -- never a
+    // hand-copied number that can drift from what the code actually does.
+    // A tenant's plan gone missing from the catalog (should never happen)
+    // degrades to the `free` default, same as `plan_limits` above.
+    let concurrent_calls_per_tenant = state
+        .plans
+        .get(&tenant.plan)
+        .map(|plan| plan.concurrent_calls_per_tenant)
+        .unwrap_or(4);
 
     Ok(json!({
         "authenticated": true,
@@ -249,6 +266,16 @@ pub fn quickstart(
             "max_tools_per_tenant": MAX_TOOLS_PER_TENANT,
             "name_pattern": "^[a-z][a-z0-9_]{1,40}$",
             "plan": plan_limits,
+            // Requirement 5 / AC6: named here, and in README/llms.txt, from
+            // the exact same constants the enforcement path in
+            // `handler.rs`/`kinds::python` reads -- see
+            // `tests/limits_ac06_quickstart_docs_match_constants.rs`.
+            "call_timeout_default_s": CALL_TIMEOUT.as_secs(),
+            "call_timeout_max_s": crate::kinds::python::MAX_TIMEOUT_S,
+            "output_bytes_max": MAX_TOOL_OUTPUT_BYTES,
+            "request_body_bytes_max": MAX_REQUEST_BODY_BYTES,
+            "concurrent_calls_per_tenant": concurrent_calls_per_tenant,
+            "concurrent_calls_host": crate::kinds::python::DEFAULT_MAX_CONCURRENT_CALLS,
         },
     }))
 }
@@ -483,6 +510,10 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
         "p50_ms": stats.p50_ms,
         "p95_ms": stats.p95_ms,
         "state_bytes": state_bytes,
+        // PRD-mcphost-call-limits-honest AC8: `Db::usage` already counts
+        // this from `error_class = "capacity"`; this handler just wasn't
+        // forwarding it into the response envelope.
+        "capacity_refusals": stats.capacity_refusals,
     }))
 }
 

@@ -72,7 +72,9 @@ mcphost implements the 2026-07-28 streamable-HTTP MCP specification, stateless, 
 ## Limits and pricing
 
 - 50 tools per tenant; tool names match `^[a-z][a-z0-9_]{1,40}$`
-- Spec at most 64 KiB; request and call result at most 1 MiB; call timeout 30 s
+- Spec at most 64 KiB; request body at most 1 MiB; tool output at most 1 MiB (over either returns a structured error naming the cap and the size received, never a bare parse failure)
+- Call timeout: 30 s by default, or your own `timeout_s` up to 60 s max -- declare it and the host holds to it, not a hidden shorter deadline
+- Concurrent calls: 20 concurrent calls host-wide; per tenant, 4 per tenant on the free plan (10 on pro) -- a refusal past your own cap is `capacity`/`scope: "tenant"` with a `retry_after_ms`; past the host cap it's `scope: "host"`
 - Keys are 32-byte random bearer tokens, stored as SHA-256 hashes
 - Free plan (early access, default at signup): 500 calls per day, no card required
 - Pro plan: $19/month, 50,000 calls per month included, then $0.001 per call

@@ -34,6 +34,13 @@ pub struct Plan {
     /// per the PRD, same for every plan unless an operator edits
     /// `plans.toml`.
     pub state_ops_per_call_max: i64,
+    /// PRD-mcphost-call-limits-honest requirement 3: how many calls this
+    /// plan's tenants may have in flight at once, under the host-wide
+    /// ceiling (`python`'s `DEFAULT_MAX_CONCURRENT_CALLS`). Defaults to `4`
+    /// when a hand-edited `plans.toml` predates this key (see
+    /// [`PlanBuilder::build`]) -- the same "additive, tolerant of an older
+    /// file" parsing this crate already applies to every other field.
+    pub concurrent_calls_per_tenant: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -64,6 +71,7 @@ impl PlanCatalog {
                     state_bytes_max: 5 * 1024 * 1024,
                     state_rows_max: 10_000,
                     state_ops_per_call_max: 200,
+                    concurrent_calls_per_tenant: 4,
                 },
                 Plan {
                     name: "pro".to_string(),
@@ -78,6 +86,7 @@ impl PlanCatalog {
                     state_bytes_max: 200 * 1024 * 1024,
                     state_rows_max: 100_000,
                     state_ops_per_call_max: 200,
+                    concurrent_calls_per_tenant: 10,
                 },
             ],
         }
@@ -136,6 +145,10 @@ impl PlanCatalog {
                 "state_ops_per_call_max = {}\n",
                 p.state_ops_per_call_max
             ));
+            out.push_str(&format!(
+                "concurrent_calls_per_tenant = {}\n",
+                p.concurrent_calls_per_tenant
+            ));
             out.push('\n');
         }
         out
@@ -184,6 +197,9 @@ impl PlanCatalog {
                 "state_bytes_max" => builder.state_bytes_max = Some(int_value()),
                 "state_rows_max" => builder.state_rows_max = Some(int_value()),
                 "state_ops_per_call_max" => builder.state_ops_per_call_max = Some(int_value()),
+                "concurrent_calls_per_tenant" => {
+                    builder.concurrent_calls_per_tenant = Some(int_value())
+                }
                 _ => {}
             }
         }
@@ -210,6 +226,7 @@ struct PlanBuilder {
     state_bytes_max: Option<i64>,
     state_rows_max: Option<i64>,
     state_ops_per_call_max: Option<i64>,
+    concurrent_calls_per_tenant: Option<i64>,
 }
 
 impl PlanBuilder {
@@ -226,6 +243,11 @@ impl PlanBuilder {
             state_bytes_max: self.state_bytes_max.unwrap_or(0),
             state_rows_max: self.state_rows_max.unwrap_or(0),
             state_ops_per_call_max: self.state_ops_per_call_max.unwrap_or(0),
+            // Requirement 3: a `plans.toml` hand-edited (or generated)
+            // before this PRD has no `concurrent_calls_per_tenant` line at
+            // all -- `4` (the `free` plan's own default) keeps such a file
+            // loadable rather than failing `load_or_init` outright.
+            concurrent_calls_per_tenant: self.concurrent_calls_per_tenant.unwrap_or(4),
         })
     }
 }

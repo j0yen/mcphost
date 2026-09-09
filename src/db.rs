@@ -144,6 +144,12 @@ pub struct UsageStats {
     pub errors: i64,
     pub p50_ms: f64,
     pub p95_ms: f64,
+    /// PRD-mcphost-call-limits-honest requirement 7 (AC8): how many of
+    /// `errors` in this window were `error_class = 'capacity'` -- a tenant
+    /// hitting its own per-tenant admission cap (or the host-wide one)
+    /// sees this directly rather than having to infer it from raw
+    /// `host.tool_logs` lines.
+    pub capacity_refusals: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1259,6 +1265,41 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-call-limits-honest requirement 4 (AC5): the check
+    /// (`signup_count_since`'s own query) and the increment
+    /// (`record_signup_event_attributed`'s own insert) as one statement,
+    /// executed inside the single `with_conn` closure this `Db`'s every
+    /// other method already funnels through -- since `conn` is
+    /// `Arc<Mutex<Connection>>`, this holds the one lock for the whole
+    /// check-and-insert, closing the race the old two-call sequence left
+    /// open (a burst of concurrent `signup()` calls could all read
+    /// `recent < limit` before any of them had written its own event).
+    /// Returns `true` iff the insert actually happened (this signup is
+    /// admitted); `false` means the cap was already at `limit` for this
+    /// source/window and nothing was written -- the caller must not also
+    /// call `record_signup_event_attributed` for this attempt.
+    pub async fn try_admit_signup(
+        &self,
+        source_ip: String,
+        since_unix: i64,
+        limit: i64,
+        synthetic: Option<String>,
+        user_agent: Option<String>,
+    ) -> Result<bool, AppError> {
+        let ts = now_unix();
+        self.with_conn(move |conn| {
+            let inserted = conn.execute(
+                "INSERT INTO signup_events (source_ip, created_unix, synthetic, user_agent) \
+                 SELECT ?1, ?2, ?3, ?4 \
+                 WHERE (SELECT COUNT(*) FROM signup_events \
+                        WHERE source_ip = ?1 AND created_unix >= ?5) < ?6",
+                params![source_ip, ts, synthetic, user_agent, since_unix, limit],
+            )?;
+            Ok(inserted > 0)
+        })
+        .await
+    }
+
     /// PRD-mcphost-client-ip-behind-proxy requirement 5 / AC6: `/healthz`'s
     /// `distinct_source_ips_24h` -- the count of distinct
     /// `signup_events.source_ip` values recorded in the last 24 hours, so
@@ -1904,21 +1945,36 @@ impl Db {
         let since = now_unix() - window_secs;
         self.with_conn(move |conn| {
             let mut stmt = conn.prepare(
-                "SELECT duration_ms, ok FROM calls WHERE tenant_id = ?1 AND started_unix >= ?2",
+                "SELECT duration_ms, ok, error_class FROM calls \
+                 WHERE tenant_id = ?1 AND started_unix >= ?2",
             )?;
             let rows = stmt
                 .query_map(params![tenant_id, since], |r| {
-                    Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)? != 0))
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        r.get::<_, i64>(1)? != 0,
+                        r.get::<_, Option<String>>(2)?,
+                    ))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
-            let mut durations: Vec<i64> = rows.iter().map(|(d, _)| *d).collect();
+            let mut durations: Vec<i64> = rows.iter().map(|(d, _, _)| *d).collect();
             durations.sort_unstable();
-            let errors = rows.iter().filter(|(_, ok)| !ok).count() as i64;
+            let errors = rows.iter().filter(|(_, ok, _)| !ok).count() as i64;
+            // Requirement 7 (AC8): counted from `error_class`, the same
+            // column `record_call` stores `AppError::code()` in (a
+            // `capacity` refusal writes `error_class = "capacity"` from
+            // `handler.rs`'s existing `Ok(Err(kind_err))` branch -- no new
+            // column, just a new count over the one already there).
+            let capacity_refusals = rows
+                .iter()
+                .filter(|(_, _, class)| class.as_deref() == Some("capacity"))
+                .count() as i64;
             Ok(UsageStats {
                 calls: rows.len() as i64,
                 errors,
                 p50_ms: percentile(&durations, 0.50),
                 p95_ms: percentile(&durations, 0.95),
+                capacity_refusals,
             })
         })
         .await
@@ -1932,7 +1988,7 @@ impl Db {
         let since = now_unix() - window_secs;
         self.with_conn(move |conn| {
             let mut stmt = conn.prepare(
-                "SELECT t.namespace, c.tool_name, c.duration_ms, c.ok \
+                "SELECT t.namespace, c.tool_name, c.duration_ms, c.ok, c.error_class \
                  FROM calls c JOIN tenants t ON t.id = c.tenant_id \
                  WHERE c.started_unix >= ?1 \
                  ORDER BY t.namespace, c.tool_name",
@@ -1944,6 +2000,7 @@ impl Db {
                         r.get::<_, String>(1)?,
                         r.get::<_, i64>(2)?,
                         r.get::<_, i64>(3)? != 0,
+                        r.get::<_, Option<String>>(4)?,
                     ))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
@@ -1953,16 +2010,24 @@ impl Db {
             // type-complexity threshold was scaffolded tighter (200) than
             // default (250); factor the grouping type out per the lint's
             // own suggestion rather than raise the read-only threshold.
-            type CallDurationsByTenantTool = BTreeMap<(String, String), Vec<(i64, bool)>>;
+            type CallDurationsByTenantTool =
+                BTreeMap<(String, String), Vec<(i64, bool, Option<String>)>>;
             let mut grouped: CallDurationsByTenantTool = BTreeMap::new();
-            for (ns, tool, dur, ok) in rows {
-                grouped.entry((ns, tool)).or_default().push((dur, ok));
+            for (ns, tool, dur, ok, error_class) in rows {
+                grouped
+                    .entry((ns, tool))
+                    .or_default()
+                    .push((dur, ok, error_class));
             }
             let mut out = Vec::with_capacity(grouped.len());
             for ((namespace, tool_name), entries) in grouped {
-                let mut durations: Vec<i64> = entries.iter().map(|(d, _)| *d).collect();
+                let mut durations: Vec<i64> = entries.iter().map(|(d, _, _)| *d).collect();
                 durations.sort_unstable();
-                let errors = entries.iter().filter(|(_, ok)| !ok).count() as i64;
+                let errors = entries.iter().filter(|(_, ok, _)| !ok).count() as i64;
+                let capacity_refusals = entries
+                    .iter()
+                    .filter(|(_, _, class)| class.as_deref() == Some("capacity"))
+                    .count() as i64;
                 out.push(ToolUsage {
                     namespace,
                     tool_name,
@@ -1971,6 +2036,7 @@ impl Db {
                         errors,
                         p50_ms: percentile(&durations, 0.50),
                         p95_ms: percentile(&durations, 0.95),
+                        capacity_refusals,
                     },
                 });
             }

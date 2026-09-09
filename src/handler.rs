@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use rmcp::ErrorData as McpError;
 use rmcp::model::{
@@ -1004,8 +1004,36 @@ impl McpHostHandler {
         Ok(())
     }
 
+    /// PRD-mcphost-call-limits-honest requirement 1: the deadline this
+    /// call's spec actually asks for (a kind-specific override, already
+    /// bounded by that kind's own maximum -- see
+    /// [`Kind::requested_timeout`]), or `AppState::call_timeout`'s default
+    /// when the spec declares none. Every real dispatch site below resolves
+    /// through this rather than reaching for `self.state.call_timeout`
+    /// directly, so `CALL_TIMEOUT` is a default a spec can override, never a
+    /// silent ceiling under it.
+    fn resolve_call_timeout(&self, kind: &Arc<dyn Kind>, spec: &Value) -> Duration {
+        kind.requested_timeout(spec)
+            .unwrap_or(self.state.call_timeout)
+    }
+
+    /// PRD-mcphost-call-limits-honest requirement 3: `tenant`'s own
+    /// concurrent-call admission cap, read from its plan -- `usize::MAX`
+    /// (no per-tenant limiting) if the tenant's plan has somehow fallen out
+    /// of the loaded catalog (should never happen; the same degrade
+    /// `control::quickstart`'s own plan lookup already uses).
+    fn concurrent_calls_cap(&self, tenant: &Tenant) -> usize {
+        self.state
+            .plans
+            .get(&tenant.plan)
+            .map(|plan| plan.concurrent_calls_per_tenant.max(0) as usize)
+            .unwrap_or(usize::MAX)
+    }
+
     /// Execute a published tenant tool (`<namespace>.<local-name>`),
-    /// metering the call and enforcing the 30s deadline.
+    /// metering the call and enforcing its resolved deadline (requirement
+    /// 1: the spec's own `timeout_s` when it declared one, else
+    /// `AppState::call_timeout`'s default).
     async fn call_published_tool(
         &self,
         tenant: &Tenant,
@@ -1057,11 +1085,12 @@ impl McpHostHandler {
         let secrets = build_secret_resolver(&self.state, tenant.id).await?;
         let log = Arc::new(BufferedLog(std::sync::Mutex::new(Vec::new())));
         let resources = Arc::new(CellResourceSink(std::sync::Mutex::new(None)));
+        let resolved_timeout = self.resolve_call_timeout(&kind, &row.spec);
         let ctx = CallCtx {
             tenant_id: tenant.id,
             namespace: tenant.namespace.clone(),
             secrets,
-            deadline: Instant::now() + self.state.call_timeout,
+            deadline: Instant::now() + resolved_timeout,
             log: log.clone() as Arc<dyn CallLog>,
             test_mode: false,
             resources: resources.clone() as Arc<dyn ResourceSink>,
@@ -1088,14 +1117,14 @@ impl McpHostHandler {
             compose_children: Some(Arc::new(std::sync::atomic::AtomicU32::new(0))),
             compose_db: Some(self.state.db.clone()),
             compose_kinds: Some(self.state.kinds.clone()),
+            concurrent_calls_per_tenant: self.concurrent_calls_cap(tenant),
         };
 
         let start = Instant::now();
         if mcp_name_mismatch {
             tracing::warn!(tenant = %tenant.namespace, tool = %local_name, "Mcp-Name header does not match call body's tool name");
         }
-        let outcome =
-            tokio::time::timeout(self.state.call_timeout, kind.call(&row.spec, args, &ctx)).await;
+        let outcome = tokio::time::timeout(resolved_timeout, kind.call(&row.spec, args, &ctx)).await;
         let duration_ms = start.elapsed().as_millis() as i64;
         let (cpu_ms, peak_rss_kb) = resources.0.lock().map(|g| *g).unwrap_or_default().unzip();
 
@@ -1207,7 +1236,7 @@ impl McpHostHandler {
                     tenant = %tenant.namespace, method = "tools/call", tool = %local_name,
                     duration_ms, status = "error", error_class = "call_timeout", mcp_name_mismatch,
                 );
-                Err(AppError::CallTimeout)
+                Err(AppError::CallTimeout(resolved_timeout.as_secs()))
             }
         }
     }
@@ -1280,11 +1309,12 @@ impl McpHostHandler {
             }),
             None,
         ));
+        let resolved_timeout = self.resolve_call_timeout(&kind, &row.spec);
         let ctx = CallCtx {
             tenant_id: tenant.id,
             namespace: tenant.namespace.clone(),
             secrets,
-            deadline: Instant::now() + self.state.call_timeout,
+            deadline: Instant::now() + resolved_timeout,
             log: Arc::new(NullLog) as Arc<dyn CallLog>,
             test_mode: true,
             resources: Arc::new(NullResourceSink),
@@ -1301,14 +1331,10 @@ impl McpHostHandler {
             compose_children: None,
             compose_db: None,
             compose_kinds: None,
+            concurrent_calls_per_tenant: self.concurrent_calls_cap(tenant),
         };
 
-        match tokio::time::timeout(
-            self.state.call_timeout,
-            kind.call(&row.spec, call_args, &ctx),
-        )
-        .await
-        {
+        match tokio::time::timeout(resolved_timeout, kind.call(&row.spec, call_args, &ctx)).await {
             // AC19: `tenant_key` may appear anywhere inside the echoed
             // request `call_tool` already redacted from `args` by key name
             // before it reached here -- this final pass catches the same
@@ -1340,7 +1366,7 @@ impl McpHostHandler {
                 Ok(value)
             }
             Ok(Err(kind_err)) => Err(AppError::from(kind_err)),
-            Err(_elapsed) => Err(AppError::CallTimeout),
+            Err(_elapsed) => Err(AppError::CallTimeout(resolved_timeout.as_secs())),
         }
     }
 
@@ -1388,11 +1414,12 @@ impl McpHostHandler {
         }
 
         let secrets = build_secret_resolver(&self.state, tenant.id).await?;
+        let resolved_timeout = self.resolve_call_timeout(&kind, &spec);
         let ctx = CallCtx {
             tenant_id: tenant.id,
             namespace: tenant.namespace.clone(),
             secrets,
-            deadline: Instant::now() + self.state.call_timeout,
+            deadline: Instant::now() + resolved_timeout,
             log: Arc::new(NullLog) as Arc<dyn CallLog>,
             test_mode: true,
             resources: Arc::new(NullResourceSink),
@@ -1405,13 +1432,13 @@ impl McpHostHandler {
             compose_children: None,
             compose_db: None,
             compose_kinds: None,
+            concurrent_calls_per_tenant: self.concurrent_calls_cap(tenant),
         };
 
-        match tokio::time::timeout(self.state.call_timeout, kind.call(&spec, call_args, &ctx)).await
-        {
+        match tokio::time::timeout(resolved_timeout, kind.call(&spec, call_args, &ctx)).await {
             Ok(Ok(value)) => Ok(crate::secrets::redact_keys(&value, &["tenant_key"])),
             Ok(Err(kind_err)) => Err(AppError::from(kind_err)),
-            Err(_elapsed) => Err(AppError::CallTimeout),
+            Err(_elapsed) => Err(AppError::CallTimeout(resolved_timeout.as_secs())),
         }
     }
 
@@ -1508,7 +1535,8 @@ impl McpHostHandler {
         let requirements = kind.requirements(&spec);
 
         let secrets = build_secret_resolver(&self.state, tenant.id).await?;
-        let call_timeout = self.state.call_timeout;
+        let call_timeout = self.resolve_call_timeout(&kind, &spec);
+        let concurrent_calls_per_tenant = self.concurrent_calls_cap(tenant);
         let tenant_id = tenant.id;
         let namespace = tenant.namespace.clone();
         // AC12: unlike `host.tool_test`/`host.bridge_test` (deliberately
@@ -1544,6 +1572,7 @@ impl McpHostHandler {
             compose_children: None,
             compose_db: None,
             compose_kinds: None,
+            concurrent_calls_per_tenant,
         })
         .await;
 
@@ -1705,11 +1734,12 @@ impl McpHostHandler {
             }),
             None,
         ));
+        let resolved_timeout = self.resolve_call_timeout(&kind, &row.spec);
         let ctx = CallCtx {
             tenant_id: tenant.id,
             namespace: tenant.namespace.clone(),
             secrets,
-            deadline: Instant::now() + self.state.call_timeout,
+            deadline: Instant::now() + resolved_timeout,
             log: Arc::new(NullLog) as Arc<dyn CallLog>,
             test_mode: false,
             resources: Arc::new(NullResourceSink),
@@ -1723,14 +1753,12 @@ impl McpHostHandler {
             compose_children: None,
             compose_db: None,
             compose_kinds: None,
+            concurrent_calls_per_tenant: self.concurrent_calls_cap(tenant),
         };
 
         let start = Instant::now();
-        let outcome = tokio::time::timeout(
-            self.state.call_timeout,
-            kind.tool_run(&row.spec, call_args, &ctx),
-        )
-        .await;
+        let outcome =
+            tokio::time::timeout(resolved_timeout, kind.tool_run(&row.spec, call_args, &ctx)).await;
         let duration_ms = start.elapsed().as_millis() as i64;
 
         match outcome {
@@ -1742,7 +1770,7 @@ impl McpHostHandler {
                 Ok(value)
             }
             Ok(Err(kind_err)) => Err(AppError::from(kind_err)),
-            Err(_elapsed) => Err(AppError::CallTimeout),
+            Err(_elapsed) => Err(AppError::CallTimeout(resolved_timeout.as_secs())),
         }
     }
 

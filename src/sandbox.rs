@@ -211,6 +211,58 @@ pub fn require_user_namespaces_or_ci_skip() -> bool {
     );
 }
 
+/// `true` if this process's REAL uid makes the sandbox's `RLIMIT_NPROC`
+/// fork-storm cap (`ResourceLimits::max_processes`, requirement 6)
+/// actually enforceable; `false` if it is a silent no-op.
+///
+/// PRD-mcphost-call-limits-honest five-whys (2026-09-09): AC7's fork-storm
+/// test (500 forks, expect `tool_process_limit`) failed reproducibly in one
+/// execution context (a root-owned build tree, `/root/build/...`) while
+/// passing every time -- including under self-induced concurrent load --
+/// everywhere this was run as an unprivileged developer uid. Traced empirically
+/// on this same box: `bwrap --uid 65534 ... prlimit --nproc=64 -- python3
+/// <fork 200x>` run as an unprivileged user forked 62 children then hit
+/// `EAGAIN` as designed; the identical command run via `sudo` (real uid 0)
+/// forked all 200 with no error at all. Root cause: `kernel/fork.c`'s
+/// `is_ucounts_overlimit` check that backs `RLIMIT_NPROC` is skipped
+/// outright when the task's *real* (not effective, not the
+/// bwrap-namespace-mapped) uid is 0 -- `RLIMIT_NPROC` has never bound root,
+/// a property that predates user namespaces entirely and that `bwrap --uid
+/// <n>`'s in-namespace remap cannot undo, because the kernel's exemption
+/// keys off the real credential's root-ness, not the namespace-local uid
+/// `getuid()` reports inside the sandbox. A cgroup `pids.max` cap would be
+/// immune to this (cgroup limits are not uid-exempt) but needs cgroup v2
+/// delegation this codebase has never set up or tested against -- tracked
+/// as a follow-on PRD rather than done here under a shared-repo build tick.
+/// The actionable fix available today, and the one this function backs:
+/// mcphost must never run as real root, because every deployment path this
+/// crate documents (`deploy/*.service`: systemd **user** units, which
+/// cannot run as root) already guarantees that -- a real uid of 0 is a
+/// misconfiguration, not a supported mode, and refusing to start honors
+/// this PRD's own thesis ("every limit the host enforces is the one it
+/// advertises") instead of silently serving fork-storm-uncapped traffic.
+pub fn fork_storm_cap_is_reliable(real_uid: u32) -> bool {
+    real_uid != 0
+}
+
+/// Panics naming the fix if `real_uid` is 0 (see
+/// [`fork_storm_cap_is_reliable`]) -- called once from `Command::Serve`
+/// startup, before binding, so a misdeployed root process fails loudly
+/// instead of silently accepting traffic its fork-storm cap cannot bound.
+pub fn refuse_to_serve_as_root(real_uid: u32) {
+    if !fork_storm_cap_is_reliable(real_uid) {
+        panic!(
+            "mcphost refuses to run as root (real uid 0): the RLIMIT_NPROC \
+             fork-storm cap (PRD-mcphost-call-limits-honest requirement 6) is \
+             a kernel-level no-op for root regardless of any prlimit/setrlimit \
+             call, so a tool.call fork storm would run uncapped under this \
+             process. Every supported deployment (deploy/*.service, systemd \
+             user units) already runs mcphost as an unprivileged user -- run \
+             it as one."
+        );
+    }
+}
+
 /// The unprivileged uid/gid a sandboxed child runs as inside its fresh user
 /// namespace -- `nobody`/`nogroup` on every Linux distribution `mcphost`
 /// targets, and (requirement 5) distinct from whatever uid runs `mcphost`
@@ -228,6 +280,29 @@ pub struct ResourceLimits {
     pub memory_mb: u64,
     pub max_open_files: u64,
     pub max_file_size_mb: u64,
+    /// PRD-mcphost-call-limits-honest requirement 6: `RLIMIT_NPROC` for the
+    /// sandboxed process tree -- a fork past this count fails with `EAGAIN`,
+    /// which `kinds::python`'s runner protocol catches and reports as the
+    /// structured `tool_process_limit` (see that module's
+    /// `map_envelope_error`).
+    ///
+    /// **Not** applied via `pre_exec_setup` (unlike the other limits on this
+    /// struct): `RLIMIT_NPROC` is accounted per real uid, and (since Linux
+    /// 4.9) creating a user namespace itself consumes one unit of it --
+    /// setting this *before* `bwrap`/`unshare` exec would apply it to the
+    /// invoking process's own real uid (e.g. the mcphost host process's),
+    /// whose already-large systemwide task count (every thread, every
+    /// unrelated process owned by that uid) would then make `bwrap`'s own
+    /// `unshare(CLONE_NEWUSER)` fail with EAGAIN before the sandbox ever
+    /// starts -- breaking every call, not just an over-limit one (observed:
+    /// "bwrap: Creating new namespace failed: Resource temporarily
+    /// unavailable" on every publish/call on a box whose real uid already
+    /// owns >64 tasks). Instead, [`bwrap_command`]/[`unshare_setpriv_command`]
+    /// prepend `prlimit --nproc=<max_processes> --` to the argv *after* the
+    /// isolation wrapper's own unshare, so the limit is set from inside the
+    /// fresh user namespace (whose ucounts start over, scoped to that
+    /// namespace) rather than against the host's.
+    pub max_processes: u64,
 }
 
 /// `network: none` (default) vs `network: public` (requirement 5: the same
@@ -272,7 +347,19 @@ const TAIL_BYTES: usize = 2048;
 /// Hard cap on how much of a child's stdout/stderr this module buffers at
 /// all, regardless of the reported tail size -- bounds memory for a chatty
 /// or runaway child without needing the isolation layer to enforce it.
-const READ_CAP_BYTES: usize = 256 * 1024;
+///
+/// PRD-mcphost-call-limits-honest requirement 2: this must stay well above
+/// `MAX_TOOL_OUTPUT_BYTES` (1 MiB) -- a successful (`Exited`) run's full
+/// `stdout` is read up to this cap and handed to `kinds::python`'s own
+/// `MAX_TOOL_OUTPUT_BYTES` check unmodified. A cap equal to or below that
+/// limit would silently truncate an over-limit tool's output *before* that
+/// check ever sees it, so a call actually returning several MB would read
+/// back as a small, truncated (and therefore JSON-invalid) blob --
+/// reproducing the exact `tool_output_invalid` misreport this PRD exists to
+/// fix, just one layer lower. The margin above 1 MiB (rather than exactly
+/// 1 MiB) keeps a several-MB over-limit call's true size visible in the
+/// resulting error instead of being reported as "capped at the read limit."
+const READ_CAP_BYTES: usize = 8 * 1024 * 1024;
 
 fn tail_str(buf: &[u8]) -> String {
     let start = buf.len().saturating_sub(TAIL_BYTES);
@@ -425,6 +512,10 @@ unsafe fn pre_exec_setup(limits: ResourceLimits) -> std::io::Result<()> {
         set(libc::RLIMIT_NOFILE, limits.max_open_files)?;
         set(libc::RLIMIT_FSIZE, limits.max_file_size_mb * 1024 * 1024)?;
         set(libc::RLIMIT_CORE, 0)?;
+        // RLIMIT_NPROC (`limits.max_processes`) is deliberately NOT set here
+        // -- see the doc comment on `ResourceLimits::max_processes` for why;
+        // `bwrap_command`/`unshare_setpriv_command` apply it from inside the
+        // sandbox instead.
     }
     Ok(())
 }
@@ -469,6 +560,15 @@ fn bwrap_command(spec: &RunSpec) -> Command {
     cmd.arg("--die-with-parent");
     cmd.arg("--new-session");
     cmd.arg("--");
+    // Requirement 6: `RLIMIT_NPROC` applied here, inside the sandbox (after
+    // bwrap's own `--unshare-all` has already created the new user/pid
+    // namespace), rather than via `pre_exec_setup` before bwrap's own exec
+    // -- see `ResourceLimits::max_processes`'s doc comment for why setting
+    // it pre-exec would break `bwrap` itself. `/usr/bin/prlimit` is visible
+    // here because `/usr` is one of `read_only_dirs`' ro-binds above.
+    cmd.arg("prlimit");
+    cmd.arg(format!("--nproc={}", spec.limits.max_processes));
+    cmd.arg("--");
     cmd.arg(&spec.interpreter);
     cmd.args(&spec.interpreter_args);
     cmd.arg(&spec.script_path);
@@ -495,6 +595,11 @@ fn unshare_setpriv_command(spec: &RunSpec) -> Command {
     cmd.args(["--regid", &SANDBOX_GID.to_string()]);
     cmd.arg("--clear-groups");
     cmd.arg("--");
+    // Same reasoning as `bwrap_command`: apply `RLIMIT_NPROC` from inside
+    // the already-unshared namespace, not via `pre_exec_setup`.
+    cmd.arg("prlimit");
+    cmd.arg(format!("--nproc={}", spec.limits.max_processes));
+    cmd.arg("--");
     cmd.arg(&spec.interpreter);
     cmd.args(&spec.interpreter_args);
     cmd.arg(&spec.script_path);
@@ -506,6 +611,12 @@ fn unshare_setpriv_command(spec: &RunSpec) -> Command {
     cmd
 }
 
+/// `spec.limits.max_processes` is intentionally not enforced here: this
+/// mode never unshares a new user namespace (debug-only, kept off the warm
+/// pool -- see the module doc), so there is no namespace boundary to scope
+/// a lowered `RLIMIT_NPROC` to; setting it would count against the host
+/// process's own real uid the same way `pre_exec_setup` used to (see
+/// `ResourceLimits::max_processes`'s doc comment for why that breaks).
 fn no_isolation_command(spec: &RunSpec) -> Command {
     let mut cmd = Command::new(&spec.interpreter);
     cmd.args(&spec.interpreter_args);
@@ -1369,6 +1480,30 @@ mod is_within_proptests {
 mod tests {
     use super::*;
 
+    /// PRD-mcphost-call-limits-honest five-whys regression: root defeats
+    /// the RLIMIT_NPROC fork-storm cap at the kernel level (see
+    /// `fork_storm_cap_is_reliable`'s doc comment) -- confirmed empirically
+    /// via `sudo bwrap ... prlimit --nproc=64 -- python3 <fork 200x>`
+    /// forking all 200 with no error, vs. 62-then-`EAGAIN` unprivileged.
+    #[test]
+    fn root_defeats_the_fork_storm_cap() {
+        assert!(!fork_storm_cap_is_reliable(0));
+        assert!(fork_storm_cap_is_reliable(1000));
+        assert!(fork_storm_cap_is_reliable(65534));
+    }
+
+    #[test]
+    fn refuses_to_serve_as_root() {
+        let result = std::panic::catch_unwind(|| refuse_to_serve_as_root(0));
+        assert!(result.is_err(), "must panic when real uid is 0");
+    }
+
+    #[test]
+    fn serves_normally_as_non_root() {
+        // Must not panic.
+        refuse_to_serve_as_root(1000);
+    }
+
     #[test]
     fn detects_a_real_mechanism_on_this_box() {
         // This crate's CI/dev boxes ship `bwrap` (mcphost-deploy installs
@@ -1407,6 +1542,7 @@ mod tests {
                 memory_mb: 256,
                 max_open_files: 64,
                 max_file_size_mb: 16,
+                max_processes: 64,
             },
             wall_clock_timeout: Duration::from_secs(7),
             network: NetworkMode::None,
@@ -1488,6 +1624,7 @@ mod tests {
                 memory_mb: 256,
                 max_open_files: 64,
                 max_file_size_mb: 16,
+                max_processes: 64,
             },
             wall_clock_timeout: Duration::from_secs(7),
             network: NetworkMode::None,
@@ -1542,6 +1679,7 @@ mod tests {
                 memory_mb: 256,
                 max_open_files: 64,
                 max_file_size_mb: 16,
+                max_processes: 64,
             },
             wall_clock_timeout: Duration::from_millis(500),
             network: NetworkMode::None,

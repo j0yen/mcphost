@@ -90,7 +90,7 @@
 //!   and keeping it off the pool means a debug run can never evict or block
 //!   on a warm sandbox serving real traffic.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -112,16 +112,59 @@ use crate::sandbox::{
 
 const MAX_SOURCE_BYTES: usize = 64 * 1024;
 const MAX_REQUIREMENTS: usize = 20;
-const DEFAULT_TIMEOUT_S: u64 = 10;
-const MAX_TIMEOUT_S: u64 = 60;
+/// PRD-mcphost-call-limits-honest requirement 1 (AC2): this must equal
+/// `state::CALL_TIMEOUT`'s 30s -- `handler.rs`'s dispatch-level default
+/// applies whenever a spec doesn't declare `timeout_s` ([`Kind::requested_timeout`]
+/// returns `None` in that case), and this constant is what a call's *own*
+/// sandbox rlimits/wall-clock backstop (`cpu_seconds`, `wall_clock_timeout`,
+/// both derived from [`PythonSpec::effective_timeout_s`]) are sized from in
+/// that same case. Before this PRD this was a smaller, independent number
+/// (10s): the sandbox would silently kill an undeclared-timeout call at
+/// ~12s wall clock, before the dispatch-level default (already 30s) ever
+/// got a chance to apply -- two different "defaults" disagreeing about how
+/// long an undeclared-timeout call actually gets. One number now.
+const DEFAULT_TIMEOUT_S: u64 = 30;
+/// `pub`: PRD-mcphost-call-limits-honest requirement 5/AC6 -- `host.quickstart`,
+/// README and `llms.txt` all state this exact number (via
+/// `control::quickstart`'s `call_timeout_max_s`), read from here rather than
+/// a second hand-copied constant that could drift from what
+/// `validate_spec_fields_all` and [`Kind::requested_timeout`](super::Kind::requested_timeout)
+/// actually enforce.
+pub const MAX_TIMEOUT_S: u64 = 60;
 const DEFAULT_MEMORY_MB: u64 = 256;
 const MAX_MEMORY_MB: u64 = 1024;
 const MAX_OPEN_FILES: u64 = 64;
 const MAX_FILE_SIZE_MB: u64 = 16;
+/// PRD-mcphost-call-limits-honest requirement 6: the bwrap/rlimit process
+/// cap every call's sandbox runs under (`RLIMIT_NPROC`, set in
+/// `sandbox::pre_exec_setup`) -- a fork past this many live processes for
+/// the sandboxed uid fails with `EAGAIN`, which the runner protocol
+/// (`PY_RUNNER_SCRIPT`) catches and reports as the structured
+/// `tool_process_limit` (see `map_envelope_error`). 64 per the PRD's own
+/// stated default; the warm pool's steady-state process count (at most
+/// `DEFAULT_WARM_MAX` idle interpreters) is well under it.
+const MAX_PROCESSES: u64 = 64;
 const BUILD_TIMEOUT: Duration = Duration::from_secs(120);
 const DEFAULT_CPU_BUDGET_MS_PER_HOUR: u64 = 600_000;
 const CPU_BUDGET_WINDOW: Duration = Duration::from_secs(3600);
-const DEFAULT_MAX_CONCURRENT_CALLS: usize = 20;
+/// `pub`: PRD-mcphost-call-limits-honest requirement 5/AC6 -- `host.quickstart`'s
+/// `concurrent_calls_host`, same rationale as [`MAX_TIMEOUT_S`] above.
+pub const DEFAULT_MAX_CONCURRENT_CALLS: usize = 20;
+/// PRD-mcphost-call-limits-honest requirement 3: retry-after estimation
+/// window (technical considerations: "the p50 call duration over the last
+/// minute for that kind").
+const RETRY_ESTIMATE_WINDOW: Duration = Duration::from_secs(60);
+/// Requirement 3: `retry_after_ms` is never reported below this, even when
+/// every recent call finished faster (technical considerations: "floored
+/// at 100ms").
+const RETRY_AFTER_MS_FLOOR: u64 = 100;
+/// The `retry_after_ms` a `capacity` refusal reports before this kind has
+/// any completed-call samples to estimate from (e.g. right after startup).
+const RETRY_AFTER_MS_DEFAULT: u64 = 250;
+/// Requirement 8: at most one `capacity`-refusal warning line logged per
+/// tenant per this interval, so a burst of refusals doesn't write one
+/// journal line per call (the stress run's 16,316-line example).
+const CAPACITY_LOG_INTERVAL: Duration = Duration::from_secs(1);
 
 // ---- warm pool (PRD-mcphost-code-tools-warm-pool requirement 1) -----------
 
@@ -512,6 +555,7 @@ async fn build_ast_check_spec(
             memory_mb: 128,
             max_open_files: 32,
             max_file_size_mb: 4,
+            max_processes: 16,
         },
         wall_clock_timeout: Duration::from_secs(7),
         network: NetworkMode::None,
@@ -1567,7 +1611,7 @@ fn call_fingerprint(
 // other half) reads those two fields for its "full stdout and stderr"
 // response; an ordinary call simply ignores them.
 const PY_RUNNER_SCRIPT: &str = r#"
-import sys, json, importlib.util, traceback, io
+import sys, json, importlib.util, traceback, io, errno
 
 _real_stdout = sys.stdout
 
@@ -1731,6 +1775,18 @@ def run_one(payload):
                     result = module.main(args)
                 except MemoryError:
                     obj = {"ok": False, "kind": "oom"}
+                except OSError as e:
+                    if e.errno == errno.EAGAIN:
+                        # Requirement 6 (AC7): a fork past the sandbox's
+                        # RLIMIT_NPROC fails with EAGAIN -- reported as its
+                        # own kind, not folded into the generic exception
+                        # branch below, so the caller sees exactly what
+                        # happened rather than a bare "Resource temporarily
+                        # unavailable" OSError.
+                        obj = {"ok": False, "kind": "process_limit"}
+                    else:
+                        obj = {"ok": False, "kind": "exception", "error": type(e).__name__,
+                               "message": str(e), "traceback": traceback.format_exc()}
                 except Exception as e:
                     obj = {"ok": False, "kind": "exception", "error": type(e).__name__,
                            "message": str(e), "traceback": traceback.format_exc()}
@@ -1814,6 +1870,11 @@ fn map_envelope_error(envelope: &Value, stderr_tail: &str) -> KindError {
     let kind = envelope.get("kind").and_then(Value::as_str).unwrap_or("");
     match kind {
         "oom" => KindError::structured("tool_oom", "the call exceeded its memory limit"),
+        // Requirement 6 (AC7): the sandbox's own RLIMIT_NPROC fired.
+        "process_limit" => KindError::structured(
+            "tool_process_limit",
+            "the call exceeded its process limit",
+        ),
         "output_invalid" => KindError::structured_with(
             "tool_output_invalid",
             envelope
@@ -1874,6 +1935,27 @@ fn map_envelope_error(envelope: &Value, stderr_tail: &str) -> KindError {
 /// [`PythonKind::call`], which never produces a [`SandboxOutcome`] at all
 /// (there's no process exit to classify -- the sandbox is still running).
 fn map_envelope_line(line: &[u8]) -> Result<Value, KindError> {
+    // Requirement 2 (AC3): checked before the JSON parse itself -- a huge
+    // envelope (this includes the runner protocol's own bounded
+    // `stdout_capture`/`stderr_capture` fields alongside the tool's actual
+    // `result`, so it's a conservative proxy for "tool output size", never
+    // an undercount) must never be misreported as `tool_output_invalid`
+    // just because it also happens to still be valid JSON, or (worse) fed
+    // whole into `serde_json::from_slice` first.
+    if line.len() > crate::state::MAX_TOOL_OUTPUT_BYTES {
+        return Err(KindError::structured_with(
+            "tool_output_too_large",
+            format!(
+                "tool output is {} bytes, over the {}-byte limit",
+                line.len(),
+                crate::state::MAX_TOOL_OUTPUT_BYTES
+            ),
+            json!({
+                "limit_bytes": crate::state::MAX_TOOL_OUTPUT_BYTES,
+                "actual_bytes": line.len(),
+            }),
+        ));
+    }
     match serde_json::from_slice::<Value>(line) {
         Ok(envelope) if envelope.get("ok").and_then(Value::as_bool) == Some(true) => {
             Ok(envelope.get("result").cloned().unwrap_or(Value::Null))
@@ -2324,6 +2406,23 @@ pub struct PythonKind {
     warm: Arc<WarmPool>,
     /// PRD-mcphost-sandbox-ready: this kind's sandbox self-test state.
     selftest: Arc<SandboxSelftest>,
+    /// PRD-mcphost-call-limits-honest requirement 3: one admission-control
+    /// semaphore per tenant, under the box-wide `semaphore` above -- same
+    /// "create on first use" pattern as `EnvRegistry::queue_for`'s
+    /// per-namespace build queue. Sized from each call's own
+    /// `ctx.concurrent_calls_per_tenant` the first time that tenant is
+    /// seen; a later plan change is not retroactively resized (no
+    /// acceptance criterion exercises a mid-run plan change, and the
+    /// existing per-namespace build queue has the same limitation).
+    tenant_admission: Arc<Mutex<HashMap<i64, Arc<Semaphore>>>>,
+    /// Requirement 3's `retry_after_ms` estimator: recent completed-call
+    /// durations, box-wide for this kind (not per-tenant -- technical
+    /// considerations: "the p50 call duration over the last minute for
+    /// that kind").
+    recent_durations: Arc<Mutex<VecDeque<(Instant, Duration)>>>,
+    /// Requirement 8: last time a `capacity` refusal was logged for a
+    /// given tenant, so a burst logs at most one line/second/tenant.
+    capacity_log_gate: Arc<Mutex<HashMap<i64, Instant>>>,
 }
 
 impl PythonKind {
@@ -2440,6 +2539,90 @@ impl PythonKind {
             cpu_budget: CpuBudget::new(cpu_budget_ms),
             warm,
             selftest,
+            tenant_admission: Arc::new(Mutex::new(HashMap::new())),
+            recent_durations: Arc::new(Mutex::new(VecDeque::new())),
+            capacity_log_gate: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    /// Requirement 3: this tenant's own admission semaphore, sized from
+    /// `cap` the first time this tenant is seen (see the field's own doc
+    /// comment on `tenant_admission`).
+    ///
+    /// Callers that predate per-tenant admission (the firstcall/warm-pool
+    /// test contexts in `kinds::mod` and this module) pass `usize::MAX` as
+    /// an "effectively unbounded" sentinel -- clamp to
+    /// [`Semaphore::MAX_PERMITS`] rather than handing tokio's
+    /// `Semaphore::new` a value past its own ceiling, which panics instead
+    /// of saturating.
+    fn tenant_semaphore(&self, tenant_id: i64, cap: usize) -> Arc<Semaphore> {
+        let cap = cap.min(Semaphore::MAX_PERMITS);
+        let mut guard = self
+            .tenant_admission
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        guard
+            .entry(tenant_id)
+            .or_insert_with(|| Arc::new(Semaphore::new(cap.max(1))))
+            .clone()
+    }
+
+    /// Requirement 3's `retry_after_ms`: the p50 of every call duration
+    /// recorded in the last [`RETRY_ESTIMATE_WINDOW`], floored at
+    /// [`RETRY_AFTER_MS_FLOOR`] -- [`RETRY_AFTER_MS_DEFAULT`] before any
+    /// sample exists yet.
+    fn estimate_retry_after_ms(&self) -> u64 {
+        let mut guard = self
+            .recent_durations
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let now = Instant::now();
+        while let Some(&(started, _)) = guard.front() {
+            if now.duration_since(started) > RETRY_ESTIMATE_WINDOW {
+                guard.pop_front();
+            } else {
+                break;
+            }
+        }
+        if guard.is_empty() {
+            return RETRY_AFTER_MS_DEFAULT;
+        }
+        let mut millis: Vec<u64> = guard.iter().map(|(_, d)| d.as_millis() as u64).collect();
+        millis.sort_unstable();
+        let p50 = millis[millis.len() / 2];
+        p50.max(RETRY_AFTER_MS_FLOOR)
+    }
+
+    /// Records one completed call's wall-clock duration for
+    /// [`Self::estimate_retry_after_ms`] to read back.
+    fn record_call_duration(&self, duration: Duration) {
+        let mut guard = self
+            .recent_durations
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        guard.push_back((Instant::now(), duration));
+        // Bound the queue itself too, independent of the time-based prune
+        // above -- a sustained high call rate shouldn't grow this
+        // unboundedly between estimate calls.
+        while guard.len() > 4096 {
+            guard.pop_front();
+        }
+    }
+
+    /// Requirement 8: `true` at most once per [`CAPACITY_LOG_INTERVAL`] per
+    /// tenant -- the caller logs the refusal only when this returns `true`.
+    fn should_log_capacity_refusal(&self, tenant_id: i64) -> bool {
+        let mut guard = self
+            .capacity_log_gate
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let now = Instant::now();
+        match guard.get(&tenant_id) {
+            Some(&last) if now.duration_since(last) < CAPACITY_LOG_INTERVAL => false,
+            _ => {
+                guard.insert(tenant_id, now);
+                true
+            }
         }
     }
 
@@ -2674,6 +2857,7 @@ impl PythonKind {
 
         let payload = call_payload(args, &entry.site_packages);
         let bridge = HostSidecarBridge { ctx };
+        let warm_call_started = Instant::now();
         let outcome = entry.sandbox.call(&payload, timeout, &bridge).await;
         match outcome {
             Ok(PersistentCallOutcome::Responded {
@@ -2681,6 +2865,9 @@ impl PythonKind {
                 cpu_ms,
                 peak_rss_kb,
             }) => {
+                // Requirement 3: feeds `estimate_retry_after_ms`'s p50
+                // window -- a warm hit's own latency, same as a cold call's.
+                self.record_call_duration(warm_call_started.elapsed());
                 self.warm.record_hit();
                 ctx.resources.record(cpu_ms, peak_rss_kb);
                 self.cpu_budget.record(ctx.tenant_id, cpu_ms);
@@ -2763,6 +2950,7 @@ impl PythonKind {
                 memory_mb: parsed.effective_memory_mb(),
                 max_open_files: MAX_OPEN_FILES,
                 max_file_size_mb: MAX_FILE_SIZE_MB,
+                max_processes: MAX_PROCESSES,
             },
             wall_clock_timeout: Duration::from_secs(parsed.effective_timeout_s() + 2),
             network: self.network_mode(parsed),
@@ -2985,6 +3173,19 @@ impl Kind for PythonKind {
         parse_spec(spec).map(|p| p.secrets).unwrap_or_default()
     }
 
+    /// PRD-mcphost-call-limits-honest requirement 1 (AC1/AC2): `None` when
+    /// this spec never declared `timeout_s` -- `handler.rs`'s dispatch
+    /// falls back to `AppState::call_timeout`'s default in that case.
+    /// `validate_spec_fields_all` already bounds a declared value to
+    /// `[1, MAX_TIMEOUT_S]` at publish time; `.min(MAX_TIMEOUT_S)` here is
+    /// belt-and-suspenders against a spec stored before that check existed.
+    fn requested_timeout(&self, spec: &Value) -> Option<Duration> {
+        let parsed = parse_spec(spec).ok()?;
+        parsed
+            .timeout_s
+            .map(|t| Duration::from_secs(t.min(MAX_TIMEOUT_S)))
+    }
+
     fn declared_outputs(&self, spec: &Value) -> Vec<OutputDecl> {
         parse_spec(spec).map(|p| p.outputs).unwrap_or_default()
     }
@@ -3025,10 +3226,42 @@ impl Kind for PythonKind {
             return Err(KindError::structured_with("args_invalid", e.to_string(), data));
         }
 
+        // Requirement 3 (AC4): the tenant's own admission cap is checked
+        // before the box-wide one -- a tenant already at its own limit is
+        // refused without ever contending for (or holding, even briefly) a
+        // slot another tenant could have used.
+        let tenant_sem = self.tenant_semaphore(ctx.tenant_id, ctx.concurrent_calls_per_tenant);
+        let Ok(_tenant_permit) = tenant_sem.try_acquire_owned() else {
+            let retry_after_ms = self.estimate_retry_after_ms();
+            if self.should_log_capacity_refusal(ctx.tenant_id) {
+                tracing::warn!(
+                    tenant_id = ctx.tenant_id,
+                    scope = "tenant",
+                    retry_after_ms,
+                    "python call refused: tenant at its concurrent-call limit"
+                );
+            }
+            return Err(KindError::structured_with(
+                "capacity",
+                "at this tenant's concurrent-call limit; try again shortly",
+                json!({"retry_after_ms": retry_after_ms, "scope": "tenant"}),
+            ));
+        };
+
         let Ok(_permit) = self.semaphore.clone().try_acquire_owned() else {
-            return Err(KindError::structured(
+            let retry_after_ms = self.estimate_retry_after_ms();
+            if self.should_log_capacity_refusal(ctx.tenant_id) {
+                tracing::warn!(
+                    tenant_id = ctx.tenant_id,
+                    scope = "host",
+                    retry_after_ms,
+                    "python call refused: host at the concurrent-call limit"
+                );
+            }
+            return Err(KindError::structured_with(
                 "capacity",
                 "at the concurrent-call limit; try again shortly",
+                json!({"retry_after_ms": retry_after_ms, "scope": "host"}),
             ));
         };
 
@@ -3157,6 +3390,7 @@ impl Kind for PythonKind {
                 memory_mb: parsed.effective_memory_mb(),
                 max_open_files: MAX_OPEN_FILES,
                 max_file_size_mb: MAX_FILE_SIZE_MB,
+                max_processes: MAX_PROCESSES,
             },
             wall_clock_timeout: Duration::from_secs(parsed.effective_timeout_s() + 2),
             network: self.network_mode(&parsed),
@@ -3178,10 +3412,13 @@ impl Kind for PythonKind {
         // Requirement 1/AC4: the cold-path number the AC's ≤5s budget is
         // judged against, logged before the spawn-error `?` so a genuine
         // spawn failure is still timed and visible.
+        let cold_call_elapsed = cold_call_started.elapsed();
         tracing::info!(
-            cold_call_ms = cold_call_started.elapsed().as_millis() as u64,
+            cold_call_ms = cold_call_elapsed.as_millis() as u64,
             "python cold call (env lookup + sandboxed run) complete"
         );
+        // Requirement 3: feeds `estimate_retry_after_ms`'s p50 window.
+        self.record_call_duration(cold_call_elapsed);
         let outcome = outcome.map_err(|e| KindError::Exec(format!("sandbox spawn failed: {e}")))?;
 
         let (cpu_ms, peak_rss_kb) = outcome_usage(&outcome);
@@ -3324,6 +3561,7 @@ impl Kind for PythonKind {
                 memory_mb: parsed.effective_memory_mb(),
                 max_open_files: MAX_OPEN_FILES,
                 max_file_size_mb: MAX_FILE_SIZE_MB,
+                max_processes: MAX_PROCESSES,
             },
             wall_clock_timeout: Duration::from_secs(parsed.effective_timeout_s() + 2),
             network: self.network_mode(&parsed),
@@ -3507,6 +3745,62 @@ mod tests {
         assert!(matches!(err, KindError::InvalidSpec(_)));
     }
 
+    /// PRD-mcphost-call-limits-honest requirement 8 (AC9): the first
+    /// refusal for a tenant logs; a second one immediately after (well
+    /// inside `CAPACITY_LOG_INTERVAL`) must not; a third one recorded past
+    /// the interval must again -- proven directly against the gate rather
+    /// than through a real 16,000-call burst or a log-capture harness this
+    /// crate doesn't have (see `state.rs`'s own
+    /// `signup_rate_limit_unparseable_falls_back_to_default` test doc for
+    /// the same "no log-capture harness" note). A different tenant's own
+    /// gate is independent, same as `ToolRunLimiter`'s per-tenant windows.
+    #[test]
+    fn capacity_refusal_log_gate_allows_once_per_interval_per_tenant() {
+        let kind = PythonKind::new(&temp_data_dir());
+        assert!(
+            kind.should_log_capacity_refusal(1),
+            "the first refusal for a tenant must log"
+        );
+        assert!(
+            !kind.should_log_capacity_refusal(1),
+            "a second refusal immediately after must not log again"
+        );
+        assert!(
+            kind.should_log_capacity_refusal(2),
+            "a different tenant's gate must be independent"
+        );
+        // Simulate the interval elapsing by backdating tenant 1's last-log
+        // timestamp directly rather than a real `sleep` in a unit test.
+        {
+            let mut guard = kind
+                .capacity_log_gate
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            guard.insert(1, Instant::now() - CAPACITY_LOG_INTERVAL - Duration::from_millis(1));
+        }
+        assert!(
+            kind.should_log_capacity_refusal(1),
+            "a refusal past the interval must log again"
+        );
+    }
+
+    /// Requirement 3: the p50-over-last-minute estimator, floored, with the
+    /// documented default before any sample exists.
+    #[test]
+    fn retry_after_estimate_floors_and_defaults() {
+        let kind = PythonKind::new(&temp_data_dir());
+        assert_eq!(kind.estimate_retry_after_ms(), RETRY_AFTER_MS_DEFAULT);
+
+        kind.record_call_duration(Duration::from_millis(10));
+        // Below the floor -- must report the floor, not the raw sample.
+        assert_eq!(kind.estimate_retry_after_ms(), RETRY_AFTER_MS_FLOOR);
+
+        for _ in 0..5 {
+            kind.record_call_duration(Duration::from_millis(500));
+        }
+        assert_eq!(kind.estimate_retry_after_ms(), 500);
+    }
+
     #[tokio::test]
     async fn ast_check_rejects_source_without_main() {
         if !sandbox::supports_user_namespaces() {
@@ -3583,6 +3877,7 @@ mod tests {
             compose_children: None,
             compose_db: None,
             compose_kinds: None,
+            concurrent_calls_per_tenant: usize::MAX,
         }
     }
 
@@ -3880,6 +4175,7 @@ mod tests {
             compose_children: None,
             compose_db: None,
             compose_kinds: None,
+            concurrent_calls_per_tenant: usize::MAX,
         }
     }
 
