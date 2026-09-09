@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.32.0 — 2026-09-09
+
+In the four comparable truth-tier runs since the loop repair (84 sessions, 2026-09-08), eight publishes were rejected with `invalid spec: spec: invalid type: map, expected a sequence` and twelve sessions were docked half their accuracy because a declared output sat one key deeper than the host looks. The recordings show one cause behind both. Personas write `outputs` as a map from field name to a path, `{"ingestion_status": "$.json.ingestion_status"}`, because their upstream (httpbin in every recorded case) returns the field nested under `json` or `args`. The host wants a list of names, rejects the map with serde's raw message and no field name, and, once the persona resubmits a list, promotes a declared field only from the top level or from `data`, `result`, or `response`. The field is never found, `result.payload` never carries it, and the gold check fails while the judge can see the value on screen. This PRD makes the error name the field and the accepted shape, and makes the map form legal: each entry names a field and the path it is read from, and the host puts it at `result.payload.<name>`.
+
+Migration: existing stored specs have list-form `outputs` and are unaffected. A rollback below this version leaves map-form tools unservable until republished.
+
 ## v0.31.0 — 2026-09-08
 
 Every row in the live `signup_events` table carries `source_ip=127.0.0.1`. mcphost.dev runs behind Caddy on the same box, so the TCP peer of every request is loopback, and the handler takes the source address from `ConnectInfo` alone. Two things break. The signup rate limiter, keyed per source, is one shared bucket for the whole internet: the first hundred signups per hour from anyone exhaust it for everyone. And the tenant-attribution work that classifies sources as real or synthetic has no address to classify. This PRD reads the client address from `X-Forwarded-For` when, and only when, the peer is loopback, and uses that address wherever the source address is used today.
