@@ -253,10 +253,10 @@ same constants `host.quickstart`'s `limits` object reads.
   `tests/ac16_request_body_too_large.rs`; the "2 MiB" in that AC's own
   description is the oversized test payload used to *prove* the 1 MiB cap,
   not the cap itself).
-- **Concurrency**: 20 concurrent calls host-wide; per tenant, 4 per tenant
-  on the free plan (10 on pro). A refusal past your own tenant's cap is
-  `capacity` with `scope: "tenant"` and a `retry_after_ms`; past the
-  host-wide cap it's `scope: "host"`.
+- **Concurrency**: 20 concurrent calls host-wide; per tenant, 4 per tenant on the free plan
+  (10 on pro). A refusal past your own tenant's cap is `capacity` with
+  `scope: "tenant"` and a `retry_after_ms`; past the host-wide cap it's
+  `scope: "host"`.
 - **Sandbox process cap**: a python tool's sandbox allows at most 64 live
   processes; a fork past that fails with the structured
   `tool_process_limit`, not a silent hang or an opaque OS error.

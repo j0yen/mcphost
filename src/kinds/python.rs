@@ -2548,7 +2548,15 @@ impl PythonKind {
     /// Requirement 3: this tenant's own admission semaphore, sized from
     /// `cap` the first time this tenant is seen (see the field's own doc
     /// comment on `tenant_admission`).
+    ///
+    /// Callers that predate per-tenant admission (the firstcall/warm-pool
+    /// test contexts in `kinds::mod` and this module) pass `usize::MAX` as
+    /// an "effectively unbounded" sentinel -- clamp to
+    /// [`Semaphore::MAX_PERMITS`] rather than handing tokio's
+    /// `Semaphore::new` a value past its own ceiling, which panics instead
+    /// of saturating.
     fn tenant_semaphore(&self, tenant_id: i64, cap: usize) -> Arc<Semaphore> {
+        let cap = cap.min(Semaphore::MAX_PERMITS);
         let mut guard = self
             .tenant_admission
             .lock()

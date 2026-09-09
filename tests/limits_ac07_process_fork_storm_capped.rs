@@ -46,18 +46,23 @@ async fn fork_storm_fails_with_tool_process_limit_and_processes_are_cleaned_up()
     let client = common::McpClient::with_bearer(&server.base_url, &key);
 
     let spec = json!({
-        "source": "import os\n\
-def main(args):\n\
-    n = args.get(\"n\", 500)\n\
-    children = []\n\
-    for _ in range(n):\n\
-        pid = os.fork()\n\
-        if pid == 0:\n\
-            os._exit(0)\n\
-        children.append(pid)\n\
-    for pid in children:\n\
-        os.waitpid(pid, 0)\n\
-    return {\"forked\": len(children)}\n",
+        // A plain `\n\`-continued string strips leading whitespace from
+        // each continuation line (that's how Rust joins them), which
+        // silently flattens this source's indentation; a raw string with
+        // real newlines avoids that trap and reads as actual Python.
+        "source": r#"import os
+def main(args):
+    n = args.get("n", 500)
+    children = []
+    for _ in range(n):
+        pid = os.fork()
+        if pid == 0:
+            os._exit(0)
+        children.append(pid)
+    for pid in children:
+        os.waitpid(pid, 0)
+    return {"forked": len(children)}
+"#,
         "args_schema": {"type": "object"},
         "timeout_s": 30,
     });

@@ -229,13 +229,27 @@ pub struct ResourceLimits {
     pub max_open_files: u64,
     pub max_file_size_mb: u64,
     /// PRD-mcphost-call-limits-honest requirement 6: `RLIMIT_NPROC` for the
-    /// sandboxed uid -- a fork past this count fails with `EAGAIN`, which
-    /// `kinds::python`'s runner protocol catches and reports as the
+    /// sandboxed process tree -- a fork past this count fails with `EAGAIN`,
+    /// which `kinds::python`'s runner protocol catches and reports as the
     /// structured `tool_process_limit` (see that module's
-    /// `map_envelope_error`). This is a real-uid-wide kernel limit (every
-    /// sandboxed call runs as the same low-privilege uid -- see
-    /// `SANDBOX_UID` below), not a per-call one; each caller sets it to the
-    /// same box-wide default.
+    /// `map_envelope_error`).
+    ///
+    /// **Not** applied via `pre_exec_setup` (unlike the other limits on this
+    /// struct): `RLIMIT_NPROC` is accounted per real uid, and (since Linux
+    /// 4.9) creating a user namespace itself consumes one unit of it --
+    /// setting this *before* `bwrap`/`unshare` exec would apply it to the
+    /// invoking process's own real uid (e.g. the mcphost host process's),
+    /// whose already-large systemwide task count (every thread, every
+    /// unrelated process owned by that uid) would then make `bwrap`'s own
+    /// `unshare(CLONE_NEWUSER)` fail with EAGAIN before the sandbox ever
+    /// starts -- breaking every call, not just an over-limit one (observed:
+    /// "bwrap: Creating new namespace failed: Resource temporarily
+    /// unavailable" on every publish/call on a box whose real uid already
+    /// owns >64 tasks). Instead, [`bwrap_command`]/[`unshare_setpriv_command`]
+    /// prepend `prlimit --nproc=<max_processes> --` to the argv *after* the
+    /// isolation wrapper's own unshare, so the limit is set from inside the
+    /// fresh user namespace (whose ucounts start over, scoped to that
+    /// namespace) rather than against the host's.
     pub max_processes: u64,
 }
 
@@ -446,7 +460,10 @@ unsafe fn pre_exec_setup(limits: ResourceLimits) -> std::io::Result<()> {
         set(libc::RLIMIT_NOFILE, limits.max_open_files)?;
         set(libc::RLIMIT_FSIZE, limits.max_file_size_mb * 1024 * 1024)?;
         set(libc::RLIMIT_CORE, 0)?;
-        set(libc::RLIMIT_NPROC, limits.max_processes)?;
+        // RLIMIT_NPROC (`limits.max_processes`) is deliberately NOT set here
+        // -- see the doc comment on `ResourceLimits::max_processes` for why;
+        // `bwrap_command`/`unshare_setpriv_command` apply it from inside the
+        // sandbox instead.
     }
     Ok(())
 }
@@ -491,6 +508,15 @@ fn bwrap_command(spec: &RunSpec) -> Command {
     cmd.arg("--die-with-parent");
     cmd.arg("--new-session");
     cmd.arg("--");
+    // Requirement 6: `RLIMIT_NPROC` applied here, inside the sandbox (after
+    // bwrap's own `--unshare-all` has already created the new user/pid
+    // namespace), rather than via `pre_exec_setup` before bwrap's own exec
+    // -- see `ResourceLimits::max_processes`'s doc comment for why setting
+    // it pre-exec would break `bwrap` itself. `/usr/bin/prlimit` is visible
+    // here because `/usr` is one of `read_only_dirs`' ro-binds above.
+    cmd.arg("prlimit");
+    cmd.arg(format!("--nproc={}", spec.limits.max_processes));
+    cmd.arg("--");
     cmd.arg(&spec.interpreter);
     cmd.args(&spec.interpreter_args);
     cmd.arg(&spec.script_path);
@@ -517,6 +543,11 @@ fn unshare_setpriv_command(spec: &RunSpec) -> Command {
     cmd.args(["--regid", &SANDBOX_GID.to_string()]);
     cmd.arg("--clear-groups");
     cmd.arg("--");
+    // Same reasoning as `bwrap_command`: apply `RLIMIT_NPROC` from inside
+    // the already-unshared namespace, not via `pre_exec_setup`.
+    cmd.arg("prlimit");
+    cmd.arg(format!("--nproc={}", spec.limits.max_processes));
+    cmd.arg("--");
     cmd.arg(&spec.interpreter);
     cmd.args(&spec.interpreter_args);
     cmd.arg(&spec.script_path);
@@ -528,6 +559,12 @@ fn unshare_setpriv_command(spec: &RunSpec) -> Command {
     cmd
 }
 
+/// `spec.limits.max_processes` is intentionally not enforced here: this
+/// mode never unshares a new user namespace (debug-only, kept off the warm
+/// pool -- see the module doc), so there is no namespace boundary to scope
+/// a lowered `RLIMIT_NPROC` to; setting it would count against the host
+/// process's own real uid the same way `pre_exec_setup` used to (see
+/// `ResourceLimits::max_processes`'s doc comment for why that breaks).
 fn no_isolation_command(spec: &RunSpec) -> Command {
     let mut cmd = Command::new(&spec.interpreter);
     cmd.args(&spec.interpreter_args);
