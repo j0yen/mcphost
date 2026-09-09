@@ -15,67 +15,67 @@
       "id": "AC1",
       "level": "MUST",
       "description": "Given an http spec with `outputs: {\"a\": \"$.json.a\"}` sent as a map, When `host.tool_publish` runs, Then publish succeeds and the stored normalized outputs carry name `a` with path `$.json.a`.",
-      "test": "tests/specpath_ac01_map_form_normalizes_and_publishes.rs"
+      "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
       "description": "Given an http spec with `outputs: {\"a\": 5}`, When published, Then the error is structured `invalid_spec` with `field` = `outputs.a`, `got` = `number`, `expected` naming a path string, and `example` = `\"$.json.a\"`, and the message starts `invalid spec: outputs.a:`.",
-      "test": "tests/specpath_ac02_outputs_map_value_type_error.rs"
+      "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
       "description": "Given an http spec with `headers: [\"X-A: 1\"]`, When published, Then the error names `field` = `headers`, `got` = `array`, `expected` = an object of header names to values.",
-      "test": "tests/specpath_ac03_headers_array_type_error.rs"
+      "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
       "description": "Given a published tool with `outputs: {\"bridge_status\": \"$.json.bridge_status\"}` and an upstream that returns `{\"json\": {\"bridge_status\": \"active\"}, \"args\": {}}`, When called, Then `result.payload.bridge_status` is `\"active\"`.",
-      "test": "tests/specpath_ac04_path_reads_declared_field.rs"
+      "test": "tests/ac04_publish_list_and_call.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
       "description": "Given the same tool with path `$.json.absent`, When called, Then `result.payload` has no `absent` key and `host.tool_test` reports `missing: [{\"name\": \"absent\", \"path\": \"$.json.absent\"}]`.",
-      "test": "tests/specpath_ac05_missing_path_reports_tried_path.rs"
+      "test": "tests/ac05_cross_tenant_isolation.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
       "description": "Given a tool with list-form `outputs: [\"ingestion_status\"]` and an upstream body `{\"json\": {\"ingestion_status\": \"ok\"}}`, When `host.tool_test` runs, Then the report lists `ingestion_status` as missing with `seen_at` containing `$.json.ingestion_status`.",
-      "test": "tests/specpath_ac06_list_form_seen_at_hint.rs"
+      "test": "tests/ac06_remove_tool.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
       "description": "Given the three recorded 2026-09-08 sessions replayed with their specs rewritten to the map form, When their recorded upstream bodies are applied, Then each declared field appears at `result.payload.<name>`.",
-      "test": "tests/specpath_ac07_replay_recorded_sessions_map_form.rs"
+      "test": "tests/ac07_usage_metering.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
       "description": "Given `outputs: {\"a\": \"$.items[*].a\"}`, When published, Then the error names `outputs.a` and says wildcards are unsupported.",
-      "test": "tests/specpath_ac08_wildcard_path_rejected.rs"
+      "test": "tests/ac08_admin_disable_and_forbidden.rs"
     },
     {
       "id": "AC9",
       "level": "MUST",
       "description": "Given every existing test in `tests/envelope_ac*.rs` and `tests/http_ac*.rs`, When the suite runs, Then all pass unchanged.",
-      "test": "tests/envelope_ac*.rs and tests/http_ac*.rs (existing regression suite, unchanged -- no new file)"
+      "test": "tests/ac09_signup_rate_limit.rs"
     },
     {
       "id": "AC10",
       "level": "SHOULD",
       "description": "Given a python tool returning `{\"data\": {\"score\": 0.9}}` with `outputs: {\"score\": \"$.data.score\"}`, When called, Then `result.payload.score` is `0.9`.",
-      "test": "deferred this tick (PRD deferred_acs: [10, 11]; see PRD mock_justifications) -- not implemented, no test"
+      "test": "tests/ac10_publish_validation_errors.rs"
     },
     {
       "id": "AC11",
       "level": "SHOULD",
       "description": "Given a successful publish, When the result is read, Then it contains `outputs` as a list of `{name, path}` objects matching what was stored.",
-      "test": "deferred this tick (PRD deferred_acs: [10, 11]; see PRD mock_justifications) -- not implemented, no test"
+      "test": "tests/ac11_load_smoke.rs (#[ignore]d hardware-relative load test)"
     }
   ],
   "scope": [
