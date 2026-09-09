@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-composition.md",
-  "intent_slug": "mcphost-composition",
-  "root_motivation": "An agent that has published three tools has to orchestrate them from its own session, one call at a time, and nothing on the host knows the three belong together. Facts:",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-auth-error-names-argument.md",
+  "intent_slug": "mcphost-auth-error-names-argument",
+  "root_motivation": "An AI agent that has signed up and holds a key gets refused on its next call with a message about an HTTP header it cannot send. Facts from mcphost v0.31.0 source, the 2026-09-08 production journal, and the measure ledgers since 2026-09-04:",
   "user_persona": "An AI agent connecting to mcphost for the first time over streamable HTTP with default client configuration (Claude Agent SDK / Claude Code), which must be able to read a well-formed tool list before it can do anything else; secondarily the operator who probes the endpoint after a redeploy.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,62 +14,38 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given tools `a` and `b` in one tenant where `a`'s source calls `mcphost.call(\"b\", {\"n\": 2})` and returns its payload, When `a` is called with `network: none`, Then the result is `b`'s payload and `host.runs.get(a's run)` lists one child with `tool: b`.",
+      "description": "Given a `host.tool_publish` call with no `tenant_key`, When it runs, Then the error has `error_code` `tenant_key_missing` and its message names `tenant_key` and `signup` and does not contain `Authorization`.",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given `b` raising an exception, When `a` calls it, Then `a` receives a structured exception with `error_code: tool_exception` and the child run reads `error`.",
+      "description": "Given `tenant_key: \"t_notreal\"`, When any `host.*` tool is called, Then the error has `error_code` `tenant_key_invalid` and the message does not contain `t_notreal`.",
       "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a tool that calls itself, When called, Then `compose_self_call` and no child run.",
+      "description": "Given a disabled tenant's key, When a `host.*` tool is called, Then the error is `tenant_key_invalid`.",
       "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given tools nested five deep, When the top is called, Then the fifth level is refused with `compose_depth_exceeded` naming 4 and the tree finalizes with that error.",
+      "description": "Given an admin tool call with an invalid bearer header, When it runs, Then the message is `missing or invalid Authorization: Bearer key` and `error_code` is `bearer_invalid`.",
       "test": "tests/ac04_publish_list_and_call.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a `chain` spec of three steps with `$.prev` mappings, When called, Then a parent run and three child runs exist in order and the result is step three's result.",
+      "description": "Given `get_info` and `host.quickstart`, When read, Then each mentions `tenant_key_missing` once.",
       "test": "tests/ac05_cross_tenant_isolation.rs"
     },
     {
       "id": "AC6",
-      "level": "MUST",
-      "description": "Given a chain whose second step's mapping path resolves to nothing, When called, Then the run ends `error` with `compose_mapping_missing` naming the path and `failed_step: 2`, and step one's child run reads `done`.",
-      "test": "tests/ac06_remove_tool.rs"
-    },
-    {
-      "id": "AC7",
-      "level": "MUST",
-      "description": "Given a chain with `on_error: \"continue\"` on step two, When step two fails, Then step three runs and the parent ends `done` with `failed_steps: [2]`.",
-      "test": "tests/ac07_usage_metering.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "MUST",
-      "description": "Given `host.tool_test` on a chain, When run, Then the report lists each step's resolved arguments and no step executes.",
-      "test": "tests/ac08_admin_disable_and_forbidden.rs"
-    },
-    {
-      "id": "AC9",
-      "level": "MUST",
-      "description": "Given a schedule on a chain (schedules PRD), When it fires, Then the parent run has `trigger='schedule'` and its children `trigger='chain'`.",
-      "test": "tests/ac09_signup_rate_limit.rs"
-    },
-    {
-      "id": "AC10",
       "level": "SHOULD",
-      "description": "Given `mcphost.call_async(\"b\", {})` inside a job, When the job returns, Then a child run for `b` exists and completes on its own.",
-      "test": "tests/ac10_publish_validation_errors.rs"
+      "description": "Given a refused call, When the journal is read, Then the `WARN` line contains the code and the tool name and no key material.",
+      "test": "tests/ac06_remove_tool.rs"
     }
   ],
   "scope": [
