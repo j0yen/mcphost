@@ -211,6 +211,58 @@ pub fn require_user_namespaces_or_ci_skip() -> bool {
     );
 }
 
+/// `true` if this process's REAL uid makes the sandbox's `RLIMIT_NPROC`
+/// fork-storm cap (`ResourceLimits::max_processes`, requirement 6)
+/// actually enforceable; `false` if it is a silent no-op.
+///
+/// PRD-mcphost-call-limits-honest five-whys (2026-09-09): AC7's fork-storm
+/// test (500 forks, expect `tool_process_limit`) failed reproducibly in one
+/// execution context (a root-owned build tree, `/root/build/...`) while
+/// passing every time -- including under self-induced concurrent load --
+/// everywhere this was run as an unprivileged developer uid. Traced empirically
+/// on this same box: `bwrap --uid 65534 ... prlimit --nproc=64 -- python3
+/// <fork 200x>` run as an unprivileged user forked 62 children then hit
+/// `EAGAIN` as designed; the identical command run via `sudo` (real uid 0)
+/// forked all 200 with no error at all. Root cause: `kernel/fork.c`'s
+/// `is_ucounts_overlimit` check that backs `RLIMIT_NPROC` is skipped
+/// outright when the task's *real* (not effective, not the
+/// bwrap-namespace-mapped) uid is 0 -- `RLIMIT_NPROC` has never bound root,
+/// a property that predates user namespaces entirely and that `bwrap --uid
+/// <n>`'s in-namespace remap cannot undo, because the kernel's exemption
+/// keys off the real credential's root-ness, not the namespace-local uid
+/// `getuid()` reports inside the sandbox. A cgroup `pids.max` cap would be
+/// immune to this (cgroup limits are not uid-exempt) but needs cgroup v2
+/// delegation this codebase has never set up or tested against -- tracked
+/// as a follow-on PRD rather than done here under a shared-repo build tick.
+/// The actionable fix available today, and the one this function backs:
+/// mcphost must never run as real root, because every deployment path this
+/// crate documents (`deploy/*.service`: systemd **user** units, which
+/// cannot run as root) already guarantees that -- a real uid of 0 is a
+/// misconfiguration, not a supported mode, and refusing to start honors
+/// this PRD's own thesis ("every limit the host enforces is the one it
+/// advertises") instead of silently serving fork-storm-uncapped traffic.
+pub fn fork_storm_cap_is_reliable(real_uid: u32) -> bool {
+    real_uid != 0
+}
+
+/// Panics naming the fix if `real_uid` is 0 (see
+/// [`fork_storm_cap_is_reliable`]) -- called once from `Command::Serve`
+/// startup, before binding, so a misdeployed root process fails loudly
+/// instead of silently accepting traffic its fork-storm cap cannot bound.
+pub fn refuse_to_serve_as_root(real_uid: u32) {
+    if !fork_storm_cap_is_reliable(real_uid) {
+        panic!(
+            "mcphost refuses to run as root (real uid 0): the RLIMIT_NPROC \
+             fork-storm cap (PRD-mcphost-call-limits-honest requirement 6) is \
+             a kernel-level no-op for root regardless of any prlimit/setrlimit \
+             call, so a tool.call fork storm would run uncapped under this \
+             process. Every supported deployment (deploy/*.service, systemd \
+             user units) already runs mcphost as an unprivileged user -- run \
+             it as one."
+        );
+    }
+}
+
 /// The unprivileged uid/gid a sandboxed child runs as inside its fresh user
 /// namespace -- `nobody`/`nogroup` on every Linux distribution `mcphost`
 /// targets, and (requirement 5) distinct from whatever uid runs `mcphost`
@@ -1427,6 +1479,30 @@ mod is_within_proptests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// PRD-mcphost-call-limits-honest five-whys regression: root defeats
+    /// the RLIMIT_NPROC fork-storm cap at the kernel level (see
+    /// `fork_storm_cap_is_reliable`'s doc comment) -- confirmed empirically
+    /// via `sudo bwrap ... prlimit --nproc=64 -- python3 <fork 200x>`
+    /// forking all 200 with no error, vs. 62-then-`EAGAIN` unprivileged.
+    #[test]
+    fn root_defeats_the_fork_storm_cap() {
+        assert!(!fork_storm_cap_is_reliable(0));
+        assert!(fork_storm_cap_is_reliable(1000));
+        assert!(fork_storm_cap_is_reliable(65534));
+    }
+
+    #[test]
+    fn refuses_to_serve_as_root() {
+        let result = std::panic::catch_unwind(|| refuse_to_serve_as_root(0));
+        assert!(result.is_err(), "must panic when real uid is 0");
+    }
+
+    #[test]
+    fn serves_normally_as_non_root() {
+        // Must not panic.
+        refuse_to_serve_as_root(1000);
+    }
 
     #[test]
     fn detects_a_real_mechanism_on_this_box() {

@@ -261,6 +261,18 @@ async fn main() -> anyhow::Result<()> {
         Command::Serve { registry_url } => {
             init_tracing();
 
+            // PRD-mcphost-call-limits-honest five-whys: RLIMIT_NPROC (the
+            // fork-storm cap, requirement 6) is a kernel-level no-op for
+            // root regardless of any prlimit/setrlimit call -- see
+            // `sandbox::fork_storm_cap_is_reliable`'s doc comment for the
+            // empirical trace. Every supported deployment runs mcphost as
+            // an unprivileged systemd **user** unit, so a real uid of 0
+            // here is a misconfiguration; fail loudly rather than silently
+            // serve fork-storm-uncapped traffic.
+            // SAFETY: getuid() takes no arguments and cannot fail.
+            let real_uid = unsafe { libc::getuid() };
+            mcphost::sandbox::refuse_to_serve_as_root(real_uid);
+
             let bind: std::net::SocketAddr = env_or("MCPHOST_BIND", "127.0.0.1:8080").parse()?;
             let public_url = env_or("MCPHOST_PUBLIC_URL", &format!("http://{bind}"));
             let admin_key = std::env::var("MCPHOST_ADMIN_KEY").ok();
