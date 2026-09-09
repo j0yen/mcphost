@@ -780,6 +780,7 @@ fn find_seen_at(source: &Value, field: &str, max_depth: usize, max_results: usiz
     out
 }
 
+#[allow(clippy::too_many_arguments)]
 fn find_seen_at_walk(
     value: &Value,
     field: &str,
