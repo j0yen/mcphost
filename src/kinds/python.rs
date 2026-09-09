@@ -1670,8 +1670,42 @@ _mcphost_state_mod.query = _state_query
 _mcphost_state_mod.delete_rows = _state_delete_rows
 _mcphost_state_mod.StateError = McphostStateError
 
+# ---- mcphost.call (PRD-mcphost-composition requirement 1) -----------------
+#
+# `mcphost.call(name, args, timeout_s=None)` -- the same synchronous
+# request-line-out/response-line-in round trip `mcphost.state` uses above,
+# marked `__mcphost_call__` instead of `__mcphost_state__` so the host side
+# (`kinds::python::HostSidecarBridge`) can tell the two apart on the same
+# stdin/stdout pair. The host runs `name` as a child call through
+# `kinds::compose_call`, which enforces the depth/self-call/children
+# ceilings before `name` is even looked up.
+class McphostCallError(Exception):
+    def __init__(self, code, message, data=None):
+        super().__init__(message)
+        self.code = code
+        self.data = data or {}
+
+def _mcphost_call(name, args=None, timeout_s=None):
+    request = {"__mcphost_call__": True, "name": name, "args": args or {}}
+    if timeout_s is not None:
+        request["timeout_s"] = timeout_s
+    _real_stdout.write(json.dumps(request))
+    _real_stdout.write("\n")
+    _real_stdout.flush()
+    line = sys.stdin.readline()
+    if not line:
+        raise McphostCallError("compose_unavailable", "the call channel closed")
+    resp = json.loads(line)
+    if not resp.get("ok"):
+        raise McphostCallError(
+            resp.get("code", "compose_error"), resp.get("message", "call failed"), resp.get("data")
+        )
+    return resp.get("result")
+
 _mcphost_mod = _mcphost_types.ModuleType("mcphost")
 _mcphost_mod.state = _mcphost_state_mod
+_mcphost_mod.call = _mcphost_call
+_mcphost_mod.CallError = McphostCallError
 sys.modules["mcphost"] = _mcphost_mod
 sys.modules["mcphost.state"] = _mcphost_state_mod
 
@@ -1903,6 +1937,83 @@ impl SidecarBridge for StateSidecarBridge<'_> {
             br#"{"ok":false,"code":"state_error","message":"internal: response not serializable"}"#
                 .to_vec()
         }))
+    }
+}
+
+/// PRD-mcphost-composition requirement 1: bridges the same sidecar channel
+/// to `kinds::compose_call` -- `PY_RUNNER_SCRIPT`'s `mcphost.call(name,
+/// args, timeout_s=None)` emits `{"__mcphost_call__": true, "name": ...,
+/// "args": ..., "timeout_s"?: ...}` and blocks for the matching response
+/// line, exactly as `mcphost.state`'s `StateSidecarBridge` above does.
+/// Needs the whole `CallCtx` (not just `state`, unlike `StateSidecarBridge`)
+/// because `compose_call` reads `tenant_id`/`compose_depth`/
+/// `compose_children`/`compose_db`/`compose_kinds` off it.
+struct ComposeSidecarBridge<'a> {
+    ctx: &'a CallCtx,
+}
+
+#[async_trait::async_trait]
+impl SidecarBridge for ComposeSidecarBridge<'_> {
+    async fn intercept(&self, line: &[u8]) -> Option<Vec<u8>> {
+        let request: Value = serde_json::from_slice(line).ok()?;
+        if request.get("__mcphost_call__").and_then(Value::as_bool) != Some(true) {
+            // Not a compose request -- either the call's own final response
+            // line, or (when chained after `StateSidecarBridge` in
+            // `HostSidecarBridge`) a state request that bridge already
+            // answered.
+            return None;
+        }
+        let name = request.get("name").and_then(Value::as_str).unwrap_or("");
+        let args = request.get("args").cloned().unwrap_or(Value::Null);
+        let timeout_s = request.get("timeout_s").and_then(Value::as_u64);
+        let response = match crate::kinds::compose_call(self.ctx, self.ctx.tenant_id, name, args, timeout_s)
+            .await
+        {
+            Ok(result) => json!({"ok": true, "result": result}),
+            Err(e) => {
+                let (code, message, data) = match e {
+                    KindError::Structured {
+                        code,
+                        message,
+                        data,
+                    } => (code, message, data),
+                    KindError::InvalidArgs(m) => ("invalid_args", m, Value::Null),
+                    KindError::InvalidSpec(m) => ("invalid_spec", m, Value::Null),
+                    KindError::Exec(m) => ("exec", m, Value::Null),
+                };
+                json!({"ok": false, "code": code, "message": message, "data": data})
+            }
+        };
+        Some(serde_json::to_vec(&response).unwrap_or_else(|_| {
+            br#"{"ok":false,"code":"exec","message":"internal: response not serializable"}"#
+                .to_vec()
+        }))
+    }
+}
+
+/// The one `bridge` every real dispatch (warm or cold) passes to
+/// `PersistentSandbox::call` -- a sandboxed tool's code may use
+/// `mcphost.state` and `mcphost.call` in the same run, over the same
+/// stdin/stdout pair, so both sidecar protocols are tried per line (cheap:
+/// each is a no-op parse-and-marker-check when the line isn't its own).
+/// `state`'s check runs first, matching the plain `StateSidecarBridge`
+/// callers this replaced; the two markers are mutually exclusive so the
+/// order has no other effect.
+struct HostSidecarBridge<'a> {
+    ctx: &'a CallCtx,
+}
+
+#[async_trait::async_trait]
+impl SidecarBridge for HostSidecarBridge<'_> {
+    async fn intercept(&self, line: &[u8]) -> Option<Vec<u8>> {
+        let state_bridge = StateSidecarBridge {
+            state: &self.ctx.state,
+        };
+        if let Some(response) = state_bridge.intercept(line).await {
+            return Some(response);
+        }
+        let compose_bridge = ComposeSidecarBridge { ctx: self.ctx };
+        compose_bridge.intercept(line).await
     }
 }
 
@@ -2562,7 +2673,7 @@ impl PythonKind {
         }
 
         let payload = call_payload(args, &entry.site_packages);
-        let bridge = StateSidecarBridge { state: &ctx.state };
+        let bridge = HostSidecarBridge { ctx };
         let outcome = entry.sandbox.call(&payload, timeout, &bridge).await;
         match outcome {
             Ok(PersistentCallOutcome::Responded {
@@ -3061,7 +3172,7 @@ impl Kind for PythonKind {
         // `run_cold_interactive`'s own doc comment for how its result stays
         // a plain `SandboxOutcome` so nothing downstream of this line has
         // to change.
-        let bridge = StateSidecarBridge { state: &ctx.state };
+        let bridge = HostSidecarBridge { ctx };
         let outcome = run_cold_interactive(&run_spec, &call_payload_bytes, &bridge).await;
         let _ = tokio::fs::remove_dir_all(&scratch).await;
         // Requirement 1/AC4: the cold-path number the AC's ≤5s budget is
@@ -3225,7 +3336,7 @@ impl Kind for PythonKind {
         // protocol `call`'s cold path uses -- a tool that calls
         // `mcphost.state` must behave identically whether it's reached
         // through an ordinary call or a debug `host.tool_run`.
-        let bridge = StateSidecarBridge { state: &ctx.state };
+        let bridge = HostSidecarBridge { ctx };
         let outcome = run_cold_interactive(&run_spec, &call_payload_bytes, &bridge).await;
         let _ = tokio::fs::remove_dir_all(&scratch).await;
         let outcome = outcome.map_err(|e| KindError::Exec(format!("sandbox spawn failed: {e}")))?;
@@ -3466,6 +3577,10 @@ mod tests {
             resources: Arc::new(crate::kinds::NullResourceSink),
             tool_name: Some(tool_name.to_string()),
             state: Arc::new(crate::kinds::NoState),
+            compose_depth: 0,
+            compose_children: None,
+            compose_db: None,
+            compose_kinds: None,
         }
     }
 
@@ -3742,6 +3857,10 @@ mod tests {
             resources: Arc::new(crate::kinds::NullResourceSink),
             tool_name: Some(tool_name.to_string()),
             state: Arc::new(crate::kinds::NoState),
+            compose_depth: 0,
+            compose_children: None,
+            compose_db: None,
+            compose_kinds: None,
         }
     }
 

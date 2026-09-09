@@ -1070,6 +1070,16 @@ impl McpHostHandler {
                 }),
                 Some(log.clone() as Arc<dyn CallLog>),
             )),
+            // PRD-mcphost-composition requirement 1/2: every real
+            // `tools/call`/`host.tool_call` dispatch is the root of its own
+            // composition tree -- depth 0, a fresh per-tree children
+            // counter, and the tenant table/kind registry a composing
+            // `Kind` (`chain`) needs to dispatch its own children through
+            // `kinds::compose_call`.
+            compose_depth: 0,
+            compose_children: Some(Arc::new(std::sync::atomic::AtomicU32::new(0))),
+            compose_db: Some(self.state.db.clone()),
+            compose_kinds: Some(self.state.kinds.clone()),
         };
 
         let start = Instant::now();
@@ -1275,6 +1285,14 @@ impl McpHostHandler {
             // above is `NullLog`), but its *result* carries a `state` tally
             // -- read back from `state_backend` after the call below.
             state: state_backend.clone() as Arc<dyn StateBackend>,
+            // PRD-mcphost-composition requirement 3/AC8: `chain`'s dry run
+            // (`ctx.test_mode`) resolves only literal and `$.input.*`
+            // mappings -- it never dispatches a step, so it never needs
+            // `compose_db`/`compose_kinds` here.
+            compose_depth: 0,
+            compose_children: None,
+            compose_db: None,
+            compose_kinds: None,
         };
 
         match tokio::time::timeout(
@@ -1375,6 +1393,10 @@ impl McpHostHandler {
             // (fixed above), which has no notion of `mcphost.state` --
             // `NoState` is correct here, not a stand-in for a real backend.
             state: Arc::new(NoState),
+            compose_depth: 0,
+            compose_children: None,
+            compose_db: None,
+            compose_kinds: None,
         };
 
         match tokio::time::timeout(self.state.call_timeout, kind.call(&spec, call_args, &ctx)).await
@@ -1510,6 +1532,10 @@ impl McpHostHandler {
             resources: Arc::new(NullResourceSink),
             tool_name: None,
             state: state_backend.clone(),
+            compose_depth: 0,
+            compose_children: None,
+            compose_db: None,
+            compose_kinds: None,
         })
         .await;
 
@@ -1681,6 +1707,14 @@ impl McpHostHandler {
             resources: Arc::new(NullResourceSink),
             tool_name: Some(local_name.clone()),
             state: state_backend.clone() as Arc<dyn StateBackend>,
+            // PRD-mcphost-composition: `host.tool_run` has no notion of a
+            // composition tree of its own yet (see `CallCtx::compose_db`'s
+            // doc) -- `chain`/`mcphost.call` are unavailable from here,
+            // same as `host.tool_test`/`host.spec_test` above.
+            compose_depth: 0,
+            compose_children: None,
+            compose_db: None,
+            compose_kinds: None,
         };
 
         let start = Instant::now();
@@ -1931,7 +1965,41 @@ impl ServerHandler for McpHostHandler {
             // Anonymous/Invalid -> Unauthorized arm below, the same way
             // `signup` itself is.
             (Auth::Tenant(tenant), "host.quickstart") => {
-                control::quickstart(&self.state, Some(tenant), &args)
+                match control::quickstart(&self.state, Some(tenant), &args) {
+                    Ok(mut result) => {
+                        // PRD-mcphost-composition requirement 6: once this
+                        // tenant has at least two tools of its own,
+                        // `host.quickstart(kind="chain")`'s example wires
+                        // the placeholder two-step spec onto them by name
+                        // instead of `ChainKind::example`'s static
+                        // `fetch_rows`/`write_rows` placeholders -- still
+                        // just an example (`host.tool_publish` still has to
+                        // be called to actually create it), but one that
+                        // calls something the tenant already published.
+                        // Best-effort: any lookup failure just leaves the
+                        // generic placeholder spec.
+                        if args.get("kind").and_then(Value::as_str) == Some("chain")
+                            && let Ok(tools) = self.state.db.list_tools(tenant.id).await
+                        {
+                            let names: Vec<String> = tools
+                                .into_iter()
+                                .filter(|t| t.kind != "chain")
+                                .map(|t| t.name)
+                                .take(2)
+                                .collect();
+                            if let [first, second] = names.as_slice() {
+                                result["steps"][0]["arguments"]["spec"] = json!({
+                                    "steps": [
+                                        {"tool": first, "args": {}},
+                                        {"tool": second, "args": {}},
+                                    ],
+                                });
+                            }
+                        }
+                        Ok(result)
+                    }
+                    Err(e) => Err(e),
+                }
             }
             (_, "host.quickstart") => control::quickstart(&self.state, None, &args),
             // PRD-grand-loop-billing AC1: "billing.plans (anonymous and

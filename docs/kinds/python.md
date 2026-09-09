@@ -29,3 +29,17 @@ Result envelope contract: an optional `outputs` array of field names (`"outputs"
 ```
 
 `mcphost.state.get(key, default=None)` returns `default` when the key was never set; every other function takes the same arguments as its `host.state.*` counterpart (`table_create(name, schema, primary_key=None)`, `query(table, where=None, order_by=None, limit=None)`, and so on) and raises `mcphost.state.StateError` (with `.code`/`.data`) on a quota or schema violation rather than returning an error value. A call's `mcphost.state` operations are attributed to that call and see its own writes immediately; there is no state visible across tenants.
+
+## mcphost.call (call another tool)
+
+`import mcphost` and call `mcphost.call(name, args, timeout_s=None)` to run another tool in this same tenant as a child call, synchronously, and get its result back -- reachable with `network: none`, over the same channel `mcphost.state` uses:
+
+```json
+{
+  "source": "import mcphost\ndef main(args):\n    rows = mcphost.call(\"fetch_rows\", {\"since\": args[\"since\"]})\n    return mcphost.call(\"write_rows\", {\"rows\": rows[\"rows\"]})\n"
+}
+```
+
+`name` is the target tool's own (unqualified) name; `args` is its call arguments; an optional `timeout_s` bounds this one child call further, but never past the caller's own remaining deadline. The child's result comes back exactly as calling it directly would return it -- no envelope wrapper. A failure raises `mcphost.CallError` (`.code`/`.data`, e.g. `error_code: tool_exception` when the child itself raised); left uncaught, it surfaces on the caller's own call the same way any other unhandled exception does. A tool cannot call itself (`compose_self_call`), nesting is capped at 4 levels deep (`compose_depth_exceeded`), and a single call tree may make at most 50 child calls in total (`compose_children_exceeded`) -- every refusal names the limit it hit.
+
+See the `chain` kind for the declarative form of the same idea: an ordered list of tool calls with no python of your own to write.

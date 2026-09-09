@@ -112,6 +112,18 @@ pub fn all_kinds_registry(data_dir: &Path) -> KindRegistry {
     kinds
 }
 
+/// `echo` (base) + `chain` -- the `compose_ac*.rs` suite's usual entry
+/// point (PRD-mcphost-composition). `echo` is enough to compose against
+/// directly (its `call` just validates and returns its args); a chain step
+/// naming another `chain` tool composes against this same registry too,
+/// since `chain`'s own step dispatch (`kinds::compose_call`) resolves
+/// through whatever `KindRegistry` the calling `CallCtx` carries.
+pub fn chain_kind_registry() -> KindRegistry {
+    let mut kinds = KindRegistry::with_builtin();
+    kinds.register(Arc::new(mcphost::kinds::chain::ChainKind));
+    kinds
+}
+
 /// PRD-mcphost-sandbox-ready: a shell script body for
 /// `PythonKind::set_selftest_interpreter_for_test` that writes
 /// `stderr_line` to stderr and exits 1 -- simulates one specific sandbox
@@ -650,6 +662,25 @@ impl McpClient {
         )
         .await
     }
+}
+
+/// PRD-mcphost-composition `compose_ac*.rs` suite: `host.tool_publish` a
+/// tool of `kind` under local `name`, returning the qualified
+/// `<namespace>.<name>` `tools/call` would use. Panics on a publish
+/// failure (every caller in that suite expects success; a test asserting a
+/// publish-time rejection calls `host.tool_publish` directly instead).
+pub async fn publish(client: &McpClient, name: &str, kind: &str, spec: Value) -> String {
+    let result = client
+        .tools_call(
+            "host.tool_publish",
+            json!({"name": name, "kind": kind, "spec": spec}),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("publish '{name}' failed: {} {}", e.code, e.message));
+    extract_structured(&result)["name"]
+        .as_str()
+        .expect("published tool's qualified name")
+        .to_string()
 }
 
 /// Sign up a fresh tenant against a running server and return
