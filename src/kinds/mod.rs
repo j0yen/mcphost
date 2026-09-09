@@ -743,6 +743,18 @@ fn value_at_dotted_path<'a>(root: &'a Value, path: &str) -> Option<&'a Value> {
 /// error, when the path doesn't resolve); one with no path keeps the
 /// existing wrapper-search promotion (`wrapper_keys`), unchanged (non-goal
 /// 2).
+///
+/// A declared `path` is authoritative and is resolved (and, on a miss,
+/// removed) unconditionally -- never skipped because `payload` already
+/// carries a same-named key. `payload` starts as a clone of the raw body
+/// (the "payload mirrors body" shape from PRD-mcphost-result-envelope-
+/// contract), so a body whose top level happens to already have a key
+/// named `bridge_status` must not let that native value silently win over
+/// a declared `outputs: {"bridge_status": "$.json.bridge_status"}`; AC1/
+/// AC4/AC5 all describe the path's own resolution, not whatever the body
+/// already put there. The pre-existing-key skip stays for path-less
+/// entries, which fall through to `promote_declared_outputs_with`'s own
+/// (unchanged, non-goal 2) skip-if-present wrapper search.
 pub fn apply_output_decls(
     payload: &mut Map<String, Value>,
     source: &Value,
@@ -751,16 +763,20 @@ pub fn apply_output_decls(
 ) {
     let mut no_path_names = Vec::new();
     for decl in declared {
-        if payload.contains_key(&decl.name) {
-            continue;
-        }
         match &decl.path {
-            Some(path) => {
-                if let Some(v) = path.resolve(source) {
+            Some(path) => match path.resolve(source) {
+                Some(v) => {
                     payload.insert(decl.name.clone(), v.clone());
                 }
+                None => {
+                    payload.remove(&decl.name);
+                }
+            },
+            None => {
+                if !payload.contains_key(&decl.name) {
+                    no_path_names.push(decl.name.clone());
+                }
             }
-            None => no_path_names.push(decl.name.clone()),
         }
     }
     promote_declared_outputs_with(payload, source, &no_path_names, wrapper_keys);
@@ -1320,5 +1336,46 @@ mod spec_output_paths_tests {
 
         assert_eq!(report["found_at_contract_path"], json!(["found_field"]));
         assert_eq!(report["green"], false);
+    }
+
+    /// PRD-mcphost-spec-output-paths AC1/AC4, reviewer-agent counter_attack
+    /// at 708cf46 ("declared-path-silently-shadowed-by-native-top-level-
+    /// key"): `payload` starts as a clone of the raw body (http.rs seeds it
+    /// that way for the "payload mirrors body" shape), so a body whose top
+    /// level already has a same-named key must not let that native value
+    /// win over a declared path -- the path is what the publisher wrote and
+    /// is what must land at `result.payload.<name>`.
+    #[test]
+    fn apply_output_decls_lets_a_declared_path_win_over_a_colliding_native_top_level_key() {
+        let declared = vec![OutputDecl {
+            name: "bridge_status".to_string(),
+            path: Some(Path::parse("$.json.bridge_status").unwrap()),
+        }];
+        let source = json!({"bridge_status": "stale", "json": {"bridge_status": "active"}});
+        // http.rs seeds payload as a full clone of the body before calling
+        // apply_output_decls -- reproduce that here.
+        let mut payload = source.as_object().unwrap().clone();
+
+        apply_output_decls(&mut payload, &source, &declared, Some(&ENVELOPE_WRAPPER_KEYS));
+
+        assert_eq!(payload["bridge_status"], "active");
+    }
+
+    /// Same shadowing bug, the AC5 half: a path that fails to resolve must
+    /// leave the field genuinely absent, even when the raw body already had
+    /// a same-named top-level key -- "absent" means the path's own
+    /// resolution, not whatever the body happened to put there.
+    #[test]
+    fn apply_output_decls_removes_a_colliding_native_key_when_the_declared_path_misses() {
+        let declared = vec![OutputDecl {
+            name: "bridge_status".to_string(),
+            path: Some(Path::parse("$.json.absent").unwrap()),
+        }];
+        let source = json!({"bridge_status": "stale", "json": {}});
+        let mut payload = source.as_object().unwrap().clone();
+
+        apply_output_decls(&mut payload, &source, &declared, Some(&ENVELOPE_WRAPPER_KEYS));
+
+        assert!(!payload.contains_key("bridge_status"));
     }
 }
