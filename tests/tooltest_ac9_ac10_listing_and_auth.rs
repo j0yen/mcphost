@@ -34,7 +34,10 @@ async fn absent_from_the_anonymous_list_and_refused_when_called() {
         )
         .await
         .expect_err("an anonymous caller must be refused");
-    assert_eq!(err.error_code.as_deref(), Some("unauthorized"));
+    // PRD-mcphost-auth-error-names-argument requirement 1 / AC1: no
+    // Authorization header and no tenant_key argument at all is
+    // tenant_key_missing, not the old header-shaped "unauthorized".
+    assert_eq!(err.error_code.as_deref(), Some("tenant_key_missing"));
 }
 
 #[tokio::test]

@@ -8,9 +8,11 @@
 //! Then the response describes tenant A, proving the header takes
 //! precedence.
 //! AC8 — Given a `tenant_key` that matches no tenant, When it is passed to
-//! `host.tool_list`, Then the call fails with the same unauthorized error
-//! an unrecognised bearer token produces, with no indication that the key
-//! was the argument rather than the header.
+//! `host.tool_list`, Then the call fails the same way an unrecognised
+//! bearer token does functionally (refused, no tenant data) -- though
+//! PRD-mcphost-auth-error-names-argument now gives the two paths distinct
+//! codes (`tenant_key_invalid` vs `bearer_invalid`) and the argument
+//! path's message never mentions the Authorization header.
 //! AC9 — Given a tenant disabled by `admin.tenant_disable`, When its key is
 //! passed as `tenant_key`, Then the call is refused with the
 //! tenant-disabled error, matching the bearer path.
@@ -69,7 +71,7 @@ async fn header_takes_precedence_over_a_tenant_key_argument() {
 }
 
 #[tokio::test]
-async fn unrecognised_tenant_key_is_unauthorized_like_a_bad_bearer() {
+async fn unrecognised_tenant_key_is_refused_but_distinct_from_a_bad_bearer() {
     let server = TestServer::start().await;
 
     let bad_bearer_client = McpClient::with_bearer(&server.base_url, "not-a-real-key");
@@ -82,13 +84,20 @@ async fn unrecognised_tenant_key_is_unauthorized_like_a_bad_bearer() {
     let arg_err = anon_client
         .tools_call("host.tool_list", json!({"tenant_key": "not-a-real-key"}))
         .await
-        .expect_err("an unrecognised tenant_key must be refused identically");
+        .expect_err("an unrecognised tenant_key must be refused too");
 
-    assert_eq!(bearer_err.error_code.as_deref(), Some("unauthorized"));
-    assert_eq!(arg_err.error_code.as_deref(), Some("unauthorized"));
-    assert_eq!(
+    // PRD-mcphost-auth-error-names-argument requirement 3 / AC4: the
+    // header path keeps its own code and text, unchanged.
+    assert_eq!(bearer_err.error_code.as_deref(), Some("bearer_invalid"));
+    assert_eq!(bearer_err.message, "missing or invalid Authorization: Bearer key");
+    // Requirement 2 / AC2: the argument path gets its own code and a
+    // message that neither echoes the key nor mentions the header.
+    assert_eq!(arg_err.error_code.as_deref(), Some("tenant_key_invalid"));
+    assert!(!arg_err.message.contains("not-a-real-key"));
+    assert!(!arg_err.message.contains("Authorization"));
+    assert_ne!(
         bearer_err.message, arg_err.message,
-        "the two paths must produce the exact same error text, with nothing distinguishing them"
+        "the two paths must now read differently -- one names a header the caller can't send"
     );
 }
 
@@ -107,5 +116,10 @@ async fn disabled_tenants_key_is_refused_as_a_tenant_key_argument_too() {
         .tools_call("host.whoami", json!({"tenant_key": key}))
         .await
         .expect_err("a disabled tenant's key must be refused even as an argument");
-    assert_eq!(err.error_code.as_deref(), Some("tenant_disabled"));
+    // PRD-mcphost-auth-error-names-argument requirement 2 / AC3: the
+    // tenant_key argument path folds "disabled" into tenant_key_invalid --
+    // it never confirms the key belonged to a real (if disabled) tenant.
+    // The header path's own tenant_disabled code is unchanged (see
+    // ac08_admin_disable_and_forbidden.rs).
+    assert_eq!(err.error_code.as_deref(), Some("tenant_key_invalid"));
 }
