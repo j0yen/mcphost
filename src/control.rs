@@ -469,12 +469,18 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
     let window = arg_str_opt(args, "window").unwrap_or_else(|| "24h".to_string());
     let secs = crate::state::parse_window_secs(&window);
     let stats = state.db.usage(tenant.id, secs).await?;
+    // PRD-mcphost-tenant-state requirement 5 / AC7: cumulative, not
+    // windowed -- `state_bytes_used` sums the tenant's whole store right
+    // now, the same total `admin.tenants`' own `state_bytes` (requirement
+    // 8, P1) will report.
+    let state_bytes = state.db.state_bytes_used(tenant.id).await?;
     Ok(json!({
         "window": window,
         "calls": stats.calls,
         "errors": stats.errors,
         "p50_ms": stats.p50_ms,
         "p95_ms": stats.p95_ms,
+        "state_bytes": state_bytes,
     }))
 }
 

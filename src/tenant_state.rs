@@ -220,14 +220,26 @@ pub async fn state_set(state: &AppState, tenant: &Tenant, args: &Value) -> Resul
     )
     .await?;
 
+    let bytes_delta = value_json.len() as i64 - existing_bytes;
     state.db.state_kv_set(tenant.id, key.clone(), value_json).await?;
-    Ok(json!({"key": key, "set": true}))
+    Ok(json!({"key": key, "set": true, "bytes_delta": bytes_delta}))
 }
 
+/// requirement 5 / AC7: `bytes_delta` is negative-of-what-was-stored (0 if
+/// the key never existed), the same "stored byte length" measure
+/// `state_bytes_used` sums -- read by `handler.rs`'s `CountingStateBackend`
+/// to log a state write's size without a second round trip.
 pub async fn state_delete(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let key = arg_str(args, "key")?;
+    let existing_bytes = state
+        .db
+        .state_kv_get(tenant.id, key.clone())
+        .await?
+        .map(|(v, _)| v.len() as i64)
+        .unwrap_or(0);
     let deleted = state.db.state_kv_delete(tenant.id, key.clone()).await?;
-    Ok(json!({"key": key, "deleted": deleted}))
+    let bytes_delta = if deleted { -existing_bytes } else { 0 };
+    Ok(json!({"key": key, "deleted": deleted, "bytes_delta": bytes_delta}))
 }
 
 pub async fn state_list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
@@ -290,7 +302,9 @@ pub async fn state_table_create(
         .db
         .state_table_create(tenant.id, name.clone(), schema_json, primary_key)
         .await?;
-    Ok(json!({"name": name, "created": true}))
+    // requirement 5 / AC7: `bytes_delta` is always 0 here -- a table's
+    // schema isn't part of `state_bytes_used`'s sum (only its rows are).
+    Ok(json!({"name": name, "created": true, "bytes_delta": 0}))
 }
 
 pub async fn state_table_drop(
@@ -299,8 +313,20 @@ pub async fn state_table_drop(
     args: &Value,
 ) -> Result<Value, AppError> {
     let name = arg_str(args, "name")?;
+    // requirement 5 / AC7: unlike `table_create`, dropping a table also
+    // cascades its rows (`db::state_table_drop`'s own second DELETE), so
+    // `bytes_delta` isn't always 0 here -- sum what's about to go before it
+    // does.
+    let freed_bytes: i64 = state
+        .db
+        .state_rows_all(tenant.id, name.clone())
+        .await?
+        .iter()
+        .map(|(_, row_json)| row_json.len() as i64)
+        .sum();
     let dropped = state.db.state_table_drop(tenant.id, name.clone()).await?;
-    Ok(json!({"name": name, "dropped": dropped}))
+    let bytes_delta = if dropped { -freed_bytes } else { 0 };
+    Ok(json!({"name": name, "dropped": dropped, "bytes_delta": bytes_delta}))
 }
 
 async fn load_table(
@@ -379,6 +405,7 @@ pub async fn state_insert(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     let mut row_count = existing_rows.len() as i64;
 
     let mut total_new_bytes = 0i64;
+    let mut total_replaced_bytes = 0i64;
     let mut inserted_ids = Vec::with_capacity(rows.len());
     for row in rows {
         let row_json = serde_json::to_string(&row)
@@ -395,6 +422,7 @@ pub async fn state_insert(state: &AppState, tenant: &Tenant, args: &Value) -> Re
                     && existing.get(pk) == Some(pk_value)
                 {
                     to_delete.push(*id);
+                    total_replaced_bytes += existing_json.len() as i64;
                 }
             }
             if !to_delete.is_empty() {
@@ -417,7 +445,11 @@ pub async fn state_insert(state: &AppState, tenant: &Tenant, args: &Value) -> Re
 
     check_bytes_quota(&state.db, tenant.id, plan, total_new_bytes).await?;
 
-    Ok(json!({"table": table, "inserted": inserted_ids.len(), "ids": inserted_ids}))
+    // requirement 5 / AC7: net byte change, so a run of pure replaces (same
+    // PK, similar-sized row) reports close to 0 rather than double-counting
+    // the bytes the upsert just freed.
+    let bytes_delta = total_new_bytes - total_replaced_bytes;
+    Ok(json!({"table": table, "inserted": inserted_ids.len(), "ids": inserted_ids, "bytes_delta": bytes_delta}))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -612,15 +644,22 @@ pub async fn state_delete_rows(
         None => Vec::new(),
     };
     let rows = state.db.state_rows_all(tenant.id, table.clone()).await?;
+    let mut freed_bytes = 0i64;
     let ids: Vec<i64> = rows
         .into_iter()
         .filter_map(|(id, row_json)| {
             let row: Value = serde_json::from_str(&row_json).ok()?;
-            row_matches(&row, &clauses).then_some(id)
+            if row_matches(&row, &clauses) {
+                freed_bytes += row_json.len() as i64;
+                Some(id)
+            } else {
+                None
+            }
         })
         .collect();
     let deleted = state.db.state_rows_delete_by_ids(tenant.id, table.clone(), ids).await?;
-    Ok(json!({"table": table, "deleted": deleted}))
+    // requirement 5 / AC7.
+    Ok(json!({"table": table, "deleted": deleted, "bytes_delta": -freed_bytes}))
 }
 
 #[cfg(test)]

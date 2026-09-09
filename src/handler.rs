@@ -768,6 +768,124 @@ impl StateBackend for TenantStateBridge {
     }
 }
 
+/// requirement 5 / AC7: the per-call tally `CountingStateBackend` builds up
+/// as `mcphost.state`/`host.state.*` ops flow through this call's
+/// `CallCtx.state`, read back after `Kind::call`/`Kind::tool_run` returns
+/// to fill `host.tool_test`/`host.tool_run`'s `state: {reads, writes, keys,
+/// tables}`. `get`/`list`/`query` count as reads; every op that can mutate
+/// the store counts as a write, whether or not it ends up changing
+/// anything (a `delete` of a key that was never set still counts -- the
+/// caller asked to write, same as `record_call`'s `ok = 1` for a tool call
+/// that ran but changed nothing).
+#[derive(Default, Clone)]
+struct StateTally {
+    reads: i64,
+    writes: i64,
+    keys: Vec<String>,
+    tables: Vec<String>,
+}
+
+impl StateTally {
+    fn to_json(&self) -> Value {
+        json!({
+            "reads": self.reads,
+            "writes": self.writes,
+            "keys": self.keys,
+            "tables": self.tables,
+        })
+    }
+}
+
+/// Wraps a real `StateBackend` (always a `TenantStateBridge` in practice)
+/// to (a) tally reads/writes/keys/tables for `host.tool_test`/
+/// `host.tool_run`'s `state` field and (b) optionally push one `CallLog`
+/// line per write -- `host.tool_logs`' "state writes carry key or table and
+/// byte delta" (requirement 5). `log` is `None` for `host.tool_test`
+/// (which persists no logs at all, same as every other call it makes)
+/// and `Some` for a real published call.
+struct CountingStateBackend {
+    inner: Arc<dyn StateBackend>,
+    tally: std::sync::Mutex<StateTally>,
+    log: Option<Arc<dyn CallLog>>,
+}
+
+impl CountingStateBackend {
+    fn new(inner: Arc<dyn StateBackend>, log: Option<Arc<dyn CallLog>>) -> Self {
+        Self {
+            inner,
+            tally: std::sync::Mutex::new(StateTally::default()),
+            log,
+        }
+    }
+
+    fn snapshot(&self) -> StateTally {
+        self.tally.lock().map(|g| g.clone()).unwrap_or_default()
+    }
+}
+
+/// `op` names one of `tenant_state.rs`'s own verbs, exactly as
+/// `TenantStateBridge::call` (above) matches them.
+const STATE_WRITE_OPS: &[&str] = &[
+    "set",
+    "delete",
+    "table_create",
+    "table_drop",
+    "insert",
+    "delete_rows",
+];
+
+#[async_trait::async_trait]
+impl StateBackend for CountingStateBackend {
+    async fn call(&self, op: &str, args: Value) -> Result<Value, KindError> {
+        let key = args.get("key").and_then(Value::as_str).map(str::to_string);
+        // `table_create`/`table_drop` name the table `name`; `insert`/
+        // `query`/`delete_rows` name it `table` -- same split
+        // `kinds::python`'s `mcphost.state` module and `host.state.*`'s own
+        // schema use.
+        let table = match op {
+            "table_create" | "table_drop" => {
+                args.get("name").and_then(Value::as_str).map(str::to_string)
+            }
+            _ => args.get("table").and_then(Value::as_str).map(str::to_string),
+        };
+        let is_write = STATE_WRITE_OPS.contains(&op);
+
+        let result = self.inner.call(op, args).await?;
+
+        if let Ok(mut guard) = self.tally.lock() {
+            if is_write {
+                guard.writes += 1;
+            } else {
+                guard.reads += 1;
+            }
+            if let Some(k) = &key
+                && !guard.keys.contains(k)
+            {
+                guard.keys.push(k.clone());
+            }
+            if let Some(t) = &table
+                && !guard.tables.contains(t)
+            {
+                guard.tables.push(t.clone());
+            }
+        }
+
+        if is_write
+            && let Some(log) = &self.log
+        {
+            let bytes_delta = result.get("bytes_delta").and_then(Value::as_i64).unwrap_or(0);
+            let line = match (&key, &table) {
+                (Some(k), _) => format!("state_write key={k} bytes_delta={bytes_delta}"),
+                (None, Some(t)) => format!("state_write table={t} bytes_delta={bytes_delta}"),
+                (None, None) => format!("state_write op={op} bytes_delta={bytes_delta}"),
+            };
+            log.log(&line);
+        }
+
+        Ok(result)
+    }
+}
+
 // ---- the handler -----------------------------------------------------
 
 #[derive(Clone)]
@@ -940,10 +1058,18 @@ impl McpHostHandler {
             test_mode: false,
             resources: resources.clone() as Arc<dyn ResourceSink>,
             tool_name: Some(local_name.to_string()),
-            state: Arc::new(TenantStateBridge {
-                state: self.state.clone(),
-                tenant: tenant.clone(),
-            }),
+            // requirement 5: a real call's state writes get one
+            // `CallLog` line each (flushed into `host.tool_logs` below,
+            // same as every other line this call's `Kind` logs); it
+            // carries no `state` tally in its own return value -- that's
+            // `host.tool_test`/`host.tool_run`-only (see those methods).
+            state: Arc::new(CountingStateBackend::new(
+                Arc::new(TenantStateBridge {
+                    state: self.state.clone(),
+                    tenant: tenant.clone(),
+                }),
+                Some(log.clone() as Arc<dyn CallLog>),
+            )),
         };
 
         let start = Instant::now();
@@ -1129,6 +1255,13 @@ impl McpHostHandler {
         }
 
         let secrets = build_secret_resolver(&self.state, tenant.id).await?;
+        let state_backend = Arc::new(CountingStateBackend::new(
+            Arc::new(TenantStateBridge {
+                state: self.state.clone(),
+                tenant: tenant.clone(),
+            }),
+            None,
+        ));
         let ctx = CallCtx {
             tenant_id: tenant.id,
             namespace: tenant.namespace.clone(),
@@ -1138,10 +1271,10 @@ impl McpHostHandler {
             test_mode: true,
             resources: Arc::new(NullResourceSink),
             tool_name: Some(local_name.clone()),
-            state: Arc::new(TenantStateBridge {
-                state: self.state.clone(),
-                tenant: tenant.clone(),
-            }),
+            // requirement 5 / AC7: `host.tool_test` persists no logs (`log`
+            // above is `NullLog`), but its *result* carries a `state` tally
+            // -- read back from `state_backend` after the call below.
+            state: state_backend.clone() as Arc<dyn StateBackend>,
         };
 
         match tokio::time::timeout(
@@ -1174,6 +1307,9 @@ impl McpHostHandler {
                     && let Value::Object(map) = &mut value
                 {
                     map.insert("envelope".to_string(), envelope);
+                }
+                if let Value::Object(map) = &mut value {
+                    map.insert("state".to_string(), state_backend.snapshot().to_json());
                 }
                 Ok(value)
             }
@@ -1525,6 +1661,16 @@ impl McpHostHandler {
         }
 
         let secrets = build_secret_resolver(&self.state, tenant.id).await?;
+        // requirement 5 / AC7: `host.tool_run`'s result carries a `state`
+        // tally too (same shape as `host.tool_test`'s) -- read back from
+        // `state_backend` after the call below.
+        let state_backend = Arc::new(CountingStateBackend::new(
+            Arc::new(TenantStateBridge {
+                state: self.state.clone(),
+                tenant: tenant.clone(),
+            }),
+            None,
+        ));
         let ctx = CallCtx {
             tenant_id: tenant.id,
             namespace: tenant.namespace.clone(),
@@ -1534,10 +1680,7 @@ impl McpHostHandler {
             test_mode: false,
             resources: Arc::new(NullResourceSink),
             tool_name: Some(local_name.clone()),
-            state: Arc::new(TenantStateBridge {
-                state: self.state.clone(),
-                tenant: tenant.clone(),
-            }),
+            state: state_backend.clone() as Arc<dyn StateBackend>,
         };
 
         let start = Instant::now();
@@ -1552,6 +1695,7 @@ impl McpHostHandler {
             Ok(Ok(mut value)) => {
                 if let Some(obj) = value.as_object_mut() {
                     obj.insert("duration_ms".to_string(), json!(duration_ms));
+                    obj.insert("state".to_string(), state_backend.snapshot().to_json());
                 }
                 Ok(value)
             }
