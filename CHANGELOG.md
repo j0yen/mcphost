@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.37.0 — 2026-09-09
+
+A stress run against mcphost v0.31.0 on 2026-09-09 (ten scenarios, 25,000 calls, artifacts under `/mnt/data/jsy/tmp/stress/` on RedBaron) found the host sound under abuse and dishonest about five limits. A python tool may declare `timeout_s: 60` and be accepted, and every call is killed at 30 seconds by a constant the spec cannot see. A tool that returns 5 MB fails with "tool stdout was not valid JSON" because no output cap is named. Admission control is one global gate of 20 concurrent calls: at 100-way load 78% of calls were refused with `capacity`, one tenant can hold every slot, and the refusal carries no retry hint. A signup limit of 5 admitted 9 under a burst of 10. The README promises a 2 MiB request body and the code enforces 1 MiB. This PRD makes each limit true, named, per tenant where it should be, and visible in `host.quickstart`. A fork-storm cap (`RLIMIT_NPROC`) refuses runaway process trees; a five-whys traced an apparent failure of that cap to root running the sandbox defeating `RLIMIT_NPROC` at the kernel level (root has always been exempt from it) — `mcphost serve` now refuses to start as real root so this cap's guarantee can never be silently void.
+
 ## v0.36.1 — 2026-09-09
 
 When an agent calls a `host.*` tool without its key, mcphost answers `missing or invalid Authorization: Bearer key`. The agent has no way to set a header: since mcphost-session-key the credential travels as the `tenant_key` tool argument, and the server's own instructions say so. The error names the one mechanism the agent cannot use and omits the one it can. Three truth-tier sessions across 0.14.0, 0.26.3 and 0.27.0 lost a publish to this message, and the production journal shows six such refusals on 2026-09-08. This PRD makes the error name the argument, distinguish missing from invalid, and carry a structured code, so the agent's next call is the right one.
