@@ -510,6 +510,10 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
         "p50_ms": stats.p50_ms,
         "p95_ms": stats.p95_ms,
         "state_bytes": state_bytes,
+        // PRD-mcphost-call-limits-honest AC8: `Db::usage` already counts
+        // this from `error_class = "capacity"`; this handler just wasn't
+        // forwarding it into the response envelope.
+        "capacity_refusals": stats.capacity_refusals,
     }))
 }
 
