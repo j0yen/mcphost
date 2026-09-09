@@ -1278,6 +1278,10 @@ impl Db {
     /// admitted); `false` means the cap was already at `limit` for this
     /// source/window and nothing was written -- the caller must not also
     /// call `record_signup_event_attributed` for this attempt.
+    // Six parameters: this is the atomic check-and-insert described above —
+    // splitting it into a params struct would spread one SQL statement's
+    // inputs across two sites for a function with a single caller.
+    #[allow(clippy::too_many_arguments)]
     pub async fn try_admit_signup(
         &self,
         source_ip: String,
