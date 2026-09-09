@@ -228,6 +228,15 @@ pub struct ResourceLimits {
     pub memory_mb: u64,
     pub max_open_files: u64,
     pub max_file_size_mb: u64,
+    /// PRD-mcphost-call-limits-honest requirement 6: `RLIMIT_NPROC` for the
+    /// sandboxed uid -- a fork past this count fails with `EAGAIN`, which
+    /// `kinds::python`'s runner protocol catches and reports as the
+    /// structured `tool_process_limit` (see that module's
+    /// `map_envelope_error`). This is a real-uid-wide kernel limit (every
+    /// sandboxed call runs as the same low-privilege uid -- see
+    /// `SANDBOX_UID` below), not a per-call one; each caller sets it to the
+    /// same box-wide default.
+    pub max_processes: u64,
 }
 
 /// `network: none` (default) vs `network: public` (requirement 5: the same
@@ -272,7 +281,19 @@ const TAIL_BYTES: usize = 2048;
 /// Hard cap on how much of a child's stdout/stderr this module buffers at
 /// all, regardless of the reported tail size -- bounds memory for a chatty
 /// or runaway child without needing the isolation layer to enforce it.
-const READ_CAP_BYTES: usize = 256 * 1024;
+///
+/// PRD-mcphost-call-limits-honest requirement 2: this must stay well above
+/// `MAX_TOOL_OUTPUT_BYTES` (1 MiB) -- a successful (`Exited`) run's full
+/// `stdout` is read up to this cap and handed to `kinds::python`'s own
+/// `MAX_TOOL_OUTPUT_BYTES` check unmodified. A cap equal to or below that
+/// limit would silently truncate an over-limit tool's output *before* that
+/// check ever sees it, so a call actually returning several MB would read
+/// back as a small, truncated (and therefore JSON-invalid) blob --
+/// reproducing the exact `tool_output_invalid` misreport this PRD exists to
+/// fix, just one layer lower. The margin above 1 MiB (rather than exactly
+/// 1 MiB) keeps a several-MB over-limit call's true size visible in the
+/// resulting error instead of being reported as "capped at the read limit."
+const READ_CAP_BYTES: usize = 8 * 1024 * 1024;
 
 fn tail_str(buf: &[u8]) -> String {
     let start = buf.len().saturating_sub(TAIL_BYTES);
@@ -425,6 +446,7 @@ unsafe fn pre_exec_setup(limits: ResourceLimits) -> std::io::Result<()> {
         set(libc::RLIMIT_NOFILE, limits.max_open_files)?;
         set(libc::RLIMIT_FSIZE, limits.max_file_size_mb * 1024 * 1024)?;
         set(libc::RLIMIT_CORE, 0)?;
+        set(libc::RLIMIT_NPROC, limits.max_processes)?;
     }
     Ok(())
 }
@@ -1407,6 +1429,7 @@ mod tests {
                 memory_mb: 256,
                 max_open_files: 64,
                 max_file_size_mb: 16,
+                max_processes: 64,
             },
             wall_clock_timeout: Duration::from_secs(7),
             network: NetworkMode::None,
@@ -1542,6 +1565,7 @@ mod tests {
                 memory_mb: 256,
                 max_open_files: 64,
                 max_file_size_mb: 16,
+                max_processes: 64,
             },
             wall_clock_timeout: Duration::from_millis(500),
             network: NetworkMode::None,

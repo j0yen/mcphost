@@ -247,7 +247,10 @@ pub async fn run_spec_test(
                 "ok": false,
                 "duration_ms": duration_ms,
                 "code": "call_timeout",
-                "message": "invocation exceeded the call timeout",
+                "message": format!(
+                    "invocation exceeded the {}s deadline",
+                    timeout.as_secs()
+                ),
             }),
         });
     }
@@ -987,6 +990,17 @@ pub struct CallCtx {
     /// [`compose_call`] dispatches a composed call's target through. See
     /// [`CallCtx::compose_db`]'s note on when this is `None`.
     pub compose_kinds: Option<KindRegistry>,
+    /// PRD-mcphost-call-limits-honest requirement 3: this call's tenant's
+    /// per-tenant concurrent-call admission cap, resolved by `handler.rs`
+    /// from the tenant's plan (`PlanCatalog`) before dispatch -- a `Kind`
+    /// with per-tenant admission control (`python`) reads this rather than
+    /// reaching into `AppState` itself, matching every other resolved-value
+    /// field this struct already carries (`deadline`, `secrets`).
+    /// `usize::MAX` (effectively unbounded) in every context with no notion
+    /// of a tenant plan (`for_test`, the conformance suite, `python.rs`'s
+    /// own unit tests) -- unchanged behavior for every test that doesn't
+    /// exercise per-tenant admission control.
+    pub concurrent_calls_per_tenant: usize,
 }
 
 impl CallCtx {
@@ -1006,6 +1020,7 @@ impl CallCtx {
             compose_children: None,
             compose_db: None,
             compose_kinds: None,
+            concurrent_calls_per_tenant: usize::MAX,
         }
     }
 
@@ -1207,6 +1222,20 @@ pub trait Kind: Send + Sync {
     /// override this; the default is "none needed."
     fn referenced_secrets(&self, _spec: &Value) -> Vec<String> {
         Vec::new()
+    }
+
+    /// PRD-mcphost-call-limits-honest requirement 1: the per-call deadline
+    /// this `spec` itself declares (already bounded by the kind's own
+    /// maximum, e.g. `python`'s `MAX_TIMEOUT_S`), if any. Every real
+    /// dispatch site in `handler.rs` uses this in place of
+    /// `AppState::call_timeout` when it returns `Some` -- `CALL_TIMEOUT`
+    /// (or its `AppState` field) is the *default* a spec falls back to when
+    /// this returns `None`, not a ceiling every call is silently held to
+    /// regardless of what it declared. Defaults to `None` (unchanged
+    /// behavior) for every kind with no per-tool notion of a timeout
+    /// (`echo`, `http`); `python` is this PRD's only override.
+    fn requested_timeout(&self, _spec: &Value) -> Option<Duration> {
+        None
     }
 
     /// PRD-mcphost-tool-test AC1: the pip requirements a publish of this

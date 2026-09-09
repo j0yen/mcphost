@@ -1320,7 +1320,7 @@ impl Kind for HttpKind {
                 Ok(c) => c,
                 Err(e) => return Err(classify_reqwest_error(e)),
             };
-            if buf.len() + chunk.len() > crate::state::MAX_CALL_RESULT_BYTES {
+            if buf.len() + chunk.len() > crate::state::MAX_TOOL_OUTPUT_BYTES {
                 too_large = true;
                 break;
             }
@@ -1337,7 +1337,7 @@ impl Kind for HttpKind {
                 "response_too_large",
                 format!(
                     "upstream response exceeded the {}-byte cap",
-                    crate::state::MAX_CALL_RESULT_BYTES
+                    crate::state::MAX_TOOL_OUTPUT_BYTES
                 ),
             ));
         }

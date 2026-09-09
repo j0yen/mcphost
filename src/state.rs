@@ -14,7 +14,19 @@ use crate::secrets::SecretBox;
 pub const MAX_TOOLS_PER_TENANT: i64 = 50;
 pub const MAX_SPEC_BYTES: usize = 64 * 1024;
 pub const MAX_REQUEST_BODY_BYTES: usize = 1024 * 1024;
-pub const MAX_CALL_RESULT_BYTES: usize = 1024 * 1024;
+/// PRD-mcphost-call-limits-honest requirement 2: the one cap named and
+/// enforced identically for both the `python` kind's stdout envelope and
+/// the `http` kind's upstream response body (that one already enforced
+/// this exact number under `response_too_large`; this is the same limit
+/// under one name, not a new number). Overrun on either kind returns a
+/// structured error naming `limit_bytes`/`actual_bytes` -- `python`'s
+/// `tool_output_too_large`, `http`'s existing `response_too_large`.
+pub const MAX_TOOL_OUTPUT_BYTES: usize = 1024 * 1024;
+/// PRD-mcphost-call-limits-honest requirement 1: this is now the *default*
+/// per-call deadline (a spec that declares its own `timeout_s` gets that
+/// instead, bounded by the kind's own maximum -- `python`'s
+/// [`crate::kinds::python::MAX_TIMEOUT_S`]) -- not the ceiling every call
+/// was silently held to before this PRD, regardless of what it declared.
 pub const CALL_TIMEOUT: Duration = Duration::from_secs(30);
 /// PRD-mcphost-signup-rate-configurable requirement 1: the fallback used
 /// when `$MCPHOST_SIGNUP_RATE_LIMIT_PER_HOUR` is absent or unparseable.

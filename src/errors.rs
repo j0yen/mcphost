@@ -132,8 +132,13 @@ pub enum AppError {
         message: String,
         errors: Vec<AppError>,
     },
-    #[error("call timed out after the 30s deadline")]
-    CallTimeout,
+    /// PRD-mcphost-call-limits-honest requirement 1: names the deadline
+    /// that actually applied to this call -- the declared `timeout_s`
+    /// (bounded by the kind's own max) when the spec named one, otherwise
+    /// [`crate::state::CALL_TIMEOUT`]'s default -- never a hardcoded "30s"
+    /// that may not be what was actually enforced.
+    #[error("call timed out after the {0}s deadline")]
+    CallTimeout(u64),
     #[error("storage error: {0}")]
     Storage(String),
     #[error("internal error: {0}")]
@@ -179,7 +184,7 @@ impl AppError {
             AppError::MultiInvalid { errors, .. } => {
                 errors.first().map(AppError::code).unwrap_or("invalid_spec")
             }
-            AppError::CallTimeout => "call_timeout",
+            AppError::CallTimeout(_) => "call_timeout",
             AppError::Storage(_) => "storage",
             AppError::Internal(_) => "internal",
             AppError::RegistryDisabled => "registry_disabled",
@@ -204,7 +209,7 @@ impl AppError {
             | AppError::SecretMissing(_) => ErrorCode::INVALID_PARAMS,
             AppError::Storage(_)
             | AppError::Internal(_)
-            | AppError::CallTimeout
+            | AppError::CallTimeout(_)
             | AppError::RegistryRejected(_) => ErrorCode::INTERNAL_ERROR,
             AppError::Unauthorized
             | AppError::TenantKeyMissing

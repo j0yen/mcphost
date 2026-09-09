@@ -235,6 +235,32 @@ to a plain name first, then set the attribute/subscript in a separate
 statement) instead of leaving CPython's bare grammar message to speak for
 itself.
 
+## Call limits
+
+PRD-mcphost-call-limits-honest: every limit here is the one the code
+enforces -- `tests/limits_ac06_quickstart_docs_match_constants.rs` checks
+this section and `www/llms.txt`'s "Limits and pricing" section against the
+same constants `host.quickstart`'s `limits` object reads.
+
+- **Call timeout**: 30 s by default, or your own `timeout_s` up to 60 s max
+  -- a python spec that declares `timeout_s` gets exactly that deadline
+  (bounded by the 60 s host maximum), not a shorter one applied silently
+  underneath it. `call_timeout` names the deadline that actually applied.
+- **Output size**: tool output at most 1 MiB. Over the cap returns
+  `tool_output_too_large` naming `limit_bytes` and the `actual_bytes`
+  produced, never a bare `tool_output_invalid` parse failure.
+- **Request body**: at most 1 MiB (HTTP 413 over that -- see
+  `tests/ac16_request_body_too_large.rs`; the "2 MiB" in that AC's own
+  description is the oversized test payload used to *prove* the 1 MiB cap,
+  not the cap itself).
+- **Concurrency**: 20 concurrent calls host-wide; per tenant, 4 per tenant
+  on the free plan (10 on pro). A refusal past your own tenant's cap is
+  `capacity` with `scope: "tenant"` and a `retry_after_ms`; past the
+  host-wide cap it's `scope: "host"`.
+- **Sandbox process cap**: a python tool's sandbox allows at most 64 live
+  processes; a fork past that fails with the structured
+  `tool_process_limit`, not a silent hang or an opaque OS error.
+
 ## Metered overage (billing emit-meter)
 
 PRD-mcphost-metered-overage: pro tenants' successful calls past the plan's
@@ -353,7 +379,7 @@ vacuously.
 | 13 (P0) | Mismatched `Mcp-Name` header vs. body is recorded by body name and flagged | `tests/ac13_mcp_name_mismatch_metering.rs` |
 | 14 (P0) | Unwritable database: `storage` error, `/healthz` `db_ok: false`, process stays up | `tests/ac14_storage_unwritable.rs` |
 | 15 (P0) | A call that never completes times out at the deadline, future dropped | `tests/ac15_call_timeout.rs` |
-| 16 (P0) | 2MiB request body rejected with HTTP 413 | `tests/ac16_request_body_too_large.rs` |
+| 16 (P0) | A request body over the 1 MiB cap (proven with a 2MiB body) is rejected with HTTP 413 | `tests/ac16_request_body_too_large.rs` |
 | 17 (P0) | `Kind` conformance suite passes `echo`, fails naming `describe` for a bad schema | `tests/ac17_kind_conformance.rs` (reusable checker at `mcphost::kinds::conformance`) |
 | 18 (P1) | `tools/list` carries `ttlMs`/`cacheScope`, `ttlMs: 0` within 60s of a publish | `tests/ac18_tools_list_ttl.rs` |
 | 19 (P1) | `host.registry_publish()` + `/.well-known/mcp/<ns>/server.json` | `tests/ac19_registry_publish.rs` (mocks the registry API with `wiremock`; see "Registry publish (P1)" above — the namespace-verification METHOD stays out of scope, "verified" is an admin-set boolean) |
