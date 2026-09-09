@@ -3442,7 +3442,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn state_sidecar_bridge_answers_a_state_request_line() {
+    async fn state_sidecar_bridge_answers_a_state_request_line() -> anyhow::Result<()> {
         let backend: Arc<dyn StateBackend> = Arc::new(FakeStateBackend);
         let bridge = StateSidecarBridge { state: &backend };
         let request = json!({"__mcphost_state__": true, "op": "get", "args": {"key": "a"}});
@@ -3450,13 +3450,14 @@ mod tests {
             .intercept(serde_json::to_string(&request).unwrap().as_bytes())
             .await
             .expect("a state-marked line must be intercepted, not treated as final");
-        let parsed: Value = serde_json::from_slice(&response).unwrap();
+        let parsed: Value = serde_json::from_slice(&response)?;
         assert_eq!(parsed["ok"], json!(true));
         assert_eq!(parsed["result"], json!({"op": "get", "echo": {"key": "a"}}));
+        Ok(())
     }
 
     #[tokio::test]
-    async fn state_sidecar_bridge_serializes_a_structured_error() {
+    async fn state_sidecar_bridge_serializes_a_structured_error() -> anyhow::Result<()> {
         let backend: Arc<dyn StateBackend> = Arc::new(FakeStateBackend);
         let bridge = StateSidecarBridge { state: &backend };
         let request = json!({"__mcphost_state__": true, "op": "boom", "args": {}});
@@ -3464,10 +3465,11 @@ mod tests {
             .intercept(serde_json::to_string(&request).unwrap().as_bytes())
             .await
             .expect("intercepted");
-        let parsed: Value = serde_json::from_slice(&response).unwrap();
+        let parsed: Value = serde_json::from_slice(&response)?;
         assert_eq!(parsed["ok"], json!(false));
         assert_eq!(parsed["code"], json!("state_quota_exceeded"));
         assert_eq!(parsed["data"]["quota"], json!("state_bytes_max"));
+        Ok(())
     }
 
     #[tokio::test]

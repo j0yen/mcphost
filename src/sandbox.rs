@@ -1442,10 +1442,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn persistent_sandbox_call_answers_a_mid_call_sidecar_request() {
+    async fn persistent_sandbox_call_answers_a_mid_call_sidecar_request() -> anyhow::Result<()> {
         if !supports_user_namespaces() {
             println!("{USERNS_SKIP_MARKER}");
-            return;
+            return Ok(());
         }
         let scratch = std::env::temp_dir().join(format!(
             "mcphost-sandbox-sidecar-{}",
@@ -1505,12 +1505,13 @@ mod tests {
 
         match outcome {
             PersistentCallOutcome::Responded { line, .. } => {
-                let parsed: serde_json::Value = serde_json::from_slice(&line).unwrap();
+                let parsed: serde_json::Value = serde_json::from_slice(&line)?;
                 assert_eq!(parsed["final"], serde_json::json!(true));
                 assert_eq!(parsed["got"], serde_json::json!("it"));
             }
             other => panic!("expected Responded, got {other:?}"),
         }
+        Ok(())
     }
 
     #[tokio::test]
