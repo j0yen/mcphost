@@ -749,6 +749,18 @@ fn value_at_dotted_path<'a>(root: &'a Value, path: &str) -> Option<&'a Value> {
 /// error, when the path doesn't resolve); one with no path keeps the
 /// existing wrapper-search promotion (`wrapper_keys`), unchanged (non-goal
 /// 2).
+///
+/// A declared `path` is authoritative and is resolved (and, on a miss,
+/// removed) unconditionally -- never skipped because `payload` already
+/// carries a same-named key. `payload` starts as a clone of the raw body
+/// (the "payload mirrors body" shape from PRD-mcphost-result-envelope-
+/// contract), so a body whose top level happens to already have a key
+/// named `bridge_status` must not let that native value silently win over
+/// a declared `outputs: {"bridge_status": "$.json.bridge_status"}`; AC1/
+/// AC4/AC5 all describe the path's own resolution, not whatever the body
+/// already put there. The pre-existing-key skip stays for path-less
+/// entries, which fall through to `promote_declared_outputs_with`'s own
+/// (unchanged, non-goal 2) skip-if-present wrapper search.
 pub fn apply_output_decls(
     payload: &mut Map<String, Value>,
     source: &Value,
@@ -757,16 +769,20 @@ pub fn apply_output_decls(
 ) {
     let mut no_path_names = Vec::new();
     for decl in declared {
-        if payload.contains_key(&decl.name) {
-            continue;
-        }
         match &decl.path {
-            Some(path) => {
-                if let Some(v) = path.resolve(source) {
+            Some(path) => match path.resolve(source) {
+                Some(v) => {
                     payload.insert(decl.name.clone(), v.clone());
                 }
+                None => {
+                    payload.remove(&decl.name);
+                }
+            },
+            None => {
+                if !payload.contains_key(&decl.name) {
+                    no_path_names.push(decl.name.clone());
+                }
             }
-            None => no_path_names.push(decl.name.clone()),
         }
     }
     promote_declared_outputs_with(payload, source, &no_path_names, wrapper_keys);
@@ -786,6 +802,7 @@ fn find_seen_at(source: &Value, field: &str, max_depth: usize, max_results: usiz
     out
 }
 
+#[allow(clippy::too_many_arguments)]
 fn find_seen_at_walk(
     value: &Value,
     field: &str,
@@ -884,6 +901,37 @@ impl ResourceSink for NullResourceSink {
     fn record(&self, _cpu_ms: i64, _peak_rss_kb: i64) {}
 }
 
+/// A backend a stateful `Kind`'s sandboxed call can use for the tenant's
+/// `host.state.*` store (PRD-mcphost-tenant-state requirement 3: `mcphost.
+/// state` inside the python kind's sandbox). `op` names one of
+/// `tenant_state.rs`'s own verbs (`"get"`, `"set"`, `"delete"`, `"list"`,
+/// `"table_create"`, `"table_drop"`, `"insert"`, `"query"`,
+/// `"delete_rows"`) and `args` is that verb's own JSON argument object --
+/// the exact shapes `tenant_state::state_get`/`state_set`/etc. already
+/// take, so `handler.rs`'s implementation is a one-line dispatch, not a
+/// translation layer.
+#[async_trait::async_trait]
+pub trait StateBackend: Send + Sync {
+    async fn call(&self, op: &str, args: Value) -> Result<Value, KindError>;
+}
+
+/// A backend with no store behind it, for contexts (tests, the conformance
+/// suite, and any `CallCtx` that hasn't wired a tenant's real state in) that
+/// don't need one. Every op fails structured, naming itself unavailable
+/// rather than silently no-op'ing -- a tool relying on `mcphost.state` in
+/// one of these contexts should see a clear error, not state that quietly
+/// never persists.
+pub struct NoState;
+#[async_trait::async_trait]
+impl StateBackend for NoState {
+    async fn call(&self, _op: &str, _args: Value) -> Result<Value, KindError> {
+        Err(KindError::structured(
+            "state_unavailable",
+            "no tenant state backend is wired for this call context",
+        ))
+    }
+}
+
 /// Context passed to every `Kind::call`: who is calling, how to reach their
 /// secrets, when to give up, and where to log.
 pub struct CallCtx {
@@ -913,6 +961,10 @@ pub struct CallCtx {
     /// conformance suite) -- a `Kind` that needs it degrades to "always
     /// cold" rather than panicking when it's absent.
     pub tool_name: Option<String>,
+    /// See [`StateBackend`]. Defaults to [`NoState`] everywhere but
+    /// `handler.rs`'s real dispatch path, which wires this call's own
+    /// tenant into `tenant_state.rs`.
+    pub state: Arc<dyn StateBackend>,
     /// PRD-mcphost-composition requirement 2: how many levels of
     /// composition already led to this call -- `0` for every ordinary
     /// top-level `tools/call`/`host.tool_call`. [`compose_call`] refuses a
@@ -949,6 +1001,7 @@ impl CallCtx {
             test_mode: false,
             resources: Arc::new(NullResourceSink),
             tool_name: None,
+            state: Arc::new(NoState),
             compose_depth: 0,
             compose_children: None,
             compose_db: None,
@@ -1002,6 +1055,7 @@ pub async fn compose_call(
     tenant_id: i64,
     target_name: &str,
     args: Value,
+    timeout_s: Option<u64>,
 ) -> Result<Value, KindError> {
     if ctx.tool_name.as_deref() == Some(target_name) {
         return Err(KindError::structured(
@@ -1070,15 +1124,28 @@ pub async fn compose_call(
         });
     }
 
+    // Requirement 1: an explicit `timeout_s` further bounds this one child
+    // call, but never past the parent's own remaining deadline -- "a
+    // parent's deadline bounds the whole tree" (Technical considerations),
+    // so a child can only ask for less time, never more.
+    let deadline = match timeout_s {
+        Some(secs) => std::cmp::min(ctx.deadline, Instant::now() + Duration::from_secs(secs)),
+        None => ctx.deadline,
+    };
+
     let child_ctx = CallCtx {
         tenant_id,
         namespace: ctx.namespace.clone(),
         secrets: ctx.secrets.clone(),
-        deadline: ctx.deadline,
+        deadline,
         log: ctx.log.clone(),
         test_mode: false,
         resources: ctx.resources.clone(),
         tool_name: Some(target_name.to_string()),
+        // PRD-mcphost-tenant-state: composition stays inside one tenant
+        // (Non-goals), so the child's `mcphost.state` reaches the exact
+        // same tenant's store the parent's does -- no re-derivation needed.
+        state: ctx.state.clone(),
         compose_depth: next_depth,
         compose_children: Some(children.clone()),
         compose_db: Some(db.clone()),
@@ -1478,5 +1545,46 @@ mod spec_output_paths_tests {
 
         assert_eq!(report["found_at_contract_path"], json!(["found_field"]));
         assert_eq!(report["green"], false);
+    }
+
+    /// PRD-mcphost-spec-output-paths AC1/AC4, reviewer-agent counter_attack
+    /// at 708cf46 ("declared-path-silently-shadowed-by-native-top-level-
+    /// key"): `payload` starts as a clone of the raw body (http.rs seeds it
+    /// that way for the "payload mirrors body" shape), so a body whose top
+    /// level already has a same-named key must not let that native value
+    /// win over a declared path -- the path is what the publisher wrote and
+    /// is what must land at `result.payload.<name>`.
+    #[test]
+    fn apply_output_decls_lets_a_declared_path_win_over_a_colliding_native_top_level_key() {
+        let declared = vec![OutputDecl {
+            name: "bridge_status".to_string(),
+            path: Some(Path::parse("$.json.bridge_status").unwrap()),
+        }];
+        let source = json!({"bridge_status": "stale", "json": {"bridge_status": "active"}});
+        // http.rs seeds payload as a full clone of the body before calling
+        // apply_output_decls -- reproduce that here.
+        let mut payload = source.as_object().unwrap().clone();
+
+        apply_output_decls(&mut payload, &source, &declared, Some(&ENVELOPE_WRAPPER_KEYS));
+
+        assert_eq!(payload["bridge_status"], "active");
+    }
+
+    /// Same shadowing bug, the AC5 half: a path that fails to resolve must
+    /// leave the field genuinely absent, even when the raw body already had
+    /// a same-named top-level key -- "absent" means the path's own
+    /// resolution, not whatever the body happened to put there.
+    #[test]
+    fn apply_output_decls_removes_a_colliding_native_key_when_the_declared_path_misses() {
+        let declared = vec![OutputDecl {
+            name: "bridge_status".to_string(),
+            path: Some(Path::parse("$.json.absent").unwrap()),
+        }];
+        let source = json!({"bridge_status": "stale", "json": {}});
+        let mut payload = source.as_object().unwrap().clone();
+
+        apply_output_decls(&mut payload, &source, &declared, Some(&ENVELOPE_WRAPPER_KEYS));
+
+        assert!(!payload.contains_key("bridge_status"));
     }
 }

@@ -19,6 +19,21 @@ pub struct Plan {
     pub calls_per_day: i64,
     pub secrets_max: i64,
     pub description: String,
+    /// PRD-mcphost-tenant-state requirement 4: total stored bytes across a
+    /// tenant's whole state (KV namespace + every declared table's rows).
+    pub state_bytes_max: i64,
+    /// requirement 4: rows per declared table. The PRD names no baseline
+    /// (only the byte quota gets an explicit default), so this is the
+    /// builder's own choice, generous enough that the byte quota is the
+    /// binding constraint for the user stories in the PRD (a handful of
+    /// rows per monitored metric, hundreds for a staging/transform
+    /// pipeline) well before the row count is.
+    pub state_rows_max: i64,
+    /// requirement 4: keys/rows touched by a single `host.state.*` (or,
+    /// once the sandbox channel lands, `mcphost.state.*`) call; default 200
+    /// per the PRD, same for every plan unless an operator edits
+    /// `plans.toml`.
+    pub state_ops_per_call_max: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -45,6 +60,10 @@ impl PlanCatalog {
                     secrets_max: 2,
                     description: "Free: 50 tools, 500 calls/day, 2 secrets. No card required."
                         .to_string(),
+                    // PRD-mcphost-tenant-state requirement 4: "free 5 MiB".
+                    state_bytes_max: 5 * 1024 * 1024,
+                    state_rows_max: 10_000,
+                    state_ops_per_call_max: 200,
                 },
                 Plan {
                     name: "pro".to_string(),
@@ -55,6 +74,10 @@ impl PlanCatalog {
                     description: "Pro: 50 tools, 100,000 calls/day, 20 secrets. $19/month, \
                         50,000 calls included per month, then usage-billed."
                         .to_string(),
+                    // PRD-mcphost-tenant-state requirement 4: "pro 200 MiB".
+                    state_bytes_max: 200 * 1024 * 1024,
+                    state_rows_max: 100_000,
+                    state_ops_per_call_max: 200,
                 },
             ],
         }
@@ -107,6 +130,12 @@ impl PlanCatalog {
             out.push_str(&format!("calls_per_day = {}\n", p.calls_per_day));
             out.push_str(&format!("secrets_max = {}\n", p.secrets_max));
             out.push_str(&format!("description = {:?}\n", p.description));
+            out.push_str(&format!("state_bytes_max = {}\n", p.state_bytes_max));
+            out.push_str(&format!("state_rows_max = {}\n", p.state_rows_max));
+            out.push_str(&format!(
+                "state_ops_per_call_max = {}\n",
+                p.state_ops_per_call_max
+            ));
             out.push('\n');
         }
         out
@@ -152,6 +181,9 @@ impl PlanCatalog {
                 "calls_per_day" => builder.calls_per_day = Some(int_value()),
                 "secrets_max" => builder.secrets_max = Some(int_value()),
                 "description" => builder.description = Some(str_value()),
+                "state_bytes_max" => builder.state_bytes_max = Some(int_value()),
+                "state_rows_max" => builder.state_rows_max = Some(int_value()),
+                "state_ops_per_call_max" => builder.state_ops_per_call_max = Some(int_value()),
                 _ => {}
             }
         }
@@ -175,6 +207,9 @@ struct PlanBuilder {
     calls_per_day: Option<i64>,
     secrets_max: Option<i64>,
     description: Option<String>,
+    state_bytes_max: Option<i64>,
+    state_rows_max: Option<i64>,
+    state_ops_per_call_max: Option<i64>,
 }
 
 impl PlanBuilder {
@@ -188,6 +223,9 @@ impl PlanBuilder {
             calls_per_day: self.calls_per_day.unwrap_or(0),
             secrets_max: self.secrets_max.unwrap_or(0),
             description: self.description.unwrap_or_default(),
+            state_bytes_max: self.state_bytes_max.unwrap_or(0),
+            state_rows_max: self.state_rows_max.unwrap_or(0),
+            state_ops_per_call_max: self.state_ops_per_call_max.unwrap_or(0),
         })
     }
 }
@@ -216,6 +254,20 @@ mod tests {
             "pro's description must name the included monthly call volume: {}",
             pro.description
         );
+    }
+
+    /// PRD-mcphost-tenant-state requirement 4: "free 5 MiB, pro 200 MiB
+    /// by default".
+    #[test]
+    fn default_catalog_has_state_quotas() {
+        let catalog = PlanCatalog::default_catalog();
+        let free = catalog.get("free").expect("free plan");
+        assert_eq!(free.state_bytes_max, 5 * 1024 * 1024);
+        assert_eq!(free.state_ops_per_call_max, 200);
+        let pro = catalog.get("pro").expect("pro plan");
+        assert_eq!(pro.state_bytes_max, 200 * 1024 * 1024);
+        assert_eq!(pro.state_ops_per_call_max, 200);
+        assert!(pro.state_rows_max > free.state_rows_max);
     }
 
     #[test]
@@ -255,6 +307,9 @@ tools_max = 3
 calls_per_day = 500
 secrets_max = 2
 description = \"Free tier\"
+state_bytes_max = 1048576
+state_rows_max = 100
+state_ops_per_call_max = 50
 made_up_key = \"ignored\"
 ";
         let catalog = PlanCatalog::from_toml(text).expect("parse");

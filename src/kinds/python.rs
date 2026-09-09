@@ -102,10 +102,10 @@ use sha2::{Digest, Sha256};
 use tokio::sync::Semaphore;
 
 use super::infer;
-use super::{CallCtx, Kind, KindError, KindExample, OutputDecl, ToolDescriptor};
+use super::{CallCtx, Kind, KindError, KindExample, OutputDecl, StateBackend, ToolDescriptor};
 use crate::sandbox::{
     self, IsolationMechanism, NetworkMode, PersistentCallOutcome, PersistentSandbox,
-    ResourceLimits, SandboxOutcome,
+    ResourceLimits, SandboxOutcome, SidecarBridge,
 };
 
 // ---- limits & defaults (requirement 1) -------------------------------------
@@ -1576,6 +1576,139 @@ def emit(obj):
     _real_stdout.write("\n")
     _real_stdout.flush()
 
+# ---- mcphost.state (PRD-mcphost-tenant-state requirement 3) ---------------
+#
+# A tool's own code does `import mcphost` / `from mcphost import state` and
+# calls e.g. `mcphost.state.get("count", 0)`. Every call is a synchronous
+# round trip over this same stdin/stdout pair `emit`/the outer request loop
+# already use: a request line goes out on the REAL stdout (never the
+# redirected one `run_one` installs around `module.main(args)` -- writing
+# there would trap the request inside `stdout_capture` instead of reaching
+# the host) and this blocks on `sys.stdin` (never redirected) for the
+# matching response line. The host side (`sandbox::PersistentSandbox::call`,
+# via `kinds::python::StateSidecarBridge`) recognizes a request line by its
+# `__mcphost_state__` marker and answers inline before this call's own
+# final response line is ever sent -- from the tool's code this is
+# indistinguishable from a local function call.
+import types as _mcphost_types
+
+class McphostStateError(Exception):
+    def __init__(self, code, message, data=None):
+        super().__init__(message)
+        self.code = code
+        self.data = data or {}
+
+def _state_call(op, **kwargs):
+    _real_stdout.write(json.dumps({"__mcphost_state__": True, "op": op, "args": kwargs}))
+    _real_stdout.write("\n")
+    _real_stdout.flush()
+    line = sys.stdin.readline()
+    if not line:
+        raise McphostStateError("state_unavailable", "the state channel closed")
+    resp = json.loads(line)
+    if not resp.get("ok"):
+        raise McphostStateError(
+            resp.get("code", "state_error"), resp.get("message", "state call failed"), resp.get("data")
+        )
+    return resp.get("result")
+
+def _state_get(key, default=None):
+    r = _state_call("get", key=key)
+    return r["value"] if r and r.get("found") else default
+
+def _state_set(key, value):
+    return _state_call("set", key=key, value=value)
+
+def _state_delete(key):
+    return _state_call("delete", key=key)
+
+def _state_list(prefix=None, limit=None):
+    kwargs = {}
+    if prefix is not None:
+        kwargs["prefix"] = prefix
+    if limit is not None:
+        kwargs["limit"] = limit
+    return _state_call("list", **kwargs)
+
+def _state_table_create(name, schema, primary_key=None):
+    kwargs = {"name": name, "schema": schema}
+    if primary_key is not None:
+        kwargs["primary_key"] = primary_key
+    return _state_call("table_create", **kwargs)
+
+def _state_table_drop(name):
+    return _state_call("table_drop", name=name)
+
+def _state_insert(table, rows):
+    return _state_call("insert", table=table, rows=rows)
+
+def _state_query(table, where=None, order_by=None, limit=None):
+    kwargs = {"table": table}
+    if where is not None:
+        kwargs["where"] = where
+    if order_by is not None:
+        kwargs["order_by"] = order_by
+    if limit is not None:
+        kwargs["limit"] = limit
+    return _state_call("query", **kwargs)
+
+def _state_delete_rows(table, where=None):
+    kwargs = {"table": table}
+    if where is not None:
+        kwargs["where"] = where
+    return _state_call("delete_rows", **kwargs)
+
+_mcphost_state_mod = _mcphost_types.ModuleType("mcphost.state")
+_mcphost_state_mod.get = _state_get
+_mcphost_state_mod.set = _state_set
+_mcphost_state_mod.delete = _state_delete
+_mcphost_state_mod.list = _state_list
+_mcphost_state_mod.table_create = _state_table_create
+_mcphost_state_mod.table_drop = _state_table_drop
+_mcphost_state_mod.insert = _state_insert
+_mcphost_state_mod.query = _state_query
+_mcphost_state_mod.delete_rows = _state_delete_rows
+_mcphost_state_mod.StateError = McphostStateError
+
+# ---- mcphost.call (PRD-mcphost-composition requirement 1) -----------------
+#
+# `mcphost.call(name, args, timeout_s=None)` -- the same synchronous
+# request-line-out/response-line-in round trip `mcphost.state` uses above,
+# marked `__mcphost_call__` instead of `__mcphost_state__` so the host side
+# (`kinds::python::HostSidecarBridge`) can tell the two apart on the same
+# stdin/stdout pair. The host runs `name` as a child call through
+# `kinds::compose_call`, which enforces the depth/self-call/children
+# ceilings before `name` is even looked up.
+class McphostCallError(Exception):
+    def __init__(self, code, message, data=None):
+        super().__init__(message)
+        self.code = code
+        self.data = data or {}
+
+def _mcphost_call(name, args=None, timeout_s=None):
+    request = {"__mcphost_call__": True, "name": name, "args": args or {}}
+    if timeout_s is not None:
+        request["timeout_s"] = timeout_s
+    _real_stdout.write(json.dumps(request))
+    _real_stdout.write("\n")
+    _real_stdout.flush()
+    line = sys.stdin.readline()
+    if not line:
+        raise McphostCallError("compose_unavailable", "the call channel closed")
+    resp = json.loads(line)
+    if not resp.get("ok"):
+        raise McphostCallError(
+            resp.get("code", "compose_error"), resp.get("message", "call failed"), resp.get("data")
+        )
+    return resp.get("result")
+
+_mcphost_mod = _mcphost_types.ModuleType("mcphost")
+_mcphost_mod.state = _mcphost_state_mod
+_mcphost_mod.call = _mcphost_call
+_mcphost_mod.CallError = McphostCallError
+sys.modules["mcphost"] = _mcphost_mod
+sys.modules["mcphost.state"] = _mcphost_state_mod
+
 def run_one(payload):
     site_packages = payload.get("site_packages")
     if site_packages and site_packages not in sys.path:
@@ -1758,6 +1891,130 @@ fn map_envelope_line(line: &[u8]) -> Result<Value, KindError> {
 /// arguments plus the venv's `site_packages` path to add to `sys.path`.
 fn call_payload(args: &Value, site_packages: &str) -> Vec<u8> {
     serde_json::to_vec(&json!({"args": args, "site_packages": site_packages})).unwrap_or_default()
+}
+
+/// PRD-mcphost-tenant-state requirement 3: bridges `sandbox::
+/// PersistentSandbox::call`'s raw-line interception (`sandbox::
+/// SidecarBridge`) to `CallCtx.state` -- `sandbox.rs` knows nothing about
+/// JSON envelopes or tenants; this is where that knowledge lives.
+/// `PY_RUNNER_SCRIPT`'s `mcphost.state` functions emit exactly the request
+/// shape `intercept` recognizes below (`{"__mcphost_state__": true, "op":
+/// ..., "args": {...}}`) and block reading the response line this
+/// produces, so the round trip is invisible to the tool's own code.
+struct StateSidecarBridge<'a> {
+    state: &'a Arc<dyn StateBackend>,
+}
+
+#[async_trait::async_trait]
+impl SidecarBridge for StateSidecarBridge<'_> {
+    async fn intercept(&self, line: &[u8]) -> Option<Vec<u8>> {
+        let request: Value = serde_json::from_slice(line).ok()?;
+        if request.get("__mcphost_state__").and_then(Value::as_bool) != Some(true) {
+            // Not a state request -- this is the call's own final response
+            // line; `PersistentSandbox::call`'s contract is that `None`
+            // here ends the loop.
+            return None;
+        }
+        let op = request.get("op").and_then(Value::as_str).unwrap_or("");
+        let args = request.get("args").cloned().unwrap_or(Value::Null);
+        let response = match self.state.call(op, args).await {
+            Ok(result) => json!({"ok": true, "result": result}),
+            Err(e) => {
+                let (code, message, data) = match e {
+                    KindError::Structured {
+                        code,
+                        message,
+                        data,
+                    } => (code, message, data),
+                    KindError::InvalidArgs(m) => ("state_invalid_args", m, Value::Null),
+                    KindError::InvalidSpec(m) => ("state_invalid_args", m, Value::Null),
+                    KindError::Exec(m) => ("state_error", m, Value::Null),
+                };
+                json!({"ok": false, "code": code, "message": message, "data": data})
+            }
+        };
+        Some(serde_json::to_vec(&response).unwrap_or_else(|_| {
+            br#"{"ok":false,"code":"state_error","message":"internal: response not serializable"}"#
+                .to_vec()
+        }))
+    }
+}
+
+/// PRD-mcphost-composition requirement 1: bridges the same sidecar channel
+/// to `kinds::compose_call` -- `PY_RUNNER_SCRIPT`'s `mcphost.call(name,
+/// args, timeout_s=None)` emits `{"__mcphost_call__": true, "name": ...,
+/// "args": ..., "timeout_s"?: ...}` and blocks for the matching response
+/// line, exactly as `mcphost.state`'s `StateSidecarBridge` above does.
+/// Needs the whole `CallCtx` (not just `state`, unlike `StateSidecarBridge`)
+/// because `compose_call` reads `tenant_id`/`compose_depth`/
+/// `compose_children`/`compose_db`/`compose_kinds` off it.
+struct ComposeSidecarBridge<'a> {
+    ctx: &'a CallCtx,
+}
+
+#[async_trait::async_trait]
+impl SidecarBridge for ComposeSidecarBridge<'_> {
+    async fn intercept(&self, line: &[u8]) -> Option<Vec<u8>> {
+        let request: Value = serde_json::from_slice(line).ok()?;
+        if request.get("__mcphost_call__").and_then(Value::as_bool) != Some(true) {
+            // Not a compose request -- either the call's own final response
+            // line, or (when chained after `StateSidecarBridge` in
+            // `HostSidecarBridge`) a state request that bridge already
+            // answered.
+            return None;
+        }
+        let name = request.get("name").and_then(Value::as_str).unwrap_or("");
+        let args = request.get("args").cloned().unwrap_or(Value::Null);
+        let timeout_s = request.get("timeout_s").and_then(Value::as_u64);
+        let response = match crate::kinds::compose_call(self.ctx, self.ctx.tenant_id, name, args, timeout_s)
+            .await
+        {
+            Ok(result) => json!({"ok": true, "result": result}),
+            Err(e) => {
+                let (code, message, data) = match e {
+                    KindError::Structured {
+                        code,
+                        message,
+                        data,
+                    } => (code, message, data),
+                    KindError::InvalidArgs(m) => ("invalid_args", m, Value::Null),
+                    KindError::InvalidSpec(m) => ("invalid_spec", m, Value::Null),
+                    KindError::Exec(m) => ("exec", m, Value::Null),
+                };
+                json!({"ok": false, "code": code, "message": message, "data": data})
+            }
+        };
+        Some(serde_json::to_vec(&response).unwrap_or_else(|_| {
+            br#"{"ok":false,"code":"exec","message":"internal: response not serializable"}"#
+                .to_vec()
+        }))
+    }
+}
+
+/// The one `bridge` every real dispatch (warm or cold) passes to
+/// `PersistentSandbox::call` -- a sandboxed tool's code may use
+/// `mcphost.state` and `mcphost.call` in the same run, over the same
+/// stdin/stdout pair, so both sidecar protocols are tried per line (cheap:
+/// each is a no-op parse-and-marker-check when the line isn't its own).
+/// `state`'s check runs first, matching the plain `StateSidecarBridge`
+/// callers this replaced; the two markers are mutually exclusive so the
+/// order has no other effect.
+struct HostSidecarBridge<'a> {
+    ctx: &'a CallCtx,
+}
+
+#[async_trait::async_trait]
+impl SidecarBridge for HostSidecarBridge<'_> {
+    async fn intercept(&self, line: &[u8]) -> Option<Vec<u8>> {
+        let state_bridge = StateSidecarBridge {
+            state: &self.ctx.state,
+        };
+        if let Some(response) = state_bridge.intercept(line).await {
+            return Some(response);
+        }
+        let compose_bridge = ComposeSidecarBridge { ctx: self.ctx };
+        compose_bridge.intercept(line).await
+    }
 }
 
 /// Byte-caps `s` to its last `cap` bytes (requirement 3: "capped at 64 KiB
@@ -2416,7 +2673,8 @@ impl PythonKind {
         }
 
         let payload = call_payload(args, &entry.site_packages);
-        let outcome = entry.sandbox.call(&payload, timeout).await;
+        let bridge = HostSidecarBridge { ctx };
+        let outcome = entry.sandbox.call(&payload, timeout, &bridge).await;
         match outcome {
             Ok(PersistentCallOutcome::Responded {
                 line,
@@ -2527,6 +2785,113 @@ impl PythonKind {
                 let _ = tokio::fs::remove_dir_all(&scratch).await;
             }
         }
+    }
+}
+
+/// PRD-mcphost-tenant-state requirement 3: runs one call through the same
+/// interactive, line-at-a-time protocol a warm sandbox uses
+/// (`sandbox::PersistentSandbox::call`) instead of the older one-shot
+/// `sandbox::run`, so `mcphost.state` (via `bridge`) works on a tool's very
+/// first call, not just a reused warm one. Classifies the result into the
+/// same [`SandboxOutcome`] shape `sandbox::run` would have produced, so
+/// `map_sandbox_outcome`/`tool_run_response`/`outcome_usage` (already
+/// shared by the warm and cold paths) need no changes of their own. The
+/// spawned sandbox is always killed or reaped before returning -- a cold
+/// call never keeps this particular process alive; `maybe_promote_to_warm`
+/// spawns its own fresh one for the pool, exactly as it did before this
+/// function existed.
+async fn run_cold_interactive(
+    run_spec: &sandbox::RunSpec,
+    payload: &[u8],
+    bridge: &dyn SidecarBridge,
+) -> std::io::Result<SandboxOutcome> {
+    let wall_clock_timeout = run_spec.wall_clock_timeout;
+    let mut sandbox = sandbox::spawn_persistent(run_spec).await?;
+    let call_outcome = sandbox.call(payload, wall_clock_timeout, bridge).await?;
+    match call_outcome {
+        PersistentCallOutcome::Responded {
+            line,
+            cpu_ms,
+            peak_rss_kb,
+        } => {
+            sandbox.kill().await;
+            Ok(SandboxOutcome::Exited {
+                stdout: line,
+                stderr_tail: String::new(),
+                cpu_ms,
+                peak_rss_kb,
+            })
+        }
+        PersistentCallOutcome::TimedOut => {
+            let (cpu_ms, peak_rss_kb) = sandbox.usage_snapshot();
+            sandbox.kill().await;
+            Ok(SandboxOutcome::TimedOut { cpu_ms, peak_rss_kb })
+        }
+        PersistentCallOutcome::Closed => {
+            let stderr_tail = sandbox.stderr_tail();
+            let (cpu_ms, peak_rss_kb) = sandbox.usage_snapshot();
+            let status = sandbox.reap().await;
+            Ok(classify_exit_status(status, stderr_tail, cpu_ms, peak_rss_kb))
+        }
+    }
+}
+
+/// Turns a reaped [`std::process::ExitStatus`] (from [`run_cold_interactive`]'s
+/// `Closed` arm, where the sandbox died or its stdout pipe closed on its
+/// own) into the same [`SandboxOutcome`] shape `sandbox::run`'s own
+/// exit-status classification produces -- signal takes precedence over a
+/// (nonsensical, but POSIX-legal) simultaneous exit code, matching
+/// `sandbox::run`'s own ordering. No `stdout_tail` is available here (a
+/// crash mid-line leaves nothing in the `Lines`-buffered reader to recover,
+/// unlike `run()`'s own full-buffer capture) -- an acceptable gap since a
+/// process that dies without completing a line has nothing informative to
+/// show there anyway.
+fn classify_exit_status(
+    status: Option<std::process::ExitStatus>,
+    stderr_tail: String,
+    cpu_ms: i64,
+    peak_rss_kb: i64,
+) -> SandboxOutcome {
+    use std::os::unix::process::ExitStatusExt;
+    let Some(status) = status else {
+        return SandboxOutcome::Signaled {
+            signal: 0,
+            stdout_tail: String::new(),
+            stderr_tail,
+            cpu_ms,
+            peak_rss_kb,
+        };
+    };
+    if let Some(signal) = status.signal() {
+        return SandboxOutcome::Signaled {
+            signal,
+            stdout_tail: String::new(),
+            stderr_tail,
+            cpu_ms,
+            peak_rss_kb,
+        };
+    }
+    match status.code() {
+        Some(0) => SandboxOutcome::Exited {
+            stdout: Vec::new(),
+            stderr_tail,
+            cpu_ms,
+            peak_rss_kb,
+        },
+        Some(code) => SandboxOutcome::NonZeroExit {
+            code,
+            stdout_tail: String::new(),
+            stderr_tail,
+            cpu_ms,
+            peak_rss_kb,
+        },
+        None => SandboxOutcome::Signaled {
+            signal: 0,
+            stdout_tail: String::new(),
+            stderr_tail,
+            cpu_ms,
+            peak_rss_kb,
+        },
     }
 }
 
@@ -2764,6 +3129,13 @@ impl Kind for PythonKind {
         let stdin_payload = tokio::fs::read(scratch.join("stdin.json"))
             .await
             .map_err(|e| KindError::Exec(format!("read stdin payload: {e}")))?;
+        // PRD-mcphost-tenant-state requirement 3: `spawn_persistent` below
+        // ignores `RunSpec.stdin_payload` (its own doc comment: "a
+        // persistent sandbox's first request comes from the first call,
+        // not from spawn time") -- this call is made through the same
+        // interactive `PersistentSandbox::call` a warm sandbox uses, so the
+        // payload has to be handed to `call` directly instead.
+        let call_payload_bytes = stdin_payload.clone();
 
         let mut read_only_dirs = system_python_dirs();
         read_only_dirs.push(env_dir.clone());
@@ -2792,7 +3164,16 @@ impl Kind for PythonKind {
             isolation: self.isolation,
         };
 
-        let outcome = sandbox::run(run_spec).await;
+        // PRD-mcphost-tenant-state requirement 3 (AC2/AC3): the cold path
+        // runs through the same interactive, line-at-a-time protocol a warm
+        // sandbox uses (`sandbox::PersistentSandbox::call`) rather than the
+        // older one-shot `sandbox::run`, so `mcphost.state` works from the
+        // very first call to a tool, not just a reused warm one. See
+        // `run_cold_interactive`'s own doc comment for how its result stays
+        // a plain `SandboxOutcome` so nothing downstream of this line has
+        // to change.
+        let bridge = HostSidecarBridge { ctx };
+        let outcome = run_cold_interactive(&run_spec, &call_payload_bytes, &bridge).await;
         let _ = tokio::fs::remove_dir_all(&scratch).await;
         // Requirement 1/AC4: the cold-path number the AC's ≤5s budget is
         // judged against, logged before the spawn-error `?` so a genuine
@@ -2924,6 +3305,10 @@ impl Kind for PythonKind {
         let stdin_payload = tokio::fs::read(scratch.join("stdin.json"))
             .await
             .map_err(|e| KindError::Exec(format!("read stdin payload: {e}")))?;
+        // See the same-named local in `call` above: `spawn_persistent`
+        // ignores `RunSpec.stdin_payload`, so the interactive path needs
+        // its own copy of the bytes to hand to `call` directly.
+        let call_payload_bytes = stdin_payload.clone();
         let mut read_only_dirs = system_python_dirs();
         read_only_dirs.push(env_dir);
 
@@ -2946,7 +3331,13 @@ impl Kind for PythonKind {
             isolation: self.isolation,
         };
 
-        let outcome = sandbox::run(run_spec).await;
+        // Requirement 3: `host.tool_run` is also always cold (this
+        // method's own doc comment), so it needs the same interactive
+        // protocol `call`'s cold path uses -- a tool that calls
+        // `mcphost.state` must behave identically whether it's reached
+        // through an ordinary call or a debug `host.tool_run`.
+        let bridge = HostSidecarBridge { ctx };
+        let outcome = run_cold_interactive(&run_spec, &call_payload_bytes, &bridge).await;
         let _ = tokio::fs::remove_dir_all(&scratch).await;
         let outcome = outcome.map_err(|e| KindError::Exec(format!("sandbox spawn failed: {e}")))?;
 
@@ -3028,6 +3419,71 @@ mod tests {
             std::process::id(),
             rand::random::<u64>()
         ))
+    }
+
+    /// A `StateBackend` that echoes `args` back as `result` (prefixed with
+    /// `op`) for any op except `"boom"`, which always fails structured --
+    /// enough for `StateSidecarBridge`'s own unit tests to exercise both
+    /// its success and error serialization without a real `tenant_state.rs`
+    /// backend or database.
+    struct FakeStateBackend;
+    #[async_trait::async_trait]
+    impl StateBackend for FakeStateBackend {
+        async fn call(&self, op: &str, args: Value) -> Result<Value, KindError> {
+            if op == "boom" {
+                return Err(KindError::structured_with(
+                    "state_quota_exceeded",
+                    "over quota",
+                    json!({"quota": "state_bytes_max"}),
+                ));
+            }
+            Ok(json!({"op": op, "echo": args}))
+        }
+    }
+
+    #[tokio::test]
+    async fn state_sidecar_bridge_answers_a_state_request_line() {
+        let backend: Arc<dyn StateBackend> = Arc::new(FakeStateBackend);
+        let bridge = StateSidecarBridge { state: &backend };
+        let request = json!({"__mcphost_state__": true, "op": "get", "args": {"key": "a"}});
+        let response = bridge
+            .intercept(serde_json::to_string(&request).unwrap().as_bytes())
+            .await
+            .expect("a state-marked line must be intercepted, not treated as final");
+        let parsed: Value = serde_json::from_slice(&response).unwrap();
+        assert_eq!(parsed["ok"], json!(true));
+        assert_eq!(parsed["result"], json!({"op": "get", "echo": {"key": "a"}}));
+    }
+
+    #[tokio::test]
+    async fn state_sidecar_bridge_serializes_a_structured_error() {
+        let backend: Arc<dyn StateBackend> = Arc::new(FakeStateBackend);
+        let bridge = StateSidecarBridge { state: &backend };
+        let request = json!({"__mcphost_state__": true, "op": "boom", "args": {}});
+        let response = bridge
+            .intercept(serde_json::to_string(&request).unwrap().as_bytes())
+            .await
+            .expect("intercepted");
+        let parsed: Value = serde_json::from_slice(&response).unwrap();
+        assert_eq!(parsed["ok"], json!(false));
+        assert_eq!(parsed["code"], json!("state_quota_exceeded"));
+        assert_eq!(parsed["data"]["quota"], json!("state_bytes_max"));
+    }
+
+    #[tokio::test]
+    async fn state_sidecar_bridge_treats_a_non_state_line_as_final() {
+        let backend: Arc<dyn StateBackend> = Arc::new(FakeStateBackend);
+        let bridge = StateSidecarBridge { state: &backend };
+        // An ordinary call-result envelope, with no `__mcphost_state__`
+        // marker -- must be passed through as the call's final response
+        // (`None`), never mistaken for a state request.
+        let line = json!({"ok": true, "result": {"n": 1}});
+        assert!(
+            bridge
+                .intercept(serde_json::to_string(&line).unwrap().as_bytes())
+                .await
+                .is_none()
+        );
     }
 
     #[test]
@@ -3120,6 +3576,7 @@ mod tests {
             test_mode: false,
             resources: Arc::new(crate::kinds::NullResourceSink),
             tool_name: Some(tool_name.to_string()),
+            state: Arc::new(crate::kinds::NoState),
             compose_depth: 0,
             compose_children: None,
             compose_db: None,
@@ -3399,6 +3856,7 @@ mod tests {
             test_mode: false,
             resources: Arc::new(crate::kinds::NullResourceSink),
             tool_name: Some(tool_name.to_string()),
+            state: Arc::new(crate::kinds::NoState),
             compose_depth: 0,
             compose_children: None,
             compose_db: None,

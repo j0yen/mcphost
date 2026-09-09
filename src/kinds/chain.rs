@@ -252,7 +252,7 @@ impl Kind for ChainKind {
                 }
             };
 
-            match compose_call(ctx, ctx.tenant_id, &step.tool, resolved_args.clone()).await {
+            match compose_call(ctx, ctx.tenant_id, &step.tool, resolved_args.clone(), None).await {
                 Ok(result) => {
                     steps_trace.push(json!({
                         "step": failed_step_no,

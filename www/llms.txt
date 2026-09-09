@@ -44,6 +44,25 @@ own tool is **42.4s**.
    `host.tool_remove(name)`, `host.usage(window)`,
    `host.secret_set`/`host.secret_list()` (secrets stored AES-256-GCM
    encrypted).
+8. Remember something between calls, from your own session: `host.state.get(key)`,
+   `host.state.set(key, value)`, `host.state.delete(key)`,
+   `host.state.list(prefix?, limit?)` for a key-value namespace; declare a
+   typed table with `host.state.table_create(name, schema, primary_key?)`,
+   then `host.state.insert(table, rows)`,
+   `host.state.query(table, where?, order_by?, limit?)`,
+   `host.state.delete_rows(table, where?)` and `host.state.table_drop(name)`.
+   An overrun of the plan's state quota fails with
+   `error_code: state_quota_exceeded` and writes nothing.
+9. Compose tools instead of orchestrating them yourself: a `python` tool's
+   source can `import mcphost` and call `mcphost.call(name, args,
+   timeout_s?)` to run another of this tenant's tools as a child call and
+   get its result back, reachable with `network: none`. For a fixed
+   pipeline with no python of your own, publish a `chain` kind instead --
+   `spec.steps` is an ordered list of `{tool, args}`, each step's `args`
+   mapping from `$.input`/`$.prev`/`$.steps[i]` into the next call. Nesting
+   is capped at 4 levels (`compose_depth_exceeded`) and a call tree at 50
+   child calls total (`compose_children_exceeded`); a tool cannot call
+   itself (`compose_self_call`).
 
 <!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
 <!-- agent-quickstart:end -->
@@ -78,5 +97,5 @@ mcphost implements the 2026-07-28 streamable-HTTP MCP specification, stateless, 
 ## Full documentation
 
 - [llms-full.txt](/llms-full.txt) — this file's content plus every tool kind
-  (echo, http, python), all measured benchmarks, and supporting receipts,
-  concatenated into one markdown file per the llms.txt convention.
+  (echo, http, python, chain), all measured benchmarks, and supporting
+  receipts, concatenated into one markdown file per the llms.txt convention.
