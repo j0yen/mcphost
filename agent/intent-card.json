@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-client-ip-behind-proxy.md",
-  "intent_slug": "mcphost-client-ip-behind-proxy",
-  "root_motivation": "Facts from 2026-09-08:",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-spec-output-paths.md",
+  "intent_slug": "mcphost-spec-output-paths",
+  "root_motivation": "An AI agent publishing a REST-wrapping tool on mcphost cannot get its declared output where callers look unless the upstream already returns it at the top level, and when it guesses the natural way to say where the field is, the host refuses without saying what was wrong. Facts, all from 2026-09-08 truth-tier recordings and mcphost v0.31.0 source:",
   "user_persona": "An AI agent connecting to mcphost for the first time over streamable HTTP with default client configuration (Claude Agent SDK / Claude Code), which must be able to read a well-formed tool list before it can do anything else; secondarily the operator who probes the endpoint after a redeploy.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,38 +14,68 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a request whose peer is `127.0.0.1` and whose `X-Forwarded-For` is `203.0.113.7, 10.0.0.1`, When the handler resolves the source, Then the source is `203.0.113.7`.",
+      "description": "Given an http spec with `outputs: {\"a\": \"$.json.a\"}` sent as a map, When `host.tool_publish` runs, Then publish succeeds and the stored normalized outputs carry name `a` with path `$.json.a`.",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a request whose peer is `198.51.100.4` and whose `X-Forwarded-For` is `203.0.113.7`, When the handler resolves the source, Then the source is `198.51.100.4`.",
+      "description": "Given an http spec with `outputs: {\"a\": 5}`, When published, Then the error is structured `invalid_spec` with `field` = `outputs.a`, `got` = `number`, `expected` naming a path string, and `example` = `\"$.json.a\"`, and the message starts `invalid spec: outputs.a:`.",
       "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a request whose peer is loopback and whose header is `not-an-ip`, When the handler resolves the source, Then the source is the peer address and the request is not rejected.",
+      "description": "Given an http spec with `headers: [\"X-A: 1\"]`, When published, Then the error names `field` = `headers`, `got` = `array`, `expected` = an object of header names to values.",
       "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given `MCPHOST_SIGNUP_RATE_LIMIT_PER_HOUR=2` and two signups from loopback with `X-Forwarded-For: 203.0.113.7` followed by one from loopback with `X-Forwarded-For: 203.0.113.8`, When they run in one hour, Then the third succeeds and a fourth from `203.0.113.7` is rate-limited.",
+      "description": "Given a published tool with `outputs: {\"bridge_status\": \"$.json.bridge_status\"}` and an upstream that returns `{\"json\": {\"bridge_status\": \"active\"}, \"args\": {}}`, When called, Then `result.payload.bridge_status` is `\"active\"`.",
       "test": "tests/ac04_publish_list_and_call.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a signup proxied from loopback with a forwarded address, When it completes, Then the `signup_events` row for it stores the forwarded address.",
+      "description": "Given the same tool with path `$.json.absent`, When called, Then `result.payload` has no `absent` key and `host.tool_test` reports `missing: [{\"name\": \"absent\", \"path\": \"$.json.absent\"}]`.",
       "test": "tests/ac05_cross_tenant_isolation.rs"
     },
     {
       "id": "AC6",
-      "level": "SHOULD",
-      "description": "Given the authenticated `/healthz`, When read after AC4's signups, Then `distinct_source_ips_24h` is 2.",
+      "level": "MUST",
+      "description": "Given a tool with list-form `outputs: [\"ingestion_status\"]` and an upstream body `{\"json\": {\"ingestion_status\": \"ok\"}}`, When `host.tool_test` runs, Then the report lists `ingestion_status` as missing with `seen_at` containing `$.json.ingestion_status`.",
       "test": "tests/ac06_remove_tool.rs"
+    },
+    {
+      "id": "AC7",
+      "level": "MUST",
+      "description": "Given the three recorded 2026-09-08 sessions replayed with their specs rewritten to the map form, When their recorded upstream bodies are applied, Then each declared field appears at `result.payload.<name>`.",
+      "test": "tests/ac07_usage_metering.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given `outputs: {\"a\": \"$.items[*].a\"}`, When published, Then the error names `outputs.a` and says wildcards are unsupported.",
+      "test": "tests/ac08_admin_disable_and_forbidden.rs"
+    },
+    {
+      "id": "AC9",
+      "level": "MUST",
+      "description": "Given every existing test in `tests/envelope_ac*.rs` and `tests/http_ac*.rs`, When the suite runs, Then all pass unchanged.",
+      "test": "tests/ac09_signup_rate_limit.rs"
+    },
+    {
+      "id": "AC10",
+      "level": "SHOULD",
+      "description": "Given a python tool returning `{\"data\": {\"score\": 0.9}}` with `outputs: {\"score\": \"$.data.score\"}`, When called, Then `result.payload.score` is `0.9`.",
+      "test": "tests/ac10_publish_validation_errors.rs"
+    },
+    {
+      "id": "AC11",
+      "level": "SHOULD",
+      "description": "Given a successful publish, When the result is read, Then it contains `outputs` as a list of `{name, path}` objects matching what was stored.",
+      "test": "tests/ac11_load_smoke.rs (#[ignore]d hardware-relative load test)"
     }
   ],
   "scope": [
