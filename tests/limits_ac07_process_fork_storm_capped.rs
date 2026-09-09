@@ -40,6 +40,26 @@ async fn fork_storm_fails_with_tool_process_limit_and_processes_are_cleaned_up()
         println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
+    // `sandbox::fork_storm_cap_is_reliable`'s doc comment (PRD-mcphost-call-
+    // limits-honest five-whys, commit cfbf672): `RLIMIT_NPROC` has never
+    // bound the real (not namespace-mapped) uid 0 at the kernel level, so
+    // this AC's cap is a genuine no-op whenever the test binary itself runs
+    // as real root (observed on a build lane whose tree lives under
+    // `/root/build/...`) -- not a defect in `bwrap_command`'s `prlimit`
+    // injection, which the same doc comment traces reliably fails an
+    // unprivileged fork storm 62-then-`EAGAIN`. `main.rs`'s `Command::Serve`
+    // already refuses to start as root for exactly this reason; skip here
+    // rather than fail an AC whose guarantee this execution context cannot
+    // hold in the first place.
+    // SAFETY: getuid() takes no arguments and cannot fail.
+    let real_uid = unsafe { libc::getuid() };
+    if !sandbox::fork_storm_cap_is_reliable(real_uid) {
+        println!(
+            "skipped: fork-storm cap is a kernel-level no-op for real uid 0 \
+             (sandbox::fork_storm_cap_is_reliable) -- rerun as an unprivileged user"
+        );
+        return;
+    }
     let envs_dir = common::TempDataDir::new();
     let server = TestServer::start_with_kinds(python_kind_registry(&envs_dir.0)).await;
     let (ns, key) = signup(&server.base_url, "AC7 Tenant").await;
