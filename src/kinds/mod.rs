@@ -895,6 +895,37 @@ impl ResourceSink for NullResourceSink {
     fn record(&self, _cpu_ms: i64, _peak_rss_kb: i64) {}
 }
 
+/// A backend a stateful `Kind`'s sandboxed call can use for the tenant's
+/// `host.state.*` store (PRD-mcphost-tenant-state requirement 3: `mcphost.
+/// state` inside the python kind's sandbox). `op` names one of
+/// `tenant_state.rs`'s own verbs (`"get"`, `"set"`, `"delete"`, `"list"`,
+/// `"table_create"`, `"table_drop"`, `"insert"`, `"query"`,
+/// `"delete_rows"`) and `args` is that verb's own JSON argument object --
+/// the exact shapes `tenant_state::state_get`/`state_set`/etc. already
+/// take, so `handler.rs`'s implementation is a one-line dispatch, not a
+/// translation layer.
+#[async_trait::async_trait]
+pub trait StateBackend: Send + Sync {
+    async fn call(&self, op: &str, args: Value) -> Result<Value, KindError>;
+}
+
+/// A backend with no store behind it, for contexts (tests, the conformance
+/// suite, and any `CallCtx` that hasn't wired a tenant's real state in) that
+/// don't need one. Every op fails structured, naming itself unavailable
+/// rather than silently no-op'ing -- a tool relying on `mcphost.state` in
+/// one of these contexts should see a clear error, not state that quietly
+/// never persists.
+pub struct NoState;
+#[async_trait::async_trait]
+impl StateBackend for NoState {
+    async fn call(&self, _op: &str, _args: Value) -> Result<Value, KindError> {
+        Err(KindError::structured(
+            "state_unavailable",
+            "no tenant state backend is wired for this call context",
+        ))
+    }
+}
+
 /// Context passed to every `Kind::call`: who is calling, how to reach their
 /// secrets, when to give up, and where to log.
 pub struct CallCtx {
@@ -924,6 +955,10 @@ pub struct CallCtx {
     /// conformance suite) -- a `Kind` that needs it degrades to "always
     /// cold" rather than panicking when it's absent.
     pub tool_name: Option<String>,
+    /// See [`StateBackend`]. Defaults to [`NoState`] everywhere but
+    /// `handler.rs`'s real dispatch path, which wires this call's own
+    /// tenant into `tenant_state.rs`.
+    pub state: Arc<dyn StateBackend>,
 }
 
 impl CallCtx {
@@ -938,6 +973,7 @@ impl CallCtx {
             test_mode: false,
             resources: Arc::new(NullResourceSink),
             tool_name: None,
+            state: Arc::new(NoState),
         }
     }
 

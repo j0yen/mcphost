@@ -38,7 +38,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdin, Command};
@@ -720,6 +720,33 @@ pub enum PersistentCallOutcome {
     Closed,
 }
 
+/// PRD-mcphost-tenant-state requirement 3: a way for the sandboxed child to
+/// have a mid-call conversation with the host without any network access.
+/// This module still knows nothing about JSON envelopes, tenants, or
+/// `host.state.*` -- it only knows some of a call's stdout lines get
+/// answered inline and one line ends the call; `kinds::python` is the only
+/// implementor, and it owns all of that meaning.
+#[async_trait::async_trait]
+pub trait SidecarBridge: Send + Sync {
+    /// `line` is one line of the child's stdout, without its trailing
+    /// `\n`. `Some(response)` means: write `response` (plus a `\n`) back to
+    /// the child's stdin and keep reading -- `line` was a mid-call request,
+    /// not the call's answer. `None` means `line` *is* the call's final
+    /// response; the caller stops reading here.
+    async fn intercept(&self, line: &[u8]) -> Option<Vec<u8>>;
+}
+
+/// A bridge that never intercepts -- every line is the final response.
+/// Same behavior [`PersistentSandbox::call`] had before this trait existed;
+/// used by any caller with no sidecar protocol of its own.
+pub struct NoSidecar;
+#[async_trait::async_trait]
+impl SidecarBridge for NoSidecar {
+    async fn intercept(&self, _line: &[u8]) -> Option<Vec<u8>> {
+        None
+    }
+}
+
 /// A spawned, still-running sandboxed child, communicating one JSON request
 /// per line in on stdin and one JSON response per line out on stdout. Owns
 /// its own stderr-draining and usage-sampling background tasks so a caller
@@ -829,15 +856,21 @@ impl PersistentSandbox {
     }
 
     /// Writes one line (`payload` plus a trailing `\n`) to the sandbox's
-    /// stdin and waits up to `timeout` for one line back. `Ok` always --
-    /// an `Err` here is a real spawn/IO-layer failure distinct from a
-    /// timeout or a closed pipe, both of which are ordinary
+    /// stdin and waits up to `timeout` (total, across every round trip
+    /// below -- not per read) for its response line. Between those two
+    /// events, any line `bridge` recognizes as a mid-call request
+    /// (PRD-mcphost-tenant-state requirement 3's `mcphost.state` sidecar is
+    /// the only caller today) is answered inline and reading continues;
+    /// `bridge` returning `None` for a line is what ends the loop. `Ok`
+    /// always -- an `Err` here is a real spawn/IO-layer failure distinct
+    /// from a timeout or a closed pipe, both of which are ordinary
     /// [`PersistentCallOutcome`] variants the caller (the warm pool) is
     /// expected to handle by evicting this sandbox.
     pub async fn call(
         &mut self,
         payload: &[u8],
         timeout: Duration,
+        bridge: &dyn SidecarBridge,
     ) -> std::io::Result<PersistentCallOutcome> {
         if self.stdin.write_all(payload).await.is_err()
             || self.stdin.write_all(b"\n").await.is_err()
@@ -848,21 +881,47 @@ impl PersistentSandbox {
             return Ok(PersistentCallOutcome::Closed);
         }
 
-        match tokio::time::timeout(timeout, self.stdout.next_line()).await {
-            Ok(Ok(Some(line))) => {
-                let sample = sample_usage(self.pid);
-                let cpu_ms = (sample.cpu_ms - self.baseline_cpu_ms).max(0);
-                self.baseline_cpu_ms = sample.cpu_ms;
-                Ok(PersistentCallOutcome::Responded {
-                    line: line.into_bytes(),
-                    cpu_ms,
-                    peak_rss_kb: sample.rss_kb,
-                })
+        let deadline = Instant::now() + timeout;
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Ok(PersistentCallOutcome::TimedOut);
             }
-            Ok(Ok(None)) => Ok(PersistentCallOutcome::Closed),
-            Ok(Err(_)) => Ok(PersistentCallOutcome::Closed),
-            Err(_elapsed) => Ok(PersistentCallOutcome::TimedOut),
+            match tokio::time::timeout(remaining, self.stdout.next_line()).await {
+                Ok(Ok(Some(line))) => {
+                    if let Some(response) = bridge.intercept(line.as_bytes()).await {
+                        let wrote = self.stdin.write_all(&response).await.is_ok()
+                            && self.stdin.write_all(b"\n").await.is_ok()
+                            && self.stdin.flush().await.is_ok();
+                        if !wrote {
+                            return Ok(PersistentCallOutcome::Closed);
+                        }
+                        continue;
+                    }
+                    let sample = sample_usage(self.pid);
+                    let cpu_ms = (sample.cpu_ms - self.baseline_cpu_ms).max(0);
+                    self.baseline_cpu_ms = sample.cpu_ms;
+                    return Ok(PersistentCallOutcome::Responded {
+                        line: line.into_bytes(),
+                        cpu_ms,
+                        peak_rss_kb: sample.rss_kb,
+                    });
+                }
+                Ok(Ok(None)) => return Ok(PersistentCallOutcome::Closed),
+                Ok(Err(_)) => return Ok(PersistentCallOutcome::Closed),
+                Err(_elapsed) => return Ok(PersistentCallOutcome::TimedOut),
+            }
         }
+    }
+
+    /// An instantaneous CPU/RSS reading (unlike `call`'s own accounting,
+    /// not a delta since some baseline) -- for a caller that's about to
+    /// kill or reap this sandbox and wants a last usage number first (the
+    /// cold-call path's `TimedOut`/`Closed` handling, mirroring what
+    /// `run()`'s own timeout/exit paths already sample before returning).
+    pub fn usage_snapshot(&self) -> (i64, i64) {
+        let sample = sample_usage(self.pid);
+        (sample.cpu_ms, sample.rss_kb)
     }
 
     /// Kills this sandbox's whole process group (requirement 2: "killed on
@@ -875,6 +934,18 @@ impl PersistentSandbox {
             libc::killpg(self.pid, libc::SIGKILL);
         }
         let _ = self.child.wait().await;
+    }
+
+    /// Waits for this sandbox's own process to exit and reports how, for a
+    /// caller that already knows (from `call`'s `Closed` outcome) that the
+    /// child is gone or going and wants the real signal/exit code to
+    /// classify the failure the same way a one-shot `run()` call would.
+    /// Never sends a signal -- `Closed` already means the process ended (or
+    /// its stdout pipe did) on its own; a caller that instead wants to
+    /// force an unwanted-but-still-healthy sandbox down should call
+    /// [`PersistentSandbox::kill`].
+    pub async fn reap(mut self) -> Option<std::process::ExitStatus> {
+        self.child.wait().await.ok()
     }
 }
 
@@ -1348,6 +1419,97 @@ mod tests {
         match outcome {
             SandboxOutcome::Exited { stdout, .. } => assert_eq!(stdout, b"hello"),
             other => panic!("expected Exited, got {other:?}"),
+        }
+    }
+
+    /// PRD-mcphost-tenant-state requirement 3: a `SidecarBridge` that
+    /// answers exactly one recognized mid-call line (`{"need": "x"}`) with
+    /// a fixed response, treating anything else as the call's final line --
+    /// the same shape `kinds::python::StateSidecarBridge` uses for real
+    /// `mcphost.state` requests, without any JSON/tenant knowledge of its
+    /// own (this module's whole point per its module doc).
+    struct EchoBridge;
+    #[async_trait::async_trait]
+    impl SidecarBridge for EchoBridge {
+        async fn intercept(&self, line: &[u8]) -> Option<Vec<u8>> {
+            let v: serde_json::Value = serde_json::from_slice(line).ok()?;
+            if v.get("need").is_some() {
+                Some(b"{\"got\":\"it\"}".to_vec())
+            } else {
+                None
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn persistent_sandbox_call_answers_a_mid_call_sidecar_request() {
+        if !supports_user_namespaces() {
+            println!("{USERNS_SKIP_MARKER}");
+            return;
+        }
+        let scratch = std::env::temp_dir().join(format!(
+            "mcphost-sandbox-sidecar-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&scratch).expect("scratch dir");
+        let script = scratch.join("script.py");
+        // Reads one request line, emits a mid-call sidecar request, reads
+        // the bridge's answer, then emits a final line folding both in --
+        // the same "request, answer inline, final line" shape
+        // `kinds::python`'s runner protocol uses for `mcphost.state`.
+        std::fs::write(
+            &script,
+            "import sys, json\n\
+             line = sys.stdin.readline()\n\
+             req = json.loads(line)\n\
+             sys.stdout.write(json.dumps({'need': req.get('x')}))\n\
+             sys.stdout.write('\\n')\n\
+             sys.stdout.flush()\n\
+             answer = json.loads(sys.stdin.readline())\n\
+             sys.stdout.write(json.dumps({'final': True, 'got': answer.get('got')}))\n\
+             sys.stdout.write('\\n')\n\
+             sys.stdout.flush()\n",
+        )
+        .expect("write script");
+
+        let spec = RunSpec {
+            interpreter: PathBuf::from("/usr/bin/python3"),
+            interpreter_args: vec!["-I".to_string(), "-S".to_string()],
+            script_path: script,
+            scratch_dir: scratch.clone(),
+            read_only_dirs: ["/usr", "/lib", "/lib64", "/bin"]
+                .into_iter()
+                .map(PathBuf::from)
+                .filter(|p| p.exists())
+                .collect(),
+            stdin_payload: Vec::new(),
+            limits: ResourceLimits {
+                cpu_seconds: 5,
+                memory_mb: 256,
+                max_open_files: 64,
+                max_file_size_mb: 16,
+            },
+            wall_clock_timeout: Duration::from_secs(7),
+            network: NetworkMode::None,
+            extra_env: vec![],
+            isolation: detect_mechanism(),
+        };
+
+        let mut sandbox = spawn_persistent(&spec).await.expect("spawn persistent");
+        let outcome = sandbox
+            .call(br#"{"x": 42}"#, Duration::from_secs(5), &EchoBridge)
+            .await
+            .expect("call must not IO-error");
+        sandbox.kill().await;
+        let _ = std::fs::remove_dir_all(&scratch);
+
+        match outcome {
+            PersistentCallOutcome::Responded { line, .. } => {
+                let parsed: serde_json::Value = serde_json::from_slice(&line).unwrap();
+                assert_eq!(parsed["final"], serde_json::json!(true));
+                assert_eq!(parsed["got"], serde_json::json!("it"));
+            }
+            other => panic!("expected Responded, got {other:?}"),
         }
     }
 

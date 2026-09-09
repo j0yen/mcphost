@@ -20,13 +20,14 @@ use crate::auth::{extract_bearer, hash_key};
 use crate::db::{Tenant, ToolRow};
 use crate::errors::AppError;
 use crate::kinds::{
-    CallCtx, CallLog, Kind, KindRegistry, MAX_TEST_INVOCATIONS, NullLog, NullResourceSink,
-    ResourceSink, SecretResolver, describe_args_error, run_spec_test,
+    CallCtx, CallLog, Kind, KindError, KindRegistry, MAX_TEST_INVOCATIONS, NoState, NullLog,
+    NullResourceSink, ResourceSink, SecretResolver, StateBackend, describe_args_error,
+    run_spec_test,
 };
 use crate::state::{
     AppState, MAX_SPEC_BYTES, TOOLS_LIST_TTL_GRACE_SECS, TOOLS_LIST_TTL_MS_STEADY, now_unix,
 };
-use crate::{admin, control};
+use crate::{admin, control, tenant_state};
 
 /// Who is making this request, resolved once per request from the bearer
 /// key (or its absence).
@@ -389,6 +390,95 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              (requires --registry-url and admin.tenant_verify_namespace first).",
             host_schema(json!({}), &[]),
         ),
+        // PRD-mcphost-tenant-state P0 requirement 2: a per-tenant store an
+        // agent inspects and seeds from its own session, mirroring the
+        // `mcphost.state` module a python tool gets from inside the
+        // sandbox (not yet built -- see the crate's `tenant_state.rs`
+        // module doc).
+        Tool::new(
+            "host.state.get",
+            "Read one key from this tenant's key-value state namespace. Returns \
+             found: false (not an error) if the key was never set.",
+            host_schema(json!({"key": {"type": "string"}}), &["key"]),
+        ),
+        Tool::new(
+            "host.state.set",
+            "Write one key in this tenant's key-value state namespace; value may be any \
+             JSON value. Overrun of the plan's state_bytes_max quota fails with \
+             state_quota_exceeded and writes nothing.",
+            host_schema(
+                json!({"key": {"type": "string"}, "value": {}}),
+                &["key", "value"],
+            ),
+        ),
+        Tool::new(
+            "host.state.delete",
+            "Delete one key from this tenant's key-value state namespace.",
+            host_schema(json!({"key": {"type": "string"}}), &["key"]),
+        ),
+        Tool::new(
+            "host.state.list",
+            "List keys (with their current values) in this tenant's key-value state \
+             namespace, optionally filtered by prefix.",
+            host_schema(
+                json!({"prefix": {"type": "string"}, "limit": {"type": "integer"}}),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.state.table_create",
+            "Declare (or replace the schema of) a table in this tenant's state store. \
+             schema is {\"column\": \"text\"|\"integer\"|\"real\"|\"boolean\"|\"json\"}; \
+             primary_key, if given, must name one of schema's columns -- an insert whose \
+             row matches an existing row's primary_key value replaces it.",
+            host_schema(
+                json!({
+                    "name": {"type": "string"},
+                    "schema": {"type": "object"},
+                    "primary_key": {"type": "string"},
+                }),
+                &["name", "schema"],
+            ),
+        ),
+        Tool::new(
+            "host.state.table_drop",
+            "Drop a declared table and every row it holds.",
+            host_schema(json!({"name": {"type": "string"}}), &["name"]),
+        ),
+        Tool::new(
+            "host.state.insert",
+            "Insert one row (an object) or several (an array of objects) into a declared \
+             table. Each row is validated against the table's schema first -- a type \
+             mismatch fails the whole call with state_schema_violation and writes nothing.",
+            host_schema(
+                json!({"table": {"type": "string"}, "rows": {}}),
+                &["table", "rows"],
+            ),
+        ),
+        Tool::new(
+            "host.state.query",
+            "Read rows from a declared table, optionally filtered (where: \"field op value\", \
+             ops = != < <= > >=, clauses joined by ' and '), ordered (order_by: \"field\" or \
+             \"field desc\") and capped (limit).",
+            host_schema(
+                json!({
+                    "table": {"type": "string"},
+                    "where": {"type": "string"},
+                    "order_by": {"type": "string"},
+                    "limit": {"type": "integer"},
+                }),
+                &["table"],
+            ),
+        ),
+        Tool::new(
+            "host.state.delete_rows",
+            "Delete rows from a declared table matching an optional where filter (same \
+             grammar as host.state.query); omitting where deletes every row in the table.",
+            host_schema(
+                json!({"table": {"type": "string"}, "where": {"type": "string"}}),
+                &["table"],
+            ),
+        ),
         Tool::new(
             "billing.plans",
             "The plan catalog (price and quotas per plan) and whether Stripe billing is \
@@ -618,6 +708,184 @@ impl ResourceSink for CellResourceSink {
     }
 }
 
+/// `tenant_state.rs`'s own errors are always `AppError::Structured`,
+/// `InvalidArgs`, or `InvalidSpec` (see its `arg_str`/`quota_exceeded`/
+/// `schema_violation`/`table_not_found` helpers); those three round-trip
+/// their fields unchanged into the matching `KindError` variant. Anything
+/// else becomes an `Exec` carrying the message -- the same fallback shape
+/// `From<KindError> for AppError` uses in the other direction.
+fn app_error_to_kind_error(e: AppError) -> KindError {
+    match e {
+        AppError::Structured {
+            code,
+            message,
+            data,
+        } => KindError::Structured {
+            code,
+            message,
+            data,
+        },
+        AppError::InvalidArgs(m) => KindError::InvalidArgs(m),
+        AppError::InvalidSpec(m) => KindError::InvalidSpec(m),
+        other => KindError::Exec(other.to_string()),
+    }
+}
+
+/// PRD-mcphost-tenant-state requirement 3: bridges `Kind::call`'s
+/// `CallCtx.state` to the real `tenant_state.rs` business logic for this
+/// call's own tenant -- the same pattern `build_secret_resolver` uses for
+/// `CallCtx.secrets`. `op` is one of the bare verb names `kinds::python`'s
+/// `mcphost.state` sandbox module sends (`"get"`, `"set"`, `"delete"`,
+/// `"list"`, `"table_create"`, `"table_drop"`, `"insert"`, `"query"`,
+/// `"delete_rows"`) -- distinct from the dotted `host.state.*` tool names
+/// `dispatch_control_tool` matches above, which is the *other* caller of
+/// these same `tenant_state::state_*` functions.
+struct TenantStateBridge {
+    state: Arc<AppState>,
+    tenant: Tenant,
+}
+
+#[async_trait::async_trait]
+impl StateBackend for TenantStateBridge {
+    async fn call(&self, op: &str, args: Value) -> Result<Value, KindError> {
+        let result = match op {
+            "get" => tenant_state::state_get(&self.state, &self.tenant, &args).await,
+            "set" => tenant_state::state_set(&self.state, &self.tenant, &args).await,
+            "delete" => tenant_state::state_delete(&self.state, &self.tenant, &args).await,
+            "list" => tenant_state::state_list(&self.state, &self.tenant, &args).await,
+            "table_create" => {
+                tenant_state::state_table_create(&self.state, &self.tenant, &args).await
+            }
+            "table_drop" => tenant_state::state_table_drop(&self.state, &self.tenant, &args).await,
+            "insert" => tenant_state::state_insert(&self.state, &self.tenant, &args).await,
+            "query" => tenant_state::state_query(&self.state, &self.tenant, &args).await,
+            "delete_rows" => {
+                tenant_state::state_delete_rows(&self.state, &self.tenant, &args).await
+            }
+            other => Err(AppError::InvalidArgs(format!("unknown state op '{other}'"))),
+        };
+        result.map_err(app_error_to_kind_error)
+    }
+}
+
+/// requirement 5 / AC7: the per-call tally `CountingStateBackend` builds up
+/// as `mcphost.state`/`host.state.*` ops flow through this call's
+/// `CallCtx.state`, read back after `Kind::call`/`Kind::tool_run` returns
+/// to fill `host.tool_test`/`host.tool_run`'s `state: {reads, writes, keys,
+/// tables}`. `get`/`list`/`query` count as reads; every op that can mutate
+/// the store counts as a write, whether or not it ends up changing
+/// anything (a `delete` of a key that was never set still counts -- the
+/// caller asked to write, same as `record_call`'s `ok = 1` for a tool call
+/// that ran but changed nothing).
+#[derive(Default, Clone)]
+struct StateTally {
+    reads: i64,
+    writes: i64,
+    keys: Vec<String>,
+    tables: Vec<String>,
+}
+
+impl StateTally {
+    fn to_json(&self) -> Value {
+        json!({
+            "reads": self.reads,
+            "writes": self.writes,
+            "keys": self.keys,
+            "tables": self.tables,
+        })
+    }
+}
+
+/// Wraps a real `StateBackend` (always a `TenantStateBridge` in practice)
+/// to (a) tally reads/writes/keys/tables for `host.tool_test`/
+/// `host.tool_run`'s `state` field and (b) optionally push one `CallLog`
+/// line per write -- `host.tool_logs`' "state writes carry key or table and
+/// byte delta" (requirement 5). `log` is `None` for `host.tool_test`
+/// (which persists no logs at all, same as every other call it makes)
+/// and `Some` for a real published call.
+struct CountingStateBackend {
+    inner: Arc<dyn StateBackend>,
+    tally: std::sync::Mutex<StateTally>,
+    log: Option<Arc<dyn CallLog>>,
+}
+
+impl CountingStateBackend {
+    fn new(inner: Arc<dyn StateBackend>, log: Option<Arc<dyn CallLog>>) -> Self {
+        Self {
+            inner,
+            tally: std::sync::Mutex::new(StateTally::default()),
+            log,
+        }
+    }
+
+    fn snapshot(&self) -> StateTally {
+        self.tally.lock().map(|g| g.clone()).unwrap_or_default()
+    }
+}
+
+/// `op` names one of `tenant_state.rs`'s own verbs, exactly as
+/// `TenantStateBridge::call` (above) matches them.
+const STATE_WRITE_OPS: &[&str] = &[
+    "set",
+    "delete",
+    "table_create",
+    "table_drop",
+    "insert",
+    "delete_rows",
+];
+
+#[async_trait::async_trait]
+impl StateBackend for CountingStateBackend {
+    async fn call(&self, op: &str, args: Value) -> Result<Value, KindError> {
+        let key = args.get("key").and_then(Value::as_str).map(str::to_string);
+        // `table_create`/`table_drop` name the table `name`; `insert`/
+        // `query`/`delete_rows` name it `table` -- same split
+        // `kinds::python`'s `mcphost.state` module and `host.state.*`'s own
+        // schema use.
+        let table = match op {
+            "table_create" | "table_drop" => {
+                args.get("name").and_then(Value::as_str).map(str::to_string)
+            }
+            _ => args.get("table").and_then(Value::as_str).map(str::to_string),
+        };
+        let is_write = STATE_WRITE_OPS.contains(&op);
+
+        let result = self.inner.call(op, args).await?;
+
+        if let Ok(mut guard) = self.tally.lock() {
+            if is_write {
+                guard.writes += 1;
+            } else {
+                guard.reads += 1;
+            }
+            if let Some(k) = &key
+                && !guard.keys.contains(k)
+            {
+                guard.keys.push(k.clone());
+            }
+            if let Some(t) = &table
+                && !guard.tables.contains(t)
+            {
+                guard.tables.push(t.clone());
+            }
+        }
+
+        if is_write
+            && let Some(log) = &self.log
+        {
+            let bytes_delta = result.get("bytes_delta").and_then(Value::as_i64).unwrap_or(0);
+            let line = match (&key, &table) {
+                (Some(k), _) => format!("state_write key={k} bytes_delta={bytes_delta}"),
+                (None, Some(t)) => format!("state_write table={t} bytes_delta={bytes_delta}"),
+                (None, None) => format!("state_write op={op} bytes_delta={bytes_delta}"),
+            };
+            log.log(&line);
+        }
+
+        Ok(result)
+    }
+}
+
 // ---- the handler -----------------------------------------------------
 
 #[derive(Clone)]
@@ -651,6 +919,21 @@ impl McpHostHandler {
             "host.secret_set" => control::secret_set(&self.state, tenant, &args).await,
             "host.secret_list" => control::secret_list(&self.state, tenant).await,
             "host.registry_publish" => control::registry_publish(&self.state, tenant, &args).await,
+            "host.state.get" => tenant_state::state_get(&self.state, tenant, &args).await,
+            "host.state.set" => tenant_state::state_set(&self.state, tenant, &args).await,
+            "host.state.delete" => tenant_state::state_delete(&self.state, tenant, &args).await,
+            "host.state.list" => tenant_state::state_list(&self.state, tenant, &args).await,
+            "host.state.table_create" => {
+                tenant_state::state_table_create(&self.state, tenant, &args).await
+            }
+            "host.state.table_drop" => {
+                tenant_state::state_table_drop(&self.state, tenant, &args).await
+            }
+            "host.state.insert" => tenant_state::state_insert(&self.state, tenant, &args).await,
+            "host.state.query" => tenant_state::state_query(&self.state, tenant, &args).await,
+            "host.state.delete_rows" => {
+                tenant_state::state_delete_rows(&self.state, tenant, &args).await
+            }
             "billing.status" => crate::billing::status(&self.state, tenant).await,
             "billing.checkout" => crate::billing::checkout(&self.state, tenant, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
@@ -775,6 +1058,18 @@ impl McpHostHandler {
             test_mode: false,
             resources: resources.clone() as Arc<dyn ResourceSink>,
             tool_name: Some(local_name.to_string()),
+            // requirement 5: a real call's state writes get one
+            // `CallLog` line each (flushed into `host.tool_logs` below,
+            // same as every other line this call's `Kind` logs); it
+            // carries no `state` tally in its own return value -- that's
+            // `host.tool_test`/`host.tool_run`-only (see those methods).
+            state: Arc::new(CountingStateBackend::new(
+                Arc::new(TenantStateBridge {
+                    state: self.state.clone(),
+                    tenant: tenant.clone(),
+                }),
+                Some(log.clone() as Arc<dyn CallLog>),
+            )),
         };
 
         let start = Instant::now();
@@ -960,6 +1255,13 @@ impl McpHostHandler {
         }
 
         let secrets = build_secret_resolver(&self.state, tenant.id).await?;
+        let state_backend = Arc::new(CountingStateBackend::new(
+            Arc::new(TenantStateBridge {
+                state: self.state.clone(),
+                tenant: tenant.clone(),
+            }),
+            None,
+        ));
         let ctx = CallCtx {
             tenant_id: tenant.id,
             namespace: tenant.namespace.clone(),
@@ -969,6 +1271,10 @@ impl McpHostHandler {
             test_mode: true,
             resources: Arc::new(NullResourceSink),
             tool_name: Some(local_name.clone()),
+            // requirement 5 / AC7: `host.tool_test` persists no logs (`log`
+            // above is `NullLog`), but its *result* carries a `state` tally
+            // -- read back from `state_backend` after the call below.
+            state: state_backend.clone() as Arc<dyn StateBackend>,
         };
 
         match tokio::time::timeout(
@@ -1001,6 +1307,9 @@ impl McpHostHandler {
                     && let Value::Object(map) = &mut value
                 {
                     map.insert("envelope".to_string(), envelope);
+                }
+                if let Value::Object(map) = &mut value {
+                    map.insert("state".to_string(), state_backend.snapshot().to_json());
                 }
                 Ok(value)
             }
@@ -1062,6 +1371,10 @@ impl McpHostHandler {
             test_mode: true,
             resources: Arc::new(NullResourceSink),
             tool_name: None,
+            // `host.bridge_test` always dispatches to the `http` kind
+            // (fixed above), which has no notion of `mcphost.state` --
+            // `NoState` is correct here, not a stand-in for a real backend.
+            state: Arc::new(NoState),
         };
 
         match tokio::time::timeout(self.state.call_timeout, kind.call(&spec, call_args, &ctx)).await
@@ -1180,6 +1493,10 @@ impl McpHostHandler {
             .map(|_| Arc::new(BufferedLog(std::sync::Mutex::new(Vec::new()))))
             .collect();
         let mut log_bufs_iter = log_bufs.iter().cloned();
+        let state_backend: Arc<dyn StateBackend> = Arc::new(TenantStateBridge {
+            state: self.state.clone(),
+            tenant: tenant.clone(),
+        });
         let results = run_spec_test(&kind, &spec, &invocations, call_timeout, || CallCtx {
             tenant_id,
             namespace: namespace.clone(),
@@ -1192,6 +1509,7 @@ impl McpHostHandler {
             test_mode: true,
             resources: Arc::new(NullResourceSink),
             tool_name: None,
+            state: state_backend.clone(),
         })
         .await;
 
@@ -1343,6 +1661,16 @@ impl McpHostHandler {
         }
 
         let secrets = build_secret_resolver(&self.state, tenant.id).await?;
+        // requirement 5 / AC7: `host.tool_run`'s result carries a `state`
+        // tally too (same shape as `host.tool_test`'s) -- read back from
+        // `state_backend` after the call below.
+        let state_backend = Arc::new(CountingStateBackend::new(
+            Arc::new(TenantStateBridge {
+                state: self.state.clone(),
+                tenant: tenant.clone(),
+            }),
+            None,
+        ));
         let ctx = CallCtx {
             tenant_id: tenant.id,
             namespace: tenant.namespace.clone(),
@@ -1352,6 +1680,7 @@ impl McpHostHandler {
             test_mode: false,
             resources: Arc::new(NullResourceSink),
             tool_name: Some(local_name.clone()),
+            state: state_backend.clone() as Arc<dyn StateBackend>,
         };
 
         let start = Instant::now();
@@ -1366,6 +1695,7 @@ impl McpHostHandler {
             Ok(Ok(mut value)) => {
                 if let Some(obj) = value.as_object_mut() {
                     obj.insert("duration_ms".to_string(), json!(duration_ms));
+                    obj.insert("state".to_string(), state_backend.snapshot().to_json());
                 }
                 Ok(value)
             }

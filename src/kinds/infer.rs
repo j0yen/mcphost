@@ -424,6 +424,14 @@ pub fn infer_python_requirements(source: &str) -> Result<Vec<String>, KindError>
         if stdlib_modules().contains(&module) {
             continue;
         }
+        // `mcphost` (PRD-mcphost-tenant-state requirement 3): the host
+        // injects this module into the sandbox itself (see
+        // `kinds::python::PY_RUNNER_SCRIPT`'s `sys.modules["mcphost"]`
+        // wiring) -- it is never a PyPI package, so it needs no
+        // requirement, the same as a stdlib import.
+        if module == "mcphost" {
+            continue;
+        }
         match import_map().get(&module) {
             Some(dist) => {
                 out.insert(dist.clone());

@@ -23,6 +23,7 @@ const MIGRATION_0007: &str = include_str!("../migrations/0007_metering.sql");
 const MIGRATION_0008: &str = include_str!("../migrations/0008_synthetic.sql");
 const MIGRATION_0009: &str = include_str!("../migrations/0009_call_outcome.sql");
 const MIGRATION_0010: &str = include_str!("../migrations/0010_tenant_attribution.sql");
+const MIGRATION_0011: &str = include_str!("../migrations/0011_tenant_state.sql");
 
 /// Shared by every query that selects a whole tenant row, so the column
 /// list and [`tenant_from_row`] stay in lockstep with each other.
@@ -355,7 +356,8 @@ impl Db {
         Self::migrate_0007_metering(&conn)?;
         Self::migrate_0008_synthetic(&conn)?;
         Self::migrate_0009_call_outcome(&conn)?;
-        Self::migrate_0010_tenant_attribution(&conn)
+        Self::migrate_0010_tenant_attribution(&conn)?;
+        Self::migrate_0011_tenant_state(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -488,6 +490,23 @@ impl Db {
         }
         conn.execute_batch(MIGRATION_0010)?;
         backfill_unclassified_tenants_sync(conn)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-tenant-state migration 0011: all three tables are
+    /// `CREATE TABLE IF NOT EXISTS`, so this only needs to gate on the
+    /// batch's own idempotency signal (the first of the three) to avoid
+    /// re-running an already-applied `CREATE INDEX` needlessly on every
+    /// `serve` start, same pattern as 0002-0010.
+    fn migrate_0011_tenant_state(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tenant_state_kv'",
+            )?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0011)?;
+        }
         Ok(())
     }
 
@@ -1462,6 +1481,269 @@ impl Db {
             )
             .optional()
             .map_err(AppError::from)
+        })
+        .await
+    }
+
+    // ---- tenant state (PRD-mcphost-tenant-state P0 requirement 1) ------
+    //
+    // `tenant_state::business` (this crate's new `tenant_state.rs`) owns
+    // schema validation, the filter grammar and quota arithmetic; these
+    // methods are the same thin "one prepared statement, one shape" layer
+    // every other section of this file already is.
+
+    pub async fn state_kv_set(
+        &self,
+        tenant_id: i64,
+        key: String,
+        value_json: String,
+    ) -> Result<(), AppError> {
+        let updated_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO tenant_state_kv (tenant_id, key, value_json, updated_unix) \
+                 VALUES (?1, ?2, ?3, ?4) \
+                 ON CONFLICT(tenant_id, key) DO UPDATE SET \
+                     value_json = excluded.value_json, updated_unix = excluded.updated_unix",
+                params![tenant_id, key, value_json, updated_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `(value_json, updated_unix)`, `None` if the key has never been set
+    /// (or was deleted) for this tenant.
+    pub async fn state_kv_get(
+        &self,
+        tenant_id: i64,
+        key: String,
+    ) -> Result<Option<(String, i64)>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT value_json, updated_unix FROM tenant_state_kv \
+                 WHERE tenant_id = ?1 AND key = ?2",
+                params![tenant_id, key],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    pub async fn state_kv_delete(&self, tenant_id: i64, key: String) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "DELETE FROM tenant_state_kv WHERE tenant_id = ?1 AND key = ?2",
+                params![tenant_id, key],
+            )?;
+            Ok(n > 0)
+        })
+        .await
+    }
+
+    /// `AC1`/goal 1's `host.state.list`: every `(key, value_json,
+    /// updated_unix)` for this tenant whose key starts with `prefix` (all
+    /// keys when `prefix` is `None`), ordered by key, capped at `limit`.
+    pub async fn state_kv_list(
+        &self,
+        tenant_id: i64,
+        prefix: Option<String>,
+        limit: i64,
+    ) -> Result<Vec<(String, String, i64)>, AppError> {
+        self.with_conn(move |conn| {
+            let pattern = prefix
+                .as_deref()
+                .map(|p| format!("{}%", p.replace('%', "\\%").replace('_', "\\_")));
+            let mut stmt = conn.prepare(
+                "SELECT key, value_json, updated_unix FROM tenant_state_kv \
+                 WHERE tenant_id = ?1 AND (?2 IS NULL OR key LIKE ?2 ESCAPE '\\') \
+                 ORDER BY key LIMIT ?3",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id, pattern, limit], |r| {
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// Sum of stored byte lengths across a tenant's whole state (both the
+    /// KV namespace and every declared table's rows) -- the quota-check
+    /// input requirement 4 / the technical considerations pin to "stored
+    /// byte lengths, not `PRAGMA page_count`".
+    pub async fn state_bytes_used(&self, tenant_id: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            let kv_bytes: i64 = conn.query_row(
+                "SELECT COALESCE(SUM(LENGTH(value_json)), 0) FROM tenant_state_kv \
+                 WHERE tenant_id = ?1",
+                params![tenant_id],
+                |r| r.get(0),
+            )?;
+            let row_bytes: i64 = conn.query_row(
+                "SELECT COALESCE(SUM(LENGTH(row_json)), 0) FROM tenant_state_rows \
+                 WHERE tenant_id = ?1",
+                params![tenant_id],
+                |r| r.get(0),
+            )?;
+            Ok(kv_bytes + row_bytes)
+        })
+        .await
+    }
+
+    /// `(schema_json, primary_key)` for a declared table, `None` if this
+    /// tenant has no table by that name.
+    pub async fn state_table_get(
+        &self,
+        tenant_id: i64,
+        table_name: String,
+    ) -> Result<Option<(String, Option<String>)>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT schema_json, primary_key FROM tenant_state_tables \
+                 WHERE tenant_id = ?1 AND table_name = ?2",
+                params![tenant_id, table_name],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `host.state.table_create`: upsert semantics, same rationale as
+    /// `upsert_secret` -- a republish of an already-declared table (e.g.
+    /// widening a schema) replaces rather than errors.
+    pub async fn state_table_create(
+        &self,
+        tenant_id: i64,
+        table_name: String,
+        schema_json: String,
+        primary_key: Option<String>,
+    ) -> Result<(), AppError> {
+        let created_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO tenant_state_tables (tenant_id, table_name, schema_json, \
+                     primary_key, created_unix) VALUES (?1, ?2, ?3, ?4, ?5) \
+                 ON CONFLICT(tenant_id, table_name) DO UPDATE SET \
+                     schema_json = excluded.schema_json, primary_key = excluded.primary_key",
+                params![tenant_id, table_name, schema_json, primary_key, created_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Drops the table registration and every row it owns, in one
+    /// transaction. `true` if a table by that name existed.
+    pub async fn state_table_drop(
+        &self,
+        tenant_id: i64,
+        table_name: String,
+    ) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
+            let outcome: Result<bool, AppError> = (|| {
+                let n = conn.execute(
+                    "DELETE FROM tenant_state_tables WHERE tenant_id = ?1 AND table_name = ?2",
+                    params![tenant_id, table_name],
+                )?;
+                conn.execute(
+                    "DELETE FROM tenant_state_rows WHERE tenant_id = ?1 AND table_name = ?2",
+                    params![tenant_id, table_name],
+                )?;
+                Ok(n > 0)
+            })();
+            match outcome {
+                Ok(existed) => {
+                    conn.execute("COMMIT", []).map_err(AppError::from)?;
+                    Ok(existed)
+                }
+                Err(e) => {
+                    let _ = conn.execute("ROLLBACK", []);
+                    Err(e)
+                }
+            }
+        })
+        .await
+    }
+
+    /// Every `(id, row_json)` currently stored for `table_name` -- the
+    /// input `tenant_state::query_table`/`delete_rows_where` filter over in
+    /// Rust (see migration 0011's doc comment for why this isn't
+    /// pushed-down SQL).
+    pub async fn state_rows_all(
+        &self,
+        tenant_id: i64,
+        table_name: String,
+    ) -> Result<Vec<(i64, String)>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, row_json FROM tenant_state_rows \
+                 WHERE tenant_id = ?1 AND table_name = ?2 ORDER BY id",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id, table_name], |r| {
+                    Ok((r.get(0)?, r.get(1)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    pub async fn state_row_count(&self, tenant_id: i64, table_name: String) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM tenant_state_rows WHERE tenant_id = ?1 AND table_name = ?2",
+                params![tenant_id, table_name],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    pub async fn state_row_insert(
+        &self,
+        tenant_id: i64,
+        table_name: String,
+        row_json: String,
+    ) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO tenant_state_rows (tenant_id, table_name, row_json) \
+                 VALUES (?1, ?2, ?3)",
+                params![tenant_id, table_name, row_json],
+            )?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+    }
+
+    pub async fn state_rows_delete_by_ids(
+        &self,
+        tenant_id: i64,
+        table_name: String,
+        ids: Vec<i64>,
+    ) -> Result<i64, AppError> {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        self.with_conn(move |conn| {
+            let mut deleted = 0i64;
+            for id in ids {
+                deleted += conn.execute(
+                    "DELETE FROM tenant_state_rows \
+                     WHERE tenant_id = ?1 AND table_name = ?2 AND id = ?3",
+                    params![tenant_id, table_name, id],
+                )? as i64;
+            }
+            Ok(deleted)
         })
         .await
     }
