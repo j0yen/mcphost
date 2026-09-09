@@ -85,6 +85,24 @@ fn json_type_name(v: &Value) -> &'static str {
     }
 }
 
+/// JSON type name for a [`Value`] in plain JSON's own six-type vocabulary
+/// (PRD-mcphost-spec-output-paths requirement 1's `got`) -- unlike
+/// [`json_type_name`] above, every number is just `"number"`; JSON itself
+/// has no separate "integer" type (that's a JSON-*Schema* distinction this
+/// PRD's structured `invalid_spec.got` deliberately doesn't make, since
+/// AC2's example -- `outputs.a: 5` -- names `got` as `"number"`, not
+/// `"integer"`).
+fn plain_json_type_name(v: &Value) -> &'static str {
+    match v {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
+}
+
 /// PRD-mcphost-python-kind-runtime requirement 1/AC3: the host's only
 /// argument-type check across every kind is [`jsonschema`] validation at
 /// call time -- there is no separate coercion step anywhere in this crate
@@ -246,7 +264,7 @@ pub async fn run_spec_test(
 
 /// One level of common API-response wrapping a declared field is searched
 /// under, beyond the source object's own top level (requirement 2, `http`).
-const ENVELOPE_WRAPPER_KEYS: [&str; 3] = ["data", "result", "response"];
+pub(crate) const ENVELOPE_WRAPPER_KEYS: [&str; 3] = ["data", "result", "response"];
 
 /// Finds `field` in `source`: at its top level, or nested one level inside
 /// `wrapper_keys` -- `Some(&ENVELOPE_WRAPPER_KEYS)` for requirement 2's
@@ -337,27 +355,456 @@ fn promote_declared_outputs_with(
 /// whatever [`Kind::payload_from_call_result`] located, `None` when this
 /// kind's result had no `payload` at all. Returns `None` when `declared` is
 /// empty -- a tool with no declared outputs gets no envelope section.
-pub fn envelope_report(declared: &[String], payload: Option<&Value>) -> Option<Value> {
+///
+/// `missing` itself stays the plain list of field names it always was
+/// (PRD-mcphost-spec-output-paths requirement 9: every existing
+/// `tests/envelope_ac*.rs` assertion on that shape keeps passing unchanged).
+/// The same PRD's requirement 5 -- telling the publisher *where* a missing
+/// field was actually seen -- is additive: `missing_detail` carries one
+/// entry per missing field, `{"name", "path"}` when that entry declared an
+/// explicit path (the path that was tried and came up empty), or
+/// `{"name", "seen_at"}` (up to three candidate paths, omitted entirely when
+/// none are found) for a bare-name entry, searched via
+/// [`find_seen_at`] against `seen_at_source` -- the un-promoted body
+/// ([`Kind::source_for_output_search`]), not `payload`, so a hint like
+/// `$.json.ingestion_status` isn't itself dulled by the same wrapper-search
+/// depth limit that missed the field in the first place.
+pub fn envelope_report(
+    declared: &[OutputDecl],
+    payload: Option<&Value>,
+    seen_at_source: Option<&Value>,
+) -> Option<Value> {
     if declared.is_empty() {
         return None;
     }
     let mut found = Vec::new();
     let mut missing = Vec::new();
-    for field in declared {
-        let present = payload.and_then(|p| p.as_object()).is_some_and(|p| p.contains_key(field));
+    let mut missing_detail = Vec::new();
+    for decl in declared {
+        let present = payload
+            .and_then(|p| p.as_object())
+            .is_some_and(|p| p.contains_key(&decl.name));
         if present {
-            found.push(field.clone());
+            found.push(decl.name.clone());
         } else {
-            missing.push(field.clone());
+            missing.push(decl.name.clone());
+            let mut detail = json!({"name": decl.name});
+            if let Some(obj) = detail.as_object_mut() {
+                match &decl.path {
+                    Some(path) => {
+                        obj.insert("path".to_string(), json!(path.as_str()));
+                    }
+                    None => {
+                        if let Some(source) = seen_at_source {
+                            let hints = find_seen_at(source, &decl.name, 3, 3);
+                            if !hints.is_empty() {
+                                obj.insert("seen_at".to_string(), json!(hints));
+                            }
+                        }
+                    }
+                }
+            }
+            missing_detail.push(detail);
         }
     }
     let green = missing.is_empty();
     Some(json!({
-        "declared": declared,
+        "declared": declared.iter().map(|d| d.name.clone()).collect::<Vec<_>>(),
         "found_at_contract_path": found,
         "missing": missing,
+        "missing_detail": missing_detail,
         "green": green,
     }))
+}
+
+// ---- declared-output paths (PRD-mcphost-spec-output-paths) ----------------
+//
+// `outputs` may name a plain field (promoted via the wrapper search above,
+// unchanged -- non-goal 2) or pair a field with a `Path` saying exactly
+// where to read it from the upstream/return body, closing the class of
+// defect where a declared field sits one key deeper than the wrapper search
+// looks (the map form the Problem statement's recorded sessions reached for
+// on their own).
+
+/// One `outputs` entry, normalized from either wire form (a bare name in a
+/// list, or a name/path pair in a map) by [`normalize_outputs`]. `path` is
+/// `None` for a list entry -- it keeps today's wrapper-search promotion
+/// (requirement 2); `Some` for a map entry -- requirement 4 reads exactly
+/// that path from the source body instead of searching.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OutputDecl {
+    pub name: String,
+    pub path: Option<Path>,
+}
+
+/// One segment of a [`Path`]: a dotted object key or a bracketed array
+/// index.
+#[derive(Debug, Clone, PartialEq)]
+enum PathSegment {
+    Key(String),
+    Index(usize),
+}
+
+/// A parsed `$.a.b[0].c`-style path (requirement 3): `$` followed by zero or
+/// more `.<key>` / `[<uint>]` segments. Deliberately not a general JSONPath
+/// engine (non-goal 1) -- [`Path::parse`] rejects a wildcard, filter, or
+/// recursive-descent expression by name rather than silently misreading it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Path {
+    raw: String,
+    segments: Vec<PathSegment>,
+}
+
+/// Why a candidate path string was rejected (requirement 3 / AC8): named
+/// separately from a generic "malformed" so the error message can say
+/// exactly which unsupported JSONPath feature was used.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PathParseError {
+    Wildcard,
+    Filter,
+    RecursiveDescent,
+    Malformed,
+}
+
+impl PathParseError {
+    fn reason(self) -> &'static str {
+        match self {
+            PathParseError::Wildcard => "uses a wildcard",
+            PathParseError::Filter => "uses a filter expression",
+            PathParseError::RecursiveDescent => "uses recursive descent",
+            PathParseError::Malformed => "is not a valid path",
+        }
+    }
+}
+
+impl Path {
+    /// Requirement 3: parses `raw` as `$` followed by zero or more
+    /// `.<key>` / `[<uint>]` segments. A key is restricted to
+    /// alphanumeric/`_`/`-` (every recorded fixture's field names, and every
+    /// JSON object key this crate's own kinds produce, fit that set); a
+    /// bracketed segment must be a non-negative integer. Anything else --
+    /// `[*]`, `.*`, `[?...]`, `..` (recursive descent), or a string that
+    /// doesn't start with `$` -- is rejected with the specific reason AC8
+    /// wants named.
+    fn parse(raw: &str) -> Result<Path, PathParseError> {
+        let rest = raw.strip_prefix('$').ok_or(PathParseError::Malformed)?;
+        if rest.contains("[*]") || rest.contains(".*") {
+            return Err(PathParseError::Wildcard);
+        }
+        if rest.contains("[?") {
+            return Err(PathParseError::Filter);
+        }
+        if rest.contains("..") {
+            return Err(PathParseError::RecursiveDescent);
+        }
+        let bytes = rest.as_bytes();
+        let mut i = 0;
+        let mut segments = Vec::new();
+        while i < bytes.len() {
+            match bytes[i] {
+                b'.' => {
+                    i += 1;
+                    let start = i;
+                    while i < bytes.len() && bytes[i] != b'.' && bytes[i] != b'[' {
+                        i += 1;
+                    }
+                    let key = &rest[start..i];
+                    if key.is_empty()
+                        || !key
+                            .chars()
+                            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+                    {
+                        return Err(PathParseError::Malformed);
+                    }
+                    segments.push(PathSegment::Key(key.to_string()));
+                }
+                b'[' => {
+                    i += 1;
+                    let start = i;
+                    while i < bytes.len() && bytes[i] != b']' {
+                        i += 1;
+                    }
+                    if i >= bytes.len() {
+                        return Err(PathParseError::Malformed);
+                    }
+                    let idx: usize = rest[start..i]
+                        .parse()
+                        .map_err(|_| PathParseError::Malformed)?;
+                    segments.push(PathSegment::Index(idx));
+                    i += 1;
+                }
+                _ => return Err(PathParseError::Malformed),
+            }
+        }
+        Ok(Path {
+            raw: raw.to_string(),
+            segments,
+        })
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.raw
+    }
+
+    /// Requirement 4: walks `source` by this path's segments, returning
+    /// `None` (rather than an error) the moment a segment doesn't resolve --
+    /// the caller (http's `call`, [`envelope_report`]'s `missing` detail)
+    /// treats "not found" as the ordinary, expected outcome of a path the
+    /// upstream didn't populate this time.
+    pub fn resolve<'a>(&self, source: &'a Value) -> Option<&'a Value> {
+        let mut cur = source;
+        for seg in &self.segments {
+            cur = match seg {
+                PathSegment::Key(k) => cur.as_object()?.get(k)?,
+                PathSegment::Index(i) => cur.as_array()?.get(*i)?,
+            };
+        }
+        Some(cur)
+    }
+}
+
+/// Requirement 1's structured `invalid_spec` shape: `field` (a dotted path),
+/// `got` (the JSON type found there), `expected` (a plain phrase), `example`
+/// (one accepted value) -- message `invalid spec: <field>: expected
+/// <expected>, got <got>; e.g. <example>`. Used both by [`spec_parse_error`]
+/// (a whole-struct deserialize failure) and [`normalize_outputs`] (an
+/// `outputs` entry with the wrong shape).
+fn invalid_spec_error(field: impl Into<String>, got: &str, expected: &str, example: Value) -> KindError {
+    let field = field.into();
+    let message = format!(
+        "invalid spec: {field}: expected {expected}, got {got}; e.g. {}",
+        serde_json::to_string(&example).unwrap_or_default()
+    );
+    KindError::structured_with(
+        "invalid_spec",
+        message,
+        json!({"field": field, "got": got, "expected": expected, "example": example}),
+    )
+}
+
+/// Same shape as [`invalid_spec_error`], but for requirement 3's path-syntax
+/// rejections, whose message follows the "path "..." uses a wildcard;
+/// supported: ..." phrasing the PRD's own user story spells out verbatim,
+/// rather than the generic "expected X, got Y" template (there is no
+/// meaningful "got" type distinct from "string" once a field has already
+/// passed [`normalize_outputs`]'s own type check).
+fn invalid_path_error(field: impl Into<String>, raw_path: &str, reason: &'static str) -> KindError {
+    let field = field.into();
+    let expected = "dotted keys and integer indices, e.g. \"$.items[0].ok\"";
+    let example = json!("$.items[0].ok");
+    let message = format!(
+        "invalid spec: {field}: path \"{raw_path}\" {reason}; supported: {expected}"
+    );
+    KindError::structured_with(
+        "invalid_spec",
+        message,
+        json!({"field": field, "got": "string", "expected": expected, "example": example}),
+    )
+}
+
+/// Requirement 2/3: turns a raw `outputs` [`Value`] (as received on the
+/// wire, before this function nothing has checked its shape beyond "valid
+/// JSON") into normalized [`OutputDecl`]s. Accepts either a list of field
+/// name strings (today's only form, unchanged -- entries get `path: None`)
+/// or an object mapping each field name to a path string (requirement 2).
+/// Every other shape -- a list entry that isn't a string, a map value that
+/// isn't a string, or the top-level value being neither a list nor an
+/// object -- is rejected with [`invalid_spec_error`]; a path string that
+/// doesn't parse is rejected with [`invalid_path_error`] naming
+/// `outputs.<name>` (requirement 3).
+pub fn normalize_outputs(value: &Value) -> Result<Vec<OutputDecl>, KindError> {
+    match value {
+        Value::Array(items) => {
+            let mut out = Vec::with_capacity(items.len());
+            for (i, item) in items.iter().enumerate() {
+                match item.as_str() {
+                    Some(name) => out.push(OutputDecl {
+                        name: name.to_string(),
+                        path: None,
+                    }),
+                    None => {
+                        return Err(invalid_spec_error(
+                            format!("outputs[{i}]"),
+                            plain_json_type_name(item),
+                            "a field name string",
+                            json!("status"),
+                        ));
+                    }
+                }
+            }
+            Ok(out)
+        }
+        Value::Object(map) => {
+            let mut out = Vec::with_capacity(map.len());
+            for (name, path_val) in map {
+                let field = format!("outputs.{name}");
+                let raw_path = path_val.as_str().ok_or_else(|| {
+                    invalid_spec_error(
+                        field.clone(),
+                        plain_json_type_name(path_val),
+                        "a path string (dotted keys and integer indices, e.g. \"$.a.b[0].c\")",
+                        json!("$.json.a"),
+                    )
+                })?;
+                let path = Path::parse(raw_path)
+                    .map_err(|e| invalid_path_error(field.clone(), raw_path, e.reason()))?;
+                out.push(OutputDecl {
+                    name: name.clone(),
+                    path: Some(path),
+                });
+            }
+            Ok(out)
+        }
+        other => Err(invalid_spec_error(
+            "outputs",
+            plain_json_type_name(other),
+            "a list of field names or an object mapping field names to path strings",
+            json!({"status": "$.data.status"}),
+        )),
+    }
+}
+
+/// Requirement 1: turns a whole-spec-struct deserialize failure (run through
+/// `serde_path_to_error` at each kind's `parse_spec`) into the same
+/// structured `invalid_spec` shape [`invalid_spec_error`] builds by hand --
+/// `field` is the dotted path `serde_path_to_error` names, `got` is looked
+/// up by walking `raw_spec` (the original, still-untyped JSON) along that
+/// same path, and `expected`/`example` come from `field_hint`, the calling
+/// kind's own table of its raw struct's field names (an unlisted/nested
+/// field -- there are none in either kind's flat raw struct today -- falls
+/// back to a generic phrase built from serde's own error detail, so this
+/// never panics or silently drops information).
+pub fn spec_parse_error<E: std::fmt::Display>(
+    raw_spec: &Value,
+    err: serde_path_to_error::Error<E>,
+    field_hint: impl Fn(&str) -> Option<(&'static str, Value)>,
+) -> KindError {
+    let field = err.path().to_string();
+    let field = if field.is_empty() { "spec".to_string() } else { field };
+    let got = value_at_dotted_path(raw_spec, &field)
+        .map(plain_json_type_name)
+        .unwrap_or("missing");
+    match field_hint(&field) {
+        Some((expected, example)) => invalid_spec_error(field, got, expected, example),
+        None => {
+            let inner = err.into_inner();
+            KindError::InvalidSpec(format!("{field}: {inner}"))
+        }
+    }
+}
+
+/// Walks `root` along a `serde_path_to_error`-formatted dotted/bracketed
+/// path (`"a.b[0].c"`, the same syntax [`Path`] parses, minus the leading
+/// `$`) to find the JSON value actually present there -- used only to
+/// compute [`spec_parse_error`]'s `got` type, so a lookup miss (the field is
+/// simply absent, distinct from present-with-the-wrong-type) is `None`
+/// rather than an error.
+fn value_at_dotted_path<'a>(root: &'a Value, path: &str) -> Option<&'a Value> {
+    fn flush_key<'a>(cur: &'a Value, key: &str) -> Option<&'a Value> {
+        if key.is_empty() {
+            Some(cur)
+        } else {
+            cur.as_object()?.get(key)
+        }
+    }
+
+    let mut cur = root;
+    let mut pending_key = String::new();
+    let mut chars = path.char_indices().peekable();
+    while let Some((i, c)) = chars.next() {
+        match c {
+            '.' => {
+                cur = flush_key(cur, &pending_key)?;
+                pending_key.clear();
+            }
+            '[' => {
+                cur = flush_key(cur, &pending_key)?;
+                pending_key.clear();
+                let start = i + 1;
+                let mut end = start;
+                for (j, c2) in chars.by_ref() {
+                    if c2 == ']' {
+                        end = j;
+                        break;
+                    }
+                }
+                let idx: usize = path.get(start..end)?.parse().ok()?;
+                cur = cur.as_array()?.get(idx)?;
+            }
+            _ => pending_key.push(c),
+        }
+    }
+    flush_key(cur, &pending_key)
+}
+
+/// Requirement 4: like [`promote_declared_outputs_with`], but per-declared
+/// entry rather than per plain name -- an [`OutputDecl`] with a `path`
+/// reads exactly that path from `source` (leaving the field absent, not an
+/// error, when the path doesn't resolve); one with no path keeps the
+/// existing wrapper-search promotion (`wrapper_keys`), unchanged (non-goal
+/// 2).
+pub fn apply_output_decls(
+    payload: &mut Map<String, Value>,
+    source: &Value,
+    declared: &[OutputDecl],
+    wrapper_keys: Option<&[&str]>,
+) {
+    let mut no_path_names = Vec::new();
+    for decl in declared {
+        if payload.contains_key(&decl.name) {
+            continue;
+        }
+        match &decl.path {
+            Some(path) => {
+                if let Some(v) = path.resolve(source) {
+                    payload.insert(decl.name.clone(), v.clone());
+                }
+            }
+            None => no_path_names.push(decl.name.clone()),
+        }
+    }
+    promote_declared_outputs_with(payload, source, &no_path_names, wrapper_keys);
+}
+
+/// Requirement 5: up to `max_results` dotted paths (`$.a.b`) where a key
+/// named `field` exists anywhere in `source`, searched breadth-first by
+/// depth (top-level keys are depth 1) up to `max_depth` -- so
+/// `host.tool_test`'s report can tell a publisher who declared a bare name
+/// exactly where in the body a same-named key actually sits, instead of
+/// leaving them to guess (the defect AC6 names: a list-form `outputs` entry
+/// whose value sits one key deeper than the wrapper search looks).
+fn find_seen_at(source: &Value, field: &str, max_depth: usize, max_results: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut path = Vec::new();
+    find_seen_at_walk(source, field, &mut path, 1, max_depth, max_results, &mut out);
+    out
+}
+
+fn find_seen_at_walk(
+    value: &Value,
+    field: &str,
+    path: &mut Vec<String>,
+    depth: usize,
+    max_depth: usize,
+    max_results: usize,
+    out: &mut Vec<String>,
+) {
+    let Value::Object(map) = value else {
+        return;
+    };
+    for (key, val) in map {
+        if out.len() >= max_results {
+            return;
+        }
+        path.push(key.clone());
+        if key == field {
+            out.push(format!("$.{}", path.join(".")));
+        }
+        if out.len() < max_results && depth < max_depth {
+            find_seen_at_walk(val, field, path, depth + 1, max_depth, max_results, out);
+        }
+        path.pop();
+    }
 }
 
 /// What a `Kind::describe` call reports about the tool it would publish.
@@ -641,16 +1088,19 @@ pub trait Kind: Send + Sync {
         None
     }
 
-    /// PRD-mcphost-result-envelope-contract requirement 1: the output field
-    /// names this `spec` declares (its own `outputs`, when present) --
-    /// `Kind::call` promotes each to `result.payload.<field>` and
-    /// `host.tool_test` reports any that never land there. `Vec::new()`
-    /// (the default) for a kind with no declared-outputs concept, or an
-    /// unparseable spec (publish-time validation already rejects that spec
-    /// before this is ever reached in practice; this fallback exists only
-    /// so the method never panics) -- a tool that declares nothing gets no
-    /// envelope changes at all (additive, see Migration/compatibility).
-    fn declared_outputs(&self, _spec: &Value) -> Vec<String> {
+    /// PRD-mcphost-result-envelope-contract requirement 1 (extended by
+    /// PRD-mcphost-spec-output-paths requirement 2/3 to carry each entry's
+    /// optional [`Path`]): the output fields this `spec` declares (its own
+    /// `outputs`, when present) -- `Kind::call` promotes each to
+    /// `result.payload.<field>` (directly from its `path`, when it has one,
+    /// else via the wrapper search) and `host.tool_test` reports any that
+    /// never land there. `Vec::new()` (the default) for a kind with no
+    /// declared-outputs concept, or an unparseable spec (publish-time
+    /// validation already rejects that spec before this is ever reached in
+    /// practice; this fallback exists only so the method never panics) -- a
+    /// tool that declares nothing gets no envelope changes at all (additive,
+    /// see Migration/compatibility).
+    fn declared_outputs(&self, _spec: &Value) -> Vec<OutputDecl> {
         Vec::new()
     }
 
@@ -665,6 +1115,21 @@ pub trait Kind: Send + Sync {
     /// also check that path.
     fn payload_from_call_result<'a>(&self, call_result: &'a Value) -> Option<&'a Value> {
         call_result.get("payload")
+    }
+
+    /// PRD-mcphost-spec-output-paths requirement 5: the *un-promoted* body
+    /// [`envelope_report`]'s `seen_at` hint searches for a bare-name
+    /// declared field the contract path never got -- distinct from
+    /// [`Kind::payload_from_call_result`] (which is already the promoted
+    /// result and so, by definition, never contains the missing field at any
+    /// depth `find_seen_at` would need to search). Defaults to the same spot
+    /// `payload_from_call_result` reads, which is a reasonable
+    /// (non-panicking) answer for a kind that doesn't override either; the
+    /// `http` kind overrides this to point at the upstream response body
+    /// instead, since that -- not the already-promoted payload -- is what
+    /// AC6's `seen_at` example is found in.
+    fn source_for_output_search<'a>(&self, call_result: &'a Value) -> Option<&'a Value> {
+        self.payload_from_call_result(call_result)
     }
 }
 
@@ -714,5 +1179,145 @@ impl KindRegistry {
     /// nothing for `echo`/`http`).
     pub fn all(&self) -> impl Iterator<Item = &Arc<dyn Kind>> {
         self.kinds.values()
+    }
+}
+
+#[cfg(test)]
+mod spec_output_paths_tests {
+    use super::*;
+
+    #[test]
+    fn path_parses_dotted_keys_and_bracketed_indices() {
+        let path = Path::parse("$.a.b[0].c").expect("valid path");
+        let source = json!({"a": {"b": [{"c": "found"}]}});
+        assert_eq!(path.resolve(&source), Some(&json!("found")));
+        assert_eq!(path.as_str(), "$.a.b[0].c");
+    }
+
+    #[test]
+    fn path_resolve_returns_none_rather_than_erroring_on_a_miss() {
+        let path = Path::parse("$.a.b").expect("valid path");
+        assert_eq!(path.resolve(&json!({"a": {}})), None);
+        assert_eq!(path.resolve(&json!({"x": 1})), None);
+        assert_eq!(path.resolve(&json!([1, 2, 3])), None);
+    }
+
+    #[test]
+    fn path_rejects_a_wildcard_filter_and_recursive_descent() {
+        assert_eq!(Path::parse("$.items[*].a"), Err(PathParseError::Wildcard));
+        assert_eq!(Path::parse("$.*"), Err(PathParseError::Wildcard));
+        assert_eq!(Path::parse("$.items[?(@.ok)]"), Err(PathParseError::Filter));
+        assert_eq!(Path::parse("$..a"), Err(PathParseError::RecursiveDescent));
+        assert_eq!(Path::parse("a.b"), Err(PathParseError::Malformed));
+        assert_eq!(Path::parse("$.a[x]"), Err(PathParseError::Malformed));
+    }
+
+    #[test]
+    fn normalize_outputs_accepts_the_list_form_unchanged() {
+        let decls = normalize_outputs(&json!(["status", "score"])).expect("valid list");
+        assert_eq!(
+            decls,
+            vec![
+                OutputDecl {
+                    name: "status".to_string(),
+                    path: None
+                },
+                OutputDecl {
+                    name: "score".to_string(),
+                    path: None
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn normalize_outputs_accepts_the_map_form() {
+        let decls = normalize_outputs(&json!({"a": "$.json.a"})).expect("valid map");
+        assert_eq!(decls.len(), 1);
+        assert_eq!(decls[0].name, "a");
+        assert_eq!(decls[0].path.as_ref().map(Path::as_str), Some("$.json.a"));
+    }
+
+    #[test]
+    fn normalize_outputs_rejects_a_non_string_map_value() {
+        let err = normalize_outputs(&json!({"a": 5})).unwrap_err();
+        let KindError::Structured { code, message, data } = err else {
+            panic!("expected a Structured error");
+        };
+        assert_eq!(code, "invalid_spec");
+        assert_eq!(data["field"], "outputs.a");
+        assert_eq!(data["got"], "number");
+        assert!(message.starts_with("invalid spec: outputs.a:"));
+    }
+
+    #[test]
+    fn normalize_outputs_rejects_an_unsupported_top_level_shape() {
+        let err = normalize_outputs(&json!("not a list or map")).unwrap_err();
+        let KindError::Structured { data, .. } = err else {
+            panic!("expected a Structured error");
+        };
+        assert_eq!(data["field"], "outputs");
+        assert_eq!(data["got"], "string");
+    }
+
+    #[test]
+    fn find_seen_at_finds_a_key_nested_up_to_depth_three() {
+        let source = json!({"json": {"ingestion_status": "ok"}});
+        let hints = find_seen_at(&source, "ingestion_status", 3, 3);
+        assert_eq!(hints, vec!["$.json.ingestion_status".to_string()]);
+    }
+
+    #[test]
+    fn find_seen_at_respects_the_depth_and_result_bounds() {
+        let deep = json!({"a": {"b": {"c": {"target": 1}}}});
+        // depth 3 only reaches a.b.c, not a.b.c.target (depth 4).
+        assert!(find_seen_at(&deep, "target", 3, 3).is_empty());
+        assert_eq!(find_seen_at(&deep, "target", 4, 3), vec!["$.a.b.c.target"]);
+
+        let many = json!({"a": 1, "b": 1, "c": 1, "d": 1});
+        assert_eq!(find_seen_at(&many, "z", 3, 0).len(), 0);
+    }
+
+    #[test]
+    fn envelope_report_keeps_missing_as_plain_names_and_adds_detail() {
+        let declared = vec![
+            OutputDecl {
+                name: "found_field".to_string(),
+                path: None,
+            },
+            OutputDecl {
+                name: "absent_with_path".to_string(),
+                path: Some(Path::parse("$.json.absent").unwrap()),
+            },
+            OutputDecl {
+                name: "absent_bare".to_string(),
+                path: None,
+            },
+        ];
+        let payload = json!({"found_field": "x"});
+        let seen_at_source = json!({"json": {"absent_bare": "here"}});
+        let report =
+            envelope_report(&declared, Some(&payload), Some(&seen_at_source)).expect("some report");
+
+        let missing = report["missing"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>();
+        assert_eq!(missing, vec!["absent_with_path", "absent_bare"]);
+
+        let detail = report["missing_detail"].as_array().unwrap();
+        let with_path = detail
+            .iter()
+            .find(|d| d["name"] == "absent_with_path")
+            .unwrap();
+        assert_eq!(with_path["path"], "$.json.absent");
+
+        let bare = detail.iter().find(|d| d["name"] == "absent_bare").unwrap();
+        assert_eq!(bare["seen_at"], json!(["$.json.absent_bare"]));
+
+        assert_eq!(report["found_at_contract_path"], json!(["found_field"]));
+        assert_eq!(report["green"], false);
     }
 }

@@ -43,6 +43,7 @@ futures-util = { version = "0.3.34", default-features = false, features = ["std"
 # PRD-mcphost-code-tools: `src/sandbox.rs`'s pre_exec rlimits (setrlimit),
 # process-group signalling (killpg/setsid) and `/proc` resource sampling.
 libc = "0.2"
+serde_path_to_error = "0.1.20"
 
 [features]
 # PRD-mcphost-classify-precision: gates PythonKind's test-only selftest

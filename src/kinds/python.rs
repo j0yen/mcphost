@@ -102,7 +102,7 @@ use sha2::{Digest, Sha256};
 use tokio::sync::Semaphore;
 
 use super::infer;
-use super::{CallCtx, Kind, KindError, KindExample, ToolDescriptor};
+use super::{CallCtx, Kind, KindError, KindExample, OutputDecl, ToolDescriptor};
 use crate::sandbox::{
     self, IsolationMechanism, NetworkMode, PersistentCallOutcome, PersistentSandbox,
     ResourceLimits, SandboxOutcome,
@@ -152,8 +152,40 @@ const TOOL_RUN_CAP_BYTES: usize = 64 * 1024;
 
 // ---- spec -------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+// Not `Deserialize`: nothing decodes this type directly from the wire --
+// `parse_spec` always builds it by hand from `PythonSpecRaw` (which *is*
+// `Deserialize`), normalizing `outputs` along the way (PRD-mcphost-spec-
+// output-paths requirement 2/3, same split `kinds::http` uses).
+#[derive(Debug, Clone)]
 struct PythonSpec {
+    source: String,
+    requirements: Vec<String>,
+    args_schema: Option<Value>,
+    timeout_s: Option<u64>,
+    memory_mb: Option<u64>,
+    network: Option<String>,
+    secrets: Vec<String>,
+    description: Option<String>,
+    /// PRD-mcphost-result-envelope-contract requirement 1, extended by
+    /// PRD-mcphost-spec-output-paths requirement 2/3: field names this
+    /// tool's caller can expect to read at `result.payload.<field>`, each
+    /// with an optional `Path`. Optional -- a spec that omits it (every spec
+    /// published before either PRD) gets no envelope changes
+    /// (Migration/compatibility: additive). The map form's *path* here
+    /// parses (requirement 2/3) but, unlike `http`, is not yet read from at
+    /// call time -- see [`apply_declared_outputs`]'s doc (P1, may defer per
+    /// the PRD's own non-goal 3 / open question).
+    outputs: Vec<OutputDecl>,
+}
+
+/// Wire-level shape of a `python` spec: identical to [`PythonSpec`] except
+/// `outputs`, kept as a raw `Value` so either wire form (list or map)
+/// deserializes without error -- [`super::normalize_outputs`] does the
+/// actual shape check in [`parse_spec`], where a violation can name
+/// `outputs`/`outputs.<name>` specifically instead of the generic serde
+/// message for the whole struct.
+#[derive(Debug, Clone, Deserialize)]
+struct PythonSpecRaw {
     source: String,
     #[serde(default)]
     requirements: Vec<String>,
@@ -172,12 +204,36 @@ struct PythonSpec {
     secrets: Vec<String>,
     #[serde(default)]
     description: Option<String>,
-    /// PRD-mcphost-result-envelope-contract requirement 1: field names this
-    /// tool's caller can expect to read at `result.payload.<field>`.
-    /// Optional -- a spec that omits it (every spec published before this
-    /// PRD) gets no envelope changes (Migration/compatibility: additive).
-    #[serde(default)]
-    outputs: Vec<String>,
+    #[serde(default = "default_outputs")]
+    outputs: Value,
+}
+
+fn default_outputs() -> Value {
+    Value::Array(Vec::new())
+}
+
+/// PRD-mcphost-spec-output-paths requirement 1: `expected`/`example` for
+/// every field [`PythonSpecRaw`] names -- see `kinds::http`'s
+/// `http_field_hint` for the shared design.
+fn python_field_hint(field: &str) -> Option<(&'static str, Value)> {
+    Some(match field {
+        "source" => (
+            "a string",
+            json!("def main(args):\n    return {\"ok\": True}\n"),
+        ),
+        "requirements" => ("a list of strings", json!(["requests"])),
+        "args_schema" => ("a JSON Schema object", json!({"type": "object"})),
+        "timeout_s" => ("a positive integer number of seconds", json!(10)),
+        "memory_mb" => ("a positive integer number of megabytes", json!(256)),
+        "network" => ("\"none\" or \"public\"", json!("none")),
+        "secrets" => ("a list of strings", json!(["api_key"])),
+        "description" => ("a string", json!("Doubles a number.")),
+        "outputs" => (
+            "a list of field names or an object mapping field names to path strings",
+            json!({"score": "$.data.score"}),
+        ),
+        _ => return None,
+    })
 }
 
 impl PythonSpec {
@@ -219,7 +275,20 @@ fn parse_spec(spec: &Value) -> Result<PythonSpec, KindError> {
     if !spec.is_object() {
         return Err(KindError::InvalidSpec("spec: must be a JSON object".into()));
     }
-    serde_json::from_value(spec.clone()).map_err(|e| KindError::InvalidSpec(format!("spec: {e}")))
+    let raw: PythonSpecRaw = serde_path_to_error::deserialize(spec.clone())
+        .map_err(|e| super::spec_parse_error(spec, e, python_field_hint))?;
+    let outputs = super::normalize_outputs(&raw.outputs)?;
+    Ok(PythonSpec {
+        source: raw.source,
+        requirements: raw.requirements,
+        args_schema: raw.args_schema,
+        timeout_s: raw.timeout_s,
+        memory_mb: raw.memory_mb,
+        network: raw.network,
+        secrets: raw.secrets,
+        description: raw.description,
+        outputs,
+    })
 }
 
 /// requirement 2: "no `requirements` entry uses a URL, path or VCS
@@ -1870,28 +1939,38 @@ fn value_type_name(v: &Value) -> &'static str {
 /// value is promoted to the *first* declared field, with a structured
 /// `_envelope_warning` naming the scalar promotion rather than silently
 /// guessing which declared field the raw value represents.
-fn apply_declared_outputs(value: Value, declared: &[String]) -> Value {
+///
+/// PRD-mcphost-spec-output-paths non-goal 3 / open question ("python kind's
+/// map form beyond parsing is P1 here and may be deferred"): `declared`'s
+/// own `path` (when an entry came from the map form) is *parsed* by
+/// `parse_spec`/`normalize_outputs` but not read from here -- every entry is
+/// still promoted by name only, exactly as before the map form existed. A
+/// python tool author who writes `outputs: {"score": "$.data.score"}` gets
+/// the same wrapper-search promotion as `outputs: ["score"]`, not an error
+/// and not (yet) direct path resolution.
+fn apply_declared_outputs(value: Value, declared: &[OutputDecl]) -> Value {
     if declared.is_empty() {
         return value;
     }
+    let names: Vec<String> = declared.iter().map(|d| d.name.clone()).collect();
     match value {
         Value::Object(obj) => {
             let source = Value::Object(obj.clone());
             let mut payload_map = obj.clone();
-            super::promote_declared_outputs_any_wrapper(&mut payload_map, &source, declared);
+            super::promote_declared_outputs_any_wrapper(&mut payload_map, &source, &names);
             let mut out = obj;
             out.insert("payload".to_string(), Value::Object(payload_map));
             Value::Object(out)
         }
         other => {
-            let first = declared[0].clone();
+            let first = names[0].clone();
             let type_name = value_type_name(&other);
             let mut payload_map = Map::new();
             payload_map.insert(first.clone(), other.clone());
             payload_map.insert(
                 "_envelope_warning".to_string(),
                 json!(format!(
-                    "tool returned a bare {type_name} but declares outputs {declared:?}; the \
+                    "tool returned a bare {type_name} but declares outputs {names:?}; the \
                      whole value was promoted to '{first}' since there are no object keys to \
                      match the rest against -- return an object with matching keys instead"
                 )),
@@ -2541,7 +2620,7 @@ impl Kind for PythonKind {
         parse_spec(spec).map(|p| p.secrets).unwrap_or_default()
     }
 
-    fn declared_outputs(&self, spec: &Value) -> Vec<String> {
+    fn declared_outputs(&self, spec: &Value) -> Vec<OutputDecl> {
         parse_spec(spec).map(|p| p.outputs).unwrap_or_default()
     }
 

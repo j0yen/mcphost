@@ -200,9 +200,15 @@ impl AppError {
             // INTERNAL_ERROR-mapped variants above.
             AppError::Structured { code, .. } => match *code {
                 "rate_limited" => ErrorCode::INVALID_REQUEST,
-                "host_not_allowed" | "args_invalid" | "template_error" | "kind_mismatch" => {
-                    ErrorCode::INVALID_PARAMS
-                }
+                // PRD-mcphost-spec-output-paths requirement 1: a structured
+                // `invalid_spec` (kinds::http/python's own `parse_spec` and
+                // `normalize_outputs`) is exactly the same caller-input
+                // problem `AppError::InvalidSpec` already maps to
+                // INVALID_PARAMS above -- it must not fall into this match's
+                // `_ => INTERNAL_ERROR` default just because it arrives via
+                // `KindError::Structured` instead of `KindError::InvalidSpec`.
+                "host_not_allowed" | "args_invalid" | "template_error" | "kind_mismatch"
+                | "invalid_spec" => ErrorCode::INVALID_PARAMS,
                 _ => ErrorCode::INTERNAL_ERROR,
             },
             AppError::MultiInvalid { errors, .. } => errors
@@ -274,10 +280,26 @@ impl AppError {
                     .get("field")
                     .and_then(Value::as_str)
                     .map(str::to_string);
+                // PRD-mcphost-spec-output-paths requirement 1: a structured
+                // `invalid_spec` already carries its own clean `expected`
+                // phrase in `data` (distinct from `got`/`example`) -- prefer
+                // it over the generic "<field>: <rest>" message-split below,
+                // which would otherwise clobber it with the *whole* message
+                // (this variant's own `message` deliberately embeds an
+                // `"invalid spec: "` prefix per requirement 1's wire format,
+                // which defeats `split_field`'s "no spaces in the field"
+                // guard and falls through to the whole-message fallback).
+                // No existing `Structured` error sets `data.expected`, so
+                // this is purely additive for every caller that predates
+                // this PRD.
+                let expected_from_data = data
+                    .get("expected")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
                 let split = Self::split_field(message);
                 let field = field_from_data.or_else(|| split.map(|(f, _)| f.to_string()));
-                let expected = split
-                    .map(|(_, e)| e.to_string())
+                let expected = expected_from_data
+                    .or_else(|| split.map(|(_, e)| e.to_string()))
                     .or_else(|| Some(message.clone()));
                 (field, expected)
             }

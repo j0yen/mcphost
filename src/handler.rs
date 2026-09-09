@@ -993,8 +993,11 @@ impl McpHostHandler {
                 // published before this PRD.
                 let declared = kind.declared_outputs(&row.spec);
                 if !declared.is_empty()
-                    && let Some(envelope) =
-                        crate::kinds::envelope_report(&declared, kind.payload_from_call_result(&value))
+                    && let Some(envelope) = crate::kinds::envelope_report(
+                        &declared,
+                        kind.payload_from_call_result(&value),
+                        kind.source_for_output_search(&value),
+                    )
                     && let Value::Object(map) = &mut value
                 {
                     map.insert("envelope".to_string(), envelope);
@@ -1408,10 +1411,11 @@ impl ServerHandler for McpHostHandler {
                  already visible in this tools/list, before you have a key. Pass the key \
                  `signup` returns as the `tenant_key` argument on every call after that; no \
                  reconnect and no Authorization header is required. Result envelope contract: \
-                 when a spec declares `outputs` (field names its tool emits), each is readable \
-                 at `result.payload.<field>` for every kind, regardless of how deep the tool's \
-                 own response nests it -- run `host.tool_test` before publishing to see which \
-                 declared fields your implementation buries. \
+                 when a spec declares `outputs` (field names its tool emits, or a map from \
+                 field name to the exact `$.a.b[0].c`-style path to read it from), each is \
+                 readable at `result.payload.<field>` for every kind, regardless of how deep \
+                 the tool's own response nests it -- run `host.tool_test` before publishing to \
+                 see which declared fields your implementation buries. \
                  host.tool_publish's `kind` argument is honored exactly as given -- an inline \
                  `source` field only publishes as `python` and `upstream`/`method`+`url` fields \
                  only publish as `http` -- so request the kind your task needs and a mismatch \

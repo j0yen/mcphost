@@ -31,7 +31,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 use super::infer;
-use super::{CallCtx, Kind, KindError, KindExample, ToolDescriptor};
+use super::{CallCtx, Kind, KindError, KindExample, OutputDecl, ToolDescriptor};
 
 const DEFAULT_TIMEOUT_S: u64 = 10;
 const MAX_TIMEOUT_S: u64 = 30;
@@ -44,34 +44,36 @@ const RESPONSE_HEADER_SUBSET: [&str; 3] = ["content-type", "retry-after", "x-req
 
 // ---- spec ----------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+// Not `Deserialize`: nothing decodes this type directly from the wire --
+// `parse_spec` always builds it by hand from `HttpSpecRaw` (which *is*
+// `Deserialize`), normalizing `outputs` along the way (requirement 2/3).
+#[derive(Debug, Clone)]
 struct HttpSpec {
     method: String,
     url: String,
-    #[serde(default)]
     headers: BTreeMap<String, String>,
-    #[serde(default)]
     query: BTreeMap<String, String>,
-    #[serde(default)]
     body: Option<Value>,
     /// Requirement 1: optional -- when absent,
     /// [`infer::infer_http_args_schema`] derives it from the placeholders
     /// referenced across `url`/`headers`/`query`/`body` (requirement 4).
     /// When present, used exactly as before with no inference performed.
-    #[serde(default)]
     args_schema: Option<Value>,
-    #[serde(default)]
     timeout_s: Option<u64>,
-    #[serde(default)]
     response: Option<String>,
-    #[serde(default)]
     description: Option<String>,
-    /// PRD-mcphost-result-envelope-contract requirement 1: field names this
-    /// tool's caller can expect to read at `result.payload.<field>`. Optional
-    /// -- a spec that omits it (every spec published before this PRD) gets
-    /// no envelope changes (Migration/compatibility: additive).
-    #[serde(default)]
-    outputs: Vec<String>,
+    /// PRD-mcphost-result-envelope-contract requirement 1, extended by
+    /// PRD-mcphost-spec-output-paths requirement 2: field names this tool's
+    /// caller can expect to read at `result.payload.<field>`, each with an
+    /// optional `Path` saying exactly where to read it from the response
+    /// body. Optional -- a spec that omits it (every spec published before
+    /// either PRD) gets no envelope changes (Migration/compatibility:
+    /// additive). Normalized from the wire's `Value` (list or map form) by
+    /// [`super::normalize_outputs`] in [`parse_spec`]; [`HttpSpecRaw`] keeps
+    /// the raw `Value` so a shape violation reports `field: "outputs"` or
+    /// `"outputs.<name>"`, never the generic serde message for the whole
+    /// struct.
+    outputs: Vec<OutputDecl>,
 }
 
 impl HttpSpec {
@@ -122,13 +124,27 @@ struct HttpSpecRaw {
     response: Option<String>,
     #[serde(default)]
     description: Option<String>,
-    #[serde(default)]
-    outputs: Vec<String>,
+    /// PRD-mcphost-spec-output-paths requirement 2/3: kept as a raw `Value`
+    /// (not `Vec<String>`) so the wire's list-of-names *or*
+    /// map-of-name-to-path form both deserialize here without error --
+    /// [`normalize_outputs`](super::normalize_outputs) does the actual shape
+    /// check afterward, in [`parse_spec`], where it can name `outputs` or
+    /// `outputs.<name>` specifically instead of `serde_path_to_error`
+    /// reporting the generic "invalid type: map, expected a sequence" this
+    /// PRD's Problem statement names.
+    #[serde(default = "default_outputs")]
+    outputs: Value,
     /// PRD-mcphost-rest-bridge requirement: a single-endpoint REST bridge
     /// declared by upstream URL/method/param-mapping instead of
     /// hand-written `{{ }}` templates. See [`compile_upstream`].
     #[serde(default)]
     upstream: Option<UpstreamSpec>,
+}
+
+/// `#[serde(default = ...)]` needs a function, not a literal -- the wire's
+/// implicit default for an omitted `outputs` (no declared fields at all).
+fn default_outputs() -> Value {
+    Value::Array(Vec::new())
 }
 
 /// Where a call argument goes when compiling an [`UpstreamSpec`] -- into
@@ -231,7 +247,11 @@ fn is_valid_upstream_param_name(name: &str) -> bool {
 /// required, typed `string` -- P0 scope; widening a param's type or making
 /// it optional is P1/P2). Once compiled, the result runs through the exact
 /// same `validate`/`call` code as a hand-templated spec.
-fn compile_upstream(upstream: &UpstreamSpec, raw: &HttpSpecRaw) -> Result<HttpSpec, KindError> {
+fn compile_upstream(
+    upstream: &UpstreamSpec,
+    raw: &HttpSpecRaw,
+    outputs: Vec<OutputDecl>,
+) -> Result<HttpSpec, KindError> {
     let mut url = upstream.url.clone();
     let mut query = BTreeMap::new();
     let mut body_fields = Map::new();
@@ -301,7 +321,44 @@ fn compile_upstream(upstream: &UpstreamSpec, raw: &HttpSpecRaw) -> Result<HttpSp
         timeout_s: raw.timeout_s,
         response: raw.response.clone(),
         description: raw.description.clone(),
-        outputs: raw.outputs.clone(),
+        outputs,
+    })
+}
+
+/// PRD-mcphost-spec-output-paths requirement 1: `expected`/`example` for
+/// every field [`HttpSpecRaw`] names, used by [`super::spec_parse_error`] to
+/// turn a whole-struct deserialize failure (a type mismatch anywhere in the
+/// spec, e.g. AC3's `headers` sent as an array) into the structured
+/// `invalid_spec` shape. `outputs`'s own shape errors never reach this
+/// table -- `HttpSpecRaw.outputs` is a raw `Value` precisely so those are
+/// instead reported by [`super::normalize_outputs`] with the more specific
+/// `outputs`/`outputs.<name>` field naming (requirement 2/3).
+fn http_field_hint(field: &str) -> Option<(&'static str, Value)> {
+    Some(match field {
+        "method" => ("a string", json!("GET")),
+        "url" => ("a string", json!("https://api.example.com/items/{{id}}")),
+        "headers" => (
+            "an object of header names to values",
+            json!({"Authorization": "Bearer {{ secret.token }}"}),
+        ),
+        "query" => (
+            "an object of query parameter names to values",
+            json!({"q": "{{ term }}"}),
+        ),
+        "body" => ("a JSON value", json!({"key": "{{ value }}"})),
+        "args_schema" => ("a JSON Schema object", json!({"type": "object"})),
+        "timeout_s" => ("a positive integer number of seconds", json!(10)),
+        "response" => ("\"json\" or \"text\"", json!("json")),
+        "description" => ("a string", json!("Looks up an item by id.")),
+        "outputs" => (
+            "a list of field names or an object mapping field names to path strings",
+            json!({"status": "$.data.status"}),
+        ),
+        "upstream" => (
+            "an object describing the upstream endpoint",
+            json!({"url": "https://api.example.com/{id}", "method": "GET"}),
+        ),
+        _ => return None,
     })
 }
 
@@ -309,13 +366,14 @@ fn parse_spec(spec: &Value) -> Result<HttpSpec, KindError> {
     if !spec.is_object() {
         return Err(KindError::InvalidSpec("spec: must be a JSON object".into()));
     }
-    let raw: HttpSpecRaw = serde_json::from_value(spec.clone())
-        .map_err(|e| KindError::InvalidSpec(format!("spec: {e}")))?;
+    let raw: HttpSpecRaw = serde_path_to_error::deserialize(spec.clone())
+        .map_err(|e| super::spec_parse_error(spec, e, http_field_hint))?;
+    let outputs = super::normalize_outputs(&raw.outputs)?;
     match (&raw.upstream, raw.method.is_some() || raw.url.is_some()) {
         (Some(_), true) => Err(KindError::InvalidSpec(
             "spec: cannot declare both `upstream` and `method`/`url` directly".into(),
         )),
-        (Some(upstream), false) => compile_upstream(upstream, &raw),
+        (Some(upstream), false) => compile_upstream(upstream, &raw, outputs),
         (None, true) => {
             let method = raw
                 .method
@@ -335,7 +393,7 @@ fn parse_spec(spec: &Value) -> Result<HttpSpec, KindError> {
                 timeout_s: raw.timeout_s,
                 response: raw.response,
                 description: raw.description,
-                outputs: raw.outputs,
+                outputs,
             })
         }
         (None, false) => Err(KindError::InvalidSpec(
@@ -1056,7 +1114,7 @@ impl Kind for HttpKind {
             .unwrap_or_default()
     }
 
-    fn declared_outputs(&self, spec: &Value) -> Vec<String> {
+    fn declared_outputs(&self, spec: &Value) -> Vec<OutputDecl> {
         parse_spec(spec).map(|parsed| parsed.outputs).unwrap_or_default()
     }
 
@@ -1067,6 +1125,15 @@ impl Kind for HttpKind {
         call_result
             .get("payload")
             .or_else(|| call_result.get("response").and_then(|r| r.get("payload")))
+    }
+
+    fn source_for_output_search<'a>(&self, call_result: &'a Value) -> Option<&'a Value> {
+        // PRD-mcphost-spec-output-paths requirement 5: the un-promoted
+        // upstream response body -- the same test-mode nesting
+        // `payload_from_call_result` accounts for above applies here too.
+        call_result
+            .get("body")
+            .or_else(|| call_result.get("response").and_then(|r| r.get("body")))
     }
 
     async fn call(&self, spec: &Value, args: Value, ctx: &CallCtx) -> Result<Value, KindError> {
@@ -1347,7 +1414,16 @@ impl Kind for HttpKind {
                     Value::Object(m) => m.clone(),
                     _ => Map::new(),
                 };
-                super::promote_declared_outputs(&mut payload_map, &body_clone, &parsed.outputs);
+                // PRD-mcphost-spec-output-paths requirement 4: a declared
+                // field with an explicit `path` is read directly from the
+                // body at that path; one with no path keeps the wrapper
+                // search above, unchanged (non-goal 2).
+                super::apply_output_decls(
+                    &mut payload_map,
+                    &body_clone,
+                    &parsed.outputs,
+                    Some(&super::ENVELOPE_WRAPPER_KEYS),
+                );
                 map.insert("payload".to_string(), Value::Object(payload_map));
             }
         }
@@ -1408,7 +1484,7 @@ mod tests {
         let raw: HttpSpecRaw =
             serde_json::from_value(json!({})).expect("an empty raw spec parses (all optional)");
 
-        let compiled = compile_upstream(&upstream, &raw).expect("compiles");
+        let compiled = compile_upstream(&upstream, &raw, Vec::new()).expect("compiles");
 
         assert_eq!(compiled.method, "POST");
         assert_eq!(
@@ -1444,7 +1520,7 @@ mod tests {
         let raw: HttpSpecRaw =
             serde_json::from_value(json!({})).expect("an empty raw spec parses (all optional)");
 
-        let err = compile_upstream(&upstream, &raw).unwrap_err();
+        let err = compile_upstream(&upstream, &raw, Vec::new()).unwrap_err();
         assert!(matches!(err, KindError::InvalidSpec(_)));
     }
 
