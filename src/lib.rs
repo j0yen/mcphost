@@ -21,3 +21,4 @@ pub mod registry;
 pub mod sandbox;
 pub mod secrets;
 pub mod state;
+pub mod tenant_state;

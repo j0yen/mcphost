@@ -202,6 +202,10 @@ pub fn quickstart(
             "tools_max": plan.tools_max,
             "calls_per_day": plan.calls_per_day,
             "secrets_max": plan.secrets_max,
+            // PRD-mcphost-tenant-state requirement 6 / AC10.
+            "state_bytes_max": plan.state_bytes_max,
+            "state_rows_max": plan.state_rows_max,
+            "state_ops_per_call_max": plan.state_ops_per_call_max,
         })
     });
 
@@ -229,6 +233,13 @@ pub fn quickstart(
                 "alternative_arguments": {"name": tool_name, "args": example.call_args},
                 "note": "The real call, either by its namespaced name directly or via \
                     host.tool_call by local name -- identical for metering and logs.",
+            },
+            {
+                "call": "host.state.set",
+                "arguments": {"key": "example", "value": {"n": 1}},
+                "note": "Optional: remember something between calls. host.state.get(key) \
+                    reads it back; a python tool's own code can read/write the same store. \
+                    See host.state.table_create for typed tables.",
             },
         ],
         "limits": {

@@ -44,6 +44,15 @@ own tool is **42.4s**.
    `host.tool_remove(name)`, `host.usage(window)`,
    `host.secret_set`/`host.secret_list()` (secrets stored AES-256-GCM
    encrypted).
+8. Remember something between calls, from your own session: `host.state.get(key)`,
+   `host.state.set(key, value)`, `host.state.delete(key)`,
+   `host.state.list(prefix?, limit?)` for a key-value namespace; declare a
+   typed table with `host.state.table_create(name, schema, primary_key?)`,
+   then `host.state.insert(table, rows)`,
+   `host.state.query(table, where?, order_by?, limit?)`,
+   `host.state.delete_rows(table, where?)` and `host.state.table_drop(name)`.
+   An overrun of the plan's state quota fails with
+   `error_code: state_quota_exceeded` and writes nothing.
 
 <!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
 <!-- agent-quickstart:end -->

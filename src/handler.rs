@@ -26,7 +26,7 @@ use crate::kinds::{
 use crate::state::{
     AppState, MAX_SPEC_BYTES, TOOLS_LIST_TTL_GRACE_SECS, TOOLS_LIST_TTL_MS_STEADY, now_unix,
 };
-use crate::{admin, control};
+use crate::{admin, control, tenant_state};
 
 /// Who is making this request, resolved once per request from the bearer
 /// key (or its absence).
@@ -389,6 +389,95 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              (requires --registry-url and admin.tenant_verify_namespace first).",
             host_schema(json!({}), &[]),
         ),
+        // PRD-mcphost-tenant-state P0 requirement 2: a per-tenant store an
+        // agent inspects and seeds from its own session, mirroring the
+        // `mcphost.state` module a python tool gets from inside the
+        // sandbox (not yet built -- see the crate's `tenant_state.rs`
+        // module doc).
+        Tool::new(
+            "host.state.get",
+            "Read one key from this tenant's key-value state namespace. Returns \
+             found: false (not an error) if the key was never set.",
+            host_schema(json!({"key": {"type": "string"}}), &["key"]),
+        ),
+        Tool::new(
+            "host.state.set",
+            "Write one key in this tenant's key-value state namespace; value may be any \
+             JSON value. Overrun of the plan's state_bytes_max quota fails with \
+             state_quota_exceeded and writes nothing.",
+            host_schema(
+                json!({"key": {"type": "string"}, "value": {}}),
+                &["key", "value"],
+            ),
+        ),
+        Tool::new(
+            "host.state.delete",
+            "Delete one key from this tenant's key-value state namespace.",
+            host_schema(json!({"key": {"type": "string"}}), &["key"]),
+        ),
+        Tool::new(
+            "host.state.list",
+            "List keys (with their current values) in this tenant's key-value state \
+             namespace, optionally filtered by prefix.",
+            host_schema(
+                json!({"prefix": {"type": "string"}, "limit": {"type": "integer"}}),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.state.table_create",
+            "Declare (or replace the schema of) a table in this tenant's state store. \
+             schema is {\"column\": \"text\"|\"integer\"|\"real\"|\"boolean\"|\"json\"}; \
+             primary_key, if given, must name one of schema's columns -- an insert whose \
+             row matches an existing row's primary_key value replaces it.",
+            host_schema(
+                json!({
+                    "name": {"type": "string"},
+                    "schema": {"type": "object"},
+                    "primary_key": {"type": "string"},
+                }),
+                &["name", "schema"],
+            ),
+        ),
+        Tool::new(
+            "host.state.table_drop",
+            "Drop a declared table and every row it holds.",
+            host_schema(json!({"name": {"type": "string"}}), &["name"]),
+        ),
+        Tool::new(
+            "host.state.insert",
+            "Insert one row (an object) or several (an array of objects) into a declared \
+             table. Each row is validated against the table's schema first -- a type \
+             mismatch fails the whole call with state_schema_violation and writes nothing.",
+            host_schema(
+                json!({"table": {"type": "string"}, "rows": {}}),
+                &["table", "rows"],
+            ),
+        ),
+        Tool::new(
+            "host.state.query",
+            "Read rows from a declared table, optionally filtered (where: \"field op value\", \
+             ops = != < <= > >=, clauses joined by ' and '), ordered (order_by: \"field\" or \
+             \"field desc\") and capped (limit).",
+            host_schema(
+                json!({
+                    "table": {"type": "string"},
+                    "where": {"type": "string"},
+                    "order_by": {"type": "string"},
+                    "limit": {"type": "integer"},
+                }),
+                &["table"],
+            ),
+        ),
+        Tool::new(
+            "host.state.delete_rows",
+            "Delete rows from a declared table matching an optional where filter (same \
+             grammar as host.state.query); omitting where deletes every row in the table.",
+            host_schema(
+                json!({"table": {"type": "string"}, "where": {"type": "string"}}),
+                &["table"],
+            ),
+        ),
         Tool::new(
             "billing.plans",
             "The plan catalog (price and quotas per plan) and whether Stripe billing is \
@@ -651,6 +740,21 @@ impl McpHostHandler {
             "host.secret_set" => control::secret_set(&self.state, tenant, &args).await,
             "host.secret_list" => control::secret_list(&self.state, tenant).await,
             "host.registry_publish" => control::registry_publish(&self.state, tenant, &args).await,
+            "host.state.get" => tenant_state::state_get(&self.state, tenant, &args).await,
+            "host.state.set" => tenant_state::state_set(&self.state, tenant, &args).await,
+            "host.state.delete" => tenant_state::state_delete(&self.state, tenant, &args).await,
+            "host.state.list" => tenant_state::state_list(&self.state, tenant, &args).await,
+            "host.state.table_create" => {
+                tenant_state::state_table_create(&self.state, tenant, &args).await
+            }
+            "host.state.table_drop" => {
+                tenant_state::state_table_drop(&self.state, tenant, &args).await
+            }
+            "host.state.insert" => tenant_state::state_insert(&self.state, tenant, &args).await,
+            "host.state.query" => tenant_state::state_query(&self.state, tenant, &args).await,
+            "host.state.delete_rows" => {
+                tenant_state::state_delete_rows(&self.state, tenant, &args).await
+            }
             "billing.status" => crate::billing::status(&self.state, tenant).await,
             "billing.checkout" => crate::billing::checkout(&self.state, tenant, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),

@@ -209,6 +209,15 @@ impl AppError {
                 // `KindError::Structured` instead of `KindError::InvalidSpec`.
                 "host_not_allowed" | "args_invalid" | "template_error" | "kind_mismatch"
                 | "invalid_spec" => ErrorCode::INVALID_PARAMS,
+                // PRD-mcphost-tenant-state requirement 1/4: a schema
+                // violation, a quota overrun, and an undeclared table are
+                // all caller-input problems (a bad `host.state.insert`
+                // payload, a write past a plan's quota, a typo'd table
+                // name) -- the same INVALID_PARAMS bucket as `invalid_spec`
+                // above, not an internal failure.
+                "state_schema_violation" | "state_quota_exceeded" | "state_table_not_found" => {
+                    ErrorCode::INVALID_PARAMS
+                }
                 _ => ErrorCode::INTERNAL_ERROR,
             },
             AppError::MultiInvalid { errors, .. } => errors
