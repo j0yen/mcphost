@@ -3595,6 +3595,18 @@ mod tests {
     /// caller) rather than deleted; a `building` result now comes back as
     /// `Ok(_)`, not this error, and is asserted on directly where it
     /// matters (see the `firstcall` tests below).
+    ///
+    /// Flake fix (gate: flake-audit, at build of PRD-mcphost-composition,
+    /// 2026-09-09): under heavy host load a cold build can still be
+    /// running past `MCPHOST_CALL_READY_WAIT_MS` (default 20s), in which
+    /// case `call` returns `Ok(building_result(..))` -- the requirement-1
+    /// envelope, not the old `Err(tool_building)` shape this loop already
+    /// retried on. Tests that need a guaranteed-ready result (as opposed
+    /// to the `firstcall` tests that assert on the building envelope
+    /// itself) must retry that case too, or they flake exactly like this
+    /// helper's name promises they won't -- observed nondeterministic in
+    /// `target/autobuilder/receipts/flake-audit-receipt.json`
+    /// (exit_codes [0, 101, 0]) at head f5e9a80.
     async fn call_through_build(
         kind: &PythonKind,
         spec: &Value,
@@ -3608,6 +3620,11 @@ mod tests {
                     code: "tool_building",
                     ..
                 }) if Instant::now() < deadline => {
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
+                Ok(ref v) if v.get("status").and_then(Value::as_str) == Some("building")
+                    && Instant::now() < deadline =>
+                {
                     tokio::time::sleep(Duration::from_millis(50)).await;
                 }
                 other => return other,
