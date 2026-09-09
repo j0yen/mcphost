@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.36.0 — 2026-09-09
+
+Composition: a tool can now call another tool by name from its own code, and a fixed pipeline runs as one published tool. `import mcphost` inside a python tool's source and call `mcphost.call(name, args, timeout_s=None)` to run another of this tenant's tools as a child call, synchronously, over the same stdin/stdout sidecar channel `mcphost.state` uses — works under `network: none`. For a pipeline with no python of your own, publish a `chain` kind: `spec.steps` is an ordered list of `{tool, args}`, each step's `args` mapping from `$.input`/`$.prev`/`$.steps[i]` into the next call, `on_error: "continue"` to keep going past a step's failure, and `host.tool_test` dry-runs a chain step by step with no dispatch. Nesting is capped at 4 levels (`compose_depth_exceeded`), a call tree at 50 child calls total (`compose_children_exceeded`), and a tool cannot call itself (`compose_self_call`). `host.quickstart(kind="chain")` wires a tenant's own first two tools into the example once it has at least two. Deferred: `outputs` promotion on a chain's own result, real child-run rows in `host.runs.get` (waits on PRD-mcphost-runs-and-jobs, not shipped), `mcphost.call_async`, and `map` steps.
+
 ## v0.35.0 — 2026-09-09
 
 Tenants can now remember things between tool calls. A per-tenant key-value
