@@ -1,5 +1,5 @@
 //! AC6 (P0) — Given a tool that sleeps past `timeout_s`, When called, Then
-//! the error is `tool_timeout` within `timeout_s` + 2 s and no child
+//! the error is `call_timeout` within `timeout_s` + 2 s and no child
 //! process survives (process group killed).
 //!
 //! The group-kill mechanism itself is proven directly against
@@ -7,6 +7,14 @@
 //! `kills_the_group_on_timeout` unit test; this test proves the same
 //! property is wired end to end through the real publish/call path with the
 //! PRD's own timing bound.
+//!
+//! PRD-mcphost-call-limits-honest requirement 1 made the declared
+//! `timeout_s` the real per-call deadline (bounded by `MAX_TIMEOUT_S`)
+//! instead of the fixed `CALL_TIMEOUT` constant, and renamed the resulting
+//! error from `tool_timeout` to `call_timeout` so the message can name the
+//! deadline that actually applied -- `tool_timeout` remains the code for a
+//! *different* path (the sandbox's own internal wall-clock kill), so this
+//! test's expected code moved with the behavior it exercises.
 
 mod common;
 use common::{TestServer, poll_until_ready, python_kind_registry, signup};
@@ -62,7 +70,7 @@ async fn a_slow_tool_times_out_within_timeout_plus_two_seconds() {
         .await
         .expect_err("a call past its timeout must fail");
     let elapsed = started.elapsed();
-    assert_eq!(err.error_code.as_deref(), Some("tool_timeout"));
+    assert_eq!(err.error_code.as_deref(), Some("call_timeout"));
     assert!(
         elapsed < Duration::from_secs(4),
         "timeout_s=1 must fire within timeout_s+2s, took {elapsed:?}"

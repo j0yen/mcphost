@@ -1,18 +1,29 @@
 //! AC10 (P0) — Given a tool that forks 1000 processes, When called, Then
-//! the call ends with `tool_timeout` or `tool_exception` and the box's
-//! process count returns to baseline within 5 s.
+//! the call ends with `tool_process_limit`, `tool_timeout`, or
+//! `tool_exception`, and the box's process count returns to baseline
+//! within 5 s.
 //!
 //! `bwrap`'s `--unshare-all` (see `sandbox::bwrap_command`) puts the
 //! sandboxed process tree in its own PID namespace: when that namespace's
 //! pid-1 dies (whether from `sandbox::run`'s own timeout `killpg`, an
-//! `RLIMIT_CPU`/`RLIMIT_NOFILE` kill, or the fork loop itself erroring
-//! out), the kernel tears down every remaining process in the namespace
-//! unconditionally -- there is no reparenting-to-init escape hatch the way
-//! there would be on the host's own PID namespace. This test proves the
-//! call-level outcome and timing bound the AC actually specifies; the
-//! kernel's own PID-namespace-teardown guarantee isn't independently
-//! re-verified with a host-side `ps` scrape (fragile on a shared box with
-//! unrelated processes).
+//! `RLIMIT_CPU`/`RLIMIT_NOFILE`/`RLIMIT_NPROC` kill, or the fork loop
+//! itself erroring out), the kernel tears down every remaining process in
+//! the namespace unconditionally -- there is no reparenting-to-init escape
+//! hatch the way there would be on the host's own PID namespace. This test
+//! proves the call-level outcome and timing bound the AC actually
+//! specifies; the kernel's own PID-namespace-teardown guarantee isn't
+//! independently re-verified with a host-side `ps` scrape (fragile on a
+//! shared box with unrelated processes).
+//!
+//! PRD-mcphost-call-limits-honest requirement 6 added `RLIMIT_NPROC`
+//! (`tests/limits_ac07_process_fork_storm_capped.rs` is that PRD's own
+//! dedicated 500-fork test); a 1000-way fork loop now trips that cap
+//! (`tool_process_limit`) well before the 5s `timeout_s` this AC declares,
+//! which is a strictly more precise containment signal than the
+//! `tool_timeout`/`tool_exception` outcomes this AC originally anticipated
+//! -- `tool_process_limit` is accepted here alongside them rather than
+//! replacing them, since either the process cap or the timeout is a valid
+//! way for a fork bomb to end.
 
 mod common;
 use common::{TestServer, poll_until_ready, python_kind_registry, signup};
@@ -66,8 +77,8 @@ async fn a_fork_bomb_is_contained_and_ends_promptly() {
         Err(e) => {
             let code = e.error_code.as_deref().unwrap_or("");
             assert!(
-                code == "tool_timeout" || code == "tool_exception",
-                "expected tool_timeout or tool_exception, got: {code}"
+                code == "tool_process_limit" || code == "tool_timeout" || code == "tool_exception",
+                "expected tool_process_limit, tool_timeout, or tool_exception, got: {code}"
             );
         }
         Ok(_) => {
