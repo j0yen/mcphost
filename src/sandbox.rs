@@ -1548,6 +1548,7 @@ mod tests {
                 memory_mb: 256,
                 max_open_files: 64,
                 max_file_size_mb: 16,
+                max_processes: 64,
             },
             wall_clock_timeout: Duration::from_secs(7),
             network: NetworkMode::None,

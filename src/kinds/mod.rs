@@ -1165,6 +1165,12 @@ pub async fn compose_call(
         compose_children: Some(children.clone()),
         compose_db: Some(db.clone()),
         compose_kinds: Some(kinds.clone()),
+        // PRD-mcphost-call-limits-honest requirement 3: a composed child
+        // call is still the same tenant's traffic against the same
+        // per-tenant admission cap -- inherit the parent's resolved value
+        // rather than re-deriving it (this call site has no `Tenant`/plan
+        // to resolve from, only the already-dispatched parent `ctx`).
+        concurrent_calls_per_tenant: ctx.concurrent_calls_per_tenant,
     };
 
     kind.call(&row.spec, args, &child_ctx).await
