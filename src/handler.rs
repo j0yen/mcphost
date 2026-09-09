@@ -775,6 +775,16 @@ impl McpHostHandler {
             test_mode: false,
             resources: resources.clone() as Arc<dyn ResourceSink>,
             tool_name: Some(local_name.to_string()),
+            // PRD-mcphost-composition requirement 1/2: every real
+            // `tools/call`/`host.tool_call` dispatch is the root of its own
+            // composition tree -- depth 0, a fresh per-tree children
+            // counter, and the tenant table/kind registry a composing
+            // `Kind` (`chain`) needs to dispatch its own children through
+            // `kinds::compose_call`.
+            compose_depth: 0,
+            compose_children: Some(Arc::new(std::sync::atomic::AtomicU32::new(0))),
+            compose_db: Some(self.state.db.clone()),
+            compose_kinds: Some(self.state.kinds.clone()),
         };
 
         let start = Instant::now();
@@ -969,6 +979,14 @@ impl McpHostHandler {
             test_mode: true,
             resources: Arc::new(NullResourceSink),
             tool_name: Some(local_name.clone()),
+            // PRD-mcphost-composition requirement 3/AC8: `chain`'s dry run
+            // (`ctx.test_mode`) resolves only literal and `$.input.*`
+            // mappings -- it never dispatches a step, so it never needs
+            // `compose_db`/`compose_kinds` here.
+            compose_depth: 0,
+            compose_children: None,
+            compose_db: None,
+            compose_kinds: None,
         };
 
         match tokio::time::timeout(
@@ -1062,6 +1080,10 @@ impl McpHostHandler {
             test_mode: true,
             resources: Arc::new(NullResourceSink),
             tool_name: None,
+            compose_depth: 0,
+            compose_children: None,
+            compose_db: None,
+            compose_kinds: None,
         };
 
         match tokio::time::timeout(self.state.call_timeout, kind.call(&spec, call_args, &ctx)).await
@@ -1192,6 +1214,10 @@ impl McpHostHandler {
             test_mode: true,
             resources: Arc::new(NullResourceSink),
             tool_name: None,
+            compose_depth: 0,
+            compose_children: None,
+            compose_db: None,
+            compose_kinds: None,
         })
         .await;
 
@@ -1352,6 +1378,10 @@ impl McpHostHandler {
             test_mode: false,
             resources: Arc::new(NullResourceSink),
             tool_name: Some(local_name.clone()),
+            compose_depth: 0,
+            compose_children: None,
+            compose_db: None,
+            compose_kinds: None,
         };
 
         let start = Instant::now();

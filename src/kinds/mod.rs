@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 use jsonschema::error::{TypeKind, ValidationErrorKind};
 use serde_json::{Map, Value, json};
 
+pub mod chain;
 pub mod conformance;
 pub mod docs;
 pub mod echo;
@@ -459,7 +460,7 @@ pub struct Path {
 /// separately from a generic "malformed" so the error message can say
 /// exactly which unsupported JSONPath feature was used.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum PathParseError {
+pub(crate) enum PathParseError {
     Wildcard,
     Filter,
     RecursiveDescent,
@@ -467,7 +468,7 @@ enum PathParseError {
 }
 
 impl PathParseError {
-    fn reason(self) -> &'static str {
+    pub(crate) fn reason(self) -> &'static str {
         match self {
             PathParseError::Wildcard => "uses a wildcard",
             PathParseError::Filter => "uses a filter expression",
@@ -486,7 +487,12 @@ impl Path {
     /// `[*]`, `.*`, `[?...]`, `..` (recursive descent), or a string that
     /// doesn't start with `$` -- is rejected with the specific reason AC8
     /// wants named.
-    fn parse(raw: &str) -> Result<Path, PathParseError> {
+    /// PRD-mcphost-composition requirement 4: `chain`'s step-argument
+    /// mapping paths (`$.prev.result.payload.x`, `$.steps[i]...`,
+    /// `$.input.x`) use this exact grammar, so `chain.rs` parses them with
+    /// this same `Path::parse` rather than a second implementation.
+    /// `pub(crate)` rather than private for that reason.
+    pub(crate) fn parse(raw: &str) -> Result<Path, PathParseError> {
         let rest = raw.strip_prefix('$').ok_or(PathParseError::Malformed)?;
         if rest.contains("[*]") || rest.contains(".*") {
             return Err(PathParseError::Wildcard);
@@ -907,6 +913,28 @@ pub struct CallCtx {
     /// conformance suite) -- a `Kind` that needs it degrades to "always
     /// cold" rather than panicking when it's absent.
     pub tool_name: Option<String>,
+    /// PRD-mcphost-composition requirement 2: how many levels of
+    /// composition already led to this call -- `0` for every ordinary
+    /// top-level `tools/call`/`host.tool_call`. [`compose_call`] refuses a
+    /// dispatch that would push this past [`COMPOSE_DEPTH_MAX`].
+    pub compose_depth: u32,
+    /// PRD-mcphost-composition requirement 2: the running count of child
+    /// calls made anywhere in this call's whole tree, shared (via the
+    /// `Arc`) by every node so the ceiling ([`COMPOSE_CHILDREN_MAX`]) is
+    /// per-tree, not per-node. `None` means this call is not part of a
+    /// composable tree (composition unavailable) -- [`compose_call`]
+    /// refuses rather than silently skipping the ceiling.
+    pub compose_children: Option<Arc<std::sync::atomic::AtomicU32>>,
+    /// PRD-mcphost-composition requirement 1: the tenant-tool table
+    /// [`compose_call`] resolves a composed call's target name against.
+    /// `None` in any context composition isn't wired into (most of
+    /// `host.tool_test`/`host.tool_run` today) -- a `Kind` that tries to
+    /// compose there gets a clear "unavailable" error rather than a panic.
+    pub compose_db: Option<crate::db::Db>,
+    /// PRD-mcphost-composition requirement 1: the kind registry
+    /// [`compose_call`] dispatches a composed call's target through. See
+    /// [`CallCtx::compose_db`]'s note on when this is `None`.
+    pub compose_kinds: Option<KindRegistry>,
 }
 
 impl CallCtx {
@@ -921,12 +949,143 @@ impl CallCtx {
             test_mode: false,
             resources: Arc::new(NullResourceSink),
             tool_name: None,
+            compose_depth: 0,
+            compose_children: None,
+            compose_db: None,
+            compose_kinds: None,
         }
     }
 
     pub fn time_remaining(&self) -> Duration {
         self.deadline.saturating_duration_since(Instant::now())
     }
+}
+
+/// PRD-mcphost-composition requirement 2: how many levels of composed
+/// dispatch [`compose_call`] allows before refusing with
+/// `compose_depth_exceeded` -- a call already at this depth may not
+/// dispatch one more (AC4: nested five deep, the fifth is refused, naming
+/// this limit).
+pub const COMPOSE_DEPTH_MAX: u32 = 4;
+
+/// PRD-mcphost-composition requirement 2: how many child calls a single
+/// top-level call tree may make in total (shared across every node via
+/// [`CallCtx::compose_children`]) before [`compose_call`] refuses with
+/// `compose_children_exceeded`.
+pub const COMPOSE_CHILDREN_MAX: u32 = 50;
+
+/// PRD-mcphost-composition requirements 1/2: dispatches `target_name` (in
+/// `tenant_id`'s tool table) as a child of whatever call `ctx` belongs to.
+/// The one entry point every composing `Kind` uses -- today `chain`'s step
+/// dispatch; once the sandbox grows a nested-call channel, `python`'s
+/// `mcphost.call` calls this too, unchanged.
+///
+/// Enforces, in order: requirement 2's immediate self-call refusal
+/// (`compose_self_call`), the depth ceiling (`compose_depth_exceeded`,
+/// [`COMPOSE_DEPTH_MAX`]), and the per-tree children ceiling
+/// (`compose_children_exceeded`, [`COMPOSE_CHILDREN_MAX`]) -- all before
+/// `target_name` is even looked up, so a refusal never touches the tool
+/// table. `ctx.compose_children`/`compose_db`/`compose_kinds` all being
+/// `Some` is this function's precondition for anything past the ceiling
+/// checks; a caller with any of them `None` gets a plain `Exec` error
+/// rather than a panic (composition not wired into this call context --
+/// `host.tool_test`/`host.tool_run` today).
+///
+/// PRD-mcphost-runs-and-jobs (this PRD's declared dependency) has not
+/// shipped: there is no `runs` table, so this records no child run row --
+/// it dispatches and returns the child's result, and a caller that wants a
+/// receipt (`chain`'s own `steps` trace) builds it from this call's
+/// `Ok`/`Err` itself. Wiring a real child run here is the follow-up once
+/// that PRD lands.
+pub async fn compose_call(
+    ctx: &CallCtx,
+    tenant_id: i64,
+    target_name: &str,
+    args: Value,
+) -> Result<Value, KindError> {
+    if ctx.tool_name.as_deref() == Some(target_name) {
+        return Err(KindError::structured(
+            "compose_self_call",
+            format!("tool '{target_name}' cannot call itself"),
+        ));
+    }
+
+    let next_depth = ctx.compose_depth + 1;
+    if next_depth > COMPOSE_DEPTH_MAX {
+        return Err(KindError::structured_with(
+            "compose_depth_exceeded",
+            format!("composition nesting exceeds the limit of {COMPOSE_DEPTH_MAX}"),
+            json!({"limit": COMPOSE_DEPTH_MAX}),
+        ));
+    }
+
+    let Some(children) = ctx.compose_children.as_ref() else {
+        return Err(KindError::Exec(
+            "composition is unavailable in this call context".into(),
+        ));
+    };
+    let used = children.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    if used > COMPOSE_CHILDREN_MAX {
+        return Err(KindError::structured_with(
+            "compose_children_exceeded",
+            format!("this call tree has exceeded {COMPOSE_CHILDREN_MAX} child calls"),
+            json!({"limit": COMPOSE_CHILDREN_MAX}),
+        ));
+    }
+
+    let Some(db) = ctx.compose_db.as_ref() else {
+        return Err(KindError::Exec(
+            "composition is unavailable in this call context".into(),
+        ));
+    };
+    let Some(kinds) = ctx.compose_kinds.as_ref() else {
+        return Err(KindError::Exec(
+            "composition is unavailable in this call context".into(),
+        ));
+    };
+
+    let row = db
+        .get_tool(tenant_id, target_name.to_string())
+        .await
+        .map_err(|e| KindError::Exec(format!("tool lookup failed: {e}")))?
+        .ok_or_else(|| {
+            KindError::structured("tool_not_found", format!("no such tool: {target_name}"))
+        })?;
+    let kind = kinds.get(&row.kind).ok_or_else(|| {
+        KindError::Exec(format!(
+            "published tool names unregistered kind '{}'",
+            row.kind
+        ))
+    })?;
+
+    let descriptor = kind.describe(&row.spec);
+    if let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
+        && let Err(e) = validator.validate(&args)
+    {
+        let data = describe_args_error(&e);
+        return Err(KindError::Structured {
+            code: "args_invalid",
+            message: e.to_string(),
+            data,
+        });
+    }
+
+    let child_ctx = CallCtx {
+        tenant_id,
+        namespace: ctx.namespace.clone(),
+        secrets: ctx.secrets.clone(),
+        deadline: ctx.deadline,
+        log: ctx.log.clone(),
+        test_mode: false,
+        resources: ctx.resources.clone(),
+        tool_name: Some(target_name.to_string()),
+        compose_depth: next_depth,
+        compose_children: Some(children.clone()),
+        compose_db: Some(db.clone()),
+        compose_kinds: Some(kinds.clone()),
+    };
+
+    kind.call(&row.spec, args, &child_ctx).await
 }
 
 /// A tool execution kind. Implementors are registered in a [`KindRegistry`]

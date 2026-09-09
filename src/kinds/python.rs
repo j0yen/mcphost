@@ -3120,6 +3120,10 @@ mod tests {
             test_mode: false,
             resources: Arc::new(crate::kinds::NullResourceSink),
             tool_name: Some(tool_name.to_string()),
+            compose_depth: 0,
+            compose_children: None,
+            compose_db: None,
+            compose_kinds: None,
         }
     }
 
@@ -3395,6 +3399,10 @@ mod tests {
             test_mode: false,
             resources: Arc::new(crate::kinds::NullResourceSink),
             tool_name: Some(tool_name.to_string()),
+            compose_depth: 0,
+            compose_children: None,
+            compose_db: None,
+            compose_kinds: None,
         }
     }
 

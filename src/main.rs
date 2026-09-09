@@ -4,6 +4,7 @@ use std::sync::Arc;
 use clap::{Parser, Subcommand};
 use mcphost::db::Db;
 use mcphost::kinds::KindRegistry;
+use mcphost::kinds::chain::ChainKind;
 use mcphost::kinds::http::HttpKind;
 use mcphost::kinds::python::PythonKind;
 use mcphost::secrets::SecretBox;
@@ -330,6 +331,11 @@ async fn main() -> anyhow::Result<()> {
             // still runs below regardless (requirement 1).
             python_kind.run_startup_selftest().await;
             kinds.register(std::sync::Arc::new(python_kind));
+            // PRD-mcphost-composition requirement 3: host-side only, no
+            // sandbox/isolation concept of its own -- registered
+            // unconditionally, unlike `http`/`python` above which need a
+            // domain or a sandbox mechanism first.
+            kinds.register(std::sync::Arc::new(ChainKind));
 
             let state = Arc::new(AppState {
                 db,
