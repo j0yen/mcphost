@@ -283,6 +283,32 @@ fn tool_publish_description(kinds: &KindRegistry) -> String {
 /// caller (present, and callable, only once authenticated) -- `authenticated`
 /// gates pushing it onto the returned vec; every other `host.*` tool is
 /// unaffected and stays visible pre-auth (PRD-mcphost-session-key).
+/// PRD-mcphost-surface-fluidity requirement 1 / AC2: the one-sentence case
+/// each dry-run tool's description states before pointing at
+/// `host.quickstart`'s `try_before_call` table (built by
+/// `control::quickstart`) for the other three. Kept as constants -- rather
+/// than inlined into the `Tool::new` calls below -- so the length test
+/// (`tests/surface_ac02_dry_run_descriptions.rs`) and this function read the
+/// exact same source, per the PRD's own Technical considerations.
+const TOOL_TEST_DESC: &str =
+    "Dry-run an already-published tool by name, no calls row written; for the other cases see host.quickstart.";
+const BRIDGE_TEST_DESC: &str =
+    "Dry-run an unpublished http spec against its real upstream; for the other cases see host.quickstart.";
+const SPEC_TEST_DESC: &str =
+    "Dry-run an unpublished spec of any kind with example invocations; for the other cases see host.quickstart.";
+const TOOL_RUN_DESC: &str =
+    "Debug-run a published python tool for stdout, stderr and exit code; for the other cases see host.quickstart.";
+
+/// PRD-mcphost-tool-test AC9: `host.spec_test`, unlike every other `host.*`
+/// descriptor, must be absent from `tools/list` for an anonymous/invalid
+/// caller (present, and callable, only once authenticated) -- `authenticated`
+/// gates pushing it onto the returned vec; every other `host.*` tool is
+/// unaffected and stays visible pre-auth (PRD-mcphost-session-key).
+///
+/// PRD-mcphost-surface-fluidity requirement 3 / AC4: every property here
+/// (required or not) carries a `description`, including `host.bridge_test.spec`
+/// and `host.spec_test.invocations`, which previously had none -- see
+/// `tests/surface_ac04_required_field_descriptions.rs`.
 fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
     let mut tools = vec![
         Tool::new(
@@ -295,9 +321,19 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             tool_publish_description(kinds),
             host_schema(
                 json!({
-                    "name": {"type": "string"},
-                    "kind": {"type": "string"},
-                    "spec": {"type": "object"},
+                    "name": {
+                        "type": "string",
+                        "description": "Local name for the new tool; must match ^[a-z][a-z0-9_]{1,40}$.",
+                    },
+                    "kind": {
+                        "type": "string",
+                        "description": "Which registered kind to publish under, e.g. echo, http, python.",
+                    },
+                    "spec": {
+                        "type": "object",
+                        "description": "The kind-specific spec object; see host.quickstart(kind) for a \
+                            filled-in example.",
+                    },
                 }),
                 &["name", "kind", "spec"],
             ),
@@ -306,10 +342,20 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             "host.quickstart",
             "Return the shortest ordered sequence of calls to a working tool of `kind`, \
              with your namespace and a filled-in example already substituted in, plus the \
-             current limits. Read-only. Call this before host.tool_publish if you're not \
-             sure what a spec should look like. Unauthenticated callers get the signup \
-             step first.",
-            host_schema(json!({"kind": {"type": "string"}}), &["kind"]),
+             current limits and a try_before_call table naming the one dry-run tool for \
+             each case. Read-only. Call this before host.tool_publish if you're not sure \
+             what a spec should look like. Unauthenticated callers get the signup step \
+             first.",
+            host_schema(
+                json!({
+                    "kind": {
+                        "type": "string",
+                        "description": "Which registered kind to return a worked example for, \
+                            e.g. echo, http, python.",
+                    },
+                }),
+                &["kind"],
+            ),
         ),
         Tool::new(
             "host.tool_list",
@@ -319,46 +365,79 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         Tool::new(
             "host.tool_remove",
             "Remove a published tool by its local name.",
-            host_schema(json!({"name": {"type": "string"}}), &["name"]),
+            host_schema(
+                json!({
+                    "name": {"type": "string", "description": "Local name of the tool to remove."},
+                }),
+                &["name"],
+            ),
         ),
         Tool::new(
             "host.tool_logs",
             "Return the most recent log lines for one of this tenant's tools.",
             host_schema(
-                json!({"name": {"type": "string"}, "limit": {"type": "integer"}}),
+                json!({
+                    "name": {
+                        "type": "string",
+                        "description": "Local name of the tool whose log lines to return.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max lines to return, most recent first; default 20.",
+                    },
+                }),
                 &["name"],
             ),
         ),
         Tool::new(
             "host.tool_test",
-            "Dry-run a published tool: performs the real call but records no `calls` row \
-             and echoes the rendered request back with secrets redacted, for debugging a spec.",
+            TOOL_TEST_DESC,
             host_schema(
-                json!({"name": {"type": "string"}, "args": {"type": "object"}}),
+                json!({
+                    "name": {
+                        "type": "string",
+                        "description": "Local name of the already-published tool to dry-run.",
+                    },
+                    "args": {
+                        "type": "object",
+                        "description": "Arguments to pass, same shape as a real call.",
+                    },
+                }),
                 &["name", "args"],
             ),
         ),
         Tool::new(
             "host.bridge_test",
-            "Dry-run an `http`-kind spec (typically a declarative REST-bridge `upstream` \
-             spec) against its real upstream without publishing it: no tool is created, no \
-             `calls` row is written, and the rendered request is echoed back with secrets \
-             redacted, same as host.tool_test but for a spec you haven't published yet. An \
-             invalid spec reports the same failure class host.tool_publish would.",
+            BRIDGE_TEST_DESC,
             host_schema(
-                json!({"spec": {"type": "object"}, "args": {"type": "object"}}),
+                json!({
+                    "spec": {
+                        "type": "object",
+                        "description": "An http-kind spec, not yet published, e.g. \
+                            {\"url\": \"https://api.example.com/items/{{id}}\", \"method\": \"GET\"}.",
+                    },
+                    "args": {
+                        "type": "object",
+                        "description": "Arguments to render into the spec, same shape as a real call.",
+                    },
+                }),
                 &["spec", "args"],
             ),
         ),
         Tool::new(
             "host.tool_run",
-            "Debug run of a published tool: the same sandbox and limits as a real call, but \
-             returns full stdout and stderr (each capped at 64 KiB) and the exit code alongside \
-             the result, and records no `calls` row and no metering. Only kinds with a notion of \
-             a subprocess (`python`) support this; other kinds return `tool_run_unsupported`. \
-             Rate-limited to 30 calls per tenant per minute, independent of `host.usage`.",
+            TOOL_RUN_DESC,
             host_schema(
-                json!({"name": {"type": "string"}, "args": {"type": "object"}}),
+                json!({
+                    "name": {
+                        "type": "string",
+                        "description": "Local name of the already-published python tool to debug-run.",
+                    },
+                    "args": {
+                        "type": "object",
+                        "description": "Arguments to pass, same shape as a real call.",
+                    },
+                }),
                 &["name", "args"],
             ),
         ),
@@ -370,20 +449,43 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              namespaced tool name yet. Unlike host.tool_test, this counts toward \
              host.usage and appears in host.tool_logs.",
             host_schema(
-                json!({"name": {"type": "string"}, "args": {"type": "object"}}),
+                json!({
+                    "name": {"type": "string", "description": "Local name of the tool to invoke."},
+                    "args": {
+                        "type": "object",
+                        "description": "Arguments to pass, validated against the tool's own args_schema.",
+                    },
+                }),
                 &["name", "args"],
             ),
         ),
         Tool::new(
             "host.usage",
             "Calls, errors and duration percentiles for this tenant over a window.",
-            host_schema(json!({"window": {"type": "string"}}), &[]),
+            host_schema(
+                json!({
+                    "window": {
+                        "type": "string",
+                        "description": "Time window to summarize, e.g. \"24h\"; default 24h.",
+                    },
+                }),
+                &[],
+            ),
         ),
         Tool::new(
             "host.secret_set",
             "Store an encrypted secret value under this tenant's namespace.",
             host_schema(
-                json!({"name": {"type": "string"}, "value": {"type": "string"}}),
+                json!({
+                    "name": {
+                        "type": "string",
+                        "description": "Secret name, referenced from a spec as secret.<name>.",
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "The secret value; stored AES-256-GCM encrypted, never returned.",
+                    },
+                }),
                 &["name", "value"],
             ),
         ),
@@ -407,7 +509,15 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             "host.state.get",
             "Read one key from this tenant's key-value state namespace. Returns \
              found: false (not an error) if the key was never set.",
-            host_schema(json!({"key": {"type": "string"}}), &["key"]),
+            host_schema(
+                json!({
+                    "key": {
+                        "type": "string",
+                        "description": "Key to read from this tenant's key-value state namespace.",
+                    },
+                }),
+                &["key"],
+            ),
         ),
         Tool::new(
             "host.state.set",
@@ -415,21 +525,44 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              JSON value. Overrun of the plan's state_bytes_max quota fails with \
              state_quota_exceeded and writes nothing.",
             host_schema(
-                json!({"key": {"type": "string"}, "value": {}}),
+                json!({
+                    "key": {
+                        "type": "string",
+                        "description": "Key to write in this tenant's key-value state namespace.",
+                    },
+                    "value": {"description": "Any JSON value to store under key."},
+                }),
                 &["key", "value"],
             ),
         ),
         Tool::new(
             "host.state.delete",
             "Delete one key from this tenant's key-value state namespace.",
-            host_schema(json!({"key": {"type": "string"}}), &["key"]),
+            host_schema(
+                json!({
+                    "key": {
+                        "type": "string",
+                        "description": "Key to delete from this tenant's key-value state namespace.",
+                    },
+                }),
+                &["key"],
+            ),
         ),
         Tool::new(
             "host.state.list",
             "List keys (with their current values) in this tenant's key-value state \
              namespace, optionally filtered by prefix.",
             host_schema(
-                json!({"prefix": {"type": "string"}, "limit": {"type": "integer"}}),
+                json!({
+                    "prefix": {
+                        "type": "string",
+                        "description": "Only list keys starting with this prefix; default: all keys.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max keys to return; default 100.",
+                    },
+                }),
                 &[],
             ),
         ),
@@ -441,9 +574,20 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              row matches an existing row's primary_key value replaces it.",
             host_schema(
                 json!({
-                    "name": {"type": "string"},
-                    "schema": {"type": "object"},
-                    "primary_key": {"type": "string"},
+                    "name": {
+                        "type": "string",
+                        "description": "Table name to declare, or replace the schema of.",
+                    },
+                    "schema": {
+                        "type": "object",
+                        "description": "Column name to type map, each type one of \
+                            text|integer|real|boolean|json, e.g. {\"id\": \"integer\"}.",
+                    },
+                    "primary_key": {
+                        "type": "string",
+                        "description": "Column name (must be in schema) whose matching value \
+                            replaces an existing row on insert; optional.",
+                    },
                 }),
                 &["name", "schema"],
             ),
@@ -451,7 +595,15 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         Tool::new(
             "host.state.table_drop",
             "Drop a declared table and every row it holds.",
-            host_schema(json!({"name": {"type": "string"}}), &["name"]),
+            host_schema(
+                json!({
+                    "name": {
+                        "type": "string",
+                        "description": "Name of the declared table to drop, with every row it holds.",
+                    },
+                }),
+                &["name"],
+            ),
         ),
         Tool::new(
             "host.state.insert",
@@ -459,7 +611,13 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              table. Each row is validated against the table's schema first -- a type \
              mismatch fails the whole call with state_schema_violation and writes nothing.",
             host_schema(
-                json!({"table": {"type": "string"}, "rows": {}}),
+                json!({
+                    "table": {"type": "string", "description": "Name of the declared table to insert into."},
+                    "rows": {
+                        "description": "One row (an object) or several (an array of objects), each \
+                            validated against the table's schema.",
+                    },
+                }),
                 &["table", "rows"],
             ),
         ),
@@ -470,10 +628,17 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              \"field desc\") and capped (limit).",
             host_schema(
                 json!({
-                    "table": {"type": "string"},
-                    "where": {"type": "string"},
-                    "order_by": {"type": "string"},
-                    "limit": {"type": "integer"},
+                    "table": {"type": "string", "description": "Name of the declared table to read from."},
+                    "where": {
+                        "type": "string",
+                        "description": "Optional filter, e.g. \"age > 21\"; ops are != < <= > >=, \
+                            clauses joined by ' and '.",
+                    },
+                    "order_by": {
+                        "type": "string",
+                        "description": "Optional \"field\" or \"field desc\" to sort by.",
+                    },
+                    "limit": {"type": "integer", "description": "Max rows to return; optional."},
                 }),
                 &["table"],
             ),
@@ -483,7 +648,17 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             "Delete rows from a declared table matching an optional where filter (same \
              grammar as host.state.query); omitting where deletes every row in the table.",
             host_schema(
-                json!({"table": {"type": "string"}, "where": {"type": "string"}}),
+                json!({
+                    "table": {
+                        "type": "string",
+                        "description": "Name of the declared table to delete rows from.",
+                    },
+                    "where": {
+                        "type": "string",
+                        "description": "Optional filter, same grammar as host.state.query; \
+                            omit to delete every row.",
+                    },
+                }),
                 &["table"],
             ),
         ),
@@ -504,26 +679,35 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             "Create (or reuse an open one for the same plan) a Stripe Checkout URL to \
              upgrade this tenant, defaulting to the pro plan. Returns billing_unavailable \
              if this host has no Stripe key configured -- call billing.plans first to check.",
-            host_schema(json!({"plan": {"type": "string"}}), &[]),
+            host_schema(
+                json!({
+                    "plan": {"type": "string", "description": "Which plan to check out; default: pro."},
+                }),
+                &[],
+            ),
         ),
     ];
     if authenticated {
         tools.push(Tool::new(
             "host.spec_test",
-            "Dry-run a tool spec before it is ever published: validates it, then runs up \
-             to 5 example invocations through the same sandbox and limits a published call \
-             uses, returning each invocation's ok/output/duration_ms (or a bounded exception \
-             on failure) plus the args_schema and requirements a publish of this spec would \
-             infer. No tool row is ever written. Distinct from host.tool_test, which dry-runs \
-             an already-published tool by name.",
+            SPEC_TEST_DESC,
             host_schema(
                 json!({
-                    "kind": {"type": "string"},
-                    "spec": {"type": "object"},
+                    "kind": {
+                        "type": "string",
+                        "description": "Which registered kind the spec is for, e.g. echo, http, python.",
+                    },
+                    "spec": {
+                        "type": "object",
+                        "description": "The kind-specific spec object to test, not yet published; \
+                            see host.quickstart(kind) for an example.",
+                    },
                     "invocations": {
                         "type": "array",
                         "items": {"type": "object"},
                         "maxItems": MAX_TEST_INVOCATIONS,
+                        "description": "Up to 5 example call-argument objects to run through the \
+                            spec, e.g. [{\"msg\": \"hi\"}].",
                     },
                 }),
                 &["kind", "spec", "invocations"],
@@ -1794,7 +1978,10 @@ impl ServerHandler for McpHostHandler {
                  `source` field only publishes as `python` and `upstream`/`method`+`url` fields \
                  only publish as `http` -- so request the kind your task needs and a mismatch \
                  returns a `kind_mismatch` error naming the disagreeing spec element instead of \
-                 silently publishing the other kind.",
+                 silently publishing the other kind. Before you call a tool for the first \
+                 time, see `host.quickstart`'s `try_before_call` table for which of the four \
+                 dry-run tools (host.tool_test, host.bridge_test, host.spec_test, \
+                 host.tool_run) fits your case.",
         );
         // PRD-mcphost-sandbox-ready P1 requirement 7 (AC8): named here too,
         // not just in host.tool_publish's own description -- a client that

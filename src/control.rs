@@ -211,10 +211,52 @@ pub fn quickstart(
         })
     });
 
+    // PRD-mcphost-surface-fluidity requirement 1 (Goal 1, AC1): the one
+    // place naming which of the four dry-run tools fits which case, each
+    // row with the exact call an agent can make right now -- every dry-run
+    // tool's own descriptor (handler.rs's `host_tools`) is now one sentence
+    // plus a pointer here instead of re-explaining the other three.
+    // `host.bridge_test` is `http`-kind-specific and `host.tool_run` is
+    // `python`-kind-specific (see their own descriptions), so those two
+    // rows use that kind's own example regardless of the `kind` this call
+    // requested; `host.tool_test`/`host.spec_test` work for any kind, so
+    // those two use the requested one, same as `steps` above.
+    let mut try_before_call = vec![json!({
+        "case": "a published tool, by name",
+        "call": "host.tool_test",
+        "arguments": {"name": tool_name, "args": example.call_args},
+    })];
+    if let Some(http) = state.kinds.get("http") {
+        let http_example = http.example();
+        try_before_call.push(json!({
+            "case": "an unpublished http spec, against its real upstream",
+            "call": "host.bridge_test",
+            "arguments": {"spec": http_example.spec, "args": http_example.call_args},
+        }));
+    }
+    try_before_call.push(json!({
+        "case": "an unpublished spec of any kind, with example invocations",
+        "call": "host.spec_test",
+        "arguments": {
+            "kind": kind_name,
+            "spec": example.spec,
+            "invocations": [example.call_args],
+        },
+    }));
+    if let Some(python) = state.kinds.get("python") {
+        let python_example = python.example();
+        try_before_call.push(json!({
+            "case": "a published python tool, for stdout, stderr and exit code",
+            "call": "host.tool_run",
+            "arguments": {"name": tool_name, "args": python_example.call_args},
+        }));
+    }
+
     Ok(json!({
         "authenticated": true,
         "namespace": tenant.namespace,
         "kind": kind_name,
+        "try_before_call": try_before_call,
         "steps": [
             {
                 "call": "host.tool_publish",
