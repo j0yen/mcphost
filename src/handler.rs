@@ -20,8 +20,9 @@ use crate::auth::{extract_bearer, hash_key};
 use crate::db::{Tenant, ToolRow};
 use crate::errors::AppError;
 use crate::kinds::{
-    CallCtx, CallLog, Kind, KindRegistry, MAX_TEST_INVOCATIONS, NullLog, NullResourceSink,
-    ResourceSink, SecretResolver, describe_args_error, run_spec_test,
+    CallCtx, CallLog, Kind, KindError, KindRegistry, MAX_TEST_INVOCATIONS, NoState, NullLog,
+    NullResourceSink, ResourceSink, SecretResolver, StateBackend, describe_args_error,
+    run_spec_test,
 };
 use crate::state::{
     AppState, MAX_SPEC_BYTES, TOOLS_LIST_TTL_GRACE_SECS, TOOLS_LIST_TTL_MS_STEADY, now_unix,
@@ -707,6 +708,66 @@ impl ResourceSink for CellResourceSink {
     }
 }
 
+/// `tenant_state.rs`'s own errors are always `AppError::Structured`,
+/// `InvalidArgs`, or `InvalidSpec` (see its `arg_str`/`quota_exceeded`/
+/// `schema_violation`/`table_not_found` helpers); those three round-trip
+/// their fields unchanged into the matching `KindError` variant. Anything
+/// else becomes an `Exec` carrying the message -- the same fallback shape
+/// `From<KindError> for AppError` uses in the other direction.
+fn app_error_to_kind_error(e: AppError) -> KindError {
+    match e {
+        AppError::Structured {
+            code,
+            message,
+            data,
+        } => KindError::Structured {
+            code,
+            message,
+            data,
+        },
+        AppError::InvalidArgs(m) => KindError::InvalidArgs(m),
+        AppError::InvalidSpec(m) => KindError::InvalidSpec(m),
+        other => KindError::Exec(other.to_string()),
+    }
+}
+
+/// PRD-mcphost-tenant-state requirement 3: bridges `Kind::call`'s
+/// `CallCtx.state` to the real `tenant_state.rs` business logic for this
+/// call's own tenant -- the same pattern `build_secret_resolver` uses for
+/// `CallCtx.secrets`. `op` is one of the bare verb names `kinds::python`'s
+/// `mcphost.state` sandbox module sends (`"get"`, `"set"`, `"delete"`,
+/// `"list"`, `"table_create"`, `"table_drop"`, `"insert"`, `"query"`,
+/// `"delete_rows"`) -- distinct from the dotted `host.state.*` tool names
+/// `dispatch_control_tool` matches above, which is the *other* caller of
+/// these same `tenant_state::state_*` functions.
+struct TenantStateBridge {
+    state: Arc<AppState>,
+    tenant: Tenant,
+}
+
+#[async_trait::async_trait]
+impl StateBackend for TenantStateBridge {
+    async fn call(&self, op: &str, args: Value) -> Result<Value, KindError> {
+        let result = match op {
+            "get" => tenant_state::state_get(&self.state, &self.tenant, &args).await,
+            "set" => tenant_state::state_set(&self.state, &self.tenant, &args).await,
+            "delete" => tenant_state::state_delete(&self.state, &self.tenant, &args).await,
+            "list" => tenant_state::state_list(&self.state, &self.tenant, &args).await,
+            "table_create" => {
+                tenant_state::state_table_create(&self.state, &self.tenant, &args).await
+            }
+            "table_drop" => tenant_state::state_table_drop(&self.state, &self.tenant, &args).await,
+            "insert" => tenant_state::state_insert(&self.state, &self.tenant, &args).await,
+            "query" => tenant_state::state_query(&self.state, &self.tenant, &args).await,
+            "delete_rows" => {
+                tenant_state::state_delete_rows(&self.state, &self.tenant, &args).await
+            }
+            other => Err(AppError::InvalidArgs(format!("unknown state op '{other}'"))),
+        };
+        result.map_err(app_error_to_kind_error)
+    }
+}
+
 // ---- the handler -----------------------------------------------------
 
 #[derive(Clone)]
@@ -879,6 +940,10 @@ impl McpHostHandler {
             test_mode: false,
             resources: resources.clone() as Arc<dyn ResourceSink>,
             tool_name: Some(local_name.to_string()),
+            state: Arc::new(TenantStateBridge {
+                state: self.state.clone(),
+                tenant: tenant.clone(),
+            }),
         };
 
         let start = Instant::now();
@@ -1073,6 +1138,10 @@ impl McpHostHandler {
             test_mode: true,
             resources: Arc::new(NullResourceSink),
             tool_name: Some(local_name.clone()),
+            state: Arc::new(TenantStateBridge {
+                state: self.state.clone(),
+                tenant: tenant.clone(),
+            }),
         };
 
         match tokio::time::timeout(
@@ -1166,6 +1235,10 @@ impl McpHostHandler {
             test_mode: true,
             resources: Arc::new(NullResourceSink),
             tool_name: None,
+            // `host.bridge_test` always dispatches to the `http` kind
+            // (fixed above), which has no notion of `mcphost.state` --
+            // `NoState` is correct here, not a stand-in for a real backend.
+            state: Arc::new(NoState),
         };
 
         match tokio::time::timeout(self.state.call_timeout, kind.call(&spec, call_args, &ctx)).await
@@ -1284,6 +1357,10 @@ impl McpHostHandler {
             .map(|_| Arc::new(BufferedLog(std::sync::Mutex::new(Vec::new()))))
             .collect();
         let mut log_bufs_iter = log_bufs.iter().cloned();
+        let state_backend: Arc<dyn StateBackend> = Arc::new(TenantStateBridge {
+            state: self.state.clone(),
+            tenant: tenant.clone(),
+        });
         let results = run_spec_test(&kind, &spec, &invocations, call_timeout, || CallCtx {
             tenant_id,
             namespace: namespace.clone(),
@@ -1296,6 +1373,7 @@ impl McpHostHandler {
             test_mode: true,
             resources: Arc::new(NullResourceSink),
             tool_name: None,
+            state: state_backend.clone(),
         })
         .await;
 
@@ -1456,6 +1534,10 @@ impl McpHostHandler {
             test_mode: false,
             resources: Arc::new(NullResourceSink),
             tool_name: Some(local_name.clone()),
+            state: Arc::new(TenantStateBridge {
+                state: self.state.clone(),
+                tenant: tenant.clone(),
+            }),
         };
 
         let start = Instant::now();
