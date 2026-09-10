@@ -535,7 +535,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             "host.group.create",
             "Create a named group this tenant owns, for host.tool_share(visibility: \"group\").",
             host_schema(
-                json!({"name": {"type": "string"}}),
+                json!({"name": {"type": "string", "description": "Group name."}}),
                 &["name"],
             ),
         ),
@@ -582,7 +582,12 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             "Return one public tool's descriptor and args_schema by its full name \
              (<namespace>.<name>).",
             host_schema(
-                json!({"full_name": {"type": "string"}}),
+                json!({
+                    "full_name": {
+                        "type": "string",
+                        "description": "The tool's full name, <namespace>.<name>.",
+                    }
+                }),
                 &["full_name"],
             ),
         ),
@@ -1506,6 +1511,10 @@ impl McpHostHandler {
     /// the CALLER's `calls_per_day` is what's checked and metered, not the
     /// owner's, and requirement 3: the `calls` row's `caller_tenant_id`
     /// carries the attribution.
+    // Six parameters: one dispatch path with a single call site per caller
+    // shape (same-tenant vs. cross-tenant); splitting it would just move
+    // the same inputs into a struct with one constructor per call site.
+    #[allow(clippy::too_many_arguments)]
     async fn call_published_tool(
         &self,
         tenant: &Tenant,
@@ -2343,6 +2352,10 @@ impl McpHostHandler {
     /// group) is `ToolNotFound`, indistinguishably from each other, so a
     /// probe never learns whether a private tool of that name exists
     /// (requirement 2: "never revealing whether the tool exists").
+    // Six parameters: one resolve-then-dispatch path with a single caller
+    // (`call_tool`'s cross-tenant arm) -- same shape as
+    // `call_published_tool` above.
+    #[allow(clippy::too_many_arguments)]
     async fn call_shared_tool(
         &self,
         caller: &Tenant,

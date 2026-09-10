@@ -119,12 +119,25 @@ async fn migrate_adds_cascade_and_preserves_existing_rows() {
     // `PRAGMA foreign_key_list` on each child table shows `ON DELETE
     // CASCADE` now -- a second, independent read connection to the same
     // (WAL-mode) file.
+    //
+    // Filtered on `"from" = 'tenant_id'`, not just `"table" = 'tenants'`:
+    // `calls` has grown a second FK to `tenants` since this test was
+    // written (`caller_tenant_id`, migration 0013, PRD-mcphost-sharing)
+    // that is deliberately NOT this AC's concern -- it records who placed
+    // a cross-tenant call, not who owns the row, and
+    // `pragma_foreign_key_list` does not guarantee row order, so an
+    // unfiltered query could silently read whichever FK SQLite lists
+    // first (observed: it read `caller_tenant_id`'s plain `NO ACTION`
+    // instead of `tenant_id`'s `CASCADE`). `tenant_id` is the one column
+    // every one of these tables has always had and the one this AC's
+    // cascade guarantee is about.
     let check = rusqlite::Connection::open(&db_path).expect("open raw db for pragma check");
     for table in ["logs", "calls", "secrets", "tools", "registry_documents"] {
         let on_delete: String = check
             .query_row(
                 &format!(
-                    "SELECT on_delete FROM pragma_foreign_key_list('{table}') WHERE \"table\" = 'tenants'"
+                    "SELECT on_delete FROM pragma_foreign_key_list('{table}') \
+                     WHERE \"table\" = 'tenants' AND \"from\" = 'tenant_id'"
                 ),
                 params![],
                 |r| r.get(0),
