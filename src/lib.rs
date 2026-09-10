@@ -15,6 +15,7 @@ pub mod funnel;
 pub mod handler;
 pub mod http;
 pub mod kinds;
+pub mod llms_txt;
 pub mod metering;
 pub mod plans;
 pub mod registry;

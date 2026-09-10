@@ -92,15 +92,18 @@ pub enum AppError {
     TooManyTools(usize),
     #[error("invalid spec: {0}")]
     InvalidSpec(String),
+    /// PRD-mcphost-surface-fluidity requirement 2 (Goal 2): the host used to
+    /// carry two wire codes for one mistake -- this variant's own (now
+    /// retired) code and the schema pre-check's `args_invalid` below. Both
+    /// now emit `args_invalid` (see [`Self::code`]); a client branching on
+    /// the error code handles it once. Kept as its own variant (rather than
+    /// merged into a single one) because its call sites (missing
+    /// control-plane arguments like `host.tool_publish`'s `name`) are
+    /// distinct from the generic `tools/call` args-schema pre-check below,
+    /// which still builds an [`AppError::Structured`] directly so its extra
+    /// `data` fields survive.
     #[error("invalid arguments: {0}")]
     InvalidArgs(String),
-    /// The generic `tools/call` args-schema pre-check (`handler.rs`, run
-    /// before `Kind::call`) failing a published tool's own `args_schema`.
-    /// A distinct variant from [`AppError::InvalidArgs`] (used for missing
-    /// *control-plane* arguments like `host.tool_publish`'s `name`) because
-    /// the `http` kind's AC4 pins the wire code to exactly `args_invalid`.
-    #[error("invalid arguments: {0}")]
-    ArgsInvalid(String),
     /// `host.tool_publish` rejected a spec referencing `secret.<name>` for
     /// a secret this tenant hasn't set (AC3).
     #[error("spec references unknown secret '{0}'")]
@@ -177,8 +180,11 @@ impl AppError {
             AppError::SpecTooLarge(_) => "spec_too_large",
             AppError::TooManyTools(_) => "too_many_tools",
             AppError::InvalidSpec(_) => "invalid_spec",
-            AppError::InvalidArgs(_) => "invalid_args",
-            AppError::ArgsInvalid(_) => "args_invalid",
+            // PRD-mcphost-surface-fluidity requirement 2: one code for bad
+            // arguments -- this used to be a distinct wire code, now it's
+            // the same "args_invalid" every other bad-argument rejection in
+            // this file already uses.
+            AppError::InvalidArgs(_) => "args_invalid",
             AppError::SecretMissing(_) => "secret_missing",
             AppError::Structured { code, .. } => code,
             AppError::MultiInvalid { errors, .. } => {
@@ -204,7 +210,6 @@ impl AppError {
             | AppError::TooManyTools(_)
             | AppError::InvalidSpec(_)
             | AppError::InvalidArgs(_)
-            | AppError::ArgsInvalid(_)
             | AppError::InvalidParams(_)
             | AppError::SecretMissing(_) => ErrorCode::INVALID_PARAMS,
             AppError::Storage(_)
@@ -274,8 +279,8 @@ impl AppError {
     /// The `field`/`expected` pair for every rejection this crate can
     /// return (requirement 2 / AC2, AC5): named `AppError` variants get a
     /// hand-written field and expectation naming the exact control-plane
-    /// argument at fault; `InvalidSpec`/`InvalidArgs`/`ArgsInvalid` and any
-    /// `Structured` kind error fall back to the shared "<field>: <rest>"
+    /// argument at fault; `InvalidSpec`/`InvalidArgs` and any `Structured`
+    /// kind error fall back to the shared "<field>: <rest>"
     /// message convention via [`Self::split_field`] -- so a kind gains this
     /// for free by writing its error messages the way every kind already
     /// does, no enum change or call-site rewrite required.
@@ -303,7 +308,7 @@ impl AppError {
                      call host.secret_set first"
                 )),
             ),
-            AppError::InvalidArgs(m) | AppError::ArgsInvalid(m) | AppError::InvalidSpec(m) => {
+            AppError::InvalidArgs(m) | AppError::InvalidSpec(m) => {
                 match Self::split_field(m) {
                     Some((field, expected)) => {
                         (Some(field.to_string()), Some(expected.to_string()))

@@ -214,10 +214,12 @@ struct PythonSpec {
     /// tool's caller can expect to read at `result.payload.<field>`, each
     /// with an optional `Path`. Optional -- a spec that omits it (every spec
     /// published before either PRD) gets no envelope changes
-    /// (Migration/compatibility: additive). The map form's *path* here
-    /// parses (requirement 2/3) but, unlike `http`, is not yet read from at
-    /// call time -- see [`apply_declared_outputs`]'s doc (P1, may defer per
-    /// the PRD's own non-goal 3 / open question).
+    /// (Migration/compatibility: additive). The map form's *path* is read at
+    /// call time by [`apply_declared_outputs`], both on the cold path and on
+    /// a warm-sandbox reuse (`try_warm`) -- closed by
+    /// PRD-mcphost-surface-fluidity requirement 5 (Goal 4, AC6), which also
+    /// found and fixed `try_warm`'s own copy of this step going missing
+    /// entirely.
     outputs: Vec<OutputDecl>,
 }
 
@@ -2008,8 +2010,8 @@ impl SidecarBridge for StateSidecarBridge<'_> {
                         message,
                         data,
                     } => (code, message, data),
-                    KindError::InvalidArgs(m) => ("state_invalid_args", m, Value::Null),
-                    KindError::InvalidSpec(m) => ("state_invalid_args", m, Value::Null),
+                    KindError::InvalidArgs(m) => ("state_args_invalid", m, Value::Null),
+                    KindError::InvalidSpec(m) => ("state_args_invalid", m, Value::Null),
                     KindError::Exec(m) => ("state_error", m, Value::Null),
                 };
                 json!({"ok": false, "code": code, "message": message, "data": data})
@@ -2059,7 +2061,7 @@ impl SidecarBridge for ComposeSidecarBridge<'_> {
                         message,
                         data,
                     } => (code, message, data),
-                    KindError::InvalidArgs(m) => ("invalid_args", m, Value::Null),
+                    KindError::InvalidArgs(m) => ("args_invalid", m, Value::Null),
                     KindError::InvalidSpec(m) => ("invalid_spec", m, Value::Null),
                     KindError::Exec(m) => ("exec", m, Value::Null),
                 };
@@ -2279,14 +2281,16 @@ fn value_type_name(v: &Value) -> &'static str {
 /// `_envelope_warning` naming the scalar promotion rather than silently
 /// guessing which declared field the raw value represents.
 ///
-/// PRD-mcphost-spec-output-paths non-goal 3 / open question ("python kind's
-/// map form beyond parsing is P1 here and may be deferred"): `declared`'s
-/// own `path` (when an entry came from the map form) is *parsed* by
-/// `parse_spec`/`normalize_outputs` but not read from here -- every entry is
-/// still promoted by name only, exactly as before the map form existed. A
-/// python tool author who writes `outputs: {"score": "$.data.score"}` gets
-/// the same wrapper-search promotion as `outputs: ["score"]`, not an error
-/// and not (yet) direct path resolution.
+/// PRD-mcphost-surface-fluidity requirement 5 (Goal 4, AC6): `declared`'s
+/// own `path` (when an entry came from the map form) is now read here, not
+/// just parsed -- [`super::apply_output_decls`] resolves it directly against
+/// the tool's return value, the same grammar and the same envelope report
+/// (`host.tool_test`'s `found_at_contract_path`/`missing`) `http`'s `call`
+/// already gets from it (closes mcphost-spec-output-paths requirement 7,
+/// whose non-goal 3 deferred exactly this). A bare-name entry (`path: None`)
+/// is unaffected -- it still falls through to the same any-wrapper search
+/// `apply_output_decls` runs for a path-less declaration, identical to
+/// [`super::promote_declared_outputs_any_wrapper`]'s old behavior.
 fn apply_declared_outputs(value: Value, declared: &[OutputDecl]) -> Value {
     if declared.is_empty() {
         return value;
@@ -2296,7 +2300,7 @@ fn apply_declared_outputs(value: Value, declared: &[OutputDecl]) -> Value {
         Value::Object(obj) => {
             let source = Value::Object(obj.clone());
             let mut payload_map = obj.clone();
-            super::promote_declared_outputs_any_wrapper(&mut payload_map, &source, &names);
+            super::apply_output_decls(&mut payload_map, &source, declared, None);
             let mut out = obj;
             out.insert("payload".to_string(), Value::Object(payload_map));
             Value::Object(out)
@@ -2843,6 +2847,16 @@ impl PythonKind {
         ctx: &CallCtx,
         effective_schema: &Value,
         secret_values: &[String],
+        // PRD-mcphost-surface-fluidity requirement 5 (Goal 4, AC6): the cold
+        // path (below) already runs every response through
+        // `apply_declared_outputs` before wrapping; this warm-reuse path
+        // used to skip straight to `redact_value` and never promoted a
+        // declared `outputs` field at all, so a second call landing on a
+        // warm sandbox (exactly what `host.tool_test` hits right after the
+        // first, cold, real call seeded the pool) reported the field
+        // `missing` even though the same tool's cold call reported it
+        // `found`.
+        declared: &[OutputDecl],
     ) -> Option<Result<Value, KindError>> {
         let mut entry = self.warm.take(key)?;
         if entry.fingerprint != fingerprint {
@@ -2877,6 +2891,7 @@ impl PythonKind {
                 Some(match result {
                     Ok(value) => {
                         let redacted = redact_value(&value, secret_values);
+                        let redacted = apply_declared_outputs(redacted, declared);
                         if ctx.test_mode {
                             Ok(json!({"result": redacted, "schema": effective_schema}))
                         } else {
@@ -3298,6 +3313,7 @@ impl Kind for PythonKind {
                     ctx,
                     &effective_schema,
                     &secret_values,
+                    &parsed.outputs,
                 )
                 .await
             {
@@ -3724,6 +3740,54 @@ mod tests {
                 .await
                 .is_none()
         );
+    }
+
+    /// PRD-mcphost-surface-fluidity requirement 5 / AC6: a map-form
+    /// `outputs` entry (`OutputDecl.path: Some(_)`) is now resolved by path
+    /// against the tool's own returned object, the same as `http`'s `call`
+    /// already does via `apply_output_decls` -- not merely promoted by name
+    /// (the pre-PRD behavior this test would have failed against).
+    #[test]
+    fn apply_declared_outputs_resolves_a_map_form_path() {
+        let declared = super::super::normalize_outputs(&json!({
+            "ingestion_status": "$.data.status",
+        }))
+        .expect("valid outputs map");
+        let value = json!({"data": {"status": "ok"}});
+        let out = apply_declared_outputs(value, &declared);
+        assert_eq!(
+            out["payload"]["ingestion_status"],
+            json!("ok"),
+            "path-declared field must be resolved into payload: {out}"
+        );
+    }
+
+    /// Same as above, but the path doesn't resolve -- the declared field
+    /// must be absent from `payload` (not silently left at some other,
+    /// wrong value), so `envelope_report`'s `missing` still reports it
+    /// truthfully.
+    #[test]
+    fn apply_declared_outputs_omits_a_path_that_does_not_resolve() {
+        let declared = super::super::normalize_outputs(&json!({
+            "ingestion_status": "$.data.status",
+        }))
+        .expect("valid outputs map");
+        let value = json!({"data": {"other": "ok"}});
+        let out = apply_declared_outputs(value, &declared);
+        assert!(
+            out["payload"].get("ingestion_status").is_none(),
+            "unresolved path must not appear in payload: {out}"
+        );
+    }
+
+    /// A bare-name (list-form) declaration keeps the pre-PRD any-wrapper
+    /// promotion, unaffected by the path-aware change above.
+    #[test]
+    fn apply_declared_outputs_still_promotes_a_bare_name_by_wrapper_search() {
+        let declared = super::super::normalize_outputs(&json!(["status"])).expect("valid list");
+        let value = json!({"analysis": {"status": "ok"}});
+        let out = apply_declared_outputs(value, &declared);
+        assert_eq!(out["payload"]["status"], json!("ok"));
     }
 
     #[test]

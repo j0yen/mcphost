@@ -81,6 +81,24 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// PRD-mcphost-surface-fluidity requirement 4 (AC5): regenerate
+    /// `www/llms.txt`'s generated `## Tools` section from the same
+    /// descriptors `tools/list` serves, so the two can never drift the way
+    /// the 2026-09-09 audit found (14 documented vs 18 live). Needs no DB
+    /// and no sandbox: the tool name set is independent of which optional
+    /// kinds (http/python) are registered, so this always builds against
+    /// `KindRegistry::with_builtin()` (echo only).
+    LlmsTxt {
+        /// Exit 1 without writing if the file is stale, instead of
+        /// rewriting it -- same convention as `scripts/gen-llms-full.sh
+        /// --check`, for a pre-commit/CI gate.
+        #[arg(long)]
+        check: bool,
+        /// Path to the llms.txt file to update. Defaults to `www/llms.txt`
+        /// relative to the current directory (run from the repo root).
+        #[arg(long)]
+        path: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -257,6 +275,39 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
             Ok(())
+        }
+        Command::LlmsTxt { check, path } => {
+            // Deliberately no `init_tracing()`: same rationale as
+            // `SandboxCheck`/`Funnel` above -- this subcommand's contract is
+            // plain stdout/exit-code, no JSON log line ahead of it.
+            let path = path.unwrap_or_else(|| PathBuf::from("www/llms.txt"));
+            let existing = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+                eprintln!("llms-txt: failed to read {}: {e}", path.display());
+                std::process::exit(2);
+            });
+            let kinds = KindRegistry::with_builtin();
+            let section = mcphost::llms_txt::render_tools_section(&kinds);
+            let updated = mcphost::llms_txt::splice_into(&existing, &section);
+            if check {
+                if updated == existing {
+                    println!("llms-txt --check: {} is up to date", path.display());
+                    Ok(())
+                } else {
+                    eprintln!(
+                        "llms-txt --check: {} is stale (run `mcphost llms-txt`)",
+                        path.display()
+                    );
+                    std::process::exit(1);
+                }
+            } else {
+                if updated != existing {
+                    std::fs::write(&path, &updated)?;
+                    println!("llms-txt: regenerated {}", path.display());
+                } else {
+                    println!("llms-txt: {} already up to date", path.display());
+                }
+                Ok(())
+            }
         }
         Command::Serve { registry_url } => {
             init_tracing();
