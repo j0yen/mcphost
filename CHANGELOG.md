@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.42.0 — 2026-09-10
+
+Every execution on mcphost was a call that had to finish inside its 30-second deadline. This adds a `runs` ledger and executor: `host.tool_call(name, args, async=true)` returns a run id immediately, the tool runs under a job deadline from the plan (free 300s/1 concurrent, pro 900s/3 concurrent), reports progress through the sandbox channel (`mcphost.progress(pct, msg)`), and writes its result where `host.runs.get`/`list`/`cancel`/`purge`/`wait` read it. Every synchronous call also writes a `runs` row (`trigger='call'`) in the same transaction as its `calls` row, so the ledger is complete from day one. `admin.runs`/`admin.runs_reap` give an operator the same view across tenants.
+
 ## v0.41.0 — 2026-09-10
 
 Every tool on mcphost is visible to exactly one tenant, and a call to another tenant's `<namespace>.<tool>` is refused at one line in the handler. This release makes sharing a small, explicit change: a tool can be `private`, `group`, or `public`; a shared tool keeps its name, runs in its owner's sandbox with its owner's secrets, and each call records the caller so both tenants see it in usage and both are metered. `host.tool_share`/`host.tool_unshare`, `host.group.create/add/remove/list`, and `host.catalog.search/get` (plus `GET /.well-known/mcp/catalog.json`) round out the surface; `admin.shared_tools`/`admin.tool_unshare` give an operator visibility and an override. Pricing per call (P1) is deferred to a follow-on PRD per this PRD's own Non-goals.
