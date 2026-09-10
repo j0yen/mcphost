@@ -96,6 +96,17 @@ async fn unauthenticated_tools_list_is_signup_only() {
         "host.state.insert",
         "host.state.query",
         "host.state.delete_rows",
+        // PRD-mcphost-sharing requirement 1: the sharing/catalog control
+        // plane is discoverable unauthenticated too, same as every other
+        // host.*-style tool above.
+        "host.tool_share",
+        "host.tool_unshare",
+        "host.group.create",
+        "host.group.add",
+        "host.group.remove",
+        "host.group.list",
+        "host.catalog.search",
+        "host.catalog.get",
         // PRD-grand-loop-billing AC1: billing.plans is anonymous-and-tenant
         // reachable, discoverable here for the same reason host.quickstart
         // is -- billing.status/billing.checkout are tenant-only in what
@@ -116,9 +127,10 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        27,
+        35,
         "signup + the thirteen host.* tools (incl. host.quickstart, host.tool_run, and \
          host.bridge_test) + host.tool_call + the nine host.state.* tools (PRD-mcphost-tenant-state) \
-         + the three billing.* tools: {tool_names:?}"
+         + the eight host.tool_share/host.tool_unshare/host.group.*/host.catalog.* tools \
+         (PRD-mcphost-sharing) + the three billing.* tools: {tool_names:?}"
     );
 }

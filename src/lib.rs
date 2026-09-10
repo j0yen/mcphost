@@ -21,5 +21,6 @@ pub mod plans;
 pub mod registry;
 pub mod sandbox;
 pub mod secrets;
+pub mod sharing;
 pub mod state;
 pub mod tenant_state;
