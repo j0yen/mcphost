@@ -41,6 +41,13 @@ pub struct Plan {
     /// [`PlanBuilder::build`]) -- the same "additive, tolerant of an older
     /// file" parsing this crate already applies to every other field.
     pub concurrent_calls_per_tenant: i64,
+    /// PRD-mcphost-sharing requirement 4 (AC6): how many of this plan's
+    /// tenants' tools may be non-private (`'group'` or `'public'`
+    /// visibility) at once. Defaults to `3` when a hand-edited
+    /// `plans.toml` predates this key (see [`PlanBuilder::build`]), same
+    /// tolerant-of-an-older-file convention as
+    /// `concurrent_calls_per_tenant`.
+    pub shared_tools_max: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -72,6 +79,8 @@ impl PlanCatalog {
                     state_rows_max: 10_000,
                     state_ops_per_call_max: 200,
                     concurrent_calls_per_tenant: 4,
+                    // PRD-mcphost-sharing requirement 4 (AC6): "free 3".
+                    shared_tools_max: 3,
                 },
                 Plan {
                     name: "pro".to_string(),
@@ -87,6 +96,8 @@ impl PlanCatalog {
                     state_rows_max: 100_000,
                     state_ops_per_call_max: 200,
                     concurrent_calls_per_tenant: 10,
+                    // PRD-mcphost-sharing requirement 4: "pro 50".
+                    shared_tools_max: 50,
                 },
             ],
         }
@@ -149,6 +160,7 @@ impl PlanCatalog {
                 "concurrent_calls_per_tenant = {}\n",
                 p.concurrent_calls_per_tenant
             ));
+            out.push_str(&format!("shared_tools_max = {}\n", p.shared_tools_max));
             out.push('\n');
         }
         out
@@ -200,6 +212,7 @@ impl PlanCatalog {
                 "concurrent_calls_per_tenant" => {
                     builder.concurrent_calls_per_tenant = Some(int_value())
                 }
+                "shared_tools_max" => builder.shared_tools_max = Some(int_value()),
                 _ => {}
             }
         }
@@ -227,6 +240,7 @@ struct PlanBuilder {
     state_rows_max: Option<i64>,
     state_ops_per_call_max: Option<i64>,
     concurrent_calls_per_tenant: Option<i64>,
+    shared_tools_max: Option<i64>,
 }
 
 impl PlanBuilder {
@@ -248,6 +262,10 @@ impl PlanBuilder {
             // all -- `4` (the `free` plan's own default) keeps such a file
             // loadable rather than failing `load_or_init` outright.
             concurrent_calls_per_tenant: self.concurrent_calls_per_tenant.unwrap_or(4),
+            // PRD-mcphost-sharing requirement 4: a `plans.toml` predating
+            // this key gets the `free` plan's own default (3), same
+            // tolerant-parse rationale as `concurrent_calls_per_tenant`.
+            shared_tools_max: self.shared_tools_max.unwrap_or(3),
         })
     }
 }

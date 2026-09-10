@@ -25,6 +25,7 @@ const MIGRATION_0009: &str = include_str!("../migrations/0009_call_outcome.sql")
 const MIGRATION_0010: &str = include_str!("../migrations/0010_tenant_attribution.sql");
 const MIGRATION_0011: &str = include_str!("../migrations/0011_tenant_state.sql");
 const MIGRATION_0012: &str = include_str!("../migrations/0012_provenance.sql");
+const MIGRATION_0013: &str = include_str!("../migrations/0013_sharing.sql");
 
 /// Shared by every query that selects a whole tenant row, so the column
 /// list and [`tenant_from_row`] stay in lockstep with each other.
@@ -56,6 +57,30 @@ fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
         created_unix: r.get(18)?,
         origin: r.get(19)?,
         origin_detail: r.get(20)?,
+    })
+}
+
+/// Shared by every query that selects a whole tools row, so the column
+/// list and [`tool_from_row`] stay in lockstep with each other -- same
+/// convention as [`TENANT_COLUMNS`]/[`tenant_from_row`] above
+/// (PRD-mcphost-sharing migration 0013).
+const TOOL_COLUMNS: &str = "id, tenant_id, name, kind, spec, created_at, visibility, \
+    share_description, shared_unix, shared_group, unshared_by";
+
+fn tool_from_row(r: &Row) -> rusqlite::Result<ToolRow> {
+    let spec_text: String = r.get(4)?;
+    Ok(ToolRow {
+        id: r.get(0)?,
+        tenant_id: r.get(1)?,
+        name: r.get(2)?,
+        kind: r.get(3)?,
+        spec: serde_json::from_str(&spec_text).unwrap_or(Value::Null),
+        created_at: r.get(5)?,
+        visibility: r.get(6)?,
+        share_description: r.get(7)?,
+        shared_unix: r.get(8)?,
+        shared_group: r.get(9)?,
+        unshared_by: r.get(10)?,
     })
 }
 
@@ -147,6 +172,23 @@ pub struct ToolRow {
     pub kind: String,
     pub spec: Value,
     pub created_at: String,
+    /// PRD-mcphost-sharing migration 0013: `'private'` (default),
+    /// `'group'`, or `'public'` -- the switch the cross-tenant arm of
+    /// `handler.rs`'s `call_tool` reads to decide whether `<ns>.<name>`
+    /// resolves for a caller outside `tenant_id`'s own namespace.
+    pub visibility: String,
+    /// The catalog-facing blurb set by `host.tool_share`; `None` until
+    /// shared (or after `host.tool_unshare`/`admin.tool_unshare`).
+    pub share_description: Option<String>,
+    /// Unix seconds of the last `host.tool_share` call; `None` while
+    /// private.
+    pub shared_unix: Option<i64>,
+    /// The group name this tool is shared to, only meaningful when
+    /// `visibility == "group"`.
+    pub shared_group: Option<String>,
+    /// `"admin"` when `admin.tool_unshare` most recently unshared this
+    /// tool; `None` otherwise (AC9).
+    pub unshared_by: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -506,7 +548,8 @@ impl Db {
         Self::migrate_0009_call_outcome(&conn)?;
         Self::migrate_0010_tenant_attribution(&conn)?;
         Self::migrate_0011_tenant_state(&conn)?;
-        Self::migrate_0012_provenance(&conn)
+        Self::migrate_0012_provenance(&conn)?;
+        Self::migrate_0013_sharing(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -676,6 +719,21 @@ impl Db {
         conn.execute_batch(MIGRATION_0012)?;
         let counts = backfill_provenance_sync(conn)?;
         tracing::info!(?counts, "provenance backfill complete");
+        Ok(())
+    }
+
+    /// PRD-mcphost-sharing migration 0013 (P0 requirement 1): same
+    /// idempotency pattern as 0002-0012, gated on `tools.visibility`. Every
+    /// existing tool becomes `'private'` via the column's own `DEFAULT`, so
+    /// no backfill pass is needed (unlike 0010/0012, which reclassify
+    /// pre-existing rows).
+    fn migrate_0013_sharing(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tools') WHERE name = 'visibility'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0013)?;
+        }
         Ok(())
     }
 
@@ -1681,24 +1739,10 @@ impl Db {
         name: String,
     ) -> Result<Option<ToolRow>, AppError> {
         self.with_conn(move |conn| {
-            conn.query_row(
-                "SELECT id, tenant_id, name, kind, spec, created_at FROM tools \
-                 WHERE tenant_id = ?1 AND name = ?2",
-                params![tenant_id, name],
-                |r| {
-                    let spec_text: String = r.get(4)?;
-                    Ok(ToolRow {
-                        id: r.get(0)?,
-                        tenant_id: r.get(1)?,
-                        name: r.get(2)?,
-                        kind: r.get(3)?,
-                        spec: serde_json::from_str(&spec_text).unwrap_or(Value::Null),
-                        created_at: r.get(5)?,
-                    })
-                },
-            )
-            .optional()
-            .map_err(AppError::from)
+            let sql = format!("SELECT {TOOL_COLUMNS} FROM tools WHERE tenant_id = ?1 AND name = ?2");
+            conn.query_row(&sql, params![tenant_id, name], tool_from_row)
+                .optional()
+                .map_err(AppError::from)
         })
         .await
     }
@@ -1731,21 +1775,422 @@ impl Db {
 
     pub async fn list_tools(&self, tenant_id: i64) -> Result<Vec<ToolRow>, AppError> {
         self.with_conn(move |conn| {
+            let sql = format!("SELECT {TOOL_COLUMNS} FROM tools WHERE tenant_id = ?1 ORDER BY name");
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(params![tenant_id], tool_from_row)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    // ---- sharing (PRD-mcphost-sharing) ------------------------------------
+
+    /// How many of `tenant_id`'s tools currently have a non-private
+    /// visibility -- the count `host.tool_share` checks against
+    /// `Plan::shared_tools_max` before allowing one more (AC6).
+    pub async fn count_shared_tools(&self, tenant_id: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM tools WHERE tenant_id = ?1 AND visibility != 'private'",
+                params![tenant_id],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `host.tool_share`: set `name`'s visibility to `'public'` or
+    /// `'group'` (with `group` naming the group for the latter),
+    /// `share_description`, and `shared_unix = now`; clears any earlier
+    /// `unshared_by` marker (a re-share is not an unshare). Returns `false`
+    /// if `name` isn't one of `tenant_id`'s tools.
+    pub async fn set_tool_share(
+        &self,
+        tenant_id: i64,
+        name: String,
+        visibility: String,
+        group: Option<String>,
+        description: Option<String>,
+    ) -> Result<bool, AppError> {
+        let shared_unix = now_unix();
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "UPDATE tools SET visibility = ?1, shared_group = ?2, share_description = ?3, \
+                 shared_unix = ?4, unshared_by = NULL \
+                 WHERE tenant_id = ?5 AND name = ?6",
+                params![visibility, group, description, shared_unix, tenant_id, name],
+            )?;
+            Ok(n > 0)
+        })
+        .await
+    }
+
+    /// `host.tool_unshare`: back to `'private'`, clearing the group/
+    /// description/shared_unix. `unshared_by` is left untouched here (the
+    /// owner unsharing its own tool is not the AC9 admin-override case);
+    /// [`Self::admin_unshare_tool`] is the one that stamps it. Returns
+    /// `false` if `name` isn't one of `tenant_id`'s tools.
+    pub async fn unshare_tool(&self, tenant_id: i64, name: String) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "UPDATE tools SET visibility = 'private', shared_group = NULL, \
+                 share_description = NULL, shared_unix = NULL \
+                 WHERE tenant_id = ?1 AND name = ?2",
+                params![tenant_id, name],
+            )?;
+            Ok(n > 0)
+        })
+        .await
+    }
+
+    /// `admin.tool_unshare` (AC9): same effect as [`Self::unshare_tool`],
+    /// keyed by the owner's namespace (an operator names a tenant, not an
+    /// id) and stamping `unshared_by = 'admin'` so the owner's own
+    /// `host.tool_list` shows why its tool went private. Returns `false`
+    /// if the namespace or tool name doesn't resolve to a shared tool.
+    pub async fn admin_unshare_tool(
+        &self,
+        owner_namespace: String,
+        name: String,
+    ) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "UPDATE tools SET visibility = 'private', shared_group = NULL, \
+                 share_description = NULL, shared_unix = NULL, unshared_by = 'admin' \
+                 WHERE name = ?2 AND tenant_id = (SELECT id FROM tenants WHERE namespace = ?1)",
+                params![owner_namespace, name],
+            )?;
+            Ok(n > 0)
+        })
+        .await
+    }
+
+    /// The cross-tenant resolution primitive (AC1-3): `owner_namespace`'s
+    /// tool `local_name`, if it exists -- visibility is decided by the
+    /// caller (`handler.rs`'s `call_shared_tool`), not here, so this never
+    /// leaks "the tool exists but is private" through its `Result` shape.
+    pub async fn get_tool_by_owner_namespace(
+        &self,
+        owner_namespace: String,
+        local_name: String,
+    ) -> Result<Option<(Tenant, ToolRow)>, AppError> {
+        let Some(owner) = self.find_tenant_by_namespace(owner_namespace).await? else {
+            return Ok(None);
+        };
+        let tool = self.get_tool(owner.id, local_name).await?;
+        Ok(tool.map(|t| (owner, t)))
+    }
+
+    /// `host.catalog.search(q, limit)` (AC7): a `LIKE` over name and
+    /// `share_description` among `visibility = 'public'` tools, joined to
+    /// the owner's namespace. `q` of `None` (or empty) returns every public
+    /// tool, newest-shared first.
+    pub async fn search_catalog(
+        &self,
+        q: Option<String>,
+        limit: i64,
+    ) -> Result<Vec<(String, ToolRow)>, AppError> {
+        self.with_conn(move |conn| {
+            let pattern = q
+                .as_deref()
+                .filter(|s| !s.is_empty())
+                .map(|s| format!("%{s}%"));
+            let cols: Vec<String> = TOOL_COLUMNS
+                .split(", ")
+                .map(|c| format!("tools.{c}"))
+                .collect();
+            let sql = format!(
+                "SELECT tenants.namespace, {} FROM tools JOIN tenants ON tenants.id = tools.tenant_id \
+                 WHERE tools.visibility = 'public' \
+                 AND (?1 IS NULL OR tools.name LIKE ?1 OR tools.share_description LIKE ?1) \
+                 ORDER BY tools.shared_unix DESC LIMIT ?2",
+                cols.join(", ")
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(params![pattern, limit], |r| {
+                    let namespace: String = r.get(0)?;
+                    // tool_from_row expects the TOOL_COLUMNS to start at
+                    // index 0; here they start at index 1 because of the
+                    // leading `tenants.namespace` column, so build a
+                    // one-off Row-shifted reader instead of reusing it.
+                    let spec_text: String = r.get(5)?;
+                    Ok((
+                        namespace,
+                        ToolRow {
+                            id: r.get(1)?,
+                            tenant_id: r.get(2)?,
+                            name: r.get(3)?,
+                            kind: r.get(4)?,
+                            spec: serde_json::from_str(&spec_text).unwrap_or(Value::Null),
+                            created_at: r.get(6)?,
+                            visibility: r.get(7)?,
+                            share_description: r.get(8)?,
+                            shared_unix: r.get(9)?,
+                            shared_group: r.get(10)?,
+                            unshared_by: r.get(11)?,
+                        },
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// `host.catalog.get(full_name)` / the well-known catalog document: one
+    /// public tool by its `<namespace>.<name>` full name, or `None` if it
+    /// doesn't exist or isn't public.
+    pub async fn get_public_tool(
+        &self,
+        owner_namespace: String,
+        local_name: String,
+    ) -> Result<Option<ToolRow>, AppError> {
+        let Some((_, tool)) = self
+            .get_tool_by_owner_namespace(owner_namespace, local_name)
+            .await?
+        else {
+            return Ok(None);
+        };
+        Ok((tool.visibility == "public").then_some(tool))
+    }
+
+    // ---- groups (PRD-mcphost-sharing) -------------------------------------
+
+    /// `host.group.create`: idempotent -- creating an already-existing
+    /// group name for this owner is a no-op, not an error (mirrors
+    /// `upsert_tool`'s republish-is-fine convention).
+    pub async fn create_group(&self, owner_tenant_id: i64, name: String) -> Result<(), AppError> {
+        let created_at = now_rfc3339();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO groups (owner_tenant_id, name, created_at) VALUES (?1, ?2, ?3) \
+                 ON CONFLICT(owner_tenant_id, name) DO NOTHING",
+                params![owner_tenant_id, name, created_at],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    fn find_group_id_sync(
+        conn: &Connection,
+        owner_tenant_id: i64,
+        name: &str,
+    ) -> Result<Option<i64>, AppError> {
+        conn.query_row(
+            "SELECT id FROM groups WHERE owner_tenant_id = ?1 AND name = ?2",
+            params![owner_tenant_id, name],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(AppError::from)
+    }
+
+    /// `host.group.add`: add `member_tenant_id` to `owner_tenant_id`'s
+    /// group `name`. Returns `false` if the group doesn't exist yet (the
+    /// caller must `host.group.create` first).
+    pub async fn group_add_member(
+        &self,
+        owner_tenant_id: i64,
+        name: String,
+        member_tenant_id: i64,
+    ) -> Result<bool, AppError> {
+        let created_at = now_rfc3339();
+        self.with_conn(move |conn| {
+            let Some(group_id) = Self::find_group_id_sync(conn, owner_tenant_id, &name)? else {
+                return Ok(false);
+            };
+            conn.execute(
+                "INSERT INTO group_members (group_id, member_tenant_id, created_at) \
+                 VALUES (?1, ?2, ?3) ON CONFLICT(group_id, member_tenant_id) DO NOTHING",
+                params![group_id, member_tenant_id, created_at],
+            )?;
+            Ok(true)
+        })
+        .await
+    }
+
+    /// `host.group.remove`: drop `member_tenant_id` from the group.
+    /// Returns `false` if the group doesn't exist; removing a member who
+    /// was never in it is a no-op success (same idempotent convention as
+    /// `create_group`).
+    pub async fn group_remove_member(
+        &self,
+        owner_tenant_id: i64,
+        name: String,
+        member_tenant_id: i64,
+    ) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let Some(group_id) = Self::find_group_id_sync(conn, owner_tenant_id, &name)? else {
+                return Ok(false);
+            };
+            conn.execute(
+                "DELETE FROM group_members WHERE group_id = ?1 AND member_tenant_id = ?2",
+                params![group_id, member_tenant_id],
+            )?;
+            Ok(true)
+        })
+        .await
+    }
+
+    /// `host.group.list`: every group this tenant owns, each with its
+    /// member namespaces.
+    pub async fn list_groups(&self, owner_tenant_id: i64) -> Result<Vec<(String, Vec<String>)>, AppError> {
+        self.with_conn(move |conn| {
+            let mut group_stmt = conn.prepare(
+                "SELECT id, name FROM groups WHERE owner_tenant_id = ?1 ORDER BY name",
+            )?;
+            let groups = group_stmt
+                .query_map(params![owner_tenant_id], |r| {
+                    Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            let mut out = Vec::with_capacity(groups.len());
+            for (group_id, name) in groups {
+                let mut member_stmt = conn.prepare(
+                    "SELECT tenants.namespace FROM group_members \
+                     JOIN tenants ON tenants.id = group_members.member_tenant_id \
+                     WHERE group_members.group_id = ?1 ORDER BY tenants.namespace",
+                )?;
+                let members = member_stmt
+                    .query_map(params![group_id], |r| r.get(0))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                out.push((name, members));
+            }
+            Ok(out)
+        })
+        .await
+    }
+
+    /// The resolution-time membership check (AC3): is `member_tenant_id` a
+    /// member of `owner_tenant_id`'s group `name`?
+    pub async fn is_group_member(
+        &self,
+        owner_tenant_id: i64,
+        name: String,
+        member_tenant_id: i64,
+    ) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT 1 FROM groups JOIN group_members ON group_members.group_id = groups.id \
+                 WHERE groups.owner_tenant_id = ?1 AND groups.name = ?2 \
+                 AND group_members.member_tenant_id = ?3",
+                params![owner_tenant_id, name, member_tenant_id],
+                |_| Ok(()),
+            )
+            .optional()
+            .map(|r| r.is_some())
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `admin.shared_tools`: every currently-shared (non-private) tool
+    /// across every tenant, with its owner namespace and per-day caller
+    /// counts -- the per-day breakdown mirrors [`Self::calls_by_others`]
+    /// but across all owners rather than one, and grouped by day rather
+    /// than lifetime.
+    pub async fn admin_shared_tools(&self) -> Result<Vec<Value>, AppError> {
+        self.with_conn(move |conn| {
+            let sql = format!(
+                "SELECT tenants.namespace, {} FROM tools JOIN tenants ON tenants.id = tools.tenant_id \
+                 WHERE tools.visibility != 'private' ORDER BY tools.shared_unix DESC",
+                TOOL_COLUMNS
+                    .split(", ")
+                    .map(|c| format!("tools.{c}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map([], |r| {
+                    let namespace: String = r.get(0)?;
+                    let spec_text: String = r.get(5)?;
+                    let tool = ToolRow {
+                        id: r.get(1)?,
+                        tenant_id: r.get(2)?,
+                        name: r.get(3)?,
+                        kind: r.get(4)?,
+                        spec: serde_json::from_str(&spec_text).unwrap_or(Value::Null),
+                        created_at: r.get(6)?,
+                        visibility: r.get(7)?,
+                        share_description: r.get(8)?,
+                        shared_unix: r.get(9)?,
+                        shared_group: r.get(10)?,
+                        unshared_by: r.get(11)?,
+                    };
+                    Ok((namespace, tool))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            let mut out = Vec::with_capacity(rows.len());
+            for (namespace, tool) in rows {
+                let mut caller_stmt = conn.prepare(
+                    "SELECT COALESCE(t2.namespace, '?'), DATE(calls.started_at) AS day, COUNT(*) \
+                     FROM calls JOIN tenants t2 ON t2.id = calls.caller_tenant_id \
+                     WHERE calls.tenant_id = ?1 AND calls.tool_name = ?2 AND calls.caller_tenant_id IS NOT NULL \
+                     GROUP BY t2.namespace, day ORDER BY day DESC",
+                )?;
+                let callers = caller_stmt
+                    .query_map(params![tool.tenant_id, tool.name], |r| {
+                        Ok(json!({
+                            "caller": r.get::<_, String>(0)?,
+                            "day": r.get::<_, String>(1)?,
+                            "calls": r.get::<_, i64>(2)?,
+                        }))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                out.push(json!({
+                    "name": format!("{namespace}.{}", tool.name),
+                    "owner": namespace,
+                    "visibility": tool.visibility,
+                    "group": tool.shared_group,
+                    "description": tool.share_description,
+                    "callers": callers,
+                }));
+            }
+            Ok(out)
+        })
+        .await
+    }
+
+    /// `host.usage`'s `calls_to_shared` (AC5): how many calls this tenant
+    /// made, as caller, to another tenant's shared tool, in `window_secs`.
+    pub async fn calls_to_shared(&self, tenant_id: i64, window_secs: i64) -> Result<i64, AppError> {
+        let since = now_unix() - window_secs;
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM calls WHERE caller_tenant_id = ?1 AND started_unix >= ?2",
+                params![tenant_id, since],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `host.usage`'s `calls_by_others` (AC5): calls this tenant's tools
+    /// received from OTHER tenants in `window_secs`, grouped by caller
+    /// namespace.
+    pub async fn calls_by_others(
+        &self,
+        tenant_id: i64,
+        window_secs: i64,
+    ) -> Result<Vec<(String, i64)>, AppError> {
+        let since = now_unix() - window_secs;
+        self.with_conn(move |conn| {
             let mut stmt = conn.prepare(
-                "SELECT id, tenant_id, name, kind, spec, created_at FROM tools \
-                 WHERE tenant_id = ?1 ORDER BY name",
+                "SELECT tenants.namespace, COUNT(*) FROM calls \
+                 JOIN tenants ON tenants.id = calls.caller_tenant_id \
+                 WHERE calls.tenant_id = ?1 AND calls.caller_tenant_id IS NOT NULL \
+                 AND calls.started_unix >= ?2 GROUP BY tenants.namespace",
             )?;
             let rows = stmt
-                .query_map(params![tenant_id], |r| {
-                    let spec_text: String = r.get(4)?;
-                    Ok(ToolRow {
-                        id: r.get(0)?,
-                        tenant_id: r.get(1)?,
-                        name: r.get(2)?,
-                        kind: r.get(3)?,
-                        spec: serde_json::from_str(&spec_text).unwrap_or(Value::Null),
-                        created_at: r.get(5)?,
-                    })
+                .query_map(params![tenant_id, since], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(rows)
@@ -2154,6 +2599,7 @@ impl Db {
     // function was written against; #[allow] here is a targeted, minimal
     // fix rather than reshaping a working, already-tested call signature.
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub async fn record_call(
         &self,
         tenant_id: i64,
@@ -2167,14 +2613,54 @@ impl Db {
         origin: String,
         origin_detail: Option<String>,
     ) -> Result<(), AppError> {
+        self.record_call_attributed(
+            tenant_id,
+            tool_name,
+            duration_ms,
+            ok,
+            error_class,
+            cpu_ms,
+            peak_rss_kb,
+            outcome,
+            origin,
+            origin_detail,
+            None,
+        )
+        .await
+    }
+
+    /// PRD-mcphost-sharing requirement 3 (AC1): same as [`Self::record_call`],
+    /// plus `caller_tenant_id` -- set only for a cross-tenant call
+    /// (`handler.rs`'s `call_shared_tool`), `None` for every same-tenant
+    /// call, which [`Self::record_call`] above still covers with no call
+    /// site changes. Kept as a second function (rather than adding a
+    /// required 11th parameter to `record_call`, whose 10 are already
+    /// `#[allow(clippy::too_many_arguments)]`) so the many existing
+    /// same-tenant call sites (tests included) don't all need a trailing
+    /// `None`.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn record_call_attributed(
+        &self,
+        tenant_id: i64,
+        tool_name: String,
+        duration_ms: i64,
+        ok: bool,
+        error_class: Option<String>,
+        cpu_ms: Option<i64>,
+        peak_rss_kb: Option<i64>,
+        outcome: &str,
+        origin: String,
+        origin_detail: Option<String>,
+        caller_tenant_id: Option<i64>,
+    ) -> Result<(), AppError> {
         let started_at = now_rfc3339();
         let started_unix = now_unix();
         let outcome = outcome.to_string();
         self.with_conn(move |conn| {
             conn.execute(
-                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail],
+                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id],
             )?;
             Ok(())
         })
@@ -2234,6 +2720,12 @@ impl Db {
     /// `false` would count every attempt including rejections, which
     /// nothing here currently needs but is a one-argument distinction
     /// worth keeping explicit rather than silently picking one.
+    /// PRD-mcphost-sharing requirement 4 (AC5): a cross-tenant call counts
+    /// against the CALLER's `calls_per_day`, not the owner's -- so a row
+    /// with `caller_tenant_id` set counts toward that caller's total
+    /// instead of the row's own `tenant_id` (the owner, whose sandbox ran
+    /// it). A same-tenant call (`caller_tenant_id IS NULL`) counts under
+    /// `tenant_id` exactly as before this PRD.
     pub async fn count_calls_since(
         &self,
         tenant_id: i64,
@@ -2242,9 +2734,11 @@ impl Db {
     ) -> Result<i64, AppError> {
         self.with_conn(move |conn| {
             let sql = if ok_only {
-                "SELECT COUNT(*) FROM calls WHERE tenant_id = ?1 AND started_unix >= ?2 AND ok = 1"
+                "SELECT COUNT(*) FROM calls WHERE started_unix >= ?2 AND ok = 1 \
+                 AND ((caller_tenant_id IS NULL AND tenant_id = ?1) OR caller_tenant_id = ?1)"
             } else {
-                "SELECT COUNT(*) FROM calls WHERE tenant_id = ?1 AND started_unix >= ?2"
+                "SELECT COUNT(*) FROM calls WHERE started_unix >= ?2 \
+                 AND ((caller_tenant_id IS NULL AND tenant_id = ?1) OR caller_tenant_id = ?1)"
             };
             conn.query_row(sql, params![tenant_id, since_unix], |r| r.get(0))
                 .map_err(AppError::from)

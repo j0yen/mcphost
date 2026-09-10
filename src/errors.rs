@@ -156,6 +156,16 @@ pub enum AppError {
     NamespaceUnverified,
     #[error("registry API rejected the publish: {0}")]
     RegistryRejected(String),
+    /// PRD-mcphost-sharing requirement 4 (AC6): distinct from the generic
+    /// `billing::quota_exceeded` (code `quota_exceeded`) because the PRD
+    /// pins this one's wire code to exactly `share_quota_exceeded`, naming
+    /// the limit.
+    #[error("tenant already shares {used} tools, the plan maximum of {limit}")]
+    ShareQuotaExceeded { limit: i64, used: i64 },
+    /// PRD-mcphost-sharing requirement 1: `host.group.add`/`host.group.remove`
+    /// on a group name this tenant hasn't `host.group.create`d.
+    #[error("group not found: {0}")]
+    GroupNotFound(String),
 }
 
 impl AppError {
@@ -196,12 +206,14 @@ impl AppError {
             AppError::RegistryDisabled => "registry_disabled",
             AppError::NamespaceUnverified => "namespace_unverified",
             AppError::RegistryRejected(_) => "registry_rejected",
+            AppError::ShareQuotaExceeded { .. } => "share_quota_exceeded",
+            AppError::GroupNotFound(_) => "group_not_found",
         }
     }
 
     fn jsonrpc_code(&self) -> ErrorCode {
         match self {
-            AppError::ToolNotFound(_) | AppError::TenantNotFound(_) => {
+            AppError::ToolNotFound(_) | AppError::TenantNotFound(_) | AppError::GroupNotFound(_) => {
                 ErrorCode::RESOURCE_NOT_FOUND
             }
             AppError::UnknownKind { .. }
@@ -211,6 +223,7 @@ impl AppError {
             | AppError::InvalidSpec(_)
             | AppError::InvalidArgs(_)
             | AppError::InvalidParams(_)
+            | AppError::ShareQuotaExceeded { .. }
             | AppError::SecretMissing(_) => ErrorCode::INVALID_PARAMS,
             AppError::Storage(_)
             | AppError::Internal(_)

@@ -584,6 +584,16 @@ pub fn admin_audit_entry(
             args.get("name_like").and_then(Value::as_str).map(String::from),
             args.get("label").and_then(Value::as_str).map(String::from),
         )),
+        // PRD-mcphost-sharing AC9: an admin-forced unshare is a mutation
+        // like any other admin.* write above.
+        "admin.tool_unshare" => Some((
+            "tool_unshare".into(),
+            args.get("tenant")
+                .and_then(Value::as_str)
+                .zip(args.get("name").and_then(Value::as_str))
+                .map(|(t, n)| format!("{t}.{n}")),
+            None,
+        )),
         _ => None,
     }
 }
@@ -612,4 +622,28 @@ pub async fn audit_log(state: &AppState, args: &Value) -> Result<Value, AppError
         })
         .collect();
     Ok(json!({ "entries": entries }))
+}
+
+/// `admin.shared_tools()` (PRD-mcphost-sharing user story "Operator (Joe)":
+/// every currently-shared tool across every tenant, with per-day caller
+/// counts).
+pub async fn shared_tools(state: &AppState) -> Result<Value, AppError> {
+    let tools = state.db.admin_shared_tools().await?;
+    Ok(json!({ "tools": tools }))
+}
+
+/// `admin.tool_unshare(tenant, name)` (AC9): forces a shared tool back to
+/// private, stamping `unshared_by: admin` so the owner's own
+/// `host.tool_list` shows why.
+pub async fn tool_unshare(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let tenant_ns = arg_str(args, "tenant")?;
+    let name = arg_str(args, "name")?;
+    let ok = state
+        .db
+        .admin_unshare_tool(tenant_ns.clone(), name.clone())
+        .await?;
+    if !ok {
+        return Err(AppError::ToolNotFound(format!("{tenant_ns}.{name}")));
+    }
+    Ok(json!({ "tenant": tenant_ns, "name": name, "visibility": "private", "unshared_by": "admin" }))
 }

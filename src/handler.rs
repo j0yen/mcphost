@@ -488,6 +488,97 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &[],
             ),
         ),
+        // PRD-mcphost-sharing P0 requirement 1: a tool can be made
+        // `public` (any tenant) or `group` (a named allow-list this
+        // tenant owns) -- see `sharing.rs`.
+        Tool::new(
+            "host.tool_share",
+            "Share one of this tenant's published tools with everyone (visibility: \"public\") \
+             or with a named group this tenant owns (visibility: \"group\", group: <name>). \
+             The tool keeps running in this tenant's own sandbox with this tenant's own \
+             secrets; a caller reaches it as <this tenant's namespace>.<name>.",
+            host_schema(
+                json!({
+                    "name": {"type": "string", "description": "Local name of the tool to share."},
+                    "visibility": {"type": "string", "description": "\"public\" or \"group\"."},
+                    "group": {
+                        "type": "string",
+                        "description": "Required when visibility is \"group\"; must already exist \
+                            (host.group.create).",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Catalog-facing blurb; shown by host.catalog.search/get.",
+                    },
+                }),
+                &["name", "visibility"],
+            ),
+        ),
+        Tool::new(
+            "host.tool_unshare",
+            "Take a shared tool back to private.",
+            host_schema(
+                json!({
+                    "name": {"type": "string", "description": "Local name of the tool to unshare."},
+                }),
+                &["name"],
+            ),
+        ),
+        Tool::new(
+            "host.group.create",
+            "Create a named group this tenant owns, for host.tool_share(visibility: \"group\").",
+            host_schema(
+                json!({"name": {"type": "string"}}),
+                &["name"],
+            ),
+        ),
+        Tool::new(
+            "host.group.add",
+            "Add a tenant (by namespace) to a group this tenant owns.",
+            host_schema(
+                json!({
+                    "name": {"type": "string", "description": "Group name."},
+                    "namespace": {"type": "string", "description": "Member tenant's namespace."},
+                }),
+                &["name", "namespace"],
+            ),
+        ),
+        Tool::new(
+            "host.group.remove",
+            "Remove a tenant (by namespace) from a group this tenant owns.",
+            host_schema(
+                json!({
+                    "name": {"type": "string", "description": "Group name."},
+                    "namespace": {"type": "string", "description": "Member tenant's namespace."},
+                }),
+                &["name", "namespace"],
+            ),
+        ),
+        Tool::new(
+            "host.group.list",
+            "List the groups this tenant owns and their members.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "host.catalog.search",
+            "Search public tools across every tenant by name/description substring.",
+            host_schema(
+                json!({
+                    "q": {"type": "string", "description": "Substring to match; omit for every public tool."},
+                    "limit": {"type": "integer", "description": "Max results; default 20."},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.catalog.get",
+            "Return one public tool's descriptor and args_schema by its full name \
+             (<namespace>.<name>).",
+            host_schema(
+                json!({"full_name": {"type": "string"}}),
+                &["full_name"],
+            ),
+        ),
         Tool::new(
             "host.secret_set",
             "Store an encrypted secret value under this tenant's namespace.",
@@ -879,6 +970,25 @@ fn admin_tools() -> Vec<Tool> {
                 &[],
             ),
         ),
+        // PRD-mcphost-sharing user story "Operator (Joe)".
+        Tool::new(
+            "admin.shared_tools",
+            "List every currently-shared (non-private) tool across every tenant, with \
+             per-day caller counts.",
+            schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "admin.tool_unshare",
+            "Force a tenant's shared tool back to private (AC9); the owner's own \
+             host.tool_list then shows unshared_by: admin.",
+            schema(
+                json!({
+                    "tenant": {"type": "string"},
+                    "name": {"type": "string"},
+                }),
+                &["tenant", "name"],
+            ),
+        ),
     ]
 }
 
@@ -1137,6 +1247,14 @@ impl McpHostHandler {
             "host.tool_run" => self.tool_run(tenant, args).await,
             "host.tool_call" => self.host_tool_call(tenant, args).await,
             "host.usage" => control::usage(&self.state, tenant, &args).await,
+            "host.tool_share" => crate::sharing::tool_share(&self.state, tenant, &args).await,
+            "host.tool_unshare" => crate::sharing::tool_unshare(&self.state, tenant, &args).await,
+            "host.group.create" => crate::sharing::group_create(&self.state, tenant, &args).await,
+            "host.group.add" => crate::sharing::group_add(&self.state, tenant, &args).await,
+            "host.group.remove" => crate::sharing::group_remove(&self.state, tenant, &args).await,
+            "host.group.list" => crate::sharing::group_list(&self.state, tenant).await,
+            "host.catalog.search" => crate::sharing::catalog_search(&self.state, &args).await,
+            "host.catalog.get" => crate::sharing::catalog_get(&self.state, &args).await,
             "host.secret_set" => control::secret_set(&self.state, tenant, &args).await,
             "host.secret_list" => control::secret_list(&self.state, tenant).await,
             "host.registry_publish" => control::registry_publish(&self.state, tenant, &args).await,
@@ -1184,6 +1302,8 @@ impl McpHostHandler {
                 admin::tenants_set_synthetic(&self.state, &args).await
             }
             "admin.audit_log" => admin::audit_log(&self.state, &args).await,
+            "admin.shared_tools" => admin::shared_tools(&self.state).await,
+            "admin.tool_unshare" => admin::tool_unshare(&self.state, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         };
 
@@ -1273,12 +1393,22 @@ impl McpHostHandler {
     /// metering the call and enforcing its resolved deadline (requirement
     /// 1: the spec's own `timeout_s` when it declared one, else
     /// `AppState::call_timeout`'s default).
+    ///
+    /// `tenant` is always the tool's OWNER -- whose sandbox and secrets run
+    /// it, and whose per-tool concurrency cap applies (PRD-mcphost-sharing
+    /// requirement 2). `caller` is `None` for an ordinary same-tenant call
+    /// (`tenant` is also the caller) and `Some(&caller_tenant)` for a
+    /// cross-tenant call reached via `call_shared_tool` -- requirement 4:
+    /// the CALLER's `calls_per_day` is what's checked and metered, not the
+    /// owner's, and requirement 3: the `calls` row's `caller_tenant_id`
+    /// carries the attribution.
     async fn call_published_tool(
         &self,
         tenant: &Tenant,
         local_name: &str,
         args: Value,
         mcp_name_mismatch: bool,
+        caller: Option<&Tenant>,
     ) -> Result<Value, AppError> {
         let row: ToolRow = self
             .state
@@ -1319,7 +1449,10 @@ impl McpHostHandler {
         // sandboxed work happens" shape as the sandbox_unavailable check
         // elsewhere in this file) -- a rejected call writes no `calls` row
         // at all, a stronger guarantee than "no row with ok = 1".
-        self.check_calls_quota(tenant).await?;
+        //
+        // PRD-mcphost-sharing requirement 4 (AC5): a cross-tenant call
+        // counts against the CALLER's quota, not the owner's.
+        self.check_calls_quota(caller.unwrap_or(tenant)).await?;
 
         let secrets = build_secret_resolver(&self.state, tenant.id).await?;
         let log = Arc::new(BufferedLog(std::sync::Mutex::new(Vec::new())));
@@ -1367,6 +1500,16 @@ impl McpHostHandler {
         let duration_ms = start.elapsed().as_millis() as i64;
         let (cpu_ms, peak_rss_kb) = resources.0.lock().map(|g| *g).unwrap_or_default().unzip();
 
+        // PRD-mcphost-sharing requirement 3: "host.tool_logs on the owner
+        // side shows the caller namespace" -- one line per cross-tenant
+        // call, carrying only the caller's namespace, never its arguments
+        // (which never reach this buffer in the first place).
+        if let Some(caller) = caller
+            && let Ok(mut lines) = log.0.lock()
+        {
+            lines.push(format!("caller={}", caller.namespace));
+        }
+
         for line in log.0.lock().map(|g| g.clone()).unwrap_or_default() {
             let _ = self
                 .state
@@ -1410,7 +1553,7 @@ impl McpHostHandler {
                 if let Err(storage_err) = self
                     .state
                     .db
-                    .record_call(
+                    .record_call_attributed(
                         tenant.id,
                         local_name.to_string(),
                         duration_ms,
@@ -1421,6 +1564,7 @@ impl McpHostHandler {
                         call_outcome,
                         tenant.origin.clone(),
                         tenant.origin_detail.clone(),
+                        caller.map(|c| c.id),
                     )
                     .await
                 {
@@ -1441,7 +1585,7 @@ impl McpHostHandler {
                 let _ = self
                     .state
                     .db
-                    .record_call(
+                    .record_call_attributed(
                         tenant.id,
                         local_name.to_string(),
                         duration_ms,
@@ -1452,6 +1596,7 @@ impl McpHostHandler {
                         "error",
                         tenant.origin.clone(),
                         tenant.origin_detail.clone(),
+                        caller.map(|c| c.id),
                     )
                     .await;
                 tracing::info!(
@@ -1464,7 +1609,7 @@ impl McpHostHandler {
                 let _ = self
                     .state
                     .db
-                    .record_call(
+                    .record_call_attributed(
                         tenant.id,
                         local_name.to_string(),
                         duration_ms,
@@ -1475,6 +1620,7 @@ impl McpHostHandler {
                         "timeout",
                         tenant.origin.clone(),
                         tenant.origin_detail.clone(),
+                        caller.map(|c| c.id),
                     )
                     .await;
                 tracing::info!(
@@ -2045,7 +2191,52 @@ impl McpHostHandler {
         // isn't found here -- `ToolNotFound`, with nothing in the error to
         // distinguish "never published by anyone" from "published by
         // someone else".
-        self.call_published_tool(tenant, &local_name, call_args, false)
+        self.call_published_tool(tenant, &local_name, call_args, false, None)
+            .await
+    }
+
+    /// PRD-mcphost-sharing P0 requirement 2 (AC1-3): resolve `<owner_ns>.
+    /// <local_name>` for `caller` (a tenant other than `owner_ns`). Success
+    /// requires the owner's tool to exist AND be `public`, or `group` with
+    /// `caller` a member of that group -- any other case (owner doesn't
+    /// exist, tool doesn't exist, tool is private, or `caller` isn't in the
+    /// group) is `ToolNotFound`, indistinguishably from each other, so a
+    /// probe never learns whether a private tool of that name exists
+    /// (requirement 2: "never revealing whether the tool exists").
+    async fn call_shared_tool(
+        &self,
+        caller: &Tenant,
+        owner_ns: &str,
+        local_name: &str,
+        args: Value,
+        mcp_name_mismatch: bool,
+    ) -> Result<Value, AppError> {
+        let not_found = || AppError::ToolNotFound(format!("{owner_ns}.{local_name}"));
+        let (owner, row) = self
+            .state
+            .db
+            .get_tool_by_owner_namespace(owner_ns.to_string(), local_name.to_string())
+            .await?
+            .ok_or_else(not_found)?;
+
+        let visible = match row.visibility.as_str() {
+            "public" => true,
+            "group" => match &row.shared_group {
+                Some(group) => {
+                    self.state
+                        .db
+                        .is_group_member(owner.id, group.clone(), caller.id)
+                        .await?
+                }
+                None => false,
+            },
+            _ => false,
+        };
+        if !visible {
+            return Err(not_found());
+        }
+
+        self.call_published_tool(&owner, local_name, args, mcp_name_mismatch, Some(caller))
             .await
     }
 }
@@ -2346,10 +2537,19 @@ impl ServerHandler for McpHostHandler {
             }
             (Auth::Tenant(tenant), name) => match name.split_once('.') {
                 Some((ns, local)) if ns == tenant.namespace => {
-                    self.call_published_tool(tenant, local, args, mismatch)
+                    self.call_published_tool(tenant, local, args, mismatch, None)
                         .await
                 }
-                _ => Err(AppError::ToolNotFound(name.to_string())),
+                // PRD-mcphost-sharing P0 requirement 2: `<ns>.<name>` for
+                // another tenant's namespace no longer falls straight to
+                // `ToolNotFound` -- it resolves through `call_shared_tool`,
+                // which is the only place that decides whether `ns.local`'s
+                // visibility lets `tenant` (the caller here) reach it.
+                Some((ns, local)) => {
+                    self.call_shared_tool(tenant, ns, local, args, mismatch)
+                        .await
+                }
+                None => Err(AppError::ToolNotFound(name.to_string())),
             },
         };
 

@@ -295,6 +295,22 @@ async fn well_known_server_json(
     }
 }
 
+/// PRD-mcphost-sharing requirement 5 (AC7): `GET /.well-known/mcp/catalog.json`,
+/// unauthenticated (same public-discovery-document rationale as
+/// `well_known_server_json` above) -- mirrors `host.catalog.search`'s
+/// unfiltered listing for crawlers. Always 200 (an empty `tools: []` is not
+/// an error).
+async fn well_known_catalog(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    match crate::sharing::catalog_document(&state).await {
+        Ok(doc) => (StatusCode::OK, Json(doc)).into_response(),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error_code": "storage", "error": "storage error"})),
+        )
+            .into_response(),
+    }
+}
+
 /// Ensures every response carries `MCP-Protocol-Version` (AC1), and emits
 /// one structured request-line log entry. This layer is attached to the
 /// whole router (see `build_router` below), not just `/mcp` -- `/healthz`
@@ -363,6 +379,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/.well-known/mcp/{namespace}/server.json",
             get(well_known_server_json),
         )
+        .route("/.well-known/mcp/catalog.json", get(well_known_catalog))
         .route("/billing/webhook", post(billing_webhook))
         .route("/billing/done", get(billing_done))
         .route("/billing/cancel", get(billing_cancel))

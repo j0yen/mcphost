@@ -226,6 +226,9 @@ pub fn quickstart(
             "state_bytes_max": plan.state_bytes_max,
             "state_rows_max": plan.state_rows_max,
             "state_ops_per_call_max": plan.state_ops_per_call_max,
+            // PRD-mcphost-sharing requirement 4: "host.quickstart limits
+            // lists it".
+            "shared_tools_max": plan.shared_tools_max,
         })
     });
     // PRD-mcphost-call-limits-honest requirement 5 / AC6: the six limits an
@@ -500,6 +503,13 @@ pub async fn tool_list(state: &AppState, tenant: &Tenant) -> Result<Value, AppEr
                 "name": format!("{}.{}", tenant.namespace, row.name),
                 "kind": row.kind,
                 "created_at": row.created_at,
+                // PRD-mcphost-sharing requirement 1/AC9: an owner sees its
+                // own tool's share state directly here -- `unshared_by` is
+                // `"admin"` only when `admin.tool_unshare` (not the owner's
+                // own `host.tool_unshare`) most recently forced it private.
+                "visibility": row.visibility,
+                "share_description": row.share_description,
+                "unshared_by": row.unshared_by,
             })
         })
         .collect();
@@ -557,6 +567,15 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
     // now, the same total `admin.tenants`' own `state_bytes` (requirement
     // 8, P1) will report.
     let state_bytes = state.db.state_bytes_used(tenant.id).await?;
+    // PRD-mcphost-sharing requirement 3 (AC5): `calls_by_others` (owner
+    // side, keyed by caller namespace) and `calls_to_shared` (caller
+    // side) -- windowed the same as every other figure in this response.
+    let calls_by_others = state.db.calls_by_others(tenant.id, secs).await?;
+    let calls_by_others: serde_json::Map<String, Value> = calls_by_others
+        .into_iter()
+        .map(|(ns, n)| (ns, json!(n)))
+        .collect();
+    let calls_to_shared = state.db.calls_to_shared(tenant.id, secs).await?;
     Ok(json!({
         "window": window,
         "calls": stats.calls,
@@ -568,6 +587,8 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
         // this from `error_class = "capacity"`; this handler just wasn't
         // forwarding it into the response envelope.
         "capacity_refusals": stats.capacity_refusals,
+        "calls_by_others": calls_by_others,
+        "calls_to_shared": calls_to_shared,
     }))
 }
 
