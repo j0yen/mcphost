@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tenant-state.md",
-  "intent_slug": "mcphost-tenant-state",
-  "root_motivation": "An AI agent that wants a tool on mcphost to count, remember a last value, deduplicate an event, or hand a result to the next step has nowhere on the host to put that value, so it either pays for a store elsewhere or does not build the tool. Facts:",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-sharing.md",
+  "intent_slug": "mcphost-sharing",
+  "root_motivation": "An agent that built a useful tool cannot let another agent call it without handing over its key, and an operator cannot see which tools are used by anyone but their author. Facts:",
   "user_persona": "An AI agent connecting to mcphost for the first time over streamable HTTP with default client configuration (Claude Agent SDK / Claude Code), which must be able to read a well-formed tool list before it can do anything else; secondarily the operator who probes the endpoint after a redeploy.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,80 +14,68 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a tenant, When `host.state.set(key=\"a\", value={\"n\": 1})` then `host.state.get(key=\"a\")` run, Then the second returns `{\"n\": 1}` and `updated_unix` is set.",
+      "description": "Given tenant A's tool `geo` shared `public`, When tenant B calls `t_A.geo` with B's key, Then it succeeds and the run and call rows carry `caller_tenant_id` = B.",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a python tool whose source calls `mcphost.state.set(\"count\", mcphost.state.get(\"count\", 0) + 1)` and returns the new value, When it is called three times, Then the results are 1, 2, 3 and `host.state.get(key=\"count\")` returns 3.",
+      "description": "Given the same tool private, When B calls it, Then `tool_not_found`.",
       "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the same tool published with `network: none`, When called, Then it succeeds and the sandbox has no network (the existing network-isolation test still passes for it).",
+      "description": "Given `geo` shared to group `team` containing C but not B, When B calls, Then `tool_not_found`; When C calls, Then success.",
       "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given `host.state.table_create(name=\"alerts\", schema={\"metric\": \"text\", \"last_value\": \"real\", \"acked\": \"boolean\"}, primary_key=\"metric\")`, When three rows are inserted and `host.state.query(table=\"alerts\", where=\"last_value > 0.5\", order_by=\"last_value desc\", limit=2)` runs, Then exactly the two matching rows return in order.",
+      "description": "Given `geo` uses `{{secret:KEY}}`, When B calls it, Then the upstream request carries A's secret and nothing B receives contains it (test inspects the result and B-side logs).",
       "test": "tests/ac04_publish_list_and_call.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a row insert with `last_value: \"high\"` (wrong type), When it runs, Then the error is structured `state_schema_violation` naming the column and expected type, and nothing is written.",
+      "description": "Given B calls `geo` ten times, When usage is read, Then A's `calls_by_others` shows `t_B: 10` and B's `calls_to_shared` shows 10; B's `calls_per_day` counter increased by 10.",
       "test": "tests/ac05_cross_tenant_isolation.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a free-plan tenant at 5 MiB of state, When a tool writes one more byte, Then the error is `state_quota_exceeded` with `quota: \"state_bytes_max\"` and the tool's returned result is still delivered to the caller.",
+      "description": "Given a free owner with three public tools, When a fourth is shared, Then `share_quota_exceeded` names 3.",
       "test": "tests/ac06_remove_tool.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given a tool that reads two keys and writes one, When `host.tool_test` runs it, Then the result carries `state: {reads: 2, writes: 1, keys: [...]}` and `host.tool_logs` shows one write line with the key.",
+      "description": "Given three public tools, When `host.catalog.search(q=\"geo\")` runs from any tenant, Then the matching tool is returned with owner namespace and description; `GET /.well-known/mcp/catalog.json` lists the same.",
       "test": "tests/ac07_usage_metering.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given two tenants, When tenant A's tool calls `mcphost.state.get` for a key tenant B set, Then it reads nothing from B's store (the store is scoped by tenant id, verified by a test that inspects rows).",
+      "description": "Given `host.tool_unshare(name=\"geo\")`, When B calls, Then `tool_not_found`.",
       "test": "tests/ac08_admin_disable_and_forbidden.rs"
     },
     {
       "id": "AC9",
       "level": "MUST",
-      "description": "Given `admin.tenant_delete`, When it removes a tenant with state, Then `tenant_state_kv` and its table rows for that tenant are gone in the same transaction.",
+      "description": "Given `admin.tool_unshare(tenant=A, name=\"geo\")`, When run, Then the tool is private and the owner's `host.tool_list` shows `visibility: private, unshared_by: admin`.",
       "test": "tests/ac09_signup_rate_limit.rs"
     },
     {
       "id": "AC10",
-      "level": "MUST",
-      "description": "Given `host.quickstart(kind=\"python\")` and `llms.txt`, When read, Then the quickstart has a state step and `llms.txt` lists every `host.state.*` tool.",
+      "level": "SHOULD",
+      "description": "Given `geo` priced at 0.002 and B on the pro plan, When B calls it 100 times, Then a meter group `(B, A, geo, 100)` is pending and A's `billing.status` shows `earned_usd_month: 0.20`.",
       "test": "tests/ac10_publish_validation_errors.rs"
     },
     {
       "id": "AC11",
       "level": "SHOULD",
-      "description": "Given a tenant with keys and one table, When `host.state.export()` then, on a fresh tenant, `host.state.import(document)` run, Then the fresh tenant's `list` and `query` match the original.",
+      "description": "Given B on the free plan, When B calls a priced tool, Then `share_requires_plan` names `pro`.",
       "test": "tests/ac11_load_smoke.rs (#[ignore]d hardware-relative load test)"
-    },
-    {
-      "id": "AC12",
-      "level": "SHOULD",
-      "description": "Given `admin.tenants`, When listed, Then each row carries `state_bytes`.",
-      "test": "no unit test file; live smoke \u2014 mcphost serve + synthorg consume --preflight <url>, recorded as target/autobuilder/ac12-preflight-smoke.json"
-    },
-    {
-      "id": "AC13",
-      "level": "MAY",
-      "description": "Given an http spec with `url: \"https://x/{{state:region}}\"` and key `region` set to `eu`, When called, Then the request goes to `https://x/eu`.",
-      "test": "tests/ac13_mcp_name_mismatch_metering.rs"
     }
   ],
   "scope": [
