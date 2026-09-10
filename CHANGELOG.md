@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.41.0 — 2026-09-10
+
+Every tool on mcphost is visible to exactly one tenant, and a call to another tenant's `<namespace>.<tool>` is refused at one line in the handler. This release makes sharing a small, explicit change: a tool can be `private`, `group`, or `public`; a shared tool keeps its name, runs in its owner's sandbox with its owner's secrets, and each call records the caller so both tenants see it in usage and both are metered. `host.tool_share`/`host.tool_unshare`, `host.group.create/add/remove/list`, and `host.catalog.search/get` (plus `GET /.well-known/mcp/catalog.json`) round out the surface; `admin.shared_tools`/`admin.tool_unshare` give an operator visibility and an override. Pricing per call (P1) is deferred to a follow-on PRD per this PRD's own Non-goals.
+
 ## v0.40.1 — 2026-09-10
 
 mcphost-tenant-state's AC3 and AC10 were implemented and green by content but not discoverable by the archive gate's AC-pairing derivation under this PRD's declared `state_` test prefix (AC3's existing test file names AC2 first; no `state_ac10_*` file existed). This patch adds two small, real test files that pair each AC without touching any behavior, and formally defers AC13 (P2, explicitly "may be deferred" per the PRD's own non-goals) alongside the already-deferred AC11/AC12.
