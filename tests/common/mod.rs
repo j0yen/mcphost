@@ -395,6 +395,7 @@ impl TestServer {
                 std::collections::HashMap::new(),
             )),
             runs: mcphost::runs::RunsRegistry::new(),
+            scheduler: mcphost::triggers::SchedulerStatus::new(),
         });
 
         // PRD-mcphost-runs-and-jobs: every test server runs the real
@@ -402,6 +403,11 @@ impl TestServer {
         // python tool and calls it with `async: true` sees it actually
         // execute, not just sit `queued` forever.
         mcphost::runs::spawn_executor((*state).clone());
+        // PRD-mcphost-schedules: same for the scheduler tick -- a test can
+        // also call `mcphost::triggers::tick_once` directly for a
+        // deterministic single tick instead of waiting on this loop's own
+        // 30s cadence.
+        mcphost::triggers::spawn_scheduler((*state).clone());
 
         let serve_state = state.clone();
         tokio::spawn(async move {

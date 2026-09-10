@@ -71,6 +71,7 @@ def main(args):\n    \
             None,
             3, // deadline_s: well under the tool's own 30s sleep
             "{}".to_string(),
+            false,
         )
         .await
         .expect("insert_queued_run");

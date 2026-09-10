@@ -115,6 +115,16 @@ async fn unauthenticated_tools_list_is_signup_only() {
         "host.runs.cancel",
         "host.runs.purge",
         "host.runs.wait",
+        // PRD-mcphost-schedules requirement 2: the schedule-trigger control
+        // plane is discoverable unauthenticated too, same as every other
+        // host.*-style tool above.
+        "host.trigger.set",
+        "host.trigger.list",
+        "host.trigger.get",
+        "host.trigger.pause",
+        "host.trigger.resume",
+        "host.trigger.remove",
+        "host.trigger.fire",
         // PRD-grand-loop-billing AC1: billing.plans is anonymous-and-tenant
         // reachable, discoverable here for the same reason host.quickstart
         // is -- billing.status/billing.checkout are tenant-only in what
@@ -135,11 +145,12 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        40,
+        47,
         "signup + the thirteen host.* tools (incl. host.quickstart, host.tool_run, and \
          host.bridge_test) + host.tool_call + the nine host.state.* tools (PRD-mcphost-tenant-state) \
          + the eight host.tool_share/host.tool_unshare/host.group.*/host.catalog.* tools \
          (PRD-mcphost-sharing) + the five host.runs.* tools (PRD-mcphost-runs-and-jobs) \
-         + the three billing.* tools: {tool_names:?}"
+         + the seven host.trigger.* tools (PRD-mcphost-schedules) + the three billing.* tools: \
+         {tool_names:?}"
     );
 }

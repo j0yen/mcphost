@@ -222,6 +222,20 @@ async fn healthz(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl
         let lag = state.db.meter_lag(last_call_id).await.unwrap_or(0);
         obj.insert("meter_lag".to_string(), json!(lag));
     }
+    // PRD-mcphost-schedules P0 requirement 5 (AC8): the scheduler tick's own
+    // liveness -- `scheduler_last_tick_unix` should be within the last 60s
+    // of any healthy tick loop (30s cadence), and `schedules_enabled` is a
+    // live count, not a cached one.
+    if let Some(obj) = body.as_object_mut() {
+        obj.insert(
+            "scheduler_last_tick_unix".to_string(),
+            json!(state.scheduler.last_tick_unix()),
+        );
+        obj.insert(
+            "schedules_enabled".to_string(),
+            json!(state.db.count_enabled_schedule_triggers().await.unwrap_or(0)),
+        );
+    }
     Json(body).into_response()
 }
 

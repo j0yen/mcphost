@@ -263,6 +263,16 @@ impl AppError {
                 "state_schema_violation" | "state_quota_exceeded" | "state_table_not_found" => {
                     ErrorCode::INVALID_PARAMS
                 }
+                // PRD-mcphost-schedules requirements 2/4: a bad cron
+                // expression, an over-quota schedules_max, or a too-short
+                // schedule_min_interval_s are all caller-input problems,
+                // same INVALID_PARAMS bucket as the `state_*` group above;
+                // `trigger_not_found` mirrors `tool_not_found`/
+                // `tenant_not_found`'s own RESOURCE_NOT_FOUND.
+                "trigger_invalid" | "trigger_quota_exceeded" | "trigger_interval_too_short" => {
+                    ErrorCode::INVALID_PARAMS
+                }
+                "trigger_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
                 _ => ErrorCode::INTERNAL_ERROR,
             },
             AppError::MultiInvalid { errors, .. } => errors

@@ -424,6 +424,7 @@ async fn main() -> anyhow::Result<()> {
                     std::collections::HashMap::new(),
                 )),
                 runs: mcphost::runs::RunsRegistry::new(),
+                scheduler: mcphost::triggers::SchedulerStatus::new(),
             });
 
             // PRD-mcphost-runs-and-jobs P0 requirement 4 / open question:
@@ -441,6 +442,9 @@ async fn main() -> anyhow::Result<()> {
                 tracing::info!(reaped, "runs: reaped expired runs from before this restart");
             }
             mcphost::runs::spawn_executor((*state).clone());
+            // PRD-mcphost-schedules P0 requirement 3: the scheduler tick,
+            // started once here alongside the runs executor above.
+            mcphost::triggers::spawn_scheduler((*state).clone());
 
             mcphost::http::serve(bind, state).await
         }
