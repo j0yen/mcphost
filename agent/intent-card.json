@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-sharing.md",
-  "intent_slug": "mcphost-sharing",
-  "root_motivation": "An agent that built a useful tool cannot let another agent call it without handing over its key, and an operator cannot see which tools are used by anyone but their author. Facts:",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-runs-and-jobs.md",
+  "intent_slug": "mcphost-runs-and-jobs",
+  "root_motivation": "An agent whose tool needs more than the call deadline cannot run it on mcphost, and an operator reading `calls` cannot tell a scheduled run from a call from a chain step, because no such things exist. Facts:",
   "user_persona": "An AI agent connecting to mcphost for the first time over streamable HTTP with default client configuration (Claude Agent SDK / Claude Code), which must be able to read a well-formed tool list before it can do anything else; secondarily the operator who probes the endpoint after a redeploy.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,67 +14,67 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given tenant A's tool `geo` shared `public`, When tenant B calls `t_A.geo` with B's key, Then it succeeds and the run and call rows carry `caller_tenant_id` = B.",
+      "description": "Given a python tool that sleeps 90 s and returns `{\"ok\": true}`, When `host.tool_call(async=true)` is called, Then it returns a `run_id` within 50 ms, `host.runs.get` reads `running` within 2 s, and reads `done` with the result within 100 s.",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the same tool private, When B calls it, Then `tool_not_found`.",
+      "description": "Given the same tool with a plan `job_max_s` of 60, When run as a job, Then the run ends `timeout` at about 60 s and the last progress is kept.",
       "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given `geo` shared to group `team` containing C but not B, When B calls, Then `tool_not_found`; When C calls, Then success.",
+      "description": "Given a running job reporting `progress(50, \"half\")`, When `host.runs.get` is read, Then `progress` is `{pct: 50, msg: \"half\"}`.",
       "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given `geo` uses `{{secret:KEY}}`, When B calls it, Then the upstream request carries A's secret and nothing B receives contains it (test inspects the result and B-side logs).",
+      "description": "Given a running job, When `host.runs.cancel` is called, Then the sandbox process is gone within 2 s and the run reads `cancelled`.",
       "test": "tests/ac04_publish_list_and_call.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given B calls `geo` ten times, When usage is read, Then A's `calls_by_others` shows `t_B: 10` and B's `calls_to_shared` shows 10; B's `calls_per_day` counter increased by 10.",
+      "description": "Given a synchronous `host.tool_call`, When it completes, Then a `runs` row with `trigger='call'` and a `calls` row exist with matching duration.",
       "test": "tests/ac05_cross_tenant_isolation.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a free owner with three public tools, When a fourth is shared, Then `share_quota_exceeded` names 3.",
+      "description": "Given a free tenant with `jobs_concurrent: 1`, When two jobs are submitted, Then the second stays `queued` until the first finishes and `host.runs.list` shows both.",
       "test": "tests/ac06_remove_tool.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given three public tools, When `host.catalog.search(q=\"geo\")` runs from any tenant, Then the matching tool is returned with owner namespace and description; `GET /.well-known/mcp/catalog.json` lists the same.",
+      "description": "Given a done job, When `host.runs.purge(before_unix=now)` runs, Then its result is gone from the store and `host.runs.get` reads `done` with `result: null, purged: true`.",
       "test": "tests/ac07_usage_metering.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given `host.tool_unshare(name=\"geo\")`, When B calls, Then `tool_not_found`.",
+      "description": "Given `admin.tenant_delete`, When a tenant with runs is deleted, Then its `runs` rows and stored results are gone.",
       "test": "tests/ac08_admin_disable_and_forbidden.rs"
     },
     {
       "id": "AC9",
       "level": "MUST",
-      "description": "Given `admin.tool_unshare(tenant=A, name=\"geo\")`, When run, Then the tool is private and the owner's `host.tool_list` shows `visibility: private, unshared_by: admin`.",
+      "description": "Given `host.quickstart` and `llms.txt`, When read, Then both name `host.runs.get`, `host.runs.list`, `host.runs.cancel` and the job limits.",
       "test": "tests/ac09_signup_rate_limit.rs"
     },
     {
       "id": "AC10",
       "level": "SHOULD",
-      "description": "Given `geo` priced at 0.002 and B on the pro plan, When B calls it 100 times, Then a meter group `(B, A, geo, 100)` is pending and A's `billing.status` shows `earned_usd_month: 0.20`.",
+      "description": "Given a queued job, When `host.runs.wait(run_id, timeout_s=20)` is called, Then it returns as soon as the run finalizes or after 20 s with the current status.",
       "test": "tests/ac10_publish_validation_errors.rs"
     },
     {
       "id": "AC11",
       "level": "SHOULD",
-      "description": "Given B on the free plan, When B calls a priced tool, Then `share_requires_plan` names `pro`.",
+      "description": "Given a run left `running` past its deadline by a killed executor, When `admin.runs_reap` runs, Then the run reads `error` with `error_class: interrupted`.",
       "test": "tests/ac11_load_smoke.rs (#[ignore]d hardware-relative load test)"
     }
   ],
