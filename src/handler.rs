@@ -234,31 +234,33 @@ fn signup_tool() -> Tool {
     )
 }
 
-/// PRD-mcphost-publish-first-try requirement 1 (AC1): one paragraph per
-/// registered kind, each with a complete minimal example `spec` an agent
-/// can copy verbatim, built from that kind's own [`crate::kinds::Kind::example`]
-/// rather than hand-duplicated here -- so this can't say something a real
-/// publish would then reject. Requirement 5: names `host.tool_test` as the
-/// dry run to try first. Kept under 1,200 characters total (asserted by
-/// `tests/publishfirsttry_ac01_tool_publish_description.rs`) so it stays
-/// readable in a `tools/list` response.
+/// PRD-mcphost-publish-first-try requirement 1 (AC1) named `host.tool_test`
+/// as the dry run to try first; PRD-mcphost-surface-fluidity requirement 6
+/// (P1, AC7) replaced the original approach -- one paragraph *per registered
+/// kind*, each with a full example spec inlined here -- with a pointer to
+/// `host.quickstart(kind)`, which already renders that same
+/// [`crate::kinds::Kind::example`] filled in with the caller's own namespace
+/// (see `control::quickstart`'s `steps`). Kept under 600 characters total
+/// (asserted by `tests/surface_ac07_tool_publish_description_length.rs`) so
+/// it reads in one glance in a `tools/list` response; per-kind detail lives
+/// in `host.quickstart` instead of being re-explained on every kind's own
+/// publish.
 fn tool_publish_description(kinds: &KindRegistry) -> String {
-    let mut out = String::from(
-        "Publish a tool of a registered kind under this tenant's namespace. \
-         Minimal example spec per kind:",
+    let kind_names = kinds.names().join(", ");
+    let mut out = format!(
+        "Publish a tool of a registered kind ({kind_names}) under this tenant's namespace. \
+         Call host.quickstart(kind) first for a filled-in example spec and the full \
+         publish-to-call sequence."
     );
+    // PRD-mcphost-sandbox-ready P1 requirement 7 (AC8): a client that reads
+    // this description before publishing must still see, right here, that a
+    // kind is currently rejected -- so it never sends the doomed call.
+    // `sandbox_status()` is `None` for every kind with no sandbox concept
+    // (`echo`, `http`), so this is a no-op for them.
     for name in kinds.names() {
         let Some(kind) = kinds.get(name) else {
             continue;
         };
-        let example = kind.example();
-        let spec_json = serde_json::to_string(&example.spec).unwrap_or_default();
-        out.push_str(&format!(" {name} -- spec: {spec_json}. {}", example.blurb));
-        // PRD-mcphost-sandbox-ready P1 requirement 7 (AC8): a client that
-        // reads this description before publishing must see, right here,
-        // that this kind is currently rejected -- so it never sends the
-        // doomed call. `sandbox_status()` is `None` for every kind with no
-        // sandbox concept (`echo`, `http`), so this is a no-op for them.
         if let Some(status) = kind.sandbox_status()
             && !status.ready
         {
@@ -270,10 +272,8 @@ fn tool_publish_description(kinds: &KindRegistry) -> String {
         }
     }
     out.push_str(
-        " Name must match ^[a-z][a-z0-9_]{1,40}$. A rejection names the failing field, \
-         what was expected, and a corrected example -- fix it and resubmit. Try \
-         `host.tool_test` on a published tool before a real call, or call \
-         `host.quickstart(kind)` for a filled-in worked example.",
+        " Name must match ^[a-z][a-z0-9_]{1,40}$; a rejection names the failing field and a \
+         corrected example. Try host.tool_test before a real call.",
     );
     out
 }
@@ -298,6 +298,22 @@ const SPEC_TEST_DESC: &str =
     "Dry-run an unpublished spec of any kind with example invocations; for the other cases see host.quickstart.";
 const TOOL_RUN_DESC: &str =
     "Debug-run a published python tool for stdout, stderr and exit code; for the other cases see host.quickstart.";
+
+/// PRD-mcphost-surface-fluidity requirement 4 (AC5): the name set
+/// `www/llms.txt`'s generated tool section is built from -- the
+/// authenticated superset of `host_tools` (a strict superset of the
+/// anonymous one; the only gated entry is `host.spec_test`). `signup` is
+/// deliberately not included here: it's visible only pre-auth, and
+/// `llms_txt::tenant_tool_names` adds it back so the *union* across both
+/// auth states is what gets compared against a live `tools/list`. Pure and
+/// synchronous -- no `AppState`, no DB -- so `mcphost llms-txt` and
+/// integration tests can call it without a running server.
+pub fn llms_txt_tool_names(kinds: &KindRegistry) -> Vec<String> {
+    host_tools(kinds, true)
+        .into_iter()
+        .map(|t| t.name.to_string())
+        .collect()
+}
 
 /// PRD-mcphost-tool-test AC9: `host.spec_test`, unlike every other `host.*`
 /// descriptor, must be absent from `tools/list` for an anonymous/invalid

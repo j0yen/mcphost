@@ -171,10 +171,12 @@ struct PythonSpec {
     /// tool's caller can expect to read at `result.payload.<field>`, each
     /// with an optional `Path`. Optional -- a spec that omits it (every spec
     /// published before either PRD) gets no envelope changes
-    /// (Migration/compatibility: additive). The map form's *path* here
-    /// parses (requirement 2/3) but, unlike `http`, is not yet read from at
-    /// call time -- see [`apply_declared_outputs`]'s doc (P1, may defer per
-    /// the PRD's own non-goal 3 / open question).
+    /// (Migration/compatibility: additive). The map form's *path* is read at
+    /// call time by [`apply_declared_outputs`], both on the cold path and on
+    /// a warm-sandbox reuse (`try_warm`) -- closed by
+    /// PRD-mcphost-surface-fluidity requirement 5 (Goal 4, AC6), which also
+    /// found and fixed `try_warm`'s own copy of this step going missing
+    /// entirely.
     outputs: Vec<OutputDecl>,
 }
 
@@ -2662,6 +2664,16 @@ impl PythonKind {
         ctx: &CallCtx,
         effective_schema: &Value,
         secret_values: &[String],
+        // PRD-mcphost-surface-fluidity requirement 5 (Goal 4, AC6): the cold
+        // path (below) already runs every response through
+        // `apply_declared_outputs` before wrapping; this warm-reuse path
+        // used to skip straight to `redact_value` and never promoted a
+        // declared `outputs` field at all, so a second call landing on a
+        // warm sandbox (exactly what `host.tool_test` hits right after the
+        // first, cold, real call seeded the pool) reported the field
+        // `missing` even though the same tool's cold call reported it
+        // `found`.
+        declared: &[OutputDecl],
     ) -> Option<Result<Value, KindError>> {
         let mut entry = self.warm.take(key)?;
         if entry.fingerprint != fingerprint {
@@ -2692,6 +2704,7 @@ impl PythonKind {
                 Some(match result {
                     Ok(value) => {
                         let redacted = redact_value(&value, secret_values);
+                        let redacted = apply_declared_outputs(redacted, declared);
                         if ctx.test_mode {
                             Ok(json!({"result": redacted, "schema": effective_schema}))
                         } else {
@@ -3067,6 +3080,7 @@ impl Kind for PythonKind {
                     ctx,
                     &effective_schema,
                     &secret_values,
+                    &parsed.outputs,
                 )
                 .await
             {

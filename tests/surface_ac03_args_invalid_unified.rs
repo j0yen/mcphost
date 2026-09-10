@@ -72,10 +72,17 @@ async fn host_tool_call_with_wrong_typed_argument_reports_args_invalid() {
     let (_ns, key) = signup(&server.base_url, "Surface AC3 Tenant 2").await;
     let client = McpClient::with_bearer(&server.base_url, &key);
 
+    // The echo kind's spec wraps the JSON Schema under `schema` (see
+    // `kinds/echo.rs`'s `schema_of`) -- passing the schema bare, as an
+    // earlier version of this test did, fails publish itself with
+    // `invalid_spec` before ever reaching the args-type check this test
+    // means to exercise.
     let spec = json!({
-        "type": "object",
-        "properties": {"n": {"type": "integer"}},
-        "required": ["n"],
+        "schema": {
+            "type": "object",
+            "properties": {"n": {"type": "integer"}},
+            "required": ["n"],
+        },
     });
     client
         .tools_call(
