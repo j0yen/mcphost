@@ -1903,6 +1903,9 @@ impl Db {
     /// `share_description`, and `shared_unix = now`; clears any earlier
     /// `unshared_by` marker (a re-share is not an unshare). Returns `false`
     /// if `name` isn't one of `tenant_id`'s tools.
+    // Six parameters: one atomic `UPDATE` with a single caller
+    // (`sharing::tool_share`) -- same shape as `try_admit_signup` above.
+    #[allow(clippy::too_many_arguments)]
     pub async fn set_tool_share(
         &self,
         tenant_id: i64,
@@ -2835,10 +2838,19 @@ impl Db {
     pub async fn lease_next_queued_run(&self, tenant_id: i64) -> Result<Option<RunRow>, AppError> {
         let now = now_unix();
         self.with_conn(move |conn| {
+            // `ORDER BY rowid`, not `ORDER BY id`: `id` is a ulid (see
+            // `state::new_ulid`) whose own doc comment admits two ids
+            // minted in the same millisecond can tie on their time prefix
+            // and sort by random suffix instead -- AC6's "second job stays
+            // queued" test caught exactly that (two `async=true` enqueues
+            // milliseconds apart occasionally leased out of submission
+            // order). `rowid` is SQLite's own monotonically-increasing
+            // insertion counter for this table (no `WITHOUT ROWID`), so it
+            // gives true FIFO regardless of ulid collisions.
             let leased_id: Option<String> = conn
                 .query_row(
                     "UPDATE runs SET status='running', started_unix=?1 \
-                     WHERE id = (SELECT id FROM runs WHERE status='queued' AND tenant_id=?2 ORDER BY id LIMIT 1) \
+                     WHERE id = (SELECT id FROM runs WHERE status='queued' AND tenant_id=?2 ORDER BY rowid LIMIT 1) \
                      RETURNING id",
                     params![now, tenant_id],
                     |r| r.get(0),
@@ -3031,7 +3043,10 @@ impl Db {
                 binds.push(Box::new(tr));
                 idx += 1;
             }
-            sql.push_str(&format!(" ORDER BY id DESC LIMIT ?{idx}"));
+            // `rowid`, not `id` (a ulid): see `lease_next_queued_run`'s
+            // comment -- same-millisecond ties on `id` would otherwise
+            // put "newest first" out of true insertion order.
+            sql.push_str(&format!(" ORDER BY rowid DESC LIMIT ?{idx}"));
             binds.push(Box::new(limit));
             let refs: Vec<&dyn rusqlite::ToSql> = binds.iter().map(|b| b.as_ref()).collect();
             let mut stmt = conn.prepare(&sql)?;
@@ -3065,7 +3080,7 @@ impl Db {
                 binds.push(Box::new(s));
                 idx += 1;
             }
-            sql.push_str(&format!(" ORDER BY id DESC LIMIT ?{idx}"));
+            sql.push_str(&format!(" ORDER BY rowid DESC LIMIT ?{idx}"));
             binds.push(Box::new(limit));
             let refs: Vec<&dyn rusqlite::ToSql> = binds.iter().map(|b| b.as_ref()).collect();
             let mut stmt = conn.prepare(&sql)?;

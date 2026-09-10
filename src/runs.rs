@@ -181,10 +181,11 @@ pub async fn cancel(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
         })?;
     let killed = if before.status == "running" {
         if let Some(pid) = pid {
-            // SAFETY: `pid` is a process-group leader `kinds::python`
-            // itself set up via `setsid` (see `sandbox.rs`'s
-            // `pre_exec_setup`); killing it is the same operation
-            // `PersistentSandbox::kill` already performs.
+            // `pid` is a process-group leader `kinds::python` itself set
+            // up via `setsid` (see `sandbox.rs`'s `pre_exec_setup`); killing
+            // it is the same operation `PersistentSandbox::kill` performs.
+            // SAFETY: killpg's only precondition is a valid pid; `pid` is
+            // SAFETY: one by construction above.
             unsafe {
                 libc::killpg(pid, libc::SIGKILL);
             }
@@ -468,6 +469,10 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
             // sandbox directly (the same pid `host.runs.cancel` would use)
             // rather than leaving it running unattended past its budget.
             if let Some(pid) = *cancel_pid.lock().unwrap_or_else(|e| e.into_inner()) {
+                // `pid` is the same process-group leader pid
+                // `host.runs.cancel` kills via `killpg` above.
+                // SAFETY: killpg's only precondition is a valid pid; `pid`
+                // SAFETY: is one by construction above.
                 unsafe {
                     libc::killpg(pid, libc::SIGKILL);
                 }

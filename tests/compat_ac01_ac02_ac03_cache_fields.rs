@@ -44,9 +44,11 @@ async fn ac1_anonymous_tools_list_has_cache_fields() {
     assert!(names.contains(&"signup"), "{names:?}");
     assert_eq!(
         names.len(),
-        27,
+        40,
         "signup + host.* (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + host.state.* (9 tools, PRD-mcphost-tenant-state) + \
+         host.tool_share/host.tool_unshare/host.group.*/host.catalog.* (8 tools, \
+         PRD-mcphost-sharing) + host.runs.* (5 tools, PRD-mcphost-runs-and-jobs) + \
          billing.* (3 tools): {names:?}"
     );
 }
@@ -127,9 +129,11 @@ async fn ac3_invalid_bearer_tools_list_has_cache_fields() {
     assert!(names.contains(&"signup"), "{names:?}");
     assert_eq!(
         names.len(),
-        27,
+        40,
         "signup + host.* (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + host.state.* (9 tools, PRD-mcphost-tenant-state) + \
+         host.tool_share/host.tool_unshare/host.group.*/host.catalog.* (8 tools, \
+         PRD-mcphost-sharing) + host.runs.* (5 tools, PRD-mcphost-runs-and-jobs) + \
          billing.* (3 tools): {names:?}"
     );
 }
