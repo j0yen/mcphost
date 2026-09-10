@@ -394,7 +394,14 @@ impl TestServer {
             accepted_usage_cache: std::sync::Arc::new(std::sync::Mutex::new(
                 std::collections::HashMap::new(),
             )),
+            runs: mcphost::runs::RunsRegistry::new(),
         });
+
+        // PRD-mcphost-runs-and-jobs: every test server runs the real
+        // executor too, same as production -- a test that publishes a
+        // python tool and calls it with `async: true` sees it actually
+        // execute, not just sit `queued` forever.
+        mcphost::runs::spawn_executor((*state).clone());
 
         let serve_state = state.clone();
         tokio::spawn(async move {

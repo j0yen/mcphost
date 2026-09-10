@@ -48,6 +48,20 @@ pub struct Plan {
     /// tolerant-of-an-older-file convention as
     /// `concurrent_calls_per_tenant`.
     pub shared_tools_max: i64,
+    /// PRD-mcphost-runs-and-jobs P0 requirement 4: the deadline (seconds) a
+    /// job of this plan's tenants runs under, distinct from the ordinary
+    /// call deadline ([`crate::state::CALL_TIMEOUT`]) -- the whole point of
+    /// `async: true` is a longer budget than a synchronous call ever gets.
+    /// Defaults to the `free` plan's own default (300) when a hand-edited
+    /// `plans.toml` predates this key, same tolerant-parse convention as
+    /// `concurrent_calls_per_tenant`/`shared_tools_max`.
+    pub job_max_s: i64,
+    /// requirement 4: how many of this plan's tenants' jobs may be
+    /// `running` at once, under a host-wide ceiling
+    /// ([`crate::runs::JOBS_HOST_CEILING`]). Defaults to `1` (the `free`
+    /// plan's own default) when a hand-edited `plans.toml` predates this
+    /// key.
+    pub jobs_concurrent: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -81,6 +95,10 @@ impl PlanCatalog {
                     concurrent_calls_per_tenant: 4,
                     // PRD-mcphost-sharing requirement 4 (AC6): "free 3".
                     shared_tools_max: 3,
+                    // PRD-mcphost-runs-and-jobs open question, resolved at
+                    // build: "free job_max_s 300 and jobs_concurrent 1".
+                    job_max_s: 300,
+                    jobs_concurrent: 1,
                 },
                 Plan {
                     name: "pro".to_string(),
@@ -98,6 +116,11 @@ impl PlanCatalog {
                     concurrent_calls_per_tenant: 10,
                     // PRD-mcphost-sharing requirement 4: "pro 50".
                     shared_tools_max: 50,
+                    // PRD-mcphost-runs-and-jobs: pro gets a longer deadline
+                    // and more concurrent jobs than free, same free/pro
+                    // scaling shape as every other quota above.
+                    job_max_s: 900,
+                    jobs_concurrent: 3,
                 },
             ],
         }
@@ -161,6 +184,8 @@ impl PlanCatalog {
                 p.concurrent_calls_per_tenant
             ));
             out.push_str(&format!("shared_tools_max = {}\n", p.shared_tools_max));
+            out.push_str(&format!("job_max_s = {}\n", p.job_max_s));
+            out.push_str(&format!("jobs_concurrent = {}\n", p.jobs_concurrent));
             out.push('\n');
         }
         out
@@ -213,6 +238,8 @@ impl PlanCatalog {
                     builder.concurrent_calls_per_tenant = Some(int_value())
                 }
                 "shared_tools_max" => builder.shared_tools_max = Some(int_value()),
+                "job_max_s" => builder.job_max_s = Some(int_value()),
+                "jobs_concurrent" => builder.jobs_concurrent = Some(int_value()),
                 _ => {}
             }
         }
@@ -241,6 +268,8 @@ struct PlanBuilder {
     state_ops_per_call_max: Option<i64>,
     concurrent_calls_per_tenant: Option<i64>,
     shared_tools_max: Option<i64>,
+    job_max_s: Option<i64>,
+    jobs_concurrent: Option<i64>,
 }
 
 impl PlanBuilder {
@@ -266,6 +295,11 @@ impl PlanBuilder {
             // this key gets the `free` plan's own default (3), same
             // tolerant-parse rationale as `concurrent_calls_per_tenant`.
             shared_tools_max: self.shared_tools_max.unwrap_or(3),
+            // PRD-mcphost-runs-and-jobs: a `plans.toml` predating these two
+            // keys gets the `free` plan's own defaults, same
+            // tolerant-parse rationale as every other field above.
+            job_max_s: self.job_max_s.unwrap_or(300),
+            jobs_concurrent: self.jobs_concurrent.unwrap_or(1),
         })
     }
 }
@@ -308,6 +342,21 @@ mod tests {
         assert_eq!(pro.state_bytes_max, 200 * 1024 * 1024);
         assert_eq!(pro.state_ops_per_call_max, 200);
         assert!(pro.state_rows_max > free.state_rows_max);
+    }
+
+    /// PRD-mcphost-runs-and-jobs open question, resolved at build: "free
+    /// job_max_s 300 and jobs_concurrent 1".
+    #[test]
+    fn default_catalog_has_job_quotas() {
+        let catalog = PlanCatalog::default_catalog();
+        let free = catalog.get("free").expect("free plan");
+        assert_eq!(free.job_max_s, 300);
+        assert_eq!(free.jobs_concurrent, 1);
+        let pro = catalog.get("pro").expect("pro plan");
+        assert_eq!(pro.job_max_s, 900);
+        assert_eq!(pro.jobs_concurrent, 3);
+        assert!(pro.job_max_s > free.job_max_s);
+        assert!(pro.jobs_concurrent > free.jobs_concurrent);
     }
 
     #[test]

@@ -26,6 +26,7 @@ const MIGRATION_0010: &str = include_str!("../migrations/0010_tenant_attribution
 const MIGRATION_0011: &str = include_str!("../migrations/0011_tenant_state.sql");
 const MIGRATION_0012: &str = include_str!("../migrations/0012_provenance.sql");
 const MIGRATION_0013: &str = include_str!("../migrations/0013_sharing.sql");
+const MIGRATION_0014: &str = include_str!("../migrations/0014_runs.sql");
 
 /// Shared by every query that selects a whole tenant row, so the column
 /// list and [`tenant_from_row`] stay in lockstep with each other.
@@ -253,6 +254,73 @@ pub struct AdminAuditRow {
     pub target: Option<String>,
     pub detail: Option<String>,
     pub created_unix: i64,
+}
+
+/// PRD-mcphost-runs-and-jobs P0 requirement 1: one row of the `runs`
+/// ledger, read back by `host.runs.get`/`list`/`admin.runs` and the
+/// executor's own leasing/finalizing. `progress_json`/`result_ref`/
+/// `error_class`/`started_unix`/`finished_unix`/`duration_ms`/`deadline_s`/
+/// `trigger_ref`/`caller_tenant_id`/`purged_unix` are all nullable --
+/// exactly the migration's own column shape, not narrowed here, so a
+/// caller reading a `queued` row (nothing has started yet) doesn't need a
+/// separate row shape from a `done` one.
+#[derive(Debug, Clone, Serialize)]
+pub struct RunRow {
+    pub id: String,
+    pub tenant_id: i64,
+    pub tool_name: String,
+    pub trigger: String,
+    pub trigger_ref: Option<String>,
+    pub caller_tenant_id: Option<i64>,
+    pub status: String,
+    pub progress_json: Option<String>,
+    pub result_ref: Option<String>,
+    pub error_class: Option<String>,
+    pub started_unix: Option<i64>,
+    pub finished_unix: Option<i64>,
+    pub duration_ms: Option<i64>,
+    pub deadline_s: Option<i64>,
+    pub attempt: i64,
+    pub purged_unix: Option<i64>,
+    pub args_json: Option<String>,
+}
+
+const RUN_COLUMNS: &str = "id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, \
+    status, progress_json, result_ref, error_class, started_unix, finished_unix, duration_ms, \
+    deadline_s, attempt, purged_unix, args_json";
+
+fn run_row_from_row(r: &Row) -> rusqlite::Result<RunRow> {
+    Ok(RunRow {
+        id: r.get(0)?,
+        tenant_id: r.get(1)?,
+        tool_name: r.get(2)?,
+        trigger: r.get(3)?,
+        trigger_ref: r.get(4)?,
+        caller_tenant_id: r.get(5)?,
+        status: r.get(6)?,
+        progress_json: r.get(7)?,
+        result_ref: r.get(8)?,
+        error_class: r.get(9)?,
+        started_unix: r.get(10)?,
+        finished_unix: r.get(11)?,
+        duration_ms: r.get(12)?,
+        deadline_s: r.get(13)?,
+        attempt: r.get(14)?,
+        purged_unix: r.get(15)?,
+        args_json: r.get(16)?,
+    })
+}
+
+/// PRD-mcphost-runs-and-jobs requirement 7: `host.usage`'s `jobs` block --
+/// counts and total wall-clock seconds for this tenant's `trigger='job'`
+/// runs finalized within the window, grouped by terminal status.
+#[derive(Debug, Clone, Copy, Default, Serialize)]
+pub struct JobsUsage {
+    pub done: i64,
+    pub error: i64,
+    pub timeout: i64,
+    pub cancelled: i64,
+    pub seconds: i64,
 }
 
 fn admin_audit_row_from_row(r: &Row) -> rusqlite::Result<AdminAuditRow> {
@@ -549,7 +617,8 @@ impl Db {
         Self::migrate_0010_tenant_attribution(&conn)?;
         Self::migrate_0011_tenant_state(&conn)?;
         Self::migrate_0012_provenance(&conn)?;
-        Self::migrate_0013_sharing(&conn)
+        Self::migrate_0013_sharing(&conn)?;
+        Self::migrate_0014_runs(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -733,6 +802,19 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0013)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-runs-and-jobs migration 0014 (P0 requirement 1): same
+    /// idempotency pattern as 0011 (a wholly new, `CREATE TABLE IF NOT
+    /// EXISTS`-guarded table), gated on the table's own existence.
+    fn migrate_0014_runs(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'runs'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0014)?;
         }
         Ok(())
     }
@@ -988,6 +1070,20 @@ impl Db {
         self.with_conn(move |conn| {
             let sql = format!("SELECT {TENANT_COLUMNS} FROM tenants WHERE namespace = ?1");
             conn.query_row(&sql, params![namespace], tenant_from_row)
+                .optional()
+                .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-runs-and-jobs: the executor only ever has a leased
+    /// `runs.tenant_id` to work from (no namespace, no bearer key on hand),
+    /// so it needs a by-id lookup the other tenant resolvers above don't
+    /// provide.
+    pub async fn find_tenant_by_id(&self, tenant_id: i64) -> Result<Option<Tenant>, AppError> {
+        self.with_conn(move |conn| {
+            let sql = format!("SELECT {TENANT_COLUMNS} FROM tenants WHERE id = ?1");
+            conn.query_row(&sql, params![tenant_id], tenant_from_row)
                 .optional()
                 .map_err(AppError::from)
         })
@@ -2656,13 +2752,428 @@ impl Db {
         let started_at = now_rfc3339();
         let started_unix = now_unix();
         let outcome = outcome.to_string();
+        // PRD-mcphost-runs-and-jobs P0 requirement 2: every synchronous call
+        // also writes a `runs` row with `trigger='call'`, in the SAME
+        // transaction as its `calls` row -- so the ledger is complete from
+        // day one and a crash between the two inserts is impossible (both
+        // land, or neither does). `calls` itself is untouched (unmodified
+        // columns, unmodified insert above this comment).
+        let run_id = crate::state::new_ulid();
+        let run_status = match (ok, outcome.as_str()) {
+            (true, _) => "done",
+            (false, "call_timeout") => "timeout",
+            (false, _) => "error",
+        };
+        let run_error_class = error_class.clone();
+        let run_tool_name = tool_name.clone();
         self.with_conn(move |conn| {
-            conn.execute(
+            let tx = conn.unchecked_transaction()?;
+            tx.execute(
                 "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id) \
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                 params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id],
             )?;
+            tx.execute(
+                "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, \
+                 status, progress_json, result_ref, error_class, started_unix, finished_unix, \
+                 duration_ms, deadline_s, attempt) \
+                 VALUES (?1, ?2, ?3, 'call', NULL, ?4, ?5, NULL, NULL, ?6, ?7, ?8, ?9, NULL, 1)",
+                params![
+                    run_id,
+                    tenant_id,
+                    run_tool_name,
+                    caller_tenant_id,
+                    run_status,
+                    run_error_class,
+                    started_unix,
+                    started_unix + (duration_ms / 1000).max(0),
+                    duration_ms,
+                ],
+            )?;
+            tx.commit()?;
             Ok(())
+        })
+        .await
+    }
+
+    // ---- runs ledger (PRD-mcphost-runs-and-jobs) --------------------------
+
+    /// P0 requirement 3: inserts a `queued` run and returns its new id, for
+    /// `host.tool_call(..., async=true)` -- must be fast (AC1: "under 50
+    /// ms"), so this is a single-row insert with no read-back.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_queued_run(
+        &self,
+        run_id: String,
+        tenant_id: i64,
+        tool_name: String,
+        trigger: String,
+        trigger_ref: Option<String>,
+        caller_tenant_id: Option<i64>,
+        deadline_s: i64,
+        args_json: String,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, \
+                 caller_tenant_id, status, deadline_s, attempt, args_json) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'queued', ?7, 1, ?8)",
+                params![run_id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, deadline_s, args_json],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Technical considerations' leasing SQL, scoped to one tenant so the
+    /// executor's per-tenant `jobs_concurrent` admission check (done by the
+    /// caller, before this is called) and this lease can never race each
+    /// other into over-admitting that tenant. `RETURNING id` under the
+    /// write lock is enough at this scale (single-writer SQLite via
+    /// `with_conn`'s own mutex); `None` when this tenant has no `queued`
+    /// row right now.
+    pub async fn lease_next_queued_run(&self, tenant_id: i64) -> Result<Option<RunRow>, AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            let leased_id: Option<String> = conn
+                .query_row(
+                    "UPDATE runs SET status='running', started_unix=?1 \
+                     WHERE id = (SELECT id FROM runs WHERE status='queued' AND tenant_id=?2 ORDER BY id LIMIT 1) \
+                     RETURNING id",
+                    params![now, tenant_id],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            let Some(id) = leased_id else {
+                return Ok(None);
+            };
+            let row = conn.query_row(
+                &format!("SELECT {RUN_COLUMNS} FROM runs WHERE id = ?1"),
+                params![id],
+                run_row_from_row,
+            )?;
+            Ok(Some(row))
+        })
+        .await
+    }
+
+    /// The executor's per-tenant admission check (P0 requirement 4:
+    /// `jobs_concurrent`) -- how many of this tenant's runs are `running`
+    /// right now, any trigger (a job sharing the tenant's slot budget with
+    /// nothing else today, but the column isn't trigger-filtered so a
+    /// future trigger kind doesn't silently bypass the cap).
+    pub async fn count_running_runs_for_tenant(&self, tenant_id: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM runs WHERE tenant_id = ?1 AND status = 'running'",
+                params![tenant_id],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// The executor's host-wide ceiling check, independent of any one
+    /// tenant's own cap.
+    pub async fn count_running_runs_total(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            conn.query_row("SELECT COUNT(*) FROM runs WHERE status = 'running'", [], |r| {
+                r.get(0)
+            })
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Every tenant with at least one `queued` run right now -- the
+    /// executor's outer scan loop iterates this list each tick rather than
+    /// scanning every tenant that has ever existed.
+    pub async fn distinct_tenants_with_queued_runs(&self) -> Result<Vec<i64>, AppError> {
+        self.with_conn(|conn| {
+            let mut stmt =
+                conn.prepare("SELECT DISTINCT tenant_id FROM runs WHERE status = 'queued'")?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, i64>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// P0 requirement 5: the executor's throttled (at most once/second,
+    /// enforced by the caller) progress write. A no-op (0 rows affected,
+    /// not an error) if the run has already left `running` -- a stray
+    /// progress line arriving after cancellation/finalization must never
+    /// resurrect a terminal row.
+    pub async fn update_run_progress(
+        &self,
+        run_id: String,
+        tenant_id: i64,
+        progress_json: String,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE runs SET progress_json = ?1 WHERE id = ?2 AND tenant_id = ?3 AND status = 'running'",
+                params![progress_json, run_id, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Finalizes a run to a terminal status (`done`/`error`/`timeout`) --
+    /// conditional on the row still being `running` OR `queued` (a queued
+    /// job whose tool vanished before ever leasing is also finalized
+    /// through here), so a run `host.runs.cancel` already flipped to
+    /// `cancelled` is never overwritten by the executor's own finalize
+    /// racing in after the kill. Returns `true` if this call is the one
+    /// that actually finalized it (the caller uses this to decide whether
+    /// to also write the state-store result -- a lost race writes nothing).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn finalize_run(
+        &self,
+        run_id: String,
+        tenant_id: i64,
+        status: String,
+        result_ref: Option<String>,
+        error_class: Option<String>,
+        finished_unix: i64,
+        duration_ms: i64,
+    ) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let affected = conn.execute(
+                "UPDATE runs SET status = ?1, result_ref = ?2, error_class = ?3, \
+                 finished_unix = ?4, duration_ms = ?5 \
+                 WHERE id = ?6 AND tenant_id = ?7 AND status IN ('running', 'queued')",
+                params![status, result_ref, error_class, finished_unix, duration_ms, run_id, tenant_id],
+            )?;
+            Ok(affected > 0)
+        })
+        .await
+    }
+
+    /// `host.runs.cancel` (AC4): conditional on the row still being
+    /// `queued` or `running`; returns the row as it stood BEFORE this call
+    /// (so the caller can tell whether it was actually `running`, i.e.
+    /// worth reaching for a live pid to kill) when this call is the one
+    /// that flipped it, `None` if it was already terminal (nothing to
+    /// cancel).
+    pub async fn cancel_run(&self, run_id: String, tenant_id: i64) -> Result<Option<RunRow>, AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            let before = conn
+                .query_row(
+                    &format!("SELECT {RUN_COLUMNS} FROM runs WHERE id = ?1 AND tenant_id = ?2"),
+                    params![run_id, tenant_id],
+                    run_row_from_row,
+                )
+                .optional()?;
+            let Some(before) = before else {
+                return Ok(None);
+            };
+            if before.status != "queued" && before.status != "running" {
+                return Ok(None);
+            }
+            let affected = conn.execute(
+                "UPDATE runs SET status = 'cancelled', finished_unix = ?1 \
+                 WHERE id = ?2 AND tenant_id = ?3 AND status IN ('queued', 'running')",
+                params![now, run_id, tenant_id],
+            )?;
+            if affected == 0 {
+                return Ok(None); // lost a race with the executor's own finalize.
+            }
+            Ok(Some(before))
+        })
+        .await
+    }
+
+    /// `host.runs.get`/`host.runs.wait`.
+    pub async fn get_run(&self, run_id: String, tenant_id: i64) -> Result<Option<RunRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                &format!("SELECT {RUN_COLUMNS} FROM runs WHERE id = ?1 AND tenant_id = ?2"),
+                params![run_id, tenant_id],
+                run_row_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `host.runs.list(tool?, status?, trigger?, limit?)` -- newest first.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn list_runs(
+        &self,
+        tenant_id: i64,
+        tool_name: Option<String>,
+        status: Option<String>,
+        trigger: Option<String>,
+        limit: i64,
+    ) -> Result<Vec<RunRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut sql = format!("SELECT {RUN_COLUMNS} FROM runs WHERE tenant_id = ?1");
+            let mut idx = 2;
+            let mut binds: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(tenant_id)];
+            if let Some(t) = tool_name {
+                sql.push_str(&format!(" AND tool_name = ?{idx}"));
+                binds.push(Box::new(t));
+                idx += 1;
+            }
+            if let Some(s) = status {
+                sql.push_str(&format!(" AND status = ?{idx}"));
+                binds.push(Box::new(s));
+                idx += 1;
+            }
+            if let Some(tr) = trigger {
+                sql.push_str(&format!(" AND trigger = ?{idx}"));
+                binds.push(Box::new(tr));
+                idx += 1;
+            }
+            sql.push_str(&format!(" ORDER BY id DESC LIMIT ?{idx}"));
+            binds.push(Box::new(limit));
+            let refs: Vec<&dyn rusqlite::ToSql> = binds.iter().map(|b| b.as_ref()).collect();
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(refs.as_slice(), run_row_from_row)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// `admin.runs(tenant?, status?, limit?)` -- cross-tenant; `tenant_id`
+    /// filters to one tenant when given, otherwise every tenant.
+    pub async fn admin_list_runs(
+        &self,
+        tenant_id: Option<i64>,
+        status: Option<String>,
+        limit: i64,
+    ) -> Result<Vec<RunRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut sql = format!("SELECT {RUN_COLUMNS} FROM runs WHERE 1=1");
+            let mut idx = 1;
+            let mut binds: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+            if let Some(t) = tenant_id {
+                sql.push_str(&format!(" AND tenant_id = ?{idx}"));
+                binds.push(Box::new(t));
+                idx += 1;
+            }
+            if let Some(s) = status {
+                sql.push_str(&format!(" AND status = ?{idx}"));
+                binds.push(Box::new(s));
+                idx += 1;
+            }
+            sql.push_str(&format!(" ORDER BY id DESC LIMIT ?{idx}"));
+            binds.push(Box::new(limit));
+            let refs: Vec<&dyn rusqlite::ToSql> = binds.iter().map(|b| b.as_ref()).collect();
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(refs.as_slice(), run_row_from_row)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// `host.runs.purge(before_unix)` (AC7): every `done` run for this
+    /// tenant finished at or before `before_unix` with a still-live
+    /// `result_ref` has that ref cleared and `purged_unix` stamped;
+    /// returns the list of `result_ref` keys the caller (`runs.rs`) must
+    /// also delete from `tenant_state_kv` -- this function only owns the
+    /// `runs` row itself, not the state store (`tenant_state.rs`'s
+    /// territory, same separation `state_table_drop`'s caller already
+    /// keeps in `tenant_state.rs`).
+    pub async fn purge_runs(&self, tenant_id: i64, before_unix: i64) -> Result<Vec<String>, AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT result_ref FROM runs WHERE tenant_id = ?1 AND status = 'done' \
+                 AND finished_unix <= ?2 AND result_ref IS NOT NULL",
+            )?;
+            let refs: Vec<String> = stmt
+                .query_map(params![tenant_id, before_unix], |r| r.get(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            conn.execute(
+                "UPDATE runs SET result_ref = NULL, purged_unix = ?1 \
+                 WHERE tenant_id = ?2 AND status = 'done' AND finished_unix <= ?3 AND result_ref IS NOT NULL",
+                params![now, tenant_id, before_unix],
+            )?;
+            Ok(refs)
+        })
+        .await
+    }
+
+    /// `admin.runs_reap` (P1 requirement 10, AC11): every `running` run
+    /// whose `started_unix + deadline_s` has passed with no finalization
+    /// (an executor crash) reads `error` / `error_class: interrupted`.
+    /// Returns the count reaped. Rows with no `deadline_s` (shouldn't
+    /// happen -- every leased run's deadline is set at insert time) are
+    /// left alone rather than reaped on an assumed default, since there's
+    /// no honest deadline to have missed.
+    pub async fn reap_expired_runs(&self) -> Result<i64, AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            let affected = conn.execute(
+                "UPDATE runs SET status = 'error', error_class = 'interrupted', \
+                 finished_unix = ?1, duration_ms = (?1 - started_unix) * 1000 \
+                 WHERE status = 'running' AND deadline_s IS NOT NULL AND started_unix IS NOT NULL \
+                 AND (started_unix + deadline_s) < ?1",
+                params![now],
+            )?;
+            Ok(affected as i64)
+        })
+        .await
+    }
+
+    /// P0 requirement 4 / open question: "restart re-leases `running` rows
+    /// as `queued` once" -- called once at `mcphost serve` startup, before
+    /// the executor starts leasing. Only rows still on their first attempt
+    /// (`attempt = 1`) are re-queued; a run that crashed a SECOND time
+    /// (already `attempt = 2` from this same function's first pass) is left
+    /// `running` so `reap_expired_runs`'s deadline-based rule eventually
+    /// catches it as `error: interrupted` instead of being requeued
+    /// forever -- "once" per the requirement's own word. Returns the count
+    /// requeued.
+    pub async fn requeue_interrupted_runs_once(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            let affected = conn.execute(
+                "UPDATE runs SET status = 'queued', started_unix = NULL, attempt = attempt + 1 \
+                 WHERE status = 'running' AND attempt = 1",
+                [],
+            )?;
+            Ok(affected as i64)
+        })
+        .await
+    }
+
+    /// `host.usage`'s `jobs` block (P0 requirement 7): counts and total
+    /// wall-clock seconds of this tenant's `trigger = 'job'` runs finalized
+    /// within the window.
+    pub async fn jobs_usage(&self, tenant_id: i64, window_secs: i64) -> Result<JobsUsage, AppError> {
+        let since = now_unix() - window_secs;
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT status, duration_ms FROM runs WHERE tenant_id = ?1 AND trigger = 'job' \
+                 AND finished_unix >= ?2",
+            )?;
+            let mut usage = JobsUsage::default();
+            let rows = stmt.query_map(params![tenant_id, since], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, Option<i64>>(1)?))
+            })?;
+            for row in rows {
+                let (status, duration_ms) = row?;
+                usage.seconds += duration_ms.unwrap_or(0) / 1000;
+                match status.as_str() {
+                    "done" => usage.done += 1,
+                    "error" => usage.error += 1,
+                    "timeout" => usage.timeout += 1,
+                    "cancelled" => usage.cancelled += 1,
+                    _ => {}
+                }
+            }
+            Ok(usage)
         })
         .await
     }

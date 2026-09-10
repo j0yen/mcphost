@@ -463,13 +463,20 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              same real, metered call as calling it directly by its namespaced name \
              (<namespace>.<name>), for a session that has no way to see its own \
              namespaced tool name yet. Unlike host.tool_test, this counts toward \
-             host.usage and appears in host.tool_logs.",
+             host.usage and appears in host.tool_logs. Pass async: true for a tool \
+             that needs more than the call deadline: returns {run_id, status: \"queued\"} \
+             immediately instead of running inline -- see host.runs.get/wait.",
             host_schema(
                 json!({
                     "name": {"type": "string", "description": "Local name of the tool to invoke."},
                     "args": {
                         "type": "object",
                         "description": "Arguments to pass, validated against the tool's own args_schema.",
+                    },
+                    "async": {
+                        "type": "boolean",
+                        "description": "Run as a job instead of inline: returns {run_id, status} \
+                            within ~50ms under the plan's job_max_s deadline; default false.",
                     },
                 }),
                 &["name", "args"],
@@ -769,6 +776,75 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &["table"],
             ),
         ),
+        // PRD-mcphost-runs-and-jobs P0 requirement 7: the ledger's own
+        // tenant-facing tools, alongside host.state.* above.
+        Tool::new(
+            "host.runs.get",
+            "Read one run's status, progress and (once done) result by id -- the same run \
+             a host.tool_call(..., async=true) or a scheduled/triggered execution created.",
+            host_schema(
+                json!({
+                    "run_id": {"type": "string", "description": "The run id to read."},
+                }),
+                &["run_id"],
+            ),
+        ),
+        Tool::new(
+            "host.runs.list",
+            "List this tenant's recent runs, newest first, optionally filtered by tool, \
+             status (queued|running|done|error|timeout|cancelled) or trigger \
+             (call|job|schedule|event|chain).",
+            host_schema(
+                json!({
+                    "tool": {"type": "string", "description": "Only runs of this tool name."},
+                    "status": {"type": "string", "description": "Only runs in this status."},
+                    "trigger": {"type": "string", "description": "Only runs of this trigger kind."},
+                    "limit": {"type": "integer", "description": "Max runs to return; default 20."},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.runs.cancel",
+            "Stop a queued or running job: its sandbox process is killed within ~2s and the \
+             run reads cancelled. A run that already finished fails with run_not_cancellable.",
+            host_schema(
+                json!({
+                    "run_id": {"type": "string", "description": "The run id to cancel."},
+                }),
+                &["run_id"],
+            ),
+        ),
+        Tool::new(
+            "host.runs.purge",
+            "Delete the stored results of every done run finished at or before before_unix; \
+             each then reads done with result: null, purged: true. Frees state_bytes_max \
+             quota the results were counted against.",
+            host_schema(
+                json!({
+                    "before_unix": {
+                        "type": "integer",
+                        "description": "Purge results of runs finished at or before this unix timestamp.",
+                    },
+                }),
+                &["before_unix"],
+            ),
+        ),
+        Tool::new(
+            "host.runs.wait",
+            "Long-poll one run until it finalizes or timeout_s elapses (max 25s), returning \
+             its current status either way -- for a client with no polling loop of its own.",
+            host_schema(
+                json!({
+                    "run_id": {"type": "string", "description": "The run id to wait on."},
+                    "timeout_s": {
+                        "type": "integer",
+                        "description": "Max seconds to wait, capped at 25; default 20.",
+                    },
+                }),
+                &["run_id"],
+            ),
+        ),
         Tool::new(
             "billing.plans",
             "The plan catalog (price and quotas per plan) and whether Stripe billing is \
@@ -989,6 +1065,27 @@ fn admin_tools() -> Vec<Tool> {
                 &["tenant", "name"],
             ),
         ),
+        // PRD-mcphost-runs-and-jobs P0 requirement 7 (user story "Operator (Joe)").
+        Tool::new(
+            "admin.runs",
+            "List runs across every tenant (or one, via tenant), optionally filtered by \
+             status -- a stuck executor is visible as runs older than their deadline_s \
+             still running.",
+            schema(
+                json!({
+                    "tenant": {"type": "string", "description": "Restrict to one tenant's namespace."},
+                    "status": {"type": "string", "description": "Only runs in this status."},
+                    "limit": {"type": "integer", "description": "Max runs to return; default 50."},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "admin.runs_reap",
+            "Mark error: interrupted every run left running past its started_unix + \
+             deadline_s with no finalization (an executor crash). Also runs once at startup.",
+            schema(json!({}), &[]),
+        ),
     ]
 }
 
@@ -1001,7 +1098,7 @@ impl SecretResolver for MapSecretResolver {
     }
 }
 
-async fn build_secret_resolver(
+pub(crate) async fn build_secret_resolver(
     state: &AppState,
     tenant_id: i64,
 ) -> Result<Arc<dyn SecretResolver>, AppError> {
@@ -1016,7 +1113,7 @@ async fn build_secret_resolver(
     Ok(Arc::new(MapSecretResolver(map)))
 }
 
-struct BufferedLog(std::sync::Mutex<Vec<String>>);
+pub(crate) struct BufferedLog(pub(crate) std::sync::Mutex<Vec<String>>);
 impl CallLog for BufferedLog {
     fn log(&self, line: &str) {
         if let Ok(mut guard) = self.0.lock() {
@@ -1030,7 +1127,7 @@ impl CallLog for BufferedLog {
 /// read back after the call to fill in the `calls` row (PRD-mcphost-code-tools
 /// requirement 8). `None` (the default) means the kind never reported any --
 /// exactly what happens for `echo`/`http`.
-struct CellResourceSink(std::sync::Mutex<Option<(i64, i64)>>);
+pub(crate) struct CellResourceSink(pub(crate) std::sync::Mutex<Option<(i64, i64)>>);
 impl ResourceSink for CellResourceSink {
     fn record(&self, cpu_ms: i64, peak_rss_kb: i64) {
         if let Ok(mut guard) = self.0.lock() {
@@ -1045,7 +1142,7 @@ impl ResourceSink for CellResourceSink {
 /// their fields unchanged into the matching `KindError` variant. Anything
 /// else becomes an `Exec` carrying the message -- the same fallback shape
 /// `From<KindError> for AppError` uses in the other direction.
-fn app_error_to_kind_error(e: AppError) -> KindError {
+pub(crate) fn app_error_to_kind_error(e: AppError) -> KindError {
     match e {
         AppError::Structured {
             code,
@@ -1071,9 +1168,9 @@ fn app_error_to_kind_error(e: AppError) -> KindError {
 /// `"delete_rows"`) -- distinct from the dotted `host.state.*` tool names
 /// `dispatch_control_tool` matches above, which is the *other* caller of
 /// these same `tenant_state::state_*` functions.
-struct TenantStateBridge {
-    state: Arc<AppState>,
-    tenant: Tenant,
+pub(crate) struct TenantStateBridge {
+    pub(crate) state: Arc<AppState>,
+    pub(crate) tenant: Tenant,
 }
 
 #[async_trait::async_trait]
@@ -1134,14 +1231,14 @@ impl StateTally {
 /// byte delta" (requirement 5). `log` is `None` for `host.tool_test`
 /// (which persists no logs at all, same as every other call it makes)
 /// and `Some` for a real published call.
-struct CountingStateBackend {
+pub(crate) struct CountingStateBackend {
     inner: Arc<dyn StateBackend>,
     tally: std::sync::Mutex<StateTally>,
     log: Option<Arc<dyn CallLog>>,
 }
 
 impl CountingStateBackend {
-    fn new(inner: Arc<dyn StateBackend>, log: Option<Arc<dyn CallLog>>) -> Self {
+    pub(crate) fn new(inner: Arc<dyn StateBackend>, log: Option<Arc<dyn CallLog>>) -> Self {
         Self {
             inner,
             tally: std::sync::Mutex::new(StateTally::default()),
@@ -1273,6 +1370,11 @@ impl McpHostHandler {
             "host.state.delete_rows" => {
                 tenant_state::state_delete_rows(&self.state, tenant, &args).await
             }
+            "host.runs.get" => crate::runs::get(&self.state, tenant, &args).await,
+            "host.runs.list" => crate::runs::list(&self.state, tenant, &args).await,
+            "host.runs.cancel" => crate::runs::cancel(&self.state, tenant, &args).await,
+            "host.runs.purge" => crate::runs::purge(&self.state, tenant, &args).await,
+            "host.runs.wait" => crate::runs::wait(&self.state, tenant, &args).await,
             "billing.status" => crate::billing::status(&self.state, tenant).await,
             "billing.checkout" => crate::billing::checkout(&self.state, tenant, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
@@ -1304,6 +1406,8 @@ impl McpHostHandler {
             "admin.audit_log" => admin::audit_log(&self.state, &args).await,
             "admin.shared_tools" => admin::shared_tools(&self.state).await,
             "admin.tool_unshare" => admin::tool_unshare(&self.state, &args).await,
+            "admin.runs" => crate::runs::admin_runs(&self.state, &args).await,
+            "admin.runs_reap" => crate::runs::admin_runs_reap(&self.state).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         };
 
@@ -1490,6 +1594,12 @@ impl McpHostHandler {
             compose_db: Some(self.state.db.clone()),
             compose_kinds: Some(self.state.kinds.clone()),
             concurrent_calls_per_tenant: self.concurrent_calls_cap(tenant),
+            // PRD-mcphost-runs-and-jobs: an ordinary synchronous dispatch is
+            // never a job -- no run id to report progress against, no pid
+            // slot `host.runs.cancel` would ever look up.
+            run_id: None,
+            progress: Arc::new(crate::kinds::NullProgress),
+            cancel_pid: Arc::new(std::sync::Mutex::new(None)),
         };
 
         let start = Instant::now();
@@ -1723,6 +1833,12 @@ impl McpHostHandler {
             compose_db: None,
             compose_kinds: None,
             concurrent_calls_per_tenant: self.concurrent_calls_cap(tenant),
+            // PRD-mcphost-runs-and-jobs: an ordinary synchronous dispatch is
+            // never a job -- no run id to report progress against, no pid
+            // slot `host.runs.cancel` would ever look up.
+            run_id: None,
+            progress: Arc::new(crate::kinds::NullProgress),
+            cancel_pid: Arc::new(std::sync::Mutex::new(None)),
         };
 
         match tokio::time::timeout(resolved_timeout, kind.call(&row.spec, call_args, &ctx)).await {
@@ -1824,6 +1940,12 @@ impl McpHostHandler {
             compose_db: None,
             compose_kinds: None,
             concurrent_calls_per_tenant: self.concurrent_calls_cap(tenant),
+            // PRD-mcphost-runs-and-jobs: an ordinary synchronous dispatch is
+            // never a job -- no run id to report progress against, no pid
+            // slot `host.runs.cancel` would ever look up.
+            run_id: None,
+            progress: Arc::new(crate::kinds::NullProgress),
+            cancel_pid: Arc::new(std::sync::Mutex::new(None)),
         };
 
         match tokio::time::timeout(resolved_timeout, kind.call(&spec, call_args, &ctx)).await {
@@ -1964,6 +2086,9 @@ impl McpHostHandler {
             compose_db: None,
             compose_kinds: None,
             concurrent_calls_per_tenant,
+            run_id: None,
+            progress: Arc::new(crate::kinds::NullProgress),
+            cancel_pid: Arc::new(std::sync::Mutex::new(None)),
         })
         .await;
 
@@ -2147,6 +2272,12 @@ impl McpHostHandler {
             compose_db: None,
             compose_kinds: None,
             concurrent_calls_per_tenant: self.concurrent_calls_cap(tenant),
+            // PRD-mcphost-runs-and-jobs: an ordinary synchronous dispatch is
+            // never a job -- no run id to report progress against, no pid
+            // slot `host.runs.cancel` would ever look up.
+            run_id: None,
+            progress: Arc::new(crate::kinds::NullProgress),
+            cancel_pid: Arc::new(std::sync::Mutex::new(None)),
         };
 
         let start = Instant::now();
@@ -2176,6 +2307,12 @@ impl McpHostHandler {
     /// direct call in `host.usage` and `host.tool_logs`, unlike
     /// `host.tool_test`, which deliberately records neither -- so this
     /// must never reimplement any of that logic, only reach it.
+    ///
+    /// PRD-mcphost-runs-and-jobs P0 requirement 3: `async: bool` (default
+    /// `false`) branches BEFORE any of that synchronous machinery --
+    /// `async: true` never touches `call_published_tool`, `calls`, or the
+    /// 30s deadline at all; it inserts a `queued` run
+    /// (`runs::enqueue`) and returns immediately.
     async fn host_tool_call(&self, tenant: &Tenant, args: Value) -> Result<Value, AppError> {
         let local_name = args
             .get("name")
@@ -2186,6 +2323,9 @@ impl McpHostHandler {
             .get("args")
             .cloned()
             .unwrap_or_else(|| Value::Object(Default::default()));
+        if args.get("async").and_then(Value::as_bool) == Some(true) {
+            return crate::runs::enqueue(&self.state, tenant, &local_name, call_args).await;
+        }
         // AC15: `call_published_tool`'s `get_tool` lookup is already scoped
         // to `tenant.id`, so a name only some other tenant published simply
         // isn't found here -- `ToolNotFound`, with nothing in the error to

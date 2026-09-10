@@ -229,6 +229,9 @@ pub fn quickstart(
             // PRD-mcphost-sharing requirement 4: "host.quickstart limits
             // lists it".
             "shared_tools_max": plan.shared_tools_max,
+            // PRD-mcphost-runs-and-jobs P0 requirement 8.
+            "job_max_s": plan.job_max_s,
+            "jobs_concurrent": plan.jobs_concurrent,
         })
     });
     // PRD-mcphost-call-limits-honest requirement 5 / AC6: the six limits an
@@ -576,6 +579,10 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
         .map(|(ns, n)| (ns, json!(n)))
         .collect();
     let calls_to_shared = state.db.calls_to_shared(tenant.id, secs).await?;
+    // PRD-mcphost-runs-and-jobs P0 requirement 7: `host.usage` gains
+    // `jobs: {done, error, timeout, seconds}` -- same window as everything
+    // else in this response.
+    let jobs = state.db.jobs_usage(tenant.id, secs).await?;
     Ok(json!({
         "window": window,
         "calls": stats.calls,
@@ -589,6 +596,13 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
         "capacity_refusals": stats.capacity_refusals,
         "calls_by_others": calls_by_others,
         "calls_to_shared": calls_to_shared,
+        "jobs": {
+            "done": jobs.done,
+            "error": jobs.error,
+            "timeout": jobs.timeout,
+            "cancelled": jobs.cancelled,
+            "seconds": jobs.seconds,
+        },
     }))
 }
 

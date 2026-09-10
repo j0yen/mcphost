@@ -1752,6 +1752,31 @@ _mcphost_mod = _mcphost_types.ModuleType("mcphost")
 _mcphost_mod.state = _mcphost_state_mod
 _mcphost_mod.call = _mcphost_call
 _mcphost_mod.CallError = McphostCallError
+
+# ---- mcphost.progress (PRD-mcphost-runs-and-jobs P0 requirement 5) --------
+#
+# `mcphost.progress(pct, msg)` -- fire-and-forget from the tool's own code's
+# point of view (it still blocks for one line's round trip, same as
+# `mcphost.state`/`mcphost.call` above, but the host's answer carries no
+# result the tool needs), marked `__mcphost_progress__` so the host side
+# (`kinds::python::ProgressSidecarBridge`) can tell it apart from a state or
+# compose request on the same stdin/stdout pair. A call made outside a job
+# context (an ordinary synchronous call) is answered `{"ok": true}` by
+# `NullProgress` just the same -- the tool's own code never needs to know
+# whether anything is listening.
+def _mcphost_progress(pct=None, msg=None):
+    _real_stdout.write(json.dumps({"__mcphost_progress__": True, "pct": pct, "msg": msg}))
+    _real_stdout.write("\n")
+    _real_stdout.flush()
+    line = sys.stdin.readline()
+    if not line:
+        return None
+    try:
+        return json.loads(line).get("ok")
+    except ValueError:
+        return None
+
+_mcphost_mod.progress = _mcphost_progress
 sys.modules["mcphost"] = _mcphost_mod
 sys.modules["mcphost.state"] = _mcphost_state_mod
 
@@ -2075,14 +2100,43 @@ impl SidecarBridge for ComposeSidecarBridge<'_> {
     }
 }
 
+/// PRD-mcphost-runs-and-jobs P0 requirement 5: bridges the same sidecar
+/// channel to `ctx.progress` -- `PY_RUNNER_SCRIPT`'s `mcphost.progress(pct,
+/// msg)` emits `{"__mcphost_progress__": true, "pct": ..., "msg": ...}` and
+/// blocks for the matching (trivial) response line, exactly as
+/// `mcphost.state`'s `StateSidecarBridge` does. Always answers `{"ok":
+/// true}` -- there is no failure mode a tool's own code needs to see
+/// (`ctx.progress` is `NullProgress` outside a job context, which silently
+/// discards the report; this bridge doesn't need to know which).
+struct ProgressSidecarBridge<'a> {
+    ctx: &'a CallCtx,
+}
+
+#[async_trait::async_trait]
+impl SidecarBridge for ProgressSidecarBridge<'_> {
+    async fn intercept(&self, line: &[u8]) -> Option<Vec<u8>> {
+        let request: Value = serde_json::from_slice(line).ok()?;
+        if request.get("__mcphost_progress__").and_then(Value::as_bool) != Some(true) {
+            return None;
+        }
+        let pct = request.get("pct").and_then(Value::as_i64);
+        let msg = request
+            .get("msg")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        self.ctx.progress.report(pct, msg);
+        Some(br#"{"ok":true}"#.to_vec())
+    }
+}
+
 /// The one `bridge` every real dispatch (warm or cold) passes to
 /// `PersistentSandbox::call` -- a sandboxed tool's code may use
-/// `mcphost.state` and `mcphost.call` in the same run, over the same
-/// stdin/stdout pair, so both sidecar protocols are tried per line (cheap:
-/// each is a no-op parse-and-marker-check when the line isn't its own).
-/// `state`'s check runs first, matching the plain `StateSidecarBridge`
-/// callers this replaced; the two markers are mutually exclusive so the
-/// order has no other effect.
+/// `mcphost.state`, `mcphost.call` and `mcphost.progress` in the same run,
+/// over the same stdin/stdout pair, so all three sidecar protocols are
+/// tried per line (cheap: each is a no-op parse-and-marker-check when the
+/// line isn't its own). `state`'s check runs first, matching the plain
+/// `StateSidecarBridge` callers this replaced; the three markers are
+/// mutually exclusive so the order has no other effect.
 struct HostSidecarBridge<'a> {
     ctx: &'a CallCtx,
 }
@@ -2094,6 +2148,10 @@ impl SidecarBridge for HostSidecarBridge<'_> {
             state: &self.ctx.state,
         };
         if let Some(response) = state_bridge.intercept(line).await {
+            return Some(response);
+        }
+        let progress_bridge = ProgressSidecarBridge { ctx: self.ctx };
+        if let Some(response) = progress_bridge.intercept(line).await {
             return Some(response);
         }
         let compose_bridge = ComposeSidecarBridge { ctx: self.ctx };
@@ -2872,7 +2930,23 @@ impl PythonKind {
         let payload = call_payload(args, &entry.site_packages);
         let bridge = HostSidecarBridge { ctx };
         let warm_call_started = Instant::now();
+        // PRD-mcphost-runs-and-jobs requirement 4 / AC4: register this
+        // sandbox's live pid for the duration of the round trip so
+        // `host.runs.cancel` (via `ctx.cancel_pid`, the same `Arc` a job's
+        // executor-built `CallCtx` shares with `AppState.runs`'s registry)
+        // can `killpg` it. Cleared unconditionally after, on every outcome
+        // -- a warm sandbox that survives this call (the `Responded` arm)
+        // must not be left registered under a run id that's about to
+        // finalize.
+        {
+            let mut slot = ctx.cancel_pid.lock().unwrap_or_else(|e| e.into_inner());
+            *slot = Some(entry.sandbox.pid());
+        }
         let outcome = entry.sandbox.call(&payload, timeout, &bridge).await;
+        {
+            let mut slot = ctx.cancel_pid.lock().unwrap_or_else(|e| e.into_inner());
+            *slot = None;
+        }
         match outcome {
             Ok(PersistentCallOutcome::Responded {
                 line,
@@ -3007,10 +3081,22 @@ async fn run_cold_interactive(
     run_spec: &sandbox::RunSpec,
     payload: &[u8],
     bridge: &dyn SidecarBridge,
+    // PRD-mcphost-runs-and-jobs requirement 4 / AC4: same pid-registration
+    // contract as `try_warm`'s inline block above, for the cold path's own
+    // freshly-spawned sandbox.
+    cancel_pid: &Arc<Mutex<Option<i32>>>,
 ) -> std::io::Result<SandboxOutcome> {
     let wall_clock_timeout = run_spec.wall_clock_timeout;
     let mut sandbox = sandbox::spawn_persistent(run_spec).await?;
+    {
+        let mut slot = cancel_pid.lock().unwrap_or_else(|e| e.into_inner());
+        *slot = Some(sandbox.pid());
+    }
     let call_outcome = sandbox.call(payload, wall_clock_timeout, bridge).await?;
+    {
+        let mut slot = cancel_pid.lock().unwrap_or_else(|e| e.into_inner());
+        *slot = None;
+    }
     match call_outcome {
         PersistentCallOutcome::Responded {
             line,
@@ -3423,7 +3509,7 @@ impl Kind for PythonKind {
         // a plain `SandboxOutcome` so nothing downstream of this line has
         // to change.
         let bridge = HostSidecarBridge { ctx };
-        let outcome = run_cold_interactive(&run_spec, &call_payload_bytes, &bridge).await;
+        let outcome = run_cold_interactive(&run_spec, &call_payload_bytes, &bridge, &ctx.cancel_pid).await;
         let _ = tokio::fs::remove_dir_all(&scratch).await;
         // Requirement 1/AC4: the cold-path number the AC's ≤5s budget is
         // judged against, logged before the spawn-error `?` so a genuine
@@ -3591,7 +3677,7 @@ impl Kind for PythonKind {
         // `mcphost.state` must behave identically whether it's reached
         // through an ordinary call or a debug `host.tool_run`.
         let bridge = HostSidecarBridge { ctx };
-        let outcome = run_cold_interactive(&run_spec, &call_payload_bytes, &bridge).await;
+        let outcome = run_cold_interactive(&run_spec, &call_payload_bytes, &bridge, &ctx.cancel_pid).await;
         let _ = tokio::fs::remove_dir_all(&scratch).await;
         let outcome = outcome.map_err(|e| KindError::Exec(format!("sandbox spawn failed: {e}")))?;
 
@@ -3942,6 +4028,9 @@ mod tests {
             compose_db: None,
             compose_kinds: None,
             concurrent_calls_per_tenant: usize::MAX,
+            run_id: None,
+            progress: Arc::new(crate::kinds::NullProgress),
+            cancel_pid: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -4240,6 +4329,9 @@ mod tests {
             compose_db: None,
             compose_kinds: None,
             concurrent_calls_per_tenant: usize::MAX,
+            run_id: None,
+            progress: Arc::new(crate::kinds::NullProgress),
+            cancel_pid: Arc::new(Mutex::new(None)),
         }
     }
 
