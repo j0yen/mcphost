@@ -103,14 +103,27 @@ async fn healthz(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl
     // is always present (0 when none), same as before.
     let tenants_real = state.db.count_external_tenants().await.unwrap_or(0);
     let tenants_synthetic = tenants_total - tenants_real;
+    // PRD-mcphost-provenance-audit requirement 3: the unqualified
+    // `tenants_real`/`tenants_synthetic` fields above are replaced by a
+    // nested `{external, synthetic}` object -- no field named "real" may
+    // aggregate both provenance classes under a name that implies it's
+    // pure. `signups`/`calls` get the same shape, from the write-time
+    // `origin` column migration 0012 added (independent of the
+    // `source_class`-keyed computation above, which
+    // `count_external_tenants` still serves for its own narrower purpose).
+    let (signups_external, signups_synthetic) =
+        state.db.count_signup_events_by_origin().await.unwrap_or((0, 0));
+    let (calls_external, calls_synthetic) =
+        state.db.count_calls_by_origin().await.unwrap_or((0, 0));
     let mut body = json!({
         "version": env!("CARGO_PKG_VERSION"),
         "db_ok": db_ok,
         "tools_total": tools_total,
         "tenants_total": tenants_total,
         "tenants_probe": tenants_probe,
-        "tenants_synthetic": tenants_synthetic,
-        "tenants_real": tenants_real,
+        "tenants": {"external": tenants_real, "synthetic": tenants_synthetic},
+        "signups": {"external": signups_external, "synthetic": signups_synthetic},
+        "calls": {"external": calls_external, "synthetic": calls_synthetic},
         "sandbox_mechanism": state.sandbox_mechanism,
     });
     // PRD-mcphost-tenant-attribution requirement 3: `tenants_by_source_class`
