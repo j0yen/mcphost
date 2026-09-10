@@ -92,6 +92,13 @@ pub async fn signup(
         None
     };
 
+    // PRD-mcphost-provenance-audit requirements 1/2/5: the write-time
+    // origin verdict (and its ip_class triage) every metrics surface now
+    // reports, derived through the one shared `state::derive_origin`/
+    // `state::classify_ip_class` contract rather than per-call-site logic.
+    let (origin, origin_detail) = crate::state::derive_origin(class, synthetic.as_deref());
+    let ip_class = crate::state::classify_ip_class(source_ip).to_string();
+
     // PRD-mcphost-call-limits-honest requirement 4 (AC5): the rate-limit
     // check and the signup-event write are now one atomic DB call
     // (`Db::try_admit_signup`) -- see that method's doc comment for why the
@@ -106,6 +113,9 @@ pub async fn signup(
             state.signup_rate_limit_per_hour,
             synthetic.clone(),
             attribution.user_agent.map(str::to_string),
+            origin.to_string(),
+            origin_detail.clone(),
+            ip_class,
         )
         .await?;
     if !admitted {
@@ -125,6 +135,8 @@ pub async fn signup(
             Some(class.as_str().to_string()),
             attribution.client_name.map(str::to_string),
             attribution.client_version.map(str::to_string),
+            origin.to_string(),
+            origin_detail,
         )
         .await?;
 

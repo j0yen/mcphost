@@ -399,6 +399,58 @@ pub fn classify_source_class(
     SourceClass::External
 }
 
+/// PRD-mcphost-provenance-audit requirement 1/2: the two-way real/synthetic
+/// split every metrics surface now reports, derived from the same
+/// `SourceClass`/`synthetic` classification `classify_source_class` already
+/// computes at write time -- one function, reused by the live signup path,
+/// the migration 0012 backfill rule, and (via the tenant's own
+/// already-derived origin) the call-recording path, instead of three rules
+/// that could drift (Technical considerations: "one contract, many
+/// callers").
+pub fn derive_origin(
+    source_class: SourceClass,
+    synthetic_label: Option<&str>,
+) -> (&'static str, Option<String>) {
+    if source_class.is_synthetic() {
+        let detail = synthetic_label
+            .map(str::to_string)
+            .unwrap_or_else(|| source_class.as_str().to_string());
+        ("synthetic", Some(detail))
+    } else {
+        let detail = synthetic_label
+            .map(str::to_string)
+            .unwrap_or_else(|| "external-unverified".to_string());
+        ("external", Some(detail))
+    }
+}
+
+/// PRD-mcphost-provenance-audit P1 requirement 5: loopback/private/public
+/// triage for `signup_events.ip_class`, independent of `origin` (a fleet
+/// signup from a public IP is still `synthetic` origin but `public` ip
+/// class). IPv6 has no stable `is_private` in std; anything non-loopback
+/// reports `public` for v6 (documented simplification).
+pub fn classify_ip_class(ip: &str) -> &'static str {
+    match ip.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(v4)) => {
+            if v4.is_loopback() {
+                "loopback"
+            } else if v4.is_private() {
+                "private"
+            } else {
+                "public"
+            }
+        }
+        Ok(std::net::IpAddr::V6(v6)) => {
+            if v6.is_loopback() {
+                "loopback"
+            } else {
+                "public"
+            }
+        }
+        Err(_) => "public",
+    }
+}
+
 /// `mcphost funnel --since <date>`'s `<date>` (a plain `YYYY-MM-DD`, UTC) --
 /// unix seconds at that day's start, or `None` if it doesn't parse.
 pub fn parse_date_ymd_unix(s: &str) -> Option<i64> {
