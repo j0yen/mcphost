@@ -423,7 +423,24 @@ async fn main() -> anyhow::Result<()> {
                 accepted_usage_cache: std::sync::Arc::new(std::sync::Mutex::new(
                     std::collections::HashMap::new(),
                 )),
+                runs: mcphost::runs::RunsRegistry::new(),
             });
+
+            // PRD-mcphost-runs-and-jobs P0 requirement 4 / open question:
+            // before the executor ever leases a `queued` run, re-queue
+            // (once) any run left `running` by a killed prior process, and
+            // reap (P1 requirement 10) anything already past its deadline
+            // from before this restart -- both idempotent, both safe to run
+            // on every `serve` start even when nothing needs fixing.
+            let requeued = state.db.requeue_interrupted_runs_once().await?;
+            if requeued > 0 {
+                tracing::info!(requeued, "runs: re-queued interrupted runs from a prior process");
+            }
+            let reaped = state.db.reap_expired_runs().await?;
+            if reaped > 0 {
+                tracing::info!(reaped, "runs: reaped expired runs from before this restart");
+            }
+            mcphost::runs::spawn_executor((*state).clone());
 
             mcphost::http::serve(bind, state).await
         }

@@ -7,7 +7,7 @@
 //! for `tools/list`, and execute a call against it.
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use jsonschema::error::{TypeKind, ValidationErrorKind};
@@ -935,6 +935,26 @@ impl StateBackend for NoState {
     }
 }
 
+/// PRD-mcphost-runs-and-jobs P0 requirement 5: where a sandboxed call's
+/// `mcphost.progress(pct, msg)` (see `kinds::python`'s `ProgressSidecarBridge`)
+/// lands. `handler.rs`'s real dispatch path wires this to a sink that
+/// writes into the `runs` row this call is executing as (job triggers
+/// only); every other context (an ordinary synchronous call, tests, the
+/// conformance suite) gets [`NullProgress`], so a tool calling
+/// `mcphost.progress` outside a job context is a harmless no-op rather than
+/// an error -- unlike [`StateBackend`], there is no "progress unavailable"
+/// failure mode a tool's own code needs to handle.
+pub trait ProgressSink: Send + Sync {
+    fn report(&self, pct: Option<i64>, msg: Option<String>);
+}
+
+/// A progress sink that discards everything -- every `CallCtx` not
+/// executing as a job gets this.
+pub struct NullProgress;
+impl ProgressSink for NullProgress {
+    fn report(&self, _pct: Option<i64>, _msg: Option<String>) {}
+}
+
 /// Context passed to every `Kind::call`: who is calling, how to reach their
 /// secrets, when to give up, and where to log.
 pub struct CallCtx {
@@ -1001,6 +1021,32 @@ pub struct CallCtx {
     /// own unit tests) -- unchanged behavior for every test that doesn't
     /// exercise per-tenant admission control.
     pub concurrent_calls_per_tenant: usize,
+    /// PRD-mcphost-runs-and-jobs requirement 4: this call's own `runs.id`,
+    /// set only when this dispatch IS a job execution (the executor's own
+    /// call into `Kind::call`, `runs.rs::run_one_job`). `None` for every
+    /// ordinary synchronous call (`call_published_tool`'s own path,
+    /// `for_test`, the conformance suite) -- a `Kind` never needs to branch
+    /// on this itself; it exists so `ctx.progress`/`ctx.cancel_pid` have
+    /// somewhere meaningful to report to.
+    pub run_id: Option<String>,
+    /// See [`ProgressSink`]. Defaults to [`NullProgress`] everywhere but
+    /// the executor's job-dispatch path.
+    pub progress: Arc<dyn ProgressSink>,
+    /// PRD-mcphost-runs-and-jobs requirement 4 / AC4 (`host.runs.cancel`):
+    /// the pid of the sandboxed subprocess currently serving this call, if
+    /// any -- set by `kinds::python`'s call path around each
+    /// `PersistentSandbox::call` round trip (warm or cold), cleared the
+    /// instant that round trip returns. `host.runs.cancel` (via
+    /// `AppState.runs`'s registry, which holds the SAME `Arc` this field
+    /// holds for a job's `CallCtx`) reads this to `killpg` the actual OS
+    /// process group -- independent of whatever the `Kind::call` future
+    /// itself is doing, so cancellation works even though `Kind::call` is a
+    /// plain `async fn` with no cooperative-cancellation contract of its
+    /// own. A kind with no subprocess (`echo`, `http`) never touches this;
+    /// it just stays `None` for the whole call, and `host.runs.cancel`
+    /// degrades to "mark cancelled in the ledger, nothing to kill" (still
+    /// correct: an `http` call has no process to leave running either).
+    pub cancel_pid: Arc<Mutex<Option<i32>>>,
 }
 
 impl CallCtx {
@@ -1021,6 +1067,9 @@ impl CallCtx {
             compose_db: None,
             compose_kinds: None,
             concurrent_calls_per_tenant: usize::MAX,
+            run_id: None,
+            progress: Arc::new(NullProgress),
+            cancel_pid: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -1171,6 +1220,15 @@ pub async fn compose_call(
         // rather than re-deriving it (this call site has no `Tenant`/plan
         // to resolve from, only the already-dispatched parent `ctx`).
         concurrent_calls_per_tenant: ctx.concurrent_calls_per_tenant,
+        // PRD-mcphost-runs-and-jobs: a composed child call is still part of
+        // the same job (if any) the parent is executing -- progress and
+        // cancellation both reach through to the same run, so a chained
+        // tool's own `mcphost.progress` calls land on the parent job's
+        // `runs` row too, and `host.runs.cancel` still kills whichever
+        // sandbox (parent or child) is currently in flight.
+        run_id: ctx.run_id.clone(),
+        progress: ctx.progress.clone(),
+        cancel_pid: ctx.cancel_pid.clone(),
     };
 
     kind.call(&row.spec, args, &child_ctx).await

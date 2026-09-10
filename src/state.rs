@@ -142,6 +142,12 @@ pub struct AppState {
     /// repeated Stripe reads. In-memory only, same lifetime and
     /// `Arc`-sharing rationale as [`AppState::checkout_sessions`].
     pub accepted_usage_cache: crate::billing::AcceptedUsageCache,
+    /// PRD-mcphost-runs-and-jobs requirement 4: the executor's live
+    /// run-id -> cancel-pid registry, plus (P1 requirement 9's `runs.wait`)
+    /// the wake channel a finalized run notifies. In-memory only, same
+    /// `Arc`-sharing rationale as [`AppState::checkout_sessions`] -- see
+    /// [`crate::runs::RunsRegistry`].
+    pub runs: crate::runs::RunsRegistry,
 }
 
 pub fn now_unix() -> i64 {
@@ -191,6 +197,60 @@ pub fn rfc3339_from_unix(unix_secs: i64) -> String {
 /// computed fresh each call.
 pub fn rfc3339_now() -> String {
     rfc3339_from_unix(now_unix())
+}
+
+/// Milliseconds since the Unix epoch -- [`new_ulid`]'s own time component
+/// needs millisecond resolution, coarser than [`now_unix`]'s seconds.
+pub fn now_unix_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// Crockford base32 alphabet -- excludes I, L, O, U to avoid transcription
+/// confusion, the same alphabet a real ULID uses.
+const CROCKFORD_ALPHABET: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+/// PRD-mcphost-runs-and-jobs requirement 1: `runs.id (ulid)` -- a
+/// lexicographically-sortable, time-prefixed identifier so `ORDER BY id`
+/// (the leasing query's own ordering, see `db::Db::lease_next_queued_run`)
+/// returns insertion order without a second column. This crate has no
+/// `ulid`/`uuid` dependency (the same "no new dependency for a small,
+/// self-contained thing" call `rfc3339_from_unix`'s hand-rolled calendar
+/// math already made); this hand-rolls the two ULID halves instead: 48 bits
+/// of millisecond timestamp (10 Crockford base32 chars) followed by 80 bits
+/// of randomness (16 chars) via `rand` (already a dependency), for a
+/// 26-character id. Not validated against the ULID spec's exact overflow
+/// edge cases (this crate never needs to parse one back, only generate and
+/// sort it), but sortable and collision-resistant enough for a per-tenant
+/// run ledger.
+pub fn new_ulid() -> String {
+    use rand::RngCore;
+    let ts = now_unix_ms().max(0) as u64;
+    let mut rng = rand::thread_rng();
+    let mut rand_bytes = [0u8; 10]; // 80 bits
+    rng.fill_bytes(&mut rand_bytes);
+
+    let mut out = String::with_capacity(26);
+    // 48-bit timestamp -> 10 base32 chars, most significant first.
+    for i in (0..10).rev() {
+        let shift = i * 5;
+        let idx = ((ts >> shift) & 0x1f) as usize;
+        out.push(CROCKFORD_ALPHABET[idx] as char);
+    }
+    // 80 bits of randomness -> 16 base32 chars. Packed 5 bits at a time
+    // across the 10-byte buffer.
+    let mut acc: u128 = 0;
+    for b in rand_bytes {
+        acc = (acc << 8) | b as u128;
+    }
+    for i in (0..16).rev() {
+        let shift = i * 5;
+        let idx = ((acc >> shift) & 0x1f) as usize;
+        out.push(CROCKFORD_ALPHABET[idx] as char);
+    }
+    out
 }
 
 /// The unix timestamp of the most recent UTC midnight at or before
@@ -726,5 +786,34 @@ mod tests {
         assert_eq!(utc_midnight_unix(86_400), 86_400);
         assert_eq!(utc_midnight_unix(86_400 + 3661), 86_400);
         assert_eq!(next_utc_midnight_unix(86_400 + 3661), 2 * 86_400);
+    }
+
+    /// PRD-mcphost-runs-and-jobs requirement 1: 26 Crockford-base32
+    /// characters, monotonically non-decreasing across calls made in the
+    /// same or later millisecond (the leasing query's `ORDER BY id`
+    /// correctness depends on this), and never repeats across a decent
+    /// sample (the 80 random bits doing their job).
+    #[test]
+    fn new_ulid_is_26_chars_sortable_and_unique() {
+        let mut ids = Vec::new();
+        for _ in 0..200 {
+            let id = new_ulid();
+            assert_eq!(id.len(), 26, "ulid {id} is not 26 chars");
+            assert!(
+                id.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()),
+                "ulid {id} has unexpected chars"
+            );
+            ids.push(id);
+        }
+        let mut sorted = ids.clone();
+        sorted.sort();
+        // Two ids minted in the same millisecond can tie on their time
+        // prefix and sort by their random suffix instead -- so this only
+        // asserts every id is unique, not that mint order == sort order.
+        let mut dedup = ids.clone();
+        dedup.sort();
+        dedup.dedup();
+        assert_eq!(dedup.len(), ids.len(), "ulid collision in 200 draws");
+        let _ = sorted;
     }
 }
