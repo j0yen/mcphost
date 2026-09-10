@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-call-limits-honest.md",
-  "intent_slug": "mcphost-call-limits-honest",
-  "root_motivation": "An agent that reads the host's limits and builds to them gets a different host at call time. Facts from the stress run and v0.31.0 source:",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-surface-fluidity.md",
+  "intent_slug": "mcphost-surface-fluidity",
+  "root_motivation": "An agent choosing how to try a tool before calling it reads about 900 characters across four descriptions to learn: test a published tool by name, test an unpublished http spec, test an unpublished spec of any kind with example invocations, or run a published python tool with stdout. Facts from the 2026-09-09 descriptor audit of v0.31.0 (`src/handler.rs:220-435`):",
   "user_persona": "An AI agent connecting to mcphost for the first time over streamable HTTP with default client configuration (Claude Agent SDK / Claude Code), which must be able to read a well-formed tool list before it can do anything else; secondarily the operator who probes the endpoint after a redeploy.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,56 +14,50 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a python tool with `timeout_s: 45` that sleeps 40 s, When called, Then it returns ok after about 40 s; Given `timeout_s: 45` and a 50 s sleep, Then `call_timeout` names a 45 s deadline.",
+      "description": "Given `host.quickstart(kind=\"python\")` for an authenticated tenant, When read, Then it contains `try_before_call` with four rows naming `host.tool_test`, `host.bridge_test`, `host.spec_test`, `host.tool_run` and an example call each.",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a tool with no `timeout_s` sleeping 35 s, When called, Then `call_timeout` names the 30 s default.",
+      "description": "Given `tools/list`, When the four dry-run descriptions are read, Then each is at most 160 characters and contains `host.quickstart`.",
       "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a python tool returning a 3 MB string, When called, Then the error is `tool_output_too_large` with `limit_bytes` 1048576 and `actual_bytes` \u2265 3,000,000, and the same tool returning 100 KB succeeds.",
+      "description": "Given a `host.tool_call` with an argument of the wrong type, When it runs, Then the error code is `args_invalid`; and `grep -r invalid_args src/ docs/ www/` returns nothing.",
       "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given plan `free` with `concurrent_calls_per_tenant: 4`, When tenant A issues 50 concurrent calls and tenant B one call, Then B's call succeeds and at least 40 of A's refusals are `capacity` with `scope: \"tenant\"` and a positive `retry_after_ms`.",
+      "description": "Given every tool descriptor, When the schema test runs, Then every required property has a non-empty description, including `host.bridge_test.spec` and `host.spec_test.invocations`.",
       "test": "tests/ac04_publish_list_and_call.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a signup cap of 5, When 10 concurrent signups arrive from one source, Then exactly 5 succeed and 5 are `rate_limited`.",
+      "description": "Given the served `llms.txt` and a live `tools/list`, When compared by the test, Then the tool name sets are equal.",
       "test": "tests/ac05_cross_tenant_isolation.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given `host.quickstart`, When read, Then `limits` contains the six new keys and their values equal the constants; a test compares README and `llms.txt` numbers to the same constants.",
+      "description": "Given a python tool returning `{\"data\": {\"status\": \"ok\"}}` with `outputs: {\"ingestion_status\": \"$.data.status\"}`, When called, Then `result.payload.ingestion_status` is `\"ok\"` and `host.tool_test` reports it found at that path.",
       "test": "tests/ac06_remove_tool.rs"
     },
     {
       "id": "AC7",
-      "level": "MUST",
-      "description": "Given a python tool that forks 500 processes, When called, Then it fails with `tool_process_limit` and the host's process count returns to baseline within 5 s.",
+      "level": "SHOULD",
+      "description": "Given `host.tool_publish`'s description, When measured, Then it is at most 600 characters.",
       "test": "tests/ac07_usage_metering.rs"
     },
     {
       "id": "AC8",
       "level": "SHOULD",
-      "description": "Given a tenant that received 20 `capacity` refusals in a minute, When `host.usage(window=\"1m\")` is read, Then `capacity_refusals` is 20.",
+      "description": "Given `get_info`, When read, Then its instructions mention `try_before_call`.",
       "test": "tests/ac08_admin_disable_and_forbidden.rs"
-    },
-    {
-      "id": "AC9",
-      "level": "SHOULD",
-      "description": "Given 1,000 `capacity` refusals for one tenant in 10 s, When the journal is read, Then at most 10 `capacity` warning lines exist for that tenant.",
-      "test": "tests/ac09_signup_rate_limit.rs"
     }
   ],
   "scope": [
