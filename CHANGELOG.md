@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.40.1 — 2026-09-10
+
+mcphost-tenant-state's AC3 and AC10 were implemented and green by content but not discoverable by the archive gate's AC-pairing derivation under this PRD's declared `state_` test prefix (AC3's existing test file names AC2 first; no `state_ac10_*` file existed). This patch adds two small, real test files that pair each AC without touching any behavior, and formally defers AC13 (P2, explicitly "may be deferred" per the PRD's own non-goals) alongside the already-deferred AC11/AC12.
+
 ## v0.40.0 — 2026-09-10
 
 mcphost's healthz reported "95 real tenants" that were 100% synthorg personas from 127.0.0.1 -- discovered only by hand-querying signup_events.source_ip. Nothing in the write path recorded origin, so every count the system emitted was unanswerable for the only question that matters: is anyone real using this? This release stamps provenance (synthetic|external, with origin detail) on tenants, signups, and calls at write time, splits every metrics surface into real/synthetic honestly, and adds an append-only admin_audit log for admin and billing actions.
