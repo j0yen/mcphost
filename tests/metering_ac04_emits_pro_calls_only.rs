@@ -32,7 +32,7 @@ async fn only_pro_ok_calls_are_emitted() {
         server
             .state
             .db
-            .record_call(pro_id, "some_tool".to_string(), 1, false, Some("boom".to_string()), None, None, "error")
+            .record_call(pro_id, "some_tool".to_string(), 1, false, Some("boom".to_string()), None, None, "error", "external".to_string(), None)
             .await
             .expect("record failed call");
     }

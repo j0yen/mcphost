@@ -23,7 +23,7 @@ async fn loopback_signup_defaults_to_harness_unstamped_and_is_not_real() {
     let server = TestServer::start().await;
 
     let before = healthz(&server.base_url).await;
-    let real_before = before["tenants_real"].as_i64().unwrap();
+    let real_before = before["tenants"]["external"].as_i64().unwrap();
 
     let (ns, _) = signup(&server.base_url, "No Stamp Agent").await;
 
@@ -38,7 +38,7 @@ async fn loopback_signup_defaults_to_harness_unstamped_and_is_not_real() {
     assert_eq!(tenant.synthetic.as_deref(), Some("harness:unstamped"));
 
     let after = healthz(&server.base_url).await;
-    let real_after = after["tenants_real"].as_i64().unwrap();
+    let real_after = after["tenants"]["external"].as_i64().unwrap();
     assert_eq!(
         real_after, real_before,
         "a loopback signup must not move tenants_real: {after:?}"

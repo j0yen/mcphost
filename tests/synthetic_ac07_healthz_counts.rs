@@ -38,8 +38,8 @@ async fn healthz_present_at_zero_and_splits_real_from_synthetic() {
     let server = TestServer::start().await;
 
     let health_empty = healthz(&server.base_url).await;
-    assert_eq!(health_empty["tenants_synthetic"], json!(0), "{health_empty:?}");
-    assert_eq!(health_empty["tenants_real"], json!(0), "{health_empty:?}");
+    assert_eq!(health_empty["tenants"]["synthetic"], json!(0), "{health_empty:?}");
+    assert_eq!(health_empty["tenants"]["external"], json!(0), "{health_empty:?}");
     assert_eq!(health_empty["tenants_total"], json!(0), "{health_empty:?}");
 
     let admin = McpClient::with_bearer(&server.base_url, ADMIN_KEY);
@@ -72,6 +72,6 @@ async fn healthz_present_at_zero_and_splits_real_from_synthetic() {
 
     let health = healthz(&server.base_url).await;
     assert_eq!(health["tenants_total"], json!(6), "{health:?}");
-    assert_eq!(health["tenants_synthetic"], json!(5), "{health:?}");
-    assert_eq!(health["tenants_real"], json!(1), "{health:?}");
+    assert_eq!(health["tenants"]["synthetic"], json!(5), "{health:?}");
+    assert_eq!(health["tenants"]["external"], json!(1), "{health:?}");
 }

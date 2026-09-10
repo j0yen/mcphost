@@ -38,15 +38,28 @@ async fn funnel_reports_six_stages_split_real_and_synthetic() {
             Some("external".to_string()),
             Some("claude-code".to_string()),
             Some("2.1".to_string()),
+            "external".to_string(),
+            None,
         )
         .await
         .expect("create tenant a");
     db.upsert_tool(tenant_a.id, "greet".to_string(), "echo".to_string(), json!({}))
         .await
         .expect("publish tool");
-    db.record_call(tenant_a.id, "greet".to_string(), 12, true, None, None, None, "ok")
-        .await
-        .expect("record call");
+    db.record_call(
+        tenant_a.id,
+        "greet".to_string(),
+        12,
+        true,
+        None,
+        None,
+        None,
+        "ok",
+        tenant_a.origin.clone(),
+        tenant_a.origin_detail.clone(),
+    )
+    .await
+    .expect("record call");
 
     // Real tenant C: signs up and gets upgraded to `pro` -- never
     // publishes or calls.
@@ -60,6 +73,8 @@ async fn funnel_reports_six_stages_split_real_and_synthetic() {
             None,
             Some("external".to_string()),
             None,
+            None,
+            "external".to_string(),
             None,
         )
         .await
@@ -78,6 +93,8 @@ async fn funnel_reports_six_stages_split_real_and_synthetic() {
         Some("harness:unstamped".to_string()),
         Some("loopback".to_string()),
         None,
+        None,
+        "synthetic".to_string(),
         None,
     )
     .await

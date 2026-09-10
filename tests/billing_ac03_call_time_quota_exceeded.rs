@@ -41,7 +41,7 @@ async fn calls_over_the_daily_quota_are_rejected() {
         server
             .state
             .db
-            .record_call(tenant.id, "echoer".to_string(), 1, true, None, None, None, "ok")
+            .record_call(tenant.id, "echoer".to_string(), 1, true, None, None, None, "ok", "external".to_string(), None)
             .await
             .expect("seed call");
     }
