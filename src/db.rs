@@ -24,13 +24,14 @@ const MIGRATION_0008: &str = include_str!("../migrations/0008_synthetic.sql");
 const MIGRATION_0009: &str = include_str!("../migrations/0009_call_outcome.sql");
 const MIGRATION_0010: &str = include_str!("../migrations/0010_tenant_attribution.sql");
 const MIGRATION_0011: &str = include_str!("../migrations/0011_tenant_state.sql");
+const MIGRATION_0012: &str = include_str!("../migrations/0012_provenance.sql");
 
 /// Shared by every query that selects a whole tenant row, so the column
 /// list and [`tenant_from_row`] stay in lockstep with each other.
 const TENANT_COLUMNS: &str = "id, namespace, display_name, key_hash, created_at, disabled, \
     last_tool_change_unix, namespace_verified, registry_namespace, plan, plan_since, billing_ref, \
     stripe_customer_id, synthetic, source_class, client_name, client_version, classified_by, \
-    created_unix";
+    created_unix, origin, origin_detail";
 
 fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
     Ok(Tenant {
@@ -53,6 +54,8 @@ fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
         client_version: r.get(16)?,
         classified_by: r.get(17)?,
         created_unix: r.get(18)?,
+        origin: r.get(19)?,
+        origin_detail: r.get(20)?,
     })
 }
 
@@ -126,6 +129,14 @@ pub struct Tenant {
     /// signup-to-first-call latency. `None` only for a row the backfill
     /// couldn't parse (never true for a `created_at` this crate wrote).
     pub created_unix: Option<i64>,
+    /// PRD-mcphost-provenance-audit requirement 1: the two-way real/synthetic
+    /// verdict every metrics surface reports, derived at write time via
+    /// `state::derive_origin` -- `'synthetic'` or `'external'`, never NULL
+    /// (migration 0012).
+    pub origin: String,
+    /// The synthorg run-id / key-class / source_class value that justified
+    /// `origin`'s verdict, or `None` for a signup with no explicit marker.
+    pub origin_detail: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -169,6 +180,48 @@ pub struct TenantDeleteCounts {
     pub secrets_removed: i64,
     pub calls_removed: i64,
     pub logs_removed: i64,
+}
+
+/// PRD-mcphost-provenance-audit requirement 1: how many rows migration
+/// 0012's one-shot backfill reclassified into each bucket, per table --
+/// journaled at migration time (`migrate_0012_provenance`) and returned
+/// directly by [`Db::backfill_provenance`] for AC3's test to assert
+/// against.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub struct ProvenanceBackfillCounts {
+    pub tenants_synthetic: i64,
+    pub tenants_external: i64,
+    pub signup_events_synthetic: i64,
+    pub signup_events_external: i64,
+    pub calls_synthetic: i64,
+    pub calls_external: i64,
+}
+
+/// PRD-mcphost-provenance-audit requirement 4: a single row in
+/// `admin_audit`, exposed read-only via `admin.audit_log`. Distinct from
+/// `admin_events` (migration 0005, delete-only, no actor identity) --
+/// `admin_audit` is this PRD's general-purpose, actor-tracked log every
+/// admin-bearer mutation appends to centrally in
+/// `handler::dispatch_admin_tool`, not just tenant deletion.
+#[derive(Debug, Clone, Serialize)]
+pub struct AdminAuditRow {
+    pub id: i64,
+    pub actor_key_id: String,
+    pub action: String,
+    pub target: Option<String>,
+    pub detail: Option<String>,
+    pub created_unix: i64,
+}
+
+fn admin_audit_row_from_row(r: &Row) -> rusqlite::Result<AdminAuditRow> {
+    Ok(AdminAuditRow {
+        id: r.get(0)?,
+        actor_key_id: r.get(1)?,
+        action: r.get(2)?,
+        target: r.get(3)?,
+        detail: r.get(4)?,
+        created_unix: r.get(5)?,
+    })
 }
 
 impl TenantDeleteCounts {
@@ -291,6 +344,95 @@ fn backfill_unclassified_tenants_sync(conn: &Connection) -> Result<i64, AppError
     Ok(count)
 }
 
+/// PRD-mcphost-provenance-audit requirement 1 / AC3: migration 0012's
+/// one-shot backfill for every row still `origin = 'unclassified'`.
+/// Counts what's about to be reclassified per bucket BEFORE each table's
+/// own `UPDATE` runs (counting after the `UPDATE` can't distinguish
+/// "touched by this pass" from "already was this value", since both read
+/// the same final value), then applies the bucketing rule in order
+/// tenants -> signup_events -> calls -- `calls`' bucket count (and its
+/// `UPDATE`) both run after `tenants` has already been updated, so its
+/// subselect against `tenants.origin` reads post-backfill tenant origins,
+/// not the pre-backfill `'unclassified'` placeholder. Also the logic
+/// behind the directly-testable [`Db::backfill_provenance`] -- same split
+/// as `backfill_unclassified_tenants_sync`/`Db::backfill_unclassified_tenants`
+/// above.
+fn backfill_provenance_sync(conn: &Connection) -> Result<ProvenanceBackfillCounts, AppError> {
+    let mut counts = ProvenanceBackfillCounts::default();
+
+    let tenant_buckets: Vec<(String, i64)> = {
+        let mut stmt = conn.prepare(
+            "SELECT CASE WHEN source_class IN ('loopback','fleet') OR synthetic IS NOT NULL \
+             THEN 'synthetic' ELSE 'external' END AS bucket, COUNT(*) FROM tenants \
+             WHERE origin = 'unclassified' GROUP BY bucket",
+        )?;
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    for (bucket, n) in tenant_buckets {
+        match bucket.as_str() {
+            "synthetic" => counts.tenants_synthetic = n,
+            _ => counts.tenants_external = n,
+        }
+    }
+
+    let signup_buckets: Vec<(String, i64)> = {
+        let mut stmt = conn.prepare(
+            "SELECT CASE WHEN synthetic IS NOT NULL OR source_ip IN ('127.0.0.1','::1') \
+             THEN 'synthetic' ELSE 'external' END AS bucket, COUNT(*) FROM signup_events \
+             WHERE origin = 'unclassified' GROUP BY bucket",
+        )?;
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    for (bucket, n) in signup_buckets {
+        match bucket.as_str() {
+            "synthetic" => counts.signup_events_synthetic = n,
+            _ => counts.signup_events_external = n,
+        }
+    }
+
+    conn.execute(
+        "UPDATE tenants SET origin = CASE WHEN source_class IN ('loopback','fleet') OR synthetic IS NOT NULL THEN 'synthetic' ELSE 'external' END, \
+         origin_detail = CASE WHEN synthetic IS NOT NULL THEN synthetic WHEN source_class IN ('loopback','fleet') THEN source_class ELSE 'external-unverified' END \
+         WHERE origin = 'unclassified'",
+        [],
+    )?;
+    conn.execute(
+        "UPDATE signup_events SET origin = CASE WHEN synthetic IS NOT NULL OR source_ip IN ('127.0.0.1','::1') THEN 'synthetic' ELSE 'external' END, \
+         origin_detail = CASE WHEN synthetic IS NOT NULL THEN synthetic WHEN source_ip IN ('127.0.0.1','::1') THEN 'loopback' ELSE 'external-unverified' END \
+         WHERE origin = 'unclassified'",
+        [],
+    )?;
+
+    // Run AFTER the tenants UPDATE above, per the doc comment: this
+    // subselect must see post-backfill tenant origins.
+    let call_buckets: Vec<(String, i64)> = {
+        let mut stmt = conn.prepare(
+            "SELECT CASE WHEN (SELECT origin FROM tenants WHERE tenants.id = calls.tenant_id) = 'synthetic' \
+             THEN 'synthetic' ELSE 'external' END AS bucket, COUNT(*) FROM calls \
+             WHERE origin = 'unclassified' GROUP BY bucket",
+        )?;
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    for (bucket, n) in call_buckets {
+        match bucket.as_str() {
+            "synthetic" => counts.calls_synthetic = n,
+            _ => counts.calls_external = n,
+        }
+    }
+
+    conn.execute(
+        "UPDATE calls SET origin = COALESCE((SELECT origin FROM tenants WHERE tenants.id = calls.tenant_id), 'external'), \
+         origin_detail = (SELECT origin_detail FROM tenants WHERE tenants.id = calls.tenant_id) \
+         WHERE calls.origin = 'unclassified'",
+        [],
+    )?;
+
+    Ok(counts)
+}
+
 /// Stamp `tenants.last_tool_change_unix` to now for `tenant_id`. Called by
 /// both `upsert_tool` and `remove_tool` (AC18): the ttlMs cache hint in
 /// `tools/list` must go to 0 after either, and only a tenant-level stamp
@@ -363,7 +505,8 @@ impl Db {
         Self::migrate_0008_synthetic(&conn)?;
         Self::migrate_0009_call_outcome(&conn)?;
         Self::migrate_0010_tenant_attribution(&conn)?;
-        Self::migrate_0011_tenant_state(&conn)
+        Self::migrate_0011_tenant_state(&conn)?;
+        Self::migrate_0012_provenance(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -516,6 +659,26 @@ impl Db {
         Ok(())
     }
 
+    /// PRD-mcphost-provenance-audit migration 0012 (requirements 1, 4): same
+    /// idempotency pattern as 0002-0011, gated on `tenants.origin`. The
+    /// `ALTER TABLE`s/`CREATE TABLE` land first, then -- still inside this
+    /// one gate -- every pre-existing row (`origin = 'unclassified'`
+    /// immediately after the `ALTER TABLE`s) is reclassified in place by
+    /// [`backfill_provenance_sync`], with the per-table/per-bucket counts
+    /// journaled (requirement 1, "counts journaled").
+    fn migrate_0012_provenance(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'origin'")?
+            .exists([])?;
+        if has_column {
+            return Ok(());
+        }
+        conn.execute_batch(MIGRATION_0012)?;
+        let counts = backfill_provenance_sync(conn)?;
+        tracing::info!(?counts, "provenance backfill complete");
+        Ok(())
+    }
+
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
     /// subcommand.
@@ -610,8 +773,28 @@ impl Db {
         key_hash: String,
         synthetic: Option<String>,
     ) -> Result<Tenant, AppError> {
-        self.create_tenant_attributed(display_name, namespace, key_hash, synthetic, None, None, None)
-            .await
+        // PRD-mcphost-provenance-audit: this wrapper's signature stays
+        // unchanged (existing test-only callers must keep compiling
+        // unmodified) -- `origin`/`origin_detail` are derived from the
+        // same `synthetic` label every other field here has always used.
+        let origin = if synthetic.is_some() {
+            "synthetic".to_string()
+        } else {
+            "external".to_string()
+        };
+        let origin_detail = synthetic.clone();
+        self.create_tenant_attributed(
+            display_name,
+            namespace,
+            key_hash,
+            synthetic,
+            None,
+            None,
+            None,
+            origin,
+            origin_detail,
+        )
+        .await
     }
 
     /// PRD-mcphost-tenant-attribution requirements 1-2: [`Self::create_tenant`]
@@ -635,14 +818,16 @@ impl Db {
         source_class: Option<String>,
         client_name: Option<String>,
         client_version: Option<String>,
+        origin: String,
+        origin_detail: Option<String>,
     ) -> Result<Tenant, AppError> {
         let created_at = now_rfc3339();
         let created_unix = now_unix();
         self.with_conn(move |conn| {
             conn.execute(
                 "INSERT INTO tenants (namespace, display_name, key_hash, created_at, disabled, \
-                 synthetic, source_class, client_name, client_version, created_unix) \
-                 VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7, ?8, ?9)",
+                 synthetic, source_class, client_name, client_version, created_unix, origin, origin_detail) \
+                 VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                 params![
                     namespace,
                     display_name,
@@ -652,7 +837,9 @@ impl Db {
                     source_class,
                     client_name,
                     client_version,
-                    created_unix
+                    created_unix,
+                    origin,
+                    origin_detail,
                 ],
             )?;
             let id = conn.last_insert_rowid();
@@ -676,6 +863,8 @@ impl Db {
                 client_version,
                 classified_by: None,
                 created_unix: Some(created_unix),
+                origin,
+                origin_detail,
             })
         })
         .await
@@ -688,6 +877,15 @@ impl Db {
     /// rows reclassified (0 once nothing is left `source_class IS NULL`).
     pub async fn backfill_unclassified_tenants(&self) -> Result<i64, AppError> {
         self.with_conn(backfill_unclassified_tenants_sync).await
+    }
+
+    /// PRD-mcphost-provenance-audit requirement 1 / AC3: the public,
+    /// directly-testable entry point for [`backfill_provenance_sync`] --
+    /// also what `migrate_0012_provenance` calls once, right after
+    /// migration 0012's `ALTER TABLE`s land. Returns all-zero counts once
+    /// nothing is left `origin = 'unclassified'` anywhere.
+    pub async fn backfill_provenance(&self) -> Result<ProvenanceBackfillCounts, AppError> {
+        self.with_conn(backfill_provenance_sync).await
     }
 
     /// PRD-mcphost-tenant-attribution requirement 2's "first authenticated
@@ -863,6 +1061,54 @@ impl Db {
                 "SELECT COUNT(*) FROM tenants WHERE source_class = 'external'",
                 [],
                 |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-provenance-audit requirement 3: `/healthz`'s
+    /// `tenants.{external,synthetic}` split, keyed off migration 0012's
+    /// `origin` column (not `source_class`, which [`Self::count_external_tenants`]
+    /// still uses for its own, narrower, pre-existing purpose). Returns
+    /// `(external, synthetic)`.
+    pub async fn count_tenants_by_origin(&self) -> Result<(i64, i64), AppError> {
+        self.with_conn(|conn| {
+            conn.query_row(
+                "SELECT (SELECT COUNT(*) FROM tenants WHERE origin = 'external'), \
+                        (SELECT COUNT(*) FROM tenants WHERE origin = 'synthetic')",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-provenance-audit requirement 3: `/healthz`'s
+    /// `signups.{external,synthetic}` split. Returns `(external, synthetic)`.
+    pub async fn count_signup_events_by_origin(&self) -> Result<(i64, i64), AppError> {
+        self.with_conn(|conn| {
+            conn.query_row(
+                "SELECT (SELECT COUNT(*) FROM signup_events WHERE origin = 'external'), \
+                        (SELECT COUNT(*) FROM signup_events WHERE origin = 'synthetic')",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-provenance-audit requirement 3: `/healthz`'s
+    /// `calls.{external,synthetic}` split. Returns `(external, synthetic)`.
+    pub async fn count_calls_by_origin(&self) -> Result<(i64, i64), AppError> {
+        self.with_conn(|conn| {
+            conn.query_row(
+                "SELECT (SELECT COUNT(*) FROM calls WHERE origin = 'external'), \
+                        (SELECT COUNT(*) FROM calls WHERE origin = 'synthetic')",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .map_err(AppError::from)
         })
@@ -1247,6 +1493,62 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-provenance-audit requirement 4: append a row to
+    /// `admin_audit`, distinct from `admin_events` above (migration 0005,
+    /// delete-only, no actor identity) -- `admin_audit` is this PRD's
+    /// general-purpose, actor-tracked log every admin-bearer mutation
+    /// appends to centrally in `handler::dispatch_admin_tool`, not just
+    /// tenant deletion.
+    pub async fn record_admin_audit(
+        &self,
+        actor_key_id: String,
+        action: String,
+        target: Option<String>,
+        detail: Option<String>,
+    ) -> Result<(), AppError> {
+        let ts = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO admin_audit (actor_key_id, action, target, detail, created_unix) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![actor_key_id, action, target, detail, ts],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `admin.audit_log` (requirement 4): newest-first, paged read of
+    /// `admin_audit`; `before_id` (when given) restricts to rows older
+    /// than that id, so a caller can page backward through the log.
+    pub async fn list_admin_audit(
+        &self,
+        limit: i64,
+        before_id: Option<i64>,
+    ) -> Result<Vec<AdminAuditRow>, AppError> {
+        self.with_conn(move |conn| {
+            let rows: Vec<AdminAuditRow> = match before_id {
+                Some(before) => {
+                    let mut stmt = conn.prepare(
+                        "SELECT id, actor_key_id, action, target, detail, created_unix \
+                         FROM admin_audit WHERE id < ?1 ORDER BY id DESC LIMIT ?2",
+                    )?;
+                    stmt.query_map(params![before, limit], admin_audit_row_from_row)?
+                        .collect::<rusqlite::Result<Vec<_>>>()?
+                }
+                None => {
+                    let mut stmt = conn.prepare(
+                        "SELECT id, actor_key_id, action, target, detail, created_unix \
+                         FROM admin_audit ORDER BY id DESC LIMIT ?1",
+                    )?;
+                    stmt.query_map(params![limit], admin_audit_row_from_row)?
+                        .collect::<rusqlite::Result<Vec<_>>>()?
+                }
+            };
+            Ok(rows)
+        })
+        .await
+    }
+
     // ---- signup rate limiting -----------------------------------------
 
     pub async fn signup_count_since(
@@ -1289,15 +1591,18 @@ impl Db {
         limit: i64,
         synthetic: Option<String>,
         user_agent: Option<String>,
+        origin: String,
+        origin_detail: Option<String>,
+        ip_class: String,
     ) -> Result<bool, AppError> {
         let ts = now_unix();
         self.with_conn(move |conn| {
             let inserted = conn.execute(
-                "INSERT INTO signup_events (source_ip, created_unix, synthetic, user_agent) \
-                 SELECT ?1, ?2, ?3, ?4 \
+                "INSERT INTO signup_events (source_ip, created_unix, synthetic, user_agent, origin, origin_detail, ip_class) \
+                 SELECT ?1, ?2, ?3, ?4, ?7, ?8, ?9 \
                  WHERE (SELECT COUNT(*) FROM signup_events \
                         WHERE source_ip = ?1 AND created_unix >= ?5) < ?6",
-                params![source_ip, ts, synthetic, user_agent, since_unix, limit],
+                params![source_ip, ts, synthetic, user_agent, since_unix, limit, origin, origin_detail, ip_class],
             )?;
             Ok(inserted > 0)
         })
@@ -1859,15 +2164,17 @@ impl Db {
         cpu_ms: Option<i64>,
         peak_rss_kb: Option<i64>,
         outcome: &str,
+        origin: String,
+        origin_detail: Option<String>,
     ) -> Result<(), AppError> {
         let started_at = now_rfc3339();
         let started_unix = now_unix();
         let outcome = outcome.to_string();
         self.with_conn(move |conn| {
             conn.execute(
-                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome],
+                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail],
             )?;
             Ok(())
         })
