@@ -866,6 +866,19 @@ fn admin_tools() -> Vec<Tool> {
                 &["name_like", "label"],
             ),
         ),
+        Tool::new(
+            "admin.audit_log",
+            "Paged, newest-first view of the admin_audit log (PRD-mcphost-provenance-audit \
+             requirement 4) -- every admin-bearer mutation's actor, action, target, and \
+             timestamp.",
+            schema(
+                json!({
+                    "limit": {"type": "integer"},
+                    "before_id": {"type": "integer"},
+                }),
+                &[],
+            ),
+        ),
     ]
 }
 
@@ -1149,7 +1162,7 @@ impl McpHostHandler {
     }
 
     async fn dispatch_admin_tool(&self, name: &str, args: Value) -> Result<Value, AppError> {
-        match name {
+        let result = match name {
             "admin.tenants" => admin::tenants(&self.state, &args).await,
             "admin.tenant_disable" => admin::tenant_disable(&self.state, &args).await,
             "admin.tenant_enable" => admin::tenant_enable(&self.state, &args).await,
@@ -1170,8 +1183,34 @@ impl McpHostHandler {
             "admin.tenants_set_synthetic" => {
                 admin::tenants_set_synthetic(&self.state, &args).await
             }
+            "admin.audit_log" => admin::audit_log(&self.state, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
+        };
+
+        // PRD-mcphost-provenance-audit requirement 4: every admin-bearer
+        // mutation appends to `admin_audit` from this one central point,
+        // rather than each admin::* fn writing its own row -- the same
+        // "one contract, many callers" reasoning `state::derive_origin`
+        // follows for write-time origin.
+        if let Ok(value) = &result
+            && let Some((action, target, detail)) = admin::admin_audit_entry(name, &args, value)
+        {
+            let actor_key_id = self
+                .state
+                .admin_key
+                .as_deref()
+                .map(crate::auth::hash_key)
+                .unwrap_or_default();
+            if let Err(e) = self
+                .state
+                .db
+                .record_admin_audit(actor_key_id, action, target, detail)
+                .await
+            {
+                tracing::warn!(error = %e, tool = name, "failed to record admin_audit row");
+            }
         }
+        result
     }
 
     /// PRD-grand-loop-billing AC3: reject with `quota_exceeded` when
@@ -1380,6 +1419,8 @@ impl McpHostHandler {
                         cpu_ms,
                         peak_rss_kb,
                         call_outcome,
+                        tenant.origin.clone(),
+                        tenant.origin_detail.clone(),
                     )
                     .await
                 {
@@ -1409,6 +1450,8 @@ impl McpHostHandler {
                         cpu_ms,
                         peak_rss_kb,
                         "error",
+                        tenant.origin.clone(),
+                        tenant.origin_detail.clone(),
                     )
                     .await;
                 tracing::info!(
@@ -1430,6 +1473,8 @@ impl McpHostHandler {
                         cpu_ms,
                         peak_rss_kb,
                         "timeout",
+                        tenant.origin.clone(),
+                        tenant.origin_detail.clone(),
                     )
                     .await;
                 tracing::info!(
@@ -1812,6 +1857,8 @@ impl McpHostHandler {
                     None,
                     None,
                     call_outcome,
+                    tenant.origin.clone(),
+                    tenant.origin_detail.clone(),
                 )
                 .await;
         }

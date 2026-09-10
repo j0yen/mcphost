@@ -42,6 +42,8 @@ async fn backfill_classifies_loopback_tenants_synthetic_and_hub_as_fleet() {
             None,
             None,
             None,
+            "unclassified".to_string(),
+            None,
         )
         .await
         .expect("seed unlabeled tenant");
@@ -56,6 +58,8 @@ async fn backfill_classifies_loopback_tenants_synthetic_and_hub_as_fleet() {
         None,
         None,
         None,
+        None,
+        "unclassified".to_string(),
         None,
     )
     .await

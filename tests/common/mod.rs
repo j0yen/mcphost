@@ -836,7 +836,18 @@ pub async fn record_ok_calls(server: &TestServer, tenant_id: i64, tool_name: &st
         server
             .state
             .db
-            .record_call(tenant_id, tool_name.to_string(), 1, true, None, None, None, "ok")
+            .record_call(
+                tenant_id,
+                tool_name.to_string(),
+                1,
+                true,
+                None,
+                None,
+                None,
+                "ok",
+                "external".to_string(),
+                None,
+            )
             .await
             .expect("record_call");
     }

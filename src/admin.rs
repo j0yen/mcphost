@@ -530,3 +530,86 @@ pub async fn tenants_set_synthetic(state: &AppState, args: &Value) -> Result<Val
         "matched": matched,
     }))
 }
+
+/// PRD-mcphost-provenance-audit requirement 4: which `admin.*` tools are
+/// mutations worth an audit row, and how to name their target/detail.
+/// Read-only tools are deliberately absent -- auditing a read doesn't serve
+/// the "who changed what" trail this log exists for.
+pub fn admin_audit_entry(
+    name: &str,
+    args: &Value,
+    _result: &Value,
+) -> Option<(String, Option<String>, Option<String>)> {
+    let dry_run = args.get("dry_run").and_then(Value::as_bool).unwrap_or(false);
+    match name {
+        "admin.tenant_delete" => Some((
+            "tenant_delete".into(),
+            args.get("tenant").and_then(Value::as_str).map(String::from),
+            None,
+        )),
+        "admin.tenant_delete_by_prefix" if !dry_run => Some((
+            "tenant_delete_by_prefix".into(),
+            args.get("prefix").and_then(Value::as_str).map(String::from),
+            None,
+        )),
+        "admin.tenant_disable" => Some((
+            "tenant_disable".into(),
+            args.get("tenant").and_then(Value::as_str).map(String::from),
+            None,
+        )),
+        "admin.tenant_enable" => Some((
+            "tenant_enable".into(),
+            args.get("tenant").and_then(Value::as_str).map(String::from),
+            None,
+        )),
+        "admin.tenant_verify_namespace" => Some((
+            "tenant_verify_namespace".into(),
+            args.get("tenant").and_then(Value::as_str).map(String::from),
+            args.get("domain_namespace")
+                .and_then(Value::as_str)
+                .map(String::from),
+        )),
+        "admin.plan_set" => Some((
+            "plan_set".into(),
+            args.get("tenant").and_then(Value::as_str).map(String::from),
+            args.get("plan").and_then(Value::as_str).map(String::from),
+        )),
+        "admin.tenant_set_synthetic" => Some((
+            "tenant_set_synthetic".into(),
+            args.get("tenant").and_then(Value::as_str).map(String::from),
+            None,
+        )),
+        "admin.tenants_set_synthetic" if !dry_run => Some((
+            "tenants_set_synthetic".into(),
+            args.get("name_like").and_then(Value::as_str).map(String::from),
+            args.get("label").and_then(Value::as_str).map(String::from),
+        )),
+        _ => None,
+    }
+}
+
+/// `admin.audit_log(limit?, before_id?)` (requirement 4): paged, newest
+/// first, read-only view of `admin_audit`.
+pub async fn audit_log(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let limit = args
+        .get("limit")
+        .and_then(Value::as_i64)
+        .unwrap_or(100)
+        .clamp(1, 500);
+    let before_id = args.get("before_id").and_then(Value::as_i64);
+    let rows = state.db.list_admin_audit(limit, before_id).await?;
+    let entries: Vec<Value> = rows
+        .into_iter()
+        .map(|r| {
+            json!({
+                "id": r.id,
+                "actor_key_id": r.actor_key_id,
+                "action": r.action,
+                "target": r.target,
+                "detail": r.detail,
+                "created_unix": r.created_unix,
+            })
+        })
+        .collect();
+    Ok(json!({ "entries": entries }))
+}

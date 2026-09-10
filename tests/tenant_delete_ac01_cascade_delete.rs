@@ -60,7 +60,7 @@ async fn deleting_a_tenant_cascades_every_owned_row() {
         server
             .state
             .db
-            .record_call(tenant.id, "tool0".to_string(), 5, true, None, None, None, "ok")
+            .record_call(tenant.id, "tool0".to_string(), 5, true, None, None, None, "ok", "external".to_string(), None)
             .await
             .expect("record_call");
     }

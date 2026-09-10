@@ -34,7 +34,7 @@ async fn external_signup_classifies_real_and_increments_tenants_real() {
     let server = TestServer::start().await;
 
     let before = healthz(&server.base_url).await;
-    let real_before = before["tenants_real"].as_i64().unwrap();
+    let real_before = before["tenants"]["external"].as_i64().unwrap();
 
     let result = mcphost::control::signup(
         &server.state,
@@ -60,6 +60,6 @@ async fn external_signup_classifies_real_and_increments_tenants_real() {
     );
 
     let after = healthz(&server.base_url).await;
-    let real_after = after["tenants_real"].as_i64().unwrap();
+    let real_after = after["tenants"]["external"].as_i64().unwrap();
     assert_eq!(real_after, real_before + 1, "{after:?}");
 }
