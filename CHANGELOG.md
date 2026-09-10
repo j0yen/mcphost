@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.40.0 — 2026-09-10
+
+mcphost's healthz reported "95 real tenants" that were 100% synthorg personas from 127.0.0.1 -- discovered only by hand-querying signup_events.source_ip. Nothing in the write path recorded origin, so every count the system emitted was unanswerable for the only question that matters: is anyone real using this? This release stamps provenance (synthetic|external, with origin detail) on tenants, signups, and calls at write time, splits every metrics surface into real/synthetic honestly, and adds an append-only admin_audit log for admin and billing actions.
+
 ## v0.39.0 — 2026-09-10
 
 An agent connecting to mcphost reads seventeen tenant tools whose descriptions are individually good and collectively heavy in one place: four of them dry-run something (`host.tool_test`, `host.bridge_test`, `host.spec_test`, `host.tool_run`) and each description spends its length explaining how it differs from the other three. The same audit found two error codes for one mistake (`invalid_args` and `args_invalid`), two required fields with no description (`spec` on `bridge_test`, `invocations` on `spec_test`), four tools missing from `llms.txt`, and a python kind that accepts the map form of `outputs` but did not extract by path. This PRD gives the dry-run family one decision table that `host.quickstart` and every description point to, merges the two error codes, describes every required field, generates `llms.txt`'s tool list from the descriptors, finishes the python path extraction (including a warm-sandbox-reuse bug this PRD's own test caught), and trims `host.tool_publish`'s description to point at `host.quickstart(kind)` instead of repeating every kind's example inline.
