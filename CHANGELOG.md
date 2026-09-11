@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.43.1 — 2026-09-11
+
+mcphost-tests-host-independence: fixed three test suites whose verdict depended on
+the host that ran them (infer_ac14_latency_budget, limits_ac07_process_fork_storm_capped,
+metering_ac09_deploy_units_verify), discovered by the first clean RedBaron/box parity
+comparison on 2026-09-11. infer_ac14 now scales its 100ms inference budget by
+/proc/loadavg-derived contention (load1/nproc, floored at 1.0) instead of asserting a
+fixed wall-clock number; limits_ac07 reads mcphost's own tool_process_limit
+(kinds::python::max_processes()) and the host's RLIMIT_NPROC separately, never conflating
+them, and scales its cleanup deadline by processes actually observed spawned;
+metering_ac09 verifies the repo's own deploy/ units from a hermetic temp directory
+(SYSTEMD_UNIT_PATH + a dummy HOME/.local/bin/mcphost stub) instead of the host's real
+unit tree and real install state, and now fails loudly naming systemd-analyze when it's
+absent instead of skipping. Every host-sensitive assertion prints a shared host-fact
+block (tests/support/host.rs: hostname, nproc, load1, RLIMIT_NPROC, uid) on failure.
+Added .burst-lane.toml with an empty parity_exclude valve. All three suites verified
+green on both RedBaron and the burst-lane box (wm-burst-lane) as the build user, same
+HEAD.
+
 ## v0.43.0 — 2026-09-11
 
 Nothing on mcphost runs unless something calls it. The capability panel's monitor segment asked first for "a cron-based check without touching Lambda or writing external orchestration," and its top pain was "state bleed-out on cron triggers," the value from the last run lost between invocations. Val Town's Cron val, Cloudflare Cron Triggers and Modal's `Cron` are each platform's second primitive after the function. With tenant-state holding the last value and runs-and-jobs providing the executor and ledger, a schedule is a small thing: a trigger row with a cron expression, a tick that enqueues a run when it is due, and the run visible under the tool. This PRD adds exactly that, as the first kind of trigger, with the trigger surface shaped so inbound events are the second kind.
