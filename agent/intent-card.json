@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-schedules.md",
-  "intent_slug": "mcphost-schedules",
-  "root_motivation": "An agent that wants a check every five minutes has to keep a session open and call the tool itself, or run a scheduler somewhere else. Facts:",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tests-host-independence.md",
+  "intent_slug": "mcphost-tests-host-independence",
+  "root_motivation": "Joe (operator) cannot get a remote gate to route while three tests encode RedBaron's environment, and cannot tell from their output why they fail elsewhere. The why-chain: (1) why do remote gates fall back? parity reports two diffs, both genuine opposite-side results. (2) why opposite results? the tests assert host facts: a wall-clock budget under whatever load the host has, a process cap under whatever `RLIMIT_NPROC` the user has, a unit tree only RedBaron has. (3) why written that way? each was written on RedBaron for a PRD whose acceptance line named a number (\"no more than 100 ms\", \"within 5 s\") and the host was the only environment that existed. (4) why not caught? the gate ran on RedBaron alone until 09-10; a one-host suite cannot detect host dependence. (5) why do failures not explain themselves? the fork-storm assertion at line 112 panics with no values, so the box failure has no diagnosable text. Deepest actionable level: the tests' contracts (level 3), with self-describing...",
   "user_persona": "An AI agent connecting to mcphost for the first time over streamable HTTP with default client configuration (Claude Agent SDK / Claude Code), which must be able to read a well-formed tool list before it can do anything else; secondarily the operator who probes the endpoint after a redeploy.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,62 +14,38 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a python tool and `host.trigger.set(kind=\"schedule\", schedule=\"* * * * *\")` on a pro tenant, When 130 s pass, Then `host.runs.list(trigger=\"schedule\")` shows two runs with `trigger_ref` equal to the trigger id and `done` results.",
+      "description": "Given a host with `load1 / nproc = 6`, When `infer_ac14` measures 139 ms, Then it passes with the multiplier recorded; given an idle host, When it measures 139 ms, Then it fails and the message contains the raw duration, the budget, and the host block.",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given `schedule=\"61 * * * *\"`, When set, Then the error is `trigger_invalid` naming the minute field.",
+      "description": "Given the box as the build user with `RLIMIT_NPROC` 232241, When `limits_ac07` runs, Then the storm fails with `tool_process_limit`, cleanup completes within the scaled deadline, and the test passes; given a forced failure, Then the message contains spawned, surviving, both limits, and elapsed.",
       "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a free tenant with three schedules, When a fourth is set, Then `trigger_quota_exceeded` names `schedules_max: 3`.",
+      "description": "Given a host with no units installed, When `metering_ac09` runs, Then it verifies the repo's units from a temp directory and passes; given `systemd-analyze` absent, Then it fails naming the binary.",
       "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a free tenant, When `schedule=\"* * * * *\"` is set, Then `trigger_interval_too_short` names 300 s.",
+      "description": "Given the same HEAD, When the three suites run on RedBaron and on the box as the build user, Then both runs are green and the receipt quotes both.",
       "test": "tests/ac04_publish_list_and_call.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a schedule whose tool takes 100 s and fires every minute, When three minutes pass, Then the ledger shows one `done` run and at least one run with `status='skipped'`, `error_class='overlap'`.",
+      "description": "Given the shipped tree, When `burst-lane.sh parity ~/wintermute/mcphost` runs, Then `diff` is empty and `host_sensitive` is empty.",
       "test": "tests/ac05_cross_tenant_isolation.rs"
     },
     {
       "id": "AC6",
-      "level": "MUST",
-      "description": "Given a paused trigger, When its time passes, Then no run is created; When resumed, Then the next firing runs.",
+      "level": "SHOULD",
+      "description": "Given `.burst-lane.toml`, When the lane reads it, Then `parity_exclude` is an empty list.",
       "test": "tests/ac06_remove_tool.rs"
-    },
-    {
-      "id": "AC7",
-      "level": "MUST",
-      "description": "Given `host.tool_remove` on a tool with two schedules, When it runs, Then both triggers are disabled and the result says `triggers_disabled: 2`.",
-      "test": "tests/ac07_usage_metering.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "MUST",
-      "description": "Given the admin `/healthz`, When read, Then it carries `scheduler_last_tick_unix` within the last 60 s and `schedules_enabled`.",
-      "test": "tests/ac08_admin_disable_and_forbidden.rs"
-    },
-    {
-      "id": "AC9",
-      "level": "SHOULD",
-      "description": "Given `schedule=\"0 9 * * *\"` with `tz=\"America/Los_Angeles\"`, When `next_unix` is computed, Then it is 09:00 Pacific of the next day.",
-      "test": "tests/ac09_signup_rate_limit.rs"
-    },
-    {
-      "id": "AC10",
-      "level": "SHOULD",
-      "description": "Given `host.trigger.fire(id)`, When called, Then one run starts within 2 s marked `manual: true`.",
-      "test": "tests/ac10_publish_validation_errors.rs"
     }
   ],
   "scope": [
