@@ -1,0 +1,13 @@
+# Per-repo burst-lane parity valve for mcphost.
+#
+# PRD-mcphost-tests-host-independence (2026-09-11) fixed the three suites
+# that made RedBaron/box parity depend on which host ran them
+# (infer_ac14_latency_budget, limits_ac07_process_fork_storm_capped,
+# metering_ac09_deploy_units_verify) rather than excluding them from
+# parity. This file exists so the exclusion valve is visible and in place
+# the day a genuinely host-sensitive suite needs it -- it stays empty by
+# design; do not add an entry here as a substitute for fixing a test's
+# contract (see that PRD's problem statement for why that trade was
+# rejected). Owned by PRD-build-burst-parity-cadence, which reads and
+# writes this list; this PRD only created the placeholder.
+parity_exclude = []
