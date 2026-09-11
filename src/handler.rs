@@ -850,6 +850,82 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &["run_id"],
             ),
         ),
+        // PRD-mcphost-schedules P0 requirement 2: schedule triggers,
+        // alongside host.runs.* above -- a schedule's own firings show up
+        // there as `trigger: "schedule"` runs.
+        Tool::new(
+            "host.trigger.set",
+            "Run a published tool on a cron schedule (5-field: minute hour day-of-month month \
+             day-of-week, UTC). Each firing is a run visible in host.runs.list(trigger=\"schedule\"). \
+             Refuses schedules_max (trigger_quota_exceeded) or a too-short interval \
+             (trigger_interval_too_short); an invalid expression fails trigger_invalid naming \
+             the field.",
+            host_schema(
+                json!({
+                    "tool": {"type": "string", "description": "The published tool this schedule runs."},
+                    "kind": {"type": "string", "description": "Trigger kind; only \"schedule\" works today."},
+                    "schedule": {
+                        "type": "string",
+                        "description": "5-field cron expression (minute hour day-of-month month \
+                            day-of-week), UTC. Supports *, lists, ranges and steps.",
+                    },
+                    "args": {"type": "object", "description": "Arguments passed to the tool on each firing."},
+                    "tz": {"type": "string", "description": "P1: only \"UTC\" (or omitted) works today."},
+                }),
+                &["tool", "schedule"],
+            ),
+        ),
+        Tool::new(
+            "host.trigger.list",
+            "List this tenant's triggers (optionally filtered by tool), each with next_unix, \
+             last_run_id and last_status.",
+            host_schema(
+                json!({"tool": {"type": "string", "description": "Only triggers on this tool name."}}),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.trigger.get",
+            "Read one trigger's current schedule, next_unix, last_run_id and last_status.",
+            host_schema(
+                json!({"id": {"type": "string", "description": "The trigger id."}}),
+                &["id"],
+            ),
+        ),
+        Tool::new(
+            "host.trigger.pause",
+            "Stop a trigger from firing until resumed; still counts toward schedules_max.",
+            host_schema(
+                json!({"id": {"type": "string", "description": "The trigger id."}}),
+                &["id"],
+            ),
+        ),
+        Tool::new(
+            "host.trigger.resume",
+            "Re-enable a paused trigger; if its scheduled time already passed, the next tick \
+             fires it once (a missed firing is never replayed).",
+            host_schema(
+                json!({"id": {"type": "string", "description": "The trigger id."}}),
+                &["id"],
+            ),
+        ),
+        Tool::new(
+            "host.trigger.remove",
+            "Delete a trigger outright (frees its schedules_max slot, unlike pause).",
+            host_schema(
+                json!({"id": {"type": "string", "description": "The trigger id."}}),
+                &["id"],
+            ),
+        ),
+        Tool::new(
+            "host.trigger.fire",
+            "Run a schedule once right now, for testing -- recorded as trigger: \"schedule\" with \
+             manual: true, independent of next_unix or pause state.",
+            host_schema(
+                json!({"id": {"type": "string", "description": "The trigger id."}}),
+                &["id"],
+            ),
+        ),
         Tool::new(
             "billing.plans",
             "The plan catalog (price and quotas per plan) and whether Stripe billing is \
@@ -1090,6 +1166,19 @@ fn admin_tools() -> Vec<Tool> {
             "Mark error: interrupted every run left running past its started_unix + \
              deadline_s with no finalization (an executor crash). Also runs once at startup.",
             schema(json!({}), &[]),
+        ),
+        // PRD-mcphost-schedules P0 requirement 2 (user story "Operator (Joe)").
+        Tool::new(
+            "admin.triggers",
+            "List every tenant's triggers (or one tenant's, via tenant), optionally filtered by \
+             kind, with each schedule's next fire time.",
+            schema(
+                json!({
+                    "tenant": {"type": "string", "description": "Restrict to one tenant's namespace."},
+                    "kind": {"type": "string", "description": "Only triggers of this kind."},
+                }),
+                &[],
+            ),
         ),
     ]
 }
@@ -1380,6 +1469,13 @@ impl McpHostHandler {
             "host.runs.cancel" => crate::runs::cancel(&self.state, tenant, &args).await,
             "host.runs.purge" => crate::runs::purge(&self.state, tenant, &args).await,
             "host.runs.wait" => crate::runs::wait(&self.state, tenant, &args).await,
+            "host.trigger.set" => crate::triggers::set(&self.state, tenant, &args).await,
+            "host.trigger.list" => crate::triggers::list(&self.state, tenant, &args).await,
+            "host.trigger.get" => crate::triggers::get(&self.state, tenant, &args).await,
+            "host.trigger.pause" => crate::triggers::pause(&self.state, tenant, &args).await,
+            "host.trigger.resume" => crate::triggers::resume(&self.state, tenant, &args).await,
+            "host.trigger.remove" => crate::triggers::remove(&self.state, tenant, &args).await,
+            "host.trigger.fire" => crate::triggers::fire(&self.state, tenant, &args).await,
             "billing.status" => crate::billing::status(&self.state, tenant).await,
             "billing.checkout" => crate::billing::checkout(&self.state, tenant, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
@@ -1413,6 +1509,7 @@ impl McpHostHandler {
             "admin.tool_unshare" => admin::tool_unshare(&self.state, &args).await,
             "admin.runs" => crate::runs::admin_runs(&self.state, &args).await,
             "admin.runs_reap" => crate::runs::admin_runs_reap(&self.state).await,
+            "admin.triggers" => crate::triggers::admin_triggers(&self.state, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         };
 

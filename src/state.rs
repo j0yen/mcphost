@@ -148,6 +148,10 @@ pub struct AppState {
     /// `Arc`-sharing rationale as [`AppState::checkout_sessions`] -- see
     /// [`crate::runs::RunsRegistry`].
     pub runs: crate::runs::RunsRegistry,
+    /// PRD-mcphost-schedules P0 requirement 5: the scheduler tick's own
+    /// last-run timestamp, surfaced on `/healthz` as
+    /// `scheduler_last_tick_unix` -- see [`crate::triggers::SchedulerStatus`].
+    pub scheduler: crate::triggers::SchedulerStatus,
 }
 
 pub fn now_unix() -> i64 {
@@ -164,7 +168,7 @@ pub fn now_unix() -> i64 {
 /// (an RFC 3339 UTC timestamp) doesn't need one either, so this is the
 /// whole calendar conversion this crate requires, self-contained and unit
 /// tested below rather than trusted blind.
-fn civil_from_days(z: i64) -> (i64, u32, u32) {
+pub(crate) fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let z = z + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
     let doe = (z - era * 146_097) as u64; // [0, 146096]
@@ -271,7 +275,7 @@ pub fn next_utc_midnight_unix(now_unix: i64) -> i64 {
 /// `days_from_civil`): a UTC calendar date -> days since the civil epoch
 /// (1970-01-01). Only [`utc_month_start_unix`] needs this direction of the
 /// conversion.
-fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
+pub(crate) fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = if y >= 0 { y } else { y - 399 } / 400;
     let yoe = (y - era * 400) as u64; // [0, 399]

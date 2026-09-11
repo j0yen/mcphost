@@ -41,6 +41,7 @@ async fn bare_state() -> (AppState, common::TempDataDir) {
         checkout_sessions: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         accepted_usage_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         runs: mcphost::runs::RunsRegistry::new(),
+        scheduler: mcphost::triggers::SchedulerStatus::new(),
     };
     (state, data_dir)
 }
@@ -72,6 +73,7 @@ async fn admin_runs_reap_marks_expired_running_runs_interrupted() {
             None,
             1, // deadline_s: expires almost immediately
             "{}".to_string(),
+            false,
         )
         .await
         .expect("insert_queued_run");

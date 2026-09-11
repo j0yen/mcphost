@@ -27,6 +27,8 @@ const MIGRATION_0011: &str = include_str!("../migrations/0011_tenant_state.sql")
 const MIGRATION_0012: &str = include_str!("../migrations/0012_provenance.sql");
 const MIGRATION_0013: &str = include_str!("../migrations/0013_sharing.sql");
 const MIGRATION_0014: &str = include_str!("../migrations/0014_runs.sql");
+const MIGRATION_0015: &str = include_str!("../migrations/0015_triggers.sql");
+const MIGRATION_0016: &str = include_str!("../migrations/0016_runs_manual.sql");
 
 /// Shared by every query that selects a whole tenant row, so the column
 /// list and [`tenant_from_row`] stay in lockstep with each other.
@@ -283,11 +285,16 @@ pub struct RunRow {
     pub attempt: i64,
     pub purged_unix: Option<i64>,
     pub args_json: Option<String>,
+    /// PRD-mcphost-schedules P1 requirement 7 / migration 0016: `true` only
+    /// for a run `host.trigger.fire` created directly (AC10's "marked
+    /// manual: true"); `false` for every run the scheduler tick itself
+    /// enqueues, and for every pre-existing `call`/`job` trigger kind.
+    pub manual: bool,
 }
 
 const RUN_COLUMNS: &str = "id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, \
     status, progress_json, result_ref, error_class, started_unix, finished_unix, duration_ms, \
-    deadline_s, attempt, purged_unix, args_json";
+    deadline_s, attempt, purged_unix, args_json, manual";
 
 fn run_row_from_row(r: &Row) -> rusqlite::Result<RunRow> {
     Ok(RunRow {
@@ -308,6 +315,7 @@ fn run_row_from_row(r: &Row) -> rusqlite::Result<RunRow> {
         attempt: r.get(14)?,
         purged_unix: r.get(15)?,
         args_json: r.get(16)?,
+        manual: r.get::<_, i64>(17)? != 0,
     })
 }
 
@@ -321,6 +329,56 @@ pub struct JobsUsage {
     pub timeout: i64,
     pub cancelled: i64,
     pub seconds: i64,
+}
+
+/// PRD-mcphost-schedules P0 requirement 5: `host.usage`'s `scheduled`
+/// block -- same shape as [`JobsUsage`] plus `skipped` (AC5's overlap
+/// outcome, which a plain job never produces).
+#[derive(Debug, Clone, Copy, Default, Serialize)]
+pub struct ScheduledUsage {
+    pub done: i64,
+    pub error: i64,
+    pub timeout: i64,
+    pub cancelled: i64,
+    pub skipped: i64,
+    pub seconds: i64,
+}
+
+/// One `triggers` row (migration 0015): `config_json` and `config_hash`
+/// are stored, not parsed, columns -- deserializing the schedule
+/// expression/args/tz out of `config_json` is `triggers.rs`'s job (the
+/// same "row shape here, business logic in the RPC module" split
+/// [`RunRow`] and `runs.rs` already use).
+#[derive(Debug, Clone, Serialize)]
+pub struct TriggerRow {
+    pub id: String,
+    pub tenant_id: i64,
+    pub tool_name: String,
+    pub kind: String,
+    pub config_json: String,
+    pub enabled: bool,
+    pub created_unix: i64,
+    pub next_unix: Option<i64>,
+    pub last_run_id: Option<String>,
+    pub last_fired_unix: Option<i64>,
+}
+
+const TRIGGER_COLUMNS: &str = "id, tenant_id, tool_name, kind, config_json, enabled, \
+    created_unix, next_unix, last_run_id, last_fired_unix";
+
+fn trigger_row_from_row(r: &Row) -> rusqlite::Result<TriggerRow> {
+    Ok(TriggerRow {
+        id: r.get(0)?,
+        tenant_id: r.get(1)?,
+        tool_name: r.get(2)?,
+        kind: r.get(3)?,
+        config_json: r.get(4)?,
+        enabled: r.get::<_, i64>(5)? != 0,
+        created_unix: r.get(6)?,
+        next_unix: r.get(7)?,
+        last_run_id: r.get(8)?,
+        last_fired_unix: r.get(9)?,
+    })
 }
 
 fn admin_audit_row_from_row(r: &Row) -> rusqlite::Result<AdminAuditRow> {
@@ -618,7 +676,9 @@ impl Db {
         Self::migrate_0011_tenant_state(&conn)?;
         Self::migrate_0012_provenance(&conn)?;
         Self::migrate_0013_sharing(&conn)?;
-        Self::migrate_0014_runs(&conn)
+        Self::migrate_0014_runs(&conn)?;
+        Self::migrate_0015_triggers(&conn)?;
+        Self::migrate_0016_runs_manual(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -815,6 +875,31 @@ impl Db {
             .exists([])?;
         if !has_table {
             conn.execute_batch(MIGRATION_0014)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-schedules P0 requirement 1: same new-table idempotency
+    /// guard as 0011/0014 above.
+    fn migrate_0015_triggers(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'triggers'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0015)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-schedules P1 requirement 7: `ALTER TABLE ADD COLUMN` has
+    /// no `IF NOT EXISTS`, so this checks `pragma_table_info` first, same
+    /// idempotency guard 0002/0013 above use for their own added columns.
+    fn migrate_0016_runs_manual(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('runs') WHERE name = 'manual'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0016)?;
         }
         Ok(())
     }
@@ -2815,13 +2900,41 @@ impl Db {
         caller_tenant_id: Option<i64>,
         deadline_s: i64,
         args_json: String,
+        // PRD-mcphost-schedules P1 requirement 7 / migration 0016: `true`
+        // only for `host.trigger.fire`'s own enqueue (AC10); every other
+        // caller (an ordinary async call, the scheduler tick) passes `false`.
+        manual: bool,
     ) -> Result<(), AppError> {
         self.with_conn(move |conn| {
             conn.execute(
                 "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, \
-                 caller_tenant_id, status, deadline_s, attempt, args_json) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'queued', ?7, 1, ?8)",
-                params![run_id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, deadline_s, args_json],
+                 caller_tenant_id, status, deadline_s, attempt, args_json, manual) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'queued', ?7, 1, ?8, ?9)",
+                params![run_id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, deadline_s, args_json, manual],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-schedules P0 requirement 3: records a firing the
+    /// scheduler tick skipped because the trigger's previous run was still
+    /// `queued`/`running` (AC5) -- inserted already-terminal (`skipped`),
+    /// never leased by the executor.
+    pub async fn insert_skipped_run(
+        &self,
+        run_id: String,
+        tenant_id: i64,
+        tool_name: String,
+        trigger_ref: String,
+    ) -> Result<(), AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, status, \
+                 error_class, started_unix, finished_unix, duration_ms, attempt) \
+                 VALUES (?1, ?2, ?3, 'schedule', ?4, 'skipped', 'overlap', ?5, ?5, 0, 1)",
+                params![run_id, tenant_id, tool_name, trigger_ref, now],
             )?;
             Ok(())
         })
@@ -3758,6 +3871,302 @@ impl Db {
                 count,
                 created_at,
             }))
+        })
+        .await
+    }
+
+    // ---- triggers (PRD-mcphost-schedules) ---------------------------------
+
+    /// `host.usage`'s scheduled-run counterpart to [`Self::jobs_usage`]
+    /// (P0 requirement 5): counts and total wall-clock seconds of this
+    /// tenant's `trigger = 'schedule'` runs finalized within the window,
+    /// `skipped` (AC5's overlap outcome) included as its own bucket since
+    /// it's neither a job success nor a job failure.
+    pub async fn scheduled_usage(
+        &self,
+        tenant_id: i64,
+        window_secs: i64,
+    ) -> Result<ScheduledUsage, AppError> {
+        let since = now_unix() - window_secs;
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT status, duration_ms FROM runs WHERE tenant_id = ?1 AND trigger = 'schedule' \
+                 AND finished_unix >= ?2",
+            )?;
+            let mut usage = ScheduledUsage::default();
+            let rows = stmt.query_map(params![tenant_id, since], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, Option<i64>>(1)?))
+            })?;
+            for row in rows {
+                let (status, duration_ms) = row?;
+                usage.seconds += duration_ms.unwrap_or(0) / 1000;
+                match status.as_str() {
+                    "done" => usage.done += 1,
+                    "error" => usage.error += 1,
+                    "timeout" => usage.timeout += 1,
+                    "cancelled" => usage.cancelled += 1,
+                    "skipped" => usage.skipped += 1,
+                    _ => {}
+                }
+            }
+            Ok(usage)
+        })
+        .await
+    }
+
+    /// P0 requirement 1: inserts a new `triggers` row (`enabled = 1`,
+    /// `created_unix = now`). A duplicate `(tenant_id, tool_name, kind,
+    /// config_hash)` fails the table's own `UNIQUE` constraint, surfaced by
+    /// `rusqlite`'s ordinary `Err` -- `triggers::set` maps that into a
+    /// `trigger_invalid` naming `schedule` (the config, not the id, is what
+    /// collided).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_trigger(
+        &self,
+        id: String,
+        tenant_id: i64,
+        tool_name: String,
+        kind: String,
+        config_json: String,
+        config_hash: String,
+        next_unix: Option<i64>,
+    ) -> Result<(), AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO triggers (id, tenant_id, tool_name, kind, config_json, config_hash, \
+                 enabled, created_unix, next_unix) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8)",
+                params![id, tenant_id, tool_name, kind, config_json, config_hash, now, next_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `host.trigger.get`/pause/resume/remove's own-tenant lookup.
+    pub async fn get_trigger(
+        &self,
+        tenant_id: i64,
+        id: String,
+    ) -> Result<Option<TriggerRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                &format!("SELECT {TRIGGER_COLUMNS} FROM triggers WHERE id = ?1 AND tenant_id = ?2"),
+                params![id, tenant_id],
+                trigger_row_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `host.trigger.list(tool?)` -- this tenant's own triggers, newest
+    /// first.
+    pub async fn list_triggers(
+        &self,
+        tenant_id: i64,
+        tool_name: Option<String>,
+    ) -> Result<Vec<TriggerRow>, AppError> {
+        self.with_conn(move |conn| {
+            let rows = if let Some(tool_name) = tool_name {
+                let mut stmt = conn.prepare(&format!(
+                    "SELECT {TRIGGER_COLUMNS} FROM triggers WHERE tenant_id = ?1 AND tool_name = ?2 \
+                     ORDER BY rowid DESC"
+                ))?;
+                stmt.query_map(params![tenant_id, tool_name], trigger_row_from_row)?
+                    .collect::<Result<Vec<_>, _>>()?
+            } else {
+                let mut stmt = conn.prepare(&format!(
+                    "SELECT {TRIGGER_COLUMNS} FROM triggers WHERE tenant_id = ?1 ORDER BY rowid DESC"
+                ))?;
+                stmt.query_map(params![tenant_id], trigger_row_from_row)?
+                    .collect::<Result<Vec<_>, _>>()?
+            };
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// P0 requirement 4's quota check: how many `kind = 'schedule'`
+    /// triggers this tenant holds right now, paused or not -- only
+    /// `host.trigger.remove` frees a slot (pausing doesn't), so a paused
+    /// trigger still counts.
+    pub async fn count_schedule_triggers_for_tenant(&self, tenant_id: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM triggers WHERE tenant_id = ?1 AND kind = 'schedule'",
+                params![tenant_id],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `host.trigger.pause`/`resume`. Returns `true` if a row for this
+    /// tenant/id was actually updated (a caller reaching for someone
+    /// else's id, or an id that never existed, both read as
+    /// `trigger_not_found` rather than a silent no-op).
+    pub async fn set_trigger_enabled(
+        &self,
+        tenant_id: i64,
+        id: String,
+        enabled: bool,
+    ) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let affected = conn.execute(
+                "UPDATE triggers SET enabled = ?1 WHERE id = ?2 AND tenant_id = ?3",
+                params![enabled, id, tenant_id],
+            )?;
+            Ok(affected > 0)
+        })
+        .await
+    }
+
+    /// `host.trigger.remove`. Returns `true` if a row was actually deleted.
+    pub async fn remove_trigger(&self, tenant_id: i64, id: String) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let affected = conn.execute(
+                "DELETE FROM triggers WHERE id = ?1 AND tenant_id = ?2",
+                params![id, tenant_id],
+            )?;
+            Ok(affected > 0)
+        })
+        .await
+    }
+
+    /// P0 requirement 1: `host.tool_remove` disables (never deletes --
+    /// `host.trigger.list` should still show a removed tool's old
+    /// schedules as evidence, not silently vanish them) every trigger on
+    /// `tool_name`, reporting the count for the tool-remove result's own
+    /// `triggers_disabled`.
+    pub async fn disable_triggers_for_tool(
+        &self,
+        tenant_id: i64,
+        tool_name: String,
+    ) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            let affected = conn.execute(
+                "UPDATE triggers SET enabled = 0 \
+                 WHERE tenant_id = ?1 AND tool_name = ?2 AND enabled = 1",
+                params![tenant_id, tool_name],
+            )?;
+            Ok(affected as i64)
+        })
+        .await
+    }
+
+    /// P0 requirement 3: the scheduler tick's own due-list scan --
+    /// cross-tenant, `enabled` schedule triggers whose `next_unix` has
+    /// passed. `ORDER BY next_unix` so, on a tick catching up after
+    /// downtime, the longest-overdue schedules enqueue first.
+    pub async fn due_schedule_triggers(&self, now: i64) -> Result<Vec<TriggerRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(&format!(
+                "SELECT {TRIGGER_COLUMNS} FROM triggers \
+                 WHERE kind = 'schedule' AND enabled = 1 AND next_unix IS NOT NULL AND next_unix <= ?1 \
+                 ORDER BY next_unix"
+            ))?;
+            let rows = stmt
+                .query_map(params![now], trigger_row_from_row)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// The scheduler tick's own most-recent-run lookup for a trigger
+    /// (P0 requirement 3's overlap check): `None` if this trigger has never
+    /// fired.
+    pub async fn last_run_status_for_trigger(
+        &self,
+        trigger_ref: String,
+    ) -> Result<Option<String>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT status FROM runs WHERE trigger_ref = ?1 ORDER BY rowid DESC LIMIT 1",
+                params![trigger_ref],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// After every firing (enqueued or skipped): advances `next_unix` to
+    /// the following occurrence and stamps `last_fired_unix`;
+    /// `last_run_id` updates only for an actual enqueue (`None` leaves the
+    /// column at whatever it already held, so a skipped firing doesn't
+    /// clobber the last real run's id).
+    pub async fn update_trigger_after_fire(
+        &self,
+        id: String,
+        next_unix: Option<i64>,
+        last_run_id: Option<String>,
+        last_fired_unix: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            if let Some(last_run_id) = last_run_id {
+                conn.execute(
+                    "UPDATE triggers SET next_unix = ?1, last_run_id = ?2, last_fired_unix = ?3 \
+                     WHERE id = ?4",
+                    params![next_unix, last_run_id, last_fired_unix, id],
+                )?;
+            } else {
+                conn.execute(
+                    "UPDATE triggers SET next_unix = ?1, last_fired_unix = ?2 WHERE id = ?3",
+                    params![next_unix, last_fired_unix, id],
+                )?;
+            }
+            Ok(())
+        })
+        .await
+    }
+
+    /// `admin.triggers(tenant?, kind?)`.
+    pub async fn admin_list_triggers(
+        &self,
+        tenant_id: Option<i64>,
+        kind: Option<String>,
+    ) -> Result<Vec<TriggerRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut sql = format!("SELECT {TRIGGER_COLUMNS} FROM triggers WHERE 1=1");
+            let mut idx = 1;
+            let mut binds: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+            if let Some(t) = tenant_id {
+                sql.push_str(&format!(" AND tenant_id = ?{idx}"));
+                binds.push(Box::new(t));
+                idx += 1;
+            }
+            if let Some(k) = kind {
+                sql.push_str(&format!(" AND kind = ?{idx}"));
+                binds.push(Box::new(k));
+                idx += 1;
+            }
+            let _ = idx;
+            sql.push_str(" ORDER BY rowid DESC");
+            let refs: Vec<&dyn rusqlite::ToSql> = binds.iter().map(|b| b.as_ref()).collect();
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(refs.as_slice(), trigger_row_from_row)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// `/healthz`'s `schedules_enabled` (P0 requirement 5): host-wide count
+    /// of enabled `kind = 'schedule'` triggers, across every tenant.
+    pub async fn count_enabled_schedule_triggers(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM triggers WHERE kind = 'schedule' AND enabled = 1",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
         })
         .await
     }

@@ -1,0 +1,12 @@
+-- compat: previous -- one additive nullable-equivalent column (`NOT NULL
+-- DEFAULT 0`) an old release simply never reads; no existing row's meaning
+-- changes (PRD-mcphost-migration-safety requirement 4).
+-- mcphost 0016_runs_manual: PRD-mcphost-schedules P1 requirement 7.
+--
+-- `host.trigger.fire(id)` runs a schedule once right now, for testing --
+-- AC10's "one run starts ... marked manual: true" needs somewhere on the
+-- `runs` row itself to carry that, since `trigger`/`trigger_ref` alone
+-- can't distinguish a manual fire from the scheduler's own tick creating
+-- the same `trigger = 'schedule'` row. Same additive-column shape
+-- migration 0009's `outcome` and 0014's `purged_unix`/`args_json` used.
+ALTER TABLE runs ADD COLUMN manual INTEGER NOT NULL DEFAULT 0;

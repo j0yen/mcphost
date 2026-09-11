@@ -122,6 +122,8 @@ fn run_to_json(run: &RunRow) -> Value {
         "duration_ms": run.duration_ms,
         "deadline_s": run.deadline_s,
         "attempt": run.attempt,
+        // PRD-mcphost-schedules P1 requirement 7 / AC10.
+        "manual": run.manual,
     })
 }
 
@@ -327,6 +329,7 @@ pub async fn enqueue(
             None,
             deadline_s,
             args_json,
+            false,
         )
         .await?;
     Ok(json!({"run_id": run_id, "status": "queued"}))
@@ -449,10 +452,20 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
     )
     .await;
 
+    // PRD-mcphost-schedules P0 requirement 5: `host.tool_logs` lines from a
+    // scheduled run carry `trigger_ref` (the trigger id) alongside
+    // `run_id`, so an agent debugging a schedule can grep its own tool's
+    // logs for just that trigger's firings.
+    let log_prefix = match &run.trigger_ref {
+        Some(trigger_ref) if run.trigger == "schedule" => {
+            format!("run_id={} trigger_ref={trigger_ref}", run.id)
+        }
+        _ => format!("run_id={}", run.id),
+    };
     for line in log.0.lock().map(|g| g.clone()).unwrap_or_default() {
         let _ = state
             .db
-            .append_log(tenant.id, run.tool_name.clone(), format!("run_id={} {line}", run.id))
+            .append_log(tenant.id, run.tool_name.clone(), format!("{log_prefix} {line}"))
             .await;
     }
 
@@ -609,6 +622,7 @@ mod tests {
             attempt: 1,
             purged_unix: Some(300),
             args_json: None,
+            manual: false,
         };
         let value = run_to_json(&run);
         assert_eq!(value["purged"], json!(true));

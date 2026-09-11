@@ -232,6 +232,10 @@ pub fn quickstart(
             // PRD-mcphost-runs-and-jobs P0 requirement 8.
             "job_max_s": plan.job_max_s,
             "jobs_concurrent": plan.jobs_concurrent,
+            // PRD-mcphost-schedules P0 requirement 4: "host.quickstart
+            // limits lists both".
+            "schedules_max": plan.schedules_max,
+            "schedule_min_interval_s": plan.schedule_min_interval_s,
         })
     });
     // PRD-mcphost-call-limits-honest requirement 5 / AC6: the six limits an
@@ -534,7 +538,11 @@ pub async fn tool_remove(
     for k in state.kinds.all() {
         k.on_tool_changed(tenant.id, &name).await;
     }
-    Ok(json!({ "removed": name }))
+    // PRD-mcphost-schedules P0 requirement 1 / AC7: a tool remove disables
+    // (never deletes -- `host.trigger.list` still shows the history) every
+    // trigger set on it, reporting how many.
+    let triggers_disabled = state.db.disable_triggers_for_tool(tenant.id, name.clone()).await?;
+    Ok(json!({ "removed": name, "triggers_disabled": triggers_disabled }))
 }
 
 pub async fn tool_logs(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
@@ -583,6 +591,9 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
     // `jobs: {done, error, timeout, seconds}` -- same window as everything
     // else in this response.
     let jobs = state.db.jobs_usage(tenant.id, secs).await?;
+    // PRD-mcphost-schedules P0 requirement 5: `host.usage` counts scheduled
+    // runs the same window every other figure here uses.
+    let scheduled = state.db.scheduled_usage(tenant.id, secs).await?;
     Ok(json!({
         "window": window,
         "calls": stats.calls,
@@ -602,6 +613,15 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
             "timeout": jobs.timeout,
             "cancelled": jobs.cancelled,
             "seconds": jobs.seconds,
+        },
+        // PRD-mcphost-schedules P0 requirement 5.
+        "scheduled": {
+            "done": scheduled.done,
+            "error": scheduled.error,
+            "timeout": scheduled.timeout,
+            "cancelled": scheduled.cancelled,
+            "skipped": scheduled.skipped,
+            "seconds": scheduled.seconds,
         },
     }))
 }

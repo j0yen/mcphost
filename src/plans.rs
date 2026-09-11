@@ -62,6 +62,19 @@ pub struct Plan {
     /// plan's own default) when a hand-edited `plans.toml` predates this
     /// key.
     pub jobs_concurrent: i64,
+    /// PRD-mcphost-schedules P0 requirement 4: how many `kind = 'schedule'`
+    /// triggers this plan's tenants may have at once (`host.trigger.set`
+    /// refuses a further one with `trigger_quota_exceeded` naming this).
+    /// Defaults to the `free` plan's own default (3) when a hand-edited
+    /// `plans.toml` predates this key, same tolerant-parse convention as
+    /// `job_max_s`/`jobs_concurrent`.
+    pub schedules_max: i64,
+    /// requirement 4: the shortest gap (seconds) between two consecutive
+    /// firings a schedule may declare on this plan (`host.trigger.set`
+    /// refuses a shorter one with `trigger_interval_too_short` naming
+    /// this). Defaults to the `free` plan's own default (300) when a
+    /// hand-edited `plans.toml` predates this key.
+    pub schedule_min_interval_s: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -99,6 +112,10 @@ impl PlanCatalog {
                     // build: "free job_max_s 300 and jobs_concurrent 1".
                     job_max_s: 300,
                     jobs_concurrent: 1,
+                    // PRD-mcphost-schedules open question, resolved at
+                    // build: "free 3 schedules, 5-minute minimum".
+                    schedules_max: 3,
+                    schedule_min_interval_s: 300,
                 },
                 Plan {
                     name: "pro".to_string(),
@@ -121,6 +138,10 @@ impl PlanCatalog {
                     // scaling shape as every other quota above.
                     job_max_s: 900,
                     jobs_concurrent: 3,
+                    // PRD-mcphost-schedules requirement 4: "pro 25
+                    // schedules, 1-minute minimum".
+                    schedules_max: 25,
+                    schedule_min_interval_s: 60,
                 },
             ],
         }
@@ -186,6 +207,11 @@ impl PlanCatalog {
             out.push_str(&format!("shared_tools_max = {}\n", p.shared_tools_max));
             out.push_str(&format!("job_max_s = {}\n", p.job_max_s));
             out.push_str(&format!("jobs_concurrent = {}\n", p.jobs_concurrent));
+            out.push_str(&format!("schedules_max = {}\n", p.schedules_max));
+            out.push_str(&format!(
+                "schedule_min_interval_s = {}\n",
+                p.schedule_min_interval_s
+            ));
             out.push('\n');
         }
         out
@@ -240,6 +266,10 @@ impl PlanCatalog {
                 "shared_tools_max" => builder.shared_tools_max = Some(int_value()),
                 "job_max_s" => builder.job_max_s = Some(int_value()),
                 "jobs_concurrent" => builder.jobs_concurrent = Some(int_value()),
+                "schedules_max" => builder.schedules_max = Some(int_value()),
+                "schedule_min_interval_s" => {
+                    builder.schedule_min_interval_s = Some(int_value())
+                }
                 _ => {}
             }
         }
@@ -270,6 +300,8 @@ struct PlanBuilder {
     shared_tools_max: Option<i64>,
     job_max_s: Option<i64>,
     jobs_concurrent: Option<i64>,
+    schedules_max: Option<i64>,
+    schedule_min_interval_s: Option<i64>,
 }
 
 impl PlanBuilder {
@@ -300,6 +332,11 @@ impl PlanBuilder {
             // tolerant-parse rationale as every other field above.
             job_max_s: self.job_max_s.unwrap_or(300),
             jobs_concurrent: self.jobs_concurrent.unwrap_or(1),
+            // PRD-mcphost-schedules: a `plans.toml` predating these two
+            // keys gets the `free` plan's own defaults, same
+            // tolerant-parse rationale as every other field above.
+            schedules_max: self.schedules_max.unwrap_or(3),
+            schedule_min_interval_s: self.schedule_min_interval_s.unwrap_or(300),
         })
     }
 }
@@ -357,6 +394,21 @@ mod tests {
         assert_eq!(pro.jobs_concurrent, 3);
         assert!(pro.job_max_s > free.job_max_s);
         assert!(pro.jobs_concurrent > free.jobs_concurrent);
+    }
+
+    /// PRD-mcphost-schedules open question, resolved at build: "free 3
+    /// schedules / 300s minimum, pro 25 schedules / 60s minimum".
+    #[test]
+    fn default_catalog_has_schedule_quotas() {
+        let catalog = PlanCatalog::default_catalog();
+        let free = catalog.get("free").expect("free plan");
+        assert_eq!(free.schedules_max, 3);
+        assert_eq!(free.schedule_min_interval_s, 300);
+        let pro = catalog.get("pro").expect("pro plan");
+        assert_eq!(pro.schedules_max, 25);
+        assert_eq!(pro.schedule_min_interval_s, 60);
+        assert!(pro.schedules_max > free.schedules_max);
+        assert!(pro.schedule_min_interval_s < free.schedule_min_interval_s);
     }
 
     #[test]
