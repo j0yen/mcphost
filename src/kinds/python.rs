@@ -143,6 +143,14 @@ const MAX_FILE_SIZE_MB: u64 = 16;
 /// `tool_process_limit` (see `map_envelope_error`). 64 per the PRD's own
 /// stated default; the warm pool's steady-state process count (at most
 /// `DEFAULT_WARM_MAX` idle interpreters) is well under it.
+///
+/// PRD-mcphost-tests-host-independence requirement 2: `limits_ac07`'s
+/// fork-storm assertion must read this value rather than hardcode a copy of
+/// it, so the two can never silently drift apart the way the host's own
+/// `RLIMIT_NPROC` and this sandbox-internal cap must never be conflated.
+pub fn max_processes() -> u64 {
+    MAX_PROCESSES
+}
 const MAX_PROCESSES: u64 = 64;
 const BUILD_TIMEOUT: Duration = Duration::from_secs(120);
 const DEFAULT_CPU_BUDGET_MS_PER_HOUR: u64 = 600_000;
