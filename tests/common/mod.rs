@@ -396,6 +396,8 @@ impl TestServer {
             )),
             runs: mcphost::runs::RunsRegistry::new(),
             scheduler: mcphost::triggers::SchedulerStatus::new(),
+            event_counters: mcphost::hooks::EventCounters::new(),
+            event_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
         });
 
         // PRD-mcphost-runs-and-jobs: every test server runs the real

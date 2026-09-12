@@ -856,29 +856,44 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         Tool::new(
             "host.trigger.set",
             "Run a published tool on a cron schedule (5-field: minute hour day-of-month month \
-             day-of-week, UTC). Each firing is a run visible in host.runs.list(trigger=\"schedule\"). \
-             Refuses schedules_max (trigger_quota_exceeded) or a too-short interval \
-             (trigger_interval_too_short); an invalid expression fails trigger_invalid naming \
-             the field.",
+             day-of-week, UTC), or give it a public webhook URL (kind=\"event\"): a signed POST \
+             to that URL runs the tool with the event as its argument. Each firing/delivery is a \
+             run visible in host.runs.list(trigger=\"schedule\"|\"event\"). Refuses \
+             schedules_max/event_triggers_max (trigger_quota_exceeded) or a too-short schedule \
+             interval (trigger_interval_too_short); an invalid expression or verify config fails \
+             trigger_invalid naming the field.",
             host_schema(
                 json!({
-                    "tool": {"type": "string", "description": "The published tool this schedule runs."},
-                    "kind": {"type": "string", "description": "Trigger kind; only \"schedule\" works today."},
+                    "tool": {"type": "string", "description": "The published tool this trigger runs."},
+                    "kind": {"type": "string", "description": "\"schedule\" (default) or \"event\"."},
                     "schedule": {
                         "type": "string",
-                        "description": "5-field cron expression (minute hour day-of-month month \
-                            day-of-week), UTC. Supports *, lists, ranges and steps.",
+                        "description": "kind=\"schedule\": 5-field cron expression (minute hour \
+                            day-of-month month day-of-week), UTC. Supports *, lists, ranges and steps.",
                     },
-                    "args": {"type": "object", "description": "Arguments passed to the tool on each firing."},
-                    "tz": {"type": "string", "description": "P1: only \"UTC\" (or omitted) works today."},
+                    "verify": {
+                        "type": "object",
+                        "description": "kind=\"event\": {scheme: \"hmac-sha256\"|\"hmac-sha1\"|\
+                            \"token\"|\"none\", header, secret (a host.secret_set name), prefix?, \
+                            timestamp_header?, tolerance_s?, allow_unverified? (required true for \
+                            scheme \"none\")}.",
+                    },
+                    "dedupe_header": {
+                        "type": "string",
+                        "description": "kind=\"event\": a header (e.g. X-GitHub-Delivery) whose \
+                            repeated value within 24h answers 202 with the original run id instead \
+                            of running again.",
+                    },
+                    "args": {"type": "object", "description": "Arguments passed to the tool on each firing/delivery."},
+                    "tz": {"type": "string", "description": "kind=\"schedule\" P1: only \"UTC\" (or omitted) works today."},
                 }),
-                &["tool", "schedule"],
+                &["tool"],
             ),
         ),
         Tool::new(
             "host.trigger.list",
             "List this tenant's triggers (optionally filtered by tool), each with next_unix, \
-             last_run_id and last_status.",
+             last_run_id and last_status (schedule), or url/verify/unverified (event).",
             host_schema(
                 json!({"tool": {"type": "string", "description": "Only triggers on this tool name."}}),
                 &[],
@@ -924,6 +939,33 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             host_schema(
                 json!({"id": {"type": "string", "description": "The trigger id."}}),
                 &["id"],
+            ),
+        ),
+        // PRD-mcphost-inbound-events P0 requirement 3: an event trigger's
+        // own dry-run and re-run tools, alongside host.trigger.fire above.
+        Tool::new(
+            "host.trigger.test",
+            "Dry-run an event trigger's verify config against a payload you supply, without \
+             exposing its real URL -- verifies the signature exactly as POST /hooks/... would, \
+             then runs the tool with the event as its argument. The run is marked test: true. A \
+             wrong signature fails signature_invalid, naming the header it checked.",
+            host_schema(
+                json!({
+                    "id": {"type": "string", "description": "The event trigger id."},
+                    "body": {"description": "The payload to verify and run with -- any JSON value."},
+                    "headers": {"type": "object", "description": "Header name -> string value, e.g. {\"X-Hub-Signature-256\": \"sha256=...\"}."},
+                }),
+                &["id"],
+            ),
+        ),
+        Tool::new(
+            "host.trigger.replay",
+            "Re-run a past event-triggered run's exact stored event (no re-verification -- the \
+             original delivery already passed it). The new run's trigger_ref names the original \
+             run id.",
+            host_schema(
+                json!({"run_id": {"type": "string", "description": "The event-triggered run id to replay."}}),
+                &["run_id"],
             ),
         ),
         Tool::new(
@@ -1476,6 +1518,8 @@ impl McpHostHandler {
             "host.trigger.resume" => crate::triggers::resume(&self.state, tenant, &args).await,
             "host.trigger.remove" => crate::triggers::remove(&self.state, tenant, &args).await,
             "host.trigger.fire" => crate::triggers::fire(&self.state, tenant, &args).await,
+            "host.trigger.test" => crate::hooks::test(&self.state, tenant, &args).await,
+            "host.trigger.replay" => crate::hooks::replay(&self.state, tenant, &args).await,
             "billing.status" => crate::billing::status(&self.state, tenant).await,
             "billing.checkout" => crate::billing::checkout(&self.state, tenant, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),

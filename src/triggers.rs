@@ -69,7 +69,10 @@ fn arg_str_opt(args: &Value, name: &str) -> Option<String> {
     args.get(name).and_then(Value::as_str).map(str::to_string)
 }
 
-fn trigger_invalid(field: &'static str, message: String) -> AppError {
+/// `pub(crate)`: `hooks.rs` builds the same `trigger_invalid` code for its
+/// own event-trigger validation (AC4's "verify" rejections), rather than a
+/// second constructor for one error code.
+pub(crate) fn trigger_invalid(field: &'static str, message: String) -> AppError {
     AppError::Structured {
         code: "trigger_invalid",
         message,
@@ -77,7 +80,10 @@ fn trigger_invalid(field: &'static str, message: String) -> AppError {
     }
 }
 
-fn trigger_not_found(id: &str) -> AppError {
+/// `pub(crate)`: `hooks.rs`'s `host.trigger.test` reuses this for an
+/// unknown trigger id, same code/shape a schedule trigger's own
+/// pause/resume/remove already return.
+pub(crate) fn trigger_not_found(id: &str) -> AppError {
     AppError::Structured {
         code: "trigger_not_found",
         message: format!("no trigger '{id}' for this tenant"),
@@ -97,7 +103,11 @@ fn build_config(schedule: &str, args: &Value, tz: Option<&str>) -> Value {
     config
 }
 
-fn config_hash(config_json: &str) -> String {
+/// `pub(crate)`: `hooks.rs`'s own `set_event_trigger` reuses this rather
+/// than duplicating a second SHA-256-hex helper, since it's the same
+/// "content hash backing a `triggers` UNIQUE constraint" purpose for either
+/// kind's `config_json`.
+pub(crate) fn config_hash(config_json: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(config_json.as_bytes());
     hex_encode(&hasher.finalize())
@@ -165,7 +175,14 @@ fn trigger_base_json(row: &TriggerRow, last_status: Option<String>) -> Value {
 /// Builds the tenant-facing JSON for one trigger row, reading its own
 /// `last_run_id`'s current status (if any) so `host.trigger.list`/`get`'s
 /// `last_status` is always fresh rather than a snapshot from firing time.
+/// PRD-mcphost-inbound-events: an event-kind row's shape (`url`, `verify`,
+/// `unverified`, `dedupe_header` instead of `schedule`/`tz`) is different
+/// enough that it's built in `hooks.rs`, which owns everything else
+/// event-specific too.
 async fn trigger_to_json(state: &AppState, tenant: &Tenant, row: TriggerRow) -> Value {
+    if row.kind == "event" {
+        return crate::hooks::trigger_to_json_event(state, tenant, &row).await;
+    }
     let last_status = match &row.last_run_id {
         Some(run_id) => state
             .db
@@ -186,25 +203,44 @@ async fn trigger_to_json(state: &AppState, tenant: &Tenant, row: TriggerRow) -> 
     value
 }
 
-/// `host.trigger.set(tool, kind="schedule", schedule, args?, tz?)` (P0
-/// requirement 2). Only `kind = "schedule"` is accepted -- `"event"` is
-/// the table's reserved second member (goal 3), not yet wired to anything
-/// that can fire it.
+/// `host.trigger.set(tool, kind="schedule"|"event", ...)` (P0 requirement
+/// 2; PRD-mcphost-inbound-events P0 requirement 3 added `kind="event"`).
+/// The tool lookup is shared by both kinds; each kind's own argument shape
+/// and quota lives in [`set_schedule`]/[`crate::hooks::set_event_trigger`].
 pub async fn set(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let tool = arg_str(args, "tool")?;
     let kind = arg_str_opt(args, "kind").unwrap_or_else(|| "schedule".to_string());
-    if kind != "schedule" {
-        return Err(trigger_invalid(
-            "kind",
-            format!("kind: '{kind}' is not supported yet -- only \"schedule\" works in this version"),
-        ));
-    }
     state
         .db
         .get_tool(tenant.id, tool.clone())
         .await?
         .ok_or_else(|| AppError::ToolNotFound(tool.clone()))?;
 
+    match kind.as_str() {
+        "schedule" => set_schedule(state, tenant, &tool, args).await,
+        // PRD-mcphost-inbound-events P0 requirement 3: the second trigger
+        // kind, goal 3's "an inbound event later" finally wired up. Its own
+        // verify-config validation, quota and URL-building live in
+        // `hooks.rs` (that module also owns `POST /hooks/...` itself), not
+        // here -- this function stays the one place that decides which
+        // kind an argument shape belongs to.
+        "event" => crate::hooks::set_event_trigger(state, tenant, &tool, args).await,
+        other => Err(trigger_invalid(
+            "kind",
+            format!(
+                "kind: '{other}' is not supported yet -- only \"schedule\" and \"event\" work in \
+                 this version"
+            ),
+        )),
+    }
+}
+
+async fn set_schedule(
+    state: &AppState,
+    tenant: &Tenant,
+    tool: &str,
+    args: &Value,
+) -> Result<Value, AppError> {
     let schedule_expr = arg_str(args, "schedule")?;
     let call_args = args.get("args").cloned().unwrap_or_else(|| json!({}));
     let tz = arg_str_opt(args, "tz");
@@ -270,7 +306,7 @@ pub async fn set(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Valu
         .insert_trigger(
             id.clone(),
             tenant.id,
-            tool.clone(),
+            tool.to_string(),
             "schedule".to_string(),
             config_json,
             hash,
@@ -398,6 +434,7 @@ pub async fn fire(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
             plan.job_max_s,
             args_json,
             true,
+            false,
         )
         .await?;
     Ok(json!({"run_id": run_id, "status": "queued", "manual": true}))
@@ -420,19 +457,33 @@ pub async fn admin_triggers(state: &AppState, args: &Value) -> Result<Value, App
     let triggers: Vec<Value> = rows
         .into_iter()
         .map(|row| {
-            let (schedule, _args, tz) = parse_stored_config(&row.config_json);
-            json!({
-                "id": row.id,
-                "tenant_id": row.tenant_id,
-                "tool": row.tool_name,
-                "kind": row.kind,
-                "schedule": schedule,
-                "tz": tz,
-                "enabled": row.enabled,
-                "next_unix": row.next_unix,
-                "last_run_id": row.last_run_id,
-                "last_fired_unix": row.last_fired_unix,
-            })
+            // PRD-mcphost-inbound-events: an event row's `config_json` has
+            // no `schedule`/`tz` -- `parse_stored_config` degrades those to
+            // `""`/`None` harmlessly, but the admin view should say `url`
+            // instead of a misleadingly-empty `schedule`.
+            let mut value = if row.kind == "event" {
+                // No tenant namespace on hand at this cross-tenant admin
+                // listing without an extra lookup per row -- `verify`
+                // (never the secret's plaintext, only its name) is the
+                // useful admin-facing fact; an operator wanting the exact
+                // URL already knows the namespace and can compute it.
+                let config: Value = serde_json::from_str(&row.config_json).unwrap_or_else(|_| json!({}));
+                json!({"verify": config.get("verify").cloned().unwrap_or(Value::Null)})
+            } else {
+                let (schedule, _args, tz) = parse_stored_config(&row.config_json);
+                json!({"schedule": schedule, "tz": tz})
+            };
+            if let Some(obj) = value.as_object_mut() {
+                obj.insert("id".to_string(), json!(row.id));
+                obj.insert("tenant_id".to_string(), json!(row.tenant_id));
+                obj.insert("tool".to_string(), json!(row.tool_name));
+                obj.insert("kind".to_string(), json!(row.kind));
+                obj.insert("enabled".to_string(), json!(row.enabled));
+                obj.insert("next_unix".to_string(), json!(row.next_unix));
+                obj.insert("last_run_id".to_string(), json!(row.last_run_id));
+                obj.insert("last_fired_unix".to_string(), json!(row.last_fired_unix));
+            }
+            value
         })
         .collect();
     Ok(json!({"triggers": triggers}))
@@ -496,6 +547,7 @@ pub async fn tick_once(state: &AppState) -> Result<(), AppError> {
                 None,
                 plan.job_max_s,
                 args_json,
+                false,
                 false,
             )
             .await?;

@@ -1,6 +1,6 @@
 [package]
 name = "mcphost"
-version = "0.43.1"
+version = "0.44.0"
 edition = "2024"
 rust-version = "1.88"
 description = "One MCP endpoint an agent can join and administer without a human"
@@ -27,6 +27,12 @@ jsonschema = "0.26"
 aes-gcm = "0.10"
 rand = "0.8"
 sha2 = "0.10"
+# PRD-mcphost-inbound-events P0 requirement 2: GitHub's legacy
+# `X-Hub-Signature` scheme is HMAC-SHA1 -- same RustCrypto family as `sha2`
+# above, added rather than hand-rolling SHA-1 (unlike the from-scratch
+# HMAC-SHA256 in `billing.rs`, SHA-1's own compression function is enough
+# code that reusing an audited crate beats duplicating it).
+sha1 = "0.10"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 clap = { version = "4", features = ["derive"] }

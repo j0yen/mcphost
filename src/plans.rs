@@ -75,6 +75,23 @@ pub struct Plan {
     /// this). Defaults to the `free` plan's own default (300) when a
     /// hand-edited `plans.toml` predates this key.
     pub schedule_min_interval_s: i64,
+    /// PRD-mcphost-inbound-events P0 requirement 4: how many `kind =
+    /// 'event'` triggers this plan's tenants may have at once
+    /// (`host.trigger.set` refuses a further one with
+    /// `trigger_quota_exceeded` naming this). Defaults to the `free` plan's
+    /// own default (3) when a hand-edited `plans.toml` predates this key,
+    /// same tolerant-parse convention as `schedules_max`.
+    pub event_triggers_max: i64,
+    /// requirement 4: the per-trigger inbound-event rate ceiling
+    /// (`POST /hooks/...` answers `events_rate_limited` above this).
+    /// Defaults to the `free` plan's own default (30) when a hand-edited
+    /// `plans.toml` predates this key.
+    pub events_per_minute: i64,
+    /// requirement 4: the largest inbound event body this plan's tenants'
+    /// hooks accept (a bigger POST answers 413). Defaults to 256 KiB (the
+    /// PRD's one named number, same for every plan) when a hand-edited
+    /// `plans.toml` predates this key.
+    pub event_body_bytes_max: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -116,6 +133,11 @@ impl PlanCatalog {
                     // build: "free 3 schedules, 5-minute minimum".
                     schedules_max: 3,
                     schedule_min_interval_s: 300,
+                    // PRD-mcphost-inbound-events open question, resolved at
+                    // build: "free 3 event triggers, 30 events/minute".
+                    event_triggers_max: 3,
+                    events_per_minute: 30,
+                    event_body_bytes_max: 256 * 1024,
                 },
                 Plan {
                     name: "pro".to_string(),
@@ -142,6 +164,11 @@ impl PlanCatalog {
                     // schedules, 1-minute minimum".
                     schedules_max: 25,
                     schedule_min_interval_s: 60,
+                    // PRD-mcphost-inbound-events requirement 4: "pro 25
+                    // event triggers, 300 events/minute".
+                    event_triggers_max: 25,
+                    events_per_minute: 300,
+                    event_body_bytes_max: 256 * 1024,
                 },
             ],
         }
@@ -212,6 +239,12 @@ impl PlanCatalog {
                 "schedule_min_interval_s = {}\n",
                 p.schedule_min_interval_s
             ));
+            out.push_str(&format!("event_triggers_max = {}\n", p.event_triggers_max));
+            out.push_str(&format!("events_per_minute = {}\n", p.events_per_minute));
+            out.push_str(&format!(
+                "event_body_bytes_max = {}\n",
+                p.event_body_bytes_max
+            ));
             out.push('\n');
         }
         out
@@ -270,6 +303,9 @@ impl PlanCatalog {
                 "schedule_min_interval_s" => {
                     builder.schedule_min_interval_s = Some(int_value())
                 }
+                "event_triggers_max" => builder.event_triggers_max = Some(int_value()),
+                "events_per_minute" => builder.events_per_minute = Some(int_value()),
+                "event_body_bytes_max" => builder.event_body_bytes_max = Some(int_value()),
                 _ => {}
             }
         }
@@ -302,6 +338,9 @@ struct PlanBuilder {
     jobs_concurrent: Option<i64>,
     schedules_max: Option<i64>,
     schedule_min_interval_s: Option<i64>,
+    event_triggers_max: Option<i64>,
+    events_per_minute: Option<i64>,
+    event_body_bytes_max: Option<i64>,
 }
 
 impl PlanBuilder {
@@ -337,6 +376,12 @@ impl PlanBuilder {
             // tolerant-parse rationale as every other field above.
             schedules_max: self.schedules_max.unwrap_or(3),
             schedule_min_interval_s: self.schedule_min_interval_s.unwrap_or(300),
+            // PRD-mcphost-inbound-events: a `plans.toml` predating these
+            // three keys gets the `free` plan's own defaults, same
+            // tolerant-parse rationale as every other field above.
+            event_triggers_max: self.event_triggers_max.unwrap_or(3),
+            events_per_minute: self.events_per_minute.unwrap_or(30),
+            event_body_bytes_max: self.event_body_bytes_max.unwrap_or(256 * 1024),
         })
     }
 }
@@ -409,6 +454,24 @@ mod tests {
         assert_eq!(pro.schedule_min_interval_s, 60);
         assert!(pro.schedules_max > free.schedules_max);
         assert!(pro.schedule_min_interval_s < free.schedule_min_interval_s);
+    }
+
+    /// PRD-mcphost-inbound-events requirement 4: "free 3 event triggers / 30
+    /// events per minute, pro 25 event triggers / 300 events per minute,
+    /// 256 KiB body cap on both".
+    #[test]
+    fn default_catalog_has_event_quotas() {
+        let catalog = PlanCatalog::default_catalog();
+        let free = catalog.get("free").expect("free plan");
+        assert_eq!(free.event_triggers_max, 3);
+        assert_eq!(free.events_per_minute, 30);
+        assert_eq!(free.event_body_bytes_max, 256 * 1024);
+        let pro = catalog.get("pro").expect("pro plan");
+        assert_eq!(pro.event_triggers_max, 25);
+        assert_eq!(pro.events_per_minute, 300);
+        assert_eq!(pro.event_body_bytes_max, 256 * 1024);
+        assert!(pro.event_triggers_max > free.event_triggers_max);
+        assert!(pro.events_per_minute > free.events_per_minute);
     }
 
     #[test]

@@ -236,6 +236,19 @@ async fn healthz(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl
             json!(state.db.count_enabled_schedule_triggers().await.unwrap_or(0)),
         );
     }
+    // PRD-mcphost-inbound-events requirement 6 (AC10): host-wide inbound
+    // event traffic over the trailing hour, from the same in-memory
+    // sliding-window counters `POST /hooks/...` itself increments.
+    if let Some(obj) = body.as_object_mut() {
+        obj.insert(
+            "events_received_1h".to_string(),
+            json!(state.event_counters.received_1h()),
+        );
+        obj.insert(
+            "events_rejected_1h".to_string(),
+            json!(state.event_counters.rejected_1h()),
+        );
+    }
     Json(body).into_response()
 }
 
@@ -397,6 +410,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/billing/webhook", post(billing_webhook))
         .route("/billing/done", get(billing_done))
         .route("/billing/cancel", get(billing_cancel))
+        // PRD-mcphost-inbound-events P0 requirement 1: the Caddy catch-all
+        // in mcphost-deploy already proxies any unmatched path to this
+        // backend, so `/hooks/...` needs no deploy-side change -- only this
+        // route.
+        .route("/hooks/{namespace}/{tool}", post(crate::hooks::hook_receive))
         .route_service("/mcp", service)
         .layer(middleware::from_fn(protocol_version_and_log))
         .with_state(state)

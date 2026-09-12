@@ -185,18 +185,20 @@ async fn ac12_claude_agent_sdk_sequence_lists_signup_with_schema() {
     // nine `host.state.*` tools, PRD-mcphost-sharing added the eight
     // host.tool_share/host.tool_unshare/host.group.*/host.catalog.* tools,
     // and PRD-mcphost-runs-and-jobs requirement 7 added the five
-    // `host.runs.*` tools, and PRD-mcphost-schedules requirement 2 added
-    // the seven `host.trigger.*` tools, to that same plane -- forty-seven
-    // tools total, no client can break on the growth (see that PRD's
-    // Migration/compatibility section).
+    // `host.runs.*` tools, PRD-mcphost-schedules requirement 2 added
+    // the seven `host.trigger.*` tools, and PRD-mcphost-inbound-events
+    // requirement 3 added two more (`host.trigger.test`/`replay`) --
+    // forty-nine tools total, no client can break on the growth (see that
+    // PRD's Migration/compatibility section).
     assert_eq!(
         tools.len(),
-        47,
+        49,
         "signup + host.* (incl. host.quickstart, host.tool_run, host.bridge_test) + \
          host.tool_call + host.state.* (9 tools, PRD-mcphost-tenant-state) + \
          host.tool_share/host.tool_unshare/host.group.*/host.catalog.* (8 tools, \
          PRD-mcphost-sharing) + host.runs.* (5 tools, PRD-mcphost-runs-and-jobs) + \
-         host.trigger.* (7 tools, PRD-mcphost-schedules) + billing.* (3 tools): {tools:?}"
+         host.trigger.* (9 tools, PRD-mcphost-schedules, PRD-mcphost-inbound-events) + \
+         billing.* (3 tools): {tools:?}"
     );
     let tool = tools
         .iter()

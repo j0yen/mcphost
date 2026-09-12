@@ -236,6 +236,11 @@ pub fn quickstart(
             // limits lists both".
             "schedules_max": plan.schedules_max,
             "schedule_min_interval_s": plan.schedule_min_interval_s,
+            // PRD-mcphost-inbound-events requirement 4: "host.quickstart
+            // limits lists them".
+            "event_triggers_max": plan.event_triggers_max,
+            "events_per_minute": plan.events_per_minute,
+            "event_body_bytes_max": plan.event_body_bytes_max,
         })
     });
     // PRD-mcphost-call-limits-honest requirement 5 / AC6: the six limits an

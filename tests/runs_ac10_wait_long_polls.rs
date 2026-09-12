@@ -87,6 +87,7 @@ async fn wait_returns_at_its_own_bound_when_the_run_never_finalizes() {
             300,
             "{}".to_string(),
             false,
+            false,
         )
         .await
         .expect("insert_queued_run");

@@ -125,6 +125,11 @@ async fn unauthenticated_tools_list_is_signup_only() {
         "host.trigger.resume",
         "host.trigger.remove",
         "host.trigger.fire",
+        // PRD-mcphost-inbound-events P0 requirement 3: the event-trigger
+        // dry-run/replay tools are discoverable unauthenticated too, same
+        // as every other host.trigger.* tool above.
+        "host.trigger.test",
+        "host.trigger.replay",
         // PRD-grand-loop-billing AC1: billing.plans is anonymous-and-tenant
         // reachable, discoverable here for the same reason host.quickstart
         // is -- billing.status/billing.checkout are tenant-only in what
@@ -145,12 +150,13 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        47,
+        49,
         "signup + the thirteen host.* tools (incl. host.quickstart, host.tool_run, and \
          host.bridge_test) + host.tool_call + the nine host.state.* tools (PRD-mcphost-tenant-state) \
          + the eight host.tool_share/host.tool_unshare/host.group.*/host.catalog.* tools \
          (PRD-mcphost-sharing) + the five host.runs.* tools (PRD-mcphost-runs-and-jobs) \
-         + the seven host.trigger.* tools (PRD-mcphost-schedules) + the three billing.* tools: \
+         + the nine host.trigger.* tools (PRD-mcphost-schedules, PRD-mcphost-inbound-events) \
+         + the three billing.* tools: \
          {tool_names:?}"
     );
 }

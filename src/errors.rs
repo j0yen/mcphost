@@ -273,6 +273,18 @@ impl AppError {
                     ErrorCode::INVALID_PARAMS
                 }
                 "trigger_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
+                // PRD-mcphost-inbound-events: `host.trigger.test`'s own
+                // caller-input problems -- a bad signature/payload, a rate
+                // ceiling, an oversized body -- same INVALID_PARAMS/
+                // INVALID_REQUEST split the `state_*`/`trigger_*` groups
+                // above already use; `hook_not_found` mirrors
+                // `trigger_not_found`'s RESOURCE_NOT_FOUND (only reachable
+                // here via `host.trigger.test` on an unknown/wrong-kind
+                // trigger -- `POST /hooks/...` itself never goes through
+                // this jsonrpc mapping, it builds its own HTTP status).
+                "signature_invalid" | "event_body_too_large" => ErrorCode::INVALID_PARAMS,
+                "events_rate_limited" => ErrorCode::INVALID_REQUEST,
+                "hook_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
                 _ => ErrorCode::INTERNAL_ERROR,
             },
             AppError::MultiInvalid { errors, .. } => errors

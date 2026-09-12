@@ -50,6 +50,8 @@ async fn bare_state() -> (AppState, common::TempDataDir) {
         accepted_usage_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         runs: mcphost::runs::RunsRegistry::new(),
         scheduler: mcphost::triggers::SchedulerStatus::new(),
+        event_counters: mcphost::hooks::EventCounters::new(),
+        event_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
     };
     (state, data_dir)
 }
@@ -112,6 +114,7 @@ async fn overlapping_firing_is_recorded_as_skipped_overlap() {
             None,
             900,
             "{}".to_string(),
+            false,
             false,
         )
         .await

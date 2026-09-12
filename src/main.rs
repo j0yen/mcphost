@@ -425,6 +425,8 @@ async fn main() -> anyhow::Result<()> {
                 )),
                 runs: mcphost::runs::RunsRegistry::new(),
                 scheduler: mcphost::triggers::SchedulerStatus::new(),
+                event_counters: mcphost::hooks::EventCounters::new(),
+                event_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
             });
 
             // PRD-mcphost-runs-and-jobs P0 requirement 4 / open question:

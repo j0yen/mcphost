@@ -29,6 +29,12 @@ const MIGRATION_0013: &str = include_str!("../migrations/0013_sharing.sql");
 const MIGRATION_0014: &str = include_str!("../migrations/0014_runs.sql");
 const MIGRATION_0015: &str = include_str!("../migrations/0015_triggers.sql");
 const MIGRATION_0016: &str = include_str!("../migrations/0016_runs_manual.sql");
+const MIGRATION_0017: &str = include_str!("../migrations/0017_event_dedupe.sql");
+const MIGRATION_0018: &str = include_str!("../migrations/0018_runs_test_run.sql");
+
+/// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
+/// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
+const EVENT_DEDUPE_WINDOW_S: i64 = 86_400;
 
 /// Shared by every query that selects a whole tenant row, so the column
 /// list and [`tenant_from_row`] stay in lockstep with each other.
@@ -290,11 +296,16 @@ pub struct RunRow {
     /// manual: true"); `false` for every run the scheduler tick itself
     /// enqueues, and for every pre-existing `call`/`job` trigger kind.
     pub manual: bool,
+    /// PRD-mcphost-inbound-events P0 requirement 3 / migration 0018 / AC7:
+    /// `true` only for a run `host.trigger.test` created (never for a real
+    /// `POST /hooks/...` delivery, a replay, or any pre-existing trigger
+    /// kind), same additive-column shape as [`Self::manual`].
+    pub test: bool,
 }
 
 const RUN_COLUMNS: &str = "id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, \
     status, progress_json, result_ref, error_class, started_unix, finished_unix, duration_ms, \
-    deadline_s, attempt, purged_unix, args_json, manual";
+    deadline_s, attempt, purged_unix, args_json, manual, test_run";
 
 fn run_row_from_row(r: &Row) -> rusqlite::Result<RunRow> {
     Ok(RunRow {
@@ -316,6 +327,7 @@ fn run_row_from_row(r: &Row) -> rusqlite::Result<RunRow> {
         purged_unix: r.get(15)?,
         args_json: r.get(16)?,
         manual: r.get::<_, i64>(17)? != 0,
+        test: r.get::<_, i64>(18)? != 0,
     })
 }
 
@@ -678,7 +690,9 @@ impl Db {
         Self::migrate_0013_sharing(&conn)?;
         Self::migrate_0014_runs(&conn)?;
         Self::migrate_0015_triggers(&conn)?;
-        Self::migrate_0016_runs_manual(&conn)
+        Self::migrate_0016_runs_manual(&conn)?;
+        Self::migrate_0017_event_dedupe(&conn)?;
+        Self::migrate_0018_runs_test_run(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -900,6 +914,31 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0016)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-inbound-events P1 requirement 7: same new-table
+    /// idempotency guard as 0011/0014/0015 above.
+    fn migrate_0017_event_dedupe(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'event_dedupe'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0017)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-inbound-events P0 requirement 3: `ALTER TABLE ADD COLUMN`
+    /// has no `IF NOT EXISTS`, same idempotency guard 0002/0013/0016 above
+    /// use for their own added columns.
+    fn migrate_0018_runs_test_run(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('runs') WHERE name = 'test_run'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0018)?;
         }
         Ok(())
     }
@@ -2904,13 +2943,18 @@ impl Db {
         // only for `host.trigger.fire`'s own enqueue (AC10); every other
         // caller (an ordinary async call, the scheduler tick) passes `false`.
         manual: bool,
+        // PRD-mcphost-inbound-events P0 requirement 3 / migration 0018 /
+        // AC7: `true` only for `host.trigger.test`'s own enqueue; every
+        // other caller (an ordinary async call, the scheduler tick,
+        // `POST /hooks/...`, `host.trigger.replay`) passes `false`.
+        test: bool,
     ) -> Result<(), AppError> {
         self.with_conn(move |conn| {
             conn.execute(
                 "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, \
-                 caller_tenant_id, status, deadline_s, attempt, args_json, manual) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'queued', ?7, 1, ?8, ?9)",
-                params![run_id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, deadline_s, args_json, manual],
+                 caller_tenant_id, status, deadline_s, attempt, args_json, manual, test_run) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'queued', ?7, 1, ?8, ?9, ?10)",
+                params![run_id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, deadline_s, args_json, manual, test],
             )?;
             Ok(())
         })
@@ -4004,6 +4048,23 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-inbound-events P0 requirement 4's quota check: how many
+    /// `kind = 'event'` triggers this tenant holds right now, paused or
+    /// not -- same "only remove frees a slot" rule
+    /// [`Self::count_schedule_triggers_for_tenant`] already applies to
+    /// schedules.
+    pub async fn count_event_triggers_for_tenant(&self, tenant_id: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM triggers WHERE tenant_id = ?1 AND kind = 'event'",
+                params![tenant_id],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
     /// `host.trigger.pause`/`resume`. Returns `true` if a row for this
     /// tenant/id was actually updated (a caller reaching for someone
     /// else's id, or an id that never existed, both read as
@@ -4167,6 +4228,51 @@ impl Db {
                 |r| r.get(0),
             )
             .map_err(AppError::from)
+        })
+        .await
+    }
+
+    // ---- event dedupe (PRD-mcphost-inbound-events P1 requirement 7) ------
+
+    /// Attempts to claim `(trigger_id, dedupe_key)` for `run_id`: `None` if
+    /// this is the first delivery of that key within [`EVENT_DEDUPE_WINDOW_S`]
+    /// (the claim succeeded, the caller should enqueue `run_id` for real),
+    /// `Some(existing_run_id)` if a still-fresh delivery already claimed it
+    /// (AC11: "the second answers 202 with the first run id and no second
+    /// run exists"). A claim older than the window is overwritten (`INSERT
+    /// OR REPLACE`) rather than blocked forever, matching requirement 7's
+    /// own "within 24 h" wording -- a sender that genuinely reuses a
+    /// delivery id a week later gets a fresh run, not a permanently stale
+    /// one. One connection, one `with_conn` call: SQLite's single-writer
+    /// mutex already serializes the read-then-write below, so no separate
+    /// transaction is needed to avoid a race between two callers.
+    pub async fn claim_event_dedupe(
+        &self,
+        trigger_id: String,
+        dedupe_key: String,
+        run_id: String,
+    ) -> Result<Option<String>, AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            let existing: Option<(String, i64)> = conn
+                .query_row(
+                    "SELECT run_id, created_unix FROM event_dedupe \
+                     WHERE trigger_id = ?1 AND dedupe_key = ?2",
+                    params![trigger_id, dedupe_key],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .optional()?;
+            if let Some((existing_run_id, created_unix)) = existing
+                && now - created_unix < EVENT_DEDUPE_WINDOW_S
+            {
+                return Ok(Some(existing_run_id));
+            }
+            conn.execute(
+                "INSERT OR REPLACE INTO event_dedupe (trigger_id, dedupe_key, run_id, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![trigger_id, dedupe_key, run_id, now],
+            )?;
+            Ok(None)
         })
         .await
     }

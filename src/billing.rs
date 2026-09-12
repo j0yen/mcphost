@@ -50,7 +50,10 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 /// construction: `H((key' xor opad) || H((key' xor ipad) || message))`,
 /// `key'` the key zero-padded (or, if longer than the block size,
 /// pre-hashed then zero-padded) to SHA-256's 64-byte block size.
-fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
+// PRD-mcphost-inbound-events technical considerations: "reuse its HMAC
+// helper" -- `hooks.rs`'s own hmac-sha256 verification scheme calls this
+// directly rather than duplicating it, so `pub(crate)` rather than private.
+pub(crate) fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
     const BLOCK_SIZE: usize = 64;
     let mut key_block = [0u8; BLOCK_SIZE];
     if key.len() > BLOCK_SIZE {

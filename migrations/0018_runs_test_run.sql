@@ -1,0 +1,12 @@
+-- compat: previous -- one additive nullable-equivalent column (`NOT NULL
+-- DEFAULT 0`) an old release simply never reads; no existing row's meaning
+-- changes (PRD-mcphost-migration-safety requirement 4).
+-- mcphost 0018_runs_test_run: PRD-mcphost-inbound-events P0 requirement 3 /
+-- AC7.
+--
+-- `host.trigger.test(id, body, headers)` runs the same verify-then-enqueue
+-- path `POST /hooks/...` does, but the run it produces needs a durable
+-- marker distinguishing it from a real delivery -- AC7's "a run is created
+-- marked test: true". Same additive-column shape migration 0016's `manual`
+-- used for `host.trigger.fire`'s own distinct-from-the-scheduler marker.
+ALTER TABLE runs ADD COLUMN test_run INTEGER NOT NULL DEFAULT 0;

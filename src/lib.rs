@@ -14,6 +14,7 @@ pub mod db;
 pub mod errors;
 pub mod funnel;
 pub mod handler;
+pub mod hooks;
 pub mod http;
 pub mod kinds;
 pub mod llms_txt;

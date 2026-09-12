@@ -124,6 +124,8 @@ fn run_to_json(run: &RunRow) -> Value {
         "attempt": run.attempt,
         // PRD-mcphost-schedules P1 requirement 7 / AC10.
         "manual": run.manual,
+        // PRD-mcphost-inbound-events P0 requirement 3 / AC7.
+        "test": run.test,
     })
 }
 
@@ -329,6 +331,7 @@ pub async fn enqueue(
             None,
             deadline_s,
             args_json,
+            false,
             false,
         )
         .await?;
@@ -623,6 +626,7 @@ mod tests {
             purged_unix: Some(300),
             args_json: None,
             manual: false,
+            test: false,
         };
         let value = run_to_json(&run);
         assert_eq!(value["purged"], json!(true));

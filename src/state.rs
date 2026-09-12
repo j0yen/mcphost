@@ -152,6 +152,14 @@ pub struct AppState {
     /// last-run timestamp, surfaced on `/healthz` as
     /// `scheduler_last_tick_unix` -- see [`crate::triggers::SchedulerStatus`].
     pub scheduler: crate::triggers::SchedulerStatus,
+    /// PRD-mcphost-inbound-events requirement 6: `/healthz`'s
+    /// `events_received_1h`/`events_rejected_1h` -- see
+    /// [`crate::hooks::EventCounters`].
+    pub event_counters: crate::hooks::EventCounters,
+    /// PRD-mcphost-inbound-events requirement 4: `POST /hooks/...`'s
+    /// per-trigger `events_per_minute` ceiling -- see
+    /// [`crate::hooks::EventRateLimiter`].
+    pub event_rate_limiter: crate::hooks::EventRateLimiter,
 }
 
 pub fn now_unix() -> i64 {
