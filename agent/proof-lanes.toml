@@ -61,7 +61,7 @@ required_commands = [
 [[lane]]
 id = "meta"
 description = "Orchestrator-owned scaffold metadata (agent/** intent-card, program doc, owner/test maps, this file) and repo hygiene (.gitignore). Not edit-agent-owned (see owner-map.json); no build proof applies, only intent-card schema validation. Added project-locally: the shipped scaffold template's proof-lanes.toml has no lane for agent/** or .gitignore, which unroutes every Stage 2 scaffold commit's own agent/ files -- fold back via postmortem. server.json (the MCP registry publish manifest, PRD-mcphost-registry-publish) folded in here 2026-09-06 for the same reason: static metadata with no build proof beyond schema validity."
-globs = ["agent/**", ".gitignore", "CHANGELOG.md", "README.md", "LICENSE-*", "extended-gates.toml", "PRD-*.md", "rules/**", "scripts/gate-status.sh", "server.json"]
+globs = ["agent/**", ".gitignore", "CHANGELOG.md", "README.md", "LICENSE-*", "extended-gates.toml", "PRD-*.md", "rules/**", "scripts/gate-status.sh", "server.json", ".burst-lane.toml"]
 required_commands = [
   "autobuilder intake --validate agent/intent-card.json",
 ]
