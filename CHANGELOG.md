@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.44.2 — 2026-09-12
+
+Cargo stops turning each of mcphost's 289 top-level test files into its own 280 MB binary. A generator writes a few `[[test]]` suite files that include the existing test files by path, so every test keeps its name, its file, and its AC pairing. `common` compiles once instead of 269 times. The gate links about six binaries instead of 289, and `target/` stops holding tens of gigabytes of near-identical executables. Measured on RedBaron: target/debug/deps 78 GB -> 3.75 GB, clean-to-green nextest wall 1405s -> 139s (9.9% of before).
+
 ## v0.44.1 — 2026-09-12
 
 agent/intent-card.json, agent/gate-baseline.json, and target/autobuilder/receipts/ac-traceability-receipt.json described three different PRDs at one HEAD, so every gate since 2026-09-11 reported delta-pass with inherited_blocks=[reviewer-agent] even though the reviewer's own receipt has an empty block_reasons list. Fixed: the card's ten AC test pointers now name the real tests/hooks_ac<N>_*.rs files instead of unrelated signup tests; scope, non_goals, five_whys_trace, hard_constraints.additional, and user_persona now describe the webhook feature the card's root_motivation already did; the Arc<Mutex<VecDeque<Instant>>> commit-message concern is recorded as accepted, naming commit 3b07bdd; extended-gates.toml's prd_path and a repo-root PRD-mcphost-inbound-events.md copy replace two stale PRD-*.md files so the traceability receipt keys to the same path as the card; agent/gate-baseline.json drops the reviewer-agent entry now that its receipt blocks on nothing. A new meta-lane proof, tests/revdebt_ac1_intent_card_pointers_resolve.rs, reads the card and fails, naming the criterion and the path, if a future partial refresh reintroduces a stale test pointer or a card/receipt PRD-path mismatch; it is wired into agent/proof-lanes.toml's meta lane so an agent/**-only edit still runs it.
