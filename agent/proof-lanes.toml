@@ -64,7 +64,9 @@ description = "Orchestrator-owned scaffold metadata (agent/** intent-card, progr
 globs = ["agent/**", ".gitignore", "CHANGELOG.md", "README.md", "LICENSE-*", "extended-gates.toml", "PRD-*.md", "rules/**", "scripts/gate-status.sh", "server.json", ".burst-lane.toml"]
 required_commands = [
   "autobuilder intake --validate agent/intent-card.json",
+  "cargo test --workspace --test revdebt_ac1_intent_card_pointers_resolve",
 ]
+note = "cargo test line added by PRD-mcphost-reviewer-debt-paydown (AC6/AC7, requirement 5): a card-only edit (this lane's own glob set) previously routed to schema validation alone, so a future partial intent-card refresh that reintroduced a stale AC `test` pointer or a card/traceability-receipt prd_path mismatch would have shipped silently -- the schema validator has no opinion on either. tests/revdebt_ac1_intent_card_pointers_resolve.rs is the pointer proof; it must run whenever agent/** changes, not only when tests/**/*.rs changes."
 
 [[lane]]
 id = "deploy"

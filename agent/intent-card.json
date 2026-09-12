@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-inbound-events.md",
+  "prd_source": "/home/jsy/wintermute/mcphost/PRD-mcphost-inbound-events.md",
   "intent_slug": "mcphost-inbound-events",
   "root_motivation": "An integrator who wants GitHub, Stripe or a monitoring system to reach a tool has to stand up an endpoint elsewhere and verify signatures by hand, which is the work they came to stop doing. Facts:",
-  "user_persona": "An AI agent connecting to mcphost for the first time over streamable HTTP with default client configuration (Claude Agent SDK / Claude Code), which must be able to read a well-formed tool list before it can do anything else; secondarily the operator who probes the endpoint after a redeploy.",
+  "user_persona": "An integrator (agent or human operator) who wants an external system -- GitHub, Stripe, a monitoring tool -- to reach an mcphost tool without standing up and hand-verifying a separate endpoint; secondarily the sender making the actual signed HTTP POST to the hook URL, and the operator reading /healthz's events_received_1h/events_rejected_1h after a redeploy.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -15,79 +15,82 @@
       "id": "AC1",
       "level": "MUST",
       "description": "Given an event trigger with `hmac-sha256` over secret `s`, When a POST arrives with a correct `X-Hub-Signature-256`, Then the response is 202 with a `run_id` within 500 ms, and the run finishes with the tool having received `event.body`.",
-      "test": "tests/ac01_unauthenticated_lists_signup.rs"
+      "test": "tests/hooks_ac1_hmac_sha256_valid_signature_runs.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
       "description": "Given the same trigger, When the signature is wrong, Then 401 `signature_invalid`, no run is created, and nothing is logged containing the secret.",
-      "test": "tests/ac02_signup_creates_hashed_tenant.rs"
+      "test": "tests/hooks_ac2_wrong_signature_401_no_run.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
       "description": "Given a Stripe-style `t=,v1=` signature with a timestamp older than the tolerance, When posted, Then 401 with `reason: timestamp`.",
-      "test": "tests/ac03_tenant_lists_control_plane_only.rs"
+      "test": "tests/hooks_ac3_stripe_style_stale_timestamp_401.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
       "description": "Given a trigger with `verify.scheme = \"none\"` and no `allow_unverified`, When set, Then `trigger_invalid` says unverified triggers need the flag; With the flag, `host.trigger.list` shows `unverified: true`.",
-      "test": "tests/ac04_publish_list_and_call.rs"
+      "test": "tests/hooks_ac4_none_scheme_requires_allow_unverified.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
       "description": "Given a free trigger receiving 40 events in a minute, When the 31st arrives, Then 429 `events_rate_limited` and no run.",
-      "test": "tests/ac05_cross_tenant_isolation.rs"
+      "test": "tests/hooks_ac5_rate_limit_429.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
       "description": "Given a 300 KiB body, When posted, Then 413 and no run.",
-      "test": "tests/ac06_remove_tool.rs"
+      "test": "tests/hooks_ac6_body_too_large_413.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
       "description": "Given `host.trigger.test(id, body, headers)` with a valid signature, When called, Then a run is created marked `test: true` and the response carries its id.",
-      "test": "tests/ac07_usage_metering.rs"
+      "test": "tests/hooks_ac7_trigger_test_creates_marked_run.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
       "description": "Given a failed event run, When `host.trigger.replay(run_id)` is called, Then a new run starts with the same `event` args and `trigger_ref` naming the original.",
-      "test": "tests/ac08_admin_disable_and_forbidden.rs"
+      "test": "tests/hooks_ac8_trigger_replay_new_run_trigger_ref.rs"
     },
     {
       "id": "AC9",
       "level": "MUST",
       "description": "Given a paused trigger, When an event arrives, Then 404 `hook_not_found` and no run.",
-      "test": "tests/ac09_signup_rate_limit.rs"
+      "test": "tests/hooks_ac9_paused_trigger_404.rs"
     },
     {
       "id": "AC10",
       "level": "MUST",
-      "description": "Given the admin `/healthz`, When read after AC1 and AC2, Then `events_received_1h` \u2265 1 and `events_rejected_1h` \u2265 1.",
-      "test": "tests/ac10_publish_validation_errors.rs"
+      "description": "Given the admin `/healthz`, When read after AC1 and AC2, Then `events_received_1h` ≥ 1 and `events_rejected_1h` ≥ 1.",
+      "test": "tests/hooks_ac10_healthz_event_counters.rs"
     },
     {
       "id": "AC11",
       "level": "SHOULD",
       "description": "Given `dedupe_header: \"X-GitHub-Delivery\"`, When the same delivery id arrives twice, Then the second answers 202 with the first run id and no second run exists.",
-      "test": "tests/ac11_load_smoke.rs (#[ignore]d hardware-relative load test)"
+      "test": "tests/hooks_ac11_dedupe_header_idempotent.rs"
     }
   ],
   "scope": [
-    "Derive the advertised MCP-Protocol-Version from rmcp::model::ProtocolVersion::LATEST instead of a string literal.",
-    "Emit ttlMs and cacheScope on every tools/list response in all four authentication states, set in one place all branches flow through.",
-    "Correct the protocol_version_and_log doc comment to match the layer's actual router-wide scope."
+    "POST /hooks/{namespace}/{tool}: resolve the tenant by namespace and the tool by name, require an enabled event trigger on that tool, enforce MAX_REQUEST_BODY_BYTES, verify the signature per the trigger's verify config, store the event as a run (trigger='event', status='queued'), enqueue it through the executor with args {event: {...}}, and answer 202 {run_id}; failures answer 401 signature_invalid, 404 hook_not_found, 413, or 429 events_rate_limited and never run the tool (Requirement 1).",
+    "Verification schemes hmac-sha256 (optional Stripe-style t=,v1= timestamp tolerance), hmac-sha1, token, and none (requires allow_unverified: true, labeled unverified in host.trigger.list); secrets are read through src/secrets.rs and never logged (Requirement 2).",
+    "The host.trigger.* tool surface: set(kind=\"event\", tool, verify, args?) returns the hook URL; list/get/pause/resume/remove shared with schedules; test(id, body, headers) and replay(run_id) (Requirement 3).",
+    "Plan-derived ceilings -- event_triggers_max, events_per_minute (per trigger), event_body_bytes_max -- with named refusals, surfaced in host.quickstart's limits (Requirement 4).",
+    "Header-allowlist redaction on stored events and the tenant's existing state-quota rules (Requirement 5); /healthz gains events_received_1h/events_rejected_1h and host.usage counts event runs (Requirement 6).",
+    "P1: dedupe_header idempotency -- a repeated delivery id within 24h answers 202 with the original run id and does not run again (Requirement 7)."
   ],
   "non_goals": [
-    "Adding real support for protocol 2026-07-28 (SEP-2243 Mcp-Method / Mcp-Param-* headers and per-request _meta).",
-    "The tenant-key hand-off, which is PRD-mcphost-session-key and depends on this PRD.",
-    "Any consumer-facing feature candidate; no measured baseline exists to rank one against.",
-    "Changes to synthorg, whose preflight asserts only that the protocol header is present, not its value."
+    "Outbound webhooks (a tool posting to others); the http kind does that already.",
+    "Email, queue or socket ingress; the trigger model leaves room.",
+    "Custom verification code in the first version; unsupported schemes use `none` with an explicit opt-in.",
+    "The Arc<Mutex<VecDeque<Instant>>> state EventCounters/EventRateLimiter added in commit 3b07bdd ('mcphost: v0.44.0 -- a tool has a public URL that checks the signature and runs the tool with the event') is accepted without further commit-message rationale: it is justified in-code via doc comments citing the pre-existing ToolRunLimiter precedent, and reviewer-agent's falsification.panic_audit/public_api_audit found no correctness issue from it. reviewer-agent concern id `arc-mutex-added-without-commit-message-justification` (receipt captured_at 2026-09-12T04:59:52Z) is the rule-4 signal this records as accepted, per PRD-mcphost-reviewer-debt-paydown Requirement 2 / AC3."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -96,37 +99,37 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "no_panic_in_src": "BAD_RUST denies unwrap/expect/panic in src/; HeaderValue::from_str is fallible and must be handled without panicking.",
-      "single_application_point": "Requirement 5: the cache fields must be applied once for all Auth branches, not chained per branch.",
-      "no_existing_test_weakened": "AC15: no pre-existing test may be deleted, ignored, or weakened.",
-      "unsafe_scope": "unsafe is confined to src/sandbox.rs pre_exec_setup, where only async-signal-safe libc calls run between fork and exec; this PRD adds none."
+      "no_panic_in_src": "BAD_RUST denies unwrap/expect/panic in src/; the hooks.rs header-forwarding path handles HeaderValue::from_str fallibly (hooks.rs:806, `let (Ok(name), Ok(val)) = (...) else { continue }`), not via unwrap -- confirmed by reviewer-agent's panic_audit at HEAD d1b35ae.",
+      "secrets_never_logged": "AC2: a signature-verification failure must never log the secret; src/secrets.rs is the sole read path and hooks.rs contains zero tracing::*! call sites in the verification path.",
+      "constant_time_signature_compare": "Signature comparison uses constant_time_eq rather than a short-circuiting `==`, and the length check ahead of it leaks only the fixed-width hex digest length, not the secret's length (reviewer-agent public_api_audit).",
+      "one_event_trigger_per_tool": "host.trigger.set enforces the plan's event_triggers_max and a single-event-trigger-per-tool invariant before insertion; reviewer-agent's falsification.counter_attack notes this check-then-insert is not yet guarded against a concurrent-call race, logged as an open concern, not a MUST-level block."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can no agent use the deployed mcphost endpoint?",
-      "a": "Its client connects and initializes successfully but sees an empty tool list, so there is nothing to call."
+      "q": "Why can't an integrator connect GitHub, Stripe or a monitoring system to a tool on mcphost?",
+      "a": "A tool call only ever enters through /mcp with a key; nothing outside mcphost can wake a tool, so the integrator has no URL to point an external sender at."
     },
     {
       "why": 2,
-      "q": "Why is the tool list empty for that client?",
-      "a": "The client's tools/list request is refused before mcphost's handler runs, and the error body it parses has no ttlMs or cacheScope, so it reports the result invalid and shows zero tools."
+      "q": "Why is there no such URL?",
+      "a": "The router (src/http.rs) serves only /mcp, /healthz, /.well-known/mcp/{namespace}/server.json, and the billing webhook and pages -- there is no tenant-facing inbound route for a tool."
     },
     {
       "why": 3,
-      "q": "Why is the request refused, and why are those fields missing?",
-      "a": "The client sends MCP-Protocol-Version 2026-07-28, which trips rmcp's SEP-2243 validators demanding an Mcp-Method header and per-request _meta; and list_tools sets the cache fields only on the Auth::Tenant branch, so the anonymous branch every new agent hits omits them."
+      "q": "Why did integrators have to solve this themselves before now?",
+      "a": "Without a built-in route, they would have to stand up an endpoint elsewhere and hand-verify HMAC or token signatures -- exactly the work the capability panel's integrator segment said they came to mcphost to stop doing."
     },
     {
       "why": 4,
-      "q": "Why does the client send 2026-07-28 when rmcp negotiates 2025-11-25?",
-      "a": "Because mcphost's own middleware stamps a hardcoded 2026-07-28 onto every response including initialize, and rmcp never writes that response header itself, so mcphost is the sole source of an advertisement it cannot honour."
+      "q": "Why prioritize this gap now rather than later?",
+      "a": "The integrator segment topped switch-share in both the 2026-09-02 and 2026-09-09 discover packs, and its stated gate was explicit: 'webhook signature verification built in... I paste the secret, you handle it.'"
     },
     {
       "why": 5,
-      "q": "Why was the constant hardcoded to a version the server cannot serve?",
-      "a": "The vision's Lineage section asserted that rmcp 3.2.0 serves 2026-07-28 statelessly by default; in fact ProtocolVersion::LATEST is 2025-11-25 and 2026-07-28 is only the SEP-2243 threshold. The literal encoded a mistaken belief, and the tests that would have caught it only ever exercised the authenticated branch."
+      "q": "Why hadn't a webhook route shipped already, given the demand?",
+      "a": "It depended on groundwork that had only just landed: the triggers table and host.trigger.* tool surface were introduced by PRD-mcphost-schedules (the first trigger kind), and PRD-mcphost-runs-and-jobs' run model; this PRD is the second kind of trigger built on that surface (Depends-on both)."
     }
   ],
   "created_at": "2026-09-03T18:04:17Z",
@@ -142,6 +145,10 @@
     {
       "question": "reviewer-agent block reason 'diff-scope-not-covered-by-reviewed-intent-card' (receipt target/autobuilder/receipts/reviewer-agent.json, captured_at 2026-09-03T22:11:04Z): b382f7d (v0.5.3) and 11c83a0 (v0.5.2) both implement PRD-mcphost-gate-green requirement 8/9 (CI-scoped sandbox test skip), not the mcphost-protocol-compat work this card's AC1-AC15/five_whys_trace/scope describe -- prd_source still named PRD-mcphost-protocol-compat with no paper trail to the PRD that actually authorized those two commits. Amend in place, or file agent/intent_card_amendment_request.json?",
       "resolution": "Amended in place: prd_source now points at /home/jsy/Documents/PRDs/build-queue/PRD-mcphost-gate-green.md (operator decision 2026-09-03). intent_card_amendment_request.json's four kinds (add_ac/relax_must/widen_constraint/out_of_scope) are for an edit-agent halting mid-iteration over a Stage-3 conflict it can't resolve itself; there is no Stage-3 conflict here -- v0.5.2/v0.5.3 touch zero src/ files and change none of AC1-AC15, which remain valid and unmodified (target/autobuilder/results.tsv: ac_pass=19/19 unchanged at b382f7d). This closes the paper-trail gap the reviewer-agent flagged without reopening the protocol-compat contract or halting the loop for a decision already made."
+    },
+    {
+      "question": "reviewer-agent concerns at HEAD d1b35ae (receipt captured_at 2026-09-12T04:59:52Z): intent-card-ac-test-field-stale-pointers (AC1-AC10 'test' fields named tests/ac0N_*.rs signup tests instead of tests/hooks_ac*.rs), intent-card-scope-non-goals-stale-from-prior-prd (scope/non_goals/five_whys_trace/hard_constraints.additional/user_persona still described the protocol-version PRD), and ac-traceability-receipt-third-prd-path (the traceability receipt keyed to PRD-mcphost-endpoint.md, a third path). Fix in place, or reopen the mcphost-inbound-events contract?",
+      "resolution": "Fixed in place by PRD-mcphost-reviewer-debt-paydown: every acceptance_criteria[].test field now names the real tests/hooks_ac<N>_*.rs file; scope/non_goals/five_whys_trace/hard_constraints.additional/user_persona were rewritten to describe the webhook feature this card's root_motivation and acceptance_criteria already did; prd_source was set to the in-repo canonical PRD-mcphost-inbound-events.md path so it is byte-equal to the regenerated ac-traceability-receipt.json's prd_path (extended-gates.toml's prd_path config updated to match, and the two stale root-level PRD-mcphost-endpoint.md / PRD-mcphost-protocol-compat.md copies removed). No AC content changed, so no Stage-3 conflict; this is the same 'amend the paper trail without reopening the contract' pattern as the ambiguity above, now applied to a partial-refresh recurrence of it."
     }
   ]
 }

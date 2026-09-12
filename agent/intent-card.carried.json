@@ -1,10 +1,10 @@
 {
   "ambiguities_resolved": true,
   "created_at": true,
-  "five_whys_trace": true,
-  "hard_constraints": true,
-  "non_goals": true,
-  "scope": true,
+  "five_whys_trace": false,
+  "hard_constraints": false,
+  "non_goals": false,
+  "scope": false,
   "unfakeable_metric": true,
-  "user_persona": true
+  "user_persona": false
 }

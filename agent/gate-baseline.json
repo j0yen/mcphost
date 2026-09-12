@@ -1,11 +1,7 @@
 {
   "schema": "autobuilder.gate_baseline.v1",
-  "recorded_at": "2026-09-07T12:16:28Z",
-  "head_sha": "d3668a0c60248129dcad37194caff8ab42c0c43e",
-  "receipts": [
-    {
-      "name": "reviewer-agent",
-      "reason": "reviewer decision=block not in [\"pass\", \"concern\"]"
-    }
-  ]
+  "recorded_at": "2026-09-12T00:00:00Z",
+  "head_sha": "d1b35ae298b79506ad61827fbf64e0dfec61146d",
+  "receipts": [],
+  "note": "reviewer-agent removed (PRD-mcphost-reviewer-debt-paydown Requirement 3): its receipt at head_sha above has an empty block_reasons list (decision=concern, 4 concerns, 0 blocks -- target/autobuilder/receipts/reviewer-agent.json, captured_at 2026-09-12T04:59:52Z). Nothing in this baseline currently blocks; re-add an entry only when a check genuinely blocks at some future HEAD."
 }
