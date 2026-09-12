@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>mcphost — create new tools when you need them</title>
-<meta name="description" content="Create new tools when you need them: an agent signs up by tool call, gets a namespace, and publishes its own tools. No dashboard, no human in the loop.">
+<title>mcphost — where agents host their own tools</title>
+<!-- cite: docs/benchmarks/ac11-load-smoke.txt -->
+<meta name="description" content="A hosted MCP runtime agents can depend on: sign up by tool call, get a namespace, publish and run your own tools. Open source, p95 34.2 ms under load, live status page.">
 <style>
   /* Committed single look: simple modern terminal. Deliberately no light theme. */
   :root { color-scheme: dark; }
@@ -26,7 +27,9 @@
             font-size: clamp(9px, 2.9vw, 15px); }
   h2 { font-size: .95rem; font-weight: 600; color: #e6edf3; margin: 2.4rem 0 .6rem; }
   h2::before { content: "## "; color: #484f58; font-weight: 400; }
-  .tag { color: #8b949e; margin: 0 0 2.2rem; }
+  .tag { color: #8b949e; margin: 0 0 .9rem; }
+  .proof { color: #3fb950; margin: 0 0 2.2rem; font-size: .92em; }
+  .proof a { color: #3fb950; text-decoration: underline; text-underline-offset: 3px; }
   p, ul { margin: 0 0 1rem; }
   code { color: #e6edf3; background: #161b22; padding: .1em .35em; border-radius: 4px; }
   pre code { background: none; padding: 0; }
@@ -57,7 +60,9 @@
 | | | | | | (__| |_) | | | | (_) \__ \ |_
 |_| |_| |_|\___| .__/|_| |_|\___/|___/\__|
                |_|</pre>
-<p class="tag">create new tools when you need them</p>
+<p class="tag">where agents host their own tools</p>
+<!-- cite: docs/benchmarks/ac11-load-smoke.txt -->
+<p class="proof">p95 34.2 ms · 200 concurrent calls · zero errors · <a href="/status">live status</a></p>
 
 <p>Mid-task, an agent finds the tool it needs does not exist. On mcphost it creates one and keeps working: sign up with a tool call, publish with the next, and the new tool is live — no restart, no review, no human in the loop.</p>
 <p>mcphost is a hosted runtime for <a href="https://modelcontextprotocol.io">Model Context Protocol</a> tools. Everything — signup, publishing, metering, logs, encrypted secrets — is itself a tool call over streamable HTTP, against a namespace the tenant owns.</p>
@@ -69,8 +74,15 @@
 ├── host.tool_publish(name,kind,spec) <span class="c"># reconnect with the key first</span>
 └── &lt;namespace&gt;.&lt;tool&gt;                <span class="c"># live immediately, no restart</span></code></pre>
 <p>Create a tool three ways: wrap an API you already use (<code>http</code>), submit code (<code>python</code> — sandboxed, schemas inferred from the source), or test the pipes (<code>echo</code>). What agents create: log tails, budget tripwires, API bridges, status checks.</p>
-<!-- cite: docs/benchmarks/ac11-load-smoke.txt -->
-<p>Measured under load: p95 of 34.2&nbsp;ms across 200 concurrent calls, zero errors.</p>
+
+<h2>built to be depended on</h2>
+<ul>
+  <!-- cite: docs/benchmarks/ac11-load-smoke.txt -->
+  <li>Measured, not promised: p95 of 34.2&nbsp;ms across 200 concurrent calls, zero errors. The number is committed to the repo next to the test that produces it.</li>
+  <li>Open source: the code you can read is the code that runs. One Rust binary, no proprietary services underneath.</li>
+  <li>Transparent operations: <a href="/status">/status</a> probes the live service from your browser and shows the same raw check we watch, <a href="/healthz">/healthz</a>.</li>
+  <li>No lock-in: mcphost speaks plain MCP over streamable HTTP. Any compliant client can leave by changing an endpoint, and the source is yours to run.</li>
+</ul>
 
 <h2>for agents</h2>
 <p>Connect to <code>https://mcphost.dev/mcp</code>. The machine-readable summary is at <a href="/llms.txt">/llms.txt</a>.</p>
@@ -86,7 +98,7 @@
 
 <button id="snd" class="snd" type="button" aria-pressed="false">[ sound: off ]</button>
 
-<footer>mcphost · a <a href="https://scattrplot.com">scattrplot.com</a> project · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/aup">Acceptable Use</a> · status at <a href="/healthz">/healthz</a></footer>
+<footer>mcphost · a <a href="https://scattrplot.com">scattrplot.com</a> project · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/aup">Acceptable Use</a> · <a href="/status">status</a></footer>
 </main>
 <script>
 (function () {

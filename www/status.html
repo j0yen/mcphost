@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mcphost — status</title>
+<meta name="description" content="Live status for mcphost.dev: a health probe run from your own browser, plus the committed load benchmark. Nothing estimated.">
+<style>
+  /* Committed single look: simple modern terminal. Deliberately no light theme. */
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0b0d0e; color: #c9cdd1;
+         font-family: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+         font-size: 15px; line-height: 1.65; }
+  .wrap { max-width: 44rem; margin: 0 auto; padding: 3.5rem 1.4rem 4rem; }
+  pre { margin: 0 0 1.2rem; overflow-x: auto; color: #c9cdd1; }
+  .prompt { color: #8b949e; }
+  .prompt .path { color: #e6edf3; }
+  h1 { font-size: 1rem; font-weight: 600; color: #e6edf3; margin: 1.6rem 0 .4rem; }
+  h2 { font-size: .95rem; font-weight: 600; color: #e6edf3; margin: 2.4rem 0 .6rem; }
+  h2::before { content: "## "; color: #484f58; font-weight: 400; }
+  p, ul { margin: 0 0 1rem; }
+  code { color: #e6edf3; background: #161b22; padding: .1em .35em; border-radius: 4px; }
+  pre code { background: none; padding: 0; }
+  .listing { border: 1px solid #21262d; border-radius: 6px; padding: 1rem 1.1rem;
+             background: #0d1117; }
+  .listing .c { color: #8b949e; }
+  a { color: #58a6ff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ul { list-style: none; padding-left: 1.3rem; }
+  li::before { content: "- "; color: #484f58; margin-left: -1.3rem; }
+  footer { margin-top: 3.5rem; padding-top: 1.2rem; border-top: 1px solid #21262d;
+           color: #8b949e; font-size: .9em; }
+  .ok { color: #3fb950; }
+  .bad { color: #f85149; }
+  .dim { color: #8b949e; }
+  .again { background: none; border: 1px solid #21262d; border-radius: 6px;
+           padding: .35rem .8rem; margin: .4rem 0 0; font: inherit; color: #8b949e;
+           cursor: pointer; }
+  .again:hover { color: #e6edf3; border-color: #484f58; }
+</style>
+</head>
+<body>
+<main class="wrap">
+
+<pre class="prompt" aria-hidden="true">$ <span class="path">mcphost</span> --status</pre>
+
+<h1>status</h1>
+<p class="dim">Two kinds of numbers, both real: a probe your browser runs against the live service right now, and a benchmark committed to the repo next to the test that produces it. Nothing on this page is estimated.</p>
+
+<h2>live check — from your browser</h2>
+<pre class="listing"><code id="live">probing /healthz …</code></pre>
+<button id="again" class="again" type="button" hidden>[ run again ]</button>
+<noscript><p>JavaScript is off, so the probe cannot run here. The raw check is at <a href="/healthz">/healthz</a> — it should answer <code>{"ok":true}</code>.</p></noscript>
+<p class="dim">Five sequential requests to <a href="/healthz">/healthz</a>, timed over your connection from where you sit. That includes your network path, so it is an honest ceiling, not a lab number.</p>
+
+<h2>load benchmark — committed to the repo</h2>
+<pre class="listing"><code>200 concurrent echo calls   <span class="c"># tests/ac11_load_smoke.rs</span>
+p95      34.20 ms
+errors   0
+rss      37.3 MiB</code></pre>
+<p class="dim">Source of record: <a href="https://github.com/j0yen/mcphost/blob/main/docs/benchmarks/ac11-load-smoke.txt">docs/benchmarks/ac11-load-smoke.txt</a>, mirrored from the test run it cites. Re-running the test updates the file and this page together.</p>
+
+<h2>what this page does not have yet</h2>
+<p>Uptime history. The service is young, and a chart would be days long, so there is no chart. When there is a track record worth showing, it will be shown the same way: measured, with the collection method next to the number.</p>
+
+<h2>see for yourself</h2>
+<ul>
+  <li>Raw health check: <a href="/healthz">/healthz</a></li>
+  <li>Source: <a href="https://github.com/j0yen/mcphost">github.com/j0yen/mcphost</a></li>
+  <li>Endpoint: <code>https://mcphost.dev/mcp</code> — <code>tools/list</code> needs no credentials</li>
+  <li>Something looks wrong: <a href="mailto:hello@mcphost.dev">hello@mcphost.dev</a> or <a href="https://github.com/j0yen/mcphost/issues">GitHub issues</a></li>
+</ul>
+
+<footer>mcphost · a <a href="https://scattrplot.com">scattrplot.com</a> project · <a href="/">home</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/aup">Acceptable Use</a></footer>
+</main>
+<script>
+(function () {
+  "use strict";
+  var out = document.getElementById("live");
+  var again = document.getElementById("again");
+  var N = 5;
+  function fmt(ms) { return ms.toFixed(1) + " ms"; }
+  function probe() {
+    again.hidden = true;
+    out.textContent = "probing /healthz …";
+    out.className = "";
+    var times = [], ok = true, body = "";
+    function one(i) {
+      var t0 = performance.now();
+      fetch("/healthz", { cache: "no-store" })
+        .then(function (r) { return r.text().then(function (tx) {
+          times.push(performance.now() - t0);
+          if (!r.ok) ok = false;
+          body = tx.trim();
+          if (i + 1 < N) { one(i + 1); } else { done(); }
+        }); })
+        .catch(function () { ok = false; times.push(NaN); done(); });
+    }
+    function done() {
+      var good = times.filter(function (t) { return !isNaN(t); });
+      good.sort(function (a, b) { return a - b; });
+      if (!ok || good.length === 0) {
+        out.innerHTML = '<span class="bad">FAIL</span>  /healthz did not answer cleanly from here.\n' +
+          'That can be the service, or a network filter between you and it.\n' +
+          'Cross-check: try /healthz directly, or ask someone on another network.';
+      } else {
+        var med = good[Math.floor(good.length / 2)];
+        out.innerHTML = '<span class="ok">OK</span>      ' + body + '\n' +
+          'median  ' + fmt(med) + '   <span class="c">(' + good.length + ' requests: ' +
+          fmt(good[0]) + ' … ' + fmt(good[good.length - 1]) + ')</span>\n' +
+          'checked ' + new Date().toISOString().replace(/\.\d+Z$/, "Z") + '  <span class="c">from this browser</span>';
+      }
+      again.hidden = false;
+    }
+    one(0);
+  }
+  again.addEventListener("click", probe);
+  probe();
+})();
+</script>
+</body>
+</html>
