@@ -68,12 +68,26 @@ CHECK = MODE == "--check"
 REPO_ROOT = os.getcwd()
 CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 
-# Kept in sync with ci-test-partition.sh's SANDBOX_SHARDS comment: if this
-# cap ever pushes the sandbox partition past 2 suites (or the core partition
-# past however many exist today), widen SANDBOX_SHARDS there and the matrix
-# in .github/workflows/ci.yml to match. P0 requirement: no suite exceeds
-# roughly 60 files, and the total (both partitions) stays <=10.
-MAX_PER_SUITE = 60
+# Kept in sync with ci-test-partition.sh's SANDBOX_SHARDS comment: if the
+# sandbox cap below ever pushes that partition past 2 suites (or the core
+# partition past however many exist today), widen SANDBOX_SHARDS there and
+# the matrix in .github/workflows/ci.yml to match. P0 requirement: no suite
+# exceeds roughly 60 files, and the total (both partitions) stays <=10.
+#
+# Per-partition, not one global number (2026-09-12 follow-up): the
+# exclusive-global singleton fix above (`distribute_exclusive`) adds one
+# whole extra binary per exclusive-subscriber file, all of which live in
+# "core" today (5 of them) -- at the original single cap of 60, core's
+# ~223 non-exclusive files bucket into 4 suites, and 4 normal + 5 singleton
+# = 9 core binaries alone, pushing the total past the <=10 budget once
+# sandbox's 2 are added. Sandbox carries none of that overhead and its
+# 2-suite split is already load-bearing for `.github/workflows/ci.yml`'s
+# SANDBOX_SHARDS=2 matrix (a 1-suite sandbox would starve shard 2 and trip
+# ci-test-partition.sh's own empty-shard guard), so it keeps the original
+# cap unchanged. Core's cap alone is raised just enough (60 -> 80) to
+# collapse its non-exclusive buckets from 4 to 3, landing the grand total
+# at 3 + 5 + 2 = 10 -- exactly the AC1 ceiling, not under it by luck.
+MAX_PER_SUITE = {"core": 80, "sandbox": 60}
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"
 GEN_MARK_END = "# END gen-test-suites.sh generated suites"
@@ -140,19 +154,20 @@ def is_exclusive_global(content):
 
 
 def distribute_exclusive(buckets, exclusive_stems):
-    """Insert each of `exclusive_stems` (sorted) into a distinct bucket,
-    round-robining over `buckets` in place; appends new singleton buckets
-    only for the overflow past len(buckets). Never puts two exclusive stems
-    in the same bucket."""
-    buckets = [list(b) for b in buckets]
-    if not buckets:
-        buckets = [[]]
-    for i, stem in enumerate(sorted(exclusive_stems)):
-        if i < len(buckets):
-            buckets[i].append(stem)
-        else:
-            buckets.append([stem])
-    return buckets
+    """Give each of `exclusive_stems` its own singleton bucket, prepended
+    ahead of the normal buckets. Merging one into an existing (60-file)
+    bucket only prevents two exclusive-subscriber files from racing EACH
+    OTHER -- it does nothing about the other ~60 unrelated files in that
+    same bucket racing the exclusive one on `cargo test`'s default
+    thread-per-test concurrency, which still pollutes its captured-log
+    buffer with a concurrent, unrelated request's own log line (observed:
+    compat_ac13's capture caught a concurrently-running signup test's
+    `/mcp` line instead of its own refusal). A singleton bucket is a real
+    binary with no other test in it -- the exact isolation the file's own
+    pre-consolidation invariant ("only test in the BINARY") relied on,
+    restored at the binary-selection level without touching any test
+    body."""
+    return [[stem] for stem in sorted(exclusive_stems)] + [list(b) for b in buckets]
 
 
 def area_key(stem):
@@ -274,7 +289,7 @@ def compute_plan():
         for k in grouped:
             grouped[k].sort()
         groups = [(k, grouped[k]) for k, _ in groups]
-        buckets = bucketize(groups, MAX_PER_SUITE)
+        buckets = bucketize(groups, MAX_PER_SUITE[part])
         buckets = distribute_exclusive(buckets, exclusive_by_partition[part])
         names = []
         for i, bucket in enumerate(buckets, 1):
