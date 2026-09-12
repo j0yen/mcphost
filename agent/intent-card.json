@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/wintermute/mcphost/PRD-mcphost-inbound-events.md",
-  "intent_slug": "mcphost-inbound-events",
-  "root_motivation": "An integrator who wants GitHub, Stripe or a monitoring system to reach a tool has to stand up an endpoint elsewhere and verify signatures by hand, which is the work they came to stop doing. Facts:",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-test-suite-consolidation.md",
+  "intent_slug": "mcphost-test-suite-consolidation",
+  "root_motivation": "Joe's mcphost gate takes 21\u201342 minutes for a 413 s cold compile. The repo's `tests/` directory holds 289 top-level `.rs` files (2026-09-12 count) and cargo's default `autotests` makes each one a separate test binary; each links the whole 52K-LoC crate and its 41 dependencies, and measured binaries are 274\u2013291 MB (`attrib_ac1_loopback_signup_unstamped`, `infer_ac08_ac09_python_requirements`). `target/debug/deps` holds 1,391 such binaries. 269 of the files declare `mod common;`, so the shared helper is compiled 269 times. RedBaron's root disk reached 81\u201386 % on 09-08, with `target/` dirs the known bulk. Every gate pays the link cost 289 times for one crate; every new AC PRD adds another binary. PRD-build-gate-phase-timing measures the `gate` phase this PRD moves; until it ships, the expected saving is inferred from binary count and size, not measured.",
   "user_persona": "An integrator (agent or human operator) who wants an external system -- GitHub, Stripe, a monitoring tool -- to reach an mcphost tool without standing up and hand-verifying a separate endpoint; secondarily the sender making the actual signed HTTP POST to the hook URL, and the operator reading /healthz's events_received_1h/events_rejected_1h after a redeploy.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,68 +14,56 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given an event trigger with `hmac-sha256` over secret `s`, When a POST arrives with a correct `X-Hub-Signature-256`, Then the response is 202 with a `run_id` within 500 ms, and the run finishes with the tool having received `event.body`.",
-      "test": "tests/hooks_ac1_hmac_sha256_valid_signature_runs.rs"
+      "description": "Given the repo at HEAD, When `gen-test-suites.sh` runs and `cargo nextest list` runs, Then at most ten test binaries are listed and the set of test names (suite prefix stripped) equals the set listed at the parent commit.",
+      "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the same trigger, When the signature is wrong, Then 401 `signature_invalid`, no run is created, and nothing is logged containing the secret.",
-      "test": "tests/hooks_ac2_wrong_signature_401_no_run.rs"
+      "description": "Given a new file `tests/zzz_ac1_probe.rs` that is not in any suite, When `gen-test-suites.sh --check` runs, Then it exits non-zero naming `tests/zzz_ac1_probe.rs`; after regenerating, it exits 0 and the test is listed.",
+      "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a Stripe-style `t=,v1=` signature with a timestamp older than the tolerance, When posted, Then 401 with `reason: timestamp`.",
-      "test": "tests/hooks_ac3_stripe_style_stale_timestamp_401.rs"
+      "description": "Given the consolidated layout, When `grep -c 'mod common' tests/*.rs` runs over the included files, Then the count is 0 and each suite file declares `mod common;` once.",
+      "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a trigger with `verify.scheme = \"none\"` and no `allow_unverified`, When set, Then `trigger_invalid` says unverified triggers need the flag; With the flag, `host.trigger.list` shows `unverified: true`.",
-      "test": "tests/hooks_ac4_none_scheme_requires_allow_unverified.rs"
+      "description": "Given the archived mcphost PRDs' test pointers (for example `tests/hooks_ac1_*.rs`), When the verified-completed pairing classifier runs against them, Then every pairing that resolved before resolves now.",
+      "test": "tests/ac04_publish_list_and_call.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a free trigger receiving 40 events in a minute, When the 31st arrives, Then 429 `events_rate_limited` and no run.",
-      "test": "tests/hooks_ac5_rate_limit_429.rs"
+      "description": "Given a clean `target/`, When `cargo nextest run` completes, Then `du -s target/debug/deps` is under 5 GB and the receipt records the size.",
+      "test": "tests/ac05_cross_tenant_isolation.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a 300 KiB body, When posted, Then 413 and no run.",
-      "test": "tests/hooks_ac6_body_too_large_413.rs"
+      "description": "Given two timed full nextest runs at the same commit, one before and one after the change (or the `gate:` phase from PRD-build-gate-phase-timing when present), When compared in the receipt, Then the after time is \u226450 % of before.",
+      "test": "tests/ac06_remove_tool.rs"
     },
     {
       "id": "AC7",
-      "level": "MUST",
-      "description": "Given `host.trigger.test(id, body, headers)` with a valid signature, When called, Then a run is created marked `test: true` and the response carries its id.",
-      "test": "tests/hooks_ac7_trigger_test_creates_marked_run.rs"
+      "level": "SHOULD",
+      "description": "Given `.config/nextest.toml` with JUnit enabled, When the suite runs, Then a JUnit file exists with a duration per test.",
+      "test": "tests/ac07_usage_metering.rs"
     },
     {
       "id": "AC8",
-      "level": "MUST",
-      "description": "Given a failed event run, When `host.trigger.replay(run_id)` is called, Then a new run starts with the same `event` args and `trigger_ref` naming the original.",
-      "test": "tests/hooks_ac8_trigger_replay_new_run_trigger_ref.rs"
+      "level": "SHOULD",
+      "description": "Given the parity script from mcphost-tests-host-independence, When run against the new layout on one host, Then it matches by test name and reports the same test count as before.",
+      "test": "tests/ac08_admin_disable_and_forbidden.rs"
     },
     {
       "id": "AC9",
-      "level": "MUST",
-      "description": "Given a paused trigger, When an event arrives, Then 404 `hook_not_found` and no run.",
-      "test": "tests/hooks_ac9_paused_trigger_404.rs"
-    },
-    {
-      "id": "AC10",
-      "level": "MUST",
-      "description": "Given the admin `/healthz`, When read after AC1 and AC2, Then `events_received_1h` ≥ 1 and `events_rejected_1h` ≥ 1.",
-      "test": "tests/hooks_ac10_healthz_event_counters.rs"
-    },
-    {
-      "id": "AC11",
       "level": "SHOULD",
-      "description": "Given `dedupe_header: \"X-GitHub-Delivery\"`, When the same delivery id arrives twice, Then the second answers 202 with the first run id and no second run exists.",
-      "test": "tests/hooks_ac11_dedupe_header_idempotent.rs"
+      "description": "Given the `suite` selftest cases, When the repo's test selftest runs, Then they are named and green.",
+      "test": "tests/ac09_signup_rate_limit.rs"
     }
   ],
   "scope": [
