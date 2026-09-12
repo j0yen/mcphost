@@ -1,7 +1,7 @@
 # PRD — mcphost test suite consolidation: 289 test binaries become a handful, files stay where they are
 
 - Status: building
-- Lane: redbaron 2026-09-12T18:07:43Z pid=244915 boot=c6865fd1-71c2-48cf-818e-5e1f2246b3fe
+- Lane: redbaron 2026-09-12T21:21:56Z pid=1585240 boot=c6865fd1-71c2-48cf-818e-5e1f2246b3fe
 - iter_log: 2026-09-12T17:55:00Z requeued by operator: mock_justifications line added for deferred AC8 | 2026-09-12T16:56:15Z needs_classification: lint gate fail: deferred_acs=[8] but no mock_justifications: line (prd-lint.sh deferred-acs-missing-justification)
 - PM: Joe Yen
 - Drafted: 2026-09-12

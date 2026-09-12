@@ -1,6 +1,6 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-test-suite-consolidation.md",
+  "prd_source": "/home/jsy/wintermute/mcphost/PRD-mcphost-test-suite-consolidation.md",
   "intent_slug": "mcphost-test-suite-consolidation",
   "root_motivation": "Joe's mcphost gate takes 21\u201342 minutes for a 413 s cold compile. The repo's `tests/` directory holds 289 top-level `.rs` files (2026-09-12 count) and cargo's default `autotests` makes each one a separate test binary; each links the whole 52K-LoC crate and its 41 dependencies, and measured binaries are 274\u2013291 MB (`attrib_ac1_loopback_signup_unstamped`, `infer_ac08_ac09_python_requirements`). `target/debug/deps` holds 1,391 such binaries. 269 of the files declare `mod common;`, so the shared helper is compiled 269 times. RedBaron's root disk reached 81\u201386 % on 09-08, with `target/` dirs the known bulk. Every gate pays the link cost 289 times for one crate; every new AC PRD adds another binary. PRD-build-gate-phase-timing measures the `gate` phase this PRD moves; until it ships, the expected saving is inferred from binary count and size, not measured.",
   "user_persona": "An integrator (agent or human operator) who wants an external system -- GitHub, Stripe, a monitoring tool -- to reach an mcphost tool without standing up and hand-verifying a separate endpoint; secondarily the sender making the actual signed HTTP POST to the hook URL, and the operator reading /healthz's events_received_1h/events_rejected_1h after a redeploy.",
