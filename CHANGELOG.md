@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.44.0 — 2026-09-12
+
+Every tool can now have a public webhook URL: `host.trigger.set(kind="event", tool, verify, dedupe_header?)` wires `POST /hooks/{namespace}/{tool}` to signature-verified (hmac-sha256, hmac-sha1, token, or explicit none) inbound events, each recorded as a `trigger='event'` run and dispatched to the tool with `event.{headers,body,received_unix}` as its argument. `host.trigger.test` dry-runs a payload without exposing the real URL; `host.trigger.replay` re-runs a past event's stored args. Per-trigger rate limits and a body-size cap come from the plan catalog (new `event_triggers_max`/`events_per_minute`/`event_body_bytes_max` fields); `/healthz` gains `events_received_1h`/`events_rejected_1h`.
+
 ## v0.43.1 — 2026-09-11
 
 mcphost-tests-host-independence: fixed three test suites whose verdict depended on
