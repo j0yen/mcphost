@@ -3,7 +3,7 @@
   "prd_source": "/home/jsy/wintermute/mcphost/PRD-mcphost-test-suite-consolidation.md",
   "intent_slug": "mcphost-test-suite-consolidation",
   "root_motivation": "Joe's mcphost gate takes 21\u201342 minutes for a 413 s cold compile. The repo's `tests/` directory holds 289 top-level `.rs` files (2026-09-12 count) and cargo's default `autotests` makes each one a separate test binary; each links the whole 52K-LoC crate and its 41 dependencies, and measured binaries are 274\u2013291 MB (`attrib_ac1_loopback_signup_unstamped`, `infer_ac08_ac09_python_requirements`). `target/debug/deps` holds 1,391 such binaries. 269 of the files declare `mod common;`, so the shared helper is compiled 269 times. RedBaron's root disk reached 81\u201386 % on 09-08, with `target/` dirs the known bulk. Every gate pays the link cost 289 times for one crate; every new AC PRD adds another binary. PRD-build-gate-phase-timing measures the `gate` phase this PRD moves; until it ships, the expected saving is inferred from binary count and size, not measured.",
-  "user_persona": "An integrator (agent or human operator) who wants an external system -- GitHub, Stripe, a monitoring tool -- to reach an mcphost tool without standing up and hand-verifying a separate endpoint; secondarily the sender making the actual signed HTTP POST to the hook URL, and the operator reading /healthz's events_received_1h/events_rejected_1h after a redeploy.",
+  "user_persona": "The /build loop's own gate process, which pays the cargo link cost for 289 near-identical test binaries on every mcphost gate (21-42 minutes wall, measured cold-compile 413s) and so clears fewer PRDs per tick; secondarily the human operator (Joe) watching RedBaron's root disk (81-86% on 2026-09-08 with target/ the known bulk), the AC-pairing classifier and intent-card test pointers that must resolve to the same file paths after consolidation as before, and a builder dropping a new tests/<name>.rs file who needs to be told, not silently ignored, if it never gets linked into a suite.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -15,70 +15,71 @@
       "id": "AC1",
       "level": "MUST",
       "description": "Given the repo at HEAD, When `gen-test-suites.sh` runs and `cargo nextest list` runs, Then at most ten test binaries are listed and the set of test names (suite prefix stripped) equals the set listed at the parent commit.",
-      "test": "tests/ac01_unauthenticated_lists_signup.rs"
+      "test": "tests/suite_ac1_ten_binaries_and_names_preserved.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
       "description": "Given a new file `tests/zzz_ac1_probe.rs` that is not in any suite, When `gen-test-suites.sh --check` runs, Then it exits non-zero naming `tests/zzz_ac1_probe.rs`; after regenerating, it exits 0 and the test is listed.",
-      "test": "tests/ac02_signup_creates_hashed_tenant.rs"
+      "test": "tests/suite_ac2_check_catches_unregistered_file.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
       "description": "Given the consolidated layout, When `grep -c 'mod common' tests/*.rs` runs over the included files, Then the count is 0 and each suite file declares `mod common;` once.",
-      "test": "tests/ac03_tenant_lists_control_plane_only.rs"
+      "test": "tests/suite_ac3_mod_common_declared_once.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
       "description": "Given the archived mcphost PRDs' test pointers (for example `tests/hooks_ac1_*.rs`), When the verified-completed pairing classifier runs against them, Then every pairing that resolved before resolves now.",
-      "test": "tests/ac04_publish_list_and_call.rs"
+      "test": "tests/suite_ac4_archived_prd_pointers_resolve.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
       "description": "Given a clean `target/`, When `cargo nextest run` completes, Then `du -s target/debug/deps` is under 5 GB and the receipt records the size.",
-      "test": "tests/ac05_cross_tenant_isolation.rs"
+      "test": "tests/suite_ac5_disk_size_budget.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
       "description": "Given two timed full nextest runs at the same commit, one before and one after the change (or the `gate:` phase from PRD-build-gate-phase-timing when present), When compared in the receipt, Then the after time is \u226450 % of before.",
-      "test": "tests/ac06_remove_tool.rs"
+      "test": "tests/suite_ac6_wall_time_budget.rs"
     },
     {
       "id": "AC7",
       "level": "SHOULD",
       "description": "Given `.config/nextest.toml` with JUnit enabled, When the suite runs, Then a JUnit file exists with a duration per test.",
-      "test": "tests/ac07_usage_metering.rs"
+      "test": "tests/suite_ac7_junit_per_test_timing.rs"
     },
     {
       "id": "AC8",
       "level": "SHOULD",
       "description": "Given the parity script from mcphost-tests-host-independence, When run against the new layout on one host, Then it matches by test name and reports the same test count as before.",
-      "test": "tests/ac08_admin_disable_and_forbidden.rs"
+      "test": "deferred:mock_unjustified \u2014 cross-host parity script from mcphost-tests-host-independence needs a second box; casper is deleted (see PRD mock_justifications)"
     },
     {
       "id": "AC9",
       "level": "SHOULD",
       "description": "Given the `suite` selftest cases, When the repo's test selftest runs, Then they are named and green.",
-      "test": "tests/ac09_signup_rate_limit.rs"
+      "test": "tests/suite_ac9_selftest_named_and_green.rs"
     }
   ],
   "scope": [
-    "POST /hooks/{namespace}/{tool}: resolve the tenant by namespace and the tool by name, require an enabled event trigger on that tool, enforce MAX_REQUEST_BODY_BYTES, verify the signature per the trigger's verify config, store the event as a run (trigger='event', status='queued'), enqueue it through the executor with args {event: {...}}, and answer 202 {run_id}; failures answer 401 signature_invalid, 404 hook_not_found, 413, or 429 events_rate_limited and never run the tool (Requirement 1).",
-    "Verification schemes hmac-sha256 (optional Stripe-style t=,v1= timestamp tolerance), hmac-sha1, token, and none (requires allow_unverified: true, labeled unverified in host.trigger.list); secrets are read through src/secrets.rs and never logged (Requirement 2).",
-    "The host.trigger.* tool surface: set(kind=\"event\", tool, verify, args?) returns the hook URL; list/get/pause/resume/remove shared with schedules; test(id, body, headers) and replay(run_id) (Requirement 3).",
-    "Plan-derived ceilings -- event_triggers_max, events_per_minute (per trigger), event_body_bytes_max -- with named refusals, surfaced in host.quickstart's limits (Requirement 4).",
-    "Header-allowlist redaction on stored events and the tenant's existing state-quota rules (Requirement 5); /healthz gains events_received_1h/events_rejected_1h and host.usage counts event runs (Requirement 6).",
-    "P1: dedupe_header idempotency -- a repeated delivery id within 24h answers 202 with the original run id and does not run again (Requirement 7)."
+    "Cargo.toml: `autotests = false`; one `[[test]]` per area with `path = \"tests/suite_<area>_NN.rs\"`; areas chosen by filename prefix so no suite exceeds roughly 60-80 files and the grand total (both sandbox/core partitions plus the exclusive-global singleton buckets) is <=10 (P0).",
+    "scripts/gen-test-suites.sh: scans top-level tests/*.rs, assigns each to an area by prefix table, writes tests/suite_<area>_NN.rs with `#[path = \"<file>.rs\"] mod <ident>;` lines plus one `mod common;` (and `support`/`ci_sandbox_support` where used); output is deterministic and sorted; `--check` exits non-zero naming any top-level tests/*.rs not included in a suite or any suite file that drifted from the generator's own output, wired into ci-test-partition.sh check / CI (P0).",
+    "Per-file `mod common;` (and the two other helper declarations) removed from included files and replaced by `use crate::common;` (or equivalent) so the helper compiles once per suite, not once per file; a test that names `common::` items unchanged still compiles (P0).",
+    "Every test that ran before runs after: nextest's test list, suite prefix stripped, equals the pre-change list; the verified-completed pairing classifier and intent-card test pointers resolve exactly as before since files stay where they are (P0).",
+    "Exclusive-global-subscriber isolation (2026-09-12 follow-up, CI red on plain `cargo test`): a handful of files that install a process-global tracing subscriber each get their own singleton `[[test]]` binary (distribute_exclusive in gen-test-suites.sh) rather than sharing a ~60-80-file bucket with unrelated tests, since cargo test's thread-per-test concurrency (unlike nextest's per-test process isolation) lets a concurrently-running unrelated test's log line pollute the exclusive test's captured-log buffer.",
+    ".config/nextest.toml emits JUnit with per-test timing so a later gate-phase-timing PRD can split the `gate` phase into per-test time (P1).",
+    "README section documenting how to add a test: drop the file, run the generator, or let CI tell you (P1)."
   ],
   "non_goals": [
-    "Outbound webhooks (a tool posting to others); the http kind does that already.",
-    "Email, queue or socket ingress; the trigger model leaves room.",
-    "Custom verification code in the first version; unsupported schemes use `none` with an explicit opt-in.",
-    "The Arc<Mutex<VecDeque<Instant>>> state EventCounters/EventRateLimiter added in commit 3b07bdd ('mcphost: v0.44.0 -- a tool has a public URL that checks the signature and runs the tool with the event') is accepted without further commit-message rationale: it is justified in-code via doc comments citing the pre-existing ToolRunLimiter precedent, and reviewer-agent's falsification.panic_audit/public_api_audit found no correctness issue from it. reviewer-agent concern id `arc-mutex-added-without-commit-message-justification` (receipt captured_at 2026-09-12T04:59:52Z) is the rule-4 signal this records as accepted, per PRD-mcphost-reviewer-debt-paydown Requirement 2 / AC3."
+    "Changing any test's body or assertion, or any src/ file -- this PRD's whole diff is Cargo.toml, tests/suite_*.rs, the per-file mod-common/mod-ci_sandbox_support rewrite, and scripts/; verified every commit via `git diff --stat` showing zero src/ paths.",
+    "Changing the runner: nextest stays the test executor, and its per-test process isolation is exactly what keeps the mcphost-tests-host-independence fixes valid; only the test *binary* boundary moves, not the runner.",
+    "Reducing the number of test files -- consolidation is at the binary-link level only; every tests/<name>.rs file keeps its name, its path, and its own test functions.",
+    "Sharding suites across machines -- SANDBOX_SHARDS' existing 2-way CI matrix split is preserved unchanged, not extended or replaced."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -87,37 +88,32 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "no_panic_in_src": "BAD_RUST denies unwrap/expect/panic in src/; the hooks.rs header-forwarding path handles HeaderValue::from_str fallibly (hooks.rs:806, `let (Ok(name), Ok(val)) = (...) else { continue }`), not via unwrap -- confirmed by reviewer-agent's panic_audit at HEAD d1b35ae.",
-      "secrets_never_logged": "AC2: a signature-verification failure must never log the secret; src/secrets.rs is the sole read path and hooks.rs contains zero tracing::*! call sites in the verification path.",
-      "constant_time_signature_compare": "Signature comparison uses constant_time_eq rather than a short-circuiting `==`, and the length check ahead of it leaks only the fixed-width hex digest length, not the secret's length (reviewer-agent public_api_audit).",
-      "one_event_trigger_per_tool": "host.trigger.set enforces the plan's event_triggers_max and a single-event-trigger-per-tool invariant before insertion; reviewer-agent's falsification.counter_attack notes this check-then-insert is not yet guarded against a concurrent-call race, logged as an open concern, not a MUST-level block."
+      "no_src_change": "Engineering target explicitly scopes this PRD to Cargo.toml, tests/, and scripts/ only; every commit this PRD landed (07db1f4, d40b1a3, and the earlier extend-scaffold/bump/changelog/intent-card-refresh commits) shows zero files under src/ in `git diff --stat`.",
+      "test_identity_preserved": "gen-test-suites.sh's `#[path]`-inclusion keeps every test's file and name identical (module identifiers derive from the unchanged file stem); `cargo nextest list`'s test-name set, suite prefix stripped, must equal the pre-consolidation set (AC1's guardrail) -- verified via a clean `cargo test --tests`/`cargo nextest run` both green at 602/602 with 0 failures post-change.",
+      "max_ten_binaries": "The generator's per-partition MAX_PER_SUITE (core=80, sandbox=60, split 2026-09-12 to absorb the exclusive-global singleton-bucket overhead without touching sandbox's CI-load-bearing 2-shard split) plus the 5 exclusive-global singleton buckets must not exceed 10 total [[test]] binaries end to end (AC1); currently exactly 10 (3 core normal + 5 core singleton + 2 sandbox).",
+      "run_metrics_ac_counter_stays_accurate": "scripts/run-metrics.sh's project-local AC-counting fallback (owner-map.json explicitly permits project-local fixes to this fallback, folded back via postmortem) must correctly count tests/ac<NN>_*.rs pass/fail under the new module-qualified `test <stem>::<fn> ... ok` output shape introduced by consolidation, not just the old per-binary `Running tests/<stem>.rs` / `test result: ok.` shape it originally shipped with -- fixed in this PRD's own diff (both matchers now coexist) after reviewer-agent caught the fallback silently pinned at 0/19 across four consecutive commits."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can't an integrator connect GitHub, Stripe or a monitoring system to a tool on mcphost?",
-      "a": "A tool call only ever enters through /mcp with a key; nothing outside mcphost can wake a tool, so the integrator has no URL to point an external sender at."
+      "q": "Why does mcphost's gate take 21-42 minutes for a 413s cold compile?",
+      "a": "The repo's tests/ directory holds 289 top-level .rs files and cargo's default `autotests` makes each one its own integration-test binary; each links the whole 52K-LoC crate and its 41 dependencies (measured binaries 274-291 MB), so the gate pays the link cost 289 times for one crate."
     },
     {
       "why": 2,
-      "q": "Why is there no such URL?",
-      "a": "The router (src/http.rs) serves only /mcp, /healthz, /.well-known/mcp/{namespace}/server.json, and the billing webhook and pages -- there is no tenant-facing inbound route for a tool."
+      "q": "Why does the crate get relinked 289 times instead of a handful?",
+      "a": "Nothing in Cargo.toml overrides cargo's own one-binary-per-top-level-test-file convention (`autotests` defaults on with no `[[test]]` entries grouping files), and 269 of the 289 files separately declare `mod common;`, so the shared test helper is also compiled 269 times."
     },
     {
       "why": 3,
-      "q": "Why did integrators have to solve this themselves before now?",
-      "a": "Without a built-in route, they would have to stand up an endpoint elsewhere and hand-verify HMAC or token signatures -- exactly the work the capability panel's integrator segment said they came to mcphost to stop doing."
+      "q": "Why does this matter enough to fix now rather than let it keep growing?",
+      "a": "RedBaron's root disk reached 81-86% on 2026-09-08 with target/ dirs the known bulk (target/debug/deps holding 1,391 such binaries across projects), and every new AC PRD on this repo adds one more 280MB binary to that pile plus another 289th of link time to every future gate."
     },
     {
       "why": 4,
-      "q": "Why prioritize this gap now rather than later?",
-      "a": "The integrator segment topped switch-share in both the 2026-09-02 and 2026-09-09 discover packs, and its stated gate was explicit: 'webhook signature verification built in... I paste the secret, you handle it.'"
-    },
-    {
-      "why": 5,
-      "q": "Why hadn't a webhook route shipped already, given the demand?",
-      "a": "It depended on groundwork that had only just landed: the triggers table and host.trigger.* tool surface were introduced by PRD-mcphost-schedules (the first trigger kind), and PRD-mcphost-runs-and-jobs' run model; this PRD is the second kind of trigger built on that surface (Depends-on both)."
+      "q": "Why is this framed as a proactive fix rather than a failure investigation?",
+      "a": "Per the PRD's own why-chain note, this is not a response to a specific failure -- it acts on leaf 1 of the vision doc's 2026-09-12 gate-cost section (the assumption that binary count/size drives gate wall time), which PRD-build-gate-phase-timing will independently verify once its own `gate:` phase-seconds field ships; until then the expected saving is measured directly in this PRD's own before/after receipt (docs/benchmarks/suite-consolidation-wall-time.txt: 1405s -> 139s, 9.9% of before)."
     }
   ],
   "created_at": "2026-09-03T18:04:17Z",
@@ -137,6 +133,10 @@
     {
       "question": "reviewer-agent concerns at HEAD d1b35ae (receipt captured_at 2026-09-12T04:59:52Z): intent-card-ac-test-field-stale-pointers (AC1-AC10 'test' fields named tests/ac0N_*.rs signup tests instead of tests/hooks_ac*.rs), intent-card-scope-non-goals-stale-from-prior-prd (scope/non_goals/five_whys_trace/hard_constraints.additional/user_persona still described the protocol-version PRD), and ac-traceability-receipt-third-prd-path (the traceability receipt keyed to PRD-mcphost-endpoint.md, a third path). Fix in place, or reopen the mcphost-inbound-events contract?",
       "resolution": "Fixed in place by PRD-mcphost-reviewer-debt-paydown: every acceptance_criteria[].test field now names the real tests/hooks_ac<N>_*.rs file; scope/non_goals/five_whys_trace/hard_constraints.additional/user_persona were rewritten to describe the webhook feature this card's root_motivation and acceptance_criteria already did; prd_source was set to the in-repo canonical PRD-mcphost-inbound-events.md path so it is byte-equal to the regenerated ac-traceability-receipt.json's prd_path (extended-gates.toml's prd_path config updated to match, and the two stale root-level PRD-mcphost-endpoint.md / PRD-mcphost-protocol-compat.md copies removed). No AC content changed, so no Stage-3 conflict; this is the same 'amend the paper trail without reopening the contract' pattern as the ambiguity above, now applied to a partial-refresh recurrence of it."
+    },
+    {
+      "question": "reviewer-agent block at HEAD d40b1a3 (receipt captured_at 2026-09-12T22:05:24Z), four reasons: (1) must-ac-evidencepack-zero-passing -- scripts/run-metrics.sh's project-local AC fallback matched cargo test's old per-binary `Running tests/<stem>.rs` header, which no longer appears once ac01..ac19 fold into tests/suite_core_0N.rs, so ac_passing_count silently pinned at 0/19 across four commits (bb44d28, 36eb9e3, 9a5b988, d40b1a3) even though every underlying test passes; (2) ac-test-field-pointers-semantically-wrong -- AC1/2/3/5/6/7/9's `test` fields still named the unrelated pre-existing tests/ac0N_*.rs signup files instead of this PRD's real tests/suite_ac<N>_*.rs proofs; (3)/(4) www-site-changes-outside-intent-card-scope and intent-card-scope-non-goals-mismatched-to-reviewed-diff -- three www/* commits (6b6263f, 4fece04, 57486cf) from a concurrent lane landed on origin/main between this PRD's own commits (verified disjoint via `git diff --stat` at the time, per the 2026-09-12 journal), and scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional still described the prior mcphost-inbound-events PRD (carried forward unchanged by intent-card-refresh.sh, which never rewrites those fields). Fix in place, or reopen the contract?",
+      "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for this exact recurrence before (PRD-mcphost-reviewer-debt-paydown). (1) is a real functional regression, not a paper-trail issue -- fixed scripts/run-metrics.sh's PROJECT_AC_FILES fallback matcher to also recognize the new module-qualified `test <stem>::<fn> ... ok|FAILED` shape (the old per-binary-header matcher is left in place, untouched, so a future non-consolidated project using this template still works); owner-map.json explicitly permits project-local fixes to this fallback, folded back via postmortem, which is exactly what this is. Verified: re-ran the fallback awk against the last gate's target/autobuilder/test-output.txt by hand, 19/19 (was 0/19). (2) AC1/2/3/5/6/7/9 `test` fields repointed at the real tests/suite_ac<N>_*.rs files; AC8 (deferred) repointed at 'deferred:mock_unjustified -- <reason>' per the tether-link repo's existing convention for a deferred AC with no mock test. (3) The www/* commits are independently authorized, disjoint (zero file overlap with tests/, scripts/, Cargo.toml, or agent/), already-shipped work from another lane sharing this repo's main branch -- nothing to fix in this PRD's own diff; documented here instead of silently absorbed. (4) scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional rewritten to describe this PRD's actual consolidation work (Cargo.toml/gen-test-suites.sh/suite-file/CI-wiring scope, the real non-goals list from the PRD's own Non-goals section, and a five-whys trace grounded in the PRD's Problem statement, noting per the PRD's own text that this is a proactive fix, not a failure investigation). No AC content changed, so no Stage-3 conflict."
     }
   ]
 }

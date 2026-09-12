@@ -82,6 +82,10 @@ if [ "$AC_TOTAL" -eq 0 ]; then
   if [ "$PROJECT_AC_TOTAL" -gt 0 ]; then
     PROJECT_AC_PASSING=$(awk -v aclist="$PROJECT_AC_FILES" '
       BEGIN { n = split(aclist, arr, "\n"); for (i = 1; i <= n; i++) if (arr[i] != "") want[arr[i]] = 1 }
+      # Pre-PRD-mcphost-test-suite-consolidation layout: cargo compiled each
+      # tests/<stem>.rs to its own binary (the file IS that binary'"'"'s crate
+      # root, so its fn names print bare, no "<stem>::" prefix) -- a stem
+      # "counts" iff its own "test result: ok." summary shows (0 failed).
       /^     Running / {
         line = $0
         sub(/^     Running /, "", line)
@@ -96,7 +100,29 @@ if [ "$AC_TOTAL" -eq 0 ]; then
         cur = ""
       }
       /^test result: FAILED\./ { cur = "" }
-      END { c = 0; for (k in passing) c++; print c }
+      # Post-PRD-mcphost-test-suite-consolidation layout (2026-09-12):
+      # tests/<stem>.rs is `#[path = "<stem>.rs"] mod <stem>;`-included into a
+      # shared tests/suite_<area>_NN.rs binary alongside ~60 other files, so
+      # there is no longer a "Running tests/<stem>.rs" / per-stem "test
+      # result:" pair -- every test inside prints "test <stem>::<fn> ...
+      # ok|FAILED" instead, module-qualified by the including #[path] name.
+      # A stem "counts" iff at least one of its tests ran and none FAILED.
+      /^test [a-zA-Z_][a-zA-Z0-9_]*::/ {
+        line = $0
+        sub(/^test /, "", line)
+        split(line, parts, "::")
+        stem = parts[1]
+        if (stem in want) {
+          seen[stem] = 1
+          if ($0 ~ / \.\.\. FAILED$/) failed[stem] = 1
+        }
+      }
+      END {
+        c = 0
+        for (k in passing) c++
+        for (k in seen) { if (!(k in failed) && !(k in passing)) c++ }
+        print c
+      }
     ' target/autobuilder/test-output.txt)
     AC_TOTAL="$PROJECT_AC_TOTAL"
     AC_PASSING="$PROJECT_AC_PASSING"
