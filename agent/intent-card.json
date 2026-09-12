@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tests-host-independence.md",
-  "intent_slug": "mcphost-tests-host-independence",
-  "root_motivation": "Joe (operator) cannot get a remote gate to route while three tests encode RedBaron's environment, and cannot tell from their output why they fail elsewhere. The why-chain: (1) why do remote gates fall back? parity reports two diffs, both genuine opposite-side results. (2) why opposite results? the tests assert host facts: a wall-clock budget under whatever load the host has, a process cap under whatever `RLIMIT_NPROC` the user has, a unit tree only RedBaron has. (3) why written that way? each was written on RedBaron for a PRD whose acceptance line named a number (\"no more than 100 ms\", \"within 5 s\") and the host was the only environment that existed. (4) why not caught? the gate ran on RedBaron alone until 09-10; a one-host suite cannot detect host dependence. (5) why do failures not explain themselves? the fork-storm assertion at line 112 panics with no values, so the box failure has no diagnosable text. Deepest actionable level: the tests' contracts (level 3), with self-describing...",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-inbound-events.md",
+  "intent_slug": "mcphost-inbound-events",
+  "root_motivation": "An integrator who wants GitHub, Stripe or a monitoring system to reach a tool has to stand up an endpoint elsewhere and verify signatures by hand, which is the work they came to stop doing. Facts:",
   "user_persona": "An AI agent connecting to mcphost for the first time over streamable HTTP with default client configuration (Claude Agent SDK / Claude Code), which must be able to read a well-formed tool list before it can do anything else; secondarily the operator who probes the endpoint after a redeploy.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,38 +14,68 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a host with `load1 / nproc = 6`, When `infer_ac14` measures 139 ms, Then it passes with the multiplier recorded; given an idle host, When it measures 139 ms, Then it fails and the message contains the raw duration, the budget, and the host block.",
+      "description": "Given an event trigger with `hmac-sha256` over secret `s`, When a POST arrives with a correct `X-Hub-Signature-256`, Then the response is 202 with a `run_id` within 500 ms, and the run finishes with the tool having received `event.body`.",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the box as the build user with `RLIMIT_NPROC` 232241, When `limits_ac07` runs, Then the storm fails with `tool_process_limit`, cleanup completes within the scaled deadline, and the test passes; given a forced failure, Then the message contains spawned, surviving, both limits, and elapsed.",
+      "description": "Given the same trigger, When the signature is wrong, Then 401 `signature_invalid`, no run is created, and nothing is logged containing the secret.",
       "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a host with no units installed, When `metering_ac09` runs, Then it verifies the repo's units from a temp directory and passes; given `systemd-analyze` absent, Then it fails naming the binary.",
+      "description": "Given a Stripe-style `t=,v1=` signature with a timestamp older than the tolerance, When posted, Then 401 with `reason: timestamp`.",
       "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given the same HEAD, When the three suites run on RedBaron and on the box as the build user, Then both runs are green and the receipt quotes both.",
+      "description": "Given a trigger with `verify.scheme = \"none\"` and no `allow_unverified`, When set, Then `trigger_invalid` says unverified triggers need the flag; With the flag, `host.trigger.list` shows `unverified: true`.",
       "test": "tests/ac04_publish_list_and_call.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the shipped tree, When `burst-lane.sh parity ~/wintermute/mcphost` runs, Then `diff` is empty and `host_sensitive` is empty.",
+      "description": "Given a free trigger receiving 40 events in a minute, When the 31st arrives, Then 429 `events_rate_limited` and no run.",
       "test": "tests/ac05_cross_tenant_isolation.rs"
     },
     {
       "id": "AC6",
-      "level": "SHOULD",
-      "description": "Given `.burst-lane.toml`, When the lane reads it, Then `parity_exclude` is an empty list.",
+      "level": "MUST",
+      "description": "Given a 300 KiB body, When posted, Then 413 and no run.",
       "test": "tests/ac06_remove_tool.rs"
+    },
+    {
+      "id": "AC7",
+      "level": "MUST",
+      "description": "Given `host.trigger.test(id, body, headers)` with a valid signature, When called, Then a run is created marked `test: true` and the response carries its id.",
+      "test": "tests/ac07_usage_metering.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given a failed event run, When `host.trigger.replay(run_id)` is called, Then a new run starts with the same `event` args and `trigger_ref` naming the original.",
+      "test": "tests/ac08_admin_disable_and_forbidden.rs"
+    },
+    {
+      "id": "AC9",
+      "level": "MUST",
+      "description": "Given a paused trigger, When an event arrives, Then 404 `hook_not_found` and no run.",
+      "test": "tests/ac09_signup_rate_limit.rs"
+    },
+    {
+      "id": "AC10",
+      "level": "MUST",
+      "description": "Given the admin `/healthz`, When read after AC1 and AC2, Then `events_received_1h` \u2265 1 and `events_rejected_1h` \u2265 1.",
+      "test": "tests/ac10_publish_validation_errors.rs"
+    },
+    {
+      "id": "AC11",
+      "level": "SHOULD",
+      "description": "Given `dedupe_header: \"X-GitHub-Delivery\"`, When the same delivery id arrives twice, Then the second answers 202 with the first run id and no second run exists.",
+      "test": "tests/ac11_load_smoke.rs (#[ignore]d hardware-relative load test)"
     }
   ],
   "scope": [
