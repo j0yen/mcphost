@@ -8,12 +8,8 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 
-#[path = "envelope_ac1_http_declared_output_promoted.rs"]
-mod envelope_ac1_http_declared_output_promoted;
-#[path = "envelope_ac4_tool_test_reports_missing_declared_output.rs"]
-mod envelope_ac4_tool_test_reports_missing_declared_output;
-#[path = "firstcall_ac6_outcome_metering.rs"]
-mod firstcall_ac6_outcome_metering;
+#[path = "compat_ac13_ac14_middleware_logging_and_scope.rs"]
+mod compat_ac13_ac14_middleware_logging_and_scope;
 #[path = "hooks_ac10_healthz_event_counters.rs"]
 mod hooks_ac10_healthz_event_counters;
 #[path = "hooks_ac11_dedupe_header_idempotent.rs"]

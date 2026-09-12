@@ -98,8 +98,6 @@ mod tenant_delete_ac05_prefix_too_short;
 mod tenant_delete_ac06_migration_cascade;
 #[path = "tenant_delete_ac07_tenant_not_found.rs"]
 mod tenant_delete_ac07_tenant_not_found;
-#[path = "tenant_delete_ac08_audit_log_and_events.rs"]
-mod tenant_delete_ac08_audit_log_and_events;
 #[path = "tenant_delete_ac09_healthz_probe_split.rs"]
 mod tenant_delete_ac09_healthz_probe_split;
 #[path = "tenant_delete_ac10_tenants_prefix_filter.rs"]

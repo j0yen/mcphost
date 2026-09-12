@@ -27,8 +27,8 @@ required_commands = [
 
 [[lane]]
 id = "rust-tests"
-description = "Test-only changes (only allowed via intent-card amendment)"
-globs = ["tests/**/*.rs"]
+description = "Test-only changes (only allowed via intent-card amendment). .config/nextest.toml folded in 2026-09-12 (PRD-mcphost-test-suite-consolidation): it only configures how the existing test suite runs (JUnit output location/timing), same proof as a tests/**/*.rs edit -- same gap class as every other 'no lane matched a new config-adjacent path' fix already documented in this file."
+globs = ["tests/**/*.rs", ".config/nextest.toml"]
 required_commands = [
   "cargo test --workspace",
 ]
@@ -78,8 +78,8 @@ required_commands = [
 
 [[lane]]
 id = "ci-scripts"
-description = "Shell scripts that drive .github/workflows/ci.yml but live outside it (PRD-mcphost-ci-sandbox-coverage AC6: scripts/ci-test-partition.sh). Added project-locally: same gap class as the ci lane's own workflow-file globs, which never covered scripts/ that ci.yml merely invokes."
-globs = ["scripts/ci-test-partition.sh"]
+description = "Shell scripts that drive .github/workflows/ci.yml but live outside it (PRD-mcphost-ci-sandbox-coverage AC6: scripts/ci-test-partition.sh; scripts/gen-test-suites.sh folded in 2026-09-12, PRD-mcphost-test-suite-consolidation -- it drives the same CI test-discovery surface as ci-test-partition.sh, generating the tests/suite_*.rs files ci-test-partition.sh's own partition reads). Added project-locally: same gap class as the ci lane's own workflow-file globs, which never covered scripts/ that ci.yml merely invokes."
+globs = ["scripts/ci-test-partition.sh", "scripts/gen-test-suites.sh"]
 required_commands = [
   "scripts/audit.sh",
 ]

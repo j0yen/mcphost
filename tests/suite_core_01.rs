@@ -113,8 +113,6 @@ mod compat_ac04_ac05_admin_and_tenant_cache_fields;
 mod compat_ac08_ac09_ac10_advertised_version;
 #[path = "compat_ac11_ac12_claude_sdk_replay.rs"]
 mod compat_ac11_ac12_claude_sdk_replay;
-#[path = "compat_ac13_ac14_middleware_logging_and_scope.rs"]
-mod compat_ac13_ac14_middleware_logging_and_scope;
 #[path = "compose_ac3_self_call_refused.rs"]
 mod compose_ac3_self_call_refused;
 #[path = "compose_ac4_depth_exceeded.rs"]
@@ -127,3 +125,9 @@ mod compose_ac6_mapping_missing;
 mod compose_ac7_on_error_continue;
 #[path = "compose_ac8_tool_test_dry_run.rs"]
 mod compose_ac8_tool_test_dry_run;
+#[path = "envelope_ac1_http_declared_output_promoted.rs"]
+mod envelope_ac1_http_declared_output_promoted;
+#[path = "envelope_ac4_tool_test_reports_missing_declared_output.rs"]
+mod envelope_ac4_tool_test_reports_missing_declared_output;
+#[path = "firstcall_ac6_outcome_metering.rs"]
+mod firstcall_ac6_outcome_metering;

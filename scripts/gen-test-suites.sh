@@ -117,6 +117,43 @@ GENERATED_SUITE_RE = re.compile(r'^suite_(?:core|sandbox)_[0-9]+\.rs$')
 AC_PREFIX_RE = re.compile(r'^(ac[0-9]+)_')
 PREFIX_RE = re.compile(r'^([a-z0-9]+)_')
 
+# PRD-mcphost-test-suite-consolidation follow-up (2026-09-12, CI red on
+# `cargo test`): several test files each independently install a PROCESS
+# global via `tracing::subscriber::set_global_default`, each written under
+# the pre-consolidation invariant "this is the only test in the BINARY" (a
+# file's own doc comment says exactly that) -- true when one file was one
+# binary, false the moment two such files share a suite. `nextest` never hit
+# this (it isolates every test into its own process regardless of binary
+# membership), which is why the gate's nextest-based verification stayed
+# green while CI's plain `cargo test` (no per-test process isolation; tests
+# in one binary run as threads in one process) went red on exactly this
+# collision. Detected files are spread one-per-bucket (round-robin over the
+# buckets the normal prefix bucketing already produced, adding one more
+# bucket only for whatever doesn't fit) so at most one such file ever shares
+# a binary with itself -- i.e. still zero of them -- without inflating the
+# suite count past what P0's <=10-binaries budget allows.
+EXCLUSIVE_GLOBAL_RE = re.compile(r'tracing::subscriber::set_global_default')
+
+
+def is_exclusive_global(content):
+    return bool(EXCLUSIVE_GLOBAL_RE.search(content))
+
+
+def distribute_exclusive(buckets, exclusive_stems):
+    """Insert each of `exclusive_stems` (sorted) into a distinct bucket,
+    round-robining over `buckets` in place; appends new singleton buckets
+    only for the overflow past len(buckets). Never puts two exclusive stems
+    in the same bucket."""
+    buckets = [list(b) for b in buckets]
+    if not buckets:
+        buckets = [[]]
+    for i, stem in enumerate(sorted(exclusive_stems)):
+        if i < len(buckets):
+            buckets[i].append(stem)
+        else:
+            buckets.append([stem])
+    return buckets
+
 
 def area_key(stem):
     m = AC_PREFIX_RE.match(stem)
@@ -213,6 +250,7 @@ def compute_plan():
 
     migrations = {}  # path -> (new_content, needs_common, needs_ci_sandbox)
     by_partition = {"core": [], "sandbox": []}
+    exclusive_by_partition = {"core": [], "sandbox": []}
     for f in all_files:
         with open(f, encoding="utf-8") as fh:
             content = fh.read()
@@ -220,7 +258,10 @@ def compute_plan():
         new_content, needs_common, needs_ci_sandbox = migrate_content(content)
         migrations[f] = (new_content, needs_common, needs_ci_sandbox)
         stem = os.path.basename(f)[:-3]
-        by_partition[part].append(stem)
+        if is_exclusive_global(content):
+            exclusive_by_partition[part].append(stem)
+        else:
+            by_partition[part].append(stem)
 
     suite_files = {}  # path -> content
     suite_names_by_partition = {}
@@ -234,12 +275,13 @@ def compute_plan():
             grouped[k].sort()
         groups = [(k, grouped[k]) for k, _ in groups]
         buckets = bucketize(groups, MAX_PER_SUITE)
+        buckets = distribute_exclusive(buckets, exclusive_by_partition[part])
         names = []
         for i, bucket in enumerate(buckets, 1):
             name = f"suite_{part}_{i:02d}"
             names.append(name)
             meta = []
-            for stem in bucket:
+            for stem in sorted(bucket):
                 path = f"tests/{stem}.rs"
                 _content, needs_common, needs_ci_sandbox = migrations[path]
                 meta.append((stem, needs_common, needs_ci_sandbox))

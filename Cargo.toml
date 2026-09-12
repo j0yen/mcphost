@@ -94,6 +94,10 @@ name = "suite_core_04"
 path = "tests/suite_core_04.rs"
 
 [[test]]
+name = "suite_core_05"
+path = "tests/suite_core_05.rs"
+
+[[test]]
 name = "suite_sandbox_01"
 path = "tests/suite_sandbox_01.rs"
 
