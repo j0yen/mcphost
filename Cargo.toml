@@ -98,6 +98,18 @@ name = "suite_core_05"
 path = "tests/suite_core_05.rs"
 
 [[test]]
+name = "suite_core_06"
+path = "tests/suite_core_06.rs"
+
+[[test]]
+name = "suite_core_07"
+path = "tests/suite_core_07.rs"
+
+[[test]]
+name = "suite_core_08"
+path = "tests/suite_core_08.rs"
+
+[[test]]
 name = "suite_sandbox_01"
 path = "tests/suite_sandbox_01.rs"
 
