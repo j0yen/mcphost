@@ -3,7 +3,7 @@
 //! Then the cascade migration applies, `PRAGMA foreign_key_list` on each
 //! child table shows `ON DELETE CASCADE`, and existing rows are unchanged.
 
-mod common;
+use crate::common;
 use common::TempDataDir;
 use rusqlite::params;
 

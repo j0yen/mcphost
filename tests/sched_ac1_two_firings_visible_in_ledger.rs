@@ -13,7 +13,7 @@
 //! sleep's length" compression `runs_ac01` already applies to its own
 //! (shorter) real-time wait.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, signup_and_make_pro};
 use serde_json::json;
 use std::time::{Duration, Instant};

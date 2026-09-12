@@ -2,7 +2,7 @@
 //! wrong, Then 401 signature_invalid, no run is created, and nothing is
 //! logged containing the secret.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, signup};
 use serde_json::json;
 

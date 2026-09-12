@@ -10,7 +10,7 @@
 //! `attrib_ac3_backfill_migration.rs` established this pattern for
 //! migration 0010.
 
-mod common;
+use crate::common;
 use common::TempDataDir;
 use mcphost::auth::{generate_key, generate_namespace, hash_key};
 use mcphost::db::Db;

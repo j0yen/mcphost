@@ -4,7 +4,7 @@
 //! isn't done in time, and after the build (under 60 s on the reference
 //! box) a call succeeds.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

@@ -40,7 +40,7 @@
 //! (phase, exception class, tool-source line) rather than the AC3 shape
 //! (argument name, expected/actual type) the PRD's own draft-time prose
 //! guessed at before the root cause was knowable.
-mod common;
+use crate::common;
 use common::{TestServer, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

@@ -2,7 +2,7 @@
 //! When called, Then the call returns `args_invalid` with the schema path
 //! and no upstream request is made.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, http_kind_registry, signup};
 use serde_json::json;
 use wiremock::matchers::method;

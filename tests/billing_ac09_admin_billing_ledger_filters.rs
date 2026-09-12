@@ -3,7 +3,7 @@
 //! are returned newest first with `mode`, and `tenant` filtering returns
 //! only that tenant's rows.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, signup};
 use mcphost::billing::{BillingConfig, FakeBillingClient, sign_for_test};
 use serde_json::json;

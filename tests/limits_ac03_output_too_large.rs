@@ -3,7 +3,7 @@
 //! `limit_bytes` 1048576 and `actual_bytes` ≥ 3,000,000, and the same tool
 //! returning 100 KB succeeds.
 
-mod common;
+use crate::common;
 use common::{TestServer, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

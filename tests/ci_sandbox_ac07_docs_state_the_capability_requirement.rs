@@ -3,7 +3,7 @@
 //! requirements, Then the userns capability requirement and probe behavior
 //! are stated.
 
-mod ci_sandbox_support;
+use crate::ci_sandbox_support;
 use ci_sandbox_support as support;
 
 #[test]

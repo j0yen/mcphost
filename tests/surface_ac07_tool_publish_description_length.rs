@@ -6,7 +6,7 @@
 //! `control::quickstart`'s `steps`), so this description only needs to
 //! name the registered kinds and point at `host.quickstart` for detail.
 
-mod common;
+use crate::common;
 use common::{TempDataDir, TestServer, all_kinds_registry, signup};
 use serde_json::json;
 

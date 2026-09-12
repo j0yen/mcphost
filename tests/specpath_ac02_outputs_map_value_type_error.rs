@@ -4,7 +4,7 @@
 //! naming a path string, and `example` = `"$.json.a"`, and the message
 //! starts `invalid spec: outputs.a:`.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, http_kind_registry, signup};
 use serde_json::json;
 

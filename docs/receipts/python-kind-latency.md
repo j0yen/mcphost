@@ -17,7 +17,7 @@ ccx13):
 ## Post-fix measurement (this receipt, dev box)
 
 Measured by `tests/runtime_ac4_publish_and_first_call_latency.rs`
-(`cargo test --test runtime_ac4_publish_and_first_call_latency -- --nocapture`),
+(`cargo test --test suite_sandbox_01 runtime_ac4_publish_and_first_call_latency:: -- --nocapture`),
 a dependency-free tool of corpus-task size, on this build machine
 (RedBaron; `uv` and `/usr/bin/python3` both already warm/cached):
 

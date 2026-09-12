@@ -2,7 +2,7 @@
 //! signature, When called, Then a run is created marked `test: true` and
 //! the response carries its id.
 
-mod common;
+use crate::common;
 use common::{extract_structured, signup};
 use serde_json::json;
 use sha2::{Digest, Sha256};

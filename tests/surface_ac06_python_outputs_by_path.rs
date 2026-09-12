@@ -9,7 +9,7 @@
 //! already gets from it (see `tests/specpath_ac01_map_form_normalizes_and_publishes.rs`
 //! for that kind's own version of this test).
 
-mod common;
+use crate::common;
 use common::{
     McpClient, TempDataDir, TestServer, extract_structured, poll_until_ready, python_kind_registry,
     signup,

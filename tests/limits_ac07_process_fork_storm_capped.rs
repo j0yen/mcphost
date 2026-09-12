@@ -25,7 +25,7 @@
 //! elapsed time) is in the failure message, so a red run on an unfamiliar
 //! host never needs a follow-up SSH session to explain itself.
 
-mod common;
+use crate::common;
 #[path = "support/host.rs"]
 #[allow(dead_code)]
 mod host;

@@ -12,7 +12,7 @@
 //! `reqwest`'s actual `dns_resolver`) is what's under test, not a bypassed
 //! version of it.
 
-mod common;
+use crate::common;
 use common::{FixedLookup, McpClient, TestServer, http_kind_registry_strict, signup};
 use serde_json::json;
 use std::collections::HashMap;

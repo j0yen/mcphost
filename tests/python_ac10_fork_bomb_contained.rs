@@ -25,7 +25,7 @@
 //! replacing them, since either the process cap or the timeout is a valid
 //! way for a fork bomb to end.
 
-mod common;
+use crate::common;
 use common::{TestServer, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

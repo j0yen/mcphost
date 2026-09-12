@@ -4,7 +4,7 @@
 //! Then the nested value is redacted, proving redaction is by key name
 //! rather than by matching the top-level value.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

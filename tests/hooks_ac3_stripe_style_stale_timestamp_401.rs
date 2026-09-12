@@ -1,7 +1,7 @@
 //! AC3 (P0) — Given a Stripe-style `t=,v1=` signature with a timestamp
 //! older than the tolerance, When posted, Then 401 with `reason: "timestamp"`.
 
-mod common;
+use crate::common;
 use common::signup;
 use serde_json::json;
 use sha2::{Digest, Sha256};

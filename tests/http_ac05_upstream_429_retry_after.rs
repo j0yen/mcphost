@@ -2,7 +2,7 @@
 //! called, Then the tool error is `upstream_status` with status 429 and
 //! `retry_after_s: 7`.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, http_kind_registry, signup};
 use serde_json::json;
 use wiremock::matchers::method;

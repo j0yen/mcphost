@@ -13,7 +13,7 @@
 //! PRD's paraphrase, and asserts the enhanced message names both the
 //! construct and the accepted alternative in one sentence.
 
-mod common;
+use crate::common;
 use common::{TestServer, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

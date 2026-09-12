@@ -3,7 +3,7 @@
 //! and one `admin_events` row record it, and `admin.usage` totals are
 //! unaffected by the `admin_events` row.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, extract_structured, signup};
 use rusqlite::params;
 use serde_json::json;

@@ -13,21 +13,33 @@
 //! executed tests. That is what this test pins -- the shape a regression
 //! would have to break to bring the 0.00s-suite false green back.
 
-mod ci_sandbox_support;
+use crate::ci_sandbox_support;
 use ci_sandbox_support as support;
 
 #[test]
 fn every_sandbox_ready_target_runs_in_the_capability_granting_job() {
-    let sandbox_targets = support::partition(&["list", "sandbox"]);
-    let sandbox_ready: Vec<&str> = sandbox_targets
-        .lines()
-        .filter(|t| t.starts_with("sandboxready_"))
-        .collect();
+    // PRD-mcphost-test-suite-consolidation: `ci-test-partition.sh list
+    // sandbox` now names SUITE binaries (`suite_sandbox_NN`), not individual
+    // `tests/*.rs` files -- a `sandboxready_*` file is a member INCLUDED by
+    // one of those suites, via a `#[path = "sandboxready_....rs"]` line, so
+    // that is what this checks now.
+    let sandbox_suites = support::partition(&["list", "sandbox"]);
+    let repo_root = support::repo_root();
+    let sandbox_ready_included = sandbox_suites.lines().any(|suite| {
+        let path = repo_root.join("tests").join(format!("{suite}.rs"));
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            return false;
+        };
+        content
+            .lines()
+            .any(|l| l.trim_start().starts_with(r#"#[path = "sandboxready_"#))
+    });
     assert!(
-        !sandbox_ready.is_empty(),
-        "the sandbox partition contains no sandboxready_* target; either the \
-         suites were deleted or scripts/ci-test-partition.sh stopped \
-         recognising them:\n{sandbox_targets}"
+        sandbox_ready_included,
+        "no sandbox suite includes a sandboxready_* file; either the files \
+         were deleted or scripts/gen-test-suites.sh / \
+         scripts/ci-test-partition.sh stopped recognising them. sandbox \
+         suites:\n{sandbox_suites}"
     );
 
     let jobs = support::jobs(&support::workflow());

@@ -3,7 +3,7 @@
 //! a bearer, Then the response contains the full diagnostics document with
 //! the same fields the current release publishes.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, TestServer};
 
 #[tokio::test]

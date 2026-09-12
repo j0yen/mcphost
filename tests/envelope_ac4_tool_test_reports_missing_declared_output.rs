@@ -3,7 +3,7 @@
 //! the test runs, Then the report's `envelope.missing` contains
 //! `blocking_tool` and the run is not green.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, http_kind_registry, signup};
 use serde_json::json;
 use wiremock::matchers::method;

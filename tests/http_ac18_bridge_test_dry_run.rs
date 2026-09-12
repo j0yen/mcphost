@@ -3,7 +3,7 @@
 //! mock's response without creating a tool and the invalid one reports the
 //! failure class.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, http_kind_registry, signup};
 use serde_json::json;
 use wiremock::matchers::method;

@@ -1,7 +1,7 @@
 //! AC4 (P0) — Given a running job, When `host.runs.cancel` is called, Then
 //! the sandbox process is gone within 2 s and the run reads `cancelled`.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

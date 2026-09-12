@@ -10,7 +10,7 @@
 //! in-flight and the subsequent call land on the source that was current
 //! when *they* started.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

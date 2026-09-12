@@ -14,7 +14,7 @@
 //! `stripe_customer_id` column, a distinct AC despite the coincidental
 //! `ac01` numbering.)
 
-mod common;
+use crate::common;
 use common::TempDataDir;
 use mcphost::auth::{generate_key, generate_namespace, hash_key};
 use mcphost::db::Db;

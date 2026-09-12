@@ -2,7 +2,7 @@
 //! 300 s, When it is POSTed, Then the response is 400 and no row is
 //! written.
 
-mod common;
+use crate::common;
 use common::TestServer;
 use mcphost::billing::{BillingConfig, FakeBillingClient, sign_for_test};
 use serde_json::json;

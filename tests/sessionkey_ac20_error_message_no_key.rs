@@ -3,7 +3,7 @@
 //! carried `tenant_key`, When the error message is returned to the caller,
 //! Then it contains no part of the key.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 use serde_json::json;
 

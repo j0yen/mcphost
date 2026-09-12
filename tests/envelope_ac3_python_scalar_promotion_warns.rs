@@ -3,7 +3,7 @@
 //! Then `result.payload.row_count` is 42 and
 //! `result.payload._envelope_warning` names the scalar promotion.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

@@ -4,7 +4,7 @@
 //! `host.bridge_test`, `host.spec_test`, `host.tool_run` and an example call
 //! each.
 
-mod common;
+use crate::common;
 use common::{TempDataDir, TestServer, all_kinds_registry, extract_structured, signup};
 use serde_json::json;
 

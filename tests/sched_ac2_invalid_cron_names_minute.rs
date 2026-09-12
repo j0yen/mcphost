@@ -1,7 +1,7 @@
 //! AC2 (P0) — Given `schedule="61 * * * *"`, When set, Then the error is
 //! `trigger_invalid` naming the minute field.
 
-mod common;
+use crate::common;
 use common::{TestServer, signup};
 use serde_json::json;
 

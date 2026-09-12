@@ -9,7 +9,7 @@
 //! test would take is not what this AC is about; wiring the real limiter
 //! into the real call path is.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, http_kind_registry_with_rate_limit, signup};
 use serde_json::json;
 use wiremock::matchers::method;

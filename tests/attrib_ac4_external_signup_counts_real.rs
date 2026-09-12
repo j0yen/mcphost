@@ -13,7 +13,7 @@
 //! semantics") describe, exercised at the business-logic layer rather
 //! than faked at the transport layer.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, TestServer};
 use serde_json::json;
 

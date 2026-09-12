@@ -355,12 +355,42 @@ instead of silently skipping.
 CI runs these suites as their own `sandbox` job, in parallel with the `gate`
 job that carries static analysis and everything else — once the suites stopped
 skipping, a single `cargo test --workspace` step measured 313–336 s against a
-300 s budget <!-- cite: .github/workflows/ci.yml -->. Which targets go where is derived, not hand-listed:
-`scripts/ci-test-partition.sh core|sandbox` classifies every `tests/*.rs` by
-whether it touches the sandbox-execution surface, and `check` proves the split
-is total and disjoint. Both jobs then fail on any capability-skip in their log,
-so a target filed into the wrong half turns CI red rather than passing
-vacuously.
+300 s budget <!-- cite: .github/workflows/ci.yml -->. Which SUITE BINARIES go
+where is derived, not hand-listed: `scripts/ci-test-partition.sh core|sandbox`
+classifies every `tests/*.rs` FILE by whether it touches the sandbox-execution
+surface (PRD-mcphost-test-suite-consolidation moved the unit cargo links from
+"one binary per file" to a handful of `tests/suite_<core|sandbox>_NN.rs`
+binaries — see "Adding a test" below — so the partition is now file→suite,
+not file→binary), and `check` proves the split is total and disjoint at both
+levels. Both jobs then fail on any capability-skip in their log, so a file
+filed into the wrong half turns CI red rather than passing vacuously.
+
+### Adding a test
+
+`tests/*.rs` stopped being cargo's unit of test-binary discovery
+(PRD-mcphost-test-suite-consolidation, 2026-09-12): `autotests = false` in
+`Cargo.toml`, plus a handful of generated `tests/suite_<core|sandbox>_NN.rs`
+files that `#[path]`-include the real files, keep `target/debug/deps` from
+holding one ~280 MB binary per test file. Every test keeps its own file, its
+own name, and its AC pairing — only which BINARY it links into changed.
+
+To add a test: drop `tests/<name>.rs` in as always (same naming convention:
+`<prefix>_ac<N>_<description>.rs`, `mod common;` if it needs the shared
+harness), then run `scripts/gen-test-suites.sh` to fold it into a suite (or
+just let CI tell you — `scripts/gen-test-suites.sh --check`, wired into
+`ci-test-partition.sh check`, fails naming the exact file if you forget). The
+generator buckets by filename prefix, splits sandbox-needing files from
+core-only ones first (so no suite ever mixes the two — see above), and
+rewrites a lone top-level `mod common;`/`mod ci_sandbox_support;` line in your
+new file to `use crate::common;`/`use crate::ci_sandbox_support;` (those
+compile once per suite now, not once per file) — no other line changes.
+Never hand-edit a `tests/suite_*.rs` file; it is fully regenerated.
+
+Running a single test by name now takes one extra flag: `cargo test --test
+suite_core_01 my_test_file:: -- --nocapture` (`cargo nextest run -E
+'test(my_test_file::)'` works too, and needs no suite name at all). `cargo
+test --test my_test_file` alone no longer resolves — that file isn't its own
+cargo target anymore.
 
 | AC | Requirement | Test |
 |---|---|---|
@@ -374,7 +404,7 @@ vacuously.
 | 8 (P0) | `admin.tenant_disable` locks out a key; tenant key is `forbidden` on `admin.tenants` | `tests/ac08_admin_disable_and_forbidden.rs` |
 | 9 (P0) | 6th signup/hour/IP is `rate_limited`, no tenant created | `tests/ac09_signup_rate_limit.rs` |
 | 10 (P0) | Unregistered kind / invalid name / oversized spec each fail distinctly, nothing written | `tests/ac10_publish_validation_errors.rs` |
-| 11 (P0, non-functional) | 200 concurrent `echo` calls, p95 < 50ms, 0 errors, RSS < 100MiB | `tests/ac11_load_smoke.rs` (`#[ignore]`d — hardware-dependent; run with `cargo test --release --test ac11_load_smoke -- --ignored --nocapture`). Measured on the build box: **p95 = 34.20ms, 0 errors, RSS = 37.3MiB** <!-- cite: docs/benchmarks/ac11-load-smoke.txt --> |
+| 11 (P0, non-functional) | 200 concurrent `echo` calls, p95 < 50ms, 0 errors, RSS < 100MiB | `tests/ac11_load_smoke.rs` (`#[ignore]`d — hardware-dependent; run with `cargo test --release --test suite_core_01 ac11_load_smoke:: -- --ignored --nocapture`). Measured on the build box: **p95 = 34.20ms, 0 errors, RSS = 37.3MiB** <!-- cite: docs/benchmarks/ac11-load-smoke.txt --> |
 | 12 (P0) | `synthorg consume --preflight <url>` exits 0 | `tests/ac12_preflight.rs` — an always-run in-process half exercises the same two requests `run_preflight` makes; a second half spawns the real `mcphost` binary and the real `synthorg` CLI when available (bare binary or `uv run --project`) and asserts exit 0 |
 | 13 (P0) | Mismatched `Mcp-Name` header vs. body is recorded by body name and flagged | `tests/ac13_mcp_name_mismatch_metering.rs` |
 | 14 (P0) | Unwritable database: `storage` error, `/healthz` `db_ok: false`, process stays up | `tests/ac14_storage_unwritable.rs` |

@@ -10,7 +10,7 @@
 //! `tracing::warn!` call sites in `src/handler.rs::call_tool`, not a
 //! reimplementation of them.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer};
 use std::sync::{Arc, Mutex};
 use tracing_subscriber::fmt::MakeWriter;

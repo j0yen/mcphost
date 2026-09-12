@@ -10,7 +10,7 @@
 //! advertised version is strictly lower, so SEP-2243 header validation is
 //! never triggered by mcphost's own advertisement.
 
-mod common;
+use crate::common;
 use common::TestServer;
 use rmcp::model::ProtocolVersion;
 

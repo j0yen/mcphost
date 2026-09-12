@@ -4,7 +4,7 @@
 //! `result.payload.bridge_status` equals `"ok"` and the original body
 //! remains present.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, http_kind_registry, signup};
 use serde_json::json;
 use wiremock::matchers::method;

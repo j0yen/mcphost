@@ -3,7 +3,7 @@
 //! resent batch carries identical `identifier` values and the ledger marks
 //! it a replay.
 
-mod common;
+use crate::common;
 use common::{TestServer, record_ok_calls, signup_and_make_pro};
 use mcphost::billing::FakeBillingClient;
 use mcphost::metering;

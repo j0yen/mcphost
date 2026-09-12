@@ -4,7 +4,7 @@
 //! Then the responses differ only in tenant-identifying fields -- the
 //! label appears in none of them.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup_with_synthetic_header};
 use serde_json::{Value, json};
 

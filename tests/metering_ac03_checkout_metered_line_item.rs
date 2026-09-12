@@ -4,7 +4,7 @@
 //! `automatic_tax: true`; and Given no `metered_price_id`, Then it
 //! receives exactly the single-price call shape from v0.14.0.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 use mcphost::billing::{BillingConfig, FakeBillingClient};
 use serde_json::json;

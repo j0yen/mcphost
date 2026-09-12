@@ -4,7 +4,7 @@
 //! `usage` string that names `tenant_key` as the argument to pass on
 //! subsequent calls.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured};
 use serde_json::json;
 

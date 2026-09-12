@@ -4,7 +4,7 @@
 //! tenants store null, all three signups succeed, and the invalid case
 //! logs a warning.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 use std::sync::{Arc, Mutex};
 use tracing_subscriber::fmt::MakeWriter;

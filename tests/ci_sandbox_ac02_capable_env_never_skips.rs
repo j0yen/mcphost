@@ -7,7 +7,7 @@
 //! succeeds) with `$CI` unset -- see `ci_sandbox_support` for why the child
 //! process, and not `set_var`, is how this suite varies the environment.
 
-mod ci_sandbox_support;
+use crate::ci_sandbox_support;
 use ci_sandbox_support as support;
 
 use mcphost::sandbox::{UsernsDecision, decide_userns};
@@ -36,7 +36,18 @@ fn capable_box_runs_the_suite_instead_of_skipping() {
          `sandbox` job's sysctl grant, locally see README's user-namespace section"
     );
 
-    let out = support::run_guard_child("capable_box_runs_the_suite_instead_of_skipping", true, false);
+    // PRD-mcphost-test-suite-consolidation: this file is `#[path]`-included
+    // into a shared suite binary now, so the libtest name the child must
+    // `--exact` match is module-qualified (`module_path!()`), not the bare
+    // fn name a stand-alone-binary-per-file layout used to have.
+    let out = support::run_guard_child(
+        &format!(
+            "{}::capable_box_runs_the_suite_instead_of_skipping",
+            support::strip_crate_root(module_path!())
+        ),
+        true,
+        false,
+    );
     let stdout = support::stdout_of(&out);
     assert!(
         out.status.success(),

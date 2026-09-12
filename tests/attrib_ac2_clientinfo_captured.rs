@@ -4,7 +4,7 @@
 //! tenant row stores that client name and version and `tenants_by_client`
 //! on `/healthz` counts it.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, extract_structured};
 use serde_json::json;
 

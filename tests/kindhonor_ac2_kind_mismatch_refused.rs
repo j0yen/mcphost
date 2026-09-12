@@ -6,7 +6,7 @@
 //! `kind: python`) for the same requirement, since both directions of the
 //! constraint are covered by the same `infer_kind_signal` logic.
 
-mod common;
+use crate::common;
 use common::{TempDataDir, TestServer, all_kinds_registry, signup};
 use serde_json::json;
 

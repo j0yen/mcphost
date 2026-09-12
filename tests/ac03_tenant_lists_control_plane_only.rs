@@ -1,7 +1,7 @@
 //! AC3 — Given a tenant key, When the client sends `tools/list`, Then it
 //! lists the `host.*` control-plane tools and no other tenant's tools.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 
 #[tokio::test]

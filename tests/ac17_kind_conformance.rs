@@ -16,7 +16,7 @@
 //! `tests/kind_conformance.rs`") -- the same pattern this file's doc
 //! comment describes for future feature-PRD kinds.
 
-mod common;
+use crate::common;
 
 use async_trait::async_trait;
 use mcphost::kinds::conformance::{check_call, check_rejection_shape, check_schema};

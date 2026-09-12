@@ -7,7 +7,7 @@
 //! (`host.tool_publish` -> `Kind::validate_async` -> `kinds::sandbox::run`),
 //! not `kinds::python`'s unit tests, which call `validate_async` directly.
 
-mod common;
+use crate::common;
 use common::{TestServer, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

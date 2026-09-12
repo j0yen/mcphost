@@ -1,7 +1,7 @@
 //! AC8 — Given a template using an undefined variable, When called, Then
 //! the error is `template_error` naming the variable.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, http_kind_registry, signup};
 use serde_json::json;
 

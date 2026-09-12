@@ -15,7 +15,7 @@
 //! `docs::parse_kind_doc`, not a hand-duplicated literal that could drift
 //! from either the README or the file on disk.
 
-mod common;
+use crate::common;
 
 use mcphost::kinds::Kind;
 use mcphost::kinds::docs::parse_kind_doc;

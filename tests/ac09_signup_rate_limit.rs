@@ -10,7 +10,7 @@
 //! `server.state` instead of hardcoding `5`. AC2's override path is
 //! covered by `hundredth_signup_succeeds_with_env_raised_limit` below.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer};
 use serde_json::json;
 

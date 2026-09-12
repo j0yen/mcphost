@@ -2,7 +2,7 @@
 //! `t_A.geo` with B's key, Then it succeeds and the run and call rows carry
 //! `caller_tenant_id` = B.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

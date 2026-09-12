@@ -6,7 +6,7 @@
 //! `host.spec_test` appears with an input schema documenting `kind`,
 //! `spec`, and `invocations`.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 use serde_json::json;
 

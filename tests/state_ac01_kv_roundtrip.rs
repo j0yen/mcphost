@@ -5,7 +5,7 @@
 //! rest of the key-value namespace `host.state.get/set/delete/list`
 //! requirement 2 names together).
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

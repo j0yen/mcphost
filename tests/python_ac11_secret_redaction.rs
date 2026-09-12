@@ -7,7 +7,7 @@
 //! (requirement 7: redacted "from any string that leaves the host" -- a
 //! tool's result is exactly such a string, not just an error/traceback).
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

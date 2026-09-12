@@ -2,7 +2,7 @@
 //! AC3 — Given a wrong bearer, When the request is handled, Then the
 //! response is byte-identical to the anonymous response.
 
-mod common;
+use crate::common;
 use common::TestServer;
 
 #[tokio::test]

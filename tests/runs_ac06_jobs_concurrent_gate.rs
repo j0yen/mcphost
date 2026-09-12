@@ -2,7 +2,7 @@
 //! are submitted, Then the second stays `queued` until the first finishes
 //! and `host.runs.list` shows both.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

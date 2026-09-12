@@ -4,7 +4,7 @@
 //! connection's next request, and `tools/call` on it returns the
 //! arguments passed.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

@@ -3,7 +3,7 @@
 //! runs, Then the error is structured `state_schema_violation` naming the
 //! column and expected type, and nothing is written.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

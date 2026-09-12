@@ -6,7 +6,7 @@
 //! test stays fast; the property under test is purge, not job execution
 //! itself (already covered by `runs_ac01`).
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, signup};
 use serde_json::json;
 use std::time::{Duration, Instant};

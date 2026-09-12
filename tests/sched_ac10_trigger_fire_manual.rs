@@ -1,7 +1,7 @@
 //! AC10 (P1) — Given `host.trigger.fire(id)`, When called, Then one run
 //! starts within 2s marked `manual: true`.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, signup_and_make_pro};
 use serde_json::json;
 use std::time::{Duration, Instant};

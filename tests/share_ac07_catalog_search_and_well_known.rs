@@ -3,7 +3,7 @@
 //! namespace and description; `GET /.well-known/mcp/catalog.json` lists the
 //! same.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

@@ -2,7 +2,7 @@
 //! AC5 (P0) — Given `get_info` and `host.quickstart`, When read, Then each
 //! mentions `tenant_key_missing` once.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured};
 use serde_json::json;
 

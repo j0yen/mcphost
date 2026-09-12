@@ -8,7 +8,7 @@
 //! proving `wait` still returns (the current, non-terminal status) rather
 //! than hanging past its own bound.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, signup};
 use serde_json::json;
 use std::time::{Duration, Instant};

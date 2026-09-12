@@ -6,7 +6,7 @@
 //! `Db::record_call_attributed` really does write both rows in the same
 //! transaction (P0 requirement 2), independent of anything job-shaped.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, signup};
 use serde_json::json;
 

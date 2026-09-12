@@ -1,7 +1,7 @@
 //! AC3 — Given a spec referencing `secret.missing`, When published, Then it
 //! is rejected with `secret_missing` naming the secret.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, http_kind_registry, signup};
 use serde_json::json;
 

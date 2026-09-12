@@ -1,7 +1,7 @@
 //! AC9 (P0) — Given a paused trigger, When an event arrives, Then 404
 //! hook_not_found and no run.
 
-mod common;
+use crate::common;
 use common::{extract_structured, signup};
 use serde_json::json;
 

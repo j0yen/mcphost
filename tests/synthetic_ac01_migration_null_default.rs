@@ -10,7 +10,7 @@
 //! `migrate()` against a DB that already has the column is itself the
 //! "existing data dir" case this AC cares about.
 
-mod common;
+use crate::common;
 use common::TempDataDir;
 use mcphost::auth::{generate_key, generate_namespace, hash_key};
 use mcphost::db::Db;

@@ -11,7 +11,7 @@
 //! only needs a cheap, reliable way to manufacture exactly 20 refusals; a
 //! host-wide cap of 1 does that with the smallest possible burst.
 
-mod common;
+use crate::common;
 use common::{TestServer, poll_until_ready, python_kind_registry_with_concurrency, signup};
 use mcphost::sandbox;
 use serde_json::json;

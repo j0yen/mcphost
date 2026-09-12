@@ -5,7 +5,7 @@
 //! requirement 1 widened this from `signup` alone), and no `admin.*` tool
 //! or namespaced tenant tool.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer};
 use rmcp::model::ProtocolVersion;
 use serde_json::Value;

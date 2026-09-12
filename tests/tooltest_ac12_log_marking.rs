@@ -2,7 +2,7 @@
 //! its logs through the existing log tool, Then test invocations appear
 //! marked as tests and are distinguishable from production calls.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, http_kind_registry, signup};
 use serde_json::json;
 use wiremock::matchers::method;

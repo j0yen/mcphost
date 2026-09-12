@@ -3,7 +3,7 @@
 //! null, When applied to one tenant, Then the row updates each time and
 //! `admin.tenants` reflects it.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

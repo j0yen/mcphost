@@ -3,7 +3,7 @@
 //! Then the response includes its `source_class` and recorded client
 //! name.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured};
 use serde_json::json;
 

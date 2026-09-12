@@ -15,7 +15,7 @@
 //! the property allows (the AC's own illustrative "35 s" is not load-bearing;
 //! any sleep past 30s proves the same fallback).
 
-mod common;
+use crate::common;
 use common::{TestServer, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

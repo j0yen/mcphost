@@ -13,7 +13,7 @@
 //! equally invisible, since none of them are ever `--ro-bind`/`--bind`
 //! into the sandbox either.
 
-mod common;
+use crate::common;
 use common::{TestServer, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

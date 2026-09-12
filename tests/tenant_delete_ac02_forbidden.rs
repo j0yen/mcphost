@@ -3,7 +3,7 @@
 //! `admin.tenant_delete_by_prefix`, Then the call returns `forbidden` and
 //! nothing changes.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 use serde_json::json;
 

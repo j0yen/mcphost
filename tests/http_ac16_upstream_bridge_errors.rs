@@ -8,7 +8,7 @@
 //! rather than reimplementing it, since a compiled `upstream` spec runs
 //! through the exact same `call()` path.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, http_kind_registry, signup};
 use serde_json::json;
 use std::time::Duration;

@@ -2,7 +2,7 @@
 //! calls `billing.checkout` again for the same plan, Then the same `url`
 //! is returned and the fake client received no second create.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 use mcphost::billing::{BillingConfig, FakeBillingClient};
 use serde_json::json;

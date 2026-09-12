@@ -1,7 +1,7 @@
 //! AC10 (P0) — Given the admin `/healthz`, When read after AC1 and AC2,
 //! Then `events_received_1h` >= 1 and `events_rejected_1h` >= 1.
 
-mod common;
+use crate::common;
 use common::{signup, ADMIN_KEY};
 use serde_json::json;
 

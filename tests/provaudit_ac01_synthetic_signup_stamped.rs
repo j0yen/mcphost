@@ -4,7 +4,7 @@
 //! `origin = synthetic` with the run-id in `origin_detail` (not just the
 //! literal word "synthetic").
 
-mod common;
+use crate::common;
 use common::TestServer;
 use rusqlite::params;
 use serde_json::json;

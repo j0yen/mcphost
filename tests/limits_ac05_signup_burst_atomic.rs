@@ -12,7 +12,7 @@
 //! (`tokio::spawn`, not a sequential loop like `ac09_signup_rate_limit.rs`)
 //! specifically to exercise that race.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer};
 use serde_json::json;
 

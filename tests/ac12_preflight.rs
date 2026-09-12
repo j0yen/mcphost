@@ -21,7 +21,7 @@
 //!    asserting further -- the in-process half above always runs and
 //!    always asserts regardless, so this file is never `#[ignore]`d.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer};
 use serde_json::json;
 use std::io::Read;

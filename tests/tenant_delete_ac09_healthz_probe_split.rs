@@ -3,7 +3,7 @@
 //! fetched, Then it reports `tenants_probe` and `tenants_total` such that
 //! `tenants_total - tenants_probe` equals the real count.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, TestServer, signup};
 
 // PRD-mcphost-healthz-minimal: `tenants_probe`/`tenants_total` moved behind

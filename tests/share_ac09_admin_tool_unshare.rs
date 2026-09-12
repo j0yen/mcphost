@@ -2,7 +2,7 @@
 //! the tool is private and the owner's `host.tool_list` shows
 //! `visibility: private, unshared_by: admin`.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

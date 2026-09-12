@@ -3,7 +3,7 @@
 //! durations, and `admin.usage` with the admin key reports the same under
 //! that tenant and tool.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

@@ -1,7 +1,7 @@
 //! AC6 (P1) -- Given a published tool, When `tools/list` is read, Then its
 //! metadata includes `kind`.
 
-mod common;
+use crate::common;
 use common::{TestServer, signup};
 use mcphost::kinds::KindRegistry;
 use serde_json::json;

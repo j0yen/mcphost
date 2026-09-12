@@ -9,7 +9,7 @@
 //! the JSON-RPC `_meta` object still negotiates 2026-07-28 statelessly)
 //! to reach the application-level mismatch-detection path this AC tests.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

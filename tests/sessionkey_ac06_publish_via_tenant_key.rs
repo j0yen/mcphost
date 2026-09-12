@@ -4,7 +4,7 @@
 //! is published under that tenant's namespace and `host.tool_list` with the
 //! same key returns it.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

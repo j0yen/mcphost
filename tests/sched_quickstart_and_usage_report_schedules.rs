@@ -3,7 +3,7 @@
 //! `schedules_max` and `schedule_min_interval_s`, and `host.usage` counts
 //! scheduled runs under a `scheduled` block.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, signup_and_make_pro};
 use serde_json::json;
 use std::time::{Duration, Instant};

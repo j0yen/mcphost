@@ -4,7 +4,7 @@
 //! `billing_events` row exists with `mode: test`, and a second POST of the
 //! same event changes nothing and returns 200.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 use mcphost::billing::{BillingConfig, FakeBillingClient, sign_for_test};
 use serde_json::json;

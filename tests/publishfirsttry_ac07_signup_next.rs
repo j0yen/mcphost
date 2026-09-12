@@ -1,7 +1,7 @@
 //! P1 AC7 -- Given `signup`, When it succeeds, Then the result carries
 //! `next: "host.quickstart"`.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured};
 use serde_json::json;
 

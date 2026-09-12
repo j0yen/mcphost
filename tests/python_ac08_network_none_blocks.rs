@@ -2,7 +2,7 @@
 //! a public host, When called, Then the connection fails inside the
 //! sandbox and the result is `tool_exception`, not a successful call.
 
-mod common;
+use crate::common;
 use common::{TestServer, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

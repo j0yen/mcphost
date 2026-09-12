@@ -1,4 +1,5 @@
 [package]
+autotests = false  # gen-test-suites.sh: explicit [[test]] suites below
 name = "mcphost"
 version = "0.44.1"
 edition = "2024"
@@ -73,3 +74,31 @@ wiremock = "0.6"
 # the lib crate integration tests (`tests/*.rs`) link against, without
 # leaking it into `default` for ordinary consumers/binaries.
 mcphost = { path = ".", features = ["test-support"] }
+
+# BEGIN gen-test-suites.sh generated suites -- do not edit by hand
+
+[[test]]
+name = "suite_core_01"
+path = "tests/suite_core_01.rs"
+
+[[test]]
+name = "suite_core_02"
+path = "tests/suite_core_02.rs"
+
+[[test]]
+name = "suite_core_03"
+path = "tests/suite_core_03.rs"
+
+[[test]]
+name = "suite_core_04"
+path = "tests/suite_core_04.rs"
+
+[[test]]
+name = "suite_sandbox_01"
+path = "tests/suite_sandbox_01.rs"
+
+[[test]]
+name = "suite_sandbox_02"
+path = "tests/suite_sandbox_02.rs"
+
+# END gen-test-suites.sh generated suites

@@ -11,8 +11,11 @@
 //! the measurement. `#[ignore]`d like `ac11_load_smoke.rs` -- p95 under a
 //! fixed millisecond bound is hardware-dependent, so it must not fail the
 //! `cargo test --release` gate on an off-reference box; run it explicitly
-//! with `cargo test --release --test http_ac10_concurrency_overhead --
-//! --ignored --nocapture`.
+//! with `cargo test --release --test suite_core_02
+//! http_ac10_concurrency_overhead:: -- --ignored --nocapture`
+//! (PRD-mcphost-test-suite-consolidation: this file is `#[path]`-included
+//! into `tests/suite_core_02.rs`, so `--test` now names that suite binary
+//! and the module-qualified filter narrows it to this file).
 
 use std::sync::Arc;
 use std::time::Instant;

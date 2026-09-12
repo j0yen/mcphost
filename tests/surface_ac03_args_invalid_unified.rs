@@ -8,7 +8,7 @@
 //! `host.tool_publish` with no `name`) now emits `args_invalid` too, the
 //! same code the `args_schema` pre-check already used.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 use serde_json::json;
 use std::fs;

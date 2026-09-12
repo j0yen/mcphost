@@ -3,7 +3,7 @@
 //! `limit.name: calls_per_day`, and a `resets_at` at the next UTC
 //! midnight, and no `calls` row with `ok = 1` is written.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 use serde_json::json;
 

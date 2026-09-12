@@ -5,7 +5,7 @@
 //! python-kind publishes are currently rejected with `sandbox_unavailable`
 //! on this host.
 
-mod common;
+use crate::common;
 use common::{fake_interpreter_failing, python_kind_registry_with_selftest, signup};
 use mcphost::sandbox;
 use serde_json::json;

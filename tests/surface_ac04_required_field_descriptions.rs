@@ -8,7 +8,7 @@
 //! target) -- not `admin.*`, an operator-only surface this PRD never
 //! touches.
 
-mod common;
+use crate::common;
 use common::{TempDataDir, TestServer, all_kinds_registry, signup};
 use serde_json::Value;
 

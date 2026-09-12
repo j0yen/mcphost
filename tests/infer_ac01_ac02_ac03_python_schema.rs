@@ -4,7 +4,7 @@
 //! shows `city` as required and `units` as optional, and a call supplying
 //! only `city` succeeds.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

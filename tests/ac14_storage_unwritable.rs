@@ -11,7 +11,7 @@
 //! make a connection reject writes with a real `SQLITE_READONLY` error,
 //! which is what actually exercises the `Storage` mapping path.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, signup};
 use reqwest::StatusCode;
 use serde_json::json;

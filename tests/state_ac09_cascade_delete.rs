@@ -6,7 +6,7 @@
 //! migration 0005 already relies on for `tools`/`secrets`/etc -- this test
 //! is that same shape, applied to the new tables.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, signup};
 use serde_json::json;
 

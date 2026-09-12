@@ -7,7 +7,7 @@
 //! proof of the PRD's whole premise: one connection, static headers,
 //! signup to first call, no reconnect.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured};
 use serde_json::json;
 

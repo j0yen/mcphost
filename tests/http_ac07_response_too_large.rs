@@ -1,7 +1,7 @@
 //! AC7 — Given an upstream that returns 5 MiB, When called, Then the tool
 //! error is `response_too_large` and the host read no more than 1 MiB.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, http_kind_registry, signup};
 use serde_json::json;
 use wiremock::matchers::method;

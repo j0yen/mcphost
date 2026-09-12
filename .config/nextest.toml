@@ -1,0 +1,14 @@
+# nextest.toml -- PRD-mcphost-test-suite-consolidation P1 requirement 57.
+#
+# JUnit output with per-test timing, so a later gate-phase-timing PRD can
+# split the `gate` phase into per-test time without re-instrumenting
+# anything here. `store-success-output = false` keeps the JUnit file from
+# growing unbounded with captured stdout for the (overwhelming majority of)
+# passing tests; failures still carry their output for debugging.
+[store]
+dir = "target/nextest"
+
+[profile.default.junit]
+path = "junit.xml"
+store-success-output = false
+store-failure-output = true

@@ -11,7 +11,7 @@
 //! host-wide cap is never contended by this test (at most 4 of A's calls
 //! and 1 of B's are ever in flight together, well under 20).
 
-mod common;
+use crate::common;
 use common::{TestServer, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

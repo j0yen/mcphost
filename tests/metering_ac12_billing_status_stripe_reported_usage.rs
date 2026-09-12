@@ -2,7 +2,7 @@
 //! runs with the fake returning an accepted-usage total, Then the response
 //! includes that total labeled as Stripe-reported.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, record_ok_calls, signup, signup_and_make_pro};
 use mcphost::billing::{BillingConfig, FakeBillingClient};
 use serde_json::json;

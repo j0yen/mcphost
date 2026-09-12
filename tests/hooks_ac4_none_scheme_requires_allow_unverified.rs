@@ -3,7 +3,7 @@
 //! triggers need the flag; With the flag, `host.trigger.list` shows
 //! `unverified: true`.
 
-mod common;
+use crate::common;
 use common::{extract_structured, signup};
 use serde_json::json;
 

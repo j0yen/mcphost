@@ -19,7 +19,7 @@
 //! (it would lease and finalize `slow`'s fabricated run before the
 //! overlap check ever reads it back).
 
-mod common;
+use crate::common;
 use mcphost::db::Db;
 use mcphost::kinds::KindRegistry;
 use mcphost::secrets::SecretBox;

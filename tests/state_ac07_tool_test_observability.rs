@@ -16,7 +16,7 @@
 //! means unbilled and unlogged, not simulated), and the `state_write` log
 //! line format on a real published call to the same tool afterward.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

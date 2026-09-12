@@ -2,7 +2,7 @@
 //! `tools/list` and `tools/call` on `A.hello`, Then B does not see it
 //! listed and the call returns a JSON-RPC error, not a result.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 use serde_json::json;
 

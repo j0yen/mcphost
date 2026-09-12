@@ -4,7 +4,7 @@
 //! key, Then all of those rows are gone, the result reports the counts,
 //! and `/healthz` `tenants_total` and `tools_total` drop accordingly.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

@@ -2,7 +2,7 @@
 //! "continue"` on step two, When step two fails, Then step three runs and
 //! the parent ends `done` with `failed_steps: [2]`.
 
-mod common;
+use crate::common;
 use common::{TestServer, chain_kind_registry, publish, signup};
 use serde_json::json;
 

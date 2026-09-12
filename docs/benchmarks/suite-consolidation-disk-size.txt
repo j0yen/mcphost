@@ -1,0 +1,27 @@
+PRD-mcphost-test-suite-consolidation AC5 (P0) — target/debug/deps size after
+a clean `cargo nextest run`.
+
+Measured on the build box (RedBaron), isolated CARGO_TARGET_DIR, immediately
+after the same clean `cargo clean` + `cargo nextest run` cycle timed in
+suite-consolidation-wall-time.txt (this PRD's 8-binary consolidated layout):
+
+target/debug/deps = 3,750,657,473 bytes (3.5 GiB / 3.75 GB)
+
+Budget: 5 GB. Comfortably under.
+
+For comparison, a clean build of the pre-change 289-top-level-file layout
+(one test binary per tests/*.rs file, parent commit 844fc7c) on the same
+box, same dependency set:
+
+target/debug/deps = 78 GB
+
+(roughly 289 x ~270 MB, each binary linking the full crate + its 41
+dependencies independently — the exact mechanism this PRD removes; the
+`~80 GB` figure in the PRD's own problem statement was an inference from
+binary count x size, this is the same layout measured directly). 78 GB / 3.5
+GB is a ~22x reduction, well past the AC5's own 5 GB budget line, not just
+barely under it.
+
+Re-run and update this file's numbers together with
+tests/suite_ac5_disk_size_budget.rs's doc comment if the area table or
+dependency set changes materially.

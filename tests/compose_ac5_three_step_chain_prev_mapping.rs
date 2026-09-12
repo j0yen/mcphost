@@ -8,7 +8,7 @@
 //! doc) rather than `host.runs.list`; "the result is step three's result"
 //! is checked directly.
 
-mod common;
+use crate::common;
 use common::{TestServer, chain_kind_registry, publish, signup};
 use serde_json::json;
 

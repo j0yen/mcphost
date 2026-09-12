@@ -4,7 +4,7 @@
 //! header, the tool result contains the upstream JSON, and the secret value
 //! appears in no log line, result or error.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, http_kind_registry, signup};
 use serde_json::json;
 use wiremock::matchers::{header, method, path};

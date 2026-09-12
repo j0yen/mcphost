@@ -16,7 +16,7 @@
 //! TABLE` lands. `synthetic_ac01_migration_null_default.rs` established
 //! this "exercise the migration path directly" pattern for 0008.
 
-mod common;
+use crate::common;
 use common::TempDataDir;
 use mcphost::auth::{generate_key, generate_namespace, hash_key};
 use mcphost::db::Db;

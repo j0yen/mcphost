@@ -11,7 +11,7 @@
 //! fails each kind's own required-field validation first, the same as
 //! `host.tool_publish`, and never reaches this report).
 
-mod common;
+use crate::common;
 use common::{TestServer, signup};
 use mcphost::kinds::KindRegistry;
 use serde_json::json;

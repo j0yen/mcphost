@@ -2,7 +2,7 @@
 //! read, Then it states how kind is chosen and how to request one
 //! explicitly.
 
-mod common;
+use crate::common;
 use common::TestServer;
 use mcphost::kinds::KindRegistry;
 

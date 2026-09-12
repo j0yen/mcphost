@@ -8,7 +8,7 @@
 //! first-class way to make writes fail without an unreliable `chmod` on an
 //! already-open fd.
 
-mod common;
+use crate::common;
 use common::TestServer;
 use serde_json::json;
 

@@ -12,7 +12,7 @@
 //! When it calls `tools/list`, Then the result contains a numeric `ttlMs`
 //! and `cacheScope: "private"` and the same anonymous-shaped tool set.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer};
 use serde_json::Value;
 

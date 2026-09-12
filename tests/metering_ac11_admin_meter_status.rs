@@ -2,7 +2,7 @@
 //! `admin.meter_status`, Then it reports last batch span, current lag, and
 //! per-tenant emitted counts for the month.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, record_ok_calls, signup_and_make_pro};
 use mcphost::billing::FakeBillingClient;
 use mcphost::metering;

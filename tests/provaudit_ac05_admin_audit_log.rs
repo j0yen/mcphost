@@ -3,7 +3,7 @@
 //! `admin_audit` row exists with actor key-id, action, target, and
 //! timestamp, and the audit endpoint returns it.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

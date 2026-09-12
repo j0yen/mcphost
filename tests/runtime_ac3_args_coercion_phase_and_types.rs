@@ -9,7 +9,7 @@
 //! this AC names; there is no other place in the host where an argument's
 //! type is checked before the call is dispatched.
 
-mod common;
+use crate::common;
 use common::{TestServer, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

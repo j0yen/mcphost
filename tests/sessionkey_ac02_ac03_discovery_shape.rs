@@ -6,7 +6,7 @@
 //! inspected, Then its input schema declares an optional string property
 //! `tenant_key` and does not list it in `required`.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 
 #[tokio::test]

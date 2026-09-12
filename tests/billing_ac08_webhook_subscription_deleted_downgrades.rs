@@ -2,7 +2,7 @@
 //! `customer.subscription.deleted` arrives, Then the tenant's `plan` is
 //! `free`, a row is ledgered, and `billing.status` reports `plan: free`.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 use mcphost::billing::{BillingConfig, FakeBillingClient, sign_for_test};
 use serde_json::json;

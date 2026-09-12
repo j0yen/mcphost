@@ -3,7 +3,7 @@
 //! call counts each appear as `{external, synthetic}` and no field
 //! aggregates both under a "real" name.
 
-mod common;
+use crate::common;
 use common::ADMIN_KEY;
 use serde_json::json;
 

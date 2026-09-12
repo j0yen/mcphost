@@ -29,7 +29,7 @@
 //!   `ingestion_status` nested one level under `data` (the common REST
 //!   monitoring-endpoint shape this persona's task targets).
 
-mod common;
+use crate::common;
 use common::{
     McpClient, TestServer, extract_structured, http_kind_registry, poll_until_ready,
     python_kind_registry, signup,

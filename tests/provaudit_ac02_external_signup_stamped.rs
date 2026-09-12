@@ -3,7 +3,7 @@
 //! lands, Then `origin = external` and `/healthz`'s `tenants.external`
 //! count increments by exactly 1.
 
-mod common;
+use crate::common;
 use common::ADMIN_KEY;
 use serde_json::json;
 

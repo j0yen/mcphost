@@ -3,7 +3,7 @@
 //! Then the tenant has `source_class = loopback` and `synthetic =
 //! harness:unstamped`, and `/healthz tenants_real` does not count it.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, TestServer, signup};
 
 async fn healthz(base_url: &str) -> serde_json::Value {

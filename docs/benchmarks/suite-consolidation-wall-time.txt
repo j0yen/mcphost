@@ -1,0 +1,51 @@
+PRD-mcphost-test-suite-consolidation AC6 (P0, non-functional) — full nextest
+run wall time, before vs after, at the migration commit.
+
+Methodology: `cargo clean` (isolated CARGO_TARGET_DIR per checkout) followed
+by a full `cargo nextest run` to completion, measured start-to-green by wall
+clock (RedBaron, 16 vCPU, cargo-budget CARGO_BUILD_JOBS=8). "Before" is the
+289-top-level-file layout (one test binary per tests/*.rs file, this
+migration's parent commit, 844fc7c); "after" is this PRD's 8-binary
+consolidated layout (autotests = false, tests/suite_<core|sandbox>_NN.rs).
+Both measured against a genuinely empty target dir, not an incremental
+rebuild, since the PRD's whole thesis is the relink cost of 289 vs 8
+binaries and only a clean build pays that cost honestly.
+
+"Before" was measured across three chained `cargo nextest run` invocations
+(each internally time-boxed) against the same clean target dir with no gap
+between them — cargo's own incremental-artifact cache carried the
+in-progress compile forward across the boundary, so the sum below is the
+same continuous cold build+run a single uninterrupted invocation would have
+taken:
+  clean-done:            2026-09-12T18:28:25Z
+  invocation 1 (timeout): 2026-09-12T18:37:55Z  (the ~260 dependency crates
+                          finished; had just reached "Compiling mcphost"
+                          -- the step that links all 289 test binaries --
+                          when killed by an internal 570s time-box, not a
+                          test failure)
+  invocation 2 (timeout): 2026-09-12T18:47:46Z  (finished linking; cargo
+                          itself reports "Finished `test` profile ... in
+                          7m 19s" for this invocation's own remaining work)
+  invocation 3 (green):   2026-09-12T18:51:50Z  (594 tests run, 594 passed,
+                          2 skipped; nextest's own run-phase summary:
+                          131.620s)
+  total clean-to-green: 1405s (23m25s)
+
+"After" (this PRD's layout) completed in one uninterrupted invocation:
+  clean-done: 2026-09-12T18:23:58Z
+  green:      2026-09-12T18:26:17Z
+  total clean-to-green: 139s (cargo's own "Finished ... in 25.62s" for
+  compile + nextest's own run-phase summary of 112.553s; 601 tests run,
+  601 passed, 4 skipped — the 601 includes this PRD's own 8 new AC1-AC9
+  selftest files, none of which existed in the "before" layout)
+
+before_seconds: 1405
+after_seconds: 139
+
+Ratio: 139 / 1405 = 9.9% of before, against the ≤50% P0 budget — the
+overwhelming majority of the "before" wall time is `rustc`/linker cost
+paid 289 times for one crate + its 41 dependencies; consolidating to 8
+`[[test]]` binaries removes 283 of those 289 link steps and the 268
+redundant `mod common;` compiles along with them. Re-run and update both
+this file and tests/suite_ac6_wall_time_budget.rs's consumer together if
+the area table, dependency set, or CI hardware changes materially.

@@ -1,7 +1,7 @@
 //! AC3 — Given `geo` shared to group `team` containing C but not B, When B
 //! calls, Then `tool_not_found`; When C calls, Then success.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

@@ -5,7 +5,7 @@
 //! `ready: true`, `/healthz` reports `sandbox_ready: true` without a
 //! restart, and a subsequent python-kind publish succeeds.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, fake_interpreter_failing, python_kind_registry_with_selftest, signup};
 use mcphost::sandbox;
 use serde_json::json;

@@ -2,7 +2,7 @@
 //! dry-run descriptions are read, Then each is at most 160 characters and
 //! contains `host.quickstart`.
 
-mod common;
+use crate::common;
 use common::{TempDataDir, TestServer, all_kinds_registry, signup};
 use serde_json::json;
 

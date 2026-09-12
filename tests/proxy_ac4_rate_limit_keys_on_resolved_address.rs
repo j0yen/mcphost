@@ -5,7 +5,7 @@
 //! Then the third succeeds and a fourth from `203.0.113.7` is
 //! rate-limited.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer};
 use serde_json::json;
 

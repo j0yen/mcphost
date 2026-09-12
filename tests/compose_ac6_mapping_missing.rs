@@ -5,7 +5,7 @@
 //! here -- no `runs` table yet, see `kinds::chain`'s module doc; AC5
 //! already covers a step's own successful dispatch).
 
-mod common;
+use crate::common;
 use common::{TestServer, chain_kind_registry, publish, signup};
 use serde_json::json;
 

@@ -7,7 +7,7 @@
 //! own `field`/`expected`/`example`, and the corrected spec (both fields
 //! fixed) is accepted on resubmission.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, http_kind_registry, signup};
 use serde_json::json;
 

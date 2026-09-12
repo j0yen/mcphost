@@ -3,7 +3,7 @@
 //! `headers`, `got` = `array`, `expected` = an object of header names to
 //! values.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, http_kind_registry, signup};
 use serde_json::json;
 

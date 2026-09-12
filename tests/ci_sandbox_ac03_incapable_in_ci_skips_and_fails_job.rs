@@ -17,7 +17,7 @@
 //! was written to remove. So this test asserts the workflow contains the
 //! constant's *value*, and that every skip line in `tests/` is built from it.
 
-mod ci_sandbox_support;
+use crate::ci_sandbox_support;
 use ci_sandbox_support as support;
 
 use mcphost::sandbox::{USERNS_SKIP_MARKER, UsernsDecision, decide_userns};
@@ -34,7 +34,16 @@ fn incapable_in_ci_skips_with_the_capability_reason() {
         "an incapable box inside CI must skip cleanly"
     );
 
-    let out = support::run_guard_child("incapable_in_ci_skips_with_the_capability_reason", false, true);
+    // PRD-mcphost-test-suite-consolidation: module-qualified name, see the
+    // comment in ci_sandbox_ac02_capable_env_never_skips.rs.
+    let out = support::run_guard_child(
+        &format!(
+            "{}::incapable_in_ci_skips_with_the_capability_reason",
+            support::strip_crate_root(module_path!())
+        ),
+        false,
+        true,
+    );
     let stdout = support::stdout_of(&out);
     assert!(
         out.status.success(),

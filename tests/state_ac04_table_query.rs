@@ -5,7 +5,7 @@
 //! where="last_value > 0.5", order_by="last_value desc", limit=2)` runs,
 //! Then exactly the two matching rows return in order.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

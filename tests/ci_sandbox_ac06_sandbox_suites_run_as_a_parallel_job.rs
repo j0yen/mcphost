@@ -16,7 +16,7 @@
 //! test nothing, which would be a worse false green than the one this PRD
 //! started from.
 
-mod ci_sandbox_support;
+use crate::ci_sandbox_support;
 use ci_sandbox_support as support;
 
 #[test]
@@ -61,9 +61,10 @@ fn the_sandbox_suites_run_as_their_own_job_in_parallel_with_the_rest() {
 
 #[test]
 fn the_partition_is_total_and_disjoint_over_every_test_target() {
-    // The script's own `check` is the authority (it also refuses an explicit
-    // `[[test]]` target in Cargo.toml, which would break the tests/*.rs ==
-    // targets assumption the split rests on).
+    // The script's own `check` is the authority (it also verifies
+    // gen-test-suites.sh's suites aren't drifted/incomplete, which is what
+    // the tests/*.rs == suite-membership assumption below rests on --
+    // PRD-mcphost-test-suite-consolidation).
     let checked = support::partition(&["check"]);
     assert!(
         checked.contains("ok"),
@@ -79,27 +80,79 @@ fn the_partition_is_total_and_disjoint_over_every_test_target() {
         .map(str::to_string)
         .collect();
 
+    // The two lists name SUITE binaries now (`suite_core_NN`/
+    // `suite_sandbox_NN`), not individual `tests/*.rs` files -- those are
+    // trivially disjoint by construction (a suite is only ever core or
+    // sandbox). What AC6 actually needs held is that every real member FILE
+    // a suite `#[path]`-includes is covered by exactly one of the two
+    // partitions, so that's what's asserted below, one level down from the
+    // suite name.
     let mut union: Vec<String> = sandbox.iter().chain(core.iter()).cloned().collect();
     union.sort();
     let mut deduped = union.clone();
     deduped.dedup();
-    assert_eq!(union, deduped, "a test target is in both partitions");
+    assert_eq!(union, deduped, "a suite is listed in both partitions");
 
-    let mut on_disk: Vec<String> = std::fs::read_dir(support::repo_root().join("tests"))
+    let repo_root = support::repo_root();
+    let member_files_of = |suites: &[String]| -> Vec<String> {
+        let mut out = Vec::new();
+        for suite in suites {
+            let path = repo_root.join("tests").join(format!("{suite}.rs"));
+            let content = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+            for line in content.lines() {
+                let line = line.trim();
+                if let Some(rest) = line.strip_prefix(r#"#[path = ""#) {
+                    if let Some(name) = rest.strip_suffix(r#".rs"]"#) {
+                        out.push(name.to_string());
+                    }
+                }
+            }
+        }
+        out
+    };
+
+    let mut sandbox_members = member_files_of(&sandbox);
+    let mut core_members = member_files_of(&core);
+    sandbox_members.sort();
+    core_members.sort();
+
+    let mut member_union: Vec<String> = sandbox_members.iter().chain(core_members.iter()).cloned().collect();
+    member_union.sort();
+    let mut member_deduped = member_union.clone();
+    member_deduped.dedup();
+    assert_eq!(
+        member_union, member_deduped,
+        "a tests/*.rs file is included by both a core and a sandbox suite"
+    );
+
+    // Exclude exactly the generator's OWN driver files (the suite binaries
+    // named in `sandbox`/`core` above, e.g. `suite_core_01`), not every file
+    // that happens to start with `suite_` -- a `suite_ac*` selftest fixture
+    // (this PRD's own AC9 cases) is a real source file the generator
+    // includes like any other, and a prefix-based exclusion here would
+    // silently drop it from `on_disk`, making it look uncovered.
+    let mut on_disk: Vec<String> = std::fs::read_dir(repo_root.join("tests"))
         .expect("read tests/")
         .flatten()
         .filter_map(|e| {
             let p = e.path();
-            (p.extension().and_then(|x| x.to_str()) == Some("rs"))
-                .then(|| p.file_stem().unwrap().to_string_lossy().into_owned())
+            let stem = p.file_stem()?.to_string_lossy().into_owned();
+            if p.extension().and_then(|x| x.to_str()) != Some("rs")
+                || sandbox.contains(&stem)
+                || core.contains(&stem)
+            {
+                return None;
+            }
+            Some(stem)
         })
         .collect();
     on_disk.sort();
 
     assert_eq!(
-        union, on_disk,
-        "the two CI jobs together must run every tests/*.rs target -- a target \
-         in neither partition is silently untested in CI"
+        member_union, on_disk,
+        "the two CI jobs together must run every tests/*.rs file -- a file \
+         included by neither partition's suites is silently untested in CI"
     );
 }
 

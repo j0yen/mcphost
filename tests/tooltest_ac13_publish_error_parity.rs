@@ -3,7 +3,7 @@
 //! detail fields as the `tool_test` (`host.spec_test`) response, so a
 //! failed publish teaches as much as a failed test.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

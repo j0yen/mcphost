@@ -3,7 +3,7 @@
 //! the same outbound path and restrictions as a published `http` tool, and
 //! the response carries status code and a bounded body excerpt.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, http_kind_registry, signup};
 use serde_json::json;
 use wiremock::matchers::method;

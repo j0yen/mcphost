@@ -3,7 +3,7 @@
 //! When it completes, Then the `signup_events` row for it stores the
 //! forwarded address.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer};
 use serde_json::json;
 

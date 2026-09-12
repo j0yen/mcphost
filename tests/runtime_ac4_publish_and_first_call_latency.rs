@@ -23,7 +23,7 @@
 //! Open Questions: "if the dominant term is hardware-bound the receipt
 //! says so and the target is revisited rather than gamed."
 
-mod common;
+use crate::common;
 use common::{TestServer, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

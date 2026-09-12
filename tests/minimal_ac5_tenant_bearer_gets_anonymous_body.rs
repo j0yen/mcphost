@@ -2,7 +2,7 @@
 //! AC5 (P1) — Given a valid tenant key, When it is presented on `/healthz`,
 //! Then the anonymous body is returned (tenant keys are not admin).
 
-mod common;
+use crate::common;
 use common::{TestServer, signup};
 use serde_json::json;
 

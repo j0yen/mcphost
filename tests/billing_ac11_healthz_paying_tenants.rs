@@ -1,7 +1,7 @@
 //! AC11 — Given `/healthz` after two tenants are `pro`, When it is read,
 //! Then `paying_tenants: 2` and `billing_mode` reflects the key prefix.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, signup};
 use mcphost::billing::{BillingConfig, FakeBillingClient};
 use serde_json::json;

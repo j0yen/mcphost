@@ -2,7 +2,7 @@
 //! spec over 64 KiB, When `host.tool_publish` runs, Then each returns its
 //! distinct error code and nothing is written.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 use serde_json::json;
 

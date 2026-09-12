@@ -3,7 +3,7 @@
 //! tenant key sent to `admin.tenants`, Then the call is refused with
 //! `forbidden`.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, signup};
 use serde_json::json;
 

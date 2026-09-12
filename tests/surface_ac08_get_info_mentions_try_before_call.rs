@@ -3,7 +3,7 @@
 //! that reads instructions but not `host.quickstart` still finds the
 //! pointer to which dry-run tool fits its case.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer};
 
 #[tokio::test]

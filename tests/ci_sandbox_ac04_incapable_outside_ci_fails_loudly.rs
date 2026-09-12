@@ -10,7 +10,7 @@
 //! "no silent skip" is asserted as the absence of that line plus a non-zero
 //! exit, not as a source-text read.
 
-mod ci_sandbox_support;
+use crate::ci_sandbox_support;
 use ci_sandbox_support as support;
 
 use mcphost::sandbox::{UsernsDecision, decide_userns};
@@ -27,7 +27,16 @@ fn incapable_outside_ci_panics_instead_of_skipping() {
         "an incapable box outside CI must fail loudly, never skip"
     );
 
-    let out = support::run_guard_child("incapable_outside_ci_panics_instead_of_skipping", false, false);
+    // PRD-mcphost-test-suite-consolidation: module-qualified name, see the
+    // comment in ci_sandbox_ac02_capable_env_never_skips.rs.
+    let out = support::run_guard_child(
+        &format!(
+            "{}::incapable_outside_ci_panics_instead_of_skipping",
+            support::strip_crate_root(module_path!())
+        ),
+        false,
+        false,
+    );
     let stdout = support::stdout_of(&out);
     let stderr = support::stderr_of(&out);
 

@@ -5,7 +5,7 @@
 //! `http_ac01_secret_redaction.rs`, with the call coming from a second
 //! tenant across a public share instead of the owner itself.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, http_kind_registry, signup};
 use serde_json::json;
 use wiremock::matchers::{header, method, path};

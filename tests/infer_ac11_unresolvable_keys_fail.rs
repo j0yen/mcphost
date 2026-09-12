@@ -4,7 +4,7 @@
 //! `args_schema`, Then publish fails with a structured error naming what
 //! could not be inferred.
 
-mod common;
+use crate::common;
 use common::{TestServer, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

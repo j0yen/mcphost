@@ -4,7 +4,7 @@
 //! periodic recheck runs (a 1s interval in this test), Then within 3s
 //! `/healthz` reports `sandbox_ready: false` and the warm pool is empty.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, fake_interpreter_failing, poll_until_ready, signup};
 use mcphost::kinds::python::PythonKind;
 use mcphost::sandbox;

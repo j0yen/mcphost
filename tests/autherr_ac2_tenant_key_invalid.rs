@@ -3,7 +3,7 @@
 //! called, Then the error has `error_code` `tenant_key_invalid` and the
 //! message does not contain `t_notreal`.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer};
 use serde_json::json;
 

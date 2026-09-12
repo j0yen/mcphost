@@ -2,7 +2,7 @@
 //! exists with `free` and `pro` rows and `billing.plans` returns both with
 //! prices and quotas and `billing_mode: off`.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured};
 use mcphost::plans::PlanCatalog;
 use serde_json::json;

@@ -16,7 +16,7 @@
 //! deadline -- the whole point is proving the *real* 30s default gets
 //! overridden by a real 45s declaration.
 
-mod common;
+use crate::common;
 use common::{TestServer, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

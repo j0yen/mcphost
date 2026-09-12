@@ -4,7 +4,7 @@
 //! import-to-distribution map is installed and callable without the agent
 //! listing it (AC9).
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

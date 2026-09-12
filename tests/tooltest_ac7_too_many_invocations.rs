@@ -2,7 +2,7 @@
 //! invocations, When tested, Then it is refused with an error naming the
 //! limit, and zero invocations run.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

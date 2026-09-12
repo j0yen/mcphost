@@ -1,7 +1,7 @@
 //! AC5 (P0) — Given a free trigger receiving 40 events in a minute, When
 //! the 31st arrives, Then 429 events_rate_limited and no run.
 
-mod common;
+use crate::common;
 use common::{extract_structured, signup};
 use serde_json::json;
 

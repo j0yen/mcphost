@@ -2,7 +2,7 @@
 //! Then the redirect is not followed and the result reports the 3xx
 //! status.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, http_kind_registry, signup};
 use serde_json::json;
 use wiremock::matchers::method;

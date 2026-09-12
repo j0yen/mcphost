@@ -10,7 +10,7 @@
 //! that to Joe. "Verified" here is only ever the boolean
 //! `admin.tenant_verify_namespace` sets.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, signup};
 use serde_json::json;
 use wiremock::matchers::{method, path};

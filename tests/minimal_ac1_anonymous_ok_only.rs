@@ -4,7 +4,7 @@
 //! of paying_tenants/tenants_total/tools_total/billing_mode/sandbox_*/
 //! version appear.
 
-mod common;
+use crate::common;
 use common::TestServer;
 use serde_json::json;
 

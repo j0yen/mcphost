@@ -2,7 +2,7 @@
 //! When published, Then the error names `outputs.a` and says wildcards are
 //! unsupported.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, http_kind_registry, signup};
 use serde_json::json;
 

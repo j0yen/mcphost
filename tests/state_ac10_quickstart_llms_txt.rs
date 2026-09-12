@@ -3,7 +3,7 @@
 //! Then the quickstart has a state step and `llms.txt` lists every
 //! `host.state.*` tool.
 
-mod common;
+use crate::common;
 use common::{TestServer, all_kinds_registry, extract_structured, signup};
 use serde_json::json;
 

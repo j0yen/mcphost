@@ -10,7 +10,7 @@
 //! pre-auth, and `host.spec_test` only once authenticated -- exactly the
 //! set `mcphost::llms_txt::tenant_tool_names` builds.
 
-mod common;
+use crate::common;
 use common::{TempDataDir, TestServer, all_kinds_registry, signup};
 use std::collections::BTreeSet;
 

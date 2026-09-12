@@ -8,7 +8,7 @@
 //! test, an exact concurrency ceiling that refuses the Nth-plus-one caller
 //! immediately rather than queuing it, doesn't depend on which N.
 
-mod common;
+use crate::common;
 use common::{TestServer, poll_until_ready, python_kind_registry_with_concurrency, signup};
 use mcphost::sandbox;
 use serde_json::json;

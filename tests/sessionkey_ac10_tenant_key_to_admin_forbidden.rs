@@ -3,7 +3,7 @@
 //! `admin.*` tool, Then the call is forbidden and no admin action is
 //! performed.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

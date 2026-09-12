@@ -12,7 +12,7 @@
 //! result that includes `signup`, whose `inputSchema` declares the
 //! required property `name`.
 
-mod common;
+use crate::common;
 use common::TestServer;
 use serde_json::Value;
 

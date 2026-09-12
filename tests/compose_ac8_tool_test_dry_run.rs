@@ -7,7 +7,7 @@
 //! and `host.tool_test` would report that failure instead of succeeding --
 //! this call succeeding at all is itself proof no step executed.
 
-mod common;
+use crate::common;
 use common::{TestServer, chain_kind_registry, publish, signup};
 use serde_json::json;
 

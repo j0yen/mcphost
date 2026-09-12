@@ -2,7 +2,7 @@
 //! tenant includes the tenant's ledgered emitted-call count for the current
 //! month." A free tenant's `billing.status` carries no such field at all.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, record_ok_calls, signup, signup_and_make_pro};
 use mcphost::billing::FakeBillingClient;
 use mcphost::metering;

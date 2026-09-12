@@ -9,7 +9,7 @@
 //! is even looked up (`kinds::compose_call` checks the ceiling first) --
 //! `chain5` never needs to exist.
 
-mod common;
+use crate::common;
 use common::{TestServer, chain_kind_registry, publish, signup};
 use serde_json::json;
 

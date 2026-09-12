@@ -2,7 +2,7 @@
 //! is called, Then a new run starts with the same `event` args and
 //! `trigger_ref` naming the original.
 
-mod common;
+use crate::common;
 use common::{extract_structured, signup};
 use serde_json::json;
 use std::time::{Duration, Instant};

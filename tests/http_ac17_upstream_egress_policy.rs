@@ -7,7 +7,7 @@
 //! prove that's true for the `upstream` shape specifically, not just the
 //! hand-templated one.
 
-mod common;
+use crate::common;
 use common::{FixedLookup, McpClient, TestServer, http_kind_registry_strict, signup};
 use serde_json::json;
 use std::collections::HashMap;

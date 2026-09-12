@@ -14,7 +14,7 @@
 //! map form this PRD adds instead of the list form the envelope-contract
 //! PRD's own replay used.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, http_kind_registry, signup};
 use serde_json::json;
 use wiremock::matchers::method;

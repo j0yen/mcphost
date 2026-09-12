@@ -15,7 +15,7 @@
 //! exactly the shape a real tenant hits the quota through (accumulation
 //! across calls, not one oversized call).
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

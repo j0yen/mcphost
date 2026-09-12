@@ -1,7 +1,7 @@
 //! AC6 — Given a free owner with three public tools, When a fourth is
 //! shared, Then `share_quota_exceeded` names 3.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 use serde_json::json;
 

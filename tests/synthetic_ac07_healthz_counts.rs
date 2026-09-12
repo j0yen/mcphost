@@ -14,7 +14,7 @@
 //! always loopback) so the split is demonstrated correctly rather than
 //! vacuously.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, signup};
 use serde_json::json;
 

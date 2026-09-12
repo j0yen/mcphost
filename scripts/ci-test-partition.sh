@@ -1,62 +1,86 @@
 #!/usr/bin/env bash
-# ci-test-partition.sh -- split this crate's cargo test targets into the two
-# jobs `.github/workflows/ci.yml` runs in parallel.
+# ci-test-partition.sh -- split this crate's cargo test TARGETS (suite
+# binaries, since PRD-mcphost-test-suite-consolidation) into the two jobs
+# `.github/workflows/ci.yml` runs in parallel.
 #
 # PRD-mcphost-ci-sandbox-coverage AC6 (P1): once the sandbox suites actually
 # execute in CI instead of skipping, `cargo test --workspace` measured 313-336s
 # on the hosted runner -- over the PRD's own 300s budget. AC6 offers two ways
 # out; this is the second one ("the suites run as a parallel job").
 #
-# The partition is DERIVED, never hand-listed. A test target is `sandbox` iff
-# its source mentions the sandbox-execution surface (the capability guard or
-# `PythonKind`), because those are the targets that spawn a real `bwrap`/
-# `unshare` child and therefore need the `sandbox` job's userns grant. Any
-# other target is `core`.
+# The partition is DERIVED, never hand-listed, from per-FILE classification: a
+# `tests/*.rs` file is `sandbox` iff its source mentions the sandbox-execution
+# surface (the capability guard or `PythonKind`), because those are the files
+# that spawn a real `bwrap`/`unshare` child and therefore need the `sandbox`
+# job's userns grant. Any other file is `core`.
+#
+# PRD-mcphost-test-suite-consolidation (2026-09-12): `tests/*.rs` stopped
+# being cargo's unit of test-binary discovery -- `gen-test-suites.sh` groups
+# them into a handful of `tests/suite_<core|sandbox>_NN.rs` binaries
+# (`autotests = false` + explicit `[[test]]` entries in Cargo.toml), keyed by
+# filename-prefix area, SEPARATELY within each partition so no suite binary
+# ever mixes a sandbox-needing file with a core one (mixing would silently
+# hand a privileged capability requirement to the unprivileged `gate` job, or
+# vice versa). This script's unit of CI-job routing is therefore now the
+# SUITE BINARY (`suite_core_NN`/`suite_sandbox_NN`), not the individual file --
+# `classify()` (per-file) still exists and is now gen-test-suites.sh's own
+# source of truth too (via the `classify-file` subcommand below), so the two
+# scripts can never disagree about which partition a file belongs to.
 #
 # Deriving it matters in one direction only, and the asymmetry is deliberate:
-#   * over-inclusion (a target that merely NAMES `PythonKind` in a comment
-#     lands in the sandbox job) is harmless -- it just runs somewhere that
-#     happens to have more capability than it needs;
-#   * under-inclusion (a genuinely userns-dependent target left in `core`)
+#   * over-inclusion (a file that merely NAMES `PythonKind` in a comment
+#     lands in the sandbox partition) is harmless -- it just runs somewhere
+#     that happens to have more capability than it needs;
+#   * under-inclusion (a genuinely userns-dependent file left in `core`)
 #     would skip silently under `$CI` and re-create the exact false-green this
 #     PRD exists to remove -- so BOTH jobs assert zero capability-skips in
-#     their logs. A misfiled target turns the core job red, it never passes
+#     their logs. A misfiled file turns the core job red, it never passes
 #     vacuously.
 #
-# `check` proves the partition is total and disjoint over `tests/*.rs`, and
-# that `Cargo.toml` declares no explicit `[[test]]` target (which would break
-# the "every tests/*.rs is exactly one integration target" assumption cargo's
-# auto-discovery gives us).
+# `check` proves: gen-test-suites.sh's own suites are not drifted/incomplete
+# (delegated -- see that script for the file-level total/disjoint proof over
+# `tests/*.rs`), that Cargo.toml is in the post-consolidation shape
+# (`autotests = false` + explicit `[[test]]`s, the OPPOSITE of the pre-PRD
+# assumption this script used to assert), that every suite's membership
+# agrees with `classify()` (no sandbox file inside a core suite or vice
+# versa), and that the sandbox shard split is total+disjoint over the sandbox
+# SUITE list.
 #
 # Doctests are NOT in either list: cargo rejects `--doc` combined with any
 # other target selector, so the workflow runs `cargo test --doc` as its own
 # step in the core job.
 #
 # Usage:
-#   ci-test-partition.sh sandbox   # --lib --test a --test b ...
-#   ci-test-partition.sh core      # --bins --test x --test y ...
+#   ci-test-partition.sh sandbox   # --lib --test suite_sandbox_01 ...
+#   ci-test-partition.sh core      # --bins --test suite_core_01 ...
 #   ci-test-partition.sh sandbox-shard <n> <of>   # this shard's slice of the
-#                                                  # sandbox partition, same
+#                                                  # sandbox suite list, same
 #                                                  # flag shape as `sandbox`
-#   ci-test-partition.sh list <sandbox|core>   # bare target names, one per line
+#   ci-test-partition.sh list <sandbox|core>   # bare SUITE names, one per line
+#   ci-test-partition.sh classify-file <path>  # "sandbox" or "core" for one file
 #   ci-test-partition.sh check     # exit 0 iff total, disjoint, and unshadowed
 #
 # AC6 follow-up: even run as its own job, the sandbox partition alone measured
 # 313s (v0.13.3) against the 300s budget -- one job wasn't enough, so the
 # sandbox job is further split into SANDBOX_SHARDS matrix jobs, each running
-# `sandbox-shard <n> <SANDBOX_SHARDS>`. Targets are assigned to shards by
-# `index-in-the-sorted-list mod SANDBOX_SHARDS`, which interleaves the (mostly
-# alphabetically-adjacent, individually slow) `python_ac*` targets across
-# shards rather than clustering them in one. `--lib` (the sandbox-surface unit
-# tests) only ships in shard 1, so it runs once per CI run, not once per shard.
+# `sandbox-shard <n> <SANDBOX_SHARDS>`. Suites are assigned to shards by
+# `index-in-the-sorted-suite-list mod SANDBOX_SHARDS`. `--lib` (the
+# sandbox-surface unit tests) only ships in shard 1, so it runs once per CI
+# run, not once per shard.
+#
+# SANDBOX_SHARDS dropped from 3 to 2 with the consolidation PRD: consolidation
+# groups the (now capped-at-60-files-per-suite) sandbox files into exactly 2
+# suite binaries (see gen-test-suites.sh's MAX_PER_SUITE), and `check` below
+# refuses a shard count that would leave any shard without a suite to run
+# (same rule as before, just measured in suites instead of files). If a
+# future `tests/` growth pushes gen-test-suites.sh past 2 sandbox suites,
+# widen SANDBOX_SHARDS here AND the matrix in `.github/workflows/ci.yml` to
+# match -- this is a manual sync, same as it was pre-consolidation.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Single source of truth for how many matrix jobs `.github/workflows/ci.yml`
-# fans the sandbox partition out to; `check` verifies this many shards are
-# still total+disjoint over the sandbox partition.
-SANDBOX_SHARDS=3
+SANDBOX_SHARDS=2
 
 # The sandbox-execution surface. `supports_user_namespaces` and
 # `require_user_namespaces_or_ci_skip` are the capability guard itself;
@@ -83,11 +107,14 @@ classify() { # <file> -> prints "sandbox" or "core"
   if grep -qE "$SANDBOX_SURFACE" "$1"; then echo sandbox; else echo core; fi
 }
 
-targets() { # <sandbox|core> -> bare target names, one per line, sorted
+# suite_names <sandbox|core> -> bare suite binary names, one per line, sorted
+# (tests/suite_core_NN.rs / tests/suite_sandbox_NN.rs, as written by
+# gen-test-suites.sh -- never tests/*.rs member files anymore).
+suite_names() {
   local want="$1" f
-  for f in "$REPO_ROOT"/tests/*.rs; do
+  for f in "$REPO_ROOT"/tests/suite_"$want"_*.rs; do
     [ -e "$f" ] || continue
-    if [ "$(classify "$f")" = "$want" ]; then basename "$f" .rs; fi
+    basename "$f" .rs
   done | LC_ALL=C sort
 }
 
@@ -101,7 +128,7 @@ emit() { # <sandbox|core> -> the cargo target-selection flags for that job
   while read -r name; do
     [ -n "$name" ] || continue
     printf -- ' --test %s' "$name"
-  done < <(targets "$want")
+  done < <(suite_names "$want")
   printf '\n'
 }
 
@@ -119,7 +146,7 @@ validate_shard_args() { # <idx> <count> -> exit 0 iff both are ints and 1<=idx<=
   fi
 }
 
-shard_names() { # <sandbox|core> <index, 1-based> <count> -> bare target names, one per line
+shard_names() { # <sandbox|core> <index, 1-based> <count> -> bare suite names, one per line
   local want="$1" idx="$2" count="$3" i=0 name
   validate_shard_args "$idx" "$count" || return "$?"
   while read -r name; do
@@ -128,7 +155,7 @@ shard_names() { # <sandbox|core> <index, 1-based> <count> -> bare target names, 
       printf '%s\n' "$name"
     fi
     i=$((i + 1))
-  done < <(targets "$want")
+  done < <(suite_names "$want")
 }
 
 shard() { # <sandbox|core> <index, 1-based> <count> -> this shard's cargo flags
@@ -152,43 +179,82 @@ shard() { # <sandbox|core> <index, 1-based> <count> -> this shard's cargo flags
 }
 
 check() {
-  local rc=0 f all sandbox core union
+  local rc=0 f all_files sandbox_files core_files union
+  local gen="$REPO_ROOT/scripts/gen-test-suites.sh"
 
-  if grep -qE '^\[\[test\]\]' "$REPO_ROOT/Cargo.toml"; then
-    echo "ci-test-partition: Cargo.toml declares an explicit [[test]] target;" >&2
-    echo "  this script assumes cargo's tests/*.rs auto-discovery. Update it." >&2
+  # Delegate the file-level total/disjoint/drift proof to gen-test-suites.sh
+  # -- it owns the actual bucketing and is the only thing that knows what
+  # "not drifted" means for tests/suite_*.rs content.
+  if [ -x "$gen" ]; then
+    if ! "$gen" --check; then
+      echo "ci-test-partition: gen-test-suites.sh --check failed (see above)" >&2
+      rc=1
+    fi
+  else
+    echo "ci-test-partition: $gen missing or not executable" >&2
     rc=1
   fi
 
-  all="$(for f in "$REPO_ROOT"/tests/*.rs; do [ -e "$f" ] && basename "$f" .rs; done | LC_ALL=C sort)"
-  sandbox="$(targets sandbox)"
-  core="$(targets core)"
-  union="$(printf '%s\n%s\n' "$sandbox" "$core" | sed '/^$/d' | LC_ALL=C sort)"
-
-  if [ "$union" != "$(printf '%s\n' "$all" | sed '/^$/d')" ]; then
-    echo "ci-test-partition: partition is not total over tests/*.rs" >&2
-    diff <(printf '%s\n' "$all") <(printf '%s\n' "$union") >&2
+  if ! grep -qE '^\s*autotests\s*=\s*false' "$REPO_ROOT/Cargo.toml"; then
+    echo "ci-test-partition: Cargo.toml is missing 'autotests = false' -- this" >&2
+    echo "  script assumes gen-test-suites.sh's explicit [[test]] suites, not" >&2
+    echo "  cargo's tests/*.rs auto-discovery. Run gen-test-suites.sh." >&2
+    rc=1
+  fi
+  if ! grep -qE '^\[\[test\]\]' "$REPO_ROOT/Cargo.toml"; then
+    echo "ci-test-partition: Cargo.toml declares no [[test]] entries -- run" >&2
+    echo "  gen-test-suites.sh to generate the consolidated suites." >&2
     rc=1
   fi
 
-  # Disjointness: `classify` returns exactly one label per file, so an overlap
-  # can only come from a future edit to `targets`. Assert it anyway -- a
-  # double-run target would inflate the very wall time this split exists to cut.
-  if [ "$(printf '%s\n' "$union" | LC_ALL=C uniq -d)" != "" ]; then
-    echo "ci-test-partition: a target is in BOTH partitions:" >&2
-    printf '%s\n' "$union" | LC_ALL=C uniq -d >&2
-    rc=1
-  fi
+  # Cross-check: every top-level tests/*.rs member file's classify() verdict
+  # must agree with which partition's suite file(s) actually include it. This
+  # is the guard against a suite silently mixing sandbox-needing and
+  # core-only files (which would hand one job's job a capability mismatch).
+  for f in "$REPO_ROOT"/tests/*.rs; do
+    [ -e "$f" ] || continue
+    case "$(basename "$f")" in
+      suite_*.rs) continue ;;
+    esac
+    local base want in_core in_sandbox
+    base="$(basename "$f")"
+    want="$(classify "$f")"
+    in_core=0; in_sandbox=0
+    grep -qF "#[path = \"$base\"]" "$REPO_ROOT"/tests/suite_core_*.rs 2>/dev/null && in_core=1
+    grep -qF "#[path = \"$base\"]" "$REPO_ROOT"/tests/suite_sandbox_*.rs 2>/dev/null && in_sandbox=1
+    if [ "$in_core" -eq 1 ] && [ "$in_sandbox" -eq 1 ]; then
+      echo "ci-test-partition: $base is included in BOTH a core and a sandbox suite" >&2
+      rc=1
+    elif [ "$in_core" -eq 0 ] && [ "$in_sandbox" -eq 0 ]; then
+      echo "ci-test-partition: $base is not included in any suite" >&2
+      rc=1
+    elif [ "$want" = "sandbox" ] && [ "$in_core" -eq 1 ]; then
+      echo "ci-test-partition: $base needs the sandbox capability (classify() says" >&2
+      echo "  sandbox) but is filed into a core suite -- it would run unprivileged." >&2
+      rc=1
+    elif [ "$want" = "core" ] && [ "$in_sandbox" -eq 1 ]; then
+      echo "ci-test-partition: $base does not need the sandbox capability (classify()" >&2
+      echo "  says core) but is filed into a sandbox suite -- harmless but check" >&2
+      echo "  gen-test-suites.sh's bucketing if this is unexpected." >&2
+      rc=1
+    fi
+  done
 
-  if [ -z "$sandbox" ]; then
-    echo "ci-test-partition: sandbox partition is empty -- the split would be" >&2
+  sandbox_files="$(suite_names sandbox)"
+  core_files="$(suite_names core)"
+  if [ -z "$sandbox_files" ]; then
+    echo "ci-test-partition: no sandbox suites exist -- the split would be" >&2
     echo "  vacuous and the sandbox job would assert nothing." >&2
+    rc=1
+  fi
+  if [ -z "$core_files" ]; then
+    echo "ci-test-partition: no core suites exist." >&2
     rc=1
   fi
 
   # The matrix split within the sandbox partition (AC6's second job-split) has
   # the same total/disjoint obligation as the sandbox/core split itself: a
-  # target that fell out of every shard would silently stop running in CI.
+  # suite that fell out of every shard would silently stop running in CI.
   local n shard_union shard_targets
   shard_union=""
   for n in $(seq 1 "$SANDBOX_SHARDS"); do
@@ -201,20 +267,21 @@ check() {
     shard_union="$(printf '%s\n%s\n' "$shard_union" "$shard_targets" | sed '/^$/d')"
   done
   shard_union="$(printf '%s\n' "$shard_union" | LC_ALL=C sort)"
-  if [ "$shard_union" != "$(printf '%s\n' "$sandbox" | sed '/^$/d')" ]; then
-    echo "ci-test-partition: the $SANDBOX_SHARDS sandbox shards are not total+disjoint over the sandbox partition" >&2
-    diff <(printf '%s\n' "$sandbox") <(printf '%s\n' "$shard_union") >&2
+  if [ "$shard_union" != "$(printf '%s\n' "$sandbox_files" | sed '/^$/d')" ]; then
+    echo "ci-test-partition: the $SANDBOX_SHARDS sandbox shards are not total+disjoint over the sandbox suite list" >&2
+    diff <(printf '%s\n' "$sandbox_files") <(printf '%s\n' "$shard_union") >&2
     rc=1
   fi
 
-  [ "$rc" -eq 0 ] && echo "ci-test-partition: ok ($(printf '%s\n' "$sandbox" | wc -l) sandbox across $SANDBOX_SHARDS shards, $(printf '%s\n' "$core" | wc -l) core)"
+  [ "$rc" -eq 0 ] && echo "ci-test-partition: ok ($(printf '%s\n' "$sandbox_files" | wc -l) sandbox suites across $SANDBOX_SHARDS shards, $(printf '%s\n' "$core_files" | wc -l) core suites)"
   return "$rc"
 }
 
 case "${1:-}" in
-  sandbox|core) emit "$1" ;;
+  sandbox|core)  emit "$1" ;;
   sandbox-shard) shard sandbox "${2:?usage: ci-test-partition.sh sandbox-shard <n> <of>}" "${3:?usage: ci-test-partition.sh sandbox-shard <n> <of>}" ;;
-  list)         targets "${2:?usage: ci-test-partition.sh list <sandbox|core>}" ;;
-  check)        check ;;
-  *) echo "usage: $(basename "$0") <sandbox|core|sandbox-shard <n> <of>|list <p>|check>" >&2; exit 2 ;;
+  list)          suite_names "${2:?usage: ci-test-partition.sh list <sandbox|core>}" ;;
+  classify-file) classify "${2:?usage: ci-test-partition.sh classify-file <path>}" ;;
+  check)         check ;;
+  *) echo "usage: $(basename "$0") <sandbox|core|sandbox-shard <n> <of>|list <p>|classify-file <path>|check>" >&2; exit 2 ;;
 esac

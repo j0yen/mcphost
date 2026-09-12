@@ -14,7 +14,7 @@
 //! the surviving half of AC1: every kind is still named, and
 //! `host.tool_test` is still the dry run pointed at.
 
-mod common;
+use crate::common;
 use common::{TempDataDir, TestServer, all_kinds_registry, signup};
 use serde_json::json;
 

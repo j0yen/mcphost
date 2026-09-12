@@ -2,7 +2,7 @@
 //! `host.tool_remove("hello")`, Then the next `tools/list` omits it and a
 //! call to it returns error `tool_not_found`.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 use serde_json::json;
 

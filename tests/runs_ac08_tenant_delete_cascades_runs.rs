@@ -7,7 +7,7 @@
 //! its stored result, reading the database directly since `host.runs.get`
 //! itself is unreachable once the tenant's key is gone.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, TestServer, extract_structured, signup};
 use serde_json::json;
 use std::time::{Duration, Instant};

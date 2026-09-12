@@ -16,7 +16,7 @@
 //! tool-not-found and nothing in the response or error reveals that B
 //! published a tool by that name.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, http_kind_registry, signup};
 use serde_json::json;
 use wiremock::matchers::method;

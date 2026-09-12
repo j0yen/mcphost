@@ -11,7 +11,7 @@
 //! AC2 exercises: the *caller*'s own call ends `tool_exception`, carrying
 //! the child's failure in its message.
 
-mod common;
+use crate::common;
 use common::{TestServer, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

@@ -1,7 +1,7 @@
 //! AC4 (P0) — Given a free tenant, When `schedule="* * * * *"` is set,
 //! Then `trigger_interval_too_short` names 300 s.
 
-mod common;
+use crate::common;
 use common::{TestServer, signup};
 use serde_json::json;
 

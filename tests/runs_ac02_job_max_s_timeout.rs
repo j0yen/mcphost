@@ -10,7 +10,7 @@
 //! `common::TestServer` exactly as production does) still leases and runs
 //! it normally; only the deadline is shortened.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

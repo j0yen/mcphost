@@ -4,7 +4,7 @@
 //! run, Then it lists `panel_a` and `panel_b` with counts, deletes
 //! nothing, and `real-user` is not listed.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

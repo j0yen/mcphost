@@ -5,7 +5,7 @@
 //! the inferred `args_schema` and `requirements`, and no tool row is
 //! persisted.
 
-mod common;
+use crate::common;
 use common::{
     McpClient, TempDataDir, TestServer, extract_structured, poll_spec_test_until_ready,
     python_kind_registry, signup,

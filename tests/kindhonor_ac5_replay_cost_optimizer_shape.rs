@@ -9,7 +9,7 @@
 //! `kind: http` requested, as the fix requires: never a silent python
 //! publish.
 
-mod common;
+use crate::common;
 use common::{TempDataDir, TestServer, all_kinds_registry, signup};
 use serde_json::json;
 

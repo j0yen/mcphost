@@ -8,7 +8,7 @@
 //! path is additive, under `envelope.missing_detail` -- see
 //! `kinds::envelope_report`'s doc comment for the wire shape.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, http_kind_registry, signup};
 use serde_json::json;
 use wiremock::matchers::method;

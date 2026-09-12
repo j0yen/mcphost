@@ -8,7 +8,7 @@
 //! `http`-kind and an `echo`-kind tool, Then both succeed exactly as on a
 //! ready host.
 
-mod common;
+use crate::common;
 use common::{fake_interpreter_failing, signup};
 use mcphost::kinds::KindRegistry;
 use mcphost::kinds::http::{HttpKind, LookupFuture, NameLookup};

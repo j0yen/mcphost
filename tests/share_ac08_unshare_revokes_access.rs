@@ -1,7 +1,7 @@
 //! AC8 — Given `host.tool_unshare(name="geo")`, When B calls, Then
 //! `tool_not_found`.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 use serde_json::json;
 

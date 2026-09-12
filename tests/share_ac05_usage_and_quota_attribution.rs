@@ -2,7 +2,7 @@
 //! `calls_by_others` shows `t_B: 10` and B's `calls_to_shared` shows 10;
 //! B's `calls_per_day` counter increased by 10.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

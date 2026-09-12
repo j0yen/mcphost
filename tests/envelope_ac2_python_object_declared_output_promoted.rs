@@ -2,7 +2,7 @@
 //! declaring `diagnosis` that returns `{"analysis":{"diagnosis":"…"}}`,
 //! When called, Then `result.payload.diagnosis` is present with that value.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

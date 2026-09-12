@@ -1,6 +1,6 @@
 AC11 load smoke — tests/ac11_load_smoke.rs
 200 concurrent `echo` calls, ignored by default (hardware-dependent),
-run with: cargo test --release --test ac11_load_smoke -- --ignored --nocapture
+run with: cargo test --release --test suite_core_01 ac11_load_smoke:: -- --ignored --nocapture
 
 Measured on the build box:
 p95 = 34.20ms

@@ -6,7 +6,7 @@
 //! policy AC2 is about, so it must not be relaxed the way the functional
 //! test suite's `http_kind_registry()` is.
 
-mod common;
+use crate::common;
 use common::{FixedLookup, McpClient, TestServer, http_kind_registry_strict, signup};
 use serde_json::json;
 

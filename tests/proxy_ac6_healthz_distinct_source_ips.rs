@@ -2,7 +2,7 @@
 //! AC6 — Given the authenticated `/healthz`, When read after AC4's
 //! signups, Then `distinct_source_ips_24h` is 2.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer};
 use serde_json::json;
 

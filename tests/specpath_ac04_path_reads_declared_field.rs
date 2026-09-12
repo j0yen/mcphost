@@ -3,7 +3,7 @@
 //! returns `{"json": {"bridge_status": "active"}, "args": {}}`, When called,
 //! Then `result.payload.bridge_status` is `"active"`.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, http_kind_registry, signup};
 use serde_json::json;
 use wiremock::matchers::method;

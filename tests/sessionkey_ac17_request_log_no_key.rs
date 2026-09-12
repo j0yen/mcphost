@@ -3,7 +3,7 @@
 //! structured request log line, Then no substring of the key appears in
 //! that line.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 use std::sync::{Arc, Mutex};
 use tracing_subscriber::fmt::MakeWriter;

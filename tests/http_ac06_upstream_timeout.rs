@@ -2,7 +2,7 @@
 //! called, Then the tool error is `upstream_timeout` within `timeout_s` +
 //! 1s.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, http_kind_registry, signup};
 use serde_json::json;
 use std::time::{Duration, Instant};

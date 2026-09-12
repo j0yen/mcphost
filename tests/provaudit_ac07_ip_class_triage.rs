@@ -3,7 +3,7 @@
 //! queried, Then `origin_detail` -- via `signup_events.ip_class` --
 //! carries the correct ip class for each.
 
-mod common;
+use crate::common;
 use common::TestServer;
 use rusqlite::params;
 use serde_json::json;

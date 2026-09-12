@@ -1,7 +1,7 @@
 //! AC4 (P0) — Given a requirement with a URL or path, When published, Then
 //! it is rejected with `requirement_not_allowed`.
 
-mod common;
+use crate::common;
 use common::{TestServer, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

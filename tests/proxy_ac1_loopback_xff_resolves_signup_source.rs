@@ -11,7 +11,7 @@
 //! `Db::signup_count_since`, the same query the rate limiter itself uses)
 //! rather than asserting on an internal function directly.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer};
 use serde_json::json;
 

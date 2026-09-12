@@ -1,7 +1,7 @@
 //! PRD-mcphost-tool-test AC4 — Given an `echo` spec, When tested, Then each
 //! invocation returns its arguments verbatim.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

@@ -6,7 +6,7 @@
 //! `tests/ac08_admin_disable_and_forbidden.rs` pins the unchanged
 //! `tenant_disabled` code for the header path.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, signup};
 use serde_json::json;
 

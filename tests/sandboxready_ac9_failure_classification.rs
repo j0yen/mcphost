@@ -5,7 +5,7 @@
 //! starts with the matching token `userns_denied`, `userns_denied`,
 //! `binary_missing`, `interpreter_missing`, `timeout`.
 
-mod common;
+use crate::common;
 use common::fake_interpreter_failing;
 use mcphost::kinds::python::PythonKind;
 use mcphost::sandbox;

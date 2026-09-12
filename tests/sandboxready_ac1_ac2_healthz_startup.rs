@@ -9,7 +9,7 @@
 //! `sandbox_ready: true`, `sandbox_detail` is `"<mechanism>: ok"`, and
 //! `sandbox_checked_at` is within 5s of start.
 
-mod common;
+use crate::common;
 use common::{
     ADMIN_KEY, TestServer, fake_interpreter_failing, python_kind_registry_with_selftest, signup,
 };

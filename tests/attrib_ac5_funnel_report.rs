@@ -11,7 +11,7 @@
 //! assertion of the report's correctness rather than a shell-out smoke
 //! test.
 
-mod common;
+use crate::common;
 use common::TempDataDir;
 use mcphost::auth::{generate_key, generate_namespace, hash_key};
 use mcphost::db::Db;

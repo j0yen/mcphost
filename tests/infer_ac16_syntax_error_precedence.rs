@@ -2,7 +2,7 @@
 //! Python, When it is published without `args_schema`, Then the existing
 //! spec-validation error is returned, not an inference error.
 
-mod common;
+use crate::common;
 use common::{TestServer, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

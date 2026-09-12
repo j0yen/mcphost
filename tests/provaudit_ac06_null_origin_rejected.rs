@@ -3,7 +3,7 @@
 //! When exercised in tests, Then the write is rejected (constraint), not
 //! defaulted silently.
 
-mod common;
+use crate::common;
 use common::{TestServer, signup};
 use rusqlite::params;
 

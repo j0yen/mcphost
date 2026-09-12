@@ -1,7 +1,7 @@
 //! AC3 (P0) — Given a running job reporting `progress(50, "half")`, When
 //! `host.runs.get` is read, Then `progress` is `{pct: 50, msg: "half"}`.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

@@ -7,7 +7,7 @@
 //! of this increment -- see `tenant_state.rs`'s module doc) plus a direct
 //! row inspection, and extends the same isolation check to tables.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

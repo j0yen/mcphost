@@ -3,7 +3,7 @@
 //! structured, names the offending field, and uses the same error taxonomy
 //! as `host.tool_publish`.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 use serde_json::json;
 

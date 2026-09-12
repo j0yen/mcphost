@@ -3,7 +3,7 @@
 //! tool call is, and Given a tenant under quota, each executed invocation
 //! increments the tenant's metered call count by one.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

@@ -12,7 +12,7 @@
 //! every other `python_ac*.rs` test: a real `mcphost` server, a real
 //! bwrap-sandboxed tool.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::{Value, json};

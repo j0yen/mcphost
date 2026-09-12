@@ -5,7 +5,7 @@
 //! AC4 -- Given an unauthenticated `host.quickstart`, When called, Then it
 //! returns the signup step first and no tenant data.
 
-mod common;
+use crate::common;
 use common::{TempDataDir, TestServer, all_kinds_registry, extract_structured, signup};
 use serde_json::json;
 

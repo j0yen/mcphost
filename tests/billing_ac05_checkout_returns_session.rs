@@ -4,7 +4,7 @@
 //! received the pro price id and `client_reference_id` equal to the
 //! tenant namespace.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 use mcphost::billing::{BillingConfig, FakeBillingClient};
 use serde_json::json;

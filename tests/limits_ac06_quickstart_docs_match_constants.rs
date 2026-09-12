@@ -3,7 +3,7 @@
 //! constants; a test compares README and `llms.txt` numbers to the same
 //! constants.
 
-mod common;
+use crate::common;
 use common::{TestServer, signup};
 use mcphost::kinds::python::{DEFAULT_MAX_CONCURRENT_CALLS, MAX_TIMEOUT_S};
 use mcphost::plans::PlanCatalog;

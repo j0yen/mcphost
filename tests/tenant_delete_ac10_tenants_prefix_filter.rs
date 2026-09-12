@@ -2,7 +2,7 @@
 //! AC10 (P1) — Given `admin.tenants("panel_")`, When called, Then only
 //! tenants with that prefix are listed.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

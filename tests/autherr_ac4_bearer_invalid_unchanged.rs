@@ -3,7 +3,7 @@
 //! it runs, Then the message is `missing or invalid Authorization: Bearer
 //! key` and `error_code` is `bearer_invalid`.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer};
 use serde_json::json;
 

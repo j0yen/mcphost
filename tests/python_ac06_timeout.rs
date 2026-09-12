@@ -16,7 +16,7 @@
 //! *different* path (the sandbox's own internal wall-clock kill), so this
 //! test's expected code moved with the behavior it exercises.
 
-mod common;
+use crate::common;
 use common::{TestServer, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

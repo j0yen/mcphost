@@ -3,7 +3,7 @@
 //! `not-an-ip`, When the handler resolves the source, Then the source is
 //! the peer address and the request is not rejected.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer};
 use serde_json::json;
 

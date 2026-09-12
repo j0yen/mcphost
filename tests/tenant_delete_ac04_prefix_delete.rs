@@ -3,7 +3,7 @@
 //! `dry_run=false`, Then `panel_a` and `panel_b` and all their rows are
 //! gone and `real-user` is intact.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

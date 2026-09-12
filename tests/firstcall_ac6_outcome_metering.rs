@@ -14,7 +14,7 @@
 //! builds anything) and that `outcome` is a real, distinct column, not a
 //! derived/absent value.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 use serde_json::json;
 

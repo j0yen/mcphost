@@ -2,7 +2,7 @@
 //! includes the rendered request with secrets replaced by `***` and no
 //! `calls` row is written.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, http_kind_registry, signup};
 use serde_json::json;
 use wiremock::matchers::method;

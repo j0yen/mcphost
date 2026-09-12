@@ -10,8 +10,11 @@
 //! ("may be smoke commands recorded in verification instead of unit
 //! tests"), this is `#[ignore]`d by default so an off-reference box's
 //! numbers never fail the `cargo test --release` gate — run it directly
-//! with `cargo test --release --test ac11_load_smoke -- --ignored --nocapture`
-//! and read the printed p95/RSS.
+//! with `cargo test --release --test suite_core_01 ac11_load_smoke:: --
+//! --ignored --nocapture` (PRD-mcphost-test-suite-consolidation: this file
+//! is `#[path]`-included into `tests/suite_core_01.rs`, so `--test` now
+//! names that suite binary and the module-qualified filter narrows it to
+//! this file) and read the printed p95/RSS.
 
 use std::io::Read;
 use std::process::{Child, Command, Stdio};

@@ -2,7 +2,7 @@
 //! error is `tool_exception` with the traceback and the stderr tail, and
 //! the process is gone.
 
-mod common;
+use crate::common;
 use common::{TestServer, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

@@ -4,7 +4,7 @@
 //! only, `meter_state.last_call_id` is the newest pro ok call id, and one
 //! ledger row records the batch span.
 
-mod common;
+use crate::common;
 use common::{TestServer, record_ok_calls, signup, signup_and_make_pro};
 use mcphost::billing::FakeBillingClient;
 use mcphost::metering;

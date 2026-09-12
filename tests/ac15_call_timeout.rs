@@ -14,7 +14,7 @@
 //! detached task), the counter would stay elevated after the call
 //! returns.
 
-mod common;
+use crate::common;
 use async_trait::async_trait;
 use common::{McpClient, TestServer, signup};
 use mcphost::kinds::{CallCtx, Kind, KindError, KindRegistry, ToolDescriptor};

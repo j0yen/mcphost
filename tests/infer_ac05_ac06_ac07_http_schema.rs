@@ -4,7 +4,7 @@
 //! required property except a placeholder resolving to a tenant secret,
 //! which is excluded entirely.
 
-mod common;
+use crate::common;
 use common::{TestServer, http_kind_registry, signup};
 use serde_json::json;
 use std::collections::BTreeSet;

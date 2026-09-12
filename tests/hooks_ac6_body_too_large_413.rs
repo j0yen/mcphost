@@ -1,6 +1,6 @@
 //! AC6 (P0) — Given a 300 KiB body, When posted, Then 413 and no run.
 
-mod common;
+use crate::common;
 use common::{extract_structured, signup};
 use serde_json::json;
 

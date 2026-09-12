@@ -3,7 +3,7 @@
 //! `event_type` suffixed `.mode_mismatch` and the tenant's plan is
 //! unchanged.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 use mcphost::billing::{BillingConfig, FakeBillingClient, sign_for_test};
 use serde_json::json;

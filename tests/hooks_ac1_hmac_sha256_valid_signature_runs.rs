@@ -3,7 +3,7 @@
 //! response is 202 with a `run_id` within 500 ms, and the run finishes with
 //! the tool having received `event.body`.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, signup};
 use serde_json::json;
 use std::time::{Duration, Instant};

@@ -12,7 +12,7 @@
 //! finalized" scenario this test needs to fabricate deterministically
 //! instead.
 
-mod common;
+use crate::common;
 use mcphost::db::Db;
 use mcphost::kinds::KindRegistry;
 use mcphost::secrets::SecretBox;

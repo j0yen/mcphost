@@ -4,7 +4,7 @@
 //! listed and no row changes; and When rerun with `dry_run: false`, Then
 //! exactly those 6 store the label.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

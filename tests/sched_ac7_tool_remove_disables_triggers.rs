@@ -2,7 +2,7 @@
 //! it runs, Then both triggers are disabled and the result says
 //! `triggers_disabled: 2`.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, signup_and_make_pro};
 use serde_json::json;
 

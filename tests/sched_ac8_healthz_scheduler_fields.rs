@@ -1,7 +1,7 @@
 //! AC8 (P0) — Given the admin `/healthz`, When read, Then it carries
 //! `scheduler_last_tick_unix` within the last 60s and `schedules_enabled`.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, TestServer, extract_structured, signup_and_make_pro};
 use serde_json::json;
 

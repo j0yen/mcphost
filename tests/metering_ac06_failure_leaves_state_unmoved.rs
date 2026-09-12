@@ -3,7 +3,7 @@
 //! function directly rather than the CLI binary), `meter_state` is
 //! unmoved, and no ledger row is written.
 
-mod common;
+use crate::common;
 use common::{TestServer, record_ok_calls, signup_and_make_pro};
 use mcphost::billing::FakeBillingClient;
 use mcphost::metering;

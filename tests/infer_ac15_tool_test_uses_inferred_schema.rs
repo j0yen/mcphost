@@ -10,7 +10,7 @@
 //! result. This test asserts the schema is literally present and correct
 //! in the response, not merely that a missing-key call gets rejected.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, http_kind_registry, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

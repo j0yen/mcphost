@@ -9,7 +9,7 @@
 //! was scoped to `/mcp`, or the doc comment states that the layer is
 //! router-wide.
 
-mod common;
+use crate::common;
 use common::TestServer;
 use std::sync::{Arc, Mutex};
 use tracing_subscriber::fmt::MakeWriter;

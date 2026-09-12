@@ -38,6 +38,20 @@ pub const CHILD_ROLE_ENV: &str = "MCPHOST_CI_SANDBOX_GUARD_CHILD";
 /// what AC4 asserts.
 pub const GUARD_RESULT_PREFIX: &str = "guard-returned: ";
 
+/// Strip the leading crate-root segment `module_path!()` always carries
+/// (e.g. `"suite_sandbox_01::ci_sandbox_ac02_capable_env_never_skips"`) down
+/// to the module path libtest itself uses for `--exact` filtering (e.g.
+/// `"ci_sandbox_ac02_capable_env_never_skips"`) -- PRD-mcphost-test-suite-
+/// consolidation: since every `tests/*.rs` file is now `#[path]`-included one
+/// level under a generated `tests/suite_*.rs` crate root, `module_path!()`
+/// inside a test function carries that suite's name as its first segment,
+/// which libtest's own test names never include (nextest lists them as
+/// `<binary> <module-path-without-the-binary>`). Used by the `ci_sandbox_ac*`
+/// guard tests to build the exact name they re-invoke themselves with.
+pub fn strip_crate_root(module_path: &str) -> &str {
+    module_path.split_once("::").map_or(module_path, |(_, rest)| rest)
+}
+
 pub fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }

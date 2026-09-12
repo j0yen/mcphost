@@ -2,7 +2,7 @@
 //! name `host.runs.get`, `host.runs.list`, `host.runs.cancel` and the job
 //! limits.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, signup};
 use serde_json::json;
 

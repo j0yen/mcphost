@@ -8,7 +8,7 @@
 //! testable end-to-end here is the observable HTTP-level behavior: an
 //! oversized body is rejected with 413.
 
-mod common;
+use crate::common;
 use common::TestServer;
 
 #[tokio::test]

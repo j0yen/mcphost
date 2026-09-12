@@ -10,7 +10,7 @@
 //! could only happen if the budget check short-circuited before
 //! `sandbox::run` was ever invoked.
 
-mod common;
+use crate::common;
 use common::{TestServer, poll_until_ready, python_kind_registry_with_cpu_budget_ms, signup};
 use mcphost::sandbox;
 use serde_json::json;

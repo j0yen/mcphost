@@ -2,7 +2,7 @@
 //! `kind: http`, When publish runs, Then the tool is http-kind and the
 //! publish response says so.
 
-mod common;
+use crate::common;
 use common::{TempDataDir, TestServer, http_kind_registry, signup};
 use serde_json::json;
 

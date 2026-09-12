@@ -4,7 +4,7 @@
 //! tenant row stores `synthorg:run-a` and the signup response is
 //! byte-identical to an unlabeled signup's shape.
 
-mod common;
+use crate::common;
 use common::{TestServer, signup, signup_with_synthetic_header};
 use serde_json::Value;
 

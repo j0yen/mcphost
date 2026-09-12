@@ -7,7 +7,7 @@
 //! is the adversarial case -- `CI=true`, exactly as GitHub Actions sets it,
 //! on a box that CAN create user namespaces -- and it must still run.
 
-mod ci_sandbox_support;
+use crate::ci_sandbox_support;
 use ci_sandbox_support as support;
 
 use mcphost::sandbox::{UsernsDecision, decide_userns};
@@ -32,7 +32,16 @@ fn ci_set_with_capability_present_still_runs_the_suite() {
          `sandbox` job's sysctl grant, locally see README's user-namespace section"
     );
 
-    let out = support::run_guard_child("ci_set_with_capability_present_still_runs_the_suite", true, true);
+    // PRD-mcphost-test-suite-consolidation: module-qualified name, see the
+    // comment in ci_sandbox_ac02_capable_env_never_skips.rs.
+    let out = support::run_guard_child(
+        &format!(
+            "{}::ci_set_with_capability_present_still_runs_the_suite",
+            support::strip_crate_root(module_path!())
+        ),
+        true,
+        true,
+    );
     let stdout = support::stdout_of(&out);
     assert!(
         out.status.success(),

@@ -4,7 +4,7 @@
 //! request code was involved and `result.payload` carries status and
 //! parsed body with the mapped request observed by the mock.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, extract_structured, http_kind_registry, signup};
 use serde_json::json;
 use wiremock::matchers::{header, method, path};

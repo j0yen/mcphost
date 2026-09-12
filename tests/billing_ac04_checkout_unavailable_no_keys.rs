@@ -2,7 +2,7 @@
 //! `billing.checkout`, Then the error is `billing_unavailable` with
 //! `billing_mode: off` and `/healthz` reports `billing_mode: "off"`.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, signup};
 use serde_json::json;
 

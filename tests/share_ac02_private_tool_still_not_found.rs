@@ -4,7 +4,7 @@
 //! this test pins that it still holds now that `<ns>.<name>` for another
 //! tenant is a real resolution path instead of an unconditional refusal.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 use serde_json::json;
 

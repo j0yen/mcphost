@@ -2,7 +2,7 @@
 //! AC7 — Given an unknown tenant id, When `admin.tenant_delete` runs,
 //! Then it returns `tenant_not_found`.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer};
 use serde_json::json;
 

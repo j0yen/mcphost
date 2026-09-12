@@ -17,7 +17,7 @@
 //! `python_ac08_network_none_blocks.rs`; this test only needs the tool to
 //! actually succeed under that default, exactly as AC3 says.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

@@ -2,7 +2,7 @@
 //! `/healthz` is read, Then `meter_lag` is 30; and Given metering
 //! unconfigured, Then the key is absent.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, TestServer, record_ok_calls, signup_and_make_pro};
 use mcphost::billing::{BillingConfig, FakeBillingClient};
 use std::sync::Arc;

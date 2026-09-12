@@ -13,7 +13,7 @@
 //! made via `control::signup` directly (bypassing the HTTP layer, same as
 //! `attrib_ac4`) rather than the `signup()` HTTP helper.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

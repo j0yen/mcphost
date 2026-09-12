@@ -2,7 +2,7 @@
 //! Then no request carries more than 100 events and all pending spans are
 //! covered across requests.
 
-mod common;
+use crate::common;
 use common::{TestServer, record_ok_calls, signup_and_make_pro};
 use mcphost::billing::FakeBillingClient;
 use mcphost::metering;

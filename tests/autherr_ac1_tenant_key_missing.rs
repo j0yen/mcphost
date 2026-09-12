@@ -4,7 +4,7 @@
 //! message names `tenant_key` and `signup` and does not contain
 //! `Authorization`.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer};
 use serde_json::json;
 

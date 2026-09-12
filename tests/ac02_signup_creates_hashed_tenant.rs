@@ -3,7 +3,7 @@
 //! the endpoint URL, and the `tenants` table has one row with the key
 //! stored only as a hash.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, signup};
 use mcphost::auth::hash_key;
 

@@ -3,7 +3,7 @@
 //! `stripe_customer_id`, distinct from the pre-existing `billing_ref`) and
 //! the upgrade behavior of grand-loop-billing's AC6 is unchanged.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 use mcphost::billing::{BillingConfig, FakeBillingClient, sign_for_test};
 use serde_json::json;

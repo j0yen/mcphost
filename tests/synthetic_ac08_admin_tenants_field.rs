@@ -3,7 +3,7 @@
 //! labeled and unlabeled tenants present, Then every row carries the
 //! `synthetic` field, null for unlabeled.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, extract_structured, signup};
 use serde_json::json;
 

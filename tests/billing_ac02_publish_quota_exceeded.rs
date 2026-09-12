@@ -5,7 +5,7 @@
 //! `plan: free`, `limit: {name: tools_max, value: 50}`, `used: 50`, and
 //! `next: billing.checkout`, and no tool is created.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 use serde_json::json;
 

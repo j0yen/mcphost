@@ -2,7 +2,7 @@
 //! delivery id arrives twice, Then the second answers 202 with the first
 //! run id and no second run exists.
 
-mod common;
+use crate::common;
 use common::{extract_structured, signup};
 use serde_json::json;
 

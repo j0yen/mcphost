@@ -2,7 +2,7 @@
 //! `tools/list` within 60s, Then the result carries `ttlMs: 0`; after
 //! 60s, `ttlMs` is at least 30000.
 
-mod common;
+use crate::common;
 use common::{McpClient, TestServer, signup};
 use serde_json::json;
 

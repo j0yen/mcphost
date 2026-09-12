@@ -2,7 +2,7 @@
 //! its own `args_schema`, When it is published, Then that schema is used
 //! unchanged and no inference is performed.
 
-mod common;
+use crate::common;
 use common::{TestServer, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::json;

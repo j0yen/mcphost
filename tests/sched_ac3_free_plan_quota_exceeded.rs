@@ -1,7 +1,7 @@
 //! AC3 (P0) — Given a free tenant with three schedules, When a fourth is
 //! set, Then `trigger_quota_exceeded` names `schedules_max: 3`.
 
-mod common;
+use crate::common;
 use common::{TestServer, signup};
 use serde_json::json;
 

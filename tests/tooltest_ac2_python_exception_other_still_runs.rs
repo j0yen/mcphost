@@ -3,7 +3,7 @@
 //! the exception type and a bounded traceback excerpt, the other invocation
 //! still runs, and the JSON-RPC call as a whole succeeds.
 
-mod common;
+use crate::common;
 use common::{
     McpClient, TempDataDir, TestServer, extract_structured, poll_spec_test_until_ready,
     python_kind_registry, signup,

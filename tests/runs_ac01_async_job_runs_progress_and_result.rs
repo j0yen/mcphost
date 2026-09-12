@@ -9,7 +9,7 @@
 //! property under test (async returns immediately, the executor picks the
 //! job up and runs it to completion) doesn't depend on the sleep's length.
 
-mod common;
+use crate::common;
 use common::{TestServer, extract_structured, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
 use serde_json::{Value, json};

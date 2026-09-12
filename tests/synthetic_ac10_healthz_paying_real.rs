@@ -8,7 +8,7 @@
 //! is made via `control::signup` directly with a non-loopback IP (this
 //! suite's real TCP test server is always loopback), same as `attrib_ac4`.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, signup};
 use mcphost::billing::{BillingConfig, FakeBillingClient};
 use serde_json::json;

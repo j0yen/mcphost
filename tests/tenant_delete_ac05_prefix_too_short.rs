@@ -3,7 +3,7 @@
 //! When either batch call runs, Then it returns `invalid_params` and
 //! nothing changes.
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, signup};
 use serde_json::json;
 

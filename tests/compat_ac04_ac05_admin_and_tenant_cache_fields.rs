@@ -12,7 +12,7 @@
 //! `tests/ac18_tools_list_ttl.rs`; this PRD's requirement 4 is that that
 //! behaviour is preserved exactly, not re-tested here.)
 
-mod common;
+use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, signup};
 
 #[tokio::test]
