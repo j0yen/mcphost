@@ -9,6 +9,8 @@
 mod common;
 mod ci_sandbox_support;
 
+#[path = "ac01_extended_gates_prd_path_resolves_and_matches_card.rs"]
+mod ac01_extended_gates_prd_path_resolves_and_matches_card;
 #[path = "ac01_unauthenticated_lists_signup.rs"]
 mod ac01_unauthenticated_lists_signup;
 #[path = "ac02_signup_creates_hashed_tenant.rs"]

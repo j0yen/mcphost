@@ -15,7 +15,7 @@
       "id": "AC1",
       "level": "MUST",
       "description": "Given HEAD c627803598ee85ae3795ec3f7ee21a50c31adee0, When the gate runs, Then extended-receipts passes: one or more extended producers did not pass|skip (see output above)",
-      "test": "tests/ac01_unauthenticated_lists_signup.rs"
+      "test": "tests/ac01_extended_gates_prd_path_resolves_and_matches_card.rs"
     }
   ],
   "scope": [
