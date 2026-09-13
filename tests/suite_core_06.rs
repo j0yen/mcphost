@@ -57,6 +57,10 @@ mod attrib_ac4_external_signup_counts_real;
 mod attrib_ac5_funnel_report;
 #[path = "attrib_ac6_whoami_source_class.rs"]
 mod attrib_ac6_whoami_source_class;
+#[path = "attribdefault_ac1_bare_signup_client_info_is_null.rs"]
+mod attribdefault_ac1_bare_signup_client_info_is_null;
+#[path = "attribdefault_ac2_real_clientinfo_still_captured.rs"]
+mod attribdefault_ac2_real_clientinfo_still_captured;
 #[path = "autherr_ac1_tenant_key_missing.rs"]
 mod autherr_ac1_tenant_key_missing;
 #[path = "autherr_ac2_tenant_key_invalid.rs"]

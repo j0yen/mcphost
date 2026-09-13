@@ -98,7 +98,21 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # ceiling, not under it by luck. (Core's exclusive-singleton count moved
 # 5 -> 6 in the same follow-up; if core ever needs a second normal bucket
 # again, this comment's arithmetic needs a fresh look, same as this one did.)
-MAX_PER_SUITE = {"core": 120, "sandbox": 60}
+#
+# PRD-mcphost-client-attribution-default-leak (2026-09-13 follow-up): by
+# this PRD's start, core's non-exclusive area groups had already regrown
+# past the 120 cap on their own (organic test growth since the note above
+# was written -- that arithmetic was never re-verified per-commit), sitting
+# at 2 normal buckets rather than the 1 the note above assumed. This PRD's
+# own 2 new regression tests (`attribdefault_ac1_*`/`attribdefault_ac2_*`,
+# a brand-new `attribdefault` area group) tipped that 2nd bucket over 120,
+# spawning a 3rd core-normal bucket and an 11th suite binary overall --
+# caught by `suite_ac1_ten_binaries_and_names_preserved`'s P0 assertion.
+# 120 -> 125 was the smallest tested raise that re-collapses core's normal
+# buckets to 2, landing the grand total back at 10. Same caveat as above:
+# this is a snapshot, not a standing guarantee -- if it needs raising
+# again, recount core's non-exclusive files before guessing a new number.
+MAX_PER_SUITE = {"core": 125, "sandbox": 60}
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"
 GEN_MARK_END = "# END gen-test-suites.sh generated suites"
