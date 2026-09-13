@@ -43,3 +43,18 @@ Result envelope contract: an optional `outputs` array of field names (`"outputs"
 `name` is the target tool's own (unqualified) name; `args` is its call arguments; an optional `timeout_s` bounds this one child call further, but never past the caller's own remaining deadline. The child's result comes back exactly as calling it directly would return it -- no envelope wrapper. A failure raises `mcphost.CallError` (`.code`/`.data`, e.g. `error_code: tool_exception` when the child itself raised); left uncaught, it surfaces on the caller's own call the same way any other unhandled exception does. A tool cannot call itself (`compose_self_call`), nesting is capped at 4 levels deep (`compose_depth_exceeded`), and a single call tree may make at most 50 child calls in total (`compose_children_exceeded`) -- every refusal names the limit it hit.
 
 See the `chain` kind for the declarative form of the same idea: an ordered list of tool calls with no python of your own to write.
+
+## env (plain configuration, distinct from secrets)
+
+`"env": {"UPSTREAM_URL": "https://example.test", "MODE": "fast"}` puts plain, non-secret configuration into the sandboxed process's environment beside `secrets` -- an endpoint URL, a mode flag, a tenant identifier: anything that isn't a credential and doesn't need the secret store's encryption, rotation story, or `host.tool_test` redaction.
+
+```json
+{
+  "source": "import os\ndef main(args):\n    return {\"mode\": os.environ[\"MODE\"]}\n",
+  "env": {"MODE": "fast"}
+}
+```
+
+Bounds, enforced at publish: at most 16 entries, at most 4 KiB total across every name and value combined, and a value must be valid UTF-8 with no NUL byte -- each violation is a structured error naming the key and the bound it broke. A name must match `^[A-Z][A-Z0-9_]{0,63}$`; `MCPHOST_*`, `PATH`, `HOME`, `PYTHON*`, `LD_*`, and `SECRET_*` (this kind's own prefix for injecting a resolved secret) are reserved and refused by name or prefix. An `env` name may never collide with a secret name already set for this tenant, in either direction: publishing `env` that collides with an existing secret is refused, and so is `host.secret_set`ing a secret whose name collides with an already-published tool's `env` entry.
+
+The distinction is visible, not doctrinal: `host.tool_test` renders both in one listing, `env` values shown verbatim and secret values redacted, each labeled `"kind": "env"` or `"kind": "secret"`. `host.tool_list` returns a tool's `env` map to its owner; `admin.tool_list` reports env names and total size to an operator, never values. Updating `env` alone (no source change) takes effect on the tool's next call -- the warm pool re-fingerprints on an env change exactly as it does on a secret change, so a stale pooled process never serves old values.

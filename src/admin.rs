@@ -424,10 +424,24 @@ pub async fn tool_list(state: &AppState, args: &Value) -> Result<Value, AppError
     let tools: Vec<Value> = rows
         .into_iter()
         .map(|row| {
+            // PRD-mcphost-python-kind-plain-env requirement 6 (AC10, P2,
+            // best effort): env *names* and their total byte size, never
+            // values -- an operator reviewing a tenant's tools this way
+            // must be able to see how much plain configuration a tool
+            // carries without ever seeing what it says.
+            let env_map = state
+                .kinds
+                .get(&row.kind)
+                .map(|kind| kind.env_map(&row.spec))
+                .unwrap_or_default();
+            let env_total_bytes: usize =
+                env_map.iter().map(|(k, v)| k.len() + v.len()).sum();
             json!({
                 "name": format!("{}.{}", tenant.namespace, row.name),
                 "kind": row.kind,
                 "created_at": row.created_at,
+                "env_names": env_map.into_keys().collect::<Vec<_>>(),
+                "env_total_bytes": env_total_bytes,
             })
         })
         .collect();

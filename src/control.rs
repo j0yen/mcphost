@@ -565,6 +565,22 @@ pub async fn tool_publish(
         }
     }
 
+    // PRD-mcphost-python-kind-plain-env requirement 3 (AC4): a spec's own
+    // `env` names must never collide with a secret name already known for
+    // this tenant. The secret store is tenant-scoped, not per-tool (see
+    // `secret_set` below), so this checks against every secret the tenant
+    // has ever set -- not just the `referenced` subset just above, which is
+    // this *spec's own* `secrets` list, a different, narrower thing.
+    let env_names: Vec<String> = kind.env_map(&spec).into_keys().collect();
+    if !env_names.is_empty() {
+        let known_secrets = state.db.list_secret_names(tenant.id).await?;
+        for env_name in &env_names {
+            if known_secrets.contains(env_name) {
+                return Err(AppError::env_collides_with_secret(env_name));
+            }
+        }
+    }
+
     // A re-publish of an existing name must not count against the limit.
     let already_exists = state.db.get_tool(tenant.id, name.clone()).await?.is_some();
     if !already_exists {
@@ -594,6 +610,19 @@ pub async fn tool_publish(
         .db
         .upsert_tool(tenant.id, name.clone(), kind_name.clone(), spec.clone())
         .await?;
+
+    // PRD-mcphost-python-kind-plain-env requirement 4 (AC9): the publish
+    // journal row for a spec declaring `env` -- names only, never values,
+    // same "journaled (..., never values)" convention `signup`'s handoff
+    // token log above already uses for its own sensitive fields.
+    if !env_names.is_empty() {
+        tracing::info!(
+            tenant = %tenant.namespace,
+            tool = %name,
+            env_names = ?env_names,
+            "tool published with plain env entries"
+        );
+    }
 
     // PRD-mcphost-code-tools-warm-pool AC3: a republish of an existing name
     // must kill any warm sandbox serving the OLD source before this call
@@ -632,6 +661,18 @@ pub async fn tool_list(state: &AppState, tenant: &Tenant) -> Result<Value, AppEr
     let tools: Vec<Value> = rows
         .into_iter()
         .map(|row| {
+            // PRD-mcphost-python-kind-plain-env requirement 5 (AC7): this
+            // is the "descriptor surface that returns a tool's parsed
+            // spec" for a caller wanting to know a tool's env map --
+            // `host.tool_list` already loads each row's full `spec`, so
+            // this is a plain, additive read of it via the kind's own
+            // `env_map`, empty (never omitted) for a kind or spec with
+            // none.
+            let env = state
+                .kinds
+                .get(&row.kind)
+                .map(|kind| kind.env_map(&row.spec))
+                .unwrap_or_default();
             json!({
                 "name": format!("{}.{}", tenant.namespace, row.name),
                 "kind": row.kind,
@@ -643,6 +684,7 @@ pub async fn tool_list(state: &AppState, tenant: &Tenant) -> Result<Value, AppEr
                 "visibility": row.visibility,
                 "share_description": row.share_description,
                 "unshared_by": row.unshared_by,
+                "env": env,
             })
         })
         .collect();
@@ -759,6 +801,21 @@ pub async fn secret_set(
 ) -> Result<Value, AppError> {
     let name = arg_str(args, "name")?;
     let value = arg_str(args, "value")?;
+
+    // PRD-mcphost-python-kind-plain-env requirement 3 (AC4), the symmetric
+    // direction of `tool_publish`'s own env/secret collision check above: a
+    // new secret name must not collide with any of this tenant's
+    // already-published tools' `env` entries. Secrets are tenant-scoped
+    // (not per-tool), so every one of this tenant's tools needs checking,
+    // not just whichever tool happens to reference this secret name.
+    let tools = state.db.list_tools(tenant.id).await?;
+    for row in &tools {
+        if let Some(kind) = state.kinds.get(&row.kind)
+            && kind.env_map(&row.spec).contains_key(&name)
+        {
+            return Err(AppError::secret_collides_with_env(&name));
+        }
+    }
 
     // PRD-grand-loop-billing requirement 3: `secrets_max` enforcement,
     // same shape as `tool_publish`'s `tools_max` check above. A re-set of

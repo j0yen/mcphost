@@ -1288,6 +1288,18 @@ pub trait Kind: Send + Sync {
         Vec::new()
     }
 
+    /// PRD-mcphost-python-kind-plain-env requirement 1: this `spec`'s own
+    /// plain (non-secret) `env` map, if it declares one -- used for the
+    /// env/secret collision check `host.tool_publish`/`host.secret_set`
+    /// run (AC4), the descriptor surface returned to a caller (AC7), and
+    /// (best effort) `admin.*` tool inspection reporting names and total
+    /// size, never values (AC10). `BTreeMap::new()` (the default) for a
+    /// kind with no such notion (`echo`, `http`); only `python` overrides
+    /// it.
+    fn env_map(&self, _spec: &Value) -> BTreeMap<String, String> {
+        BTreeMap::new()
+    }
+
     /// PRD-mcphost-call-limits-honest requirement 1: the per-call deadline
     /// this `spec` itself declares (already bounded by the kind's own
     /// maximum, e.g. `python`'s `MAX_TIMEOUT_S`), if any. Every real

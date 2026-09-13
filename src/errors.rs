@@ -276,7 +276,11 @@ impl AppError {
                 // `_ => INTERNAL_ERROR` default just because it arrives via
                 // `KindError::Structured` instead of `KindError::InvalidSpec`.
                 "host_not_allowed" | "args_invalid" | "template_error" | "kind_mismatch"
-                | "invalid_spec" => ErrorCode::INVALID_PARAMS,
+                | "invalid_spec"
+                // PRD-mcphost-python-kind-plain-env requirement 3 (AC4): a
+                // publish/secret_set naming a colliding env/secret key is
+                // the same caller-input problem as `invalid_spec` above.
+                | "env_secret_collision" => ErrorCode::INVALID_PARAMS,
                 // PRD-mcphost-tenant-state requirement 1/4: a schema
                 // violation, a quota overrun, and an undeclared table are
                 // all caller-input problems (a bad `host.state.insert`
@@ -496,6 +500,34 @@ impl AppError {
                 "detail": status.detail,
                 "alternatives": ["echo", "http"],
             }),
+        }
+    }
+
+    /// PRD-mcphost-python-kind-plain-env requirement 3 (AC4): a publish's
+    /// own `env` name collides with a secret already known for this tenant
+    /// -- secrets are tenant-scoped (not per-tool), so this is checked
+    /// against every secret the tenant has ever set, not just ones this
+    /// spec itself references.
+    pub fn env_collides_with_secret(key: &str) -> Self {
+        AppError::Structured {
+            code: "env_secret_collision",
+            message: format!(
+                "env.{key}: '{key}' collides with an existing secret of the same name for this tenant"
+            ),
+            data: json!({"field": format!("env.{key}"), "key": key, "rule": "secret_collision"}),
+        }
+    }
+
+    /// PRD-mcphost-python-kind-plain-env requirement 3 (AC4), the symmetric
+    /// direction: `host.secret_set` refuses a new secret name that collides
+    /// with any of this tenant's already-published tools' `env` entries.
+    pub fn secret_collides_with_env(key: &str) -> Self {
+        AppError::Structured {
+            code: "env_secret_collision",
+            message: format!(
+                "'{key}' collides with a published tool's env entry of the same name"
+            ),
+            data: json!({"field": "name", "key": key, "rule": "env_collision"}),
         }
     }
 

@@ -90,7 +90,7 @@
 //!   and keeping it off the pool means a debug run can never evict or block
 //!   on a warm sandbox serving real traffic.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -112,6 +112,13 @@ use crate::sandbox::{
 
 const MAX_SOURCE_BYTES: usize = 64 * 1024;
 const MAX_REQUIREMENTS: usize = 20;
+/// PRD-mcphost-python-kind-plain-env requirement 2 (AC3): at most this many
+/// `env` entries per spec.
+const MAX_ENV_ENTRIES: usize = 16;
+/// PRD-mcphost-python-kind-plain-env requirement 2 (AC3): the combined byte
+/// length of every `env` name plus every `env` value, summed, must not
+/// exceed this many bytes.
+const MAX_ENV_TOTAL_BYTES: usize = 4 * 1024;
 /// PRD-mcphost-call-limits-honest requirement 1 (AC2): this must equal
 /// `state::CALL_TIMEOUT`'s 30s -- `handler.rs`'s dispatch-level default
 /// applies whenever a spec doesn't declare `timeout_s` ([`Kind::requested_timeout`]
@@ -216,6 +223,19 @@ struct PythonSpec {
     memory_mb: Option<u64>,
     network: Option<String>,
     secrets: Vec<String>,
+    /// PRD-mcphost-python-kind-plain-env requirement 1: plain (non-secret)
+    /// configuration, injected into the sandbox process environment beside
+    /// `secrets` (see [`PythonKind::secret_env`] and where its result is
+    /// merged into `RunSpec::extra_env`) but distinct from it in storage,
+    /// visibility (`host.tool_test` shows these verbatim -- see `call`'s
+    /// `ctx.test_mode` branch) and audit (`control::tool_publish` journals
+    /// only these names, never values). A `BTreeMap` rather than
+    /// `Vec<(String, String)>` for free, deterministic (sorted-by-name)
+    /// ordering -- both [`call_fingerprint`]'s hash input and the
+    /// `host.tool_test` rendering need a stable order, and a `BTreeMap`
+    /// also makes a duplicate name structurally impossible (the wire JSON
+    /// object it's deserialized from already enforces that).
+    env: BTreeMap<String, String>,
     description: Option<String>,
     /// PRD-mcphost-result-envelope-contract requirement 1, extended by
     /// PRD-mcphost-spec-output-paths requirement 2/3: field names this
@@ -255,6 +275,9 @@ struct PythonSpecRaw {
     network: Option<String>,
     #[serde(default)]
     secrets: Vec<String>,
+    /// PRD-mcphost-python-kind-plain-env requirement 1: see [`PythonSpec::env`].
+    #[serde(default)]
+    env: BTreeMap<String, String>,
     #[serde(default)]
     description: Option<String>,
     #[serde(default = "default_outputs")]
@@ -280,6 +303,10 @@ fn python_field_hint(field: &str) -> Option<(&'static str, Value)> {
         "memory_mb" => ("a positive integer number of megabytes", json!(256)),
         "network" => ("\"none\" or \"public\"", json!("none")),
         "secrets" => ("a list of strings", json!(["api_key"])),
+        "env" => (
+            "a map of name to string value; names must match ^[A-Z][A-Z0-9_]{0,63}$",
+            json!({"MODE": "fast"}),
+        ),
         "description" => ("a string", json!("Doubles a number.")),
         "outputs" => (
             "a list of field names or an object mapping field names to path strings",
@@ -339,6 +366,7 @@ fn parse_spec(spec: &Value) -> Result<PythonSpec, KindError> {
         memory_mb: raw.memory_mb,
         network: raw.network,
         secrets: raw.secrets,
+        env: raw.env,
         description: raw.description,
         outputs,
     })
@@ -391,6 +419,104 @@ fn validate_requirements_all(reqs: &[String]) -> Vec<KindError> {
     errors
 }
 
+/// PRD-mcphost-python-kind-plain-env requirement 1 (AC2): `env` names must
+/// match `^[A-Z][A-Z0-9_]{0,63}$` -- checked by hand (byte-by-byte) rather
+/// than via the `regex` crate (not a dependency of this crate), matching
+/// [`requirement_is_allowed`]'s own convention above of a hand-rolled check
+/// for a small, fixed grammar.
+fn env_name_matches_pattern(name: &str) -> bool {
+    let bytes = name.as_bytes();
+    if bytes.is_empty() || bytes.len() > 64 {
+        return false;
+    }
+    bytes[0].is_ascii_uppercase()
+        && bytes[1..]
+            .iter()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || *b == b'_')
+}
+
+/// PRD-mcphost-python-kind-plain-env requirement 1 (AC2): reserved
+/// prefixes/names no `env` key may use, each with the reason a structured
+/// rejection names -- `MCPHOST_*` (this host's own convention), `PATH`/
+/// `HOME` (would corrupt the sandboxed interpreter's own resolution),
+/// `PYTHON*` (CPython's own env-var family, e.g. `PYTHONPATH`), `LD_*`
+/// (the dynamic linker), and `SECRET_*` -- this kind's own convention for
+/// injecting a resolved secret (see [`PythonKind::secret_env`]), so a plain
+/// `env` entry can never collide with, or be mistaken for, a secret at the
+/// OS-environment level the sandboxed process actually sees.
+fn env_name_reason_if_reserved(name: &str) -> Option<&'static str> {
+    const RESERVED_EXACT: &[&str] = &["PATH", "HOME"];
+    const RESERVED_PREFIXES: &[&str] = &["MCPHOST_", "PYTHON", "LD_", "SECRET_"];
+    if RESERVED_EXACT.contains(&name) {
+        return Some("is a reserved name");
+    }
+    if RESERVED_PREFIXES.iter().any(|p| name.starts_with(p)) {
+        return Some("uses a reserved prefix");
+    }
+    None
+}
+
+/// PRD-mcphost-python-kind-plain-env requirements 1/2 (AC2/AC3): every
+/// `env` violation at once -- bounds (entry count, total bytes) first,
+/// then each entry's own name pattern/reserved-prefix/NUL-byte checks --
+/// same "collect everything, don't stop at the first" convention as
+/// [`validate_requirements_all`]. UTF-8 validity (also required by AC3) is
+/// not checked here: `env`'s values are plain Rust `String`s, decoded from
+/// the wire's JSON by `serde`, which already guarantees valid UTF-8 or the
+/// whole spec fails to parse before this function is ever reached.
+fn validate_env_all(env: &BTreeMap<String, String>) -> Vec<KindError> {
+    let mut errors = Vec::new();
+    if env.len() > MAX_ENV_ENTRIES {
+        errors.push(KindError::structured_with(
+            "invalid_spec",
+            format!("env: at most {MAX_ENV_ENTRIES} entries; got {}", env.len()),
+            json!({"field": "env", "rule": "max_entries", "limit": MAX_ENV_ENTRIES, "got": env.len()}),
+        ));
+    }
+    let total_bytes: usize = env.iter().map(|(k, v)| k.len() + v.len()).sum();
+    if total_bytes > MAX_ENV_TOTAL_BYTES {
+        errors.push(KindError::structured_with(
+            "invalid_spec",
+            format!(
+                "env: {total_bytes} bytes across names and values, over the {MAX_ENV_TOTAL_BYTES}-byte limit"
+            ),
+            json!({"field": "env", "rule": "max_total_bytes", "limit": MAX_ENV_TOTAL_BYTES, "got": total_bytes}),
+        ));
+    }
+    for (name, value) in env {
+        let field = format!("env.{name}");
+        if !env_name_matches_pattern(name) {
+            errors.push(KindError::structured_with(
+                "invalid_spec",
+                format!(
+                    "{field}: '{name}' must match ^[A-Z][A-Z0-9_]{{0,63}}$"
+                ),
+                json!({"field": field, "key": name, "rule": "name_pattern"}),
+            ));
+            // A name that doesn't even match the pattern has nothing more
+            // useful to say about "reserved" -- skip straight to the next
+            // entry rather than layering a second, likely-redundant error
+            // on the same malformed key.
+            continue;
+        }
+        if let Some(reason) = env_name_reason_if_reserved(name) {
+            errors.push(KindError::structured_with(
+                "invalid_spec",
+                format!("{field}: '{name}' {reason} and cannot be used as an env name"),
+                json!({"field": field, "key": name, "rule": "reserved_name"}),
+            ));
+        }
+        if value.contains('\0') {
+            errors.push(KindError::structured_with(
+                "invalid_spec",
+                format!("{field}: value must not contain a NUL byte"),
+                json!({"field": field, "key": name, "rule": "no_nul_byte"}),
+            ));
+        }
+    }
+    errors
+}
+
 /// Requirement 3 / AC2: same fields [`validate_spec_fields`] checks, but
 /// collecting every violation instead of returning at the first with `?`.
 fn validate_spec_fields_all(parsed: &PythonSpec) -> Vec<KindError> {
@@ -404,6 +530,7 @@ fn validate_spec_fields_all(parsed: &PythonSpec) -> Vec<KindError> {
         )));
     }
     errors.extend(validate_requirements_all(&parsed.requirements));
+    errors.extend(validate_env_all(&parsed.env));
     // Requirement 1: an author-supplied schema is checked exactly as
     // before; an absent one is left to `validate_async` (and later,
     // `describe`/`call`) to infer -- inference needs the sandboxed AST
@@ -1562,25 +1689,38 @@ fn spawn_warm_reaper(warm: Arc<WarmPool>) {
     });
 }
 
-/// `hash(source + sorted(requirements) + sorted(secret env))` -- the warm
-/// pool's own reuse key (module doc: "Pool key"), distinct from
-/// [`requirements_hash`] (which keys the *environment*/venv cache and
-/// deliberately ignores `source`, since many tools can share one venv).
-/// Secret values are folded in too: a warm sandbox bakes its `SECRET_*`
-/// environment variables in at spawn time (a persistent process can't be
-/// handed new env vars mid-life the way a cold call's fresh subprocess
-/// gets them), so a tenant rotating a secret via `host.secret_set` between
-/// calls must be a fingerprint miss, not a reuse of a sandbox holding the
-/// old value.
+/// `hash(source + sorted(requirements) + sorted(secret env) + sorted(plain
+/// env))` -- the warm pool's own reuse key (module doc: "Pool key"),
+/// distinct from [`requirements_hash`] (which keys the *environment*/venv
+/// cache and deliberately ignores `source`, since many tools can share one
+/// venv). Secret values are folded in too: a warm sandbox bakes its
+/// `SECRET_*` environment variables in at spawn time (a persistent process
+/// can't be handed new env vars mid-life the way a cold call's fresh
+/// subprocess gets them), so a tenant rotating a secret via
+/// `host.secret_set` between calls must be a fingerprint miss, not a reuse
+/// of a sandbox holding the old value.
+///
+/// PRD-mcphost-python-kind-plain-env requirement 4 (AC8): `env` gets the
+/// identical treatment for the identical reason -- a warm sandbox bakes
+/// plain `env` values in at spawn time exactly like secrets, so updating a
+/// tool's `env` map (no source change) must also be a fingerprint miss, or
+/// the pooled process would keep serving the old values indefinitely.
 fn call_fingerprint(
     source: &str,
     requirements: &[String],
     secret_env: &[(String, String)],
+    env: &[(String, String)],
 ) -> String {
     let mut sorted = requirements.to_vec();
     sorted.sort();
     let mut sorted_secrets = secret_env.to_vec();
     sorted_secrets.sort();
+    // `env` is built from a `BTreeMap` (see `PythonSpec::env`), so it's
+    // already sorted by name -- re-sorting here costs nothing and keeps
+    // this function's own contract ("sorted", stated once) independent of
+    // however a future caller happens to build its argument.
+    let mut sorted_env = env.to_vec();
+    sorted_env.sort();
     let mut hasher = Sha256::new();
     hasher.update(source.as_bytes());
     hasher.update(b"\n--reqs--\n");
@@ -1592,8 +1732,26 @@ fn call_fingerprint(
         hasher.update(v.as_bytes());
         hasher.update(b"\n");
     }
+    hasher.update(b"\n--env--\n");
+    for (k, v) in &sorted_env {
+        hasher.update(k.as_bytes());
+        hasher.update(b"=");
+        hasher.update(v.as_bytes());
+        hasher.update(b"\n");
+    }
     let digest = hasher.finalize();
     digest.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// PRD-mcphost-python-kind-plain-env requirement 1 (AC1/AC6): `secret_env`
+/// (already `SECRET_<NAME>`-prefixed) plus this spec's own plain `env`
+/// entries (verbatim names), the exact set of extra environment variables
+/// every sandbox spawn site (`call`'s cold path, `maybe_promote_to_warm`,
+/// `tool_run`) hands to `sandbox::RunSpec::extra_env`.
+fn merge_env(secret_env: &[(String, String)], env: &[(String, String)]) -> Vec<(String, String)> {
+    let mut combined = secret_env.to_vec();
+    combined.extend(env.iter().cloned());
+    combined
 }
 
 // ---- runner protocol envelope (this kind's own convention) ---------------
@@ -2440,6 +2598,29 @@ fn redact_kind_error(err: KindError, secrets: &[String]) -> KindError {
     }
 }
 
+/// PRD-mcphost-python-kind-plain-env requirement 5 (AC5): `host.tool_test`'s
+/// one rendered-environment listing -- every plain `env` entry shown
+/// verbatim (`kind: "env"`), every declared secret name shown redacted
+/// (`kind: "secret"`, value always `"***"`, regardless of whether this
+/// tenant has actually set it -- a missing secret is still a secret, not
+/// something to reveal the absence of by omission). Sorted by name
+/// (`env` is a `BTreeMap`; `secrets` is sorted here) so the listing's order
+/// is deterministic and independent of publish-time field order.
+fn environment_report(env: &BTreeMap<String, String>, secrets: &[String]) -> Value {
+    let mut entries: Vec<Value> = env
+        .iter()
+        .map(|(name, value)| json!({"name": name, "kind": "env", "value": value}))
+        .collect();
+    let mut sorted_secrets = secrets.to_vec();
+    sorted_secrets.sort();
+    entries.extend(
+        sorted_secrets
+            .iter()
+            .map(|name| json!({"name": name, "kind": "secret", "value": "***"})),
+    );
+    json!(entries)
+}
+
 fn outcome_usage(outcome: &SandboxOutcome) -> (i64, i64) {
     match outcome {
         SandboxOutcome::Exited {
@@ -3051,7 +3232,17 @@ impl PythonKind {
             },
             wall_clock_timeout: Duration::from_secs(parsed.effective_timeout_s() + 2),
             network: self.network_mode(parsed),
-            extra_env: secret_env.to_vec(),
+            // PRD-mcphost-python-kind-plain-env requirement 1 (AC1/AC6):
+            // `parsed.env` is already available on `parsed` here, so this
+            // reads it directly rather than taking a third `env: &[(String,
+            // String)]` parameter -- the warm sandbox this spawns must see
+            // exactly the same environment a cold call to the same spec
+            // would (`merge_env`), or a call reused from the pool would be
+            // missing its plain `env` entries entirely.
+            extra_env: merge_env(
+                secret_env,
+                &parsed.env.iter().map(|(k, v)| (k.clone(), v.clone())).collect::<Vec<_>>(),
+            ),
             isolation: self.isolation,
         };
 
@@ -3282,6 +3473,18 @@ impl Kind for PythonKind {
         parse_spec(spec).map(|p| p.secrets).unwrap_or_default()
     }
 
+    /// PRD-mcphost-python-kind-plain-env requirement 1: this spec's own
+    /// plain (non-secret) `env` map -- used by `control::tool_publish`/
+    /// `control::secret_set` for the env/secret collision check (AC4),
+    /// `control::tool_list` to return it to a caller (AC7), and (best
+    /// effort) `admin.*` tool inspection for names + total size (AC10).
+    /// `BTreeMap::new()` on an unparseable spec, matching every other
+    /// spec-derived `Kind` method's fallback -- publish-time validation
+    /// already rejects that spec before this is reached in practice.
+    fn env_map(&self, spec: &Value) -> BTreeMap<String, String> {
+        parse_spec(spec).map(|p| p.env).unwrap_or_default()
+    }
+
     /// PRD-mcphost-call-limits-honest requirement 1 (AC1/AC2): `None` when
     /// this spec never declared `timeout_s` -- `handler.rs`'s dispatch
     /// falls back to `AppState::call_timeout`'s default in that case.
@@ -3376,6 +3579,13 @@ impl Kind for PythonKind {
 
         let secret_env = self.secret_env(&parsed, ctx);
         let secret_values: Vec<String> = secret_env.iter().map(|(_, v)| v.clone()).collect();
+        // PRD-mcphost-python-kind-plain-env requirement 1 (AC1/AC6): this
+        // spec's own plain configuration, verbatim names (unlike
+        // `secret_env`'s `SECRET_<NAME>` prefixing) -- folded into the
+        // fingerprint (AC8) and merged into the sandbox's environment
+        // beside `secret_env` at every spawn site below.
+        let plain_env: Vec<(String, String)> =
+            parsed.env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
 
         if let Err(retry_after_s) = self.cpu_budget.check(ctx.tenant_id) {
             return Err(KindError::structured_with(
@@ -3395,7 +3605,12 @@ impl Kind for PythonKind {
         // those always fall through to the cold path below, by design (see
         // the module doc's "Pool key" note).
         let warm_key: Option<ToolKey> = ctx.tool_name.clone().map(|name| (ctx.tenant_id, name));
-        let fingerprint = call_fingerprint(&parsed.source, &effective_requirements, &secret_env);
+        let fingerprint = call_fingerprint(
+            &parsed.source,
+            &effective_requirements,
+            &secret_env,
+            &plain_env,
+        );
         if let Some(key) = &warm_key {
             let call_timeout = Duration::from_secs(parsed.effective_timeout_s() + 2);
             if let Some(result) = self
@@ -3504,7 +3719,10 @@ impl Kind for PythonKind {
             },
             wall_clock_timeout: Duration::from_secs(parsed.effective_timeout_s() + 2),
             network: self.network_mode(&parsed),
-            extra_env: secret_env.clone(),
+            // PRD-mcphost-python-kind-plain-env requirement 1 (AC1/AC6):
+            // this spec's own `env` joins `secret_env` at the same
+            // injection point -- see `merge_env`'s doc comment.
+            extra_env: merge_env(&secret_env, &plain_env),
             isolation: self.isolation,
         };
 
@@ -3575,7 +3793,19 @@ impl Kind for PythonKind {
                 // request echo -- attach the debug info to the response
                 // `Value` itself, never touching `handler.rs`.
                 if ctx.test_mode {
-                    Ok(json!({"result": redacted, "schema": effective_schema}))
+                    Ok(json!({
+                        "result": redacted,
+                        "schema": effective_schema,
+                        // PRD-mcphost-python-kind-plain-env requirement 5
+                        // (AC5): `host.tool_test`'s rendered environment --
+                        // plain `env` values shown verbatim, secret values
+                        // redacted, each labeled which is which. Secrets
+                        // are named by the spec's own declared name (e.g.
+                        // `"token"`), not the `SECRET_<NAME>` form the
+                        // sandboxed process actually sees, since that's
+                        // what a publisher wrote and would recognize.
+                        "environment": environment_report(&parsed.env, &parsed.secrets),
+                    }))
                 } else {
                     Ok(redacted)
                 }
@@ -3608,6 +3838,10 @@ impl Kind for PythonKind {
 
         let secret_env = self.secret_env(&parsed, ctx);
         let secret_values: Vec<String> = secret_env.iter().map(|(_, v)| v.clone()).collect();
+        // PRD-mcphost-python-kind-plain-env requirement 1 (AC1): see the
+        // same-named local in `call` above.
+        let plain_env: Vec<(String, String)> =
+            parsed.env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
 
         let effective_requirements = parsed.effective_requirements()?;
         let env_dir = self.env_dir(&ctx.namespace, &effective_requirements);
@@ -3675,7 +3909,7 @@ impl Kind for PythonKind {
             },
             wall_clock_timeout: Duration::from_secs(parsed.effective_timeout_s() + 2),
             network: self.network_mode(&parsed),
-            extra_env: secret_env.clone(),
+            extra_env: merge_env(&secret_env, &plain_env),
             isolation: self.isolation,
         };
 
@@ -3998,13 +4232,14 @@ mod tests {
 
     #[test]
     fn call_fingerprint_is_sensitive_to_source_requirements_and_secrets() {
-        let a = call_fingerprint("def main(args):\n    return {}\n", &[], &[]);
-        let b = call_fingerprint("def main(args):\n    return {'x': 1}\n", &[], &[]);
+        let a = call_fingerprint("def main(args):\n    return {}\n", &[], &[], &[]);
+        let b = call_fingerprint("def main(args):\n    return {'x': 1}\n", &[], &[], &[]);
         assert_ne!(a, b, "different source must fingerprint differently");
 
         let c = call_fingerprint(
             "def main(args):\n    return {}\n",
             &["requests".into()],
+            &[],
             &[],
         );
         assert_ne!(a, c, "different requirements must fingerprint differently");
@@ -4013,11 +4248,37 @@ mod tests {
             "def main(args):\n    return {}\n",
             &[],
             &[("SECRET_TOKEN".into(), "v1".into())],
+            &[],
         );
         assert_ne!(a, d, "different secret values must fingerprint differently");
 
-        let e = call_fingerprint("def main(args):\n    return {}\n", &[], &[]);
+        let e = call_fingerprint("def main(args):\n    return {}\n", &[], &[], &[]);
         assert_eq!(a, e, "identical inputs must fingerprint identically");
+    }
+
+    /// PRD-mcphost-python-kind-plain-env requirement 4 (AC8): a changed
+    /// plain `env` map must be a fingerprint miss too, the identical
+    /// treatment [`call_fingerprint_is_sensitive_to_source_requirements_and_secrets`]
+    /// already proves for `secret_env` -- see `call_fingerprint`'s own doc
+    /// comment for why (a warm sandbox bakes both in at spawn time).
+    #[test]
+    fn call_fingerprint_is_sensitive_to_env() {
+        let a = call_fingerprint("def main(args):\n    return {}\n", &[], &[], &[]);
+        let b = call_fingerprint(
+            "def main(args):\n    return {}\n",
+            &[],
+            &[],
+            &[("MODE".into(), "fast".into())],
+        );
+        assert_ne!(a, b, "adding an env entry must fingerprint differently");
+
+        let c = call_fingerprint(
+            "def main(args):\n    return {}\n",
+            &[],
+            &[],
+            &[("MODE".into(), "slow".into())],
+        );
+        assert_ne!(b, c, "a changed env value must fingerprint differently");
     }
 
     fn warm_ctx(tenant_id: i64, namespace: &str, tool_name: &str) -> CallCtx {
