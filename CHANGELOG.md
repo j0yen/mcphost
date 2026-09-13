@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.48.0 — 2026-09-13
+
+`host.whoami` and the `tenants` table report `client_name: "rmcp"`, `client_version: "3.2.0"` for a caller that sent zero MCP `clientInfo` — a bare single-shot JSON-RPC POST with no `initialize` handshake, the exact shape mcphost's own streamable-HTTP transport is documented to tolerate. "rmcp" happens to be the name of the Rust MCP SDK mcphost itself (and homeward-mcp) are built on: the attribution capture path is very likely defaulting to the server's own SDK identity instead of `null`/`unknown` when the request carries none. This silently fabricates specific-looking client attribution — directly undermining the signal mcphost-tenant-attribution (and this whole tenant-onboarding dogfood) exists to produce.
+
 ## v0.47.0 — 2026-09-13
 
 Per-tenant tables: create with a schema, append rows, and run read-only SQL
