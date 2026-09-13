@@ -9,8 +9,8 @@ use std::time::{Duration, Instant};
 
 use rmcp::ErrorData as McpError;
 use rmcp::model::{
-    CacheScope, CallToolRequestParams, CallToolResponse, CallToolResult, ListToolsResult,
-    PaginatedRequestParams, ServerCapabilities, ServerInfo, Tool,
+    CacheScope, CallToolRequestParams, CallToolResponse, CallToolResult, Implementation,
+    ListToolsResult, PaginatedRequestParams, ServerCapabilities, ServerInfo, Tool,
 };
 use rmcp::service::{NotificationContext, RequestContext};
 use rmcp::{RoleServer, ServerHandler};
@@ -186,9 +186,36 @@ fn user_agent_header(parts: &http::request::Parts) -> Option<String> {
 /// `None` when neither is present (a client that doesn't send `clientInfo`
 /// at all -- signup still succeeds, requirement 2 doesn't make this
 /// mandatory).
+///
+/// PRD-mcphost-client-attribution-default-leak: `ctx.client_info()`'s
+/// stateful/legacy fallback reads `ctx.peer.peer_info()` -- and for this
+/// host's stateless streamable-HTTP path (every single-shot request with no
+/// prior `initialize`), `rmcp` itself synthesizes that `peer_info` via
+/// `peer_info_for_stateless_request()`, filling `client_info` with
+/// `Implementation::default()` purely so `RequestContext::protocol_version()`
+/// has a fallback -- NOT because the caller reported any identity. That
+/// placeholder is `Implementation::from_build_env()`: `rmcp`'s own crate
+/// name/version, baked into the `rmcp` binary at ITS compile time (e.g.
+/// `name: "rmcp", version: "3.2.0"`), regardless of who calls it. Left
+/// unchecked, a caller that sends zero `clientInfo` gets attributed as if it
+/// were the server's own SDK -- exactly the false-precision this PRD fixes.
+/// Comparing the resolved info against a freshly-built
+/// `Implementation::default()` (same constant, every call, every process --
+/// it is `rmcp`'s own compiled-in identity, not a parsed/attacker-influenced
+/// value) distinguishes "genuinely absent" from "explicitly reported": treat
+/// an exact match as absent (`None`) rather than persisting or surfacing it
+/// as real attribution. A caller whose real `clientInfo` (from its own
+/// `initialize` handshake or a SEP-2575 per-request `_meta`) differs from
+/// this placeholder in name or version is unaffected -- requirement 2 /
+/// AC2's "real reported client name/version captured unchanged" case.
 fn peer_client_info(ctx: &RequestContext<RoleServer>) -> Option<(String, String)> {
-    ctx.client_info()
-        .map(|info| (info.name.clone(), info.version.clone()))
+    ctx.client_info().and_then(|info| {
+        if info == Implementation::default() {
+            None
+        } else {
+            Some((info.name.clone(), info.version.clone()))
+        }
+    })
 }
 
 // ---- static control-plane / admin tool descriptors -----------------------
