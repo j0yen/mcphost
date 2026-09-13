@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.45.1 — 2026-09-13
+
+Pays inherited gate debt at HEAD 6d51e76: the reviewer-agent block
+(`unfakeable-metric-blind-to-handoff-acs`) traced to `scripts/run-metrics.sh`'s
+AC-counting glob never matching any `tests/<prefix>_ac<NN>_*.rs` file, only
+the bare `tests/ac<NN>_*.rs` convention -- every prefixed AC suite (starting
+with the handoff-token feature's `tests/handoff_ac01..08_*.rs`) was
+silently unmeasured by the unfakeable metric. Fixed with a second glob arm
+and a pinning regression test.
+
 ## v0.45.0 — 2026-09-13
 
 The cycle-11 design decision put the tenant key in the model's context as a tool
