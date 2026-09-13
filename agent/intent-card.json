@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/wintermute/mcphost/PRD-mcphost-tenant-tables.md",
-  "intent_slug": "mcphost-tenant-tables",
-  "root_motivation": "Data-pipeline agents build tools that read and write tabular state, and mcphost offers them nothing between the key-value store (tenant-state, small values) and \"bring your own warehouse\" (which synthetic personas answer by inventing `adb-1234567890.12.azuredatabricks.net` \u2014 vision, 2026-09-09, 12 sessions of 84 lost to placeholder upstreams). The capability panel's data segment was the one segment willing to switch on a modest improvement (switch share 0.33), the corpus has carried warehouse-shaped tasks since v0.4.1, and the \"fails for want of\" trigger the vision set for this component has now fired on four consecutive comparable runs. The consequence is measured: data_pipeline_builder satisfaction 0.0 at 0.12.0 and still bottom-tier at 0.30.0, always for the same reason \u2014 the task cannot be completed on this host.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-client-attribution-default-leak.md",
+  "intent_slug": "mcphost-client-attribution-default-leak",
+  "root_motivation": "PRD-homeward-mcp-tenant's real onboarding run (2026-09-13, tenant `t_ea9749c3`, display_name `pawsandpetals`) called `signup` and `host.whoami` via a raw `httpx` POST (no rmcp library, no `initialize`, per `stress_protocol.py`'s documented wire contract: \"mcphost's streamable-HTTP surface tolerates a single-shot POST with no prior initialize handshake or session id\"). `host.whoami` nonetheless returned `client_name: \"rmcp\"`, `client_version: \"3.2.0\"`. The live `tenants` table confirms the same pair on the only other `origin: external` row (`fleet-adapter-ops`, id 387) \u2014 both real, non-synthetic tenants carry an identical, specific-looking client identity neither caller actually sent.",
   "user_persona": "An agent (real or the demand-fleet harness) calling signup for the first time, whose whole session -- including any client-side transcript its own harness keeps -- must not leak a live, indefinitely-usable credential; secondarily the operator (Joe) who pulled this forward on 2026-09-12 with 'test it' once a real tenant's exposure story was on the line, and who reads host.key_rotate's audit trail (journal, never secret values) after a suspected leak.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,68 +14,20 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a tenant, When it creates a table, appends 3 valid rows, and queries them with a SELECT and a WHERE, Then results return under `result.payload` with correct values and types.",
-      "test": "src/tables.rs (mod tests::create_append_query_round_trip)"
+      "description": "Given a single-shot `tools/call` request with no prior `initialize` and no `clientInfo`, When the tenant record is read back (`host.whoami` or equivalent), Then `client_name`/`client_version` are null/unknown, not `rmcp`/any SDK-version string.",
+      "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given an append whose row violates the schema (wrong type, missing column, unknown column), When submitted, Then it is refused with a structured error naming the column and rule, and no partial rows land.",
-      "test": "src/tables.rs (mod tests::append_rejects_schema_violation_and_writes_nothing)"
+      "description": "Given a request that DOES send proper MCP `clientInfo` (e.g. a real `initialize` handshake from an SDK client), When the tenant record is read back, Then the real reported client name/version are captured unchanged (no regression on the working case).",
+      "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
-      "level": "MUST",
-      "description": "Given `query` receives an UPDATE, a DROP, a multi-statement string, and a SELECT joining another tenant's table name, When each runs, Then each is refused structurally and the refusal names the rule; the cross-tenant name reads as nonexistent, never as forbidden-but-present.",
-      "test": "src/tables.rs (mod tests::query_structure_rejects_non_select_and_multi_statement, mod tests::cross_tenant_table_name_reads_as_nonexistent)"
-    },
-    {
-      "id": "AC4",
-      "level": "MUST",
-      "description": "Given a plan with max 2 tables and a row cap, When the tenant creates a third table or appends past the cap, Then the structured quota error names `billing.checkout`, and `host.usage` reports table counts and bytes.",
-      "test": "src/tables.rs (mod tests::table_quota_refuses_past_tables_max)"
-    },
-    {
-      "id": "AC5",
-      "level": "MUST",
-      "description": "Given a python tool whose code appends and queries via the sandbox channel, When called, Then the operations succeed under the same tenant scoping and quotas as the session tools.",
-      "test": "tests/tables_ac05_python_sandbox_table_access.rs"
-    },
-    {
-      "id": "AC6",
-      "level": "MUST",
-      "description": "Given a query returning more than the row bound, or running past the time bound, When executed, Then it terminates with a structured error naming the bound, and the host serves the next call normally.",
-      "test": "src/tables.rs (mod tests::query_row_cap_refuses_oversized_result)"
-    },
-    {
-      "id": "AC7",
-      "level": "MUST",
-      "description": "Given `admin.tenant_delete` on a tenant with tables, When it completes, Then the tenant's table storage is gone (cascade verified on disk), and no other tenant's tables changed.",
-      "test": "tests/tables_ac07_tenant_delete_cascade.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "MUST",
-      "description": "Given the build completes, When llms.txt and descriptors are read, Then all table tools and the KV-vs-table sentence are present.",
-      "test": "tests/tables_ac08_docs_and_kv_vs_table_sentence.rs"
-    },
-    {
-      "id": "AC9",
       "level": "SHOULD",
-      "description": "Given a table with rows, When `host.table.schema` is called, Then it returns columns, types, row count, and byte count without executing a query.",
-      "test": "src/tables.rs (mod tests::schema_reports_columns_and_row_count_without_querying)"
-    },
-    {
-      "id": "AC10",
-      "level": "SHOULD",
-      "description": "Given a backup/restore cycle via the existing deploy drill against an instance with tenant tables, When restore completes, Then the tables and rows survive with no drill changes required.",
-      "test": "deferred:mock_unjustified -- no backup/restore drill script exists anywhere in this repo to exercise against (grepped for *backup*/*restore*, only tests/migration_compat_headers.rs matched, unrelated); table storage lives under $MCPHOST_DATA_DIR alongside tenant-state, which Technical considerations says the existing deploy backup already covers structurally, but nothing in-repo currently proves a restore cycle preserves table rows"
-    },
-    {
-      "id": "AC11",
-      "level": "MAY",
-      "description": "Given a table with rows, When `host.table.export` runs, Then an open-format snapshot file is produced and fetchable by the tenant, and its row count matches the table.",
-      "test": "deferred:mock_unjustified -- host.table.export (P2/Iceberg snapshot export) is not implemented this build; deferred per the PRD's own P2 requirement 9 and commit ef3ad13's message ('P2 (host.table.export/Iceberg) deferred'); no code path exists yet to test"
+      "description": "Given the new regression test, When run in CI, Then it fails against the pre-fix code path and passes after the fix (verified both ways during this PRD's own build).",
+      "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     }
   ],
   "scope": [
