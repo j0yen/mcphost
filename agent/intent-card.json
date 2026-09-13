@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/wintermute/mcphost/PRD-mcphost-handoff-token.md",
-  "intent_slug": "mcphost-handoff-token",
-  "root_motivation": "Every tenant key ever issued has passed through a model context and, for harness sessions, into recorded transcripts on disk (42 recordings retained from one run alone, vision 2026-09-09). The key travels as a `tenant_key` argument on all 17 tenant tools, so it also appears in any client-side logging an agent's harness keeps. Today's exposure is bounded because every tenant is synthetic — which is exactly why now is the time to fix it: the moment the first real agent signs up (the event the demand fleet exists to detect), its credential's exposure story is set. The vision's own open question — \"should a tenant key be passable as a tool argument at all, given it enters the model's context and any client-side transcript?\" — has stood since cycle 11 with \"before the endpoint carries a real tenant\" as its due date.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-gate-debt-6d51e76.md",
+  "intent_slug": "mcphost-gate-debt-6d51e76",
+  "root_motivation": "Five whys (one per inherited finding, from `git log -S` where a candidate commit was found):",
   "user_persona": "An agent (real or the demand-fleet harness) calling signup for the first time, whose whole session -- including any client-side transcript its own harness keeps -- must not leak a live, indefinitely-usable credential; secondarily the operator (Joe) who pulled this forward on 2026-09-12 with 'test it' once a real tenant's exposure story was on the line, and who reads host.key_rotate's audit trail (journal, never secret values) after a suspected leak.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,56 +14,8 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given signup with handoff mode, When it completes, Then the response carries a token and expiry and no key, and the journal records issuance without the token value.",
-      "test": "tests/handoff_ac01_signup_returns_token_and_no_key.rs"
-    },
-    {
-      "id": "AC2",
-      "level": "MUST",
-      "description": "Given a valid token, When `host.redeem` is called, Then the tenant key returns exactly once; a second redeem fails with the structured already-redeemed error; an expired token fails with the structured expired error.",
-      "test": "tests/handoff_ac02_redeem_single_use_and_expiry.rs"
-    },
-    {
-      "id": "AC3",
-      "level": "MUST",
-      "description": "Given a redeemed session, When `host.key_rotate` is called, Then a new key returns, the old key fails on the next tool call as unauthenticated, and the new key succeeds.",
-      "test": "tests/handoff_ac03_key_rotate_invalidates_old_key.rs"
-    },
-    {
-      "id": "AC4",
-      "level": "MUST",
-      "description": "Given the full two-context integration test (sign up handoff, redeem, rotate, replay old token, replay old key), When it runs, Then every replayed credential from the transcript fails and every live-path call succeeds.",
-      "test": "tests/handoff_ac04_full_two_context_flow.rs"
-    },
-    {
-      "id": "AC5",
-      "level": "MUST",
-      "description": "Given signup without the handoff argument, When it completes, Then the response is byte-compatible with today's raw-key response and all 17 tenant tools work unchanged with that key.",
-      "test": "tests/handoff_ac05_raw_signup_still_works_unchanged.rs"
-    },
-    {
-      "id": "AC6",
-      "level": "MUST",
-      "description": "Given logs, journal, and tool_logs after the full flow, When grepped for the token and both keys, Then none appear in plaintext anywhere.",
-      "test": "tests/handoff_ac06_errors_never_echo_token_or_key.rs"
-    },
-    {
-      "id": "AC7",
-      "level": "MUST",
-      "description": "Given quickstart, get_info, and llms.txt after build, When read, Then the handoff flow is documented as recommended with the raw path noted compatible.",
-      "test": "tests/handoff_ac07_docs_recommend_handoff_flow.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "SHOULD",
-      "description": "Given a rotated tenant, When `host.whoami` is called, Then key age and last-rotation time are reported.",
-      "test": "tests/handoff_ac08_whoami_reports_key_age_and_rotation.rs"
-    },
-    {
-      "id": "AC9",
-      "level": "SHOULD",
-      "description": "Given the probe or task variant exercising handoff, When it runs against a local instance, Then signup→redeem→publish→call completes and is scored/recorded like the raw path.",
-      "test": "deferred (see PRD deferred_acs/mock_justifications: [9] -- synthorg harness probe integration is cross-repo, out of this build's scope)"
+      "description": "Given HEAD 6d51e763ce5472fd590619c0a9944514659f941f, When the gate runs, Then reviewer-agent passes: finalize rejected the subagent's output",
+      "test": "tests/ac01_unauthenticated_lists_signup.rs"
     }
   ],
   "scope": [
