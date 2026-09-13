@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/wintermute/mcphost/PRD-mcphost-client-attribution-default-leak.md",
-  "intent_slug": "mcphost-client-attribution-default-leak",
-  "root_motivation": "PRD-homeward-mcp-tenant's real onboarding run (2026-09-13, tenant `t_ea9749c3`, display_name `pawsandpetals`) called `signup` and `host.whoami` via a raw `httpx` POST (no rmcp library, no `initialize`, per `stress_protocol.py`'s documented wire contract: \"mcphost's streamable-HTTP surface tolerates a single-shot POST with no prior initialize handshake or session id\"). `host.whoami` nonetheless returned `client_name: \"rmcp\"`, `client_version: \"3.2.0\"`. The live `tenants` table confirms the same pair on the only other `origin: external` row (`fleet-adapter-ops`, id 387) \u2014 both real, non-synthetic tenants carry an identical, specific-looking client identity neither caller actually sent.",
+  "prd_source": "/home/jsy/wintermute/mcphost/PRD-mcphost-gate-debt-c627803.md",
+  "intent_slug": "mcphost-gate-debt-c627803",
+  "root_motivation": "Five whys (one per inherited finding, from `git log -S` where a candidate commit was found):",
   "user_persona": "An agent (real or the demand-fleet harness) calling signup for the first time, whose whole session -- including any client-side transcript its own harness keeps -- must not leak a live, indefinitely-usable credential; secondarily the operator (Joe) who pulled this forward on 2026-09-12 with 'test it' once a real tenant's exposure story was on the line, and who reads host.key_rotate's audit trail (journal, never secret values) after a suspected leak.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,20 +14,8 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a single-shot `tools/call` request with no prior `initialize` and no `clientInfo`, When the tenant record is read back (`host.whoami` or equivalent), Then `client_name`/`client_version` are null/unknown, not `rmcp`/any SDK-version string.",
+      "description": "Given HEAD c627803598ee85ae3795ec3f7ee21a50c31adee0, When the gate runs, Then extended-receipts passes: one or more extended producers did not pass|skip (see output above)",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
-    },
-    {
-      "id": "AC2",
-      "level": "MUST",
-      "description": "Given a request that DOES send proper MCP `clientInfo` (e.g. a real `initialize` handshake from an SDK client), When the tenant record is read back, Then the real reported client name/version are captured unchanged (no regression on the working case).",
-      "test": "tests/ac02_signup_creates_hashed_tenant.rs"
-    },
-    {
-      "id": "AC3",
-      "level": "SHOULD",
-      "description": "Given the new regression test, When run in CI, Then it fails against the pre-fix code path and passes after the fix (verified both ways during this PRD's own build).",
-      "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     }
   ],
   "scope": [
