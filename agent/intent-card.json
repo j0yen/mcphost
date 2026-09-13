@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-handoff-token.md",
+  "prd_source": "/home/jsy/wintermute/mcphost/PRD-mcphost-handoff-token.md",
   "intent_slug": "mcphost-handoff-token",
-  "root_motivation": "Every tenant key ever issued has passed through a model context and, for harness sessions, into recorded transcripts on disk (42 recordings retained from one run alone, vision 2026-09-09). The key travels as a `tenant_key` argument on all 17 tenant tools, so it also appears in any client-side logging an agent's harness keeps. Today's exposure is bounded because every tenant is synthetic \u2014 which is exactly why now is the time to fix it: the moment the first real agent signs up (the event the demand fleet exists to detect), its credential's exposure story is set. The vision's own open question \u2014 \"should a tenant key be passable as a tool argument at all, given it enters the model's context and any client-side transcript?\" \u2014 has stood since cycle 11 with \"before the endpoint carries a real tenant\" as its due date.",
-  "user_persona": "The /build loop's own gate, which pays the cargo link cost for 289 near-identical test binaries every mcphost gate (21-42 min wall); secondarily the operator watching RedBaron's disk (81-86% on 09-08), the AC-pairing classifier needing unchanged test file paths, and a builder adding tests/<name>.rs who must be told if it never gets linked into a suite.",
+  "root_motivation": "Every tenant key ever issued has passed through a model context and, for harness sessions, into recorded transcripts on disk (42 recordings retained from one run alone, vision 2026-09-09). The key travels as a `tenant_key` argument on all 17 tenant tools, so it also appears in any client-side logging an agent's harness keeps. Today's exposure is bounded because every tenant is synthetic — which is exactly why now is the time to fix it: the moment the first real agent signs up (the event the demand fleet exists to detect), its credential's exposure story is set. The vision's own open question — \"should a tenant key be passable as a tool argument at all, given it enters the model's context and any client-side transcript?\" — has stood since cycle 11 with \"before the endpoint carries a real tenant\" as its due date.",
+  "user_persona": "An agent (real or the demand-fleet harness) calling signup for the first time, whose whole session -- including any client-side transcript its own harness keeps -- must not leak a live, indefinitely-usable credential; secondarily the operator (Joe) who pulled this forward on 2026-09-12 with 'test it' once a real tenant's exposure story was on the line, and who reads host.key_rotate's audit trail (journal, never secret values) after a suspected leak.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -15,71 +15,71 @@
       "id": "AC1",
       "level": "MUST",
       "description": "Given signup with handoff mode, When it completes, Then the response carries a token and expiry and no key, and the journal records issuance without the token value.",
-      "test": "tests/ac01_unauthenticated_lists_signup.rs"
+      "test": "tests/handoff_ac01_signup_returns_token_and_no_key.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
       "description": "Given a valid token, When `host.redeem` is called, Then the tenant key returns exactly once; a second redeem fails with the structured already-redeemed error; an expired token fails with the structured expired error.",
-      "test": "tests/ac02_signup_creates_hashed_tenant.rs"
+      "test": "tests/handoff_ac02_redeem_single_use_and_expiry.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
       "description": "Given a redeemed session, When `host.key_rotate` is called, Then a new key returns, the old key fails on the next tool call as unauthenticated, and the new key succeeds.",
-      "test": "tests/ac03_tenant_lists_control_plane_only.rs"
+      "test": "tests/handoff_ac03_key_rotate_invalidates_old_key.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
       "description": "Given the full two-context integration test (sign up handoff, redeem, rotate, replay old token, replay old key), When it runs, Then every replayed credential from the transcript fails and every live-path call succeeds.",
-      "test": "tests/ac04_publish_list_and_call.rs"
+      "test": "tests/handoff_ac04_full_two_context_flow.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
       "description": "Given signup without the handoff argument, When it completes, Then the response is byte-compatible with today's raw-key response and all 17 tenant tools work unchanged with that key.",
-      "test": "tests/ac05_cross_tenant_isolation.rs"
+      "test": "tests/handoff_ac05_raw_signup_still_works_unchanged.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
       "description": "Given logs, journal, and tool_logs after the full flow, When grepped for the token and both keys, Then none appear in plaintext anywhere.",
-      "test": "tests/ac06_remove_tool.rs"
+      "test": "tests/handoff_ac06_errors_never_echo_token_or_key.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
       "description": "Given quickstart, get_info, and llms.txt after build, When read, Then the handoff flow is documented as recommended with the raw path noted compatible.",
-      "test": "tests/ac07_usage_metering.rs"
+      "test": "tests/handoff_ac07_docs_recommend_handoff_flow.rs"
     },
     {
       "id": "AC8",
       "level": "SHOULD",
       "description": "Given a rotated tenant, When `host.whoami` is called, Then key age and last-rotation time are reported.",
-      "test": "tests/ac08_admin_disable_and_forbidden.rs"
+      "test": "tests/handoff_ac08_whoami_reports_key_age_and_rotation.rs"
     },
     {
       "id": "AC9",
       "level": "SHOULD",
-      "description": "Given the probe or task variant exercising handoff, When it runs against a local instance, Then signup\u2192redeem\u2192publish\u2192call completes and is scored/recorded like the raw path.",
-      "test": "tests/ac09_signup_rate_limit.rs"
+      "description": "Given the probe or task variant exercising handoff, When it runs against a local instance, Then signup→redeem→publish→call completes and is scored/recorded like the raw path.",
+      "test": "deferred (see PRD deferred_acs/mock_justifications: [9] -- synthorg harness probe integration is cross-repo, out of this build's scope)"
     }
   ],
   "scope": [
-    "Cargo.toml: `autotests = false`; one `[[test]]` per area with `path = \"tests/suite_<area>_NN.rs\"`; areas chosen by filename prefix so no suite exceeds roughly 60-80 files and the grand total (both sandbox/core partitions plus the exclusive-global singleton buckets) is <=10 (P0).",
-    "scripts/gen-test-suites.sh: scans top-level tests/*.rs, assigns each to an area by prefix table, writes tests/suite_<area>_NN.rs with `#[path = \"<file>.rs\"] mod <ident>;` lines plus one `mod common;` (and `support`/`ci_sandbox_support` where used); output is deterministic and sorted; `--check` exits non-zero naming any top-level tests/*.rs not included in a suite or any suite file that drifted from the generator's own output, wired into ci-test-partition.sh check / CI (P0).",
-    "Per-file `mod common;` (and the two other helper declarations) removed from included files and replaced by `use crate::common;` (or equivalent) so the helper compiles once per suite, not once per file; a test that names `common::` items unchanged still compiles (P0).",
-    "Every test that ran before runs after: nextest's test list, suite prefix stripped, equals the pre-change list; the verified-completed pairing classifier and intent-card test pointers resolve exactly as before since files stay where they are (P0).",
-    "Exclusive-global-subscriber isolation (2026-09-12 follow-up, CI red on plain `cargo test`): a handful of files that install a process-global tracing subscriber each get their own singleton `[[test]]` binary (distribute_exclusive in gen-test-suites.sh) rather than sharing a ~60-80-file bucket with unrelated tests, since cargo test's thread-per-test concurrency (unlike nextest's per-test process isolation) lets a concurrently-running unrelated test's log line pollute the exclusive test's captured-log buffer.",
-    ".config/nextest.toml emits JUnit with per-test timing so a later gate-phase-timing PRD can split the `gate` phase into per-test time (P1).",
-    "README section documenting how to add a test: drop the file, run the generator, or let CI tell you (P1)."
+    "signup gains an opt-in `handoff` boolean argument (default false/unchanged): true returns {tenant, tenant_id, handoff_token, expires_in, usage, next} with no `key` field at all, instead of today's {tenant, key, namespace, endpoint, usage, next} (P0, AC1).",
+    "New unauthenticated `host.redeem(handoff_token)` exchanges a valid, unexpired, not-yet-redeemed token for the tenant key exactly once via an atomic `UPDATE ... WHERE redeemed_unix IS NULL` claim; a second redemption fails `handoff_token_redeemed`, an expired one fails `handoff_token_expired`, neither ever echoing the token (P0, AC2, AC6).",
+    "New authenticated `host.key_rotate` (current key or tenant_key argument) issues a new key, overwrites `tenants.key_hash` and stamps `key_rotated_unix` in one statement, so the presented key stops resolving via `find_tenant_by_key_hash` from that call onward (P0, AC3).",
+    "Storage: migration 0019 adds `handoff_tokens` (token stored hashed via the existing `hash_key` convention; the raw key is AES-256-GCM-encrypted with the same `AppState::secrets::SecretBox` `host.secret_set` already uses, decrypted exactly once at redemption) and `tenants.key_rotated_unix` (P0, AC4/AC6).",
+    "`host.whoami` gains `key_age_s`/`key_rotated_at`, derived from `key_rotated_unix` falling back to `created_unix` for a never-rotated key (P1, AC8).",
+    "Docs: `get_info`'s instructions, `host.quickstart`'s unauthenticated step, README.md/docs/agent-quickstart.md/www/llms.txt (synced via scripts/gen-agent-docs.sh) all recommend the handoff flow while stating the raw path stays fully supported (P0, AC7).",
+    "A handoff_ac01-08 integration-test suite, including the full two-context replay test (AC4: signup handoff, redeem, rotate, replay the dead token, replay the dead key, confirm the live key works) Joe's 'test it' asked for."
   ],
   "non_goals": [
-    "Changing any test's body or assertion, or any src/ file -- this PRD's whole diff is Cargo.toml, tests/suite_*.rs, the per-file mod-common/mod-ci_sandbox_support rewrite, and scripts/; verified every commit via `git diff --stat` showing zero src/ paths.",
-    "Changing the runner: nextest stays the test executor, and its per-test process isolation is exactly what keeps the mcphost-tests-host-independence fixes valid; only the test *binary* boundary moves, not the runner.",
-    "Reducing the number of test files -- consolidation is at the binary-link level only; every tests/<name>.rs file keeps its name, its path, and its own test functions.",
-    "Sharding suites across machines -- SANDBOX_SHARDS' existing 2-way CI matrix split is preserved unchanged, not extended or replaced."
+    "No OAuth and no session binding -- cycle 11's stateless-transport ruling (`with_legacy_session_mode(false)`) stands; handoff+redeem happens inside the same session the token narrows the exposure window on, it does not eliminate the key-as-argument constraint.",
+    "No forced migration of existing tenants or the harness -- the raw-key path (signup without `handoff`) is byte-identical to before (AC5) and stays the default; rotation is available, never mandatory.",
+    "No change to admin auth, `admin.*` tools, or the admin key's own resolution path.",
+    "No corpus-task/harness-probe wiring for AC9 (P1) in this build -- deferred, see PRD frontmatter `deferred_acs: [9]` / `mock_justifications`; it needs the demand-fleet's own synthorg harness, a different subsystem than mcphost."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -88,32 +88,37 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "no_src_change": "Engineering target explicitly scopes this PRD to Cargo.toml, tests/, and scripts/ only; every commit this PRD landed (07db1f4, d40b1a3, and the earlier extend-scaffold/bump/changelog/intent-card-refresh commits) shows zero files under src/ in `git diff --stat`.",
-      "test_identity_preserved": "gen-test-suites.sh's `#[path]`-inclusion keeps every test's file and name identical (module identifiers derive from the unchanged file stem); `cargo nextest list`'s test-name set, suite prefix stripped, must equal the pre-consolidation set (AC1's guardrail) -- verified via a clean `cargo test --tests`/`cargo nextest run` both green at 602/602 with 0 failures post-change.",
-      "max_ten_binaries": "The generator's per-partition MAX_PER_SUITE (core=80, sandbox=60, split 2026-09-12 to absorb the exclusive-global singleton-bucket overhead without touching sandbox's CI-load-bearing 2-shard split) plus the 5 exclusive-global singleton buckets must not exceed 10 total [[test]] binaries end to end (AC1); currently exactly 10 (3 core normal + 5 core singleton + 2 sandbox).",
-      "run_metrics_ac_counter_stays_accurate": "scripts/run-metrics.sh's project-local AC-counting fallback (owner-map.json explicitly permits project-local fixes to this fallback, folded back via postmortem) must correctly count tests/ac<NN>_*.rs pass/fail under the new module-qualified `test <stem>::<fn> ... ok` output shape introduced by consolidation, not just the old per-binary `Running tests/<stem>.rs` / `test result: ok.` shape it originally shipped with -- fixed in this PRD's own diff (both matchers now coexist) after reviewer-agent caught the fallback silently pinned at 0/19 across four consecutive commits."
+      "raw_path_byte_compatible": "signup without the `handoff` argument (or with `handoff: false`) must return exactly today's {tenant, key, namespace, endpoint, usage, next} field set with no `handoff_token` key -- verified by tests/handoff_ac05_raw_signup_still_works_unchanged.rs's field-set equality assertion and its 17-tool-unaffected spirit (a representative subset actually called; PRD AC5).",
+      "no_plaintext_secret_at_rest_or_in_output": "the handoff token is stored only hashed (`hash_key`, the same convention `tenants.key_hash` already uses); the raw tenant key a handoff token stands in for is stored AES-256-GCM-encrypted via the existing `AppState::secrets::SecretBox` (the same cipher `host.secret_set` uses for tenant secrets), decrypted exactly once inside `control::redeem`; no `tracing::*!` call in `control::redeem`/`control::key_rotate` is ever passed a token or key value, only the handoff token row's own integer id (PRD AC6).",
+      "single_use_atomic_claim": "`Db::redeem_handoff_token`'s claim is a second `UPDATE handoff_tokens SET redeemed_unix = ?1 WHERE token_hash = ?2 AND redeemed_unix IS NULL` statement (not folded into the initial SELECT's decision), so two concurrent redemptions of the same token cannot both succeed -- the loser reads `AlreadyRedeemed` the same as a genuine later redemption would (PRD AC2).",
+      "rotation_no_extra_query_per_call": "`resolve_auth`/`resolve_tenant_key_auth`'s hot path is unchanged by rotation -- `Db::rotate_tenant_key` replaces `tenants.key_hash` in place in one UPDATE, so an old key simply stops matching the existing `find_tenant_by_key_hash` lookup; no new query was added per call (PRD Technical considerations)."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does mcphost's gate take 21-42 minutes for a 413s cold compile?",
-      "a": "The repo's tests/ directory holds 289 top-level .rs files and cargo's default `autotests` makes each one its own integration-test binary; each links the whole 52K-LoC crate and its 41 dependencies (measured binaries 274-291 MB), so the gate pays the link cost 289 times for one crate."
+      "q": "Why does a tenant key need anything beyond today's raw signup response?",
+      "a": "Every tenant key issued passes through a model's context (as the `tenant_key` tools/call argument on all 17 tenant tools) and, for harness sessions, into recorded transcripts on disk -- 42 recordings retained from one run alone (vision 2026-09-09)."
     },
     {
       "why": 2,
-      "q": "Why does the crate get relinked 289 times instead of a handful?",
-      "a": "Nothing in Cargo.toml overrides cargo's own one-binary-per-top-level-test-file convention (`autotests` defaults on with no `[[test]]` entries grouping files), and 269 of the 289 files separately declare `mod common;`, so the shared test helper is also compiled 269 times."
+      "q": "Why was this not fixed when the key-as-argument design was chosen (cycle 11)?",
+      "a": "Cycle 11 accepted the exposure deliberately given the architectural constraints (one stateless connection, static headers, no session binding) and recorded a single-use handoff token as deferred rather than dismissed, with 'before the endpoint carries a real tenant' as the stated due date."
     },
     {
       "why": 3,
-      "q": "Why does this matter enough to fix now rather than let it keep growing?",
-      "a": "RedBaron's root disk reached 81-86% on 2026-09-08 with target/ dirs the known bulk (target/debug/deps holding 1,391 such binaries across projects), and every new AC PRD on this repo adds one more 280MB binary to that pile plus another 289th of link time to every future gate."
+      "q": "Why fix it now rather than wait for that due date?",
+      "a": "Joe pulled it forward on 2026-09-12 with an explicit instruction to test it -- every tenant today is synthetic, which is exactly the window in which to prove the new path end-to-end before the first real agent signs up and its credential's exposure story is set."
     },
     {
       "why": 4,
-      "q": "Why is this framed as a proactive fix rather than a failure investigation?",
-      "a": "Per the PRD's own why-chain note, this is not a response to a specific failure -- it acts on leaf 1 of the vision doc's 2026-09-12 gate-cost section (the assumption that binary count/size drives gate wall time), which PRD-build-gate-phase-timing will independently verify once its own `gate:` phase-seconds field ships; until then the expected saving is measured directly in this PRD's own before/after receipt (docs/benchmarks/suite-consolidation-wall-time.txt: 1405s -> 139s, 9.9% of before)."
+      "q": "Why a token-plus-redeem-plus-rotate shape rather than, say, short-lived keys or forced rotation?",
+      "a": "The constraint set that forced key-as-argument in the first place (stateless transport, no session binding) still holds, so any fix has to work inside one session with no reconnect -- a single-use handoff token narrows the transcript's exposure window to the signup+redeem exchange, and on-demand rotation (not forced, since existing tenants/the harness must keep working unchanged) closes the window on suspicion of leak without a support ticket."
+    },
+    {
+      "why": 5,
+      "q": "Why is this exposure reduction rather than elimination, and is that acceptable?",
+      "a": "The key still has to reach the tenant as a `tools/call` argument eventually (same architectural constraint), so a transcript that captures the *redeem* response still captures a live key until the next rotation -- the PRD's own Technical considerations say this plainly rather than overclaiming elimination; AC4's replay test proves the *token* and any *rotated-out* key are dead, which is the actual, honest claim being made."
     }
   ],
   "created_at": "2026-09-03T18:04:17Z",

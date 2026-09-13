@@ -141,6 +141,8 @@ mod handoff_ac04_full_two_context_flow;
 mod handoff_ac05_raw_signup_still_works_unchanged;
 #[path = "handoff_ac06_errors_never_echo_token_or_key.rs"]
 mod handoff_ac06_errors_never_echo_token_or_key;
+#[path = "handoff_ac07_docs_recommend_handoff_flow.rs"]
+mod handoff_ac07_docs_recommend_handoff_flow;
 #[path = "handoff_ac08_whoami_reports_key_age_and_rotation.rs"]
 mod handoff_ac08_whoami_reports_key_age_and_rotation;
 #[path = "hooks_ac10_healthz_event_counters.rs"]
