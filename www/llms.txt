@@ -48,7 +48,10 @@ own tool is **42.4s**.
 7. Inspect and manage: `host.tool_list()`, `host.tool_logs(name)`,
    `host.tool_remove(name)`, `host.usage(window)`,
    `host.secret_set`/`host.secret_list()` (secrets stored AES-256-GCM
-   encrypted).
+   encrypted). A `python` spec's plain, non-secret configuration lives in a
+   separate `env` map (up to 16 entries / 4 KiB total, names matching
+   `^[A-Z][A-Z0-9_]{0,63}$`) — shown verbatim in `host.tool_test`, unlike
+   `secrets`, which stay redacted there.
 
 <!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
 <!-- agent-quickstart:end -->

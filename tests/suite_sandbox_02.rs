@@ -7,24 +7,115 @@
 // original name, path, and test names (nextest's test list, with this
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
+mod ci_sandbox_support;
 
-#[path = "state_ac02_ac03_python_sandbox.rs"]
-mod state_ac02_ac03_python_sandbox;
-#[path = "state_ac03_network_none_default.rs"]
-mod state_ac03_network_none_default;
-#[path = "state_ac07_tool_test_observability.rs"]
-mod state_ac07_tool_test_observability;
-#[path = "state_ac10_quickstart_llms_txt.rs"]
-mod state_ac10_quickstart_llms_txt;
-#[path = "surface_ac01_quickstart_try_before_call.rs"]
-mod surface_ac01_quickstart_try_before_call;
-#[path = "surface_ac06_python_outputs_by_path.rs"]
-mod surface_ac06_python_outputs_by_path;
-#[path = "tooltest_ac13_publish_error_parity.rs"]
-mod tooltest_ac13_publish_error_parity;
-#[path = "tooltest_ac1_python_two_invocations.rs"]
-mod tooltest_ac1_python_two_invocations;
-#[path = "tooltest_ac2_python_exception_other_still_runs.rs"]
-mod tooltest_ac2_python_exception_other_still_runs;
-#[path = "warmpool_ac06_ac07_tool_run.rs"]
-mod warmpool_ac06_ac07_tool_run;
+#[path = "ac17_kind_conformance.rs"]
+mod ac17_kind_conformance;
+#[path = "ci_sandbox_ac02_capable_env_never_skips.rs"]
+mod ci_sandbox_ac02_capable_env_never_skips;
+#[path = "ci_sandbox_ac05_ci_var_alone_never_skips.rs"]
+mod ci_sandbox_ac05_ci_var_alone_never_skips;
+#[path = "ci_sandbox_ac07_docs_state_the_capability_requirement.rs"]
+mod ci_sandbox_ac07_docs_state_the_capability_requirement;
+#[path = "compose_ac1_python_call_child_result.rs"]
+mod compose_ac1_python_call_child_result;
+#[path = "compose_ac2_child_exception_propagates.rs"]
+mod compose_ac2_child_exception_propagates;
+#[path = "envelope_ac2_python_object_declared_output_promoted.rs"]
+mod envelope_ac2_python_object_declared_output_promoted;
+#[path = "envelope_ac3_python_scalar_promotion_warns.rs"]
+mod envelope_ac3_python_scalar_promotion_warns;
+#[path = "envelope_ac5_replay_recorded_sessions.rs"]
+mod envelope_ac5_replay_recorded_sessions;
+#[path = "infer_ac01_ac02_ac03_python_schema.rs"]
+mod infer_ac01_ac02_ac03_python_schema;
+#[path = "infer_ac04_python_explicit_schema.rs"]
+mod infer_ac04_python_explicit_schema;
+#[path = "infer_ac08_ac09_python_requirements.rs"]
+mod infer_ac08_ac09_python_requirements;
+#[path = "infer_ac10_unmapped_import_fails.rs"]
+mod infer_ac10_unmapped_import_fails;
+#[path = "infer_ac11_unresolvable_keys_fail.rs"]
+mod infer_ac11_unresolvable_keys_fail;
+#[path = "infer_ac13_deterministic_schema.rs"]
+mod infer_ac13_deterministic_schema;
+#[path = "infer_ac15_tool_test_uses_inferred_schema.rs"]
+mod infer_ac15_tool_test_uses_inferred_schema;
+#[path = "infer_ac16_syntax_error_precedence.rs"]
+mod infer_ac16_syntax_error_precedence;
+#[path = "kindhonor_ac2_kind_mismatch_refused.rs"]
+mod kindhonor_ac2_kind_mismatch_refused;
+#[path = "limits_ac01_declared_timeout_honored.rs"]
+mod limits_ac01_declared_timeout_honored;
+#[path = "limits_ac02_default_timeout_when_undeclared.rs"]
+mod limits_ac02_default_timeout_when_undeclared;
+#[path = "limits_ac03_output_too_large.rs"]
+mod limits_ac03_output_too_large;
+#[path = "limits_ac04_tenant_admission_control.rs"]
+mod limits_ac04_tenant_admission_control;
+#[path = "limits_ac06_quickstart_docs_match_constants.rs"]
+mod limits_ac06_quickstart_docs_match_constants;
+#[path = "limits_ac07_process_fork_storm_capped.rs"]
+mod limits_ac07_process_fork_storm_capped;
+#[path = "limits_ac08_usage_capacity_refusals.rs"]
+mod limits_ac08_usage_capacity_refusals;
+#[path = "plainenv_ac01_env_reaches_process.rs"]
+mod plainenv_ac01_env_reaches_process;
+#[path = "plainenv_ac02_invalid_names_refused.rs"]
+mod plainenv_ac02_invalid_names_refused;
+#[path = "plainenv_ac03_bounds.rs"]
+mod plainenv_ac03_bounds;
+#[path = "plainenv_ac04_secret_env_collision.rs"]
+mod plainenv_ac04_secret_env_collision;
+#[path = "plainenv_ac05_tool_test_environment_rendering.rs"]
+mod plainenv_ac05_tool_test_environment_rendering;
+#[path = "plainenv_ac06_env_only_tool_under_sandbox.rs"]
+mod plainenv_ac06_env_only_tool_under_sandbox;
+#[path = "plainenv_ac07_docs_and_tool_list.rs"]
+mod plainenv_ac07_docs_and_tool_list;
+#[path = "plainenv_ac08_warm_pool_invalidates_on_env_change.rs"]
+mod plainenv_ac08_warm_pool_invalidates_on_env_change;
+#[path = "plainenv_ac10_admin_reports_env_names_and_size.rs"]
+mod plainenv_ac10_admin_reports_env_names_and_size;
+#[path = "publishfirsttry_ac03_ac04_quickstart.rs"]
+mod publishfirsttry_ac03_ac04_quickstart;
+#[path = "publishfirsttry_ac06_docs_shared_source.rs"]
+mod publishfirsttry_ac06_docs_shared_source;
+#[path = "python_ac01_no_deps_cpu_memory.rs"]
+mod python_ac01_no_deps_cpu_memory;
+#[path = "python_ac02_requirements_build_and_building_state.rs"]
+mod python_ac02_requirements_build_and_building_state;
+#[path = "python_ac03_invalid_source_rejected.rs"]
+mod python_ac03_invalid_source_rejected;
+#[path = "python_ac04_disallowed_requirement.rs"]
+mod python_ac04_disallowed_requirement;
+#[path = "python_ac05_exception_traceback.rs"]
+mod python_ac05_exception_traceback;
+#[path = "python_ac06_timeout.rs"]
+mod python_ac06_timeout;
+#[path = "python_ac07_oom.rs"]
+mod python_ac07_oom;
+#[path = "python_ac08_network_none_blocks.rs"]
+mod python_ac08_network_none_blocks;
+#[path = "python_ac09_filesystem_isolation.rs"]
+mod python_ac09_filesystem_isolation;
+#[path = "python_ac10_fork_bomb_contained.rs"]
+mod python_ac10_fork_bomb_contained;
+#[path = "python_ac11_secret_redaction.rs"]
+mod python_ac11_secret_redaction;
+#[path = "python_ac12_republish_atomic.rs"]
+mod python_ac12_republish_atomic;
+#[path = "python_ac13_capacity_admission.rs"]
+mod python_ac13_capacity_admission;
+#[path = "python_ac14_cpu_budget_rate_limit.rs"]
+mod python_ac14_cpu_budget_rate_limit;
+#[path = "runs_ac01_async_job_runs_progress_and_result.rs"]
+mod runs_ac01_async_job_runs_progress_and_result;
+#[path = "runs_ac02_job_max_s_timeout.rs"]
+mod runs_ac02_job_max_s_timeout;
+#[path = "runs_ac03_progress_shape.rs"]
+mod runs_ac03_progress_shape;
+#[path = "runs_ac04_cancel_kills_sandbox.rs"]
+mod runs_ac04_cancel_kills_sandbox;
+#[path = "runs_ac06_jobs_concurrent_gate.rs"]
+mod runs_ac06_jobs_concurrent_gate;

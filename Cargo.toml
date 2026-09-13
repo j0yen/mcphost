@@ -121,4 +121,8 @@ path = "tests/suite_sandbox_01.rs"
 name = "suite_sandbox_02"
 path = "tests/suite_sandbox_02.rs"
 
+[[test]]
+name = "suite_sandbox_03"
+path = "tests/suite_sandbox_03.rs"
+
 # END gen-test-suites.sh generated suites
