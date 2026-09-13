@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.47.0 — 2026-09-13
+
+Per-tenant tables: create with a schema, append rows, and run read-only SQL
+against your own tables — as `host.table.*` tools and from inside a python
+tool's code (`mcphost.table`) — with no external warehouse. Backed by a
+real per-tenant SQLite file (structurally isolated: a cross-tenant table
+name is simply absent, not access-controlled), structural (parse-level,
+not string-matching) rejection of non-SELECT/multi-statement queries, row
+and time bounds on `host.table.query`, and per-plan table/row/byte quotas
+naming `billing.checkout`. `host.state.*` stays the small-KV store;
+`host.table.*` is for rows you want real SQL over.
+
 ## v0.46.0 — 2026-09-13
 
 A python-kind tool's process previously received only secrets in its environment. This
