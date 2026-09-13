@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/wintermute/mcphost/PRD-mcphost-test-suite-consolidation.md",
-  "intent_slug": "mcphost-test-suite-consolidation",
-  "root_motivation": "Joe's mcphost gate takes 21\u201342 minutes for a 413 s cold compile. The repo's `tests/` directory holds 289 top-level `.rs` files (2026-09-12 count) and cargo's default `autotests` makes each one a separate test binary; each links the whole 52K-LoC crate and its 41 dependencies, and measured binaries are 274\u2013291 MB (`attrib_ac1_loopback_signup_unstamped`, `infer_ac08_ac09_python_requirements`). `target/debug/deps` holds 1,391 such binaries. 269 of the files declare `mod common;`, so the shared helper is compiled 269 times. RedBaron's root disk reached 81\u201386 % on 09-08, with `target/` dirs the known bulk. Every gate pays the link cost 289 times for one crate; every new AC PRD adds another binary. PRD-build-gate-phase-timing measures the `gate` phase this PRD moves; until it ships, the expected saving is inferred from binary count and size, not measured.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-handoff-token.md",
+  "intent_slug": "mcphost-handoff-token",
+  "root_motivation": "Every tenant key ever issued has passed through a model context and, for harness sessions, into recorded transcripts on disk (42 recordings retained from one run alone, vision 2026-09-09). The key travels as a `tenant_key` argument on all 17 tenant tools, so it also appears in any client-side logging an agent's harness keeps. Today's exposure is bounded because every tenant is synthetic \u2014 which is exactly why now is the time to fix it: the moment the first real agent signs up (the event the demand fleet exists to detect), its credential's exposure story is set. The vision's own open question \u2014 \"should a tenant key be passable as a tool argument at all, given it enters the model's context and any client-side transcript?\" \u2014 has stood since cycle 11 with \"before the endpoint carries a real tenant\" as its due date.",
   "user_persona": "The /build loop's own gate, which pays the cargo link cost for 289 near-identical test binaries every mcphost gate (21-42 min wall); secondarily the operator watching RedBaron's disk (81-86% on 09-08), the AC-pairing classifier needing unchanged test file paths, and a builder adding tests/<name>.rs who must be told if it never gets linked into a suite.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,56 +14,56 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the repo at HEAD, When `gen-test-suites.sh` runs and `cargo nextest list` runs, Then at most ten test binaries are listed and the set of test names (suite prefix stripped) equals the set listed at the parent commit.",
-      "test": "tests/suite_ac1_ten_binaries_and_names_preserved.rs"
+      "description": "Given signup with handoff mode, When it completes, Then the response carries a token and expiry and no key, and the journal records issuance without the token value.",
+      "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a new file `tests/zzz_ac1_probe.rs` that is not in any suite, When `gen-test-suites.sh --check` runs, Then it exits non-zero naming `tests/zzz_ac1_probe.rs`; after regenerating, it exits 0 and the test is listed.",
-      "test": "tests/suite_ac2_check_catches_unregistered_file.rs"
+      "description": "Given a valid token, When `host.redeem` is called, Then the tenant key returns exactly once; a second redeem fails with the structured already-redeemed error; an expired token fails with the structured expired error.",
+      "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the consolidated layout, When `grep -c 'mod common' tests/*.rs` runs over the included files, Then the count is 0 and each suite file declares `mod common;` once.",
-      "test": "tests/suite_ac3_mod_common_declared_once.rs"
+      "description": "Given a redeemed session, When `host.key_rotate` is called, Then a new key returns, the old key fails on the next tool call as unauthenticated, and the new key succeeds.",
+      "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given the archived mcphost PRDs' test pointers (for example `tests/hooks_ac1_*.rs`), When the verified-completed pairing classifier runs against them, Then every pairing that resolved before resolves now.",
-      "test": "tests/suite_ac4_archived_prd_pointers_resolve.rs"
+      "description": "Given the full two-context integration test (sign up handoff, redeem, rotate, replay old token, replay old key), When it runs, Then every replayed credential from the transcript fails and every live-path call succeeds.",
+      "test": "tests/ac04_publish_list_and_call.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a clean `target/`, When `cargo nextest run` completes, Then `du -s target/debug/deps` is under 5 GB and the receipt records the size.",
-      "test": "tests/suite_ac5_disk_size_budget.rs"
+      "description": "Given signup without the handoff argument, When it completes, Then the response is byte-compatible with today's raw-key response and all 17 tenant tools work unchanged with that key.",
+      "test": "tests/ac05_cross_tenant_isolation.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given two timed full nextest runs at the same commit, one before and one after the change (or the `gate:` phase from PRD-build-gate-phase-timing when present), When compared in the receipt, Then the after time is \u226450 % of before.",
-      "test": "tests/suite_ac6_wall_time_budget.rs"
+      "description": "Given logs, journal, and tool_logs after the full flow, When grepped for the token and both keys, Then none appear in plaintext anywhere.",
+      "test": "tests/ac06_remove_tool.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given `.config/nextest.toml` with JUnit enabled, When the suite runs, Then a JUnit file exists with a duration per test.",
-      "test": "tests/suite_ac7_junit_per_test_timing.rs"
+      "level": "MUST",
+      "description": "Given quickstart, get_info, and llms.txt after build, When read, Then the handoff flow is documented as recommended with the raw path noted compatible.",
+      "test": "tests/ac07_usage_metering.rs"
     },
     {
       "id": "AC8",
       "level": "SHOULD",
-      "description": "Given the parity script from mcphost-tests-host-independence, When run against the new layout on one host, Then it matches by test name and reports the same test count as before.",
-      "test": "deferred:mock_unjustified \u2014 cross-host parity script from mcphost-tests-host-independence needs a second box; casper is deleted (see PRD mock_justifications)"
+      "description": "Given a rotated tenant, When `host.whoami` is called, Then key age and last-rotation time are reported.",
+      "test": "tests/ac08_admin_disable_and_forbidden.rs"
     },
     {
       "id": "AC9",
       "level": "SHOULD",
-      "description": "Given the `suite` selftest cases, When the repo's test selftest runs, Then they are named and green.",
-      "test": "tests/suite_ac9_selftest_named_and_green.rs"
+      "description": "Given the probe or task variant exercising handoff, When it runs against a local instance, Then signup\u2192redeem\u2192publish\u2192call completes and is scored/recorded like the raw path.",
+      "test": "tests/ac09_signup_rate_limit.rs"
     }
   ],
   "scope": [
