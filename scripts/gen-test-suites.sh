@@ -76,18 +76,29 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 #
 # Per-partition, not one global number (2026-09-12 follow-up): the
 # exclusive-global singleton fix above (`distribute_exclusive`) adds one
-# whole extra binary per exclusive-subscriber file, all of which live in
-# "core" today (5 of them) -- at the original single cap of 60, core's
-# ~223 non-exclusive files bucket into 4 suites, and 4 normal + 5 singleton
-# = 9 core binaries alone, pushing the total past the <=10 budget once
-# sandbox's 2 are added. Sandbox carries none of that overhead and its
-# 2-suite split is already load-bearing for `.github/workflows/ci.yml`'s
-# SANDBOX_SHARDS=2 matrix (a 1-suite sandbox would starve shard 2 and trip
-# ci-test-partition.sh's own empty-shard guard), so it keeps the original
-# cap unchanged. Core's cap alone is raised just enough (60 -> 80) to
-# collapse its non-exclusive buckets from 4 to 3, landing the grand total
-# at 3 + 5 + 2 = 10 -- exactly the AC1 ceiling, not under it by luck.
-MAX_PER_SUITE = {"core": 80, "sandbox": 60}
+# whole extra binary per exclusive-subscriber file. Originally all such
+# files lived in "core" (5 of them) -- at cap 80, core's non-exclusive
+# files bucketed into 3 suites, landing the grand total at 3 + 5 + 2 = 10
+# (sandbox's 2-suite split is already load-bearing for
+# `.github/workflows/ci.yml`'s SANDBOX_SHARDS=2 matrix -- a 1-suite sandbox
+# would starve shard 2 and trip ci-test-partition.sh's own empty-shard
+# guard -- so its cap stays untouched by this kind of bump).
+#
+# PRD-mcphost-python-kind-plain-env (2026-09-13 follow-up): a new sandbox
+# test (`plainenv_ac09_publish_journal_names_not_values.rs`, asserting on a
+# captured tracing subscriber for a publish-audit check) is the first
+# exclusive-global file ever classified "sandbox" -- it earns its own
+# singleton binary same as core's, pushing sandbox from 2 to 3 (2 normal +
+# 1 singleton) and the grand total to 11. Sandbox's cap can't absorb this
+# (raising it would still leave the 1 extra singleton binary, and shrinking
+# its normal-bucket count below 2 risks the empty-shard guard on
+# SANDBOX_SHARDS=2 the moment sandbox grows again) so core's cap absorbs it
+# instead: raised 80 -> 120, collapsing core's non-exclusive buckets from 3
+# to 1, landing the grand total at 1 + 6 + (2 + 1) = 10 -- exactly the AC1
+# ceiling, not under it by luck. (Core's exclusive-singleton count moved
+# 5 -> 6 in the same follow-up; if core ever needs a second normal bucket
+# again, this comment's arithmetic needs a fresh look, same as this one did.)
+MAX_PER_SUITE = {"core": 120, "sandbox": 60}
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"
 GEN_MARK_END = "# END gen-test-suites.sh generated suites"

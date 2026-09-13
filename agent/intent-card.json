@@ -1,6 +1,6 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-python-kind-plain-env.md",
+  "prd_source": "/home/jsy/wintermute/mcphost/PRD-mcphost-python-kind-plain-env.md",
   "intent_slug": "mcphost-python-kind-plain-env",
   "root_motivation": "Tool authors \u2014 today the fleet's own adapters, tomorrow any agent publishing a tool that talks to a configurable upstream \u2014 cannot pass a non-secret value into their tool's runtime. The evidence is a shipped workaround: PRD-fleet-adapter-secret-env-fallback (queued 2026-09-12) exists solely because the adapter's plain settings had no path into the sandbox except the secret store, and the dream note that drafted it recorded \"product component noted, not drafted: mcphost-python-kind-plain-env\" (dream-log 2026-09-12T18:00Z). The misuse has real costs: secrets are AES-encrypted rows with a rotation story, `tool_test` redacts them by design, and an operator auditing the secret store cannot tell credentials from configuration \u2014 so the one store whose hygiene matters most fills with values that were never secret. The production tools table already shows authors improvising around missing configuration: seven live tools carry a literal `{{workspace_host}}` placeholder in their URL tem...",
   "user_persona": "An agent (real or the demand-fleet harness) calling signup for the first time, whose whole session -- including any client-side transcript its own harness keeps -- must not leak a live, indefinitely-usable credential; secondarily the operator (Joe) who pulled this forward on 2026-09-12 with 'test it' once a real tenant's exposure story was on the line, and who reads host.key_rotate's audit trail (journal, never secret values) after a suspected leak.",
@@ -15,61 +15,61 @@
       "id": "AC1",
       "level": "MUST",
       "description": "Given a python publish with `env: {\"UPSTREAM_URL\": \"https://example.test\"}`, When the tool is called, Then the process observes `UPSTREAM_URL` with that value and the call succeeds.",
-      "test": "tests/ac01_unauthenticated_lists_signup.rs"
+      "test": "tests/plainenv_ac01_env_reaches_process.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
       "description": "Given env names `MCPHOST_X`, `PATH`, and `lower_case`, When each is published, Then each publish is refused with a structured error naming the key and the violated rule.",
-      "test": "tests/ac02_signup_creates_hashed_tenant.rs"
+      "test": "tests/plainenv_ac02_invalid_names_refused.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
       "description": "Given an env map with 17 entries, and another totaling over 4 KiB, When published, Then each is refused with a structured error naming the bound; Given exactly 16 entries under 4 KiB, Then publish succeeds.",
-      "test": "tests/ac03_tenant_lists_control_plane_only.rs"
+      "test": "tests/plainenv_ac03_bounds.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
       "description": "Given a tool with secret `API_KEY` set, When a publish declares env `API_KEY`, Then it is refused naming the collision; Given a tool published with env `MODE`, When `secret_set MODE` is attempted, Then it is refused symmetrically.",
-      "test": "tests/ac04_publish_list_and_call.rs"
+      "test": "tests/plainenv_ac04_secret_env_collision.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
       "description": "Given a tool with secret `API_KEY` and env `MODE=fast`, When `host.tool_test` runs, Then the rendered environment shows `MODE=fast` verbatim, `API_KEY` redacted, and each labeled as env or secret.",
-      "test": "tests/ac05_cross_tenant_isolation.rs"
+      "test": "tests/plainenv_ac05_tool_test_environment_rendering.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
       "description": "Given a tool with env and no secrets, When called under the sandbox, Then the values are present and the sandbox profile is byte-identical to the secrets-only case apart from the variables themselves.",
-      "test": "tests/ac06_remove_tool.rs"
+      "test": "tests/plainenv_ac06_env_only_tool_under_sandbox.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
       "description": "Given the descriptor and llms.txt after build, When grepped, Then `env` is documented with its bounds and the env-versus-secret distinction, and `host.tool_get` returns the env map for a tool that has one.",
-      "test": "tests/ac07_usage_metering.rs"
+      "test": "tests/plainenv_ac07_docs_and_tool_list.rs"
     },
     {
       "id": "AC8",
       "level": "SHOULD",
       "description": "Given a published tool with a warm pooled process, When its env map is updated without source changes, Then the next call observes the new values (the pooled process was invalidated) and no republish of source occurred.",
-      "test": "tests/ac08_admin_disable_and_forbidden.rs"
+      "test": "tests/plainenv_ac08_warm_pool_invalidates_on_env_change.rs"
     },
     {
       "id": "AC9",
       "level": "SHOULD",
       "description": "Given a publish with env, When the journal/audit row is read, Then it records the env names and never the values.",
-      "test": "tests/ac09_signup_rate_limit.rs"
+      "test": "tests/plainenv_ac09_publish_journal_names_not_values.rs"
     },
     {
       "id": "AC10",
       "level": "MAY",
       "description": "Given an admin inspection of a tool with env, When invoked, Then it reports env names and total size, never values.",
-      "test": "tests/ac10_publish_validation_errors.rs"
+      "test": "tests/plainenv_ac10_admin_reports_env_names_and_size.rs"
     }
   ],
   "scope": [
