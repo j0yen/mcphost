@@ -8,6 +8,26 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 
+#[path = "sched_ac10_trigger_fire_manual.rs"]
+mod sched_ac10_trigger_fire_manual;
+#[path = "sched_ac1_two_firings_visible_in_ledger.rs"]
+mod sched_ac1_two_firings_visible_in_ledger;
+#[path = "sched_ac2_invalid_cron_names_minute.rs"]
+mod sched_ac2_invalid_cron_names_minute;
+#[path = "sched_ac3_free_plan_quota_exceeded.rs"]
+mod sched_ac3_free_plan_quota_exceeded;
+#[path = "sched_ac4_free_plan_interval_too_short.rs"]
+mod sched_ac4_free_plan_interval_too_short;
+#[path = "sched_ac5_overlap_skips_and_records.rs"]
+mod sched_ac5_overlap_skips_and_records;
+#[path = "sched_ac6_pause_blocks_resume_allows.rs"]
+mod sched_ac6_pause_blocks_resume_allows;
+#[path = "sched_ac7_tool_remove_disables_triggers.rs"]
+mod sched_ac7_tool_remove_disables_triggers;
+#[path = "sched_ac8_healthz_scheduler_fields.rs"]
+mod sched_ac8_healthz_scheduler_fields;
+#[path = "sched_quickstart_and_usage_report_schedules.rs"]
+mod sched_quickstart_and_usage_report_schedules;
 #[path = "sessionkey_ac02_ac03_discovery_shape.rs"]
 mod sessionkey_ac02_ac03_discovery_shape;
 #[path = "sessionkey_ac04_signup_usage_field.rs"]
@@ -138,17 +158,3 @@ mod tenant_delete_ac07_tenant_not_found;
 mod tenant_delete_ac09_healthz_probe_split;
 #[path = "tenant_delete_ac10_tenants_prefix_filter.rs"]
 mod tenant_delete_ac10_tenants_prefix_filter;
-#[path = "tooltest_ac12_log_marking.rs"]
-mod tooltest_ac12_log_marking;
-#[path = "tooltest_ac3_http_dry_run.rs"]
-mod tooltest_ac3_http_dry_run;
-#[path = "tooltest_ac4_echo_verbatim.rs"]
-mod tooltest_ac4_echo_verbatim;
-#[path = "tooltest_ac5_validation_error_taxonomy.rs"]
-mod tooltest_ac5_validation_error_taxonomy;
-#[path = "tooltest_ac6_quota_and_metering.rs"]
-mod tooltest_ac6_quota_and_metering;
-#[path = "tooltest_ac7_too_many_invocations.rs"]
-mod tooltest_ac7_too_many_invocations;
-#[path = "tooltest_ac9_ac10_listing_and_auth.rs"]
-mod tooltest_ac9_ac10_listing_and_auth;

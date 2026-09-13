@@ -134,6 +134,8 @@ mod publishfirsttry_ac02_structured_error_fields;
 mod publishfirsttry_ac07_signup_next;
 #[path = "revdebt_ac1_intent_card_pointers_resolve.rs"]
 mod revdebt_ac1_intent_card_pointers_resolve;
+#[path = "run_metrics_handoff_glob_regression.rs"]
+mod run_metrics_handoff_glob_regression;
 #[path = "runs_ac05_sync_call_writes_run_row.rs"]
 mod runs_ac05_sync_call_writes_run_row;
 #[path = "runs_ac07_purge_clears_result.rs"]
@@ -148,23 +150,3 @@ mod runs_ac10_wait_long_polls;
 mod runs_ac11_admin_runs_reap;
 #[path = "sandboxready_ac7_conformance_suite.rs"]
 mod sandboxready_ac7_conformance_suite;
-#[path = "sched_ac10_trigger_fire_manual.rs"]
-mod sched_ac10_trigger_fire_manual;
-#[path = "sched_ac1_two_firings_visible_in_ledger.rs"]
-mod sched_ac1_two_firings_visible_in_ledger;
-#[path = "sched_ac2_invalid_cron_names_minute.rs"]
-mod sched_ac2_invalid_cron_names_minute;
-#[path = "sched_ac3_free_plan_quota_exceeded.rs"]
-mod sched_ac3_free_plan_quota_exceeded;
-#[path = "sched_ac4_free_plan_interval_too_short.rs"]
-mod sched_ac4_free_plan_interval_too_short;
-#[path = "sched_ac5_overlap_skips_and_records.rs"]
-mod sched_ac5_overlap_skips_and_records;
-#[path = "sched_ac6_pause_blocks_resume_allows.rs"]
-mod sched_ac6_pause_blocks_resume_allows;
-#[path = "sched_ac7_tool_remove_disables_triggers.rs"]
-mod sched_ac7_tool_remove_disables_triggers;
-#[path = "sched_ac8_healthz_scheduler_fields.rs"]
-mod sched_ac8_healthz_scheduler_fields;
-#[path = "sched_quickstart_and_usage_report_schedules.rs"]
-mod sched_quickstart_and_usage_report_schedules;
