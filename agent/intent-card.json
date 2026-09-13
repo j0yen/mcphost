@@ -1,6 +1,6 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-client-attribution-default-leak.md",
+  "prd_source": "/home/jsy/wintermute/mcphost/PRD-mcphost-client-attribution-default-leak.md",
   "intent_slug": "mcphost-client-attribution-default-leak",
   "root_motivation": "PRD-homeward-mcp-tenant's real onboarding run (2026-09-13, tenant `t_ea9749c3`, display_name `pawsandpetals`) called `signup` and `host.whoami` via a raw `httpx` POST (no rmcp library, no `initialize`, per `stress_protocol.py`'s documented wire contract: \"mcphost's streamable-HTTP surface tolerates a single-shot POST with no prior initialize handshake or session id\"). `host.whoami` nonetheless returned `client_name: \"rmcp\"`, `client_version: \"3.2.0\"`. The live `tenants` table confirms the same pair on the only other `origin: external` row (`fleet-adapter-ops`, id 387) \u2014 both real, non-synthetic tenants carry an identical, specific-looking client identity neither caller actually sent.",
   "user_persona": "An agent (real or the demand-fleet harness) calling signup for the first time, whose whole session -- including any client-side transcript its own harness keeps -- must not leak a live, indefinitely-usable credential; secondarily the operator (Joe) who pulled this forward on 2026-09-12 with 'test it' once a real tenant's exposure story was on the line, and who reads host.key_rotate's audit trail (journal, never secret values) after a suspected leak.",
