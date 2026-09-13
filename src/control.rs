@@ -441,9 +441,15 @@ pub fn quickstart(
             {
                 "call": "host.state.set",
                 "arguments": {"key": "example", "value": {"n": 1}},
+                // PRD-mcphost-tenant-tables P0 requirement 6 / AC8: one
+                // sentence on the table-store vs key-value store choice,
+                // placed where an agent actually discovers host.state in
+                // the first place.
                 "note": "Optional: remember something between calls. host.state.get(key) \
                     reads it back; a python tool's own code can read/write the same store. \
-                    See host.state.table_create for typed tables.",
+                    For small unstructured values, host.state stays the right store; for \
+                    typed rows you'll filter, sort, or aggregate with real SQL, create a \
+                    table instead with host.table.create/append/query.",
             },
         ],
         "limits": {

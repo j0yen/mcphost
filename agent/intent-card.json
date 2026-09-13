@@ -15,67 +15,67 @@
       "id": "AC1",
       "level": "MUST",
       "description": "Given a tenant, When it creates a table, appends 3 valid rows, and queries them with a SELECT and a WHERE, Then results return under `result.payload` with correct values and types.",
-      "test": "tests/ac01_unauthenticated_lists_signup.rs"
+      "test": "src/tables.rs (mod tests::create_append_query_round_trip)"
     },
     {
       "id": "AC2",
       "level": "MUST",
       "description": "Given an append whose row violates the schema (wrong type, missing column, unknown column), When submitted, Then it is refused with a structured error naming the column and rule, and no partial rows land.",
-      "test": "tests/ac02_signup_creates_hashed_tenant.rs"
+      "test": "src/tables.rs (mod tests::append_rejects_schema_violation_and_writes_nothing)"
     },
     {
       "id": "AC3",
       "level": "MUST",
       "description": "Given `query` receives an UPDATE, a DROP, a multi-statement string, and a SELECT joining another tenant's table name, When each runs, Then each is refused structurally and the refusal names the rule; the cross-tenant name reads as nonexistent, never as forbidden-but-present.",
-      "test": "tests/ac03_tenant_lists_control_plane_only.rs"
+      "test": "src/tables.rs (mod tests::query_structure_rejects_non_select_and_multi_statement, mod tests::cross_tenant_table_name_reads_as_nonexistent)"
     },
     {
       "id": "AC4",
       "level": "MUST",
       "description": "Given a plan with max 2 tables and a row cap, When the tenant creates a third table or appends past the cap, Then the structured quota error names `billing.checkout`, and `host.usage` reports table counts and bytes.",
-      "test": "tests/ac04_publish_list_and_call.rs"
+      "test": "src/tables.rs (mod tests::table_quota_refuses_past_tables_max)"
     },
     {
       "id": "AC5",
       "level": "MUST",
       "description": "Given a python tool whose code appends and queries via the sandbox channel, When called, Then the operations succeed under the same tenant scoping and quotas as the session tools.",
-      "test": "tests/ac05_cross_tenant_isolation.rs"
+      "test": "tests/tables_ac05_python_sandbox_table_access.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
       "description": "Given a query returning more than the row bound, or running past the time bound, When executed, Then it terminates with a structured error naming the bound, and the host serves the next call normally.",
-      "test": "tests/ac06_remove_tool.rs"
+      "test": "src/tables.rs (mod tests::query_row_cap_refuses_oversized_result)"
     },
     {
       "id": "AC7",
       "level": "MUST",
       "description": "Given `admin.tenant_delete` on a tenant with tables, When it completes, Then the tenant's table storage is gone (cascade verified on disk), and no other tenant's tables changed.",
-      "test": "tests/ac07_usage_metering.rs"
+      "test": "tests/tables_ac07_tenant_delete_cascade.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
       "description": "Given the build completes, When llms.txt and descriptors are read, Then all table tools and the KV-vs-table sentence are present.",
-      "test": "tests/ac08_admin_disable_and_forbidden.rs"
+      "test": "tests/tables_ac08_docs_and_kv_vs_table_sentence.rs"
     },
     {
       "id": "AC9",
       "level": "SHOULD",
       "description": "Given a table with rows, When `host.table.schema` is called, Then it returns columns, types, row count, and byte count without executing a query.",
-      "test": "tests/ac09_signup_rate_limit.rs"
+      "test": "src/tables.rs (mod tests::schema_reports_columns_and_row_count_without_querying)"
     },
     {
       "id": "AC10",
       "level": "SHOULD",
       "description": "Given a backup/restore cycle via the existing deploy drill against an instance with tenant tables, When restore completes, Then the tables and rows survive with no drill changes required.",
-      "test": "tests/ac10_publish_validation_errors.rs"
+      "test": "deferred:mock_unjustified -- no backup/restore drill script exists anywhere in this repo to exercise against (grepped for *backup*/*restore*, only tests/migration_compat_headers.rs matched, unrelated); table storage lives under $MCPHOST_DATA_DIR alongside tenant-state, which Technical considerations says the existing deploy backup already covers structurally, but nothing in-repo currently proves a restore cycle preserves table rows"
     },
     {
       "id": "AC11",
       "level": "MAY",
       "description": "Given a table with rows, When `host.table.export` runs, Then an open-format snapshot file is produced and fetchable by the tenant, and its row count matches the table.",
-      "test": "tests/ac11_load_smoke.rs (#[ignore]d hardware-relative load test)"
+      "test": "deferred:mock_unjustified -- host.table.export (P2/Iceberg snapshot export) is not implemented this build; deferred per the PRD's own P2 requirement 9 and commit ef3ad13's message ('P2 (host.table.export/Iceberg) deferred'); no code path exists yet to test"
     }
   ],
   "scope": [

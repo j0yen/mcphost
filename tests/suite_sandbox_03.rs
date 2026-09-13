@@ -46,6 +46,10 @@ mod state_ac10_quickstart_llms_txt;
 mod surface_ac01_quickstart_try_before_call;
 #[path = "surface_ac06_python_outputs_by_path.rs"]
 mod surface_ac06_python_outputs_by_path;
+#[path = "tables_ac05_python_sandbox_table_access.rs"]
+mod tables_ac05_python_sandbox_table_access;
+#[path = "tables_ac08_docs_and_kv_vs_table_sentence.rs"]
+mod tables_ac08_docs_and_kv_vs_table_sentence;
 #[path = "tooltest_ac13_publish_error_parity.rs"]
 mod tooltest_ac13_publish_error_parity;
 #[path = "tooltest_ac1_python_two_invocations.rs"]

@@ -857,6 +857,9 @@ mod tests {
         );
     }
 
+    /// AC1's exact scenario: create a table, append 3 valid rows, and query
+    /// them with a SELECT and a WHERE -- results return under `rows` with
+    /// correct values, ordered as the query asks.
     #[tokio::test]
     async fn create_append_query_round_trip() {
         let dir = scratch_dir("roundtrip");

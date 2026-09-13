@@ -202,6 +202,8 @@ mod synthetic_ac08_admin_tenants_field;
 mod synthetic_ac09_metering_filter;
 #[path = "synthetic_ac10_healthz_paying_real.rs"]
 mod synthetic_ac10_healthz_paying_real;
+#[path = "tables_ac07_tenant_delete_cascade.rs"]
+mod tables_ac07_tenant_delete_cascade;
 #[path = "tenant_delete_ac01_cascade_delete.rs"]
 mod tenant_delete_ac01_cascade_delete;
 #[path = "tenant_delete_ac02_forbidden.rs"]
