@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.49.0 — 2026-09-13
+
+
+At HEAD c627803, the gate on mcphost blocked on 1 inherited
+finding(s) — landed by earlier merges, not by the PRD that was gate-pending
+when this was drafted (PRD-build-gate-debt-auto-prd requirement 2:
+attribution split these from that PRD's own diff). This PRD's acceptance
+criteria are exactly those findings; when they pass, the parked PRD
+unblocks automatically (its `Depends-on:` resolves once this archives).
+
 ## v0.48.0 — 2026-09-13
 
 `host.whoami` and the `tenants` table report `client_name: "rmcp"`, `client_version: "3.2.0"` for a caller that sent zero MCP `clientInfo` — a bare single-shot JSON-RPC POST with no `initialize` handshake, the exact shape mcphost's own streamable-HTTP transport is documented to tolerate. "rmcp" happens to be the name of the Rust MCP SDK mcphost itself (and homeward-mcp) are built on: the attribution capture path is very likely defaulting to the server's own SDK identity instead of `null`/`unknown` when the request carries none. This silently fabricates specific-looking client attribution — directly undermining the signal mcphost-tenant-attribution (and this whole tenant-onboarding dogfood) exists to produce.
