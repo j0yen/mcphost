@@ -77,7 +77,7 @@ fi
 # a binary "counts" iff cargo printed "test result: ok." for it (0 failed,
 # regardless of #[ignore]d sub-tests inside it, e.g. AC11's load test).
 if [ "$AC_TOTAL" -eq 0 ]; then
-  PROJECT_AC_FILES=$(find tests -maxdepth 1 \( -name 'ac[0-9][0-9]_*.rs' -o -name 'kind_conformance.rs' \) -type f 2>/dev/null | sed 's#tests/##; s#\.rs$##' | sort)
+  PROJECT_AC_FILES=$(find tests -maxdepth 1 \( -name 'ac[0-9][0-9]_*.rs' -o -name '*_ac[0-9][0-9]_*.rs' -o -name 'kind_conformance.rs' \) -type f 2>/dev/null | sed 's#tests/##; s#\.rs$##' | sort)
   PROJECT_AC_TOTAL=$(printf '%s\n' "$PROJECT_AC_FILES" | grep -c . || true)
   if [ "$PROJECT_AC_TOTAL" -gt 0 ]; then
     PROJECT_AC_PASSING=$(awk -v aclist="$PROJECT_AC_FILES" '
