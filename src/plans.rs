@@ -48,6 +48,27 @@ pub struct Plan {
     /// tolerant-of-an-older-file convention as
     /// `concurrent_calls_per_tenant`.
     pub shared_tools_max: i64,
+    /// PRD-mcphost-tenant-tables P0 requirement 4: how many `host.table.*`
+    /// tables this plan's tenants may have declared at once (across every
+    /// namespace they own), distinct from [`Self::state_rows_max`]'s
+    /// `host.state.*` table cap -- these are separate stores (Technical
+    /// considerations: "No replacement of tenant-state; small KV stays
+    /// KV"). Open question, resolved at build: no published number existed
+    /// for this quota, so it's sized against the same free/pro shape every
+    /// other per-tenant-object cap here already uses (`shared_tools_max`,
+    /// `event_triggers_max`).
+    pub table_tables_max: i64,
+    /// requirement 4: rows in any one declared table. Checked against a
+    /// real `SELECT COUNT(*)` on the tenant's own per-tenant SQLite file
+    /// (`tables.rs`'s storage), not an in-memory tally.
+    pub table_rows_max: i64,
+    /// requirement 4: total bytes across every one of a tenant's declared
+    /// tables -- approximated by the tenant's whole `tables/<id>.db` file
+    /// size (Technical considerations: SQLite-per-tenant, decided at
+    /// build -- see `tables.rs`'s module doc), the same "file size stands in
+    /// for stored bytes" measure `state_bytes_max` uses for the KV store's
+    /// serialized-value-length sum.
+    pub table_bytes_max: i64,
     /// PRD-mcphost-runs-and-jobs P0 requirement 4: the deadline (seconds) a
     /// job of this plan's tenants runs under, distinct from the ordinary
     /// call deadline ([`crate::state::CALL_TIMEOUT`]) -- the whole point of
@@ -125,6 +146,11 @@ impl PlanCatalog {
                     concurrent_calls_per_tenant: 4,
                     // PRD-mcphost-sharing requirement 4 (AC6): "free 3".
                     shared_tools_max: 3,
+                    // PRD-mcphost-tenant-tables open question, resolved at
+                    // build: "free 5 tables, 5,000 rows/table, 10 MiB total".
+                    table_tables_max: 5,
+                    table_rows_max: 5_000,
+                    table_bytes_max: 10 * 1024 * 1024,
                     // PRD-mcphost-runs-and-jobs open question, resolved at
                     // build: "free job_max_s 300 and jobs_concurrent 1".
                     job_max_s: 300,
@@ -155,6 +181,13 @@ impl PlanCatalog {
                     concurrent_calls_per_tenant: 10,
                     // PRD-mcphost-sharing requirement 4: "pro 50".
                     shared_tools_max: 50,
+                    // PRD-mcphost-tenant-tables open question, resolved at
+                    // build: "pro 50 tables, 200,000 rows/table, 500 MiB
+                    // total" -- same free/pro scaling shape as every other
+                    // quota in this catalog.
+                    table_tables_max: 50,
+                    table_rows_max: 200_000,
+                    table_bytes_max: 500 * 1024 * 1024,
                     // PRD-mcphost-runs-and-jobs: pro gets a longer deadline
                     // and more concurrent jobs than free, same free/pro
                     // scaling shape as every other quota above.
@@ -232,6 +265,9 @@ impl PlanCatalog {
                 p.concurrent_calls_per_tenant
             ));
             out.push_str(&format!("shared_tools_max = {}\n", p.shared_tools_max));
+            out.push_str(&format!("table_tables_max = {}\n", p.table_tables_max));
+            out.push_str(&format!("table_rows_max = {}\n", p.table_rows_max));
+            out.push_str(&format!("table_bytes_max = {}\n", p.table_bytes_max));
             out.push_str(&format!("job_max_s = {}\n", p.job_max_s));
             out.push_str(&format!("jobs_concurrent = {}\n", p.jobs_concurrent));
             out.push_str(&format!("schedules_max = {}\n", p.schedules_max));
@@ -297,6 +333,9 @@ impl PlanCatalog {
                     builder.concurrent_calls_per_tenant = Some(int_value())
                 }
                 "shared_tools_max" => builder.shared_tools_max = Some(int_value()),
+                "table_tables_max" => builder.table_tables_max = Some(int_value()),
+                "table_rows_max" => builder.table_rows_max = Some(int_value()),
+                "table_bytes_max" => builder.table_bytes_max = Some(int_value()),
                 "job_max_s" => builder.job_max_s = Some(int_value()),
                 "jobs_concurrent" => builder.jobs_concurrent = Some(int_value()),
                 "schedules_max" => builder.schedules_max = Some(int_value()),
@@ -334,6 +373,9 @@ struct PlanBuilder {
     state_ops_per_call_max: Option<i64>,
     concurrent_calls_per_tenant: Option<i64>,
     shared_tools_max: Option<i64>,
+    table_tables_max: Option<i64>,
+    table_rows_max: Option<i64>,
+    table_bytes_max: Option<i64>,
     job_max_s: Option<i64>,
     jobs_concurrent: Option<i64>,
     schedules_max: Option<i64>,
@@ -366,6 +408,12 @@ impl PlanBuilder {
             // this key gets the `free` plan's own default (3), same
             // tolerant-parse rationale as `concurrent_calls_per_tenant`.
             shared_tools_max: self.shared_tools_max.unwrap_or(3),
+            // PRD-mcphost-tenant-tables: a `plans.toml` predating these
+            // three keys gets the `free` plan's own defaults, same
+            // tolerant-parse rationale as every other field above.
+            table_tables_max: self.table_tables_max.unwrap_or(5),
+            table_rows_max: self.table_rows_max.unwrap_or(5_000),
+            table_bytes_max: self.table_bytes_max.unwrap_or(10 * 1024 * 1024),
             // PRD-mcphost-runs-and-jobs: a `plans.toml` predating these two
             // keys gets the `free` plan's own defaults, same
             // tolerant-parse rationale as every other field above.
@@ -472,6 +520,23 @@ mod tests {
         assert_eq!(pro.event_body_bytes_max, 256 * 1024);
         assert!(pro.event_triggers_max > free.event_triggers_max);
         assert!(pro.events_per_minute > free.events_per_minute);
+    }
+
+    /// PRD-mcphost-tenant-tables open question, resolved at build: "free 5
+    /// tables / 5,000 rows / 10 MiB, pro 50 tables / 200,000 rows / 500 MiB".
+    #[test]
+    fn default_catalog_has_table_quotas() {
+        let catalog = PlanCatalog::default_catalog();
+        let free = catalog.get("free").expect("free plan");
+        assert_eq!(free.table_tables_max, 5);
+        assert_eq!(free.table_rows_max, 5_000);
+        assert_eq!(free.table_bytes_max, 10 * 1024 * 1024);
+        let pro = catalog.get("pro").expect("pro plan");
+        assert_eq!(pro.table_tables_max, 50);
+        assert_eq!(pro.table_rows_max, 200_000);
+        assert_eq!(pro.table_bytes_max, 500 * 1024 * 1024);
+        assert!(pro.table_tables_max > free.table_tables_max);
+        assert!(pro.table_bytes_max > free.table_bytes_max);
     }
 
     #[test]

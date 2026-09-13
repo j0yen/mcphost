@@ -24,6 +24,27 @@ fn arg_str_opt(args: &Value, name: &str) -> Option<String> {
     args.get(name).and_then(Value::as_str).map(str::to_string)
 }
 
+/// PRD-mcphost-tenant-tables requirement 5 (AC7): removes a deleted
+/// tenant's whole `host.table.*` store -- one file removal (plus its WAL/
+/// SHM sidecars), not a set of `DELETE ... WHERE tenant_id` statements that
+/// could miss a table, per the SQLite-per-tenant design `tables.rs`'s
+/// module doc settles on. Best-effort: a tenant that never created a table
+/// has no file to remove, and a removal failure here must never fail (or
+/// roll back) the tenant delete that already committed in `Db::delete_tenant`.
+fn remove_tenant_tables(state: &AppState, tenant_id: i64) {
+    let base = state.db.data_dir().join("tables").join(format!("{tenant_id}.db"));
+    for suffix in ["", "-wal", "-shm"] {
+        let path = if suffix.is_empty() {
+            base.clone()
+        } else {
+            let mut p = base.clone().into_os_string();
+            p.push(suffix);
+            p.into()
+        };
+        let _ = std::fs::remove_file(path);
+    }
+}
+
 /// AC10 (P1 requirement 7): `admin.tenants(prefix?)` -- with no `prefix`,
 /// the original unfiltered list; with one, the same `display_name`-prefix
 /// filter the batch delete uses, minus its counts, so an operator can see
@@ -98,6 +119,10 @@ pub async fn tenant_delete(state: &AppState, args: &Value) -> Result<Value, AppE
     for k in state.kinds.all() {
         k.on_tenant_removed(deleted.id).await;
     }
+    // PRD-mcphost-tenant-tables requirement 5 / AC7: the cascade the
+    // `tenants` table's own foreign keys can't reach -- a tenant's table
+    // store is a file, not a row.
+    remove_tenant_tables(state, deleted.id);
     tracing::info!(
         tenant = %deleted.namespace,
         action = "tenant_delete",
@@ -182,6 +207,7 @@ pub async fn tenant_delete_by_prefix(state: &AppState, args: &Value) -> Result<V
             for k in state.kinds.all() {
                 k.on_tenant_removed(deleted_tenant.id).await;
             }
+            remove_tenant_tables(state, deleted_tenant.id);
             total.accumulate(&counts);
             tracing::info!(
                 tenant = %deleted_tenant.namespace,

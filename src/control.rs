@@ -340,6 +340,11 @@ pub fn quickstart(
             // PRD-mcphost-sharing requirement 4: "host.quickstart limits
             // lists it".
             "shared_tools_max": plan.shared_tools_max,
+            // PRD-mcphost-tenant-tables requirement 4: "host.quickstart
+            // limits lists them", same shape as state_*_max above.
+            "table_tables_max": plan.table_tables_max,
+            "table_rows_max": plan.table_rows_max,
+            "table_bytes_max": plan.table_bytes_max,
             // PRD-mcphost-runs-and-jobs P0 requirement 8.
             "job_max_s": plan.job_max_s,
             "jobs_concurrent": plan.jobs_concurrent,

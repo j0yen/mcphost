@@ -663,7 +663,6 @@ fn percentile(sorted: &[i64], p: f64) -> f64 {
 
 pub struct Db {
     conn: Arc<Mutex<Connection>>,
-    #[allow(dead_code)]
     path: PathBuf,
 }
 
@@ -696,6 +695,16 @@ impl Db {
         };
         db.migrate_sync()?;
         Ok(db)
+    }
+
+    /// PRD-mcphost-tenant-tables: the directory `mcphost.db` itself lives
+    /// in -- `tables.rs` derives its own `tables/<tenant_id>.db` per-tenant
+    /// files from this rather than a second `MCPHOST_DATA_DIR` read, so the
+    /// two storage engines (the shared control-plane db, and each tenant's
+    /// own real-SQL table file) always agree on which data dir they're
+    /// under, including in tests that point `Db::open` at a scratch dir.
+    pub fn data_dir(&self) -> &Path {
+        self.path.parent().unwrap_or_else(|| Path::new("."))
     }
 
     fn migrate_sync(&self) -> Result<(), AppError> {

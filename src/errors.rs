@@ -312,6 +312,14 @@ impl AppError {
                 "signature_invalid" | "event_body_too_large" => ErrorCode::INVALID_PARAMS,
                 "events_rate_limited" => ErrorCode::INVALID_REQUEST,
                 "hook_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
+                // PRD-mcphost-tenant-tables requirements 1-6: a schema
+                // violation, an undeclared table, or a structurally
+                // rejected (non-SELECT, multi-statement, or over a row/time
+                // bound) `host.table.query` are all caller-input problems,
+                // the same INVALID_PARAMS bucket the `state_*` group above
+                // already uses for the analogous KV-store rejections.
+                "table_schema_violation" | "table_not_found" | "table_query_rejected"
+                | "table_bound_exceeded" | "table_already_exists" => ErrorCode::INVALID_PARAMS,
                 _ => ErrorCode::INTERNAL_ERROR,
             },
             AppError::MultiInvalid { errors, .. } => errors

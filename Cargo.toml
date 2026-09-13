@@ -51,6 +51,12 @@ futures-util = { version = "0.3.34", default-features = false, features = ["std"
 # process-group signalling (killpg/setsid) and `/proc` resource sampling.
 libc = "0.2"
 serde_path_to_error = "0.1.20"
+# PRD-mcphost-tenant-tables P0 requirement 2: `host.table.query`'s
+# structural (parse-level, not string-matching) rejection of non-SELECT and
+# multi-statement SQL -- a real AST parser rather than a hand-rolled
+# prefix/keyword check, the same "don't hand-roll what a crate already gets
+# right" call `sha1` above makes for HMAC-SHA1.
+sqlparser = "0.62"
 
 [features]
 # PRD-mcphost-classify-precision: gates PythonKind's test-only selftest
