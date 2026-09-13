@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.46.0 — 2026-09-13
+
+A python-kind tool's process previously received only secrets in its environment. This
+adds a plain `env` map to the python spec: validated names, bounded size, visible
+unredacted in `tool_test` output, injected beside secrets, refused on name collision
+with secrets.
+
 ## v0.45.1 — 2026-09-13
 
 Pays inherited gate debt at HEAD 6d51e76: the reviewer-agent block
