@@ -20,14 +20,14 @@ use crate::auth::{extract_bearer, hash_key};
 use crate::db::{Tenant, ToolRow};
 use crate::errors::AppError;
 use crate::kinds::{
-    CallCtx, CallLog, Kind, KindError, KindRegistry, MAX_TEST_INVOCATIONS, NoState, NullLog,
-    NullResourceSink, ResourceSink, SecretResolver, StateBackend, describe_args_error,
-    run_spec_test,
+    CallCtx, CallLog, Kind, KindError, KindRegistry, MAX_TEST_INVOCATIONS, NoState, NoTable,
+    NullLog, NullResourceSink, ResourceSink, SecretResolver, StateBackend, TableBackend,
+    describe_args_error, run_spec_test,
 };
 use crate::state::{
     AppState, MAX_SPEC_BYTES, TOOLS_LIST_TTL_GRACE_SECS, TOOLS_LIST_TTL_MS_STEADY, now_unix,
 };
-use crate::{admin, control, tenant_state};
+use crate::{admin, control, tables, tenant_state};
 
 /// Who is making this request, resolved once per request from the bearer
 /// key (or its absence).
@@ -828,6 +828,102 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &["table"],
             ),
         ),
+        // PRD-mcphost-tenant-tables P0 requirements 1-6, P1 requirement 7:
+        // per-tenant tables an agent can run real read-only SQL against --
+        // a different store from host.state.* above (small KV values and
+        // its own hand-rolled filter grammar): reach for host.state.* for a
+        // handful of small values, host.table.* when you want real SQL
+        // (joins, aggregates, ORDER BY) over rows.
+        Tool::new(
+            "host.table.create",
+            "Declare a table in this tenant's SQL table store -- a different store from \
+             host.state.*'s key-value namespace and its own tables: use host.state.* for a \
+             handful of small values, host.table.* when you want real SQL (joins, aggregates, \
+             read-only queries) over rows. columns is {\"column\": \"text\"|\"integer\"|\"real\"| \
+             \"timestamp\"|\"boolean\"|\"json\"}; primary_key, if given, must name one of \
+             columns's own entries.",
+            host_schema(
+                json!({
+                    "name": {
+                        "type": "string",
+                        "description": "Table name to declare.",
+                    },
+                    "columns": {
+                        "type": "object",
+                        "description": "Column name to type map, each type one of \
+                            text|integer|real|timestamp|boolean|json, e.g. {\"id\": \"integer\"}.",
+                    },
+                    "primary_key": {
+                        "type": "string",
+                        "description": "Column name (must be in columns); optional.",
+                    },
+                }),
+                &["name", "columns"],
+            ),
+        ),
+        Tool::new(
+            "host.table.append",
+            "Append one row (an object) or several (an array of objects) to a declared table. \
+             Each row is validated against the table's schema first -- a type mismatch fails \
+             the whole call with table_schema_violation and writes nothing.",
+            host_schema(
+                json!({
+                    "table": {"type": "string", "description": "Name of the declared table to append to."},
+                    "rows": {
+                        "description": "One row (an object) or several (an array of objects), each \
+                            validated against the table's schema.",
+                    },
+                }),
+                &["table", "rows"],
+            ),
+        ),
+        Tool::new(
+            "host.table.query",
+            "Run a single read-only SQL SELECT (CTEs allowed) against this tenant's own \
+             tables. Structurally rejected (not by string matching): anything but exactly one \
+             SELECT statement, a result over 1,000 rows, or a query running past 5 seconds -- \
+             each refusal names the rule or bound it hit.",
+            host_schema(
+                json!({
+                    "sql": {
+                        "type": "string",
+                        "description": "A single read-only SELECT statement (CTEs allowed) \
+                            over this tenant's own declared tables.",
+                    },
+                }),
+                &["sql"],
+            ),
+        ),
+        Tool::new(
+            "host.table.list",
+            "List this tenant's declared tables, each with its current row count, plus the \
+             tenant's whole table-store byte usage.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "host.table.drop",
+            "Drop a declared table and every row it holds.",
+            host_schema(
+                json!({
+                    "name": {
+                        "type": "string",
+                        "description": "Name of the declared table to drop, with every row it holds.",
+                    },
+                }),
+                &["name"],
+            ),
+        ),
+        Tool::new(
+            "host.table.schema",
+            "Return one table's columns, types, row count and byte count, without running a \
+             query -- how an agent discovers its own table shape.",
+            host_schema(
+                json!({
+                    "table": {"type": "string", "description": "Name of the declared table to describe."},
+                }),
+                &["table"],
+            ),
+        ),
         // PRD-mcphost-runs-and-jobs P0 requirement 7: the ledger's own
         // tenant-facing tools, alongside host.state.* above.
         Tool::new(
@@ -1379,6 +1475,36 @@ impl StateBackend for TenantStateBridge {
     }
 }
 
+/// PRD-mcphost-tenant-tables requirement 3: [`TenantStateBridge`]'s
+/// counterpart for `CallCtx.table` -- bridges `Kind::call`'s sandboxed
+/// `mcphost.table` requests to `tables.rs`'s real-SQL business logic for
+/// this call's own tenant. `op` is one of the bare verb names
+/// `kinds::python`'s `mcphost.table` sandbox module sends (`"create"`,
+/// `"append"`, `"query"`, `"list"`, `"drop"`, `"schema"`) -- distinct from
+/// the dotted `host.table.*` tool names `dispatch_control_tool` matches
+/// below, which is the *other* caller of these same `tables::table_*`
+/// functions.
+pub(crate) struct TenantTableBridge {
+    pub(crate) state: Arc<AppState>,
+    pub(crate) tenant: Tenant,
+}
+
+#[async_trait::async_trait]
+impl TableBackend for TenantTableBridge {
+    async fn call(&self, op: &str, args: Value) -> Result<Value, KindError> {
+        let result = match op {
+            "create" => tables::table_create(&self.state, &self.tenant, &args).await,
+            "append" => tables::table_append(&self.state, &self.tenant, &args).await,
+            "query" => tables::table_query(&self.state, &self.tenant, &args).await,
+            "list" => tables::table_list(&self.state, &self.tenant, &args).await,
+            "drop" => tables::table_drop(&self.state, &self.tenant, &args).await,
+            "schema" => tables::table_schema(&self.state, &self.tenant, &args).await,
+            other => Err(AppError::InvalidArgs(format!("unknown table op '{other}'"))),
+        };
+        result.map_err(app_error_to_kind_error)
+    }
+}
+
 /// requirement 5 / AC7: the per-call tally `CountingStateBackend` builds up
 /// as `mcphost.state`/`host.state.*` ops flow through this call's
 /// `CallCtx.state`, read back after `Kind::call`/`Kind::tool_run` returns
@@ -1554,6 +1680,12 @@ impl McpHostHandler {
             "host.state.delete_rows" => {
                 tenant_state::state_delete_rows(&self.state, tenant, &args).await
             }
+            "host.table.create" => tables::table_create(&self.state, tenant, &args).await,
+            "host.table.append" => tables::table_append(&self.state, tenant, &args).await,
+            "host.table.query" => tables::table_query(&self.state, tenant, &args).await,
+            "host.table.list" => tables::table_list(&self.state, tenant, &args).await,
+            "host.table.drop" => tables::table_drop(&self.state, tenant, &args).await,
+            "host.table.schema" => tables::table_schema(&self.state, tenant, &args).await,
             "host.runs.get" => crate::runs::get(&self.state, tenant, &args).await,
             "host.runs.list" => crate::runs::list(&self.state, tenant, &args).await,
             "host.runs.cancel" => crate::runs::cancel(&self.state, tenant, &args).await,
@@ -1781,6 +1913,10 @@ impl McpHostHandler {
                 }),
                 Some(log.clone() as Arc<dyn CallLog>),
             )),
+            table: Arc::new(TenantTableBridge {
+                state: self.state.clone(),
+                tenant: tenant.clone(),
+            }),
             // PRD-mcphost-composition requirement 1/2: every real
             // `tools/call`/`host.tool_call` dispatch is the root of its own
             // composition tree -- depth 0, a fresh per-tree children
@@ -2008,6 +2144,10 @@ impl McpHostHandler {
             }),
             None,
         ));
+        let table_backend: Arc<dyn TableBackend> = Arc::new(TenantTableBridge {
+            state: self.state.clone(),
+            tenant: tenant.clone(),
+        });
         let resolved_timeout = self.resolve_call_timeout(&kind, &row.spec);
         let ctx = CallCtx {
             tenant_id: tenant.id,
@@ -2022,6 +2162,7 @@ impl McpHostHandler {
             // above is `NullLog`), but its *result* carries a `state` tally
             // -- read back from `state_backend` after the call below.
             state: state_backend.clone() as Arc<dyn StateBackend>,
+            table: table_backend.clone(),
             // PRD-mcphost-composition requirement 3/AC8: `chain`'s dry run
             // (`ctx.test_mode`) resolves only literal and `$.input.*`
             // mappings -- it never dispatches a step, so it never needs
@@ -2133,6 +2274,7 @@ impl McpHostHandler {
             // (fixed above), which has no notion of `mcphost.state` --
             // `NoState` is correct here, not a stand-in for a real backend.
             state: Arc::new(NoState),
+            table: Arc::new(NoTable),
             compose_depth: 0,
             compose_children: None,
             compose_db: None,
@@ -2266,6 +2408,10 @@ impl McpHostHandler {
             state: self.state.clone(),
             tenant: tenant.clone(),
         });
+        let table_backend: Arc<dyn TableBackend> = Arc::new(TenantTableBridge {
+            state: self.state.clone(),
+            tenant: tenant.clone(),
+        });
         let results = run_spec_test(&kind, &spec, &invocations, call_timeout, || CallCtx {
             tenant_id,
             namespace: namespace.clone(),
@@ -2279,6 +2425,7 @@ impl McpHostHandler {
             resources: Arc::new(NullResourceSink),
             tool_name: None,
             state: state_backend.clone(),
+            table: table_backend.clone(),
             compose_depth: 0,
             compose_children: None,
             compose_db: None,
@@ -2450,6 +2597,10 @@ impl McpHostHandler {
             }),
             None,
         ));
+        let table_backend: Arc<dyn TableBackend> = Arc::new(TenantTableBridge {
+            state: self.state.clone(),
+            tenant: tenant.clone(),
+        });
         let resolved_timeout = self.resolve_call_timeout(&kind, &row.spec);
         let ctx = CallCtx {
             tenant_id: tenant.id,
@@ -2461,6 +2612,7 @@ impl McpHostHandler {
             resources: Arc::new(NullResourceSink),
             tool_name: Some(local_name.clone()),
             state: state_backend.clone() as Arc<dyn StateBackend>,
+            table: table_backend.clone(),
             // PRD-mcphost-composition: `host.tool_run` has no notion of a
             // composition tree of its own yet (see `CallCtx::compose_db`'s
             // doc) -- `chain`/`mcphost.call` are unavailable from here,

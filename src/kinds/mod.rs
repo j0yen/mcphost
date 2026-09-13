@@ -935,6 +935,30 @@ impl StateBackend for NoState {
     }
 }
 
+/// PRD-mcphost-tenant-tables requirement 3: `mcphost.table` inside the
+/// python kind's sandbox -- the same shape [`StateBackend`] gives
+/// `mcphost.state`, for the real-SQL `host.table.*` store instead of the
+/// KV/filter-grammar one. `op` names one of `tables.rs`'s own verbs
+/// (`"create"`, `"append"`, `"query"`, `"list"`, `"drop"`, `"schema"`) and
+/// `args` is that verb's own JSON argument object.
+#[async_trait::async_trait]
+pub trait TableBackend: Send + Sync {
+    async fn call(&self, op: &str, args: Value) -> Result<Value, KindError>;
+}
+
+/// A backend with no table store behind it -- [`NoState`]'s counterpart for
+/// [`TableBackend`], same "fail clearly rather than silently no-op" stance.
+pub struct NoTable;
+#[async_trait::async_trait]
+impl TableBackend for NoTable {
+    async fn call(&self, _op: &str, _args: Value) -> Result<Value, KindError> {
+        Err(KindError::structured(
+            "table_unavailable",
+            "no tenant table backend is wired for this call context",
+        ))
+    }
+}
+
 /// PRD-mcphost-runs-and-jobs P0 requirement 5: where a sandboxed call's
 /// `mcphost.progress(pct, msg)` (see `kinds::python`'s `ProgressSidecarBridge`)
 /// lands. `handler.rs`'s real dispatch path wires this to a sink that
@@ -988,6 +1012,10 @@ pub struct CallCtx {
     /// `handler.rs`'s real dispatch path, which wires this call's own
     /// tenant into `tenant_state.rs`.
     pub state: Arc<dyn StateBackend>,
+    /// See [`TableBackend`]. Defaults to [`NoTable`] everywhere but
+    /// `handler.rs`'s real dispatch path, which wires this call's own
+    /// tenant into `tables.rs`.
+    pub table: Arc<dyn TableBackend>,
     /// PRD-mcphost-composition requirement 2: how many levels of
     /// composition already led to this call -- `0` for every ordinary
     /// top-level `tools/call`/`host.tool_call`. [`compose_call`] refuses a
@@ -1062,6 +1090,7 @@ impl CallCtx {
             resources: Arc::new(NullResourceSink),
             tool_name: None,
             state: Arc::new(NoState),
+            table: Arc::new(NoTable),
             compose_depth: 0,
             compose_children: None,
             compose_db: None,
@@ -1210,6 +1239,10 @@ pub async fn compose_call(
         // (Non-goals), so the child's `mcphost.state` reaches the exact
         // same tenant's store the parent's does -- no re-derivation needed.
         state: ctx.state.clone(),
+        // PRD-mcphost-tenant-tables: same reasoning as `state` above --
+        // composition stays inside one tenant, so the child's
+        // `mcphost.table` reaches the exact same tenant's table store.
+        table: ctx.table.clone(),
         compose_depth: next_depth,
         compose_children: Some(children.clone()),
         compose_db: Some(db.clone()),

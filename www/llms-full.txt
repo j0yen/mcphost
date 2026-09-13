@@ -28,7 +28,12 @@ own tool is **42.4s**.
    only tool offered is `signup`.
 2. Call `signup(name)`. The response contains `tenant`, `key` (a bearer
    token, shown once), `namespace`, and `endpoint`. Signup is rate-limited
-   to 5 per IP per hour.
+   to 5 per IP per hour. Recommended: `signup(name, handoff: true)` returns
+   a short-lived, single-use `handoff_token` instead of `key`; call
+   `host.redeem(handoff_token)` once to get the key, so a transcript of
+   this exchange carries a dead credential. `host.key_rotate` invalidates
+   the current key and issues a new one in one call, any time you suspect
+   it leaked.
 3. Reconnect with `Authorization: Bearer <key>`. The `host.*` control
    plane is now available.
 4. Publish a tool: `host.tool_publish(name, kind, spec)`. Three ways: wrap
@@ -51,7 +56,10 @@ own tool is **42.4s**.
 7. Inspect and manage: `host.tool_list()`, `host.tool_logs(name)`,
    `host.tool_remove(name)`, `host.usage(window)`,
    `host.secret_set`/`host.secret_list()` (secrets stored AES-256-GCM
-   encrypted).
+   encrypted). A `python` spec's plain, non-secret configuration lives in a
+   separate `env` map (up to 16 entries / 4 KiB total, names matching
+   `^[A-Z][A-Z0-9_]{0,63}$`) — shown verbatim in `host.tool_test`, unlike
+   `secrets`, which stay redacted there.
 
 <!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
 <!-- agent-quickstart:end -->
@@ -243,6 +251,32 @@ to a plain name first, then set the attribute/subscript in a separate
 statement) instead of leaving CPython's bare grammar message to speak for
 itself.
 
+## Call limits
+
+PRD-mcphost-call-limits-honest: every limit here is the one the code
+enforces -- `tests/limits_ac06_quickstart_docs_match_constants.rs` checks
+this section and `www/llms.txt`'s "Limits and pricing" section against the
+same constants `host.quickstart`'s `limits` object reads.
+
+- **Call timeout**: 30 s by default, or your own `timeout_s` up to 60 s max
+  -- a python spec that declares `timeout_s` gets exactly that deadline
+  (bounded by the 60 s host maximum), not a shorter one applied silently
+  underneath it. `call_timeout` names the deadline that actually applied.
+- **Output size**: tool output at most 1 MiB. Over the cap returns
+  `tool_output_too_large` naming `limit_bytes` and the `actual_bytes`
+  produced, never a bare `tool_output_invalid` parse failure.
+- **Request body**: at most 1 MiB (HTTP 413 over that -- see
+  `tests/ac16_request_body_too_large.rs`; the "2 MiB" in that AC's own
+  description is the oversized test payload used to *prove* the 1 MiB cap,
+  not the cap itself).
+- **Concurrency**: 20 concurrent calls host-wide; per tenant, 4 per tenant on the free plan
+  (10 on pro). A refusal past your own tenant's cap is `capacity` with
+  `scope: "tenant"` and a `retry_after_ms`; past the host-wide cap it's
+  `scope: "host"`.
+- **Sandbox process cap**: a python tool's sandbox allows at most 64 live
+  processes; a fork past that fails with the structured
+  `tool_process_limit`, not a silent hang or an opaque OS error.
+
 ## Metered overage (billing emit-meter)
 
 PRD-mcphost-metered-overage: pro tenants' successful calls past the plan's
@@ -337,12 +371,42 @@ instead of silently skipping.
 CI runs these suites as their own `sandbox` job, in parallel with the `gate`
 job that carries static analysis and everything else — once the suites stopped
 skipping, a single `cargo test --workspace` step measured 313–336 s against a
-300 s budget <!-- cite: .github/workflows/ci.yml -->. Which targets go where is derived, not hand-listed:
-`scripts/ci-test-partition.sh core|sandbox` classifies every `tests/*.rs` by
-whether it touches the sandbox-execution surface, and `check` proves the split
-is total and disjoint. Both jobs then fail on any capability-skip in their log,
-so a target filed into the wrong half turns CI red rather than passing
-vacuously.
+300 s budget <!-- cite: .github/workflows/ci.yml -->. Which SUITE BINARIES go
+where is derived, not hand-listed: `scripts/ci-test-partition.sh core|sandbox`
+classifies every `tests/*.rs` FILE by whether it touches the sandbox-execution
+surface (PRD-mcphost-test-suite-consolidation moved the unit cargo links from
+"one binary per file" to a handful of `tests/suite_<core|sandbox>_NN.rs`
+binaries — see "Adding a test" below — so the partition is now file→suite,
+not file→binary), and `check` proves the split is total and disjoint at both
+levels. Both jobs then fail on any capability-skip in their log, so a file
+filed into the wrong half turns CI red rather than passing vacuously.
+
+### Adding a test
+
+`tests/*.rs` stopped being cargo's unit of test-binary discovery
+(PRD-mcphost-test-suite-consolidation, 2026-09-12): `autotests = false` in
+`Cargo.toml`, plus a handful of generated `tests/suite_<core|sandbox>_NN.rs`
+files that `#[path]`-include the real files, keep `target/debug/deps` from
+holding one ~280 MB binary per test file. Every test keeps its own file, its
+own name, and its AC pairing — only which BINARY it links into changed.
+
+To add a test: drop `tests/<name>.rs` in as always (same naming convention:
+`<prefix>_ac<N>_<description>.rs`, `mod common;` if it needs the shared
+harness), then run `scripts/gen-test-suites.sh` to fold it into a suite (or
+just let CI tell you — `scripts/gen-test-suites.sh --check`, wired into
+`ci-test-partition.sh check`, fails naming the exact file if you forget). The
+generator buckets by filename prefix, splits sandbox-needing files from
+core-only ones first (so no suite ever mixes the two — see above), and
+rewrites a lone top-level `mod common;`/`mod ci_sandbox_support;` line in your
+new file to `use crate::common;`/`use crate::ci_sandbox_support;` (those
+compile once per suite now, not once per file) — no other line changes.
+Never hand-edit a `tests/suite_*.rs` file; it is fully regenerated.
+
+Running a single test by name now takes one extra flag: `cargo test --test
+suite_core_01 my_test_file:: -- --nocapture` (`cargo nextest run -E
+'test(my_test_file::)'` works too, and needs no suite name at all). `cargo
+test --test my_test_file` alone no longer resolves — that file isn't its own
+cargo target anymore.
 
 | AC | Requirement | Test |
 |---|---|---|
@@ -356,12 +420,12 @@ vacuously.
 | 8 (P0) | `admin.tenant_disable` locks out a key; tenant key is `forbidden` on `admin.tenants` | `tests/ac08_admin_disable_and_forbidden.rs` |
 | 9 (P0) | 6th signup/hour/IP is `rate_limited`, no tenant created | `tests/ac09_signup_rate_limit.rs` |
 | 10 (P0) | Unregistered kind / invalid name / oversized spec each fail distinctly, nothing written | `tests/ac10_publish_validation_errors.rs` |
-| 11 (P0, non-functional) | 200 concurrent `echo` calls, p95 < 50ms, 0 errors, RSS < 100MiB | `tests/ac11_load_smoke.rs` (`#[ignore]`d — hardware-dependent; run with `cargo test --release --test ac11_load_smoke -- --ignored --nocapture`). Measured on the build box: **p95 = 34.20ms, 0 errors, RSS = 37.3MiB** <!-- cite: docs/benchmarks/ac11-load-smoke.txt --> |
+| 11 (P0, non-functional) | 200 concurrent `echo` calls, p95 < 50ms, 0 errors, RSS < 100MiB | `tests/ac11_load_smoke.rs` (`#[ignore]`d — hardware-dependent; run with `cargo test --release --test suite_core_01 ac11_load_smoke:: -- --ignored --nocapture`). Measured on the build box: **p95 = 34.20ms, 0 errors, RSS = 37.3MiB** <!-- cite: docs/benchmarks/ac11-load-smoke.txt --> |
 | 12 (P0) | `synthorg consume --preflight <url>` exits 0 | `tests/ac12_preflight.rs` — an always-run in-process half exercises the same two requests `run_preflight` makes; a second half spawns the real `mcphost` binary and the real `synthorg` CLI when available (bare binary or `uv run --project`) and asserts exit 0 |
 | 13 (P0) | Mismatched `Mcp-Name` header vs. body is recorded by body name and flagged | `tests/ac13_mcp_name_mismatch_metering.rs` |
 | 14 (P0) | Unwritable database: `storage` error, `/healthz` `db_ok: false`, process stays up | `tests/ac14_storage_unwritable.rs` |
 | 15 (P0) | A call that never completes times out at the deadline, future dropped | `tests/ac15_call_timeout.rs` |
-| 16 (P0) | 2MiB request body rejected with HTTP 413 | `tests/ac16_request_body_too_large.rs` |
+| 16 (P0) | A request body over the 1 MiB cap (proven with a 2MiB body) is rejected with HTTP 413 | `tests/ac16_request_body_too_large.rs` |
 | 17 (P0) | `Kind` conformance suite passes `echo`, fails naming `describe` for a bad schema | `tests/ac17_kind_conformance.rs` (reusable checker at `mcphost::kinds::conformance`) |
 | 18 (P1) | `tools/list` carries `ttlMs`/`cacheScope`, `ttlMs: 0` within 60s of a publish | `tests/ac18_tools_list_ttl.rs` |
 | 19 (P1) | `host.registry_publish()` + `/.well-known/mcp/<ns>/server.json` | `tests/ac19_registry_publish.rs` (mocks the registry API with `wiremock`; see "Registry publish (P1)" above — the namespace-verification METHOD stays out of scope, "verified" is an admin-set boolean) |
@@ -499,6 +563,21 @@ Result envelope contract: an optional `outputs` array of field names (`"outputs"
 
 See the `chain` kind for the declarative form of the same idea: an ordered list of tool calls with no python of your own to write.
 
+## env (plain configuration, distinct from secrets)
+
+`"env": {"UPSTREAM_URL": "https://example.test", "MODE": "fast"}` puts plain, non-secret configuration into the sandboxed process's environment beside `secrets` -- an endpoint URL, a mode flag, a tenant identifier: anything that isn't a credential and doesn't need the secret store's encryption, rotation story, or `host.tool_test` redaction.
+
+```json
+{
+  "source": "import os\ndef main(args):\n    return {\"mode\": os.environ[\"MODE\"]}\n",
+  "env": {"MODE": "fast"}
+}
+```
+
+Bounds, enforced at publish: at most 16 entries, at most 4 KiB total across every name and value combined, and a value must be valid UTF-8 with no NUL byte -- each violation is a structured error naming the key and the bound it broke. A name must match `^[A-Z][A-Z0-9_]{0,63}$`; `MCPHOST_*`, `PATH`, `HOME`, `PYTHON*`, `LD_*`, and `SECRET_*` (this kind's own prefix for injecting a resolved secret) are reserved and refused by name or prefix. An `env` name may never collide with a secret name already set for this tenant, in either direction: publishing `env` that collides with an existing secret is refused, and so is `host.secret_set`ing a secret whose name collides with an already-published tool's `env` entry.
+
+The distinction is visible, not doctrinal: `host.tool_test` renders both in one listing, `env` values shown verbatim and secret values redacted, each labeled `"kind": "env"` or `"kind": "secret"`. `host.tool_list` returns a tool's `env` map to its owner; `admin.tool_list` reports env names and total size to an operator, never values. Updating `env` alone (no source change) takes effect on the tool's next call -- the warm pool re-fingerprints on an env change exactly as it does on a secret change, so a stale pooled process never serves old values.
+
 ## Benchmark: measure-0.26.3-20260908T085001Z.md
 
 # Measure run 0.26.3-20260908T085001Z
@@ -573,7 +652,7 @@ ccx13):
 ## Post-fix measurement (this receipt, dev box)
 
 Measured by `tests/runtime_ac4_publish_and_first_call_latency.rs`
-(`cargo test --test runtime_ac4_publish_and_first_call_latency -- --nocapture`),
+(`cargo test --test suite_sandbox_01 runtime_ac4_publish_and_first_call_latency:: -- --nocapture`),
 a dependency-free tool of corpus-task size, on this build machine
 (RedBaron; `uv` and `/usr/bin/python3` both already warm/cached):
 
