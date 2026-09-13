@@ -104,6 +104,15 @@ async fn unauthenticated_tools_list_is_signup_only() {
         "host.state.insert",
         "host.state.query",
         "host.state.delete_rows",
+        // PRD-mcphost-tenant-tables requirement 1: the real-SQL table
+        // control plane is discoverable unauthenticated too, same as every
+        // other host.*-style tool above.
+        "host.table.create",
+        "host.table.append",
+        "host.table.query",
+        "host.table.list",
+        "host.table.drop",
+        "host.table.schema",
         // PRD-mcphost-sharing requirement 1: the sharing/catalog control
         // plane is discoverable unauthenticated too, same as every other
         // host.*-style tool above.
@@ -158,10 +167,11 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        51,
+        57,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the nine host.state.* tools (PRD-mcphost-tenant-state) \
+         + the six host.table.* tools (PRD-mcphost-tenant-tables) \
          + the eight host.tool_share/host.tool_unshare/host.group.*/host.catalog.* tools \
          (PRD-mcphost-sharing) + the five host.runs.* tools (PRD-mcphost-runs-and-jobs) \
          + the nine host.trigger.* tools (PRD-mcphost-schedules, PRD-mcphost-inbound-events) \
