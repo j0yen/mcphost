@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.45.0 — 2026-09-13
+
+The cycle-11 design decision put the tenant key in the model's context as a tool
+argument — accepted deliberately, with "a single-use handoff token recorded as
+deferred rather than dismissed." Joe pulled it forward on 2026-09-12 with the
+instruction to test it. This PRD ships the token: `signup` returns a short-lived,
+single-use handoff token instead of the raw key; one `host.redeem` call exchanges it
+for the tenant key and kills the token; a session that leaked its transcript leaks a
+dead credential plus whatever window remains on the live key, which `host.key_rotate`
+can close. The existing raw-key flow keeps working behind a flag so nothing breaks,
+and the harness proves the new path end-to-end.
+
 ## v0.44.2 — 2026-09-12
 
 Cargo stops turning each of mcphost's 289 top-level test files into its own 280 MB binary. A generator writes a few `[[test]]` suite files that include the existing test files by path, so every test keeps its name, its file, and its AC pairing. `common` compiles once instead of 269 times. The gate links about six binaries instead of 289, and `target/` stops holding tens of gigabytes of near-identical executables. Measured on RedBaron: target/debug/deps 78 GB -> 3.75 GB, clean-to-green nextest wall 1405s -> 139s (9.9% of before).
