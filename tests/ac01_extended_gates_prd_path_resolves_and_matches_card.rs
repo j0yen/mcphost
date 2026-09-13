@@ -1,6 +1,6 @@
 //! AC1 (PRD-mcphost-gate-debt-c627803): proves the actual claim AC1 makes --
 //! that this repo's extended-receipts paper trail (`extended-gates.toml`'s
-//! `prd_path`) resolves to a real file whose absolute path is byte-equal to
+//! `prd_path`) resolves to a real file that names the SAME PRD as
 //! `agent/intent-card.json`'s `prd_source`. This is the exact invariant
 //! whose violation (extended-gates.toml naming a stale/different PRD than
 //! the card) caused the extended-receipts block this PRD exists to fix --
@@ -16,6 +16,25 @@
 //! zero causal connection to whether extended-receipts actually gates on
 //! `prd_path`).
 //!
+//! CI fix (same PRD, second cycle): the first version of this test compared
+//! the FULL absolute path -- `CARGO_MANIFEST_DIR`-joined at test-run time --
+//! against `intent-card.json`'s `prd_source` byte-for-byte. `prd_source` is
+//! always written as an absolute, authoring-host path (see
+//! `intent-card-refresh.sh`'s `os.path.abspath`), and this crate's own
+//! `ac_traceability` producer never reads `prd_source` at all -- it only
+//! resolves `extended-gates.toml`'s `prd_path` against the project root and
+//! checks `is_file()` (see `producers/ac_traceability.rs::locate_prd_in`).
+//! So "byte-equal absolute paths" was never a real production invariant --
+//! it only happened to hold on the one host (RedBaron) whose checkout path
+//! matches the string baked into `intent-card.json`. On any other checkout
+//! location (a GitHub Actions runner, `/home/runner/work/mcphost/mcphost`,
+//! unconditionally different from `/home/jsy/wintermute/mcphost`) the
+//! comparison was guaranteed to fail regardless of whether the paper trail
+//! was actually correct -- exactly what broke `ci` on afac2da. The real
+//! invariant worth proving -- "prd_path and prd_source name the same PRD,
+//! not two different ones" -- is host-independent when checked by filename,
+//! so that is what this test now asserts.
+//!
 //! No `toml` crate dependency is pulled in for this: `extended-gates.toml`
 //! is a flat `key = "value"` file and `prd_path`'s value is parsed with a
 //! plain string split, matching this repo's existing preference for zero
@@ -24,7 +43,7 @@
 
 use serde_json::Value;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Parses `prd_path = "..."` out of `extended-gates.toml` without a TOML
 /// parser -- the file has exactly one such flat key/value line.
@@ -73,14 +92,25 @@ fn extended_gates_prd_path_resolves_and_matches_intent_card() {
         .and_then(Value::as_str)
         .expect("intent-card.json must set prd_source");
 
-    let resolved_str = resolved
-        .to_str()
-        .expect("resolved prd_path must be valid UTF-8");
+    // Host-independent invariant: both paths must name the SAME PRD file
+    // (same basename), not necessarily live at the identical absolute
+    // filesystem location -- `prd_source` is an authoring-host absolute
+    // path (PRD-build-intent-card-refresh's `os.path.abspath`) that never
+    // matches a different checkout's absolute prefix, and no production
+    // code (`ac_traceability`'s own `locate_prd_in`) ever compares the two
+    // as full paths -- only this test asserted that, in error.
+    let resolved_name = resolved
+        .file_name()
+        .expect("resolved prd_path must have a file name");
+    let source_name = Path::new(prd_source)
+        .file_name()
+        .expect("intent-card.json's prd_source must have a file name");
     assert_eq!(
-        resolved_str, prd_source,
-        "extended-gates.toml's prd_path resolves to {resolved_str:?}, which does not match \
+        resolved_name, source_name,
+        "extended-gates.toml's prd_path resolves to {:?}, which does not name the same PRD as \
          intent-card.json's prd_source {prd_source:?} -- the gate paper trail is out of sync \
-         (see PRD-mcphost-gate-debt-c627803's five-whys)"
+         (see PRD-mcphost-gate-debt-c627803's five-whys)",
+        resolved.display()
     );
 }
 
@@ -97,5 +127,21 @@ fn detects_a_prd_path_that_does_not_resolve_to_a_file() {
     assert!(
         !resolved.is_file(),
         "fixture must name a file that does not exist, or this test proves nothing"
+    );
+}
+
+#[test]
+fn detects_a_prd_path_naming_a_different_prd_than_the_card() {
+    // Falsification for the basename comparison itself: two paths with
+    // different basenames must not compare equal, regardless of their
+    // absolute prefixes -- this is exactly the drift class (extended-gates
+    // .toml left pointing at a stale/different PRD than the card) the real
+    // test exists to catch, independent of which host runs it.
+    let resolved: PathBuf = PathBuf::from("/checkout/a/PRD-one.md");
+    let prd_source = "/completely/different/host-path/PRD-two.md";
+    assert_ne!(
+        resolved.file_name(),
+        Path::new(prd_source).file_name(),
+        "fixture must name two different PRDs, or this test proves nothing"
     );
 }
