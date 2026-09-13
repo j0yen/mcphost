@@ -4,12 +4,12 @@
 
 use serde_json::{Value, json};
 
-use crate::auth::{generate_key, generate_namespace, hash_key};
-use crate::db::Tenant;
+use crate::auth::{generate_handoff_token, generate_key, generate_namespace, hash_key};
+use crate::db::{HandoffRedeemOutcome, Tenant};
 use crate::errors::AppError;
 use crate::state::{
-    AppState, CALL_TIMEOUT, MAX_REQUEST_BODY_BYTES, MAX_SPEC_BYTES, MAX_TOOL_OUTPUT_BYTES,
-    MAX_TOOLS_PER_TENANT, validate_tool_name,
+    AppState, CALL_TIMEOUT, HANDOFF_TOKEN_TTL_SECS, MAX_REQUEST_BODY_BYTES, MAX_SPEC_BYTES,
+    MAX_TOOL_OUTPUT_BYTES, MAX_TOOLS_PER_TENANT, now_unix, validate_tool_name,
 };
 
 fn arg_str(args: &Value, name: &str) -> Result<String, AppError> {
@@ -21,6 +21,15 @@ fn arg_str(args: &Value, name: &str) -> Result<String, AppError> {
 
 fn arg_str_opt(args: &Value, name: &str) -> Option<String> {
     args.get(name).and_then(Value::as_str).map(str::to_string)
+}
+
+/// PRD-mcphost-handoff-token requirement 1: `signup`'s `handoff` argument.
+/// Absent, `null`, or any non-`bool` value all read as `false` (the
+/// existing raw-key behavior, requirement 5 / AC5 -- an old client that has
+/// never heard of this argument must see byte-identical output), so only an
+/// explicit `true` opts into handoff mode.
+fn arg_bool(args: &Value, name: &str) -> bool {
+    args.get(name).and_then(Value::as_bool).unwrap_or(false)
 }
 
 /// PRD-mcphost-synthetic-flag requirement 2: read only at signup, never
@@ -140,6 +149,44 @@ pub async fn signup(
         )
         .await?;
 
+    // PRD-mcphost-handoff-token requirement 1 / AC1: opt-in only -- an
+    // absent (or non-true) `handoff` argument is byte-identical to today's
+    // response below (requirement 5 / AC5). In handoff mode, `key` never
+    // leaves this function: it's AES-256-GCM-encrypted with the same
+    // cipher `host.secret_set` uses for tenant secrets (`state.secrets`,
+    // never a new key of its own) and stored alongside a single-use,
+    // short-lived token; the caller redeems that token via `host.redeem`
+    // to get `key` back exactly once.
+    if arg_bool(args, "handoff") {
+        let token = generate_handoff_token();
+        let token_hash = hash_key(&token);
+        let (key_enc, key_nonce) = state.secrets.encrypt(&key)?;
+        let expires_unix = now_unix() + HANDOFF_TOKEN_TTL_SECS;
+        let token_id = state
+            .db
+            .create_handoff_token(tenant.id, token_hash, key_enc, key_nonce, expires_unix)
+            .await?;
+        // Requirement 2's "journaled (token id, never values)": neither
+        // `token` nor `key` is ever passed to `tracing`.
+        tracing::info!(
+            tenant = %tenant.namespace,
+            token_id,
+            expires_in = HANDOFF_TOKEN_TTL_SECS,
+            "handoff token issued"
+        );
+        return Ok(json!({
+            "tenant": tenant.namespace,
+            "tenant_id": tenant.namespace,
+            "handoff_token": token,
+            "expires_in": HANDOFF_TOKEN_TTL_SECS,
+            "usage": "Call host.redeem with this handoff_token (no Authorization header or \
+                tenant_key needed) to receive your tenant key exactly once. The token is \
+                single-use and expires in expires_in seconds -- a transcript that captured \
+                this response is worthless to anyone who reads it after redemption.",
+            "next": "host.redeem",
+        }));
+    }
+
     Ok(json!({
         "tenant": tenant.namespace,
         "key": key,
@@ -156,6 +203,67 @@ pub async fn signup(
         // shortest path to a working tool, rather than leaving the agent
         // to discover `host.quickstart` on its own.
         "next": "host.quickstart",
+    }))
+}
+
+/// `host.redeem` (PRD-mcphost-handoff-token requirement 2 / AC2):
+/// unauthenticated, like `signup` -- the caller has nothing but the
+/// handoff token to offer yet. Exchanges a valid, unexpired,
+/// not-yet-redeemed token for the tenant key it was issued for, exactly
+/// once; every other outcome is a distinct structured error naming what
+/// went wrong without ever echoing the token.
+pub async fn redeem(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let token = arg_str(args, "handoff_token")?;
+    let token_hash = hash_key(&token);
+    match state.db.redeem_handoff_token(token_hash).await? {
+        HandoffRedeemOutcome::NotFound => Err(AppError::HandoffTokenInvalid),
+        HandoffRedeemOutcome::AlreadyRedeemed { token_id } => {
+            tracing::warn!(token_id, "host.redeem refused: token already redeemed");
+            Err(AppError::HandoffTokenRedeemed)
+        }
+        HandoffRedeemOutcome::Expired { token_id } => {
+            tracing::warn!(token_id, "host.redeem refused: token expired");
+            Err(AppError::HandoffTokenExpired)
+        }
+        HandoffRedeemOutcome::Redeemed {
+            token_id,
+            key_enc,
+            key_nonce,
+            ..
+        } => {
+            let key = state.secrets.decrypt(&key_enc, &key_nonce)?;
+            tracing::info!(token_id, "handoff token redeemed");
+            Ok(json!({
+                "key": key,
+                "usage": "Pass this key as the tenant_key argument on every tools/call from \
+                    here on -- e.g. host.tool_publish, host.tool_call -- no reconnect or \
+                    Authorization header needed. This token is now dead; redeeming it again \
+                    fails with handoff_token_redeemed.",
+                "next": "host.quickstart",
+            }))
+        }
+    }
+}
+
+/// `host.key_rotate` (PRD-mcphost-handoff-token requirement 3 / AC3):
+/// authenticated as the tenant (with its current key, header or
+/// `tenant_key` argument -- same as any other `host.*` call). Issues a
+/// brand-new key, replaces the stored hash atomically, and returns the new
+/// key exactly once; the presented (now former) key stops authenticating
+/// anything from this point on, since `resolve_auth`/`resolve_tenant_key_auth`
+/// both look a presented key up by hash, and this tenant's row no longer
+/// carries the old one.
+pub async fn key_rotate(state: &AppState, tenant: &Tenant) -> Result<Value, AppError> {
+    let new_key = generate_key();
+    let new_key_hash = hash_key(&new_key);
+    state.db.rotate_tenant_key(tenant.id, new_key_hash).await?;
+    tracing::info!(tenant = %tenant.namespace, "tenant key rotated");
+    Ok(json!({
+        "tenant": tenant.namespace,
+        "key": new_key,
+        "usage": "This replaces your previous tenant key immediately -- pass this new key as \
+            the tenant_key argument (or Authorization header) on every call from here on; \
+            the old key now fails as unauthenticated.",
     }))
 }
 
@@ -188,13 +296,16 @@ pub fn quickstart(
             "authenticated": false,
             "steps": [{
                 "call": "signup",
-                "arguments": {"name": "<your name>"},
+                "arguments": {"name": "<your name>", "handoff": true},
                 "note": "Sign up first to get a tenant_key and namespace, then call \
                     host.quickstart again (kind still required) with that key -- as the \
                     tenant_key argument, or reconnected with an Authorization header -- \
-                    for a filled-in example. A host.* call with no tenant_key fails with \
-                    tenant_key_missing; one that doesn't match any tenant fails with \
-                    tenant_key_invalid.",
+                    for a filled-in example. Recommended: signup with handoff: true (shown \
+                    above) and call host.redeem once with the returned handoff_token to get \
+                    the key, so the signup/redeem transcript carries a dead credential; \
+                    omitting handoff returns the raw key directly instead, unchanged from \
+                    before. A host.* call with no tenant_key fails with tenant_key_missing; \
+                    one that doesn't match any tenant fails with tenant_key_invalid.",
             }],
         }));
     };
@@ -350,6 +461,14 @@ pub fn quickstart(
 }
 
 pub fn whoami(tenant: &Tenant) -> Value {
+    // PRD-mcphost-handoff-token P1 requirement 7 / AC8: age is measured
+    // from the last rotation when there's been one, else from the
+    // tenant's own creation -- a never-rotated key is exactly as old as
+    // the tenant. `created_unix` is only `None` for a row this crate never
+    // wrote (should not happen post-migration-0010), in which case age is
+    // unknowable rather than a misleading guess.
+    let key_since = tenant.key_rotated_unix.or(tenant.created_unix);
+    let key_age_s = key_since.map(|since| (now_unix() - since).max(0));
     json!({
         "tenant": tenant.namespace,
         "namespace": tenant.namespace,
@@ -367,6 +486,8 @@ pub fn whoami(tenant: &Tenant) -> Value {
         "source_class": tenant.source_class,
         "client_name": tenant.client_name,
         "client_version": tenant.client_version,
+        "key_age_s": key_age_s,
+        "key_rotated_at": tenant.key_rotated_unix,
     })
 }
 

@@ -226,9 +226,20 @@ fn host_schema(mut props: Value, required: &[&str]) -> Map<String, Value> {
 fn signup_tool() -> Tool {
     Tool::new(
         "signup",
-        "Create a tenant and receive a bearer key and namespace. Unauthenticated.",
+        "Create a tenant and receive a bearer key and namespace. Unauthenticated. Recommended: \
+         pass handoff: true to receive a short-lived, single-use handoff_token instead of the \
+         raw key -- redeem it once with host.redeem to get the key, so a transcript of this \
+         call and the redeem call, if it leaks, carries a dead credential. The raw-key path \
+         (handoff omitted) stays fully supported.",
         schema(
-            json!({"name": {"type": "string", "description": "display name"}}),
+            json!({
+                "name": {"type": "string", "description": "display name"},
+                "handoff": {
+                    "type": "boolean",
+                    "description": "Recommended: true to receive a handoff_token (redeem via \
+                        host.redeem) instead of the raw key. Default false (raw key, unchanged).",
+                },
+            }),
             &["name"],
         ),
     )
@@ -329,7 +340,43 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
     let mut tools = vec![
         Tool::new(
             "host.whoami",
-            "Return the calling tenant's identity.",
+            "Return the calling tenant's identity, including key_age_s and key_rotated_at \
+             for auditing credential hygiene.",
+            host_schema(json!({}), &[]),
+        ),
+        // PRD-mcphost-handoff-token requirement 2 / AC2: like
+        // `host.quickstart`, reachable unauthenticated (the handoff_token
+        // itself is the proof -- `resolve_tenant_key_auth`'s outcome for
+        // this call is never consulted, see `handler::call_tool`'s
+        // `(_, "host.redeem")` arm) but still built with `host_schema` for
+        // the same reason `host.quickstart` is: every host.* descriptor
+        // carries the optional `tenant_key` property (PRD-mcphost-session-key
+        // AC3), whether or not this particular call ever reads it.
+        Tool::new(
+            "host.redeem",
+            "Exchange a signup(handoff: true) handoff_token for the tenant key it was issued \
+             for. Single-use: a second redemption fails with handoff_token_redeemed; past its \
+             expiry it fails with handoff_token_expired. Unauthenticated -- the token itself is \
+             the proof.",
+            host_schema(
+                json!({
+                    "handoff_token": {
+                        "type": "string",
+                        "description": "The handoff_token signup(handoff: true) returned.",
+                    },
+                }),
+                &["handoff_token"],
+            ),
+        ),
+        // PRD-mcphost-handoff-token requirement 3 / AC3: authenticated like
+        // every other host.* tenant tool -- host_schema's tenant_key
+        // property is exactly the credential being rotated here.
+        Tool::new(
+            "host.key_rotate",
+            "Issue a new tenant key and invalidate the current one immediately: every other \
+             call using the old key fails as unauthenticated from this point on. Returns the \
+             new key exactly once -- use it (as tenant_key or Authorization) for every call \
+             after this one.",
             host_schema(json!({}), &[]),
         ),
         Tool::new(
@@ -1470,6 +1517,7 @@ impl McpHostHandler {
     ) -> Result<Value, AppError> {
         match name {
             "host.whoami" => Ok(control::whoami(tenant)),
+            "host.key_rotate" => control::key_rotate(&self.state, tenant).await,
             "host.tool_publish" => control::tool_publish(&self.state, tenant, &args).await,
             "host.tool_list" => control::tool_list(&self.state, tenant).await,
             "host.tool_remove" => control::tool_remove(&self.state, tenant, &args).await,
@@ -2538,13 +2586,21 @@ impl McpHostHandler {
 impl ServerHandler for McpHostHandler {
     fn get_info(&self) -> ServerInfo {
         let mut instructions = String::from(
-            "Call `signup` with a display name to receive a bearer key. The `host.*` \
+            "Call `signup` with a display name to receive a bearer key. Recommended: pass \
+                 `handoff: true` to signup instead -- you get a short-lived, single-use \
+                 `handoff_token` in place of the raw key; call `host.redeem` with it once to \
+                 get the key, so a transcript of the signup/redeem exchange carries a dead \
+                 credential rather than a live one. If your key may have leaked, \
+                 `host.key_rotate` issues a new one and kills the old one in the same call. \
+                 The original raw-key path (signup without `handoff`) stays fully supported \
+                 -- everything below applies to the key either path gives you. The `host.*` \
                  control plane -- including `host.tool_publish` and `host.tool_call` -- is \
                  already visible in this tools/list, before you have a key. Pass the key \
-                 `signup` returns as the `tenant_key` argument on every call after that; no \
-                 reconnect and no Authorization header is required. A `host.*` call with no \
-                 `tenant_key` at all fails with `tenant_key_missing`, and one that doesn't \
-                 match any tenant fails with `tenant_key_invalid`. Result envelope contract: \
+                 (from signup directly, or from host.redeem) as the `tenant_key` argument on \
+                 every call after that; no reconnect and no Authorization header is required. \
+                 A `host.*` call with no `tenant_key` at all fails with `tenant_key_missing`, \
+                 and one that doesn't match any tenant fails with `tenant_key_invalid`. \
+                 Result envelope contract: \
                  when a spec declares `outputs` (field names its tool emits, or a map from \
                  field name to the exact `$.a.b[0].c`-style path to read it from), each is \
                  readable at `result.payload.<field>` for every kind, regardless of how deep \
@@ -2789,6 +2845,14 @@ impl ServerHandler for McpHostHandler {
             // signup and regardless of auth, since it carries no
             // tenant-specific data.
             (_, "billing.plans") => Ok(crate::billing::plans(&self.state)),
+            // PRD-mcphost-handoff-token requirement 2 / AC2: unauthenticated,
+            // same treatment as `signup`/`host.quickstart` above -- the
+            // caller has only a handoff_token, no tenant_key/Authorization
+            // yet. Reads `raw_args` (not the redacted `args`): the token IS
+            // the argument being authenticated by, so it can't be scrubbed
+            // before `control::redeem` ever sees it (unlike `tenant_key`,
+            // which this call never carries).
+            (_, "host.redeem") => control::redeem(&self.state, &raw_args).await,
             // PRD-mcphost-auth-error-names-argument requirement 1-3 /
             // AC1-4: three distinct auth failures now, not one. A header
             // was sent and didn't resolve (`!via_tenant_key_arg`) keeps the

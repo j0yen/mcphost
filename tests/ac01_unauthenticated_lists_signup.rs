@@ -61,6 +61,14 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     for expected in [
         "host.whoami",
+        // PRD-mcphost-handoff-token requirement 2/3: the handoff exchange
+        // and rotation surfaces are discoverable unauthenticated too, same
+        // as every other host.*-style tool below (host.redeem's own call
+        // works unauthenticated -- the token is the proof; host.key_rotate
+        // still requires the caller's current key to actually invoke, same
+        // gating every other host.* descriptor here already has).
+        "host.redeem",
+        "host.key_rotate",
         "host.tool_publish",
         // PRD-mcphost-publish-first-try requirement 4: discoverable
         // unauthenticated too, same as the rest of the host.* control
@@ -150,9 +158,10 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        49,
-        "signup + the thirteen host.* tools (incl. host.quickstart, host.tool_run, and \
-         host.bridge_test) + host.tool_call + the nine host.state.* tools (PRD-mcphost-tenant-state) \
+        51,
+        "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
+         host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
+         host.tool_call + the nine host.state.* tools (PRD-mcphost-tenant-state) \
          + the eight host.tool_share/host.tool_unshare/host.group.*/host.catalog.* tools \
          (PRD-mcphost-sharing) + the five host.runs.* tools (PRD-mcphost-runs-and-jobs) \
          + the nine host.trigger.* tools (PRD-mcphost-schedules, PRD-mcphost-inbound-events) \

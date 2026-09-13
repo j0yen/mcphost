@@ -41,6 +41,13 @@ pub const TOOLS_LIST_TTL_MS_STEADY: u64 = 30_000;
 /// gate on.
 pub const TOOL_RUN_RATE_LIMIT_PER_MINUTE: usize = 30;
 pub const TOOL_RUN_RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
+/// PRD-mcphost-handoff-token requirement 2 / AC2: how long a
+/// `signup(handoff: true)` token stays redeemable. Short enough that a
+/// leaked transcript's token is worthless well before anyone could act on
+/// it; generous enough for the same session's immediate follow-up
+/// `host.redeem` call (open question: "minutes vs the session's practical
+/// length" -- resolved here at 5 minutes, stated in the build receipt).
+pub const HANDOFF_TOKEN_TTL_SECS: i64 = 300;
 
 /// A per-tenant sliding-window call counter for `host.tool_run`
 /// (requirement 3 / AC7). Kept in `handler.rs`'s territory (cross-kind,

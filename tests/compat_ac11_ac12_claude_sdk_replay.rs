@@ -187,12 +187,14 @@ async fn ac12_claude_agent_sdk_sequence_lists_signup_with_schema() {
     // and PRD-mcphost-runs-and-jobs requirement 7 added the five
     // `host.runs.*` tools, PRD-mcphost-schedules requirement 2 added
     // the seven `host.trigger.*` tools, and PRD-mcphost-inbound-events
-    // requirement 3 added two more (`host.trigger.test`/`replay`) --
-    // forty-nine tools total, no client can break on the growth (see that
-    // PRD's Migration/compatibility section).
+    // requirement 3 added two more (`host.trigger.test`/`replay`), and
+    // PRD-mcphost-handoff-token requirements 2-3 added two more
+    // (`host.redeem`/`host.key_rotate`) -- fifty-one tools total, no
+    // client can break on the growth (see that PRD's
+    // Migration/compatibility section).
     assert_eq!(
         tools.len(),
-        49,
+        51,
         "signup + host.* (incl. host.quickstart, host.tool_run, host.bridge_test) + \
          host.tool_call + host.state.* (9 tools, PRD-mcphost-tenant-state) + \
          host.tool_share/host.tool_unshare/host.group.*/host.catalog.* (8 tools, \

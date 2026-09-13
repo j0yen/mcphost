@@ -166,6 +166,23 @@ pub enum AppError {
     /// on a group name this tenant hasn't `host.group.create`d.
     #[error("group not found: {0}")]
     GroupNotFound(String),
+    /// PRD-mcphost-handoff-token requirement 2 / AC2: `host.redeem` on a
+    /// token matching no row -- never distinguished from "existed once,
+    /// long expired and swept" (there is no sweep), same "guessed value
+    /// reads identically to a bad one" posture as [`AppError::TenantKeyInvalid`].
+    #[error("handoff token was not recognized")]
+    HandoffTokenInvalid,
+    /// PRD-mcphost-handoff-token requirement 2 / AC2: a second redemption
+    /// of an already-claimed token -- distinct code from
+    /// [`AppError::HandoffTokenExpired`] so a client (or the AC4
+    /// integration test replaying context A's transcript) can tell "this
+    /// token worked once already" from "this token's window closed".
+    #[error("handoff token has already been redeemed")]
+    HandoffTokenRedeemed,
+    /// PRD-mcphost-handoff-token requirement 2 / AC2: redemption attempted
+    /// after `state::HANDOFF_TOKEN_TTL_SECS` elapsed since issuance.
+    #[error("handoff token has expired")]
+    HandoffTokenExpired,
 }
 
 impl AppError {
@@ -208,6 +225,9 @@ impl AppError {
             AppError::RegistryRejected(_) => "registry_rejected",
             AppError::ShareQuotaExceeded { .. } => "share_quota_exceeded",
             AppError::GroupNotFound(_) => "group_not_found",
+            AppError::HandoffTokenInvalid => "handoff_token_invalid",
+            AppError::HandoffTokenRedeemed => "handoff_token_redeemed",
+            AppError::HandoffTokenExpired => "handoff_token_expired",
         }
     }
 
@@ -236,7 +256,10 @@ impl AppError {
             | AppError::TenantDisabled
             | AppError::RateLimited
             | AppError::RegistryDisabled
-            | AppError::NamespaceUnverified => ErrorCode::INVALID_REQUEST,
+            | AppError::NamespaceUnverified
+            | AppError::HandoffTokenInvalid
+            | AppError::HandoffTokenRedeemed
+            | AppError::HandoffTokenExpired => ErrorCode::INVALID_REQUEST,
             // `host_not_allowed`/`args_invalid`/`template_error` are caller
             // (or spec-author) input problems; `rate_limited` mirrors
             // AppError::RateLimited above; the remaining `upstream_*` /

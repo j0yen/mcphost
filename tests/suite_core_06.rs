@@ -129,6 +129,20 @@ mod envelope_ac1_http_declared_output_promoted;
 mod envelope_ac4_tool_test_reports_missing_declared_output;
 #[path = "firstcall_ac6_outcome_metering.rs"]
 mod firstcall_ac6_outcome_metering;
+#[path = "handoff_ac01_signup_returns_token_and_no_key.rs"]
+mod handoff_ac01_signup_returns_token_and_no_key;
+#[path = "handoff_ac02_redeem_single_use_and_expiry.rs"]
+mod handoff_ac02_redeem_single_use_and_expiry;
+#[path = "handoff_ac03_key_rotate_invalidates_old_key.rs"]
+mod handoff_ac03_key_rotate_invalidates_old_key;
+#[path = "handoff_ac04_full_two_context_flow.rs"]
+mod handoff_ac04_full_two_context_flow;
+#[path = "handoff_ac05_raw_signup_still_works_unchanged.rs"]
+mod handoff_ac05_raw_signup_still_works_unchanged;
+#[path = "handoff_ac06_errors_never_echo_token_or_key.rs"]
+mod handoff_ac06_errors_never_echo_token_or_key;
+#[path = "handoff_ac08_whoami_reports_key_age_and_rotation.rs"]
+mod handoff_ac08_whoami_reports_key_age_and_rotation;
 #[path = "hooks_ac10_healthz_event_counters.rs"]
 mod hooks_ac10_healthz_event_counters;
 #[path = "hooks_ac11_dedupe_header_idempotent.rs"]

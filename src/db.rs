@@ -31,6 +31,7 @@ const MIGRATION_0015: &str = include_str!("../migrations/0015_triggers.sql");
 const MIGRATION_0016: &str = include_str!("../migrations/0016_runs_manual.sql");
 const MIGRATION_0017: &str = include_str!("../migrations/0017_event_dedupe.sql");
 const MIGRATION_0018: &str = include_str!("../migrations/0018_runs_test_run.sql");
+const MIGRATION_0019: &str = include_str!("../migrations/0019_handoff_token.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -41,7 +42,7 @@ const EVENT_DEDUPE_WINDOW_S: i64 = 86_400;
 const TENANT_COLUMNS: &str = "id, namespace, display_name, key_hash, created_at, disabled, \
     last_tool_change_unix, namespace_verified, registry_namespace, plan, plan_since, billing_ref, \
     stripe_customer_id, synthetic, source_class, client_name, client_version, classified_by, \
-    created_unix, origin, origin_detail";
+    created_unix, origin, origin_detail, key_rotated_unix";
 
 fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
     Ok(Tenant {
@@ -66,6 +67,7 @@ fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
         created_unix: r.get(18)?,
         origin: r.get(19)?,
         origin_detail: r.get(20)?,
+        key_rotated_unix: r.get(21)?,
     })
 }
 
@@ -171,6 +173,11 @@ pub struct Tenant {
     /// The synthorg run-id / key-class / source_class value that justified
     /// `origin`'s verdict, or `None` for a signup with no explicit marker.
     pub origin_detail: Option<String>,
+    /// PRD-mcphost-handoff-token requirement 3 / P1 requirement 7: unix
+    /// seconds of this tenant's last `host.key_rotate`, or `None` for a
+    /// tenant that has never rotated (migration 0019). `host.whoami`'s
+    /// `key_age_s` is measured from this when set, else from `created_unix`.
+    pub key_rotated_unix: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -444,6 +451,27 @@ pub struct BillingEventRow {
     pub received_at: String,
 }
 
+/// PRD-mcphost-handoff-token requirement 2 / AC2: [`Db::redeem_handoff_token`]'s
+/// outcome. `token_id` (the row's own integer id, never the token or key
+/// value) is carried on every variant so a caller can journal a
+/// non-`Redeemed` outcome the same values-free way as a successful one.
+#[derive(Debug, Clone)]
+pub enum HandoffRedeemOutcome {
+    Redeemed {
+        token_id: i64,
+        tenant_id: i64,
+        key_enc: Vec<u8>,
+        key_nonce: Vec<u8>,
+    },
+    NotFound,
+    Expired {
+        token_id: i64,
+    },
+    AlreadyRedeemed {
+        token_id: i64,
+    },
+}
+
 fn now_rfc3339() -> String {
     // No chrono dependency: a stable, sortable, human-readable stamp is all
     // any AC needs (`created_at`/`started_at` are opaque strings to callers).
@@ -692,7 +720,8 @@ impl Db {
         Self::migrate_0015_triggers(&conn)?;
         Self::migrate_0016_runs_manual(&conn)?;
         Self::migrate_0017_event_dedupe(&conn)?;
-        Self::migrate_0018_runs_test_run(&conn)
+        Self::migrate_0018_runs_test_run(&conn)?;
+        Self::migrate_0019_handoff_token(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -943,6 +972,22 @@ impl Db {
         Ok(())
     }
 
+    /// PRD-mcphost-handoff-token requirements 1-3: same idempotency pattern
+    /// as 0011/0014/0015 (a wholly new, `CREATE TABLE IF NOT EXISTS`-guarded
+    /// table) plus 0002/0013/0016's `ALTER TABLE ADD COLUMN` pattern for
+    /// `tenants.key_rotated_unix` -- both land in the same batch, gated on
+    /// the column (0008's precedent: two additive changes, one gate,
+    /// applied atomically the first time this runs).
+    fn migrate_0019_handoff_token(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'key_rotated_unix'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0019)?;
+        }
+        Ok(())
+    }
+
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
     /// subcommand.
@@ -1129,6 +1174,7 @@ impl Db {
                 created_unix: Some(created_unix),
                 origin,
                 origin_detail,
+                key_rotated_unix: None,
             })
         })
         .await
@@ -1282,6 +1328,139 @@ impl Db {
                 params![registry_namespace, namespace],
             )?;
             Ok(n > 0)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-handoff-token requirement 3 / AC3: replace this tenant's
+    /// key hash in place and stamp `key_rotated_unix` -- one statement, so
+    /// the old key stops resolving (`find_tenant_by_key_hash` on its hash
+    /// returns nothing) the instant this returns, with no window where both
+    /// the old and new hash would authenticate.
+    pub async fn rotate_tenant_key(&self, tenant_id: i64, new_key_hash: String) -> Result<(), AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tenants SET key_hash = ?1, key_rotated_unix = ?2 WHERE id = ?3",
+                params![new_key_hash, now, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-handoff-token requirement 1: record a freshly issued
+    /// handoff token. `key_enc`/`key_nonce` are the raw tenant key,
+    /// AES-256-GCM-encrypted by the caller (`control::signup`, via
+    /// `AppState::secrets`) -- this method never sees (or could log) the
+    /// plaintext key. Returns the new row's id, used only for journaling
+    /// (never the token or key value -- requirement 2's "journaled: token
+    /// id, never values").
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_handoff_token(
+        &self,
+        tenant_id: i64,
+        token_hash: String,
+        key_enc: Vec<u8>,
+        key_nonce: Vec<u8>,
+        expires_unix: i64,
+    ) -> Result<i64, AppError> {
+        let created_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO handoff_tokens (tenant_id, token_hash, key_enc, key_nonce, \
+                 expires_unix, created_unix) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![tenant_id, token_hash, key_enc, key_nonce, expires_unix, created_unix],
+            )?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-handoff-token requirement 2 / AC2: consult, then
+    /// atomically claim, one handoff token by its hash. The claim is a
+    /// second statement (`UPDATE ... WHERE redeemed_unix IS NULL`) rather
+    /// than folding the whole decision into one query, so two concurrent
+    /// redemptions of the same token can't both read "not yet redeemed" and
+    /// both win -- only the `UPDATE` that actually flips the row from NULL
+    /// wins; the loser sees `claimed == 0` and reports `AlreadyRedeemed`,
+    /// same as a genuine second, later redemption would.
+    pub async fn redeem_handoff_token(
+        &self,
+        token_hash: String,
+    ) -> Result<HandoffRedeemOutcome, AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            struct Row {
+                id: i64,
+                tenant_id: i64,
+                expires_unix: i64,
+                redeemed_unix: Option<i64>,
+                key_enc: Vec<u8>,
+                key_nonce: Vec<u8>,
+            }
+            let row: Option<Row> = conn
+                .query_row(
+                    "SELECT id, tenant_id, expires_unix, redeemed_unix, key_enc, key_nonce \
+                     FROM handoff_tokens WHERE token_hash = ?1",
+                    params![token_hash],
+                    |r| {
+                        Ok(Row {
+                            id: r.get(0)?,
+                            tenant_id: r.get(1)?,
+                            expires_unix: r.get(2)?,
+                            redeemed_unix: r.get(3)?,
+                            key_enc: r.get(4)?,
+                            key_nonce: r.get(5)?,
+                        })
+                    },
+                )
+                .optional()?;
+            let Some(Row {
+                id,
+                tenant_id,
+                expires_unix,
+                redeemed_unix,
+                key_enc,
+                key_nonce,
+            }) = row
+            else {
+                return Ok(HandoffRedeemOutcome::NotFound);
+            };
+            if redeemed_unix.is_some() {
+                return Ok(HandoffRedeemOutcome::AlreadyRedeemed { token_id: id });
+            }
+            if now > expires_unix {
+                return Ok(HandoffRedeemOutcome::Expired { token_id: id });
+            }
+            let claimed = conn.execute(
+                "UPDATE handoff_tokens SET redeemed_unix = ?1 \
+                 WHERE token_hash = ?2 AND redeemed_unix IS NULL",
+                params![now, token_hash],
+            )?;
+            if claimed == 0 {
+                return Ok(HandoffRedeemOutcome::AlreadyRedeemed { token_id: id });
+            }
+            Ok(HandoffRedeemOutcome::Redeemed {
+                token_id: id,
+                tenant_id,
+                key_enc,
+                key_nonce,
+            })
+        })
+        .await
+    }
+
+    /// Test-only: force one handoff token past its expiry without a real
+    /// sleep -- same "flip an internal knob for a test" shape as
+    /// [`Self::set_query_only`] (AC14) above.
+    pub async fn expire_handoff_token_for_test(&self, token_hash: String) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE handoff_tokens SET expires_unix = 0 WHERE token_hash = ?1",
+                params![token_hash],
+            )?;
+            Ok(())
         })
         .await
     }

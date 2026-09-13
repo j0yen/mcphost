@@ -25,6 +25,18 @@ pub fn generate_namespace() -> String {
     format!("t_{}", to_hex(&bytes))
 }
 
+/// PRD-mcphost-handoff-token requirement 1: a single-use handoff token
+/// `signup(handoff: true)` returns in place of the raw tenant key. Same
+/// entropy as [`generate_key`] (32 random bytes, hex) with a `ho_` prefix
+/// so a token can never be mistaken for -- or accidentally accepted in
+/// place of -- a real tenant key at any call site that only checks shape.
+/// Stored (via [`hash_key`], same hash this module already uses for
+/// tenant keys -- one hashing convention, not two) hashed, never in the
+/// clear (see `db::Db::create_handoff_token`).
+pub fn generate_handoff_token() -> String {
+    format!("ho_{}", generate_key())
+}
+
 /// SHA-256 of a key, hex-encoded; the only form a key is ever stored in.
 pub fn hash_key(key: &str) -> String {
     let mut hasher = Sha256::new();
