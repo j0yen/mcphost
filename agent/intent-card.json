@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/wintermute/mcphost/PRD-mcphost-gate-debt-c627803.md",
-  "intent_slug": "mcphost-gate-debt-c627803",
-  "root_motivation": "Five whys (one per inherited finding, from `git log -S` where a candidate commit was found):",
-  "user_persona": "An agent (real or the demand-fleet harness) calling signup for the first time, whose whole session -- including any client-side transcript its own harness keeps -- must not leak a live, indefinitely-usable credential; secondarily the operator (Joe) who pulled this forward on 2026-09-12 with 'test it' once a real tenant's exposure story was on the line, and who reads host.key_rotate's audit trail (journal, never secret values) after a suspected leak.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-agent-directory.md",
+  "intent_slug": "mcphost-agent-directory",
+  "root_motivation": "An agent that found another agent's shared tool in `host.catalog.search` cannot name its author. `host.whoami` (`src/control.rs`) returns the caller's own `namespace`, `display_name`, `plan`, `source_class` and `client_name`, and only to the caller. `tools.visibility` and `groups` (`migrations/0013_sharing.sql`) let a tenant expose tools to others, but no table maps a tenant to anything another tenant may read about it. `display_name` is `NOT NULL` with no uniqueness (`0001_init.sql:7`), so it cannot serve as an address: two tenants can both be \"ops-bot\".",
+  "user_persona": "An agent that has discovered another agent's shared tool (via `host.catalog.search`) or that wants to be discoverable itself -- it needs to resolve a namespace or handle to a readable card (name, description, tags, contact policy) without ever learning a billing field, key hash, or call log; secondarily the operator (Joe), who needs `admin.agent.lookup`/`admin.agent.handle_release` to recover a squatted or abusive handle.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,24 +14,81 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given HEAD c627803598ee85ae3795ec3f7ee21a50c31adee0, When the gate runs, Then extended-receipts passes: one or more extended producers did not pass|skip (see output above)",
-      "test": "tests/ac01_extended_gates_prd_path_resolves_and_matches_card.rs"
+      "description": "Given a fresh tenant with no profile row, When it calls `host.agent.whoami`, Then the result has `address` equal to its namespace, `handle: null`, `contact_policy: \"open\"`, and no `key_hash`, `billing_ref` or `stripe_customer_id` key.",
+      "test": "tests/agentdir_ac01_ac02_ac03_ac04_identity_and_lookup.rs::ac1_whoami_defaults_for_a_profile_less_tenant"
+    },
+    {
+      "id": "AC2",
+      "level": "MUST",
+      "description": "Given tenant A claims `@indexer` via `host.agent.profile_set`, When tenant B calls `host.agent.lookup(\"@indexer\")`, Then B receives A's card with `address` equal to A's namespace and the card omits every billing and key field.",
+      "test": "tests/agentdir_ac01_ac02_ac03_ac04_identity_and_lookup.rs::ac2_lookup_by_handle_returns_the_claimants_card"
+    },
+    {
+      "id": "AC3",
+      "level": "MUST",
+      "description": "Given `@indexer` is held by A, When B calls `host.agent.profile_set(handle=\"Indexer\")`, Then B gets structured error `handle_taken` whose body names no tenant, and A's handle is unchanged.",
+      "test": "tests/agentdir_ac01_ac02_ac03_ac04_identity_and_lookup.rs::ac3_claiming_a_taken_handle_fails_without_naming_the_holder"
+    },
+    {
+      "id": "AC4",
+      "level": "MUST",
+      "description": "Given a namespace that does not exist, a tenant disabled via `admin.tenant_disable`, and a tenant deleted via `admin.tenant_delete`, When another tenant looks each up, Then all three responses are `agent_not_found` with byte-identical bodies.",
+      "test": "tests/agentdir_ac01_ac02_ac03_ac04_identity_and_lookup.rs::ac4_unknown_disabled_and_deleted_are_indistinguishable"
+    },
+    {
+      "id": "AC5",
+      "level": "MUST",
+      "description": "Given A has tags `[\"rag\",\"indexing\"]` and description \"nightly index builder\", When B calls `host.agent.search(tag=\"rag\")` and `host.agent.search(query=\"INDEX\")`, Then both results include A exactly once and exclude a disabled tenant with the same tag.",
+      "test": "tests/agentdir_ac05_ac06_search.rs::ac5_search_by_tag_and_by_query_finds_a_and_excludes_disabled"
+    },
+    {
+      "id": "AC6",
+      "level": "MUST",
+      "description": "Given 60 profiled tenants, When B calls `host.agent.search(limit=25)` twice following the returned cursor, Then the two pages are disjoint, ordered by handle then namespace, and together contain 50 cards with a third page holding the remaining 10.",
+      "test": "tests/agentdir_ac05_ac06_search.rs::ac6_search_pages_are_disjoint_ordered_and_exhaustive"
+    },
+    {
+      "id": "AC7",
+      "level": "MUST",
+      "description": "Given A holds `@indexer` and is deleted through `admin.tenant_delete`, When B claims `@indexer`, Then the claim succeeds and `agent_profiles` has no row for A's former id.",
+      "test": "tests/agentdir_ac07_ac09_ac10_lifecycle.rs::ac7_deleting_the_holder_frees_its_handle_immediately"
+    },
+    {
+      "id": "AC8",
+      "level": "SHOULD",
+      "description": "Given 1 000 profiled tenants in a warm database, When 200 sequential `host.agent.lookup` calls run, Then p95 latency is under 50 ms.",
+      "test": "tests/agentdir_ac08_lookup_latency.rs::two_hundred_sequential_lookups_stay_under_50ms_p95"
+    },
+    {
+      "id": "AC9",
+      "level": "SHOULD",
+      "description": "Given a handle in the reserved list, When any tenant claims it, Then the response is `handle_reserved`; and given the admin key calls `admin.agent.handle_release(\"@indexer\")`, Then the handle is free and one `admin_events` row records the release.",
+      "test": "tests/agentdir_ac07_ac09_ac10_lifecycle.rs::ac9_reserved_handles_are_refused_and_admin_can_release"
+    },
+    {
+      "id": "AC10",
+      "level": "SHOULD",
+      "description": "Given a tenant created with the `x-mcphost-synthetic` header, When another tenant looks it up, Then its card carries `synthetic: true`.",
+      "test": "tests/agentdir_ac07_ac09_ac10_lifecycle.rs::ac10_synthetic_tenants_card_carries_the_flag"
     }
   ],
   "scope": [
-    "signup gains an opt-in `handoff` boolean argument (default false/unchanged): true returns {tenant, tenant_id, handoff_token, expires_in, usage, next} with no `key` field at all, instead of today's {tenant, key, namespace, endpoint, usage, next} (P0, AC1).",
-    "New unauthenticated `host.redeem(handoff_token)` exchanges a valid, unexpired, not-yet-redeemed token for the tenant key exactly once via an atomic `UPDATE ... WHERE redeemed_unix IS NULL` claim; a second redemption fails `handoff_token_redeemed`, an expired one fails `handoff_token_expired`, neither ever echoing the token (P0, AC2, AC6).",
-    "New authenticated `host.key_rotate` (current key or tenant_key argument) issues a new key, overwrites `tenants.key_hash` and stamps `key_rotated_unix` in one statement, so the presented key stops resolving via `find_tenant_by_key_hash` from that call onward (P0, AC3).",
-    "Storage: migration 0019 adds `handoff_tokens` (token stored hashed via the existing `hash_key` convention; the raw key is AES-256-GCM-encrypted with the same `AppState::secrets::SecretBox` `host.secret_set` already uses, decrypted exactly once at redemption) and `tenants.key_rotated_unix` (P0, AC4/AC6).",
-    "`host.whoami` gains `key_age_s`/`key_rotated_at`, derived from `key_rotated_unix` falling back to `created_unix` for a never-rotated key (P1, AC8).",
-    "Docs: `get_info`'s instructions, `host.quickstart`'s unauthenticated step, README.md/docs/agent-quickstart.md/www/llms.txt (synced via scripts/gen-agent-docs.sh) all recommend the handoff flow while stating the raw path stays fully supported (P0, AC7).",
-    "A handoff_ac01-08 integration-test suite, including the full two-context replay test (AC4: signup handoff, redeem, rotate, replay the dead token, replay the dead key, confirm the live key works) Joe's 'test it' asked for."
+    "New table `agent_profiles(tenant_id PK, handle TEXT UNIQUE NULL, description, tags_json, contact_policy DEFAULT 'open', updated_at)` in migration 0020; every tenant reads as a profile card even with no row (defaults applied at read) (P0, AC1).",
+    "`host.agent.whoami` returns `{address, handle, display_name, contact_policy, plan}` -- never `key_hash`, `billing_ref` or `stripe_customer_id` (P0, AC1).",
+    "`host.agent.profile_set(handle?, description?, tags?, contact_policy?)`: handle matches `^[a-z][a-z0-9_]{2,31}$`, stored lower-case, atomic claim-or-fail via a single BEGIN IMMEDIATE transaction; a taken handle returns structured error `handle_taken` naming nothing about the holder; a reserved handle (`admin`, `host`, `mcphost`, `system`) returns `handle_reserved` (P0/P1, AC3/AC9).",
+    "`host.agent.lookup(address)` accepts `@handle` or `t_...` and returns the public card; unknown, disabled, and deleted tenants all return `agent_not_found` with byte-identical bodies so search-by-error cannot leak existence (P0, AC2/AC4).",
+    "`host.agent.search(query?, tag?, limit<=50, cursor?)` matches tag exactly or query as a case-insensitive substring of handle/display name/description, excludes disabled tenants, orders by `handle NULLS LAST, namespace`, and pages via an offset cursor (P0, AC5/AC6).",
+    "`last_seen` derived from the tenant's most recent authenticated request (`tenants.last_seen_unix`), rounded to the minute; profile cascades on tenant delete so a released handle is claimable again immediately (P0, AC7).",
+    "`admin.agent.lookup(address)` and `admin.agent.handle_release(address)` on the admin key, gated by the existing `Auth::Admin` resolution and `dispatch_admin_tool` path; release writes an `admin_events` row (P1, AC9).",
+    "`synthetic` tenants' cards carry `synthetic: true` so harness agents are distinguishable from real ones in search results (P1, AC10).",
+    "New `src/agents.rs` module for card assembly, handle validation, and the new `Db` methods (`agent_profile`, `set_agent_profile`, `lookup_agent`, `list_agent_cards`, `release_handle`); errors use the existing `AppError::Structured{code, message, data}` shape."
   ],
   "non_goals": [
-    "No OAuth and no session binding -- cycle 11's stateless-transport ruling (`with_legacy_session_mode(false)`) stands; handoff+redeem happens inside the same session the token narrows the exposure window on, it does not eliminate the key-as-argument constraint.",
-    "No forced migration of existing tenants or the harness -- the raw-key path (signup without `handoff`) is byte-identical to before (AC5) and stays the default; rotation is available, never mandatory.",
-    "No change to admin auth, `admin.*` tools, or the admin key's own resolution path.",
-    "No corpus-task/harness-probe wiring for AC9 (P1) in this build -- deferred, see PRD frontmatter `deferred_acs: [9]` / `mock_justifications`; it needs the demand-fleet's own synthorg harness, a different subsystem than mcphost."
+    "Sending messages -- PRD-mcphost-agent-inbox owns the inbox; this PRD only makes the recipient nameable.",
+    "Presence heartbeats beyond `last_seen` derived from the tenant's last authenticated call.",
+    "Sub-identities under one tenant, or handle scoping under operator domains -- open question in the vision, deferred past this build.",
+    "Public web listing of agents.",
+    "`host.agent.search` `source_class` filter (P2) and the corpus-task/harness-probe wiring for AC9's admin-release path in this build -- deferred, see PRD frontmatter `deferred_acs` / `mock_justifications` where applicable."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -40,37 +97,37 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "raw_path_byte_compatible": "signup without the `handoff` argument (or with `handoff: false`) must return exactly today's {tenant, key, namespace, endpoint, usage, next} field set with no `handoff_token` key -- verified by tests/handoff_ac05_raw_signup_still_works_unchanged.rs's field-set equality assertion and its 17-tool-unaffected spirit (a representative subset actually called; PRD AC5).",
-      "no_plaintext_secret_at_rest_or_in_output": "the handoff token is stored only hashed (`hash_key`, the same convention `tenants.key_hash` already uses); the raw tenant key a handoff token stands in for is stored AES-256-GCM-encrypted via the existing `AppState::secrets::SecretBox` (the same cipher `host.secret_set` uses for tenant secrets), decrypted exactly once inside `control::redeem`; no `tracing::*!` call in `control::redeem`/`control::key_rotate` is ever passed a token or key value, only the handoff token row's own integer id (PRD AC6).",
-      "single_use_atomic_claim": "`Db::redeem_handoff_token`'s claim is a second `UPDATE handoff_tokens SET redeemed_unix = ?1 WHERE token_hash = ?2 AND redeemed_unix IS NULL` statement (not folded into the initial SELECT's decision), so two concurrent redemptions of the same token cannot both succeed -- the loser reads `AlreadyRedeemed` the same as a genuine later redemption would (PRD AC2).",
-      "rotation_no_extra_query_per_call": "`resolve_auth`/`resolve_tenant_key_auth`'s hot path is unchanged by rotation -- `Db::rotate_tenant_key` replaces `tenants.key_hash` in place in one UPDATE, so an old key simply stops matching the existing `find_tenant_by_key_hash` lookup; no new query was added per call (PRD Technical considerations)."
+      "no_sensitive_fields_leaked": "every card-producing path (whoami, lookup, admin.agent.lookup, search) asserts the absence of `key_hash`, `billing_ref`, and `stripe_customer_id` in its own test -- verified by grep across agentdir_ac01_ac02_ac03_ac04's whoami/lookup assertions (PRD AC1/AC2).",
+      "agent_not_found_byte_identical": "`host.agent.lookup` on an unknown namespace, a disabled tenant, and a deleted tenant must return byte-identical `agent_not_found` bodies -- verified by agentdir_ac01_ac02_ac03_ac04's AC4 test comparing all three responses directly (PRD AC4, Technical considerations).",
+      "handle_claim_atomicity": "`Db::set_agent_profile`'s handle-uniqueness check-then-insert runs inside a single BEGIN IMMEDIATE transaction so two concurrent claims for the same handle cannot both succeed (PRD AC3, Requirement 3).",
+      "no_admin_auth_bypass": "the two new admin.* tools (admin.agent.lookup, admin.agent.handle_release) are wired through the existing dispatch_admin_tool path, gated by the existing Auth::Admin resolution -- no new admin authentication or authorization path is introduced (PRD Requirement 8)."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does a tenant key need anything beyond today's raw signup response?",
-      "a": "Every tenant key issued passes through a model's context (as the `tenant_key` tools/call argument on all 17 tenant tools) and, for harness sessions, into recorded transcripts on disk -- 42 recordings retained from one run alone (vision 2026-09-09)."
+      "q": "Why can't an agent that calls another tenant's shared tool learn who built it?",
+      "a": "`host.whoami` (src/control.rs) returns the caller's own namespace/display_name/plan/source_class/client_name, and only to the caller -- no tool maps a tenant to anything another tenant may read about it."
     },
     {
       "why": 2,
-      "q": "Why was this not fixed when the key-as-argument design was chosen (cycle 11)?",
-      "a": "Cycle 11 accepted the exposure deliberately given the architectural constraints (one stateless connection, static headers, no session binding) and recorded a single-use handoff token as deferred rather than dismissed, with 'before the endpoint carries a real tenant' as the stated due date."
+      "q": "Why can't `display_name` just serve as that address today?",
+      "a": "`display_name` is NOT NULL with no uniqueness constraint (0001_init.sql:7) -- two tenants can both be \"ops-bot\", so it cannot resolve to exactly one tenant."
     },
     {
       "why": 3,
-      "q": "Why fix it now rather than wait for that due date?",
-      "a": "Joe pulled it forward on 2026-09-12 with an explicit instruction to test it -- every tenant today is synthetic, which is exactly the window in which to prove the new path end-to-end before the first real agent signs up and its credential's exposure story is set."
+      "q": "Why wasn't this solved when the mesh registry gap was first found?",
+      "a": "The parked mdcollab-agent-registry PRD (2026-07-20) recorded the same gap but never shipped; it did settle the one load-bearing decision this PRD keeps -- identity anchored to the authenticated principal, never self-asserted."
     },
     {
       "why": 4,
-      "q": "Why a token-plus-redeem-plus-rotate shape rather than, say, short-lived keys or forced rotation?",
-      "a": "The constraint set that forced key-as-argument in the first place (stateless transport, no session binding) still holds, so any fix has to work inside one session with no reconnect -- a single-use handoff token narrows the transcript's exposure window to the signup+redeem exchange, and on-demand rotation (not forced, since existing tenants/the harness must keep working unchanged) closes the window on suspicion of leak without a support ticket."
+      "q": "Why not let a tenant self-assert its own address, the way agorabus's session_id works?",
+      "a": "Prior fleet art shows the failure mode directly: agorabus peers are identified by a client-chosen session_id, safe only on a 0600 local socket and unsafe on a public host -- mcphost tenants are reachable over the public host, so self-assertion is not an option here."
     },
     {
       "why": 5,
-      "q": "Why is this exposure reduction rather than elimination, and is that acceptable?",
-      "a": "The key still has to reach the tenant as a `tools/call` argument eventually (same architectural constraint), so a transcript that captures the *redeem* response still captures a live key until the next rotation -- the PRD's own Technical considerations say this plainly rather than overclaiming elimination; AC4's replay test proves the *token* and any *rotated-out* key are dead, which is the actual, honest claim being made."
+      "q": "Why build a handle and search on top of the always-available namespace address rather than just the namespace?",
+      "a": "A namespace (`t_xxxxxxxx`) is not a name an agent would say aloud or remember; a handle is optional so opting out of a name never opts a tenant out of the mesh (namespace lookup still works), and search is what makes an unnamed but tagged/described tenant discoverable at all."
     }
   ],
   "created_at": "2026-09-03T18:04:17Z",
@@ -94,6 +151,10 @@
     {
       "question": "reviewer-agent block at HEAD d40b1a3 (receipt captured_at 2026-09-12T22:05:24Z), four reasons: (1) must-ac-evidencepack-zero-passing -- scripts/run-metrics.sh's project-local AC fallback matched cargo test's old per-binary `Running tests/<stem>.rs` header, which no longer appears once ac01..ac19 fold into tests/suite_core_0N.rs, so ac_passing_count silently pinned at 0/19 across four commits (bb44d28, 36eb9e3, 9a5b988, d40b1a3) even though every underlying test passes; (2) ac-test-field-pointers-semantically-wrong -- AC1/2/3/5/6/7/9's `test` fields still named the unrelated pre-existing tests/ac0N_*.rs signup files instead of this PRD's real tests/suite_ac<N>_*.rs proofs; (3)/(4) www-site-changes-outside-intent-card-scope and intent-card-scope-non-goals-mismatched-to-reviewed-diff -- three www/* commits (6b6263f, 4fece04, 57486cf) from a concurrent lane landed on origin/main between this PRD's own commits (verified disjoint via `git diff --stat` at the time, per the 2026-09-12 journal), and scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional still described the prior mcphost-inbound-events PRD (carried forward unchanged by intent-card-refresh.sh, which never rewrites those fields). Fix in place, or reopen the contract?",
       "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for this exact recurrence before (PRD-mcphost-reviewer-debt-paydown). (1) is a real functional regression, not a paper-trail issue -- fixed scripts/run-metrics.sh's PROJECT_AC_FILES fallback matcher to also recognize the new module-qualified `test <stem>::<fn> ... ok|FAILED` shape (the old per-binary-header matcher is left in place, untouched, so a future non-consolidated project using this template still works); owner-map.json explicitly permits project-local fixes to this fallback, folded back via postmortem, which is exactly what this is. Verified: re-ran the fallback awk against the last gate's target/autobuilder/test-output.txt by hand, 19/19 (was 0/19). (2) AC1/2/3/5/6/7/9 `test` fields repointed at the real tests/suite_ac<N>_*.rs files; AC8 (deferred) repointed at 'deferred:mock_unjustified -- <reason>' per the tether-link repo's existing convention for a deferred AC with no mock test. (3) The www/* commits are independently authorized, disjoint (zero file overlap with tests/, scripts/, Cargo.toml, or agent/), already-shipped work from another lane sharing this repo's main branch -- nothing to fix in this PRD's own diff; documented here instead of silently absorbed. (4) scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional rewritten to describe this PRD's actual consolidation work (Cargo.toml/gen-test-suites.sh/suite-file/CI-wiring scope, the real non-goals list from the PRD's own Non-goals section, and a five-whys trace grounded in the PRD's Problem statement, noting per the PRD's own text that this is a proactive fix, not a failure investigation). No AC content changed, so no Stage-3 conflict."
+    },
+    {
+      "question": "intent-card-refresh.sh regenerated this card from PRD-mcphost-agent-directory (root_motivation and acceptance_criteria correctly re-sourced), but per its own documented design it carried forward scope/non_goals/user_persona/hard_constraints.additional/five_whys_trace byte-for-byte from the previous card, which described an entirely unrelated, already-shipped feature (PRD-mcphost-gate-debt-c627803's handoff-token/key-rotation work). That carry-forward produced a direct contradiction the reviewer-agent caught at HEAD ea595d7 (captured_at 2026-09-14T02:15:53Z): non_goals said 'No change to admin auth, admin.* tools, or the admin key's own resolution path' while this diff adds two new admin.* tools (admin.agent.lookup, admin.agent.handle_release); scope/five_whys_trace/hard_constraints.additional still described handoff tokens, not the agent directory. Fix in place (same pattern as every prior recurrence of this gap, see the four resolutions above), or reopen the contract?",
+      "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence. No AC content changed (root_motivation and acceptance_criteria were already correctly re-sourced by intent-card-refresh.sh), so there is no Stage-3 conflict. scope, non_goals, user_persona, hard_constraints.additional, and five_whys_trace were rewritten to describe this PRD's actual agent-directory work (agent_profiles table, host.agent.*/admin.agent.* tools, the agent_not_found byte-identity guarantee, and handle-claim atomicity), sourced from the PRD's own Requirements, Technical considerations, and Problem statement sections. Each acceptance_criteria[].test field was also repointed from the script's generic placeholder guesses (tests/ac0N_*.rs signup tests) to the real tests/agentdir_ac0N_*.rs file and test function that proves it, per the PRD's own `test_prefix: agentdir` frontmatter key."
     }
   ]
 }
