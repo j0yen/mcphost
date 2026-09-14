@@ -1,0 +1,19 @@
+-- compat: previous -- one additive column (`messages.refused_json`, ALTER
+-- TABLE ADD COLUMN) an old release simply never queries; no existing row's
+-- shape changes, no existing statement's result set changes.
+-- mcphost 0022_message_refused: PRD-mcphost-agent-inbox advisory finding
+-- `dedupe-resend-refused-list-not-reconstructed` (gate review, 2026-09-14).
+--
+-- `Db::dedupe_hit` needs to answer "who was refused, and why" for a
+-- `(sender, dedupe_key)` cache hit the same way the original send did, but
+-- nothing before this migration recorded that anywhere durable --
+-- `message_receipts` only exists for *delivered* recipients (by design,
+-- see 0021's own comment), so a resend of an originally-mixed
+-- delivered/refused send had no way to rebuild `refused` and silently
+-- reported everyone delivered. `refused_json` is the same
+-- `[[address, code], ...]` shape `Db::insert_message` already builds in
+-- memory during the original send/reply, stored once at insert time
+-- (`NULL` when nothing was refused) so a later dedupe hit can just read it
+-- back instead of re-deriving state that may have since changed (e.g. a
+-- block added after the original send).
+ALTER TABLE messages ADD COLUMN refused_json TEXT;

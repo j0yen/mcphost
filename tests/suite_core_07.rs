@@ -46,6 +46,8 @@ mod msg_ac12_send_latency;
 mod msg_ac13_unread_only;
 #[path = "msg_ac14_thread_continuation.rs"]
 mod msg_ac14_thread_continuation;
+#[path = "msg_regr01_dedupe_hit_preserves_refused.rs"]
+mod msg_regr01_dedupe_hit_preserves_refused;
 #[path = "proptest_invariants.rs"]
 mod proptest_invariants;
 #[path = "provaudit_ac01_synthetic_signup_stamped.rs"]

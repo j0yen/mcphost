@@ -34,6 +34,7 @@ const MIGRATION_0018: &str = include_str!("../migrations/0018_runs_test_run.sql"
 const MIGRATION_0019: &str = include_str!("../migrations/0019_handoff_token.sql");
 const MIGRATION_0020: &str = include_str!("../migrations/0020_agent_profiles.sql");
 const MIGRATION_0021: &str = include_str!("../migrations/0021_messaging.sql");
+const MIGRATION_0022: &str = include_str!("../migrations/0022_message_refused.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -770,6 +771,24 @@ pub enum RecipientResolution {
     Refused(&'static str),
 }
 
+/// The inverse of [`RecipientResolution::Refused`]'s `&'static str`:
+/// `messages.refused_json` round-trips as owned `String`s (advisory finding
+/// `dedupe-resend-refused-list-not-reconstructed`), so a dedupe-hit
+/// rebuild needs to map each stored code back to the same interned static
+/// every fresh refusal already uses. Every code this crate ever writes
+/// into `refused_json` is one of these three (the fourth refusal code,
+/// `quota_exceeded`, only ever fails the whole call -- see `insert_message`
+/// and `dedupe_hit`'s doc comments -- so it never appears in a stored
+/// per-recipient `refused` list); an unrecognized value (there should
+/// never be one) falls back to `agent_not_found` rather than panicking.
+fn code_to_static(code: &str) -> &'static str {
+    match code {
+        "contact_refused" => "contact_refused",
+        "recipient_inbox_full" => "recipient_inbox_full",
+        _ => "agent_not_found",
+    }
+}
+
 /// One row of `host.msg.send`'s `{message_id, thread_id, seq, delivered_to,
 /// refused}` response (requirement 2) -- built by [`Db::send_message`],
 /// turned into wire JSON by `messaging.rs` (this module stays free of
@@ -883,7 +902,8 @@ impl Db {
         Self::migrate_0018_runs_test_run(&conn)?;
         Self::migrate_0019_handoff_token(&conn)?;
         Self::migrate_0020_agent_profiles(&conn)?;
-        Self::migrate_0021_messaging(&conn)
+        Self::migrate_0021_messaging(&conn)?;
+        Self::migrate_0022_message_refused(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -1173,6 +1193,21 @@ impl Db {
             .exists([])?;
         if !has_table {
             conn.execute_batch(MIGRATION_0021)?;
+        }
+        Ok(())
+    }
+
+    /// Advisory finding `dedupe-resend-refused-list-not-reconstructed`
+    /// (PRD-mcphost-agent-inbox gate review): additive column, same
+    /// `pragma_table_info` idempotency guard as 0002/0020's own
+    /// `ALTER TABLE ADD COLUMN` migrations (SQLite has no
+    /// `IF NOT EXISTS` for that statement).
+    fn migrate_0022_message_refused(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('messages') WHERE name = 'refused_json'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0022)?;
         }
         Ok(())
     }
@@ -4994,7 +5029,7 @@ impl Db {
                 let (message_id, seq) = Self::insert_message(
                     conn, &tid, sender.id, &sender.namespace, &sender_synthetic,
                     sender.source_class.as_deref().unwrap_or("external"),
-                    &body, &data_json, None, &dedupe_key, now_ms, &now, &deliver_ids,
+                    &body, &data_json, None, &dedupe_key, now_ms, &now, &deliver_ids, &refused,
                 )?;
 
                 Ok(SendOutcome {
@@ -5097,6 +5132,7 @@ impl Db {
                     conn, &thread_id, sender.id, &sender.namespace, &sender_synthetic,
                     sender.source_class.as_deref().unwrap_or("external"),
                     &body, &data_json, in_reply_to.as_deref(), &dedupe_key, now_ms, &now, &deliver_ids,
+                    &refused,
                 )?;
 
                 Ok(SendOutcome {
@@ -5124,21 +5160,33 @@ impl Db {
     /// (`Some`); a stale one frees the key (nulls that row's `dedupe_key`)
     /// and returns `None` so the caller proceeds to store a new message;
     /// no prior use at all is also `None`.
+    ///
+    /// `refused` is rebuilt from `messages.refused_json` (advisory finding
+    /// `dedupe-resend-refused-list-not-reconstructed`, PRD-mcphost-agent-inbox
+    /// gate review) -- before this, a cache hit hardcoded `refused: vec![]`,
+    /// so a resend of an originally-mixed delivered/refused send silently
+    /// reported everyone delivered. `refused_json` is written once, at
+    /// [`Self::insert_message`] time, so this replays the *original* send's
+    /// outcome rather than re-deriving current state (e.g. a block added
+    /// since then) -- consistent with "returns the original `message_id`"
+    /// (requirement 8) applying to the whole outcome, not just the id.
     fn dedupe_hit(
         conn: &Connection,
         sender_id: i64,
         key: &str,
         now_ms: i64,
     ) -> Result<Option<SendOutcome>, AppError> {
-        let existing: Option<(String, String, i64, i64)> = conn
+        // (message_id, thread_id, seq, created_unix_ms, refused_json)
+        type DedupeRow = (String, String, i64, i64, Option<String>);
+        let existing: Option<DedupeRow> = conn
             .query_row(
-                "SELECT id, thread_id, seq, created_unix_ms FROM messages \
+                "SELECT id, thread_id, seq, created_unix_ms, refused_json FROM messages \
                  WHERE from_tenant_id = ?1 AND dedupe_key = ?2",
                 params![sender_id, key],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
             )
             .optional()?;
-        let Some((message_id, thread_id, seq, created_unix_ms)) = existing else {
+        let Some((message_id, thread_id, seq, created_unix_ms, refused_json)) = existing else {
             return Ok(None);
         };
         if now_ms - created_unix_ms < MSG_DEDUPE_WINDOW_MS {
@@ -5150,12 +5198,18 @@ impl Db {
                 stmt.query_map(params![message_id], |r| r.get(0))?
                     .collect::<rusqlite::Result<Vec<_>>>()?
             };
+            let refused: Vec<(String, &'static str)> = refused_json
+                .and_then(|s| serde_json::from_str::<Vec<(String, String)>>(&s).ok())
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(address, code)| (address, code_to_static(&code)))
+                .collect();
             return Ok(Some(SendOutcome {
                 message_id,
                 thread_id,
                 seq,
                 delivered_to,
-                refused: Vec::new(),
+                refused,
                 deduped: true,
             }));
         }
@@ -5186,6 +5240,7 @@ impl Db {
         now_ms: i64,
         now: &str,
         deliver_ids: &[i64],
+        refused: &[(String, &'static str)],
     ) -> Result<(String, i64), AppError> {
         let seq: i64 = conn.query_row(
             "SELECT COALESCE(MAX(seq), 0) + 1 FROM messages WHERE thread_id = ?1",
@@ -5193,14 +5248,22 @@ impl Db {
             |r| r.get(0),
         )?;
         let message_id = crate::state::new_ulid();
+        // Advisory finding `dedupe-resend-refused-list-not-reconstructed`:
+        // persisted so a later `dedupe_hit` on this row's `dedupe_key` can
+        // replay the original `refused` list instead of losing it.
+        let refused_json: Option<String> = if refused.is_empty() {
+            None
+        } else {
+            Some(serde_json::to_string(refused).map_err(|e| AppError::Internal(e.to_string()))?)
+        };
         conn.execute(
             "INSERT INTO messages \
                  (id, thread_id, seq, from_tenant_id, from_address, body, data_json, in_reply_to, \
-                  dedupe_key, synthetic, source_class, created_at, created_unix_ms) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                  dedupe_key, synthetic, source_class, created_at, created_unix_ms, refused_json) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 message_id, thread_id, seq, from_tenant_id, from_address, body, data_json, in_reply_to,
-                dedupe_key, synthetic, source_class, now, now_ms
+                dedupe_key, synthetic, source_class, now, now_ms, refused_json
             ],
         )?;
         for recipient_id in deliver_ids {
