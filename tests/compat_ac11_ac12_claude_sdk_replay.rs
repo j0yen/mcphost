@@ -194,14 +194,14 @@ async fn ac12_claude_agent_sdk_sequence_lists_signup_with_schema() {
     // Migration/compatibility section).
     assert_eq!(
         tools.len(),
-        57,
+        61,
         "signup + host.* (incl. host.quickstart, host.tool_run, host.bridge_test) + \
          host.tool_call + host.state.* (9 tools, PRD-mcphost-tenant-state) + \
          host.table.* (6 tools, PRD-mcphost-tenant-tables) + \
          host.tool_share/host.tool_unshare/host.group.*/host.catalog.* (8 tools, \
          PRD-mcphost-sharing) + host.runs.* (5 tools, PRD-mcphost-runs-and-jobs) + \
          host.trigger.* (9 tools, PRD-mcphost-schedules, PRD-mcphost-inbound-events) + \
-         billing.* (3 tools): {tools:?}"
+         billing.* (3 tools) + host.agent.* (4 tools, PRD-mcphost-agent-directory): {tools:?}"
     );
     let tool = tools
         .iter()

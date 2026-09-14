@@ -5,6 +5,7 @@
 //! tools) extend via `build_into`.
 
 pub mod admin;
+pub mod agents;
 pub mod auth;
 pub mod billing;
 pub mod compat_check;

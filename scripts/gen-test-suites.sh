@@ -112,7 +112,15 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # buckets to 2, landing the grand total back at 10. Same caveat as above:
 # this is a snapshot, not a standing guarantee -- if it needs raising
 # again, recount core's non-exclusive files before guessing a new number.
-MAX_PER_SUITE = {"core": 125, "sandbox": 60}
+#
+# PRD-mcphost-agent-directory (2026-09-13 follow-up): this PRD's own new
+# `agentdir` area group (4 files, consolidated per-AC same as
+# `compat_ac01_ac02_ac03_cache_fields.rs`'s convention) tipped core's
+# normal buckets from 2 to 3 again, spawning an 11th suite binary --
+# caught by the same `suite_ac1_ten_binaries_and_names_preserved` P0
+# assertion. 125 -> 126 was the smallest tested raise that re-collapses
+# core's normal buckets to 2, landing the grand total back at 10.
+MAX_PER_SUITE = {"core": 126, "sandbox": 60}
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"
 GEN_MARK_END = "# END gen-test-suites.sh generated suites"

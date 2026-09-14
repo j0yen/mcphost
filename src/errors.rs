@@ -320,6 +320,15 @@ impl AppError {
                 // already uses for the analogous KV-store rejections.
                 "table_schema_violation" | "table_not_found" | "table_query_rejected"
                 | "table_bound_exceeded" | "table_already_exists" => ErrorCode::INVALID_PARAMS,
+                // PRD-mcphost-agent-directory requirement 3 (AC3/AC9): a
+                // handle collision or a claim against the reserved list is
+                // the same caller-input problem as the `table_*`/`state_*`
+                // groups above.
+                "handle_taken" | "handle_reserved" => ErrorCode::INVALID_PARAMS,
+                // Requirement 4 (AC4): `agent_not_found` mirrors
+                // `tool_not_found`/`tenant_not_found`/`trigger_not_found`'s
+                // own RESOURCE_NOT_FOUND.
+                "agent_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
                 _ => ErrorCode::INTERNAL_ERROR,
             },
             AppError::MultiInvalid { errors, .. } => errors
@@ -559,6 +568,39 @@ impl AppError {
                 "inferred": signal.kind,
                 "reason": signal.reason,
             }),
+        }
+    }
+
+    /// PRD-mcphost-agent-directory requirement 3 / AC3: a claim of a handle
+    /// another tenant already holds -- names nothing about the holder, the
+    /// whole point of the requirement.
+    pub fn handle_taken() -> Self {
+        AppError::Structured {
+            code: "handle_taken",
+            message: "that handle is already claimed".to_string(),
+            data: json!({}),
+        }
+    }
+
+    /// Open questions: reserved handles (`admin`, `host`, `mcphost`,
+    /// `system`), drafted as reserved -- released only via
+    /// `admin.agent.handle_release`.
+    pub fn handle_reserved(handle: &str) -> Self {
+        AppError::Structured {
+            code: "handle_reserved",
+            message: format!("'{handle}' is a reserved handle and cannot be claimed"),
+            data: json!({"handle": handle}),
+        }
+    }
+
+    /// Requirement 4 / AC4: identical body for unknown, disabled, and
+    /// deleted -- never lets a caller distinguish "doesn't exist" from
+    /// "exists but hidden".
+    pub fn agent_not_found() -> Self {
+        AppError::Structured {
+            code: "agent_not_found",
+            message: "no agent found for that address".to_string(),
+            data: json!({}),
         }
     }
 
