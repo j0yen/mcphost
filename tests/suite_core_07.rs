@@ -18,8 +18,12 @@ mod minimal_ac3_wrong_bearer_matches_anonymous;
 mod minimal_ac4_liveness_failure_returns_5xx;
 #[path = "minimal_ac5_tenant_bearer_gets_anonymous_body.rs"]
 mod minimal_ac5_tenant_bearer_gets_anonymous_body;
-#[path = "msg_ac01_ac02_ac03_send_reply_thread.rs"]
-mod msg_ac01_ac02_ac03_send_reply_thread;
+#[path = "msg_ac01_send_reaches_inbox.rs"]
+mod msg_ac01_send_reaches_inbox;
+#[path = "msg_ac02_reply_appends_next_seq.rs"]
+mod msg_ac02_reply_appends_next_seq;
+#[path = "msg_ac03_non_participant_thread_not_found.rs"]
+mod msg_ac03_non_participant_thread_not_found;
 #[path = "msg_ac04_dedupe_key.rs"]
 mod msg_ac04_dedupe_key;
 #[path = "msg_ac05_block.rs"]
