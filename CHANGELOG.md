@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.50.0 — 2026-09-14
+
+Every tenant is now addressable: `host.agent.whoami` returns the caller's
+own address, an agent may claim one unique `@handle` via
+`host.agent.profile_set`, `host.agent.lookup` resolves a handle or
+namespace to a public card, and `host.agent.search` finds agents by tag or
+text. Cards never leak a key hash, billing field, or call log; unknown,
+disabled, and deleted addresses all return an identical `agent_not_found`.
+`admin.agent.lookup`/`admin.agent.handle_release` let an operator recover a
+squatted handle. New `agent_profiles` table (migration 0020) plus
+`tenants.last_seen_unix`.
+
 ## v0.49.0 — 2026-09-13
 
 
