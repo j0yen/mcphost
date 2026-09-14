@@ -33,10 +33,15 @@ const MIGRATION_0017: &str = include_str!("../migrations/0017_event_dedupe.sql")
 const MIGRATION_0018: &str = include_str!("../migrations/0018_runs_test_run.sql");
 const MIGRATION_0019: &str = include_str!("../migrations/0019_handoff_token.sql");
 const MIGRATION_0020: &str = include_str!("../migrations/0020_agent_profiles.sql");
+const MIGRATION_0021: &str = include_str!("../migrations/0021_messaging.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
 const EVENT_DEDUPE_WINDOW_S: i64 = 86_400;
+
+/// PRD-mcphost-agent-inbox requirement 8 / AC4: same 24h freshness window
+/// as [`EVENT_DEDUPE_WINDOW_S`], for `host.msg.send`'s `dedupe_key`.
+const MSG_DEDUPE_WINDOW_MS: i64 = 86_400_000;
 
 /// Shared by every query that selects a whole tenant row, so the column
 /// list and [`tenant_from_row`] stay in lockstep with each other.
@@ -142,6 +147,27 @@ fn agent_card_from_row(r: &Row) -> rusqlite::Result<AgentCard> {
         description: r.get(6)?,
         tags,
         contact_policy: r.get::<_, Option<String>>(8)?.unwrap_or_else(|| "open".to_string()),
+    })
+}
+
+/// Row shape shared by [`Db::msg_inbox`]/[`Db::msg_thread`]'s
+/// `SELECT ... FROM messages m ...` (column order pinned in both call
+/// sites' SQL text).
+fn message_row_from_row(r: &Row) -> rusqlite::Result<MessageRow> {
+    let data_json: Option<String> = r.get(5)?;
+    Ok(MessageRow {
+        id: r.get(0)?,
+        thread_id: r.get(1)?,
+        seq: r.get(2)?,
+        from_address: r.get(3)?,
+        body: r.get(4)?,
+        data: data_json.and_then(|s| serde_json::from_str(&s).ok()),
+        in_reply_to: r.get(6)?,
+        synthetic: r.get(7)?,
+        source_class: r.get(8)?,
+        created_at: r.get(9)?,
+        created_unix_ms: r.get(10)?,
+        read_at: r.get(11)?,
     })
 }
 
@@ -731,6 +757,53 @@ fn touch_tenant_tool_change(conn: &Connection, tenant_id: i64) -> Result<(), App
     Ok(())
 }
 
+// ---- messaging (PRD-mcphost-agent-inbox) --------------------------------
+
+/// A resolved `host.msg.send`/`reply` recipient or the reason it was
+/// refused (requirement 2's four refusal codes, collapsed to what
+/// [`Db::msg_send`] actually needs: either a live, addressable tenant or a
+/// `&'static str` refusal code to echo back in `refused[].code`). `Tenant`
+/// is boxed so this enum doesn't inflate to `Tenant`'s own size on the
+/// `Refused` arm (clippy::large_enum_variant).
+pub enum RecipientResolution {
+    Ok(Box<Tenant>),
+    Refused(&'static str),
+}
+
+/// One row of `host.msg.send`'s `{message_id, thread_id, seq, delivered_to,
+/// refused}` response (requirement 2) -- built by [`Db::send_message`],
+/// turned into wire JSON by `messaging.rs` (this module stays free of
+/// `serde_json::Value` shaping, same split every other `db.rs` DTO uses).
+pub struct SendOutcome {
+    pub message_id: String,
+    pub thread_id: String,
+    pub seq: i64,
+    pub delivered_to: Vec<String>,
+    pub refused: Vec<(String, &'static str)>,
+    /// `true` when this call reused an existing `(sender, dedupe_key)`
+    /// message rather than storing a new one (requirement 8 / AC4) --
+    /// `messaging.rs` needs this only to skip the quota-usage bump on a
+    /// dedupe hit, never surfaced on the wire.
+    pub deduped: bool,
+}
+
+/// One `host.msg.inbox`/`host.msg.thread` row (requirement 4).
+#[derive(Debug, Clone, Serialize)]
+pub struct MessageRow {
+    pub id: String,
+    pub thread_id: String,
+    pub seq: i64,
+    pub from_address: String,
+    pub body: String,
+    pub data: Option<Value>,
+    pub in_reply_to: Option<String>,
+    pub synthetic: Option<String>,
+    pub source_class: String,
+    pub created_at: String,
+    pub created_unix_ms: i64,
+    pub read_at: Option<String>,
+}
+
 fn percentile(sorted: &[i64], p: f64) -> f64 {
     if sorted.is_empty() {
         return 0.0;
@@ -809,7 +882,8 @@ impl Db {
         Self::migrate_0017_event_dedupe(&conn)?;
         Self::migrate_0018_runs_test_run(&conn)?;
         Self::migrate_0019_handoff_token(&conn)?;
-        Self::migrate_0020_agent_profiles(&conn)
+        Self::migrate_0020_agent_profiles(&conn)?;
+        Self::migrate_0021_messaging(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -1086,6 +1160,19 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0020)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-agent-inbox requirement 1: same new-table idempotency
+    /// guard as 0011/0014/0015/0017/0019/0020 above, gated on `threads`
+    /// (the first of the five tables this migration adds).
+    fn migrate_0021_messaging(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'threads'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0021)?;
         }
         Ok(())
     }
@@ -4761,6 +4848,566 @@ impl Db {
                 params![trigger_id, dedupe_key, run_id, now],
             )?;
             Ok(None)
+        })
+        .await
+    }
+
+    // ---- messaging (PRD-mcphost-agent-inbox) ----------------------------
+
+    /// Resolve `address` (an `@handle` or a bare `t_...` namespace) to a
+    /// live, addressable tenant for `host.msg.send`/`reply`, applying
+    /// requirement 2's four refusal causes in order: unknown/disabled
+    /// (`agent_not_found`), blocked by the recipient (`agent_not_found`,
+    /// byte-identical to unknown per AC5), then the recipient's
+    /// `contact_policy` (`contact_refused` for `closed` and, until the
+    /// consent PRD populates `contacts`, `contacts` too -- requirement 2's
+    /// own note: "until then contacts behaves as closed").
+    fn resolve_message_recipient(
+        conn: &Connection,
+        address: &str,
+        sender_id: i64,
+    ) -> Result<RecipientResolution, AppError> {
+        let tenant = if let Some(h) = address.strip_prefix('@') {
+            let handle = h.to_lowercase();
+            let sql = format!(
+                "SELECT {TENANT_COLUMNS} FROM tenants t JOIN agent_profiles ap ON ap.tenant_id = t.id \
+                 WHERE ap.handle = ?1 AND t.disabled = 0"
+            );
+            conn.query_row(&sql, params![handle], tenant_from_row)
+                .optional()?
+        } else {
+            let sql = format!("SELECT {TENANT_COLUMNS} FROM tenants t WHERE t.namespace = ?1 AND t.disabled = 0");
+            conn.query_row(&sql, params![address], tenant_from_row)
+                .optional()?
+        };
+        let Some(tenant) = tenant else {
+            return Ok(RecipientResolution::Refused("agent_not_found"));
+        };
+        let blocked: bool = conn
+            .prepare("SELECT 1 FROM blocks WHERE tenant_id = ?1 AND blocked_tenant_id = ?2")?
+            .exists(params![tenant.id, sender_id])?;
+        if blocked {
+            return Ok(RecipientResolution::Refused("agent_not_found"));
+        }
+        let policy = Self::query_agent_profile(conn, tenant.id)?.contact_policy;
+        if policy == "closed" || policy == "contacts" {
+            return Ok(RecipientResolution::Refused("contact_refused"));
+        }
+        Ok(RecipientResolution::Ok(Box::new(tenant)))
+    }
+
+    /// `host.msg.send` (requirements 2, 6, 8, 11 / AC1, AC4, AC5, AC7, AC9,
+    /// AC10, AC14): creates a new thread (`thread_id: None`) or adds to one
+    /// the caller already participates in (requirement 11); resolves every
+    /// `to` address, skipping refused ones rather than failing the whole
+    /// call; allocates the next `seq`; and honors a `dedupe_key` resend
+    /// within [`MSG_DEDUPE_WINDOW_MS`] by returning the original
+    /// `message_id` and storing nothing new. After the window, the stale
+    /// row's `dedupe_key` is nulled (never the row itself -- the original
+    /// message stays in history) so `UNIQUE(from_tenant_id, dedupe_key)`
+    /// doesn't block the key's reuse (requirement 8: "after 24h the key is
+    /// free").
+    ///
+    /// Quota checks that fail the *whole call* (`msgs_per_hour`,
+    /// `msg_body_bytes_max`, `recipients_per_msg_max`) are the caller's
+    /// job (`messaging.rs`) before this is ever invoked -- this method only
+    /// enforces the one *per-recipient* quota, `inbox_rows_max`
+    /// (requirement 7), since that's the one whose outcome depends on
+    /// which recipient is being resolved.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn msg_send(
+        &self,
+        sender: Tenant,
+        sender_synthetic: Option<String>,
+        to: Vec<String>,
+        thread_id: Option<String>,
+        body: String,
+        data_json: Option<String>,
+        dedupe_key: Option<String>,
+        inbox_rows_max: i64,
+    ) -> Result<SendOutcome, AppError> {
+        let now_ms = crate::state::now_unix_ms();
+        let now = now_rfc3339();
+        self.with_conn(move |conn| {
+            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
+            let outcome: Result<SendOutcome, AppError> = (|| {
+                if let Some(key) = &dedupe_key
+                    && let Some(hit) = Self::dedupe_hit(conn, sender.id, key, now_ms)?
+                {
+                    return Ok(hit);
+                }
+
+                let (tid, existing_participants) = match &thread_id {
+                    Some(t) => {
+                        let is_participant: bool = conn
+                            .prepare("SELECT 1 FROM thread_participants WHERE thread_id = ?1 AND tenant_id = ?2")?
+                            .exists(params![t, sender.id])?;
+                        if !is_participant {
+                            return Err(AppError::thread_not_found());
+                        }
+                        let existing = Self::thread_participant_ids(conn, t)?;
+                        (t.clone(), existing)
+                    }
+                    None => {
+                        let new_id = crate::state::new_ulid();
+                        conn.execute(
+                            "INSERT INTO threads (id, created_by, created_at, created_unix_ms) VALUES (?1, ?2, ?3, ?4)",
+                            params![new_id, sender.id, now, now_ms],
+                        )?;
+                        conn.execute(
+                            "INSERT INTO thread_participants (thread_id, tenant_id, joined_at) VALUES (?1, ?2, ?3)",
+                            params![new_id, sender.id, now],
+                        )?;
+                        (new_id, vec![sender.id])
+                    }
+                };
+
+                let mut delivered_to = Vec::new();
+                let mut refused: Vec<(String, &'static str)> = Vec::new();
+                let mut deliver_ids = Vec::new();
+                for addr in &to {
+                    match Self::resolve_message_recipient(conn, addr, sender.id)? {
+                        RecipientResolution::Refused(code) => refused.push((addr.clone(), code)),
+                        RecipientResolution::Ok(t) => {
+                            let rows: i64 = conn.query_row(
+                                "SELECT COUNT(*) FROM message_receipts WHERE tenant_id = ?1",
+                                params![t.id],
+                                |r| r.get(0),
+                            )?;
+                            if rows >= inbox_rows_max {
+                                refused.push((addr.clone(), "recipient_inbox_full"));
+                                continue;
+                            }
+                            if !existing_participants.contains(&t.id) {
+                                conn.execute(
+                                    "INSERT OR IGNORE INTO thread_participants (thread_id, tenant_id, joined_at) \
+                                     VALUES (?1, ?2, ?3)",
+                                    params![tid, t.id, now],
+                                )?;
+                            }
+                            delivered_to.push(t.namespace.clone());
+                            deliver_ids.push(t.id);
+                        }
+                    }
+                }
+
+                let (message_id, seq) = Self::insert_message(
+                    conn, &tid, sender.id, &sender.namespace, &sender_synthetic,
+                    sender.source_class.as_deref().unwrap_or("external"),
+                    &body, &data_json, None, &dedupe_key, now_ms, &now, &deliver_ids,
+                )?;
+
+                Ok(SendOutcome {
+                    message_id,
+                    thread_id: tid,
+                    seq,
+                    delivered_to,
+                    refused,
+                    deduped: false,
+                })
+            })();
+            match &outcome {
+                Ok(_) => conn.execute("COMMIT", []).map(|_| ()).map_err(AppError::from)?,
+                Err(_) => {
+                    let _ = conn.execute("ROLLBACK", []);
+                }
+            }
+            outcome
+        })
+        .await
+    }
+
+    /// `host.msg.reply` (requirement 3 / AC2, AC3): caller must already be
+    /// a thread participant (`thread_not_found` otherwise, byte-identical
+    /// to a nonexistent thread id -- AC3); delivers to every OTHER current
+    /// participant, live-checking each one's block/contact_policy state
+    /// the same way [`Self::resolve_message_recipient`] does for a fresh
+    /// `send`, skipping (and listing in `refused`) any that currently
+    /// refuse the replier rather than failing the whole reply.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn msg_reply(
+        &self,
+        sender: Tenant,
+        sender_synthetic: Option<String>,
+        thread_id: String,
+        body: String,
+        data_json: Option<String>,
+        in_reply_to: Option<String>,
+        dedupe_key: Option<String>,
+        inbox_rows_max: i64,
+    ) -> Result<SendOutcome, AppError> {
+        let now_ms = crate::state::now_unix_ms();
+        let now = now_rfc3339();
+        self.with_conn(move |conn| {
+            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
+            let outcome: Result<SendOutcome, AppError> = (|| {
+                if let Some(key) = &dedupe_key
+                    && let Some(hit) = Self::dedupe_hit(conn, sender.id, key, now_ms)?
+                {
+                    return Ok(hit);
+                }
+                let is_participant: bool = conn
+                    .prepare("SELECT 1 FROM thread_participants WHERE thread_id = ?1 AND tenant_id = ?2")?
+                    .exists(params![thread_id, sender.id])?;
+                if !is_participant {
+                    return Err(AppError::thread_not_found());
+                }
+                let other_ids: Vec<i64> = Self::thread_participant_ids(conn, &thread_id)?
+                    .into_iter()
+                    .filter(|id| *id != sender.id)
+                    .collect();
+
+                let mut delivered_to = Vec::new();
+                let mut refused: Vec<(String, &'static str)> = Vec::new();
+                let mut deliver_ids = Vec::new();
+                for other_id in other_ids {
+                    let sql = format!("SELECT {TENANT_COLUMNS} FROM tenants t WHERE t.id = ?1");
+                    let Some(t) = conn
+                        .query_row(&sql, params![other_id], tenant_from_row)
+                        .optional()?
+                    else {
+                        continue; // participant tenant was deleted; nothing to refuse or deliver to
+                    };
+                    let blocked: bool = conn
+                        .prepare("SELECT 1 FROM blocks WHERE tenant_id = ?1 AND blocked_tenant_id = ?2")?
+                        .exists(params![t.id, sender.id])?;
+                    if blocked {
+                        refused.push((t.namespace.clone(), "agent_not_found"));
+                        continue;
+                    }
+                    let policy = Self::query_agent_profile(conn, t.id)?.contact_policy;
+                    if policy == "closed" || policy == "contacts" {
+                        refused.push((t.namespace.clone(), "contact_refused"));
+                        continue;
+                    }
+                    let rows: i64 = conn.query_row(
+                        "SELECT COUNT(*) FROM message_receipts WHERE tenant_id = ?1",
+                        params![t.id],
+                        |r| r.get(0),
+                    )?;
+                    if rows >= inbox_rows_max {
+                        refused.push((t.namespace.clone(), "recipient_inbox_full"));
+                        continue;
+                    }
+                    delivered_to.push(t.namespace.clone());
+                    deliver_ids.push(t.id);
+                }
+
+                let (message_id, seq) = Self::insert_message(
+                    conn, &thread_id, sender.id, &sender.namespace, &sender_synthetic,
+                    sender.source_class.as_deref().unwrap_or("external"),
+                    &body, &data_json, in_reply_to.as_deref(), &dedupe_key, now_ms, &now, &deliver_ids,
+                )?;
+
+                Ok(SendOutcome {
+                    message_id,
+                    thread_id,
+                    seq,
+                    delivered_to,
+                    refused,
+                    deduped: false,
+                })
+            })();
+            match &outcome {
+                Ok(_) => conn.execute("COMMIT", []).map(|_| ()).map_err(AppError::from)?,
+                Err(_) => {
+                    let _ = conn.execute("ROLLBACK", []);
+                }
+            }
+            outcome
+        })
+        .await
+    }
+
+    /// Shared by [`Self::msg_send`]/[`Self::msg_reply`]: a fresh resend
+    /// within [`MSG_DEDUPE_WINDOW_MS`] returns the original outcome
+    /// (`Some`); a stale one frees the key (nulls that row's `dedupe_key`)
+    /// and returns `None` so the caller proceeds to store a new message;
+    /// no prior use at all is also `None`.
+    fn dedupe_hit(
+        conn: &Connection,
+        sender_id: i64,
+        key: &str,
+        now_ms: i64,
+    ) -> Result<Option<SendOutcome>, AppError> {
+        let existing: Option<(String, String, i64, i64)> = conn
+            .query_row(
+                "SELECT id, thread_id, seq, created_unix_ms FROM messages \
+                 WHERE from_tenant_id = ?1 AND dedupe_key = ?2",
+                params![sender_id, key],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .optional()?;
+        let Some((message_id, thread_id, seq, created_unix_ms)) = existing else {
+            return Ok(None);
+        };
+        if now_ms - created_unix_ms < MSG_DEDUPE_WINDOW_MS {
+            let delivered_to: Vec<String> = {
+                let mut stmt = conn.prepare(
+                    "SELECT t.namespace FROM message_receipts r JOIN tenants t ON t.id = r.tenant_id \
+                     WHERE r.message_id = ?1",
+                )?;
+                stmt.query_map(params![message_id], |r| r.get(0))?
+                    .collect::<rusqlite::Result<Vec<_>>>()?
+            };
+            return Ok(Some(SendOutcome {
+                message_id,
+                thread_id,
+                seq,
+                delivered_to,
+                refused: Vec::new(),
+                deduped: true,
+            }));
+        }
+        conn.execute("UPDATE messages SET dedupe_key = NULL WHERE id = ?1", params![message_id])?;
+        Ok(None)
+    }
+
+    fn thread_participant_ids(conn: &Connection, thread_id: &str) -> Result<Vec<i64>, AppError> {
+        let mut stmt = conn.prepare("SELECT tenant_id FROM thread_participants WHERE thread_id = ?1")?;
+        let ids = stmt
+            .query_map(params![thread_id], |r| r.get(0))?
+            .collect::<rusqlite::Result<Vec<i64>>>()?;
+        Ok(ids)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn insert_message(
+        conn: &Connection,
+        thread_id: &str,
+        from_tenant_id: i64,
+        from_address: &str,
+        synthetic: &Option<String>,
+        source_class: &str,
+        body: &str,
+        data_json: &Option<String>,
+        in_reply_to: Option<&str>,
+        dedupe_key: &Option<String>,
+        now_ms: i64,
+        now: &str,
+        deliver_ids: &[i64],
+    ) -> Result<(String, i64), AppError> {
+        let seq: i64 = conn.query_row(
+            "SELECT COALESCE(MAX(seq), 0) + 1 FROM messages WHERE thread_id = ?1",
+            params![thread_id],
+            |r| r.get(0),
+        )?;
+        let message_id = crate::state::new_ulid();
+        conn.execute(
+            "INSERT INTO messages \
+                 (id, thread_id, seq, from_tenant_id, from_address, body, data_json, in_reply_to, \
+                  dedupe_key, synthetic, source_class, created_at, created_unix_ms) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            params![
+                message_id, thread_id, seq, from_tenant_id, from_address, body, data_json, in_reply_to,
+                dedupe_key, synthetic, source_class, now, now_ms
+            ],
+        )?;
+        for recipient_id in deliver_ids {
+            conn.execute(
+                "INSERT OR IGNORE INTO message_receipts (message_id, tenant_id, read_at) VALUES (?1, ?2, NULL)",
+                params![message_id, recipient_id],
+            )?;
+        }
+        Ok((message_id, seq))
+    }
+
+    /// Requirement 7: how many messages `tenant_id` has sent in the sliding
+    /// window ending now, for `msgs_per_hour` (`messaging.rs` passes
+    /// `now_ms - 3_600_000`).
+    pub async fn count_messages_sent_since(&self, tenant_id: i64, since_unix_ms: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM messages WHERE from_tenant_id = ?1 AND created_unix_ms >= ?2",
+                params![tenant_id, since_unix_ms],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `host.msg.inbox` (requirement 4 / AC6, AC13): every row this
+    /// tenant has a [`message_receipts`] entry for (which excludes its own
+    /// sends by construction -- a sender never gets a receipt row for its
+    /// own message, see migration 0021's doc comment), ordered by
+    /// `(created_unix_ms, id)`, optionally resuming after an opaque cursor
+    /// and filtered to unread (requirement 5 / AC13).
+    pub async fn msg_inbox(
+        &self,
+        tenant_id: i64,
+        after: Option<(i64, String)>,
+        limit: i64,
+        unread_only: bool,
+    ) -> Result<Vec<MessageRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut sql = String::from(
+                "SELECT m.id, m.thread_id, m.seq, m.from_address, m.body, m.data_json, m.in_reply_to, \
+                        m.synthetic, m.source_class, m.created_at, m.created_unix_ms, r.read_at \
+                 FROM message_receipts r JOIN messages m ON m.id = r.message_id \
+                 WHERE r.tenant_id = ?1",
+            );
+            let mut sql_params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(tenant_id)];
+            if let Some((created_unix_ms, id)) = &after {
+                sql.push_str(&format!(
+                    " AND (m.created_unix_ms, m.id) > (?{}, ?{})",
+                    sql_params.len() + 1,
+                    sql_params.len() + 2
+                ));
+                sql_params.push(Box::new(*created_unix_ms));
+                sql_params.push(Box::new(id.clone()));
+            }
+            if unread_only {
+                sql.push_str(" AND r.read_at IS NULL");
+            }
+            sql.push_str(&format!(" ORDER BY m.created_unix_ms, m.id LIMIT ?{}", sql_params.len() + 1));
+            sql_params.push(Box::new(limit));
+
+            let mut stmt = conn.prepare(&sql)?;
+            let param_refs: Vec<&dyn rusqlite::ToSql> = sql_params.iter().map(|b| b.as_ref()).collect();
+            let rows = stmt.query_map(param_refs.as_slice(), message_row_from_row)?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            Ok(out)
+        })
+        .await
+    }
+
+    /// `host.msg.thread` (requirement 4): `None` when `tenant_id` is not
+    /// (or no longer) a participant, mapped to `thread_not_found` by
+    /// `messaging.rs`, byte-identical to a nonexistent thread id.
+    pub async fn msg_thread(
+        &self,
+        tenant_id: i64,
+        thread_id: String,
+        after_seq: Option<i64>,
+        limit: i64,
+    ) -> Result<Option<Vec<MessageRow>>, AppError> {
+        self.with_conn(move |conn| {
+            let is_participant: bool = conn
+                .prepare("SELECT 1 FROM thread_participants WHERE thread_id = ?1 AND tenant_id = ?2")?
+                .exists(params![thread_id, tenant_id])?;
+            if !is_participant {
+                return Ok(None);
+            }
+            let mut sql = String::from(
+                "SELECT m.id, m.thread_id, m.seq, m.from_address, m.body, m.data_json, m.in_reply_to, \
+                        m.synthetic, m.source_class, m.created_at, m.created_unix_ms, r.read_at \
+                 FROM messages m LEFT JOIN message_receipts r ON r.message_id = m.id AND r.tenant_id = ?1 \
+                 WHERE m.thread_id = ?2",
+            );
+            let mut sql_params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(tenant_id), Box::new(thread_id.clone())];
+            if let Some(seq) = after_seq {
+                sql.push_str(&format!(" AND m.seq > ?{}", sql_params.len() + 1));
+                sql_params.push(Box::new(seq));
+            }
+            sql.push_str(&format!(" ORDER BY m.seq LIMIT ?{}", sql_params.len() + 1));
+            sql_params.push(Box::new(limit));
+
+            let mut stmt = conn.prepare(&sql)?;
+            let param_refs: Vec<&dyn rusqlite::ToSql> = sql_params.iter().map(|b| b.as_ref()).collect();
+            let rows = stmt.query_map(param_refs.as_slice(), message_row_from_row)?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            Ok(Some(out))
+        })
+        .await
+    }
+
+    /// Requirement 11 (AC14): how many tenants already participate in
+    /// `thread_id` -- `messaging.rs` adds this to the new `to` list's
+    /// length (minus any already-participating) before checking
+    /// `recipients_per_msg_max` ("recipient cap counts total
+    /// participants"). `0` for a nonexistent thread id; `msg_send` itself
+    /// still returns `thread_not_found` if the caller isn't a participant.
+    pub async fn count_thread_participants(&self, thread_id: String) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM thread_participants WHERE thread_id = ?1",
+                params![thread_id],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `host.msg.ack` (requirement 5): sets `read_at` for every id in
+    /// `message_ids` this tenant has a receipt for; ids that don't exist,
+    /// or aren't addressed to this tenant, are silently skipped (not an
+    /// error -- an ack is idempotent and best-effort per id). Returns how
+    /// many rows changed.
+    pub async fn msg_ack(&self, tenant_id: i64, message_ids: Vec<String>) -> Result<i64, AppError> {
+        let now = now_rfc3339();
+        self.with_conn(move |conn| {
+            let mut changed = 0i64;
+            for id in &message_ids {
+                changed += conn.execute(
+                    "UPDATE message_receipts SET read_at = ?1 \
+                     WHERE message_id = ?2 AND tenant_id = ?3 AND read_at IS NULL",
+                    params![now, id, tenant_id],
+                )? as i64;
+            }
+            Ok(changed)
+        })
+        .await
+    }
+
+    /// Resolve `address` to a tenant id for `host.msg.block`/`unblock`
+    /// (requirement 9), excluding disabled tenants same as
+    /// [`Self::resolve_message_recipient`] (but with no block/policy
+    /// checks of its own -- blocking is unconditional).
+    pub async fn resolve_agent_address(&self, address: String) -> Result<Option<i64>, AppError> {
+        self.with_conn(move |conn| {
+            let id: Option<i64> = if let Some(h) = address.strip_prefix('@') {
+                let handle = h.to_lowercase();
+                conn.query_row(
+                    "SELECT t.id FROM tenants t JOIN agent_profiles ap ON ap.tenant_id = t.id \
+                     WHERE ap.handle = ?1 AND t.disabled = 0",
+                    params![handle],
+                    |r| r.get(0),
+                )
+                .optional()?
+            } else {
+                conn.query_row(
+                    "SELECT id FROM tenants WHERE namespace = ?1 AND disabled = 0",
+                    params![address],
+                    |r| r.get(0),
+                )
+                .optional()?
+            };
+            Ok(id)
+        })
+        .await
+    }
+
+    /// `host.msg.block(address)` (requirement 9): idempotent -- blocking an
+    /// already-blocked address is a no-op success.
+    pub async fn msg_block(&self, tenant_id: i64, blocked_tenant_id: i64) -> Result<(), AppError> {
+        let now = now_rfc3339();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT OR IGNORE INTO blocks (tenant_id, blocked_tenant_id, created_at) VALUES (?1, ?2, ?3)",
+                params![tenant_id, blocked_tenant_id, now],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `host.msg.unblock(address)` (requirement 9): `true` if a block was
+    /// actually removed.
+    pub async fn msg_unblock(&self, tenant_id: i64, blocked_tenant_id: i64) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "DELETE FROM blocks WHERE tenant_id = ?1 AND blocked_tenant_id = ?2",
+                params![tenant_id, blocked_tenant_id],
+            )?;
+            Ok(n > 0)
         })
         .await
     }

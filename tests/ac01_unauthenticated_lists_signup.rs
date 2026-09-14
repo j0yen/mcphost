@@ -162,6 +162,16 @@ async fn unauthenticated_tools_list_is_signup_only() {
         "host.agent.profile_set",
         "host.agent.lookup",
         "host.agent.search",
+        // PRD-mcphost-agent-inbox requirements 2-5, 9: the agent-inbox
+        // messaging control plane is discoverable unauthenticated too,
+        // same as every other host.*-style tool above.
+        "host.msg.send",
+        "host.msg.reply",
+        "host.msg.inbox",
+        "host.msg.thread",
+        "host.msg.ack",
+        "host.msg.block",
+        "host.msg.unblock",
     ] {
         assert!(
             tool_names.contains(&expected),
@@ -174,7 +184,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        61,
+        68,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the nine host.state.* tools (PRD-mcphost-tenant-state) \
@@ -183,7 +193,8 @@ async fn unauthenticated_tools_list_is_signup_only() {
          (PRD-mcphost-sharing) + the five host.runs.* tools (PRD-mcphost-runs-and-jobs) \
          + the nine host.trigger.* tools (PRD-mcphost-schedules, PRD-mcphost-inbound-events) \
          + the three billing.* tools + the four host.agent.* tools \
-         (PRD-mcphost-agent-directory): \
+         (PRD-mcphost-agent-directory) + the seven host.msg.* tools \
+         (PRD-mcphost-agent-inbox): \
          {tool_names:?}"
     );
 }

@@ -27,7 +27,7 @@ use crate::kinds::{
 use crate::state::{
     AppState, MAX_SPEC_BYTES, TOOLS_LIST_TTL_GRACE_SECS, TOOLS_LIST_TTL_MS_STEADY, now_unix,
 };
-use crate::{admin, agents, control, tables, tenant_state};
+use crate::{admin, agents, control, messaging, tables, tenant_state};
 
 /// Who is making this request, resolved once per request from the bearer
 /// key (or its absence).
@@ -1255,6 +1255,120 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &[],
             ),
         ),
+        // PRD-mcphost-agent-inbox: directed messages and threads between
+        // tenants, addressed through the agent directory above.
+        Tool::new(
+            "host.msg.send",
+            "Send a message to one or more agent-directory addresses, creating a new thread \
+             (or, with thread_id, adding to one you already participate in). Refused \
+             recipients (agent_not_found, contact_refused, recipient_inbox_full) are listed in \
+             refused rather than failing the whole call; from is always the authenticated \
+             tenant, never a caller argument.",
+            host_schema(
+                json!({
+                    "to": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "1 to recipients_per_msg_max addresses (@handle or t_... \
+                            namespace).",
+                    },
+                    "body": {"type": "string", "description": "Message text; non-empty after trim."},
+                    "data": {"type": "object", "description": "Optional structured payload."},
+                    "dedupe_key": {
+                        "type": "string",
+                        "description": "Resend with the same key within 24h to get back the \
+                            original message_id instead of a duplicate.",
+                    },
+                    "thread_id": {
+                        "type": "string",
+                        "description": "Add this send to an existing thread you participate in \
+                            instead of starting a new one; to's addresses join as participants.",
+                    },
+                }),
+                &["to", "body"],
+            ),
+        ),
+        Tool::new(
+            "host.msg.reply",
+            "Reply in a thread you participate in; appends with the next seq. Blocked or \
+             contact-closed participants are skipped and listed in refused rather than \
+             failing the reply. thread_not_found (byte-identical for a nonexistent id) if you \
+             are not a participant.",
+            host_schema(
+                json!({
+                    "thread_id": {"type": "string", "description": "The thread to reply in."},
+                    "body": {"type": "string", "description": "Message text; non-empty after trim."},
+                    "data": {"type": "object", "description": "Optional structured payload."},
+                    "in_reply_to": {"type": "string", "description": "The message_id this replies to."},
+                    "dedupe_key": {
+                        "type": "string",
+                        "description": "Resend with the same key within 24h to get back the \
+                            original message_id instead of a duplicate.",
+                    },
+                }),
+                &["thread_id", "body"],
+            ),
+        ),
+        Tool::new(
+            "host.msg.inbox",
+            "Every unread-or-read message across every thread you participate in, excluding \
+             your own sends, ordered oldest first; page with cursor from the previous \
+             response's next_cursor.",
+            host_schema(
+                json!({
+                    "cursor": {"type": "string", "description": "Opaque; omit for the first page."},
+                    "limit": {"type": "integer", "description": "Up to 100; default 50."},
+                    "unread_only": {"type": "boolean", "description": "Filter to messages not yet acked."},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.msg.thread",
+            "Every message in one thread you participate in, ordered by seq; \
+             thread_not_found if you are not (or no longer) a participant.",
+            host_schema(
+                json!({
+                    "thread_id": {"type": "string", "description": "The thread to read."},
+                    "cursor": {"type": "string", "description": "The seq to resume after; omit for the start."},
+                    "limit": {"type": "integer", "description": "Up to 100; default 50."},
+                }),
+                &["thread_id"],
+            ),
+        ),
+        Tool::new(
+            "host.msg.ack",
+            "Mark messages as read for you; unread_only inbox reads stop returning them. \
+             Per-recipient -- a sender never sees others' receipts.",
+            host_schema(
+                json!({
+                    "message_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "message_ids to mark read for you.",
+                    },
+                }),
+                &["message_ids"],
+            ),
+        ),
+        Tool::new(
+            "host.msg.block",
+            "Block an address: its future sends to you are refused agent_not_found, \
+             byte-identical to sending to a nonexistent address. You can still send to it. \
+             Block lists are never exposed to the blocked party.",
+            host_schema(
+                json!({"address": {"type": "string", "description": "The @handle or t_... namespace to block."}}),
+                &["address"],
+            ),
+        ),
+        Tool::new(
+            "host.msg.unblock",
+            "Remove a block.",
+            host_schema(
+                json!({"address": {"type": "string", "description": "The @handle or t_... namespace to unblock."}}),
+                &["address"],
+            ),
+        ),
     ];
     if authenticated {
         tools.push(Tool::new(
@@ -1856,6 +1970,14 @@ impl McpHostHandler {
             "host.agent.profile_set" => agents::profile_set(&self.state, tenant, &args).await,
             "host.agent.lookup" => agents::lookup(&self.state, &args).await,
             "host.agent.search" => agents::search(&self.state, &args).await,
+            // PRD-mcphost-agent-inbox requirements 2-5, 9.
+            "host.msg.send" => messaging::send(&self.state, tenant, &args).await,
+            "host.msg.reply" => messaging::reply(&self.state, tenant, &args).await,
+            "host.msg.inbox" => messaging::inbox(&self.state, tenant, &args).await,
+            "host.msg.thread" => messaging::thread(&self.state, tenant, &args).await,
+            "host.msg.ack" => messaging::ack(&self.state, tenant, &args).await,
+            "host.msg.block" => messaging::block(&self.state, tenant, &args).await,
+            "host.msg.unblock" => messaging::unblock(&self.state, tenant, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         }
     }

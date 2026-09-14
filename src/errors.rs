@@ -327,8 +327,10 @@ impl AppError {
                 "handle_taken" | "handle_reserved" => ErrorCode::INVALID_PARAMS,
                 // Requirement 4 (AC4): `agent_not_found` mirrors
                 // `tool_not_found`/`tenant_not_found`/`trigger_not_found`'s
-                // own RESOURCE_NOT_FOUND.
-                "agent_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
+                // own RESOURCE_NOT_FOUND. PRD-mcphost-agent-inbox
+                // requirement 3 (AC3): `thread_not_found` is the same
+                // shape, one more caller-visible "doesn't exist" id.
+                "agent_not_found" | "thread_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
                 _ => ErrorCode::INTERNAL_ERROR,
             },
             AppError::MultiInvalid { errors, .. } => errors
@@ -601,6 +603,34 @@ impl AppError {
             code: "agent_not_found",
             message: "no agent found for that address".to_string(),
             data: json!({}),
+        }
+    }
+
+    /// PRD-mcphost-agent-inbox requirement 3 / AC3: `host.msg.reply`/
+    /// `host.msg.thread` on a thread the caller doesn't (or no longer)
+    /// participate in -- byte-identical to a genuinely nonexistent thread
+    /// id, same "unknown vs hidden" indistinguishability as
+    /// [`Self::agent_not_found`] above.
+    pub fn thread_not_found() -> Self {
+        AppError::Structured {
+            code: "thread_not_found",
+            message: "no thread found for that id".to_string(),
+            data: json!({}),
+        }
+    }
+
+    /// PRD-mcphost-agent-inbox requirement 7: `msgs_per_hour`,
+    /// `msg_body_bytes_max`, and `recipients_per_msg_max` all fail the
+    /// whole `host.msg.send`/`reply` call with this shape (AC9/AC10:
+    /// `data.limit` names the quota, `data.value` its numeric limit) --
+    /// deliberately a flatter shape than `billing::quota_exceeded`'s
+    /// `data.limit: {name, value}`, since the PRD pins the field names to
+    /// exactly `limit`/`value` at the top level.
+    pub fn msg_quota_exceeded(limit_name: &'static str, limit_value: i64) -> Self {
+        AppError::Structured {
+            code: "quota_exceeded",
+            message: format!("messaging quota exceeded: {limit_name} (limit {limit_value})"),
+            data: json!({"limit": limit_name, "value": limit_value}),
         }
     }
 

@@ -113,6 +113,28 @@ pub struct Plan {
     /// PRD's one named number, same for every plan) when a hand-edited
     /// `plans.toml` predates this key.
     pub event_body_bytes_max: i64,
+    /// PRD-mcphost-agent-inbox requirement 7: how many `host.msg.send`/
+    /// `reply` calls this plan's tenants may make in a sliding hour
+    /// (`quota_exceeded` naming `msgs_per_hour`). Defaults to the `free`
+    /// plan's own default (60) when a hand-edited `plans.toml` predates
+    /// this key, same tolerant-parse convention as `event_triggers_max`.
+    pub msgs_per_hour: i64,
+    /// requirement 7: the largest `body` plus `data_json` a message may
+    /// carry, in bytes. PRD names one number (16 KiB) for every plan, same
+    /// shape `event_body_bytes_max` already uses. Defaults to 16 KiB when
+    /// a hand-edited `plans.toml` predates this key.
+    pub msg_body_bytes_max: i64,
+    /// requirement 7: how many stored `message_receipts` rows (this
+    /// tenant's whole inbox, read or not) a plan allows before further
+    /// sends to it are refused `recipient_inbox_full`. Defaults to the
+    /// `free` plan's own default (2 000) when a hand-edited `plans.toml`
+    /// predates this key.
+    pub inbox_rows_max: i64,
+    /// requirement 7: the largest `to` list (or, for an existing thread,
+    /// total participant count -- requirement 11) a single send may name.
+    /// Defaults to the `free` plan's own default (5) when a hand-edited
+    /// `plans.toml` predates this key.
+    pub recipients_per_msg_max: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -164,6 +186,13 @@ impl PlanCatalog {
                     event_triggers_max: 3,
                     events_per_minute: 30,
                     event_body_bytes_max: 256 * 1024,
+                    // PRD-mcphost-agent-inbox requirement 7: "free plan's
+                    // msgs_per_hour is 60"; "free 2 000" inbox rows; "5"
+                    // recipients per message.
+                    msgs_per_hour: 60,
+                    msg_body_bytes_max: 16 * 1024,
+                    inbox_rows_max: 2_000,
+                    recipients_per_msg_max: 5,
                 },
                 Plan {
                     name: "pro".to_string(),
@@ -202,6 +231,16 @@ impl PlanCatalog {
                     event_triggers_max: 25,
                     events_per_minute: 300,
                     event_body_bytes_max: 256 * 1024,
+                    // PRD-mcphost-agent-inbox: pro gets a higher hourly
+                    // send rate, inbox capacity and recipient cap than
+                    // free, same free/pro scaling shape as every other
+                    // quota above; open question with no published pro
+                    // number, sized against the ~16x-40x ratio the rest of
+                    // this catalog already uses.
+                    msgs_per_hour: 2_000,
+                    msg_body_bytes_max: 16 * 1024,
+                    inbox_rows_max: 20_000,
+                    recipients_per_msg_max: 20,
                 },
             ],
         }
@@ -281,6 +320,13 @@ impl PlanCatalog {
                 "event_body_bytes_max = {}\n",
                 p.event_body_bytes_max
             ));
+            out.push_str(&format!("msgs_per_hour = {}\n", p.msgs_per_hour));
+            out.push_str(&format!("msg_body_bytes_max = {}\n", p.msg_body_bytes_max));
+            out.push_str(&format!("inbox_rows_max = {}\n", p.inbox_rows_max));
+            out.push_str(&format!(
+                "recipients_per_msg_max = {}\n",
+                p.recipients_per_msg_max
+            ));
             out.push('\n');
         }
         out
@@ -345,6 +391,10 @@ impl PlanCatalog {
                 "event_triggers_max" => builder.event_triggers_max = Some(int_value()),
                 "events_per_minute" => builder.events_per_minute = Some(int_value()),
                 "event_body_bytes_max" => builder.event_body_bytes_max = Some(int_value()),
+                "msgs_per_hour" => builder.msgs_per_hour = Some(int_value()),
+                "msg_body_bytes_max" => builder.msg_body_bytes_max = Some(int_value()),
+                "inbox_rows_max" => builder.inbox_rows_max = Some(int_value()),
+                "recipients_per_msg_max" => builder.recipients_per_msg_max = Some(int_value()),
                 _ => {}
             }
         }
@@ -383,6 +433,10 @@ struct PlanBuilder {
     event_triggers_max: Option<i64>,
     events_per_minute: Option<i64>,
     event_body_bytes_max: Option<i64>,
+    msgs_per_hour: Option<i64>,
+    msg_body_bytes_max: Option<i64>,
+    inbox_rows_max: Option<i64>,
+    recipients_per_msg_max: Option<i64>,
 }
 
 impl PlanBuilder {
@@ -430,6 +484,13 @@ impl PlanBuilder {
             event_triggers_max: self.event_triggers_max.unwrap_or(3),
             events_per_minute: self.events_per_minute.unwrap_or(30),
             event_body_bytes_max: self.event_body_bytes_max.unwrap_or(256 * 1024),
+            // PRD-mcphost-agent-inbox: a `plans.toml` predating these four
+            // keys gets the `free` plan's own defaults, same tolerant-parse
+            // rationale as every other field above.
+            msgs_per_hour: self.msgs_per_hour.unwrap_or(60),
+            msg_body_bytes_max: self.msg_body_bytes_max.unwrap_or(16 * 1024),
+            inbox_rows_max: self.inbox_rows_max.unwrap_or(2_000),
+            recipients_per_msg_max: self.recipients_per_msg_max.unwrap_or(5),
         })
     }
 }
