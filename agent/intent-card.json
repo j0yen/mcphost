@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/wintermute/mcphost/PRD-mcphost-agent-inbox.md",
-  "intent_slug": "mcphost-agent-inbox",
-  "root_motivation": "No message can pass between two mcphost tenants. The only cross-tenant path is `tools/call` on a shared tool (`src/handler.rs` cross-tenant arm, `src/sharing.rs`), which carries arguments in and a result out and stores a run row with `caller_tenant_id` (`migrations/0014_runs.sql:33`) \u2014 nothing addressed to the owner, nothing the owner reads later. A grep of `src/` for inbox, mailbox, message, notify, pubsub, channel or thread returns only run and trigger code.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-gate-debt-a7d8e1c.md",
+  "intent_slug": "mcphost-gate-debt-a7d8e1c",
+  "root_motivation": "Five whys (one per inherited finding, from `git log -S` where a candidate commit was found):",
   "user_persona": "An agent that has discovered another agent's shared tool (via `host.catalog.search`) or that wants to be discoverable itself -- it needs to resolve a namespace or handle to a readable card (name, description, tags, contact policy) without ever learning a billing field, key hash, or call log; secondarily the operator (Joe), who needs `admin.agent.lookup`/`admin.agent.handle_release` to recover a squatted or abusive handle.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,86 +14,8 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given tenants A and B with B's policy `open`, When A calls `host.msg.send(to=[B.address], body=\"ping\")`, Then the result has one `message_id`, a `thread_id`, `delivered_to=[B.address]`, and B's `host.msg.inbox()` returns that message with `from_address` equal to A's namespace.",
+      "description": "Given HEAD a7d8e1c9b8338b8ca9b663f930d041542f3d6979, When the gate runs, Then reviewer-agent passes: finalize rejected the subagent's output",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
-    },
-    {
-      "id": "AC2",
-      "level": "MUST",
-      "description": "Given the thread from AC 1, When B calls `host.msg.reply(thread_id, body=\"pong\")` and A reads `host.msg.thread(thread_id)`, Then A sees both messages ordered `seq` 1, 2 with B's reply carrying `from_address` equal to B's namespace.",
-      "test": "tests/ac02_signup_creates_hashed_tenant.rs"
-    },
-    {
-      "id": "AC3",
-      "level": "MUST",
-      "description": "Given tenant C is not a participant of that thread, When C calls `host.msg.thread(thread_id)` or `host.msg.reply(thread_id, \u2026)`, Then both return `thread_not_found` byte-identical to the response for a random nonexistent id.",
-      "test": "tests/ac03_tenant_lists_control_plane_only.rs"
-    },
-    {
-      "id": "AC4",
-      "level": "MUST",
-      "description": "Given A sends with `dedupe_key=\"k1\"` and the call is repeated three times, When B reads its inbox, Then exactly one message exists and all three send results carry the same `message_id`.",
-      "test": "tests/ac04_publish_list_and_call.rs"
-    },
-    {
-      "id": "AC5",
-      "level": "MUST",
-      "description": "Given B has called `host.msg.block(A.address)`, When A sends to B, Then `refused` contains B with code `agent_not_found` byte-identical to sending to a nonexistent address, and B's inbox is unchanged; and When B sends to A, Then it is delivered.",
-      "test": "tests/ac05_cross_tenant_isolation.rs"
-    },
-    {
-      "id": "AC6",
-      "level": "MUST",
-      "description": "Given 20 concurrent senders each sending 50 messages to B, When B reads `host.msg.inbox(cursor, limit=37)` in a loop until `next_cursor` stops advancing, Then B collected exactly 1 000 distinct message ids with no duplicates.",
-      "test": "tests/ac06_remove_tool.rs"
-    },
-    {
-      "id": "AC7",
-      "level": "MUST",
-      "description": "Given a send whose arguments include `from: \"@someone\"`, When it is submitted, Then the response is `args_invalid` and nothing is stored.",
-      "test": "tests/ac07_usage_metering.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "MUST",
-      "description": "Given B's policy is `closed`, When A sends to B, Then `refused` contains B with `contact_refused` and B's inbox is empty.",
-      "test": "tests/ac08_admin_disable_and_forbidden.rs"
-    },
-    {
-      "id": "AC9",
-      "level": "MUST",
-      "description": "Given the free plan's `msgs_per_hour` is 60, When A sends 61 messages within an hour, Then the 61st returns `quota_exceeded` with `data.limit=\"msgs_per_hour\"` and `data.value=60`, and B's inbox holds 60.",
-      "test": "tests/ac09_signup_rate_limit.rs"
-    },
-    {
-      "id": "AC10",
-      "level": "MUST",
-      "description": "Given a body of 16 KiB + 1 byte, or `to` with 6 addresses on a plan whose cap is 5, When sent, Then each returns `quota_exceeded` naming `msg_body_bytes_max` or `recipients_per_msg_max` respectively and stores nothing.",
-      "test": "tests/ac10_publish_validation_errors.rs"
-    },
-    {
-      "id": "AC11",
-      "level": "MUST",
-      "description": "Given A sent B a message and A is then deleted via `admin.tenant_delete`, When B reads its inbox, Then the message is still present with `from_tenant_id` null and `from_address` equal to A's former namespace, and no `thread_participants`, `message_receipts` or `blocks` row references A's id.",
-      "test": "tests/ac11_load_smoke.rs (#[ignore]d hardware-relative load test)"
-    },
-    {
-      "id": "AC12",
-      "level": "SHOULD",
-      "description": "Given a warm database with 10 000 messages, When 200 sequential `host.msg.send` calls run, Then p95 latency is under 100 ms.",
-      "test": "no unit test file; live smoke \u2014 mcphost serve + synthorg consume --preflight <url>, recorded as target/autobuilder/ac12-preflight-smoke.json"
-    },
-    {
-      "id": "AC13",
-      "level": "SHOULD",
-      "description": "Given B acked message m1 but not m2, When B calls `host.msg.inbox(unread_only=true)`, Then only m2 is returned.",
-      "test": "tests/ac13_mcp_name_mismatch_metering.rs"
-    },
-    {
-      "id": "AC14",
-      "level": "SHOULD",
-      "description": "Given A is a participant in thread T, When A calls `host.msg.send(thread_id=T, to=[C.address], body=\u2026)`, Then C becomes a participant, sees the new message in its inbox, and does not see messages with `seq` earlier than that one in `host.msg.inbox()` (but does in `host.msg.thread(T)`).",
-      "test": "tests/ac14_storage_unwritable.rs"
     }
   ],
   "scope": [
