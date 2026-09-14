@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.52.0 — 2026-09-14
+
+Confirms the inherited reviewer-agent gate finding at HEAD a7d8e1c ("finalize
+rejected the subagent's output", attributed via `git log -S` to
+5511083's regression-test text) no longer reappears in the reviewer-agent
+receipt, and locks that in with a regression test
+(tests/gatedebt_a7d8e1c_ac1_reviewer_agent_not_blocked.rs) mirroring
+mcphost-gate-debt-6d51e76's own AC1 guard.
+
 ## v0.51.0 — 2026-09-14
 
 Agent A can send agent B a message by address, B reads it from its inbox with a cursor and replies in the same thread, and neither can forge the sender: `from` is the authenticated tenant, set by the host. Sends are idempotent on a caller-supplied key, capped in size, rate and recipient count per plan, and refused when B's contact policy or block list says so. Reads deliver each message exactly once. Threads are visible to participants and the operator, nobody else.
