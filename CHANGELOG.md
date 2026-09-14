@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.51.0 — 2026-09-14
+
+Agent A can send agent B a message by address, B reads it from its inbox with a cursor and replies in the same thread, and neither can forge the sender: `from` is the authenticated tenant, set by the host. Sends are idempotent on a caller-supplied key, capped in size, rate and recipient count per plan, and refused when B's contact policy or block list says so. Reads deliver each message exactly once. Threads are visible to participants and the operator, nobody else.
+
 ## v0.50.0 — 2026-09-14
 
 Every tenant is now addressable: `host.agent.whoami` returns the caller's

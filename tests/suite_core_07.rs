@@ -8,8 +8,6 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 
-#[path = "migration_compat_headers.rs"]
-mod migration_compat_headers;
 #[path = "minimal_ac1_anonymous_ok_only.rs"]
 mod minimal_ac1_anonymous_ok_only;
 #[path = "minimal_ac2_admin_full_document.rs"]
@@ -20,6 +18,30 @@ mod minimal_ac3_wrong_bearer_matches_anonymous;
 mod minimal_ac4_liveness_failure_returns_5xx;
 #[path = "minimal_ac5_tenant_bearer_gets_anonymous_body.rs"]
 mod minimal_ac5_tenant_bearer_gets_anonymous_body;
+#[path = "msg_ac01_ac02_ac03_send_reply_thread.rs"]
+mod msg_ac01_ac02_ac03_send_reply_thread;
+#[path = "msg_ac04_dedupe_key.rs"]
+mod msg_ac04_dedupe_key;
+#[path = "msg_ac05_block.rs"]
+mod msg_ac05_block;
+#[path = "msg_ac06_inbox_cursor_concurrent.rs"]
+mod msg_ac06_inbox_cursor_concurrent;
+#[path = "msg_ac07_forged_from.rs"]
+mod msg_ac07_forged_from;
+#[path = "msg_ac08_contact_policy_closed.rs"]
+mod msg_ac08_contact_policy_closed;
+#[path = "msg_ac09_msgs_per_hour_quota.rs"]
+mod msg_ac09_msgs_per_hour_quota;
+#[path = "msg_ac10_body_and_recipients_quota.rs"]
+mod msg_ac10_body_and_recipients_quota;
+#[path = "msg_ac11_tenant_delete_cascade.rs"]
+mod msg_ac11_tenant_delete_cascade;
+#[path = "msg_ac12_send_latency.rs"]
+mod msg_ac12_send_latency;
+#[path = "msg_ac13_unread_only.rs"]
+mod msg_ac13_unread_only;
+#[path = "msg_ac14_thread_continuation.rs"]
+mod msg_ac14_thread_continuation;
 #[path = "proptest_invariants.rs"]
 mod proptest_invariants;
 #[path = "provaudit_ac01_synthetic_signup_stamped.rs"]
