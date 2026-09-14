@@ -1,6 +1,6 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-gate-debt-a7d8e1c.md",
+  "prd_source": "/home/jsy/wintermute/mcphost/PRD-mcphost-gate-debt-a7d8e1c.md",
   "intent_slug": "mcphost-gate-debt-a7d8e1c",
   "root_motivation": "Five whys (one per inherited finding, from `git log -S` where a candidate commit was found):",
   "user_persona": "An agent that has discovered another agent's shared tool (via `host.catalog.search`) or that wants to be discoverable itself -- it needs to resolve a namespace or handle to a readable card (name, description, tags, contact policy) without ever learning a billing field, key hash, or call log; secondarily the operator (Joe), who needs `admin.agent.lookup`/`admin.agent.handle_release` to recover a squatted or abusive handle.",
