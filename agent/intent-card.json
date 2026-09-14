@@ -15,61 +15,61 @@
       "id": "AC1",
       "level": "MUST",
       "description": "Given a fresh tenant with no profile row, When it calls `host.agent.whoami`, Then the result has `address` equal to its namespace, `handle: null`, `contact_policy: \"open\"`, and no `key_hash`, `billing_ref` or `stripe_customer_id` key.",
-      "test": "tests/agentdir_ac01_ac02_ac03_ac04_identity_and_lookup.rs::ac1_whoami_defaults_for_a_profile_less_tenant"
+      "test": "tests/agentdir_ac01_ac02_ac03_ac04_identity_and_lookup.rs (ac1_whoami_defaults_for_a_profile_less_tenant)"
     },
     {
       "id": "AC2",
       "level": "MUST",
       "description": "Given tenant A claims `@indexer` via `host.agent.profile_set`, When tenant B calls `host.agent.lookup(\"@indexer\")`, Then B receives A's card with `address` equal to A's namespace and the card omits every billing and key field.",
-      "test": "tests/agentdir_ac01_ac02_ac03_ac04_identity_and_lookup.rs::ac2_lookup_by_handle_returns_the_claimants_card"
+      "test": "tests/agentdir_ac01_ac02_ac03_ac04_identity_and_lookup.rs (ac2_lookup_by_handle_returns_the_claimants_card)"
     },
     {
       "id": "AC3",
       "level": "MUST",
       "description": "Given `@indexer` is held by A, When B calls `host.agent.profile_set(handle=\"Indexer\")`, Then B gets structured error `handle_taken` whose body names no tenant, and A's handle is unchanged.",
-      "test": "tests/agentdir_ac01_ac02_ac03_ac04_identity_and_lookup.rs::ac3_claiming_a_taken_handle_fails_without_naming_the_holder"
+      "test": "tests/agentdir_ac01_ac02_ac03_ac04_identity_and_lookup.rs (ac3_claiming_a_taken_handle_fails_without_naming_the_holder)"
     },
     {
       "id": "AC4",
       "level": "MUST",
       "description": "Given a namespace that does not exist, a tenant disabled via `admin.tenant_disable`, and a tenant deleted via `admin.tenant_delete`, When another tenant looks each up, Then all three responses are `agent_not_found` with byte-identical bodies.",
-      "test": "tests/agentdir_ac01_ac02_ac03_ac04_identity_and_lookup.rs::ac4_unknown_disabled_and_deleted_are_indistinguishable"
+      "test": "tests/agentdir_ac01_ac02_ac03_ac04_identity_and_lookup.rs (ac4_unknown_disabled_and_deleted_are_indistinguishable)"
     },
     {
       "id": "AC5",
       "level": "MUST",
       "description": "Given A has tags `[\"rag\",\"indexing\"]` and description \"nightly index builder\", When B calls `host.agent.search(tag=\"rag\")` and `host.agent.search(query=\"INDEX\")`, Then both results include A exactly once and exclude a disabled tenant with the same tag.",
-      "test": "tests/agentdir_ac05_ac06_search.rs::ac5_search_by_tag_and_by_query_finds_a_and_excludes_disabled"
+      "test": "tests/agentdir_ac05_ac06_search.rs (ac5_search_by_tag_and_by_query_finds_a_and_excludes_disabled)"
     },
     {
       "id": "AC6",
       "level": "MUST",
       "description": "Given 60 profiled tenants, When B calls `host.agent.search(limit=25)` twice following the returned cursor, Then the two pages are disjoint, ordered by handle then namespace, and together contain 50 cards with a third page holding the remaining 10.",
-      "test": "tests/agentdir_ac05_ac06_search.rs::ac6_search_pages_are_disjoint_ordered_and_exhaustive"
+      "test": "tests/agentdir_ac05_ac06_search.rs (ac6_search_pages_are_disjoint_ordered_and_exhaustive)"
     },
     {
       "id": "AC7",
       "level": "MUST",
       "description": "Given A holds `@indexer` and is deleted through `admin.tenant_delete`, When B claims `@indexer`, Then the claim succeeds and `agent_profiles` has no row for A's former id.",
-      "test": "tests/agentdir_ac07_ac09_ac10_lifecycle.rs::ac7_deleting_the_holder_frees_its_handle_immediately"
+      "test": "tests/agentdir_ac07_ac09_ac10_lifecycle.rs (ac7_deleting_the_holder_frees_its_handle_immediately)"
     },
     {
       "id": "AC8",
       "level": "SHOULD",
       "description": "Given 1 000 profiled tenants in a warm database, When 200 sequential `host.agent.lookup` calls run, Then p95 latency is under 50 ms.",
-      "test": "tests/agentdir_ac08_lookup_latency.rs::two_hundred_sequential_lookups_stay_under_50ms_p95"
+      "test": "tests/agentdir_ac08_lookup_latency.rs (two_hundred_sequential_lookups_stay_under_50ms_p95)"
     },
     {
       "id": "AC9",
       "level": "SHOULD",
       "description": "Given a handle in the reserved list, When any tenant claims it, Then the response is `handle_reserved`; and given the admin key calls `admin.agent.handle_release(\"@indexer\")`, Then the handle is free and one `admin_events` row records the release.",
-      "test": "tests/agentdir_ac07_ac09_ac10_lifecycle.rs::ac9_reserved_handles_are_refused_and_admin_can_release"
+      "test": "tests/agentdir_ac07_ac09_ac10_lifecycle.rs (ac9_reserved_handles_are_refused_and_admin_can_release)"
     },
     {
       "id": "AC10",
       "level": "SHOULD",
       "description": "Given a tenant created with the `x-mcphost-synthetic` header, When another tenant looks it up, Then its card carries `synthetic: true`.",
-      "test": "tests/agentdir_ac07_ac09_ac10_lifecycle.rs::ac10_synthetic_tenants_card_carries_the_flag"
+      "test": "tests/agentdir_ac07_ac09_ac10_lifecycle.rs (ac10_synthetic_tenants_card_carries_the_flag)"
     }
   ],
   "scope": [
