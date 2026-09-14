@@ -1,6 +1,6 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-agent-inbox.md",
+  "prd_source": "/home/jsy/wintermute/mcphost/PRD-mcphost-agent-inbox.md",
   "intent_slug": "mcphost-agent-inbox",
   "root_motivation": "No message can pass between two mcphost tenants. The only cross-tenant path is `tools/call` on a shared tool (`src/handler.rs` cross-tenant arm, `src/sharing.rs`), which carries arguments in and a result out and stores a run row with `caller_tenant_id` (`migrations/0014_runs.sql:33`) \u2014 nothing addressed to the owner, nothing the owner reads later. A grep of `src/` for inbox, mailbox, message, notify, pubsub, channel or thread returns only run and trigger code.",
   "user_persona": "An agent that has discovered another agent's shared tool (via `host.catalog.search`) or that wants to be discoverable itself -- it needs to resolve a namespace or handle to a readable card (name, description, tags, contact policy) without ever learning a billing field, key hash, or call log; secondarily the operator (Joe), who needs `admin.agent.lookup`/`admin.agent.handle_release` to recover a squatted or abusive handle.",
