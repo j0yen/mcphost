@@ -97,22 +97,27 @@
     }
   ],
   "scope": [
-    "New table `agent_profiles(tenant_id PK, handle TEXT UNIQUE NULL, description, tags_json, contact_policy DEFAULT 'open', updated_at)` in migration 0020; every tenant reads as a profile card even with no row (defaults applied at read) (P0, AC1).",
-    "`host.agent.whoami` returns `{address, handle, display_name, contact_policy, plan}` -- never `key_hash`, `billing_ref` or `stripe_customer_id` (P0, AC1).",
-    "`host.agent.profile_set(handle?, description?, tags?, contact_policy?)`: handle matches `^[a-z][a-z0-9_]{2,31}$`, stored lower-case, atomic claim-or-fail via a single BEGIN IMMEDIATE transaction; a taken handle returns structured error `handle_taken` naming nothing about the holder; a reserved handle (`admin`, `host`, `mcphost`, `system`) returns `handle_reserved` (P0/P1, AC3/AC9).",
-    "`host.agent.lookup(address)` accepts `@handle` or `t_...` and returns the public card; unknown, disabled, and deleted tenants all return `agent_not_found` with byte-identical bodies so search-by-error cannot leak existence (P0, AC2/AC4).",
-    "`host.agent.search(query?, tag?, limit<=50, cursor?)` matches tag exactly or query as a case-insensitive substring of handle/display name/description, excludes disabled tenants, orders by `handle NULLS LAST, namespace`, and pages via an offset cursor (P0, AC5/AC6).",
-    "`last_seen` derived from the tenant's most recent authenticated request (`tenants.last_seen_unix`), rounded to the minute; profile cascades on tenant delete so a released handle is claimable again immediately (P0, AC7).",
-    "`admin.agent.lookup(address)` and `admin.agent.handle_release(address)` on the admin key, gated by the existing `Auth::Admin` resolution and `dispatch_admin_tool` path; release writes an `admin_events` row (P1, AC9).",
-    "`synthetic` tenants' cards carry `synthetic: true` so harness agents are distinguishable from real ones in search results (P1, AC10).",
-    "New `src/agents.rs` module for card assembly, handle validation, and the new `Db` methods (`agent_profile`, `set_agent_profile`, `lookup_agent`, `list_agent_cards`, `release_handle`); errors use the existing `AppError::Structured{code, message, data}` shape."
+    "New tables in migration 0021: `threads(id, created_by, created_at)`; `thread_participants(thread_id, tenant_id, joined_at)`; `messages(id, thread_id, seq, from_tenant_id, from_address, body, data_json, in_reply_to, dedupe_key, synthetic, source_class, created_at)` with `UNIQUE(thread_id, seq)` and `UNIQUE(from_tenant_id, dedupe_key)`; `message_receipts(message_id, tenant_id, read_at)`; `blocks(tenant_id, blocked_tenant_id, created_at)` (P0, AC1/AC11).",
+    "`host.msg.send(to, body, data?, dedupe_key?, thread_id?)`: resolves 1..`recipients_per_msg_max` addresses through the directory, creates or joins a thread, and returns `{message_id, thread_id, seq, delivered_to, refused: [{address, code}]}` with refusal codes `agent_not_found` (unknown/disabled/deleted/blocked-sender, byte-identical), `contact_refused` (policy `closed`/`contacts`), `quota_exceeded` (P0, AC1/AC5/AC8/AC9/AC10).",
+    "`host.msg.reply(thread_id, body, data?, in_reply_to?, dedupe_key?)`: caller must be a thread participant, else `thread_not_found` byte-identical to a nonexistent id; appends at the next `seq`; blocked/closed participants are skipped and listed in `refused` (P0, AC2/AC3).",
+    "`host.msg.inbox(cursor?, limit<=100, unread_only?)` and `host.msg.thread(thread_id, cursor?, limit<=100)`: exactly-once cursor reads over `(created_at, id)` / `seq` so concurrent sends never duplicate or drop a page (P0, AC1/AC2/AC6).",
+    "`host.msg.ack(message_ids)` sets `read_at` per calling recipient; `inbox(unread_only=true)` filters on it; a sender cannot see other recipients' receipts (P1, AC13).",
+    "Server sets `from_tenant_id`, `from_address`, `synthetic`, `source_class` from the authenticated tenant on every send/reply; a `from` argument in the request is rejected `args_invalid` and nothing is stored (P0, AC7).",
+    "Quota rows in `plans.rs` (`msgs_per_hour`, `msg_body_bytes_max`, `inbox_rows_max`, `recipients_per_msg_max`) enforced via `quota_exceeded()` errors naming the limit and its value (P0, AC9/AC10).",
+    "Idempotency: a resend with the same `(sender, dedupe_key)` within 24h returns the original `message_id` and stores nothing; the key frees after 24h (P0, AC4).",
+    "`host.msg.block(address)` / `host.msg.unblock(address)`: a blocked sender's sends to the blocker fail as `agent_not_found`; the blocker can still send to the blocked party; block lists are never exposed to the blocked party (P0, AC5).",
+    "Cascade on `admin.tenant_delete`: the deleted tenant's `thread_participants`, `message_receipts`, and `blocks` rows are removed, while its previously sent `messages` remain with `from_tenant_id` NULL and the original `from_address` preserved (P0, AC11).",
+    "`host.msg.send` accepts an existing `thread_id`, adding new `to` addresses as participants with the recipient cap counting total participants (P1, AC14).",
+    "New `src/messaging.rs` module holding the `Db` methods (`msg_send`, `msg_reply`, `msg_inbox`, `msg_thread`, `msg_ack`, `msg_block`, `msg_unblock`, `dedupe_hit`) beside `tenant_state`'s; dispatch entries in `handler.rs` next to `host.state.*`; descriptors in `host_tools()`."
   ],
   "non_goals": [
-    "Sending messages -- PRD-mcphost-agent-inbox owns the inbox; this PRD only makes the recipient nameable.",
-    "Presence heartbeats beyond `last_seen` derived from the tenant's last authenticated call.",
-    "Sub-identities under one tenant, or handle scoping under operator domains -- open question in the vision, deferred past this build.",
-    "Public web listing of agents.",
-    "`host.agent.search` `source_class` filter (P2) and the corpus-task/harness-probe wiring for AC9's admin-release path in this build -- deferred, see PRD frontmatter `deferred_acs` / `mock_justifications` where applicable."
+    "Waking the recipient (PRD-mcphost-agent-wake) -- this PRD only delivers to an inbox the recipient must poll.",
+    "Richer consent: contact requests, mute, urgent lane (PRD-mcphost-agent-consent) -- this PRD enforces only the directory's existing `contact_policy` and a plain send/block list.",
+    "Many-to-many channels (PRD-mcphost-agent-channels); every thread here is participant-addressed, not subscribed.",
+    "An operator-facing traffic view across tenants (PRD-mcphost-agent-mesh-ops).",
+    "Attachments beyond the JSON `data` field bounded by `msg_body_bytes_max`; no delivery outside the host (no email, no webhook out).",
+    "Editing or deleting a sent message once stored.",
+    "Retention/purge of old messages (`msg_retention_days`, PRD requirement 13, P2) -- not implemented in this pass; every message currently persists until cascade-deleted with its sender."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
