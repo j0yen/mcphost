@@ -32,6 +32,7 @@ const MIGRATION_0016: &str = include_str!("../migrations/0016_runs_manual.sql");
 const MIGRATION_0017: &str = include_str!("../migrations/0017_event_dedupe.sql");
 const MIGRATION_0018: &str = include_str!("../migrations/0018_runs_test_run.sql");
 const MIGRATION_0019: &str = include_str!("../migrations/0019_handoff_token.sql");
+const MIGRATION_0020: &str = include_str!("../migrations/0020_agent_profiles.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -93,6 +94,83 @@ fn tool_from_row(r: &Row) -> rusqlite::Result<ToolRow> {
         shared_group: r.get(9)?,
         unshared_by: r.get(10)?,
     })
+}
+
+/// PRD-mcphost-agent-directory requirements 1/4/5: `tenants` LEFT JOINed
+/// onto its (possibly absent) `agent_profiles` row -- shared by
+/// `Db::lookup_agent`/`Db::lookup_agent_admin`/`Db::list_agent_cards` so the
+/// column order and [`agent_card_from_row`] stay in lockstep, same
+/// convention as [`TENANT_COLUMNS`]/[`tenant_from_row`] above. Excludes
+/// `t.disabled` (each caller filters or not, per requirement 4 vs the
+/// admin-lookup goal) and every billing/key field (requirement 2's "never
+/// returns" promise, restated for the read side).
+const AGENT_CARD_SELECT: &str = "SELECT t.namespace, t.display_name, t.last_seen_unix, \
+    t.source_class, t.synthetic, ap.handle, ap.description, ap.tags_json, ap.contact_policy \
+    FROM tenants t LEFT JOIN agent_profiles ap ON ap.tenant_id = t.id";
+
+/// The card `host.agent.lookup`/`host.agent.search`/`admin.agent.lookup`
+/// return -- never a `key_hash`, `billing_ref`, or `stripe_customer_id`.
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentCard {
+    pub address: String,
+    pub handle: Option<String>,
+    pub display_name: String,
+    pub description: Option<String>,
+    pub tags: Vec<String>,
+    pub contact_policy: String,
+    /// Unix seconds, rounded to the minute (requirement 6); `None` for a
+    /// tenant that has never made an authenticated call since this column
+    /// was added.
+    pub last_seen: Option<i64>,
+    pub source_class: Option<String>,
+    pub synthetic: bool,
+}
+
+fn agent_card_from_row(r: &Row) -> rusqlite::Result<AgentCard> {
+    let last_seen_unix: Option<i64> = r.get(2)?;
+    let tags_json: Option<String> = r.get(7)?;
+    let tags = tags_json
+        .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
+        .unwrap_or_default();
+    Ok(AgentCard {
+        address: r.get(0)?,
+        display_name: r.get(1)?,
+        last_seen: last_seen_unix.map(|u| (u / 60) * 60),
+        source_class: r.get(3)?,
+        synthetic: r.get::<_, Option<String>>(4)?.is_some(),
+        handle: r.get(5)?,
+        description: r.get(6)?,
+        tags,
+        contact_policy: r.get::<_, Option<String>>(8)?.unwrap_or_else(|| "open".to_string()),
+    })
+}
+
+/// The `agent_profiles` row alone (no tenant join) -- what
+/// `host.agent.whoami`/`host.agent.profile_set` need, since both already
+/// have the caller's [`Tenant`] in hand.
+#[derive(Debug, Clone, Default)]
+pub struct AgentProfileRow {
+    pub handle: Option<String>,
+    pub description: Option<String>,
+    pub tags: Vec<String>,
+    pub contact_policy: String,
+}
+
+fn agent_profile_row_from_row(r: &Row) -> rusqlite::Result<AgentProfileRow> {
+    let tags_json: String = r.get(2)?;
+    Ok(AgentProfileRow {
+        handle: r.get(0)?,
+        description: r.get(1)?,
+        tags: serde_json::from_str(&tags_json).unwrap_or_default(),
+        contact_policy: r.get(3)?,
+    })
+}
+
+/// Outcome of [`Db::set_agent_profile`]'s handle-uniqueness check
+/// (requirement 3 / AC3): `HandleTaken` never names the current holder.
+pub enum SetProfileOutcome {
+    Ok(AgentProfileRow),
+    HandleTaken,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -730,7 +808,8 @@ impl Db {
         Self::migrate_0016_runs_manual(&conn)?;
         Self::migrate_0017_event_dedupe(&conn)?;
         Self::migrate_0018_runs_test_run(&conn)?;
-        Self::migrate_0019_handoff_token(&conn)
+        Self::migrate_0019_handoff_token(&conn)?;
+        Self::migrate_0020_agent_profiles(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -993,6 +1072,20 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0019)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-agent-directory requirements 1/6: same shape as 0019
+    /// above -- a wholly new table (`agent_profiles`) plus one additive
+    /// column (`tenants.last_seen_unix`), gated on the column so a second
+    /// `migrate()` call (every `serve` start) is a no-op.
+    fn migrate_0020_agent_profiles(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'last_seen_unix'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0020)?;
         }
         Ok(())
     }
@@ -1265,6 +1358,213 @@ impl Db {
             conn.query_row(&sql, params![tenant_id], tenant_from_row)
                 .optional()
                 .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-agent-directory requirement 6: bumped from
+    /// `handler::resolve_auth`/`resolve_tenant_key_auth` on every call that
+    /// resolves to a live tenant. Best-effort from the caller's side (a
+    /// failure here must never fail the request it rode in on).
+    pub async fn touch_last_seen(&self, tenant_id: i64, unix: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tenants SET last_seen_unix = ?1 WHERE id = ?2",
+                params![unix, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `host.agent.whoami`/`host.agent.profile_set` (requirements 2/3): the
+    /// caller's own profile row, or the all-default row (P0 requirement 1)
+    /// for a tenant that has never called `host.agent.profile_set`.
+    pub async fn agent_profile(&self, tenant_id: i64) -> Result<AgentProfileRow, AppError> {
+        self.with_conn(move |conn| Self::query_agent_profile(conn, tenant_id)).await
+    }
+
+    fn query_agent_profile(conn: &Connection, tenant_id: i64) -> Result<AgentProfileRow, AppError> {
+        conn.query_row(
+            "SELECT handle, description, tags_json, contact_policy FROM agent_profiles \
+             WHERE tenant_id = ?1",
+            params![tenant_id],
+            agent_profile_row_from_row,
+        )
+        .optional()
+        .map_err(AppError::from)
+        .map(|row| {
+            row.unwrap_or_else(|| AgentProfileRow {
+                contact_policy: "open".to_string(),
+                ..Default::default()
+            })
+        })
+    }
+
+    /// `host.agent.profile_set` (requirement 3 / AC3): `None` for a field
+    /// means "leave unchanged"; for `handle`/`description`,
+    /// `Some(None)` means "clear it" (an explicit JSON `null`) and
+    /// `Some(Some(v))` means "set it" -- `v` is already validated and
+    /// lower-cased by `agents::validate_handle` before this is called. The
+    /// handle-uniqueness check and the upsert run inside one
+    /// `BEGIN IMMEDIATE` transaction so a concurrent claim of the same
+    /// handle can't both win (same hand-rolled-transaction pattern
+    /// `Db::delete_tenant` already uses, needed here for the same reason:
+    /// this runs inside `with_conn`'s `&Connection` closure, behind the
+    /// single shared connection's mutex, so `Connection::transaction`'s
+    /// `&mut Connection` isn't available).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn set_agent_profile(
+        &self,
+        tenant_id: i64,
+        handle: Option<Option<String>>,
+        description: Option<Option<String>>,
+        tags: Option<Vec<String>>,
+        contact_policy: Option<String>,
+    ) -> Result<SetProfileOutcome, AppError> {
+        self.with_conn(move |conn| {
+            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
+            let outcome: Result<SetProfileOutcome, AppError> = (|| {
+                let current = Self::query_agent_profile(conn, tenant_id)?;
+                let new_handle = match &handle {
+                    None => current.handle.clone(),
+                    Some(None) => None,
+                    Some(Some(h)) => {
+                        let taken: bool = conn
+                            .prepare(
+                                "SELECT 1 FROM agent_profiles WHERE handle = ?1 AND tenant_id != ?2",
+                            )?
+                            .exists(params![h, tenant_id])?;
+                        if taken {
+                            return Ok(SetProfileOutcome::HandleTaken);
+                        }
+                        Some(h.clone())
+                    }
+                };
+                let new_description = match description {
+                    None => current.description.clone(),
+                    Some(d) => d,
+                };
+                let new_tags = tags.unwrap_or_else(|| current.tags.clone());
+                let new_contact_policy = contact_policy.unwrap_or(current.contact_policy);
+                let tags_json = serde_json::to_string(&new_tags).unwrap_or_else(|_| "[]".to_string());
+                let now = now_rfc3339();
+                conn.execute(
+                    "INSERT INTO agent_profiles \
+                         (tenant_id, handle, description, tags_json, contact_policy, updated_at) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
+                     ON CONFLICT(tenant_id) DO UPDATE SET \
+                         handle = excluded.handle, \
+                         description = excluded.description, \
+                         tags_json = excluded.tags_json, \
+                         contact_policy = excluded.contact_policy, \
+                         updated_at = excluded.updated_at",
+                    params![tenant_id, new_handle, new_description, tags_json, new_contact_policy, now],
+                )?;
+                Ok(SetProfileOutcome::Ok(AgentProfileRow {
+                    handle: new_handle,
+                    description: new_description,
+                    tags: new_tags,
+                    contact_policy: new_contact_policy,
+                }))
+            })();
+            match &outcome {
+                Ok(SetProfileOutcome::Ok(_)) => {
+                    conn.execute("COMMIT", []).map_err(AppError::from)?;
+                }
+                Ok(SetProfileOutcome::HandleTaken) | Err(_) => {
+                    let _ = conn.execute("ROLLBACK", []);
+                }
+            }
+            outcome
+        })
+        .await
+    }
+
+    /// `host.agent.lookup` (requirement 4 / AC2/AC4): `@handle` (matched
+    /// case-insensitively against the lower-cased stored value) or a bare
+    /// `t_...` namespace. Excludes disabled tenants -- a deleted tenant
+    /// simply has no row -- so both collapse to the same `None`
+    /// `agents::lookup` maps to the byte-identical `agent_not_found` (AC4).
+    pub async fn lookup_agent(&self, address: String) -> Result<Option<AgentCard>, AppError> {
+        self.lookup_agent_impl(address, false).await
+    }
+
+    /// `admin.agent.lookup` (P1 requirement 8): like [`Self::lookup_agent`]
+    /// but on any tenant, disabled included -- the goal this tool exists
+    /// for is recovering a squatted or abusive name, which requires seeing
+    /// the tenant even if it's currently disabled.
+    pub async fn lookup_agent_admin(&self, address: String) -> Result<Option<AgentCard>, AppError> {
+        self.lookup_agent_impl(address, true).await
+    }
+
+    async fn lookup_agent_impl(
+        &self,
+        address: String,
+        include_disabled: bool,
+    ) -> Result<Option<AgentCard>, AppError> {
+        self.with_conn(move |conn| {
+            let disabled_clause = if include_disabled { "" } else { " AND t.disabled = 0" };
+            if let Some(h) = address.strip_prefix('@') {
+                let handle = h.to_lowercase();
+                let sql = format!("{AGENT_CARD_SELECT} WHERE ap.handle = ?1{disabled_clause}");
+                conn.query_row(&sql, params![handle], agent_card_from_row)
+                    .optional()
+                    .map_err(AppError::from)
+            } else {
+                let sql = format!("{AGENT_CARD_SELECT} WHERE t.namespace = ?1{disabled_clause}");
+                conn.query_row(&sql, params![address], agent_card_from_row)
+                    .optional()
+                    .map_err(AppError::from)
+            }
+        })
+        .await
+    }
+
+    /// `host.agent.search` (requirement 5 / AC5/AC6): every enabled
+    /// tenant's card, in the exact order the PRD promises (`handle NULLS
+    /// LAST, namespace`, expressed here as `ap.handle IS NULL, ap.handle`
+    /// since SQLite sorts NULL first by default). `agents::search` does the
+    /// `tag`/`query` filtering and offset pagination in Rust rather than
+    /// pushing them into SQL -- neither field is indexed, and the PRD's own
+    /// latency target (AC8) is scoped to `host.agent.lookup`, not search.
+    pub async fn list_agent_cards(&self) -> Result<Vec<AgentCard>, AppError> {
+        self.with_conn(|conn| {
+            let sql = format!(
+                "{AGENT_CARD_SELECT} WHERE t.disabled = 0 \
+                 ORDER BY ap.handle IS NULL, ap.handle, t.namespace"
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map([], agent_card_from_row)?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            Ok(out)
+        })
+        .await
+    }
+
+    /// `admin.agent.handle_release` (P1 requirement 8 / AC9): frees a handle
+    /// regardless of which tenant holds it and writes one `admin_events` row
+    /// (migration 0005's table -- same audit trail `Db::delete_tenant`
+    /// writes to; distinct from `admin_audit`, which
+    /// `handler::dispatch_admin_tool` already appends to centrally for every
+    /// admin.* mutation). Idempotent: releasing an already-free handle is
+    /// not an error, just a no-op `false`.
+    pub async fn release_handle(&self, handle: String) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let changed = conn.execute(
+                "UPDATE agent_profiles SET handle = NULL, updated_at = ?2 WHERE handle = ?1",
+                params![handle, now_rfc3339()],
+            )? > 0;
+            if changed {
+                conn.execute(
+                    "INSERT INTO admin_events (ts, action, tenant, detail) VALUES (?1, ?2, NULL, ?3)",
+                    params![now_rfc3339(), "agent_handle_release", handle],
+                )?;
+            }
+            Ok(changed)
         })
         .await
     }

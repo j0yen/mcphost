@@ -155,6 +155,13 @@ async fn unauthenticated_tools_list_is_signup_only() {
         "billing.plans",
         "billing.status",
         "billing.checkout",
+        // PRD-mcphost-agent-directory requirements 2-5: the agent-directory
+        // control plane is discoverable unauthenticated too, same as every
+        // other host.*-style tool above.
+        "host.agent.whoami",
+        "host.agent.profile_set",
+        "host.agent.lookup",
+        "host.agent.search",
     ] {
         assert!(
             tool_names.contains(&expected),
@@ -167,7 +174,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        57,
+        61,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the nine host.state.* tools (PRD-mcphost-tenant-state) \
@@ -175,7 +182,8 @@ async fn unauthenticated_tools_list_is_signup_only() {
          + the eight host.tool_share/host.tool_unshare/host.group.*/host.catalog.* tools \
          (PRD-mcphost-sharing) + the five host.runs.* tools (PRD-mcphost-runs-and-jobs) \
          + the nine host.trigger.* tools (PRD-mcphost-schedules, PRD-mcphost-inbound-events) \
-         + the three billing.* tools: \
+         + the three billing.* tools + the four host.agent.* tools \
+         (PRD-mcphost-agent-directory): \
          {tool_names:?}"
     );
 }

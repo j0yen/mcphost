@@ -47,6 +47,14 @@ mod ac16_request_body_too_large;
 mod ac18_tools_list_ttl;
 #[path = "ac19_registry_publish.rs"]
 mod ac19_registry_publish;
+#[path = "agentdir_ac01_ac02_ac03_ac04_identity_and_lookup.rs"]
+mod agentdir_ac01_ac02_ac03_ac04_identity_and_lookup;
+#[path = "agentdir_ac05_ac06_search.rs"]
+mod agentdir_ac05_ac06_search;
+#[path = "agentdir_ac07_ac09_ac10_lifecycle.rs"]
+mod agentdir_ac07_ac09_ac10_lifecycle;
+#[path = "agentdir_ac08_lookup_latency.rs"]
+mod agentdir_ac08_lookup_latency;
 #[path = "attrib_ac1_loopback_signup_unstamped.rs"]
 mod attrib_ac1_loopback_signup_unstamped;
 #[path = "attrib_ac2_clientinfo_captured.rs"]
@@ -253,5 +261,3 @@ mod metering_ac11_admin_meter_status;
 mod metering_ac12_billing_status_stripe_reported_usage;
 #[path = "metering_billing_status_emitted_this_month.rs"]
 mod metering_billing_status_emitted_this_month;
-#[path = "migration_compat_headers.rs"]
-mod migration_compat_headers;

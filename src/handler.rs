@@ -27,7 +27,7 @@ use crate::kinds::{
 use crate::state::{
     AppState, MAX_SPEC_BYTES, TOOLS_LIST_TTL_GRACE_SECS, TOOLS_LIST_TTL_MS_STEADY, now_unix,
 };
-use crate::{admin, control, tables, tenant_state};
+use crate::{admin, agents, control, tables, tenant_state};
 
 /// Who is making this request, resolved once per request from the bearer
 /// key (or its absence).
@@ -75,7 +75,17 @@ async fn resolve_auth(state: &AppState, parts: &http::request::Parts) -> Result<
     let hash = hash_key(&key);
     match state.db.find_tenant_by_key_hash(hash).await? {
         Some(t) if t.disabled => Err(AppError::TenantDisabled),
-        Some(t) => Ok(Auth::Tenant(Box::new(t))),
+        Some(t) => {
+            // PRD-mcphost-agent-directory requirement 6: `last_seen` is the
+            // tenant's most recent authenticated request -- bumped here,
+            // the one place both this header path and the argument path
+            // below resolve a live tenant. Best-effort: a write failure
+            // must never fail the request that carried it.
+            if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
+                tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump last_seen_unix");
+            }
+            Ok(Auth::Tenant(Box::new(t)))
+        }
         None => Ok(Auth::Invalid),
     }
 }
@@ -105,7 +115,13 @@ async fn resolve_tenant_key_auth(state: &AppState, args: &Value) -> Result<Auth,
         // exist" for this path, so nothing about a guessed key's validity
         // leaks through it.
         Some(t) if t.disabled => Err(AppError::TenantKeyInvalid),
-        Some(t) => Ok(Auth::Tenant(Box::new(t))),
+        Some(t) => {
+            // See the mirrored comment in `resolve_auth` above.
+            if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
+                tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump last_seen_unix");
+            }
+            Ok(Auth::Tenant(Box::new(t)))
+        }
         None => Ok(Auth::Invalid),
     }
 }
@@ -1162,6 +1178,83 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &[],
             ),
         ),
+        // PRD-mcphost-agent-directory: every tenant is addressable by
+        // namespace with zero setup; a handle is optional, unique, and
+        // claimable once.
+        Tool::new(
+            "host.agent.whoami",
+            "Return this tenant's own agent-directory address: namespace, handle (if claimed), \
+             display name, contact_policy and plan. Never a key hash, billing field, or call log.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "host.agent.profile_set",
+            "Claim or update this tenant's agent-directory card: an optional unique @handle \
+             (^[a-z][a-z0-9_]{2,31}$, stored lower-case), a description, up to 16 tags, and a \
+             contact_policy (open, contacts, or closed). Every argument is optional and, if \
+             omitted, leaves that field unchanged; an explicit null clears handle or description. \
+             A taken handle fails with handle_taken (names no one); a reserved one fails with \
+             handle_reserved.",
+            host_schema(
+                json!({
+                    "handle": {
+                        "type": ["string", "null"],
+                        "description": "Unique handle to claim, e.g. \"indexer\" (without the @); \
+                            null clears it.",
+                    },
+                    "description": {
+                        "type": ["string", "null"],
+                        "description": "Short blurb shown to other agents via lookup/search; \
+                            up to 512 bytes; null clears it.",
+                    },
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Up to 16 tags of up to 32 bytes each, for host.agent.search.",
+                    },
+                    "contact_policy": {
+                        "type": "string",
+                        "enum": ["open", "contacts", "closed"],
+                        "description": "What contact this tenant accepts; enforced by the inbox PRD.",
+                    },
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.agent.lookup",
+            "Resolve another agent's namespace or @handle to its public card (address, handle, \
+             display_name, description, tags, contact_policy, last_seen, source_class). Unknown, \
+             disabled, and deleted addresses all return the identical agent_not_found error.",
+            host_schema(
+                json!({
+                    "address": {
+                        "type": "string",
+                        "description": "An @handle (e.g. \"@indexer\") or a bare namespace (t_...).",
+                    },
+                }),
+                &["address"],
+            ),
+        ),
+        Tool::new(
+            "host.agent.search",
+            "Find agents by exact tag or a case-insensitive substring of handle, display name, \
+             or description. Disabled tenants are excluded. Ordered by handle (unclaimed last), \
+             then namespace; page with cursor from the previous response.",
+            host_schema(
+                json!({
+                    "query": {"type": "string", "description": "Substring to match; omit for no text filter."},
+                    "tag": {"type": "string", "description": "Exact tag to match; omit for no tag filter."},
+                    "limit": {"type": "integer", "description": "Max results per page, up to 50; default 50."},
+                    "cursor": {
+                        "type": "string",
+                        "description": "Opaque cursor from a previous host.agent.search response's \
+                            cursor field; omit for the first page.",
+                    },
+                }),
+                &[],
+            ),
+        ),
     ];
     if authenticated {
         tools.push(Tool::new(
@@ -1390,6 +1483,35 @@ fn admin_tools() -> Vec<Tool> {
                     "kind": {"type": "string", "description": "Only triggers of this kind."},
                 }),
                 &[],
+            ),
+        ),
+        // PRD-mcphost-agent-directory P1 requirement 8: recover a squatted
+        // or abusive handle.
+        Tool::new(
+            "admin.agent.lookup",
+            "Like host.agent.lookup, but on any tenant including disabled ones.",
+            schema(
+                json!({
+                    "address": {
+                        "type": "string",
+                        "description": "An @handle (e.g. \"@indexer\") or a bare namespace (t_...).",
+                    },
+                }),
+                &["address"],
+            ),
+        ),
+        Tool::new(
+            "admin.agent.handle_release",
+            "Free a handle so it can be claimed again, regardless of which tenant holds it; \
+             writes one admin_events row.",
+            schema(
+                json!({
+                    "address": {
+                        "type": "string",
+                        "description": "The handle to release, e.g. \"@indexer\" (with or without the @).",
+                    },
+                }),
+                &["address"],
             ),
         ),
     ]
@@ -1729,6 +1851,11 @@ impl McpHostHandler {
             "host.trigger.replay" => crate::hooks::replay(&self.state, tenant, &args).await,
             "billing.status" => crate::billing::status(&self.state, tenant).await,
             "billing.checkout" => crate::billing::checkout(&self.state, tenant, &args).await,
+            // PRD-mcphost-agent-directory requirements 2-5.
+            "host.agent.whoami" => agents::whoami(&self.state, tenant).await,
+            "host.agent.profile_set" => agents::profile_set(&self.state, tenant, &args).await,
+            "host.agent.lookup" => agents::lookup(&self.state, &args).await,
+            "host.agent.search" => agents::search(&self.state, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         }
     }
@@ -1761,6 +1888,9 @@ impl McpHostHandler {
             "admin.runs" => crate::runs::admin_runs(&self.state, &args).await,
             "admin.runs_reap" => crate::runs::admin_runs_reap(&self.state).await,
             "admin.triggers" => crate::triggers::admin_triggers(&self.state, &args).await,
+            // PRD-mcphost-agent-directory P1 requirement 8.
+            "admin.agent.lookup" => agents::admin_lookup(&self.state, &args).await,
+            "admin.agent.handle_release" => agents::handle_release(&self.state, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         };
 
