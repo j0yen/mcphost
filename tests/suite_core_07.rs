@@ -120,6 +120,16 @@ mod sched_ac7_tool_remove_disables_triggers;
 mod sched_ac8_healthz_scheduler_fields;
 #[path = "sched_quickstart_and_usage_report_schedules.rs"]
 mod sched_quickstart_and_usage_report_schedules;
+#[path = "self_offboard_ac1_disables_tenant_and_returns_success.rs"]
+mod self_offboard_ac1_disables_tenant_and_returns_success;
+#[path = "self_offboard_ac2_idempotent_second_call.rs"]
+mod self_offboard_ac2_idempotent_second_call;
+#[path = "self_offboard_ac3_offboarded_key_same_shape_as_unissued.rs"]
+mod self_offboard_ac3_offboarded_key_same_shape_as_unissued;
+#[path = "self_offboard_ac4_pro_tenant_cancels_stripe_subscription.rs"]
+mod self_offboard_ac4_pro_tenant_cancels_stripe_subscription;
+#[path = "self_offboard_ac5_admin_tenants_distinguishes_reason.rs"]
+mod self_offboard_ac5_admin_tenants_distinguishes_reason;
 #[path = "sessionkey_ac02_ac03_discovery_shape.rs"]
 mod sessionkey_ac02_ac03_discovery_shape;
 #[path = "sessionkey_ac04_signup_usage_field.rs"]
@@ -252,17 +262,3 @@ mod tenant_delete_ac07_tenant_not_found;
 mod tenant_delete_ac09_healthz_probe_split;
 #[path = "tenant_delete_ac10_tenants_prefix_filter.rs"]
 mod tenant_delete_ac10_tenants_prefix_filter;
-#[path = "tooltest_ac12_log_marking.rs"]
-mod tooltest_ac12_log_marking;
-#[path = "tooltest_ac3_http_dry_run.rs"]
-mod tooltest_ac3_http_dry_run;
-#[path = "tooltest_ac4_echo_verbatim.rs"]
-mod tooltest_ac4_echo_verbatim;
-#[path = "tooltest_ac5_validation_error_taxonomy.rs"]
-mod tooltest_ac5_validation_error_taxonomy;
-#[path = "tooltest_ac6_quota_and_metering.rs"]
-mod tooltest_ac6_quota_and_metering;
-#[path = "tooltest_ac7_too_many_invocations.rs"]
-mod tooltest_ac7_too_many_invocations;
-#[path = "tooltest_ac9_ac10_listing_and_auth.rs"]
-mod tooltest_ac9_ac10_listing_and_auth;
