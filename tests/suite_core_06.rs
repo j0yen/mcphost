@@ -147,6 +147,8 @@ mod firstcall_ac6_outcome_metering;
 mod gatedebt_24d1794_ac1_reviewer_agent_not_blocked;
 #[path = "gatedebt_6d51e76_ac1_reviewer_agent_not_blocked.rs"]
 mod gatedebt_6d51e76_ac1_reviewer_agent_not_blocked;
+#[path = "gatedebt_a1fcdba_ac1_extended_producers_not_blocked.rs"]
+mod gatedebt_a1fcdba_ac1_extended_producers_not_blocked;
 #[path = "gatedebt_a7d8e1c_ac1_reviewer_agent_not_blocked.rs"]
 mod gatedebt_a7d8e1c_ac1_reviewer_agent_not_blocked;
 #[path = "handoff_ac01_signup_returns_token_and_no_key.rs"]
