@@ -253,23 +253,21 @@ fn spawn_previous_inherited(
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    // SAFETY / fork hazard (found live during this PRD's own stress test,
-    // AC5: every spawned child hung forever, 0% CPU, still showing the
-    // PARENT's argv in `/proc/<pid>/cmdline` -- i.e. it never reached
-    // `execve`): `fork()` from a multithreaded process (this one -- tokio
-    // runs a worker pool) only carries the CALLING thread into the child;
-    // any lock some OTHER thread held at fork time (malloc arenas, and
-    // critically Rust's own internal env lock) is inherited already-held
-    // and never released, because the thread that would release it does
-    // not exist in the child. `std::env::set_var` takes exactly that lock.
-    // A `pre_exec` closure that calls it therefore deadlocks the child
-    // before `exec` runs, with a probability that scales with concurrent
-    // env access elsewhere in the process -- exactly the 30-way stress
-    // test this requirement exists to pass. This closure now does ONLY
-    // `dup2`, a raw libc syscall that touches no lock and is
-    // async-signal-safe / fork-safe by design; it clears close-on-exec on
-    // the target descriptor regardless of the source's flag (POSIX dup2
-    // semantics), so fd 3 survives the exec below.
+    // Fork hazard found live during this PRD's own stress test (AC5): every
+    // spawned child hung forever, 0% CPU, still showing the PARENT's argv
+    // in `/proc/<pid>/cmdline` -- it never reached `execve`. `fork()` from
+    // a multithreaded process (this one -- tokio runs a worker pool) only
+    // carries the CALLING thread into the child; any lock some OTHER
+    // thread held at fork time (critically Rust's own internal env lock)
+    // is inherited already-held and never released, because the thread
+    // that would release it does not exist in the child.
+    // `std::env::set_var` takes exactly that lock, so a `pre_exec` closure
+    // that calls it deadlocks the child before `exec` runs. This closure
+    // now does ONLY `dup2`, a raw libc syscall that touches no lock.
+    // SAFETY: `dup2` is async-signal-safe / fork-safe by design (no
+    // allocation, no locks); it clears close-on-exec on the target
+    // descriptor regardless of the source's flag (POSIX dup2 semantics),
+    // so fd 3 survives the exec below.
     unsafe {
         std_cmd.pre_exec(move || {
             if raw_fd != SD_LISTEN_FDS_START {

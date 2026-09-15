@@ -8,30 +8,6 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 
-#[path = "metering_ac01_stripe_customer_id_null_default.rs"]
-mod metering_ac01_stripe_customer_id_null_default;
-#[path = "metering_ac02_webhook_stores_stripe_customer_id.rs"]
-mod metering_ac02_webhook_stores_stripe_customer_id;
-#[path = "metering_ac03_checkout_metered_line_item.rs"]
-mod metering_ac03_checkout_metered_line_item;
-#[path = "metering_ac04_emits_pro_calls_only.rs"]
-mod metering_ac04_emits_pro_calls_only;
-#[path = "metering_ac05_crash_replay.rs"]
-mod metering_ac05_crash_replay;
-#[path = "metering_ac06_failure_leaves_state_unmoved.rs"]
-mod metering_ac06_failure_leaves_state_unmoved;
-#[path = "metering_ac07_batches_cap_at_100.rs"]
-mod metering_ac07_batches_cap_at_100;
-#[path = "metering_ac08_healthz_meter_lag.rs"]
-mod metering_ac08_healthz_meter_lag;
-#[path = "metering_ac09_deploy_units_verify.rs"]
-mod metering_ac09_deploy_units_verify;
-#[path = "metering_ac11_admin_meter_status.rs"]
-mod metering_ac11_admin_meter_status;
-#[path = "metering_ac12_billing_status_stripe_reported_usage.rs"]
-mod metering_ac12_billing_status_stripe_reported_usage;
-#[path = "metering_billing_status_emitted_this_month.rs"]
-mod metering_billing_status_emitted_this_month;
 #[path = "migration_compat_headers.rs"]
 mod migration_compat_headers;
 #[path = "minimal_ac1_anonymous_ok_only.rs"]
@@ -260,3 +236,35 @@ mod synthetic_ac09_metering_filter;
 mod synthetic_ac10_healthz_paying_real;
 #[path = "tables_ac07_tenant_delete_cascade.rs"]
 mod tables_ac07_tenant_delete_cascade;
+#[path = "tenant_delete_ac01_cascade_delete.rs"]
+mod tenant_delete_ac01_cascade_delete;
+#[path = "tenant_delete_ac02_forbidden.rs"]
+mod tenant_delete_ac02_forbidden;
+#[path = "tenant_delete_ac03_dry_run_prefix.rs"]
+mod tenant_delete_ac03_dry_run_prefix;
+#[path = "tenant_delete_ac04_prefix_delete.rs"]
+mod tenant_delete_ac04_prefix_delete;
+#[path = "tenant_delete_ac05_prefix_too_short.rs"]
+mod tenant_delete_ac05_prefix_too_short;
+#[path = "tenant_delete_ac06_migration_cascade.rs"]
+mod tenant_delete_ac06_migration_cascade;
+#[path = "tenant_delete_ac07_tenant_not_found.rs"]
+mod tenant_delete_ac07_tenant_not_found;
+#[path = "tenant_delete_ac09_healthz_probe_split.rs"]
+mod tenant_delete_ac09_healthz_probe_split;
+#[path = "tenant_delete_ac10_tenants_prefix_filter.rs"]
+mod tenant_delete_ac10_tenants_prefix_filter;
+#[path = "tooltest_ac12_log_marking.rs"]
+mod tooltest_ac12_log_marking;
+#[path = "tooltest_ac3_http_dry_run.rs"]
+mod tooltest_ac3_http_dry_run;
+#[path = "tooltest_ac4_echo_verbatim.rs"]
+mod tooltest_ac4_echo_verbatim;
+#[path = "tooltest_ac5_validation_error_taxonomy.rs"]
+mod tooltest_ac5_validation_error_taxonomy;
+#[path = "tooltest_ac6_quota_and_metering.rs"]
+mod tooltest_ac6_quota_and_metering;
+#[path = "tooltest_ac7_too_many_invocations.rs"]
+mod tooltest_ac7_too_many_invocations;
+#[path = "tooltest_ac9_ac10_listing_and_auth.rs"]
+mod tooltest_ac9_ac10_listing_and_auth;

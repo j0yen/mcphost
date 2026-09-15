@@ -251,3 +251,27 @@ mod kindhonor_ac5_replay_cost_optimizer_shape;
 mod kindhonor_ac6_tools_list_meta_kind;
 #[path = "limits_ac05_signup_burst_atomic.rs"]
 mod limits_ac05_signup_burst_atomic;
+#[path = "metering_ac01_stripe_customer_id_null_default.rs"]
+mod metering_ac01_stripe_customer_id_null_default;
+#[path = "metering_ac02_webhook_stores_stripe_customer_id.rs"]
+mod metering_ac02_webhook_stores_stripe_customer_id;
+#[path = "metering_ac03_checkout_metered_line_item.rs"]
+mod metering_ac03_checkout_metered_line_item;
+#[path = "metering_ac04_emits_pro_calls_only.rs"]
+mod metering_ac04_emits_pro_calls_only;
+#[path = "metering_ac05_crash_replay.rs"]
+mod metering_ac05_crash_replay;
+#[path = "metering_ac06_failure_leaves_state_unmoved.rs"]
+mod metering_ac06_failure_leaves_state_unmoved;
+#[path = "metering_ac07_batches_cap_at_100.rs"]
+mod metering_ac07_batches_cap_at_100;
+#[path = "metering_ac08_healthz_meter_lag.rs"]
+mod metering_ac08_healthz_meter_lag;
+#[path = "metering_ac09_deploy_units_verify.rs"]
+mod metering_ac09_deploy_units_verify;
+#[path = "metering_ac11_admin_meter_status.rs"]
+mod metering_ac11_admin_meter_status;
+#[path = "metering_ac12_billing_status_stripe_reported_usage.rs"]
+mod metering_ac12_billing_status_stripe_reported_usage;
+#[path = "metering_billing_status_emitted_this_month.rs"]
+mod metering_billing_status_emitted_this_month;
