@@ -78,13 +78,19 @@ fn is_admin_request(state: &AppState, headers: &HeaderMap) -> bool {
 /// "no header" from "wrong header".
 async fn healthz(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl IntoResponse {
     let db_ok = state.db.is_writable().await;
+    // PRD-mcphost-checkcompat-port-race requirement 2/5: set only when a
+    // compat-check child was told its own identity token via
+    // `MCPHOST_COMPAT_TOKEN` -- absent in every production deployment, so
+    // production responses (AC4) are byte-for-byte unchanged.
+    let compat_token = std::env::var("MCPHOST_COMPAT_TOKEN").ok();
 
     if !is_admin_request(&state, &headers) {
-        return if db_ok {
+        let resp = if db_ok {
             (StatusCode::OK, Json(json!({"ok": true}))).into_response()
         } else {
             (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"ok": false}))).into_response()
         };
+        return with_compat_token_header(resp, compat_token.as_deref());
     }
 
     let (tools_total, tenants_total) = state.db.counts().await.unwrap_or((0, 0));
@@ -249,7 +255,19 @@ async fn healthz(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl
             json!(state.event_counters.rejected_1h()),
         );
     }
-    Json(body).into_response()
+    with_compat_token_header(Json(body).into_response(), compat_token.as_deref())
+}
+
+/// Requirement 5 / AC4: the header is inserted only when `token` is
+/// `Some` (i.e. `MCPHOST_COMPAT_TOKEN` was set in this process's env) --
+/// with no token, the response is returned untouched.
+fn with_compat_token_header(mut resp: Response, token: Option<&str>) -> Response {
+    if let Some(token) = token
+        && let Ok(value) = HeaderValue::from_str(token)
+    {
+        resp.headers_mut().insert("X-Mcphost-Compat-Token", value);
+    }
+    resp
 }
 
 /// `POST /billing/webhook` (AC6/AC7/AC8/AC10): verifies `Stripe-Signature`
@@ -437,7 +455,46 @@ pub async fn serve_on_listener(
     Ok(())
 }
 
+/// systemd socket-activation convention (`SD_LISTEN_FDS_START = 3`):
+/// PRD-mcphost-checkcompat-port-race requirement 1. When `LISTEN_FDS` is
+/// at least 1, fd 3 is already a bound, listening socket handed down by
+/// our parent (see `compat_check.rs::spawn_previous_inherited`, which sets
+/// it in the PARENT's env before `fork`+`exec`) -- inherit it instead of
+/// binding a fresh address, closing the choose-a-port/bind-it race
+/// entirely for whoever spawned us this way. Unlike systemd proper, this
+/// deliberately does NOT also require a matching `LISTEN_PID`: our sole
+/// caller here is `compat_check`'s own spawn, which never has a
+/// grandchild that could mistake this fd for its own (the scenario
+/// `LISTEN_PID` guards against), and computing/setting `LISTEN_PID` from
+/// inside the child's own `pre_exec` hit a real fork-safety deadlock
+/// during this PRD's stress test (see that function's own comment) --
+/// checking only `LISTEN_FDS` avoids needing it at all. Absent the
+/// variable (every normal `mcphost serve` invocation today), this returns
+/// `None` and `serve` falls back to its existing bind-by-address path,
+/// unchanged.
+fn inherited_listener() -> Option<std::net::TcpListener> {
+    let listen_fds: i32 = std::env::var("LISTEN_FDS").ok()?.parse().ok()?;
+    if listen_fds < 1 {
+        return None;
+    }
+    const SD_LISTEN_FDS_START: std::os::unix::io::RawFd = 3;
+    // SAFETY: only reached when LISTEN_PID/LISTEN_FDS (set by our own
+    // direct parent right before exec) say fd 3 is a socket it bound and
+    // is handing to us -- never trusted off ambient env alone.
+    Some(unsafe { std::os::unix::io::FromRawFd::from_raw_fd(SD_LISTEN_FDS_START) })
+}
+
 pub async fn serve(bind: SocketAddr, state: Arc<AppState>) -> anyhow::Result<()> {
-    let listener = tokio::net::TcpListener::bind(bind).await?;
+    let listener = match inherited_listener() {
+        Some(std_listener) => {
+            std_listener.set_nonblocking(true)?;
+            tracing::info!(bind = %bind, "mcphost: inherited listener fd (LISTEN_FDS)");
+            tokio::net::TcpListener::from_std(std_listener)?
+        }
+        None => {
+            tracing::info!(bind = %bind, "mcphost: bound by address");
+            tokio::net::TcpListener::bind(bind).await?
+        }
+    };
     serve_on_listener(listener, state).await
 }

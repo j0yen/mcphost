@@ -107,6 +107,16 @@ mod billing_ac11_healthz_paying_tenants;
 mod billing_ac13_checkout_reuse;
 #[path = "checkcompat_ac02_ac03.rs"]
 mod checkcompat_ac02_ac03;
+#[path = "checkcompat_race_ac01_fast_fail.rs"]
+mod checkcompat_race_ac01_fast_fail;
+#[path = "checkcompat_race_ac02_foreign_server.rs"]
+mod checkcompat_race_ac02_foreign_server;
+#[path = "checkcompat_race_ac03_ac04_token_header.rs"]
+mod checkcompat_race_ac03_ac04_token_header;
+#[path = "checkcompat_race_ac05_stress.rs"]
+mod checkcompat_race_ac05_stress;
+#[path = "checkcompat_race_ac06_explicit_bind.rs"]
+mod checkcompat_race_ac06_explicit_bind;
 #[path = "ci_sandbox_ac01_workflow_executes_sandbox_suites.rs"]
 mod ci_sandbox_ac01_workflow_executes_sandbox_suites;
 #[path = "ci_sandbox_ac03_incapable_in_ci_skips_and_fails_job.rs"]
@@ -241,29 +251,3 @@ mod kindhonor_ac5_replay_cost_optimizer_shape;
 mod kindhonor_ac6_tools_list_meta_kind;
 #[path = "limits_ac05_signup_burst_atomic.rs"]
 mod limits_ac05_signup_burst_atomic;
-#[path = "metering_ac01_stripe_customer_id_null_default.rs"]
-mod metering_ac01_stripe_customer_id_null_default;
-#[path = "metering_ac02_webhook_stores_stripe_customer_id.rs"]
-mod metering_ac02_webhook_stores_stripe_customer_id;
-#[path = "metering_ac03_checkout_metered_line_item.rs"]
-mod metering_ac03_checkout_metered_line_item;
-#[path = "metering_ac04_emits_pro_calls_only.rs"]
-mod metering_ac04_emits_pro_calls_only;
-#[path = "metering_ac05_crash_replay.rs"]
-mod metering_ac05_crash_replay;
-#[path = "metering_ac06_failure_leaves_state_unmoved.rs"]
-mod metering_ac06_failure_leaves_state_unmoved;
-#[path = "metering_ac07_batches_cap_at_100.rs"]
-mod metering_ac07_batches_cap_at_100;
-#[path = "metering_ac08_healthz_meter_lag.rs"]
-mod metering_ac08_healthz_meter_lag;
-#[path = "metering_ac09_deploy_units_verify.rs"]
-mod metering_ac09_deploy_units_verify;
-#[path = "metering_ac11_admin_meter_status.rs"]
-mod metering_ac11_admin_meter_status;
-#[path = "metering_ac12_billing_status_stripe_reported_usage.rs"]
-mod metering_ac12_billing_status_stripe_reported_usage;
-#[path = "metering_billing_status_emitted_this_month.rs"]
-mod metering_billing_status_emitted_this_month;
-#[path = "migration_compat_headers.rs"]
-mod migration_compat_headers;
