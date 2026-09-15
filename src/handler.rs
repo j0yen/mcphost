@@ -350,8 +350,12 @@ const BRIDGE_TEST_DESC: &str =
     "Dry-run an unpublished http spec against its real upstream; for the other cases see host.quickstart.";
 const SPEC_TEST_DESC: &str =
     "Dry-run an unpublished spec of any kind with example invocations; for the other cases see host.quickstart.";
+// PRD-mcphost-tool-run-envelope requirement 3 / AC3: names the standard
+// result envelope (`result.payload`) alongside the run metadata this
+// dry-run adds on top of it, so the descriptor a caller reads before ever
+// dispatching matches the shape it gets back.
 const TOOL_RUN_DESC: &str =
-    "Debug-run a published python tool for stdout, stderr and exit code; for the other cases see host.quickstart.";
+    "Debug-run a published python tool: result.payload plus duration_ms and exit_code; for the other cases see host.quickstart.";
 
 /// PRD-mcphost-surface-fluidity requirement 4 (AC5): the name set
 /// `www/llms.txt`'s generated tool section is built from -- the
