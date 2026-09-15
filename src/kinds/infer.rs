@@ -49,6 +49,18 @@ use super::KindError;
 static STDLIB_JSON: &str = include_str!("../../infer-data/python-stdlib.json");
 static IMPORT_MAP_JSON: &str = include_str!("../../infer-data/python-import-map.json");
 
+/// PRD-mcphost-stdlib-pseudo-modules: compiler-directive / interpreter
+/// pseudo-modules that are always importable and never installable from
+/// PyPI, so they must live in `python-stdlib.json` even though no `pip`
+/// index will ever list them. `stdlib_regeneration_keeps_pseudo_modules`
+/// below (AC4) guards a future regeneration of the JSON from a real
+/// stdlib-module-list source from silently dropping these -- such a
+/// regeneration would have no reason to know about them on its own, since
+/// they aren't stdlib *packages*, just always-present import targets.
+/// `cfg(test)`-only: the only reader is that guard test itself.
+#[cfg(test)]
+const PSEUDO_MODULES: &[&str] = &["__future__", "__main__"];
+
 fn stdlib_modules() -> &'static BTreeSet<String> {
     static CELL: OnceLock<BTreeSet<String>> = OnceLock::new();
     CELL.get_or_init(|| {
@@ -649,6 +661,43 @@ mod tests {
                 assert_eq!(data["module"], json!("definitely_not_a_known_package"));
             }
             other => panic!("expected Structured, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn future_import_needs_no_requirement() {
+        // PRD-mcphost-stdlib-pseudo-modules AC1: `from __future__ import
+        // annotations` -- present in most modern Python source -- must not
+        // be treated as an unresolvable PyPI import.
+        let reqs = infer_python_requirements(
+            "from __future__ import annotations\n\ndef main(args):\n    return {}\n",
+        )
+        .unwrap(); // allowlist: test-only unwrap on a fixed literal
+        assert!(reqs.is_empty());
+    }
+
+    #[test]
+    fn dunder_main_import_needs_no_requirement() {
+        // PRD-mcphost-stdlib-pseudo-modules AC2: `__main__` is the
+        // interpreter's own entry-point module, never a PyPI distribution.
+        let reqs = infer_python_requirements("import __main__\n\ndef main(args):\n    return {}\n")
+            .unwrap(); // allowlist: test-only unwrap on a fixed literal
+        assert!(reqs.is_empty());
+    }
+
+    #[test]
+    fn stdlib_regeneration_keeps_pseudo_modules() {
+        // PRD-mcphost-stdlib-pseudo-modules AC4: a future regeneration of
+        // infer-data/python-stdlib.json from a different (real-stdlib-only)
+        // source must not silently drop the pseudo-module entries this PRD
+        // added -- they aren't stdlib packages, so a naive regeneration
+        // has no reason to reintroduce them on its own.
+        for module in PSEUDO_MODULES {
+            assert!(
+                stdlib_modules().contains(*module),
+                "infer-data/python-stdlib.json must contain pseudo-module \
+                 entry '{module}' (PRD-mcphost-stdlib-pseudo-modules)"
+            );
         }
     }
 
