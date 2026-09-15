@@ -143,6 +143,8 @@ mod envelope_ac1_http_declared_output_promoted;
 mod envelope_ac4_tool_test_reports_missing_declared_output;
 #[path = "firstcall_ac6_outcome_metering.rs"]
 mod firstcall_ac6_outcome_metering;
+#[path = "gatedebt_24d1794_ac1_reviewer_agent_not_blocked.rs"]
+mod gatedebt_24d1794_ac1_reviewer_agent_not_blocked;
 #[path = "gatedebt_6d51e76_ac1_reviewer_agent_not_blocked.rs"]
 mod gatedebt_6d51e76_ac1_reviewer_agent_not_blocked;
 #[path = "gatedebt_a7d8e1c_ac1_reviewer_agent_not_blocked.rs"]
