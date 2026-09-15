@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.53.0 — 2026-09-15
+
+Inherited gate debt at 24d1794: reviewer-agent's "finalize rejected the
+subagent's output" finding (third recurrence of this text, 6d51e76 ->
+a7d8e1c -> 24d1794) does not reproduce at the landed HEAD. Added
+tests/gatedebt_24d1794_ac1_reviewer_agent_not_blocked.rs as a regression
+pin, same shape as its two predecessors.
+
 ## v0.52.0 — 2026-09-14
 
 Confirms the inherited reviewer-agent gate finding at HEAD a7d8e1c ("finalize
