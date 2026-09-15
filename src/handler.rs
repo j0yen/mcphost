@@ -422,6 +422,22 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              after this one.",
             host_schema(json!({}), &[]),
         ),
+        // PRD-mcphost-tenant-self-offboard P0 requirement 1 / AC1-4:
+        // authenticated like every other host.* tenant tool -- host_schema's
+        // tenant_key property is exactly the credential being retired here.
+        // No admin key, no operator ticket: the same channel a tenant
+        // signed up through is the one it leaves through.
+        Tool::new(
+            "host.self_offboard",
+            "Permanently close your own account: disables the tenant, cancels any active \
+             Stripe subscription (pro plan), and stops your key from authenticating anything \
+             further -- same as an admin-disabled tenant. Idempotent: an already-offboarded \
+             key gets the same tenant_disabled/tenant_key_invalid error every other host.*/ \
+             billing.* call already gets from it, not a crash. This does not scrub historical \
+             usage/signup records -- those stay for audit, same as today's admin-disabled \
+             tenants.",
+            host_schema(json!({}), &[]),
+        ),
         Tool::new(
             "host.tool_publish",
             tool_publish_description(kinds),
@@ -2035,6 +2051,7 @@ impl McpHostHandler {
         match name {
             "host.whoami" => Ok(control::whoami(tenant)),
             "host.key_rotate" => control::key_rotate(&self.state, tenant).await,
+            "host.self_offboard" => control::self_offboard(&self.state, tenant).await,
             "host.tool_publish" => control::tool_publish(&self.state, tenant, &args).await,
             "host.tool_list" => control::tool_list(&self.state, tenant).await,
             "host.tool_remove" => control::tool_remove(&self.state, tenant, &args).await,
