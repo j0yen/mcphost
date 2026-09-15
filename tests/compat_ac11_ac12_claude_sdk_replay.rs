@@ -194,8 +194,9 @@ async fn ac12_claude_agent_sdk_sequence_lists_signup_with_schema() {
     // Migration/compatibility section).
     assert_eq!(
         tools.len(),
-        68,
-        "signup + host.* (incl. host.quickstart, host.tool_run, host.bridge_test) + \
+        69,
+        "signup + host.* (incl. host.quickstart, host.tool_run, host.bridge_test, and \
+         host.self_offboard, PRD-mcphost-tenant-self-offboard) + \
          host.tool_call + host.state.* (9 tools, PRD-mcphost-tenant-state) + \
          host.table.* (6 tools, PRD-mcphost-tenant-tables) + \
          host.tool_share/host.tool_unshare/host.group.*/host.catalog.* (8 tools, \

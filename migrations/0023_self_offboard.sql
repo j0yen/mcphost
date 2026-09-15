@@ -1,3 +1,7 @@
+-- compat: previous -- one additive column (`tenants.disabled_reason`,
+-- ALTER TABLE ADD COLUMN) an old release simply never queries; no existing
+-- row's shape changes, no existing statement's result set changes.
+--
 -- mcphost 0023_self_offboard: PRD-mcphost-tenant-self-offboard P1
 -- requirement 5 / AC5.
 --

@@ -8,16 +8,6 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 
-#[path = "minimal_ac1_anonymous_ok_only.rs"]
-mod minimal_ac1_anonymous_ok_only;
-#[path = "minimal_ac2_admin_full_document.rs"]
-mod minimal_ac2_admin_full_document;
-#[path = "minimal_ac3_wrong_bearer_matches_anonymous.rs"]
-mod minimal_ac3_wrong_bearer_matches_anonymous;
-#[path = "minimal_ac4_liveness_failure_returns_5xx.rs"]
-mod minimal_ac4_liveness_failure_returns_5xx;
-#[path = "minimal_ac5_tenant_bearer_gets_anonymous_body.rs"]
-mod minimal_ac5_tenant_bearer_gets_anonymous_body;
 #[path = "msg_ac01_send_reaches_inbox.rs"]
 mod msg_ac01_send_reaches_inbox;
 #[path = "msg_ac02_reply_appends_next_seq.rs"]
@@ -262,3 +252,17 @@ mod tenant_delete_ac07_tenant_not_found;
 mod tenant_delete_ac09_healthz_probe_split;
 #[path = "tenant_delete_ac10_tenants_prefix_filter.rs"]
 mod tenant_delete_ac10_tenants_prefix_filter;
+#[path = "tooltest_ac12_log_marking.rs"]
+mod tooltest_ac12_log_marking;
+#[path = "tooltest_ac3_http_dry_run.rs"]
+mod tooltest_ac3_http_dry_run;
+#[path = "tooltest_ac4_echo_verbatim.rs"]
+mod tooltest_ac4_echo_verbatim;
+#[path = "tooltest_ac5_validation_error_taxonomy.rs"]
+mod tooltest_ac5_validation_error_taxonomy;
+#[path = "tooltest_ac6_quota_and_metering.rs"]
+mod tooltest_ac6_quota_and_metering;
+#[path = "tooltest_ac7_too_many_invocations.rs"]
+mod tooltest_ac7_too_many_invocations;
+#[path = "tooltest_ac9_ac10_listing_and_auth.rs"]
+mod tooltest_ac9_ac10_listing_and_auth;

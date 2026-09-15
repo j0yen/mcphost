@@ -69,6 +69,11 @@ async fn unauthenticated_tools_list_is_signup_only() {
         // gating every other host.* descriptor here already has).
         "host.redeem",
         "host.key_rotate",
+        // PRD-mcphost-tenant-self-offboard requirement 1: the tenant's own
+        // public account-closure path is discoverable unauthenticated too,
+        // same gating as host.key_rotate above (the descriptor is visible
+        // pre-auth; the call itself still needs the caller's own key).
+        "host.self_offboard",
         "host.tool_publish",
         // PRD-mcphost-publish-first-try requirement 4: discoverable
         // unauthenticated too, same as the rest of the host.* control
@@ -184,8 +189,9 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        68,
-        "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
+        69,
+        "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + \
+         host.self_offboard (PRD-mcphost-tenant-self-offboard) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the nine host.state.* tools (PRD-mcphost-tenant-state) \
          + the six host.table.* tools (PRD-mcphost-tenant-tables) \
