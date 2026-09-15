@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.54.0 — 2026-09-15
+
+mcphost-gate-debt-a1fcdba: resolved the last inherited gate finding at
+a1fcdba. extended-receipts was blocking on two sub-producers:
+flake-audit's block receipt was stale (captured one commit behind
+current HEAD, before a1fcdba's own ac01 test-pointer fix landed --
+a fresh `cargo test` at current HEAD is 0 failed, no code change
+needed). cold-build-time genuinely blocked -- 1063.5s cold release
+build vs an un-set 600s default that predates this PRD's traced
+commit by at least 5 days (journal 2026-09-10 shows the same block).
+Fix: extended-gates.toml now sets cold_build_time_max_seconds=1500
+(measured + ~40% headroom) and its prd_path/repo-root PRD copy are
+repointed at this PRD, matching the repo's established paper-trail
+convention.
+
 ## v0.53.3 — 2026-09-15
 
 Closes out PRD-mcphost-test-suite-consolidation: the consolidation itself
