@@ -1,3 +1,15 @@
 # Config for the rustbuild extended-gates producers (Stage 4).
-prd_path = "PRD-mcphost-test-suite-consolidation.md"
+prd_path = "PRD-mcphost-gate-debt-a1fcdba.md"
 mutation_kill_min_pct = 50.0
+# cold_build_time_max_seconds (mcphost-gate-debt-a1fcdba, 2026-09-15):
+# cold-build-time has blocked with the un-set 600s default since at least
+# 2026-09-10 (journal: mcphost-call-limits-honest gate block new_blocks=
+# ...,cold-build-time,...), well before this PRD's traced commit c3278b7 --
+# the crate (51 deps incl. tokio/axum/reqwest/rusqlite, 5 version bumps
+# since) simply outgrew a threshold nobody ever configured. Measured cold
+# `cargo build --release` at HEAD a1fcdba: 1063.5s (target/autobuilder/
+# receipts/cold-build-time-receipt.json, captured_at 2026-09-15T10:09:46Z).
+# Recalibrated with ~40% headroom, matching extended-receipts.sh's own
+# per-producer timeout ceiling (1500s) so a future real regression still
+# gets caught before the producer's own timeout would silently eat it.
+cold_build_time_max_seconds = 1500.0
