@@ -460,8 +460,11 @@ pub fn quickstart(
     }));
     if let Some(python) = state.kinds.get("python") {
         let python_example = python.example();
+        // PRD-mcphost-tool-run-envelope requirement 3 / AC3: the case text
+        // now names the standard envelope (`result.payload`) alongside the
+        // run metadata, matching `TOOL_RUN_DESC` in `handler.rs`.
         try_before_call.push(json!({
-            "case": "a published python tool, for stdout, stderr and exit code",
+            "case": "a published python tool, for result.payload plus stdout, stderr and exit code",
             "call": "host.tool_run",
             "arguments": {"name": tool_name, "args": python_example.call_args},
         }));
