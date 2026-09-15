@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.53.1 — 2026-09-15
+
+Fixed extended-gates.toml's stale prd_path (still naming the prior
+gate-debt PRD, a7d8e1c) after the intent-card refresh in v0.53.0
+repointed the card at PRD-mcphost-gate-debt-24d1794.md. Replaced the
+stale repo-root PRD copy and repointed prd_path, following the repo's
+established repoint precedent from 24d1794.
+
 ## v0.53.0 — 2026-09-15
 
 Inherited gate debt at 24d1794: reviewer-agent's "finalize rejected the
