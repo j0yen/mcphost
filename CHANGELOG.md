@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.54.1 — 2026-09-15
+
+Gate-debt fix at a1fcdba: the extended-receipts rollup was blocking on two
+inherited producers (flake-audit, stale one commit behind HEAD; and
+cold-build-time, an unconfigured budget). flake-audit resolved once a
+fresh receipt regenerated at HEAD; cold-build-time got a real
+cold_build_time_max_seconds=1500 budget in extended-gates.toml. Adds a
+real AC1 test (tests/gatedebt_a1fcdba_ac1_extended_producers_not_blocked.rs)
+that reads both producers' receipts and asserts neither blocks.
+
 ## v0.54.0 — 2026-09-15
 
 mcphost-gate-debt-a1fcdba: resolved the last inherited gate finding at
