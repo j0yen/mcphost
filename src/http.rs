@@ -481,8 +481,7 @@ fn inherited_listener() -> Option<std::net::TcpListener> {
     // Only reached when `LISTEN_FDS` (set by our own direct parent right
     // before exec) says fd 3 is a socket it bound and is handing to us --
     // never trusted off ambient env alone.
-    // SAFETY: fd 3 is a valid, open, listening TCP socket by the contract
-    // above; `TcpListener::from_raw_fd` merely wraps that already-valid fd.
+    // SAFETY: fd 3 is a valid, open, listening TCP socket by the contract above; `TcpListener::from_raw_fd` merely wraps that already-valid fd.
     Some(unsafe { std::os::unix::io::FromRawFd::from_raw_fd(SD_LISTEN_FDS_START) })
 }
 

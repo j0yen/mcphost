@@ -264,10 +264,7 @@ fn spawn_previous_inherited(
     // `std::env::set_var` takes exactly that lock, so a `pre_exec` closure
     // that calls it deadlocks the child before `exec` runs. This closure
     // now does ONLY `dup2`, a raw libc syscall that touches no lock.
-    // SAFETY: `dup2` is async-signal-safe / fork-safe by design (no
-    // allocation, no locks); it clears close-on-exec on the target
-    // descriptor regardless of the source's flag (POSIX dup2 semantics),
-    // so fd 3 survives the exec below.
+    // SAFETY: `dup2` is async-signal-safe / fork-safe by design (no allocation, no locks); it clears close-on-exec on the target descriptor regardless of the source's flag (POSIX dup2 semantics), so fd 3 survives the exec below.
     unsafe {
         std_cmd.pre_exec(move || {
             if raw_fd != SD_LISTEN_FDS_START {
