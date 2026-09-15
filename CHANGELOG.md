@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.53.2 — 2026-09-15
+
+Fixed two findings surfaced while verifying reviewer-agent's inherited
+"finalize rejected the subagent's output" finding (PRD-mcphost-gate-debt-
+24d1794) could actually re-run fresh at HEAD: (1) cargo-deny blocked CI on
+RUSTSEC-2026-0285 (rustls TLS 1.3 handshake-boundary vulnerability),
+fixed by updating rustls 0.23.43 -> 0.23.45; (2)
+revdebt_ac1_intent_card_pointers_resolve's prd-path-consistency check
+compared full absolute paths (intent-card.json's authoring-host
+build-queue path vs ac-traceability's repo-root-resolved path), which
+can never be equal by construction -- fixed to compare basenames only,
+same precedent already established by
+tests/ac01_extended_gates_prd_path_resolves_and_matches_card.rs for the
+sibling check. Neither fix touches reviewer-agent's own validation logic
+or re-derives attribution.
+
 ## v0.53.1 — 2026-09-15
 
 Fixed extended-gates.toml's stale prd_path (still naming the prior

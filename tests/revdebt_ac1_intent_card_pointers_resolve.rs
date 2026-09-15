@@ -51,10 +51,28 @@ fn check_card_pointers(card: &Value, tests_dir: &Path) -> Result<(), String> {
 
 /// Checks that the card's own PRD path (`prd_source`) and the
 /// traceability receipt's PRD path (`prd_path`) name the same PRD.
+///
+/// Host-independent by basename, not full-path equality (PRD-mcphost-
+/// gate-debt-24d1794 five-whys): `prd_source` is always an authoring-host
+/// absolute path under the build-queue clone
+/// (`intent-card-refresh.sh`'s `os.path.abspath`), while
+/// `ac-traceability`'s own `locate_prd_in` (autobuilder/crates/
+/// extended-gates/src/producers/ac_traceability.rs) resolves
+/// `extended-gates.toml`'s `prd_path` relative to the project root,
+/// producing a repo-root path. These two are never the same absolute
+/// path by construction, on any host — comparing them byte-for-byte
+/// only ever passed by accident and fails permanently once the two
+/// diverge, exactly as `tests/ac01_extended_gates_prd_path_resolves_and_
+/// matches_card.rs` already found and fixed for the sibling check this
+/// file duplicates. The real invariant worth proving is "these name the
+/// same PRD, not two different ones" — checked here by basename, same
+/// as that sibling test.
 fn check_prd_path_consistency(card: &Value, receipt: &Value) -> Result<(), String> {
     let card_prd = card.get("prd_source").and_then(Value::as_str).unwrap_or("");
     let receipt_prd = receipt.get("prd_path").and_then(Value::as_str).unwrap_or("");
-    if card_prd != receipt_prd {
+    let card_name = Path::new(card_prd).file_name();
+    let receipt_name = Path::new(receipt_prd).file_name();
+    if card_name != receipt_name || card_name.is_none() {
         return Err(format!(
             "card prd_source {card_prd:?} differs from ac-traceability-receipt.json's prd_path {receipt_prd:?}"
         ));
