@@ -1,0 +1,11 @@
+-- mcphost 0023_self_offboard: PRD-mcphost-tenant-self-offboard P1
+-- requirement 5 / AC5.
+--
+-- One additive column, same `ALTER TABLE ADD COLUMN` shape as 0002/0020 --
+-- `tenants.disabled_reason` distinguishes a tenant's own
+-- `host.self_offboard()` (`'self_offboard'`) from an operator's
+-- `admin.tenant_disable` (`'admin_disable'`) or a row disabled before this
+-- column existed (`NULL` -- indistinguishable from either, which is fine:
+-- nothing before this PRD recorded a reason, so there is nothing to
+-- backfill it from).
+ALTER TABLE tenants ADD COLUMN disabled_reason TEXT;
