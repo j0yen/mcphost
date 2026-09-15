@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.53.3 — 2026-09-15
+
+Closes out PRD-mcphost-test-suite-consolidation: the consolidation itself
+(`autotests = false`, `scripts/gen-test-suites.sh`, `tests/suite_*.rs`) was
+already merged in an earlier tick (943564c..07db1f4, merge 9a5b988); this
+release re-verifies it at HEAD after the dependency chain
+(gate-debt-6d51e76 -> a7d8e1c -> 24d1794) cleared inherited reviewer-agent
+debt unrelated to this PRD's own diff, and ships the finalize bookkeeping
+(version/changelog/gate/tag) that was pending.
+
+Fresh verification this tick, RedBaron:
+- `scripts/gen-test-suites.sh --check`: ok, 10 suites over 344 test files.
+- `cargo nextest list`: 10 `[[test]]` suite binaries (7 core + 3 sandbox),
+  well under the <=10 budget (AC1).
+- `grep -c '^mod common;' tests/suite_*.rs`: exactly 1 per suite file, 0 in
+  any included member file (AC3).
+- Full `cargo nextest run`: 693 tests run, 693 passed, 5 skipped, wall
+  71.332s — far under the 50% budget against the pre-change baseline
+  (1258-2544s whole-wall) recorded in the PRD (AC6).
+- `.config/nextest.toml`'s `[profile.default.junit]` already emits
+  per-test-timed JUnit (AC7).
+
 ## v0.53.2 — 2026-09-15
 
 Fixed two findings surfaced while verifying reviewer-agent's inherited
