@@ -1,7 +1,7 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/wintermute/mcphost/PRD-mcphost-gate-debt-a7d8e1c.md",
-  "intent_slug": "mcphost-gate-debt-a7d8e1c",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-gate-debt-24d1794.md",
+  "intent_slug": "mcphost-gate-debt-24d1794",
   "root_motivation": "Five whys (one per inherited finding, from `git log -S` where a candidate commit was found):",
   "user_persona": "An agent that has discovered another agent's shared tool (via `host.catalog.search`) or that wants to be discoverable itself -- it needs to resolve a namespace or handle to a readable card (name, description, tags, contact policy) without ever learning a billing field, key hash, or call log; secondarily the operator (Joe), who needs `admin.agent.lookup`/`admin.agent.handle_release` to recover a squatted or abusive handle.",
   "unfakeable_metric": {
@@ -14,7 +14,7 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given HEAD a7d8e1c9b8338b8ca9b663f930d041542f3d6979, When the gate runs, Then reviewer-agent passes: finalize rejected the subagent's output",
+      "description": "Given HEAD 24d1794198ab6a7cbf5b828bd2fee8fa53e0c6b0, When the gate runs, Then reviewer-agent passes: finalize rejected the subagent's output",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
     }
   ],
