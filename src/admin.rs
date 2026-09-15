@@ -78,6 +78,12 @@ pub async fn tenants(state: &AppState, args: &Value) -> Result<Value, AppError> 
                 "display_name": t.display_name,
                 "created_at": t.created_at,
                 "disabled": t.disabled,
+                // PRD-mcphost-tenant-self-offboard P1 requirement 5 / AC5:
+                // `"self_offboard"` vs `"admin_disable"` (or `null` for an
+                // enabled tenant, or one disabled before this column
+                // existed) -- an operator can tell the two apart without a
+                // second query.
+                "disabled_reason": t.disabled_reason,
                 "synthetic": t.synthetic,
                 // PRD-mcphost-tenant-attribution: rides along with the
                 // export the same way `synthetic` already does -- an
