@@ -26,6 +26,12 @@
       "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-ci-sandbox-coverage.md",
       "landed": "v0.13.4",
       "summary": "Same PRD, its last open criterion. ci.yml splits into two jobs with no `needs:` between them (`gate`: static analysis + core suites + doctests; `sandbox`: userns grant + sandbox suites), because the measured single-job wall time was 313-336 s against the PRD's 300 s budget; scripts/ci-test-partition.sh derives and proves the split total and disjoint. Adds sandbox::decide_userns (the (capability, $CI) truth table) and sandbox::USERNS_SKIP_MARKER (one constant behind both the Rust println! and the workflow's grep), plus tests/ci_sandbox_ac01..ac07 -- the ACs' first real tests, the declared `ci_sandbox` prefix having matched no file through v0.13.3. Authority: the PRD's P1 requirement / AC6 and P2 / AC7."
+    },
+    {
+      "slug": "mcphost-proof-lane-loop-config",
+      "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-proof-lane-loop-config.md",
+      "landed": "pending (branch a315246, gate in progress)",
+      "summary": "Adds a `loop-config` [[lane]] to agent/proof-lanes.toml (globs [\".buildloop/**\"], required_commands [\"cargo test --workspace\"]) so .buildloop/ci-equivalent.toml -- landed unrouted at commit 4f1112d and blocking `autobuilder vti-plan` on EVERY mcphost branch since 01:05Z (inherited=2 in-scope=0) -- routes at confidence 1.0; adds tests/lanecov_ac01_every_tracked_path_routes.rs (a coverage proof that every `git ls-files` path resolves to >=1 lane, plus P1 checks that every lane has non-empty required_commands and compilable globs) so the next unrouted top-level path is a CI failure at PR time instead of a repo-wide vti-plan red found after landing; adds a how-to-add-a-lane paragraph to docs/agent-quickstart.md (P2, requirement 5). Authority: the PRD's own P0 requirements 1-2 and P2 requirement 5 name agent/proof-lanes.toml, a new tests/ file, and docs/agent-quickstart.md as its Engineering target -- not a separate approval, this IS the queued PRD's specified change (same self-authorizing pattern as the mcphost-ci-sandbox-coverage entry above)."
     }
   ],
   "approval": {
