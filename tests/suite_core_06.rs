@@ -241,6 +241,8 @@ mod kindhonor_ac4_initialize_instructions_mention_kind;
 mod kindhonor_ac5_replay_cost_optimizer_shape;
 #[path = "kindhonor_ac6_tools_list_meta_kind.rs"]
 mod kindhonor_ac6_tools_list_meta_kind;
+#[path = "lanecov_ac01_every_tracked_path_routes.rs"]
+mod lanecov_ac01_every_tracked_path_routes;
 #[path = "limits_ac05_signup_burst_atomic.rs"]
 mod limits_ac05_signup_burst_atomic;
 #[path = "metering_ac01_stripe_customer_id_null_default.rs"]
@@ -267,5 +269,3 @@ mod metering_ac11_admin_meter_status;
 mod metering_ac12_billing_status_stripe_reported_usage;
 #[path = "metering_billing_status_emitted_this_month.rs"]
 mod metering_billing_status_emitted_this_month;
-#[path = "migration_compat_headers.rs"]
-mod migration_compat_headers;
