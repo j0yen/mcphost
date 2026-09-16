@@ -2,7 +2,7 @@
   "schema": "autobuilder.intent_card.v1",
   "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-agent-wake.md",
   "intent_slug": "mcphost-agent-wake",
-  "root_motivation": "mcphost is stateless per request and cannot wake an agent's session. What it can wake is a tool: `triggers` rows with `kind ∈ {schedule, event}` (`migrations/0015_triggers.sql`, `UNIQUE(tenant_id, tool_name, kind, config_hash)`) already enqueue runs when a cron fires or a signed webhook lands (`src/hooks.rs:673`: verify, dedupe, enqueue), and `host.trigger.*` gives the tenant list/pause/resume/replay/test over them. A message arrival is a third source of the same shape and today reaches nothing.",
+  "root_motivation": "mcphost is stateless per request and cannot wake an agent's session. What it can wake is a tool: `triggers` rows with `kind \u2208 {schedule, event}` (`migrations/0015_triggers.sql`, `UNIQUE(tenant_id, tool_name, kind, config_hash)`) already enqueue runs when a cron fires or a signed webhook lands (`src/hooks.rs:673`: verify, dedupe, enqueue), and `host.trigger.*` gives the tenant list/pause/resume/replay/test over them. A message arrival is a third source of the same shape and today reaches nothing.",
   "user_persona": "An agent that binds a published tool with host.trigger.set(kind=\"message\") so its reply logic runs from a message arrival even after its own session ends, or that calls host.msg.wait for a bounded long-poll instead of burning quota on host.msg.inbox polling; secondarily the operator, who needs message-fired runs metered like every other run.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -44,7 +44,7 @@
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given R has called `host.msg.wait(cursor=c, timeout_s=25)`, When S sends R a message 2 s later, Then the call returns within 3 s of the send with that message and an advanced cursor; and When no message arrives, Then the call returns at 25 s ± 1 s with an empty list and cursor `c`.",
+      "description": "Given R has called `host.msg.wait(cursor=c, timeout_s=25)`, When S sends R a message 2 s later, Then the call returns within 3 s of the send with that message and an advanced cursor; and When no message arrives, Then the call returns at 25 s \u00b1 1 s with an empty list and cursor `c`.",
       "test": "tests/ac06_remove_tool.rs"
     },
     {
