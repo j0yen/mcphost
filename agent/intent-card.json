@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-gate-debt-a1fcdba.md",
-  "intent_slug": "mcphost-gate-debt-a1fcdba",
-  "root_motivation": "Five whys (one per inherited finding, from `git log -S` where a candidate commit was found):",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-agent-wake.md",
+  "intent_slug": "mcphost-agent-wake",
+  "root_motivation": "mcphost is stateless per request and cannot wake an agent's session. What it can wake is a tool: `triggers` rows with `kind \u2208 {schedule, event}` (`migrations/0015_triggers.sql`, `UNIQUE(tenant_id, tool_name, kind, config_hash)`) already enqueue runs when a cron fires or a signed webhook lands (`src/hooks.rs:673`: verify, dedupe, enqueue), and `host.trigger.*` gives the tenant list/pause/resume/replay/test over them. A message arrival is a third source of the same shape and today reaches nothing.",
   "user_persona": "An agent that has discovered another agent's shared tool (via `host.catalog.search`) or that wants to be discoverable itself -- it needs to resolve a namespace or handle to a readable card (name, description, tags, contact policy) without ever learning a billing field, key hash, or call log; secondarily the operator (Joe), who needs `admin.agent.lookup`/`admin.agent.handle_release` to recover a squatted or abusive handle.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,8 +14,62 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given HEAD a1fcdbad66bb40d3afe8f46ab118bf8d8aba0f3d, When the gate runs, Then extended-receipts passes: one or more extended producers did not pass|skip (see output above)",
+      "description": "Given tenant R published tool `handle_msg` and called `host.trigger.set(tool=\"handle_msg\", kind=\"message\")`, When tenant S sends R a message, Then within 5 s `host.runs.list(trigger=\"message\")` for R shows one run whose args equal the message envelope (`message_id`, `thread_id`, `from` = S's address, `body`).",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
+    },
+    {
+      "id": "AC2",
+      "level": "MUST",
+      "description": "Given the trigger from AC 1 with `from` set to tenant T's address, When S sends R a message, Then no run is enqueued; and When T sends, Then one run is.",
+      "test": "tests/ac02_signup_creates_hashed_tenant.rs"
+    },
+    {
+      "id": "AC3",
+      "level": "MUST",
+      "description": "Given the trigger from AC 1, When the same message is delivered twice through the internal delivery path (simulated retry), Then exactly one run exists for its `message_id` and the second attempt returns the first `run_id`.",
+      "test": "tests/ac03_tenant_lists_control_plane_only.rs"
+    },
+    {
+      "id": "AC4",
+      "level": "MUST",
+      "description": "Given R's plan has `jobs_concurrent = 1` and one run is in flight, When S sends R a second message, Then the message is stored and readable in R's inbox, and a run row exists with `status=\"rejected\"` and a non-empty `error_class`.",
+      "test": "tests/ac04_publish_list_and_call.rs"
+    },
+    {
+      "id": "AC5",
+      "level": "MUST",
+      "description": "Given a paused message trigger, When S sends R a message, Then no run is enqueued; and after `host.trigger.resume`, When S sends again, Then one run is.",
+      "test": "tests/ac05_cross_tenant_isolation.rs"
+    },
+    {
+      "id": "AC6",
+      "level": "MUST",
+      "description": "Given R has called `host.msg.wait(cursor=c, timeout_s=25)`, When S sends R a message 2 s later, Then the call returns within 3 s of the send with that message and an advanced cursor; and When no message arrives, Then the call returns at 25 s \u00b1 1 s with an empty list and cursor `c`.",
+      "test": "tests/ac06_remove_tool.rs"
+    },
+    {
+      "id": "AC7",
+      "level": "MUST",
+      "description": "Given `host.trigger.test(trigger_id)` on a message trigger, When it runs, Then the tool receives an envelope with `test: true` and no `messages` row is created.",
+      "test": "tests/ac07_usage_metering.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given a message-fired run failed, When R calls `host.trigger.replay(run_id)`, Then a new run executes with the identical envelope and the original run is unchanged.",
+      "test": "tests/ac08_admin_disable_and_forbidden.rs"
+    },
+    {
+      "id": "AC9",
+      "level": "SHOULD",
+      "description": "Given 50 waiters on `host.msg.wait` for 50 tenants, When each receives one message, Then p95 time from message commit to wait return is under 100 ms.",
+      "test": "tests/ac09_signup_rate_limit.rs"
+    },
+    {
+      "id": "AC10",
+      "level": "SHOULD",
+      "description": "Given a trigger with `thread_id` set, When a message lands in a different thread, Then no run fires; and in that thread, Then one fires.",
+      "test": "tests/ac10_publish_validation_errors.rs"
     }
   ],
   "scope": [
