@@ -16,6 +16,17 @@
 //! -- see `Db::test_backdate_contact_request`'s doc comment for why this
 //! repo backdates rather than waiting out a real 7 days), Then a new
 //! request is accepted as `pending`.
+//! Requirement 11 / AC10 gap fix — `contact_decide` (the shared body of
+//! `host.agent.contact_accept`/`contact_deny`) used to trust the raw
+//! `status` column alone, which only reflects expiry once something has
+//! read the row through `consent::classify_existing_request` (the lazy
+//! `pending` -> `expired` flip). A request past
+//! `consent::REQUEST_EXPIRY_MS` that nothing has re-read yet still showed
+//! `status = 'pending'`, so an accept/deny against an already-expired
+//! request wrongly succeeded. `expired_request_cannot_be_accepted` below
+//! backdates `created_unix_ms` past the 30-day expiry window (same
+//! backdate helper AC4 uses) and asserts `contact_accept` now refuses it
+//! the same way an unknown request id does.
 
 use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
@@ -220,4 +231,60 @@ async fn ac4_deny_cooldown_then_reexpiry_allows_a_fresh_request() {
         .await
         .expect("B can accept the fresh request");
     assert_eq!(extract_structured(&accept_raw)["status"], json!("accepted"));
+}
+
+#[tokio::test]
+async fn expired_request_cannot_be_accepted() {
+    let server = TestServer::start().await;
+    let (_ns_a, key_a) = signup(&server.base_url, "Agent A").await;
+    let (ns_b, key_b) = signup(&server.base_url, "Agent B").await;
+    let client_a = McpClient::with_bearer(&server.base_url, &key_a);
+    let client_b = McpClient::with_bearer(&server.base_url, &key_b);
+
+    client_b
+        .tools_call("host.agent.profile_set", json!({"contact_policy": "contacts"}))
+        .await
+        .expect("B sets contacts policy");
+
+    let req_raw = client_a
+        .tools_call("host.agent.contact_request", json!({"address": ns_b.clone()}))
+        .await
+        .expect("A requests contact with B");
+    let request_id = extract_structured(&req_raw)["request_id"]
+        .as_str()
+        .expect("request_id")
+        .to_string();
+
+    // Push created_unix_ms 31 days into the past -- past
+    // consent::REQUEST_EXPIRY_MS -- without going through
+    // classify_existing_request, so the row's `status` column is still
+    // literally 'pending'.
+    let thirty_one_days_ms = 31 * 24 * 3_600_000_i64;
+    let now_ms = mcphost::state::now_unix_ms();
+    server
+        .state
+        .db
+        .test_backdate_contact_request(request_id.clone(), Some(now_ms - thirty_one_days_ms), None)
+        .await
+        .expect("backdate created_unix_ms");
+
+    let accept_err = client_b
+        .tools_call("host.agent.contact_accept", json!({"request_id": request_id.clone()}))
+        .await
+        .expect_err("expired request must not be acceptable");
+    assert_eq!(
+        accept_err.error_code.as_deref(),
+        Some("contact_request_not_found"),
+        "{accept_err:?}"
+    );
+
+    let deny_err = client_b
+        .tools_call("host.agent.contact_deny", json!({"request_id": request_id}))
+        .await
+        .expect_err("expired request must not be denyable either");
+    assert_eq!(
+        deny_err.error_code.as_deref(),
+        Some("contact_request_not_found"),
+        "{deny_err:?}"
+    );
 }

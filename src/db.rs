@@ -5942,18 +5942,37 @@ impl Db {
         self.with_conn(move |conn| {
             conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
             let outcome: Result<ContactDecision, AppError> = (|| {
-                type Row = (i64, i64, String);
+                type Row = (i64, i64, String, i64);
                 let row: Option<Row> = conn
                     .query_row(
-                        "SELECT from_tenant_id, to_tenant_id, status FROM contact_requests WHERE id = ?1",
+                        "SELECT from_tenant_id, to_tenant_id, status, created_unix_ms \
+                         FROM contact_requests WHERE id = ?1",
                         params![request_id],
-                        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
                     )
                     .optional()?;
-                let Some((from_id, to_id, status)) = row else {
+                let Some((from_id, to_id, status, created_unix_ms)) = row else {
                     return Err(AppError::contact_request_not_found());
                 };
                 if to_id != tenant_id || status != "pending" {
+                    return Err(AppError::contact_request_not_found());
+                }
+                // Requirement 11 / AC10 gap: `status` alone can lag reality
+                // -- expiry is applied lazily by
+                // `consent::classify_existing_request`, which only runs on
+                // a `contact_request`/`check` read, not on accept/deny. A
+                // request past `consent::REQUEST_EXPIRY_MS` that nothing
+                // has re-read yet still shows `status = 'pending'` here; on
+                // its own that let a stale accept/deny succeed against a
+                // request that should already read as gone. Apply the same
+                // expiry rule contact_decide's own read establishes before
+                // deciding, flipping the row the same way
+                // classify_existing_request would.
+                if now_ms - created_unix_ms > crate::consent::REQUEST_EXPIRY_MS {
+                    conn.execute(
+                        "UPDATE contact_requests SET status = 'expired' WHERE id = ?1",
+                        params![request_id],
+                    )?;
                     return Err(AppError::contact_request_not_found());
                 }
                 let new_status = if accept { "accepted" } else { "denied" };
