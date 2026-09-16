@@ -51,3 +51,20 @@ own tool is **42.4s**.
    `secrets`, which stay redacted there.
 
 <!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
+
+## Contributing: routing a new top-level path
+
+Adding a new top-level directory or file to this repo (like `www/`,
+`deploy/`, or `.buildloop/`) needs a matching `[[lane]]` entry in
+`agent/proof-lanes.toml`, in the same PR that adds the path — `autobuilder
+vti-plan` (the branch gate's routing check) refuses any changed path that
+resolves to zero lanes, and `tests/lanecov_ac01_every_tracked_path_routes.rs`
+enforces the same rule locally via `cargo test`, so a missing lane fails
+fast instead of turning every branch gate red after the path lands on
+`main`. Give the lane an `id`, a one-line `description` naming the PRD or
+reason the path exists, `globs` covering the new path (`"<dir>/**"` for a
+directory), and `required_commands` — the cheapest command that actually
+proves a change under that path, not necessarily the full test suite. The
+`loop-config` lane (routing `.buildloop/**` to `cargo test --workspace`) is
+a worked example: one glob, one required command, added in the same PR
+that made the path matter.

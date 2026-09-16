@@ -115,3 +115,11 @@ required_commands = [
   "exit 1",
 ]
 note = "Any change to a harness-readonly path fails the gate. Use an intent-card amendment to legitimately modify."
+
+[[lane]]
+id = "loop-config"
+description = "The build loop's own CI-equivalent config for main-push-gate.sh's delta check (PRD-build-main-push-gate's CI-equivalent contract, .buildloop/ci-equivalent.toml). Added project-locally (PRD-mcphost-proof-lane-loop-config): same gap class as every other unrouted-top-level-path fix already documented in this file, except this one blocked vti-plan on EVERY branch (inherited=2 in-scope=0) rather than just the branch that happened to touch the path, since the file landed on main via the loop's own push-gate PRD rather than through a branch that could carry its own lane fix."
+globs = [".buildloop/**"]
+required_commands = [
+  "cargo test --workspace",
+]
