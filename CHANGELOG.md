@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.54.3 — 2026-09-16
+
+Resolves the inherited gate debt tracked at HEAD 4f1112d (PRD-mcphost-gate-debt-4f1112d):
+routes `.buildloop/**` through the meta proof-lane so `vti-plan` no longer
+blocks on it; fixes flake-audit's self-lock by comparing a receipt's
+`head_sha` against the actual current git HEAD instead of trusting stale
+evidence from a prior commit; and removes five self-referential test
+files/functions under `tests/` that read a gate producer's own prior-run
+receipt from `target/autobuilder/receipts/` and asserted its verdict --
+closing the loop where one block receipt on disk made the test fail, and
+the test failing wrote the next block receipt, permanently blocking
+`extended-receipts` since PRD-mcphost-gate-debt-a1fcdba landed. The gate
+already enforces these verdicts itself; no test in this repo may read
+`target/autobuilder/receipts/` going forward.
+
 ## v0.54.2 — 2026-09-16
 
 agent/proof-lanes.toml gains a `loop-config` lane (`globs = [".buildloop/**"]`,
