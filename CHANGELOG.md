@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.54.3 — 2026-09-16
+
+Resolves the inherited gate debt tracked at HEAD 4f1112d (PRD-mcphost-gate-debt-4f1112d):
+routes `.buildloop/**` through the meta proof-lane so `vti-plan` no longer
+blocks on it; fixes flake-audit's self-lock by comparing a receipt's
+`head_sha` against the actual current git HEAD instead of trusting stale
+evidence from a prior commit; and removes five self-referential test
+files/functions under `tests/` that read a gate producer's own prior-run
+receipt from `target/autobuilder/receipts/` and asserted its verdict --
+closing the loop where one block receipt on disk made the test fail, and
+the test failing wrote the next block receipt, permanently blocking
+`extended-receipts` since PRD-mcphost-gate-debt-a1fcdba landed. The gate
+already enforces these verdicts itself; no test in this repo may read
+`target/autobuilder/receipts/` going forward.
+
+## v0.54.2 — 2026-09-16
+
+agent/proof-lanes.toml gains a `loop-config` lane (`globs = [".buildloop/**"]`,
+`required_commands = ["cargo test --workspace"]`) so `.buildloop/ci-equivalent.toml`
+(landed by the loop's own push-gate PRD, commit 4f1112d) routes at confidence 1.0
+instead of blocking `autobuilder vti-plan` on every branch. A new
+`tests/lanecov_ac01_every_tracked_path_routes.rs` walks `git ls-files` and fails,
+naming the path, whenever a tracked file matches zero lanes (same globset/toml
+crates vti-plan itself uses), plus P1 checks that every lane has non-empty
+`required_commands` and a compilable glob set. `docs/agent-quickstart.md` gets a
+short "routing a new top-level path" paragraph. No existing lane's globs changed.
+
 ## v0.54.1 — 2026-09-15
 
 Gate-debt fix at a1fcdba: the extended-receipts rollup was blocking on two

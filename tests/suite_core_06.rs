@@ -143,14 +143,6 @@ mod envelope_ac1_http_declared_output_promoted;
 mod envelope_ac4_tool_test_reports_missing_declared_output;
 #[path = "firstcall_ac6_outcome_metering.rs"]
 mod firstcall_ac6_outcome_metering;
-#[path = "gatedebt_24d1794_ac1_reviewer_agent_not_blocked.rs"]
-mod gatedebt_24d1794_ac1_reviewer_agent_not_blocked;
-#[path = "gatedebt_6d51e76_ac1_reviewer_agent_not_blocked.rs"]
-mod gatedebt_6d51e76_ac1_reviewer_agent_not_blocked;
-#[path = "gatedebt_a1fcdba_ac1_extended_producers_not_blocked.rs"]
-mod gatedebt_a1fcdba_ac1_extended_producers_not_blocked;
-#[path = "gatedebt_a7d8e1c_ac1_reviewer_agent_not_blocked.rs"]
-mod gatedebt_a7d8e1c_ac1_reviewer_agent_not_blocked;
 #[path = "handoff_ac01_signup_returns_token_and_no_key.rs"]
 mod handoff_ac01_signup_returns_token_and_no_key;
 #[path = "handoff_ac02_redeem_single_use_and_expiry.rs"]
@@ -241,6 +233,8 @@ mod kindhonor_ac4_initialize_instructions_mention_kind;
 mod kindhonor_ac5_replay_cost_optimizer_shape;
 #[path = "kindhonor_ac6_tools_list_meta_kind.rs"]
 mod kindhonor_ac6_tools_list_meta_kind;
+#[path = "lanecov_ac01_every_tracked_path_routes.rs"]
+mod lanecov_ac01_every_tracked_path_routes;
 #[path = "limits_ac05_signup_burst_atomic.rs"]
 mod limits_ac05_signup_burst_atomic;
 #[path = "metering_ac01_stripe_customer_id_null_default.rs"]

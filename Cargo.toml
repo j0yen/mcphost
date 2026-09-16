@@ -1,7 +1,7 @@
 [package]
 autotests = false  # gen-test-suites.sh: explicit [[test]] suites below
 name = "mcphost"
-version = "0.54.1"
+version = "0.54.3"
 edition = "2024"
 rust-version = "1.88"
 description = "One MCP endpoint an agent can join and administer without a human"
@@ -76,6 +76,13 @@ proptest = "1"
 # AC19: mocks the registry API in tests/ac19_registry_publish.rs (the
 # fleet's standard HTTP-mock crate).
 wiremock = "0.6"
+# PRD-mcphost-proof-lane-loop-config AC2: tests/lanecov_ac01_every_tracked_
+# path_routes.rs parses agent/proof-lanes.toml and compiles its globs with
+# the SAME crates autobuilder's vti-plan uses (autobuilder/Cargo.toml pins
+# the same versions) -- a test-only matcher that disagreed with vti-plan's
+# own would be worse than no test at all.
+toml = "0.8"
+globset = "0.4"
 # Self-dependency (standard Cargo idiom): enables `test-support` only for
 # the lib crate integration tests (`tests/*.rs`) link against, without
 # leaking it into `default` for ordinary consumers/binaries.

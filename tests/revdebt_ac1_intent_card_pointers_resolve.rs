@@ -15,6 +15,14 @@
 //! the `rust-tests` lane's `tests/**/*.rs` glob) so that an edit which
 //! only touches `agent/intent-card.json` -- exactly the shape of the
 //! partial refresh that caused this debt -- still runs it.
+//!
+//! mcphost-gate-debt-4f1112d AC4: this file no longer cross-checks the
+//! ac-traceability producer's own regenerated gate-run artifact at test
+//! time -- the gate already enforces that comparison itself, and a test
+//! reading a prior run's own gate receipt is the exact self-referential-
+//! fixture shape that PRD's five-whys closes elsewhere in this crate.
+//! `check_prd_path_consistency`'s logic is still covered directly by the
+//! two synthetic-fixture tests below.
 
 use serde_json::Value;
 use std::fs;
@@ -90,27 +98,6 @@ fn shipped_card_pointers_all_resolve() {
     let tests_dir = manifest_dir.join("tests");
     check_card_pointers(&card, &tests_dir)
         .expect("every AC test pointer in the shipped card must resolve to a real file under tests/");
-}
-
-#[test]
-fn shipped_card_and_traceability_receipt_agree_on_one_prd_path() {
-    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let card_text = fs::read_to_string(manifest_dir.join("agent/intent-card.json"))
-        .expect("agent/intent-card.json must exist");
-    let card: Value = serde_json::from_str(&card_text).expect("intent-card.json must be valid JSON");
-    let receipt_path = manifest_dir.join("target/autobuilder/receipts/ac-traceability-receipt.json");
-    let receipt_text = match fs::read_to_string(&receipt_path) {
-        Ok(t) => t,
-        // The receipt is a regenerated, gitignored build artifact, not
-        // committed -- a fresh checkout that never ran the gate has none
-        // yet. Nothing to cross-check against; the other test in this
-        // file still catches a stale test pointer on its own.
-        Err(_) => return,
-    };
-    let receipt: Value =
-        serde_json::from_str(&receipt_text).expect("ac-traceability-receipt.json must be valid JSON");
-    check_prd_path_consistency(&card, &receipt)
-        .expect("card prd_source and traceability receipt prd_path must name the same PRD");
 }
 
 #[test]
