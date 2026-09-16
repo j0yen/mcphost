@@ -742,9 +742,31 @@ async fn handle_hook(
         Some(header_name) => headers.get(header_name).and_then(|v| v.to_str().ok()).map(str::to_string),
         None => None,
     };
-    let run_id =
-        enqueue_with_dedupe(state, &tenant, &trigger, "event", dedupe_key.as_deref(), None, args_json).await?;
+    let run_id = enqueue_with_dedupe(
+        state,
+        &tenant,
+        &trigger,
+        EnqueueSpec {
+            trigger_kind: "event",
+            dedupe_key: dedupe_key.as_deref(),
+            message_id: None,
+            args_json,
+        },
+    )
+    .await?;
     Ok(HookAccepted { run_id })
+}
+
+/// Params for [`enqueue_with_dedupe`], bundled (rather than four positional
+/// arguments) to keep `trigger_kind`/`dedupe_key`/`message_id` -- three
+/// adjacent stringy fields -- transposition-proof at each of the two call
+/// sites (event and message), and to stay under the crate's
+/// `too-many-arguments-threshold = 5` (`clippy.toml`).
+pub(crate) struct EnqueueSpec<'a> {
+    pub trigger_kind: &'static str,
+    pub dedupe_key: Option<&'a str>,
+    pub message_id: Option<&'a str>,
+    pub args_json: String,
 }
 
 /// Shared by [`handle_hook`] (kind="event") and
@@ -770,11 +792,14 @@ pub(crate) async fn enqueue_with_dedupe(
     state: &AppState,
     tenant: &Tenant,
     trigger: &TriggerRow,
-    trigger_kind: &'static str,
-    dedupe_key: Option<&str>,
-    message_id: Option<&str>,
-    args_json: String,
+    spec: EnqueueSpec<'_>,
 ) -> Result<String, AppError> {
+    let EnqueueSpec {
+        trigger_kind,
+        dedupe_key,
+        message_id,
+        args_json,
+    } = spec;
     let run_id = new_ulid();
     if let Some(key) = dedupe_key
         && let Some(existing_run_id) = state
@@ -801,15 +826,15 @@ pub(crate) async fn enqueue_with_dedupe(
     if running >= plan.jobs_concurrent {
         state
             .db
-            .insert_rejected_run(
-                run_id.clone(),
-                tenant.id,
-                trigger.tool_name.clone(),
-                trigger_kind.to_string(),
-                trigger.id.clone(),
-                message_id.map(str::to_string),
-                "jobs_concurrent_exceeded",
-            )
+            .insert_rejected_run(crate::db::RejectedRun {
+                run_id: run_id.clone(),
+                tenant_id: tenant.id,
+                tool_name: trigger.tool_name.clone(),
+                trigger: trigger_kind.to_string(),
+                trigger_ref: trigger.id.clone(),
+                message_id: message_id.map(str::to_string),
+                error_class: "jobs_concurrent_exceeded",
+            })
             .await?;
         let _ = state
             .db

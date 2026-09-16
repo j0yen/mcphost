@@ -164,7 +164,17 @@ pub async fn send(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
 
     // PRD-mcphost-agent-wake requirement 4: strictly after the message's
     // own insert has committed above, never inside that transaction.
-    fire_message_triggers(state, &outcome, &tenant.namespace, &body, &data_json, None).await;
+    fire_message_triggers(
+        state,
+        &outcome,
+        &MessageFireCtx {
+            from_address: &tenant.namespace,
+            body: &body,
+            data_json: &data_json,
+            in_reply_to: None,
+        },
+    )
+    .await;
 
     Ok(send_outcome_json(outcome))
 }
@@ -205,7 +215,17 @@ pub async fn reply(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
 
     // PRD-mcphost-agent-wake requirement 4: strictly after the message's
     // own insert has committed above, never inside that transaction.
-    fire_message_triggers(state, &outcome, &tenant.namespace, &body, &data_json, in_reply_to.as_deref()).await;
+    fire_message_triggers(
+        state,
+        &outcome,
+        &MessageFireCtx {
+            from_address: &tenant.namespace,
+            body: &body,
+            data_json: &data_json,
+            in_reply_to: in_reply_to.as_deref(),
+        },
+    )
+    .await;
 
     Ok(send_outcome_json(outcome))
 }
@@ -225,14 +245,23 @@ pub async fn reply(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
 /// Envelope privacy (technical considerations): exactly `{message_id,
 /// thread_id, seq, from, body, data, in_reply_to, created_at}` -- no block
 /// list, no receipts, no other participant's address.
-async fn fire_message_triggers(
-    state: &AppState,
-    outcome: &SendOutcome,
-    from_address: &str,
-    body: &str,
-    data_json: &Option<String>,
-    in_reply_to: Option<&str>,
-) {
+///
+/// Bundled (rather than four positional arguments after `outcome`) to keep
+/// `from_address`/`body` -- two adjacent `&str` fields -- transposition-
+/// proof at each of the two call sites ([`send`]/[`reply`]), and to stay
+/// under the crate's `too-many-arguments-threshold = 5` (`clippy.toml`).
+struct MessageFireCtx<'a> {
+    from_address: &'a str,
+    body: &'a str,
+    data_json: &'a Option<String>,
+    in_reply_to: Option<&'a str>,
+}
+
+async fn fire_message_triggers(state: &AppState, outcome: &SendOutcome, ctx: &MessageFireCtx<'_>) {
+    let from_address = ctx.from_address;
+    let body = ctx.body;
+    let data_json = ctx.data_json;
+    let in_reply_to = ctx.in_reply_to;
     if outcome.delivered_tenant_ids.is_empty() {
         return;
     }
@@ -274,10 +303,12 @@ async fn fire_message_triggers(
                 state,
                 &recipient,
                 &row,
-                "message",
-                Some(outcome.message_id.as_str()),
-                Some(outcome.message_id.as_str()),
-                args_json.clone(),
+                crate::hooks::EnqueueSpec {
+                    trigger_kind: "message",
+                    dedupe_key: Some(outcome.message_id.as_str()),
+                    message_id: Some(outcome.message_id.as_str()),
+                    args_json: args_json.clone(),
+                },
             )
             .await
             {

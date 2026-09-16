@@ -842,6 +842,21 @@ pub struct MessageRow {
     pub read_at: Option<String>,
 }
 
+/// PRD-mcphost-agent-wake requirement 4 / AC4: params for
+/// [`Db::insert_rejected_run`], bundled (rather than seven positional
+/// arguments) to keep `trigger`/`trigger_ref`/`message_id` -- three
+/// adjacent `String`-typed fields -- transposition-proof at the call site.
+#[derive(Debug, Clone)]
+pub struct RejectedRun {
+    pub run_id: String,
+    pub tenant_id: i64,
+    pub tool_name: String,
+    pub trigger: String,
+    pub trigger_ref: String,
+    pub message_id: Option<String>,
+    pub error_class: &'static str,
+}
+
 fn percentile(sorted: &[i64], p: f64) -> f64 {
     if sorted.is_empty() {
         return 0.0;
@@ -3620,16 +3635,24 @@ impl Db {
     /// so the firing is visible in `host.runs.list` rather than silently
     /// dropped -- same "insert already-terminal" shape
     /// [`Self::insert_skipped_run`] uses for a schedule's own overlap skip.
-    pub async fn insert_rejected_run(
-        &self,
-        run_id: String,
-        tenant_id: i64,
-        tool_name: String,
-        trigger: String,
-        trigger_ref: String,
-        message_id: Option<String>,
-        error_class: &'static str,
-    ) -> Result<(), AppError> {
+    ///
+    /// Takes [`RejectedRun`] rather than its seven fields positionally --
+    /// clippy::too_many_arguments (crate threshold 5, `clippy.toml`) aside,
+    /// `trigger`/`trigger_ref`/`message_id` are three adjacent `String`-typed
+    /// fields a positional call site could silently transpose (the exact
+    /// risk `extend-gate.sh`'s reviewer-agent flagged on this function);
+    /// named fields at the call site make that a compile-time-obvious typo
+    /// instead.
+    pub async fn insert_rejected_run(&self, run: RejectedRun) -> Result<(), AppError> {
+        let RejectedRun {
+            run_id,
+            tenant_id,
+            tool_name,
+            trigger,
+            trigger_ref,
+            message_id,
+            error_class,
+        } = run;
         let now = now_unix();
         self.with_conn(move |conn| {
             conn.execute(
