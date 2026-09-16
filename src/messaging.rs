@@ -19,6 +19,8 @@
 //! (a ULID `id` never contains `.`); `host.msg.thread`'s is just the
 //! decimal `seq` to resume after.
 
+use std::time::{Duration, Instant};
+
 use serde_json::{Value, json};
 
 use crate::db::{MessageRow, SendOutcome, Tenant};
@@ -153,12 +155,17 @@ pub async fn send(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
             tenant.synthetic.clone(),
             to,
             thread_id,
-            body,
-            data_json,
+            body.clone(),
+            data_json.clone(),
             dedupe_key,
             plan.inbox_rows_max,
         )
         .await?;
+
+    // PRD-mcphost-agent-wake requirement 4: strictly after the message's
+    // own insert has committed above, never inside that transaction.
+    fire_message_triggers(state, &outcome, &tenant.namespace, &body, &data_json, None).await;
+
     Ok(send_outcome_json(outcome))
 }
 
@@ -188,14 +195,96 @@ pub async fn reply(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
             tenant.clone(),
             tenant.synthetic.clone(),
             thread_id,
-            body,
-            data_json,
-            in_reply_to,
+            body.clone(),
+            data_json.clone(),
+            in_reply_to.clone(),
             dedupe_key,
             plan.inbox_rows_max,
         )
         .await?;
+
+    // PRD-mcphost-agent-wake requirement 4: strictly after the message's
+    // own insert has committed above, never inside that transaction.
+    fire_message_triggers(state, &outcome, &tenant.namespace, &body, &data_json, in_reply_to.as_deref()).await;
+
     Ok(send_outcome_json(outcome))
+}
+
+/// PRD-mcphost-agent-wake requirements 2/3/4: after [`send`]/[`reply`]'s
+/// own message insert has committed, fires every enabled `message`-kind
+/// trigger each delivered recipient holds whose `from` is unset or matches
+/// the sender -- one run per matching trigger, via the same
+/// `hooks::enqueue_with_dedupe` helper `handle_hook` uses for an event
+/// trigger's own delivery (requirement 4's explicit "factor ... not
+/// copy-pasting it"). Never fails the send/reply that reached here: a
+/// per-trigger enqueue failure is only logged (`enqueue_with_dedupe`
+/// itself already degrades a quota rejection into a `rejected` run rather
+/// than an `Err`; a genuine DB error is the only way this loop's own call
+/// returns `Err`, and even that must not undo an already-durable message).
+///
+/// Envelope privacy (technical considerations): exactly `{message_id,
+/// thread_id, seq, from, body, data, in_reply_to, created_at}` -- no block
+/// list, no receipts, no other participant's address.
+async fn fire_message_triggers(
+    state: &AppState,
+    outcome: &SendOutcome,
+    from_address: &str,
+    body: &str,
+    data_json: &Option<String>,
+    in_reply_to: Option<&str>,
+) {
+    if outcome.delivered_tenant_ids.is_empty() {
+        return;
+    }
+    let data = data_json.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok());
+    let envelope = json!({
+        "message_id": outcome.message_id,
+        "thread_id": outcome.thread_id,
+        "seq": outcome.seq,
+        "from": from_address,
+        "body": body,
+        "data": data,
+        "in_reply_to": in_reply_to,
+        "created_at": outcome.created_at,
+    });
+    let args_json = envelope.to_string();
+
+    for &recipient_id in &outcome.delivered_tenant_ids {
+        let triggers = match state.db.list_enabled_message_triggers(recipient_id).await {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::warn!(error = %e, tenant_id = recipient_id, "message trigger lookup failed");
+                continue;
+            }
+        };
+        if triggers.is_empty() {
+            continue;
+        }
+        let recipient = match state.db.find_tenant_by_id(recipient_id).await {
+            Ok(Some(t)) => t,
+            _ => continue,
+        };
+        for row in triggers {
+            if let Some(from_scope) = crate::triggers::parse_message_trigger_from(&row.config_json)
+                && from_scope != from_address
+            {
+                continue;
+            }
+            if let Err(e) = crate::hooks::enqueue_with_dedupe(
+                state,
+                &recipient,
+                &row,
+                "message",
+                Some(outcome.message_id.as_str()),
+                Some(outcome.message_id.as_str()),
+                args_json.clone(),
+            )
+            .await
+            {
+                tracing::warn!(error = %e, trigger_id = %row.id, "message trigger enqueue failed");
+            }
+        }
+    }
 }
 
 fn encode_inbox_cursor(row: &MessageRow) -> String {
@@ -248,6 +337,43 @@ pub async fn inbox(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
         "messages": rows.iter().map(message_row_json).collect::<Vec<_>>(),
         "next_cursor": next_cursor,
     }))
+}
+
+/// PRD-mcphost-agent-wake P0 requirement 6: `host.msg.wait(cursor?,
+/// timeout_s<=25, unread_only?)` -- for a client with no polling loop of
+/// its own, same motivating shape `runs::wait` already proves for
+/// `host.runs.wait` (500ms polls up to `timeout_s`; a real wake channel is
+/// P1 requirement 9, out of scope here, same as it is for `runs::wait`'s
+/// own P1). Returns as soon as at least one message past `cursor` exists
+/// (the same shape [`inbox`] would for that call, but with its own
+/// `next_cursor` always advanced to the last row returned, not gated on a
+/// full page -- a caller polling forward wants "resume after what I just
+/// got", not inbox's own pagination semantics), else at the deadline an
+/// empty list with `cursor` unchanged (AC6). Never errors past argument
+/// validation -- a bad `cursor` still fails fast, same as `inbox` itself.
+pub async fn wait(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let timeout_s = arg_i64_opt(args, "timeout_s").unwrap_or(20).clamp(1, 25);
+    let unread_only = arg_bool(args, "unread_only");
+    let cursor_arg = arg_str_opt(args, "cursor");
+    let after = match &cursor_arg {
+        Some(c) => Some(decode_inbox_cursor(c)?),
+        None => None,
+    };
+    let deadline = Instant::now() + Duration::from_secs(timeout_s as u64);
+    loop {
+        let rows = state.db.msg_inbox(tenant.id, after.clone(), 50, unread_only).await?;
+        if !rows.is_empty() {
+            let next_cursor = rows.last().map(encode_inbox_cursor);
+            return Ok(json!({
+                "messages": rows.iter().map(message_row_json).collect::<Vec<_>>(),
+                "next_cursor": next_cursor,
+            }));
+        }
+        if Instant::now() >= deadline {
+            return Ok(json!({"messages": [], "next_cursor": cursor_arg}));
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
 }
 
 /// `host.msg.thread(thread_id, cursor?, limit≤100)` (requirement 4 /
