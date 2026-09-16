@@ -1,7 +1,7 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-gate-debt-a1fcdba.md",
-  "intent_slug": "mcphost-gate-debt-a1fcdba",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-gate-debt-4f1112d.md",
+  "intent_slug": "mcphost-gate-debt-4f1112d",
   "root_motivation": "Five whys (one per inherited finding, from `git log -S` where a candidate commit was found):",
   "user_persona": "An agent that has discovered another agent's shared tool (via `host.catalog.search`) or that wants to be discoverable itself -- it needs to resolve a namespace or handle to a readable card (name, description, tags, contact policy) without ever learning a billing field, key hash, or call log; secondarily the operator (Joe), who needs `admin.agent.lookup`/`admin.agent.handle_release` to recover a squatted or abusive handle.",
   "unfakeable_metric": {
@@ -14,8 +14,44 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given HEAD a1fcdbad66bb40d3afe8f46ab118bf8d8aba0f3d, When the gate runs, Then extended-receipts passes: one or more extended producers did not pass|skip (see output above)",
+      "description": "Given HEAD 4f1112df8af5183c47807ff2fa50be0453c9d774, When the gate runs, Then vti-plan passes: autobuilder vti-plan exited non-zero",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
+    },
+    {
+      "id": "AC2",
+      "level": "MUST",
+      "description": "Given HEAD 4f1112df8af5183c47807ff2fa50be0453c9d774, When the gate runs, Then rollback-plan passes: commits since v0.54.1 are not all revert-clean (see target/autobuilder/rollback.md); fix forward, or a human rewrites history and says so \u2014 this script never edits history to force a pass",
+      "test": "tests/ac02_signup_creates_hashed_tenant.rs"
+    },
+    {
+      "id": "AC3",
+      "level": "MUST",
+      "description": "Given HEAD 4f1112df8af5183c47807ff2fa50be0453c9d774, When the gate runs, Then extended-receipts passes: one or more extended producers did not pass|skip (see output above)",
+      "test": "tests/ac03_tenant_lists_control_plane_only.rs"
+    },
+    {
+      "id": "AC4",
+      "level": "MUST",
+      "description": "Given the repository tree after this PRD's change, When `grep -rl \"target/autobuilder/receipts\" tests/` runs, Then it prints nothing (no test reads a gate receipt).",
+      "test": "tests/ac04_publish_list_and_call.rs"
+    },
+    {
+      "id": "AC5",
+      "level": "MUST",
+      "description": "Given the branch worktree, When `cargo test --quiet` runs three times in a row, Then every run exits 0 and no test named `flake_audit_does_not_block` or `cold_build_time_does_not_block` exists.",
+      "test": "tests/ac05_cross_tenant_isolation.rs"
+    },
+    {
+      "id": "AC6",
+      "level": "MUST",
+      "description": "Given main after this PRD lands, When the post-land main-scope gate runs, Then `flake-audit-receipt.json` has `verdict: pass` with `exit_codes: [0,0,0]`, `extended-receipts` is not in the blockers, and `gate-then-land.sh` pushes main (origin/main equals local main).",
+      "test": "tests/ac06_remove_tool.rs"
+    },
+    {
+      "id": "AC7",
+      "level": "SHOULD",
+      "description": "Given the changelog for this PRD, When it is read, Then it quotes the main-scope gate line and the flake-audit receipt fields from AC6. - iter_log: 2026-09-16T19:05Z amended by /dream (Joe: \"amend the prd now\", post-land main gate block at 9bfcf85) \u2014 added five-whys amendment naming the circular test file; appended AC4\u2013AC7; AC1\u2013AC3 unchanged.",
+      "test": "tests/ac07_usage_metering.rs"
     }
   ],
   "scope": [
