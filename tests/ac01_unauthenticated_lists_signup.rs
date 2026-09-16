@@ -172,6 +172,17 @@ async fn unauthenticated_tools_list_is_signup_only() {
         "host.msg.ack",
         "host.msg.block",
         "host.msg.unblock",
+        // PRD-mcphost-agent-consent requirements 2, 3, 5, 10: the consent
+        // control plane (contacts/mutes layered on top of contact_policy)
+        // is discoverable unauthenticated too, same as every other
+        // host.*-style tool above.
+        "host.agent.contact_request",
+        "host.agent.contacts",
+        "host.agent.contact_accept",
+        "host.agent.contact_deny",
+        "host.agent.mute",
+        "host.agent.unmute",
+        "host.agent.contacts_import",
     ] {
         assert!(
             tool_names.contains(&expected),
@@ -184,7 +195,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        68,
+        75,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the nine host.state.* tools (PRD-mcphost-tenant-state) \
@@ -194,7 +205,8 @@ async fn unauthenticated_tools_list_is_signup_only() {
          + the nine host.trigger.* tools (PRD-mcphost-schedules, PRD-mcphost-inbound-events) \
          + the three billing.* tools + the four host.agent.* tools \
          (PRD-mcphost-agent-directory) + the seven host.msg.* tools \
-         (PRD-mcphost-agent-inbox): \
+         (PRD-mcphost-agent-inbox) + the seven host.agent.contact_*/mute/unmute tools \
+         (PRD-mcphost-agent-consent): \
          {tool_names:?}"
     );
 }

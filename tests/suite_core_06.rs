@@ -137,6 +137,10 @@ mod compose_ac6_mapping_missing;
 mod compose_ac7_on_error_continue;
 #[path = "compose_ac8_tool_test_dry_run.rs"]
 mod compose_ac8_tool_test_dry_run;
+#[path = "consent_ac01_ac02_ac03_ac04_contact_lifecycle.rs"]
+mod consent_ac01_ac02_ac03_ac04_contact_lifecycle;
+#[path = "consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox.rs"]
+mod consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox;
 #[path = "envelope_ac1_http_declared_output_promoted.rs"]
 mod envelope_ac1_http_declared_output_promoted;
 #[path = "envelope_ac4_tool_test_reports_missing_declared_output.rs"]
@@ -261,5 +265,3 @@ mod metering_ac11_admin_meter_status;
 mod metering_ac12_billing_status_stripe_reported_usage;
 #[path = "metering_billing_status_emitted_this_month.rs"]
 mod metering_billing_status_emitted_this_month;
-#[path = "migration_compat_headers.rs"]
-mod migration_compat_headers;

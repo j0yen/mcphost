@@ -35,6 +35,7 @@ const MIGRATION_0019: &str = include_str!("../migrations/0019_handoff_token.sql"
 const MIGRATION_0020: &str = include_str!("../migrations/0020_agent_profiles.sql");
 const MIGRATION_0021: &str = include_str!("../migrations/0021_messaging.sql");
 const MIGRATION_0022: &str = include_str!("../migrations/0022_message_refused.sql");
+const MIGRATION_0023: &str = include_str!("../migrations/0023_consent.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -169,6 +170,10 @@ fn message_row_from_row(r: &Row) -> rusqlite::Result<MessageRow> {
         created_at: r.get(9)?,
         created_unix_ms: r.get(10)?,
         read_at: r.get(11)?,
+        // PRD-mcphost-agent-consent requirement 6: appended as the last
+        // column by both `msg_inbox`'s and `msg_thread`'s SELECTs, so every
+        // index above stays unchanged.
+        urgent: r.get::<_, i64>(12)? != 0,
     })
 }
 
@@ -198,6 +203,55 @@ fn agent_profile_row_from_row(r: &Row) -> rusqlite::Result<AgentProfileRow> {
 pub enum SetProfileOutcome {
     Ok(AgentProfileRow),
     HandleTaken,
+}
+
+// ---- consent (PRD-mcphost-agent-consent) --------------------------------
+
+/// One `host.agent.contacts()` accepted-pair row.
+#[derive(Debug, Clone, Serialize)]
+pub struct ContactRow {
+    pub address: String,
+    pub accepted_at: String,
+}
+
+/// One `host.agent.contacts()` `incoming`/`outgoing` request row --
+/// `address` is the *other* party (the requester for `incoming`, the
+/// target for `outgoing`), never the caller's own.
+#[derive(Debug, Clone, Serialize)]
+pub struct ContactRequestRow {
+    pub request_id: String,
+    pub address: String,
+    pub note: Option<String>,
+    pub status: String,
+    pub created_at: String,
+    pub decided_at: Option<String>,
+}
+
+fn contact_request_row_from_row(r: &Row) -> rusqlite::Result<ContactRequestRow> {
+    Ok(ContactRequestRow {
+        request_id: r.get(0)?,
+        address: r.get(1)?,
+        note: r.get(2)?,
+        status: r.get(3)?,
+        created_at: r.get(4)?,
+        decided_at: r.get(5)?,
+    })
+}
+
+/// [`Db::agent_contacts`]'s whole return shape.
+pub struct ContactsView {
+    pub contacts: Vec<ContactRow>,
+    pub incoming: Vec<ContactRequestRow>,
+    pub outgoing: Vec<ContactRequestRow>,
+}
+
+/// [`Db::contact_accept`]/[`Db::contact_deny`]'s return shape: the other
+/// party's address (always the requester -- both tools are only ever
+/// called by the recipient) and, for accept, when the pair became mutual.
+pub struct ContactDecision {
+    pub request_id: String,
+    pub other_address: String,
+    pub decided_at: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -785,6 +839,10 @@ fn code_to_static(code: &str) -> &'static str {
     match code {
         "contact_refused" => "contact_refused",
         "recipient_inbox_full" => "recipient_inbox_full",
+        // PRD-mcphost-agent-consent requirement 4: the new per-recipient
+        // refusal code `consent::check` can return alongside the two
+        // inbox-PRD ones above.
+        "contact_pending" => "contact_pending",
         _ => "agent_not_found",
     }
 }
@@ -821,6 +879,10 @@ pub struct MessageRow {
     pub created_at: String,
     pub created_unix_ms: i64,
     pub read_at: Option<String>,
+    /// PRD-mcphost-agent-consent requirement 6: `true` for a `host.msg.send(
+    /// urgent: true)` message -- bypasses `Db::msg_inbox`'s `unread_only`
+    /// mute filter, never a block or `closed` policy.
+    pub urgent: bool,
 }
 
 fn percentile(sorted: &[i64], p: f64) -> f64 {
@@ -903,7 +965,8 @@ impl Db {
         Self::migrate_0019_handoff_token(&conn)?;
         Self::migrate_0020_agent_profiles(&conn)?;
         Self::migrate_0021_messaging(&conn)?;
-        Self::migrate_0022_message_refused(&conn)
+        Self::migrate_0022_message_refused(&conn)?;
+        Self::migrate_0023_consent(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -1208,6 +1271,21 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0022)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-agent-consent requirement 1: same new-table idempotency
+    /// guard as 0021 above, gated on `contacts` (the first of the three
+    /// tables -- plus the additive `messages.urgent` column -- this
+    /// migration adds together, same "new table plus an additive column in
+    /// one guarded batch" shape migration 0020 already uses).
+    fn migrate_0023_consent(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'contacts'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0023)?;
         }
         Ok(())
     }
@@ -4890,17 +4968,19 @@ impl Db {
     // ---- messaging (PRD-mcphost-agent-inbox) ----------------------------
 
     /// Resolve `address` (an `@handle` or a bare `t_...` namespace) to a
-    /// live, addressable tenant for `host.msg.send`/`reply`, applying
-    /// requirement 2's four refusal causes in order: unknown/disabled
-    /// (`agent_not_found`), blocked by the recipient (`agent_not_found`,
-    /// byte-identical to unknown per AC5), then the recipient's
-    /// `contact_policy` (`contact_refused` for `closed` and, until the
-    /// consent PRD populates `contacts`, `contacts` too -- requirement 2's
-    /// own note: "until then contacts behaves as closed").
+    /// live, addressable tenant for `host.msg.send`/`reply`: unknown/
+    /// disabled resolves to `agent_not_found` right here; every other
+    /// refusal (blocked, `closed`, `contacts` with no accepted/active
+    /// request) is [`crate::consent::check`]'s decision -- the ONE shared
+    /// function requirement 4's technical considerations ask for, so this
+    /// and `Db::msg_reply`'s per-participant loop can't drift the way they
+    /// used to (each carried its own copy of the blocked/policy check
+    /// before this PRD).
     fn resolve_message_recipient(
         conn: &Connection,
         address: &str,
         sender_id: i64,
+        now_ms: i64,
     ) -> Result<RecipientResolution, AppError> {
         let tenant = if let Some(h) = address.strip_prefix('@') {
             let handle = h.to_lowercase();
@@ -4918,17 +4998,11 @@ impl Db {
         let Some(tenant) = tenant else {
             return Ok(RecipientResolution::Refused("agent_not_found"));
         };
-        let blocked: bool = conn
-            .prepare("SELECT 1 FROM blocks WHERE tenant_id = ?1 AND blocked_tenant_id = ?2")?
-            .exists(params![tenant.id, sender_id])?;
-        if blocked {
-            return Ok(RecipientResolution::Refused("agent_not_found"));
-        }
         let policy = Self::query_agent_profile(conn, tenant.id)?.contact_policy;
-        if policy == "closed" || policy == "contacts" {
-            return Ok(RecipientResolution::Refused("contact_refused"));
+        match crate::consent::check(conn, sender_id, tenant.id, &policy, now_ms)? {
+            crate::consent::SendCheck::Allow => Ok(RecipientResolution::Ok(Box::new(tenant))),
+            crate::consent::SendCheck::Refuse(code) => Ok(RecipientResolution::Refused(code)),
         }
-        Ok(RecipientResolution::Ok(Box::new(tenant)))
     }
 
     /// `host.msg.send` (requirements 2, 6, 8, 11 / AC1, AC4, AC5, AC7, AC9,
@@ -4960,6 +5034,9 @@ impl Db {
         data_json: Option<String>,
         dedupe_key: Option<String>,
         inbox_rows_max: i64,
+        // PRD-mcphost-agent-consent requirement 6.
+        urgent: bool,
+        urgent_per_day: i64,
     ) -> Result<SendOutcome, AppError> {
         let now_ms = crate::state::now_unix_ms();
         let now = now_rfc3339();
@@ -5001,9 +5078,29 @@ impl Db {
                 let mut refused: Vec<(String, &'static str)> = Vec::new();
                 let mut deliver_ids = Vec::new();
                 for addr in &to {
-                    match Self::resolve_message_recipient(conn, addr, sender.id)? {
+                    match Self::resolve_message_recipient(conn, addr, sender.id, now_ms)? {
                         RecipientResolution::Refused(code) => refused.push((addr.clone(), code)),
                         RecipientResolution::Ok(t) => {
+                            // requirement 6: urgent_per_day is a
+                            // sender-per-recipient whole-call quota -- a
+                            // recipient over it fails the whole send (AC6:
+                            // "the fourth ... is not stored"), unlike
+                            // inbox_rows_max below, which only refuses that
+                            // one recipient. Sliding 24h window, same
+                            // convention as msgs_per_hour's sliding hour.
+                            if urgent {
+                                let sent_today: i64 = conn.query_row(
+                                    "SELECT COUNT(*) FROM messages m \
+                                     JOIN message_receipts r ON r.message_id = m.id \
+                                     WHERE m.from_tenant_id = ?1 AND r.tenant_id = ?2 \
+                                       AND m.urgent = 1 AND m.created_unix_ms >= ?3",
+                                    params![sender.id, t.id, now_ms - 86_400_000],
+                                    |r| r.get(0),
+                                )?;
+                                if sent_today >= urgent_per_day {
+                                    return Err(AppError::msg_quota_exceeded("urgent_per_day", urgent_per_day));
+                                }
+                            }
                             let rows: i64 = conn.query_row(
                                 "SELECT COUNT(*) FROM message_receipts WHERE tenant_id = ?1",
                                 params![t.id],
@@ -5029,7 +5126,7 @@ impl Db {
                 let (message_id, seq) = Self::insert_message(
                     conn, &tid, sender.id, &sender.namespace, &sender_synthetic,
                     sender.source_class.as_deref().unwrap_or("external"),
-                    &body, &data_json, None, &dedupe_key, now_ms, &now, &deliver_ids, &refused,
+                    &body, &data_json, None, &dedupe_key, now_ms, &now, &deliver_ids, &refused, urgent,
                 )?;
 
                 Ok(SendOutcome {
@@ -5103,17 +5200,17 @@ impl Db {
                     else {
                         continue; // participant tenant was deleted; nothing to refuse or deliver to
                     };
-                    let blocked: bool = conn
-                        .prepare("SELECT 1 FROM blocks WHERE tenant_id = ?1 AND blocked_tenant_id = ?2")?
-                        .exists(params![t.id, sender.id])?;
-                    if blocked {
-                        refused.push((t.namespace.clone(), "agent_not_found"));
-                        continue;
-                    }
+                    // PRD-mcphost-agent-consent requirement 4: same shared
+                    // `consent::check` `resolve_message_recipient` calls
+                    // above, so a reply's blocked/policy handling can't
+                    // drift from a fresh send's.
                     let policy = Self::query_agent_profile(conn, t.id)?.contact_policy;
-                    if policy == "closed" || policy == "contacts" {
-                        refused.push((t.namespace.clone(), "contact_refused"));
-                        continue;
+                    match crate::consent::check(conn, sender.id, t.id, &policy, now_ms)? {
+                        crate::consent::SendCheck::Allow => {}
+                        crate::consent::SendCheck::Refuse(code) => {
+                            refused.push((t.namespace.clone(), code));
+                            continue;
+                        }
                     }
                     let rows: i64 = conn.query_row(
                         "SELECT COUNT(*) FROM message_receipts WHERE tenant_id = ?1",
@@ -5132,7 +5229,7 @@ impl Db {
                     conn, &thread_id, sender.id, &sender.namespace, &sender_synthetic,
                     sender.source_class.as_deref().unwrap_or("external"),
                     &body, &data_json, in_reply_to.as_deref(), &dedupe_key, now_ms, &now, &deliver_ids,
-                    &refused,
+                    &refused, false,
                 )?;
 
                 Ok(SendOutcome {
@@ -5241,6 +5338,9 @@ impl Db {
         now: &str,
         deliver_ids: &[i64],
         refused: &[(String, &'static str)],
+        // PRD-mcphost-agent-consent requirement 6: `host.msg.reply` always
+        // passes `false` -- only `host.msg.send` exposes `urgent`.
+        urgent: bool,
     ) -> Result<(String, i64), AppError> {
         let seq: i64 = conn.query_row(
             "SELECT COALESCE(MAX(seq), 0) + 1 FROM messages WHERE thread_id = ?1",
@@ -5259,11 +5359,11 @@ impl Db {
         conn.execute(
             "INSERT INTO messages \
                  (id, thread_id, seq, from_tenant_id, from_address, body, data_json, in_reply_to, \
-                  dedupe_key, synthetic, source_class, created_at, created_unix_ms, refused_json) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                  dedupe_key, synthetic, source_class, created_at, created_unix_ms, refused_json, urgent) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 message_id, thread_id, seq, from_tenant_id, from_address, body, data_json, in_reply_to,
-                dedupe_key, synthetic, source_class, now, now_ms, refused_json
+                dedupe_key, synthetic, source_class, now, now_ms, refused_json, urgent
             ],
         )?;
         for recipient_id in deliver_ids {
@@ -5306,8 +5406,9 @@ impl Db {
         self.with_conn(move |conn| {
             let mut sql = String::from(
                 "SELECT m.id, m.thread_id, m.seq, m.from_address, m.body, m.data_json, m.in_reply_to, \
-                        m.synthetic, m.source_class, m.created_at, m.created_unix_ms, r.read_at \
+                        m.synthetic, m.source_class, m.created_at, m.created_unix_ms, r.read_at, m.urgent \
                  FROM message_receipts r JOIN messages m ON m.id = r.message_id \
+                 LEFT JOIN muted mu ON mu.tenant_id = r.tenant_id AND mu.muted_tenant_id = m.from_tenant_id \
                  WHERE r.tenant_id = ?1",
             );
             let mut sql_params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(tenant_id)];
@@ -5321,7 +5422,14 @@ impl Db {
                 sql_params.push(Box::new(id.clone()));
             }
             if unread_only {
-                sql.push_str(" AND r.read_at IS NULL");
+                // requirement 5 / 6 (AC5): a muted sender's message is
+                // excluded from an unread_only read UNLESS it's urgent
+                // (requirement 6: urgent bypasses the mute filter, never a
+                // block or closed policy -- neither of which apply here,
+                // both already keep the message out of `message_receipts`
+                // entirely). `mu.tenant_id IS NULL` is "not muted" (the
+                // LEFT JOIN found no matching mute row).
+                sql.push_str(" AND r.read_at IS NULL AND (mu.tenant_id IS NULL OR m.urgent = 1)");
             }
             sql.push_str(&format!(" ORDER BY m.created_unix_ms, m.id LIMIT ?{}", sql_params.len() + 1));
             sql_params.push(Box::new(limit));
@@ -5357,7 +5465,7 @@ impl Db {
             }
             let mut sql = String::from(
                 "SELECT m.id, m.thread_id, m.seq, m.from_address, m.body, m.data_json, m.in_reply_to, \
-                        m.synthetic, m.source_class, m.created_at, m.created_unix_ms, r.read_at \
+                        m.synthetic, m.source_class, m.created_at, m.created_unix_ms, r.read_at, m.urgent \
                  FROM messages m LEFT JOIN message_receipts r ON r.message_id = m.id AND r.tenant_id = ?1 \
                  WHERE m.thread_id = ?2",
             );
@@ -5448,16 +5556,43 @@ impl Db {
         .await
     }
 
-    /// `host.msg.block(address)` (requirement 9): idempotent -- blocking an
-    /// already-blocked address is a no-op success.
+    /// `host.msg.block(address)` (requirement 9; PRD-mcphost-agent-consent
+    /// requirement 7): idempotent -- blocking an already-blocked address is
+    /// a no-op success. Also denies any `pending` request from the blocked
+    /// party (so it can't sit there forever un-decided) and removes an
+    /// existing accepted `contacts` pair (both direction rows) -- neither
+    /// is ever visible to the blocked party: they just start getting
+    /// `agent_not_found`/`contact_refused` like anyone blocked already
+    /// does (`consent::check`), no notification of any kind.
     pub async fn msg_block(&self, tenant_id: i64, blocked_tenant_id: i64) -> Result<(), AppError> {
         let now = now_rfc3339();
+        let now_ms = crate::state::now_unix_ms();
         self.with_conn(move |conn| {
-            conn.execute(
-                "INSERT OR IGNORE INTO blocks (tenant_id, blocked_tenant_id, created_at) VALUES (?1, ?2, ?3)",
-                params![tenant_id, blocked_tenant_id, now],
-            )?;
-            Ok(())
+            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
+            let result: Result<(), AppError> = (|| {
+                conn.execute(
+                    "INSERT OR IGNORE INTO blocks (tenant_id, blocked_tenant_id, created_at) VALUES (?1, ?2, ?3)",
+                    params![tenant_id, blocked_tenant_id, now],
+                )?;
+                conn.execute(
+                    "UPDATE contact_requests SET status = 'denied', decided_at = ?1, decided_unix_ms = ?2 \
+                     WHERE from_tenant_id = ?3 AND to_tenant_id = ?4 AND status = 'pending'",
+                    params![now, now_ms, blocked_tenant_id, tenant_id],
+                )?;
+                conn.execute(
+                    "DELETE FROM contacts WHERE (tenant_id = ?1 AND contact_tenant_id = ?2) \
+                        OR (tenant_id = ?2 AND contact_tenant_id = ?1)",
+                    params![tenant_id, blocked_tenant_id],
+                )?;
+                Ok(())
+            })();
+            match &result {
+                Ok(()) => conn.execute("COMMIT", []).map(|_| ()).map_err(AppError::from)?,
+                Err(_) => {
+                    let _ = conn.execute("ROLLBACK", []);
+                }
+            }
+            result
         })
         .await
     }
@@ -5471,6 +5606,392 @@ impl Db {
                 params![tenant_id, blocked_tenant_id],
             )?;
             Ok(n > 0)
+        })
+        .await
+    }
+
+    // ---- consent (PRD-mcphost-agent-consent) -----------------------------
+
+    /// Test/ops-only: backdate a `contact_requests` row's `created_unix_ms`
+    /// and/or `decided_unix_ms` -- AC4's 7-day deny-cooldown test needs a
+    /// way to simulate the window elapsing without a real 7-day wait, same
+    /// "toggle internal state directly rather than waiting out a real
+    /// window" convention as [`Self::set_query_only`] (AC14's unwritable-db
+    /// simulation). `None` leaves that column unchanged.
+    pub async fn test_backdate_contact_request(
+        &self,
+        request_id: String,
+        created_unix_ms: Option<i64>,
+        decided_unix_ms: Option<i64>,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            if let Some(ms) = created_unix_ms {
+                conn.execute(
+                    "UPDATE contact_requests SET created_unix_ms = ?1 WHERE id = ?2",
+                    params![ms, request_id],
+                )?;
+            }
+            if let Some(ms) = decided_unix_ms {
+                conn.execute(
+                    "UPDATE contact_requests SET decided_unix_ms = ?1 WHERE id = ?2",
+                    params![ms, request_id],
+                )?;
+            }
+            Ok(())
+        })
+        .await
+    }
+
+    /// `host.agent.mute(address)` (requirement 5): unconditional, same
+    /// idempotent-no-op shape as [`Self::msg_block`]'s own insert.
+    pub async fn msg_mute(&self, tenant_id: i64, muted_tenant_id: i64) -> Result<(), AppError> {
+        let now = now_rfc3339();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT OR IGNORE INTO muted (tenant_id, muted_tenant_id, created_at) VALUES (?1, ?2, ?3)",
+                params![tenant_id, muted_tenant_id, now],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `host.agent.unmute(address)` (requirement 5): `true` if a mute was
+    /// actually removed.
+    pub async fn msg_unmute(&self, tenant_id: i64, muted_tenant_id: i64) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "DELETE FROM muted WHERE tenant_id = ?1 AND muted_tenant_id = ?2",
+                params![tenant_id, muted_tenant_id],
+            )?;
+            Ok(n > 0)
+        })
+        .await
+    }
+
+    /// `host.agent.contact_request(address, note?)` (requirement 2 / AC1,
+    /// AC2, AC4, AC7; requirement 9 / AC10; requirement 11's lazy expiry):
+    /// resolves `to_address` the same way [`Self::resolve_agent_address`]
+    /// does (address resolution carries no policy/block filtering of its
+    /// own -- both are checked explicitly below so AC7's "byte-identical to
+    /// a nonexistent address" is reachable for both "doesn't resolve" and
+    /// "resolves but blocked me", the same `agent_not_found` code either
+    /// way). Every refusal is returned as `Err`, not a variant, since
+    /// there's nothing left for a caller to do with a `Result::Ok` that
+    /// isn't itself a pending request (`consent.rs::contact_request` is a
+    /// thin pass-through for exactly this reason).
+    pub async fn contact_request(
+        &self,
+        from_tenant: Tenant,
+        to_address: String,
+        note: Option<String>,
+        contact_requests_per_day: i64,
+    ) -> Result<crate::consent::ExistingPendingRequest, AppError> {
+        let now_ms = crate::state::now_unix_ms();
+        let now = now_rfc3339();
+        self.with_conn(move |conn| {
+            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
+            let outcome: Result<crate::consent::ExistingPendingRequest, AppError> = (|| {
+                let to_id: Option<i64> = if let Some(h) = to_address.strip_prefix('@') {
+                    let handle = h.to_lowercase();
+                    conn.query_row(
+                        "SELECT t.id FROM tenants t JOIN agent_profiles ap ON ap.tenant_id = t.id \
+                         WHERE ap.handle = ?1 AND t.disabled = 0",
+                        params![handle],
+                        |r| r.get(0),
+                    )
+                    .optional()?
+                } else {
+                    conn.query_row(
+                        "SELECT id FROM tenants WHERE namespace = ?1 AND disabled = 0",
+                        params![to_address],
+                        |r| r.get(0),
+                    )
+                    .optional()?
+                };
+                let Some(to_id) = to_id else { return Err(AppError::agent_not_found()) };
+                // AC7: blocked-by-recipient reads identically to a
+                // nonexistent address, same convention `consent::check`
+                // already applies to `host.msg.send`.
+                if crate::consent::is_blocked(conn, to_id, from_tenant.id)? {
+                    return Err(AppError::agent_not_found());
+                }
+                if crate::consent::has_accepted_contact(conn, from_tenant.id, to_id)? {
+                    return Err(AppError::not_needed());
+                }
+                let policy = Self::query_agent_profile(conn, to_id)?.contact_policy;
+                match policy.as_str() {
+                    "open" => return Err(AppError::not_needed()),
+                    "closed" => return Err(AppError::contact_refused()),
+                    _ => {} // "contacts"
+                }
+                match crate::consent::classify_existing_request(conn, from_tenant.id, to_id, now_ms)? {
+                    crate::consent::ExistingRequestState::Pending(existing) => return Ok(existing),
+                    crate::consent::ExistingRequestState::Cooldown => {
+                        return Err(AppError::contact_pending());
+                    }
+                    crate::consent::ExistingRequestState::None
+                    | crate::consent::ExistingRequestState::Stale => {}
+                }
+                // requirement 2: contact_requests_per_day, sliding 24h,
+                // whole-call (sender-wide, not per-recipient -- unlike
+                // urgent_per_day, nothing in the PRD scopes this one to a
+                // pair).
+                let sent_today: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM contact_requests WHERE from_tenant_id = ?1 AND created_unix_ms >= ?2",
+                    params![from_tenant.id, now_ms - 86_400_000],
+                    |r| r.get(0),
+                )?;
+                if sent_today >= contact_requests_per_day {
+                    return Err(AppError::msg_quota_exceeded(
+                        "contact_requests_per_day",
+                        contact_requests_per_day,
+                    ));
+                }
+                let id = crate::state::new_ulid();
+                // requirement 3's cooldown-expiry note: `UNIQUE(from_tenant_id,
+                // to_tenant_id)` means a denied-and-stale (or expired) row
+                // is replaced in place, not inserted as a second row.
+                conn.execute(
+                    "INSERT INTO contact_requests \
+                         (id, from_tenant_id, to_tenant_id, note, status, created_at, created_unix_ms) \
+                     VALUES (?1, ?2, ?3, ?4, 'pending', ?5, ?6) \
+                     ON CONFLICT(from_tenant_id, to_tenant_id) DO UPDATE SET \
+                         id = excluded.id, note = excluded.note, status = 'pending', \
+                         created_at = excluded.created_at, created_unix_ms = excluded.created_unix_ms, \
+                         decided_at = NULL, decided_unix_ms = NULL",
+                    params![id, from_tenant.id, to_id, note, now, now_ms],
+                )?;
+                // requirement 9 (P1, AC10): a system message in the
+                // recipient's inbox via the EXISTING `Db::msg_inbox` query
+                // path -- no changes needed there.
+                Self::insert_contact_request_notice(conn, to_id, &id, &now, now_ms)?;
+                Ok(crate::consent::ExistingPendingRequest {
+                    request_id: id,
+                    note,
+                    created_at: now,
+                })
+            })();
+            match &outcome {
+                Ok(_) => conn.execute("COMMIT", []).map(|_| ()).map_err(AppError::from)?,
+                Err(_) => {
+                    let _ = conn.execute("ROLLBACK", []);
+                }
+            }
+            outcome
+        })
+        .await
+    }
+
+    /// Requirement 9 (P1, AC10): a synthetic "host" system message
+    /// announcing a new contact request, appended to a per-recipient
+    /// synthetic thread (`host-inbox-<to_tenant_id>`, created on first use)
+    /// -- reuses `messages`/`message_receipts`/`thread_participants`
+    /// storage rather than a parallel path, so it surfaces via the
+    /// existing `Db::msg_inbox` query with no changes there. `from_tenant_id`
+    /// is `NULL` (nothing real tenant sent this): `from_address: "host"` is
+    /// hardcoded, the same "denormalized address survives a null tenant"
+    /// shape migration 0021 already gives a deleted sender's messages.
+    fn insert_contact_request_notice(
+        conn: &Connection,
+        to_tenant_id: i64,
+        request_id: &str,
+        now: &str,
+        now_ms: i64,
+    ) -> Result<(), AppError> {
+        let thread_id = format!("host-inbox-{to_tenant_id}");
+        let thread_exists: bool = conn
+            .prepare("SELECT 1 FROM threads WHERE id = ?1")?
+            .exists(params![thread_id])?;
+        if !thread_exists {
+            conn.execute(
+                "INSERT INTO threads (id, created_by, created_at, created_unix_ms) VALUES (?1, NULL, ?2, ?3)",
+                params![thread_id, now, now_ms],
+            )?;
+        }
+        conn.execute(
+            "INSERT OR IGNORE INTO thread_participants (thread_id, tenant_id, joined_at) VALUES (?1, ?2, ?3)",
+            params![thread_id, to_tenant_id, now],
+        )?;
+        let seq: i64 = conn.query_row(
+            "SELECT COALESCE(MAX(seq), 0) + 1 FROM messages WHERE thread_id = ?1",
+            params![thread_id],
+            |r| r.get(0),
+        )?;
+        let message_id = crate::state::new_ulid();
+        let data_json = json!({"kind": "contact_request", "request_id": request_id}).to_string();
+        conn.execute(
+            "INSERT INTO messages \
+                 (id, thread_id, seq, from_tenant_id, from_address, body, data_json, in_reply_to, \
+                  dedupe_key, synthetic, source_class, created_at, created_unix_ms, refused_json, urgent) \
+             VALUES (?1, ?2, ?3, NULL, 'host', ?4, ?5, NULL, NULL, NULL, 'host', ?6, ?7, NULL, 0)",
+            params![
+                message_id,
+                thread_id,
+                seq,
+                "You have a new contact request.",
+                data_json,
+                now,
+                now_ms
+            ],
+        )?;
+        conn.execute(
+            "INSERT INTO message_receipts (message_id, tenant_id, read_at) VALUES (?1, ?2, NULL)",
+            params![message_id, to_tenant_id],
+        )?;
+        Ok(())
+    }
+
+    /// `host.agent.contacts(status?)` (requirement 3 / AC2, AC3): the
+    /// caller's accepted contacts, plus every pending/decided request in
+    /// either direction, `status` optionally narrowing the two request
+    /// lists (never the `contacts` list itself -- an accepted pair has no
+    /// other status).
+    pub async fn agent_contacts(
+        &self,
+        tenant_id: i64,
+        status: Option<String>,
+    ) -> Result<ContactsView, AppError> {
+        self.with_conn(move |conn| {
+            let mut contacts_stmt = conn.prepare(
+                "SELECT t.namespace, c.accepted_at FROM contacts c JOIN tenants t ON t.id = c.contact_tenant_id \
+                 WHERE c.tenant_id = ?1 ORDER BY c.accepted_at",
+            )?;
+            let contacts = contacts_stmt
+                .query_map(params![tenant_id], |r| {
+                    Ok(ContactRow {
+                        address: r.get(0)?,
+                        accepted_at: r.get(1)?,
+                    })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+
+            let mut incoming_sql = String::from(
+                "SELECT cr.id, t.namespace, cr.note, cr.status, cr.created_at, cr.decided_at \
+                 FROM contact_requests cr JOIN tenants t ON t.id = cr.from_tenant_id \
+                 WHERE cr.to_tenant_id = ?1",
+            );
+            let mut outgoing_sql = String::from(
+                "SELECT cr.id, t.namespace, cr.note, cr.status, cr.created_at, cr.decided_at \
+                 FROM contact_requests cr JOIN tenants t ON t.id = cr.to_tenant_id \
+                 WHERE cr.from_tenant_id = ?1",
+            );
+            if status.is_some() {
+                incoming_sql.push_str(" AND cr.status = ?2");
+                outgoing_sql.push_str(" AND cr.status = ?2");
+            }
+            incoming_sql.push_str(" ORDER BY cr.created_at");
+            outgoing_sql.push_str(" ORDER BY cr.created_at");
+
+            let read_requests = |sql: &str| -> Result<Vec<ContactRequestRow>, AppError> {
+                let mut stmt = conn.prepare(sql)?;
+                let rows = if let Some(s) = &status {
+                    stmt.query_map(params![tenant_id, s], contact_request_row_from_row)?
+                        .collect::<rusqlite::Result<Vec<_>>>()?
+                } else {
+                    stmt.query_map(params![tenant_id], contact_request_row_from_row)?
+                        .collect::<rusqlite::Result<Vec<_>>>()?
+                };
+                Ok(rows)
+            };
+            let incoming = read_requests(&incoming_sql)?;
+            let outgoing = read_requests(&outgoing_sql)?;
+
+            Ok(ContactsView { contacts, incoming, outgoing })
+        })
+        .await
+    }
+
+    /// `host.agent.contact_accept(request_id)` (requirement 3 / AC3): only
+    /// the request's own recipient may accept it; an unknown id, one
+    /// addressed to someone else, or one no longer `pending` all collapse
+    /// to [`AppError::contact_request_not_found`] (same "unknown vs
+    /// hidden" convention as [`AppError::thread_not_found`]) -- inserts the
+    /// symmetric `contacts` pair (requirement 3: "so `host.agent.contacts()`
+    /// shows the pair from both sides") and flips `contact_requests.status`
+    /// to `accepted` in the same transaction.
+    pub async fn contact_accept(
+        &self,
+        tenant_id: i64,
+        request_id: String,
+    ) -> Result<ContactDecision, AppError> {
+        self.contact_decide(tenant_id, request_id, true).await
+    }
+
+    /// `host.agent.contact_deny(request_id)` (requirement 3 / AC4): same
+    /// authorization/idempotency shape as [`Self::contact_accept`], minus
+    /// the `contacts` insert -- the requester's subsequent sends/requests
+    /// read `contact_pending` for `consent::DENY_COOLDOWN_MS` from
+    /// `decided_at` (`consent::classify_existing_request`).
+    pub async fn contact_deny(
+        &self,
+        tenant_id: i64,
+        request_id: String,
+    ) -> Result<ContactDecision, AppError> {
+        self.contact_decide(tenant_id, request_id, false).await
+    }
+
+    async fn contact_decide(
+        &self,
+        tenant_id: i64,
+        request_id: String,
+        accept: bool,
+    ) -> Result<ContactDecision, AppError> {
+        let now = now_rfc3339();
+        let now_ms = crate::state::now_unix_ms();
+        self.with_conn(move |conn| {
+            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
+            let outcome: Result<ContactDecision, AppError> = (|| {
+                type Row = (i64, i64, String);
+                let row: Option<Row> = conn
+                    .query_row(
+                        "SELECT from_tenant_id, to_tenant_id, status FROM contact_requests WHERE id = ?1",
+                        params![request_id],
+                        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                    )
+                    .optional()?;
+                let Some((from_id, to_id, status)) = row else {
+                    return Err(AppError::contact_request_not_found());
+                };
+                if to_id != tenant_id || status != "pending" {
+                    return Err(AppError::contact_request_not_found());
+                }
+                let new_status = if accept { "accepted" } else { "denied" };
+                conn.execute(
+                    "UPDATE contact_requests SET status = ?1, decided_at = ?2, decided_unix_ms = ?3 \
+                     WHERE id = ?4",
+                    params![new_status, now, now_ms, request_id],
+                )?;
+                if accept {
+                    conn.execute(
+                        "INSERT OR REPLACE INTO contacts (tenant_id, contact_tenant_id, accepted_at) \
+                         VALUES (?1, ?2, ?3)",
+                        params![from_id, to_id, now],
+                    )?;
+                    conn.execute(
+                        "INSERT OR REPLACE INTO contacts (tenant_id, contact_tenant_id, accepted_at) \
+                         VALUES (?1, ?2, ?3)",
+                        params![to_id, from_id, now],
+                    )?;
+                }
+                let other_address: String = conn.query_row(
+                    "SELECT namespace FROM tenants WHERE id = ?1",
+                    params![from_id],
+                    |r| r.get(0),
+                )?;
+                Ok(ContactDecision {
+                    request_id: request_id.clone(),
+                    other_address,
+                    decided_at: now.clone(),
+                })
+            })();
+            match &outcome {
+                Ok(_) => conn.execute("COMMIT", []).map(|_| ()).map_err(AppError::from)?,
+                Err(_) => {
+                    let _ = conn.execute("ROLLBACK", []);
+                }
+            }
+            outcome
         })
         .await
     }
