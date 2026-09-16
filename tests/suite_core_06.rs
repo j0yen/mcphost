@@ -261,3 +261,5 @@ mod metering_ac11_admin_meter_status;
 mod metering_ac12_billing_status_stripe_reported_usage;
 #[path = "metering_billing_status_emitted_this_month.rs"]
 mod metering_billing_status_emitted_this_month;
+#[path = "migration_compat_headers.rs"]
+mod migration_compat_headers;
