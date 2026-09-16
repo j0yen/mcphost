@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-proof-lane-loop-config.md",
-  "intent_slug": "mcphost-proof-lane-loop-config",
-  "root_motivation": "Joe (operator) is holding a burst box down until an mcphost branch gate passes. Since 01:05Z none can: `autobuilder vti-plan` exits non-zero on every branch because `.buildloop/ci-equivalent.toml` \u2014 added to main by the loop's own push-gate PRD at 00:01Z (commit 4f1112d, the only commit since tag v0.54.1) \u2014 matches none of the nine lanes in `agent/proof-lanes.toml`, and vti-plan's `min_confidence` is 0.7. The block is inherited by every branch (gate attribution `inherited=2 in-scope=0`), the reviewer is skipped on the red, and gate-then-land exits 7. Three branches have cycled on it (stdlib-pseudo-modules 01:13Z and 01:57Z, test-suite-consolidation 02:04Z, tenant-self-offboard). The lane file has no test that says \"every tracked file routes somewhere\", so the gap was found by the gate, after the file was on main, by a different PRD's dispatch.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-gate-debt-4f1112d.md",
+  "intent_slug": "mcphost-gate-debt-4f1112d",
+  "root_motivation": "Five whys (one per inherited finding, from `git log -S` where a candidate commit was found):",
   "user_persona": "An agent that has discovered another agent's shared tool (via `host.catalog.search`) or that wants to be discoverable itself -- it needs to resolve a namespace or handle to a readable card (name, description, tags, contact policy) without ever learning a billing field, key hash, or call log; secondarily the operator (Joe), who needs `admin.agent.lookup`/`admin.agent.handle_release` to recover a squatted or abusive handle.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,43 +14,43 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the landed `agent/proof-lanes.toml`, When `autobuilder vti-plan --project . --base v0.54.1` runs on the landed head, Then exit 0 and the receipt's route for `.buildloop/ci-equivalent.toml` has confidence \u2265 0.7 with lane `loop-config`.",
+      "description": "Given HEAD 4f1112df8af5183c47807ff2fa50be0453c9d774, When the gate runs, Then vti-plan passes: autobuilder vti-plan exited non-zero",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the current tree, When `cargo test --test lanecov_ac01_every_tracked_path_routes` runs, Then it passes.",
+      "description": "Given HEAD 4f1112df8af5183c47807ff2fa50be0453c9d774, When the gate runs, Then rollback-plan passes: commits since v0.54.1 are not all revert-clean (see target/autobuilder/rollback.md); fix forward, or a human rewrites history and says so \u2014 this script never edits history to force a pass",
       "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a temporary tracked file `zz-unrouted/x.txt` in a scratch clone, When the coverage test runs, Then it fails and its output names `zz-unrouted/x.txt`.",
+      "description": "Given HEAD 4f1112df8af5183c47807ff2fa50be0453c9d774, When the gate runs, Then extended-receipts passes: one or more extended producers did not pass|skip (see output above)",
       "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given the nine pre-existing lanes, When `proof-lanes.toml` is diffed against v0.54.1, Then the only change is the added `loop-config` block.",
+      "description": "Given the repository tree after this PRD's change, When `grep -rl \"target/autobuilder/receipts\" tests/` runs, Then it prints nothing (no test reads a gate receipt).",
       "test": "tests/ac04_publish_list_and_call.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a branch worktree rebased onto the landed head with an empty diff, When `extend-gate.sh <wt> --scope branch` runs, Then the journal phases field shows `vti-plan:<n>` without `!`.",
+      "description": "Given the branch worktree, When `cargo test --quiet` runs three times in a row, Then every run exits 0 and no test named `flake_audit_does_not_block` or `cold_build_time_does_not_block` exists.",
       "test": "tests/ac05_cross_tenant_isolation.rs"
     },
     {
       "id": "AC6",
-      "level": "SHOULD",
-      "description": "Given a lane with an empty `required_commands`, When the coverage test runs, Then it fails naming the lane id.",
+      "level": "MUST",
+      "description": "Given main after this PRD lands, When the post-land main-scope gate runs, Then `flake-audit-receipt.json` has `verdict: pass` with `exit_codes: [0,0,0]`, `extended-receipts` is not in the blockers, and `gate-then-land.sh` pushes main (origin/main equals local main).",
       "test": "tests/ac06_remove_tool.rs"
     },
     {
       "id": "AC7",
-      "level": "MAY",
-      "description": "Given the docs after land, When grepped for `loop-config`, Then the how-to-add-a-lane paragraph is present.",
+      "level": "SHOULD",
+      "description": "Given the changelog for this PRD, When it is read, Then it quotes the main-scope gate line and the flake-audit receipt fields from AC6. - iter_log: 2026-09-16T19:05Z amended by /dream (Joe: \"amend the prd now\", post-land main gate block at 9bfcf85) \u2014 added five-whys amendment naming the circular test file; appended AC4\u2013AC7; AC1\u2013AC3 unchanged.",
       "test": "tests/ac07_usage_metering.rs"
     }
   ],

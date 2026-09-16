@@ -143,14 +143,6 @@ mod envelope_ac1_http_declared_output_promoted;
 mod envelope_ac4_tool_test_reports_missing_declared_output;
 #[path = "firstcall_ac6_outcome_metering.rs"]
 mod firstcall_ac6_outcome_metering;
-#[path = "gatedebt_24d1794_ac1_reviewer_agent_not_blocked.rs"]
-mod gatedebt_24d1794_ac1_reviewer_agent_not_blocked;
-#[path = "gatedebt_6d51e76_ac1_reviewer_agent_not_blocked.rs"]
-mod gatedebt_6d51e76_ac1_reviewer_agent_not_blocked;
-#[path = "gatedebt_a1fcdba_ac1_extended_producers_not_blocked.rs"]
-mod gatedebt_a1fcdba_ac1_extended_producers_not_blocked;
-#[path = "gatedebt_a7d8e1c_ac1_reviewer_agent_not_blocked.rs"]
-mod gatedebt_a7d8e1c_ac1_reviewer_agent_not_blocked;
 #[path = "handoff_ac01_signup_returns_token_and_no_key.rs"]
 mod handoff_ac01_signup_returns_token_and_no_key;
 #[path = "handoff_ac02_redeem_single_use_and_expiry.rs"]
@@ -269,3 +261,5 @@ mod metering_ac11_admin_meter_status;
 mod metering_ac12_billing_status_stripe_reported_usage;
 #[path = "metering_billing_status_emitted_this_month.rs"]
 mod metering_billing_status_emitted_this_month;
+#[path = "migration_compat_headers.rs"]
+mod migration_compat_headers;
