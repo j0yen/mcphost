@@ -116,6 +116,7 @@ async fn overlapping_firing_is_recorded_as_skipped_overlap() {
             "{}".to_string(),
             false,
             false,
+            None,
         )
         .await
         .expect("insert still-running run");

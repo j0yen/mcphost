@@ -1,0 +1,33 @@
+-- compat: previous -- one additive column (`runs.message_id`, ALTER TABLE
+-- ADD COLUMN) plus one additive index; an old release simply never
+-- queries/reads either, no existing row's shape changes, no existing
+-- statement's result set changes (PRD-mcphost-migration-safety
+-- requirement 4).
+-- mcphost 0023_message_triggers: PRD-mcphost-agent-wake P0 requirements
+-- 1-2.
+--
+-- The third `triggers.kind` value, `'message'`: no `CHECK` constraint ever
+-- pinned `kind` to `'schedule'`/`'event'` (migration 0015's own `triggers`
+-- table has none), so this is purely additive -- `config_json` for a
+-- message trigger is `{"from": <address or null>}` (see `triggers.rs`'s
+-- `build_message_config`), the same "kind decides the shape, config_hash
+-- backs the row's own uniqueness" pattern 0015's schedule and
+-- `hooks.rs`'s event triggers already use.
+--
+-- `idx_triggers_tenant_kind_enabled`: the delivery-time lookup
+-- `messaging::fire_message_triggers` does on every `host.msg.send`/`reply`
+-- (technical considerations: "under 20ms") -- `(tenant_id, kind, enabled)`
+-- rather than reusing 0015's `idx_triggers_tenant_tool` (that index is
+-- keyed by `tool_name`, useless for "every message trigger this tenant
+-- holds, across every tool").
+--
+-- `runs.message_id`: requirement 2's "the run row ... stores message_id"
+-- -- redundant with the envelope already embedded in `runs.args_json`, but
+-- gives a plain, directly-queryable column the same way `trigger_ref`
+-- already does for a schedule/event trigger's own id, rather than making
+-- every future reader re-parse JSON to answer "which message caused this
+-- run". Same additive-column shape migration 0016's `manual` and 0018's
+-- `test_run` used.
+ALTER TABLE runs ADD COLUMN message_id TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_triggers_tenant_kind_enabled ON triggers(tenant_id, kind, enabled);

@@ -35,6 +35,7 @@ const MIGRATION_0019: &str = include_str!("../migrations/0019_handoff_token.sql"
 const MIGRATION_0020: &str = include_str!("../migrations/0020_agent_profiles.sql");
 const MIGRATION_0021: &str = include_str!("../migrations/0021_messaging.sql");
 const MIGRATION_0022: &str = include_str!("../migrations/0022_message_refused.sql");
+const MIGRATION_0023: &str = include_str!("../migrations/0023_message_triggers.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -413,11 +414,17 @@ pub struct RunRow {
     /// `POST /hooks/...` delivery, a replay, or any pre-existing trigger
     /// kind), same additive-column shape as [`Self::manual`].
     pub test: bool,
+    /// PRD-mcphost-agent-wake P0 requirement 2 / migration 0023: the
+    /// `message_id` a `trigger = "message"` run was fired for -- `None` for
+    /// every other trigger kind (and for a `host.trigger.test` dry run on a
+    /// message trigger, whose envelope is synthetic, never a real stored
+    /// message).
+    pub message_id: Option<String>,
 }
 
 const RUN_COLUMNS: &str = "id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, \
     status, progress_json, result_ref, error_class, started_unix, finished_unix, duration_ms, \
-    deadline_s, attempt, purged_unix, args_json, manual, test_run";
+    deadline_s, attempt, purged_unix, args_json, manual, test_run, message_id";
 
 fn run_row_from_row(r: &Row) -> rusqlite::Result<RunRow> {
     Ok(RunRow {
@@ -440,6 +447,7 @@ fn run_row_from_row(r: &Row) -> rusqlite::Result<RunRow> {
         args_json: r.get(16)?,
         manual: r.get::<_, i64>(17)? != 0,
         test: r.get::<_, i64>(18)? != 0,
+        message_id: r.get(19)?,
     })
 }
 
@@ -804,6 +812,17 @@ pub struct SendOutcome {
     /// `messaging.rs` needs this only to skip the quota-usage bump on a
     /// dedupe hit, never surfaced on the wire.
     pub deduped: bool,
+    /// PRD-mcphost-agent-wake requirement 2: the same recipients as
+    /// `delivered_to`, by tenant id rather than namespace, same order --
+    /// `messaging::fire_message_triggers`' own per-recipient trigger
+    /// lookup needs the id, not the address (never surfaced on the wire,
+    /// same posture as `deduped`).
+    pub delivered_tenant_ids: Vec<i64>,
+    /// PRD-mcphost-agent-wake requirement 2: this message's own stored
+    /// `created_at` (RFC3339), for the envelope `fire_message_triggers`
+    /// builds -- exact, not a fresh "now" taken after this call returns
+    /// (never surfaced on the wire, same posture as `deduped`).
+    pub created_at: String,
 }
 
 /// One `host.msg.inbox`/`host.msg.thread` row (requirement 4).
@@ -903,7 +922,8 @@ impl Db {
         Self::migrate_0019_handoff_token(&conn)?;
         Self::migrate_0020_agent_profiles(&conn)?;
         Self::migrate_0021_messaging(&conn)?;
-        Self::migrate_0022_message_refused(&conn)
+        Self::migrate_0022_message_refused(&conn)?;
+        Self::migrate_0023_message_triggers(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -1208,6 +1228,22 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0022)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-agent-wake P0 requirements 1-2: same additive-column
+    /// idempotency guard as 0016/0018/0022's own `ALTER TABLE ADD COLUMN`
+    /// migrations -- gated on `runs.message_id` (the index alongside it is
+    /// already `CREATE INDEX IF NOT EXISTS`, safe to re-run unconditionally,
+    /// but kept in the same gated batch so both land atomically the first
+    /// time this runs).
+    fn migrate_0023_message_triggers(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('runs') WHERE name = 'message_id'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0023)?;
         }
         Ok(())
     }
@@ -3558,13 +3594,49 @@ impl Db {
         // other caller (an ordinary async call, the scheduler tick,
         // `POST /hooks/...`, `host.trigger.replay`) passes `false`.
         test: bool,
+        // PRD-mcphost-agent-wake requirement 2 / migration 0023: `Some` only
+        // for a `trigger = "message"` run's real, stored message id; every
+        // other caller (including a message trigger's own
+        // `host.trigger.test`, whose envelope is synthetic) passes `None`.
+        message_id: Option<String>,
     ) -> Result<(), AppError> {
         self.with_conn(move |conn| {
             conn.execute(
                 "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, \
-                 caller_tenant_id, status, deadline_s, attempt, args_json, manual, test_run) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'queued', ?7, 1, ?8, ?9, ?10)",
-                params![run_id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, deadline_s, args_json, manual, test],
+                 caller_tenant_id, status, deadline_s, attempt, args_json, manual, test_run, message_id) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'queued', ?7, 1, ?8, ?9, ?10, ?11)",
+                params![run_id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, deadline_s, args_json, manual, test, message_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-agent-wake requirement 4 / AC4: an enqueue attempt that
+    /// lost the `jobs_concurrent` admission check
+    /// (`hooks::enqueue_with_dedupe`'s own quota check, mirroring the
+    /// executor's own `jobs_concurrent` admission -- [`Self::count_running_runs_for_tenant`])
+    /// still writes a run row, already terminal (`rejected`, never leased),
+    /// so the firing is visible in `host.runs.list` rather than silently
+    /// dropped -- same "insert already-terminal" shape
+    /// [`Self::insert_skipped_run`] uses for a schedule's own overlap skip.
+    pub async fn insert_rejected_run(
+        &self,
+        run_id: String,
+        tenant_id: i64,
+        tool_name: String,
+        trigger: String,
+        trigger_ref: String,
+        message_id: Option<String>,
+        error_class: &'static str,
+    ) -> Result<(), AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, message_id, \
+                 status, error_class, started_unix, finished_unix, duration_ms, attempt) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'rejected', ?7, ?8, ?8, 0, 1)",
+                params![run_id, tenant_id, tool_name, trigger, trigger_ref, message_id, error_class, now],
             )?;
             Ok(())
         })
@@ -4659,18 +4731,43 @@ impl Db {
     }
 
     /// PRD-mcphost-inbound-events P0 requirement 4's quota check: how many
-    /// `kind = 'event'` triggers this tenant holds right now, paused or
-    /// not -- same "only remove frees a slot" rule
+    /// `kind = 'event'` (and, since PRD-mcphost-agent-wake P0 requirement
+    /// 1, `kind = 'message'`) triggers this tenant holds right now, paused
+    /// or not -- same "only remove frees a slot" rule
     /// [`Self::count_schedule_triggers_for_tenant`] already applies to
-    /// schedules.
+    /// schedules. A message trigger sharing this quota (rather than a
+    /// separate `message_triggers_max`) is requirement 1's own choice --
+    /// both are "a tool fires on some inbound signal" triggers, and giving
+    /// them one shared ceiling means an existing plan config needs no new
+    /// field to already bound the new kind.
     pub async fn count_event_triggers_for_tenant(&self, tenant_id: i64) -> Result<i64, AppError> {
         self.with_conn(move |conn| {
             conn.query_row(
-                "SELECT COUNT(*) FROM triggers WHERE tenant_id = ?1 AND kind = 'event'",
+                "SELECT COUNT(*) FROM triggers WHERE tenant_id = ?1 AND kind IN ('event', 'message')",
                 params![tenant_id],
                 |r| r.get(0),
             )
             .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-agent-wake requirement 2: every enabled `message`-kind
+    /// trigger a recipient holds, across every tool -- the delivery-time
+    /// lookup `messaging::fire_message_triggers` does on every
+    /// `host.msg.send`/`reply`, scoped by migration 0023's
+    /// `idx_triggers_tenant_kind_enabled` index (technical considerations:
+    /// "under 20ms").
+    pub async fn list_enabled_message_triggers(&self, tenant_id: i64) -> Result<Vec<TriggerRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(&format!(
+                "SELECT {TRIGGER_COLUMNS} FROM triggers \
+                 WHERE tenant_id = ?1 AND kind = 'message' AND enabled = 1"
+            ))?;
+            let rows = stmt
+                .query_map(params![tenant_id], trigger_row_from_row)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
         })
         .await
     }
@@ -5037,8 +5134,10 @@ impl Db {
                     thread_id: tid,
                     seq,
                     delivered_to,
+                    delivered_tenant_ids: deliver_ids,
                     refused,
                     deduped: false,
+                    created_at: now.clone(),
                 })
             })();
             match &outcome {
@@ -5140,8 +5239,10 @@ impl Db {
                     thread_id,
                     seq,
                     delivered_to,
+                    delivered_tenant_ids: deliver_ids,
                     refused,
                     deduped: false,
+                    created_at: now.clone(),
                 })
             })();
             match &outcome {
@@ -5176,28 +5277,37 @@ impl Db {
         key: &str,
         now_ms: i64,
     ) -> Result<Option<SendOutcome>, AppError> {
-        // (message_id, thread_id, seq, created_unix_ms, refused_json)
-        type DedupeRow = (String, String, i64, i64, Option<String>);
+        // (message_id, thread_id, seq, created_unix_ms, refused_json, created_at)
+        type DedupeRow = (String, String, i64, i64, Option<String>, String);
         let existing: Option<DedupeRow> = conn
             .query_row(
-                "SELECT id, thread_id, seq, created_unix_ms, refused_json FROM messages \
+                "SELECT id, thread_id, seq, created_unix_ms, refused_json, created_at FROM messages \
                  WHERE from_tenant_id = ?1 AND dedupe_key = ?2",
                 params![sender_id, key],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
             )
             .optional()?;
-        let Some((message_id, thread_id, seq, created_unix_ms, refused_json)) = existing else {
+        let Some((message_id, thread_id, seq, created_unix_ms, refused_json, created_at)) = existing
+        else {
             return Ok(None);
         };
         if now_ms - created_unix_ms < MSG_DEDUPE_WINDOW_MS {
-            let delivered_to: Vec<String> = {
+            // PRD-mcphost-agent-wake: a resend within the dedupe window
+            // still needs the original recipients' tenant ids, not just
+            // their namespaces, for `fire_message_triggers`' own lookup --
+            // the trigger-level `(trigger_id, message_id)` dedupe in
+            // `event_dedupe` (requirement 3) is what actually prevents a
+            // second run from a resend reaching here, not this layer.
+            let delivered: Vec<(String, i64)> = {
                 let mut stmt = conn.prepare(
-                    "SELECT t.namespace FROM message_receipts r JOIN tenants t ON t.id = r.tenant_id \
+                    "SELECT t.namespace, t.id FROM message_receipts r JOIN tenants t ON t.id = r.tenant_id \
                      WHERE r.message_id = ?1",
                 )?;
-                stmt.query_map(params![message_id], |r| r.get(0))?
+                stmt.query_map(params![message_id], |r| Ok((r.get(0)?, r.get(1)?)))?
                     .collect::<rusqlite::Result<Vec<_>>>()?
             };
+            let delivered_to = delivered.iter().map(|(ns, _)| ns.clone()).collect();
+            let delivered_tenant_ids = delivered.iter().map(|(_, id)| *id).collect();
             let refused: Vec<(String, &'static str)> = refused_json
                 .and_then(|s| serde_json::from_str::<Vec<(String, String)>>(&s).ok())
                 .unwrap_or_default()
@@ -5209,8 +5319,10 @@ impl Db {
                 thread_id,
                 seq,
                 delivered_to,
+                delivered_tenant_ids,
                 refused,
                 deduped: true,
+                created_at,
             }));
         }
         conn.execute("UPDATE messages SET dedupe_key = NULL WHERE id = ?1", params![message_id])?;
