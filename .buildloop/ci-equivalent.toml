@@ -1,0 +1,22 @@
+# .buildloop/ci-equivalent.toml — PRD-build-main-push-gate requirement 7.
+#
+# main-push-gate.sh reads this to pick a CI-equivalent check for the delta
+# between the sha the branch gate tested and the sha about to be pushed to
+# main. [delta] maps a changed path to a fast, targeted check; anything
+# not covered by [delta] (or a mixed delta with more than one distinct
+# mapped command) falls back to [default].command.
+#
+# The intent-card delta check runs the SAME test the 2026-09-12..09-15
+# grounding incident needed (bb44d28/3c11214: `intent-card-refresh.sh`
+# rewrote agent/intent-card.json after the branch gate ran, and the
+# rewritten card drifted from extended-gates.toml's prd_path for four
+# days before build-skill 191cf8f caught it by hand) -- filtered to the
+# single test function per the PRD's own Technical considerations note
+# ("if over 3 minutes, narrow to the single test name": the full
+# suite_core_06 binary bundles many unrelated ACs; this filter measured
+# well under a second warm on RedBaron).
+[delta]
+"agent/intent-card.json" = "cargo test --test suite_core_06 ac01_extended_gates_prd_path_resolves_and_matches_card::extended_gates_prd_path_resolves_and_matches_intent_card"
+
+[default]
+command = "cargo test --workspace"
