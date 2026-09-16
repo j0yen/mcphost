@@ -69,6 +69,8 @@ async fn two_hundred_sequential_sends_stay_under_100ms_p95_warm() {
             None,
             None,
             i64::MAX,
+            false,
+            i64::MAX,
         )
         .await
         .expect("seed message");

@@ -94,7 +94,20 @@ fn send_outcome_json(outcome: SendOutcome) -> Value {
         "seq": outcome.seq,
         "delivered_to": outcome.delivered_to,
         "refused": outcome.refused.into_iter()
-            .map(|(address, code)| json!({"address": address, "code": code}))
+            .map(|(address, code)| {
+                // PRD-mcphost-agent-consent requirement 4 (AC1): the hint
+                // is a fixed presentation of the code, not a stored fact,
+                // so it's attached here at the wire-JSON layer rather than
+                // threaded through `db.rs`'s stored/dedup `refused` shape
+                // (see `AppError::contact_refused`'s doc comment for the
+                // same reasoning applied to the top-level error this same
+                // code can also surface as, from `host.agent.contact_request`).
+                if code == "contact_refused" {
+                    json!({"address": address, "code": code, "data": {"hint": "host.agent.contact_request"}})
+                } else {
+                    json!({"address": address, "code": code})
+                }
+            })
             .collect::<Vec<_>>(),
     })
 }
@@ -107,6 +120,10 @@ pub async fn send(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     let (body, data_json) = validate_body_and_data(args)?;
     let dedupe_key = arg_str_opt(args, "dedupe_key");
     let thread_id = arg_str_opt(args, "thread_id");
+    // PRD-mcphost-agent-consent requirement 6: default false, so every
+    // pre-existing caller that never passes it keeps sending ordinary
+    // (non-urgent) messages.
+    let urgent = arg_bool(args, "urgent");
 
     let to: Vec<String> = match args.get("to") {
         Some(Value::Array(a)) => a
@@ -159,6 +176,8 @@ pub async fn send(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
             data_json.clone(),
             dedupe_key,
             plan.inbox_rows_max,
+            urgent,
+            plan.urgent_per_day,
         )
         .await?;
 
@@ -345,6 +364,7 @@ fn message_row_json(row: &MessageRow) -> Value {
         "source_class": row.source_class,
         "created_at": row.created_at,
         "read_at": row.read_at,
+        "urgent": row.urgent,
     })
 }
 

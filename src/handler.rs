@@ -27,7 +27,7 @@ use crate::kinds::{
 use crate::state::{
     AppState, MAX_SPEC_BYTES, TOOLS_LIST_TTL_GRACE_SECS, TOOLS_LIST_TTL_MS_STEADY, now_unix,
 };
-use crate::{admin, agents, control, messaging, tables, tenant_state};
+use crate::{admin, agents, consent, control, messaging, tables, tenant_state};
 
 /// Who is making this request, resolved once per request from the bearer
 /// key (or its absence).
@@ -1295,6 +1295,14 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                         "description": "Add this send to an existing thread you participate in \
                             instead of starting a new one; to's addresses join as participants.",
                     },
+                    "urgent": {
+                        "type": "boolean",
+                        "description": "Mark this send urgent (default false): allowed only to \
+                            accepted contacts or open recipients (refused the same as any other \
+                            send otherwise), under its own urgent_per_day quota per sender/recipient \
+                            pair, and bypasses a muted recipient's unread_only inbox filter (never a \
+                            block or a closed contact_policy).",
+                    },
                 }),
                 &["to", "body"],
             ),
@@ -1397,6 +1405,96 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                     "unread_only": {"type": "boolean", "description": "Filter to messages not yet acked."},
                 }),
                 &[],
+            ),
+        ),
+        // PRD-mcphost-agent-consent: contacts and mutes layered on top of
+        // agent-directory contact_policy -- a contacts-mode recipient now
+        // distinguishes "no relationship yet" from "mutual, accepted"
+        // instead of behaving as closed.
+        Tool::new(
+            "host.agent.contact_request",
+            "Request contact with a contacts-mode address; creates or returns the pending \
+             request. not_needed for an open address or one you already have an accepted \
+             contact with; contact_refused for a closed address; contact_pending if a request \
+             is already pending or was denied within the last 7 days; agent_not_found (same as \
+             a nonexistent address) if that address has blocked you. Quota \
+             contact_requests_per_day.",
+            host_schema(
+                json!({
+                    "address": {"type": "string", "description": "An @handle or a bare namespace (t_...)."},
+                    "note": {"type": "string", "description": "Optional note, up to 512 bytes."},
+                }),
+                &["address"],
+            ),
+        ),
+        Tool::new(
+            "host.agent.contacts",
+            "List your accepted contacts and every pending/decided contact request in either \
+             direction; status optionally narrows incoming/outgoing to one of pending, \
+             accepted, denied, expired.",
+            host_schema(
+                json!({
+                    "status": {
+                        "type": "string",
+                        "enum": ["pending", "accepted", "denied", "expired"],
+                        "description": "Filter incoming/outgoing requests to this status; omit for all.",
+                    },
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.agent.contact_accept",
+            "Accept a pending contact request addressed to you: both you and the requester \
+             become accepted contacts, visible from either side via host.agent.contacts().",
+            host_schema(
+                json!({"request_id": {"type": "string", "description": "The request to accept."}}),
+                &["request_id"],
+            ),
+        ),
+        Tool::new(
+            "host.agent.contact_deny",
+            "Deny a pending contact request addressed to you. The requester's subsequent sends \
+             and requests get contact_pending for 7 days, then may request again.",
+            host_schema(
+                json!({"request_id": {"type": "string", "description": "The request to deny."}}),
+                &["request_id"],
+            ),
+        ),
+        Tool::new(
+            "host.agent.mute",
+            "Mute an address: its future messages are still stored and readable via \
+             host.msg.thread, but excluded from host.msg.inbox(unread_only=true) -- unless sent \
+             urgent: true, which bypasses the mute filter (never a block or closed policy).",
+            host_schema(
+                json!({"address": {"type": "string", "description": "The @handle or t_... namespace to mute."}}),
+                &["address"],
+            ),
+        ),
+        Tool::new(
+            "host.agent.unmute",
+            "Remove a mute.",
+            host_schema(
+                json!({"address": {"type": "string", "description": "The @handle or t_... namespace to unmute."}}),
+                &["address"],
+            ),
+        ),
+        Tool::new(
+            "host.agent.contacts_import",
+            "Request contact with up to 50 addresses at once (e.g. an operator's own fleet of \
+             tenants); each is resolved the same way a single host.agent.contact_request would \
+             be, but a per-address failure (already connected, already pending, blocked, over \
+             quota, ...) is reported in that address's own result entry rather than failing the \
+             whole call.",
+            host_schema(
+                json!({
+                    "addresses": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "1 to 50 @handle or t_... addresses.",
+                    },
+                }),
+                &["addresses"],
             ),
         ),
     ];
@@ -2009,6 +2107,14 @@ impl McpHostHandler {
             "host.msg.ack" => messaging::ack(&self.state, tenant, &args).await,
             "host.msg.block" => messaging::block(&self.state, tenant, &args).await,
             "host.msg.unblock" => messaging::unblock(&self.state, tenant, &args).await,
+            // PRD-mcphost-agent-consent requirements 2, 3, 5, 10.
+            "host.agent.contact_request" => consent::contact_request(&self.state, tenant, &args).await,
+            "host.agent.contacts" => consent::contacts(&self.state, tenant, &args).await,
+            "host.agent.contact_accept" => consent::contact_accept(&self.state, tenant, &args).await,
+            "host.agent.contact_deny" => consent::contact_deny(&self.state, tenant, &args).await,
+            "host.agent.mute" => consent::mute(&self.state, tenant, &args).await,
+            "host.agent.unmute" => consent::unmute(&self.state, tenant, &args).await,
+            "host.agent.contacts_import" => consent::contacts_import(&self.state, tenant, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         }
     }

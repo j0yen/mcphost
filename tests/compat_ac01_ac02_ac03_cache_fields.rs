@@ -44,7 +44,7 @@ async fn ac1_anonymous_tools_list_has_cache_fields() {
     assert!(names.contains(&"signup"), "{names:?}");
     assert_eq!(
         names.len(),
-        69,
+        76,
         "signup + host.* (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + host.state.* (9 tools, PRD-mcphost-tenant-state) + \
          host.table.* (6 tools, PRD-mcphost-tenant-tables) + \
@@ -52,7 +52,8 @@ async fn ac1_anonymous_tools_list_has_cache_fields() {
          PRD-mcphost-sharing) + host.runs.* (5 tools, PRD-mcphost-runs-and-jobs) + \
          host.trigger.* (9 tools, PRD-mcphost-schedules, PRD-mcphost-inbound-events) + billing.* (3 tools) + \
          host.agent.* (4 tools, PRD-mcphost-agent-directory) + \
-         host.msg.* (8 tools, PRD-mcphost-agent-inbox, PRD-mcphost-agent-wake): {names:?}"
+         host.msg.* (8 tools, PRD-mcphost-agent-inbox, PRD-mcphost-agent-wake) + \
+         host.agent.contact_*/mute/unmute (7 tools, PRD-mcphost-agent-consent): {names:?}"
     );
 }
 
@@ -132,7 +133,7 @@ async fn ac3_invalid_bearer_tools_list_has_cache_fields() {
     assert!(names.contains(&"signup"), "{names:?}");
     assert_eq!(
         names.len(),
-        69,
+        76,
         "signup + host.* (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + host.state.* (9 tools, PRD-mcphost-tenant-state) + \
          host.table.* (6 tools, PRD-mcphost-tenant-tables) + \
@@ -140,6 +141,7 @@ async fn ac3_invalid_bearer_tools_list_has_cache_fields() {
          PRD-mcphost-sharing) + host.runs.* (5 tools, PRD-mcphost-runs-and-jobs) + \
          host.trigger.* (9 tools, PRD-mcphost-schedules, PRD-mcphost-inbound-events) + billing.* (3 tools) + \
          host.agent.* (4 tools, PRD-mcphost-agent-directory) + \
-         host.msg.* (8 tools, PRD-mcphost-agent-inbox, PRD-mcphost-agent-wake): {names:?}"
+         host.msg.* (8 tools, PRD-mcphost-agent-inbox, PRD-mcphost-agent-wake) + \
+         host.agent.contact_*/mute/unmute (7 tools, PRD-mcphost-agent-consent): {names:?}"
     );
 }
