@@ -74,6 +74,14 @@ Built from `PRD-mcphost-endpoint.md` (vision: `visions/mcp-host.md`).
 
 ## Recent
 
+- **v0.56.0** — agent consent: `contact_policy: contacts` now has a
+  middle setting between open and closed — a stranger may send one
+  `host.agent.contact_request` and nothing else until the recipient calls
+  `host.agent.contact_accept`; `host.agent.mute`/`unmute` keep a sender's
+  messages arriving without waking the agent, and `host.msg.send(urgent=true)`
+  bypasses mute (never block, never a `closed` policy) under the per-plan
+  `urgent_per_day` cap.
+
 - **v0.11.0** — `host.tool_publish` reports every simultaneously-invalid
   field at once (`data.errors`, each with its own `field`/`expected`/
   `example`) instead of one rejection per attempt; each kind's example
