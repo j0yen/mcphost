@@ -243,6 +243,16 @@ mod kindhonor_ac5_replay_cost_optimizer_shape;
 mod kindhonor_ac6_tools_list_meta_kind;
 #[path = "lanecov_ac01_every_tracked_path_routes.rs"]
 mod lanecov_ac01_every_tracked_path_routes;
+#[path = "lanecov_ac02_coverage_test_is_actually_run.rs"]
+mod lanecov_ac02_coverage_test_is_actually_run;
+#[path = "lanecov_ac03_unrouted_path_is_named.rs"]
+mod lanecov_ac03_unrouted_path_is_named;
+#[path = "lanecov_ac04_existing_lanes_unchanged.rs"]
+mod lanecov_ac04_existing_lanes_unchanged;
+#[path = "lanecov_ac06_malformed_lane_fails_naming_it.rs"]
+mod lanecov_ac06_malformed_lane_fails_naming_it;
+#[path = "lanecov_ac07_docs_document_adding_a_lane.rs"]
+mod lanecov_ac07_docs_document_adding_a_lane;
 #[path = "limits_ac05_signup_burst_atomic.rs"]
 mod limits_ac05_signup_burst_atomic;
 #[path = "metering_ac01_stripe_customer_id_null_default.rs"]
@@ -271,13 +281,3 @@ mod metering_ac12_billing_status_stripe_reported_usage;
 mod metering_billing_status_emitted_this_month;
 #[path = "migration_compat_headers.rs"]
 mod migration_compat_headers;
-#[path = "minimal_ac1_anonymous_ok_only.rs"]
-mod minimal_ac1_anonymous_ok_only;
-#[path = "minimal_ac2_admin_full_document.rs"]
-mod minimal_ac2_admin_full_document;
-#[path = "minimal_ac3_wrong_bearer_matches_anonymous.rs"]
-mod minimal_ac3_wrong_bearer_matches_anonymous;
-#[path = "minimal_ac4_liveness_failure_returns_5xx.rs"]
-mod minimal_ac4_liveness_failure_returns_5xx;
-#[path = "minimal_ac5_tenant_bearer_gets_anonymous_body.rs"]
-mod minimal_ac5_tenant_bearer_gets_anonymous_body;
