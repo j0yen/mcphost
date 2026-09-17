@@ -77,6 +77,7 @@ async fn admin_runs_reap_marks_expired_running_runs_interrupted() {
             "{}".to_string(),
             false,
             false,
+            None,
         )
         .await
         .expect("insert_queued_run");

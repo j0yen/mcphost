@@ -3,7 +3,7 @@
   "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-gate-debt-4f1112d.md",
   "intent_slug": "mcphost-gate-debt-4f1112d",
   "root_motivation": "Five whys (one per inherited finding, from `git log -S` where a candidate commit was found):",
-  "user_persona": "An agent that has discovered another agent's shared tool (via `host.catalog.search`) or that wants to be discoverable itself -- it needs to resolve a namespace or handle to a readable card (name, description, tags, contact policy) without ever learning a billing field, key hash, or call log; secondarily the operator (Joe), who needs `admin.agent.lookup`/`admin.agent.handle_release` to recover a squatted or abusive handle.",
+  "user_persona": "An agent that binds a published tool with host.trigger.set(kind=\"message\") so its reply logic runs from a message arrival even after its own session ends, or that calls host.msg.wait for a bounded long-poll instead of burning quota on host.msg.inbox polling; secondarily the operator, who needs message-fired runs metered like every other run.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -55,27 +55,23 @@
     }
   ],
   "scope": [
-    "New tables in migration 0021: `threads(id, created_by, created_at)`; `thread_participants(thread_id, tenant_id, joined_at)`; `messages(id, thread_id, seq, from_tenant_id, from_address, body, data_json, in_reply_to, dedupe_key, synthetic, source_class, created_at)` with `UNIQUE(thread_id, seq)` and `UNIQUE(from_tenant_id, dedupe_key)`; `message_receipts(message_id, tenant_id, read_at)`; `blocks(tenant_id, blocked_tenant_id, created_at)` (P0, AC1/AC11).",
-    "`host.msg.send(to, body, data?, dedupe_key?, thread_id?)`: resolves 1..`recipients_per_msg_max` addresses through the directory, creates or joins a thread, and returns `{message_id, thread_id, seq, delivered_to, refused: [{address, code}]}` with refusal codes `agent_not_found` (unknown/disabled/deleted/blocked-sender, byte-identical), `contact_refused` (policy `closed`/`contacts`), `quota_exceeded` (P0, AC1/AC5/AC8/AC9/AC10).",
-    "`host.msg.reply(thread_id, body, data?, in_reply_to?, dedupe_key?)`: caller must be a thread participant, else `thread_not_found` byte-identical to a nonexistent id; appends at the next `seq`; blocked/closed participants are skipped and listed in `refused` (P0, AC2/AC3).",
-    "`host.msg.inbox(cursor?, limit<=100, unread_only?)` and `host.msg.thread(thread_id, cursor?, limit<=100)`: exactly-once cursor reads over `(created_at, id)` / `seq` so concurrent sends never duplicate or drop a page (P0, AC1/AC2/AC6).",
-    "`host.msg.ack(message_ids)` sets `read_at` per calling recipient; `inbox(unread_only=true)` filters on it; a sender cannot see other recipients' receipts (P1, AC13).",
-    "Server sets `from_tenant_id`, `from_address`, `synthetic`, `source_class` from the authenticated tenant on every send/reply; a `from` argument in the request is rejected `args_invalid` and nothing is stored (P0, AC7).",
-    "Quota rows in `plans.rs` (`msgs_per_hour`, `msg_body_bytes_max`, `inbox_rows_max`, `recipients_per_msg_max`) enforced via `quota_exceeded()` errors naming the limit and its value (P0, AC9/AC10).",
-    "Idempotency: a resend with the same `(sender, dedupe_key)` within 24h returns the original `message_id` and stores nothing; the key frees after 24h (P0, AC4).",
-    "`host.msg.block(address)` / `host.msg.unblock(address)`: a blocked sender's sends to the blocker fail as `agent_not_found`; the blocker can still send to the blocked party; block lists are never exposed to the blocked party (P0, AC5).",
-    "Cascade on `admin.tenant_delete`: the deleted tenant's `thread_participants`, `message_receipts`, and `blocks` rows are removed, while its previously sent `messages` remain with `from_tenant_id` NULL and the original `from_address` preserved (P0, AC11).",
-    "`host.msg.send` accepts an existing `thread_id`, adding new `to` addresses as participants with the recipient cap counting total participants (P1, AC14).",
-    "New `src/messaging.rs` module holding the `Db` methods (`msg_send`, `msg_reply`, `msg_inbox`, `msg_thread`, `msg_ack`, `msg_block`, `msg_unblock`, `dedupe_hit`) beside `tenant_state`'s; dispatch entries in `handler.rs` next to `host.state.*`; descriptors in `host_tools()`."
+    "host.trigger.set(tool, kind=\"message\", from?: address) creates a triggers row with kind='message', config_json={\"from\": ...}; one message trigger per (tenant, tool, from); the tenant's event_triggers_max quota counts message triggers (P0, requirement 1).",
+    "On every stored delivery to recipient R, for each enabled kind='message' trigger of R whose from is null or equals the sender's address, enqueue one run through runs::enqueue(state, R, tool, envelope) where envelope = {message_id, thread_id, seq, from, body, data, in_reply_to, created_at}; the run row has trigger='message' and stores message_id (P0, requirement 2).",
+    "Dedupe via event_dedupe keyed (trigger_id, message_id): a second delivery attempt of the same message returns the cached run_id and enqueues nothing (P0, requirement 3).",
+    "The enqueue happens strictly after the message commit, never inside its transaction; an enqueue failure (quota, sandbox down) writes a run row with status='rejected' and error_class -- the message itself is still stored (P0, requirement 4).",
+    "host.trigger.pause/resume/remove/list/get/test/replay all work on message triggers; test fires the tool with a synthetic envelope marked test: true and creates no messages row (P0, requirement 5).",
+    "host.msg.wait(cursor?, timeout_s<=25, unread_only?) returns the same shape as host.msg.inbox as soon as a matching message exists, else at the deadline with an empty list and the unchanged cursor; concurrency-limited by concurrent_calls_per_tenant (P0, requirement 6).",
+    "Message-fired runs honour jobs_concurrent and calls_per_day exactly as event-fired ones (P0, requirement 7).",
+    "hooks.rs's verify-then-enqueue-with-dedupe tail is factored into one function (enqueue_with_dedupe) that both the event path (hooks::handle_hook) and the new message path (messaging::fire_message_triggers) call, rather than copying it.",
+    "migrations/0023_message_triggers.sql: additive runs.message_id column plus idx_triggers_tenant_kind_enabled index on (tenant_id, kind, enabled) for the send-path lookup."
   ],
   "non_goals": [
-    "Waking the recipient (PRD-mcphost-agent-wake) -- this PRD only delivers to an inbox the recipient must poll.",
-    "Richer consent: contact requests, mute, urgent lane (PRD-mcphost-agent-consent) -- this PRD enforces only the directory's existing `contact_policy` and a plain send/block list.",
-    "Many-to-many channels (PRD-mcphost-agent-channels); every thread here is participant-addressed, not subscribed.",
-    "An operator-facing traffic view across tenants (PRD-mcphost-agent-mesh-ops).",
-    "Attachments beyond the JSON `data` field bounded by `msg_body_bytes_max`; no delivery outside the host (no email, no webhook out).",
-    "Editing or deleting a sent message once stored.",
-    "Retention/purge of old messages (`msg_retention_days`, PRD requirement 13, P2) -- not implemented in this pass; every message currently persists until cascade-deleted with its sender."
+    "Waking an external process -- no webhook out, no push.",
+    "Filtering triggers by sender beyond a single optional from filter is P0 and shipped; filtering by thread_id (P1, requirement 8 / AC10) is deferred per this PRD's own frontmatter deferred_acs -- the from-address filter alone covers the Goals-section scope.",
+    "Delivery guarantees stronger than at-least-once with dedupe.",
+    "Channels (PRD-mcphost-agent-channels) -- channel posts fire triggers only in that PRD.",
+    "A tokio::Notify per-tenant wake channel for host.msg.wait (P1, requirement 9 / AC9) -- the P0 500ms-poll long-poll already meets the Goals-section p95<5s target; deferred per PRD frontmatter.",
+    "Posting a bound tool's {\"reply\": ...} result back into the thread as an auto-reply (P2, requirement 10) -- no acceptance criterion in this PRD covers it, and the PRD's own Open Questions section leaves whether it should ship at all unresolved."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -84,37 +80,37 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "no_sensitive_fields_leaked": "every card-producing path (whoami, lookup, admin.agent.lookup, search) asserts the absence of `key_hash`, `billing_ref`, and `stripe_customer_id` in its own test -- verified by grep across agentdir_ac01_ac02_ac03_ac04's whoami/lookup assertions (PRD AC1/AC2).",
-      "agent_not_found_byte_identical": "`host.agent.lookup` on an unknown namespace, a disabled tenant, and a deleted tenant must return byte-identical `agent_not_found` bodies -- verified by agentdir_ac01_ac02_ac03_ac04's AC4 test comparing all three responses directly (PRD AC4, Technical considerations).",
-      "handle_claim_atomicity": "`Db::set_agent_profile`'s handle-uniqueness check-then-insert runs inside a single BEGIN IMMEDIATE transaction so two concurrent claims for the same handle cannot both succeed (PRD AC3, Requirement 3).",
-      "no_admin_auth_bypass": "the two new admin.* tools (admin.agent.lookup, admin.agent.handle_release) are wired through the existing dispatch_admin_tool path, gated by the existing Auth::Admin resolution -- no new admin authentication or authorization path is introduced (PRD Requirement 8)."
+      "reuse_hooks_enqueue_tail": "messaging::fire_message_triggers and hooks::handle_hook both call the same enqueue_with_dedupe function factored out of handle_hook's verify-then-enqueue tail, rather than duplicating it (PRD Technical considerations).",
+      "scheduler_not_involved": "triggers::spawn_scheduler's tick never touches kind='message' rows; message triggers fire synchronously on the host.msg.send/reply path, not on a cron tick (PRD Technical considerations).",
+      "send_path_latency_budget": "message-trigger lookup on the send path uses idx_triggers_tenant_kind_enabled and stays under mcphost's existing acceptance budget for added send-path latency (PRD Technical considerations: 'under 20 ms').",
+      "envelope_excludes_other_participants": "the envelope built for a bound tool's run never includes the recipient's block list, receipts, or other participants' addresses beyond what host.msg.thread would already show that recipient (PRD Technical considerations)."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can't an agent that calls another tenant's shared tool learn who built it?",
-      "a": "`host.whoami` (src/control.rs) returns the caller's own namespace/display_name/plan/source_class/client_name, and only to the caller -- no tool maps a tenant to anything another tenant may read about it."
+      "q": "Why does a message sitting unread in an inbox matter if host.msg.send already stored it?",
+      "a": "mcphost is stateless per request and cannot itself wake an agent's session once the request that sent the message is done -- an inbox only a returning agent reads is a ledger, not a mechanism."
     },
     {
       "why": 2,
-      "q": "Why can't `display_name` just serve as that address today?",
-      "a": "`display_name` is NOT NULL with no uniqueness constraint (0001_init.sql:7) -- two tenants can both be \"ops-bot\", so it cannot resolve to exactly one tenant."
+      "q": "Why doesn't the existing triggers mechanism already cover a message arrival?",
+      "a": "triggers rows with kind in {schedule, event} already enqueue a run when a cron fires or a signed webhook lands (hooks.rs:673's verify-dedupe-enqueue tail), but no third kind exists for 'a message was delivered' -- that source reaches nothing today."
     },
     {
       "why": 3,
-      "q": "Why wasn't this solved when the mesh registry gap was first found?",
-      "a": "The parked mdcollab-agent-registry PRD (2026-07-20) recorded the same gap but never shipped; it did settle the one load-bearing decision this PRD keeps -- identity anchored to the authenticated principal, never self-asserted."
+      "q": "Why does a present client (one that would poll) also need a fix, not just an absent one?",
+      "a": "host.runs.wait already proves the host supports a bounded long-poll for exactly this shape (max 25s); host.msg has no equivalent, so a present client burns calls_per_day quota calling host.msg.inbox in a loop instead."
     },
     {
       "why": 4,
-      "q": "Why not let a tenant self-assert its own address, the way agorabus's session_id works?",
-      "a": "Prior fleet art shows the failure mode directly: agorabus peers are identified by a client-chosen session_id, safe only on a 0600 local socket and unsafe on a public host -- mcphost tenants are reachable over the public host, so self-assertion is not an option here."
+      "q": "Why do both gaps trace back to the same fix?",
+      "a": "Both the absent-agent case (wake a tool) and the present-agent case (host.msg.wait) are the same underlying capability -- give the host a way to resume an agent's work without a live request already in flight for it."
     },
     {
       "why": 5,
-      "q": "Why build a handle and search on top of the always-available namespace address rather than just the namespace?",
-      "a": "A namespace (`t_xxxxxxxx`) is not a name an agent would say aloud or remember; a handle is optional so opting out of a name never opts a tenant out of the mesh (namespace lookup still works), and search is what makes an unnamed but tagged/described tenant discoverable at all."
+      "q": "Why extend triggers with a third kind rather than build a separate messaging-wake subsystem?",
+      "a": "kind='message' inherits host.trigger.*'s existing list/pause/resume/replay/test and quota semantics for free, and reuses the same run ledger, dedupe, and jobs_concurrent gating event triggers already use -- the identical additive pattern hooks.rs's event triggers established."
     }
   ],
   "created_at": "2026-09-03T18:04:17Z",

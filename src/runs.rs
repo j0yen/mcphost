@@ -336,6 +336,7 @@ pub async fn enqueue(
             args_json,
             false,
             false,
+            None,
         )
         .await?;
     Ok(json!({"run_id": run_id, "status": "queued"}))
@@ -634,6 +635,7 @@ mod tests {
             args_json: None,
             manual: false,
             test: false,
+            message_id: None,
         };
         let value = run_to_json(&run);
         assert_eq!(value["purged"], json!(true));

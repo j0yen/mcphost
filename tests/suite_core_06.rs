@@ -143,6 +143,10 @@ mod envelope_ac1_http_declared_output_promoted;
 mod envelope_ac4_tool_test_reports_missing_declared_output;
 #[path = "firstcall_ac6_outcome_metering.rs"]
 mod firstcall_ac6_outcome_metering;
+#[path = "gatedebt_4f1112d_ac4_no_test_reads_gate_receipts.rs"]
+mod gatedebt_4f1112d_ac4_no_test_reads_gate_receipts;
+#[path = "gatedebt_4f1112d_ac5_no_flake_audit_selftest_names.rs"]
+mod gatedebt_4f1112d_ac5_no_flake_audit_selftest_names;
 #[path = "handoff_ac01_signup_returns_token_and_no_key.rs"]
 mod handoff_ac01_signup_returns_token_and_no_key;
 #[path = "handoff_ac02_redeem_single_use_and_expiry.rs"]
@@ -263,3 +267,13 @@ mod metering_ac12_billing_status_stripe_reported_usage;
 mod metering_billing_status_emitted_this_month;
 #[path = "migration_compat_headers.rs"]
 mod migration_compat_headers;
+#[path = "minimal_ac1_anonymous_ok_only.rs"]
+mod minimal_ac1_anonymous_ok_only;
+#[path = "minimal_ac2_admin_full_document.rs"]
+mod minimal_ac2_admin_full_document;
+#[path = "minimal_ac3_wrong_bearer_matches_anonymous.rs"]
+mod minimal_ac3_wrong_bearer_matches_anonymous;
+#[path = "minimal_ac4_liveness_failure_returns_5xx.rs"]
+mod minimal_ac4_liveness_failure_returns_5xx;
+#[path = "minimal_ac5_tenant_bearer_gets_anonymous_body.rs"]
+mod minimal_ac5_tenant_bearer_gets_anonymous_body;
