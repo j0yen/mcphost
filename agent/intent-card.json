@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-gate-debt-4f1112d.md",
-  "intent_slug": "mcphost-gate-debt-4f1112d",
-  "root_motivation": "Five whys (one per inherited finding, from `git log -S` where a candidate commit was found):",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-agent-consent.md",
+  "intent_slug": "mcphost-agent-consent",
+  "root_motivation": "After PRD-mcphost-agent-inbox an agent's choices are `open` (anyone on the host may fill its inbox up to quota) or `closed` (nobody may, including the collaborator it wanted). `contacts` exists on the directory card but behaves as `closed` because nothing populates a contact list. Block is the only per-sender control, and it is a hammer: it silences a sender forever and tells the blocked party nothing, which is the right behaviour for abuse and the wrong one for \"not now\".",
   "user_persona": "An agent that binds a published tool with host.trigger.set(kind=\"message\") so its reply logic runs from a message arrival even after its own session ends, or that calls host.msg.wait for a bounded long-poll instead of burning quota on host.msg.inbox polling; secondarily the operator, who needs message-fired runs metered like every other run.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,64 +14,83 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given HEAD 4f1112df8af5183c47807ff2fa50be0453c9d774, When the gate runs, Then vti-plan passes: autobuilder vti-plan exited non-zero",
+      "description": "Given tenant R has `contact_policy: contacts` and no contacts, When stranger S calls `host.msg.send(to=[R])`, Then `refused` contains R with `contact_refused` and `data.hint` naming `host.agent.contact_request`, and R's inbox is empty.",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given HEAD 4f1112df8af5183c47807ff2fa50be0453c9d774, When the gate runs, Then rollback-plan passes: commits since v0.54.1 are not all revert-clean (see target/autobuilder/rollback.md); fix forward, or a human rewrites history and says so \u2014 this script never edits history to force a pass",
+      "description": "Given S calls `host.agent.contact_request(R, note=\"reviewing your indexer\")`, When R lists `host.agent.contacts(status=\"pending\")`, Then the request appears with S's address and the note; and When S sends again before a decision, Then the refusal is `contact_pending`.",
       "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given HEAD 4f1112df8af5183c47807ff2fa50be0453c9d774, When the gate runs, Then extended-receipts passes: one or more extended producers did not pass|skip (see output above)",
+      "description": "Given R calls `host.agent.contact_accept(request_id)`, When S sends R a message, Then it is delivered and both `host.agent.contacts()` results show the pair with `accepted_at` set.",
       "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given the repository tree after this PRD's change, When `grep -rl \"target/autobuilder/receipts\" tests/` runs, Then it prints nothing (no test reads a gate receipt).",
+      "description": "Given R denies the request, When S sends or requests again within 7 days, Then both return `contact_pending`; and after the cool-down (clock advanced in test), Then a new request is accepted as `pending`.",
       "test": "tests/ac04_publish_list_and_call.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the branch worktree, When `cargo test --quiet` runs three times in a row, Then every run exits 0 and no test named `flake_audit_does_not_block` or `cold_build_time_does_not_block` exists.",
+      "description": "Given R muted S and bound a message trigger, When S sends a non-urgent message, Then it is stored, visible in `host.msg.thread`, absent from `inbox(unread_only=true)`, and no run fires; and When S sends with `urgent=true`, Then one run fires and the envelope has `urgent: true`.",
       "test": "tests/ac05_cross_tenant_isolation.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given main after this PRD lands, When the post-land main-scope gate runs, Then `flake-audit-receipt.json` has `verdict: pass` with `exit_codes: [0,0,0]`, `extended-receipts` is not in the blockers, and `gate-then-land.sh` pushes main (origin/main equals local main).",
+      "description": "Given the free plan's `urgent_per_day` is 3, When S sends R four urgent messages in a day, Then the fourth returns `quota_exceeded` with `data.limit=\"urgent_per_day\"` and `data.value=3`, and is not stored.",
       "test": "tests/ac06_remove_tool.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given the changelog for this PRD, When it is read, Then it quotes the main-scope gate line and the flake-audit receipt fields from AC6. - iter_log: 2026-09-16T19:05Z amended by /dream (Joe: \"amend the prd now\", post-land main gate block at 9bfcf85) \u2014 added five-whys amendment naming the circular test file; appended AC4\u2013AC7; AC1\u2013AC3 unchanged.",
+      "level": "MUST",
+      "description": "Given R blocked S, When S calls `host.agent.contact_request(R)` or sends `urgent=true`, Then both responses are byte-identical to the responses for a nonexistent address, and any prior pending request from S is `denied` without notifying S.",
       "test": "tests/ac07_usage_metering.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given R is `closed`, When any tenant sends `urgent=true`, Then the refusal is `contact_refused` and nothing is stored.",
+      "test": "tests/ac08_admin_disable_and_forbidden.rs"
+    },
+    {
+      "id": "AC9",
+      "level": "MUST",
+      "description": "Given S has a pending request to R and S is deleted via `admin.tenant_delete`, When R lists contacts, Then no request or contact row references S.",
+      "test": "tests/ac09_signup_rate_limit.rs"
+    },
+    {
+      "id": "AC10",
+      "level": "SHOULD",
+      "description": "Given a pending request to R, When R reads `host.msg.inbox()`, Then a system message with `from_address=\"host\"`, `data.kind=\"contact_request\"` and the `request_id` is present, and `host.agent.contact_accept` with that id succeeds.",
+      "test": "tests/ac10_publish_validation_errors.rs"
     }
   ],
   "scope": [
-    "host.trigger.set(tool, kind=\"message\", from?: address) creates a triggers row with kind='message', config_json={\"from\": ...}; one message trigger per (tenant, tool, from); the tenant's event_triggers_max quota counts message triggers (P0, requirement 1).",
-    "On every stored delivery to recipient R, for each enabled kind='message' trigger of R whose from is null or equals the sender's address, enqueue one run through runs::enqueue(state, R, tool, envelope) where envelope = {message_id, thread_id, seq, from, body, data, in_reply_to, created_at}; the run row has trigger='message' and stores message_id (P0, requirement 2).",
-    "Dedupe via event_dedupe keyed (trigger_id, message_id): a second delivery attempt of the same message returns the cached run_id and enqueues nothing (P0, requirement 3).",
-    "The enqueue happens strictly after the message commit, never inside its transaction; an enqueue failure (quota, sandbox down) writes a run row with status='rejected' and error_class -- the message itself is still stored (P0, requirement 4).",
-    "host.trigger.pause/resume/remove/list/get/test/replay all work on message triggers; test fires the tool with a synthetic envelope marked test: true and creates no messages row (P0, requirement 5).",
-    "host.msg.wait(cursor?, timeout_s<=25, unread_only?) returns the same shape as host.msg.inbox as soon as a matching message exists, else at the deadline with an empty list and the unchanged cursor; concurrency-limited by concurrent_calls_per_tenant (P0, requirement 6).",
-    "Message-fired runs honour jobs_concurrent and calls_per_day exactly as event-fired ones (P0, requirement 7).",
-    "hooks.rs's verify-then-enqueue-with-dedupe tail is factored into one function (enqueue_with_dedupe) that both the event path (hooks::handle_hook) and the new message path (messaging::fire_message_triggers) call, rather than copying it.",
-    "migrations/0023_message_triggers.sql: additive runs.message_id column plus idx_triggers_tenant_kind_enabled index on (tenant_id, kind, enabled) for the send-path lookup."
+    "New tables (migration 0022+): `contacts(tenant_id, contact_tenant_id, accepted_at, PK)`; `contact_requests(id, from_tenant_id, to_tenant_id, note, status IN (pending, accepted, denied, expired), created_at, decided_at, UNIQUE(from_tenant_id, to_tenant_id))`; both cascade on tenant delete (P0, AC9).",
+    "`host.agent.contact_request(address, note<=512 bytes)`: to a `contacts`-mode recipient creates/returns the pending request; `not_needed` to an `open` recipient; `contact_refused` (byte-identical to the inbox PRD's response) to `closed` or a blocking recipient; quota `contact_requests_per_day` (P0, AC1/AC2/AC7).",
+    "`host.agent.contacts(status?)` lists the caller's contacts and pending requests both directions; `contact_accept(request_id)` inserts a symmetric `contacts` pair and sets `accepted_at`; `contact_deny(request_id)` sets `denied` with a 7-day `contact_pending` cooldown before the requester may request again (P0, AC2/AC3/AC4).",
+    "Inbox PRD's send/reply resolution gains one `consent::check(sender, recipient) -> Allow | Refuse(code)` call: an accepted contact is delivered; a pending or denied request returns `contact_pending`; no request returns `contact_refused` with `data.hint: \"host.agent.contact_request\"` (P0, AC1/AC4).",
+    "`host.agent.mute(address)` / `unmute(address)`: a muted sender's messages are stored and readable, excluded from `inbox(unread_only=true)`, and do not fire the recipient's message trigger, unless the message is `urgent` -- in which case the trigger's envelope also carries `urgent: true` (P0, AC5; built on top of PRD-mcphost-agent-wake's kind='message' triggers, which this branch rebased onto).",
+    "`host.msg.send(..., urgent=true)`: allowed only to accepted contacts or `open` recipients; quota `urgent_per_day` per sender per recipient; the stored message carries `urgent: true`; bypasses mute but never block or a `closed` policy (P0, AC5/AC6/AC8).",
+    "Block (inbox PRD) also denies any pending request from the blocked party and removes an existing contact pair, invisibly to the blocked party (P0, AC7).",
+    "All new refusals (`contact_pending`, `not_needed`, `urgent_quota_exceeded` via `quota_exceeded`) use `AppError::Structured` with `code` and `data` naming the limit where one applies (P0).",
+    "A pending contact request appears in the recipient's `host.msg.inbox` as a system message (`from_address: \"host\"`, `data.kind: \"contact_request\"`, `data.request_id`) (P1, AC10).",
+    "New `src/consent.rs` module (`consent::check`, `Db::contact_decide` honoring `consent::REQUEST_EXPIRY_MS` before accept/deny) called from both `Db::resolve_message_recipient` (`msg_send`) and `Db::msg_reply`'s per-participant loop, so the two call sites cannot drift independently."
   ],
   "non_goals": [
-    "Waking an external process -- no webhook out, no push.",
-    "Filtering triggers by sender beyond a single optional from filter is P0 and shipped; filtering by thread_id (P1, requirement 8 / AC10) is deferred per this PRD's own frontmatter deferred_acs -- the from-address filter alone covers the Goals-section scope.",
-    "Delivery guarantees stronger than at-least-once with dedupe.",
-    "Channels (PRD-mcphost-agent-channels) -- channel posts fire triggers only in that PRD.",
-    "A tokio::Notify per-tenant wake channel for host.msg.wait (P1, requirement 9 / AC9) -- the P0 500ms-poll long-poll already meets the Goals-section p95<5s target; deferred per PRD frontmatter.",
-    "Posting a bound tool's {\"reply\": ...} result back into the thread as an auto-reply (P2, requirement 10) -- no acceptance criterion in this PRD covers it, and the PRD's own Open Questions section leaves whether it should ship at all unresolved."
+    "Operator-side controls (PRD-mcphost-agent-mesh-ops) -- this PRD is agent-side consent only, no cross-tenant traffic view.",
+    "Content moderation or scanning of message bodies.",
+    "Group or channel consent (PRD-mcphost-agent-channels handles membership) -- contacts/mute/urgent are all peer-to-peer, never group-scoped.",
+    "Reputation scores.",
+    "Changing the default `contact_policy` decision recorded in the inbox PRD -- `contacts` mode's existing meaning (a stranger needs consent) is unchanged; this PRD only implements what happens inside it.",
+    "Mute suppressing `host.msg.wait` itself when `unread_only` is not set -- `wait`'s own polling loop wakes on any new row regardless of mute when called that way; only `inbox(unread_only=true)` and message-trigger firing are guaranteed muted-filtered by this PRD."
   ],
   "hard_constraints": {
     "rust_edition": "2024",

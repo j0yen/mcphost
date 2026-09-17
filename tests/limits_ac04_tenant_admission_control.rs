@@ -118,7 +118,7 @@ async fn tenant_burst_is_capped_at_its_own_plan_limit_while_another_tenant_still
         "every capacity refusal must carry a positive retry_after_ms"
     );
     assert!(
-        ok_a >= 1 && ok_a <= 4,
+        (1..=4).contains(&ok_a),
         "tenant A must never exceed its own plan cap of 4 concurrent calls, got {ok_a}"
     );
 }

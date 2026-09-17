@@ -135,6 +135,20 @@ pub struct Plan {
     /// Defaults to the `free` plan's own default (5) when a hand-edited
     /// `plans.toml` predates this key.
     pub recipients_per_msg_max: i64,
+    /// PRD-mcphost-agent-consent requirement 2: how many `host.agent.
+    /// contact_request` calls (including `contacts_import`'s per-address
+    /// ones) this plan's tenants may make in a sliding day
+    /// (`quota_exceeded` naming `contact_requests_per_day`). Defaults to
+    /// the `free` plan's own default (20) when a hand-edited `plans.toml`
+    /// predates this key, same tolerant-parse convention as
+    /// `recipients_per_msg_max`.
+    pub contact_requests_per_day: i64,
+    /// requirement 6: how many `urgent: true` `host.msg.send` calls a
+    /// single sender may make to a single recipient in a sliding day
+    /// (`quota_exceeded` naming `urgent_per_day`). Defaults to the `free`
+    /// plan's own default (3) when a hand-edited `plans.toml` predates this
+    /// key.
+    pub urgent_per_day: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -193,6 +207,11 @@ impl PlanCatalog {
                     msg_body_bytes_max: 16 * 1024,
                     inbox_rows_max: 2_000,
                     recipients_per_msg_max: 5,
+                    // PRD-mcphost-agent-consent requirement 2: "free plan's
+                    // contact_requests_per_day is 20"; requirement 6:
+                    // "free plan's urgent_per_day is 3".
+                    contact_requests_per_day: 20,
+                    urgent_per_day: 3,
                 },
                 Plan {
                     name: "pro".to_string(),
@@ -241,6 +260,14 @@ impl PlanCatalog {
                     msg_body_bytes_max: 16 * 1024,
                     inbox_rows_max: 20_000,
                     recipients_per_msg_max: 20,
+                    // PRD-mcphost-agent-consent: open question, no
+                    // published pro number for either -- sized against the
+                    // same free/pro ratio `msgs_per_hour` already uses
+                    // (free 60 -> pro 2,000, ~33x): free 20 -> pro 500
+                    // (~25x) for contact_requests_per_day, free 3 -> pro
+                    // 100 (~33x) for urgent_per_day.
+                    contact_requests_per_day: 500,
+                    urgent_per_day: 100,
                 },
             ],
         }
@@ -327,6 +354,11 @@ impl PlanCatalog {
                 "recipients_per_msg_max = {}\n",
                 p.recipients_per_msg_max
             ));
+            out.push_str(&format!(
+                "contact_requests_per_day = {}\n",
+                p.contact_requests_per_day
+            ));
+            out.push_str(&format!("urgent_per_day = {}\n", p.urgent_per_day));
             out.push('\n');
         }
         out
@@ -395,6 +427,8 @@ impl PlanCatalog {
                 "msg_body_bytes_max" => builder.msg_body_bytes_max = Some(int_value()),
                 "inbox_rows_max" => builder.inbox_rows_max = Some(int_value()),
                 "recipients_per_msg_max" => builder.recipients_per_msg_max = Some(int_value()),
+                "contact_requests_per_day" => builder.contact_requests_per_day = Some(int_value()),
+                "urgent_per_day" => builder.urgent_per_day = Some(int_value()),
                 _ => {}
             }
         }
@@ -437,6 +471,8 @@ struct PlanBuilder {
     msg_body_bytes_max: Option<i64>,
     inbox_rows_max: Option<i64>,
     recipients_per_msg_max: Option<i64>,
+    contact_requests_per_day: Option<i64>,
+    urgent_per_day: Option<i64>,
 }
 
 impl PlanBuilder {
@@ -491,6 +527,11 @@ impl PlanBuilder {
             msg_body_bytes_max: self.msg_body_bytes_max.unwrap_or(16 * 1024),
             inbox_rows_max: self.inbox_rows_max.unwrap_or(2_000),
             recipients_per_msg_max: self.recipients_per_msg_max.unwrap_or(5),
+            // PRD-mcphost-agent-consent: a `plans.toml` predating these two
+            // keys gets the `free` plan's own defaults, same
+            // tolerant-parse rationale as every other field above.
+            contact_requests_per_day: self.contact_requests_per_day.unwrap_or(20),
+            urgent_per_day: self.urgent_per_day.unwrap_or(3),
         })
     }
 }

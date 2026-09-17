@@ -330,7 +330,11 @@ impl AppError {
                 // own RESOURCE_NOT_FOUND. PRD-mcphost-agent-inbox
                 // requirement 3 (AC3): `thread_not_found` is the same
                 // shape, one more caller-visible "doesn't exist" id.
-                "agent_not_found" | "thread_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
+                // PRD-mcphost-agent-consent requirement 3: same "doesn't
+                // exist" shape as the two above.
+                "agent_not_found" | "thread_not_found" | "contact_request_not_found" => {
+                    ErrorCode::RESOURCE_NOT_FOUND
+                }
                 _ => ErrorCode::INTERNAL_ERROR,
             },
             AppError::MultiInvalid { errors, .. } => errors
@@ -631,6 +635,62 @@ impl AppError {
             code: "quota_exceeded",
             message: format!("messaging quota exceeded: {limit_name} (limit {limit_value})"),
             data: json!({"limit": limit_name, "value": limit_value}),
+        }
+    }
+
+    /// PRD-mcphost-agent-consent requirement 8: `host.msg.send`/`reply` to
+    /// a `closed` recipient, or a `contacts`-mode one with no active
+    /// request (AC1, AC8). `data.hint` names the tool that gets the caller
+    /// unstuck (requirement 4) -- attached here rather than threaded
+    /// through `db.rs`'s stored/dedup `refused` shape, since the hint is a
+    /// fixed presentation of the code, not a stored fact (see
+    /// `messaging.rs::send_outcome_json`, the other place this code can
+    /// surface, for the same reasoning applied to a per-recipient refusal
+    /// rather than this top-level one).
+    pub fn contact_refused() -> Self {
+        AppError::Structured {
+            code: "contact_refused",
+            message: "that address does not accept messages from you yet".to_string(),
+            data: json!({"hint": "host.agent.contact_request"}),
+        }
+    }
+
+    /// PRD-mcphost-agent-consent requirement 3 (AC2, AC4): a request is
+    /// already pending, or was denied within the last
+    /// [`crate::consent::DENY_COOLDOWN_MS`] -- distinct from
+    /// [`Self::contact_refused`] so a caller can tell "try again later"
+    /// from "you need to ask first".
+    pub fn contact_pending() -> Self {
+        AppError::Structured {
+            code: "contact_pending",
+            message: "a contact request between you and that address is already pending or \
+                was recently denied"
+                .to_string(),
+            data: json!({}),
+        }
+    }
+
+    /// PRD-mcphost-agent-consent requirement 2: `host.agent.contact_request`
+    /// against an `open` recipient, or one the caller already has an
+    /// accepted contact with -- nothing to request.
+    pub fn not_needed() -> Self {
+        AppError::Structured {
+            code: "not_needed",
+            message: "no contact request is needed for that address".to_string(),
+            data: json!({}),
+        }
+    }
+
+    /// PRD-mcphost-agent-consent requirement 3: `host.agent.contact_accept`/
+    /// `contact_deny` on a `request_id` that doesn't exist, isn't addressed
+    /// to the caller, or is no longer `pending` -- collapsed to one code,
+    /// same "unknown vs hidden" indistinguishability as
+    /// [`Self::thread_not_found`].
+    pub fn contact_request_not_found() -> Self {
+        AppError::Structured {
+            code: "contact_request_not_found",
+            message: "no pending contact request found for that id".to_string(),
+            data: json!({}),
         }
     }
 
