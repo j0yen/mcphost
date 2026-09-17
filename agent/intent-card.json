@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-proof-lane-loop-config.md",
-  "intent_slug": "mcphost-proof-lane-loop-config",
-  "root_motivation": "Joe (operator) is holding a burst box down until an mcphost branch gate passes. Since 01:05Z none can: `autobuilder vti-plan` exits non-zero on every branch because `.buildloop/ci-equivalent.toml` \u2014 added to main by the loop's own push-gate PRD at 00:01Z (commit 4f1112d, the only commit since tag v0.54.1) \u2014 matches none of the nine lanes in `agent/proof-lanes.toml`, and vti-plan's `min_confidence` is 0.7. The block is inherited by every branch (gate attribution `inherited=2 in-scope=0`), the reviewer is skipped on the red, and gate-then-land exits 7. Three branches have cycled on it (stdlib-pseudo-modules 01:13Z and 01:57Z, test-suite-consolidation 02:04Z, tenant-self-offboard). The lane file has no test that says \"every tracked file routes somewhere\", so the gap was found by the gate, after the file was on main, by a different PRD's dispatch.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-stdlib-pseudo-modules.md",
+  "intent_slug": "mcphost-stdlib-pseudo-modules",
+  "root_motivation": "`__future__` is a compiler-directive pseudo-module: always importable, never installable from PyPI. Similar always-present names the inference can encounter: `__main__`, and any future dunder the interpreter grows. Rejecting them turns valid source into a publish error that the calling agent cannot repair.",
   "user_persona": "The mcphost build loop's own branch agents and the operator (Joe) supervising them: a branch agent needs `autobuilder vti-plan` to route every path in its diff to a proof lane so its gate measures its own change rather than inheriting main's block, and the operator needs a new unrouted top-level path to be refused at PR time by a named failing test instead of turning every concurrent branch gate red after it lands.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,44 +14,26 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the landed `agent/proof-lanes.toml`, When `autobuilder vti-plan --project . --base v0.54.1` runs on the landed head, Then exit 0 and the receipt's route for `.buildloop/ci-equivalent.toml` has confidence \u2265 0.7 with lane `loop-config`.",
+      "description": "Given a python-kind spec whose source contains `from __future__ import annotations` and only stdlib imports, When it is published, Then publish succeeds with an empty inferred requirements list.",
       "test": "tests/lanecov_ac01_every_tracked_path_routes.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the current tree, When `cargo test --test lanecov_ac01_every_tracked_path_routes` runs, Then it passes.",
+      "description": "Given source importing `__main__`, When published, Then no PyPI requirement is inferred for it.",
       "test": "tests/lanecov_ac02_coverage_test_is_actually_run.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a temporary tracked file `zz-unrouted/x.txt` in a scratch clone, When the coverage test runs, Then it fails and its output names `zz-unrouted/x.txt`.",
+      "description": "Given source importing a real unknown third-party name, When published with no requirements, Then the error still fires and names that import (regression guard).",
       "test": "tests/lanecov_ac03_unrouted_path_is_named.rs"
     },
     {
       "id": "AC4",
-      "level": "MUST",
-      "description": "Given the nine pre-existing lanes, When `proof-lanes.toml` is diffed against v0.54.1, Then the only change is the added `loop-config` block.",
-      "test": "tests/lanecov_ac04_existing_lanes_unchanged.rs"
-    },
-    {
-      "id": "AC5",
-      "level": "MUST",
-      "description": "Given a branch worktree rebased onto the landed head with an empty diff, When `extend-gate.sh <wt> --scope branch` runs, Then the journal phases field shows `vti-plan:<n>` without `!`.",
-      "test": "no unit test file; gate-receipt evidence \u2014 a branch-scope extend-gate.sh run whose journal phases field shows vti-plan:<n> without '!' (same convention as AC12 in the founding map below)"
-    },
-    {
-      "id": "AC6",
       "level": "SHOULD",
-      "description": "Given a lane with an empty `required_commands`, When the coverage test runs, Then it fails naming the lane id.",
-      "test": "tests/lanecov_ac06_malformed_lane_fails_naming_it.rs"
-    },
-    {
-      "id": "AC7",
-      "level": "MAY",
-      "description": "Given the docs after land, When grepped for `loop-config`, Then the how-to-add-a-lane paragraph is present.",
-      "test": "tests/lanecov_ac07_docs_document_adding_a_lane.rs"
+      "description": "Given the shipped stdlib JSON, When the test suite runs, Then a test asserts the pseudo-module entries are present, so a future list regeneration cannot silently drop them.",
+      "test": "tests/lanecov_ac04_existing_lanes_unchanged.rs"
     }
   ],
   "scope": [
