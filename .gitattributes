@@ -1,1 +1,9 @@
 Cargo.lock merge=ours
+
+# PRD-build-land-conflict-resolver R6: append-only files land-resolve.sh
+# already union-merges during a build-loop conflict (state/land-policy/
+# mcphost.json); this makes an operator's manual `git rebase`/`git merge`
+# behave the same way instead of stopping on a textual conflict.
+CHANGELOG.md merge=union
+www/llms.txt merge=union
+.buildloop/extended-gates.toml merge=union
