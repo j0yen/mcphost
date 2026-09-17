@@ -2,7 +2,7 @@
   "schema": "autobuilder.intent_card.v1",
   "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-proof-lane-loop-config.md",
   "intent_slug": "mcphost-proof-lane-loop-config",
-  "root_motivation": "Joe (operator) is holding a burst box down until an mcphost branch gate passes. Since 01:05Z none can: `autobuilder vti-plan` exits non-zero on every branch because `.buildloop/ci-equivalent.toml` — added to main by the loop's own push-gate PRD at 00:01Z (commit 4f1112d, the only commit since tag v0.54.1) — matches none of the nine lanes in `agent/proof-lanes.toml`, and vti-plan's `min_confidence` is 0.7. The block is inherited by every branch (gate attribution `inherited=2 in-scope=0`), the reviewer is skipped on the red, and gate-then-land exits 7. Three branches have cycled on it (stdlib-pseudo-modules 01:13Z and 01:57Z, test-suite-consolidation 02:04Z, tenant-self-offboard). The lane file has no test that says \"every tracked file routes somewhere\", so the gap was found by the gate, after the file was on main, by a different PRD's dispatch.",
+  "root_motivation": "Joe (operator) is holding a burst box down until an mcphost branch gate passes. Since 01:05Z none can: `autobuilder vti-plan` exits non-zero on every branch because `.buildloop/ci-equivalent.toml` \u2014 added to main by the loop's own push-gate PRD at 00:01Z (commit 4f1112d, the only commit since tag v0.54.1) \u2014 matches none of the nine lanes in `agent/proof-lanes.toml`, and vti-plan's `min_confidence` is 0.7. The block is inherited by every branch (gate attribution `inherited=2 in-scope=0`), the reviewer is skipped on the red, and gate-then-land exits 7. Three branches have cycled on it (stdlib-pseudo-modules 01:13Z and 01:57Z, test-suite-consolidation 02:04Z, tenant-self-offboard). The lane file has no test that says \"every tracked file routes somewhere\", so the gap was found by the gate, after the file was on main, by a different PRD's dispatch.",
   "user_persona": "The mcphost build loop's own branch agents and the operator (Joe) supervising them: a branch agent needs `autobuilder vti-plan` to route every path in its diff to a proof lane so its gate measures its own change rather than inheriting main's block, and the operator needs a new unrouted top-level path to be refused at PR time by a named failing test instead of turning every concurrent branch gate red after it lands.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,7 +14,7 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the landed `agent/proof-lanes.toml`, When `autobuilder vti-plan --project . --base v0.54.1` runs on the landed head, Then exit 0 and the receipt's route for `.buildloop/ci-equivalent.toml` has confidence ≥ 0.7 with lane `loop-config`.",
+      "description": "Given the landed `agent/proof-lanes.toml`, When `autobuilder vti-plan --project . --base v0.54.1` runs on the landed head, Then exit 0 and the receipt's route for `.buildloop/ci-equivalent.toml` has confidence \u2265 0.7 with lane `loop-config`.",
       "test": "tests/lanecov_ac01_every_tracked_path_routes.rs"
     },
     {
@@ -39,7 +39,7 @@
       "id": "AC5",
       "level": "MUST",
       "description": "Given a branch worktree rebased onto the landed head with an empty diff, When `extend-gate.sh <wt> --scope branch` runs, Then the journal phases field shows `vti-plan:<n>` without `!`.",
-      "test": "no unit test file; gate-receipt evidence — a branch-scope extend-gate.sh run whose journal phases field shows vti-plan:<n> without '!' (same convention as AC12 in the founding map below)"
+      "test": "no unit test file; gate-receipt evidence \u2014 a branch-scope extend-gate.sh run whose journal phases field shows vti-plan:<n> without '!' (same convention as AC12 in the founding map below)"
     },
     {
       "id": "AC6",
