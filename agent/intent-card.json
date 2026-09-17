@@ -3,7 +3,7 @@
   "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-build-land-conflict-resolver.md",
   "intent_slug": "build-land-conflict-resolver",
   "root_motivation": "**Who:** the build loop on RedBaron landing `rust-extend` (and worktree-isolated shell/python) branches into a target that other branches also land into; the operator waiting for a green ship.",
-  "user_persona": "The mcphost build loop's own branch agents and the operator (Joe) supervising them: a branch agent needs `autobuilder vti-plan` to route every path in its diff to a proof lane so its gate measures its own change rather than inheriting main's block, and the operator needs a new unrouted top-level path to be refused at PR time by a named failing test instead of turning every concurrent branch gate red after it lands.",
+  "user_persona": "The operator (Joe) doing a manual `git rebase`/`git merge` on mcphost outside the automated build loop: without this .gitattributes entry, a manual rebase touching an append-only file (CHANGELOG.md, www/llms.txt, .buildloop/extended-gates.toml) stops on a textual conflict that land-resolve.sh's automated union-merge would already have resolved inside the loop; with it, git's own merge=union driver applies the same rule by hand.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -15,82 +15,78 @@
       "id": "AC1",
       "level": "MUST",
       "description": "Given a fixture repo where main advanced after the branch was cut, When gate-then-land runs, Then the branch worktree is rebased onto main's tip before the branch gate and the gate's journal line shows `base=<main tip>`.",
-      "test": "tests/lanecov_ac01_every_tracked_path_routes.rs"
+      "test": "no unit test file in this repo (mcphost); proven by ~/wintermute/build-skill/tests/landres_ac1_pregate_rebase_resolves_generated.sh -- this PRD's own build_into is build-skill, test_prefix: landres"
     },
     {
       "id": "AC2",
       "level": "MUST",
       "description": "Given a policy listing `agent/intent-card.json` as generated with a regen command, and two branches that each regenerated it, When the second lands, Then no rebase conflict is recorded as class source, the regen command runs once, and the landed file equals the regen output.",
-      "test": "tests/lanecov_ac02_coverage_test_is_actually_run.rs"
+      "test": "no unit test file in this repo (mcphost); proven by ~/wintermute/build-skill/tests/landres_ac2_classify_generated.sh, landres_ac2_resolve_generated_regen.sh -- this PRD's own build_into is build-skill, test_prefix: landres"
     },
     {
       "id": "AC3",
       "level": "MUST",
       "description": "Given a policy listing `CHANGELOG.md` as append-only and two branches that appended different lines, When the second lands, Then the landed file contains both lines and the ledger records class `append_only`, resolution `union`.",
-      "test": "tests/lanecov_ac03_unrouted_path_is_named.rs"
+      "test": "no unit test file in this repo (mcphost); proven by ~/wintermute/build-skill/tests/landres_ac3_classify_append_only.sh, landres_ac3_resolve_append_only_union.sh -- this PRD's own build_into is build-skill, test_prefix: landres"
     },
     {
       "id": "AC4",
       "level": "MUST",
       "description": "Given a source conflict and a stub coder that resolves it so tests pass, When land runs, Then the rebase continues, a delta gate runs, the branch lands, and the ledger records class `source`, resolution `coder`, with wall seconds.",
-      "test": "tests/lanecov_ac04_existing_lanes_unchanged.rs"
+      "test": "no unit test file in this repo (mcphost); proven by ~/wintermute/build-skill/tests/landres_ac4_resolve_source_coder_succeeds.sh -- this PRD's own build_into is build-skill, test_prefix: landres"
     },
     {
       "id": "AC5",
       "level": "MUST",
       "description": "Given a source conflict and a stub coder that fails (or exceeds `LAND_RESOLVE_MAX_S`), When land runs, Then the branch is byte-identical to its pre-resolve state, sidecar `last_error=land-conflict-unresolved:<files>` is written, the ledger records `unresolved`, and main is untouched.",
-      "test": "no unit test file; gate-receipt evidence \u2014 a branch-scope extend-gate.sh run whose journal phases field shows vti-plan:<n> without '!' (same convention as AC12 in the founding map below)"
+      "test": "no unit test file in this repo (mcphost); proven by ~/wintermute/build-skill/tests/landres_ac5_resolve_source_coder_fails_unresolved.sh, landres_ac5_ledger_regen_and_union.sh -- this PRD's own build_into is build-skill, test_prefix: landres"
     },
     {
       "id": "AC6",
       "level": "MUST",
       "description": "Given no policy file for the repo, When a rebase conflicts, Then behavior matches today (abort, `land-conflict:<files>`, not retried) and no regen or union is attempted.",
-      "test": "tests/lanecov_ac06_malformed_lane_fails_naming_it.rs"
+      "test": "no unit test file in this repo (mcphost); proven by ~/wintermute/build-skill/tests/landres_ac6_classify_missing_policy.sh, landres_ac6_resolve_source_conflict_untouched.sh -- this PRD's own build_into is build-skill, test_prefix: landres"
     },
     {
       "id": "AC7",
       "level": "MUST",
       "description": "Given `scripts/land-conflicts-report.sh` and a ledger with several records, When it runs, Then it prints files ordered by conflict count with class and last resolution.",
-      "test": "tests/lanecov_ac07_docs_document_adding_a_lane.rs"
+      "test": "no unit test file in this repo (mcphost); proven by ~/wintermute/build-skill/tests/landres_ac5_ledger_regen_and_union.sh (report-ordering assertion, no dedicated AC7 file) -- this PRD's own build_into is build-skill, test_prefix: landres"
     },
     {
       "id": "AC8",
       "level": "MUST",
       "description": "Given `scripts/land-resolve-selftest.sh` with fixtures for AC1\u2013AC7, When it runs on RedBaron, Then it ends `PASS` with 0 FAIL.",
-      "test": "tests/acceptance_ac8.rs"
+      "test": "no unit test file in this repo (mcphost); proven by ~/wintermute/build-skill/tests/../scripts/land-resolve-selftest.sh (the runner itself, entrypoint for AC1-AC7) -- this PRD's own build_into is build-skill, test_prefix: landres"
     },
     {
       "id": "AC9",
       "level": "MUST",
       "description": "Given this PRD has landed and mcphost's policy file exists, When the next mcphost branch on RedBaron hits a rebase conflict in a generated or append-only file, Then the journal shows `land-resolve \u2026 regen|union` for that slug and the branch lands in the same dispatch with no `not retried` line. (Live; evidence: `journal:land-resolve .* (regen|union)`; never deferrable \u2014 Joe 2026-09-17 no-defer live ACs.)",
-      "test": "tests/acceptance_ac9.rs"
+      "test": "(Live) no fixture -- journal:land-resolve .* (regen|union) on a real mcphost branch land, never deferrable"
     },
     {
       "id": "AC10",
       "level": "SHOULD",
       "description": "Given a python or shell worktree land (worktree-extend.sh integrate) that conflicts, When it runs, Then land-resolve.sh is invoked before exit 4/5 and the same classes apply.",
-      "test": "tests/acceptance_ac10.rs"
+      "test": "no unit test file in this repo (mcphost); proven by ~/wintermute/build-skill/tests/landres_ac10_worktree_extend_land_resolves.sh -- this PRD's own build_into is build-skill, test_prefix: landres"
     },
     {
       "id": "AC11",
       "level": "SHOULD",
       "description": "Given mcphost's `.gitattributes`, When read after this PRD's mcphost PR merges, Then the append-only paths carry `merge=union` and the PR is cited in receipts.",
-      "test": "tests/acceptance_ac11.rs"
+      "test": "no unit test file -- proven by this commit itself (mcphost .gitattributes gaining merge=union for the land-policy append-only paths) plus its citation in receipts, per R6"
     }
   ],
   "scope": [
-    "`agent/proof-lanes.toml`: one added `[[lane]]` with id `loop-config`, globs [\".buildloop/**\"], required_commands [\"cargo test --workspace\"], description naming PRD-build-main-push-gate's CI-equivalent contract (P0, AC1/AC4). No pre-existing lane's required_commands changed.",
-    "`tests/lanecov_ac0{1,2,3,4,6,7}_*.rs` plus the shared matcher `tests/support/lanecov.rs`: one proof file per acceptance criterion, matching with the same `globset` `**` semantics vti-plan uses, with an initially-empty UNROUTED_ALLOWLIST (P0/P1, AC1/AC2/AC3/AC6).",
-    "`scripts/gen-test-suites.sh`: MAX_PER_SUITE[\"core\"] raised 136 -> 137 so the six added lanecov files stay inside this repo's ten-test-binary cap asserted by tests/suite_ac1_ten_binaries_and_names_preserved.rs.",
-    "`docs/agent-quickstart.md`: one paragraph on how to add a lane when adding a new top-level path (P2, AC7).",
-    "`agent/test-map.json` + `agent/intent-card.json`: ac_test_map re-pointed from the founding PRD's tests/ac0N_*.rs to this PRD's tests/lanecov_ac0N_*.rs, so the card's acceptance_criteria[].test fields name the tests that actually prove these ACs (reviewer-agent concern `ac-test-field-pointers-semantically-wrong`, 2026-09-17)."
+    "`.gitattributes` (R6): add `merge=union` entries for the three append-only paths already listed in `state/land-policy/mcphost.json` (`CHANGELOG.md`, `www/llms.txt`, `.buildloop/extended-gates.toml`), so an operator's manual `git rebase`/`git merge` on this repo resolves those files the same way `land-resolve.sh`'s automated union-merge already does during a build-loop land (this PRD's R2/R3, landed in build-skill's own repo, not this one).",
+    "No other tracked path in this repo changes; the pre-existing `Cargo.lock merge=ours` line is untouched."
   ],
   "non_goals": [
-    "Changing vti-plan's `min_confidence` or its routing rules -- autobuilder is a different repo and a different build_into.",
-    "Editing `.buildloop/ci-equivalent.toml`'s content; this PRD only routes the file.",
-    "The build-skill cross-repo commit-gate rule (PRD-build-cross-repo-commit-gate).",
-    "Fixing pre-existing main-checkout gate debt (reviewer-agent / flake-audit / rollback-plan receipt staleness) -- owned by PRD-mcphost-gate-debt-4f1112d.",
-    "Reverting the `meta` lane's widened globs: PRD-mcphost-gate-debt-4f1112d's commit 7094d50 folded `.buildloop/**` into `meta` as well, so that path now matches two lanes; vti-plan still routes it at confidence 1.0 and this PRD does not undo another PRD's landed commit."
+    "Any change to build-skill's own land-resolve mechanism, land-policy schema, or conflict ledger (scripts/land-resolve.sh, gate-then-land.sh, worktree-extend.sh) -- those are this PRD's R1/R3/R4/R5/R8, already landed in ~/wintermute/build-skill, a different repo and a different build_into.",
+    "Widening or narrowing mcphost's append-only/generated file lists -- this commit encodes the existing state/land-policy/mcphost.json policy as .gitattributes rules; it adds or removes no entry from that policy.",
+    "Any src/, test, or CI-behavior change in mcphost.",
+    "Auto-resolving conflicts in hand-written source without tests as the check (PRD Non-Goals)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -99,37 +95,34 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "glob_semantics_mirror_vti_plan": "The coverage test matches with the same `globset` crate and `**` semantics `autobuilder vti-plan` uses; if the test's matcher and autobuilder's disagree, the test is wrong (PRD Technical considerations).",
-      "no_hand_added_test_target": "`autotests = false` plus `scripts/gen-test-suites.sh --check` means a lanecov file is proven by being a generated `[[test]]` suite member, never by a hand-added `[[test]]` stanza (PRD-mcphost-test-suite-consolidation). AC2's literal `cargo test --test lanecov_ac01_...` spelling is unsatisfiable under that convention; lanecov_ac02 asserts the equivalent property and states the deviation in its own doc comment.",
-      "coverage_test_under_2s": "The coverage test runs in under 2 s on the current tree (about 600 tracked files).",
-      "rollback_base": "The PRD names v0.54.1 as the rollback base; the branch's actual gate base has advanced with main as sibling PRDs landed, so diffs are taken against the tag current at gate time."
+      "gitattributes_only_change": "This commit adds only .gitattributes lines naming the three paths already in state/land-policy/mcphost.json; it introduces no new script, test, dependency, or source-code change in this repo."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why did every mcphost branch gate go red from 01:05Z on 2026-09-16?",
-      "a": "`autobuilder vti-plan` exited non-zero on every branch, and gate attribution read `inherited=2 in-scope=0` -- no branch's own diff was at fault, each was inheriting a block from main."
+      "q": "Why does mcphost need `.gitattributes` merge=union entries for CHANGELOG.md, www/llms.txt, and .buildloop/extended-gates.toml?",
+      "a": "Two build-loop incidents on 2026-09-17 (gate-debt-4f1112d land exit 10 on agent/intent-card.json, and agent-consent land-conflict 01:45Z on 11 files, 4 of them generated or append-only) showed rebase conflicts landing on files nobody meant to treat as ordinary source (PRD grounding)."
     },
     {
       "why": 2,
-      "q": "Why did vti-plan exit non-zero?",
-      "a": "`.buildloop/ci-equivalent.toml`, added to main at 00:01Z by commit 4f1112d (the only commit since tag v0.54.1), matched none of the nine lanes in agent/proof-lanes.toml, and vti-plan's min_confidence is 0.7, so the unrouted path scored 0.0."
+      "q": "Why did those files conflict textually instead of resolving automatically?",
+      "a": "git's default merge driver treats every tracked file as ordinary text; nothing in mcphost declared CHANGELOG.md/www/llms.txt/.buildloop/extended-gates.toml as append-only."
     },
     {
       "why": 3,
-      "q": "Why did an unrouted file reach main at all?",
-      "a": "Nothing in the repo asserted that every tracked path routes to some lane, so the only thing that could notice the gap was vti-plan itself -- running after the file had already landed, on a different PRD's branch."
+      "q": "Why is that still a problem once the build loop has its own fix?",
+      "a": "land-resolve.sh (this PRD's R2/R3, landed in build-skill) now union-merges these three files automatically inside the loop, but an operator running a manual git rebase/merge on this repo outside the loop gets none of that -- the exact textual conflict the loop just learned to avoid."
     },
     {
       "why": 4,
-      "q": "Why was the gate the only detector?",
-      "a": "proof-lanes.toml is a hand-maintained allowlist with no totality check. Adding a lane alongside a new top-level path was a remembered step, not an enforced one, so it failed the first time someone added a path without thinking about lanes."
+      "q": "Why fix it via .gitattributes here rather than only the loop-side policy file?",
+      "a": "merge=union is git's own mechanism for exactly this case, and this PRD's R6 asks for it explicitly \"so an operator's manual rebase behaves the same way\" -- the two mechanisms (state/land-policy/mcphost.json for the loop, .gitattributes for git itself) name the same three paths so they cannot silently diverge."
     },
     {
       "why": 5,
-      "q": "Why does a single forgotten line cost the whole repo instead of one PR?",
-      "a": "A lane gap is inherited by every concurrent branch until someone lands a lane, so the cost scales with branch count rather than with the change. The fix is to make totality a CI-time property of the PR that adds the path: a test that walks `git ls-files` and names any path no lane covers, so the lane is added in the same PR."
+      "q": "Why land it as its own small commit through the normal mcphost PR path rather than bundled with build-skill's changes?",
+      "a": "build-skill and mcphost are different repos with different gates; R6 states this file is \"committed through the normal mcphost landing path (a loop/ PR), cited in receipts\" -- a single-purpose, reviewable commit keeps this branch's gate diff scoped to exactly these three attribute lines."
     }
   ],
   "created_at": "2026-09-03T18:04:17Z",
@@ -157,6 +150,10 @@
     {
       "question": "intent-card-refresh.sh regenerated this card from PRD-mcphost-agent-directory (root_motivation and acceptance_criteria correctly re-sourced), but per its own documented design it carried forward scope/non_goals/user_persona/hard_constraints.additional/five_whys_trace byte-for-byte from the previous card, which described an entirely unrelated, already-shipped feature (PRD-mcphost-gate-debt-c627803's handoff-token/key-rotation work). That carry-forward produced a direct contradiction the reviewer-agent caught at HEAD ea595d7 (captured_at 2026-09-14T02:15:53Z): non_goals said 'No change to admin auth, admin.* tools, or the admin key's own resolution path' while this diff adds two new admin.* tools (admin.agent.lookup, admin.agent.handle_release); scope/five_whys_trace/hard_constraints.additional still described handoff tokens, not the agent directory. Fix in place (same pattern as every prior recurrence of this gap, see the four resolutions above), or reopen the contract?",
       "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence. No AC content changed (root_motivation and acceptance_criteria were already correctly re-sourced by intent-card-refresh.sh), so there is no Stage-3 conflict. scope, non_goals, user_persona, hard_constraints.additional, and five_whys_trace were rewritten to describe this PRD's actual agent-directory work (agent_profiles table, host.agent.*/admin.agent.* tools, the agent_not_found byte-identity guarantee, and handle-claim atomicity), sourced from the PRD's own Requirements, Technical considerations, and Problem statement sections. Each acceptance_criteria[].test field was also repointed from the script's generic placeholder guesses (tests/ac0N_*.rs signup tests) to the real tests/agentdir_ac0N_*.rs file and test function that proves it, per the PRD's own `test_prefix: agentdir` frontmatter key."
+    },
+    {
+      "question": "intent-card-refresh.sh regenerated this card from PRD-build-land-conflict-resolver (root_motivation and acceptance_criteria correctly re-sourced), but per its own documented design it carried forward scope/non_goals/user_persona/hard_constraints.additional/five_whys_trace byte-for-byte from the previous card, which described an entirely unrelated, already-shipped feature (PRD-build-main-push-gate's CI-equivalent lane-coverage work: agent/proof-lanes.toml, tests/lanecov_ac0N_*.rs). Same recurring gap this card's own history already documents five times over (see the resolutions above, most recently for PRD-mcphost-agent-directory). Fix in place, or reopen the contract?",
+      "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence. No AC content changed (root_motivation and acceptance_criteria were already correctly re-sourced by intent-card-refresh.sh), so there is no Stage-3 conflict. scope, non_goals, user_persona, hard_constraints.additional, and five_whys_trace were rewritten to describe this PRD's actual R6 diff in this repo -- three `.gitattributes` merge=union lines for the append-only paths state/land-policy/mcphost.json already names -- sourced from the PRD's own R6 requirement, Technical considerations, and Grounding sections, not fabricated."
     }
   ]
 }

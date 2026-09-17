@@ -7,6 +7,3 @@ Cargo.lock merge=ours
 CHANGELOG.md merge=union
 www/llms.txt merge=union
 .buildloop/extended-gates.toml merge=union
-CHANGELOG.md merge=union
-www/llms.txt merge=union
-.buildloop/extended-gates.toml merge=union
