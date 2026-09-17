@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-agent-consent.md",
-  "intent_slug": "mcphost-agent-consent",
-  "root_motivation": "After PRD-mcphost-agent-inbox an agent's choices are `open` (anyone on the host may fill its inbox up to quota) or `closed` (nobody may, including the collaborator it wanted). `contacts` exists on the directory card but behaves as `closed` because nothing populates a contact list. Block is the only per-sender control, and it is a hammer: it silences a sender forever and tells the blocked party nothing, which is the right behaviour for abuse and the wrong one for \"not now\".",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-proof-lane-loop-config.md",
+  "intent_slug": "mcphost-proof-lane-loop-config",
+  "root_motivation": "Joe (operator) is holding a burst box down until an mcphost branch gate passes. Since 01:05Z none can: `autobuilder vti-plan` exits non-zero on every branch because `.buildloop/ci-equivalent.toml` \u2014 added to main by the loop's own push-gate PRD at 00:01Z (commit 4f1112d, the only commit since tag v0.54.1) \u2014 matches none of the nine lanes in `agent/proof-lanes.toml`, and vti-plan's `min_confidence` is 0.7. The block is inherited by every branch (gate attribution `inherited=2 in-scope=0`), the reviewer is skipped on the red, and gate-then-land exits 7. Three branches have cycled on it (stdlib-pseudo-modules 01:13Z and 01:57Z, test-suite-consolidation 02:04Z, tenant-self-offboard). The lane file has no test that says \"every tracked file routes somewhere\", so the gap was found by the gate, after the file was on main, by a different PRD's dispatch.",
   "user_persona": "An agent that binds a published tool with host.trigger.set(kind=\"message\") so its reply logic runs from a message arrival even after its own session ends, or that calls host.msg.wait for a bounded long-poll instead of burning quota on host.msg.inbox polling; secondarily the operator, who needs message-fired runs metered like every other run.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,62 +14,44 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given tenant R has `contact_policy: contacts` and no contacts, When stranger S calls `host.msg.send(to=[R])`, Then `refused` contains R with `contact_refused` and `data.hint` naming `host.agent.contact_request`, and R's inbox is empty.",
+      "description": "Given the landed `agent/proof-lanes.toml`, When `autobuilder vti-plan --project . --base v0.54.1` runs on the landed head, Then exit 0 and the receipt's route for `.buildloop/ci-equivalent.toml` has confidence \u2265 0.7 with lane `loop-config`.",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given S calls `host.agent.contact_request(R, note=\"reviewing your indexer\")`, When R lists `host.agent.contacts(status=\"pending\")`, Then the request appears with S's address and the note; and When S sends again before a decision, Then the refusal is `contact_pending`.",
+      "description": "Given the current tree, When `cargo test --test lanecov_ac01_every_tracked_path_routes` runs, Then it passes.",
       "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given R calls `host.agent.contact_accept(request_id)`, When S sends R a message, Then it is delivered and both `host.agent.contacts()` results show the pair with `accepted_at` set.",
+      "description": "Given a temporary tracked file `zz-unrouted/x.txt` in a scratch clone, When the coverage test runs, Then it fails and its output names `zz-unrouted/x.txt`.",
       "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given R denies the request, When S sends or requests again within 7 days, Then both return `contact_pending`; and after the cool-down (clock advanced in test), Then a new request is accepted as `pending`.",
+      "description": "Given the nine pre-existing lanes, When `proof-lanes.toml` is diffed against v0.54.1, Then the only change is the added `loop-config` block.",
       "test": "tests/ac04_publish_list_and_call.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given R muted S and bound a message trigger, When S sends a non-urgent message, Then it is stored, visible in `host.msg.thread`, absent from `inbox(unread_only=true)`, and no run fires; and When S sends with `urgent=true`, Then one run fires and the envelope has `urgent: true`.",
+      "description": "Given a branch worktree rebased onto the landed head with an empty diff, When `extend-gate.sh <wt> --scope branch` runs, Then the journal phases field shows `vti-plan:<n>` without `!`.",
       "test": "tests/ac05_cross_tenant_isolation.rs"
     },
     {
       "id": "AC6",
-      "level": "MUST",
-      "description": "Given the free plan's `urgent_per_day` is 3, When S sends R four urgent messages in a day, Then the fourth returns `quota_exceeded` with `data.limit=\"urgent_per_day\"` and `data.value=3`, and is not stored.",
+      "level": "SHOULD",
+      "description": "Given a lane with an empty `required_commands`, When the coverage test runs, Then it fails naming the lane id.",
       "test": "tests/ac06_remove_tool.rs"
     },
     {
       "id": "AC7",
-      "level": "MUST",
-      "description": "Given R blocked S, When S calls `host.agent.contact_request(R)` or sends `urgent=true`, Then both responses are byte-identical to the responses for a nonexistent address, and any prior pending request from S is `denied` without notifying S.",
+      "level": "MAY",
+      "description": "Given the docs after land, When grepped for `loop-config`, Then the how-to-add-a-lane paragraph is present.",
       "test": "tests/ac07_usage_metering.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "MUST",
-      "description": "Given R is `closed`, When any tenant sends `urgent=true`, Then the refusal is `contact_refused` and nothing is stored.",
-      "test": "tests/ac08_admin_disable_and_forbidden.rs"
-    },
-    {
-      "id": "AC9",
-      "level": "MUST",
-      "description": "Given S has a pending request to R and S is deleted via `admin.tenant_delete`, When R lists contacts, Then no request or contact row references S.",
-      "test": "tests/ac09_signup_rate_limit.rs"
-    },
-    {
-      "id": "AC10",
-      "level": "SHOULD",
-      "description": "Given a pending request to R, When R reads `host.msg.inbox()`, Then a system message with `from_address=\"host\"`, `data.kind=\"contact_request\"` and the `request_id` is present, and `host.agent.contact_accept` with that id succeeds.",
-      "test": "tests/ac10_publish_validation_errors.rs"
     }
   ],
   "scope": [
