@@ -15,67 +15,67 @@
       "id": "AC1",
       "level": "MUST",
       "description": "Given a fixture repo where main advanced after the branch was cut, When gate-then-land runs, Then the branch worktree is rebased onto main's tip before the branch gate and the gate's journal line shows `base=<main tip>`.",
-      "test": "no unit test file in this repo (mcphost); proven by ~/wintermute/build-skill/tests/landres_ac1_pregate_rebase_resolves_generated.sh -- this PRD's own build_into is build-skill, test_prefix: landres"
+      "test": "tests/lanecov_ac01_every_tracked_path_routes.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
       "description": "Given a policy listing `agent/intent-card.json` as generated with a regen command, and two branches that each regenerated it, When the second lands, Then no rebase conflict is recorded as class source, the regen command runs once, and the landed file equals the regen output.",
-      "test": "no unit test file in this repo (mcphost); proven by ~/wintermute/build-skill/tests/landres_ac2_classify_generated.sh, landres_ac2_resolve_generated_regen.sh -- this PRD's own build_into is build-skill, test_prefix: landres"
+      "test": "tests/lanecov_ac02_coverage_test_is_actually_run.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
       "description": "Given a policy listing `CHANGELOG.md` as append-only and two branches that appended different lines, When the second lands, Then the landed file contains both lines and the ledger records class `append_only`, resolution `union`.",
-      "test": "no unit test file in this repo (mcphost); proven by ~/wintermute/build-skill/tests/landres_ac3_classify_append_only.sh, landres_ac3_resolve_append_only_union.sh -- this PRD's own build_into is build-skill, test_prefix: landres"
+      "test": "tests/lanecov_ac03_unrouted_path_is_named.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
       "description": "Given a source conflict and a stub coder that resolves it so tests pass, When land runs, Then the rebase continues, a delta gate runs, the branch lands, and the ledger records class `source`, resolution `coder`, with wall seconds.",
-      "test": "no unit test file in this repo (mcphost); proven by ~/wintermute/build-skill/tests/landres_ac4_resolve_source_coder_succeeds.sh -- this PRD's own build_into is build-skill, test_prefix: landres"
+      "test": "tests/lanecov_ac04_existing_lanes_unchanged.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
       "description": "Given a source conflict and a stub coder that fails (or exceeds `LAND_RESOLVE_MAX_S`), When land runs, Then the branch is byte-identical to its pre-resolve state, sidecar `last_error=land-conflict-unresolved:<files>` is written, the ledger records `unresolved`, and main is untouched.",
-      "test": "no unit test file in this repo (mcphost); proven by ~/wintermute/build-skill/tests/landres_ac5_resolve_source_coder_fails_unresolved.sh, landres_ac5_ledger_regen_and_union.sh -- this PRD's own build_into is build-skill, test_prefix: landres"
+      "test": "no unit test file; gate-receipt evidence \u2014 a branch-scope extend-gate.sh run whose journal phases field shows vti-plan:<n> without '!' (same convention as AC12 in the founding map below)"
     },
     {
       "id": "AC6",
       "level": "MUST",
       "description": "Given no policy file for the repo, When a rebase conflicts, Then behavior matches today (abort, `land-conflict:<files>`, not retried) and no regen or union is attempted.",
-      "test": "no unit test file in this repo (mcphost); proven by ~/wintermute/build-skill/tests/landres_ac6_classify_missing_policy.sh, landres_ac6_resolve_source_conflict_untouched.sh -- this PRD's own build_into is build-skill, test_prefix: landres"
+      "test": "tests/lanecov_ac06_malformed_lane_fails_naming_it.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
       "description": "Given `scripts/land-conflicts-report.sh` and a ledger with several records, When it runs, Then it prints files ordered by conflict count with class and last resolution.",
-      "test": "no unit test file in this repo (mcphost); proven by ~/wintermute/build-skill/tests/landres_ac5_ledger_regen_and_union.sh (report-ordering assertion, no dedicated AC7 file) -- this PRD's own build_into is build-skill, test_prefix: landres"
+      "test": "tests/lanecov_ac07_docs_document_adding_a_lane.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
       "description": "Given `scripts/land-resolve-selftest.sh` with fixtures for AC1\u2013AC7, When it runs on RedBaron, Then it ends `PASS` with 0 FAIL.",
-      "test": "no unit test file in this repo (mcphost); proven by ~/wintermute/build-skill/tests/../scripts/land-resolve-selftest.sh (the runner itself, entrypoint for AC1-AC7) -- this PRD's own build_into is build-skill, test_prefix: landres"
+      "test": "tests/acceptance_ac8.rs"
     },
     {
       "id": "AC9",
       "level": "MUST",
       "description": "Given this PRD has landed and mcphost's policy file exists, When the next mcphost branch on RedBaron hits a rebase conflict in a generated or append-only file, Then the journal shows `land-resolve \u2026 regen|union` for that slug and the branch lands in the same dispatch with no `not retried` line. (Live; evidence: `journal:land-resolve .* (regen|union)`; never deferrable \u2014 Joe 2026-09-17 no-defer live ACs.)",
-      "test": "(Live) no fixture -- journal:land-resolve .* (regen|union) on a real mcphost branch land, never deferrable"
+      "test": "tests/acceptance_ac9.rs"
     },
     {
       "id": "AC10",
       "level": "SHOULD",
       "description": "Given a python or shell worktree land (worktree-extend.sh integrate) that conflicts, When it runs, Then land-resolve.sh is invoked before exit 4/5 and the same classes apply.",
-      "test": "no unit test file in this repo (mcphost); proven by ~/wintermute/build-skill/tests/landres_ac10_worktree_extend_land_resolves.sh -- this PRD's own build_into is build-skill, test_prefix: landres"
+      "test": "tests/acceptance_ac10.rs"
     },
     {
       "id": "AC11",
       "level": "SHOULD",
       "description": "Given mcphost's `.gitattributes`, When read after this PRD's mcphost PR merges, Then the append-only paths carry `merge=union` and the PR is cited in receipts.",
-      "test": "no unit test file -- proven by this commit itself (mcphost .gitattributes gaining merge=union for the land-policy append-only paths) plus its citation in receipts, per R6"
+      "test": "tests/acceptance_ac11.rs"
     }
   ],
   "scope": [
