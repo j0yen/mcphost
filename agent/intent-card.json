@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-gate-debt-4f1112d.md",
-  "intent_slug": "mcphost-gate-debt-4f1112d",
-  "root_motivation": "Five whys (one per inherited finding, from `git log -S` where a candidate commit was found):",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-agent-consent.md",
+  "intent_slug": "mcphost-agent-consent",
+  "root_motivation": "After PRD-mcphost-agent-inbox an agent's choices are `open` (anyone on the host may fill its inbox up to quota) or `closed` (nobody may, including the collaborator it wanted). `contacts` exists on the directory card but behaves as `closed` because nothing populates a contact list. Block is the only per-sender control, and it is a hammer: it silences a sender forever and tells the blocked party nothing, which is the right behaviour for abuse and the wrong one for \"not now\".",
   "user_persona": "An agent that binds a published tool with host.trigger.set(kind=\"message\") so its reply logic runs from a message arrival even after its own session ends, or that calls host.msg.wait for a bounded long-poll instead of burning quota on host.msg.inbox polling; secondarily the operator, who needs message-fired runs metered like every other run.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,44 +14,62 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given HEAD 4f1112df8af5183c47807ff2fa50be0453c9d774, When the gate runs, Then vti-plan passes: autobuilder vti-plan exited non-zero",
+      "description": "Given tenant R has `contact_policy: contacts` and no contacts, When stranger S calls `host.msg.send(to=[R])`, Then `refused` contains R with `contact_refused` and `data.hint` naming `host.agent.contact_request`, and R's inbox is empty.",
       "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given HEAD 4f1112df8af5183c47807ff2fa50be0453c9d774, When the gate runs, Then rollback-plan passes: commits since v0.54.1 are not all revert-clean (see target/autobuilder/rollback.md); fix forward, or a human rewrites history and says so \u2014 this script never edits history to force a pass",
+      "description": "Given S calls `host.agent.contact_request(R, note=\"reviewing your indexer\")`, When R lists `host.agent.contacts(status=\"pending\")`, Then the request appears with S's address and the note; and When S sends again before a decision, Then the refusal is `contact_pending`.",
       "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given HEAD 4f1112df8af5183c47807ff2fa50be0453c9d774, When the gate runs, Then extended-receipts passes: one or more extended producers did not pass|skip (see output above)",
+      "description": "Given R calls `host.agent.contact_accept(request_id)`, When S sends R a message, Then it is delivered and both `host.agent.contacts()` results show the pair with `accepted_at` set.",
       "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given the repository tree after this PRD's change, When `grep -rl \"target/autobuilder/receipts\" tests/` runs, Then it prints nothing (no test reads a gate receipt).",
+      "description": "Given R denies the request, When S sends or requests again within 7 days, Then both return `contact_pending`; and after the cool-down (clock advanced in test), Then a new request is accepted as `pending`.",
       "test": "tests/ac04_publish_list_and_call.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the branch worktree, When `cargo test --quiet` runs three times in a row, Then every run exits 0 and no test named `flake_audit_does_not_block` or `cold_build_time_does_not_block` exists.",
+      "description": "Given R muted S and bound a message trigger, When S sends a non-urgent message, Then it is stored, visible in `host.msg.thread`, absent from `inbox(unread_only=true)`, and no run fires; and When S sends with `urgent=true`, Then one run fires and the envelope has `urgent: true`.",
       "test": "tests/ac05_cross_tenant_isolation.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given main after this PRD lands, When the post-land main-scope gate runs, Then `flake-audit-receipt.json` has `verdict: pass` with `exit_codes: [0,0,0]`, `extended-receipts` is not in the blockers, and `gate-then-land.sh` pushes main (origin/main equals local main).",
+      "description": "Given the free plan's `urgent_per_day` is 3, When S sends R four urgent messages in a day, Then the fourth returns `quota_exceeded` with `data.limit=\"urgent_per_day\"` and `data.value=3`, and is not stored.",
       "test": "tests/ac06_remove_tool.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given the changelog for this PRD, When it is read, Then it quotes the main-scope gate line and the flake-audit receipt fields from AC6. - iter_log: 2026-09-16T19:05Z amended by /dream (Joe: \"amend the prd now\", post-land main gate block at 9bfcf85) \u2014 added five-whys amendment naming the circular test file; appended AC4\u2013AC7; AC1\u2013AC3 unchanged.",
+      "level": "MUST",
+      "description": "Given R blocked S, When S calls `host.agent.contact_request(R)` or sends `urgent=true`, Then both responses are byte-identical to the responses for a nonexistent address, and any prior pending request from S is `denied` without notifying S.",
       "test": "tests/ac07_usage_metering.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given R is `closed`, When any tenant sends `urgent=true`, Then the refusal is `contact_refused` and nothing is stored.",
+      "test": "tests/ac08_admin_disable_and_forbidden.rs"
+    },
+    {
+      "id": "AC9",
+      "level": "MUST",
+      "description": "Given S has a pending request to R and S is deleted via `admin.tenant_delete`, When R lists contacts, Then no request or contact row references S.",
+      "test": "tests/ac09_signup_rate_limit.rs"
+    },
+    {
+      "id": "AC10",
+      "level": "SHOULD",
+      "description": "Given a pending request to R, When R reads `host.msg.inbox()`, Then a system message with `from_address=\"host\"`, `data.kind=\"contact_request\"` and the `request_id` is present, and `host.agent.contact_accept` with that id succeeds.",
+      "test": "tests/ac10_publish_validation_errors.rs"
     }
   ],
   "scope": [
