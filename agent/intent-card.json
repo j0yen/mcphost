@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-agent-consent.md",
-  "intent_slug": "mcphost-agent-consent",
-  "root_motivation": "After PRD-mcphost-agent-inbox an agent's choices are `open` (anyone on the host may fill its inbox up to quota) or `closed` (nobody may, including the collaborator it wanted). `contacts` exists on the directory card but behaves as `closed` because nothing populates a contact list. Block is the only per-sender control, and it is a hammer: it silences a sender forever and tells the blocked party nothing, which is the right behaviour for abuse and the wrong one for \"not now\".",
-  "user_persona": "An agent that binds a published tool with host.trigger.set(kind=\"message\") so its reply logic runs from a message arrival even after its own session ends, or that calls host.msg.wait for a bounded long-poll instead of burning quota on host.msg.inbox polling; secondarily the operator, who needs message-fired runs metered like every other run.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-proof-lane-loop-config.md",
+  "intent_slug": "mcphost-proof-lane-loop-config",
+  "root_motivation": "Joe (operator) is holding a burst box down until an mcphost branch gate passes. Since 01:05Z none can: `autobuilder vti-plan` exits non-zero on every branch because `.buildloop/ci-equivalent.toml` \u2014 added to main by the loop's own push-gate PRD at 00:01Z (commit 4f1112d, the only commit since tag v0.54.1) \u2014 matches none of the nine lanes in `agent/proof-lanes.toml`, and vti-plan's `min_confidence` is 0.7. The block is inherited by every branch (gate attribution `inherited=2 in-scope=0`), the reviewer is skipped on the red, and gate-then-land exits 7. Three branches have cycled on it (stdlib-pseudo-modules 01:13Z and 01:57Z, test-suite-consolidation 02:04Z, tenant-self-offboard). The lane file has no test that says \"every tracked file routes somewhere\", so the gap was found by the gate, after the file was on main, by a different PRD's dispatch.",
+  "user_persona": "The mcphost build loop's own branch agents and the operator (Joe) supervising them: a branch agent needs `autobuilder vti-plan` to route every path in its diff to a proof lane so its gate measures its own change rather than inheriting main's block, and the operator needs a new unrouted top-level path to be refused at PR time by a named failing test instead of turning every concurrent branch gate red after it lands.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,83 +14,59 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given tenant R has `contact_policy: contacts` and no contacts, When stranger S calls `host.msg.send(to=[R])`, Then `refused` contains R with `contact_refused` and `data.hint` naming `host.agent.contact_request`, and R's inbox is empty.",
-      "test": "tests/ac01_unauthenticated_lists_signup.rs"
+      "description": "Given the landed `agent/proof-lanes.toml`, When `autobuilder vti-plan --project . --base v0.54.1` runs on the landed head, Then exit 0 and the receipt's route for `.buildloop/ci-equivalent.toml` has confidence \u2265 0.7 with lane `loop-config`.",
+      "test": "tests/lanecov_ac01_every_tracked_path_routes.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given S calls `host.agent.contact_request(R, note=\"reviewing your indexer\")`, When R lists `host.agent.contacts(status=\"pending\")`, Then the request appears with S's address and the note; and When S sends again before a decision, Then the refusal is `contact_pending`.",
-      "test": "tests/ac02_signup_creates_hashed_tenant.rs"
+      "description": "Given the current tree, When `cargo test --test lanecov_ac01_every_tracked_path_routes` runs, Then it passes.",
+      "test": "tests/lanecov_ac02_coverage_test_is_actually_run.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given R calls `host.agent.contact_accept(request_id)`, When S sends R a message, Then it is delivered and both `host.agent.contacts()` results show the pair with `accepted_at` set.",
-      "test": "tests/ac03_tenant_lists_control_plane_only.rs"
+      "description": "Given a temporary tracked file `zz-unrouted/x.txt` in a scratch clone, When the coverage test runs, Then it fails and its output names `zz-unrouted/x.txt`.",
+      "test": "tests/lanecov_ac03_unrouted_path_is_named.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given R denies the request, When S sends or requests again within 7 days, Then both return `contact_pending`; and after the cool-down (clock advanced in test), Then a new request is accepted as `pending`.",
-      "test": "tests/ac04_publish_list_and_call.rs"
+      "description": "Given the nine pre-existing lanes, When `proof-lanes.toml` is diffed against v0.54.1, Then the only change is the added `loop-config` block.",
+      "test": "tests/lanecov_ac04_existing_lanes_unchanged.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given R muted S and bound a message trigger, When S sends a non-urgent message, Then it is stored, visible in `host.msg.thread`, absent from `inbox(unread_only=true)`, and no run fires; and When S sends with `urgent=true`, Then one run fires and the envelope has `urgent: true`.",
-      "test": "tests/ac05_cross_tenant_isolation.rs"
+      "description": "Given a branch worktree rebased onto the landed head with an empty diff, When `extend-gate.sh <wt> --scope branch` runs, Then the journal phases field shows `vti-plan:<n>` without `!`.",
+      "test": "no unit test file; gate-receipt evidence \u2014 a branch-scope extend-gate.sh run whose journal phases field shows vti-plan:<n> without '!' (same convention as AC12 in the founding map below)"
     },
     {
       "id": "AC6",
-      "level": "MUST",
-      "description": "Given the free plan's `urgent_per_day` is 3, When S sends R four urgent messages in a day, Then the fourth returns `quota_exceeded` with `data.limit=\"urgent_per_day\"` and `data.value=3`, and is not stored.",
-      "test": "tests/ac06_remove_tool.rs"
+      "level": "SHOULD",
+      "description": "Given a lane with an empty `required_commands`, When the coverage test runs, Then it fails naming the lane id.",
+      "test": "tests/lanecov_ac06_malformed_lane_fails_naming_it.rs"
     },
     {
       "id": "AC7",
-      "level": "MUST",
-      "description": "Given R blocked S, When S calls `host.agent.contact_request(R)` or sends `urgent=true`, Then both responses are byte-identical to the responses for a nonexistent address, and any prior pending request from S is `denied` without notifying S.",
-      "test": "tests/ac07_usage_metering.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "MUST",
-      "description": "Given R is `closed`, When any tenant sends `urgent=true`, Then the refusal is `contact_refused` and nothing is stored.",
-      "test": "tests/ac08_admin_disable_and_forbidden.rs"
-    },
-    {
-      "id": "AC9",
-      "level": "MUST",
-      "description": "Given S has a pending request to R and S is deleted via `admin.tenant_delete`, When R lists contacts, Then no request or contact row references S.",
-      "test": "tests/ac09_signup_rate_limit.rs"
-    },
-    {
-      "id": "AC10",
-      "level": "SHOULD",
-      "description": "Given a pending request to R, When R reads `host.msg.inbox()`, Then a system message with `from_address=\"host\"`, `data.kind=\"contact_request\"` and the `request_id` is present, and `host.agent.contact_accept` with that id succeeds.",
-      "test": "tests/ac10_publish_validation_errors.rs"
+      "level": "MAY",
+      "description": "Given the docs after land, When grepped for `loop-config`, Then the how-to-add-a-lane paragraph is present.",
+      "test": "tests/lanecov_ac07_docs_document_adding_a_lane.rs"
     }
   ],
   "scope": [
-    "New tables (migration 0022+): `contacts(tenant_id, contact_tenant_id, accepted_at, PK)`; `contact_requests(id, from_tenant_id, to_tenant_id, note, status IN (pending, accepted, denied, expired), created_at, decided_at, UNIQUE(from_tenant_id, to_tenant_id))`; both cascade on tenant delete (P0, AC9).",
-    "`host.agent.contact_request(address, note<=512 bytes)`: to a `contacts`-mode recipient creates/returns the pending request; `not_needed` to an `open` recipient; `contact_refused` (byte-identical to the inbox PRD's response) to `closed` or a blocking recipient; quota `contact_requests_per_day` (P0, AC1/AC2/AC7).",
-    "`host.agent.contacts(status?)` lists the caller's contacts and pending requests both directions; `contact_accept(request_id)` inserts a symmetric `contacts` pair and sets `accepted_at`; `contact_deny(request_id)` sets `denied` with a 7-day `contact_pending` cooldown before the requester may request again (P0, AC2/AC3/AC4).",
-    "Inbox PRD's send/reply resolution gains one `consent::check(sender, recipient) -> Allow | Refuse(code)` call: an accepted contact is delivered; a pending or denied request returns `contact_pending`; no request returns `contact_refused` with `data.hint: \"host.agent.contact_request\"` (P0, AC1/AC4).",
-    "`host.agent.mute(address)` / `unmute(address)`: a muted sender's messages are stored and readable, excluded from `inbox(unread_only=true)`, and do not fire the recipient's message trigger, unless the message is `urgent` -- in which case the trigger's envelope also carries `urgent: true` (P0, AC5; built on top of PRD-mcphost-agent-wake's kind='message' triggers, which this branch rebased onto).",
-    "`host.msg.send(..., urgent=true)`: allowed only to accepted contacts or `open` recipients; quota `urgent_per_day` per sender per recipient; the stored message carries `urgent: true`; bypasses mute but never block or a `closed` policy (P0, AC5/AC6/AC8).",
-    "Block (inbox PRD) also denies any pending request from the blocked party and removes an existing contact pair, invisibly to the blocked party (P0, AC7).",
-    "All new refusals (`contact_pending`, `not_needed`, `urgent_quota_exceeded` via `quota_exceeded`) use `AppError::Structured` with `code` and `data` naming the limit where one applies (P0).",
-    "A pending contact request appears in the recipient's `host.msg.inbox` as a system message (`from_address: \"host\"`, `data.kind: \"contact_request\"`, `data.request_id`) (P1, AC10).",
-    "New `src/consent.rs` module (`consent::check`, `Db::contact_decide` honoring `consent::REQUEST_EXPIRY_MS` before accept/deny) called from both `Db::resolve_message_recipient` (`msg_send`) and `Db::msg_reply`'s per-participant loop, so the two call sites cannot drift independently."
+    "`agent/proof-lanes.toml`: one added `[[lane]]` with id `loop-config`, globs [\".buildloop/**\"], required_commands [\"cargo test --workspace\"], description naming PRD-build-main-push-gate's CI-equivalent contract (P0, AC1/AC4). No pre-existing lane's required_commands changed.",
+    "`tests/lanecov_ac0{1,2,3,4,6,7}_*.rs` plus the shared matcher `tests/support/lanecov.rs`: one proof file per acceptance criterion, matching with the same `globset` `**` semantics vti-plan uses, with an initially-empty UNROUTED_ALLOWLIST (P0/P1, AC1/AC2/AC3/AC6).",
+    "`scripts/gen-test-suites.sh`: MAX_PER_SUITE[\"core\"] raised 136 -> 137 so the six added lanecov files stay inside this repo's ten-test-binary cap asserted by tests/suite_ac1_ten_binaries_and_names_preserved.rs.",
+    "`docs/agent-quickstart.md`: one paragraph on how to add a lane when adding a new top-level path (P2, AC7).",
+    "`agent/test-map.json` + `agent/intent-card.json`: ac_test_map re-pointed from the founding PRD's tests/ac0N_*.rs to this PRD's tests/lanecov_ac0N_*.rs, so the card's acceptance_criteria[].test fields name the tests that actually prove these ACs (reviewer-agent concern `ac-test-field-pointers-semantically-wrong`, 2026-09-17)."
   ],
   "non_goals": [
-    "Operator-side controls (PRD-mcphost-agent-mesh-ops) -- this PRD is agent-side consent only, no cross-tenant traffic view.",
-    "Content moderation or scanning of message bodies.",
-    "Group or channel consent (PRD-mcphost-agent-channels handles membership) -- contacts/mute/urgent are all peer-to-peer, never group-scoped.",
-    "Reputation scores.",
-    "Changing the default `contact_policy` decision recorded in the inbox PRD -- `contacts` mode's existing meaning (a stranger needs consent) is unchanged; this PRD only implements what happens inside it.",
-    "Mute suppressing `host.msg.wait` itself when `unread_only` is not set -- `wait`'s own polling loop wakes on any new row regardless of mute when called that way; only `inbox(unread_only=true)` and message-trigger firing are guaranteed muted-filtered by this PRD."
+    "Changing vti-plan's `min_confidence` or its routing rules -- autobuilder is a different repo and a different build_into.",
+    "Editing `.buildloop/ci-equivalent.toml`'s content; this PRD only routes the file.",
+    "The build-skill cross-repo commit-gate rule (PRD-build-cross-repo-commit-gate).",
+    "Fixing pre-existing main-checkout gate debt (reviewer-agent / flake-audit / rollback-plan receipt staleness) -- owned by PRD-mcphost-gate-debt-4f1112d.",
+    "Reverting the `meta` lane's widened globs: PRD-mcphost-gate-debt-4f1112d's commit 7094d50 folded `.buildloop/**` into `meta` as well, so that path now matches two lanes; vti-plan still routes it at confidence 1.0 and this PRD does not undo another PRD's landed commit."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -99,37 +75,37 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "reuse_hooks_enqueue_tail": "messaging::fire_message_triggers and hooks::handle_hook both call the same enqueue_with_dedupe function factored out of handle_hook's verify-then-enqueue tail, rather than duplicating it (PRD Technical considerations).",
-      "scheduler_not_involved": "triggers::spawn_scheduler's tick never touches kind='message' rows; message triggers fire synchronously on the host.msg.send/reply path, not on a cron tick (PRD Technical considerations).",
-      "send_path_latency_budget": "message-trigger lookup on the send path uses idx_triggers_tenant_kind_enabled and stays under mcphost's existing acceptance budget for added send-path latency (PRD Technical considerations: 'under 20 ms').",
-      "envelope_excludes_other_participants": "the envelope built for a bound tool's run never includes the recipient's block list, receipts, or other participants' addresses beyond what host.msg.thread would already show that recipient (PRD Technical considerations)."
+      "glob_semantics_mirror_vti_plan": "The coverage test matches with the same `globset` crate and `**` semantics `autobuilder vti-plan` uses; if the test's matcher and autobuilder's disagree, the test is wrong (PRD Technical considerations).",
+      "no_hand_added_test_target": "`autotests = false` plus `scripts/gen-test-suites.sh --check` means a lanecov file is proven by being a generated `[[test]]` suite member, never by a hand-added `[[test]]` stanza (PRD-mcphost-test-suite-consolidation). AC2's literal `cargo test --test lanecov_ac01_...` spelling is unsatisfiable under that convention; lanecov_ac02 asserts the equivalent property and states the deviation in its own doc comment.",
+      "coverage_test_under_2s": "The coverage test runs in under 2 s on the current tree (about 600 tracked files).",
+      "rollback_base": "The PRD names v0.54.1 as the rollback base; the branch's actual gate base has advanced with main as sibling PRDs landed, so diffs are taken against the tag current at gate time."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does a message sitting unread in an inbox matter if host.msg.send already stored it?",
-      "a": "mcphost is stateless per request and cannot itself wake an agent's session once the request that sent the message is done -- an inbox only a returning agent reads is a ledger, not a mechanism."
+      "q": "Why did every mcphost branch gate go red from 01:05Z on 2026-09-16?",
+      "a": "`autobuilder vti-plan` exited non-zero on every branch, and gate attribution read `inherited=2 in-scope=0` -- no branch's own diff was at fault, each was inheriting a block from main."
     },
     {
       "why": 2,
-      "q": "Why doesn't the existing triggers mechanism already cover a message arrival?",
-      "a": "triggers rows with kind in {schedule, event} already enqueue a run when a cron fires or a signed webhook lands (hooks.rs:673's verify-dedupe-enqueue tail), but no third kind exists for 'a message was delivered' -- that source reaches nothing today."
+      "q": "Why did vti-plan exit non-zero?",
+      "a": "`.buildloop/ci-equivalent.toml`, added to main at 00:01Z by commit 4f1112d (the only commit since tag v0.54.1), matched none of the nine lanes in agent/proof-lanes.toml, and vti-plan's min_confidence is 0.7, so the unrouted path scored 0.0."
     },
     {
       "why": 3,
-      "q": "Why does a present client (one that would poll) also need a fix, not just an absent one?",
-      "a": "host.runs.wait already proves the host supports a bounded long-poll for exactly this shape (max 25s); host.msg has no equivalent, so a present client burns calls_per_day quota calling host.msg.inbox in a loop instead."
+      "q": "Why did an unrouted file reach main at all?",
+      "a": "Nothing in the repo asserted that every tracked path routes to some lane, so the only thing that could notice the gap was vti-plan itself -- running after the file had already landed, on a different PRD's branch."
     },
     {
       "why": 4,
-      "q": "Why do both gaps trace back to the same fix?",
-      "a": "Both the absent-agent case (wake a tool) and the present-agent case (host.msg.wait) are the same underlying capability -- give the host a way to resume an agent's work without a live request already in flight for it."
+      "q": "Why was the gate the only detector?",
+      "a": "proof-lanes.toml is a hand-maintained allowlist with no totality check. Adding a lane alongside a new top-level path was a remembered step, not an enforced one, so it failed the first time someone added a path without thinking about lanes."
     },
     {
       "why": 5,
-      "q": "Why extend triggers with a third kind rather than build a separate messaging-wake subsystem?",
-      "a": "kind='message' inherits host.trigger.*'s existing list/pause/resume/replay/test and quota semantics for free, and reuses the same run ledger, dedupe, and jobs_concurrent gating event triggers already use -- the identical additive pattern hooks.rs's event triggers established."
+      "q": "Why does a single forgotten line cost the whole repo instead of one PR?",
+      "a": "A lane gap is inherited by every concurrent branch until someone lands a lane, so the cost scales with branch count rather than with the change. The fix is to make totality a CI-time property of the PR that adds the path: a test that walks `git ls-files` and names any path no lane covers, so the lane is added in the same PR."
     }
   ],
   "created_at": "2026-09-03T18:04:17Z",
