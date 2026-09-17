@@ -188,9 +188,11 @@ pub async fn send(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         &outcome,
         &MessageFireCtx {
             from_address: &tenant.namespace,
+            from_tenant_id: tenant.id,
             body: &body,
             data_json: &data_json,
             in_reply_to: None,
+            urgent,
         },
     )
     .await;
@@ -239,9 +241,11 @@ pub async fn reply(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
         &outcome,
         &MessageFireCtx {
             from_address: &tenant.namespace,
+            from_tenant_id: tenant.id,
             body: &body,
             data_json: &data_json,
             in_reply_to: in_reply_to.as_deref(),
+            urgent: false,
         },
     )
     .await;
@@ -271,9 +275,19 @@ pub async fn reply(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
 /// under the crate's `too-many-arguments-threshold = 5` (`clippy.toml`).
 struct MessageFireCtx<'a> {
     from_address: &'a str,
+    /// PRD-mcphost-agent-consent requirement 5 (AC5): the sender's own
+    /// tenant id, needed to check `Db::is_muted(recipient, sender)` per
+    /// delivered recipient below -- `from_address` alone isn't a DB key.
+    from_tenant_id: i64,
     body: &'a str,
     data_json: &'a Option<String>,
     in_reply_to: Option<&'a str>,
+    /// PRD-mcphost-agent-consent requirement 5/6 (AC5): `true` only for
+    /// `host.msg.send(..., urgent=true)` -- `reply` has no urgent concept
+    /// (requirement 6 names only `host.msg.send`), always `false` there.
+    /// A muted recipient's message trigger fires for an urgent message
+    /// exactly as it would unmuted; it is suppressed otherwise.
+    urgent: bool,
 }
 
 async fn fire_message_triggers(state: &AppState, outcome: &SendOutcome, ctx: &MessageFireCtx<'_>) {
@@ -294,6 +308,11 @@ async fn fire_message_triggers(state: &AppState, outcome: &SendOutcome, ctx: &Me
         "data": data,
         "in_reply_to": in_reply_to,
         "created_at": outcome.created_at,
+        // PRD-mcphost-agent-consent requirement 5 / AC5: "the envelope has
+        // urgent: true" for an urgent send that woke a muted recipient's
+        // trigger -- always present (false for every ordinary send) so a
+        // bound tool can tell an urgent-bypass run from an ordinary one.
+        "urgent": ctx.urgent,
     });
     let args_json = envelope.to_string();
 
@@ -307,6 +326,22 @@ async fn fire_message_triggers(state: &AppState, outcome: &SendOutcome, ctx: &Me
         };
         if triggers.is_empty() {
             continue;
+        }
+        // PRD-mcphost-agent-consent requirement 5 (AC5): a muted sender's
+        // non-urgent message must not fire the recipient's message
+        // trigger, same as it's excluded from `inbox(unread_only=true)` --
+        // urgent bypasses the mute filter here exactly as it does there.
+        // reviewer-agent finding `ac5-mute-does-not-suppress-message-
+        // trigger-runs`: this check was previously missing entirely, so a
+        // muted sender could still wake the recipient's bound tool.
+        if !ctx.urgent {
+            match state.db.is_muted(recipient_id, ctx.from_tenant_id).await {
+                Ok(true) => continue,
+                Ok(false) => {}
+                Err(e) => {
+                    tracing::warn!(error = %e, tenant_id = recipient_id, "mute lookup failed for message trigger fire");
+                }
+            }
         }
         let recipient = match state.db.find_tenant_by_id(recipient_id).await {
             Ok(Some(t)) => t,

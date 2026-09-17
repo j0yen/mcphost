@@ -5806,6 +5806,24 @@ impl Db {
         .await
     }
 
+    /// Requirement 5 (AC5): the same `muted` predicate `msg_inbox`'s
+    /// `LEFT JOIN muted` above already applies to unread-count filtering,
+    /// exposed standalone for `messaging::fire_message_triggers` -- a
+    /// muted sender's non-urgent message must not fire the recipient's
+    /// message trigger either (reviewer-agent finding
+    /// `ac5-mute-does-not-suppress-message-trigger-runs`: the trigger-fire
+    /// path never consulted this table before, so a muted sender could
+    /// still wake the recipient's bound tool).
+    pub async fn is_muted(&self, recipient_id: i64, sender_id: i64) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let muted: bool = conn
+                .prepare("SELECT 1 FROM muted WHERE tenant_id = ?1 AND muted_tenant_id = ?2")?
+                .exists(params![recipient_id, sender_id])?;
+            Ok(muted)
+        })
+        .await
+    }
+
     /// `host.agent.contact_request(address, note?)` (requirement 2 / AC1,
     /// AC2, AC4, AC7; requirement 9 / AC10; requirement 11's lazy expiry):
     /// resolves `to_address` the same way [`Self::resolve_agent_address`]

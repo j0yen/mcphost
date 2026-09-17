@@ -1,12 +1,14 @@
 //! PRD-mcphost-agent-consent
-//! AC5 (P0, partial -- see the PRD's own deferred-AC note: trigger-firing/
-//! `host.msg.wait` don't exist in this codebase yet, PRD-mcphost-agent-wake
-//! is a separate, not-yet-built PRD; only the mechanically-implementable
-//! clauses are tested here) — Given R muted S, When S sends a non-urgent
-//! message, Then it is stored, visible in `host.msg.thread`, absent from
-//! `inbox(unread_only=true)`; and When S sends with `urgent=true`, Then the
-//! envelope has `urgent: true` and it IS present/counted in
-//! `inbox(unread_only=true)` despite the mute.
+//! AC5 (P0) — Given R muted S and bound a message trigger, When S sends a
+//! non-urgent message, Then it is stored, visible in `host.msg.thread`,
+//! absent from `inbox(unread_only=true)`, and no run fires; and When S
+//! sends with `urgent=true`, Then one run fires, the run's envelope has
+//! `urgent: true`, and the message IS present/counted in
+//! `inbox(unread_only=true)` despite the mute. (Full clause coverage as of
+//! the rebase onto PRD-mcphost-agent-wake, which landed `host.trigger.set`/
+//! `host.msg.wait` underneath this branch -- this AC is no longer deferred;
+//! reviewer-agent finding `ac5-test-narrowed-by-stale-deferred-
+//! justification` on the prior partial version of this test.)
 //! AC6 (P0) — Given the free plan's `urgent_per_day` is 3, When S sends R
 //! four urgent messages in a day, Then the fourth returns `quota_exceeded`
 //! with `data.limit="urgent_per_day"` and `data.value=3`, and is not
@@ -37,6 +39,21 @@ async fn ac5_mute_filters_unread_inbox_but_urgent_bypasses_it() {
     let (ns_b, key_b) = signup(&server.base_url, "Agent B").await;
     let client_a = McpClient::with_bearer(&server.base_url, &key_a);
     let client_b = McpClient::with_bearer(&server.base_url, &key_b);
+
+    // B binds a message trigger, same setup as
+    // tests/wake_ac1_message_trigger_fires_run.rs -- AC5's "no run fires"/
+    // "one run fires" clauses need a live trigger to observe.
+    client_b
+        .tools_call(
+            "host.tool_publish",
+            json!({"name": "handle_msg", "kind": "echo", "spec": {"schema": {"type": "object"}}}),
+        )
+        .await
+        .expect("B publishes handle_msg");
+    client_b
+        .tools_call("host.trigger.set", json!({"tool": "handle_msg", "kind": "message"}))
+        .await
+        .expect("B binds a message trigger");
 
     client_b
         .tools_call("host.agent.mute", json!({"address": ns_a.clone()}))
@@ -70,9 +87,25 @@ async fn ac5_mute_filters_unread_inbox_but_urgent_bypasses_it() {
     let unread = extract_structured(&unread_raw);
     assert_eq!(unread["messages"].as_array().unwrap().len(), 0, "{unread:?}");
 
+    // No run fires: `send()` awaits `fire_message_triggers` before
+    // returning, so the enqueue-or-skip decision for m1 has already
+    // happened by the time this call returns -- no poll/sleep needed.
+    let runs_after_m1 = extract_structured(
+        &client_b
+            .tools_call("host.runs.list", json!({"trigger": "message"}))
+            .await
+            .expect("B lists message-triggered runs after m1"),
+    );
+    assert_eq!(
+        runs_after_m1["runs"].as_array().unwrap().len(),
+        0,
+        "a muted sender's non-urgent message must not fire the recipient's message trigger: {runs_after_m1:?}"
+    );
+
     // A second, urgent message: envelope carries urgent: true, and IS
     // present/counted in inbox(unread_only=true) despite the mute
-    // (requirement 6: urgent bypasses the mute filter).
+    // (requirement 6: urgent bypasses the mute filter); and it DOES fire
+    // the recipient's message trigger despite the mute (requirement 5).
     let m2_raw = client_a
         .tools_call(
             "host.msg.send",
@@ -93,6 +126,48 @@ async fn ac5_mute_filters_unread_inbox_but_urgent_bypasses_it() {
     assert_eq!(unread2_messages.len(), 1, "{unread2:?}");
     assert_eq!(unread2_messages[0]["message_id"], json!(m2_id), "{unread2:?}");
     assert_eq!(unread2_messages[0]["urgent"], json!(true), "{unread2:?}");
+
+    // An urgent message bypasses mute and fires exactly one run, same
+    // polling shape as tests/wake_ac1_message_trigger_fires_run.rs -- the
+    // enqueue is synchronous with the send, but the run's `result` is only
+    // populated once the sandboxed tool actually finishes.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let runs_after_m2 = extract_structured(
+            &client_b
+                .tools_call("host.runs.list", json!({"trigger": "message"}))
+                .await
+                .expect("B lists message-triggered runs after m2"),
+        );
+        let runs = runs_after_m2["runs"].as_array().expect("runs array");
+        assert_eq!(
+            runs.len(),
+            1,
+            "an urgent message must bypass mute and fire exactly one run: {runs_after_m2:?}"
+        );
+        if runs[0]["status"] == json!("done") {
+            let run = extract_structured(
+                &client_b
+                    .tools_call("host.runs.get", json!({"run_id": runs[0]["run_id"].as_str().unwrap()}))
+                    .await
+                    .expect("B reads the urgent run"),
+            );
+            assert_eq!(
+                run["result"]["message_id"], json!(m2_id),
+                "the urgent run's result must echo m2's own envelope: {run:?}"
+            );
+            assert_eq!(
+                run["result"]["urgent"], json!(true),
+                "AC5: the envelope for a trigger fired by an urgent bypass must carry urgent: true: {run:?}"
+            );
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "urgent-triggered run never finished: {runs_after_m2:?}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
 }
 
 #[tokio::test]

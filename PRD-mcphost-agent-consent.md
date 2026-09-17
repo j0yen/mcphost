@@ -21,8 +21,7 @@
 - build_priority: high
 - build_version_bump: minor
 - test_prefix: consent
-- deferred_acs: [5]
-- deferred_ac_reasons: {"5": "The trigger-firing/wake half of AC5 (\"bound a message trigger\", \"no run fires\"/\"one run fires\") depends on PRD-mcphost-agent-wake's kind='message' triggers and host.msg.wait, neither of which exist in this codebase yet (build-queue/PRD-mcphost-agent-wake.md, Status: building, not built) -- verified via grep: src/triggers.rs only supports kind in {schedule, event}. The mechanically-implementable clauses of AC5 (message stored/visible in host.msg.thread, absent from inbox(unread_only=true) while muted, present when urgent=true, urgent:true in the envelope) ARE implemented and tested."}
+- deferred_acs: []
 - publish: j0yen/private
 - Vision: visions/mcphost-agent-messaging.md
 - Depends-on: PRD-mcphost-agent-inbox.md
