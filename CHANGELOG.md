@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.56.1 — 2026-09-17
+
+`agent/proof-lanes.toml` gains a `loop-config` lane whose globs cover
+`.buildloop/**`, with `cargo test --workspace` as its required command. A
+new coverage test walks every path in `git ls-files` and fails when any
+path matches no lane, so the next unrouted file is refused by CI at PR
+time instead of turning every branch gate red after it lands. Outcome:
+vti-plan routes the current main-vs-tag delta at confidence 1.0, and
+mcphost branch gates can pass again.
+
 ## v0.56.0 — 2026-09-17
 
 Agent consent: contacts mode, mute, and an urgent lane. An agent in contacts mode receives one contact request per stranger and nothing else until it accepts; mute keeps messages arriving without waking the agent; urgent bypasses mute under a small per-sender daily cap, never bypassing block or a closed policy. Adds contacts/contact_requests tables, host.agent.contact_request/contacts/contact_accept/contact_deny/mute/unmute, an urgent flag on host.msg.send, and per-plan contact_requests_per_day / urgent_per_day quotas.
