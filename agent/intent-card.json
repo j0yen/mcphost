@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-proof-lane-loop-config.md",
-  "intent_slug": "mcphost-proof-lane-loop-config",
-  "root_motivation": "Joe (operator) is holding a burst box down until an mcphost branch gate passes. Since 01:05Z none can: `autobuilder vti-plan` exits non-zero on every branch because `.buildloop/ci-equivalent.toml` \u2014 added to main by the loop's own push-gate PRD at 00:01Z (commit 4f1112d, the only commit since tag v0.54.1) \u2014 matches none of the nine lanes in `agent/proof-lanes.toml`, and vti-plan's `min_confidence` is 0.7. The block is inherited by every branch (gate attribution `inherited=2 in-scope=0`), the reviewer is skipped on the red, and gate-then-land exits 7. Three branches have cycled on it (stdlib-pseudo-modules 01:13Z and 01:57Z, test-suite-consolidation 02:04Z, tenant-self-offboard). The lane file has no test that says \"every tracked file routes somewhere\", so the gap was found by the gate, after the file was on main, by a different PRD's dispatch.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-build-land-conflict-resolver.md",
+  "intent_slug": "build-land-conflict-resolver",
+  "root_motivation": "**Who:** the build loop on RedBaron landing `rust-extend` (and worktree-isolated shell/python) branches into a target that other branches also land into; the operator waiting for a green ship.",
   "user_persona": "The mcphost build loop's own branch agents and the operator (Joe) supervising them: a branch agent needs `autobuilder vti-plan` to route every path in its diff to a proof lane so its gate measures its own change rather than inheriting main's block, and the operator needs a new unrouted top-level path to be refused at PR time by a named failing test instead of turning every concurrent branch gate red after it lands.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,44 +14,68 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the landed `agent/proof-lanes.toml`, When `autobuilder vti-plan --project . --base v0.54.1` runs on the landed head, Then exit 0 and the receipt's route for `.buildloop/ci-equivalent.toml` has confidence \u2265 0.7 with lane `loop-config`.",
+      "description": "Given a fixture repo where main advanced after the branch was cut, When gate-then-land runs, Then the branch worktree is rebased onto main's tip before the branch gate and the gate's journal line shows `base=<main tip>`.",
       "test": "tests/lanecov_ac01_every_tracked_path_routes.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the current tree, When `cargo test --test lanecov_ac01_every_tracked_path_routes` runs, Then it passes.",
+      "description": "Given a policy listing `agent/intent-card.json` as generated with a regen command, and two branches that each regenerated it, When the second lands, Then no rebase conflict is recorded as class source, the regen command runs once, and the landed file equals the regen output.",
       "test": "tests/lanecov_ac02_coverage_test_is_actually_run.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a temporary tracked file `zz-unrouted/x.txt` in a scratch clone, When the coverage test runs, Then it fails and its output names `zz-unrouted/x.txt`.",
+      "description": "Given a policy listing `CHANGELOG.md` as append-only and two branches that appended different lines, When the second lands, Then the landed file contains both lines and the ledger records class `append_only`, resolution `union`.",
       "test": "tests/lanecov_ac03_unrouted_path_is_named.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given the nine pre-existing lanes, When `proof-lanes.toml` is diffed against v0.54.1, Then the only change is the added `loop-config` block.",
+      "description": "Given a source conflict and a stub coder that resolves it so tests pass, When land runs, Then the rebase continues, a delta gate runs, the branch lands, and the ledger records class `source`, resolution `coder`, with wall seconds.",
       "test": "tests/lanecov_ac04_existing_lanes_unchanged.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a branch worktree rebased onto the landed head with an empty diff, When `extend-gate.sh <wt> --scope branch` runs, Then the journal phases field shows `vti-plan:<n>` without `!`.",
+      "description": "Given a source conflict and a stub coder that fails (or exceeds `LAND_RESOLVE_MAX_S`), When land runs, Then the branch is byte-identical to its pre-resolve state, sidecar `last_error=land-conflict-unresolved:<files>` is written, the ledger records `unresolved`, and main is untouched.",
       "test": "no unit test file; gate-receipt evidence \u2014 a branch-scope extend-gate.sh run whose journal phases field shows vti-plan:<n> without '!' (same convention as AC12 in the founding map below)"
     },
     {
       "id": "AC6",
-      "level": "SHOULD",
-      "description": "Given a lane with an empty `required_commands`, When the coverage test runs, Then it fails naming the lane id.",
+      "level": "MUST",
+      "description": "Given no policy file for the repo, When a rebase conflicts, Then behavior matches today (abort, `land-conflict:<files>`, not retried) and no regen or union is attempted.",
       "test": "tests/lanecov_ac06_malformed_lane_fails_naming_it.rs"
     },
     {
       "id": "AC7",
-      "level": "MAY",
-      "description": "Given the docs after land, When grepped for `loop-config`, Then the how-to-add-a-lane paragraph is present.",
+      "level": "MUST",
+      "description": "Given `scripts/land-conflicts-report.sh` and a ledger with several records, When it runs, Then it prints files ordered by conflict count with class and last resolution.",
       "test": "tests/lanecov_ac07_docs_document_adding_a_lane.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given `scripts/land-resolve-selftest.sh` with fixtures for AC1\u2013AC7, When it runs on RedBaron, Then it ends `PASS` with 0 FAIL.",
+      "test": "tests/acceptance_ac8.rs"
+    },
+    {
+      "id": "AC9",
+      "level": "MUST",
+      "description": "Given this PRD has landed and mcphost's policy file exists, When the next mcphost branch on RedBaron hits a rebase conflict in a generated or append-only file, Then the journal shows `land-resolve \u2026 regen|union` for that slug and the branch lands in the same dispatch with no `not retried` line. (Live; evidence: `journal:land-resolve .* (regen|union)`; never deferrable \u2014 Joe 2026-09-17 no-defer live ACs.)",
+      "test": "tests/acceptance_ac9.rs"
+    },
+    {
+      "id": "AC10",
+      "level": "SHOULD",
+      "description": "Given a python or shell worktree land (worktree-extend.sh integrate) that conflicts, When it runs, Then land-resolve.sh is invoked before exit 4/5 and the same classes apply.",
+      "test": "tests/acceptance_ac10.rs"
+    },
+    {
+      "id": "AC11",
+      "level": "SHOULD",
+      "description": "Given mcphost's `.gitattributes`, When read after this PRD's mcphost PR merges, Then the append-only paths carry `merge=union` and the PR is cited in receipts.",
+      "test": "tests/acceptance_ac11.rs"
     }
   ],
   "scope": [
