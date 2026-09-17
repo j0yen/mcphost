@@ -143,6 +143,10 @@ mod envelope_ac1_http_declared_output_promoted;
 mod envelope_ac4_tool_test_reports_missing_declared_output;
 #[path = "firstcall_ac6_outcome_metering.rs"]
 mod firstcall_ac6_outcome_metering;
+#[path = "gatedebt_4f1112d_ac4_no_test_reads_gate_receipts.rs"]
+mod gatedebt_4f1112d_ac4_no_test_reads_gate_receipts;
+#[path = "gatedebt_4f1112d_ac5_no_flake_audit_selftest_names.rs"]
+mod gatedebt_4f1112d_ac5_no_flake_audit_selftest_names;
 #[path = "handoff_ac01_signup_returns_token_and_no_key.rs"]
 mod handoff_ac01_signup_returns_token_and_no_key;
 #[path = "handoff_ac02_redeem_single_use_and_expiry.rs"]
