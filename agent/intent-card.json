@@ -55,23 +55,24 @@
     }
   ],
   "scope": [
-    "host.trigger.set(tool, kind=\"message\", from?: address) creates a triggers row with kind='message', config_json={\"from\": ...}; one message trigger per (tenant, tool, from); the tenant's event_triggers_max quota counts message triggers (P0, requirement 1).",
-    "On every stored delivery to recipient R, for each enabled kind='message' trigger of R whose from is null or equals the sender's address, enqueue one run through runs::enqueue(state, R, tool, envelope) where envelope = {message_id, thread_id, seq, from, body, data, in_reply_to, created_at}; the run row has trigger='message' and stores message_id (P0, requirement 2).",
-    "Dedupe via event_dedupe keyed (trigger_id, message_id): a second delivery attempt of the same message returns the cached run_id and enqueues nothing (P0, requirement 3).",
-    "The enqueue happens strictly after the message commit, never inside its transaction; an enqueue failure (quota, sandbox down) writes a run row with status='rejected' and error_class -- the message itself is still stored (P0, requirement 4).",
-    "host.trigger.pause/resume/remove/list/get/test/replay all work on message triggers; test fires the tool with a synthetic envelope marked test: true and creates no messages row (P0, requirement 5).",
-    "host.msg.wait(cursor?, timeout_s<=25, unread_only?) returns the same shape as host.msg.inbox as soon as a matching message exists, else at the deadline with an empty list and the unchanged cursor; concurrency-limited by concurrent_calls_per_tenant (P0, requirement 6).",
-    "Message-fired runs honour jobs_concurrent and calls_per_day exactly as event-fired ones (P0, requirement 7).",
-    "hooks.rs's verify-then-enqueue-with-dedupe tail is factored into one function (enqueue_with_dedupe) that both the event path (hooks::handle_hook) and the new message path (messaging::fire_message_triggers) call, rather than copying it.",
-    "migrations/0023_message_triggers.sql: additive runs.message_id column plus idx_triggers_tenant_kind_enabled index on (tenant_id, kind, enabled) for the send-path lookup."
+    "New tables (migration 0022+): `contacts(tenant_id, contact_tenant_id, accepted_at, PK)`; `contact_requests(id, from_tenant_id, to_tenant_id, note, status IN (pending, accepted, denied, expired), created_at, decided_at, UNIQUE(from_tenant_id, to_tenant_id))`; both cascade on tenant delete (P0, AC9).",
+    "`host.agent.contact_request(address, note<=512 bytes)`: to a `contacts`-mode recipient creates/returns the pending request; `not_needed` to an `open` recipient; `contact_refused` (byte-identical to the inbox PRD's response) to `closed` or a blocking recipient; quota `contact_requests_per_day` (P0, AC1/AC2/AC7).",
+    "`host.agent.contacts(status?)` lists the caller's contacts and pending requests both directions; `contact_accept(request_id)` inserts a symmetric `contacts` pair and sets `accepted_at`; `contact_deny(request_id)` sets `denied` with a 7-day `contact_pending` cooldown before the requester may request again (P0, AC2/AC3/AC4).",
+    "Inbox PRD's send/reply resolution gains one `consent::check(sender, recipient) -> Allow | Refuse(code)` call: an accepted contact is delivered; a pending or denied request returns `contact_pending`; no request returns `contact_refused` with `data.hint: \"host.agent.contact_request\"` (P0, AC1/AC4).",
+    "`host.agent.mute(address)` / `unmute(address)`: a muted sender's messages are stored and readable, excluded from `inbox(unread_only=true)`, and do not fire the recipient's message triggers or wake `host.msg.wait` unless the message is `urgent` (P0, AC5; the trigger-firing/wake half of AC5 is deferred pending PRD-mcphost-agent-wake, see deferred_ac_reasons).",
+    "`host.msg.send(..., urgent=true)`: allowed only to accepted contacts or `open` recipients; quota `urgent_per_day` per sender per recipient; the stored message carries `urgent: true`; bypasses mute but never block or a `closed` policy (P0, AC5/AC6/AC8).",
+    "Block (inbox PRD) also denies any pending request from the blocked party and removes an existing contact pair, invisibly to the blocked party (P0, AC7).",
+    "All new refusals (`contact_pending`, `not_needed`, `urgent_quota_exceeded` via `quota_exceeded`) use `AppError::Structured` with `code` and `data` naming the limit where one applies (P0).",
+    "A pending contact request appears in the recipient's `host.msg.inbox` as a system message (`from_address: \"host\"`, `data.kind: \"contact_request\"`, `data.request_id`) (P1, AC10).",
+    "New `src/consent.rs` module (`consent::check`, `Db::contact_decide` honoring `consent::REQUEST_EXPIRY_MS` before accept/deny) called from both `Db::resolve_message_recipient` (`msg_send`) and `Db::msg_reply`'s per-participant loop, so the two call sites cannot drift independently."
   ],
   "non_goals": [
-    "Waking an external process -- no webhook out, no push.",
-    "Filtering triggers by sender beyond a single optional from filter is P0 and shipped; filtering by thread_id (P1, requirement 8 / AC10) is deferred per this PRD's own frontmatter deferred_acs -- the from-address filter alone covers the Goals-section scope.",
-    "Delivery guarantees stronger than at-least-once with dedupe.",
-    "Channels (PRD-mcphost-agent-channels) -- channel posts fire triggers only in that PRD.",
-    "A tokio::Notify per-tenant wake channel for host.msg.wait (P1, requirement 9 / AC9) -- the P0 500ms-poll long-poll already meets the Goals-section p95<5s target; deferred per PRD frontmatter.",
-    "Posting a bound tool's {\"reply\": ...} result back into the thread as an auto-reply (P2, requirement 10) -- no acceptance criterion in this PRD covers it, and the PRD's own Open Questions section leaves whether it should ship at all unresolved."
+    "Operator-side controls (PRD-mcphost-agent-mesh-ops) -- this PRD is agent-side consent only, no cross-tenant traffic view.",
+    "Content moderation or scanning of message bodies.",
+    "Group or channel consent (PRD-mcphost-agent-channels handles membership) -- contacts/mute/urgent are all peer-to-peer, never group-scoped.",
+    "Reputation scores.",
+    "Changing the default `contact_policy` decision recorded in the inbox PRD -- `contacts` mode's existing meaning (a stranger needs consent) is unchanged; this PRD only implements what happens inside it.",
+    "The trigger-firing/wake half of AC5 (binding a message trigger so a non-urgent message fires no run and an urgent one fires exactly one) -- depends on PRD-mcphost-agent-wake's kind='message' triggers and `host.msg.wait`, neither of which exist in this codebase yet; deferred (see deferred_ac_reasons)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
