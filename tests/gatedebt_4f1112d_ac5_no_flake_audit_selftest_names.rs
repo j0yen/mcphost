@@ -1,22 +1,30 @@
 //! PRD-mcphost-gate-debt-4f1112d, AC5 — a mechanical regression test for
-//! the second half of this PRD's own AC5: no test named
-//! `flake_audit_does_not_block` or `cold_build_time_does_not_block` may
-//! exist under `tests/`. Both were the self-referential fixtures this
-//! PRD deleted (see AC4's sibling test's module doc for the five-whys);
-//! this test fails, naming the offending file, if either name ever comes
-//! back.
+//! the second half of this PRD's own AC5: the two self-referential test
+//! names this PRD deleted (see AC4's sibling test's module doc for the
+//! five-whys) may never come back under `tests/`. This test fails, naming
+//! the offending file, if either does.
+//!
+//! Deliberately does NOT spell out either banned name anywhere in this
+//! file's own source text, including this comment, for the same reason
+//! AC4's sibling test doesn't spell out its own banned path (reviewer-
+//! agent finding on an earlier draft: a keyword-grep audit of `tests/`
+//! would flag a guard file that quotes the very names it forbids as a
+//! false positive). Both names are assembled from parts at runtime (see
+//! `banned` below) and referred to here only as "the two deleted
+//! self-referential test names."
 //!
 //! The first half of AC5 (`cargo test --quiet` exits 0 three runs in a
 //! row) is a process-level claim about the whole suite, not a single
-//! file's content — it is verified directly against a fresh
-//! `flake-audit-receipt.json` (three real `cargo test` invocations,
-//! `deterministic: true`, `exit_codes: [0, 0, 0]`) rather than re-run a
-//! third time inside a single `#[test]`, and is recorded as this PRD's
-//! own verified-completed evidence for AC5 rather than duplicated here.
+//! file's content — it is verified directly against a fresh flake-audit
+//! receipt (three real `cargo test` invocations, all green, deterministic)
+//! rather than re-run a third time inside a single `#[test]`, and is
+//! recorded as this PRD's own verified-completed evidence for AC5 rather
+//! than duplicated here.
 //!
-//! Same self-match avoidance as AC4's sibling test: the two banned names
-//! are assembled from parts at runtime so this file's own source is never
-//! a positive match for its own check.
+//! Same disclosed textual-scan limitation as AC4's sibling test: this
+//! catches a name appearing as contiguous text (or as an adjacent
+//! concatenation the normalize pass folds back together), not an
+//! arbitrarily obfuscated reconstruction of it.
 
 use std::fs;
 use std::path::Path;
@@ -63,11 +71,22 @@ fn scan_dir(dir: &Path, banned: &[String], self_file: &str, offenders: &mut Vec<
             continue;
         }
         if let Ok(text) = fs::read_to_string(&path) {
+            let normalized_text = normalize(&text);
             for needle in banned {
-                if text.contains(needle.as_str()) {
+                if text.contains(needle.as_str())
+                    || normalized_text.contains(&normalize(needle))
+                {
                     offenders.push(format!("{}: {}", path.display(), needle));
                 }
             }
         }
     }
+}
+
+/// See AC4's sibling test's identical helper for rationale — collapses an
+/// adjacent-literal-concatenation obfuscation back to plain text.
+fn normalize(s: &str) -> String {
+    s.chars()
+        .filter(|c| !matches!(c, '"' | '\'' | '(' | ')' | '+' | '.' | ' ' | '\t' | '\n'))
+        .collect()
 }
