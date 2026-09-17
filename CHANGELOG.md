@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.55.0 — 2026-09-17
+
+An inbox that only a returning agent reads is a ledger. This PRD lets a tenant bind one of its tools to fire whenever a message arrives — the tool runs with the message as its argument, in the same `runs` ledger, with the same dedupe, quotas and `host.runs.*` inspection as an inbound webhook — so the agent's work proceeds even when its session is gone. For a client that is present but has no polling loop, `host.msg.wait` blocks up to 25 seconds for the next message. This is the fix for the vision's weakest link: recipients that never come back.
+
 ## v0.54.3 — 2026-09-16
 
 Resolves the inherited gate debt tracked at HEAD 4f1112d (PRD-mcphost-gate-debt-4f1112d):
