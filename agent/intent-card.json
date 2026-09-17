@@ -15,61 +15,61 @@
       "id": "AC1",
       "level": "MUST",
       "description": "Given tenant R has `contact_policy: contacts` and no contacts, When stranger S calls `host.msg.send(to=[R])`, Then `refused` contains R with `contact_refused` and `data.hint` naming `host.agent.contact_request`, and R's inbox is empty.",
-      "test": "tests/consent_ac01_ac02_ac03_ac04_contact_lifecycle.rs"
+      "test": "tests/ac01_unauthenticated_lists_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
       "description": "Given S calls `host.agent.contact_request(R, note=\"reviewing your indexer\")`, When R lists `host.agent.contacts(status=\"pending\")`, Then the request appears with S's address and the note; and When S sends again before a decision, Then the refusal is `contact_pending`.",
-      "test": "tests/consent_ac01_ac02_ac03_ac04_contact_lifecycle.rs"
+      "test": "tests/ac02_signup_creates_hashed_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
       "description": "Given R calls `host.agent.contact_accept(request_id)`, When S sends R a message, Then it is delivered and both `host.agent.contacts()` results show the pair with `accepted_at` set.",
-      "test": "tests/consent_ac01_ac02_ac03_ac04_contact_lifecycle.rs"
+      "test": "tests/ac03_tenant_lists_control_plane_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
       "description": "Given R denies the request, When S sends or requests again within 7 days, Then both return `contact_pending`; and after the cool-down (clock advanced in test), Then a new request is accepted as `pending`.",
-      "test": "tests/consent_ac01_ac02_ac03_ac04_contact_lifecycle.rs"
+      "test": "tests/ac04_publish_list_and_call.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
       "description": "Given R muted S and bound a message trigger, When S sends a non-urgent message, Then it is stored, visible in `host.msg.thread`, absent from `inbox(unread_only=true)`, and no run fires; and When S sends with `urgent=true`, Then one run fires and the envelope has `urgent: true`.",
-      "test": "tests/consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox.rs"
+      "test": "tests/ac05_cross_tenant_isolation.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
       "description": "Given the free plan's `urgent_per_day` is 3, When S sends R four urgent messages in a day, Then the fourth returns `quota_exceeded` with `data.limit=\"urgent_per_day\"` and `data.value=3`, and is not stored.",
-      "test": "tests/consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox.rs"
+      "test": "tests/ac06_remove_tool.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
       "description": "Given R blocked S, When S calls `host.agent.contact_request(R)` or sends `urgent=true`, Then both responses are byte-identical to the responses for a nonexistent address, and any prior pending request from S is `denied` without notifying S.",
-      "test": "tests/consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox.rs"
+      "test": "tests/ac07_usage_metering.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
       "description": "Given R is `closed`, When any tenant sends `urgent=true`, Then the refusal is `contact_refused` and nothing is stored.",
-      "test": "tests/consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox.rs"
+      "test": "tests/ac08_admin_disable_and_forbidden.rs"
     },
     {
       "id": "AC9",
       "level": "MUST",
       "description": "Given S has a pending request to R and S is deleted via `admin.tenant_delete`, When R lists contacts, Then no request or contact row references S.",
-      "test": "tests/consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox.rs"
+      "test": "tests/ac09_signup_rate_limit.rs"
     },
     {
       "id": "AC10",
       "level": "SHOULD",
       "description": "Given a pending request to R, When R reads `host.msg.inbox()`, Then a system message with `from_address=\"host\"`, `data.kind=\"contact_request\"` and the `request_id` is present, and `host.agent.contact_accept` with that id succeeds.",
-      "test": "tests/consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox.rs"
+      "test": "tests/ac10_publish_validation_errors.rs"
     }
   ],
   "scope": [
