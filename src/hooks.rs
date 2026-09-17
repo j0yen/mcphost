@@ -734,20 +734,113 @@ async fn handle_hook(
     let args_json = serde_json::to_string(&run_args)
         .map_err(|e| AppError::Internal(format!("event args serialize: {e}")))?;
 
-    // P1 requirement 7 / AC11: claim the dedupe key (if configured) before
-    // inserting, so a duplicate delivery reuses the first run's id instead
-    // of enqueuing a second one.
+    // P1 requirement 7 / AC11: the dedupe key (if configured) -- passed
+    // through to `enqueue_with_dedupe`, which claims it before inserting so
+    // a duplicate delivery reuses the first run's id instead of enqueuing a
+    // second one.
+    let dedupe_key = match &dedupe_header {
+        Some(header_name) => headers.get(header_name).and_then(|v| v.to_str().ok()).map(str::to_string),
+        None => None,
+    };
+    let run_id = enqueue_with_dedupe(
+        state,
+        &tenant,
+        &trigger,
+        EnqueueSpec {
+            trigger_kind: "event",
+            dedupe_key: dedupe_key.as_deref(),
+            message_id: None,
+            args_json,
+        },
+    )
+    .await?;
+    Ok(HookAccepted { run_id })
+}
+
+/// Params for [`enqueue_with_dedupe`], bundled (rather than four positional
+/// arguments) to keep `trigger_kind`/`dedupe_key`/`message_id` -- three
+/// adjacent stringy fields -- transposition-proof at each of the two call
+/// sites (event and message), and to stay under the crate's
+/// `too-many-arguments-threshold = 5` (`clippy.toml`).
+pub(crate) struct EnqueueSpec<'a> {
+    pub trigger_kind: &'static str,
+    pub dedupe_key: Option<&'a str>,
+    pub message_id: Option<&'a str>,
+    pub args_json: String,
+}
+
+/// Shared by [`handle_hook`] (kind="event") and
+/// `messaging::fire_message_triggers` (PRD-mcphost-agent-wake kind=
+/// "message" requirement 4: "factor the enqueue-with-dedupe step into a
+/// function both hooks.rs and the new messaging path call, not
+/// copy-pasting it"): claims `(trigger.id, dedupe_key)` in `event_dedupe`
+/// (reused verbatim for either kind -- a message's own id is exactly as
+/// good a dedupe key as a webhook's configured header value) and, on a
+/// fresh claim, enqueues a run -- checking the same `jobs_concurrent`
+/// admission the executor's own leasing loop enforces at lease time
+/// (`runs::tick`/[`crate::db::Db::count_running_runs_for_tenant`]) up
+/// front, so a tenant already at its concurrency cap gets an immediate
+/// `rejected` run (requirement 4: "instead of raising") rather than one
+/// that silently queues forever behind whatever's already running. Never
+/// returns `Err` for a quota failure -- only a genuine DB error propagates.
+///
+/// `message_id` is `Some` only for a kind="message" caller (stored on the
+/// run row, migration 0023); `dedupe_key` is `None` for an event trigger
+/// with no `dedupe_header` configured (no dedupe at all, same as before
+/// this was factored out).
+pub(crate) async fn enqueue_with_dedupe(
+    state: &AppState,
+    tenant: &Tenant,
+    trigger: &TriggerRow,
+    spec: EnqueueSpec<'_>,
+) -> Result<String, AppError> {
+    let EnqueueSpec {
+        trigger_kind,
+        dedupe_key,
+        message_id,
+        args_json,
+    } = spec;
     let run_id = new_ulid();
-    if let Some(header_name) = &dedupe_header
-        && let Some(key) = headers.get(header_name).and_then(|v| v.to_str().ok())
-    {
-        if let Some(existing_run_id) = state
+    if let Some(key) = dedupe_key
+        && let Some(existing_run_id) = state
             .db
             .claim_event_dedupe(trigger.id.clone(), key.to_string(), run_id.clone())
             .await?
-        {
-            return Ok(HookAccepted { run_id: existing_run_id });
-        }
+    {
+        return Ok(existing_run_id);
+    }
+
+    let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
+        AppError::Internal(format!(
+            "tenant's plan '{}' is not in the loaded plan catalog",
+            tenant.plan
+        ))
+    })?;
+
+    // PRD-mcphost-agent-wake requirement 4 / AC4: an immediate `rejected`
+    // run, not an `Err`, when the tenant is already at its `jobs_concurrent`
+    // ceiling. Kept scoped to this shared helper (so both event and message
+    // firings get identical, predictable behavior going forward) rather
+    // than re-implementing the check separately per kind.
+    let running = state.db.count_running_runs_for_tenant(tenant.id).await?;
+    if running >= plan.jobs_concurrent {
+        state
+            .db
+            .insert_rejected_run(crate::db::RejectedRun {
+                run_id: run_id.clone(),
+                tenant_id: tenant.id,
+                tool_name: trigger.tool_name.clone(),
+                trigger: trigger_kind.to_string(),
+                trigger_ref: trigger.id.clone(),
+                message_id: message_id.map(str::to_string),
+                error_class: "jobs_concurrent_exceeded",
+            })
+            .await?;
+        let _ = state
+            .db
+            .update_trigger_after_fire(trigger.id.clone(), None, Some(run_id.clone()), now_unix())
+            .await;
+        return Ok(run_id);
     }
 
     state
@@ -755,21 +848,22 @@ async fn handle_hook(
         .insert_queued_run(
             run_id.clone(),
             tenant.id,
-            tool.to_string(),
-            "event".to_string(),
+            trigger.tool_name.clone(),
+            trigger_kind.to_string(),
             Some(trigger.id.clone()),
             None,
             plan.job_max_s,
             args_json,
             false,
             false,
+            message_id.map(str::to_string),
         )
         .await?;
     let _ = state
         .db
         .update_trigger_after_fire(trigger.id.clone(), None, Some(run_id.clone()), now_unix())
         .await;
-    Ok(HookAccepted { run_id })
+    Ok(run_id)
 }
 
 /// `POST /hooks/{namespace}/{tool}` -- `http.rs` mounts this route.
@@ -826,10 +920,19 @@ pub async fn test(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         .get_trigger(tenant.id, id.clone())
         .await?
         .ok_or_else(|| crate::triggers::trigger_not_found(&id))?;
+    if row.kind == "message" {
+        // PRD-mcphost-agent-wake requirement 5 / AC7: a message trigger's
+        // own dry run -- a synthetic envelope (`test: true`), no
+        // `messages` row, no dedupe claim (there's no real `message_id` to
+        // claim one with).
+        return test_message_trigger(state, tenant, &row, args).await;
+    }
     if row.kind != "event" {
         return Err(trigger_invalid(
             "id",
-            "host.trigger.test only supports an event ('kind: \"event\"') trigger".to_string(),
+            "host.trigger.test only supports an event ('kind: \"event\"') or message \
+             ('kind: \"message\"') trigger"
+                .to_string(),
         ));
     }
 
@@ -872,17 +975,78 @@ pub async fn test(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
             args_json,
             false,
             true,
+            None,
         )
         .await?;
     Ok(json!({"run_id": run_id, "status": "queued", "test": true}))
 }
 
-/// `host.trigger.replay(run_id)` (P0 requirement 3 / AC8): re-enqueues an
-/// event-triggered run's own stored `args_json` verbatim (no
-/// re-verification -- the original delivery already passed it), with the
-/// new run's `trigger_ref` naming the *original run* rather than the
-/// trigger id (AC8's own wording), so `host.runs.get`/`list` shows exactly
-/// which delivery this is a replay of.
+/// PRD-mcphost-agent-wake requirement 5 / AC7: `host.trigger.test`'s
+/// message-kind branch -- a synthetic envelope (`message_id`/`thread_id`
+/// prefixed `test-` so they can never collide with a real one, `test:
+/// true`), run through `insert_queued_run` directly rather than
+/// `enqueue_with_dedupe` (no dedupe key exists for a synthetic id, and a
+/// dry run shouldn't be subject to the `jobs_concurrent` admission check
+/// either -- same "always queued" posture the event-kind `test` above
+/// already takes). No `messages` row, no `host.db` messaging table touched
+/// at all.
+async fn test_message_trigger(
+    state: &AppState,
+    tenant: &Tenant,
+    row: &TriggerRow,
+    args: &Value,
+) -> Result<Value, AppError> {
+    let body = args.get("body").and_then(Value::as_str).unwrap_or("test message");
+    let from = args.get("from").and_then(Value::as_str).unwrap_or("@test");
+    let envelope = json!({
+        "message_id": format!("test-{}", new_ulid()),
+        "thread_id": format!("test-{}", new_ulid()),
+        "seq": 1,
+        "from": from,
+        "body": body,
+        "data": args.get("data").cloned().unwrap_or(Value::Null),
+        "in_reply_to": Value::Null,
+        "created_at": crate::state::rfc3339_from_unix(now_unix()),
+        "test": true,
+    });
+    let args_json = serde_json::to_string(&envelope)
+        .map_err(|e| AppError::Internal(format!("message trigger args serialize: {e}")))?;
+
+    let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
+        AppError::Internal(format!(
+            "tenant's plan '{}' is not in the loaded plan catalog",
+            tenant.plan
+        ))
+    })?;
+    let run_id = new_ulid();
+    state
+        .db
+        .insert_queued_run(
+            run_id.clone(),
+            tenant.id,
+            row.tool_name.clone(),
+            "message".to_string(),
+            Some(row.id.clone()),
+            None,
+            plan.job_max_s,
+            args_json,
+            false,
+            true,
+            None,
+        )
+        .await?;
+    Ok(json!({"run_id": run_id, "status": "queued", "test": true}))
+}
+
+/// `host.trigger.replay(run_id)` (P0 requirement 3 / AC8; PRD-mcphost-agent-wake
+/// requirement 5 / AC8 extends this to a `trigger = "message"` run too):
+/// re-enqueues an event- or message-triggered run's own stored `args_json`
+/// verbatim (no re-verification -- the original delivery already passed
+/// it), with the new run's `trigger_ref` naming the *original run* rather
+/// than the trigger id (AC8's own wording), so `host.runs.get`/`list` shows
+/// exactly which delivery this is a replay of. The new run keeps the
+/// original's own `trigger`/`message_id` (rather than hardcoding `"event"`)
+/// so a message-triggered replay still reads `trigger: "message"`.
 pub async fn replay(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let run_id = arg_str(args, "run_id")?;
     let original = state
@@ -890,10 +1054,10 @@ pub async fn replay(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
         .get_run(run_id.clone(), tenant.id)
         .await?
         .ok_or_else(|| run_not_found(&run_id))?;
-    if original.trigger != "event" {
+    if original.trigger != "event" && original.trigger != "message" {
         return Err(trigger_invalid(
             "run_id",
-            "only an event-triggered run can be replayed".to_string(),
+            "only an event- or message-triggered run can be replayed".to_string(),
         ));
     }
     let args_json = original.args_json.clone().unwrap_or_else(|| "{}".to_string());
@@ -910,13 +1074,14 @@ pub async fn replay(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
             new_run_id.clone(),
             tenant.id,
             original.tool_name.clone(),
-            "event".to_string(),
+            original.trigger.clone(),
             Some(run_id.clone()),
             None,
             plan.job_max_s,
             args_json,
             false,
             false,
+            original.message_id.clone(),
         )
         .await?;
     Ok(json!({"run_id": new_run_id, "status": "queued", "replay_of": run_id}))

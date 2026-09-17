@@ -1042,16 +1042,18 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         Tool::new(
             "host.trigger.set",
             "Run a published tool on a cron schedule (5-field: minute hour day-of-month month \
-             day-of-week, UTC), or give it a public webhook URL (kind=\"event\"): a signed POST \
-             to that URL runs the tool with the event as its argument. Each firing/delivery is a \
-             run visible in host.runs.list(trigger=\"schedule\"|\"event\"). Refuses \
-             schedules_max/event_triggers_max (trigger_quota_exceeded) or a too-short schedule \
-             interval (trigger_interval_too_short); an invalid expression or verify config fails \
-             trigger_invalid naming the field.",
+             day-of-week, UTC), give it a public webhook URL (kind=\"event\"): a signed POST to \
+             that URL runs the tool with the event as its argument, or fire it whenever this \
+             tenant receives a message (kind=\"message\"): the tool runs with the message \
+             envelope as its argument. Each firing/delivery is a run visible in \
+             host.runs.list(trigger=\"schedule\"|\"event\"|\"message\"). Refuses \
+             schedules_max/event_triggers_max (trigger_quota_exceeded, shared by event and \
+             message triggers) or a too-short schedule interval (trigger_interval_too_short); an \
+             invalid expression or verify config fails trigger_invalid naming the field.",
             host_schema(
                 json!({
                     "tool": {"type": "string", "description": "The published tool this trigger runs."},
-                    "kind": {"type": "string", "description": "\"schedule\" (default) or \"event\"."},
+                    "kind": {"type": "string", "description": "\"schedule\" (default), \"event\" or \"message\"."},
                     "schedule": {
                         "type": "string",
                         "description": "kind=\"schedule\": 5-field cron expression (minute hour \
@@ -1070,7 +1072,12 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                             repeated value within 24h answers 202 with the original run id instead \
                             of running again.",
                     },
-                    "args": {"type": "object", "description": "Arguments passed to the tool on each firing/delivery."},
+                    "from": {
+                        "type": "string",
+                        "description": "kind=\"message\": only fire for messages from this \
+                            address (@handle or t_... namespace); omit to fire for any sender.",
+                    },
+                    "args": {"type": "object", "description": "Arguments passed to the tool on each firing/delivery (kind=\"schedule\"/\"event\" only -- a message trigger's whole argument is the message envelope)."},
                     "tz": {"type": "string", "description": "kind=\"schedule\" P1: only \"UTC\" (or omitted) works today."},
                 }),
                 &["tool"],
@@ -1133,24 +1140,28 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             "host.trigger.test",
             "Dry-run an event trigger's verify config against a payload you supply, without \
              exposing its real URL -- verifies the signature exactly as POST /hooks/... would, \
-             then runs the tool with the event as its argument. The run is marked test: true. A \
-             wrong signature fails signature_invalid, naming the header it checked.",
+             then runs the tool with the event as its argument. Or, on a message trigger, runs \
+             the tool with a synthetic envelope (test: true, no messages row created). The run is \
+             marked test: true. A wrong signature fails signature_invalid, naming the header it \
+             checked.",
             host_schema(
                 json!({
-                    "id": {"type": "string", "description": "The event trigger id."},
-                    "body": {"description": "The payload to verify and run with -- any JSON value."},
-                    "headers": {"type": "object", "description": "Header name -> string value, e.g. {\"X-Hub-Signature-256\": \"sha256=...\"}."},
+                    "id": {"type": "string", "description": "The event or message trigger id."},
+                    "body": {"description": "kind=\"event\": the payload to verify and run with -- any JSON value. kind=\"message\": the synthetic envelope's body text."},
+                    "headers": {"type": "object", "description": "kind=\"event\": header name -> string value, e.g. {\"X-Hub-Signature-256\": \"sha256=...\"}."},
+                    "from": {"type": "string", "description": "kind=\"message\": the synthetic envelope's from address; default \"@test\"."},
+                    "data": {"description": "kind=\"message\": the synthetic envelope's data payload."},
                 }),
                 &["id"],
             ),
         ),
         Tool::new(
             "host.trigger.replay",
-            "Re-run a past event-triggered run's exact stored event (no re-verification -- the \
-             original delivery already passed it). The new run's trigger_ref names the original \
-             run id.",
+            "Re-run a past event- or message-triggered run's exact stored event/envelope (no \
+             re-verification -- the original delivery already passed it). The new run's \
+             trigger_ref names the original run id.",
             host_schema(
-                json!({"run_id": {"type": "string", "description": "The event-triggered run id to replay."}}),
+                json!({"run_id": {"type": "string", "description": "The event- or message-triggered run id to replay."}}),
                 &["run_id"],
             ),
         ),
@@ -1367,6 +1378,25 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             host_schema(
                 json!({"address": {"type": "string", "description": "The @handle or t_... namespace to unblock."}}),
                 &["address"],
+            ),
+        ),
+        // PRD-mcphost-agent-wake P0 requirement 6: for a client with no
+        // polling loop of its own, alongside host.runs.wait above.
+        Tool::new(
+            "host.msg.wait",
+            "Long-poll for a new message until one past cursor arrives or timeout_s elapses (max \
+             25s), returning the same shape as host.msg.inbox either way -- for a client with no \
+             polling loop of its own. On timeout, messages is empty and next_cursor is unchanged.",
+            host_schema(
+                json!({
+                    "cursor": {"type": "string", "description": "Opaque; omit to wait for the next message from now."},
+                    "timeout_s": {
+                        "type": "integer",
+                        "description": "Max seconds to wait, capped at 25; default 20.",
+                    },
+                    "unread_only": {"type": "boolean", "description": "Filter to messages not yet acked."},
+                }),
+                &[],
             ),
         ),
     ];
@@ -1974,6 +2004,7 @@ impl McpHostHandler {
             "host.msg.send" => messaging::send(&self.state, tenant, &args).await,
             "host.msg.reply" => messaging::reply(&self.state, tenant, &args).await,
             "host.msg.inbox" => messaging::inbox(&self.state, tenant, &args).await,
+            "host.msg.wait" => messaging::wait(&self.state, tenant, &args).await,
             "host.msg.thread" => messaging::thread(&self.state, tenant, &args).await,
             "host.msg.ack" => messaging::ack(&self.state, tenant, &args).await,
             "host.msg.block" => messaging::block(&self.state, tenant, &args).await,

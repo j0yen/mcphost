@@ -172,6 +172,10 @@ async fn unauthenticated_tools_list_is_signup_only() {
         "host.msg.ack",
         "host.msg.block",
         "host.msg.unblock",
+        // PRD-mcphost-agent-wake P0 requirement 6: host.msg.wait is
+        // discoverable unauthenticated too, same as every other
+        // host.msg.* tool above.
+        "host.msg.wait",
     ] {
         assert!(
             tool_names.contains(&expected),
@@ -184,7 +188,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        68,
+        69,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the nine host.state.* tools (PRD-mcphost-tenant-state) \
@@ -193,8 +197,8 @@ async fn unauthenticated_tools_list_is_signup_only() {
          (PRD-mcphost-sharing) + the five host.runs.* tools (PRD-mcphost-runs-and-jobs) \
          + the nine host.trigger.* tools (PRD-mcphost-schedules, PRD-mcphost-inbound-events) \
          + the three billing.* tools + the four host.agent.* tools \
-         (PRD-mcphost-agent-directory) + the seven host.msg.* tools \
-         (PRD-mcphost-agent-inbox): \
+         (PRD-mcphost-agent-directory) + the eight host.msg.* tools \
+         (PRD-mcphost-agent-inbox, PRD-mcphost-agent-wake): \
          {tool_names:?}"
     );
 }

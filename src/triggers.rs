@@ -183,6 +183,9 @@ async fn trigger_to_json(state: &AppState, tenant: &Tenant, row: TriggerRow) -> 
     if row.kind == "event" {
         return crate::hooks::trigger_to_json_event(state, tenant, &row).await;
     }
+    if row.kind == "message" {
+        return trigger_to_json_message(state, tenant, &row).await;
+    }
     let last_status = match &row.last_run_id {
         Some(run_id) => state
             .db
@@ -225,14 +228,131 @@ pub async fn set(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Valu
         // here -- this function stays the one place that decides which
         // kind an argument shape belongs to.
         "event" => crate::hooks::set_event_trigger(state, tenant, &tool, args).await,
+        // PRD-mcphost-agent-wake P0 requirement 1: the third trigger kind --
+        // fires when a `host.msg.send`/`reply` delivers to this tenant, own
+        // config/quota logic in `set_message_trigger` below (kept in this
+        // module, not `hooks.rs` or `messaging.rs`, since it needs nothing
+        // HTTP- or delivery-specific, only the same generic trigger CRUD
+        // `set_schedule` above already has on hand).
+        "message" => set_message_trigger(state, tenant, &tool, args).await,
         other => Err(trigger_invalid(
             "kind",
             format!(
-                "kind: '{other}' is not supported yet -- only \"schedule\" and \"event\" work in \
-                 this version"
+                "kind: '{other}' is not supported yet -- only \"schedule\", \"event\" and \
+                 \"message\" work in this version"
             ),
         )),
     }
+}
+
+/// `host.trigger.set(tool, kind="message", from?: address)` (P0
+/// requirement 1): fires the tool with a `host.msg.send`/`reply` envelope
+/// as its argument whenever this tenant receives a message, optionally
+/// scoped to one sender address. `config_json` is exactly `{"from": ...}`
+/// (`null` when unscoped) -- unlike a schedule or event trigger, a message
+/// trigger carries no separate `args` to merge in (requirement 2: the run's
+/// whole argument IS the envelope), so the config's own content fully
+/// captures "one message trigger per (tenant, tool, from)": two
+/// `host.trigger.set` calls naming the same tool and the same `from` (or
+/// both omitting it) hash identically and collide on `insert_trigger`'s own
+/// `UNIQUE (tenant_id, tool_name, kind, config_hash)` constraint, the same
+/// way [`set_schedule`]/`hooks::set_event_trigger` already lean on that
+/// constraint rather than a second manual existing-rows scan.
+async fn set_message_trigger(
+    state: &AppState,
+    tenant: &Tenant,
+    tool: &str,
+    args: &Value,
+) -> Result<Value, AppError> {
+    let from = arg_str_opt(args, "from");
+
+    let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
+        AppError::Internal(format!(
+            "tenant's plan '{}' is not in the loaded plan catalog",
+            tenant.plan
+        ))
+    })?;
+    // Requirement 1: message triggers share `event_triggers_max` with event
+    // triggers, not a separate quota -- see
+    // `Db::count_event_triggers_for_tenant`'s own doc comment.
+    let existing = state.db.count_event_triggers_for_tenant(tenant.id).await?;
+    if existing >= plan.event_triggers_max {
+        return Err(AppError::Structured {
+            code: "trigger_quota_exceeded",
+            message: format!(
+                "tenant already holds {existing} event/message triggers, the plan maximum of {}",
+                plan.event_triggers_max
+            ),
+            data: json!({"event_triggers_max": plan.event_triggers_max}),
+        });
+    }
+
+    let config = build_message_config(from.as_deref());
+    let config_json = serde_json::to_string(&config)
+        .map_err(|e| AppError::Internal(format!("trigger config serialize: {e}")))?;
+    let hash = config_hash(&config_json);
+    let id = new_ulid();
+    state
+        .db
+        .insert_trigger(
+            id.clone(),
+            tenant.id,
+            tool.to_string(),
+            "message".to_string(),
+            config_json,
+            hash,
+            None,
+        )
+        .await
+        .map_err(|_| {
+            trigger_invalid(
+                "from",
+                "this tool already has a message trigger for this 'from' (or for any sender, if \
+                 'from' was omitted)"
+                    .to_string(),
+            )
+        })?;
+
+    let row = state
+        .db
+        .get_trigger(tenant.id, id.clone())
+        .await?
+        .ok_or_else(|| AppError::Internal("trigger vanished immediately after insert".to_string()))?;
+    Ok(trigger_to_json_message(state, tenant, &row).await)
+}
+
+fn build_message_config(from: Option<&str>) -> Value {
+    json!({"from": from})
+}
+
+/// `pub(crate)`: `messaging.rs`'s `fire_message_triggers` reuses this to
+/// read a message trigger's own `from` scope back out, the same way
+/// `hooks.rs` reads back an event trigger's `verify` config.
+pub(crate) fn parse_message_trigger_from(config_json: &str) -> Option<String> {
+    let config: Value = serde_json::from_str(config_json).unwrap_or_else(|_| json!({}));
+    config.get("from").and_then(Value::as_str).map(str::to_string)
+}
+
+/// The message-kind shape of `host.trigger.list`/`get`'s per-trigger JSON --
+/// just `from` alongside the shared base fields, no `schedule`/`url`/`args`
+/// at all (a message trigger's whole argument is the envelope itself, see
+/// [`set_message_trigger`]'s own doc comment).
+async fn trigger_to_json_message(state: &AppState, tenant: &Tenant, row: &TriggerRow) -> Value {
+    let last_status = match &row.last_run_id {
+        Some(run_id) => state
+            .db
+            .get_run(run_id.clone(), tenant.id)
+            .await
+            .ok()
+            .flatten()
+            .map(|r| r.status),
+        None => None,
+    };
+    let mut value = trigger_base_json(row, last_status);
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert("from".to_string(), json!(parse_message_trigger_from(&row.config_json)));
+    }
+    value
 }
 
 async fn set_schedule(
@@ -435,6 +555,7 @@ pub async fn fire(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
             args_json,
             true,
             false,
+            None,
         )
         .await?;
     Ok(json!({"run_id": run_id, "status": "queued", "manual": true}))
@@ -469,6 +590,8 @@ pub async fn admin_triggers(state: &AppState, args: &Value) -> Result<Value, App
                 // URL already knows the namespace and can compute it.
                 let config: Value = serde_json::from_str(&row.config_json).unwrap_or_else(|_| json!({}));
                 json!({"verify": config.get("verify").cloned().unwrap_or(Value::Null)})
+            } else if row.kind == "message" {
+                json!({"from": parse_message_trigger_from(&row.config_json)})
             } else {
                 let (schedule, _args, tz) = parse_stored_config(&row.config_json);
                 json!({"schedule": schedule, "tz": tz})
@@ -549,6 +672,7 @@ pub async fn tick_once(state: &AppState) -> Result<(), AppError> {
                 args_json,
                 false,
                 false,
+                None,
             )
             .await?;
         state
