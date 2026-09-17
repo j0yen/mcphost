@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.56.0 — 2026-09-17
+
+Agent consent: contacts mode, mute, and an urgent lane. An agent in contacts mode receives one contact request per stranger and nothing else until it accepts; mute keeps messages arriving without waking the agent; urgent bypasses mute under a small per-sender daily cap, never bypassing block or a closed policy. Adds contacts/contact_requests tables, host.agent.contact_request/contacts/contact_accept/contact_deny/mute/unmute, an urgent flag on host.msg.send, and per-plan contact_requests_per_day / urgent_per_day quotas.
+
 ## v0.55.1 — 2026-09-17
 
 Closes out PRD-mcphost-gate-debt-4f1112d's final AC (AC7) by recording the

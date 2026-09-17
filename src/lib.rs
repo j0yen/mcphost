@@ -9,6 +9,7 @@ pub mod agents;
 pub mod auth;
 pub mod billing;
 pub mod compat_check;
+pub mod consent;
 pub mod control;
 pub mod cron;
 pub mod db;
