@@ -23,6 +23,15 @@ fn arg_str_opt(args: &Value, name: &str) -> Option<String> {
     args.get(name).and_then(Value::as_str).map(str::to_string)
 }
 
+/// PRD-mcphost-tool-versions: `version`/`from`/`to` on `host.tool_rollback`/
+/// `host.tool_diff` -- a required integer argument, same "missing required
+/// argument" shape [`arg_str`] already uses for a required string one.
+fn arg_i64(args: &Value, name: &str) -> Result<i64, AppError> {
+    args.get(name)
+        .and_then(Value::as_i64)
+        .ok_or_else(|| AppError::InvalidArgs(format!("missing required argument '{name}'")))
+}
+
 /// PRD-mcphost-handoff-token requirement 1: `signup`'s `handoff` argument.
 /// Absent, `null`, or any non-`bool` value all read as `false` (the
 /// existing raw-key behavior, requirement 5 / AC5 -- an old client that has
@@ -647,19 +656,26 @@ pub async fn tool_publish(
         }
     }
 
+    // PRD-grand-loop-billing requirement 3 / PRD-mcphost-tool-versions
+    // requirement 2: this tenant's plan, needed below for both the
+    // pre-existing `tools_max` check (a re-publish of an existing name
+    // never counts against it) and this PRD's `versions_max` retention
+    // (every publish, new name or not, prunes this NAME's own version
+    // history against it).
+    let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
+        AppError::Internal(format!(
+            "tenant's plan '{}' is not in the loaded plan catalog",
+            tenant.plan
+        ))
+    })?;
+
     // A re-publish of an existing name must not count against the limit.
     let already_exists = state.db.get_tool(tenant.id, name.clone()).await?.is_some();
     if !already_exists {
         let count = state.db.count_tools(tenant.id).await?;
-        // PRD-grand-loop-billing requirement 3: `MAX_TOOLS_PER_TENANT`
-        // becomes the ceiling of any plan's `tools_max` -- an operator
-        // hand-editing plans.toml cannot raise a plan past this hard cap.
-        let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
-            AppError::Internal(format!(
-                "tenant's plan '{}' is not in the loaded plan catalog",
-                tenant.plan
-            ))
-        })?;
+        // requirement 3: `MAX_TOOLS_PER_TENANT` becomes the ceiling of any
+        // plan's `tools_max` -- an operator hand-editing plans.toml cannot
+        // raise a plan past this hard cap.
         let effective_max = plan.tools_max.min(MAX_TOOLS_PER_TENANT);
         if count >= effective_max {
             return Err(crate::billing::quota_exceeded(
@@ -672,10 +688,22 @@ pub async fn tool_publish(
         }
     }
 
-    state
+    // PRD-mcphost-tool-versions requirement 2 (AC1/AC3): every publish is a
+    // new, immutable version -- `tools.current_version` advances to it --
+    // rather than an in-place overwrite; the oldest versions beyond this
+    // tenant's plan `versions_max` are then pruned oldest-first (a no-op
+    // for a tool that hasn't reached the cap yet).
+    let new_version = state
         .db
-        .upsert_tool(tenant.id, name.clone(), kind_name.clone(), spec.clone())
+        .publish_new_version(tenant.id, name.clone(), kind_name.clone(), spec.clone())
         .await?;
+    let stored_versions = state.db.count_tool_versions(tenant.id, name.clone()).await?;
+    if stored_versions > plan.versions_max {
+        state
+            .db
+            .prune_tool_versions(tenant.id, name.clone(), plan.versions_max)
+            .await?;
+    }
 
     // PRD-mcphost-python-kind-plain-env requirement 4 (AC9): the publish
     // journal row for a spec declaring `env` -- names only, never values,
@@ -719,14 +747,19 @@ pub async fn tool_publish(
     Ok(json!({
         "name": format!("{}.{}", tenant.namespace, name),
         "kind": kind_name,
+        // PRD-mcphost-tool-versions requirement 2: this publish's own
+        // version number, so a caller building an "undo a bad publish"
+        // flow already has the value it would pass back to
+        // host.tool_rollback without a separate host.tool_history round
+        // trip.
+        "version": new_version,
     }))
 }
 
 pub async fn tool_list(state: &AppState, tenant: &Tenant) -> Result<Value, AppError> {
     let rows = state.db.list_tools(tenant.id).await?;
-    let tools: Vec<Value> = rows
-        .into_iter()
-        .map(|row| {
+    let mut tools: Vec<Value> = Vec::with_capacity(rows.len());
+    for row in rows {
             // PRD-mcphost-python-kind-plain-env requirement 5 (AC7): this
             // is the "descriptor surface that returns a tool's parsed
             // spec" for a caller wanting to know a tool's env map --
@@ -734,26 +767,31 @@ pub async fn tool_list(state: &AppState, tenant: &Tenant) -> Result<Value, AppEr
             // this is a plain, additive read of it via the kind's own
             // `env_map`, empty (never omitted) for a kind or spec with
             // none.
-            let env = state
-                .kinds
-                .get(&row.kind)
-                .map(|kind| kind.env_map(&row.spec))
-                .unwrap_or_default();
-            json!({
-                "name": format!("{}.{}", tenant.namespace, row.name),
-                "kind": row.kind,
-                "created_at": row.created_at,
-                // PRD-mcphost-sharing requirement 1/AC9: an owner sees its
-                // own tool's share state directly here -- `unshared_by` is
-                // `"admin"` only when `admin.tool_unshare` (not the owner's
-                // own `host.tool_unshare`) most recently forced it private.
-                "visibility": row.visibility,
-                "share_description": row.share_description,
-                "unshared_by": row.unshared_by,
-                "env": env,
-            })
-        })
-        .collect();
+        let env = state
+            .kinds
+            .get(&row.kind)
+            .map(|kind| kind.env_map(&row.spec))
+            .unwrap_or_default();
+        // PRD-mcphost-tool-versions requirement 7 (AC8, restated
+        // negatively): while a tool exists, its `host.tool_list` entry
+        // shows `current_version` and how many versions survive retention.
+        let versions = state.db.count_tool_versions(tenant.id, row.name.clone()).await?;
+        tools.push(json!({
+            "name": format!("{}.{}", tenant.namespace, row.name),
+            "kind": row.kind,
+            "created_at": row.created_at,
+            // PRD-mcphost-sharing requirement 1/AC9: an owner sees its
+            // own tool's share state directly here -- `unshared_by` is
+            // `"admin"` only when `admin.tool_unshare` (not the owner's
+            // own `host.tool_unshare`) most recently forced it private.
+            "visibility": row.visibility,
+            "share_description": row.share_description,
+            "unshared_by": row.unshared_by,
+            "env": env,
+            "current_version": row.current_version,
+            "versions": versions,
+        }));
+    }
     Ok(json!({ "tools": tools }))
 }
 
@@ -777,6 +815,103 @@ pub async fn tool_remove(
     // trigger set on it, reporting how many.
     let triggers_disabled = state.db.disable_triggers_for_tool(tenant.id, name.clone()).await?;
     Ok(json!({ "removed": name, "triggers_disabled": triggers_disabled }))
+}
+
+/// `host.tool_history {name}` (P0 requirement 3, AC1): newest-first, each
+/// entry carrying `version`, `created_unix`, `source_sha256`, and whether
+/// it's the tool's current pointer. `ToolNotFound` when `name` isn't one
+/// of this tenant's tools right now -- AC8: after `host.tool_remove`, this
+/// is exactly the not-found case (the row's versions went with it, see
+/// `Db::remove_tool`).
+pub async fn tool_history(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let name = arg_str(args, "name")?;
+    let tool = state
+        .db
+        .get_tool(tenant.id, name.clone())
+        .await?
+        .ok_or_else(|| AppError::ToolNotFound(name.clone()))?;
+    let versions = state.db.list_tool_versions(tenant.id, name.clone()).await?;
+    let versions: Vec<Value> = versions
+        .into_iter()
+        .map(|v| {
+            json!({
+                "version": v.version,
+                "created_unix": v.created_unix,
+                "source_sha256": v.source_sha256,
+                "current": v.version == tool.current_version,
+            })
+        })
+        .collect();
+    Ok(json!({ "name": format!("{}.{}", tenant.namespace, name), "versions": versions }))
+}
+
+/// `host.tool_rollback {name, version}` (P0 requirement 4, AC2/AC4): moves
+/// `tools.current_version` to an EXISTING version -- an unknown one is an
+/// `args_invalid` error naming the tool's current valid version range
+/// (AC4), never a silent no-op. Every registered kind's `on_tool_changed`
+/// fires after the pointer moves, the same "evict any state tied to the
+/// old content before this call returns" contract a republish or remove
+/// already gets (requirement 4; see e.g. `kinds::python`'s warm-pool
+/// eviction).
+pub async fn tool_rollback(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let name = arg_str(args, "name")?;
+    let version = arg_i64(args, "version")?;
+
+    let target = state.db.get_tool_version(tenant.id, name.clone(), version).await?;
+    if target.is_none() {
+        let range = state.db.tool_version_range(tenant.id, name.clone()).await?;
+        let msg = match range {
+            Some((min, max)) => {
+                format!("unknown version {version} for '{name}'; valid range is {min}-{max}")
+            }
+            None => format!("'{name}' has no stored versions"),
+        };
+        return Err(AppError::InvalidArgs(msg));
+    }
+
+    let moved = state.db.set_current_version(tenant.id, name.clone(), version).await?;
+    if !moved {
+        return Err(AppError::ToolNotFound(name));
+    }
+    for k in state.kinds.all() {
+        k.on_tool_changed(tenant.id, &name).await;
+    }
+    Ok(json!({ "name": format!("{}.{}", tenant.namespace, name), "current_version": version }))
+}
+
+/// `host.tool_diff {name, from, to}` (P2 requirement 8, AC9): a unified
+/// diff between two stored versions' spec JSON (pretty-printed). Every
+/// kind stores its whole tool definition in `spec` and there is no
+/// separate "source" column any kind is guaranteed to populate --
+/// `python`'s source lives at `spec.source`, while `echo`/`http` have no
+/// such field at all -- so diffing the serialized spec is the one
+/// representation every kind's version has in common (documented scoped
+/// decision: not a `source`-field-only diff).
+pub async fn tool_diff(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let name = arg_str(args, "name")?;
+    let from = arg_i64(args, "from")?;
+    let to = arg_i64(args, "to")?;
+
+    let from_row = state
+        .db
+        .get_tool_version(tenant.id, name.clone(), from)
+        .await?
+        .ok_or_else(|| AppError::InvalidArgs(format!("unknown version {from} for '{name}'")))?;
+    let to_row = state
+        .db
+        .get_tool_version(tenant.id, name.clone(), to)
+        .await?
+        .ok_or_else(|| AppError::InvalidArgs(format!("unknown version {to} for '{name}'")))?;
+
+    let from_text = serde_json::to_string_pretty(&from_row.spec).unwrap_or_default();
+    let to_text = serde_json::to_string_pretty(&to_row.spec).unwrap_or_default();
+    let diff = crate::difftext::unified_diff(&format!("v{from}"), &format!("v{to}"), &from_text, &to_text);
+    Ok(json!({
+        "name": format!("{}.{}", tenant.namespace, name),
+        "from": from,
+        "to": to,
+        "diff": diff,
+    }))
 }
 
 pub async fn tool_logs(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {

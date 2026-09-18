@@ -486,12 +486,61 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         ),
         Tool::new(
             "host.tool_remove",
-            "Remove a published tool by its local name.",
+            "Remove a published tool by its local name, deleting every stored version.",
             host_schema(
                 json!({
                     "name": {"type": "string", "description": "Local name of the tool to remove."},
                 }),
                 &["name"],
+            ),
+        ),
+        // PRD-mcphost-tool-versions P0 requirement 3 (AC1): every publish
+        // is numbered and kept (per-plan retention: free 5, pro 20) --
+        // this lists them so an owner can see what it could roll back to
+        // before calling host.tool_rollback.
+        Tool::new(
+            "host.tool_history",
+            "List a published tool's stored versions, newest first, each with its \
+             created_unix, source_sha256, and whether it is the current one.",
+            host_schema(
+                json!({
+                    "name": {"type": "string", "description": "Local name of the tool."},
+                }),
+                &["name"],
+            ),
+        ),
+        // requirement 4 (AC2/AC4): the undo. An unknown version is an
+        // args_invalid error naming the tool's valid version range.
+        Tool::new(
+            "host.tool_rollback",
+            "Make a previously-published version of a tool current again. The next call \
+             (unpinned) runs that version's source; rejects an unknown version, naming the \
+             valid range.",
+            host_schema(
+                json!({
+                    "name": {"type": "string", "description": "Local name of the tool."},
+                    "version": {
+                        "type": "integer",
+                        "description": "Version number to make current, from host.tool_history.",
+                    },
+                }),
+                &["name", "version"],
+            ),
+        ),
+        // P2 requirement 8 (AC9): diffs the stored spec JSON between two
+        // versions -- see host.tool_diff's own doc comment in control.rs
+        // for why this diffs the whole spec rather than a source-only
+        // field.
+        Tool::new(
+            "host.tool_diff",
+            "Return a unified diff of two stored versions' spec JSON for a published tool.",
+            host_schema(
+                json!({
+                    "name": {"type": "string", "description": "Local name of the tool."},
+                    "from": {"type": "integer", "description": "Older version number."},
+                    "to": {"type": "integer", "description": "Newer version number."},
+                }),
+                &["name", "from", "to"],
             ),
         ),
         Tool::new(
@@ -571,7 +620,9 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              namespaced tool name yet. Unlike host.tool_test, this counts toward \
              host.usage and appears in host.tool_logs. Pass async: true for a tool \
              that needs more than the call deadline: returns {run_id, status: \"queued\"} \
-             immediately instead of running inline -- see host.runs.get/wait.",
+             immediately instead of running inline -- see host.runs.get/wait. Pass version \
+             to pin a specific host.tool_history version instead of the current one; an \
+             unknown version is an argument error.",
             host_schema(
                 json!({
                     "name": {"type": "string", "description": "Local name of the tool to invoke."},
@@ -583,6 +634,11 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                         "type": "boolean",
                         "description": "Run as a job instead of inline: returns {run_id, status} \
                             within ~50ms under the plan's job_max_s deadline; default false.",
+                    },
+                    "version": {
+                        "type": "integer",
+                        "description": "Pin the call to this version (from host.tool_history) \
+                            instead of the tool's current one; default runs current.",
                     },
                 }),
                 &["name", "args"],
@@ -2055,6 +2111,9 @@ impl McpHostHandler {
             "host.tool_publish" => control::tool_publish(&self.state, tenant, &args).await,
             "host.tool_list" => control::tool_list(&self.state, tenant).await,
             "host.tool_remove" => control::tool_remove(&self.state, tenant, &args).await,
+            "host.tool_history" => control::tool_history(&self.state, tenant, &args).await,
+            "host.tool_rollback" => control::tool_rollback(&self.state, tenant, &args).await,
+            "host.tool_diff" => control::tool_diff(&self.state, tenant, &args).await,
             "host.tool_logs" => control::tool_logs(&self.state, tenant, &args).await,
             "host.tool_test" => self.tool_test(tenant, args).await,
             "host.bridge_test" => self.bridge_test(tenant, args).await,
@@ -2265,9 +2324,10 @@ impl McpHostHandler {
     /// the CALLER's `calls_per_day` is what's checked and metered, not the
     /// owner's, and requirement 3: the `calls` row's `caller_tenant_id`
     /// carries the attribution.
-    // Six parameters: one dispatch path with a single call site per caller
-    // shape (same-tenant vs. cross-tenant); splitting it would just move
-    // the same inputs into a struct with one constructor per call site.
+    // Seven parameters (PRD-mcphost-tool-versions added `version`): one
+    // dispatch path with a single call site per caller shape (same-tenant
+    // vs. cross-tenant, pinned vs. not); splitting it would just move the
+    // same inputs into a struct with one constructor per call site.
     #[allow(clippy::too_many_arguments)]
     async fn call_published_tool(
         &self,
@@ -2276,13 +2336,36 @@ impl McpHostHandler {
         args: Value,
         mcp_name_mismatch: bool,
         caller: Option<&Tenant>,
+        version: Option<i64>,
     ) -> Result<Value, AppError> {
-        let row: ToolRow = self
+        let mut row: ToolRow = self
             .state
             .db
             .get_tool(tenant.id, local_name.to_string())
             .await?
             .ok_or_else(|| AppError::ToolNotFound(local_name.to_string()))?;
+
+        // PRD-mcphost-tool-versions requirement 5 (AC5): an explicit pin
+        // resolves to that stored version's own kind+spec instead of the
+        // tool's current one -- everything else about the call (quota,
+        // logging, metering) still runs against `tenant`/`local_name`
+        // exactly as an unpinned call would, so a pinned caller is still
+        // an ordinary metered call, just against older code. An unknown
+        // version is an argument error, never a silent fall-through to
+        // current.
+        if let Some(v) = version {
+            let versioned = self
+                .state
+                .db
+                .get_tool_version(tenant.id, local_name.to_string(), v)
+                .await?
+                .ok_or_else(|| {
+                    AppError::InvalidArgs(format!("unknown version {v} for '{local_name}'"))
+                })?;
+            row.kind = versioned.kind;
+            row.spec = versioned.spec;
+        }
+
         let kind: Arc<dyn Kind> = self.state.kinds.get(&row.kind).ok_or_else(|| {
             AppError::Internal(format!(
                 "published tool names unregistered kind '{}'",
@@ -3106,6 +3189,10 @@ impl McpHostHandler {
             .get("args")
             .cloned()
             .unwrap_or_else(|| Value::Object(Default::default()));
+        // PRD-mcphost-tool-versions requirement 5: an optional pin,
+        // outside the tool's own `args` sub-object (same shape as `async`
+        // above), so it can never collide with a real argument name.
+        let version = args.get("version").and_then(Value::as_i64);
         if args.get("async").and_then(Value::as_bool) == Some(true) {
             return crate::runs::enqueue(&self.state, tenant, &local_name, call_args).await;
         }
@@ -3114,7 +3201,7 @@ impl McpHostHandler {
         // isn't found here -- `ToolNotFound`, with nothing in the error to
         // distinguish "never published by anyone" from "published by
         // someone else".
-        self.call_published_tool(tenant, &local_name, call_args, false, None)
+        self.call_published_tool(tenant, &local_name, call_args, false, None, version)
             .await
     }
 
@@ -3126,9 +3213,9 @@ impl McpHostHandler {
     /// group) is `ToolNotFound`, indistinguishably from each other, so a
     /// probe never learns whether a private tool of that name exists
     /// (requirement 2: "never revealing whether the tool exists").
-    // Six parameters: one resolve-then-dispatch path with a single caller
-    // (`call_tool`'s cross-tenant arm) -- same shape as
-    // `call_published_tool` above.
+    // Seven parameters (PRD-mcphost-tool-versions added `version`): one
+    // resolve-then-dispatch path with a single caller (`call_tool`'s
+    // cross-tenant arm) -- same shape as `call_published_tool` above.
     #[allow(clippy::too_many_arguments)]
     async fn call_shared_tool(
         &self,
@@ -3137,6 +3224,7 @@ impl McpHostHandler {
         local_name: &str,
         args: Value,
         mcp_name_mismatch: bool,
+        version: Option<i64>,
     ) -> Result<Value, AppError> {
         let not_found = || AppError::ToolNotFound(format!("{owner_ns}.{local_name}"));
         let (owner, row) = self
@@ -3163,8 +3251,44 @@ impl McpHostHandler {
             return Err(not_found());
         }
 
-        self.call_published_tool(&owner, local_name, args, mcp_name_mismatch, Some(caller))
-            .await
+        // PRD-mcphost-tool-versions requirement 6 (AC7): only an UNPINNED
+        // caller's result envelope ever carries `version_changed` -- a
+        // pinned call already named exactly which version it wanted, so
+        // there is nothing to notify it about. The very first unpinned
+        // call from this caller has no stored baseline to diff against
+        // (`last_seen` is `None`), so it never carries the note either;
+        // every call after that compares against what this same caller
+        // last actually saw, so the note fires exactly once per change,
+        // per caller (not once per change, globally).
+        let version_note = if version.is_none() {
+            let last_seen = self
+                .state
+                .db
+                .shared_tool_last_seen(owner.id, local_name.to_string(), caller.id)
+                .await?;
+            self.state
+                .db
+                .set_shared_tool_last_seen(owner.id, local_name.to_string(), caller.id, row.current_version)
+                .await?;
+            match last_seen {
+                Some(prev) if prev != row.current_version => {
+                    Some(json!({"from": prev, "to": row.current_version}))
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
+
+        let mut result = self
+            .call_published_tool(&owner, local_name, args, mcp_name_mismatch, Some(caller), version)
+            .await?;
+        if let Some(note) = version_note
+            && let Value::Object(map) = &mut result
+        {
+            map.insert("version_changed".to_string(), note);
+        }
+        Ok(result)
     }
 }
 
@@ -3480,7 +3604,7 @@ impl ServerHandler for McpHostHandler {
             }
             (Auth::Tenant(tenant), name) => match name.split_once('.') {
                 Some((ns, local)) if ns == tenant.namespace => {
-                    self.call_published_tool(tenant, local, args, mismatch, None)
+                    self.call_published_tool(tenant, local, args, mismatch, None, None)
                         .await
                 }
                 // PRD-mcphost-sharing P0 requirement 2: `<ns>.<name>` for
@@ -3488,8 +3612,21 @@ impl ServerHandler for McpHostHandler {
                 // `ToolNotFound` -- it resolves through `call_shared_tool`,
                 // which is the only place that decides whether `ns.local`'s
                 // visibility lets `tenant` (the caller here) reach it.
+                //
+                // PRD-mcphost-tool-versions requirement 5: a cross-tenant
+                // call pins a version via a reserved top-level `version`
+                // field in its own arguments (there is no wrapper object
+                // for a direct `<ns>.<name>` call the way `host.tool_call`
+                // has one) -- extracted and removed here so it never
+                // reaches the tool's own args_schema validation as a
+                // stray property.
                 Some((ns, local)) => {
-                    self.call_shared_tool(tenant, ns, local, args, mismatch)
+                    let mut call_args = args;
+                    let version = call_args
+                        .as_object_mut()
+                        .and_then(|o| o.remove("version"))
+                        .and_then(|v| v.as_i64());
+                    self.call_shared_tool(tenant, ns, local, call_args, mismatch, version)
                         .await
                 }
                 None => Err(AppError::ToolNotFound(name.to_string())),
