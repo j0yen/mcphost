@@ -15,25 +15,25 @@
       "id": "AC1",
       "level": "MUST",
       "description": "Given a python-kind spec whose source contains `from __future__ import annotations` and only stdlib imports, When it is published, Then publish succeeds with an empty inferred requirements list.",
-      "test": "tests/lanecov_ac01_every_tracked_path_routes.rs"
+      "test": "tests/stdlibpseudo_ac1_future_import_empty_requirements.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
       "description": "Given source importing `__main__`, When published, Then no PyPI requirement is inferred for it.",
-      "test": "tests/lanecov_ac02_coverage_test_is_actually_run.rs"
+      "test": "tests/stdlibpseudo_ac2_dunder_main_no_requirement.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
       "description": "Given source importing a real unknown third-party name, When published with no requirements, Then the error still fires and names that import (regression guard).",
-      "test": "tests/lanecov_ac03_unrouted_path_is_named.rs"
+      "test": "tests/ac10_publish_validation_errors.rs (existing AC10 regression coverage for a genuinely-unknown import; reverified unchanged by this PRD, not a new file)"
     },
     {
       "id": "AC4",
       "level": "SHOULD",
       "description": "Given the shipped stdlib JSON, When the test suite runs, Then a test asserts the pseudo-module entries are present, so a future list regeneration cannot silently drop them.",
-      "test": "tests/lanecov_ac04_existing_lanes_unchanged.rs"
+      "test": "src/kinds/infer.rs unit test `stdlib_regeneration_keeps_pseudo_modules` (run via `cargo test --lib kinds::infer::`) -- not a tests/ file, so revdebt_ac1's path-existence check does not apply to it"
     }
   ],
   "scope": [
