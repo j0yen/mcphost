@@ -282,3 +282,19 @@ mod toolver_ac07_version_changed_note_once;
 mod toolver_ac08_remove_deletes_all_versions;
 #[path = "toolver_ac09_diff_unified.rs"]
 mod toolver_ac09_diff_unified;
+#[path = "wake_ac1_message_trigger_fires_run.rs"]
+mod wake_ac1_message_trigger_fires_run;
+#[path = "wake_ac2_from_filter.rs"]
+mod wake_ac2_from_filter;
+#[path = "wake_ac3_dedupe.rs"]
+mod wake_ac3_dedupe;
+#[path = "wake_ac4_jobs_concurrent_rejects.rs"]
+mod wake_ac4_jobs_concurrent_rejects;
+#[path = "wake_ac5_pause_resume.rs"]
+mod wake_ac5_pause_resume;
+#[path = "wake_ac6_msg_wait.rs"]
+mod wake_ac6_msg_wait;
+#[path = "wake_ac7_trigger_test_synthetic_envelope.rs"]
+mod wake_ac7_trigger_test_synthetic_envelope;
+#[path = "wake_ac8_replay.rs"]
+mod wake_ac8_replay;
