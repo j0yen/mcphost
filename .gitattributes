@@ -1,1 +1,16 @@
 Cargo.lock merge=ours
+
+# PRD-build-land-conflict-resolver R6: append-only files land-resolve.sh
+# already union-merges during a build-loop conflict (state/land-policy/
+# mcphost.json); this makes an operator's manual `git rebase`/`git merge`
+# behave the same way instead of stopping on a textual conflict.
+#
+# extended-gates.toml lives at the repo ROOT, not under .buildloop/ --
+# corrected here from the PRD's own R2 text, which named the wrong path
+# (verified live: `git ls-tree -r --name-only origin/main | grep
+# extended-gates` -> extended-gates.toml at root; .buildloop/ contains
+# only ci-equivalent.toml) -- the original path would have silently never
+# matched any real file.
+CHANGELOG.md merge=union
+www/llms.txt merge=union
+extended-gates.toml merge=union
