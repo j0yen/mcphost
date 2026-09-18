@@ -19,7 +19,7 @@
 -- source_sha256" (AC1) holds for every kind, not just `python`.
 CREATE TABLE IF NOT EXISTS tool_versions (
     id            INTEGER PRIMARY KEY,
-    tenant_id     INTEGER NOT NULL REFERENCES tenants(id),
+    tenant_id     INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     name          TEXT NOT NULL,
     version       INTEGER NOT NULL,
     kind          TEXT NOT NULL,
@@ -37,9 +37,9 @@ CREATE INDEX IF NOT EXISTS idx_tool_versions_tenant_name
 -- unpinned before", which is why a caller's very first unpinned call never
 -- carries a `version_changed` note (nothing to diff against yet).
 CREATE TABLE IF NOT EXISTS shared_tool_last_seen (
-    owner_tenant_id  INTEGER NOT NULL REFERENCES tenants(id),
+    owner_tenant_id  INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     name             TEXT NOT NULL,
-    caller_tenant_id INTEGER NOT NULL REFERENCES tenants(id),
+    caller_tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     version          INTEGER NOT NULL,
     PRIMARY KEY (owner_tenant_id, name, caller_tenant_id)
 );
