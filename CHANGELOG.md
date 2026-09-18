@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.57.0 — 2026-09-18
+
+A tenant that wants to leave today has no path but emailing support. Adds
+`host.self_offboard(tenant_key)` -- cancels the tenant's Stripe subscription
+(pro plan) before flipping its row to disabled, tears down its provisioned
+kind resources via the existing `on_tenant_removed` hook, and is idempotent
+(a second call on an already-disabled key is refused with a typed
+`TenantKeyInvalid` at the auth layer, before it reaches the handler).
+`migrations/0023_self_offboard.sql` adds `tenants.disabled_reason`, surfaced
+in the admin tenants listing for AC5. 5 AC test files (self_offboard_ac1-5)
+cover the full path; full suite green at branch head.
+
+PRD-mcphost-tenant-self-offboard AC1-5.
+
 ## v0.56.2 — 2026-09-18
 
 Requirement inference no longer rejects Python's `__future__` and

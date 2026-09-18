@@ -267,6 +267,61 @@ pub async fn key_rotate(state: &AppState, tenant: &Tenant) -> Result<Value, AppE
     }))
 }
 
+/// `host.self_offboard()` (PRD-mcphost-tenant-self-offboard P0 requirements
+/// 1-2, AC1-4): the tenant's own public path to close its account -- no
+/// admin key, no operator ticket. Authenticated exactly like any other
+/// `host.*` call (`tenant_key` argument or `Authorization` header, same as
+/// `host.key_rotate` above).
+///
+/// AC2's idempotency needs no double-flip branch here: `resolve_auth`/
+/// `resolve_tenant_key_auth` (`handler.rs`) already refuse a *disabled*
+/// tenant's key before `dispatch_tenant_tool` ever calls this function --
+/// `tenant_disabled` on the header path, `tenant_key_invalid` on the
+/// `tenant_key`-argument path (AC3, same shape as an unissued key). So a
+/// second `host.self_offboard()` call with an already-offboarded tenant's
+/// key never reaches this body at all; it gets the same well-typed,
+/// non-crashing refusal every other `host.*`/`billing.*` call already gets
+/// from that key, which is precisely AC2's "clean typed result, not a
+/// crash or ambiguous error." [`crate::db::Db::self_offboard_tenant`]'s own
+/// `WHERE disabled = 0` guard is the second, defense-in-depth layer for
+/// that same invariant, not the primary mechanism.
+pub async fn self_offboard(state: &AppState, tenant: &Tenant) -> Result<Value, AppError> {
+    // AC4: if this is a `pro` tenant with a Stripe customer on file,
+    // cancel any live subscription BEFORE flipping the local row -- a
+    // crash between the two calls leaves the tenant enabled (retryable),
+    // never disabled with billing still running.
+    let mut billing_canceled: Vec<String> = Vec::new();
+    if tenant.plan == "pro"
+        && let Some(stripe_customer_id) = tenant.stripe_customer_id.as_deref()
+    {
+        billing_canceled = state
+            .billing_client
+            .cancel_active_subscriptions(stripe_customer_id)
+            .await?;
+    }
+
+    state.db.self_offboard_tenant(tenant.id).await?;
+
+    // Same retention convention `admin.tenant_disable` already applies
+    // (`src/admin.rs::tenant_disable`) -- every registered kind gets a
+    // chance to tear down anything it's keeping alive for this tenant
+    // (e.g. python's warm sandbox pool). Non-Goals: this does not scrub
+    // `tools`/`secrets`/`signup_events` rows -- those stay for audit, same
+    // as an admin-disabled tenant today.
+    for k in state.kinds.all() {
+        k.on_tenant_removed(tenant.id).await;
+    }
+
+    tracing::info!(tenant = %tenant.namespace, "tenant self-offboarded");
+
+    Ok(json!({
+        "tenant": tenant.namespace,
+        "disabled": true,
+        "disabled_reason": "self_offboard",
+        "billing_canceled": billing_canceled,
+    }))
+}
+
 /// `host.quickstart(kind)` (requirement 4, AC3/AC4): the ordered sequence
 /// to a working tool of `kind`, with the tenant's own namespace and a
 /// filled-in [`crate::kinds::KindExample`] substituted in, plus the current

@@ -37,6 +37,7 @@ const MIGRATION_0021: &str = include_str!("../migrations/0021_messaging.sql");
 const MIGRATION_0022: &str = include_str!("../migrations/0022_message_refused.sql");
 const MIGRATION_0023: &str = include_str!("../migrations/0023_message_triggers.sql");
 const MIGRATION_0024: &str = include_str!("../migrations/0024_consent.sql");
+const MIGRATION_0025: &str = include_str!("../migrations/0025_self_offboard.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -51,7 +52,7 @@ const MSG_DEDUPE_WINDOW_MS: i64 = 86_400_000;
 const TENANT_COLUMNS: &str = "id, namespace, display_name, key_hash, created_at, disabled, \
     last_tool_change_unix, namespace_verified, registry_namespace, plan, plan_since, billing_ref, \
     stripe_customer_id, synthetic, source_class, client_name, client_version, classified_by, \
-    created_unix, origin, origin_detail, key_rotated_unix";
+    created_unix, origin, origin_detail, key_rotated_unix, disabled_reason";
 
 fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
     Ok(Tenant {
@@ -77,6 +78,7 @@ fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
         origin: r.get(19)?,
         origin_detail: r.get(20)?,
         key_rotated_unix: r.get(21)?,
+        disabled_reason: r.get(22)?,
     })
 }
 
@@ -338,6 +340,13 @@ pub struct Tenant {
     /// tenant that has never rotated (migration 0019). `host.whoami`'s
     /// `key_age_s` is measured from this when set, else from `created_unix`.
     pub key_rotated_unix: Option<i64>,
+    /// PRD-mcphost-tenant-self-offboard P1 requirement 5 / AC5: why
+    /// `disabled` is true -- `"self_offboard"` for `host.self_offboard()`,
+    /// `"admin_disable"` for `admin.tenant_disable`, or `None` for an
+    /// enabled tenant (or a row disabled before this column existed --
+    /// migration 0025 backfills nothing, since there is no prior reason to
+    /// recover). See migration 0025.
+    pub disabled_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1001,7 +1010,8 @@ impl Db {
         Self::migrate_0021_messaging(&conn)?;
         Self::migrate_0022_message_refused(&conn)?;
         Self::migrate_0023_message_triggers(&conn)?;
-        Self::migrate_0024_consent(&conn)
+        Self::migrate_0024_consent(&conn)?;
+        Self::migrate_0025_self_offboard(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -1343,6 +1353,22 @@ impl Db {
         Ok(())
     }
 
+    /// PRD-mcphost-tenant-self-offboard P1 requirement 5 / AC5: same
+    /// additive-column idempotency guard as 0002/0020/0022 above, gated on
+    /// `disabled_reason` (0025's only change). Renumbered 0023 -> 0025 on
+    /// rebase onto mcphost-agent-wake + mcphost-agent-consent, which landed
+    /// migrations 0023 and 0024 first (same renumbering precedent as
+    /// `migrate_0024_consent` above).
+    fn migrate_0025_self_offboard(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'disabled_reason'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0025)?;
+        }
+        Ok(())
+    }
+
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
     /// subcommand.
@@ -1530,6 +1556,7 @@ impl Db {
                 origin,
                 origin_detail,
                 key_rotated_unix: None,
+                disabled_reason: None,
             })
         })
         .await
@@ -1840,15 +1867,51 @@ impl Db {
         .await
     }
 
+    /// `admin.tenant_disable`/`admin.tenant_enable`'s own flip.
+    /// PRD-mcphost-tenant-self-offboard P1 requirement 5 / AC5: enabling
+    /// (`disabled = false`) also clears `disabled_reason` back to `NULL`
+    /// -- a re-enabled tenant carries no stale "why it was disabled" label
+    /// -- and disabling via this path always records `"admin_disable"`,
+    /// distinguishing it from [`Self::self_offboard_tenant`]'s
+    /// `"self_offboard"`.
     pub async fn set_tenant_disabled(
         &self,
         namespace: String,
         disabled: bool,
     ) -> Result<bool, AppError> {
         self.with_conn(move |conn| {
+            let reason: Option<&str> = if disabled { Some("admin_disable") } else { None };
             let n = conn.execute(
-                "UPDATE tenants SET disabled = ?1 WHERE namespace = ?2",
-                params![disabled as i64, namespace],
+                "UPDATE tenants SET disabled = ?1, disabled_reason = ?2 WHERE namespace = ?3",
+                params![disabled as i64, reason, namespace],
+            )?;
+            Ok(n > 0)
+        })
+        .await
+    }
+
+    /// `host.self_offboard()` (PRD-mcphost-tenant-self-offboard P0
+    /// requirement 1 / AC1-2): the tenant's own public path to disable its
+    /// account, keyed by `tenant_id` (not `namespace` -- the caller already
+    /// holds a resolved [`Tenant`], same convention as
+    /// [`Self::rotate_tenant_key`]). Records `disabled_reason =
+    /// 'self_offboard'` (AC5) so it's distinguishable from an
+    /// `admin.tenant_disable` row. `WHERE disabled = 0` makes this a no-op
+    /// (not an error) on a tenant that is somehow already disabled by the
+    /// time this runs -- defense in depth alongside the auth-layer
+    /// idempotency `dispatch_tenant_tool` already provides (a disabled
+    /// tenant's key never resolves to a call reaching this method at all;
+    /// see `control::self_offboard`'s doc comment for AC2's actual
+    /// mechanism), so a direct future caller of this method that skips
+    /// that gate still can't flip `disabled_reason` back to
+    /// `'self_offboard'` on a row an admin has since re-enabled and
+    /// disabled again for a different reason.
+    pub async fn self_offboard_tenant(&self, tenant_id: i64) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "UPDATE tenants SET disabled = 1, disabled_reason = 'self_offboard' \
+                 WHERE id = ?1 AND disabled = 0",
+                params![tenant_id],
             )?;
             Ok(n > 0)
         })
