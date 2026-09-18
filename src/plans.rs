@@ -149,6 +149,17 @@ pub struct Plan {
     /// plan's own default (3) when a hand-edited `plans.toml` predates this
     /// key.
     pub urgent_per_day: i64,
+    /// PRD-mcphost-tool-versions requirement 2 / user story: how many
+    /// `tool_versions` rows a single tool name may keep before
+    /// `host.tool_publish` prunes the oldest beyond this count. Open
+    /// question resolved at build: "free keeps 5 and pro keeps 20" is the
+    /// PRD's own worked example (AC3, user stories), not an assumed
+    /// number -- this is the one PRD-named per-plan quota in this
+    /// catalog, unlike every `_max` field above it. Defaults to the
+    /// `free` plan's own default (5) when a hand-edited `plans.toml`
+    /// predates this key, same tolerant-parse convention as every other
+    /// field above.
+    pub versions_max: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -212,6 +223,9 @@ impl PlanCatalog {
                     // "free plan's urgent_per_day is 3".
                     contact_requests_per_day: 20,
                     urgent_per_day: 3,
+                    // PRD-mcphost-tool-versions user story: "free keeps 5
+                    // versions".
+                    versions_max: 5,
                 },
                 Plan {
                     name: "pro".to_string(),
@@ -268,6 +282,9 @@ impl PlanCatalog {
                     // 100 (~33x) for urgent_per_day.
                     contact_requests_per_day: 500,
                     urgent_per_day: 100,
+                    // PRD-mcphost-tool-versions user story: "pro keeps 20
+                    // versions".
+                    versions_max: 20,
                 },
             ],
         }
@@ -359,6 +376,7 @@ impl PlanCatalog {
                 p.contact_requests_per_day
             ));
             out.push_str(&format!("urgent_per_day = {}\n", p.urgent_per_day));
+            out.push_str(&format!("versions_max = {}\n", p.versions_max));
             out.push('\n');
         }
         out
@@ -429,6 +447,7 @@ impl PlanCatalog {
                 "recipients_per_msg_max" => builder.recipients_per_msg_max = Some(int_value()),
                 "contact_requests_per_day" => builder.contact_requests_per_day = Some(int_value()),
                 "urgent_per_day" => builder.urgent_per_day = Some(int_value()),
+                "versions_max" => builder.versions_max = Some(int_value()),
                 _ => {}
             }
         }
@@ -473,6 +492,7 @@ struct PlanBuilder {
     recipients_per_msg_max: Option<i64>,
     contact_requests_per_day: Option<i64>,
     urgent_per_day: Option<i64>,
+    versions_max: Option<i64>,
 }
 
 impl PlanBuilder {
@@ -532,6 +552,10 @@ impl PlanBuilder {
             // tolerant-parse rationale as every other field above.
             contact_requests_per_day: self.contact_requests_per_day.unwrap_or(20),
             urgent_per_day: self.urgent_per_day.unwrap_or(3),
+            // PRD-mcphost-tool-versions: a `plans.toml` predating this key
+            // gets the `free` plan's own default (5), same tolerant-parse
+            // rationale as every other field above.
+            versions_max: self.versions_max.unwrap_or(5),
         })
     }
 }
