@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-stdlib-pseudo-modules.md (test_prefix: stdlibpseudo)",
+  "ac_test_map_prd": "PRD-mcphost-tool-versions.md (test_prefix: toolver)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,12 +28,29 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/stdlibpseudo_ac1_future_import_empty_requirements.rs",
-    "AC2": "tests/stdlibpseudo_ac2_dunder_main_no_requirement.rs",
-    "AC3": "tests/ac10_publish_validation_errors.rs (existing AC10 regression coverage for a genuinely-unknown import; reverified unchanged by this PRD, not a new file)",
-    "AC4": "src/kinds/infer.rs unit test `stdlib_regeneration_keeps_pseudo_modules` (run via `cargo test --lib kinds::infer::`) -- not a tests/ file, so revdebt_ac1's path-existence check does not apply to it"
+    "AC1": "tests/toolver_ac01_history_lists_versions.rs",
+    "AC2": "tests/toolver_ac02_rollback_runs_old_source.rs",
+    "AC3": "tests/toolver_ac03_free_plan_retention.rs",
+    "AC4": "tests/toolver_ac04_rollback_unknown_version_errors.rs",
+    "AC5": "tests/toolver_ac05_pinned_call_survives_republish.rs",
+    "AC6": "deferred — no test; live-only proof (prod republish+rollback of homeward's tool, host.tool_history checked live during the build's live check) recorded in the ship trailer, same convention as the founding ac_test_map's AC12",
+    "AC7": "tests/toolver_ac07_version_changed_note_once.rs",
+    "AC8": "tests/toolver_ac08_remove_deletes_all_versions.rs",
+    "AC9": "tests/toolver_ac09_diff_unified.rs"
   },
   "ac_test_map_by_prefix": {
+    "toolver": {
+      "_prd": "PRD-mcphost-tool-versions.md -- same as ac_test_map above while this PRD is the one at HEAD",
+      "AC1": "tests/toolver_ac01_history_lists_versions.rs",
+      "AC2": "tests/toolver_ac02_rollback_runs_old_source.rs",
+      "AC3": "tests/toolver_ac03_free_plan_retention.rs",
+      "AC4": "tests/toolver_ac04_rollback_unknown_version_errors.rs",
+      "AC5": "tests/toolver_ac05_pinned_call_survives_republish.rs",
+      "AC6": "deferred — no test; live-only proof (prod republish+rollback of homeward's tool, host.tool_history checked live during the build's live check) recorded in the ship trailer, same convention as the founding ac_test_map's AC12",
+      "AC7": "tests/toolver_ac07_version_changed_note_once.rs",
+      "AC8": "tests/toolver_ac08_remove_deletes_all_versions.rs",
+      "AC9": "tests/toolver_ac09_diff_unified.rs"
+    },
     "ac": {
       "_prd": "the founding hand-built implementation (commit 9315032); tests/ac<NN>_*.rs + tests/ac17_kind_conformance.rs",
       "AC1": "tests/ac01_unauthenticated_lists_signup.rs",

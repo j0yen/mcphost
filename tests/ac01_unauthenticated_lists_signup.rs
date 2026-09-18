@@ -75,6 +75,12 @@ async fn unauthenticated_tools_list_is_signup_only() {
         // being retired), not to discover.
         "host.self_offboard",
         "host.tool_publish",
+        // PRD-mcphost-tool-versions P0 requirements 3/4, P2 requirement 8:
+        // history/rollback/diff are discoverable unauthenticated too, same
+        // as the rest of the host.* control plane.
+        "host.tool_history",
+        "host.tool_rollback",
+        "host.tool_diff",
         // PRD-mcphost-publish-first-try requirement 4: discoverable
         // unauthenticated too, same as the rest of the host.* control
         // plane -- an agent that hasn't signed up yet still gets the
@@ -204,7 +210,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        77,
+        80,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the nine host.state.* tools (PRD-mcphost-tenant-state) \
@@ -216,7 +222,8 @@ async fn unauthenticated_tools_list_is_signup_only() {
          (PRD-mcphost-agent-directory) + the eight host.msg.* tools \
          (PRD-mcphost-agent-inbox, PRD-mcphost-agent-wake) + the seven \
          host.agent.contact_*/mute/unmute tools (PRD-mcphost-agent-consent) + \
-         host.self_offboard (PRD-mcphost-tenant-self-offboard): \
+         host.self_offboard (PRD-mcphost-tenant-self-offboard) + host.tool_history/ \
+         host.tool_rollback/host.tool_diff (PRD-mcphost-tool-versions): \
          {tool_names:?}"
     );
 }

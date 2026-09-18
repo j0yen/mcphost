@@ -266,6 +266,22 @@ mod tooltest_ac6_quota_and_metering;
 mod tooltest_ac7_too_many_invocations;
 #[path = "tooltest_ac9_ac10_listing_and_auth.rs"]
 mod tooltest_ac9_ac10_listing_and_auth;
+#[path = "toolver_ac01_history_lists_versions.rs"]
+mod toolver_ac01_history_lists_versions;
+#[path = "toolver_ac02_rollback_runs_old_source.rs"]
+mod toolver_ac02_rollback_runs_old_source;
+#[path = "toolver_ac03_free_plan_retention.rs"]
+mod toolver_ac03_free_plan_retention;
+#[path = "toolver_ac04_rollback_unknown_version_errors.rs"]
+mod toolver_ac04_rollback_unknown_version_errors;
+#[path = "toolver_ac05_pinned_call_survives_republish.rs"]
+mod toolver_ac05_pinned_call_survives_republish;
+#[path = "toolver_ac07_version_changed_note_once.rs"]
+mod toolver_ac07_version_changed_note_once;
+#[path = "toolver_ac08_remove_deletes_all_versions.rs"]
+mod toolver_ac08_remove_deletes_all_versions;
+#[path = "toolver_ac09_diff_unified.rs"]
+mod toolver_ac09_diff_unified;
 #[path = "wake_ac1_message_trigger_fires_run.rs"]
 mod wake_ac1_message_trigger_fires_run;
 #[path = "wake_ac2_from_filter.rs"]

@@ -38,6 +38,7 @@ const MIGRATION_0022: &str = include_str!("../migrations/0022_message_refused.sq
 const MIGRATION_0023: &str = include_str!("../migrations/0023_message_triggers.sql");
 const MIGRATION_0024: &str = include_str!("../migrations/0024_consent.sql");
 const MIGRATION_0025: &str = include_str!("../migrations/0025_self_offboard.sql");
+const MIGRATION_0026: &str = include_str!("../migrations/0026_tool_versions.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -87,7 +88,7 @@ fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
 /// convention as [`TENANT_COLUMNS`]/[`tenant_from_row`] above
 /// (PRD-mcphost-sharing migration 0013).
 const TOOL_COLUMNS: &str = "id, tenant_id, name, kind, spec, created_at, visibility, \
-    share_description, shared_unix, shared_group, unshared_by";
+    share_description, shared_unix, shared_group, unshared_by, current_version";
 
 fn tool_from_row(r: &Row) -> rusqlite::Result<ToolRow> {
     let spec_text: String = r.get(4)?;
@@ -103,6 +104,22 @@ fn tool_from_row(r: &Row) -> rusqlite::Result<ToolRow> {
         shared_unix: r.get(8)?,
         shared_group: r.get(9)?,
         unshared_by: r.get(10)?,
+        current_version: r.get(11)?,
+    })
+}
+
+/// Shared by [`Db::list_tool_versions`]/[`Db::get_tool_version`] --
+/// `SELECT version, kind, spec, created_unix, source_sha256` in that exact
+/// order, same column-list/row-reader lockstep convention as
+/// [`tool_from_row`] above.
+fn tool_version_from_row(r: &Row) -> rusqlite::Result<ToolVersionRow> {
+    let spec_text: String = r.get(2)?;
+    Ok(ToolVersionRow {
+        version: r.get(0)?,
+        kind: r.get(1)?,
+        spec: serde_json::from_str(&spec_text).unwrap_or(Value::Null),
+        created_unix: r.get(3)?,
+        source_sha256: r.get(4)?,
     })
 }
 
@@ -374,6 +391,23 @@ pub struct ToolRow {
     /// `"admin"` when `admin.tool_unshare` most recently unshared this
     /// tool; `None` otherwise (AC9).
     pub unshared_by: Option<String>,
+    /// PRD-mcphost-tool-versions migration 0026: which `tool_versions.version`
+    /// is this tool's live one -- `1` for every tool that predates
+    /// versioning (the migration's own backfill), advanced by
+    /// `host.tool_publish` and moved arbitrarily by `host.tool_rollback`.
+    pub current_version: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ToolVersionRow {
+    pub version: i64,
+    pub kind: String,
+    pub spec: Value,
+    pub created_unix: i64,
+    /// sha256 of this version's serialized `spec`, hex-encoded -- see
+    /// migration 0026's doc comment for why this hashes the whole spec
+    /// rather than a `source`-only field.
+    pub source_sha256: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -1011,7 +1045,8 @@ impl Db {
         Self::migrate_0022_message_refused(&conn)?;
         Self::migrate_0023_message_triggers(&conn)?;
         Self::migrate_0024_consent(&conn)?;
-        Self::migrate_0025_self_offboard(&conn)
+        Self::migrate_0025_self_offboard(&conn)?;
+        Self::migrate_0026_tool_versions(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -1365,6 +1400,40 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0025)?;
+        }
+        Ok(())
+    }
+
+    /// 0026: additive `tools.current_version` column (same
+    /// `pragma_table_info` idempotency guard as every ALTER-TABLE
+    /// migration above) plus the new `tool_versions`/`shared_tool_last_seen`
+    /// tables; on first application only, backfill a version-1
+    /// `tool_versions` row for every tool that already existed (migration/
+    /// compatibility: "Existing tools become version 1 on migration;
+    /// current_version = 1") -- guarded by the same `!has_column` check so
+    /// a re-run of `migrate()` (idempotent, per its own doc comment) never
+    /// inserts a duplicate version-1 row.
+    fn migrate_0026_tool_versions(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tools') WHERE name = 'current_version'")?
+            .exists([])?;
+        if has_column {
+            return Ok(());
+        }
+        conn.execute_batch(MIGRATION_0026)?;
+        let mut stmt = conn.prepare("SELECT tenant_id, name, kind, spec, created_at FROM tools")?;
+        let rows: Vec<(i64, String, String, String, String)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        for (tenant_id, name, kind, spec, created_at) in rows {
+            let created_unix = parse_created_at_unix(&created_at).unwrap_or_else(now_unix);
+            let source_sha256 = crate::billing::sha256_hex(spec.as_bytes());
+            conn.execute(
+                "INSERT OR IGNORE INTO tool_versions \
+                 (tenant_id, name, version, kind, spec, created_unix, source_sha256) \
+                 VALUES (?1, ?2, 1, ?3, ?4, ?5, ?6)",
+                params![tenant_id, name, kind, spec, created_unix, source_sha256],
+            )?;
         }
         Ok(())
     }
@@ -2797,6 +2866,243 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-tool-versions requirement 2 (AC1): `control::tool_publish`
+    /// calls this instead of [`Self::upsert_tool`] -- every publish becomes
+    /// a new, immutable `tool_versions` row (never overwritten) and
+    /// `tools.current_version` advances to point at it. `tools` itself
+    /// still carries a denormalized copy of the latest kind/spec (every
+    /// other reader -- `get_tool`, `list_tools`, cross-tenant resolution --
+    /// keeps reading it unchanged; only the CURRENT version's content ever
+    /// needs to live there). Returns the new version number.
+    pub async fn publish_new_version(
+        &self,
+        tenant_id: i64,
+        name: String,
+        kind: String,
+        spec: Value,
+    ) -> Result<i64, AppError> {
+        let created_at = now_rfc3339();
+        let created_unix = now_unix();
+        let spec_text = serde_json::to_string(&spec)
+            .map_err(|e| AppError::Internal(format!("spec serialize: {e}")))?;
+        let source_sha256 = crate::billing::sha256_hex(spec_text.as_bytes());
+        self.with_conn(move |conn| {
+            let next_version: i64 = conn.query_row(
+                "SELECT COALESCE(MAX(version), 0) + 1 FROM tool_versions WHERE tenant_id = ?1 AND name = ?2",
+                params![tenant_id, name],
+                |r| r.get(0),
+            )?;
+            conn.execute(
+                "INSERT INTO tool_versions \
+                 (tenant_id, name, version, kind, spec, created_unix, source_sha256) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![tenant_id, name, next_version, kind, spec_text, created_unix, source_sha256],
+            )?;
+            conn.execute(
+                "INSERT INTO tools (tenant_id, name, kind, spec, created_at, current_version) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
+                 ON CONFLICT(tenant_id, name) DO UPDATE SET \
+                 kind = excluded.kind, spec = excluded.spec, current_version = excluded.current_version",
+                params![tenant_id, name, kind, spec_text, created_at, next_version],
+            )?;
+            touch_tenant_tool_change(conn, tenant_id)?;
+            Ok(next_version)
+        })
+        .await
+    }
+
+    /// AC3: total number of stored `tool_versions` rows for one tool name
+    /// -- what `control::tool_publish` compares against the tenant's plan
+    /// `versions_max` right after [`Self::publish_new_version`], to decide
+    /// whether to prune.
+    pub async fn count_tool_versions(&self, tenant_id: i64, name: String) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM tool_versions WHERE tenant_id = ?1 AND name = ?2",
+                params![tenant_id, name],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// AC3: delete the oldest (lowest `version`) rows for a tool beyond the
+    /// newest `keep` -- a no-op once there are `keep` or fewer. Deleting by
+    /// version number (rather than a row count over `id`) matters because
+    /// `host.tool_rollback` never deletes rows, so "newest `keep`" and
+    /// "highest `keep` version numbers" always agree.
+    pub async fn prune_tool_versions(
+        &self,
+        tenant_id: i64,
+        name: String,
+        keep: i64,
+    ) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "DELETE FROM tool_versions WHERE tenant_id = ?1 AND name = ?2 AND version NOT IN \
+                 (SELECT version FROM tool_versions WHERE tenant_id = ?1 AND name = ?2 \
+                  ORDER BY version DESC LIMIT ?3)",
+                params![tenant_id, name, keep],
+            )?;
+            Ok(n as i64)
+        })
+        .await
+    }
+
+    /// `host.tool_history {name}` (AC1): newest-first.
+    pub async fn list_tool_versions(
+        &self,
+        tenant_id: i64,
+        name: String,
+    ) -> Result<Vec<ToolVersionRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT version, kind, spec, created_unix, source_sha256 FROM tool_versions \
+                 WHERE tenant_id = ?1 AND name = ?2 ORDER BY version DESC",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id, name], tool_version_from_row)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// `host.tool_rollback`/a pinned call: one specific version's stored
+    /// kind+spec, or `None` if that version never existed (or was pruned).
+    pub async fn get_tool_version(
+        &self,
+        tenant_id: i64,
+        name: String,
+        version: i64,
+    ) -> Result<Option<ToolVersionRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT version, kind, spec, created_unix, source_sha256 FROM tool_versions \
+                 WHERE tenant_id = ?1 AND name = ?2 AND version = ?3",
+                params![tenant_id, name, version],
+                tool_version_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// AC4: the `(min, max)` version numbers currently on file for a tool,
+    /// so an unknown-version `host.tool_rollback` can name the valid range
+    /// in its `args_invalid` message instead of just saying "unknown".
+    /// `None` if the tool has no stored versions at all (shouldn't happen
+    /// for a tool that still exists, but this is a plain read, not an
+    /// invariant check).
+    pub async fn tool_version_range(
+        &self,
+        tenant_id: i64,
+        name: String,
+    ) -> Result<Option<(i64, i64)>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT MIN(version), MAX(version) FROM tool_versions WHERE tenant_id = ?1 AND name = ?2",
+                params![tenant_id, name],
+                |r| {
+                    let min: Option<i64> = r.get(0)?;
+                    let max: Option<i64> = r.get(1)?;
+                    Ok(min.zip(max))
+                },
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `host.tool_rollback {name, version}` (AC2/AC4): moves
+    /// `tools.current_version` to `version` AND overwrites `tools.kind`/
+    /// `tools.spec` with that version's own stored content -- `tools`
+    /// denormalizes whatever the CURRENT version is (every unversioned
+    /// reader -- `get_tool`, `list_tools`, cross-tenant resolution --
+    /// reads it directly, never joining through `current_version` into
+    /// `tool_versions`), so AC2's "the next host.tool_call runs version
+    /// 1's source" needs this copy, not just the pointer, kept in sync.
+    /// The caller (`control::tool_rollback`) is responsible for checking
+    /// that `version` actually has a `tool_versions` row first (so it can
+    /// build the "names the valid range" error itself, and so it already
+    /// has `kind`/`spec` in hand to pass here); this returns `false` only
+    /// if `name` isn't one of this tenant's tools at all.
+    // Five parameters: one atomic `UPDATE` with a single caller
+    // (`control::tool_rollback`), which already has `kind`/`spec` in hand
+    // from the target version's row -- same shape as `set_tool_share` above.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn set_current_version(
+        &self,
+        tenant_id: i64,
+        name: String,
+        version: i64,
+        kind: String,
+        spec: Value,
+    ) -> Result<bool, AppError> {
+        let spec_text = serde_json::to_string(&spec)
+            .map_err(|e| AppError::Internal(format!("spec serialize: {e}")))?;
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "UPDATE tools SET current_version = ?1, kind = ?2, spec = ?3 \
+                 WHERE tenant_id = ?4 AND name = ?5",
+                params![version, kind, spec_text, tenant_id, name],
+            )?;
+            if n > 0 {
+                touch_tenant_tool_change(conn, tenant_id)?;
+            }
+            Ok(n > 0)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-tool-versions requirement 6 (AC7): what
+    /// `caller_tenant_id` last saw as `name`'s current version, cross-
+    /// tenant, the last time it made an UNPINNED call -- `None` before its
+    /// first ever such call (no baseline to diff against yet, so the first
+    /// call never carries a `version_changed` note).
+    pub async fn shared_tool_last_seen(
+        &self,
+        owner_tenant_id: i64,
+        name: String,
+        caller_tenant_id: i64,
+    ) -> Result<Option<i64>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT version FROM shared_tool_last_seen \
+                 WHERE owner_tenant_id = ?1 AND name = ?2 AND caller_tenant_id = ?3",
+                params![owner_tenant_id, name, caller_tenant_id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Companion write to [`Self::shared_tool_last_seen`]: upserted on
+    /// every unpinned cross-tenant call, whether or not this call's
+    /// envelope ended up carrying a `version_changed` note.
+    pub async fn set_shared_tool_last_seen(
+        &self,
+        owner_tenant_id: i64,
+        name: String,
+        caller_tenant_id: i64,
+        version: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO shared_tool_last_seen (owner_tenant_id, name, caller_tenant_id, version) \
+                 VALUES (?1, ?2, ?3, ?4) \
+                 ON CONFLICT(owner_tenant_id, name, caller_tenant_id) DO UPDATE SET version = excluded.version",
+                params![owner_tenant_id, name, caller_tenant_id, version],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
     pub async fn list_tools(&self, tenant_id: i64) -> Result<Vec<ToolRow>, AppError> {
         self.with_conn(move |conn| {
             let sql = format!("SELECT {TOOL_COLUMNS} FROM tools WHERE tenant_id = ?1 ORDER BY name");
@@ -2959,6 +3265,7 @@ impl Db {
                             shared_unix: r.get(9)?,
                             shared_group: r.get(10)?,
                             unshared_by: r.get(11)?,
+                            current_version: r.get(12)?,
                         },
                     ))
                 })?
@@ -3149,6 +3456,7 @@ impl Db {
                         shared_unix: r.get(9)?,
                         shared_group: r.get(10)?,
                         unshared_by: r.get(11)?,
+                        current_version: r.get(12)?,
                     };
                     Ok((namespace, tool))
                 })?
@@ -3237,6 +3545,20 @@ impl Db {
                 // deletes the row a naive max(created_at)-over-surviving-rows
                 // read would need -- so the tenant carries its own stamp.
                 touch_tenant_tool_change(conn, tenant_id)?;
+                // PRD-mcphost-tool-versions requirement 7 (AC8): a remove
+                // takes every stored version -- and any cross-tenant
+                // caller's `version_changed` bookkeeping for it -- with it,
+                // so `host.tool_history` on this name reads back
+                // not-found rather than an empty list orphaned from a
+                // `tools` row that no longer exists.
+                conn.execute(
+                    "DELETE FROM tool_versions WHERE tenant_id = ?1 AND name = ?2",
+                    params![tenant_id, name],
+                )?;
+                conn.execute(
+                    "DELETE FROM shared_tool_last_seen WHERE owner_tenant_id = ?1 AND name = ?2",
+                    params![tenant_id, name],
+                )?;
             }
             Ok(n > 0)
         })

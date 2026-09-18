@@ -44,7 +44,7 @@ async fn ac1_anonymous_tools_list_has_cache_fields() {
     assert!(names.contains(&"signup"), "{names:?}");
     assert_eq!(
         names.len(),
-        77,
+        80,
         "signup + host.* (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + host.state.* (9 tools, PRD-mcphost-tenant-state) + \
          host.table.* (6 tools, PRD-mcphost-tenant-tables) + \
@@ -54,7 +54,7 @@ async fn ac1_anonymous_tools_list_has_cache_fields() {
          host.agent.* (4 tools, PRD-mcphost-agent-directory) + \
          host.msg.* (8 tools, PRD-mcphost-agent-inbox, PRD-mcphost-agent-wake) + \
          host.agent.contact_*/mute/unmute (7 tools, PRD-mcphost-agent-consent) + \
-         host.self_offboard (PRD-mcphost-tenant-self-offboard): {names:?}"
+         host.self_offboard (PRD-mcphost-tenant-self-offboard) + host.tool_history/host.tool_rollback/host.tool_diff (PRD-mcphost-tool-versions): {names:?}"
     );
 }
 
@@ -134,7 +134,7 @@ async fn ac3_invalid_bearer_tools_list_has_cache_fields() {
     assert!(names.contains(&"signup"), "{names:?}");
     assert_eq!(
         names.len(),
-        77,
+        80,
         "signup + host.* (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + host.state.* (9 tools, PRD-mcphost-tenant-state) + \
          host.table.* (6 tools, PRD-mcphost-tenant-tables) + \
@@ -144,6 +144,6 @@ async fn ac3_invalid_bearer_tools_list_has_cache_fields() {
          host.agent.* (4 tools, PRD-mcphost-agent-directory) + \
          host.msg.* (8 tools, PRD-mcphost-agent-inbox, PRD-mcphost-agent-wake) + \
          host.agent.contact_*/mute/unmute (7 tools, PRD-mcphost-agent-consent) + \
-         host.self_offboard (PRD-mcphost-tenant-self-offboard): {names:?}"
+         host.self_offboard (PRD-mcphost-tenant-self-offboard) + host.tool_history/host.tool_rollback/host.tool_diff (PRD-mcphost-tool-versions): {names:?}"
     );
 }

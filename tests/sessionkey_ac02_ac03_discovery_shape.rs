@@ -51,7 +51,7 @@ async fn every_host_star_descriptor_declares_an_optional_tenant_key() {
         .collect();
     assert_eq!(
         host_tools.len(),
-        73,
+        76,
         "the thirteen host.* control tools (incl. host.quickstart, host.tool_run, and \
          host.bridge_test) plus host.redeem plus host.key_rotate (PRD-mcphost-handoff-token) \
          plus host.tool_call plus the nine host.state.* tools \
@@ -63,7 +63,8 @@ async fn every_host_star_descriptor_declares_an_optional_tenant_key() {
          four host.agent.* tools (PRD-mcphost-agent-directory) plus the eight \
          host.msg.* tools (PRD-mcphost-agent-inbox, PRD-mcphost-agent-wake) plus the seven \
          host.agent.contact_*/mute/unmute tools (PRD-mcphost-agent-consent) plus \
-         host.self_offboard (PRD-mcphost-tenant-self-offboard): {entries:?}"
+         host.self_offboard (PRD-mcphost-tenant-self-offboard) plus host.tool_history/ \
+         host.tool_rollback/host.tool_diff (PRD-mcphost-tool-versions): {entries:?}"
     );
 
     for tool in host_tools {
