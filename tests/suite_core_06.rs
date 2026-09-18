@@ -8,6 +8,11 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 mod ci_sandbox_support;
+#[path = "support/host.rs"]
+#[allow(dead_code)]
+mod host;
+#[path = "support/lanecov.rs"]
+mod lanecov;
 
 #[path = "ac01_extended_gates_prd_path_resolves_and_matches_card.rs"]
 mod ac01_extended_gates_prd_path_resolves_and_matches_card;

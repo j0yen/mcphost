@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tool-run-envelope.md",
-  "intent_slug": "mcphost-tool-run-envelope",
-  "root_motivation": "The envelope contract (PRD-mcphost-result-envelope-contract) exists because \"a correct field at an unpredictable path\" was the largest recoverable satisfaction deficit in the 0.26.3 runs \u2014 4 of 21 sessions docked. The contract was applied to calls; `host.tool_run` kept its pre-contract shape. The cost is measured (one session zeroed at 0.27.0) and the confusion is structural: four dry-run-adjacent tools already needed a decision table to distinguish (stress audit, surface-fluidity), and the one that executes real code returns a shape none of the others share. An agent that tests before publishing \u2014 the exact behavior the product wants to encourage \u2014 sees two shapes for one tool.",
-  "user_persona": "Any tenant or agent publishing idiomatic Python via host.tool_publish (e.g. PRD-fleet-bridge-live's fleet adapter, blocked live on 2026-09-12): the requirement inference must not reject `from __future__ import annotations` or `__main__` as unresolvable PyPI packages, since neither is installable and the publish error names something the calling agent cannot repair.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-test-suite-consolidation.md",
+  "intent_slug": "mcphost-test-suite-consolidation",
+  "root_motivation": "Joe's mcphost gate takes 21\u201342 minutes for a 413 s cold compile. The repo's `tests/` directory holds 289 top-level `.rs` files (2026-09-12 count) and cargo's default `autotests` makes each one a separate test binary; each links the whole 52K-LoC crate and its 41 dependencies, and measured binaries are 274\u2013291 MB (`attrib_ac1_loopback_signup_unstamped`, `infer_ac08_ac09_python_requirements`). `target/debug/deps` holds 1,391 such binaries. 269 of the files declare `mod common;`, so the shared helper is compiled 269 times. RedBaron's root disk reached 81\u201386 % on 09-08, with `target/` dirs the known bulk. Every gate pays the link cost 289 times for one crate; every new AC PRD adds another binary. PRD-build-gate-phase-timing measures the `gate` phase this PRD moves; until it ships, the expected saving is inferred from binary count and size, not measured.",
+  "user_persona": "The loop dispatching mcphost's gate: it pays the whole-crate link cost ~289 times per gate today (21-42 minutes for a 413 s cold compile), and every new AC PRD that adds one tests/<prefix>_ac<N>_*.rs file adds another binary. Also the AC-pairing classifier, which resolves tests/<prefix>_ac<N>_*.rs paths and must see the same file names and paths after consolidation as before, and the operator watching RedBaron's root disk (81-86% on 2026-09-08, target/ the known bulk).",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,42 +14,69 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a tool whose output matches its declared outputs, When exercised via `tool_call` and via `tool_run` on the same fixture, Then both results carry the fields at `result.payload.<field>` identically, and `tool_run` additionally carries `duration_ms` and `exit_code`.",
-      "test": "tests/runenvelope_ac1_call_and_tool_run_parity.rs"
+      "description": "Given the repo at HEAD, When `gen-test-suites.sh` runs and `cargo nextest list` runs, Then at most ten test binaries are listed and the set of test names (suite prefix stripped) equals the set listed at the parent commit.",
+      "test": "tests/suite_ac1_ten_binaries_and_names_preserved.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a tool with no declared outputs, When `tool_run` executes it, Then raw output lands under `result.payload` exactly as a call would place it.",
-      "test": "tests/runenvelope_ac2_no_declared_outputs_raw_payload.rs"
+      "description": "Given a new file `tests/zzz_ac1_probe.rs` that is not in any suite, When `gen-test-suites.sh --check` runs, Then it exits non-zero naming `tests/zzz_ac1_probe.rs`; after regenerating, it exits 0 and the test is listed.",
+      "test": "tests/suite_ac2_check_catches_unregistered_file.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the descriptors and llms.txt after build, When read, Then `tool_run` documents the standard envelope plus run metadata and the dry-run decision table reflects it.",
-      "test": "tests/runenvelope_ac3_descriptor_and_decision_table_name_envelope.rs"
+      "description": "Given the consolidated layout, When `grep -c 'mod common' tests/*.rs` runs over the included files, Then the count is 0 and each suite file declares `mod common;` once.",
+      "test": "tests/suite_ac3_mod_common_declared_once.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given `tool_run` executes, When the calls table is inspected, Then no row was recorded (the no-metering property is unchanged, asserted by test).",
-      "test": "tests/runenvelope_ac4_no_calls_row_with_payload.rs"
+      "description": "Given the archived mcphost PRDs' test pointers (for example `tests/hooks_ac1_*.rs`), When the verified-completed pairing classifier runs against them, Then every pairing that resolved before resolves now.",
+      "test": "tests/suite_ac4_archived_prd_pointers_resolve.rs"
     },
     {
       "id": "AC5",
+      "level": "MUST",
+      "description": "Given a clean `target/`, When `cargo nextest run` completes, Then `du -s target/debug/deps` is under 5 GB and the receipt records the size.",
+      "test": "tests/suite_ac5_disk_size_budget.rs"
+    },
+    {
+      "id": "AC6",
+      "level": "MUST",
+      "description": "Given two timed full nextest runs at the same commit, one before and one after the change (or the `gate:` phase from PRD-build-gate-phase-timing when present), When compared in the receipt, Then the after time is \u226450 % of before.",
+      "test": "tests/suite_ac6_wall_time_budget.rs"
+    },
+    {
+      "id": "AC7",
       "level": "SHOULD",
-      "description": "Given the changelog after build, When read, Then the shape change and version boundary are named.",
-      "test": "deferred -- no branch-local test possible; version bump + CHANGELOG.md prepend happen at worktree-extend.sh integrate time, not in this branch's worktree. See PRD frontmatter mock_justifications."
+      "description": "Given `.config/nextest.toml` with JUnit enabled, When the suite runs, Then a JUnit file exists with a duration per test.",
+      "test": "tests/suite_ac7_junit_per_test_timing.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "SHOULD",
+      "description": "Given the parity script from mcphost-tests-host-independence, When run against the new layout on one host, Then it matches by test name and reports the same test count as before.",
+      "test": "deferred -- see PRD deferred_acs/mock_justifications (cross-host parity script needs a second box; casper deleted); AC1's nextest list diff proves the name-matching change single-host"
+    },
+    {
+      "id": "AC9",
+      "level": "SHOULD",
+      "description": "Given the `suite` selftest cases, When the repo's test selftest runs, Then they are named and green.",
+      "test": "tests/suite_ac9_selftest_named_and_green.rs"
     }
   ],
   "scope": [
-    "`infer-data/python-stdlib.json`: add `__future__` and `__main__` pseudo-module entries so requirement inference treats them as always-resolved, never-a-PyPI-package names (AC1/AC2).",
-    "`src/kinds/infer.rs`: the inference path that consumes the stdlib JSON, plus a `stdlib_regeneration_keeps_pseudo_modules` unit test asserting the pseudo-module entries survive a future list regeneration (AC4).",
-    "`tests/stdlibpseudo_ac1_future_import_empty_requirements.rs` and `tests/stdlibpseudo_ac2_dunder_main_no_requirement.rs`: sandboxed integration tests proving the real host.spec_test/host.tool_publish path end to end for AC1/AC2, wired into `tests/suite_sandbox_03.rs`."
+    "`Cargo.toml`: `autotests = false`; one `[[test]]` per area with `path = \"tests/suite_<area>.rs\"`; areas chosen by filename prefix so no suite exceeds ~60 files and the total is <=10 (AC1).",
+    "`scripts/gen-test-suites.sh`: scans top-level `tests/*.rs`, assigns each to an area by prefix table, writes `tests/suite_<area>.rs` with `#[path = \"<file>.rs\"] mod <ident>;` lines plus one shared `mod common;` (and `support`, `ci_sandbox_support` where used); deterministic, sorted output; `--check` exits non-zero naming any unregistered or drifted file, wired into ci-checks (AC1/AC2).",
+    "Per-file `mod common;` (and the other helper declarations) removed from included files, replaced by `use crate::common;` or equivalent so the helper compiles once (AC3).",
+    "Every test that ran before runs after: nextest's test list, suite prefix stripped, equals the pre-change list; the verified-completed pairing classifier and intent-card test pointers resolve exactly as before (AC1/AC4)."
   ],
   "non_goals": [
-    "Re-generating the full stdlib list from a different source (separate concern, per the PRD's own Non-Goals).",
-    "Changing inference for genuinely unknown imports: those still error naming the import (AC3 regression guard, proven by the existing, unchanged AC10 coverage, reverified rather than duplicated)."
+    "Changing any test's body or assertion, or `src/`.",
+    "Changing the runner: nextest stays, and its per-test process isolation is what keeps host-independence fixes valid.",
+    "Reducing the number of test files. Consolidation is at the binary level only.",
+    "Sharding suites across machines."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -58,35 +85,35 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "no_new_pypi_lookup": "Pseudo-modules are recognized by name, not resolved against any package index -- the fix is an allowlist entry, not a network call.",
-      "existing_ac10_unchanged": "AC3's regression guard is proven by tests/ac10_publish_validation_errors.rs, already shipped and unmodified by this PRD; reverified, not re-implemented."
+      "no_src_change": "Engineering target explicitly excludes src/ changes; only Cargo.toml, tests/suite_*.rs, the helper declarations, and scripts/ are touched.",
+      "test_identity_preserved": "nextest's test list, with the suite prefix stripped, must equal the set listed at the parent commit -- consolidation renames no test and drops none (AC1/AC4 guardrail)."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why did PRD-fleet-bridge-live's AC6 live publish fail on 2026-09-12?",
-      "a": "`host.tool_publish` rejected the fleet adapter's agent.py source with \"cannot infer a PyPI requirement for import '__future__'\"."
+      "q": "Why does mcphost's gate take 21-42 minutes for a 413 s cold compile?",
+      "a": "cargo links roughly 289 separate test binaries every run (one per top-level tests/*.rs file), each 274-291 MB."
     },
     {
       "why": 2,
-      "q": "Why did inference treat `__future__` as a PyPI requirement?",
-      "a": "The requirement-inference path treats every import not listed in infer-data/python-stdlib.json as a third-party PyPI dependency, and that allowlist had no dunder/pseudo-module entries."
+      "q": "Why does cargo build ~289 separate binaries for one crate's tests?",
+      "a": "Cargo's default `autotests = true` makes every top-level tests/*.rs file its own compilation unit and its own binary; nothing in the repo opts out of that default."
     },
     {
       "why": 3,
-      "q": "Why did the allowlist have no pseudo-module entries?",
-      "a": "`__future__` and `__main__` are always-importable compiler/interpreter constructs, not real distributable packages -- nothing generates or installs them, so no stdlib-list source the allowlist was built from would ever list them."
+      "q": "Why is each of those binaries so expensive to link?",
+      "a": "Each one separately links the whole 52K-LoC crate and its 41 dependencies, and 269 of the 289 files declare `mod common;`, so the shared test helper is compiled 269 times over instead of once."
     },
     {
       "why": 4,
-      "q": "Why is this more than one blocked publish?",
-      "a": "`from __future__ import annotations` is present in most modern idiomatic Python, so any tenant publishing such source hits the identical, unrepairable publish error -- not a one-off."
+      "q": "Why has this not already been fixed?",
+      "a": "No PRD had previously consolidated the binaries; each new AC PRD just added one more tests/<prefix>_ac<N>_*.rs file under the existing autotests default, silently growing both the gate's link cost and target/debug/deps's disk footprint."
     },
     {
       "why": 5,
-      "q": "Why does the fix add a regression test (AC4) rather than just the two allowlist entries?",
-      "a": "The allowlist is a generated/maintained JSON file; a future regeneration from a different stdlib-list source has no reason to know these two names must survive, so a silent drop would reintroduce this exact failure with no test catching it."
+      "q": "Why fix it now rather than wait for PRD-build-gate-phase-timing to measure the exact saving first?",
+      "a": "RedBaron's root disk already reached 81-86% on 2026-09-08 with target/ as the known bulk, and every gate on this repo keeps paying the per-binary link cost in the meantime; the expected saving is inferred from binary count and size today, and PRD-build-gate-phase-timing verifies it once both ship -- it does not need to land first to justify shipping this PRD."
     }
   ],
   "created_at": "2026-09-03T18:04:17Z",
@@ -118,6 +145,10 @@
     {
       "question": "intent-card-refresh.sh regenerated root_motivation and acceptance_criteria correctly from PRD-mcphost-stdlib-pseudo-modules (commit 51fce6e), but per its own documented design carried forward scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional byte-for-byte from the PREVIOUS card, which described an entirely different, already-shipped feature (PRD-mcphost-proof-lane-loop-config's vti-plan lane-coverage totality check). agent/test-map.json's ac_test_map was also still keyed to that PRD's test_prefix (lanecov), so the regenerated AC1-4 `test` fields pointed at tests/lanecov_ac0N_*.rs files that exist on disk (inherited, already-shipped, from that PRD) but prove a different feature than this PRD's own AC1-4 describe -- the exact 'ac-test-field-pointers-semantically-wrong' / 'diff-scope-not-covered-by-reviewed-intent-card' defect class already fixed in place at least five times in this card's own history. Fix in place, or reopen the contract?",
       "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence. No AC content changed (root_motivation and acceptance_criteria were already correctly re-sourced by intent-card-refresh.sh from the PRD text), so there is no Stage-3 conflict. agent/test-map.json's ac_test_map_prd and ac_test_map were repointed to a new `stdlibpseudo` prefix naming the real proofs (tests/stdlibpseudo_ac1_future_import_empty_requirements.rs, tests/stdlibpseudo_ac2_dunder_main_no_requirement.rs, the existing tests/ac10_publish_validation_errors.rs for AC3's regression guard, and the src/kinds/infer.rs unit test stdlib_regeneration_keeps_pseudo_modules for AC4), and the lanecov mapping was preserved under ac_test_map_by_prefix.lanecov (already present) rather than deleted. scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional were rewritten to describe this PRD's actual diff (infer-data/python-stdlib.json + src/kinds/infer.rs + the two stdlibpseudo integration tests), sourced from the PRD's own Problem statement, Non-Goals, and Grounding sections."
+    },
+    {
+      "question": "intent-card-refresh.sh regenerated root_motivation and acceptance_criteria correctly from PRD-mcphost-test-suite-consolidation, but per its own documented design carried forward scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional byte-for-byte from the PREVIOUS card (PRD-mcphost-stdlib-pseudo-modules), which described an entirely different, already-shipped feature. agent/test-map.json's ac_test_map was also still keyed to that PRD's test_prefix (stdlibpseudo), so the regenerated AC1-9 `test` fields pointed at tests/stdlibpseudo_ac*.rs / tests/ac10_publish_validation_errors.rs / a src/kinds/infer.rs unit test -- files that exist and pass but prove pseudo-module inference, not test-binary consolidation. reviewer-agent caught this at HEAD 92d3dcf (captured_at 2026-09-18T20:10:09Z): ac-test-field-pointers-semantically-wrong, ac-test-map-not-refreshed-for-new-prd, intent-card-scope-non-goals-hard-constraints-stale-from-prior-prd, ac-traceability-receipt-stale-ac-set-mismatch, ac4-verification-test-too-weak-to-catch-mismatched-pointers -- the same defect class already fixed in place at least six times in this card's own history (see the prior entries above). Fix in place, or reopen the contract?",
+      "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence. No AC content changed (root_motivation and acceptance_criteria were already correctly re-sourced by intent-card-refresh.sh from the PRD text), so there is no Stage-3 conflict. agent/test-map.json's ac_test_map was repointed to a new `suite` prefix naming the real proofs (tests/suite_ac1..ac7_*.rs and tests/suite_ac9_*.rs, each of which already exists, already compiles into tests/suite_core_07.rs, and already passes; AC8 stays 'deferred' per the PRD's own deferred_acs/mock_justifications), and the stdlibpseudo mapping was preserved under ac_test_map_by_prefix.stdlibpseudo (already present) rather than deleted. scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional were rewritten to describe this PRD's actual diff (Cargo.toml autotests=false, scripts/gen-test-suites.sh, the tests/suite_*.rs files, and the shared-common-compiled-once requirement), sourced from the PRD's own Problem statement, Requirements, and Non-goals sections. The ac-traceability receipt and the reviewer's proposed stronger AC4 verification test (cross-checking each AC test pointer's own header against the intent card's acceptance_criteria[].description, not just its path existence) are addressed in the same commit as this card fix, not deferred to a later recurrence."
     }
   ]
 }
