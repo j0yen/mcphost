@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.56.2 — 2026-09-18
+
+Requirement inference no longer rejects Python's `__future__` and
+`__main__` pseudo-modules as unresolvable PyPI packages: infer-data/
+python-stdlib.json gains both entries, so idiomatic Python (any source
+using `from __future__ import annotations`) publishes with an empty
+inferred requirements list instead of an unrepairable publish error.
+A regression test guards against a future stdlib-list regeneration
+silently dropping the two entries; genuinely unknown imports still fail
+publish naming the import (unchanged, reverified). Unblocks
+PRD-fleet-bridge-live AC6.
+
 ## v0.56.1 — 2026-09-17
 
 `agent/proof-lanes.toml` gains a `loop-config` lane whose globs cover
