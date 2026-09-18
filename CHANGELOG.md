@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.57.2 — 2026-09-18
+
+Cargo stops turning each of mcphost's ~289 top-level test files into its own 280 MB binary. A generator writes [[test]] suite files that include the existing test files by path via #[path], so every test keeps its name, file, and AC pairing; common/support/ci_sandbox_support compile once. gen-test-suites.sh --check fails CI if a new tests/*.rs file is unregistered.
+
 ## v0.57.1 — 2026-09-18
 
 `host.tool_run` now returns `result.payload` (with declared-output promotion) exactly as `host.tool_call` does, plus its `duration_ms`/`exit_code` run metadata — previously it returned `{duration_ms, exit_code, result: {...}}` with no `payload` envelope. Breaking for any consumer of the old dry-run shape; zero real callers found in a 42-session audit.
