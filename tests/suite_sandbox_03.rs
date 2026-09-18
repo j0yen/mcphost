@@ -42,6 +42,10 @@ mod state_ac03_network_none_default;
 mod state_ac07_tool_test_observability;
 #[path = "state_ac10_quickstart_llms_txt.rs"]
 mod state_ac10_quickstart_llms_txt;
+#[path = "stdlibpseudo_ac1_future_import_empty_requirements.rs"]
+mod stdlibpseudo_ac1_future_import_empty_requirements;
+#[path = "stdlibpseudo_ac2_dunder_main_no_requirement.rs"]
+mod stdlibpseudo_ac2_dunder_main_no_requirement;
 #[path = "surface_ac01_quickstart_try_before_call.rs"]
 mod surface_ac01_quickstart_try_before_call;
 #[path = "surface_ac06_python_outputs_by_path.rs"]
