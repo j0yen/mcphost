@@ -857,8 +857,7 @@ pub async fn tool_rollback(state: &AppState, tenant: &Tenant, args: &Value) -> R
     let name = arg_str(args, "name")?;
     let version = arg_i64(args, "version")?;
 
-    let target = state.db.get_tool_version(tenant.id, name.clone(), version).await?;
-    if target.is_none() {
+    let Some(target) = state.db.get_tool_version(tenant.id, name.clone(), version).await? else {
         let range = state.db.tool_version_range(tenant.id, name.clone()).await?;
         let msg = match range {
             Some((min, max)) => {
@@ -867,9 +866,12 @@ pub async fn tool_rollback(state: &AppState, tenant: &Tenant, args: &Value) -> R
             None => format!("'{name}' has no stored versions"),
         };
         return Err(AppError::InvalidArgs(msg));
-    }
+    };
 
-    let moved = state.db.set_current_version(tenant.id, name.clone(), version).await?;
+    let moved = state
+        .db
+        .set_current_version(tenant.id, name.clone(), version, target.kind, target.spec)
+        .await?;
     if !moved {
         return Err(AppError::ToolNotFound(name));
     }

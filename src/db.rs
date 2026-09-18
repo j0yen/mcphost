@@ -3016,23 +3016,38 @@ impl Db {
         .await
     }
 
-    /// `host.tool_rollback {name, version}` (AC2/AC4): sets
-    /// `tools.current_version` to `version` -- the caller
-    /// (`control::tool_rollback`) is responsible for checking that
-    /// `version` actually has a `tool_versions` row first (so it can build
-    /// the "names the valid range" error itself); this returns `false`
-    /// only if `name` isn't one of this tenant's tools at all.
+    /// `host.tool_rollback {name, version}` (AC2/AC4): moves
+    /// `tools.current_version` to `version` AND overwrites `tools.kind`/
+    /// `tools.spec` with that version's own stored content -- `tools`
+    /// denormalizes whatever the CURRENT version is (every unversioned
+    /// reader -- `get_tool`, `list_tools`, cross-tenant resolution --
+    /// reads it directly, never joining through `current_version` into
+    /// `tool_versions`), so AC2's "the next host.tool_call runs version
+    /// 1's source" needs this copy, not just the pointer, kept in sync.
+    /// The caller (`control::tool_rollback`) is responsible for checking
+    /// that `version` actually has a `tool_versions` row first (so it can
+    /// build the "names the valid range" error itself, and so it already
+    /// has `kind`/`spec` in hand to pass here); this returns `false` only
+    /// if `name` isn't one of this tenant's tools at all.
     pub async fn set_current_version(
         &self,
         tenant_id: i64,
         name: String,
         version: i64,
+        kind: String,
+        spec: Value,
     ) -> Result<bool, AppError> {
+        let spec_text = serde_json::to_string(&spec)
+            .map_err(|e| AppError::Internal(format!("spec serialize: {e}")))?;
         self.with_conn(move |conn| {
             let n = conn.execute(
-                "UPDATE tools SET current_version = ?1 WHERE tenant_id = ?2 AND name = ?3",
-                params![version, tenant_id, name],
+                "UPDATE tools SET current_version = ?1, kind = ?2, spec = ?3 \
+                 WHERE tenant_id = ?4 AND name = ?5",
+                params![version, kind, spec_text, tenant_id, name],
             )?;
+            if n > 0 {
+                touch_tenant_tool_change(conn, tenant_id)?;
+            }
             Ok(n > 0)
         })
         .await
