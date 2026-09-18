@@ -28,10 +28,15 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/stdlibpseudo_ac1_future_import_empty_requirements.rs",
-    "AC2": "tests/stdlibpseudo_ac2_dunder_main_no_requirement.rs",
-    "AC3": "tests/ac10_publish_validation_errors.rs (existing AC10 regression coverage for a genuinely-unknown import; reverified unchanged by this PRD, not a new file)",
-    "AC4": "src/kinds/infer.rs unit test `stdlib_regeneration_keeps_pseudo_modules` (run via `cargo test --lib kinds::infer::`) -- not a tests/ file, so revdebt_ac1's path-existence check does not apply to it"
+    "AC1": "tests/suite_ac1_ten_binaries_and_names_preserved.rs",
+    "AC2": "tests/suite_ac2_check_catches_unregistered_file.rs",
+    "AC3": "tests/suite_ac3_mod_common_declared_once.rs",
+    "AC4": "tests/suite_ac4_archived_prd_pointers_resolve.rs",
+    "AC5": "tests/suite_ac5_disk_size_budget.rs",
+    "AC6": "tests/suite_ac6_wall_time_budget.rs",
+    "AC7": "tests/suite_ac7_junit_per_test_timing.rs",
+    "AC8": "deferred -- see PRD deferred_acs/mock_justifications (cross-host parity script needs a second box; casper deleted); AC1's nextest list diff proves the name-matching change single-host",
+    "AC9": "tests/suite_ac9_selftest_named_and_green.rs"
   },
   "ac_test_map_by_prefix": {
     "ac": {
@@ -72,6 +77,18 @@
       "AC3": "tests/ac10_publish_validation_errors.rs (existing AC10 regression coverage for a genuinely-unknown import; reverified unchanged by this PRD, not a new file)",
       "AC4": "src/kinds/infer.rs unit test `stdlib_regeneration_keeps_pseudo_modules` (run via `cargo test --lib kinds::infer::`) -- not a tests/ file, so revdebt_ac1's path-existence check does not apply to it",
       "_prd": "PRD-mcphost-stdlib-pseudo-modules.md -- same as ac_test_map above while this PRD is the one at HEAD"
+    },
+    "suite": {
+      "AC1": "tests/suite_ac1_ten_binaries_and_names_preserved.rs",
+      "AC2": "tests/suite_ac2_check_catches_unregistered_file.rs",
+      "AC3": "tests/suite_ac3_mod_common_declared_once.rs",
+      "AC4": "tests/suite_ac4_archived_prd_pointers_resolve.rs",
+      "AC5": "tests/suite_ac5_disk_size_budget.rs",
+      "AC6": "tests/suite_ac6_wall_time_budget.rs",
+      "AC7": "tests/suite_ac7_junit_per_test_timing.rs",
+      "AC8": "deferred -- see PRD deferred_acs/mock_justifications (cross-host parity script needs a second box; casper deleted); AC1's nextest list diff proves the name-matching change single-host",
+      "AC9": "tests/suite_ac9_selftest_named_and_green.rs",
+      "_prd": "PRD-mcphost-test-suite-consolidation.md \u2014 same as ac_test_map above while this PRD is the one at HEAD"
     }
   }
 }
