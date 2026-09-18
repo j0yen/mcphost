@@ -7,8 +7,7 @@
 //! clone would make the proof depend on network/disk state the gate cannot
 //! reproduce.
 
-#[path = "support/lanecov.rs"]
-mod lanecov;
+use crate::lanecov;
 
 use lanecov::{find_unrouted, validate_lane_shapes, Lane};
 

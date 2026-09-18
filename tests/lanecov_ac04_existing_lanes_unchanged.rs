@@ -18,8 +18,7 @@
 //! added". A future PRD that quietly rewrites an existing lane's
 //! `required_commands` still fails here.
 
-#[path = "support/lanecov.rs"]
-mod lanecov;
+use crate::lanecov;
 
 use lanecov::{load_lane_file, load_lane_file_at_rev, manifest_dir};
 

@@ -112,3 +112,77 @@ fn intent_card_test_pointers_are_compiled_into_exactly_one_suite() {
         offenders.join("\n")
     );
 }
+
+/// `intent_card_test_pointers_are_compiled_into_exactly_one_suite` above only
+/// checks that an AC's `test` pointer exists on disk and is compiled into one
+/// suite binary -- it says nothing about whether that file actually proves
+/// the AC it is attached to. A stale pointer left over from a prior PRD's
+/// intent-card refresh (this card's own `ambiguities_resolved` log records
+/// that recurring six times) can name a real, passing, compiled test that
+/// proves a completely different feature. Every `tests/suite_ac<N>_*.rs`
+/// proof file in this repo opens with a doc comment naming the PRD slug and
+/// AC id it proves (see the top of this very file); this test cross-checks
+/// each AC's `test` pointer against that header instead of trusting the
+/// path alone.
+#[test]
+fn ac_test_pointer_target_names_its_own_prd_and_ac() {
+    let root = repo_root();
+    let tests_dir = root.join("tests");
+    let card_path = root.join("agent/intent-card.json");
+    let card_text = fs::read_to_string(&card_path)
+        .unwrap_or_else(|e| panic!("read {}: {e}", card_path.display()));
+    let card: Value =
+        serde_json::from_str(&card_text).expect("agent/intent-card.json is valid JSON");
+
+    let prd_slug = card
+        .get("intent_slug")
+        .and_then(Value::as_str)
+        .expect("intent-card.json has an intent_slug")
+        .to_string();
+
+    let acs = card
+        .get("acceptance_criteria")
+        .and_then(Value::as_array)
+        .expect("intent-card.json has an acceptance_criteria array");
+
+    let mut checked = 0usize;
+    let mut mismatched: Vec<String> = Vec::new();
+    for ac in acs {
+        let id = ac.get("id").and_then(Value::as_str).unwrap_or("<no id>");
+        let test_field = ac.get("test").and_then(Value::as_str).unwrap_or("");
+        let Some(rel) = test_field
+            .split_whitespace()
+            .next()
+            .and_then(|p| p.strip_prefix("tests/"))
+        else {
+            continue; // not a file pointer (a smoke note, a "deferred" note)
+        };
+        let path = tests_dir.join(rel);
+        let Ok(contents) = fs::read_to_string(&path) else {
+            continue; // covered by the file-existence check above
+        };
+        checked += 1;
+
+        let bare_id = id.trim_start_matches("AC");
+        let names_this_prd = contents.contains(&prd_slug);
+        let names_this_ac = contents.contains(&format!("AC{bare_id} "))
+            || contents.contains(&format!("AC{bare_id}("));
+        if !(names_this_prd && names_this_ac) {
+            mismatched.push(format!(
+                "{id} -> {test_field} (does not name {prd_slug}/{id} in its own header)"
+            ));
+        }
+    }
+
+    assert!(
+        checked > 0,
+        "no tests/... file pointers found in agent/intent-card.json's \
+         acceptance_criteria -- this test would be vacuous"
+    );
+    assert!(
+        mismatched.is_empty(),
+        "intent-card.json AC test pointers do not match their own PRD/AC in \
+         the target file's header:\n{}",
+        mismatched.join("\n")
+    );
+}

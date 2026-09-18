@@ -13,8 +13,7 @@
 //! PRD's ACs owns its own `tests/lanecov_ac<N>_*.rs` file so the archive
 //! gate's AC->test derivation can pair them one-for-one.
 
-#[path = "support/lanecov.rs"]
-mod lanecov;
+use crate::lanecov;
 
 use lanecov::{
     find_unrouted, git_ls_files, load_lane_file, manifest_dir, validate_lane_shapes,

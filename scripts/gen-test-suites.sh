@@ -28,14 +28,20 @@
 # rewritten in place to `use crate::common;` / `use crate::ci_sandbox_support;`
 # -- Rust 2018+ path resolution means `common::Foo` inside a nested
 # `#[path]`-included module still resolves once `common` is a module at the
-# suite's crate root, so no other line in any test file changes. This is
-# the ONLY edit this script makes to a `tests/*.rs` file's content; the test
-# bodies, assertions, and every other `use`/`#[path]` line (e.g. the
-# unrelated `#[path = "support/host.rs"] mod host;` some files already use)
-# are untouched and keep resolving exactly as before, because `#[path]`
-# module resolution is relative to the FILE's own on-disk directory
-# (unchanged: files stay where they are), not to how something else
-# `#[path]`-includes that file.
+# suite's crate root, so no other line in any test file changes. Any other
+# member-owned `#[path = "support/<name>.rs"] mod <name>;` declaration (e.g.
+# `support/host.rs`, `support/lanecov.rs`) gets the identical treatment --
+# hoisted to the suite root, rewritten in the member file to
+# `use crate::<name>;` -- because loading the same on-disk file as a module
+# more than once inside one suite binary is exactly what `clippy::duplicate_mod`
+# flags (mcphost-test-suite-consolidation reviewer-agent block
+# clippy-duplicate-mod-shared-file-multi-suite, tests/lanecov_ac0N_*.rs each
+# declaring their own `mod lanecov;` once consolidated into one binary).
+# These are the only edits this script makes to a `tests/*.rs` file's
+# content; test bodies, assertions, and every other line are untouched and
+# keep resolving exactly as before, because `#[path]` module resolution is
+# relative to the FILE's own on-disk directory (unchanged: files stay where
+# they are), not to how something else `#[path]`-includes that file.
 #
 # Usage:
 #   scripts/gen-test-suites.sh            regenerate tests/suite_*.rs +
@@ -279,6 +285,45 @@ MOD_COMMON_RE = re.compile(r'^mod\s+common\s*;\s*$')
 MOD_CI_SANDBOX_RE = re.compile(r'^mod\s+ci_sandbox_support\s*;\s*$')
 USE_COMMON_RE = re.compile(r'^use\s+crate::common\s*;\s*$')
 USE_CI_SANDBOX_RE = re.compile(r'^use\s+crate::ci_sandbox_support\s*;\s*$')
+PATH_MOD_RE = re.compile(r'^#\[path\s*=\s*"(support/(\w+)\.rs)"\]\s*$')
+MOD_NAME_RE = re.compile(r'^mod\s+(\w+)\s*;\s*$')
+USE_ANY_RE = re.compile(r'^use\s+crate::(\w+)\s*;\s*$')
+
+
+def existing_support_decls():
+    """name -> declaration block (tuple of lines, attrs included), scraped
+    from the currently-on-disk generated suite files. A helper's full
+    declaration (e.g. the `#[allow(dead_code)]` some carry) needs to survive
+    a regen even after every member file that uses it has already been
+    migrated to `use crate::<name>;` and no longer carries the raw
+    `#[path = ...] mod <name>;` block this run could otherwise learn it
+    from."""
+    cache = {}
+    for suite_path in glob.glob("tests/suite_*.rs"):
+        if not GENERATED_SUITE_RE.match(os.path.basename(suite_path)):
+            continue
+        with open(suite_path, encoding="utf-8") as fh:
+            lines = fh.read().split("\n")
+        i = 0
+        while i < len(lines):
+            m = PATH_MOD_RE.match(lines[i])
+            if m:
+                name = m.group(2)
+                block = [lines[i]]
+                j = i + 1
+                while j < len(lines) and lines[j].startswith("#["):
+                    block.append(lines[j])
+                    j += 1
+                if j < len(lines) and MOD_NAME_RE.match(lines[j]) and MOD_NAME_RE.match(lines[j]).group(1) == name:
+                    block.append(lines[j])
+                    cache.setdefault(name, tuple(block))
+                    i = j + 1
+                    continue
+            i += 1
+    return cache
+
+
+SUPPORT_DECL_CACHE = existing_support_decls()
 
 
 def migrate_content(content):
@@ -288,43 +333,89 @@ def migrate_content(content):
     for `common::`/`ci_sandbox_support::` inside a nested module already
     works via Rust 2018+ uniform paths -- the `use crate::...;` just makes
     that explicit and keeps `common::Foo`/`ci_sandbox_support::Foo`
-    references in the file unchanged).
-    Returns (new_content, needs_common, needs_ci_sandbox_support). Idempotent:
-    a file already migrated (has `use crate::common;` and no bare `mod
-    common;`) is detected as needs_common=True and left byte-for-byte
-    unchanged.
+    references in the file unchanged). Any other member-owned
+    `#[path = "support/<name>.rs"] mod <name>;` declaration (optionally
+    preceded by attribute lines like `#[allow(dead_code)]`) gets the same
+    treatment, rewritten to `use crate::<name>;`, so the same physical file
+    is never loaded as a module more than once within one suite binary
+    (clippy::duplicate_mod).
+    Returns (new_content, needs_common, needs_ci_sandbox_support,
+    support_helpers) where support_helpers is a list of (name, decl_lines)
+    tuples, decl_lines a tuple of the original declaration's lines (attrs
+    included). Idempotent: a file already migrated (has `use crate::<x>;`
+    and no bare `mod <x>;` / `#[path=...] mod <x>;`) is detected the same
+    way and left byte-for-byte unchanged; support_helpers still reports the
+    helper (sourced from SUPPORT_DECL_CACHE, or a minimal synthesized
+    declaration if no suite file has ever carried it before) so the suite
+    that includes this file still hoists the declaration it depends on.
     """
     lines = content.split("\n")
     needs_common = False
     needs_ci_sandbox = False
+    support_helpers = []
     out = []
-    for line in lines:
+    i = 0
+    n = len(lines)
+    while i < n:
+        line = lines[i]
         if MOD_COMMON_RE.match(line):
             needs_common = True
             out.append("use crate::common;")
+            i += 1
             continue
         if MOD_CI_SANDBOX_RE.match(line):
             needs_ci_sandbox = True
             out.append("use crate::ci_sandbox_support;")
+            i += 1
             continue
         if USE_COMMON_RE.match(line):
             needs_common = True
         if USE_CI_SANDBOX_RE.match(line):
             needs_ci_sandbox = True
+        m = PATH_MOD_RE.match(line)
+        if m:
+            path, name = m.group(1), m.group(2)
+            block = [line]
+            j = i + 1
+            while j < n and lines[j].startswith("#["):
+                block.append(lines[j])
+                j += 1
+            if j < n and MOD_NAME_RE.match(lines[j]) and MOD_NAME_RE.match(lines[j]).group(1) == name:
+                block.append(lines[j])
+                support_helpers.append((name, tuple(block)))
+                out.append(f"use crate::{name};")
+                i = j + 1
+                continue
+        mu = USE_ANY_RE.match(line)
+        if mu and mu.group(1) not in ("common", "ci_sandbox_support"):
+            name = mu.group(1)
+            cand_path = f"support/{name}.rs"
+            if os.path.isfile(os.path.join("tests", cand_path)):
+                decl = SUPPORT_DECL_CACHE.get(
+                    name, (f'#[path = "{cand_path}"]', f"mod {name};")
+                )
+                support_helpers.append((name, decl))
         out.append(line)
-    return "\n".join(out), needs_common, needs_ci_sandbox
+        i += 1
+    return "\n".join(out), needs_common, needs_ci_sandbox, support_helpers
 
 
 def suite_content(members_meta):
-    """members_meta: list of (stem, needs_common, needs_ci_sandbox), already
-    sorted alphabetically by stem."""
+    """members_meta: list of (stem, needs_common, needs_ci_sandbox,
+    support_helpers), already sorted alphabetically by stem."""
     parts = [SUITE_HEADER_TMPL]
     if any(m[1] for m in members_meta):
         parts.append("mod common;\n")
     if any(m[2] for m in members_meta):
         parts.append("mod ci_sandbox_support;\n")
+    support_seen = {}
+    for _stem, _c, _s, helpers in members_meta:
+        for name, decl in helpers:
+            support_seen.setdefault(name, decl)
+    for name in sorted(support_seen):
+        parts.append("\n".join(support_seen[name]) + "\n")
     parts.append("\n")
-    for stem, _c, _s in members_meta:
+    for stem, _c, _s, _h in members_meta:
         parts.append(f'#[path = "{stem}.rs"]\nmod {stem};\n')
     return "".join(parts)
 
@@ -337,15 +428,15 @@ def compute_plan():
     if not all_files:
         die("no tests/*.rs files found")
 
-    migrations = {}  # path -> (new_content, needs_common, needs_ci_sandbox)
+    migrations = {}  # path -> (new_content, needs_common, needs_ci_sandbox, support_helpers)
     by_partition = {"core": [], "sandbox": []}
     exclusive_by_partition = {"core": [], "sandbox": []}
     for f in all_files:
         with open(f, encoding="utf-8") as fh:
             content = fh.read()
         part = classify(f)
-        new_content, needs_common, needs_ci_sandbox = migrate_content(content)
-        migrations[f] = (new_content, needs_common, needs_ci_sandbox)
+        new_content, needs_common, needs_ci_sandbox, support_helpers = migrate_content(content)
+        migrations[f] = (new_content, needs_common, needs_ci_sandbox, support_helpers)
         stem = os.path.basename(f)[:-3]
         if is_exclusive_global(content):
             exclusive_by_partition[part].append(stem)
@@ -372,8 +463,8 @@ def compute_plan():
             meta = []
             for stem in sorted(bucket):
                 path = f"tests/{stem}.rs"
-                _content, needs_common, needs_ci_sandbox = migrations[path]
-                meta.append((stem, needs_common, needs_ci_sandbox))
+                _content, needs_common, needs_ci_sandbox, support_helpers = migrations[path]
+                meta.append((stem, needs_common, needs_ci_sandbox, support_helpers))
             suite_files[f"tests/{name}.rs"] = suite_content(meta)
         suite_names_by_partition[part] = names
 
@@ -436,7 +527,7 @@ def render_cargo_toml(cargo_toml, suite_names):
 
 def write_plan(migrations, suite_files, new_cargo_toml, all_files):
     changed = []
-    for path, (new_content, _c, _s) in migrations.items():
+    for path, (new_content, _c, _s, _h) in migrations.items():
         with open(path, encoding="utf-8") as fh:
             old_content = fh.read()
         if old_content != new_content:
@@ -494,7 +585,7 @@ def check_plan(migrations, suite_files, new_cargo_toml, all_files):
         if base not in referenced:
             problems.append(f"{f} is not included in any suite (run gen-test-suites.sh)")
 
-    for path, (new_content, _c, _s) in migrations.items():
+    for path, (new_content, _c, _s, _h) in migrations.items():
         if not os.path.exists(path):
             problems.append(f"{path} missing")
             continue
