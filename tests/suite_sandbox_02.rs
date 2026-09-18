@@ -8,6 +8,9 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 mod ci_sandbox_support;
+#[path = "support/host.rs"]
+#[allow(dead_code)]
+mod host;
 
 #[path = "ac17_kind_conformance.rs"]
 mod ac17_kind_conformance;

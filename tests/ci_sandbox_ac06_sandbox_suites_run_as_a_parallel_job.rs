@@ -104,7 +104,23 @@ fn the_partition_is_total_and_disjoint_over_every_test_target() {
                 let line = line.trim();
                 if let Some(rest) = line.strip_prefix(r#"#[path = ""#) {
                     if let Some(name) = rest.strip_suffix(r#".rs"]"#) {
-                        out.push(name.to_string());
+                        // A bare stem (`ac01_...`) is a real top-level
+                        // tests/*.rs member file the generator included; a
+                        // name with a `/` (`support/host`, `support/lanecov`)
+                        // is a shared non-test helper gen-test-suites.sh
+                        // hoists to whichever suite(s) need it -- same
+                        // legitimately-shared-and-not-partition-exclusive
+                        // status as `mod common;`/`mod ci_sandbox_support;`,
+                        // which this scan never sees because those resolve
+                        // without `#[path]` at all. `on_disk` below only
+                        // reads tests/*.rs top-level, so it never lists these
+                        // either; excluding them here keeps both sides of
+                        // this test's disjoint/total comparison about real
+                        // member test files only (PRD-mcphost-test-suite-
+                        // consolidation's clippy::duplicate_mod fix).
+                        if !name.contains('/') {
+                            out.push(name.to_string());
+                        }
                     }
                 }
             }

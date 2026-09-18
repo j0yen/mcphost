@@ -26,9 +26,7 @@
 //! host never needs a follow-up SSH session to explain itself.
 
 use crate::common;
-#[path = "support/host.rs"]
-#[allow(dead_code)]
-mod host;
+use crate::host;
 use common::{TestServer, python_kind_registry, signup};
 use mcphost::kinds::python;
 use mcphost::sandbox;

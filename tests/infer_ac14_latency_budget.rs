@@ -23,9 +23,7 @@
 //! guards (inference itself stays cheap) never gets weaker, only the
 //! wall-clock allowance for host noise changes.
 
-#[path = "support/host.rs"]
-#[allow(dead_code)]
-mod host;
+use crate::host;
 
 use mcphost::kinds::infer::{infer_python_args_schema, infer_python_requirements};
 use std::time::Instant;

@@ -6,8 +6,7 @@
 //! shipped `agent/proof-lanes.toml` staying broken (or staying fixed) to
 //! show the check works.
 
-#[path = "support/lanecov.rs"]
-mod lanecov;
+use crate::lanecov;
 
 use lanecov::{validate_lane_shapes, Lane};
 
