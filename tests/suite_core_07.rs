@@ -8,16 +8,6 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 
-#[path = "minimal_ac1_anonymous_ok_only.rs"]
-mod minimal_ac1_anonymous_ok_only;
-#[path = "minimal_ac2_admin_full_document.rs"]
-mod minimal_ac2_admin_full_document;
-#[path = "minimal_ac3_wrong_bearer_matches_anonymous.rs"]
-mod minimal_ac3_wrong_bearer_matches_anonymous;
-#[path = "minimal_ac4_liveness_failure_returns_5xx.rs"]
-mod minimal_ac4_liveness_failure_returns_5xx;
-#[path = "minimal_ac5_tenant_bearer_gets_anonymous_body.rs"]
-mod minimal_ac5_tenant_bearer_gets_anonymous_body;
 #[path = "msg_ac01_send_reaches_inbox.rs"]
 mod msg_ac01_send_reaches_inbox;
 #[path = "msg_ac02_reply_appends_next_seq.rs"]
@@ -120,6 +110,16 @@ mod sched_ac7_tool_remove_disables_triggers;
 mod sched_ac8_healthz_scheduler_fields;
 #[path = "sched_quickstart_and_usage_report_schedules.rs"]
 mod sched_quickstart_and_usage_report_schedules;
+#[path = "self_offboard_ac1_disables_tenant_and_returns_success.rs"]
+mod self_offboard_ac1_disables_tenant_and_returns_success;
+#[path = "self_offboard_ac2_idempotent_second_call.rs"]
+mod self_offboard_ac2_idempotent_second_call;
+#[path = "self_offboard_ac3_offboarded_key_same_shape_as_unissued.rs"]
+mod self_offboard_ac3_offboarded_key_same_shape_as_unissued;
+#[path = "self_offboard_ac4_pro_tenant_cancels_stripe_subscription.rs"]
+mod self_offboard_ac4_pro_tenant_cancels_stripe_subscription;
+#[path = "self_offboard_ac5_admin_tenants_distinguishes_reason.rs"]
+mod self_offboard_ac5_admin_tenants_distinguishes_reason;
 #[path = "sessionkey_ac02_ac03_discovery_shape.rs"]
 mod sessionkey_ac02_ac03_discovery_shape;
 #[path = "sessionkey_ac04_signup_usage_field.rs"]

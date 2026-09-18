@@ -152,7 +152,15 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # `suite_ac1_ten_binaries_and_names_preserved` P0 assertion. 136 -> 137 was
 # the smallest tested raise (on top of consent's 136) that re-collapses
 # core's normal buckets to 2, landing the grand total back at 10.
-MAX_PER_SUITE = {"core": 137, "sandbox": 60}
+#
+# PRD-mcphost-tenant-self-offboard (2026-09-17, rebased onto proof-lane-
+# loop-config): this PRD's own 5 new `self_offboard_ac*` files (one per AC,
+# same per-AC consolidation convention) tipped core's normal buckets from 2
+# to 3 again, spawning an 11th suite binary -- caught by the same
+# `suite_ac1_ten_binaries_and_names_preserved` P0 assertion. 137 -> 141 was
+# the smallest tested raise (on top of proof-lane-loop-config's 137) that
+# re-collapses core's normal buckets to 2, landing the grand total back at 10.
+MAX_PER_SUITE = {"core": 141, "sandbox": 60}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"
