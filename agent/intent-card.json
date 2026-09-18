@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tenant-self-offboard.md",
-  "intent_slug": "mcphost-tenant-self-offboard",
-  "root_motivation": "PRD-homeward-mcp-tenant's AC6 required \"a documented rollback: the tenant can be removed via public/account paths without residue in billing\" as direct evidence that a stranger's full lifecycle \u2014 not just signup \u2014 works without admin help. Walking the real tool catalog against the live mcphost.dev deployment (tenant `t_ea9749c3`, free plan, `source_class: external`) turned up no such tool. Five whys:",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tool-versions.md",
+  "intent_slug": "mcphost-tool-versions",
+  "root_motivation": "The target persona is an agent that ships tools in minutes (docs/agent-quickstart.md: signup\u2192first publish 30.7 s median). Evidence: `on_tool_changed (republish/\u2026)` in `python.rs:41` rebuilds the env and discards the old source; `grep -rniE 'tool_version|previous_version|version_history' src` finds nothing; `sharing.rs` lets tenant B call tenant A's tool by name with no version. Consequence: one wrong republish breaks a running workflow for its owner and for every sharer, with no undo short of pasting old source from a transcript.",
   "user_persona": "Any tenant or agent publishing idiomatic Python via host.tool_publish (e.g. PRD-fleet-bridge-live's fleet adapter, blocked live on 2026-09-12): the requirement inference must not reject `from __future__ import annotations` or `__main__` as unresolvable PyPI packages, since neither is installable and the publish error names something the calling agent cannot repair.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,26 +14,56 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a live free-plan tenant created via public `signup`, When it calls `host.self_offboard(tenant_key)` with its own key, Then the tenant's row shows `disabled=1` and the call returns success.",
-      "test": "tests/stdlibpseudo_ac1_future_import_empty_requirements.rs"
+      "description": "Given a tool published twice, When `host.tool_history` is called, Then two versions are listed, version 2 current, with distinct `source_sha256`.",
+      "test": "tests/toolver_ac01_history_lists_versions.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given an already-offboarded tenant, When `host.self_offboard` is called again with the same key, Then it returns a clean idempotent result, not a crash or ambiguous error.",
-      "test": "tests/stdlibpseudo_ac2_dunder_main_no_requirement.rs"
+      "description": "Given version 2 current, When `host.tool_rollback {version: 1}` is called, Then the next `host.tool_call` runs version 1's source.",
+      "test": "tests/toolver_ac02_rollback_runs_old_source.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given an offboarded tenant's key, When any other `host.*`/`billing.*` tool is called with it, Then a typed \"unknown or disabled tenant\" error returns, same shape as an unissued key.",
-      "test": "tests/ac10_publish_validation_errors.rs (existing AC10 regression coverage for a genuinely-unknown import; reverified unchanged by this PRD, not a new file)"
+      "description": "Given a `free` tenant with 5 versions, When a sixth is published, Then version 1 is deleted and versions 2\u20136 remain.",
+      "test": "tests/toolver_ac03_free_plan_retention.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a `pro`-plan tenant with a live Stripe subscription, When it calls `host.self_offboard`, Then the Stripe subscription is canceled (verify via Stripe live-mode API/dashboard) and no further invoice is generated.",
-      "test": "src/kinds/infer.rs unit test `stdlib_regeneration_keeps_pseudo_modules` (run via `cargo test --lib kinds::infer::`) -- not a tests/ file, so revdebt_ac1's path-existence check does not apply to it"
+      "description": "Given `host.tool_rollback {version: 9}` for a tool with 2 versions, When called, Then an argument error names the valid range.",
+      "test": "tests/toolver_ac04_rollback_unknown_version_errors.rs"
+    },
+    {
+      "id": "AC5",
+      "level": "MUST",
+      "description": "Given a shared tool at version 3 and a caller pinning `version: 2`, When the owner publishes version 4, Then the pinned call still runs version 2.",
+      "test": "tests/toolver_ac05_pinned_call_survives_republish.rs"
+    },
+    {
+      "id": "AC6",
+      "level": "MUST",
+      "description": "Given prod after ship, When homeward's tool is republished and rolled back once during the build's live check, Then `host.tool_history` on prod shows both versions (proof: the live call output in the trailer).",
+      "test": "deferred \u2014 no test; live-only proof (prod republish+rollback of homeward's tool, host.tool_history checked live during the build's live check) recorded in the ship trailer, same convention as the founding ac_test_map's AC12"
+    },
+    {
+      "id": "AC7",
+      "level": "SHOULD",
+      "description": "Given an unpinned sharer, When the owner rolls back, Then the sharer's next result carries `version_changed` once and not on the following call.",
+      "test": "tests/toolver_ac07_version_changed_note_once.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "SHOULD",
+      "description": "Given `host.tool_remove`, When called, Then all versions are gone and `host.tool_history` returns not-found.",
+      "test": "tests/toolver_ac08_remove_deletes_all_versions.rs"
+    },
+    {
+      "id": "AC9",
+      "level": "MAY",
+      "description": "Given two versions, When `host.tool_diff` is called, Then a unified diff is returned.",
+      "test": "tests/toolver_ac09_diff_unified.rs"
     }
   ],
   "scope": [
