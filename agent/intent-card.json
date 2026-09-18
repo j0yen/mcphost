@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tenant-self-offboard.md",
-  "intent_slug": "mcphost-tenant-self-offboard",
-  "root_motivation": "PRD-homeward-mcp-tenant's AC6 required \"a documented rollback: the tenant can be removed via public/account paths without residue in billing\" as direct evidence that a stranger's full lifecycle \u2014 not just signup \u2014 works without admin help. Walking the real tool catalog against the live mcphost.dev deployment (tenant `t_ea9749c3`, free plan, `source_class: external`) turned up no such tool. Five whys:",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tool-versions.md",
+  "intent_slug": "mcphost-tool-versions",
+  "root_motivation": "The target persona is an agent that ships tools in minutes (docs/agent-quickstart.md: signup\u2192first publish 30.7 s median). Evidence: `on_tool_changed (republish/\u2026)` in `python.rs:41` rebuilds the env and discards the old source; `grep -rniE 'tool_version|previous_version|version_history' src` finds nothing; `sharing.rs` lets tenant B call tenant A's tool by name with no version. Consequence: one wrong republish breaks a running workflow for its owner and for every sharer, with no undo short of pasting old source from a transcript.",
   "user_persona": "Any tenant or agent publishing idiomatic Python via host.tool_publish (e.g. PRD-fleet-bridge-live's fleet adapter, blocked live on 2026-09-12): the requirement inference must not reject `from __future__ import annotations` or `__main__` as unresolvable PyPI packages, since neither is installable and the publish error names something the calling agent cannot repair.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,25 +14,25 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a live free-plan tenant created via public `signup`, When it calls `host.self_offboard(tenant_key)` with its own key, Then the tenant's row shows `disabled=1` and the call returns success.",
+      "description": "Given a tool published twice, When `host.tool_history` is called, Then two versions are listed, version 2 current, with distinct `source_sha256`.",
       "test": "tests/stdlibpseudo_ac1_future_import_empty_requirements.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given an already-offboarded tenant, When `host.self_offboard` is called again with the same key, Then it returns a clean idempotent result, not a crash or ambiguous error.",
+      "description": "Given version 2 current, When `host.tool_rollback {version: 1}` is called, Then the next `host.tool_call` runs version 1's source.",
       "test": "tests/stdlibpseudo_ac2_dunder_main_no_requirement.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given an offboarded tenant's key, When any other `host.*`/`billing.*` tool is called with it, Then a typed \"unknown or disabled tenant\" error returns, same shape as an unissued key.",
+      "description": "Given a `free` tenant with 5 versions, When a sixth is published, Then version 1 is deleted and versions 2\u20136 remain.",
       "test": "tests/ac10_publish_validation_errors.rs (existing AC10 regression coverage for a genuinely-unknown import; reverified unchanged by this PRD, not a new file)"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a `pro`-plan tenant with a live Stripe subscription, When it calls `host.self_offboard`, Then the Stripe subscription is canceled (verify via Stripe live-mode API/dashboard) and no further invoice is generated.",
+      "description": "Given `host.tool_rollback {version: 9}` for a tool with 2 versions, When called, Then an argument error names the valid range.",
       "test": "src/kinds/infer.rs unit test `stdlib_regeneration_keeps_pseudo_modules` (run via `cargo test --lib kinds::infer::`) -- not a tests/ file, so revdebt_ac1's path-existence check does not apply to it"
     }
   ],
