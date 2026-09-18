@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-tool-run-envelope.md (test_prefix: runenvelope)",
+  "ac_test_map_prd": "PRD-mcphost-test-suite-consolidation.md (test_prefix: suite)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,11 +28,15 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/runenvelope_ac1_call_and_tool_run_parity.rs",
-    "AC2": "tests/runenvelope_ac2_no_declared_outputs_raw_payload.rs",
-    "AC3": "tests/runenvelope_ac3_descriptor_and_decision_table_name_envelope.rs",
-    "AC4": "tests/runenvelope_ac4_no_calls_row_with_payload.rs",
-    "AC5": "deferred -- no branch-local test possible; version bump + CHANGELOG.md prepend happen at worktree-extend.sh integrate time, not in this branch's worktree. See PRD frontmatter mock_justifications."
+    "AC1": "tests/suite_ac1_ten_binaries_and_names_preserved.rs",
+    "AC2": "tests/suite_ac2_check_catches_unregistered_file.rs",
+    "AC3": "tests/suite_ac3_mod_common_declared_once.rs",
+    "AC4": "tests/suite_ac4_archived_prd_pointers_resolve.rs",
+    "AC5": "tests/suite_ac5_disk_size_budget.rs",
+    "AC6": "tests/suite_ac6_wall_time_budget.rs",
+    "AC7": "tests/suite_ac7_junit_per_test_timing.rs",
+    "AC8": "deferred -- see PRD deferred_acs/mock_justifications (cross-host parity script needs a second box; casper deleted); AC1's nextest list diff proves the name-matching change single-host",
+    "AC9": "tests/suite_ac9_selftest_named_and_green.rs"
   },
   "ac_test_map_by_prefix": {
     "runenvelope": {
@@ -81,6 +85,18 @@
       "AC3": "tests/ac10_publish_validation_errors.rs (existing AC10 regression coverage for a genuinely-unknown import; reverified unchanged by this PRD, not a new file)",
       "AC4": "src/kinds/infer.rs unit test `stdlib_regeneration_keeps_pseudo_modules` (run via `cargo test --lib kinds::infer::`) -- not a tests/ file, so revdebt_ac1's path-existence check does not apply to it",
       "_prd": "PRD-mcphost-stdlib-pseudo-modules.md -- same as ac_test_map above while this PRD is the one at HEAD"
+    },
+    "suite": {
+      "AC1": "tests/suite_ac1_ten_binaries_and_names_preserved.rs",
+      "AC2": "tests/suite_ac2_check_catches_unregistered_file.rs",
+      "AC3": "tests/suite_ac3_mod_common_declared_once.rs",
+      "AC4": "tests/suite_ac4_archived_prd_pointers_resolve.rs",
+      "AC5": "tests/suite_ac5_disk_size_budget.rs",
+      "AC6": "tests/suite_ac6_wall_time_budget.rs",
+      "AC7": "tests/suite_ac7_junit_per_test_timing.rs",
+      "AC8": "deferred -- see PRD deferred_acs/mock_justifications (cross-host parity script needs a second box; casper deleted); AC1's nextest list diff proves the name-matching change single-host",
+      "AC9": "tests/suite_ac9_selftest_named_and_green.rs",
+      "_prd": "PRD-mcphost-test-suite-consolidation.md \u2014 same as ac_test_map above while this PRD is the one at HEAD"
     }
   }
 }
