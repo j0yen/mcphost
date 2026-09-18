@@ -15,25 +15,31 @@
       "id": "AC1",
       "level": "MUST",
       "description": "Given a tool whose output matches its declared outputs, When exercised via `tool_call` and via `tool_run` on the same fixture, Then both results carry the fields at `result.payload.<field>` identically, and `tool_run` additionally carries `duration_ms` and `exit_code`.",
-      "test": "tests/stdlibpseudo_ac1_future_import_empty_requirements.rs"
+      "test": "tests/runenvelope_ac1_call_and_tool_run_parity.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
       "description": "Given a tool with no declared outputs, When `tool_run` executes it, Then raw output lands under `result.payload` exactly as a call would place it.",
-      "test": "tests/stdlibpseudo_ac2_dunder_main_no_requirement.rs"
+      "test": "tests/runenvelope_ac2_no_declared_outputs_raw_payload.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
       "description": "Given the descriptors and llms.txt after build, When read, Then `tool_run` documents the standard envelope plus run metadata and the dry-run decision table reflects it.",
-      "test": "tests/ac10_publish_validation_errors.rs (existing AC10 regression coverage for a genuinely-unknown import; reverified unchanged by this PRD, not a new file)"
+      "test": "tests/runenvelope_ac3_descriptor_and_decision_table_name_envelope.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
       "description": "Given `tool_run` executes, When the calls table is inspected, Then no row was recorded (the no-metering property is unchanged, asserted by test).",
-      "test": "src/kinds/infer.rs unit test `stdlib_regeneration_keeps_pseudo_modules` (run via `cargo test --lib kinds::infer::`) -- not a tests/ file, so revdebt_ac1's path-existence check does not apply to it"
+      "test": "tests/runenvelope_ac4_no_calls_row_with_payload.rs"
+    },
+    {
+      "id": "AC5",
+      "level": "SHOULD",
+      "description": "Given the changelog after build, When read, Then the shape change and version boundary are named.",
+      "test": "deferred -- no branch-local test possible; version bump + CHANGELOG.md prepend happen at worktree-extend.sh integrate time, not in this branch's worktree. See PRD frontmatter mock_justifications."
     }
   ],
   "scope": [
