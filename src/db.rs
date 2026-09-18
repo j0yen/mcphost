@@ -3029,6 +3029,10 @@ impl Db {
     /// build the "names the valid range" error itself, and so it already
     /// has `kind`/`spec` in hand to pass here); this returns `false` only
     /// if `name` isn't one of this tenant's tools at all.
+    // Five parameters: one atomic `UPDATE` with a single caller
+    // (`control::tool_rollback`), which already has `kind`/`spec` in hand
+    // from the target version's row -- same shape as `set_tool_share` above.
+    #[allow(clippy::too_many_arguments)]
     pub async fn set_current_version(
         &self,
         tenant_id: i64,
