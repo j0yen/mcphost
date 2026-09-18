@@ -85,7 +85,9 @@ async fn tool_run_returns_full_output_with_no_calls_row_then_rate_limits_the_31s
         structured["duration_ms"].is_number(),
         "duration_ms must be present"
     );
-    assert_eq!(structured["result"], json!(Value::Null), "a raised call has no result");
+    // PRD-mcphost-tool-run-envelope requirement 1: the pre-PRD `result` key
+    // is now `payload`, matching `host.tool_call`'s envelope placement.
+    assert_eq!(structured["payload"], json!(Value::Null), "a raised call has no payload");
 
     let after = client.tools_call("host.usage", json!({})).await.expect("usage after");
     let calls_after = usage_calls(&after);

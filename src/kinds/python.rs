@@ -2449,14 +2449,27 @@ pub(crate) fn cap_str_bytes(s: &str, cap: usize) -> String {
     s[idx..].to_string()
 }
 
-/// Builds `host.tool_run`'s `{stdout, stderr, exit_code, result}` response
-/// (requirement 3, AC6) from a completed cold sandbox run. `exit_code` is
-/// synthesized from the envelope's own `ok` flag (0 success, 1 tool-level
-/// failure), not the OS exit status of the runner process -- `PY_RUNNER_SCRIPT`'s
-/// request loop always exits 0 by design (see that constant's docs)
-/// regardless of whether the tool itself raised, so the OS exit status
-/// alone can't distinguish the two the way this RPC's callers expect.
-fn tool_run_response(outcome: SandboxOutcome, effective_schema: &Value, test_mode: bool) -> Value {
+/// Builds `host.tool_run`'s `{stdout, stderr, exit_code, payload}` response
+/// (requirement 3, AC6; PRD-mcphost-tool-run-envelope requirement 1) from a
+/// completed cold sandbox run. `exit_code` is synthesized from the
+/// envelope's own `ok` flag (0 success, 1 tool-level failure), not the OS
+/// exit status of the runner process -- `PY_RUNNER_SCRIPT`'s request loop
+/// always exits 0 by design (see that constant's docs) regardless of
+/// whether the tool itself raised, so the OS exit status alone can't
+/// distinguish the two the way this RPC's callers expect.
+///
+/// PRD-mcphost-tool-run-envelope requirement 1: the tool's raw return value
+/// (renamed here from the pre-PRD `result` key) is placed under `payload`
+/// with the same [`apply_declared_outputs`] promotion `Kind::call` applies
+/// -- one shared code path, not a copied one (Technical considerations) --
+/// via [`tool_run_payload`]. `duration_ms` (added by `handler.rs` after
+/// this returns) and `exit_code` remain siblings, unchanged.
+fn tool_run_response(
+    outcome: SandboxOutcome,
+    effective_schema: &Value,
+    test_mode: bool,
+    declared: &[OutputDecl],
+) -> Value {
     let (envelope, fallback_exit_code, sandbox_stderr_tail): (Option<Value>, i64, String) =
         match &outcome {
             SandboxOutcome::Exited { stdout, .. } => {
@@ -2489,7 +2502,7 @@ fn tool_run_response(outcome: SandboxOutcome, effective_schema: &Value, test_mod
             "stdout": "",
             "stderr": cap_str_bytes(&sandbox_stderr_tail, TOOL_RUN_CAP_BYTES),
             "exit_code": fallback_exit_code,
-            "result": Value::Null,
+            "payload": Value::Null,
         });
         if test_mode && let Some(obj) = result.as_object_mut() {
             obj.insert("schema".to_string(), effective_schema.clone());
@@ -2498,8 +2511,16 @@ fn tool_run_response(outcome: SandboxOutcome, effective_schema: &Value, test_mod
     };
 
     let ok = envelope.get("ok").and_then(Value::as_bool).unwrap_or(false);
-    let result = if ok {
-        envelope.get("result").cloned().unwrap_or(Value::Null)
+    // PRD-mcphost-tool-run-envelope: promotion only runs on the success
+    // path, mirroring `Kind::call`'s own `Ok(value)` arm -- a tool-level
+    // exception is debug information (`ok: false`), not a result to
+    // promote, exactly as before this PRD (`result` stayed `Value::Null`
+    // here too).
+    let payload = if ok {
+        tool_run_payload(
+            envelope.get("result").cloned().unwrap_or(Value::Null),
+            declared,
+        )
     } else {
         Value::Null
     };
@@ -2540,7 +2561,7 @@ fn tool_run_response(outcome: SandboxOutcome, effective_schema: &Value, test_mod
         "stdout": cap_str_bytes(&stdout_text, TOOL_RUN_CAP_BYTES),
         "stderr": cap_str_bytes(&stderr_text, TOOL_RUN_CAP_BYTES),
         "exit_code": if ok { 0 } else { 1 },
-        "result": result,
+        "payload": payload,
     });
     if test_mode && let Some(obj) = result_obj.as_object_mut() {
         obj.insert("schema".to_string(), effective_schema.clone());
@@ -2650,6 +2671,33 @@ fn apply_declared_outputs(value: Value, declared: &[OutputDecl]) -> Value {
             );
             json!({"value": other, "payload": Value::Object(payload_map)})
         }
+    }
+}
+
+/// PRD-mcphost-tool-run-envelope requirement 1/2: `host.tool_run`'s own
+/// `payload` field -- reuses [`apply_declared_outputs`] (the exact function
+/// `Kind::call` applies above) rather than a copy, so the two surfaces
+/// cannot drift again (Technical considerations).
+///
+/// AC2: a tool with no declared outputs has nothing for
+/// [`apply_declared_outputs`] to promote (it's a no-op on an empty
+/// `declared`, same as `call`'s own path) -- the raw `result` value itself
+/// lands at `payload` unchanged, exactly the flat placement AC1 describes
+/// for a tool that *does* declare outputs, minus the promotion step.
+///
+/// AC1: when `declared` is non-empty, [`apply_declared_outputs`] returns an
+/// object carrying the original value's own top-level fields plus a nested
+/// `payload` map; only that nested map is pulled out here, so `tool_run`'s
+/// response carries exactly one `payload` field (sibling to `duration_ms`/
+/// `exit_code`), not the doubled `payload.payload` a naive reuse would
+/// produce.
+fn tool_run_payload(result: Value, declared: &[OutputDecl]) -> Value {
+    if declared.is_empty() {
+        return result;
+    }
+    match apply_declared_outputs(result, declared) {
+        Value::Object(mut obj) => obj.remove("payload").unwrap_or(Value::Null),
+        other => other,
     }
 }
 
@@ -4030,7 +4078,7 @@ impl Kind for PythonKind {
         let outcome = outcome.map_err(|e| KindError::Exec(format!("sandbox spawn failed: {e}")))?;
 
         Ok(redact_value(
-            &tool_run_response(outcome, &effective_schema, ctx.test_mode),
+            &tool_run_response(outcome, &effective_schema, ctx.test_mode, &parsed.outputs),
             &secret_values,
         ))
     }

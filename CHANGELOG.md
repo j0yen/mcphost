@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.57.1 — 2026-09-18
+
+`host.tool_run` now returns `result.payload` (with declared-output promotion) exactly as `host.tool_call` does, plus its `duration_ms`/`exit_code` run metadata — previously it returned `{duration_ms, exit_code, result: {...}}` with no `payload` envelope. Breaking for any consumer of the old dry-run shape; zero real callers found in a 42-session audit.
+
 ## v0.57.0 — 2026-09-18
 
 A tenant that wants to leave today has no path but emailing support. Adds
