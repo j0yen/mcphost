@@ -1,8 +1,8 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-stdlib-pseudo-modules.md",
-  "intent_slug": "mcphost-stdlib-pseudo-modules",
-  "root_motivation": "`__future__` is a compiler-directive pseudo-module: always importable, never installable from PyPI. Similar always-present names the inference can encounter: `__main__`, and any future dunder the interpreter grows. Rejecting them turns valid source into a publish error that the calling agent cannot repair.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tenant-self-offboard.md",
+  "intent_slug": "mcphost-tenant-self-offboard",
+  "root_motivation": "PRD-homeward-mcp-tenant's AC6 required \"a documented rollback: the tenant can be removed via public/account paths without residue in billing\" as direct evidence that a stranger's full lifecycle \u2014 not just signup \u2014 works without admin help. Walking the real tool catalog against the live mcphost.dev deployment (tenant `t_ea9749c3`, free plan, `source_class: external`) turned up no such tool. Five whys:",
   "user_persona": "Any tenant or agent publishing idiomatic Python via host.tool_publish (e.g. PRD-fleet-bridge-live's fleet adapter, blocked live on 2026-09-12): the requirement inference must not reject `from __future__ import annotations` or `__main__` as unresolvable PyPI packages, since neither is installable and the publish error names something the calling agent cannot repair.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
@@ -14,25 +14,25 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a python-kind spec whose source contains `from __future__ import annotations` and only stdlib imports, When it is published, Then publish succeeds with an empty inferred requirements list.",
+      "description": "Given a live free-plan tenant created via public `signup`, When it calls `host.self_offboard(tenant_key)` with its own key, Then the tenant's row shows `disabled=1` and the call returns success.",
       "test": "tests/stdlibpseudo_ac1_future_import_empty_requirements.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given source importing `__main__`, When published, Then no PyPI requirement is inferred for it.",
+      "description": "Given an already-offboarded tenant, When `host.self_offboard` is called again with the same key, Then it returns a clean idempotent result, not a crash or ambiguous error.",
       "test": "tests/stdlibpseudo_ac2_dunder_main_no_requirement.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given source importing a real unknown third-party name, When published with no requirements, Then the error still fires and names that import (regression guard).",
+      "description": "Given an offboarded tenant's key, When any other `host.*`/`billing.*` tool is called with it, Then a typed \"unknown or disabled tenant\" error returns, same shape as an unissued key.",
       "test": "tests/ac10_publish_validation_errors.rs (existing AC10 regression coverage for a genuinely-unknown import; reverified unchanged by this PRD, not a new file)"
     },
     {
       "id": "AC4",
-      "level": "SHOULD",
-      "description": "Given the shipped stdlib JSON, When the test suite runs, Then a test asserts the pseudo-module entries are present, so a future list regeneration cannot silently drop them.",
+      "level": "MUST",
+      "description": "Given a `pro`-plan tenant with a live Stripe subscription, When it calls `host.self_offboard`, Then the Stripe subscription is canceled (verify via Stripe live-mode API/dashboard) and no further invoice is generated.",
       "test": "src/kinds/infer.rs unit test `stdlib_regeneration_keeps_pseudo_modules` (run via `cargo test --lib kinds::infer::`) -- not a tests/ file, so revdebt_ac1's path-existence check does not apply to it"
     }
   ],

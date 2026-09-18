@@ -69,6 +69,11 @@ async fn unauthenticated_tools_list_is_signup_only() {
         // gating every other host.* descriptor here already has).
         "host.redeem",
         "host.key_rotate",
+        // PRD-mcphost-tenant-self-offboard P0 requirement 1 / AC1-4:
+        // discoverable unauthenticated too, same as host.key_rotate above --
+        // authenticated to CALL (host_schema's tenant_key is the credential
+        // being retired), not to discover.
+        "host.self_offboard",
         "host.tool_publish",
         // PRD-mcphost-publish-first-try requirement 4: discoverable
         // unauthenticated too, same as the rest of the host.* control
@@ -199,7 +204,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        76,
+        77,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the nine host.state.* tools (PRD-mcphost-tenant-state) \
@@ -210,7 +215,8 @@ async fn unauthenticated_tools_list_is_signup_only() {
          + the three billing.* tools + the four host.agent.* tools \
          (PRD-mcphost-agent-directory) + the eight host.msg.* tools \
          (PRD-mcphost-agent-inbox, PRD-mcphost-agent-wake) + the seven \
-         host.agent.contact_*/mute/unmute tools (PRD-mcphost-agent-consent): \
+         host.agent.contact_*/mute/unmute tools (PRD-mcphost-agent-consent) + \
+         host.self_offboard (PRD-mcphost-tenant-self-offboard): \
          {tool_names:?}"
     );
 }

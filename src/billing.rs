@@ -316,6 +316,19 @@ pub trait BillingClient: Send + Sync {
         meter_event_name: &str,
         period_start: i64,
     ) -> Result<i64, AppError>;
+
+    /// PRD-mcphost-tenant-self-offboard P0 requirement 2 / AC4:
+    /// `host.self_offboard()`'s billing-cleanup half -- cancel every
+    /// currently-active subscription Stripe has on file for
+    /// `stripe_customer_id`, live-mode, immediately (not "at period end"
+    /// cancel_at_period_end` which would keep billing through the current
+    /// period). A customer with zero active subscriptions (already
+    /// canceled, or a `pro` tenant whose `stripe_customer_id` predates a
+    /// real subscription) returns `Ok(vec![])`, not an error.
+    async fn cancel_active_subscriptions(
+        &self,
+        stripe_customer_id: &str,
+    ) -> Result<Vec<String>, AppError>;
 }
 
 /// The real implementation: `POST https://api.stripe.com/v1/checkout/sessions`,
@@ -509,6 +522,67 @@ impl BillingClient for StripeClient {
             .sum();
         Ok(total)
     }
+
+    /// `GET /v1/subscriptions?customer=...&status=active` to list, then one
+    /// `DELETE /v1/subscriptions/{id}` per active subscription -- an
+    /// immediate cancellation (Stripe's default for a bare `DELETE`), not
+    /// `cancel_at_period_end` which would keep billing through the current
+    /// period.
+    async fn cancel_active_subscriptions(
+        &self,
+        stripe_customer_id: &str,
+    ) -> Result<Vec<String>, AppError> {
+        let list_resp = self
+            .http
+            .get("https://api.stripe.com/v1/subscriptions")
+            .bearer_auth(&self.secret_key)
+            .query(&[("customer", stripe_customer_id), ("status", "active")])
+            .send()
+            .await
+            .map_err(|e| AppError::Internal(format!("Stripe subscription list request: {e}")))?;
+        let list_status = list_resp.status();
+        let list_body: Value = list_resp
+            .json()
+            .await
+            .map_err(|e| AppError::Internal(format!("Stripe subscription list response: {e}")))?;
+        if !list_status.is_success() {
+            return Err(AppError::Internal(format!(
+                "Stripe rejected the subscription list request: HTTP {list_status}: {list_body}"
+            )));
+        }
+        let subscription_ids: Vec<String> = list_body
+            .get("data")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|s| s.get("id").and_then(Value::as_str))
+            .map(str::to_string)
+            .collect();
+
+        let mut canceled = Vec::with_capacity(subscription_ids.len());
+        for subscription_id in subscription_ids {
+            let resp = self
+                .http
+                .delete(format!(
+                    "https://api.stripe.com/v1/subscriptions/{subscription_id}"
+                ))
+                .bearer_auth(&self.secret_key)
+                .send()
+                .await
+                .map_err(|e| {
+                    AppError::Internal(format!("Stripe subscription cancel request: {e}"))
+                })?;
+            let status = resp.status();
+            if !status.is_success() {
+                let body: Value = resp.json().await.unwrap_or(Value::Null);
+                return Err(AppError::Internal(format!(
+                    "Stripe rejected canceling subscription {subscription_id}: HTTP {status}: {body}"
+                )));
+            }
+            canceled.push(subscription_id);
+        }
+        Ok(canceled)
+    }
 }
 
 /// The test double every `billing_ac*.rs` test injects instead of
@@ -536,6 +610,16 @@ pub struct FakeBillingClient {
     /// yet"; a test sets this via [`Self::set_accepted_usage`] to assert
     /// `billing.status` surfaces it labeled Stripe-reported.
     accepted_usage: std::sync::Mutex<Option<i64>>,
+    /// PRD-mcphost-tenant-self-offboard P0 requirement 2 / AC4: which
+    /// subscription ids are "active" per customer -- seeded via
+    /// [`Self::set_active_subscription`], drained by
+    /// [`BillingClient::cancel_active_subscriptions`] exactly like a real
+    /// Stripe cancel would remove them from the active set.
+    active_subscriptions: std::sync::Mutex<std::collections::HashMap<String, Vec<String>>>,
+    /// Every subscription id [`BillingClient::cancel_active_subscriptions`]
+    /// has actually canceled so far, across every customer -- AC4's
+    /// assertion target.
+    canceled_subscriptions: std::sync::Mutex<Vec<String>>,
 }
 
 /// An owned, `Clone`/inspectable copy of a [`CheckoutSessionRequest`] (the
@@ -576,7 +660,31 @@ impl FakeBillingClient {
             meter_batches: std::sync::Mutex::new(Vec::new()),
             fail_meter_events: std::sync::atomic::AtomicBool::new(false),
             accepted_usage: std::sync::Mutex::new(None),
+            active_subscriptions: std::sync::Mutex::new(std::collections::HashMap::new()),
+            canceled_subscriptions: std::sync::Mutex::new(Vec::new()),
         }
+    }
+
+    /// AC4: give `stripe_customer_id` one active subscription
+    /// (`subscription_id`) for a subsequent `host.self_offboard()` call to
+    /// cancel.
+    pub fn set_active_subscription(&self, stripe_customer_id: &str, subscription_id: &str) {
+        if let Ok(mut guard) = self.active_subscriptions.lock() {
+            guard
+                .entry(stripe_customer_id.to_string())
+                .or_default()
+                .push(subscription_id.to_string());
+        }
+    }
+
+    /// Every subscription id canceled so far, across every customer --
+    /// AC4's assertion target (order-independent; a test with one
+    /// subscription just checks membership/length).
+    pub fn canceled_subscriptions(&self) -> Vec<String> {
+        self.canceled_subscriptions
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_default()
     }
 
     pub fn call_count(&self) -> usize {
@@ -669,6 +777,21 @@ impl BillingClient for FakeBillingClient {
             .lock()
             .map(|g| g.unwrap_or(0))
             .unwrap_or(0))
+    }
+
+    async fn cancel_active_subscriptions(
+        &self,
+        stripe_customer_id: &str,
+    ) -> Result<Vec<String>, AppError> {
+        let ids = self
+            .active_subscriptions
+            .lock()
+            .map(|mut guard| guard.remove(stripe_customer_id).unwrap_or_default())
+            .unwrap_or_default();
+        if let Ok(mut guard) = self.canceled_subscriptions.lock() {
+            guard.extend(ids.iter().cloned());
+        }
+        Ok(ids)
     }
 }
 

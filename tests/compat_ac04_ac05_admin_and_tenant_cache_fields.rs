@@ -80,7 +80,7 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
     );
     assert_eq!(
         names.len(),
-        76,
+        77,
         "there must be exactly the sixteen host.* control-plane tools \
          (incl. host.quickstart, host.tool_run, host.bridge_test, host.spec_test -- \
          PRD-mcphost-tool-test, and host.redeem/host.key_rotate -- \
@@ -92,6 +92,7 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
          tools (PRD-mcphost-schedules, PRD-mcphost-inbound-events) plus the three billing.* \
          tools plus the four host.agent.* tools (PRD-mcphost-agent-directory) plus the \
          eight host.msg.* tools (PRD-mcphost-agent-inbox, PRD-mcphost-agent-wake) plus the \
-         seven host.agent.contact_*/mute/unmute tools (PRD-mcphost-agent-consent): {names:?}"
+         seven host.agent.contact_*/mute/unmute tools (PRD-mcphost-agent-consent) plus \
+         host.self_offboard (PRD-mcphost-tenant-self-offboard): {names:?}"
     );
 }
