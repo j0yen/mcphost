@@ -31,5 +31,5 @@ tasks:
       the upstream through the shared tool, never the raw key.
     gold:
       tool_name: paid_api
-      call_check: "result.payload.body.ok == true"
+      call_check: "result.payload.ok == true"
       kind: http
