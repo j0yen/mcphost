@@ -24,3 +24,5 @@ mod wasmkind_ac07_docs_llms_and_quickstart_document_wasm;
 mod wasmkind_ac08_cache_reuses_compiled_artifact;
 #[path = "wasmkind_ac09_healthz_reports_wasm_runtime.rs"]
 mod wasmkind_ac09_healthz_reports_wasm_runtime;
+#[path = "wasmkind_ac10_declared_output_promotion_matches_python.rs"]
+mod wasmkind_ac10_declared_output_promotion_matches_python;
