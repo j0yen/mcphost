@@ -208,7 +208,10 @@ fn validate_spec_fields_all(parsed: &WasmSpec, engine: &Engine) -> Vec<KindError
 /// Requirement 3 / AC1, AC10: wraps the component's parsed JSON return
 /// value as `{"payload": ...}` -- every wasm call's output lands at
 /// `result.payload` regardless of whether `outputs` declares anything, so
-/// AC1's plain echo case satisfies the envelope contract on its own.
+/// AC1's plain echo case satisfies the envelope contract on its own. An
+/// object return keeps its original top-level fields and gets `payload`
+/// added alongside them (not wrapped underneath), the exact same shape
+/// python's own `apply_declared_outputs` produces for an object return.
 /// Declared fields are promoted into that same `payload` with
 /// [`super::apply_output_decls`]'s any-wrapper search (`wrapper_keys:
 /// None`), the same search python's own `apply_declared_outputs` uses --
@@ -217,11 +220,13 @@ fn build_result(source: Value, declared: &[OutputDecl]) -> Value {
     match source {
         Value::Object(obj) => {
             let source_val = Value::Object(obj.clone());
-            let mut payload_map = obj;
+            let mut payload_map = obj.clone();
             if !declared.is_empty() {
                 super::apply_output_decls(&mut payload_map, &source_val, declared, None);
             }
-            json!({ "payload": Value::Object(payload_map) })
+            let mut out = obj;
+            out.insert("payload".to_string(), Value::Object(payload_map));
+            Value::Object(out)
         }
         other => {
             if declared.is_empty() {

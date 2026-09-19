@@ -48,7 +48,8 @@ async fn declared_field_nested_under_analysis_lands_at_result_payload() {
         structured["payload"]["diagnosis"], "looks fine",
         "result.payload.diagnosis must be present: {structured}"
     );
-    // Existing nested shape stays (same additive/compatibility contract
-    // python's own AC2 test asserts).
-    assert_eq!(structured["payload"]["analysis"]["diagnosis"], "looks fine");
+    // Existing top-level shape stays alongside payload (identical to
+    // python's own AC2 test: `analysis` is a top-level sibling of
+    // `payload`, not nested inside it).
+    assert_eq!(structured["analysis"]["diagnosis"], "looks fine");
 }
