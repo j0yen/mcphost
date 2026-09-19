@@ -18,3 +18,5 @@ mod wasmkind_ac03_timeout_and_oom_recover;
 mod wasmkind_ac05_tool_test_dry_run;
 #[path = "wasmkind_ac06_trap_is_structured_and_logged.rs"]
 mod wasmkind_ac06_trap_is_structured_and_logged;
+#[path = "wasmkind_ac07_docs_llms_and_quickstart_document_wasm.rs"]
+mod wasmkind_ac07_docs_llms_and_quickstart_document_wasm;

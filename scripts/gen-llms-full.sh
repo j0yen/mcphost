@@ -7,7 +7,7 @@
 #
 # Source files, in the order they appear in the assembled output:
 #   README.md            the canonical agent-readable doc (requirement 1)
-#   docs/kinds/*.md       the three tool kinds (echo, http, python)
+#   docs/kinds/*.md       the tool kinds (echo, http, python, wasm)
 #   docs/benchmarks/*.md  every measured proof point cited from README/llms.txt
 #   docs/receipts/*.md    supporting measurement receipts cited elsewhere
 #
