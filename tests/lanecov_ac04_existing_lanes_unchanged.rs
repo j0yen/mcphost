@@ -80,9 +80,12 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
         .filter(|id| !baseline.lanes.iter().any(|o| o.id == *id))
         .collect();
     added.sort_unstable();
+    // PRD-mcphost-share-a-tool-not-a-key added its own "examples" lane
+    // (routes examples/share-a-tool/** to the AC0x proof tests) -- a
+    // second, intended addition since the baseline, not drift.
     assert_eq!(
         added,
-        vec!["loop-config"],
-        "loop-config must be the only lane added since {BASELINE_REV}"
+        vec!["examples", "loop-config"],
+        "only examples and loop-config may have been added since {BASELINE_REV}"
     );
 }

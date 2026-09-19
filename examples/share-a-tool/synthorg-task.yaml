@@ -1,0 +1,35 @@
+# Consumer task for the synthorg mcphost corpus (RedBaron's
+# corpora/mcphost/consumer-tasks.yaml, see its own header comment for the
+# id/segments/task/gold schema and the call_check mini-grammar). Proposed
+# addition for the "share a tool, not a key" recipe (www/llms.txt,
+# examples/share-a-tool/proof.sh) -- not merged into that file by this
+# PRD, since RedBaron's corpus lives in a separate repository outside this
+# worktree's scope (build_into: mcphost only). A maintainer of that corpus
+# can fold this block into consumer-tasks.yaml's own `tasks:` list.
+#
+# Segment: integration_specialist (incumbent n8n, panel-composition.yaml).
+# n8n's shared-credential model is per-workflow, not per-caller: a team
+# that wants three agents calling one paid API either copies the key into
+# every agent's own credential store, or funnels every call through a
+# single shared workflow with no per-caller revocation. This task proves
+# the delegated-access alternative: one secret, one shared tool, one
+# `host.group.remove` to cut a single caller off without touching anyone
+# else's config.
+tasks:
+  - id: integration-specialist-share-a-tool-not-a-key
+    segments: [integration_specialist]
+    task: >
+      Your team needs three different agents calling one paid API, but
+      handing each of them the raw key means rotating it later touches
+      every agent's config, and a leaked transcript from any one of them
+      leaks the whole account. Sign up, store a stand-in key with
+      `host.secret_set`, publish an `http`-kind tool whose header
+      references it as `{{ secret.<name> }}`, share it to a group with
+      `host.tool_share visibility=group`, add a second tenant with
+      `host.group.add`, and have that second tenant call the tool --
+      the result should include an `ok` field confirming the call reached
+      the upstream through the shared tool, never the raw key.
+    gold:
+      tool_name: paid_api
+      call_check: "result.payload.ok == true"
+      kind: http

@@ -1,82 +1,83 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-test-suite-consolidation.md",
-  "intent_slug": "mcphost-test-suite-consolidation",
-  "root_motivation": "Joe's mcphost gate takes 21\u201342 minutes for a 413 s cold compile. The repo's `tests/` directory holds 289 top-level `.rs` files (2026-09-12 count) and cargo's default `autotests` makes each one a separate test binary; each links the whole 52K-LoC crate and its 41 dependencies, and measured binaries are 274\u2013291 MB (`attrib_ac1_loopback_signup_unstamped`, `infer_ac08_ac09_python_requirements`). `target/debug/deps` holds 1,391 such binaries. 269 of the files declare `mod common;`, so the shared helper is compiled 269 times. RedBaron's root disk reached 81\u201386 % on 09-08, with `target/` dirs the known bulk. Every gate pays the link cost 289 times for one crate; every new AC PRD adds another binary. PRD-build-gate-phase-timing measures the `gate` phase this PRD moves; until it ships, the expected saving is inferred from binary count and size, not measured.",
-  "user_persona": "The loop dispatching mcphost's gate: it pays the whole-crate link cost ~289 times per gate today (21-42 minutes for a 413 s cold compile), and every new AC PRD that adds one tests/<prefix>_ac<N>_*.rs file adds another binary. Also the AC-pairing classifier, which resolves tests/<prefix>_ac<N>_*.rs paths and must see the same file names and paths after consolidation as before, and the operator watching RedBaron's root disk (81-86% on 2026-09-08, target/ the known bulk).",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-share-a-tool-not-a-key.md",
+  "intent_slug": "mcphost-share-a-tool-not-a-key",
+  "root_motivation": "A team running two or more agents against one paid API has to give each agent the raw key, because no hosted MCP offers delegated, revocable access to a tool whose secret stays with the owner. Consequence: every agent's environment is a key copy, rotation means touching every agent, and a leaked agent transcript leaks the account. mcphost already has the three primitives (secrets via `host.secret_set`/`{{ secret.<name> }}` interpolation in `src/kinds/infer.rs`/`src/handler.rs`, group sharing via `host.tool_share`/`host.group.*` in `src/sharing.rs`, and host-side interpolation) and no page that puts them together; the only worked example on the host is homeward (visions/mcp-host.md 2026-09-18 addendum). This is an opportunity, not a failure: the primitives exist and are untested as one flow.",
+  "user_persona": "A team lead's agent that publishes one `http` tool wrapping a paid API with the key stored by `host.secret_set`, shares it with `host.tool_share visibility=group`, and adds teammates' tenants with `host.group.add` -- every teammate's agent can then call the tool, none can read the key, and `host.group.remove` revokes one in a single call. Also Joe, who wants `healthz`/`signup_events` to show how many real tenants complete this recipe each week.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 15
+    "target": 8
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the repo at HEAD, When `gen-test-suites.sh` runs and `cargo nextest list` runs, Then at most ten test binaries are listed and the set of test names (suite prefix stripped) equals the set listed at the parent commit.",
-      "test": "tests/suite_ac1_ten_binaries_and_names_preserved.rs"
+      "description": "Given llms.txt, When the section is read, Then it lists the six calls in order with one argument block each and is under 60 lines.",
+      "test": "tests/mcphost_share_a_tool_not_a_key_ac01_llms_txt_section.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a new file `tests/zzz_ac1_probe.rs` that is not in any suite, When `gen-test-suites.sh --check` runs, Then it exits non-zero naming `tests/zzz_ac1_probe.rs`; after regenerating, it exits 0 and the test is listed.",
-      "test": "tests/suite_ac2_check_catches_unregistered_file.rs"
+      "description": "Given two fresh tenants, When `proof.sh` runs against `MCPHOST_URL`, Then the caller's `host.tool_call` on the shared tool returns the upstream's response.",
+      "test": "tests/mcphost_share_a_tool_not_a_key_ac02_caller_call_returns_upstream_response.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the consolidated layout, When `grep -c 'mod common' tests/*.rs` runs over the included files, Then the count is 0 and each suite file declares `mod common;` once.",
-      "test": "tests/suite_ac3_mod_common_declared_once.rs"
+      "description": "Given the caller tenant, When it calls `host.secret_list`, Then the list is empty and no response body to the caller contains the secret value.",
+      "test": "tests/mcphost_share_a_tool_not_a_key_ac03_caller_never_sees_secret.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given the archived mcphost PRDs' test pointers (for example `tests/hooks_ac1_*.rs`), When the verified-completed pairing classifier runs against them, Then every pairing that resolved before resolves now.",
-      "test": "tests/suite_ac4_archived_prd_pointers_resolve.rs"
+      "description": "Given `host.group.remove` for the caller, When the caller calls the tool again, Then the response is a permission error and the owner's own call still succeeds.",
+      "test": "tests/mcphost_share_a_tool_not_a_key_ac04_group_remove_revokes_caller.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a clean `target/`, When `cargo nextest run` completes, Then `du -s target/debug/deps` is under 5 GB and the receipt records the size.",
-      "test": "tests/suite_ac5_disk_size_budget.rs"
+      "description": "Given the proof completed, When `signup_events` is queried for both tenants, Then `source=recipe:share-a-tool`.",
+      "test": "tests/mcphost_share_a_tool_not_a_key_ac05_signup_events_source_tagged.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given two timed full nextest runs at the same commit, one before and one after the change (or the `gate:` phase from PRD-build-gate-phase-timing when present), When compared in the receipt, Then the after time is \u226450 % of before.",
-      "test": "tests/suite_ac6_wall_time_budget.rs"
+      "description": "Given the proof runs against https://mcphost.dev/mcp, When it finishes, Then every assertion above passes and the printed wall time is under 120 s. (Live; evidence: proof stdout captured in the receipt)",
+      "test": "deferred -- Live; needs a real run against production https://mcphost.dev/mcp, unreachable from this worktree's own gate (build_into: mcphost only, no live-network access here). Embodied (gated on MCPHOST_LIVE=1) by tests/mcphost_share_a_tool_not_a_key_ac08_live_test_skipped_without_env.rs::live_proof_against_real_mcphost_when_enabled -- not run by this build, run manually or by a later live-gate loop"
     },
     {
       "id": "AC7",
       "level": "SHOULD",
-      "description": "Given `.config/nextest.toml` with JUnit enabled, When the suite runs, Then a JUnit file exists with a duration per test.",
-      "test": "tests/suite_ac7_junit_per_test_timing.rs"
+      "description": "Given the synthorg mcphost corpus, When the new task runs 5 times, Then 5 completions are recorded with wall time.",
+      "test": "tests/mcphost_share_a_tool_not_a_key_ac07_synthorg_task_five_completions.rs (the real synthorg corpus, RedBaron's corpora/mcphost/consumer-tasks.yaml, lives in a separate repository outside this worktree's scope; examples/share-a-tool/synthorg-task.yaml is the proposed task for a corpus maintainer to merge, and this test runs proof.sh -- the task's runnable embodiment -- 5 times, recording a completion and wall time per run)"
     },
     {
       "id": "AC8",
       "level": "SHOULD",
-      "description": "Given the parity script from mcphost-tests-host-independence, When run against the new layout on one host, Then it matches by test name and reports the same test count as before.",
-      "test": "deferred -- see PRD deferred_acs/mock_justifications (cross-host parity script needs a second box; casper deleted); AC1's nextest list diff proves the name-matching change single-host"
+      "description": "Given `MCPHOST_LIVE` unset, When the test suite runs, Then the Live test is skipped, not failed.",
+      "test": "tests/mcphost_share_a_tool_not_a_key_ac08_live_test_skipped_without_env.rs"
     },
     {
       "id": "AC9",
       "level": "SHOULD",
-      "description": "Given the `suite` selftest cases, When the repo's test selftest runs, Then they are named and green.",
-      "test": "tests/suite_ac9_selftest_named_and_green.rs"
+      "description": "Given the public variant section, When read, Then it states why group visibility is the default.",
+      "test": "tests/mcphost_share_a_tool_not_a_key_ac09_public_variant_states_default_reason.rs"
     }
   ],
   "scope": [
-    "`Cargo.toml`: `autotests = false`; one `[[test]]` per area with `path = \"tests/suite_<area>.rs\"`; areas chosen by filename prefix so no suite exceeds ~60 files and the total is <=10 (AC1).",
-    "`scripts/gen-test-suites.sh`: scans top-level `tests/*.rs`, assigns each to an area by prefix table, writes `tests/suite_<area>.rs` with `#[path = \"<file>.rs\"] mod <ident>;` lines plus one shared `mod common;` (and `support`, `ci_sandbox_support` where used); deterministic, sorted output; `--check` exits non-zero naming any unregistered or drifted file, wired into ci-checks (AC1/AC2).",
-    "Per-file `mod common;` (and the other helper declarations) removed from included files, replaced by `use crate::common;` or equivalent so the helper compiles once (AC3).",
-    "Every test that ran before runs after: nextest's test list, suite prefix stripped, equals the pre-change list; the verified-completed pairing classifier and intent-card test pointers resolve exactly as before (AC1/AC4)."
+    "`www/llms.txt`: a new `## Share a tool, not a key` section (six calls in order -- `host.secret_set`, `host.tool_publish`, `host.group.create`, `host.tool_share`, `host.group.add`, `host.tool_call` -- one fenced argument block each, under 60 lines) plus a `### ... public variant` section explaining why `group` is the default (AC1, AC9).",
+    "`examples/share-a-tool/proof.sh`: a bash+curl+python3 script (no jq) that runs the full recipe against `$MCPHOST_URL` with two fresh tenants and a self-started local mock upstream, asserting the caller's call returns the upstream's response, the caller's `host.secret_list` is empty with no secret leak, and `host.group.remove` revokes the caller while the owner keeps working; prints a wall time (AC2-AC5).",
+    "`examples/share-a-tool/synthorg-task.yaml`: a proposed consumer-task entry for RedBaron's mcphost corpus (segment `integration_specialist`), not merged into that separate repository by this build (AC7).",
+    "Test-only Rust files under `tests/mcphost_share_a_tool_not_a_key_ac0[1-9]_*.rs` exercising each of the above, including a `MCPHOST_LIVE=1`-gated Live test embodying AC6 (AC8).",
+    "Zero `src/` changes -- every primitive this recipe composes (`host.secret_set`, `host.tool_publish`'s `{{ secret.<name> }}` interpolation, `host.tool_share`/`host.group.*`) already exists and is unmodified."
   ],
   "non_goals": [
-    "Changing any test's body or assertion, or `src/`.",
-    "Changing the runner: nextest stays, and its per-test process isolation is what keeps host-independence fixes valid.",
-    "Reducing the number of test files. Consolidation is at the binary level only.",
-    "Sharding suites across machines."
+    "Any change to sharing, secrets, or groups code (`src/sharing.rs`, `src/secrets.rs`, `src/kinds/http.rs`, `src/kinds/infer.rs`, `src/handler.rs`) -- this PRD is docs and an example script only.",
+    "Per-caller usage breakdown inside `host.usage` (per tenant today) -- open question in the vision, not this PRD.",
+    "Rate limits per caller on a shared tool.",
+    "Merging `examples/share-a-tool/synthorg-task.yaml` into RedBaron's actual corpus repository -- that repository is outside this worktree's scope; the file is a proposed addition for its maintainer."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -85,35 +86,36 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "no_src_change": "Engineering target explicitly excludes src/ changes; only Cargo.toml, tests/suite_*.rs, the helper declarations, and scripts/ are touched.",
-      "test_identity_preserved": "nextest's test list, with the suite prefix stripped, must equal the set listed at the parent commit -- consolidation renames no test and drops none (AC1/AC4 guardrail)."
+      "no_src_change": "Engineering target is docs/examples only: www/llms.txt, examples/share-a-tool/, and the synthorg corpus artifact -- zero mcphost src/ changes.",
+      "worktree_scope": "The real synthorg mcphost corpus (RedBaron's corpora/mcphost/consumer-tasks.yaml) lives in a separate repository (/home/jsy/repos/synthorg) this build is not authorized to touch; AC7 is proven by a proposed task file plus a Rust test that runs the task's runnable embodiment (proof.sh) 5 times, not by editing or executing that other repo.",
+      "secret_never_logged": "proof.sh never prints the secret value it generates in any check output, log line, or error message (PRD non-functional requirement); the mock upstream's own request log is read only via `grep -q`, never echoed."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does mcphost's gate take 21-42 minutes for a 413 s cold compile?",
-      "a": "cargo links roughly 289 separate test binaries every run (one per top-level tests/*.rs file), each 274-291 MB."
+      "q": "Why does a team running multiple agents against one paid API have to give each agent the raw key?",
+      "a": "No hosted MCP offers delegated, revocable access to a tool whose secret stays with the owner -- every agent's environment ends up holding its own copy of the key."
     },
     {
       "why": 2,
-      "q": "Why does cargo build ~289 separate binaries for one crate's tests?",
-      "a": "Cargo's default `autotests = true` makes every top-level tests/*.rs file its own compilation unit and its own binary; nothing in the repo opts out of that default."
+      "q": "Why does that matter operationally?",
+      "a": "Rotation means touching every agent's config individually, and a leaked transcript from any one agent leaks the whole account -- there is no single point of revocation."
     },
     {
       "why": 3,
-      "q": "Why is each of those binaries so expensive to link?",
-      "a": "Each one separately links the whole 52K-LoC crate and its 41 dependencies, and 269 of the 289 files declare `mod common;`, so the shared test helper is compiled 269 times over instead of once."
+      "q": "Why hasn't mcphost's own host-side secret interpolation (`{{ secret.<name> }}`) and group sharing (`host.tool_share`/`host.group.*`) already solved this?",
+      "a": "Both primitives exist (`src/kinds/infer.rs`/`src/handler.rs` interpolation, `src/sharing.rs` group visibility) and are independently tested, but no documentation or example ever composed them into one flow -- a stranger reading `www/llms.txt` had no path from 'I have a paid API key' to 'my team can call it without the key'."
     },
     {
       "why": 4,
-      "q": "Why has this not already been fixed?",
-      "a": "No PRD had previously consolidated the binaries; each new AC PRD just added one more tests/<prefix>_ac<N>_*.rs file under the existing autotests default, silently growing both the gate's link cost and target/debug/deps's disk footprint."
+      "q": "Why did this gap go unnoticed?",
+      "a": "The only worked example on the host (homeward, visions/mcp-host.md 2026-09-18 addendum) is a single-tenant flow; nothing exercised the three primitives together end to end against production, so the composition was untested even though every piece was."
     },
     {
       "why": 5,
-      "q": "Why fix it now rather than wait for PRD-build-gate-phase-timing to measure the exact saving first?",
-      "a": "RedBaron's root disk already reached 81-86% on 2026-09-08 with target/ as the known bulk, and every gate on this repo keeps paying the per-binary link cost in the meantime; the expected saving is inferred from binary count and size today, and PRD-build-gate-phase-timing verifies it once both ship -- it does not need to land first to justify shipping this PRD."
+      "q": "Why fix it now with docs + an example rather than waiting for a dedicated multi-tenant sharing product surface?",
+      "a": "The primitives are already shipped and stable (zero src/ changes needed); the gap is purely that nobody wrote the recipe down and proved it works, which a stranger can verify in under 3 minutes on the free plan once written -- the highest-leverage, lowest-risk fix available."
     }
   ],
   "created_at": "2026-09-03T18:04:17Z",
@@ -149,6 +151,10 @@
     {
       "question": "intent-card-refresh.sh regenerated root_motivation and acceptance_criteria correctly from PRD-mcphost-test-suite-consolidation, but per its own documented design carried forward scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional byte-for-byte from the PREVIOUS card (PRD-mcphost-stdlib-pseudo-modules), which described an entirely different, already-shipped feature. agent/test-map.json's ac_test_map was also still keyed to that PRD's test_prefix (stdlibpseudo), so the regenerated AC1-9 `test` fields pointed at tests/stdlibpseudo_ac*.rs / tests/ac10_publish_validation_errors.rs / a src/kinds/infer.rs unit test -- files that exist and pass but prove pseudo-module inference, not test-binary consolidation. reviewer-agent caught this at HEAD 92d3dcf (captured_at 2026-09-18T20:10:09Z): ac-test-field-pointers-semantically-wrong, ac-test-map-not-refreshed-for-new-prd, intent-card-scope-non-goals-hard-constraints-stale-from-prior-prd, ac-traceability-receipt-stale-ac-set-mismatch, ac4-verification-test-too-weak-to-catch-mismatched-pointers -- the same defect class already fixed in place at least six times in this card's own history (see the prior entries above). Fix in place, or reopen the contract?",
       "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence. No AC content changed (root_motivation and acceptance_criteria were already correctly re-sourced by intent-card-refresh.sh from the PRD text), so there is no Stage-3 conflict. agent/test-map.json's ac_test_map was repointed to a new `suite` prefix naming the real proofs (tests/suite_ac1..ac7_*.rs and tests/suite_ac9_*.rs, each of which already exists, already compiles into tests/suite_core_07.rs, and already passes; AC8 stays 'deferred' per the PRD's own deferred_acs/mock_justifications), and the stdlibpseudo mapping was preserved under ac_test_map_by_prefix.stdlibpseudo (already present) rather than deleted. scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional were rewritten to describe this PRD's actual diff (Cargo.toml autotests=false, scripts/gen-test-suites.sh, the tests/suite_*.rs files, and the shared-common-compiled-once requirement), sourced from the PRD's own Problem statement, Requirements, and Non-goals sections. The ac-traceability receipt and the reviewer's proposed stronger AC4 verification test (cross-checking each AC test pointer's own header against the intent card's acceptance_criteria[].description, not just its path existence) are addressed in the same commit as this card fix, not deferred to a later recurrence."
+    },
+    {
+      "question": "This card is now regenerated for PRD-mcphost-share-a-tool-not-a-key, an entirely different feature from PRD-mcphost-test-suite-consolidation (test-binary linking) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same class of staleness caught by reviewer-agent at least seven times in this card's own history (see the entries above). Two PRD-specific ambiguities also needed a build-time decision rather than a byte-for-byte carry-forward: (1) the PRD's own Open Questions table asks whether the proof's second (caller) tenant counts against the synthetic panel or as real for healthz, owner Joe, due 'at build'; (2) Requirement 5/AC7 names 'the synthorg mcphost corpus' and 'the new task', but that corpus (RedBaron's corpora/mcphost/consumer-tasks.yaml) lives in a separate repository (/home/jsy/repos/synthorg), not this mcphost worktree, and the coder's own dispatch instructions forbid touching anything outside this worktree.",
+      "resolution": "Fixed in place, same pattern as every prior recurrence: no reviewer block yet, but the same staleness would recur if left byte-for-byte, so scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional were rewritten from this PRD's own Problem statement, Requirements, Non-Goals, and Technical considerations sections; acceptance_criteria's `test` fields point at the real tests/mcphost_share_a_tool_not_a_key_ac0[1-9]_*.rs files, all of which exist, compile, and pass. On the two PRD-specific ambiguities: (1) proof.sh signs both tenants up with `x-mcphost-synthetic: recipe:share-a-tool` (the only existing mechanism for a custom, non-default `origin_detail` label -- see `src/state.rs`'s `classify_source_class`/`derive_origin`), which necessarily classifies them as synthetic (`tenants.origin = 'synthetic'`), answering the open question: the proof's own two tenants count as synthetic/panel, not real -- a real team lead following the llms.txt recipe by hand (no header) would sign up unlabeled and count as real for healthz, same as today; only the demo script's own tenants are tagged, which is the correct classification for a script whose purpose is repeatable verification, not a genuine team's usage. (2) AC7 is proven without touching the synthorg repository: examples/share-a-tool/synthorg-task.yaml is a proposed consumer-task entry (segment integration_specialist) matching that corpus's own id/segments/task/gold schema, left for a maintainer of that repository to merge, and tests/mcphost_share_a_tool_not_a_key_ac07_synthorg_task_five_completions.rs runs proof.sh -- the task's runnable embodiment, same recipe, same success condition -- five times end to end, recording a completion and wall time per run. AC6 (Live, P0) is deferred: it requires a real run against production https://mcphost.dev/mcp, which this worktree's gate cannot reach; it is embodied (gated on MCPHOST_LIVE=1) by ac08's own live_proof_against_real_mcphost_when_enabled so a later live-gate loop can run it without further code changes."
     }
   ]
 }
