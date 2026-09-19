@@ -294,3 +294,5 @@ mod wake_ac7_trigger_test_synthetic_envelope;
 mod wake_ac8_replay;
 #[path = "wasmkind_ac01_echo_component_calls_and_meters.rs"]
 mod wasmkind_ac01_echo_component_calls_and_meters;
+#[path = "wasmkind_ac02_publish_validation_errors.rs"]
+mod wasmkind_ac02_publish_validation_errors;
