@@ -272,5 +272,7 @@ mod mcphost_share_a_tool_not_a_key_ac04_group_remove_revokes_caller;
 mod mcphost_share_a_tool_not_a_key_ac05_signup_events_source_tagged;
 #[path = "mcphost_share_a_tool_not_a_key_ac07_synthorg_task_five_completions.rs"]
 mod mcphost_share_a_tool_not_a_key_ac07_synthorg_task_five_completions;
+#[path = "mcphost_share_a_tool_not_a_key_ac08_live_test_skipped_without_env.rs"]
+mod mcphost_share_a_tool_not_a_key_ac08_live_test_skipped_without_env;
 #[path = "mcphost_share_a_tool_not_a_key_ac09_public_variant_states_default_reason.rs"]
 mod mcphost_share_a_tool_not_a_key_ac09_public_variant_states_default_reason;
