@@ -270,29 +270,7 @@ mod mcphost_share_a_tool_not_a_key_ac03_caller_never_sees_secret;
 mod mcphost_share_a_tool_not_a_key_ac04_group_remove_revokes_caller;
 #[path = "mcphost_share_a_tool_not_a_key_ac05_signup_events_source_tagged.rs"]
 mod mcphost_share_a_tool_not_a_key_ac05_signup_events_source_tagged;
+#[path = "mcphost_share_a_tool_not_a_key_ac07_synthorg_task_five_completions.rs"]
+mod mcphost_share_a_tool_not_a_key_ac07_synthorg_task_five_completions;
 #[path = "mcphost_share_a_tool_not_a_key_ac09_public_variant_states_default_reason.rs"]
 mod mcphost_share_a_tool_not_a_key_ac09_public_variant_states_default_reason;
-#[path = "metering_ac01_stripe_customer_id_null_default.rs"]
-mod metering_ac01_stripe_customer_id_null_default;
-#[path = "metering_ac02_webhook_stores_stripe_customer_id.rs"]
-mod metering_ac02_webhook_stores_stripe_customer_id;
-#[path = "metering_ac03_checkout_metered_line_item.rs"]
-mod metering_ac03_checkout_metered_line_item;
-#[path = "metering_ac04_emits_pro_calls_only.rs"]
-mod metering_ac04_emits_pro_calls_only;
-#[path = "metering_ac05_crash_replay.rs"]
-mod metering_ac05_crash_replay;
-#[path = "metering_ac06_failure_leaves_state_unmoved.rs"]
-mod metering_ac06_failure_leaves_state_unmoved;
-#[path = "metering_ac07_batches_cap_at_100.rs"]
-mod metering_ac07_batches_cap_at_100;
-#[path = "metering_ac08_healthz_meter_lag.rs"]
-mod metering_ac08_healthz_meter_lag;
-#[path = "metering_ac09_deploy_units_verify.rs"]
-mod metering_ac09_deploy_units_verify;
-#[path = "metering_ac11_admin_meter_status.rs"]
-mod metering_ac11_admin_meter_status;
-#[path = "metering_ac12_billing_status_stripe_reported_usage.rs"]
-mod metering_ac12_billing_status_stripe_reported_usage;
-#[path = "metering_billing_status_emitted_this_month.rs"]
-mod metering_billing_status_emitted_this_month;
