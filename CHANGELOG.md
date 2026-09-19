@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.57.3 — 2026-09-19
+
+`www/llms.txt` gains a "Share a tool, not a key" recipe: the six calls (`host.secret_set`, `host.tool_publish`, `host.group.create`, `host.tool_share`, `host.group.add`, `host.tool_call`) a team lead's agent uses to delegate a paid-API tool to teammates without ever handing out the key, plus a `visibility=public` variant explaining why group sharing is the default. `examples/share-a-tool/proof.sh` runs the recipe end to end against two fresh tenants and a self-started local mock upstream (no jq, no real paid key), proving the caller's call reaches the upstream, the caller's `host.secret_list` is empty with no secret leak, and `host.group.remove` revokes the caller while the owner keeps working; both tenants' signups carry `x-mcphost-synthetic: recipe:share-a-tool`. `examples/share-a-tool/synthorg-task.yaml` proposes a matching consumer task for RedBaron's mcphost corpus. Zero `src/` changes -- every primitive this composes already shipped.
+
+PRD-mcphost-share-a-tool-not-a-key AC1-AC5, AC7-AC9. AC6 (Live, needs a real run against production) deferred -- embodied gated on `MCPHOST_LIVE=1`, not run by this build.
+
 ## v0.57.2 — 2026-09-18
 
 Cargo stops turning each of mcphost's ~289 top-level test files into its own 280 MB binary. A generator writes [[test]] suite files that include the existing test files by path via #[path], so every test keeps its name, file, and AC pairing; common/support/ci_sandbox_support compile once. gen-test-suites.sh --check fails CI if a new tests/*.rs file is unregistered.

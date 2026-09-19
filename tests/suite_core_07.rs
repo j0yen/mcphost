@@ -8,32 +8,6 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 
-#[path = "metering_ac01_stripe_customer_id_null_default.rs"]
-mod metering_ac01_stripe_customer_id_null_default;
-#[path = "metering_ac02_webhook_stores_stripe_customer_id.rs"]
-mod metering_ac02_webhook_stores_stripe_customer_id;
-#[path = "metering_ac03_checkout_metered_line_item.rs"]
-mod metering_ac03_checkout_metered_line_item;
-#[path = "metering_ac04_emits_pro_calls_only.rs"]
-mod metering_ac04_emits_pro_calls_only;
-#[path = "metering_ac05_crash_replay.rs"]
-mod metering_ac05_crash_replay;
-#[path = "metering_ac06_failure_leaves_state_unmoved.rs"]
-mod metering_ac06_failure_leaves_state_unmoved;
-#[path = "metering_ac07_batches_cap_at_100.rs"]
-mod metering_ac07_batches_cap_at_100;
-#[path = "metering_ac08_healthz_meter_lag.rs"]
-mod metering_ac08_healthz_meter_lag;
-#[path = "metering_ac09_deploy_units_verify.rs"]
-mod metering_ac09_deploy_units_verify;
-#[path = "metering_ac11_admin_meter_status.rs"]
-mod metering_ac11_admin_meter_status;
-#[path = "metering_ac12_billing_status_stripe_reported_usage.rs"]
-mod metering_ac12_billing_status_stripe_reported_usage;
-#[path = "metering_billing_status_emitted_this_month.rs"]
-mod metering_billing_status_emitted_this_month;
-#[path = "migration_compat_headers.rs"]
-mod migration_compat_headers;
 #[path = "minimal_ac1_anonymous_ok_only.rs"]
 mod minimal_ac1_anonymous_ok_only;
 #[path = "minimal_ac2_admin_full_document.rs"]
@@ -288,3 +262,33 @@ mod tenant_delete_ac07_tenant_not_found;
 mod tenant_delete_ac09_healthz_probe_split;
 #[path = "tenant_delete_ac10_tenants_prefix_filter.rs"]
 mod tenant_delete_ac10_tenants_prefix_filter;
+#[path = "tooltest_ac12_log_marking.rs"]
+mod tooltest_ac12_log_marking;
+#[path = "tooltest_ac3_http_dry_run.rs"]
+mod tooltest_ac3_http_dry_run;
+#[path = "tooltest_ac4_echo_verbatim.rs"]
+mod tooltest_ac4_echo_verbatim;
+#[path = "tooltest_ac5_validation_error_taxonomy.rs"]
+mod tooltest_ac5_validation_error_taxonomy;
+#[path = "tooltest_ac6_quota_and_metering.rs"]
+mod tooltest_ac6_quota_and_metering;
+#[path = "tooltest_ac7_too_many_invocations.rs"]
+mod tooltest_ac7_too_many_invocations;
+#[path = "tooltest_ac9_ac10_listing_and_auth.rs"]
+mod tooltest_ac9_ac10_listing_and_auth;
+#[path = "wake_ac1_message_trigger_fires_run.rs"]
+mod wake_ac1_message_trigger_fires_run;
+#[path = "wake_ac2_from_filter.rs"]
+mod wake_ac2_from_filter;
+#[path = "wake_ac3_dedupe.rs"]
+mod wake_ac3_dedupe;
+#[path = "wake_ac4_jobs_concurrent_rejects.rs"]
+mod wake_ac4_jobs_concurrent_rejects;
+#[path = "wake_ac5_pause_resume.rs"]
+mod wake_ac5_pause_resume;
+#[path = "wake_ac6_msg_wait.rs"]
+mod wake_ac6_msg_wait;
+#[path = "wake_ac7_trigger_test_synthetic_envelope.rs"]
+mod wake_ac7_trigger_test_synthetic_envelope;
+#[path = "wake_ac8_replay.rs"]
+mod wake_ac8_replay;
