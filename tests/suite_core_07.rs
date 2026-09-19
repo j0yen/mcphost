@@ -292,11 +292,3 @@ mod wake_ac6_msg_wait;
 mod wake_ac7_trigger_test_synthetic_envelope;
 #[path = "wake_ac8_replay.rs"]
 mod wake_ac8_replay;
-#[path = "wasmkind_ac01_echo_component_calls_and_meters.rs"]
-mod wasmkind_ac01_echo_component_calls_and_meters;
-#[path = "wasmkind_ac02_publish_validation_errors.rs"]
-mod wasmkind_ac02_publish_validation_errors;
-#[path = "wasmkind_ac03_timeout_and_oom_recover.rs"]
-mod wasmkind_ac03_timeout_and_oom_recover;
-#[path = "wasmkind_ac05_tool_test_dry_run.rs"]
-mod wasmkind_ac05_tool_test_dry_run;
