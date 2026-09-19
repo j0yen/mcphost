@@ -50,6 +50,31 @@ pub const UNROUTED_ALLOWLIST: &[&str] = &[
     // Prose doc adjacent to docs/kinds/** and docs/receipts/** (which the
     // "docs" lane covers) but not itself in that lane's globs.
     "docs/audit-notes.md",
+    // PRD-mcphost-wasm-kind: the wasm kind's test fixtures. The four
+    // wasm-src/<name>/ directories are cargo-component guest crates built
+    // out-of-band (via the remote build runner's `cargo component build`,
+    // never by this crate's own `cargo build`/`cargo test`) into the
+    // checked-in *.wasm binaries; both are read only by
+    // tests/**/*.rs (already the "rust-tests" lane's own glob) via
+    // `wasm_fixture_b64`/`include_bytes!`-adjacent helpers, gated by the
+    // exact same `cargo test --workspace` proof, but neither directory
+    // itself matches `tests/**/*.rs` (no `.rs` extension) or any other
+    // lane's globs. agent/proof-lanes.toml is read-only for the edit-agent
+    // (this file's own header comment), so a real lane for
+    // `tests/fixtures/**` is left to a follow-on PRD rather than attempted
+    // here.
+    "tests/fixtures/wasm-src/echo/Cargo.toml",
+    "tests/fixtures/wasm-src/echo/wit/world.wit",
+    "tests/fixtures/wasm-src/trap/Cargo.toml",
+    "tests/fixtures/wasm-src/trap/wit/world.wit",
+    "tests/fixtures/wasm-src/loop_forever/Cargo.toml",
+    "tests/fixtures/wasm-src/loop_forever/wit/world.wit",
+    "tests/fixtures/wasm-src/oom/Cargo.toml",
+    "tests/fixtures/wasm-src/oom/wit/world.wit",
+    "tests/fixtures/wasm/echo.wasm",
+    "tests/fixtures/wasm/trap.wasm",
+    "tests/fixtures/wasm/loop_forever.wasm",
+    "tests/fixtures/wasm/oom.wasm",
 ];
 
 /// Compiles one lane's globs into a matchable set, or an error naming the
