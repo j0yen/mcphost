@@ -8,16 +8,6 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 
-#[path = "minimal_ac1_anonymous_ok_only.rs"]
-mod minimal_ac1_anonymous_ok_only;
-#[path = "minimal_ac2_admin_full_document.rs"]
-mod minimal_ac2_admin_full_document;
-#[path = "minimal_ac3_wrong_bearer_matches_anonymous.rs"]
-mod minimal_ac3_wrong_bearer_matches_anonymous;
-#[path = "minimal_ac4_liveness_failure_returns_5xx.rs"]
-mod minimal_ac4_liveness_failure_returns_5xx;
-#[path = "minimal_ac5_tenant_bearer_gets_anonymous_body.rs"]
-mod minimal_ac5_tenant_bearer_gets_anonymous_body;
 #[path = "msg_ac01_send_reaches_inbox.rs"]
 mod msg_ac01_send_reaches_inbox;
 #[path = "msg_ac02_reply_appends_next_seq.rs"]
@@ -292,3 +282,21 @@ mod wake_ac6_msg_wait;
 mod wake_ac7_trigger_test_synthetic_envelope;
 #[path = "wake_ac8_replay.rs"]
 mod wake_ac8_replay;
+#[path = "wasmkind_ac01_echo_component_calls_and_meters.rs"]
+mod wasmkind_ac01_echo_component_calls_and_meters;
+#[path = "wasmkind_ac02_publish_validation_errors.rs"]
+mod wasmkind_ac02_publish_validation_errors;
+#[path = "wasmkind_ac03_timeout_and_oom_recover.rs"]
+mod wasmkind_ac03_timeout_and_oom_recover;
+#[path = "wasmkind_ac05_tool_test_dry_run.rs"]
+mod wasmkind_ac05_tool_test_dry_run;
+#[path = "wasmkind_ac06_trap_is_structured_and_logged.rs"]
+mod wasmkind_ac06_trap_is_structured_and_logged;
+#[path = "wasmkind_ac07_docs_llms_and_quickstart_document_wasm.rs"]
+mod wasmkind_ac07_docs_llms_and_quickstart_document_wasm;
+#[path = "wasmkind_ac08_cache_reuses_compiled_artifact.rs"]
+mod wasmkind_ac08_cache_reuses_compiled_artifact;
+#[path = "wasmkind_ac09_healthz_reports_wasm_runtime.rs"]
+mod wasmkind_ac09_healthz_reports_wasm_runtime;
+#[path = "wasmkind_ac10_declared_output_promotion_matches_python.rs"]
+mod wasmkind_ac10_declared_output_promotion_matches_python;
