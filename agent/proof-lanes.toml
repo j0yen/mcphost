@@ -123,3 +123,11 @@ globs = [".buildloop/**"]
 required_commands = [
   "cargo test --workspace",
 ]
+
+[[lane]]
+id = "examples"
+description = "Example recipes under examples/** whose behavior is proven by the mcphost_share_a_tool_not_a_key_ac* integration tests that spawn them (examples/share-a-tool/proof.sh, examples/share-a-tool/synthorg-task.yaml). Added project-locally (PRD-mcphost-share-a-tool-not-a-key): same gap class as infer-data/db-migrations/deploy/www/docs above -- the shipped scaffold's proof-lanes.toml has no lane for examples/, and these files gate the AC0x tests identically to a tests/**/*.rs edit, so proof is a name-filtered cargo test run over the tests that actually exercise them rather than the whole rust-tests lane."
+globs = ["examples/share-a-tool/**"]
+required_commands = [
+  "cargo test --workspace mcphost_share_a_tool_not_a_key_ac",
+]
