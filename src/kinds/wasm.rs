@@ -261,15 +261,23 @@ impl std::fmt::Display for MemoryCapExceeded {
 
 impl std::error::Error for MemoryCapExceeded {}
 
-/// The `Store<T>` data: nothing but the resource limiter this call runs
-/// under. `peak_bytes` is reported back for metering even though this
-/// slice doesn't enforce anything from it -- observability, not a limit.
-struct LimiterState {
+/// The `Store<T>` data: the resource limiter this call runs under, plus the
+/// minimal WASI context a guest built by the expected toolchain needs to
+/// even instantiate (see `Cargo.toml`'s `wasmtime-wasi` comment). No
+/// preopened directories and no inherited network -- filesystem/socket
+/// imports are wired into the linker (`wasmtime_wasi::p2::add_to_linker_sync`
+/// links the whole `wasi:cli` world) but every operation on them fails or is
+/// simply never reachable, since nothing here grants access. `peak_bytes` is
+/// reported back for metering even though this slice doesn't enforce
+/// anything from it -- observability, not a limit.
+struct GuestState {
     max_bytes: usize,
     peak_bytes: usize,
+    wasi_ctx: wasmtime_wasi::WasiCtx,
+    table: wasmtime_wasi::ResourceTable,
 }
 
-impl ResourceLimiter for LimiterState {
+impl ResourceLimiter for GuestState {
     fn memory_growing(
         &mut self,
         _current: usize,
@@ -295,6 +303,15 @@ impl ResourceLimiter for LimiterState {
     }
 }
 
+impl wasmtime_wasi::WasiView for GuestState {
+    fn ctx(&mut self) -> wasmtime_wasi::WasiCtxView<'_> {
+        wasmtime_wasi::WasiCtxView {
+            ctx: &mut self.wasi_ctx,
+            table: &mut self.table,
+        }
+    }
+}
+
 fn classify_error(err: anyhow::Error) -> RunError {
     if err
         .chain()
@@ -313,25 +330,31 @@ fn classify_error(err: anyhow::Error) -> RunError {
 /// Runs one call, synchronously, in whatever thread it's given (the caller
 /// is expected to run this inside `spawn_blocking` -- wasm execution is
 /// CPU-bound and must not block the async executor). Returns the peak
-/// memory this call's linear memory reached, alongside the outcome.
+/// memory this call's linear memory reached, the guest's captured stderr
+/// (best-effort, lossy UTF-8, for `host.tool_logs`), and the outcome.
 fn run_component(
     engine: &Engine,
     component: &Component,
     memory_cap: usize,
     fuel_budget: u64,
     args_json: &str,
-) -> (usize, Result<RunOutcome, RunError>) {
-    let limiter = LimiterState {
+) -> (usize, String, Result<RunOutcome, RunError>) {
+    let stderr = wasmtime_wasi::p2::pipe::MemoryOutputPipe::new(64 * 1024);
+    let wasi_ctx = wasmtime_wasi::WasiCtxBuilder::new().stderr(stderr.clone()).build();
+    let state = GuestState {
         max_bytes: memory_cap,
         peak_bytes: 0,
+        wasi_ctx,
+        table: wasmtime_wasi::ResourceTable::new(),
     };
-    let mut store = Store::new(engine, limiter);
+    let mut store = Store::new(engine, state);
     store.limiter(|state| state as &mut dyn ResourceLimiter);
     store.set_epoch_deadline(1);
 
     let outcome = (|| -> anyhow::Result<RunOutcome> {
         store.set_fuel(fuel_budget)?;
-        let linker: Linker<LimiterState> = Linker::new(engine);
+        let mut linker: Linker<GuestState> = Linker::new(engine);
+        wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
         let instance = linker.instantiate(&mut store, component)?;
         let func = instance
             .get_typed_func::<(String,), (Result<String, String>,)>(&mut store, "call")?;
@@ -343,7 +366,8 @@ fn run_component(
     })();
 
     let peak_bytes = store.data().peak_bytes;
-    (peak_bytes, outcome.map_err(classify_error))
+    let stderr_text = String::from_utf8_lossy(&stderr.contents()).into_owned();
+    (peak_bytes, stderr_text, outcome.map_err(classify_error))
 }
 
 struct CacheEntry {
@@ -528,13 +552,16 @@ impl Kind for WasmKind {
         let run = tokio::task::spawn_blocking(move || {
             run_component(&engine, &component, memory_cap, FUEL_BUDGET, &args_json)
         });
-        let (peak_bytes, outcome) = run
+        let (peak_bytes, stderr_text, outcome) = run
             .await
             .map_err(|e| KindError::Exec(format!("wasm execution task failed: {e}")))?;
         deadline_task.abort();
         let elapsed_ms = started.elapsed().as_millis() as i64;
 
         ctx.resources.record(elapsed_ms, (peak_bytes / 1024) as i64);
+        if !stderr_text.trim().is_empty() {
+            ctx.log.log(&format!("stderr: {}", stderr_text.trim_end()));
+        }
 
         match outcome {
             Ok(RunOutcome::Ok(json_str)) => {

@@ -65,6 +65,15 @@ sqlparser = "0.62"
 # rather than a floating range, matching this crate's other embedded-runtime
 # dependencies.
 wasmtime = "38.0.4"
+# A conforming component built by the expected guest toolchain
+# (`cargo component build` against `wasm32-wasip1`/`wasip2`) links wasi:cli
+# imports (exit/environment) even for pure-compute code, purely as an
+# artifact of the Rust std allocator's OOM-abort path -- non-goal 4 rules
+# out wasi:sockets/wasi:http specifically, not WASI altogether, so this
+# links wasi:cli/clocks/random with stdio piped to in-memory buffers (no
+# preopened directories, no inherited network) rather than trying to keep
+# every realistic guest binary import-free.
+wasmtime-wasi = "38.0.4"
 # A wasm component is supplied at publish time as a base64 string field in
 # the spec JSON (the same transport python's `source` field already uses for
 # text, per this PRD's technical considerations) -- needed only to decode it.
