@@ -54,10 +54,12 @@ async fn oversize_component_is_refused_naming_the_bound() {
     let (_ns, key) = signup(&server.base_url, "Wasm AC2 Tenant B").await;
     let client = common::McpClient::with_bearer(&server.base_url, &key);
 
-    // One byte over this kind's 32 KiB cap -- doesn't need to be a real
-    // component at all, since the size check runs before any component-model
-    // parsing.
-    let oversized = vec![0u8; 32 * 1024 + 1];
+    // Comfortably over this kind's 47 KiB cap (but still under the crate's
+    // global 64 KiB spec cap once base64-encoded, so this kind's own
+    // rejection is the one that actually fires) -- doesn't need to be a
+    // real component at all, since the size check runs before any
+    // component-model parsing.
+    let oversized = vec![0u8; 47 * 1024 + 512];
     let component_b64 = base64::engine::general_purpose::STANDARD.encode(&oversized);
     let err = client
         .tools_call(
@@ -73,7 +75,7 @@ async fn oversize_component_is_refused_naming_the_bound() {
 
     assert_eq!(err.error_code.as_deref(), Some("invalid_spec"));
     assert!(
-        err.message.contains("32768"),
+        err.message.contains("48128"),
         "message must name the byte bound: {}",
         err.message
     );

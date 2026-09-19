@@ -16,7 +16,7 @@ The `component` value above is a placeholder (a real one is typically 10-50 KiB 
 
 ## Limits
 
-Enforced by Wasmtime itself, not by an external sandbox: `timeout_s` (1-30, default 5) bounds wall-clock time; `memory_mb` (1-256, default 64) bounds the component's linear memory -- exceeding either produces a structured `tool_timeout`/`tool_oom` error and the process serves the next call normally. A component binary over 32 KiB is refused at publish, naming the bound. An explicit trap (an `unreachable`, an out-of-bounds access) is reported as `tool_trapped`, with the trap's message in `host.tool_logs` -- never a raw panic.
+Enforced by Wasmtime itself, not by an external sandbox: `timeout_s` (1-30, default 5) bounds wall-clock time; `memory_mb` (1-256, default 64) bounds the component's linear memory -- exceeding either produces a structured `tool_timeout`/`tool_oom` error and the process serves the next call normally. A component binary over 47 KiB is refused at publish, naming the bound. An explicit trap (an `unreachable`, an out-of-bounds access) is reported as `tool_trapped`, with the trap's message in `host.tool_logs` -- never a raw panic.
 
 ## Choosing `wasm` over `python`
 

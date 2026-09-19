@@ -65,11 +65,17 @@ pub const WASM_RUNTIME_VERSION: &str = "wasmtime 38.0.4";
 
 /// Open question resolved at build: a flat cap, not a per-plan one --
 /// mirrors `python`'s own `MAX_SOURCE_BYTES` (also a flat constant, not
-/// read from `Plan`), and stays comfortably under `MAX_SPEC_BYTES` (64 KiB)
-/// once base64 and the surrounding spec JSON overhead are accounted for, so
-/// this kind's own "over the bound" rejection is the one a publish actually
+/// read from `Plan`). 47 KiB, not a rounder 32 or 64 KiB, because a real
+/// component built by the expected toolchain (`cargo component build`
+/// against `wasm32-wasip1`) that touches the heap at all links the full
+/// `wasi:cli` "command" world -- tens of KB of adapter code -- regardless
+/// of how little the guest's own logic does; this is the smallest round
+/// bound that comfortably fits one (this kind's own `oom` test fixture is
+/// ~47 KiB) while staying under `MAX_SPEC_BYTES` (64 KiB) once base64 and
+/// the surrounding spec JSON overhead are accounted for, so this kind's own
+/// "over the bound" rejection is still the one an oversize publish actually
 /// hits rather than the generic `spec_too_large` check winning the race.
-const MAX_COMPONENT_BYTES: usize = 32 * 1024;
+const MAX_COMPONENT_BYTES: usize = 47 * 1024;
 const MAX_TIMEOUT_S: u64 = 30;
 const DEFAULT_TIMEOUT_S: u64 = 5;
 const MAX_MEMORY_MB: u64 = 256;
