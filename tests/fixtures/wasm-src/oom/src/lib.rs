@@ -6,13 +6,23 @@ use bindings::Guest;
 struct Component;
 
 impl Guest for Component {
-    // AC3 fixture: allocates in a growing loop until the host's memory
-    // limiter refuses further `memory.grow` -- the host converts that
-    // refusal into a hard trap, so this never returns normally.
+    // AC3 fixture: grows a buffer's reserved capacity in a loop until the
+    // host's memory limiter refuses a `memory.grow` request -- which the
+    // host turns into a hard trap regardless of this using the fallible
+    // `try_reserve_exact` (chosen over `push`/`with_capacity` specifically
+    // to avoid linking Rust's infallible-allocation abort path, which pulls
+    // in wasi:cli/exit and roughly triples this component's size for no
+    // behavioral benefit -- the host's own trap always wins the race
+    // before this fallible path could ever see an `Err` itself).
     fn call(_args: String) -> Result<String, String> {
-        let mut blobs: Vec<Vec<u8>> = Vec::new();
+        let mut buf: Vec<u8> = Vec::new();
         loop {
-            blobs.push(std::hint::black_box(vec![0u8; 1024 * 1024]));
+            if buf.try_reserve_exact(1024 * 1024).is_err() {
+                return Err("allocation failed".to_string());
+            }
+            let new_len = buf.capacity();
+            buf.resize(new_len, 0);
+            std::hint::black_box(&buf);
         }
     }
 }
