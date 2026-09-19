@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-share-a-tool-not-a-key.md (test_prefix: mcphost_share_a_tool_not_a_key)",
+  "ac_test_map_prd": "PRD-mcphost-wasm-kind.md (test_prefix: wasmkind)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,15 +28,16 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/mcphost_share_a_tool_not_a_key_ac01_llms_txt_section.rs",
-    "AC2": "tests/mcphost_share_a_tool_not_a_key_ac02_caller_call_returns_upstream_response.rs",
-    "AC3": "tests/mcphost_share_a_tool_not_a_key_ac03_caller_never_sees_secret.rs",
-    "AC4": "tests/mcphost_share_a_tool_not_a_key_ac04_group_remove_revokes_caller.rs",
-    "AC5": "tests/mcphost_share_a_tool_not_a_key_ac05_signup_events_source_tagged.rs",
-    "AC6": "deferred -- Live; needs a real run against production https://mcphost.dev/mcp, unreachable from this worktree's own gate. Embodied (gated on MCPHOST_LIVE=1) by tests/mcphost_share_a_tool_not_a_key_ac08_live_test_skipped_without_env.rs::live_proof_against_real_mcphost_when_enabled",
-    "AC7": "tests/mcphost_share_a_tool_not_a_key_ac07_synthorg_task_five_completions.rs",
-    "AC8": "tests/mcphost_share_a_tool_not_a_key_ac08_live_test_skipped_without_env.rs",
-    "AC9": "tests/mcphost_share_a_tool_not_a_key_ac09_public_variant_states_default_reason.rs"
+    "AC1": "tests/wasmkind_ac01_echo_component_calls_and_meters.rs",
+    "AC2": "tests/wasmkind_ac02_publish_validation_errors.rs",
+    "AC3": "tests/wasmkind_ac03_timeout_and_oom_recover.rs",
+    "AC4": "tests/wasmkind_ac04_independent_of_sandbox_mechanism.rs",
+    "AC5": "tests/wasmkind_ac05_tool_test_dry_run.rs",
+    "AC6": "tests/wasmkind_ac06_trap_is_structured_and_logged.rs",
+    "AC7": "tests/wasmkind_ac07_docs_llms_and_quickstart_document_wasm.rs",
+    "AC8": "tests/wasmkind_ac08_cache_reuses_compiled_artifact.rs",
+    "AC9": "tests/wasmkind_ac09_healthz_reports_wasm_runtime.rs",
+    "AC10": "tests/wasmkind_ac10_declared_output_promotion_matches_python.rs"
   },
   "ac_test_map_by_prefix": {
     "runenvelope": {
@@ -109,6 +110,19 @@
       "AC8": "tests/mcphost_share_a_tool_not_a_key_ac08_live_test_skipped_without_env.rs",
       "AC9": "tests/mcphost_share_a_tool_not_a_key_ac09_public_variant_states_default_reason.rs",
       "_prd": "PRD-mcphost-share-a-tool-not-a-key.md \u2014 same as ac_test_map above while this PRD is the one at HEAD; real test_prefix is mcphost_share_a_tool_not_a_key (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo above)"
+    },
+    "wasmkind": {
+      "AC1": "tests/wasmkind_ac01_echo_component_calls_and_meters.rs",
+      "AC2": "tests/wasmkind_ac02_publish_validation_errors.rs",
+      "AC3": "tests/wasmkind_ac03_timeout_and_oom_recover.rs",
+      "AC4": "tests/wasmkind_ac04_independent_of_sandbox_mechanism.rs",
+      "AC5": "tests/wasmkind_ac05_tool_test_dry_run.rs",
+      "AC6": "tests/wasmkind_ac06_trap_is_structured_and_logged.rs",
+      "AC7": "tests/wasmkind_ac07_docs_llms_and_quickstart_document_wasm.rs",
+      "AC8": "tests/wasmkind_ac08_cache_reuses_compiled_artifact.rs",
+      "AC9": "tests/wasmkind_ac09_healthz_reports_wasm_runtime.rs",
+      "AC10": "tests/wasmkind_ac10_declared_output_promotion_matches_python.rs",
+      "_prd": "PRD-mcphost-wasm-kind.md \u2014 same as ac_test_map above while this PRD is the one at HEAD"
     }
   }
 }
