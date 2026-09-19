@@ -111,6 +111,12 @@ pub struct AppState {
     /// or `"none"`), surfaced on `/healthz`. `None` when the `python` kind
     /// isn't registered (e.g. some future minimal deployment).
     pub sandbox_mechanism: Option<&'static str>,
+    /// PRD-mcphost-wasm-kind P1 requirement 8 / AC9: the `wasm` kind's
+    /// runtime version, surfaced on `/healthz` beside `sandbox_mechanism`.
+    /// `Some` iff the `wasm` kind is registered -- unlike `sandbox_mechanism`,
+    /// this kind has no OS-dependent readiness state, so "registered" and
+    /// "available" are the same thing.
+    pub wasm_runtime_version: Option<&'static str>,
     /// PRD-mcphost-code-tools-warm-pool requirement 3 / AC7: `host.tool_run`'s
     /// own 30-per-minute-per-tenant rate limit.
     pub tool_run_limiter: ToolRunLimiter,

@@ -1,7 +1,7 @@
 [package]
 autotests = false  # gen-test-suites.sh: explicit [[test]] suites below
 name = "mcphost"
-version = "0.57.3"
+version = "0.58.0"
 edition = "2024"
 rust-version = "1.88"
 description = "One MCP endpoint an agent can join and administer without a human"
@@ -57,6 +57,18 @@ serde_path_to_error = "0.1.20"
 # prefix/keyword check, the same "don't hand-roll what a crate already gets
 # right" call `sha1` above makes for HMAC-SHA1.
 sqlparser = "0.62"
+# PRD-mcphost-wasm-kind requirement 2: the `wasm` kind's execution engine --
+# a library, not a subprocess, so isolation travels with the compiled
+# component instead of depending on the host's userns/bwrap/AppArmor policy
+# (the vision's cycle-53 caveat this PRD exists to answer). Pinned to a
+# specific release (recorded in `/healthz` via `kinds::wasm::WASM_RUNTIME_VERSION`)
+# rather than a floating range, matching this crate's other embedded-runtime
+# dependencies.
+wasmtime = "38.0.4"
+# A wasm component is supplied at publish time as a base64 string field in
+# the spec JSON (the same transport python's `source` field already uses for
+# text, per this PRD's technical considerations) -- needed only to decode it.
+base64 = "0.22"
 
 [features]
 # PRD-mcphost-classify-precision: gates PythonKind's test-only selftest

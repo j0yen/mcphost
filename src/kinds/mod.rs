@@ -20,6 +20,7 @@ pub mod echo;
 pub mod http;
 pub mod infer;
 pub mod python;
+pub mod wasm;
 
 /// Error returned by a [`Kind`]'s methods. Distinct from the JSON-RPC error
 /// the host ultimately answers with; `mcphost::errors` maps this onto that.

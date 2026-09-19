@@ -1,0 +1,5 @@
+package mcphost:tool@0.1.0;
+
+world tool {
+    export call: func(args: string) -> result<string, string>;
+}

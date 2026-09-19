@@ -191,6 +191,25 @@ pub fn python_kind_registry_with_warm_pool(
     kinds
 }
 
+/// PRD-mcphost-wasm-kind: `echo` (base) + a `wasm` kind -- the wasm-kind AC
+/// suite's usual entry point.
+pub fn wasm_kind_registry() -> KindRegistry {
+    let mut kinds = KindRegistry::with_builtin();
+    kinds.register(Arc::new(mcphost::kinds::wasm::WasmKind::new()));
+    kinds
+}
+
+/// Same as [`wasm_kind_registry`], but also hands back the concrete
+/// `Arc<WasmKind>` (registered as itself, not yet erased to `Arc<dyn Kind>`)
+/// so a test can read its cache counters (AC8) after driving calls through
+/// the server built from the returned registry.
+pub fn wasm_kind_registry_with_handle() -> (KindRegistry, Arc<mcphost::kinds::wasm::WasmKind>) {
+    let mut kinds = KindRegistry::with_builtin();
+    let wasm = Arc::new(mcphost::kinds::wasm::WasmKind::new());
+    kinds.register(wasm.clone());
+    (kinds, wasm)
+}
+
 /// A directory under the OS temp dir, unique per call, cleaned up on drop.
 pub struct TempDataDir(pub PathBuf);
 
@@ -373,6 +392,13 @@ impl TestServer {
         let addr = listener.local_addr().expect("local addr");
         let base_url = format!("http://{addr}");
 
+        // PRD-mcphost-wasm-kind AC9: mirrors production's "registered ==
+        // available" rule for this field -- accurate for whichever registry
+        // a given test builds, without every existing `start_*` helper
+        // needing to know about the `wasm` kind.
+        let wasm_runtime_version = kinds
+            .get("wasm")
+            .map(|_| mcphost::kinds::wasm::WASM_RUNTIME_VERSION);
         let state = Arc::new(AppState {
             db,
             kinds,
@@ -383,6 +409,7 @@ impl TestServer {
             registry,
             http_client: reqwest::Client::new(),
             sandbox_mechanism: None,
+            wasm_runtime_version,
             tool_run_limiter: mcphost::state::ToolRunLimiter::new(),
             signup_rate_limit_per_hour,
             plans: mcphost::plans::PlanCatalog::default_catalog(),
@@ -866,6 +893,21 @@ pub async fn record_ok_calls(server: &TestServer, tenant_id: i64, tool_name: &st
             .await
             .expect("record_call");
     }
+}
+
+/// PRD-mcphost-wasm-kind: base64-encodes one of the prebuilt component
+/// fixtures under `tests/fixtures/wasm/<name>.wasm` (see
+/// `tests/fixtures/wasm-src/<name>/` for the guest source they were built
+/// from via `cargo component build --release`), ready to drop straight into
+/// a `{"component": ...}` spec.
+pub fn wasm_fixture_b64(name: &str) -> String {
+    use base64::Engine as _;
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/wasm")
+        .join(format!("{name}.wasm"));
+    let bytes = std::fs::read(&path)
+        .unwrap_or_else(|e| panic!("read wasm fixture {}: {e}", path.display()));
+    base64::engine::general_purpose::STANDARD.encode(bytes)
 }
 
 /// `CallToolResult::structured` puts the value in `structuredContent`;

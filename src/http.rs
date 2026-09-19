@@ -125,6 +125,7 @@ async fn healthz(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl
         "signups": {"external": signups_external, "synthetic": signups_synthetic},
         "calls": {"external": calls_external, "synthetic": calls_synthetic},
         "sandbox_mechanism": state.sandbox_mechanism,
+        "wasm_runtime_version": state.wasm_runtime_version,
     });
     // PRD-mcphost-tenant-attribution requirement 3: `tenants_by_source_class`
     // (every class present, most common first) and `tenants_by_client`
