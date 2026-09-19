@@ -41,6 +41,7 @@ async fn bare_state() -> (AppState, common::TempDataDir) {
         registry: None,
         http_client: reqwest::Client::new(),
         sandbox_mechanism: None,
+        wasm_runtime_version: None,
         tool_run_limiter: mcphost::state::ToolRunLimiter::new(),
         signup_rate_limit_per_hour: mcphost::state::SIGNUP_RATE_LIMIT_PER_HOUR,
         plans: mcphost::plans::PlanCatalog::default_catalog(),
