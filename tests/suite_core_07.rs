@@ -296,3 +296,5 @@ mod wake_ac8_replay;
 mod wasmkind_ac01_echo_component_calls_and_meters;
 #[path = "wasmkind_ac02_publish_validation_errors.rs"]
 mod wasmkind_ac02_publish_validation_errors;
+#[path = "wasmkind_ac03_timeout_and_oom_recover.rs"]
+mod wasmkind_ac03_timeout_and_oom_recover;
