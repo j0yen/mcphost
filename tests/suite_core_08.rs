@@ -20,3 +20,5 @@ mod wasmkind_ac05_tool_test_dry_run;
 mod wasmkind_ac06_trap_is_structured_and_logged;
 #[path = "wasmkind_ac07_docs_llms_and_quickstart_document_wasm.rs"]
 mod wasmkind_ac07_docs_llms_and_quickstart_document_wasm;
+#[path = "wasmkind_ac08_cache_reuses_compiled_artifact.rs"]
+mod wasmkind_ac08_cache_reuses_compiled_artifact;
