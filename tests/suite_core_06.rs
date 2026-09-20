@@ -274,6 +274,8 @@ mod mcphost_host_tool_deprecation_ac05_removal_gated_on_sunset;
 mod mcphost_host_tool_deprecation_ac06_changelog_lists_additions;
 #[path = "mcphost_host_tool_deprecation_ac07_whoami_contract_version.rs"]
 mod mcphost_host_tool_deprecation_ac07_whoami_contract_version;
+#[path = "mcphost_host_tool_deprecation_ac08_llms_txt_links_contract.rs"]
+mod mcphost_host_tool_deprecation_ac08_llms_txt_links_contract;
 #[path = "mcphost_share_a_tool_not_a_key_ac01_llms_txt_section.rs"]
 mod mcphost_share_a_tool_not_a_key_ac01_llms_txt_section;
 #[path = "mcphost_share_a_tool_not_a_key_ac02_caller_call_returns_upstream_response.rs"]
