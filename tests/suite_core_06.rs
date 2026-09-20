@@ -322,6 +322,8 @@ mod mcphost_tenant_data_export_ac03_dedupe_in_progress;
 mod mcphost_tenant_data_export_ac05_manifest_validates_publish_schema;
 #[path = "mcphost_tenant_data_export_ac06_tools_subset.rs"]
 mod mcphost_tenant_data_export_ac06_tools_subset;
+#[path = "mcphost_tenant_data_export_ac07_admin_usage_exports_today.rs"]
+mod mcphost_tenant_data_export_ac07_admin_usage_exports_today;
 #[path = "metering_ac01_stripe_customer_id_null_default.rs"]
 mod metering_ac01_stripe_customer_id_null_default;
 #[path = "metering_ac02_webhook_stores_stripe_customer_id.rs"]

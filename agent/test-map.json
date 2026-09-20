@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-data-retention.md (test_prefix: mcphost_data_retention)",
+  "ac_test_map_prd": "PRD-mcphost-tenant-data-export.md (test_prefix: mcphost_tenant_data_export)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,16 +28,13 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/mcphost_data_retention_ac01_calls_prune_by_window.rs",
-    "AC2": "tests/mcphost_data_retention_ac02_metering_rows_survive_window.rs",
-    "AC3": "tests/mcphost_data_retention_ac03_untracked_table_unchanged.rs",
-    "AC4": "tests/mcphost_data_retention_ac04_batched_prune_no_lock_errors.rs",
-    "AC5": "tests/mcphost_data_retention_ac05_admin_usage_reports_size_and_last_prune.rs",
-    "AC6": "tests/mcphost_data_retention_ac06_disk_floor_refuses_writes.rs",
-    "AC7": "deferred -- prod-only proof (\"last_prune is younger than 24h the day after ship\"); no branch-local test possible before ship. See PRD frontmatter mock_justifications.",
-    "AC8": "tests/mcphost_data_retention_ac08_host_usage_lists_retention_windows.rs",
-    "AC9": "tests/mcphost_data_retention_ac09_prune_error_sets_last_prune_ok_false.rs",
-    "AC10": "tests/mcphost_data_retention_ac10_admin_prune_now_runs_one_cycle.rs"
+    "AC1": "tests/mcphost_tenant_data_export_ac01_archive_contents.rs",
+    "AC2": "tests/mcphost_tenant_data_export_ac02_signed_url_expiry.rs",
+    "AC3": "tests/mcphost_tenant_data_export_ac03_dedupe_in_progress.rs",
+    "AC4": "deferred -- Live; requires a real host.export run against production during the build's own post-ship live check (the homeward tenant), unreachable from this worktree's own gate. Proven by the build's live-check trailer recording the run result, not a repo-local test.",
+    "AC5": "tests/mcphost_tenant_data_export_ac05_manifest_validates_publish_schema.rs",
+    "AC6": "tests/mcphost_tenant_data_export_ac06_tools_subset.rs",
+    "AC7": "tests/mcphost_tenant_data_export_ac07_admin_usage_exports_today.rs"
   },
   "ac_test_map_by_prefix": {
     "runenvelope": {
@@ -146,7 +143,17 @@
       "AC8": "tests/mcphost_data_retention_ac08_host_usage_lists_retention_windows.rs",
       "AC9": "tests/mcphost_data_retention_ac09_prune_error_sets_last_prune_ok_false.rs",
       "AC10": "tests/mcphost_data_retention_ac10_admin_prune_now_runs_one_cycle.rs",
-      "_prd": "PRD-mcphost-data-retention.md \u2014 same as ac_test_map above while this PRD is the one at HEAD; real test_prefix is mcphost_data_retention (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool above)"
+      "_prd": "PRD-mcphost-data-retention.md \u2014 superseded by mcphost-tenant-data-export at HEAD; real test_prefix is mcphost_data_retention (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool above)"
+    },
+    "tenantdataexport": {
+      "AC1": "tests/mcphost_tenant_data_export_ac01_archive_contents.rs",
+      "AC2": "tests/mcphost_tenant_data_export_ac02_signed_url_expiry.rs",
+      "AC3": "tests/mcphost_tenant_data_export_ac03_dedupe_in_progress.rs",
+      "AC4": "deferred -- Live; requires a real host.export run against production during the build's own post-ship live check (the homeward tenant), unreachable from this worktree's own gate. Proven by the build's live-check trailer recording the run result, not a repo-local test.",
+      "AC5": "tests/mcphost_tenant_data_export_ac05_manifest_validates_publish_schema.rs",
+      "AC6": "tests/mcphost_tenant_data_export_ac06_tools_subset.rs",
+      "AC7": "tests/mcphost_tenant_data_export_ac07_admin_usage_exports_today.rs",
+      "_prd": "PRD-mcphost-tenant-data-export.md \u2014 same as ac_test_map above while this PRD is the one at HEAD; real test_prefix is mcphost_tenant_data_export (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind above)"
     }
   }
 }

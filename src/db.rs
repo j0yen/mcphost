@@ -4435,6 +4435,29 @@ impl Db {
     }
 
     /// Per-tenant, per-tool usage for the admin view.
+    /// PRD-mcphost-tenant-data-export P2 requirement 6 / AC7: `admin.usage`'s
+    /// `exports_today` -- every `runs` row for `tool_name` started at or
+    /// after `since_unix` (the caller's own "today" boundary), across every
+    /// tenant. `runs.started_unix` is stamped at [`Self::start_export_run`]'s
+    /// insert time (never `queued`, so this is also the row's creation
+    /// time), the same column [`Self::count_running_runs_total`] and
+    /// friends already read.
+    pub async fn count_runs_by_tool_since(
+        &self,
+        tool_name: String,
+        since_unix: i64,
+    ) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM runs WHERE tool_name = ?1 AND started_unix >= ?2",
+                params![tool_name, since_unix],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
     pub async fn usage_by_tenant_and_tool(
         &self,
         window_secs: i64,
