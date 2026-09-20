@@ -272,6 +272,8 @@ mod mcphost_data_retention_ac04_batched_prune_no_lock_errors;
 mod mcphost_data_retention_ac05_admin_usage_reports_size_and_last_prune;
 #[path = "mcphost_data_retention_ac06_disk_floor_refuses_writes.rs"]
 mod mcphost_data_retention_ac06_disk_floor_refuses_writes;
+#[path = "mcphost_data_retention_ac07_automatic_prune_keeps_last_prune_fresh.rs"]
+mod mcphost_data_retention_ac07_automatic_prune_keeps_last_prune_fresh;
 #[path = "mcphost_data_retention_ac08_host_usage_lists_retention_windows.rs"]
 mod mcphost_data_retention_ac08_host_usage_lists_retention_windows;
 #[path = "mcphost_data_retention_ac09_prune_error_sets_last_prune_ok_false.rs"]

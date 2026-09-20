@@ -383,9 +383,34 @@ fn statvfs_free_bytes(path: &Path) -> Option<u64> {
 /// at once. Same "never joined, tokio::spawn loop" background-task
 /// lifetime convention as [`crate::triggers::spawn_scheduler`].
 pub fn spawn_prune_scheduler(state: crate::state::AppState) -> tokio::task::JoinHandle<()> {
+    spawn_prune_loop(state, None)
+}
+
+/// Test-only (AC7): the same unattended loop [`spawn_prune_scheduler`]
+/// runs at real `mcphost serve` startup, but firing every `interval`
+/// instead of waiting out the real 03:30 UTC cadence. AC7's own proof is a
+/// live prod read the day after ship (see the trailer) -- what a test
+/// *can* pin down beforehand is that this background task, wired up with
+/// no `admin.prune_now`/manual trigger involved, actually calls
+/// `prune_once` and keeps `last_prune` fresh on its own. Same "swap a
+/// short interval in for the real cadence so a test doesn't wait a real
+/// day" shape as [`crate::triggers::tick_once`] exposing a single
+/// deterministic tick.
+pub fn spawn_prune_scheduler_for_test(
+    state: crate::state::AppState,
+    interval: Duration,
+) -> tokio::task::JoinHandle<()> {
+    spawn_prune_loop(state, Some(interval))
+}
+
+fn spawn_prune_loop(
+    state: crate::state::AppState,
+    interval_override: Option<Duration>,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         loop {
-            let sleep_for = duration_until_next_run(crate::state::now_unix());
+            let sleep_for = interval_override
+                .unwrap_or_else(|| duration_until_next_run(crate::state::now_unix()));
             tokio::time::sleep(sleep_for).await;
             if let Err(e) = state.db.prune_once().await {
                 tracing::warn!(error = %e, "nightly retention prune failed");
