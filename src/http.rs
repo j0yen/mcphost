@@ -498,10 +498,7 @@ fn inherited_listener() -> Option<std::net::TcpListener> {
             return None;
         }
     }
-    // SAFETY: fd 3 is the convention's first inherited descriptor; a
-    // caller that set LISTEN_FDS/LISTEN_PID this way has already dup2'd a
-    // real, bound TCP listener there and cleared CLOEXEC on it (dup2's own
-    // fd never inherits the source fd's CLOEXEC flag).
+    // SAFETY: fd 3 is the convention's first inherited descriptor; a caller that set LISTEN_FDS/LISTEN_PID this way has already dup2'd a real, bound TCP listener there and cleared CLOEXEC on it (dup2's own fd never inherits the source fd's CLOEXEC flag).
     Some(unsafe { std::net::TcpListener::from_raw_fd(LISTEN_FDS_START) })
 }
 

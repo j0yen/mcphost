@@ -272,9 +272,7 @@ fn set_listen_pid_to_self() -> std::io::Result<()> {
     let mut value = [0u8; 11]; // up to 10 digits + nul terminator
     let len = digits.len() - i;
     value[..len].copy_from_slice(&digits[i..]);
-    // SAFETY: `value` is nul-terminated ASCII digits, `c"LISTEN_PID"` is a
-    // static nul-terminated literal; setenv is called once, synchronously,
-    // before this process ever execs.
+    // SAFETY: `value` is nul-terminated ASCII digits, `c"LISTEN_PID"` is a static nul-terminated literal; setenv is called once, synchronously, before this process ever execs.
     let rc = unsafe { libc::setenv(c"LISTEN_PID".as_ptr(), value.as_ptr().cast(), 1) };
     if rc != 0 {
         return Err(std::io::Error::last_os_error());
@@ -308,12 +306,7 @@ fn spawn_previous(
         }
         BindPlan::Inherited { listener, .. } => {
             cmd.env("LISTEN_FDS", "1");
-            // SAFETY: this closure runs strictly between fork and exec in
-            // the freshly forked, single-threaded child; `dup2` and
-            // `setenv` (inside `set_listen_pid_to_self`) are the same
-            // primitives systemd's own service manager uses to implement
-            // this exact convention. `listener` is moved in so its fd
-            // stays open (and thus reserved) across the fork.
+            // SAFETY: this closure runs strictly between fork and exec in the freshly forked, single-threaded child; `dup2` and `setenv` (inside `set_listen_pid_to_self`) are the same primitives systemd's own service manager uses to implement this exact convention. `listener` is moved in so its fd stays open (and thus reserved) across the fork.
             unsafe {
                 cmd.pre_exec(move || {
                     if libc::dup2(listener.as_raw_fd(), LISTEN_FDS_START) < 0 {
