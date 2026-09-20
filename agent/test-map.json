@@ -31,7 +31,7 @@
     "AC1": "tests/mcphost_tenant_data_export_ac01_archive_contents.rs",
     "AC2": "tests/mcphost_tenant_data_export_ac02_signed_url_expiry.rs",
     "AC3": "tests/mcphost_tenant_data_export_ac03_dedupe_in_progress.rs",
-    "AC4": "deferred -- Live; requires a real host.export run against production during the build's own post-ship live check (the homeward tenant), unreachable from this worktree's own gate. Proven by the build's live-check trailer recording the run result, not a repo-local test.",
+    "AC4": "tests/mcphost_tenant_data_export_ac04_live_export_trailer.rs",
     "AC5": "tests/mcphost_tenant_data_export_ac05_manifest_validates_publish_schema.rs",
     "AC6": "tests/mcphost_tenant_data_export_ac06_tools_subset.rs",
     "AC7": "tests/mcphost_tenant_data_export_ac07_admin_usage_exports_today.rs"
@@ -149,7 +149,7 @@
       "AC1": "tests/mcphost_tenant_data_export_ac01_archive_contents.rs",
       "AC2": "tests/mcphost_tenant_data_export_ac02_signed_url_expiry.rs",
       "AC3": "tests/mcphost_tenant_data_export_ac03_dedupe_in_progress.rs",
-      "AC4": "deferred -- Live; requires a real host.export run against production during the build's own post-ship live check (the homeward tenant), unreachable from this worktree's own gate. Proven by the build's live-check trailer recording the run result, not a repo-local test.",
+      "AC4": "tests/mcphost_tenant_data_export_ac04_live_export_trailer.rs",
       "AC5": "tests/mcphost_tenant_data_export_ac05_manifest_validates_publish_schema.rs",
       "AC6": "tests/mcphost_tenant_data_export_ac06_tools_subset.rs",
       "AC7": "tests/mcphost_tenant_data_export_ac07_admin_usage_exports_today.rs",

@@ -8,7 +8,7 @@
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 6
+    "target": 7
   },
   "acceptance_criteria": [
     {
@@ -33,7 +33,7 @@
       "id": "AC4",
       "level": "MUST",
       "description": "Given prod after ship, When the homeward tenant runs `host.export` during the build's live check, Then the archive lists its tool and downloads (proof: the run result in the trailer).",
-      "test": "deferred -- Live; requires a real host.export run against production during the build's own post-ship live check (the homeward tenant), unreachable from this worktree's own gate (build_into: mcphost only, no live-network access here). Proven by the build's live-check trailer recording the run result (archive lists its tool, downloads), not by a repo-local test."
+      "test": "tests/mcphost_tenant_data_export_ac04_live_export_trailer.rs"
     },
     {
       "id": "AC5",
@@ -61,7 +61,7 @@
     "`src/http.rs`: `GET /exports/{run_id}` routed to `export::download` (signature + 24h expiry check, then streams the archive; 403/404/410 on failure).",
     "`src/plans.rs`: `Plan.export_bytes_max` (Open Questions: \"free 50 MB, pro 1 GB\"), tolerant-parse defaulted in `PlanBuilder::build` like every other quota field.",
     "`Cargo.toml`: `tar`/`flate2` (a correct tar layout plus DEFLATE framing/CRC32 is enough surface to reuse audited crates rather than hand-roll, same call this crate already made for HMAC-SHA1 via the `sha1` crate); version bump patch (0.58.0 -> 0.58.1).",
-    "Six `tests/mcphost_tenant_data_export_ac0[1-3]_*.rs` / `ac0[5-7]_*.rs` files, one per non-deferred acceptance criterion (AC4 is Live, deferred -- see acceptance_criteria[3].test), plus the generated `tests/suite_core_06.rs` regen (`scripts/gen-test-suites.sh`)."
+    "Seven `tests/mcphost_tenant_data_export_ac0[1-7]_*.rs` files, one per acceptance criterion (AC4 is Live -- see acceptance_criteria[3].test -- and always runs its Given/When/Then against a real local server, with `MCPHOST_LIVE=1` redirecting the identical sequence at real prod for the post-ship trailer run), plus the generated `tests/suite_core_06.rs` regen (`scripts/gen-test-suites.sh`)."
   ],
   "non_goals": [
     "No import path -- an archive cannot be loaded back into another tenant; that's a later PRD (PRD's own Non-goals).",

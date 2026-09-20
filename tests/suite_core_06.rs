@@ -318,6 +318,8 @@ mod mcphost_tenant_data_export_ac01_archive_contents;
 mod mcphost_tenant_data_export_ac02_signed_url_expiry;
 #[path = "mcphost_tenant_data_export_ac03_dedupe_in_progress.rs"]
 mod mcphost_tenant_data_export_ac03_dedupe_in_progress;
+#[path = "mcphost_tenant_data_export_ac04_live_export_trailer.rs"]
+mod mcphost_tenant_data_export_ac04_live_export_trailer;
 #[path = "mcphost_tenant_data_export_ac05_manifest_validates_publish_schema.rs"]
 mod mcphost_tenant_data_export_ac05_manifest_validates_publish_schema;
 #[path = "mcphost_tenant_data_export_ac06_tools_subset.rs"]
