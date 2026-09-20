@@ -86,12 +86,24 @@ const DEFAULT_MEMORY_MB: u64 = 64;
 /// clock either.
 const FUEL_BUDGET: u64 = 4_000_000_000;
 /// The internal wall-time cutoff fires at this fraction of the effective
-/// timeout `requested_timeout` also reports to `handler.rs`'s own
-/// `tokio::time::timeout` -- strictly earlier, so this kind's own structured
-/// `tool_timeout` always wins the race and the spawned execution thread is
-/// actually stopped, rather than merely abandoned by the outer timeout
-/// while it keeps spinning on the blocking thread pool.
+/// timeout, strictly earlier than the wall budget itself -- see
+/// `WasmSpec::wall_budget`.
 const WALL_BUDGET_SLACK: f64 = 0.8;
+
+/// Extra, fixed time `requested_timeout` adds on top of `wall_budget` for
+/// `handler.rs`'s own `tokio::time::timeout` (`resolve_call_timeout`).
+/// `WALL_BUDGET_SLACK` alone only guarantees the outer deadline is later
+/// than the epoch trip -- it says nothing about whether that margin is
+/// enough real wall-clock time for the trip to actually finish landing
+/// (cranelift's epoch check firing at the next loop back-edge, the trap
+/// unwinding, `spawn_blocking`'s join, this task resuming) before the outer
+/// timeout also elapses. That margin was a fraction of the requested
+/// timeout (e.g. 200ms for a 1s call) -- too thin once the runner's tokio
+/// scheduler is itself under contention, letting the generic `call_timeout`
+/// win the race instead of this kind's own structured `tool_timeout`. A
+/// fixed floor keeps the same absolute headroom regardless of how short the
+/// requested timeout is.
+const WALL_BUDGET_GRACE: Duration = Duration::from_millis(750);
 
 #[derive(Debug, Clone)]
 struct WasmSpec {
@@ -115,6 +127,14 @@ impl WasmSpec {
 
     fn effective_memory_bytes(&self) -> usize {
         (self.memory_mb.unwrap_or(DEFAULT_MEMORY_MB) as usize) * 1024 * 1024
+    }
+
+    /// The wall-time budget this call's own epoch-based cutoff enforces
+    /// (`WALL_BUDGET_SLACK` of `effective_timeout`) -- strictly shorter than
+    /// `effective_timeout` so a runaway component's structured `tool_timeout`
+    /// fires before it could ever race the host's generic per-call deadline.
+    fn wall_budget(&self) -> Duration {
+        self.effective_timeout().mul_f64(WALL_BUDGET_SLACK)
     }
 }
 
@@ -511,13 +531,17 @@ impl Kind for WasmKind {
         call_result.get("payload")
     }
 
-    /// Requirement 1: a spec's own `timeout_s` (bounded, defaulted) drives
-    /// both the host's generic per-call deadline (`handler.rs`'s
-    /// `resolve_call_timeout`) and this kind's own internal wall-time
-    /// cutoff (`WALL_BUDGET_SLACK` of the same duration) -- see that
-    /// constant's doc for why the two must agree.
+    /// Requirement 1: the host's generic per-call deadline (`handler.rs`'s
+    /// `resolve_call_timeout`), derived from this kind's own internal
+    /// `wall_budget` cutoff plus `WALL_BUDGET_GRACE` -- never from the raw
+    /// `timeout_s` directly, so the outer deadline is always strictly later
+    /// than the epoch trip by a fixed, real amount of wall-clock time (see
+    /// `WALL_BUDGET_GRACE`'s doc), guaranteeing this kind's own structured
+    /// `tool_timeout` wins the race rather than the generic `call_timeout`.
     fn requested_timeout(&self, spec: &Value) -> Option<Duration> {
-        parse_spec(spec).ok().map(|p| p.effective_timeout())
+        parse_spec(spec)
+            .ok()
+            .map(|p| p.wall_budget() + WALL_BUDGET_GRACE)
     }
 
     async fn call(&self, spec: &Value, args: Value, ctx: &CallCtx) -> Result<Value, KindError> {
@@ -545,7 +569,7 @@ impl Kind for WasmKind {
 
         let engine = self.engine.clone();
         let memory_cap = parsed.effective_memory_bytes();
-        let wall_budget = parsed.effective_timeout().mul_f64(WALL_BUDGET_SLACK);
+        let wall_budget = parsed.wall_budget();
 
         // Requirement 2: the wall-time half of the budget -- increments the
         // engine's epoch after `wall_budget` elapses, tripping the
@@ -625,5 +649,67 @@ impl Kind for WasmKind {
 
     fn example(&self) -> KindExample {
         super::docs::parse_kind_doc(include_str!("../../docs/kinds/wasm.md"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// FIX-PASS (PR #14, CI run 35479593215): `requested_timeout` (the
+    /// host's outer `resolve_call_timeout` deadline) must be strictly later
+    /// than `wall_budget` (this kind's own epoch-trip cutoff) by a fixed,
+    /// real amount of wall-clock time -- `WALL_BUDGET_GRACE` -- not merely
+    /// by whatever fraction `WALL_BUDGET_SLACK` happens to leave. A
+    /// percentage-only margin (the pre-fix behavior) shrinks to nothing in
+    /// absolute terms at short `timeout_s`: 20% of 1s is only 200ms, too
+    /// thin for a CI runner's scheduling jitter to reliably land the trap
+    /// before the outer timeout also elapses. This asserts the guarantee
+    /// holds by construction, at every timeout_s the spec accepts (1..=
+    /// MAX_TIMEOUT_S), rather than relying on a real clock race to prove it
+    /// -- the failure mode here is architectural, not a timing fluke, so
+    /// the proof should be too.
+    fn spec_with_timeout(timeout_s: u64) -> Value {
+        json!({"component": "", "timeout_s": timeout_s})
+    }
+
+    #[test]
+    fn outer_deadline_clears_wall_budget_by_the_fixed_grace_floor_at_every_supported_timeout() {
+        let kind = WasmKind::new();
+        for timeout_s in [1, 2, 5, DEFAULT_TIMEOUT_S, MAX_TIMEOUT_S] {
+            let spec = spec_with_timeout(timeout_s);
+            let parsed = parse_spec(&spec).expect("minimal spec parses");
+            let wall_budget = parsed.wall_budget();
+            let outer = kind
+                .requested_timeout(&spec)
+                .expect("wasm specs always resolve a timeout");
+
+            assert!(
+                outer > wall_budget,
+                "timeout_s={timeout_s}: outer deadline {outer:?} must be strictly \
+                 later than the inner wall_budget {wall_budget:?}"
+            );
+            let margin = outer - wall_budget;
+            assert_eq!(
+                margin, WALL_BUDGET_GRACE,
+                "timeout_s={timeout_s}: margin between outer deadline and wall_budget \
+                 must be exactly the fixed grace floor, not a percentage that thins out \
+                 at short timeouts"
+            );
+        }
+    }
+
+    /// The grace floor itself must be large enough to absorb real CI
+    /// scheduling jitter (the observed failure needed less than 200ms to
+    /// flip the race) -- pinned well above that so a future edit shrinking
+    /// it back toward a thin percentage-only margin fails this test rather
+    /// than silently reintroducing the flake.
+    #[test]
+    fn grace_floor_is_a_real_absolute_buffer_not_a_token_amount() {
+        assert!(
+            WALL_BUDGET_GRACE >= Duration::from_millis(500),
+            "WALL_BUDGET_GRACE {WALL_BUDGET_GRACE:?} is too thin to absorb CI-grade \
+             scheduling jitter at short timeout_s"
+        );
     }
 }
