@@ -870,6 +870,14 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
     // PRD-mcphost-schedules P0 requirement 5: `host.usage` counts scheduled
     // runs the same window every other figure here uses.
     let scheduled = state.db.scheduled_usage(tenant.id, secs).await?;
+    // PRD-mcphost-data-retention P1 requirement 5 (AC8): the retention
+    // windows every tenant's data is subject to -- host-wide, not
+    // per-tenant, since retention is a host policy (requirement 1).
+    let retention_windows = state.db.retention_windows().await?;
+    let retention_days: serde_json::Map<String, Value> = retention_windows
+        .into_iter()
+        .map(|(table, days)| (table, json!(days)))
+        .collect();
     Ok(json!({
         "window": window,
         "calls": stats.calls,
@@ -899,6 +907,7 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
             "skipped": scheduled.skipped,
             "seconds": scheduled.seconds,
         },
+        "retention_days": retention_days,
     }))
 }
 
