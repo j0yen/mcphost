@@ -557,6 +557,11 @@ pub fn whoami(tenant: &Tenant) -> Value {
         "client_version": tenant.client_version,
         "key_age_s": key_age_s,
         "key_rotated_at": tenant.key_rotated_unix,
+        // PRD-mcphost-host-tool-deprecation P1 requirement 6 / AC7: the
+        // committed contract's own version, so an agent already calling
+        // host.whoami for its identity learns which contracts/host-tools.v<N>.json
+        // it's coding against with no extra round trip.
+        "contract_version": crate::api_contract::CONTRACT_VERSION,
     })
 }
 
