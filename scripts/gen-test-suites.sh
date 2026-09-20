@@ -194,7 +194,16 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # margin) was chosen up front to cover the whole PRD's file count in one
 # raise rather than one per AC, re-collapsing core's normal buckets to 2
 # and landing the grand total back at 10 for every AC in between.
-MAX_PER_SUITE = {"core": 158, "sandbox": 60}
+#
+# PRD-mcphost-data-retention (2026-09-20, rebased onto host-tool-deprecation):
+# this PRD's own new `mcphost_data_retention_ac*` area group (one file per
+# AC, same per-AC consolidation convention) tips core's normal buckets from
+# 2 to 3 again once enough of them land, spawning an 11th suite binary --
+# caught by the same `suite_ac1_ten_binaries_and_names_preserved` P0
+# assertion. 158 -> 160 was the smallest tested raise (on top of
+# host-tool-deprecation's 158) that re-collapses core's normal buckets to
+# 2, landing the grand total back at 10.
+MAX_PER_SUITE = {"core": 160, "sandbox": 60}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

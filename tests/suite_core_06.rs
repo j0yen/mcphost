@@ -262,6 +262,8 @@ mod lanecov_ac07_docs_document_adding_a_lane;
 mod limits_ac05_signup_burst_atomic;
 #[path = "mcphost_data_retention_ac01_calls_prune_by_window.rs"]
 mod mcphost_data_retention_ac01_calls_prune_by_window;
+#[path = "mcphost_data_retention_ac02_metering_rows_survive_window.rs"]
+mod mcphost_data_retention_ac02_metering_rows_survive_window;
 #[path = "mcphost_host_tool_deprecation_ac01_contract_dump_deterministic.rs"]
 mod mcphost_host_tool_deprecation_ac01_contract_dump_deterministic;
 #[path = "mcphost_host_tool_deprecation_ac02_removed_field_without_deprecation_fails.rs"]

@@ -6441,6 +6441,28 @@ impl Db {
         .await
     }
 
+    /// Test-only: insert one `meter_events` row at an arbitrary age (AC2's
+    /// "399-day-old metering rows survive a 400-day window" fixture).
+    /// `meter_events.created_at` is the RFC 3339 text column the real
+    /// prune compares against, so this writes that column directly rather
+    /// than a `created_unix` this table doesn't have.
+    pub async fn insert_meter_event_row_for_test(
+        &self,
+        tenant_id: i64,
+        created_unix: i64,
+    ) -> Result<(), AppError> {
+        let created_at = crate::state::rfc3339_from_unix(created_unix);
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO meter_events (batch_id, tenant_id, first_call_id, last_call_id, \
+                 count, mode, created_at) VALUES ('test-batch', ?1, 0, 0, 1, 'sent', ?2)",
+                params![tenant_id, created_at],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
     /// Test-only: `SELECT COUNT(*)` on an arbitrary table name (AC3's "a
     /// table not in the policy is unchanged" proof needs a row count for a
     /// table the retention engine never touches, e.g. `tenants`). Never
