@@ -298,11 +298,12 @@ fn narrowing_reason(old: &Value, new: &Value, was_required: bool, is_required: b
     }
     if let Some(new_enum) = schema_enum(new) {
         match schema_enum(old) {
-            // Narrowed iff the old schema didn't already accept every
-            // value the new enum lists -- either it had no enum at all
-            // (accepted any value of the type) or its own enum was
-            // missing one of the new schema's values.
-            Some(old_enum) if !new_enum.iter().all(|v| old_enum.contains(v)) => {
+            // Narrowed iff the new enum no longer accepts every value the
+            // OLD one did -- fewer values accepted than before, the
+            // direction that actually breaks an existing caller. The
+            // opposite check (a new value present in `new_enum` but not
+            // `old_enum`) would be widening, not narrowing.
+            Some(old_enum) if !old_enum.iter().all(|v| new_enum.contains(v)) => {
                 return Some("enum narrowed".to_string());
             }
             None => return Some("enum added where none existed".to_string()),
