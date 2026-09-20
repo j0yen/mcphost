@@ -413,6 +413,28 @@
       "since": "0.58.1"
     },
     {
+      "description": "Build a downloadable .tar.gz of everything this tenant owns: tool sources, state, secret NAMES (never values), run/thread history and usage, plus a manifest.json re-publishable via host.tool_publish. Runs as a background job (poll host.runs.get with the returned run_id) -- calling this again while one is already running returns that same run_id rather than starting a second one. The finished run's result carries a download_url valid 24 hours.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "tools": {
+            "description": "Local names of the tools to include; every tool when omitted.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.export",
+      "since": "0.58.0"
+    },
+    {
       "description": "Add a tenant (by namespace) to a group this tenant owns.",
       "input_schema": {
         "properties": {
