@@ -6,7 +6,6 @@
 // below; it declares no tests of its own. Every included file keeps its
 // original name, path, and test names (nextest's test list, with this
 // suite's prefix stripped, is unchanged from before consolidation).
-mod common;
 
-#[path = "compat_ac13_ac14_middleware_logging_and_scope.rs"]
-mod compat_ac13_ac14_middleware_logging_and_scope;
+#[path = "checkcompat_race_ac02_foreign_server_without_token.rs"]
+mod checkcompat_race_ac02_foreign_server_without_token;

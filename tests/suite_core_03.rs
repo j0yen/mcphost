@@ -8,5 +8,5 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 
-#[path = "sessionkey_ac17_request_log_no_key.rs"]
-mod sessionkey_ac17_request_log_no_key;
+#[path = "compat_ac13_ac14_middleware_logging_and_scope.rs"]
+mod compat_ac13_ac14_middleware_logging_and_scope;
