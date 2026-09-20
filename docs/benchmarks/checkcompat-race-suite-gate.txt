@@ -8,15 +8,13 @@ docs/benchmarks/suite-consolidation-wall-time.txt (running the whole
 workspace suite recursively from inside one of its own tests would be
 both circular and multi-minute cost paid on every `cargo test`). This
 receipt is the literal `wm-build runner exec --run 34 -- cargo ...`
-output at this PRD's HEAD, on the remote build runner, never run locally
-per this repo's own build contract. As of head_sha below that runner is
-the ccx53 AC8 was proved on (docs/benchmarks/checkcompat-race-ccx53-prove.txt),
-so this suite gate and AC8's prove are the same box and the same run.
+output at this PRD's HEAD, on the remote build runner (RedBaron), never
+run locally per this repo's own build contract.
 
-head_sha: d1737817e9e7f7ef6663953db36ccc21c443c8ff
+head_sha: b74d7386ba9d574dc4d932d842bed3180ecff126
 
 cargo test --workspace:
-  804 passed, 0 failed, 5 ignored (hardware/cache-dependent, same as
+  802 passed, 0 failed, 5 ignored (hardware/cache-dependent, same as
   before this PRD -- suite_ac5_disk_size_budget,
   suite_ac6_wall_time_budget's own sibling ignores, ac11_load_smoke's
   two-hundred-concurrent load test, etc.)

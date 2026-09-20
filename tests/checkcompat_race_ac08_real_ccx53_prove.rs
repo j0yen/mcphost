@@ -16,9 +16,9 @@
 //! Same "regression lock on a checked-in receipt" pattern as
 //! tests/checkcompat_race_ac07_suite_green_and_clippy_clean.rs: re-booting
 //! a €1/h box from inside `cargo test` would be absurd. What keeps the
-//! receipt honest is `cargo_content_id` -- a git fingerprint of the cargo
-//! inputs (`src`, `tests`, `Cargo.toml`) recomputed live here. Touch any
-//! of them -- revert the inherited-listener/token fix
+//! receipt honest is `cargo_content_id` -- a git fingerprint of every
+//! cargo input (`src`, `tests`, `Cargo.toml`, `Cargo.lock`) recomputed
+//! live here. Touch any of them -- revert the inherited-listener/token fix
 //! in src/compat_check.rs, edit either ac02/ac03 test -- and the
 //! fingerprint no longer matches the one the ccx53 actually ran, so this
 //! test fails until a fresh ccx53 prove is run and the receipt updated.
@@ -148,14 +148,7 @@ fn receipt_run_log_shows_every_ac02_ac03_test_ok() {
 /// Every path whose content the ccx53 prove actually exercised. Identical
 /// list to the receipt's own `cargo_content_id` recipe, which is why the
 /// two fingerprints are comparable at all.
-///
-/// `Cargo.lock` is deliberately NOT in this list: cargo rewrites it in the
-/// checkout while a build is running (observed on the runner box mid-
-/// `--workspace` run), so it is dirty-by-construction there and would make
-/// this check report drift that never happened. What AC8's prove is
-/// evidence *about* -- the inherited-listener/token fix and the tests that
-/// exercise it -- lives entirely in the three paths below.
-const CARGO_INPUT_PATHS: &[&str] = &["src", "tests", "Cargo.toml"];
+const CARGO_INPUT_PATHS: &[&str] = &["src", "tests", "Cargo.toml", "Cargo.lock"];
 
 fn git(args: &str) -> Option<std::process::Output> {
     let out = Command::new("sh")
