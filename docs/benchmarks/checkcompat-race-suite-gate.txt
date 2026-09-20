@@ -11,7 +11,7 @@ receipt is the literal `wm-build runner exec --run 34 -- cargo ...`
 output at this PRD's HEAD, on the remote build runner (RedBaron), never
 run locally per this repo's own build contract.
 
-head_sha: 83acafd78e94a35f6d6f104b14b70e8c6ad7d216
+head_sha: 60991e62ca4cbd7adb3a02392c36cadaf26a6353
 
 cargo test --workspace:
   721 passed, 0 failed, 5 ignored (hardware/cache-dependent, same as
