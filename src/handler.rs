@@ -1679,7 +1679,9 @@ fn admin_tools() -> Vec<Tool> {
         ),
         Tool::new(
             "admin.usage",
-            "Calls, errors and duration percentiles for every tenant and tool over a window.",
+            "Calls, errors and duration percentiles for every tenant and tool over a window, \
+             plus database size (db_bytes, db_page_free_bytes, rows_by_table) and the most \
+             recent retention prune (last_prune).",
             schema(json!({"window": {"type": "string"}}), &[]),
         ),
         Tool::new(

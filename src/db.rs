@@ -6390,6 +6390,66 @@ impl Db {
         }
     }
 
+    /// P0 requirement 3 (AC5): `admin.usage`'s `db_bytes`,
+    /// `db_page_free_bytes`, `rows_by_table`, and `last_prune`.
+    /// `rows_by_table` counts every real (non-`sqlite_*`) table, not just
+    /// the prunable ones, so an operator can see the whole database's
+    /// shape, not only the part this PRD prunes.
+    pub async fn usage_size_stats(&self) -> Result<UsageSizeStats, AppError> {
+        self.with_conn(|conn| {
+            let page_count: i64 = conn.query_row("PRAGMA page_count", [], |r| r.get(0))?;
+            let page_size: i64 = conn.query_row("PRAGMA page_size", [], |r| r.get(0))?;
+            let freelist_count: i64 = conn.query_row("PRAGMA freelist_count", [], |r| r.get(0))?;
+            let db_bytes = page_count * page_size;
+            let db_page_free_bytes = freelist_count * page_size;
+
+            let table_names: Vec<String> = {
+                let mut stmt = conn.prepare(
+                    "SELECT name FROM sqlite_master WHERE type = 'table' \
+                     AND name NOT LIKE 'sqlite_%' ORDER BY name",
+                )?;
+                stmt.query_map([], |r| r.get(0))?
+                    .collect::<Result<Vec<_>, _>>()?
+            };
+            let mut rows_by_table = Vec::with_capacity(table_names.len());
+            for name in table_names {
+                let count: i64 =
+                    conn.query_row(&format!("SELECT COUNT(*) FROM \"{name}\""), [], |r| r.get(0))?;
+                rows_by_table.push((name, count));
+            }
+
+            let last_prune = conn
+                .query_row(
+                    "SELECT started_unix, ok, deleted_json FROM prune_log ORDER BY id DESC LIMIT 1",
+                    [],
+                    |r| {
+                        let at_unix: i64 = r.get(0)?;
+                        let ok: i64 = r.get(1)?;
+                        let deleted_json: String = r.get(2)?;
+                        Ok((at_unix, ok != 0, deleted_json))
+                    },
+                )
+                .optional()?
+                .map(|(at_unix, ok, deleted_json)| {
+                    let deleted: std::collections::BTreeMap<String, i64> =
+                        serde_json::from_str(&deleted_json).unwrap_or_default();
+                    LastPrune {
+                        at_unix,
+                        ok,
+                        deleted,
+                    }
+                });
+
+            Ok(UsageSizeStats {
+                db_bytes,
+                db_page_free_bytes,
+                rows_by_table,
+                last_prune,
+            })
+        })
+        .await
+    }
+
     /// Test-only: insert one `calls` row at an arbitrary age (AC1/AC3/AC4
     /// fixtures need rows older than any real call in a fresh test
     /// server), bypassing `host.tool_call`'s real dispatch path so a test
@@ -6484,6 +6544,21 @@ pub struct PruneReport {
     pub deleted: std::collections::BTreeMap<String, i64>,
     pub started_unix: i64,
     pub finished_unix: i64,
+}
+
+/// [`Db::usage_size_stats`]'s `last_prune` field.
+pub struct LastPrune {
+    pub at_unix: i64,
+    pub ok: bool,
+    pub deleted: std::collections::BTreeMap<String, i64>,
+}
+
+/// [`Db::usage_size_stats`]'s return shape.
+pub struct UsageSizeStats {
+    pub db_bytes: i64,
+    pub db_page_free_bytes: i64,
+    pub rows_by_table: Vec<(String, i64)>,
+    pub last_prune: Option<LastPrune>,
 }
 
 /// [`Db::last_meter_batch_span`]'s return shape -- one ledgered batch's
