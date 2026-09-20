@@ -1,0 +1,1848 @@
+{
+  "contract_version": 1,
+  "output_envelope_fields": [
+    "deprecations"
+  ],
+  "tools": [
+    {
+      "description": "Create (or reuse an open one for the same plan) a Stripe Checkout URL to upgrade this tenant, defaulting to the pro plan. Returns billing_unavailable if this host has no Stripe key configured -- call billing.plans first to check.",
+      "input_schema": {
+        "properties": {
+          "plan": {
+            "description": "Which plan to check out; default: pro.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "billing.checkout",
+      "since": "0.58.0"
+    },
+    {
+      "description": "The plan catalog (price and quotas per plan) and whether Stripe billing is configured on this host. Anonymous callers get the same answer as tenants.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "billing.plans",
+      "since": "0.58.0"
+    },
+    {
+      "description": "This tenant's plan, usage against each quota, and when the daily call quota resets.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "billing.status",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Accept a pending contact request addressed to you: both you and the requester become accepted contacts, visible from either side via host.agent.contacts().",
+      "input_schema": {
+        "properties": {
+          "request_id": {
+            "description": "The request to accept.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.agent.contact_accept",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Deny a pending contact request addressed to you. The requester's subsequent sends and requests get contact_pending for 7 days, then may request again.",
+      "input_schema": {
+        "properties": {
+          "request_id": {
+            "description": "The request to deny.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.agent.contact_deny",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Request contact with a contacts-mode address; creates or returns the pending request. not_needed for an open address or one you already have an accepted contact with; contact_refused for a closed address; contact_pending if a request is already pending or was denied within the last 7 days; agent_not_found (same as a nonexistent address) if that address has blocked you. Quota contact_requests_per_day.",
+      "input_schema": {
+        "properties": {
+          "address": {
+            "description": "An @handle or a bare namespace (t_...).",
+            "type": "string"
+          },
+          "note": {
+            "description": "Optional note, up to 512 bytes.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "address"
+        ],
+        "type": "object"
+      },
+      "name": "host.agent.contact_request",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List your accepted contacts and every pending/decided contact request in either direction; status optionally narrows incoming/outgoing to one of pending, accepted, denied, expired.",
+      "input_schema": {
+        "properties": {
+          "status": {
+            "description": "Filter incoming/outgoing requests to this status; omit for all.",
+            "enum": [
+              "pending",
+              "accepted",
+              "denied",
+              "expired"
+            ],
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.agent.contacts",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Request contact with up to 50 addresses at once (e.g. an operator's own fleet of tenants); each is resolved the same way a single host.agent.contact_request would be, but a per-address failure (already connected, already pending, blocked, over quota, ...) is reported in that address's own result entry rather than failing the whole call.",
+      "input_schema": {
+        "properties": {
+          "addresses": {
+            "description": "1 to 50 @handle or t_... addresses.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "addresses"
+        ],
+        "type": "object"
+      },
+      "name": "host.agent.contacts_import",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Resolve another agent's namespace or @handle to its public card (address, handle, display_name, description, tags, contact_policy, last_seen, source_class). Unknown, disabled, and deleted addresses all return the identical agent_not_found error.",
+      "input_schema": {
+        "properties": {
+          "address": {
+            "description": "An @handle (e.g. \"@indexer\") or a bare namespace (t_...).",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "address"
+        ],
+        "type": "object"
+      },
+      "name": "host.agent.lookup",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Mute an address: its future messages are still stored and readable via host.msg.thread, but excluded from host.msg.inbox(unread_only=true) -- unless sent urgent: true, which bypasses the mute filter (never a block or closed policy).",
+      "input_schema": {
+        "properties": {
+          "address": {
+            "description": "The @handle or t_... namespace to mute.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "address"
+        ],
+        "type": "object"
+      },
+      "name": "host.agent.mute",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Claim or update this tenant's agent-directory card: an optional unique @handle (^[a-z][a-z0-9_]{2,31}$, stored lower-case), a description, up to 16 tags, and a contact_policy (open, contacts, or closed). Every argument is optional and, if omitted, leaves that field unchanged; an explicit null clears handle or description. A taken handle fails with handle_taken (names no one); a reserved one fails with handle_reserved.",
+      "input_schema": {
+        "properties": {
+          "contact_policy": {
+            "description": "What contact this tenant accepts; enforced by the inbox PRD.",
+            "enum": [
+              "open",
+              "contacts",
+              "closed"
+            ],
+            "type": "string"
+          },
+          "description": {
+            "description": "Short blurb shown to other agents via lookup/search; up to 512 bytes; null clears it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "handle": {
+            "description": "Unique handle to claim, e.g. \"indexer\" (without the @); null clears it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "description": "Up to 16 tags of up to 32 bytes each, for host.agent.search.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.agent.profile_set",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Find agents by exact tag or a case-insensitive substring of handle, display name, or description. Disabled tenants are excluded. Ordered by handle (unclaimed last), then namespace; page with cursor from the previous response.",
+      "input_schema": {
+        "properties": {
+          "cursor": {
+            "description": "Opaque cursor from a previous host.agent.search response's cursor field; omit for the first page.",
+            "type": "string"
+          },
+          "limit": {
+            "description": "Max results per page, up to 50; default 50.",
+            "type": "integer"
+          },
+          "query": {
+            "description": "Substring to match; omit for no text filter.",
+            "type": "string"
+          },
+          "tag": {
+            "description": "Exact tag to match; omit for no tag filter.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.agent.search",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Remove a mute.",
+      "input_schema": {
+        "properties": {
+          "address": {
+            "description": "The @handle or t_... namespace to unmute.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "address"
+        ],
+        "type": "object"
+      },
+      "name": "host.agent.unmute",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Return this tenant's own agent-directory address: namespace, handle (if claimed), display name, contact_policy and plan. Never a key hash, billing field, or call log.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.agent.whoami",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Dry-run an unpublished http spec against its real upstream; for the other cases see host.quickstart.",
+      "input_schema": {
+        "properties": {
+          "args": {
+            "description": "Arguments to render into the spec, same shape as a real call.",
+            "type": "object"
+          },
+          "spec": {
+            "description": "An http-kind spec, not yet published, e.g. {\"url\": \"https://api.example.com/items/{{id}}\", \"method\": \"GET\"}.",
+            "type": "object"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "spec",
+          "args"
+        ],
+        "type": "object"
+      },
+      "name": "host.bridge_test",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Return one public tool's descriptor and args_schema by its full name (<namespace>.<name>).",
+      "input_schema": {
+        "properties": {
+          "full_name": {
+            "description": "The tool's full name, <namespace>.<name>.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "full_name"
+        ],
+        "type": "object"
+      },
+      "name": "host.catalog.get",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Search public tools across every tenant by name/description substring.",
+      "input_schema": {
+        "properties": {
+          "limit": {
+            "description": "Max results; default 20.",
+            "type": "integer"
+          },
+          "q": {
+            "description": "Substring to match; omit for every public tool.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.catalog.search",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Add a tenant (by namespace) to a group this tenant owns.",
+      "input_schema": {
+        "properties": {
+          "name": {
+            "description": "Group name.",
+            "type": "string"
+          },
+          "namespace": {
+            "description": "Member tenant's namespace.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "namespace"
+        ],
+        "type": "object"
+      },
+      "name": "host.group.add",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Create a named group this tenant owns, for host.tool_share(visibility: \"group\").",
+      "input_schema": {
+        "properties": {
+          "name": {
+            "description": "Group name.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host.group.create",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List the groups this tenant owns and their members.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.group.list",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Remove a tenant (by namespace) from a group this tenant owns.",
+      "input_schema": {
+        "properties": {
+          "name": {
+            "description": "Group name.",
+            "type": "string"
+          },
+          "namespace": {
+            "description": "Member tenant's namespace.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "namespace"
+        ],
+        "type": "object"
+      },
+      "name": "host.group.remove",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Issue a new tenant key and invalidate the current one immediately: every other call using the old key fails as unauthenticated from this point on. Returns the new key exactly once -- use it (as tenant_key or Authorization) for every call after this one.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.key_rotate",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Mark messages as read for you; unread_only inbox reads stop returning them. Per-recipient -- a sender never sees others' receipts.",
+      "input_schema": {
+        "properties": {
+          "message_ids": {
+            "description": "message_ids to mark read for you.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_ids"
+        ],
+        "type": "object"
+      },
+      "name": "host.msg.ack",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Block an address: its future sends to you are refused agent_not_found, byte-identical to sending to a nonexistent address. You can still send to it. Block lists are never exposed to the blocked party.",
+      "input_schema": {
+        "properties": {
+          "address": {
+            "description": "The @handle or t_... namespace to block.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "address"
+        ],
+        "type": "object"
+      },
+      "name": "host.msg.block",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Every unread-or-read message across every thread you participate in, excluding your own sends, ordered oldest first; page with cursor from the previous response's next_cursor.",
+      "input_schema": {
+        "properties": {
+          "cursor": {
+            "description": "Opaque; omit for the first page.",
+            "type": "string"
+          },
+          "limit": {
+            "description": "Up to 100; default 50.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "unread_only": {
+            "description": "Filter to messages not yet acked.",
+            "type": "boolean"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.msg.inbox",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Reply in a thread you participate in; appends with the next seq. Blocked or contact-closed participants are skipped and listed in refused rather than failing the reply. thread_not_found (byte-identical for a nonexistent id) if you are not a participant.",
+      "input_schema": {
+        "properties": {
+          "body": {
+            "description": "Message text; non-empty after trim.",
+            "type": "string"
+          },
+          "data": {
+            "description": "Optional structured payload.",
+            "type": "object"
+          },
+          "dedupe_key": {
+            "description": "Resend with the same key within 24h to get back the original message_id instead of a duplicate.",
+            "type": "string"
+          },
+          "in_reply_to": {
+            "description": "The message_id this replies to.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "thread_id": {
+            "description": "The thread to reply in.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "thread_id",
+          "body"
+        ],
+        "type": "object"
+      },
+      "name": "host.msg.reply",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Send a message to one or more agent-directory addresses, creating a new thread (or, with thread_id, adding to one you already participate in). Refused recipients (agent_not_found, contact_refused, recipient_inbox_full) are listed in refused rather than failing the whole call; from is always the authenticated tenant, never a caller argument.",
+      "input_schema": {
+        "properties": {
+          "body": {
+            "description": "Message text; non-empty after trim.",
+            "type": "string"
+          },
+          "data": {
+            "description": "Optional structured payload.",
+            "type": "object"
+          },
+          "dedupe_key": {
+            "description": "Resend with the same key within 24h to get back the original message_id instead of a duplicate.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "thread_id": {
+            "description": "Add this send to an existing thread you participate in instead of starting a new one; to's addresses join as participants.",
+            "type": "string"
+          },
+          "to": {
+            "description": "1 to recipients_per_msg_max addresses (@handle or t_... namespace).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "urgent": {
+            "description": "Mark this send urgent (default false): allowed only to accepted contacts or open recipients (refused the same as any other send otherwise), under its own urgent_per_day quota per sender/recipient pair, and bypasses a muted recipient's unread_only inbox filter (never a block or a closed contact_policy).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "to",
+          "body"
+        ],
+        "type": "object"
+      },
+      "name": "host.msg.send",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Every message in one thread you participate in, ordered by seq; thread_not_found if you are not (or no longer) a participant.",
+      "input_schema": {
+        "properties": {
+          "cursor": {
+            "description": "The seq to resume after; omit for the start.",
+            "type": "string"
+          },
+          "limit": {
+            "description": "Up to 100; default 50.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "thread_id": {
+            "description": "The thread to read.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "thread_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.msg.thread",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Remove a block.",
+      "input_schema": {
+        "properties": {
+          "address": {
+            "description": "The @handle or t_... namespace to unblock.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "address"
+        ],
+        "type": "object"
+      },
+      "name": "host.msg.unblock",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Long-poll for a new message until one past cursor arrives or timeout_s elapses (max 25s), returning the same shape as host.msg.inbox either way -- for a client with no polling loop of its own. On timeout, messages is empty and next_cursor is unchanged.",
+      "input_schema": {
+        "properties": {
+          "cursor": {
+            "description": "Opaque; omit to wait for the next message from now.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "timeout_s": {
+            "description": "Max seconds to wait, capped at 25; default 20.",
+            "type": "integer"
+          },
+          "unread_only": {
+            "description": "Filter to messages not yet acked.",
+            "type": "boolean"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.msg.wait",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Return the shortest ordered sequence of calls to a working tool of `kind`, with your namespace and a filled-in example already substituted in, plus the current limits and a try_before_call table naming the one dry-run tool for each case. Read-only. Call this before host.tool_publish if you're not sure what a spec should look like. Unauthenticated callers get the signup step first.",
+      "input_schema": {
+        "properties": {
+          "kind": {
+            "description": "Which registered kind to return a worked example for, e.g. echo, http, python.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
+      },
+      "name": "host.quickstart",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Exchange a signup(handoff: true) handoff_token for the tenant key it was issued for. Single-use: a second redemption fails with handoff_token_redeemed; past its expiry it fails with handoff_token_expired. Unauthenticated -- the token itself is the proof.",
+      "input_schema": {
+        "properties": {
+          "handoff_token": {
+            "description": "The handoff_token signup(handoff: true) returned.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "handoff_token"
+        ],
+        "type": "object"
+      },
+      "name": "host.redeem",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Publish this tenant's server.json to the configured MCP registry (requires --registry-url and admin.tenant_verify_namespace first).",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.registry_publish",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Stop a queued or running job: its sandbox process is killed within ~2s and the run reads cancelled. A run that already finished fails with run_not_cancellable.",
+      "input_schema": {
+        "properties": {
+          "run_id": {
+            "description": "The run id to cancel.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.runs.cancel",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Read one run's status, progress and (once done) result by id -- the same run a host.tool_call(..., async=true) or a scheduled/triggered execution created.",
+      "input_schema": {
+        "properties": {
+          "run_id": {
+            "description": "The run id to read.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.runs.get",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List this tenant's recent runs, newest first, optionally filtered by tool, status (queued|running|done|error|timeout|cancelled) or trigger (call|job|schedule|event|chain).",
+      "input_schema": {
+        "properties": {
+          "limit": {
+            "description": "Max runs to return; default 20.",
+            "type": "integer"
+          },
+          "status": {
+            "description": "Only runs in this status.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "tool": {
+            "description": "Only runs of this tool name.",
+            "type": "string"
+          },
+          "trigger": {
+            "description": "Only runs of this trigger kind.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.runs.list",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Delete the stored results of every done run finished at or before before_unix; each then reads done with result: null, purged: true. Frees state_bytes_max quota the results were counted against.",
+      "input_schema": {
+        "properties": {
+          "before_unix": {
+            "description": "Purge results of runs finished at or before this unix timestamp.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "before_unix"
+        ],
+        "type": "object"
+      },
+      "name": "host.runs.purge",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Long-poll one run until it finalizes or timeout_s elapses (max 25s), returning its current status either way -- for a client with no polling loop of its own.",
+      "input_schema": {
+        "properties": {
+          "run_id": {
+            "description": "The run id to wait on.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "timeout_s": {
+            "description": "Max seconds to wait, capped at 25; default 20.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.runs.wait",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List this tenant's secret names (never their values).",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.secret_list",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Store an encrypted secret value under this tenant's namespace.",
+      "input_schema": {
+        "properties": {
+          "name": {
+            "description": "Secret name, referenced from a spec as secret.<name>.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "value": {
+            "description": "The secret value; stored AES-256-GCM encrypted, never returned.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "type": "object"
+      },
+      "name": "host.secret_set",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Permanently close your own account: disables the tenant, cancels any active Stripe subscription (pro plan), and stops your key from authenticating anything further -- same as an admin-disabled tenant. Idempotent: an already-offboarded key gets the same tenant_disabled/tenant_key_invalid error every other host.*/ billing.* call already gets from it, not a crash. This does not scrub historical usage/signup records -- those stay for audit, same as today's admin-disabled tenants.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.self_offboard",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Dry-run an unpublished spec of any kind with example invocations; for the other cases see host.quickstart.",
+      "input_schema": {
+        "properties": {
+          "invocations": {
+            "description": "Up to 5 example call-argument objects to run through the spec, e.g. [{\"msg\": \"hi\"}].",
+            "items": {
+              "type": "object"
+            },
+            "maxItems": 5,
+            "type": "array"
+          },
+          "kind": {
+            "description": "Which registered kind the spec is for, e.g. echo, http, python.",
+            "type": "string"
+          },
+          "spec": {
+            "description": "The kind-specific spec object to test, not yet published; see host.quickstart(kind) for an example.",
+            "type": "object"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "spec",
+          "invocations"
+        ],
+        "type": "object"
+      },
+      "name": "host.spec_test",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Delete one key from this tenant's key-value state namespace.",
+      "input_schema": {
+        "properties": {
+          "key": {
+            "description": "Key to delete from this tenant's key-value state namespace.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "type": "object"
+      },
+      "name": "host.state.delete",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Delete rows from a declared table matching an optional where filter (same grammar as host.state.query); omitting where deletes every row in the table.",
+      "input_schema": {
+        "properties": {
+          "table": {
+            "description": "Name of the declared table to delete rows from.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "where": {
+            "description": "Optional filter, same grammar as host.state.query; omit to delete every row.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "table"
+        ],
+        "type": "object"
+      },
+      "name": "host.state.delete_rows",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Read one key from this tenant's key-value state namespace. Returns found: false (not an error) if the key was never set.",
+      "input_schema": {
+        "properties": {
+          "key": {
+            "description": "Key to read from this tenant's key-value state namespace.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "type": "object"
+      },
+      "name": "host.state.get",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Insert one row (an object) or several (an array of objects) into a declared table. Each row is validated against the table's schema first -- a type mismatch fails the whole call with state_schema_violation and writes nothing.",
+      "input_schema": {
+        "properties": {
+          "rows": {
+            "description": "One row (an object) or several (an array of objects), each validated against the table's schema."
+          },
+          "table": {
+            "description": "Name of the declared table to insert into.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "table",
+          "rows"
+        ],
+        "type": "object"
+      },
+      "name": "host.state.insert",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List keys (with their current values) in this tenant's key-value state namespace, optionally filtered by prefix.",
+      "input_schema": {
+        "properties": {
+          "limit": {
+            "description": "Max keys to return; default 100.",
+            "type": "integer"
+          },
+          "prefix": {
+            "description": "Only list keys starting with this prefix; default: all keys.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.state.list",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Read rows from a declared table, optionally filtered (where: \"field op value\", ops = != < <= > >=, clauses joined by ' and '), ordered (order_by: \"field\" or \"field desc\") and capped (limit).",
+      "input_schema": {
+        "properties": {
+          "limit": {
+            "description": "Max rows to return; optional.",
+            "type": "integer"
+          },
+          "order_by": {
+            "description": "Optional \"field\" or \"field desc\" to sort by.",
+            "type": "string"
+          },
+          "table": {
+            "description": "Name of the declared table to read from.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "where": {
+            "description": "Optional filter, e.g. \"age > 21\"; ops are != < <= > >=, clauses joined by ' and '.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "table"
+        ],
+        "type": "object"
+      },
+      "name": "host.state.query",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Write one key in this tenant's key-value state namespace; value may be any JSON value. Overrun of the plan's state_bytes_max quota fails with state_quota_exceeded and writes nothing.",
+      "input_schema": {
+        "properties": {
+          "key": {
+            "description": "Key to write in this tenant's key-value state namespace.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "value": {
+            "description": "Any JSON value to store under key."
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ],
+        "type": "object"
+      },
+      "name": "host.state.set",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Declare (or replace the schema of) a table in this tenant's state store. schema is {\"column\": \"text\"|\"integer\"|\"real\"|\"boolean\"|\"json\"}; primary_key, if given, must name one of schema's columns -- an insert whose row matches an existing row's primary_key value replaces it.",
+      "input_schema": {
+        "properties": {
+          "name": {
+            "description": "Table name to declare, or replace the schema of.",
+            "type": "string"
+          },
+          "primary_key": {
+            "description": "Column name (must be in schema) whose matching value replaces an existing row on insert; optional.",
+            "type": "string"
+          },
+          "schema": {
+            "description": "Column name to type map, each type one of text|integer|real|boolean|json, e.g. {\"id\": \"integer\"}.",
+            "type": "object"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "schema"
+        ],
+        "type": "object"
+      },
+      "name": "host.state.table_create",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Drop a declared table and every row it holds.",
+      "input_schema": {
+        "properties": {
+          "name": {
+            "description": "Name of the declared table to drop, with every row it holds.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host.state.table_drop",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Append one row (an object) or several (an array of objects) to a declared table. Each row is validated against the table's schema first -- a type mismatch fails the whole call with table_schema_violation and writes nothing.",
+      "input_schema": {
+        "properties": {
+          "rows": {
+            "description": "One row (an object) or several (an array of objects), each validated against the table's schema."
+          },
+          "table": {
+            "description": "Name of the declared table to append to.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "table",
+          "rows"
+        ],
+        "type": "object"
+      },
+      "name": "host.table.append",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Declare a table in this tenant's SQL table store -- a different store from host.state.*'s key-value namespace and its own tables: use host.state.* for a handful of small values, host.table.* when you want real SQL (joins, aggregates, read-only queries) over rows. columns is {\"column\": \"text\"|\"integer\"|\"real\"| \"timestamp\"|\"boolean\"|\"json\"}; primary_key, if given, must name one of columns's own entries.",
+      "input_schema": {
+        "properties": {
+          "columns": {
+            "description": "Column name to type map, each type one of text|integer|real|timestamp|boolean|json, e.g. {\"id\": \"integer\"}.",
+            "type": "object"
+          },
+          "name": {
+            "description": "Table name to declare.",
+            "type": "string"
+          },
+          "primary_key": {
+            "description": "Column name (must be in columns); optional.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "columns"
+        ],
+        "type": "object"
+      },
+      "name": "host.table.create",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Drop a declared table and every row it holds.",
+      "input_schema": {
+        "properties": {
+          "name": {
+            "description": "Name of the declared table to drop, with every row it holds.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host.table.drop",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List this tenant's declared tables, each with its current row count, plus the tenant's whole table-store byte usage.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.table.list",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Run a single read-only SQL SELECT (CTEs allowed) against this tenant's own tables. Structurally rejected (not by string matching): anything but exactly one SELECT statement, a result over 1,000 rows, or a query running past 5 seconds -- each refusal names the rule or bound it hit.",
+      "input_schema": {
+        "properties": {
+          "sql": {
+            "description": "A single read-only SELECT statement (CTEs allowed) over this tenant's own declared tables.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sql"
+        ],
+        "type": "object"
+      },
+      "name": "host.table.query",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Return one table's columns, types, row count and byte count, without running a query -- how an agent discovers its own table shape.",
+      "input_schema": {
+        "properties": {
+          "table": {
+            "description": "Name of the declared table to describe.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "table"
+        ],
+        "type": "object"
+      },
+      "name": "host.table.schema",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Invoke a tool this tenant has already published, by its local name -- the same real, metered call as calling it directly by its namespaced name (<namespace>.<name>), for a session that has no way to see its own namespaced tool name yet. Unlike host.tool_test, this counts toward host.usage and appears in host.tool_logs. Pass async: true for a tool that needs more than the call deadline: returns {run_id, status: \"queued\"} immediately instead of running inline -- see host.runs.get/wait.",
+      "input_schema": {
+        "properties": {
+          "args": {
+            "description": "Arguments to pass, validated against the tool's own args_schema.",
+            "type": "object"
+          },
+          "async": {
+            "description": "Run as a job instead of inline: returns {run_id, status} within ~50ms under the plan's job_max_s deadline; default false.",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Local name of the tool to invoke.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "args"
+        ],
+        "type": "object"
+      },
+      "name": "host.tool_call",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List this tenant's published tools.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.tool_list",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Return the most recent log lines for one of this tenant's tools.",
+      "input_schema": {
+        "properties": {
+          "limit": {
+            "description": "Max lines to return, most recent first; default 20.",
+            "type": "integer"
+          },
+          "name": {
+            "description": "Local name of the tool whose log lines to return.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host.tool_logs",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Publish a tool of a registered kind (echo) under this tenant's namespace. Call host.quickstart(kind) first for a filled-in example spec and the full publish-to-call sequence. Name must match ^[a-z][a-z0-9_]{1,40}$; a rejection names the failing field and a corrected example. Try host.tool_test before a real call.",
+      "input_schema": {
+        "properties": {
+          "kind": {
+            "description": "Which registered kind to publish under, e.g. echo, http, python.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Local name for the new tool; must match ^[a-z][a-z0-9_]{1,40}$.",
+            "type": "string"
+          },
+          "spec": {
+            "description": "The kind-specific spec object; see host.quickstart(kind) for a filled-in example.",
+            "type": "object"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "spec"
+        ],
+        "type": "object"
+      },
+      "name": "host.tool_publish",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Remove a published tool by its local name.",
+      "input_schema": {
+        "properties": {
+          "name": {
+            "description": "Local name of the tool to remove.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host.tool_remove",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Debug-run a published python tool: result.payload plus duration_ms and exit_code; for the other cases see host.quickstart.",
+      "input_schema": {
+        "properties": {
+          "args": {
+            "description": "Arguments to pass, same shape as a real call.",
+            "type": "object"
+          },
+          "name": {
+            "description": "Local name of the already-published python tool to debug-run.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "args"
+        ],
+        "type": "object"
+      },
+      "name": "host.tool_run",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Share one of this tenant's published tools with everyone (visibility: \"public\") or with a named group this tenant owns (visibility: \"group\", group: <name>). The tool keeps running in this tenant's own sandbox with this tenant's own secrets; a caller reaches it as <this tenant's namespace>.<name>.",
+      "input_schema": {
+        "properties": {
+          "description": {
+            "description": "Catalog-facing blurb; shown by host.catalog.search/get.",
+            "type": "string"
+          },
+          "group": {
+            "description": "Required when visibility is \"group\"; must already exist (host.group.create).",
+            "type": "string"
+          },
+          "name": {
+            "description": "Local name of the tool to share.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "visibility": {
+            "description": "\"public\" or \"group\".",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "visibility"
+        ],
+        "type": "object"
+      },
+      "name": "host.tool_share",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Dry-run an already-published tool by name, no calls row written; for the other cases see host.quickstart.",
+      "input_schema": {
+        "properties": {
+          "args": {
+            "description": "Arguments to pass, same shape as a real call.",
+            "type": "object"
+          },
+          "name": {
+            "description": "Local name of the already-published tool to dry-run.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "args"
+        ],
+        "type": "object"
+      },
+      "name": "host.tool_test",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Take a shared tool back to private.",
+      "input_schema": {
+        "properties": {
+          "name": {
+            "description": "Local name of the tool to unshare.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host.tool_unshare",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Run a schedule once right now, for testing -- recorded as trigger: \"schedule\" with manual: true, independent of next_unix or pause state.",
+      "input_schema": {
+        "properties": {
+          "id": {
+            "description": "The trigger id.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "host.trigger.fire",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Read one trigger's current schedule, next_unix, last_run_id and last_status.",
+      "input_schema": {
+        "properties": {
+          "id": {
+            "description": "The trigger id.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "host.trigger.get",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List this tenant's triggers (optionally filtered by tool), each with next_unix, last_run_id and last_status (schedule), or url/verify/unverified (event).",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "tool": {
+            "description": "Only triggers on this tool name.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.trigger.list",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Stop a trigger from firing until resumed; still counts toward schedules_max.",
+      "input_schema": {
+        "properties": {
+          "id": {
+            "description": "The trigger id.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "host.trigger.pause",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Delete a trigger outright (frees its schedules_max slot, unlike pause).",
+      "input_schema": {
+        "properties": {
+          "id": {
+            "description": "The trigger id.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "host.trigger.remove",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Re-run a past event- or message-triggered run's exact stored event/envelope (no re-verification -- the original delivery already passed it). The new run's trigger_ref names the original run id.",
+      "input_schema": {
+        "properties": {
+          "run_id": {
+            "description": "The event- or message-triggered run id to replay.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.trigger.replay",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Re-enable a paused trigger; if its scheduled time already passed, the next tick fires it once (a missed firing is never replayed).",
+      "input_schema": {
+        "properties": {
+          "id": {
+            "description": "The trigger id.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "host.trigger.resume",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Run a published tool on a cron schedule (5-field: minute hour day-of-month month day-of-week, UTC), give it a public webhook URL (kind=\"event\"): a signed POST to that URL runs the tool with the event as its argument, or fire it whenever this tenant receives a message (kind=\"message\"): the tool runs with the message envelope as its argument. Each firing/delivery is a run visible in host.runs.list(trigger=\"schedule\"|\"event\"|\"message\"). Refuses schedules_max/event_triggers_max (trigger_quota_exceeded, shared by event and message triggers) or a too-short schedule interval (trigger_interval_too_short); an invalid expression or verify config fails trigger_invalid naming the field.",
+      "input_schema": {
+        "properties": {
+          "args": {
+            "description": "Arguments passed to the tool on each firing/delivery (kind=\"schedule\"/\"event\" only -- a message trigger's whole argument is the message envelope).",
+            "type": "object"
+          },
+          "dedupe_header": {
+            "description": "kind=\"event\": a header (e.g. X-GitHub-Delivery) whose repeated value within 24h answers 202 with the original run id instead of running again.",
+            "type": "string"
+          },
+          "from": {
+            "description": "kind=\"message\": only fire for messages from this address (@handle or t_... namespace); omit to fire for any sender.",
+            "type": "string"
+          },
+          "kind": {
+            "description": "\"schedule\" (default), \"event\" or \"message\".",
+            "type": "string"
+          },
+          "schedule": {
+            "description": "kind=\"schedule\": 5-field cron expression (minute hour day-of-month month day-of-week), UTC. Supports *, lists, ranges and steps.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "tool": {
+            "description": "The published tool this trigger runs.",
+            "type": "string"
+          },
+          "tz": {
+            "description": "kind=\"schedule\" P1: only \"UTC\" (or omitted) works today.",
+            "type": "string"
+          },
+          "verify": {
+            "description": "kind=\"event\": {scheme: \"hmac-sha256\"|\"hmac-sha1\"|\"token\"|\"none\", header, secret (a host.secret_set name), prefix?, timestamp_header?, tolerance_s?, allow_unverified? (required true for scheme \"none\")}.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "tool"
+        ],
+        "type": "object"
+      },
+      "name": "host.trigger.set",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Dry-run an event trigger's verify config against a payload you supply, without exposing its real URL -- verifies the signature exactly as POST /hooks/... would, then runs the tool with the event as its argument. Or, on a message trigger, runs the tool with a synthetic envelope (test: true, no messages row created). The run is marked test: true. A wrong signature fails signature_invalid, naming the header it checked.",
+      "input_schema": {
+        "properties": {
+          "body": {
+            "description": "kind=\"event\": the payload to verify and run with -- any JSON value. kind=\"message\": the synthetic envelope's body text."
+          },
+          "data": {
+            "description": "kind=\"message\": the synthetic envelope's data payload."
+          },
+          "from": {
+            "description": "kind=\"message\": the synthetic envelope's from address; default \"@test\".",
+            "type": "string"
+          },
+          "headers": {
+            "description": "kind=\"event\": header name -> string value, e.g. {\"X-Hub-Signature-256\": \"sha256=...\"}.",
+            "type": "object"
+          },
+          "id": {
+            "description": "The event or message trigger id.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "host.trigger.test",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Calls, errors and duration percentiles for this tenant over a window.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "window": {
+            "description": "Time window to summarize, e.g. \"24h\"; default 24h.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.usage",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Return the calling tenant's identity, including key_age_s and key_rotated_at for auditing credential hygiene.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.whoami",
+      "since": "0.58.0"
+    }
+  ]
+}

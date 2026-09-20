@@ -99,6 +99,32 @@ enum Command {
         #[arg(long)]
         path: Option<PathBuf>,
     },
+    /// PRD-mcphost-host-tool-deprecation requirement 1 (P0, AC1): the
+    /// `host.*`/`billing.*` tool surface as a versioned contract.
+    Contract {
+        #[command(subcommand)]
+        action: ContractCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum ContractCommand {
+    /// Write (or, with `--check`, verify) `contracts/host-tools.v1.json`
+    /// from the live tool registry -- same `--check`/write convention as
+    /// `LlmsTxt` above. Needs no DB and no sandbox, same reason as
+    /// `LlmsTxt`: `mcphost::api_contract::dump_contract` always builds
+    /// against `KindRegistry::with_builtin()`.
+    Dump {
+        /// Exit 1 without writing if the committed file is stale, instead
+        /// of rewriting it.
+        #[arg(long)]
+        check: bool,
+        /// Path to the contract file to update. Defaults to
+        /// `contracts/host-tools.v1.json` relative to the current
+        /// directory (run from the repo root).
+        #[arg(long)]
+        path: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -309,6 +335,34 @@ async fn main() -> anyhow::Result<()> {
                 Ok(())
             }
         }
+        Command::Contract { action } => match action {
+            ContractCommand::Dump { check, path } => {
+                // Deliberately no `init_tracing()`: same rationale as
+                // `LlmsTxt` above -- this subcommand's contract is plain
+                // stdout/exit-code, no JSON log line ahead of it.
+                let path =
+                    path.unwrap_or_else(|| PathBuf::from(mcphost::api_contract::DEFAULT_CONTRACT_PATH));
+                let kinds = KindRegistry::with_builtin();
+                let bytes = mcphost::api_contract::dump_contract_bytes(&kinds);
+                if check {
+                    let existing = std::fs::read(&path).unwrap_or_default();
+                    if existing == bytes {
+                        println!("contract dump --check: {} is up to date", path.display());
+                        Ok(())
+                    } else {
+                        eprintln!(
+                            "contract dump --check: {} is stale (run `mcphost contract dump`)",
+                            path.display()
+                        );
+                        std::process::exit(1);
+                    }
+                } else {
+                    std::fs::write(&path, &bytes)?;
+                    println!("contract dump: wrote {}", path.display());
+                    Ok(())
+                }
+            }
+        },
         Command::Serve { registry_url } => {
             init_tracing();
 

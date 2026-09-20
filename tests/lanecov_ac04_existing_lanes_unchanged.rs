@@ -87,9 +87,13 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // tests/fixtures/wasm-src/** and tests/fixtures/wasm/** to the
     // wasmkind_ac0x proof tests) -- a third, intended addition since the
     // baseline, not drift.
+    // PRD-mcphost-host-tool-deprecation added its own "contracts" lane
+    // (routes contracts/** to the mcphost_host_tool_deprecation_ac0x proof
+    // tests) -- a fourth, intended addition since the baseline, not drift.
     assert_eq!(
         added,
-        vec!["examples", "loop-config", "wasm-fixtures"],
-        "only examples, loop-config, and wasm-fixtures may have been added since {BASELINE_REV}"
+        vec!["contracts", "examples", "loop-config", "wasm-fixtures"],
+        "only contracts, examples, loop-config, and wasm-fixtures may have been added since \
+         {BASELINE_REV}"
     );
 }

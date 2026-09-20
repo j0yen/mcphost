@@ -373,6 +373,16 @@ pub fn llms_txt_tool_names(kinds: &KindRegistry) -> Vec<String> {
         .collect()
 }
 
+/// PRD-mcphost-host-tool-deprecation requirement 1: the same authenticated
+/// tool-descriptor set [`llms_txt_tool_names`] builds names from, exposed
+/// here with the full [`Tool`] (schema included) for
+/// [`crate::api_contract::dump_contract`]'s AC1 contract dump and
+/// `host.changelog`'s AC6 addition list. Pure and synchronous, same reason
+/// as `llms_txt_tool_names` -- no `AppState`, no DB.
+pub fn host_tool_descriptors(kinds: &KindRegistry) -> Vec<Tool> {
+    host_tools(kinds, true)
+}
+
 /// PRD-mcphost-tool-test AC9: `host.spec_test`, unlike every other `host.*`
 /// descriptor, must be absent from `tools/list` for an anonymous/invalid
 /// caller (present, and callable, only once authenticated) -- `authenticated`
