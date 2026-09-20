@@ -245,6 +245,42 @@ fn schema(props: Value, required: &[&str]) -> Map<String, Value> {
     }))
 }
 
+/// `host.tool_publish`'s own properties (minus `host_schema`'s
+/// `tenant_key`, a connection-auth concern with no counterpart in a
+/// manifest entry), factored out so both its own `Tool::new` descriptor
+/// below and [`tool_publish_input_schema`] build from the exact same
+/// literal -- a hand-copied twin here would drift the moment either changed.
+fn tool_publish_props() -> Value {
+    json!({
+        "name": {
+            "type": "string",
+            "description": "Local name for the new tool; must match ^[a-z][a-z0-9_]{1,40}$.",
+        },
+        "kind": {
+            "type": "string",
+            "description": "Which registered kind to publish under, e.g. echo, http, python.",
+        },
+        "spec": {
+            "type": "object",
+            "description": "The kind-specific spec object; see host.quickstart(kind) for a \
+                filled-in example.",
+        },
+    })
+}
+
+const TOOL_PUBLISH_REQUIRED: &[&str] = &["name", "kind", "spec"];
+
+/// PRD-mcphost-tenant-data-export P1 requirement 4 / AC5: the plain
+/// (no `tenant_key`) JSON Schema a `host.tool_publish` call's own args are
+/// validated against -- `export::build_archive`'s `manifest.json` entries
+/// are exactly `{name, kind, spec}` objects, and this crate's own test
+/// suite checks them against this SAME schema (not a hand-copied twin) so
+/// AC5's proof can never silently drift from what a real `host.tool_publish`
+/// call actually requires.
+pub fn tool_publish_input_schema() -> Value {
+    Value::Object(schema(tool_publish_props(), TOOL_PUBLISH_REQUIRED))
+}
+
 /// PRD-mcphost-session-key requirement 2 / AC3: every `host.*` descriptor
 /// (never `signup`'s or an `admin.*` descriptor -- requirement 10) gains an
 /// optional string `tenant_key` property, the key `signup` returned,
@@ -510,24 +546,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         Tool::new(
             "host.tool_publish",
             tool_publish_description(kinds),
-            host_schema(
-                json!({
-                    "name": {
-                        "type": "string",
-                        "description": "Local name for the new tool; must match ^[a-z][a-z0-9_]{1,40}$.",
-                    },
-                    "kind": {
-                        "type": "string",
-                        "description": "Which registered kind to publish under, e.g. echo, http, python.",
-                    },
-                    "spec": {
-                        "type": "object",
-                        "description": "The kind-specific spec object; see host.quickstart(kind) for a \
-                            filled-in example.",
-                    },
-                }),
-                &["name", "kind", "spec"],
-            ),
+            host_schema(tool_publish_props(), TOOL_PUBLISH_REQUIRED),
         ),
         Tool::new(
             "host.quickstart",
