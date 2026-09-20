@@ -147,3 +147,11 @@ globs = ["contracts/**"]
 required_commands = [
   "cargo test --workspace mcphost_host_tool_deprecation_ac",
 ]
+
+[[lane]]
+id = "checkcompat-race-soak"
+description = "Soak-test driver script for PRD-mcphost-checkcompat-port-race AC5 (scripts/checkcompat-race-soak.sh): loops `cargo test checkcompat -- --test-threads=32` to force the thread-count concurrency AC5's port-collision race needs, well past what a single run would surface. Added project-locally: same gap class as the examples/wasm-fixtures lanes above -- the shipped scaffold's proof-lanes.toml has no lane for project-local soak scripts under scripts/, and this one is exercised by (not itself part of) the checkcompat race tests, so proof is a name-filtered cargo test run over those tests rather than the whole rust-tests lane."
+globs = ["scripts/checkcompat-race-soak.sh"]
+required_commands = [
+  "cargo test --workspace checkcompat",
+]
