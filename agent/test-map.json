@@ -35,7 +35,7 @@
     "AC5": "tests/checkcompat_race_ac05_stress_no_port_collisions.rs",
     "AC6": "tests/checkcompat_race_ac06_explicit_bind_still_enforces_token.rs",
     "AC7": "tests/checkcompat_race_ac07_suite_green_and_clippy_clean.rs",
-    "AC8": "deferred -- no ccx53/Hetzner burst box or burst-lane.sh reachable from this coding sandbox (neither exists on this host outside the real fleet). See PRD frontmatter mock_justifications.",
+    "AC8": "deferred -- no ccx53/Hetzner burst box reachable from this coding sandbox (no HCLOUD_TOKEN; the installed burst-lane CLI has no prove verb). See PRD frontmatter deferred_acs/mock_justifications, locked against a dangling reference by tests/checkcompat_race_ac08_deferral_is_justified.rs.",
     "AC9": "cross-repo: /home/jsy/repos/mcphost-deploy tests/checkcompatrace_ac9_journal_and_line_name_the_step.py (mcphost-deploy commit edff67f7, requirement 7 -- not a tests/**/*.rs file since requirement 7 is a mcphost-deploy/Python change, not a mcphost one)",
     "AC10": "cross-repo: /home/jsy/repos/mcphost-deploy tests/checkcompatrace_ac10_ledger_scraper_reads_verdict.py (mcphost-deploy commit edff67f7, requirement 7)"
   },
