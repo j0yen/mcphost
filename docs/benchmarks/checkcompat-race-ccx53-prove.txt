@@ -93,6 +93,26 @@ prove_exit: 0
 
 prove done routed=true
 
+Falsification (does AC8 go red without the fix?)
+-----------------------------------------------
+Run on the same ccx53, 10:45Z, by mutating src/compat_check.rs -- the file
+holding this PRD's inherited-listener/token fix -- and re-running AC8:
+
+  uncommitted mutation:
+    cargo_inputs_are_byte_identical_to_what_the_ccx53_proved ... FAILED
+    "these cargo inputs are modified since the last commit, so HEAD's
+     fingerprint cannot vouch for what the ccx53 ran: M src/compat_check.rs"
+
+  committed mutation:
+    cargo_inputs_are_byte_identical_to_what_the_ccx53_proved ... FAILED
+    "the cargo inputs (src tests Cargo.toml) changed since the ccx53
+     prove: the receipt vouches for fingerprint b7c2a7ae..., this tree is
+     dfc4eabc..."
+
+The box was reset back to this receipt's head_sha afterwards. So AC8 is
+not a paperwork check that survives a broken fix: break or revert the
+fix and AC8 fails until a real ccx53 prove is run again.
+
 Bootstrap note (honest ordering)
 --------------------------------
 A receipt cannot be written before the run it records, and its own
