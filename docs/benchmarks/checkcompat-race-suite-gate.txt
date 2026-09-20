@@ -11,10 +11,10 @@ receipt is the literal `wm-build runner exec --run 34 -- cargo ...`
 output at this PRD's HEAD, on the remote build runner (RedBaron), never
 run locally per this repo's own build contract.
 
-head_sha: 5e107418bee3f8fa13835efea68e318778a6acbb
+head_sha: 83acafd78e94a35f6d6f104b14b70e8c6ad7d216
 
 cargo test --workspace:
-  849 passed, 0 failed, 5 ignored (hardware/cache-dependent, same as
+  721 passed, 0 failed, 5 ignored (hardware/cache-dependent, same as
   before this PRD -- suite_ac5_disk_size_budget,
   suite_ac6_wall_time_budget's own sibling ignores, ac11_load_smoke's
   two-hundred-concurrent load test, etc.)
