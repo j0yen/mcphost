@@ -1,6 +1,6 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-checkcompat-port-race.md",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-agent-mesh-ops.md",
   "intent_slug": "mcphost-checkcompat-port-race",
   "root_motivation": "On 2026-09-15 the burst lane's ccx53 prove failed checkcompat_ac02_ac03's broken-previous-binary test (exit Some(0), not 4) though the same commit passed on ccx43 minutes earlier. Cause: free_loopback_port bound then dropped a port before the child re-bound it; a parallel test's own server could grab that exact port in the gap, so /bin/false read as 'up'. More cores meant more concurrent test threads meant a higher collision rate -- a flaky mcphost test costs a box-hour and blocks enable on every image refresh. Separately, the 2026-09-16 redeploy of 0.54.1 logged compat_check=fail with its reason discarded: check-compat names the failing step on stderr, but mcphost-deploy's cli.py printed only the bare verdict (requirement 7 / AC9-AC10).",
   "user_persona": "Four (PRD User stories): (1) the burst lane on a 32-core box needs check-compat to pass for the same reason it passes on 16; (2) mcphost-deploy still gets exit 4 and the step name on a real failure, plus a redeploy log line naming which step, not just a bare verdict; (3) a test author spawning /bin/false needs no other test's server able to answer for it; (4) the operator sees the child's pid and matched token in the log on success.",

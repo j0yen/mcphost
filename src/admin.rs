@@ -685,6 +685,28 @@ pub fn admin_audit_entry(
                 .map(|(t, n)| format!("{t}.{n}")),
             None,
         )),
+        // PRD-mcphost-agent-mesh-ops: freeze/unfreeze/purge are mutations
+        // like every other admin.* write above, alongside their own
+        // dedicated `admin_events` rows (`Db::mesh_freeze`/`mesh_unfreeze`/
+        // `mesh_purge`) -- this is the separate, actor-tracked `admin_audit`
+        // log requirement 4 already appends every admin.* mutation to.
+        "admin.mesh.freeze" => Some((
+            "mesh_freeze".into(),
+            args.get("tenant").and_then(Value::as_str).map(String::from),
+            args.get("reason").and_then(Value::as_str).map(String::from),
+        )),
+        "admin.mesh.unfreeze" => Some((
+            "mesh_unfreeze".into(),
+            args.get("tenant").and_then(Value::as_str).map(String::from),
+            None,
+        )),
+        "admin.mesh.purge" if !dry_run => Some((
+            "mesh_purge".into(),
+            None,
+            args.get("older_than_days")
+                .and_then(Value::as_i64)
+                .map(|n| n.to_string()),
+        )),
         _ => None,
     }
 }
@@ -737,4 +759,196 @@ pub async fn tool_unshare(state: &AppState, args: &Value) -> Result<Value, AppEr
         return Err(AppError::ToolNotFound(format!("{tenant_ns}.{name}")));
     }
     Ok(json!({ "tenant": tenant_ns, "name": name, "visibility": "private", "unshared_by": "admin" }))
+}
+
+// ---- mesh ops (PRD-mcphost-agent-mesh-ops) --------------------------------
+
+fn mesh_counts_json(c: &crate::db::MeshCounts) -> Value {
+    json!({"real": c.real, "synthetic": c.synthetic})
+}
+
+fn mesh_tenant_stats_json(t: &crate::db::MeshTenantStats) -> Value {
+    json!({
+        "tenant": t.tenant,
+        "synthetic": t.synthetic,
+        "messages": t.messages,
+        "channel_posts": t.channel_posts,
+        "contact_requests": t.contact_requests,
+        "urgent": t.urgent,
+        "refusals_by_code": t.refusals_by_code,
+    })
+}
+
+/// `admin.mesh.stats(window, tenant?)` (P0 requirement 1 / AC1; P1
+/// requirement 8 / AC9).
+pub async fn mesh_stats(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let window = arg_str_opt(args, "window").unwrap_or_else(|| "1h".to_string());
+    let since_ms = crate::state::now_unix_ms() - crate::state::parse_window_secs(&window) * 1000;
+    let tenant = arg_str_opt(args, "tenant");
+    let stats = state.db.mesh_stats(since_ms, tenant).await?;
+    Ok(json!({
+        "window": window,
+        "messages": mesh_counts_json(&stats.messages),
+        "channel_posts": mesh_counts_json(&stats.channel_posts),
+        "contact_requests": mesh_counts_json(&stats.contact_requests),
+        "urgent": mesh_counts_json(&stats.urgent),
+        "refusals_by_code": stats.refusals_by_code,
+        "wake_runs": stats.wake_runs,
+        "active_pairs": stats.active_pairs,
+        "active_channels": stats.active_channels,
+        "tenants": stats.tenants.iter().map(mesh_tenant_stats_json).collect::<Vec<_>>(),
+    }))
+}
+
+/// `admin.mesh.threads(tenant?, channel?, limit≤100)` (P0 requirement 2 /
+/// AC2): no `body` field anywhere in this response.
+pub async fn mesh_threads(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let limit = args.get("limit").and_then(Value::as_i64).unwrap_or(100).clamp(1, 100);
+    let tenant_ns = arg_str_opt(args, "tenant");
+    let channel = arg_str_opt(args, "channel");
+    let tenant_id = match &tenant_ns {
+        Some(ns) => Some(
+            state
+                .db
+                .find_tenant_by_namespace(ns.clone())
+                .await?
+                .ok_or_else(|| AppError::TenantNotFound(ns.clone()))?
+                .id,
+        ),
+        None => None,
+    };
+    let (threads, channels) = state.db.mesh_threads(tenant_id, channel, limit).await?;
+    Ok(json!({
+        "threads": threads.iter().map(|t| json!({
+            "thread_id": t.thread_id,
+            "participants": t.participants,
+            "message_count": t.message_count,
+            "last_activity": t.last_activity,
+        })).collect::<Vec<_>>(),
+        "channels": channels.iter().map(|c| json!({
+            "channel_id": c.channel_id,
+            "name": c.name,
+            "post_count": c.post_count,
+            "last_activity": c.last_activity,
+        })).collect::<Vec<_>>(),
+    }))
+}
+
+/// `admin.mesh.thread(thread_or_channel_id, limit≤100, cursor?, reason?)`
+/// (P0 requirement 3 / AC3): every call writes one `admin_events` row
+/// `{action: "mesh.thread_read", target, reason?}`, whether the id names a
+/// thread or a channel, and whether or not it resolves to anything at all
+/// (an operator's failed lookup is itself worth auditing).
+pub async fn mesh_thread(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let target = arg_str(args, "thread_or_channel_id")?;
+    let limit = args.get("limit").and_then(Value::as_i64).unwrap_or(50).clamp(1, 100);
+    let reason = arg_str_opt(args, "reason");
+    let cursor = args
+        .get("cursor")
+        .and_then(Value::as_str)
+        .map(|c| c.parse::<i64>())
+        .transpose()
+        .map_err(|_| AppError::InvalidArgs("cursor: malformed".to_string()))?;
+
+    state
+        .db
+        .record_mesh_thread_read(target.clone(), reason)
+        .await?;
+
+    if let Some(rows) = state.db.admin_thread_messages(target.clone(), cursor, limit).await? {
+        let next_cursor = if rows.len() as i64 == limit {
+            rows.last().map(|r| r.seq.to_string())
+        } else {
+            None
+        };
+        return Ok(json!({
+            "kind": "thread",
+            "thread_id": target,
+            "messages": rows.iter().map(|r| json!({
+                "message_id": r.id,
+                "thread_id": r.thread_id,
+                "seq": r.seq,
+                "from_address": r.from_address,
+                "body": r.body,
+                "data": r.data,
+                "in_reply_to": r.in_reply_to,
+                "synthetic": r.synthetic,
+                "source_class": r.source_class,
+                "created_at": r.created_at,
+                "urgent": r.urgent,
+            })).collect::<Vec<_>>(),
+            "next_cursor": next_cursor,
+        }));
+    }
+
+    let Some((channel_id, rows)) = state.db.admin_channel_posts(target.clone(), cursor, limit).await? else {
+        return Err(AppError::thread_not_found());
+    };
+    let next_cursor = if rows.len() as i64 == limit {
+        rows.last().map(|r| r.seq.to_string())
+    } else {
+        None
+    };
+    Ok(json!({
+        "kind": "channel",
+        "channel_id": channel_id,
+        "posts": rows.iter().map(|r| json!({
+            "post_id": r.id,
+            "channel_id": r.channel_id,
+            "seq": r.seq,
+            "from_address": r.from_address,
+            "body": r.body,
+            "data": r.data,
+            "synthetic": r.synthetic,
+            "source_class": r.source_class,
+            "created_at": r.created_at,
+        })).collect::<Vec<_>>(),
+        "next_cursor": next_cursor,
+    }))
+}
+
+/// `admin.mesh.freeze(tenant, reason)` (P0 requirement 4 / AC4, AC5).
+pub async fn mesh_freeze(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let tenant = arg_str(args, "tenant")?;
+    let reason = arg_str_opt(args, "reason");
+    let frozen = state
+        .db
+        .mesh_freeze(tenant.clone(), reason)
+        .await?
+        .ok_or_else(|| AppError::TenantNotFound(tenant.clone()))?;
+    Ok(json!({ "tenant": frozen.namespace, "mesh_frozen": true }))
+}
+
+/// `admin.mesh.unfreeze(tenant)` (P0 requirement 4 / AC5).
+pub async fn mesh_unfreeze(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let tenant = arg_str(args, "tenant")?;
+    let unfrozen = state
+        .db
+        .mesh_unfreeze(tenant.clone())
+        .await?
+        .ok_or_else(|| AppError::TenantNotFound(tenant.clone()))?;
+    Ok(json!({ "tenant": unfrozen.namespace, "mesh_frozen": false }))
+}
+
+/// `admin.mesh.purge(older_than_days≥1, dry_run=true|false)` (P0
+/// requirement 5 / AC6).
+pub async fn mesh_purge(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let older_than_days = args
+        .get("older_than_days")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| AppError::InvalidArgs("missing required argument 'older_than_days'".to_string()))?;
+    if older_than_days < 1 {
+        return Err(AppError::InvalidParams(
+            "older_than_days must be at least 1".to_string(),
+        ));
+    }
+    let dry_run = args.get("dry_run").and_then(Value::as_bool).unwrap_or(true);
+    let cutoff_unix_ms = crate::state::now_unix_ms() - older_than_days * 86_400_000;
+    let counts = state.db.mesh_purge(cutoff_unix_ms, dry_run).await?;
+    Ok(json!({
+        "dry_run": dry_run,
+        "older_than_days": older_than_days,
+        "messages_removed": counts.messages_removed,
+        "channel_posts_removed": counts.channel_posts_removed,
+    }))
 }

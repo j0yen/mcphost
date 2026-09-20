@@ -28,7 +28,7 @@ use crate::kinds::{
 use crate::state::{
     AppState, MAX_SPEC_BYTES, TOOLS_LIST_TTL_GRACE_SECS, TOOLS_LIST_TTL_MS_STEADY, now_unix,
 };
-use crate::{admin, agents, consent, control, messaging, tables, tenant_state};
+use crate::{admin, agents, channels, consent, control, messaging, tables, tenant_state};
 
 /// Who is making this request, resolved once per request from the bearer
 /// key (or its absence).
@@ -1645,6 +1645,31 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &["addresses"],
             ),
         ),
+        // PRD-mcphost-agent-mesh-ops: the minimal `host.channel.*` vertical
+        // slice this PRD's own AC4/AC7 need to exist against -- no
+        // dependency PRD has built channels yet (see `channels.rs`'s
+        // module doc).
+        Tool::new(
+            "host.channel.open",
+            "Create a named channel, or return the existing one of that name.",
+            host_schema(
+                json!({"name": {"type": "string", "description": "Channel name to create or look up."}}),
+                &["name"],
+            ),
+        ),
+        Tool::new(
+            "host.channel.post",
+            "Post to a channel by name or channel_id; advances your own read cursor to the \
+             new post.",
+            host_schema(
+                json!({
+                    "channel": {"type": "string", "description": "Channel name or channel_id."},
+                    "body": {"type": "string", "description": "Post text; non-empty after trim."},
+                    "data": {"type": "object", "description": "Optional structured payload."},
+                }),
+                &["channel", "body"],
+            ),
+        ),
     ];
     if authenticated {
         tools.push(Tool::new(
@@ -1910,6 +1935,78 @@ fn admin_tools() -> Vec<Tool> {
                     },
                 }),
                 &["address"],
+            ),
+        ),
+        // PRD-mcphost-agent-mesh-ops P0 requirements 1-5, P1 requirement 8.
+        Tool::new(
+            "admin.mesh.stats",
+            "Message/post/contact-request/refusal volume over a window (1h, 24h, 7d), split \
+             real/synthetic, with refusals_by_code per sender and the top 20 tenants by \
+             message volume.",
+            schema(
+                json!({
+                    "window": {"type": "string", "description": "\"1h\", \"24h\", or \"7d\"; default 1h."},
+                    "tenant": {"type": "string", "description": "Restrict to one tenant's namespace."},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "admin.mesh.threads",
+            "List threads and channels with participant addresses, message/post counts and \
+             last_activity -- no bodies.",
+            schema(
+                json!({
+                    "tenant": {"type": "string", "description": "Restrict threads to one participant tenant."},
+                    "channel": {"type": "string", "description": "Restrict to one channel by name."},
+                    "limit": {"type": "integer", "description": "Max rows per list, up to 100; default 100."},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "admin.mesh.thread",
+            "Read one thread's or channel's messages/posts with bodies. Every call writes an \
+             admin_events row (action: mesh.thread_read) -- unaudited body reads don't happen.",
+            schema(
+                json!({
+                    "thread_or_channel_id": {"type": "string", "description": "A thread id or a channel id/name."},
+                    "limit": {"type": "integer", "description": "Max rows, up to 100; default 50."},
+                    "cursor": {"type": "string", "description": "Opaque; resume after a previous response's next_cursor."},
+                    "reason": {"type": "string", "description": "Optional; recorded on the admin_events row."},
+                }),
+                &["thread_or_channel_id"],
+            ),
+        ),
+        Tool::new(
+            "admin.mesh.freeze",
+            "Stop a tenant's host.msg.send/reply, host.channel.post and \
+             host.agent.contact_request (each then returns mesh_frozen); its tools, key, reads \
+             and inbound delivery are unaffected. Writes one admin_events row.",
+            schema(
+                json!({
+                    "tenant": {"type": "string"},
+                    "reason": {"type": "string"},
+                }),
+                &["tenant", "reason"],
+            ),
+        ),
+        Tool::new(
+            "admin.mesh.unfreeze",
+            "Clear a tenant's mesh freeze. Writes one admin_events row.",
+            schema(json!({"tenant": {"type": "string"}}), &["tenant"]),
+        ),
+        Tool::new(
+            "admin.mesh.purge",
+            "Delete messages and channel posts (and their receipts) older than \
+             older_than_days, clamping channel cursors to the first retained seq. dry_run \
+             (default true) only reports counts.",
+            schema(
+                json!({
+                    "older_than_days": {"type": "integer"},
+                    "dry_run": {"type": "boolean"},
+                }),
+                &["older_than_days"],
             ),
         ),
     ]
@@ -2274,6 +2371,9 @@ impl McpHostHandler {
             "host.agent.mute" => consent::mute(&self.state, tenant, &args).await,
             "host.agent.unmute" => consent::unmute(&self.state, tenant, &args).await,
             "host.agent.contacts_import" => consent::contacts_import(&self.state, tenant, &args).await,
+            // PRD-mcphost-agent-mesh-ops: the minimal `host.channel.*` slice.
+            "host.channel.open" => channels::open(&self.state, tenant, &args).await,
+            "host.channel.post" => channels::post(&self.state, tenant, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         }
     }
@@ -2310,6 +2410,13 @@ impl McpHostHandler {
             // PRD-mcphost-agent-directory P1 requirement 8.
             "admin.agent.lookup" => agents::admin_lookup(&self.state, &args).await,
             "admin.agent.handle_release" => agents::handle_release(&self.state, &args).await,
+            // PRD-mcphost-agent-mesh-ops P0 requirements 1-5, P1 requirement 8.
+            "admin.mesh.stats" => admin::mesh_stats(&self.state, &args).await,
+            "admin.mesh.threads" => admin::mesh_threads(&self.state, &args).await,
+            "admin.mesh.thread" => admin::mesh_thread(&self.state, &args).await,
+            "admin.mesh.freeze" => admin::mesh_freeze(&self.state, &args).await,
+            "admin.mesh.unfreeze" => admin::mesh_unfreeze(&self.state, &args).await,
+            "admin.mesh.purge" => admin::mesh_purge(&self.state, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         };
 

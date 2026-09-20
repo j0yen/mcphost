@@ -413,6 +413,57 @@
       "since": "0.58.1"
     },
     {
+      "description": "Create a named channel, or return the existing one of that name.",
+      "input_schema": {
+        "properties": {
+          "name": {
+            "description": "Channel name to create or look up.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host.channel.open",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Post to a channel by name or channel_id; advances your own read cursor to the new post.",
+      "input_schema": {
+        "properties": {
+          "body": {
+            "description": "Post text; non-empty after trim.",
+            "type": "string"
+          },
+          "channel": {
+            "description": "Channel name or channel_id.",
+            "type": "string"
+          },
+          "data": {
+            "description": "Optional structured payload.",
+            "type": "object"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel",
+          "body"
+        ],
+        "type": "object"
+      },
+      "name": "host.channel.post",
+      "since": "0.58.0"
+    },
+    {
       "description": "Build a downloadable .tar.gz of everything this tenant owns: tool sources, state, secret NAMES (never values), run/thread history and usage, plus a manifest.json re-publishable via host.tool_publish. Runs as a background job (poll host.runs.get with the returned run_id) -- calling this again while one is already running returns that same run_id rather than starting a second one. The finished run's result carries a download_url valid 24 hours.",
       "input_schema": {
         "properties": {

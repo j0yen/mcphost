@@ -39,6 +39,7 @@ const MIGRATION_0023: &str = include_str!("../migrations/0023_message_triggers.s
 const MIGRATION_0024: &str = include_str!("../migrations/0024_consent.sql");
 const MIGRATION_0025: &str = include_str!("../migrations/0025_self_offboard.sql");
 const MIGRATION_0026: &str = include_str!("../migrations/0026_retention.sql");
+const MIGRATION_0027: &str = include_str!("../migrations/0027_mesh_ops.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -53,7 +54,7 @@ const MSG_DEDUPE_WINDOW_MS: i64 = 86_400_000;
 const TENANT_COLUMNS: &str = "id, namespace, display_name, key_hash, created_at, disabled, \
     last_tool_change_unix, namespace_verified, registry_namespace, plan, plan_since, billing_ref, \
     stripe_customer_id, synthetic, source_class, client_name, client_version, classified_by, \
-    created_unix, origin, origin_detail, key_rotated_unix, disabled_reason";
+    created_unix, origin, origin_detail, key_rotated_unix, disabled_reason, mesh_frozen_at";
 
 fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
     Ok(Tenant {
@@ -80,6 +81,7 @@ fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
         origin_detail: r.get(20)?,
         key_rotated_unix: r.get(21)?,
         disabled_reason: r.get(22)?,
+        mesh_frozen_at: r.get(23)?,
     })
 }
 
@@ -348,6 +350,13 @@ pub struct Tenant {
     /// migration 0025 backfills nothing, since there is no prior reason to
     /// recover). See migration 0025.
     pub disabled_reason: Option<String>,
+    /// PRD-mcphost-agent-mesh-ops requirement 4: set (RFC3339) by
+    /// `admin.mesh.freeze`, cleared by `admin.mesh.unfreeze`. Checked
+    /// directly off this field at the top of `host.msg.send`/`reply`,
+    /// `host.channel.post` and `Db::contact_request` -- never consulted by
+    /// a read, an ack, `host.msg.wait`, inbound delivery, a trigger, or any
+    /// non-messaging tool (migration 0026).
+    pub mesh_frozen_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1034,7 +1043,8 @@ impl Db {
         Self::migrate_0023_message_triggers(&conn)?;
         Self::migrate_0024_consent(&conn)?;
         Self::migrate_0025_self_offboard(&conn)?;
-        Self::migrate_0026_retention(&conn)
+        Self::migrate_0026_retention(&conn)?;
+        Self::migrate_0027_mesh_ops(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -1420,6 +1430,22 @@ impl Db {
         Ok(())
     }
 
+    /// PRD-mcphost-agent-mesh-ops requirement 4/1: same additive-column
+    /// idempotency guard as 0002/0020/0022/0025 above, gated on
+    /// `mesh_frozen_at` -- the whole batch (the column plus the three new
+    /// `channels`/`channel_posts`/`channel_cursors` tables) runs together,
+    /// same "new tables plus an additive column in one guarded batch" shape
+    /// migration 0024 already used.
+    fn migrate_0027_mesh_ops(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'mesh_frozen_at'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0027)?;
+        }
+        Ok(())
+    }
+
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
     /// subcommand.
@@ -1608,6 +1634,7 @@ impl Db {
                 origin_detail,
                 key_rotated_unix: None,
                 disabled_reason: None,
+                mesh_frozen_at: None,
             })
         })
         .await
@@ -6046,6 +6073,16 @@ impl Db {
         note: Option<String>,
         contact_requests_per_day: i64,
     ) -> Result<crate::consent::ExistingPendingRequest, AppError> {
+        // PRD-mcphost-agent-mesh-ops requirement 4 / AC4: checked once
+        // here rather than in each of this method's two call sites
+        // (`consent::contact_request`'s tool wrapper and
+        // `consent::contacts_import`'s per-address loop, which calls this
+        // method directly) -- "one place a send is allowed or refused",
+        // same posture as `messaging::send`/`reply`'s own top-of-function
+        // check.
+        if from_tenant.mesh_frozen_at.is_some() {
+            return Err(AppError::mesh_frozen());
+        }
         let now_ms = crate::state::now_unix_ms();
         let now = now_rfc3339();
         self.with_conn(move |conn| {
@@ -6404,6 +6441,34 @@ impl Db {
         .await
     }
 
+    // ---- mesh ops (PRD-mcphost-agent-mesh-ops) ---------------------------
+
+    /// `/healthz`'s `mesh.messages_24h`/`mesh.posts_24h`/`mesh.frozen_tenants`
+    /// (requirement 6 / AC8): three cheap counts on a fixed 24h window --
+    /// independent of `admin.mesh.stats`' own caller-chosen `window`.
+    pub async fn mesh_healthz_counts(&self) -> Result<(i64, i64, i64), AppError> {
+        let since_ms = crate::state::now_unix_ms() - 86_400_000;
+        self.with_conn(move |conn| {
+            let messages_24h: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM messages WHERE created_unix_ms >= ?1",
+                params![since_ms],
+                |r| r.get(0),
+            )?;
+            let posts_24h: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM channel_posts WHERE created_unix_ms >= ?1",
+                params![since_ms],
+                |r| r.get(0),
+            )?;
+            let frozen_tenants: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM tenants WHERE mesh_frozen_at IS NOT NULL",
+                [],
+                |r| r.get(0),
+            )?;
+            Ok((messages_24h, posts_24h, frozen_tenants))
+        })
+        .await
+    }
+
     /// P1 requirement 5 (AC8): every configured table's retention window,
     /// table name ascending -- `host.usage` lists these unfiltered by
     /// tenant, since retention is a host-wide policy, not a per-tenant one.
@@ -6439,6 +6504,77 @@ impl Db {
                  ON CONFLICT(table_name) DO UPDATE SET days = excluded.days, \
                  updated_unix = excluded.updated_unix",
                 params![table, days, now],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `admin.mesh.freeze(tenant, reason)` (requirement 4 / AC4, AC5): sets
+    /// `tenants.mesh_frozen_at` and writes one `admin_events` row.
+    /// `None` if no such tenant exists.
+    pub async fn mesh_freeze(
+        &self,
+        tenant_ns: String,
+        reason: Option<String>,
+    ) -> Result<Option<Tenant>, AppError> {
+        let now = now_rfc3339();
+        self.with_conn(move |conn| {
+            let Some(tenant) = Self::query_tenant_by_namespace(conn, &tenant_ns)? else {
+                return Ok(None);
+            };
+            conn.execute(
+                "UPDATE tenants SET mesh_frozen_at = ?1 WHERE id = ?2",
+                params![now, tenant.id],
+            )?;
+            let detail = json!({"reason": reason}).to_string();
+            conn.execute(
+                "INSERT INTO admin_events (ts, action, tenant, detail) VALUES (?1, ?2, ?3, ?4)",
+                params![now_rfc3339(), "mesh.freeze", tenant.namespace, detail],
+            )?;
+            let mut frozen = tenant;
+            frozen.mesh_frozen_at = Some(now.clone());
+            Ok(Some(frozen))
+        })
+        .await
+    }
+
+    /// `admin.mesh.unfreeze(tenant)` (requirement 4 / AC5).
+    pub async fn mesh_unfreeze(&self, tenant_ns: String) -> Result<Option<Tenant>, AppError> {
+        self.with_conn(move |conn| {
+            let Some(tenant) = Self::query_tenant_by_namespace(conn, &tenant_ns)? else {
+                return Ok(None);
+            };
+            conn.execute(
+                "UPDATE tenants SET mesh_frozen_at = NULL WHERE id = ?1",
+                params![tenant.id],
+            )?;
+            conn.execute(
+                "INSERT INTO admin_events (ts, action, tenant, detail) VALUES (?1, ?2, ?3, ?4)",
+                params![now_rfc3339(), "mesh.unfreeze", tenant.namespace, "{}"],
+            )?;
+            let mut unfrozen = tenant;
+            unfrozen.mesh_frozen_at = None;
+            Ok(Some(unfrozen))
+        })
+        .await
+    }
+
+    /// `admin.mesh.thread`'s own audit write (requirement 3 / AC3): every
+    /// call writes exactly one `admin_events` row -- `target` (a thread or
+    /// channel id) carried in the `tenant` column, same "generic target"
+    /// reuse [`Self::release_handle`] already established for a non-tenant
+    /// target.
+    pub async fn record_mesh_thread_read(
+        &self,
+        target: String,
+        reason: Option<String>,
+    ) -> Result<(), AppError> {
+        let detail = json!({"reason": reason}).to_string();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO admin_events (ts, action, tenant, detail) VALUES (?1, ?2, ?3, ?4)",
+                params![now_rfc3339(), "mesh.thread_read", target, detail],
             )?;
             Ok(())
         })
@@ -6549,6 +6685,213 @@ impl Db {
         .await
     }
 
+    /// `admin.mesh.threads(tenant?, channel?, limit)` (requirement 2 /
+    /// AC2): thread summaries (participant addresses, `message_count`,
+    /// `last_activity`, ordered most-recently-active first) plus channel
+    /// summaries -- neither ever selects a `body` column (AC2: "no
+    /// response field contains a body").
+    pub async fn mesh_threads(
+        &self,
+        tenant_filter: Option<i64>,
+        channel_filter: Option<String>,
+        limit: i64,
+    ) -> Result<(Vec<ThreadSummary>, Vec<ChannelThreadSummary>), AppError> {
+        self.with_conn(move |conn| {
+            let thread_ids: Vec<String> = match tenant_filter {
+                Some(tid) => {
+                    let mut stmt = conn.prepare(
+                        "SELECT t.id FROM threads t JOIN thread_participants tp ON tp.thread_id = t.id \
+                         WHERE tp.tenant_id = ?1 \
+                         ORDER BY (SELECT MAX(m.created_unix_ms) FROM messages m WHERE m.thread_id = t.id) DESC \
+                         LIMIT ?2",
+                    )?;
+                    stmt.query_map(params![tid, limit], |r| r.get(0))?
+                        .collect::<rusqlite::Result<Vec<_>>>()?
+                }
+                None => {
+                    let mut stmt = conn.prepare(
+                        "SELECT t.id FROM threads t \
+                         ORDER BY (SELECT MAX(m.created_unix_ms) FROM messages m WHERE m.thread_id = t.id) DESC \
+                         LIMIT ?1",
+                    )?;
+                    stmt.query_map(params![limit], |r| r.get(0))?
+                        .collect::<rusqlite::Result<Vec<_>>>()?
+                }
+            };
+            let mut threads = Vec::with_capacity(thread_ids.len());
+            for thread_id in thread_ids {
+                let message_count: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM messages WHERE thread_id = ?1",
+                    params![thread_id],
+                    |r| r.get(0),
+                )?;
+                let last_activity: Option<String> = conn.query_row(
+                    "SELECT MAX(created_at) FROM messages WHERE thread_id = ?1",
+                    params![thread_id],
+                    |r| r.get(0),
+                )?;
+                let mut pstmt = conn.prepare(
+                    "SELECT t2.namespace FROM thread_participants tp JOIN tenants t2 ON t2.id = tp.tenant_id \
+                     WHERE tp.thread_id = ?1 ORDER BY t2.namespace",
+                )?;
+                let participants: Vec<String> = pstmt
+                    .query_map(params![thread_id], |r| r.get(0))?
+                    .collect::<rusqlite::Result<Vec<_>>>()?;
+                threads.push(ThreadSummary {
+                    thread_id,
+                    participants,
+                    message_count,
+                    last_activity,
+                });
+            }
+
+            let channel_rows: Vec<(String, String)> = match &channel_filter {
+                Some(name) => {
+                    let mut stmt = conn.prepare("SELECT id, name FROM channels WHERE name = ?1")?;
+                    stmt.query_map(params![name], |r| Ok((r.get(0)?, r.get(1)?)))?
+                        .collect::<rusqlite::Result<Vec<_>>>()?
+                }
+                None => {
+                    let mut stmt = conn.prepare(
+                        "SELECT id, name FROM channels ORDER BY created_unix_ms DESC LIMIT ?1",
+                    )?;
+                    stmt.query_map(params![limit], |r| Ok((r.get(0)?, r.get(1)?)))?
+                        .collect::<rusqlite::Result<Vec<_>>>()?
+                }
+            };
+            let mut channels = Vec::with_capacity(channel_rows.len());
+            for (channel_id, name) in channel_rows {
+                let post_count: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM channel_posts WHERE channel_id = ?1",
+                    params![channel_id],
+                    |r| r.get(0),
+                )?;
+                let last_activity: Option<String> = conn.query_row(
+                    "SELECT MAX(created_at) FROM channel_posts WHERE channel_id = ?1",
+                    params![channel_id],
+                    |r| r.get(0),
+                )?;
+                channels.push(ChannelThreadSummary {
+                    channel_id,
+                    name,
+                    post_count,
+                    last_activity,
+                });
+            }
+            Ok((threads, channels))
+        })
+        .await
+    }
+
+    /// `admin.mesh.thread(thread_id)` reading a thread (requirement 3):
+    /// unlike [`Self::msg_thread`], no participant check -- the admin key
+    /// may read any thread's bodies (this PRD's whole reason to exist: "the
+    /// `admin.mesh.thread` body view exists for abuse review and is
+    /// audited", not participant-gated like a tenant's own
+    /// `host.msg.thread`). `None` if `thread_id` doesn't exist at all.
+    pub async fn admin_thread_messages(
+        &self,
+        thread_id: String,
+        after_seq: Option<i64>,
+        limit: i64,
+    ) -> Result<Option<Vec<MessageRow>>, AppError> {
+        self.with_conn(move |conn| {
+            let exists: bool = conn
+                .prepare("SELECT 1 FROM threads WHERE id = ?1")?
+                .exists(params![thread_id])?;
+            if !exists {
+                return Ok(None);
+            }
+            let mut sql = String::from(
+                "SELECT m.id, m.thread_id, m.seq, m.from_address, m.body, m.data_json, m.in_reply_to, \
+                        m.synthetic, m.source_class, m.created_at, m.created_unix_ms, NULL, m.urgent \
+                 FROM messages m WHERE m.thread_id = ?1",
+            );
+            let mut sql_params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(thread_id.clone())];
+            if let Some(seq) = after_seq {
+                sql.push_str(&format!(" AND m.seq > ?{}", sql_params.len() + 1));
+                sql_params.push(Box::new(seq));
+            }
+            sql.push_str(&format!(" ORDER BY m.seq LIMIT ?{}", sql_params.len() + 1));
+            sql_params.push(Box::new(limit));
+            let mut stmt = conn.prepare(&sql)?;
+            let param_refs: Vec<&dyn rusqlite::ToSql> = sql_params.iter().map(|b| b.as_ref()).collect();
+            let rows = stmt.query_map(param_refs.as_slice(), message_row_from_row)?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            Ok(Some(out))
+        })
+        .await
+    }
+
+    /// `admin.mesh.thread(channel_id)` reading a channel's posts -- the
+    /// channel-shaped counterpart to [`Self::admin_thread_messages`] above,
+    /// consulted when `thread_or_channel_id` doesn't name a thread.
+    /// `channel_ref` may be either a channel's `id` or its `name`. `None`
+    /// if it names neither.
+    pub async fn admin_channel_posts(
+        &self,
+        channel_ref: String,
+        after_seq: Option<i64>,
+        limit: i64,
+    ) -> Result<Option<(String, Vec<ChannelPostRow>)>, AppError> {
+        self.with_conn(move |conn| {
+            let channel_id: Option<String> = conn
+                .query_row(
+                    "SELECT id FROM channels WHERE id = ?1 OR name = ?1",
+                    params![channel_ref],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            let Some(channel_id) = channel_id else {
+                return Ok(None);
+            };
+            let mut sql = String::from(
+                "SELECT id, channel_id, seq, from_address, body, data_json, synthetic, \
+                        source_class, created_at, created_unix_ms \
+                 FROM channel_posts WHERE channel_id = ?1",
+            );
+            let mut sql_params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(channel_id.clone())];
+            if let Some(seq) = after_seq {
+                sql.push_str(&format!(" AND seq > ?{}", sql_params.len() + 1));
+                sql_params.push(Box::new(seq));
+            }
+            sql.push_str(&format!(" ORDER BY seq LIMIT ?{}", sql_params.len() + 1));
+            sql_params.push(Box::new(limit));
+            let mut stmt = conn.prepare(&sql)?;
+            let param_refs: Vec<&dyn rusqlite::ToSql> = sql_params.iter().map(|b| b.as_ref()).collect();
+            let rows = stmt.query_map(param_refs.as_slice(), channel_post_row_from_row)?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row?);
+            }
+            Ok(Some((channel_id, out)))
+        })
+        .await
+    }
+
+    /// `host.channel.open(name)`: idempotent create-or-get by name.
+    pub async fn channel_open(&self, tenant_id: i64, name: String) -> Result<ChannelRow, AppError> {
+        let now = now_rfc3339();
+        let now_ms = crate::state::now_unix_ms();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO channels (id, name, created_by, created_at, created_unix_ms) \
+                 VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT(name) DO NOTHING",
+                params![crate::state::new_ulid(), name, tenant_id, now, now_ms],
+            )?;
+            let (id, created_at): (String, String) = conn.query_row(
+                "SELECT id, created_at FROM channels WHERE name = ?1",
+                params![name],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?;
+            Ok(ChannelRow { id, name, created_at })
+        })
+        .await
+    }
+
     /// P1 requirement 6 (AC9): `/healthz`'s own `last_prune_ok` -- a
     /// lighter read than [`Self::usage_size_stats`] (skips the
     /// `rows_by_table` full-table-scan pass) for a check-every-request
@@ -6562,6 +6905,81 @@ impl Db {
                 })
                 .optional()?;
             Ok(ok.map(|v| v != 0).unwrap_or(true))
+        })
+        .await
+    }
+
+    /// `host.channel.post(channel, body, data?)`: `channel` may be either
+    /// the name passed to `host.channel.open` or the `channel_id` it
+    /// returned. Auto-advances the poster's own `channel_cursors` row to
+    /// the new `seq` (AC7's "stored a cursor").
+    pub async fn channel_post(
+        &self,
+        sender: Tenant,
+        channel_ref: String,
+        body: String,
+        data_json: Option<String>,
+    ) -> Result<ChannelPostOutcome, AppError> {
+        let now = now_rfc3339();
+        let now_ms = crate::state::now_unix_ms();
+        self.with_conn(move |conn| {
+            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
+            let outcome: Result<ChannelPostOutcome, AppError> = (|| {
+                let channel_id: Option<String> = conn
+                    .query_row(
+                        "SELECT id FROM channels WHERE id = ?1 OR name = ?1",
+                        params![channel_ref],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                let Some(channel_id) = channel_id else {
+                    return Err(AppError::channel_not_found());
+                };
+                let seq: i64 = conn.query_row(
+                    "SELECT COALESCE(MAX(seq), 0) + 1 FROM channel_posts WHERE channel_id = ?1",
+                    params![channel_id],
+                    |r| r.get(0),
+                )?;
+                let post_id = crate::state::new_ulid();
+                conn.execute(
+                    "INSERT INTO channel_posts \
+                        (id, channel_id, seq, from_tenant_id, from_address, body, data_json, \
+                         synthetic, source_class, created_at, created_unix_ms) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                    params![
+                        post_id,
+                        channel_id,
+                        seq,
+                        sender.id,
+                        sender.namespace,
+                        body,
+                        data_json,
+                        sender.synthetic,
+                        sender.source_class.as_deref().unwrap_or("external"),
+                        now,
+                        now_ms
+                    ],
+                )?;
+                conn.execute(
+                    "INSERT INTO channel_cursors (channel_id, tenant_id, seq, updated_at) \
+                     VALUES (?1, ?2, ?3, ?4) \
+                     ON CONFLICT(channel_id, tenant_id) DO UPDATE SET seq = excluded.seq, updated_at = excluded.updated_at",
+                    params![channel_id, sender.id, seq, now],
+                )?;
+                Ok(ChannelPostOutcome {
+                    id: post_id,
+                    channel_id: channel_id.clone(),
+                    seq,
+                    created_at: now.clone(),
+                })
+            })();
+            match &outcome {
+                Ok(_) => conn.execute("COMMIT", []).map(|_| ()).map_err(AppError::from)?,
+                Err(_) => {
+                    let _ = conn.execute("ROLLBACK", []);
+                }
+            }
+            outcome
         })
         .await
     }
@@ -6584,6 +7002,196 @@ impl Db {
                 params![tenant_id, crate::state::rfc3339_from_unix(started_unix), started_unix],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    fn mesh_count_real_synth(
+        conn: &Connection,
+        table: &str,
+        since_ms: i64,
+        tenant_id: Option<i64>,
+        extra_where: Option<&str>,
+    ) -> Result<(i64, i64), AppError> {
+        let mut sql = format!(
+            "SELECT SUM(CASE WHEN synthetic IS NULL THEN 1 ELSE 0 END), \
+                    SUM(CASE WHEN synthetic IS NOT NULL THEN 1 ELSE 0 END) \
+             FROM {table} WHERE created_unix_ms >= ?1"
+        );
+        if let Some(id) = tenant_id {
+            sql.push_str(&format!(" AND from_tenant_id = {id}"));
+        }
+        if let Some(extra) = extra_where {
+            sql.push_str(&format!(" AND {extra}"));
+        }
+        let (real, synth): (Option<i64>, Option<i64>) =
+            conn.query_row(&sql, params![since_ms], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok((real.unwrap_or(0), synth.unwrap_or(0)))
+    }
+
+    fn mesh_count_contact_requests_real_synth(
+        conn: &Connection,
+        since_ms: i64,
+        tenant_id: Option<i64>,
+    ) -> Result<(i64, i64), AppError> {
+        let mut sql = String::from(
+            "SELECT SUM(CASE WHEN t.synthetic IS NULL THEN 1 ELSE 0 END), \
+                    SUM(CASE WHEN t.synthetic IS NOT NULL THEN 1 ELSE 0 END) \
+             FROM contact_requests cr JOIN tenants t ON t.id = cr.from_tenant_id \
+             WHERE cr.created_unix_ms >= ?1",
+        );
+        if let Some(id) = tenant_id {
+            sql.push_str(&format!(" AND cr.from_tenant_id = {id}"));
+        }
+        let (real, synth): (Option<i64>, Option<i64>) =
+            conn.query_row(&sql, params![since_ms], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok((real.unwrap_or(0), synth.unwrap_or(0)))
+    }
+
+    /// Requirement 8 / AC9: every refusal code stored in `messages.refused_json`
+    /// within the window, tallied both overall and per sender (`from_address`)
+    /// -- "so a tenant hammering `contact_refused` is visible before anyone
+    /// complains."
+    fn mesh_tally_refusals(
+        conn: &Connection,
+        since_ms: i64,
+        tenant_id: Option<i64>,
+    ) -> Result<(RefusalCounts, RefusalCountsBySender), AppError> {
+        use std::collections::{BTreeMap, HashMap};
+        let mut sql = String::from(
+            "SELECT from_address, refused_json FROM messages \
+             WHERE created_unix_ms >= ?1 AND refused_json IS NOT NULL",
+        );
+        if let Some(id) = tenant_id {
+            sql.push_str(&format!(" AND from_tenant_id = {id}"));
+        }
+        let mut stmt = conn.prepare(&sql)?;
+        let rows: Vec<(String, String)> = stmt
+            .query_map(params![since_ms], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut overall: BTreeMap<String, i64> = BTreeMap::new();
+        let mut per_sender: HashMap<String, BTreeMap<String, i64>> = HashMap::new();
+        for (from_address, refused_json) in rows {
+            let Ok(pairs) = serde_json::from_str::<Vec<(String, String)>>(&refused_json) else {
+                continue;
+            };
+            for (_addr, code) in pairs {
+                *overall.entry(code.clone()).or_insert(0) += 1;
+                *per_sender.entry(from_address.clone()).or_default().entry(code).or_insert(0) += 1;
+            }
+        }
+        Ok((overall, per_sender))
+    }
+
+    /// `admin.mesh.stats(window, tenant?)` (requirement 1 / AC1; requirement
+    /// 8 / AC9): every count split `{real, synthetic}` off the sender's
+    /// stored label at send time (`messages.synthetic`/`channel_posts.synthetic`,
+    /// or a live join to `tenants.synthetic` for `contact_requests`, which
+    /// stores no label of its own); the per-tenant list is the top 20
+    /// senders by message volume within the window, descending.
+    pub async fn mesh_stats(
+        &self,
+        since_ms: i64,
+        tenant_filter: Option<String>,
+    ) -> Result<MeshStats, AppError> {
+        self.with_conn(move |conn| {
+            let tenant_id: Option<i64> = match &tenant_filter {
+                Some(ns) => Some(
+                    conn.query_row(
+                        "SELECT id FROM tenants WHERE namespace = ?1",
+                        params![ns],
+                        |r| r.get(0),
+                    )
+                    .optional()?
+                    .ok_or_else(|| AppError::TenantNotFound(ns.clone()))?,
+                ),
+                None => None,
+            };
+
+            let (messages_real, messages_synth) =
+                Self::mesh_count_real_synth(conn, "messages", since_ms, tenant_id, None)?;
+            let (posts_real, posts_synth) =
+                Self::mesh_count_real_synth(conn, "channel_posts", since_ms, tenant_id, None)?;
+            let (urgent_real, urgent_synth) =
+                Self::mesh_count_real_synth(conn, "messages", since_ms, tenant_id, Some("urgent = 1"))?;
+            let (cr_real, cr_synth) =
+                Self::mesh_count_contact_requests_real_synth(conn, since_ms, tenant_id)?;
+            let (overall_refusals, per_sender_refusals) =
+                Self::mesh_tally_refusals(conn, since_ms, tenant_id)?;
+
+            let active_pairs: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM (SELECT m.thread_id FROM messages m WHERE m.created_unix_ms >= ?1 \
+                 GROUP BY m.thread_id \
+                 HAVING (SELECT COUNT(*) FROM thread_participants tp WHERE tp.thread_id = m.thread_id) = 2)",
+                params![since_ms],
+                |r| r.get(0),
+            )?;
+            let active_channels: i64 = conn.query_row(
+                "SELECT COUNT(DISTINCT channel_id) FROM channel_posts WHERE created_unix_ms >= ?1",
+                params![since_ms],
+                |r| r.get(0),
+            )?;
+            let wake_runs: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM runs WHERE trigger = 'message' AND started_unix >= ?1",
+                params![since_ms / 1000],
+                |r| r.get(0),
+            )?;
+
+            let mut top_sql = String::from(
+                "SELECT m.from_address, COUNT(*) as cnt, \
+                        (SELECT t.synthetic FROM tenants t WHERE t.id = m.from_tenant_id) as synthetic \
+                 FROM messages m WHERE m.created_unix_ms >= ?1",
+            );
+            if let Some(id) = tenant_id {
+                top_sql.push_str(&format!(" AND m.from_tenant_id = {id}"));
+            }
+            top_sql.push_str(" GROUP BY m.from_address ORDER BY cnt DESC LIMIT 20");
+            let mut stmt = conn.prepare(&top_sql)?;
+            let top_senders: Vec<(String, i64, Option<String>)> = stmt
+                .query_map(params![since_ms], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+
+            let mut tenants = Vec::with_capacity(top_senders.len());
+            for (from_address, cnt, synthetic) in top_senders {
+                let channel_posts_cnt: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM channel_posts WHERE from_address = ?1 AND created_unix_ms >= ?2",
+                    params![from_address, since_ms],
+                    |r| r.get(0),
+                )?;
+                let contact_requests_cnt: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM contact_requests cr JOIN tenants t ON t.id = cr.from_tenant_id \
+                     WHERE t.namespace = ?1 AND cr.created_unix_ms >= ?2",
+                    params![from_address, since_ms],
+                    |r| r.get(0),
+                )?;
+                let urgent_cnt: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM messages WHERE from_address = ?1 AND urgent = 1 AND created_unix_ms >= ?2",
+                    params![from_address, since_ms],
+                    |r| r.get(0),
+                )?;
+                let refusals_by_code = per_sender_refusals.get(&from_address).cloned().unwrap_or_default();
+                tenants.push(MeshTenantStats {
+                    tenant: from_address,
+                    synthetic,
+                    messages: cnt,
+                    channel_posts: channel_posts_cnt,
+                    contact_requests: contact_requests_cnt,
+                    urgent: urgent_cnt,
+                    refusals_by_code,
+                });
+            }
+
+            Ok(MeshStats {
+                messages: MeshCounts { real: messages_real, synthetic: messages_synth },
+                channel_posts: MeshCounts { real: posts_real, synthetic: posts_synth },
+                contact_requests: MeshCounts { real: cr_real, synthetic: cr_synth },
+                urgent: MeshCounts { real: urgent_real, synthetic: urgent_synth },
+                refusals_by_code: overall_refusals,
+                wake_runs,
+                active_pairs,
+                active_channels,
+                tenants,
+            })
         })
         .await
     }
@@ -6617,6 +7225,76 @@ impl Db {
         .await
     }
 
+    /// `admin.mesh.purge(older_than_days, dry_run)` (requirement 5 / AC6):
+    /// counts (dry run) or deletes (real run) `messages`/`channel_posts`
+    /// older than `cutoff_unix_ms`. Deleting a `messages` row cascades its
+    /// `message_receipts` for free (migration 0021's `ON DELETE CASCADE`);
+    /// afterward, every channel's `channel_cursors` rows are clamped up to
+    /// that channel's first surviving `seq` so a cursor never references a
+    /// purged post. Writes one `admin_events` row on the real run only.
+    pub async fn mesh_purge(&self, cutoff_unix_ms: i64, dry_run: bool) -> Result<MeshPurgeCounts, AppError> {
+        self.with_conn(move |conn| {
+            let messages_removed: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM messages WHERE created_unix_ms < ?1",
+                params![cutoff_unix_ms],
+                |r| r.get(0),
+            )?;
+            let channel_posts_removed: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM channel_posts WHERE created_unix_ms < ?1",
+                params![cutoff_unix_ms],
+                |r| r.get(0),
+            )?;
+            if dry_run {
+                return Ok(MeshPurgeCounts { messages_removed, channel_posts_removed });
+            }
+            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
+            let outcome: Result<(), AppError> = (|| {
+                conn.execute("DELETE FROM messages WHERE created_unix_ms < ?1", params![cutoff_unix_ms])?;
+                conn.execute(
+                    "DELETE FROM channel_posts WHERE created_unix_ms < ?1",
+                    params![cutoff_unix_ms],
+                )?;
+                let channel_ids: Vec<String> = {
+                    let mut stmt = conn.prepare("SELECT id FROM channels")?;
+                    stmt.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<Vec<_>>>()?
+                };
+                for channel_id in channel_ids {
+                    let min_seq: Option<i64> = conn.query_row(
+                        "SELECT MIN(seq) FROM channel_posts WHERE channel_id = ?1",
+                        params![channel_id],
+                        |r| r.get(0),
+                    )?;
+                    if let Some(min_seq) = min_seq {
+                        conn.execute(
+                            "UPDATE channel_cursors SET seq = ?1 WHERE channel_id = ?2 AND seq < ?1",
+                            params![min_seq, channel_id],
+                        )?;
+                    }
+                }
+                let detail = json!({
+                    "messages_removed": messages_removed,
+                    "channel_posts_removed": channel_posts_removed,
+                    "cutoff_unix_ms": cutoff_unix_ms,
+                })
+                .to_string();
+                conn.execute(
+                    "INSERT INTO admin_events (ts, action, tenant, detail) VALUES (?1, ?2, NULL, ?3)",
+                    params![now_rfc3339(), "mesh.purge", detail],
+                )?;
+                Ok(())
+            })();
+            match &outcome {
+                Ok(()) => conn.execute("COMMIT", []).map(|_| ()).map_err(AppError::from)?,
+                Err(_) => {
+                    let _ = conn.execute("ROLLBACK", []);
+                }
+            }
+            outcome?;
+            Ok(MeshPurgeCounts { messages_removed, channel_posts_removed })
+        })
+        .await
+    }
+
     /// Test-only: insert one `meter_events` row at an arbitrary age (AC2's
     /// "399-day-old metering rows survive a 400-day window" fixture).
     /// `meter_events.created_at` is the RFC 3339 text column the real
@@ -6639,6 +7317,21 @@ impl Db {
         .await
     }
 
+    /// Test/ops-only: backdate a `messages` row's `created_unix_ms` -- AC1's
+    /// "last hour" window and AC6's 40/10-day-old purge fixtures both need
+    /// a way to simulate age without a real wait, same convention as
+    /// [`Self::test_backdate_contact_request`].
+    pub async fn test_backdate_message(&self, message_id: String, created_unix_ms: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE messages SET created_unix_ms = ?1 WHERE id = ?2",
+                params![created_unix_ms, message_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
     /// Test-only: `SELECT COUNT(*)` on an arbitrary table name (AC3's "a
     /// table not in the policy is unchanged" proof needs a row count for a
     /// table the retention engine never touches, e.g. `tenants`). Never
@@ -6649,6 +7342,19 @@ impl Db {
                 r.get(0)
             })?;
             Ok(count)
+        })
+        .await
+    }
+
+    /// Test/ops-only: same as [`Self::test_backdate_message`], for a
+    /// `channel_posts` row (AC6's channel-cursor clamp).
+    pub async fn test_backdate_channel_post(&self, post_id: String, created_unix_ms: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE channel_posts SET created_unix_ms = ?1 WHERE id = ?2",
+                params![created_unix_ms, post_id],
+            )?;
+            Ok(())
         })
         .await
     }
@@ -6676,6 +7382,132 @@ pub struct UsageSizeStats {
     pub db_page_free_bytes: i64,
     pub rows_by_table: Vec<(String, i64)>,
     pub last_prune: Option<LastPrune>,
+}
+
+/// [`Db::mesh_tally_refusals`]'s own return shape: refusal-code -> count.
+type RefusalCounts = std::collections::BTreeMap<String, i64>;
+/// [`Db::mesh_tally_refusals`]'s per-sender breakdown: sender address ->
+/// [`RefusalCounts`].
+type RefusalCountsBySender = std::collections::HashMap<String, RefusalCounts>;
+
+/// One channel row, as `host.channel.open`/[`Db::channel_open`] returns it.
+#[derive(Debug, Clone, Serialize)]
+pub struct ChannelRow {
+    pub id: String,
+    pub name: String,
+    pub created_at: String,
+}
+
+/// `host.channel.post`'s own outcome -- deliberately not [`SendOutcome`]
+/// (no `delivered_to`/`refused`: a channel post has no per-recipient
+/// resolution, every participant just reads it later).
+pub struct ChannelPostOutcome {
+    pub id: String,
+    pub channel_id: String,
+    pub seq: i64,
+    pub created_at: String,
+}
+
+/// One `admin.mesh.thread` row for a channel -- same shape as [`MessageRow`]
+/// minus `in_reply_to`/`read_at` (a channel post has neither).
+#[derive(Debug, Clone, Serialize)]
+pub struct ChannelPostRow {
+    pub id: String,
+    pub channel_id: String,
+    pub seq: i64,
+    pub from_address: String,
+    pub body: String,
+    pub data: Option<Value>,
+    pub synthetic: Option<String>,
+    pub source_class: String,
+    pub created_at: String,
+    pub created_unix_ms: i64,
+}
+
+fn channel_post_row_from_row(r: &Row) -> rusqlite::Result<ChannelPostRow> {
+    let data_text: Option<String> = r.get(5)?;
+    Ok(ChannelPostRow {
+        id: r.get(0)?,
+        channel_id: r.get(1)?,
+        seq: r.get(2)?,
+        from_address: r.get(3)?,
+        body: r.get(4)?,
+        data: data_text.and_then(|s| serde_json::from_str(&s).ok()),
+        synthetic: r.get(6)?,
+        source_class: r.get(7)?,
+        created_at: r.get(8)?,
+        created_unix_ms: r.get(9)?,
+    })
+}
+
+/// `admin.mesh.threads`' own per-thread summary row (requirement 2 / AC2):
+/// participant addresses, `message_count`, `last_activity` -- deliberately
+/// no `body` field anywhere in this shape (AC2: "no response field
+/// contains a body").
+#[derive(Debug, Clone, Serialize)]
+pub struct ThreadSummary {
+    pub thread_id: String,
+    pub participants: Vec<String>,
+    pub message_count: i64,
+    pub last_activity: Option<String>,
+}
+
+/// `admin.mesh.threads`' channel counterpart -- `post_count`/`last_activity`
+/// in place of a thread's `message_count`/`last_activity`; no membership
+/// model exists for a channel yet (this PRD's own minimal slice, see
+/// `channels.rs`'s module doc), so there is no `participants` field here.
+#[derive(Debug, Clone, Serialize)]
+pub struct ChannelThreadSummary {
+    pub channel_id: String,
+    pub name: String,
+    pub post_count: i64,
+    pub last_activity: Option<String>,
+}
+
+/// One side of a `{real, synthetic}` split every `admin.mesh.stats` count
+/// uses (requirement 1).
+#[derive(Debug, Clone, Copy, Default, Serialize)]
+pub struct MeshCounts {
+    pub real: i64,
+    pub synthetic: i64,
+}
+
+/// `admin.mesh.stats`' per-tenant breakdown -- the top 20 senders by
+/// message volume within the window, descending (AC1).
+#[derive(Debug, Clone, Serialize)]
+pub struct MeshTenantStats {
+    pub tenant: String,
+    pub synthetic: Option<String>,
+    pub messages: i64,
+    pub channel_posts: i64,
+    pub contact_requests: i64,
+    pub urgent: i64,
+    /// Requirement 8 / AC9: this sender's own refused-send codes, tallied
+    /// from every one of its messages' stored `refused_json` within the
+    /// window.
+    pub refusals_by_code: std::collections::BTreeMap<String, i64>,
+}
+
+/// [`Db::mesh_stats`]'s whole return shape (requirement 1 / AC1, AC9).
+#[derive(Debug, Clone, Serialize)]
+pub struct MeshStats {
+    pub messages: MeshCounts,
+    pub channel_posts: MeshCounts,
+    pub contact_requests: MeshCounts,
+    pub urgent: MeshCounts,
+    pub refusals_by_code: std::collections::BTreeMap<String, i64>,
+    pub wake_runs: i64,
+    pub active_pairs: i64,
+    pub active_channels: i64,
+    pub tenants: Vec<MeshTenantStats>,
+}
+
+/// [`Db::mesh_purge`]'s return shape -- the same counts for a dry run
+/// (nothing removed) or a real one (already removed) (AC6).
+#[derive(Debug, Clone, Copy, Default, Serialize)]
+pub struct MeshPurgeCounts {
+    pub messages_removed: i64,
+    pub channel_posts_removed: i64,
 }
 
 /// [`Db::last_meter_batch_span`]'s return shape -- one ledgered batch's

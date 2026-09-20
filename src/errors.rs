@@ -332,9 +332,14 @@ impl AppError {
                 // shape, one more caller-visible "doesn't exist" id.
                 // PRD-mcphost-agent-consent requirement 3: same "doesn't
                 // exist" shape as the two above.
-                "agent_not_found" | "thread_not_found" | "contact_request_not_found" => {
-                    ErrorCode::RESOURCE_NOT_FOUND
-                }
+                // PRD-mcphost-agent-mesh-ops requirement 4/AC4: `channel_not_found`
+                // mirrors the other "doesn't exist" codes above; `mesh_frozen`
+                // is a caller-state gate, same INVALID_REQUEST bucket as
+                // `tenant_disabled`/`rate_limited` above (not a bad argument,
+                // not an internal failure).
+                "agent_not_found" | "thread_not_found" | "contact_request_not_found"
+                | "channel_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
+                "mesh_frozen" => ErrorCode::INVALID_REQUEST,
                 _ => ErrorCode::INTERNAL_ERROR,
             },
             AppError::MultiInvalid { errors, .. } => errors
@@ -690,6 +695,34 @@ impl AppError {
         AppError::Structured {
             code: "contact_request_not_found",
             message: "no pending contact request found for that id".to_string(),
+            data: json!({}),
+        }
+    }
+
+    /// PRD-mcphost-agent-mesh-ops requirement 4 / AC4: `admin.mesh.freeze`'s
+    /// `mesh_frozen_at` is set. Distinct from [`AppError::TenantDisabled`]
+    /// -- a frozen tenant's key still authenticates and its reads/tools/
+    /// inbox keep working; only `host.msg.send`/`reply`,
+    /// `host.channel.post` and `host.agent.contact_request` are refused.
+    /// The reason given to `admin.mesh.freeze` is deliberately never
+    /// echoed back here (requirement 4: "structured error with the reason
+    /// omitted").
+    pub fn mesh_frozen() -> Self {
+        AppError::Structured {
+            code: "mesh_frozen",
+            message: "this tenant is frozen by the operator; messaging and posting are paused"
+                .to_string(),
+            data: json!({}),
+        }
+    }
+
+    /// PRD-mcphost-agent-mesh-ops: `host.channel.post` against a `channel`
+    /// argument that names no existing channel -- same "doesn't exist"
+    /// shape as [`AppError::thread_not_found`]/[`AppError::agent_not_found`].
+    pub fn channel_not_found() -> Self {
+        AppError::Structured {
+            code: "channel_not_found",
+            message: "no channel found for that name or id".to_string(),
             data: json!({}),
         }
     }

@@ -116,6 +116,12 @@ fn send_outcome_json(outcome: SendOutcome) -> Value {
 /// 2, 6, 8, 11 / AC1, AC4, AC5, AC7, AC9, AC10, AC14).
 pub async fn send(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     reject_forged_from(args)?;
+    // PRD-mcphost-agent-mesh-ops requirement 4 / AC4: checked before
+    // anything else runs (same "stores nothing" posture as the quota
+    // checks below) -- a frozen tenant's send never reaches the DB at all.
+    if tenant.mesh_frozen_at.is_some() {
+        return Err(AppError::mesh_frozen());
+    }
     let plan = plan_for(state, tenant)?;
     let (body, data_json) = validate_body_and_data(args)?;
     let dedupe_key = arg_str_opt(args, "dedupe_key");
@@ -204,6 +210,11 @@ pub async fn send(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
 /// (requirement 3 / AC2, AC3).
 pub async fn reply(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     reject_forged_from(args)?;
+    // PRD-mcphost-agent-mesh-ops requirement 4 / AC4: see the mirrored
+    // check in `send` above.
+    if tenant.mesh_frozen_at.is_some() {
+        return Err(AppError::mesh_frozen());
+    }
     let plan = plan_for(state, tenant)?;
     let (body, data_json) = validate_body_and_data(args)?;
     let thread_id = arg_str(args, "thread_id")?;
