@@ -233,7 +233,9 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # core's normal buckets to 1 is 323, landing the grand total back at 10
 # (1 normal + 6 exclusive + 3 sandbox). AC7's own follow-on file
 # (`checkcompat_race_ac07_suite_green_and_clippy_clean.rs`, still in the
-# `checkcompat` area group) fits inside this raise's existing margin.
+# `checkcompat` area group) fits inside this raise's existing margin. AC8's
+# follow-on file (`checkcompat_race_ac08_deferral_is_justified.rs`, same
+# `checkcompat` area group) also fits inside it.
 MAX_PER_SUITE = {"core": 323, "sandbox": 60}
 
 
