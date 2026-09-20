@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-wasm-kind.md (test_prefix: wasmkind)",
+  "ac_test_map_prd": "PRD-mcphost-host-tool-deprecation.md (test_prefix: mcphost_host_tool_deprecation)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,16 +28,14 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/wasmkind_ac01_echo_component_calls_and_meters.rs",
-    "AC2": "tests/wasmkind_ac02_publish_validation_errors.rs",
-    "AC3": "tests/wasmkind_ac03_timeout_and_oom_recover.rs",
-    "AC4": "tests/wasmkind_ac04_independent_of_sandbox_mechanism.rs",
-    "AC5": "tests/wasmkind_ac05_tool_test_dry_run.rs",
-    "AC6": "tests/wasmkind_ac06_trap_is_structured_and_logged.rs",
-    "AC7": "tests/wasmkind_ac07_docs_llms_and_quickstart_document_wasm.rs",
-    "AC8": "tests/wasmkind_ac08_cache_reuses_compiled_artifact.rs",
-    "AC9": "tests/wasmkind_ac09_healthz_reports_wasm_runtime.rs",
-    "AC10": "tests/wasmkind_ac10_declared_output_promotion_matches_python.rs"
+    "AC1": "tests/mcphost_host_tool_deprecation_ac01_contract_dump_deterministic.rs",
+    "AC2": "tests/mcphost_host_tool_deprecation_ac02_removed_field_without_deprecation_fails.rs",
+    "AC3": "tests/mcphost_host_tool_deprecation_ac03_deprecation_entry_marks_tools_list.rs",
+    "AC4": "tests/mcphost_host_tool_deprecation_ac04_deprecated_field_call_envelope.rs",
+    "AC5": "tests/mcphost_host_tool_deprecation_ac05_removal_gated_on_sunset.rs",
+    "AC6": "tests/mcphost_host_tool_deprecation_ac06_changelog_lists_additions.rs",
+    "AC7": "tests/mcphost_host_tool_deprecation_ac07_whoami_contract_version.rs",
+    "AC8": "tests/mcphost_host_tool_deprecation_ac08_llms_txt_links_contract.rs"
   },
   "ac_test_map_by_prefix": {
     "runenvelope": {
@@ -122,7 +120,18 @@
       "AC8": "tests/wasmkind_ac08_cache_reuses_compiled_artifact.rs",
       "AC9": "tests/wasmkind_ac09_healthz_reports_wasm_runtime.rs",
       "AC10": "tests/wasmkind_ac10_declared_output_promotion_matches_python.rs",
-      "_prd": "PRD-mcphost-wasm-kind.md \u2014 same as ac_test_map above while this PRD is the one at HEAD"
+      "_prd": "PRD-mcphost-wasm-kind.md \u2014 superseded by mcphost-host-tool-deprecation at HEAD"
+    },
+    "mcphost_host_tool_deprecation": {
+      "AC1": "tests/mcphost_host_tool_deprecation_ac01_contract_dump_deterministic.rs",
+      "AC2": "tests/mcphost_host_tool_deprecation_ac02_removed_field_without_deprecation_fails.rs",
+      "AC3": "tests/mcphost_host_tool_deprecation_ac03_deprecation_entry_marks_tools_list.rs",
+      "AC4": "tests/mcphost_host_tool_deprecation_ac04_deprecated_field_call_envelope.rs",
+      "AC5": "tests/mcphost_host_tool_deprecation_ac05_removal_gated_on_sunset.rs",
+      "AC6": "tests/mcphost_host_tool_deprecation_ac06_changelog_lists_additions.rs",
+      "AC7": "tests/mcphost_host_tool_deprecation_ac07_whoami_contract_version.rs",
+      "AC8": "tests/mcphost_host_tool_deprecation_ac08_llms_txt_links_contract.rs",
+      "_prd": "PRD-mcphost-host-tool-deprecation.md \u2014 same as ac_test_map above while this PRD is the one at HEAD"
     }
   }
 }
