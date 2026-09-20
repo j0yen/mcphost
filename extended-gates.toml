@@ -1,9 +1,5 @@
 # Config for the rustbuild extended-gates producers (Stage 4).
-prd_path = "PRD-mcphost-tenant-data-export.md"
-prd_path = "PRD-mcphost-data-retention.md"
 prd_path = "PRD-mcphost-checkcompat-port-race.md"
-prd_path = "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-checkcompat-port-race.md"
-prd_path = "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-checkcompat-port-race.md"
 mutation_kill_min_pct = 50.0
 # cold_build_time_max_seconds (mcphost-gate-debt-a1fcdba, 2026-09-15):
 # cold-build-time has blocked with the un-set 600s default since at least

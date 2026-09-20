@@ -14,7 +14,7 @@
 - Drafted: 2026-09-15
 - Operator-authorization: Joe 2026-09-15T06:17Z "authorize box ACs. stop deferring without operator authorization. you have it. dont stop -- go!" scope: every real-box AC in this PRD — boot Hetzner burst boxes (ccx43/ccx53, up to BURST_MAX_BOXES) under the existing money guards (ttl, idle-guard, disk floors), run the AC, tear down; do not defer for scope or risk.
 - deferred_acs: [8]
-- mock_justifications: AC8 — operator-provisioned real-box proof; a build agent must never provision infrastructure.
+- mock_justifications: AC8 — no ccx53/Hetzner burst box reachable from this coding sandbox: no `HCLOUD_TOKEN` credential is present (Hetzner's API returns 401, not a network failure) and `burst-lane status` shows no active session, so a real-box `prove` cannot run here; provisioning one is an operator action, not something a build agent does on its own.
 - Engineering target: extend ~/wintermute/mcphost — src/compat_check.rs (free_loopback_port, spawn_previous, wait_ready), tests/checkcompat_ac02_ac03.rs, new tests/checkcompat_race_ac*.rs
 
 ## TL;DR

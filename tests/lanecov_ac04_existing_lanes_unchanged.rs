@@ -90,10 +90,19 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // PRD-mcphost-host-tool-deprecation added its own "contracts" lane
     // (routes contracts/** to the mcphost_host_tool_deprecation_ac0x proof
     // tests) -- a fourth, intended addition since the baseline, not drift.
+    // PRD-mcphost-checkcompat-port-race added its own "checkcompat-race-soak"
+    // lane (routes scripts/checkcompat-race-soak.sh to AC5's stress-test
+    // proof) -- a fifth, intended addition since the baseline, not drift.
     assert_eq!(
         added,
-        vec!["contracts", "examples", "loop-config", "wasm-fixtures"],
-        "only contracts, examples, loop-config, and wasm-fixtures may have been added since \
-         {BASELINE_REV}"
+        vec![
+            "checkcompat-race-soak",
+            "contracts",
+            "examples",
+            "loop-config",
+            "wasm-fixtures"
+        ],
+        "only checkcompat-race-soak, contracts, examples, loop-config, and wasm-fixtures may \
+         have been added since {BASELINE_REV}"
     );
 }
