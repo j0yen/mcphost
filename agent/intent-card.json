@@ -1,73 +1,90 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tenant-data-export.md",
-  "intent_slug": "mcphost-tenant-data-export",
-  "root_motivation": "Self-offboard (0.57.0) lets a tenant delete its account, but nothing lets it take its own work with it first: `grep -rn export src` finds no tenant-facing export, and a tenant's artifacts are scattered across `tools`, `tool_versions` (pending), `state`, `runs`, and `threads`. The only way out with data today is transcript archaeology, and a \"can I leave with what I built\" question gets a \"no\" -- exactly the kind of gap the grand-loop retention guardrail (portability is the trust signal a paying tenant checks before hitting the plan limit) exists to catch before it costs a renewal, not after.",
-  "user_persona": "Two, per the PRD's own User stories: (1) an agent calling `host.export`, which returns a run id it polls via `host.runs.get` until the job is done and a signed download URL appears; (2) the operator (Joe), for whom an export counts against the plan's job quota and expires in 24h, and whose `admin.usage` now shows how many exports ran today.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-checkcompat-port-race.md",
+  "intent_slug": "mcphost-checkcompat-port-race",
+  "root_motivation": "On 2026-09-15 the burst lane's ccx53 prove failed checkcompat_ac02_ac03's broken-previous-binary test (exit Some(0), not 4) though the same commit passed on ccx43 minutes earlier. Cause: free_loopback_port bound then dropped a port before the child re-bound it; a parallel test's own server could grab that exact port in the gap, so /bin/false read as 'up'. More cores meant more concurrent test threads meant a higher collision rate -- a flaky mcphost test costs a box-hour and blocks enable on every image refresh. Separately, the 2026-09-16 redeploy of 0.54.1 logged compat_check=fail with its reason discarded: check-compat names the failing step on stderr, but mcphost-deploy's cli.py printed only the bare verdict (requirement 7 / AC9-AC10).",
+  "user_persona": "Four (PRD User stories): (1) the burst lane on a 32-core box needs check-compat to pass for the same reason it passes on 16; (2) mcphost-deploy still gets exit 4 and the step name on a real failure, plus a redeploy log line naming which step, not just a bare verdict; (3) a test author spawning /bin/false needs no other test's server able to answer for it; (4) the operator sees the child's pid and matched token in the log on success.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 7
+    "target": 9
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a tenant with two tools, three state keys, and one secret, When `host.export` runs to completion, Then the archive contains both tool sources, three state files, `secrets.txt` with one name and no value, and `manifest.json`.",
-      "test": "tests/mcphost_tenant_data_export_ac01_archive_contents.rs"
+      "description": "Given a previous binary of /bin/false, When check_compat runs, Then it returns exit 4 naming step 'previous-up' within 1s and the log records the child's exit status.",
+      "test": "tests/checkcompat_race_ac01_previous_up_within_1s.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a completed export, When the signed URL is fetched within 24 h, Then the archive downloads; after 24 h, Then 410.",
-      "test": "tests/mcphost_tenant_data_export_ac02_signed_url_expiry.rs"
+      "description": "Given a foreign HTTP server already answering 200 on the port check-compat chose, When wait_ready polls, Then it does not report ready and the log contains 'foreign server on port'.",
+      "test": "tests/checkcompat_race_ac02_foreign_server_without_token.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given an export in progress, When `host.export` is called again, Then the same run id is returned.",
-      "test": "tests/mcphost_tenant_data_export_ac03_dedupe_in_progress.rs"
+      "description": "Given a real previous mcphost binary, When it is spawned with the inherited listener and the token env, Then /healthz carries X-Mcphost-Compat-Token matching and check_compat reports ready.",
+      "test": "tests/checkcompat_race_ac03_inherited_listener_token_matches.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given prod after ship, When the homeward tenant runs `host.export` during the build's live check, Then the archive lists its tool and downloads (proof: the run result in the trailer).",
-      "test": "tests/mcphost_tenant_data_export_ac04_live_export_trailer.rs"
+      "description": "Given MCPHOST_COMPAT_TOKEN unset, When /healthz is requested, Then no X-Mcphost-Compat-Token header is present.",
+      "test": "tests/checkcompat_race_ac04_no_token_header_when_unset.rs"
     },
     {
       "id": "AC5",
-      "level": "SHOULD",
-      "description": "Given the manifest, When each entry is validated against the `host.tool_publish` input schema, Then all validate.",
-      "test": "tests/mcphost_tenant_data_export_ac05_manifest_validates_publish_schema.rs"
+      "level": "MUST",
+      "description": "Given cargo test -- --test-threads=32 running the two ac02/ac03 tests and 30 dummy tests that each spawn a real mcphost on a fresh listener, When the suite runs 200 times in a loop on RedBaron, Then 0 failures.",
+      "test": "tests/checkcompat_race_ac05_stress_no_port_collisions.rs"
     },
     {
       "id": "AC6",
       "level": "SHOULD",
-      "description": "Given `tools: [\"a\"]`, When exported, Then only tool `a` is in the archive.",
-      "test": "tests/mcphost_tenant_data_export_ac06_tools_subset.rs"
+      "description": "Given MCPHOST_BIND=127.0.0.1:<explicit port>, When check_compat runs against a real previous binary, Then it binds by address (log says so) and still enforces the token.",
+      "test": "tests/checkcompat_race_ac06_explicit_bind_still_enforces_token.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given `admin.usage`, When read, Then `exports_today` is present.",
-      "test": "tests/mcphost_tenant_data_export_ac07_admin_usage_exports_today.rs"
+      "level": "MUST",
+      "description": "Given the whole mcphost test suite, When cargo test --workspace runs on RedBaron, Then it exits 0 and clippy is unchanged versus the committed baseline (delta-pass convention).",
+      "test": "tests/checkcompat_race_ac07_suite_green_and_clippy_clean.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given a real ccx53 burst box, When burst-lane.sh prove runs on this PRD's HEAD, Then prove done routed=true and the run log shows the ac02/ac03 tests ok.",
+      "test": "deferred -- no ccx53/Hetzner burst box or burst-lane.sh reachable from this coding sandbox. See PRD frontmatter mock_justifications."
+    },
+    {
+      "id": "AC9",
+      "level": "MUST",
+      "description": "Given mcphost migrate --check-compat exits non-zero with stderr 'step=signup: connection refused', When mcphost-deploy redeploy runs with a fake runner returning that result, Then stdout names the step/detail and the gate journal gains one compat-check fail line; given exit 0, stdout is exactly 'compat_check: pass' as today.",
+      "test": "cross-repo: /home/jsy/repos/mcphost-deploy tests/checkcompatrace_ac9_journal_and_line_name_the_step.py (commit edff67f7)"
+    },
+    {
+      "id": "AC10",
+      "level": "MUST",
+      "description": "Given the ledger scraper from vibeloop-measure.sh, When it reads the AC9 fail line, Then it yields 'fail', and on the pass line 'pass'.",
+      "test": "cross-repo: /home/jsy/repos/mcphost-deploy tests/checkcompatrace_ac10_ledger_scraper_reads_verdict.py (commit edff67f7)"
     }
   ],
   "scope": [
-    "`src/export.rs` (new): `host.export {tools?: [name, ...]}` -- validates the optional `tools` filter, atomically starts (or, per AC3, rejoins) a `running` row in the existing `runs` ledger via `Db::start_export_run` (an export has no `tools` row or `Kind` to dispatch through, so it bypasses `runs::enqueue`/the executor's leasing loop entirely -- see that method's own doc comment), then a spawned background job gathers this tenant's tools/state/secret-names/runs/messages/usage, writes a `.tar.gz` (manifest.json, tools/<name>/v1/{config.json,source}, state/<key>.json, secrets.txt, runs.jsonl, threads.jsonl, usage.json) under this host's data dir, and finalizes the run with a 24h HMAC-signed download URL (keyed by the tenant's own `key_hash` -- no new secret) in its result.",
-    "`src/db.rs`: `StartExportRun` enum, `Db::start_export_run` (atomic check-or-insert, single-writer-connection-serialized), `Db::find_run_by_id` (unscoped by tenant, for the unauthenticated signed-URL download route).",
-    "`src/handler.rs`: the `host.export` tool descriptor and its `dispatch_tenant_tool` arm.",
-    "`src/http.rs`: `GET /exports/{run_id}` routed to `export::download` (signature + 24h expiry check, then streams the archive; 403/404/410 on failure).",
-    "`src/plans.rs`: `Plan.export_bytes_max` (Open Questions: \"free 50 MB, pro 1 GB\"), tolerant-parse defaulted in `PlanBuilder::build` like every other quota field.",
-    "`Cargo.toml`: `tar`/`flate2` (a correct tar layout plus DEFLATE framing/CRC32 is enough surface to reuse audited crates rather than hand-roll, same call this crate already made for HMAC-SHA1 via the `sha1` crate); version bump patch (0.58.0 -> 0.58.1).",
-    "Seven `tests/mcphost_tenant_data_export_ac0[1-7]_*.rs` files, one per acceptance criterion (AC4 is Live -- see acceptance_criteria[3].test -- and always runs its Given/When/Then against a real local server, with `MCPHOST_LIVE=1` redirecting the identical sequence at real prod for the post-ship trailer run), plus the generated `tests/suite_core_06.rs` regen (`scripts/gen-test-suites.sh`)."
+    "src/compat_check.rs: bind_loopback_listener() replaces free_loopback_port() -- binds 127.0.0.1:0 and keeps the listener open all the way to spawn_previous handing it to the child as an inherited fd (LISTEN_FDS=1/LISTEN_PID=<child>, requirement 1). generate_compat_token() makes a random 128-bit MCPHOST_COMPAT_TOKEN per run, passed to the child's env; wait_ready only accepts a /healthz response carrying it back in X-Mcphost-Compat-Token (requirement 2), polls Child::try_wait() every iteration so a dead child fails in ~1 poll interval naming step 'previous-up' (requirement 3), and $MCPHOST_BIND still works as the old bind-by-address path when a caller sets it explicitly (requirement 4).",
+    "src/http.rs: inherited_listener()/serve_configured() add systemd socket-activation support (LISTEN_FDS/LISTEN_PID) to the serve bind path, since the production unit did not already have it (Open question 1, answered: bind-by-address only, before this PRD). healthz() adds the X-Mcphost-Compat-Token response header only when AppState::compat_token is Some (requirement 5).",
+    "src/state.rs / src/main.rs / src/tables.rs / tests/common/mod.rs and two other bare-AppState test helpers: new AppState.compat_token: Option<String> field, read from $MCPHOST_COMPAT_TOKEN at serve startup, None everywhere else.",
+    "tests/checkcompat_ac02_ac03.rs: one line changed (the broken-previous-binary case's expected step string 'spawn' -> 'previous-up'), per the PRD's own 'do not edit beyond replacing the helper it calls' constraint.",
+    "tests/checkcompat_race_ac0[1-7]_*.rs (new, one per non-deferred in-repo AC) plus tests/support/lanecov.rs's UNROUTED_ALLOWLIST entry and scripts/gen-test-suites.sh's MAX_PER_SUITE.core bump (162 -> 320) that its own singleton-exclusive tracing-subscriber file (AC2) and its own new area-group file (AC7) required to stay under the P0 10-suite-binary cap.",
+    "Cross-repo (requirement 7, AC9/AC10): /home/jsy/repos/mcphost-deploy's cli.py/redeploy.py/compat_check.py -- already implemented and committed (edff67f7) by the time this card was refreshed; verified green here, not re-done.",
+    "AC8 (real ccx53 burst-lane.sh prove) is deferred: neither a reachable Hetzner burst box nor burst-lane.sh itself exists in this coding sandbox."
   ],
   "non_goals": [
-    "No import path -- an archive cannot be loaded back into another tenant; that's a later PRD (PRD's own Non-goals).",
-    "No secret values in the export -- `secrets.txt` carries names only, same as `host.secret_list`; the encrypted `value_enc`/`nonce` columns are never read for this feature.",
-    "No per-version tool history -- `tools/<name>/v1/` is always the CURRENT version; `tool_versions` (kept-all-versions) hasn't shipped yet, so requirement 1's 'all kept versions once tool-versions ships' is explicitly future work, not this slice.",
-    "No new per-tenant filesystem quota/scratch-directory concept -- the technical considerations' 'the tenant's scratch quota' is realized as a new plan-level `export_bytes_max` byte cap checked against the built archive, not a new storage primitive; the archive itself lives under this host's existing data dir (`Db::data_dir()`), same place `mcphost.db` already lives."
+    "Changing the deploy flow around check-compat beyond requirement 7's journal/stdout line (mcphost-deploy).",
+    "Serializing mcphost's whole test suite -- the race lived in one helper, not the suite's parallelism itself.",
+    "Removing MCPHOST_BIND support for callers that still pass a port (requirement 4/AC6 keep it working, unchanged, on purpose)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -76,39 +93,39 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "no_new_secret_for_signed_urls": "The 24h download URL's HMAC-SHA256 is keyed by the exporting tenant's own `key_hash` column (already stored server-side, unique per tenant) -- technical considerations: 'no new secret'. Reuses `billing::hmac_sha256` (the crate's existing from-scratch HMAC-SHA256) rather than a second implementation.",
-      "export_never_carries_secret_values": "`secrets.txt` is built from `Db::list_secret_names` alone -- the archive-building path never calls `Db::get_secret` or touches `value_enc`/`nonce`.",
-      "export_bypasses_the_sandboxed_job_executor": "An export is inserted straight into the `runs` table as `running` (never `queued`) specifically so `runs::tick`'s leasing loop -- which dispatches every `queued` row through a tenant's published `Kind` -- never touches it; only `export::run_export_job` finalizes an export run."
+      "no_new_bind_race": "bind_loopback_listener() must never be dropped and re-bound; it stays open until handed to the child as an inherited fd, or the caller's own $MCPHOST_BIND address is used unchanged (the one path this PRD does not make race-free, by requirement 4's own design).",
+      "token_header_gated_by_env": "The healthz handler adds X-Mcphost-Compat-Token only when $MCPHOST_COMPAT_TOKEN was set in this process's own env at startup (requirement 5) -- production serve never sets it, so tenants never see it (AC4).",
+      "exit_codes_and_messages_unchanged": "Goal 3: mcphost-deploy's existing exit-4-on-fail contract and callers keep working through the same compat_check::run(...) signature."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can a tenant not take its own data when it leaves?",
-      "a": "`grep -rn export src` finds no tenant-facing export tool; self-offboard (0.57.0) added a public path to delete a tenant, but deletion and export were always separate contracts, and export's was never built."
+      "q": "Why did checkcompat_ac02_ac03's broken-previous-binary test read /bin/false as 'up'?",
+      "a": "wait_ready polled a port a different, real mcphost test instance had grabbed in the gap between free_loopback_port() dropping its own listener and the /bin/false child (which never binds anything) being expected to bind it."
     },
     {
       "why": 2,
-      "q": "Why does that matter enough to build now, right after self-offboard?",
-      "a": "The vision addendum names the pairing directly: 'leave the way you joined' (self-offboard) is incomplete without its pair, 'take what you made' (export) -- an agent's human evaluates a host by the exit as much as the entry, and the grand-loop retention guardrail treats portability as the trust signal a paying tenant checks before hitting the plan limit."
+      "q": "Why was there a gap between choosing the port and something actually holding it?",
+      "a": "free_loopback_port() bound 127.0.0.1:0 purely to learn a free port number, then dropped the listener immediately, trusting the child to re-bind that exact number before anyone else could."
     },
     {
       "why": 3,
-      "q": "Why wasn't export built as part of the self-offboard PRD itself?",
-      "a": "PRD-mcphost-tenant-self-offboard's own Non-Goals explicitly scoped it to deactivation, not a data-export/GDPR pipeline -- deletion and portability are different guarantees (one destructive, one additive) and were deliberately split into separate PRDs."
+      "q": "Why trust a re-bind instead of just keeping the first bind?",
+      "a": "The previous release binds its own socket from $MCPHOST_BIND; there was no mechanism for check-compat to bind the socket itself and still let a separate previous-release process serve on it -- that mechanism (fd inheritance) didn't exist in mcphost's serve path yet."
     },
     {
       "why": 4,
-      "q": "Why a background job with a signed download URL, rather than returning the archive inline from the call?",
-      "a": "A tenant's tool sources, state, run/thread history, and usage can be arbitrarily larger than a synchronous call's own response budget; reusing the existing `runs` ledger and job-quota/rlimit machinery (technical considerations) gives the same poll-until-done shape every other async job already has, rather than inventing a second one."
+      "q": "Why does more concurrency make the race worse specifically for this test?",
+      "a": "More test threads means more concurrently-running TestServer instances each doing their own bind-then-serve on ephemeral ports, raising the odds that some other real server's port exactly matches the port check-compat's /bin/false case just freed."
     },
     {
       "why": 5,
-      "q": "Why ship export alone now, without also shipping import?",
-      "a": "The PRD's own Non-goals defer importing an archive into another tenant to a later PRD -- portability out (proving a tenant isn't locked in) is the trust signal that matters before the plan-limit decision; portability back in is a separate, later product question with its own scope."
+      "q": "Why did a real schema-breaking compat failure and this race look identical after the fact?",
+      "a": "mcphost migrate --check-compat always named the failing step on stderr, but mcphost-deploy's cli.py only ever printed the bare verdict (compat_check: fail) and journaled nothing beyond it, so the 2026-09-16 redeploy's real (or possibly race-caused) failure left no way to tell which it was after the fact -- requirement 7/AC9/AC10 fix the discarded reason, independent of the port-race fix itself."
     }
   ],
-  "created_at": "2026-09-20T08:35:19Z",
+  "created_at": "2026-09-20T08:15:13Z",
   "ambiguities_resolved": [
     {
       "question": "The findings file records the reference Python client seeing well-formed ttlMs/cacheScope on an unauthenticated tools/list, which the code says is impossible. Which is right?",
@@ -157,6 +174,10 @@
     {
       "question": "This card is now regenerated for PRD-mcphost-tenant-data-export, an entirely different feature (a tenant data-export job) from PRD-mcphost-data-retention (per-table retention pruning) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same staleness class caught by reviewer-agent at least ten times in this card's own history (see the entries above) if left byte-for-byte. This PRD also carries its own Open Questions table with one entry due 'at build', owner Joe: 'Archive size cap per plan (assumed: free 50 MB, pro 1 GB)'. Two further ambiguities needed a build-time decision with no PRD text to settle them directly: (1) the technical considerations name 'the tenant's scratch quota' and 'the existing session-key material' for the signed URL, but neither concept exists anywhere in this codebase (`tenant_state.rs` has only a KV byte quota, and there is no prior signed-URL/session-key secret at all); (2) `runs.rs`'s executor only ever dispatches a `queued` run through a tenant's published `Kind`, but an export has no `Kind` to dispatch through.",
       "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence: no reviewer block yet, but the same staleness would recur if left byte-for-byte. root_motivation/scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional were rewritten from this PRD's own Problem statement, Goals, Non-goals, User stories, and Technical considerations sections; acceptance_criteria's seven entries point at the real tests/mcphost_tenant_data_export_ac0[1-3,5-7]_*.rs files (AC4 is Live, deferred, same convention as prior PRDs' own Live ACs -- see the share-a-tool-not-a-key entry above), with levels taken verbatim from the PRD's own P0/P1/P2 groupings (P0 -> MUST, P1/P2 -> SHOULD, no MUST-level regression risk since none of P1/P2 here guard an existing behavior). agent/test-map.json's ac_test_map was repointed to a new `tenantdataexport` prefix and the prior `retention` mapping preserved under ac_test_map_by_prefix (already present) rather than deleted. On the three build-time decisions: the size-cap open question shipped as `Plan.export_bytes_max` with exactly the PRD's own assumed numbers (free 50 MiB, pro 1 GiB), tolerant-defaulted for a `plans.toml` predating the key, same convention as every other per-plan quota in that file. 'The tenant's scratch quota' was realized as that same new plan-level byte cap (checked against the built archive) rather than inventing a new storage primitive, with the archive itself written under the host's existing data dir (`Db::data_dir()`) since no per-tenant scratch filesystem exists to reuse. 'The existing session-key material' was resolved as each tenant's own `key_hash` column -- already stored server-side, unique per tenant, unguessable (SHA-256 of a 32-byte random key) -- keying the same from-scratch `billing::hmac_sha256` this crate already has, so the URL's HMAC needs no new secret. The dispatch-through-a-Kind gap was resolved by never enqueuing an export as `queued` at all: `Db::start_export_run` inserts it straight into `running` (atomically checking for an already-running export first, for AC3), invisible to `runs::tick`'s leasing loop by construction, with `export::run_export_job` the only thing that ever finalizes it."
+    },
+    {
+      "question": "This card was regenerated for PRD-mcphost-checkcompat-port-race, an entirely different feature from PRD-mcphost-tenant-data-export that previously occupied it -- same recurring staleness class as every entry above. Additionally: (1) requirement 1's open question (does the production unit already socket-activate?) needed a real answer before choosing between its two branches; (2) AC1's required step name 'previous-up' differs from the pre-existing checkcompat_ac02_ac03.rs test's asserted 'spawn', while the PRD's technical considerations say not to edit that file 'beyond replacing the helper it calls'; (3) requirement 7/AC9/AC10 name a cross-repo edit (mcphost-deploy) that was already implemented and committed (edff67f7) by the time this coder session started, apparently by a concurrent build.",
+      "resolution": "root_motivation/user_persona/scope/non_goals/hard_constraints.additional/five_whys_trace rewritten from this PRD's own Problem statement, User stories, Requirements, Non-goals, and Technical considerations sections; acceptance_criteria's test fields point at the real tests/checkcompat_race_ac0[1-7]_*.rs files (all exist, compile, and pass), AC8 marked deferred (no reachable burst box/burst-lane.sh in this sandbox), and AC9/AC10 point at the already-passing mcphost-deploy test files by absolute path rather than a tests/**/*.rs pointer, since requirement 7 is a Python change in a different repository. On the three ambiguities: (1) grep of src/main.rs/src/http.rs before this PRD's diff showed serve() only ever bound by address (deploy/*.service has no matching unit file in this repo either) -- so requirement 1 took its 'production does not already socket-activate; this PRD adds that support' branch, confirmed by the new inherited_listener()/serve_configured() pair in src/http.rs. (2) checkcompat_ac02_ac03.rs's one required edit is exactly the step-name string ('spawn' -> 'previous-up'), nothing else in that file changed, matching 'replacing the helper it calls' as narrowly as the AC1 requirement allows. (3) mcphost-deploy's commit edff67f7 (tests/checkcompatrace_ac9_journal_and_line_name_the_step.py, tests/checkcompatrace_ac10_ledger_scraper_reads_verdict.py) was inspected and re-run in this session (6 passed, 2 skipped -- skips gated on a real mcphost release binary this sandbox doesn't have -- 1 unrelated pre-existing failure elsewhere in that repo's suite, readymargin_ac3, predates this PRD by several commits) rather than redone."
     }
   ]
 }
