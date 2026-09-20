@@ -710,6 +710,26 @@ impl AppError {
         let message = format!("{} fields invalid: {}", errors.len(), fields.join(", "));
         Some(AppError::MultiInvalid { message, errors })
     }
+
+    /// PRD-mcphost-data-retention requirement 4 (AC6): `host.tool_call`,
+    /// `host.tool_publish`, and `signup` all refuse with this before doing
+    /// any write once free space on the database's filesystem drops below
+    /// `$MCPHOST_DISK_FLOOR_MB` -- the PRD's own wire wording ("returns
+    /// `service_unavailable: disk floor`") pins both the `code` and the
+    /// leading words of `message`.
+    pub fn disk_floor(free_bytes: u64, floor_bytes: u64) -> Self {
+        AppError::Structured {
+            code: "service_unavailable",
+            message: format!(
+                "disk floor: {free_bytes} bytes free is below the {floor_bytes}-byte floor"
+            ),
+            data: json!({
+                "reason": "disk_floor",
+                "free_bytes": free_bytes,
+                "floor_bytes": floor_bytes,
+            }),
+        }
+    }
 }
 
 impl From<KindError> for AppError {

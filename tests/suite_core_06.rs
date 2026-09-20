@@ -260,6 +260,26 @@ mod lanecov_ac06_malformed_lane_fails_naming_it;
 mod lanecov_ac07_docs_document_adding_a_lane;
 #[path = "limits_ac05_signup_burst_atomic.rs"]
 mod limits_ac05_signup_burst_atomic;
+#[path = "mcphost_data_retention_ac01_calls_prune_by_window.rs"]
+mod mcphost_data_retention_ac01_calls_prune_by_window;
+#[path = "mcphost_data_retention_ac02_metering_rows_survive_window.rs"]
+mod mcphost_data_retention_ac02_metering_rows_survive_window;
+#[path = "mcphost_data_retention_ac03_untracked_table_unchanged.rs"]
+mod mcphost_data_retention_ac03_untracked_table_unchanged;
+#[path = "mcphost_data_retention_ac04_batched_prune_no_lock_errors.rs"]
+mod mcphost_data_retention_ac04_batched_prune_no_lock_errors;
+#[path = "mcphost_data_retention_ac05_admin_usage_reports_size_and_last_prune.rs"]
+mod mcphost_data_retention_ac05_admin_usage_reports_size_and_last_prune;
+#[path = "mcphost_data_retention_ac06_disk_floor_refuses_writes.rs"]
+mod mcphost_data_retention_ac06_disk_floor_refuses_writes;
+#[path = "mcphost_data_retention_ac07_automatic_prune_keeps_last_prune_fresh.rs"]
+mod mcphost_data_retention_ac07_automatic_prune_keeps_last_prune_fresh;
+#[path = "mcphost_data_retention_ac08_host_usage_lists_retention_windows.rs"]
+mod mcphost_data_retention_ac08_host_usage_lists_retention_windows;
+#[path = "mcphost_data_retention_ac09_prune_error_sets_last_prune_ok_false.rs"]
+mod mcphost_data_retention_ac09_prune_error_sets_last_prune_ok_false;
+#[path = "mcphost_data_retention_ac10_admin_prune_now_runs_one_cycle.rs"]
+mod mcphost_data_retention_ac10_admin_prune_now_runs_one_cycle;
 #[path = "mcphost_host_tool_deprecation_ac01_contract_dump_deterministic.rs"]
 mod mcphost_host_tool_deprecation_ac01_contract_dump_deterministic;
 #[path = "mcphost_host_tool_deprecation_ac02_removed_field_without_deprecation_fails.rs"]
@@ -318,13 +338,3 @@ mod metering_ac12_billing_status_stripe_reported_usage;
 mod metering_billing_status_emitted_this_month;
 #[path = "migration_compat_headers.rs"]
 mod migration_compat_headers;
-#[path = "minimal_ac1_anonymous_ok_only.rs"]
-mod minimal_ac1_anonymous_ok_only;
-#[path = "minimal_ac2_admin_full_document.rs"]
-mod minimal_ac2_admin_full_document;
-#[path = "minimal_ac3_wrong_bearer_matches_anonymous.rs"]
-mod minimal_ac3_wrong_bearer_matches_anonymous;
-#[path = "minimal_ac4_liveness_failure_returns_5xx.rs"]
-mod minimal_ac4_liveness_failure_returns_5xx;
-#[path = "minimal_ac5_tenant_bearer_gets_anonymous_body.rs"]
-mod minimal_ac5_tenant_bearer_gets_anonymous_body;

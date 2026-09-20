@@ -25,6 +25,7 @@ pub mod messaging;
 pub mod metering;
 pub mod plans;
 pub mod registry;
+pub mod retention;
 pub mod runs;
 pub mod sandbox;
 pub mod secrets;

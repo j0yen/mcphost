@@ -80,6 +80,14 @@ pub async fn signup(
     source_ip: &str,
     attribution: SignupAttribution<'_>,
 ) -> Result<Value, AppError> {
+    // PRD-mcphost-data-retention requirement 4 (AC6): same disk-floor
+    // refusal `host_tool_call`/`tool_publish` check, before any write.
+    if !state.disk_guard.is_ok(state.db.data_dir()) {
+        return Err(AppError::disk_floor(
+            state.disk_guard.free_bytes(state.db.data_dir()),
+            state.disk_guard.floor_bytes(),
+        ));
+    }
     let display_name = arg_str(args, "name")?;
 
     // Requirement 1: `source_class` first (loopback IP or the harness
@@ -588,6 +596,14 @@ pub async fn tool_publish(
     tenant: &Tenant,
     args: &Value,
 ) -> Result<Value, AppError> {
+    // PRD-mcphost-data-retention requirement 4 (AC6): same disk-floor
+    // refusal `host_tool_call` checks, before any write.
+    if !state.disk_guard.is_ok(state.db.data_dir()) {
+        return Err(AppError::disk_floor(
+            state.disk_guard.free_bytes(state.db.data_dir()),
+            state.disk_guard.floor_bytes(),
+        ));
+    }
     let name = arg_str(args, "name")?;
     let kind_name = arg_str(args, "kind")?;
     let spec = args.get("spec").cloned().unwrap_or(Value::Null);
@@ -854,6 +870,14 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
     // PRD-mcphost-schedules P0 requirement 5: `host.usage` counts scheduled
     // runs the same window every other figure here uses.
     let scheduled = state.db.scheduled_usage(tenant.id, secs).await?;
+    // PRD-mcphost-data-retention P1 requirement 5 (AC8): the retention
+    // windows every tenant's data is subject to -- host-wide, not
+    // per-tenant, since retention is a host policy (requirement 1).
+    let retention_windows = state.db.retention_windows().await?;
+    let retention_days: serde_json::Map<String, Value> = retention_windows
+        .into_iter()
+        .map(|(table, days)| (table, json!(days)))
+        .collect();
     Ok(json!({
         "window": window,
         "calls": stats.calls,
@@ -883,6 +907,7 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
             "skipped": scheduled.skipped,
             "seconds": scheduled.seconds,
         },
+        "retention_days": retention_days,
     }))
 }
 

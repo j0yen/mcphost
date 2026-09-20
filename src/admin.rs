@@ -311,7 +311,42 @@ pub async fn usage(state: &AppState, args: &Value) -> Result<Value, AppError> {
             })
         })
         .collect();
-    Ok(json!({ "window": window, "usage": usage }))
+    // PRD-mcphost-data-retention P0 requirement 3 (AC5): `db_bytes`,
+    // `db_page_free_bytes`, `rows_by_table`, and `last_prune` --
+    // observability for a database that no longer grows unbounded.
+    let size = state.db.usage_size_stats().await?;
+    let rows_by_table: serde_json::Map<String, Value> = size
+        .rows_by_table
+        .into_iter()
+        .map(|(table, count)| (table, json!(count)))
+        .collect();
+    let last_prune = size.last_prune.map(|p| {
+        json!({
+            "at": crate::state::rfc3339_from_unix(p.at_unix),
+            "ok": p.ok,
+            "deleted": p.deleted,
+        })
+    });
+    Ok(json!({
+        "window": window,
+        "usage": usage,
+        "db_bytes": size.db_bytes,
+        "db_page_free_bytes": size.db_page_free_bytes,
+        "rows_by_table": rows_by_table,
+        "last_prune": last_prune,
+    }))
+}
+
+/// P2 requirement 7 (AC10): run one retention-prune cycle on demand and
+/// return its per-table deleted counts -- the same [`crate::db::Db::prune_once`]
+/// the nightly scheduler calls.
+pub async fn prune_now(state: &AppState) -> Result<Value, AppError> {
+    let report = state.db.prune_once().await?;
+    Ok(json!({
+        "started_unix": report.started_unix,
+        "finished_unix": report.finished_unix,
+        "deleted": report.deleted,
+    }))
 }
 
 /// PRD-mcphost-sandbox-ready requirement 4 (AC5): re-runs the sandbox

@@ -1679,8 +1679,16 @@ fn admin_tools() -> Vec<Tool> {
         ),
         Tool::new(
             "admin.usage",
-            "Calls, errors and duration percentiles for every tenant and tool over a window.",
+            "Calls, errors and duration percentiles for every tenant and tool over a window, \
+             plus database size (db_bytes, db_page_free_bytes, rows_by_table) and the most \
+             recent retention prune (last_prune).",
             schema(json!({"window": {"type": "string"}}), &[]),
+        ),
+        Tool::new(
+            "admin.prune_now",
+            "Run one retention-prune cycle immediately (the same cycle the nightly scheduler \
+             runs) and return its per-table deleted counts.",
+            schema(json!({}), &[]),
         ),
         Tool::new(
             "admin.tool_list",
@@ -2236,6 +2244,7 @@ impl McpHostHandler {
                 admin::tenant_delete_by_prefix(&self.state, &args).await
             }
             "admin.usage" => admin::usage(&self.state, &args).await,
+            "admin.prune_now" => admin::prune_now(&self.state).await,
             "admin.tool_list" => admin::tool_list(&self.state, &args).await,
             "admin.tenant_verify_namespace" => {
                 admin::tenant_verify_namespace(&self.state, &args).await
@@ -3187,6 +3196,15 @@ impl McpHostHandler {
     /// 30s deadline at all; it inserts a `queued` run
     /// (`runs::enqueue`) and returns immediately.
     async fn host_tool_call(&self, tenant: &Tenant, args: Value) -> Result<Value, AppError> {
+        // PRD-mcphost-data-retention requirement 4 (AC6): refuse before
+        // any write when free space on the database's filesystem is under
+        // the configured floor.
+        if !self.state.disk_guard.is_ok(self.state.db.data_dir()) {
+            return Err(AppError::disk_floor(
+                self.state.disk_guard.free_bytes(self.state.db.data_dir()),
+                self.state.disk_guard.floor_bytes(),
+            ));
+        }
         let local_name = args
             .get("name")
             .and_then(Value::as_str)

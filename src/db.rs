@@ -38,6 +38,7 @@ const MIGRATION_0022: &str = include_str!("../migrations/0022_message_refused.sq
 const MIGRATION_0023: &str = include_str!("../migrations/0023_message_triggers.sql");
 const MIGRATION_0024: &str = include_str!("../migrations/0024_consent.sql");
 const MIGRATION_0025: &str = include_str!("../migrations/0025_self_offboard.sql");
+const MIGRATION_0026: &str = include_str!("../migrations/0026_retention.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -964,6 +965,18 @@ impl Db {
             .map_err(AppError::from)?;
         conn.pragma_update(None, "foreign_keys", "ON")
             .map_err(AppError::from)?;
+        // PRD-mcphost-data-retention requirement 2 / technical
+        // considerations: the nightly prune runs its batched deletes on a
+        // second, dedicated connection to this same file (see
+        // `retention::prune_sync`) rather than this shared one, so the two
+        // can genuinely contend for SQLite's single write lock -- without
+        // a `busy_timeout` on THIS connection too, a prune batch holding
+        // the write lock would make an ordinary `host.tool_call` insert
+        // fail immediately with `database is locked` instead of waiting
+        // it out. Same 5s value `tables.rs`'s own per-tenant connections
+        // already use for this.
+        conn.busy_timeout(crate::retention::PRUNE_BUSY_TIMEOUT)
+            .map_err(AppError::from)?;
         let db = Db {
             conn: Arc::new(Mutex::new(conn)),
             path,
@@ -1011,7 +1024,8 @@ impl Db {
         Self::migrate_0022_message_refused(&conn)?;
         Self::migrate_0023_message_triggers(&conn)?;
         Self::migrate_0024_consent(&conn)?;
-        Self::migrate_0025_self_offboard(&conn)
+        Self::migrate_0025_self_offboard(&conn)?;
+        Self::migrate_0026_retention(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -1365,6 +1379,34 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0025)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-data-retention P0 requirements 1-2: same new-table
+    /// idempotency guard as 0011/0014/0015/0017/0019/0020/0021/0024 above,
+    /// gated on `retention_policy`. `auto_vacuum=INCREMENTAL` must be set
+    /// before the first table exists to take effect on a fresh database
+    /// (technical considerations) -- but this migration runs 26th, long
+    /// after migration 0001 created one, so the pragma alone would
+    /// silently no-op on every already-deployed database. The one-time
+    /// `VACUUM` immediately after (outside `MIGRATION_0026`'s own
+    /// `execute_batch`, since `VACUUM` cannot run inside that call's
+    /// implicit transaction) is what actually rebuilds the file under the
+    /// new mode -- gated by this same `has_table` check so it only ever
+    /// runs once per database file, matching the PRD's own "startup cost
+    /// noted in the changelog" framing of a one-time cost, not a
+    /// recurring one.
+    fn migrate_0026_retention(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'retention_policy'",
+            )?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0026)?;
+            conn.pragma_update(None, "auto_vacuum", "INCREMENTAL")?;
+            conn.execute_batch("VACUUM;")?;
         }
         Ok(())
     }
@@ -6232,6 +6274,309 @@ impl Db {
         })
         .await
     }
+
+    // ---- retention (PRD-mcphost-data-retention) ---------------------
+
+    /// Requirement 1: (re-)seeds `retention_policy` from
+    /// `retention::POLICY_TABLES`' env vars, called once at every `serve`
+    /// start (after `migrate()`) so an operator's changed
+    /// `$MCPHOST_RETENTION_*_DAYS` takes effect on restart without a
+    /// migration. `INSERT ... ON CONFLICT DO UPDATE` rather than `INSERT
+    /// OR IGNORE`: unlike a migration's one-time seed, this must overwrite
+    /// a stale value every time, not just fill a gap the first time.
+    pub async fn seed_retention_policy_from_env(&self) -> Result<(), AppError> {
+        let now = crate::state::now_unix();
+        let windows: Vec<(&'static str, i64)> = crate::retention::POLICY_TABLES
+            .iter()
+            .map(|t| (t.name, crate::retention::days_from_env(t.env_var, t.default_days)))
+            .collect();
+        self.with_conn(move |conn| {
+            for (name, days) in &windows {
+                conn.execute(
+                    "INSERT INTO retention_policy (table_name, days, updated_unix) \
+                     VALUES (?1, ?2, ?3) \
+                     ON CONFLICT(table_name) DO UPDATE SET days = excluded.days, \
+                     updated_unix = excluded.updated_unix",
+                    params![name, days, now],
+                )?;
+            }
+            Ok(())
+        })
+        .await
+    }
+
+    /// P1 requirement 5 (AC8): every configured table's retention window,
+    /// table name ascending -- `host.usage` lists these unfiltered by
+    /// tenant, since retention is a host-wide policy, not a per-tenant one.
+    pub async fn retention_windows(&self) -> Result<Vec<(String, i64)>, AppError> {
+        self.with_conn(|conn| {
+            let mut stmt =
+                conn.prepare("SELECT table_name, days FROM retention_policy ORDER BY table_name")?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// Test-only: override one table's retention window directly, in
+    /// place of setting the real `$MCPHOST_RETENTION_<TABLE>_DAYS`
+    /// process env var, which would race across the several test
+    /// functions that share one test binary (same "flip an internal knob
+    /// for a test" rationale `TestServer::start_with_signup_rate_limit`'s
+    /// own doc comment gives for the analogous
+    /// `$MCPHOST_SIGNUP_RATE_LIMIT_PER_HOUR` case).
+    pub async fn set_retention_days_for_test(
+        &self,
+        table: String,
+        days: i64,
+    ) -> Result<(), AppError> {
+        let now = crate::state::now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO retention_policy (table_name, days, updated_unix) \
+                 VALUES (?1, ?2, ?3) \
+                 ON CONFLICT(table_name) DO UPDATE SET days = excluded.days, \
+                 updated_unix = excluded.updated_unix",
+                params![table, days, now],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Runs one full prune cycle -- the nightly scheduler and every AC1-4
+    /// test funnel through this one method (a later admin-triggered
+    /// on-demand cycle and `/healthz`/`admin.usage` reads of its outcome
+    /// are additional callers layered on top of this same method) -- and
+    /// journals its outcome to `prune_log` regardless of success. The
+    /// actual batched deletes run on `retention::prune_sync`'s own
+    /// dedicated connection (see that function's doc comment for why);
+    /// this method only does the quick before/after bookkeeping on the
+    /// shared connection.
+    pub async fn prune_once(&self) -> Result<PruneReport, AppError> {
+        let windows = self.retention_windows().await?;
+        let path = self.path.clone();
+        let started = crate::state::now_unix();
+        let outcome = tokio::task::spawn_blocking(move || {
+            crate::retention::prune_sync(&path, &windows, started)
+        })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        let finished = crate::state::now_unix();
+        let ok = outcome.error.is_none();
+        let deleted_json = serde_json::to_string(&outcome.deleted)
+            .unwrap_or_else(|_| "{}".to_string());
+        self.with_conn({
+            let error = outcome.error.clone();
+            move |conn| {
+                conn.execute(
+                    "INSERT INTO prune_log (started_unix, finished_unix, ok, error, deleted_json) \
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![started, finished, ok as i64, error, deleted_json],
+                )?;
+                Ok(())
+            }
+        })
+        .await?;
+        match outcome.error {
+            None => Ok(PruneReport {
+                deleted: outcome.deleted,
+                started_unix: started,
+                finished_unix: finished,
+            }),
+            Some(e) => Err(AppError::Storage(format!("prune failed: {e}"))),
+        }
+    }
+
+    /// P0 requirement 3 (AC5): `admin.usage`'s `db_bytes`,
+    /// `db_page_free_bytes`, `rows_by_table`, and `last_prune`.
+    /// `rows_by_table` counts every real (non-`sqlite_*`) table, not just
+    /// the prunable ones, so an operator can see the whole database's
+    /// shape, not only the part this PRD prunes.
+    pub async fn usage_size_stats(&self) -> Result<UsageSizeStats, AppError> {
+        self.with_conn(|conn| {
+            let page_count: i64 = conn.query_row("PRAGMA page_count", [], |r| r.get(0))?;
+            let page_size: i64 = conn.query_row("PRAGMA page_size", [], |r| r.get(0))?;
+            let freelist_count: i64 = conn.query_row("PRAGMA freelist_count", [], |r| r.get(0))?;
+            let db_bytes = page_count * page_size;
+            let db_page_free_bytes = freelist_count * page_size;
+
+            let table_names: Vec<String> = {
+                let mut stmt = conn.prepare(
+                    "SELECT name FROM sqlite_master WHERE type = 'table' \
+                     AND name NOT LIKE 'sqlite_%' ORDER BY name",
+                )?;
+                stmt.query_map([], |r| r.get(0))?
+                    .collect::<Result<Vec<_>, _>>()?
+            };
+            let mut rows_by_table = Vec::with_capacity(table_names.len());
+            for name in table_names {
+                let count: i64 =
+                    conn.query_row(&format!("SELECT COUNT(*) FROM \"{name}\""), [], |r| r.get(0))?;
+                rows_by_table.push((name, count));
+            }
+
+            let last_prune = conn
+                .query_row(
+                    "SELECT started_unix, ok, deleted_json FROM prune_log ORDER BY id DESC LIMIT 1",
+                    [],
+                    |r| {
+                        let at_unix: i64 = r.get(0)?;
+                        let ok: i64 = r.get(1)?;
+                        let deleted_json: String = r.get(2)?;
+                        Ok((at_unix, ok != 0, deleted_json))
+                    },
+                )
+                .optional()?
+                .map(|(at_unix, ok, deleted_json)| {
+                    let deleted: std::collections::BTreeMap<String, i64> =
+                        serde_json::from_str(&deleted_json).unwrap_or_default();
+                    LastPrune {
+                        at_unix,
+                        ok,
+                        deleted,
+                    }
+                });
+
+            Ok(UsageSizeStats {
+                db_bytes,
+                db_page_free_bytes,
+                rows_by_table,
+                last_prune,
+            })
+        })
+        .await
+    }
+
+    /// P1 requirement 6 (AC9): `/healthz`'s own `last_prune_ok` -- a
+    /// lighter read than [`Self::usage_size_stats`] (skips the
+    /// `rows_by_table` full-table-scan pass) for a check-every-request
+    /// endpoint. `true` (nothing has failed yet) when no prune has ever
+    /// run.
+    pub async fn last_prune_ok(&self) -> Result<bool, AppError> {
+        self.with_conn(|conn| {
+            let ok: Option<i64> = conn
+                .query_row("SELECT ok FROM prune_log ORDER BY id DESC LIMIT 1", [], |r| {
+                    r.get(0)
+                })
+                .optional()?;
+            Ok(ok.map(|v| v != 0).unwrap_or(true))
+        })
+        .await
+    }
+
+    /// Test-only: insert one `calls` row at an arbitrary age (AC1/AC3/AC4
+    /// fixtures need rows older than any real call in a fresh test
+    /// server), bypassing `host.tool_call`'s real dispatch path so a test
+    /// can seed thousands of rows in milliseconds. Mirrors the columns
+    /// `Db::record_call` writes, with every metering/outcome/origin column
+    /// defaulted since the retention prune reads only `started_unix`.
+    pub async fn insert_calls_row_for_test(
+        &self,
+        tenant_id: i64,
+        started_unix: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, \
+                 duration_ms, ok, error_class) VALUES (?1, 'test_tool', ?2, ?3, 0, 1, NULL)",
+                params![tenant_id, crate::state::rfc3339_from_unix(started_unix), started_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Test-only: the same fixture as
+    /// [`Self::insert_calls_row_for_test`], `count` rows at once inside one
+    /// transaction (AC4's 20,000-row batch-delete fixture) -- committing
+    /// one row at a time for that many rows would make the test itself the
+    /// slow part.
+    pub async fn insert_calls_rows_bulk_for_test(
+        &self,
+        tenant_id: i64,
+        count: i64,
+        started_unix: i64,
+    ) -> Result<(), AppError> {
+        let started_at = crate::state::rfc3339_from_unix(started_unix);
+        self.with_conn(move |conn| {
+            let tx = conn.unchecked_transaction()?;
+            {
+                let mut stmt = tx.prepare(
+                    "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, \
+                     duration_ms, ok, error_class) VALUES (?1, 'test_tool', ?2, ?3, 0, 1, NULL)",
+                )?;
+                for _ in 0..count {
+                    stmt.execute(params![tenant_id, started_at, started_unix])?;
+                }
+            }
+            tx.commit()?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Test-only: insert one `meter_events` row at an arbitrary age (AC2's
+    /// "399-day-old metering rows survive a 400-day window" fixture).
+    /// `meter_events.created_at` is the RFC 3339 text column the real
+    /// prune compares against, so this writes that column directly rather
+    /// than a `created_unix` this table doesn't have.
+    pub async fn insert_meter_event_row_for_test(
+        &self,
+        tenant_id: i64,
+        created_unix: i64,
+    ) -> Result<(), AppError> {
+        let created_at = crate::state::rfc3339_from_unix(created_unix);
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO meter_events (batch_id, tenant_id, first_call_id, last_call_id, \
+                 count, mode, created_at) VALUES ('test-batch', ?1, 0, 0, 1, 'sent', ?2)",
+                params![tenant_id, created_at],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Test-only: `SELECT COUNT(*)` on an arbitrary table name (AC3's "a
+    /// table not in the policy is unchanged" proof needs a row count for a
+    /// table the retention engine never touches, e.g. `tenants`). Never
+    /// called with anything but a fixed string literal from test code.
+    pub async fn table_row_count_for_test(&self, table: String) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            let count: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM \"{table}\""), [], |r| {
+                r.get(0)
+            })?;
+            Ok(count)
+        })
+        .await
+    }
+}
+
+/// [`Db::prune_once`]'s return shape: one cycle's per-physical-table
+/// deleted counts and its wall-clock span.
+#[derive(Debug)]
+pub struct PruneReport {
+    pub deleted: std::collections::BTreeMap<String, i64>,
+    pub started_unix: i64,
+    pub finished_unix: i64,
+}
+
+/// [`Db::usage_size_stats`]'s `last_prune` field.
+pub struct LastPrune {
+    pub at_unix: i64,
+    pub ok: bool,
+    pub deleted: std::collections::BTreeMap<String, i64>,
+}
+
+/// [`Db::usage_size_stats`]'s return shape.
+pub struct UsageSizeStats {
+    pub db_bytes: i64,
+    pub db_page_free_bytes: i64,
+    pub rows_by_table: Vec<(String, i64)>,
+    pub last_prune: Option<LastPrune>,
 }
 
 /// [`Db::last_meter_batch_span`]'s return shape -- one ledgered batch's

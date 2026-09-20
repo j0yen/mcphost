@@ -440,6 +440,11 @@ impl TestServer {
         let data_dir = TempDataDir::new();
         let db = Db::open(&data_dir.0).expect("open db");
         db.migrate().await.expect("migrate");
+        // PRD-mcphost-data-retention requirement 1: same as real `serve`
+        // startup -- every test server's `retention_policy` starts from
+        // whatever defaults/env this test process has, overridable per
+        // test via `Db::set_retention_days_for_test`.
+        db.seed_retention_policy_from_env().await.expect("seed retention policy");
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
@@ -481,6 +486,7 @@ impl TestServer {
             event_counters: mcphost::hooks::EventCounters::new(),
             event_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
             deprecations: std::sync::Arc::new(deprecations),
+            disk_guard: mcphost::retention::DiskGuard::from_env(),
         });
 
         // PRD-mcphost-runs-and-jobs: every test server runs the real

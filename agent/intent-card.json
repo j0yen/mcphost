@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-wasm-kind.md",
-  "intent_slug": "mcphost-wasm-kind",
-  "root_motivation": "The python kind's isolation is a property of the host's OS configuration, not of mcphost: on 2026-09-04, 45 of 45 python publishes failed on the hub because Ubuntu's apparmor_restrict_unprivileged_userns broke bwrap -- a capability dead in production while /healthz claimed the sandbox was fine. The fix was an AppArmor profile the deploy tool must carry to every box, which travels with the box, not the tool. Cold starts are the second cost: per-tenant virtualenvs mean N× disk and build time, and the first call after publish pays a warm-up. A compiled WebAssembly component with an embedded Wasmtime runtime removes both classes at once: isolation travels with the compiled binary instead of the host's userns/AppArmor policy, and instantiation is milliseconds. This is an opportunity pulled forward from a held vision component, not a failure investigation -- the python kind remains the default authoring path.",
-  "user_persona": "Three: (1) an agent with a hot path, calling often, where python's per-call budget or venv warm-up hurts -- publishes a compiled component instead, starting in milliseconds under fuel/memory/wall-time caps; (2) an operator on a locked-down box where the OS forbids unprivileged userns -- wasm tools keep working, so one distro policy change can't kill a kind again; (3) an agent testing before publish -- `host.tool_test` on a wasm spec returns the same dry-run surface every other kind returns.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-data-retention.md",
+  "intent_slug": "mcphost-data-retention",
+  "root_motivation": "Every call, meter tick, signup, and event is a row that stays forever: grep -rniE 'retention|prune|vacuum|purge' src migrations finds only host.runs.purge (handler.rs:824) and the deploy-time VACUUM INTO. On a ccx13 with one disk shared with the site and the hub, that is a slow outage with a known date -- a 25,000-call stress run (PRD-mcphost-call-limits-honest) wrote 25,000 calls rows in minutes, and a synthetic panel run per hour writes hundreds of rows an hour with no ceiling. The 09-12 decision set 30-day access-log retention and the database has none. This PRD is a proactive capacity fix pulled forward from a vision addendum (2026-09-18, leaf 2), not a failure investigation: it adds a per-table retention policy with billing-safe defaults, a nightly in-process prune, database size and per-table row counts in admin.usage, and a disk guard that refuses writes before the box fills.",
+  "user_persona": "Two: (1) the operator (Joe), who today cannot say how large the database is or when the disk fills -- sets $MCPHOST_RETENTION_CALLS_DAYS and reads admin.usage/healthz to watch db_bytes stay flat and the nightly prune's last_prune_ok/deleted counts, and gets a clear service_unavailable instead of a corrupted file when disk runs out; (2) a tenant, who still sees their own last 30 days in host.usage after a prune, and can read their own retention windows there.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,79 +14,78 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a valid component that echoes its arguments, When published as `kind: wasm` and called, Then the call succeeds with the output under `result.payload` and a metering row exists.",
-      "test": "tests/wasmkind_ac01_echo_component_calls_and_meters.rs"
+      "description": "Given `calls` rows aged 91 and 89 days and `MCPHOST_RETENTION_CALLS_DAYS=90`, When the prune runs, Then the 91-day row is deleted and the 89-day row remains.",
+      "test": "tests/mcphost_data_retention_ac01_calls_prune_by_window.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a core module that is not a component, and a component over the size cap, When published, Then each is refused with a structured error naming the requirement or bound.",
-      "test": "tests/wasmkind_ac02_publish_validation_errors.rs"
+      "description": "Given metering rows 399 days old, When the prune runs, Then none is deleted.",
+      "test": "tests/mcphost_data_retention_ac02_metering_rows_survive_window.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a component that loops forever, and one that allocates past the memory cap, When called, Then each terminates within the budget with the corresponding structured error code, and the process serves the next call normally.",
-      "test": "tests/wasmkind_ac03_timeout_and_oom_recover.rs"
+      "description": "Given a table not in the policy, When the prune runs, Then its row count is unchanged.",
+      "test": "tests/mcphost_data_retention_ac03_untracked_table_unchanged.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given the sandbox mechanism is reported unavailable (bwrap absent), When a wasm tool is called, Then it succeeds, and a python call on the same host still fails with `sandbox_unavailable` -- proving independence.",
-      "test": "tests/wasmkind_ac04_independent_of_sandbox_mechanism.rs"
+      "description": "Given 20,000 expired rows, When the prune runs, Then it deletes in batches and no concurrent `host.tool_call` fails with `database is locked`.",
+      "test": "tests/mcphost_data_retention_ac04_batched_prune_no_lock_errors.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a wasm spec, When `host.tool_test` runs, Then the dry-run executes the component with the rendered arguments and returns the same test surface shape other kinds return.",
-      "test": "tests/wasmkind_ac05_tool_test_dry_run.rs"
+      "description": "Given a completed prune, When `admin.usage` is read, Then `rows_by_table`, `db_bytes`, and `last_prune.deleted` are present and consistent with the deletion.",
+      "test": "tests/mcphost_data_retention_ac05_admin_usage_reports_size_and_last_prune.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a component that traps, When called, Then the trap message is in `host.tool_logs` and the call error is structured, not a raw panic.",
-      "test": "tests/wasmkind_ac06_trap_is_structured_and_logged.rs"
+      "description": "Given free space below the floor (simulated by a test hook), When `host.tool_call` runs, Then it returns `service_unavailable: disk floor` and `healthz` reports `disk_ok: false`.",
+      "test": "tests/mcphost_data_retention_ac06_disk_floor_refuses_writes.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given the build completes, When llms.txt and the kind descriptors are read, Then the wasm kind, its limits, and the choose-wasm-vs-python sentence are present.",
-      "test": "tests/wasmkind_ac07_docs_llms_and_quickstart_document_wasm.rs"
+      "description": "Given prod after ship, When `admin.usage` is read on the following day, Then `last_prune` is younger than 24 h (proof: the live read in the trailer).",
+      "test": "deferred -- prod-only proof, no branch-local test possible before ship; see PRD frontmatter mock_justifications and agent/test-map.json's ac_test_map.AC7"
     },
     {
       "id": "AC8",
       "level": "SHOULD",
-      "description": "Given a tool called twice, When the second call runs, Then instantiation reuses the cached compiled artifact (observable via timing or a counter), and a republish invalidates it.",
-      "test": "tests/wasmkind_ac08_cache_reuses_compiled_artifact.rs"
+      "description": "Given a tenant, When `host.usage` is called, Then the retention windows are listed.",
+      "test": "tests/mcphost_data_retention_ac08_host_usage_lists_retention_windows.rs"
     },
     {
       "id": "AC9",
       "level": "SHOULD",
-      "description": "Given `/healthz` after ship, When read by an admin, Then it reports wasm runtime availability and version.",
-      "test": "tests/wasmkind_ac09_healthz_reports_wasm_runtime.rs"
+      "description": "Given a prune that errors, When `healthz` is read, Then `last_prune_ok` is false.",
+      "test": "tests/mcphost_data_retention_ac09_prune_error_sets_last_prune_ok_false.rs"
     },
     {
       "id": "AC10",
-      "level": "MUST",
-      "description": "Given declared outputs on a wasm spec, When the tool returns a matching structure, Then promotion into `result.payload.<field>` behaves identically to the python kind on the same fixture.",
-      "test": "tests/wasmkind_ac10_declared_output_promotion_matches_python.rs"
+      "level": "MAY",
+      "description": "Given admin scope, When `admin.prune_now` is called, Then one cycle runs and returns its counts.",
+      "test": "tests/mcphost_data_retention_ac10_admin_prune_now_runs_one_cycle.rs"
     }
   ],
   "scope": [
-    "`src/kinds/wasm.rs` (new): a full `Kind` impl backed by an embedded Wasmtime engine (fuel + epoch interruption configured at construction) -- spec parsing/validation (component-model check via `Component::new`, size cap, timeout_s/memory_mb range checks), per-call execution on `spawn_blocking` with a `ResourceLimiter` for the memory cap and an epoch-deadline timer task for wall time (`WALL_BUDGET_SLACK` shorter than the outer per-call timeout so the kind's own structured error always wins the race), trap/timeout/oom classification into `tool_trapped`/`tool_timeout`/`tool_oom`, a `(tenant_id, tool_name)`+content-hash compiled-component cache evicted via `on_tool_changed`/`on_tool_published`/`on_tenant_removed` (AC1-6, AC8, AC10).",
-    "`Cargo.toml`: `wasmtime`/`wasmtime-wasi` 46.0.3 (pinned, recorded in `/healthz` via `WASM_RUNTIME_VERSION`; bumped from 38.0.4 by a fix-pass closing 6 RUSTSEC advisories, requiring rustc 1.94+ hence the `rust-toolchain.toml`/`rust-version` bump alongside it) and `base64` 0.22; version bump minor (0.57.3 -> 0.58.0).",
-    "`src/main.rs`/`src/state.rs`/`src/http.rs`: register `WasmKind` in the serve-time registry and thread `wasm_runtime_version` through `AppState` into the admin `/healthz` body beside `sandbox_mechanism` (AC9).",
-    "`docs/kinds/wasm.md` (new) registered into `src/kinds/docs.rs`'s `KIND_DOCS`, regenerating README.md's `<!-- kinds:start/end -->` block and `www/llms-full.txt`/`www/llms.txt`'s kind-list prose; `host.quickstart(kind: \"wasm\")` and `host.tool_publish`'s description serve the same file's blurb/spec/call_args generically, no handler.rs change needed (AC7).",
-    "`tests/fixtures/wasm-src/{echo,trap,loop_forever,oom}/`: four cargo-component guest crates (built out-of-band by the remote build runner's `cargo component build`, never by this crate's own `cargo build`/`cargo test`) plus their compiled `tests/fixtures/wasm/*.wasm` binaries, covering echo-back, an explicit trap, an infinite loop, and past-cap allocation.",
-    "Ten `tests/wasmkind_ac0[1-9]_*.rs` / `tests/wasmkind_ac10_*.rs` files, one per acceptance criterion, plus the generated `tests/suite_core_*.rs` regen (`scripts/gen-test-suites.sh`, `MAX_PER_SUITE.core` raised 146 -> 150 to stay at the P0 <=10-binary cap) and `tests/support/lanecov.rs`'s `UNROUTED_ALLOWLIST` entries for the fixture paths (non-`.rs` files with no matching lane glob)."
+    "`migrations/0026_retention.sql` (new): `retention_policy(table_name, days, updated_unix)` and `prune_log(id, started_unix, finished_unix, ok, error, deleted_json)`, plus a one-time `auto_vacuum=INCREMENTAL` pragma switch + `VACUUM` rebuild (requirement 2's own 'set before the first table exists' rule, applied late via a one-time VACUUM since 25 prior migrations already created tables).",
+    "`src/retention.rs` (new): the per-table policy registry (`POLICY_TABLES`, requirement 1's 8 tables and their env-configurable defaults), the executable-table registry mapping each policy entry to its physical table/age-column/extra-WHERE, the batched (5,000-row) `rowid IN (SELECT ... LIMIT ...)` delete loop run on its own dedicated SQLite connection with its own `busy_timeout` (technical considerations: 'must not hold the write lock longer than busy_timeout per batch'), the nightly scheduler (`spawn_prune_scheduler`, 03:30 UTC jittered up to 10 minutes), and `DiskGuard` (requirement 4's write-floor check, a real `statvfs(2)` probe with a test-only override).",
+    "`src/db.rs`: `Db::open` gains its own `busy_timeout` (so the shared app connection and the prune's dedicated one genuinely contend for SQLite's write lock, AC4); `Db::seed_retention_policy_from_env`/`retention_windows`/`prune_once`/`usage_size_stats`/`last_prune_ok` plus their `PruneReport`/`UsageSizeStats`/`LastPrune` return shapes and a handful of `_for_test` fixture helpers (bulk calls-row insert, meter-event-row insert, arbitrary-table row count, retention-days override in place of a racy process env var).",
+    "`src/admin.rs`/`src/handler.rs`: `admin.usage` gains `db_bytes`/`db_page_free_bytes`/`rows_by_table`/`last_prune`; a new `admin.prune_now` tool (P2, AC10) runs one cycle on demand.",
+    "`src/control.rs`/`src/errors.rs`/`src/http.rs`: `host.usage` gains `retention_days`; `AppError::disk_floor` (code `service_unavailable`) gates `host_tool_call`/`tool_publish`/`signup`; `/healthz` gains `disk_ok` (folded into the anonymous `ok`/503, AC14 precedent) and `last_prune_ok`.",
+    "`src/main.rs`/`src/state.rs`/`src/tables.rs`/`tests/common/mod.rs`: `AppState.disk_guard`, `seed_retention_policy_from_env()` called once after `migrate()`, and `spawn_prune_scheduler` started alongside the existing runs-executor/scheduler-tick background tasks."
   ],
   "non_goals": [
-    "No server-side compilation of source to Wasm -- the agent brings a component; a compile service is its own product decision.",
-    "No Python-in-Wasm -- component tooling for Python is still immature (the reason this PRD was held); the python kind remains for Python source, unmodified.",
-    "No change to the python kind or its sandbox -- `src/kinds/python.rs`, `src/sandbox.rs` untouched.",
-    "No WASI sockets/HTTP from inside the component in this slice -- pure compute + stdin/stdout-style I/O through call arguments and the result; outbound calls stay the http kind's job. (A conforming guest still links wasi:cli/clocks/random via the Rust std allocator's own abort path -- denied at the `WasiCtx` policy level: no preopened directories, no inherited network -- not by refusing WASI as a whole.)",
-    "No per-plan component size cap -- the PRD's own Open Questions table left 'component size cap per plan (free vs pro)' to be decided 'at build'; this slice ships one global cap (47 KiB / 48128 bytes, sized to clear the oom fixture's WASI-linked footprint with margin under the 64 KiB global spec-size cap after base64 overhead) since no other kind's binary/size limits vary per plan today either -- per-plan differentiation is left to a follow-on PRD.",
-    "No P2 requirement 9 (corpus-task proposal via the promote-usecase path) -- the PRD's own ten acceptance criteria stop at AC10, none of which cover it; left out of this build's scope rather than attempted without a corresponding proof."
+    "No archiving pruned rows off-box -- the backup PRD keeps daily copies (PRD's own Non-goals).",
+    "No change to tenant quotas (PRD's own Non-goals).",
+    "No per-table retention window configurable via an MCP tool -- only via `$MCPHOST_RETENTION_<TABLE>_DAYS` at process start (requirement 1); a future PRD could add an `admin.retention_set` tool.",
+    "No archiving/undo for a pruned row -- deletion is permanent; the PRD's success metric treats this as intentional (flat db size over time), not a gap.",
+    "No separate `calls_resource_usage` physical table -- migration 0004 added `cpu_ms`/`peak_rss_kb` as extra nullable columns on `calls` itself, not a second table; its own env-configurable window is tracked in `retention_policy` purely for observability/operator-configurability, since pruning `calls` by the `calls` window already removes those columns' rows."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -95,37 +94,37 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "no_server_side_compile": "The wasm kind accepts only an already-compiled component (base64 in the spec, the same transport python's `source` field already uses for text); mcphost never invokes a Wasm toolchain itself.",
-      "no_os_sandbox_dependency": "The wasm execution path never invokes bwrap, unshare, or any external sandbox binary -- isolation is Wasmtime's own fuel/StoreLimits/epoch-interruption, proven independent of `sandbox_mechanism`'s own readiness by AC4.",
-      "component_model_validation_at_publish": "A core-module-only binary (no component-model wrapper) is rejected at publish with a structured error naming 'component model' as the requirement, via `wasmtime::component::Component::new`'s own parse failure -- not a hand-rolled binary-format sniff.",
-      "wasmtime_pinned_version": "wasmtime/wasmtime-wasi pinned to 46.0.3 (not a floating range), recorded verbatim in `/healthz`'s `wasm_runtime_version` field, matching this crate's other embedded-runtime dependency conventions."
+      "no_new_dependency_for_disk_stat": "The disk-floor probe uses `libc::statvfs` (already a dependency, used elsewhere for sandbox rlimits) rather than adding a `fs2`/`sysinfo`-class crate for one syscall.",
+      "prune_on_its_own_connection": "The prune's batched deletes run on a freshly-opened `rusqlite::Connection` to the same file, not `Db`'s shared `Arc<Mutex<Connection>>` -- so it and the app's own writes are two real SQLite connections genuinely contending for the single write lock (the scenario `busy_timeout`, not an in-process mutex, exists to cover), matching the technical considerations' 'must not hold the write lock longer than busy_timeout per batch'.",
+      "batch_size_5000": "Deletes run in batches of exactly 5,000 rows per requirement 2, via a `rowid IN (SELECT rowid ... LIMIT 5000)` shape rather than `DELETE ... LIMIT` (this crate's bundled `rusqlite`/`libsqlite3-sys` build does not enable `SQLITE_ENABLE_UPDATE_DELETE_LIMIT`).",
+      "auto_vacuum_incremental_via_one_time_vacuum": "`PRAGMA auto_vacuum=INCREMENTAL` only takes effect on a fresh database; migration 0026 runs 26th, so it pairs the pragma with a one-time `VACUUM` (gated by the same idempotency check as the migration's own table creation) to actually rebuild every already-deployed database under the new mode, per the PRD's own 'startup cost noted in the changelog' framing."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why did 45 of 45 python publishes fail on the hub on 2026-09-04?",
-      "a": "Ubuntu's apparmor_restrict_unprivileged_userns broke bwrap, the OS-level primitive the python kind's sandbox depends on -- an entire capability went dead in production while /healthz kept reporting the sandbox as fine (vision, cycle 53)."
+      "q": "Why does Joe worry the mcphost box will run out of disk?",
+      "a": "Every append-only table (calls, events/event_dedupe, signup_events, meter_events, runs, threads/messages) has grown since its own migration with no purge and no size instrumentation -- grep for retention/prune/vacuum/purge across src and migrations finds only the tenant-driven host.runs.purge."
     },
     {
       "why": 2,
-      "q": "Why does a single distro policy change take down an entire tool kind?",
-      "a": "The python kind's isolation is a property of the host box's OS configuration (userns/AppArmor), not of mcphost itself -- the fix (an AppArmor profile) has to be carried to every box by the deploy tool, and until it is, the kind is simply unavailable."
+      "q": "Why did no earlier migration add a purge for its own table?",
+      "a": "Each table's migration was scoped to the feature that needed it (billing, metering, scheduling, messaging), not to that table's long-run lifecycle -- no PRD before this one made retention a P0 requirement."
     },
     {
       "why": 3,
-      "q": "Why not just fix cycle 53's specific AppArmor gap and move on?",
-      "a": "That fixes this one incident but not the underlying dependency: any future distro/kernel change to unprivileged userns semantics can break bwrap again. Separately, per-tenant virtualenvs mean N× disk/build time and a real warm-up cost on first call after publish -- a second, independent cost cycle 53 didn't even touch."
+      "q": "Why did that gap stay invisible long enough to need a dedicated PRD now?",
+      "a": "The cost only became concrete under load: PRD-mcphost-call-limits-honest's stress run wrote 25,000 calls rows in minutes, and a synthetic panel now runs hourly, writing hundreds of rows an hour with no ceiling."
     },
     {
       "why": 4,
-      "q": "Why hasn't a kind whose isolation doesn't depend on host OS policy shipped already?",
-      "a": "Component-tooling for compiled sandboxed execution was immature until recently; the vision held a Wasm runtime as the python kind's principled successor since the first fleet (2026-09-02) but WASI 0.3 with async I/O only shipped in production-supportable form in February 2026, and Wasmtime being a pure Rust library (no subprocess, no host sandbox dependency) is what makes 'isolation travels with the binary' actually true rather than aspirational."
+      "q": "Why is that growth dangerous specifically on this box?",
+      "a": "The database's disk (a ccx13) is shared with the site and the hub -- unbounded row growth is not just wasted space, it is a slow outage with a knowable date once free space crosses zero."
     },
     {
       "why": 5,
-      "q": "Why ship this now, as a narrow additive slice, rather than a broader Wasm story (server-side compile, WASI sockets/HTTP, Python-in-Wasm)?",
-      "a": "The landscape now supports the narrow slice (component-model validation, fuel/memory/epoch limits, an embedded runtime) without those larger, riskier pieces; Joe pulled this held component forward on 2026-09-12 specifically because the operational cost of cycle 53 (an entire kind dead in production from one OS policy change) is a proven, recurring risk class the narrow slice already eliminates, while server-side compilation and Python-in-Wasm remain separate product decisions with their own tooling-maturity gates."
+      "q": "Why is a per-table policy plus a disk guard the right fix, not just a bigger disk?",
+      "a": "A bigger disk delays the same unbounded-growth failure without bounding it, and still corrupts the file if it fills mid-write; a policy table plus a floor that fails closed (service_unavailable) fixes the growth rate and the failure mode at once, and gives every future table's migration one retention_policy row to add instead of its own purge logic."
     }
   ],
   "created_at": "2026-09-19T21:26:08Z",
@@ -169,6 +168,10 @@
     {
       "question": "This card is now regenerated for PRD-mcphost-wasm-kind, an entirely different feature (a new Wasmtime-backed `wasm` kind) from PRD-mcphost-share-a-tool-not-a-key (secret-sharing groups) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same staleness class caught by reviewer-agent at least eight times in this card's own history (see the entries above) if left byte-for-byte. This PRD also carries its own Open Questions table with one entry due 'at build', owner Joe: 'Component size cap per plan (free vs pro)' -- a build-time decision this coder dispatch has to make, not defer (the second open question, WASI HTTP timing, is explicitly due 'after first real wasm tool', not blocking this build).",
       "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence: no reviewer block yet, but the same staleness would recur if left byte-for-byte. root_motivation/scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional were rewritten from this PRD's own Problem statement, Goals, Non-goals, User stories, and Technical considerations sections; acceptance_criteria's ten entries (this PRD numbers AC1-10, one more than the previous card) point at the real tests/wasmkind_ac0[1-9]_*.rs / tests/wasmkind_ac10_*.rs files, all of which exist, compile, and pass, with levels taken verbatim from the PRD's own Acceptance criteria list (AC1-7 and AC10 are P0/MUST, AC8-9 are P1/SHOULD); agent/test-map.json's ac_test_map was repointed to a new `wasmkind` prefix and the prior `sharetool` mapping preserved under ac_test_map_by_prefix (already present) rather than deleted. On the size-cap open question: this slice ships one global component-size cap (47 KiB / 48128 bytes) rather than a per-plan one -- sized empirically so the largest real fixture (the oom guest, which unavoidably links the full wasi:cli world via the Rust std allocator's abort path even though the guest code itself never touches sockets/filesystem) clears it with margin, while a spec at just over the bound still stays under the pre-existing global 64 KiB spec-storage cap once base64-encoded, so AC2's 'refused with a structured error naming the bound' proof doesn't collide with a second, unrelated cap. No other kind in this codebase varies its own size/resource limits per plan today, so introducing that axis only for wasm was judged out of scope for this slice and left to a follow-on PRD (recorded in non_goals) rather than guessed at without a plans.toml precedent to follow. Requirement 9 (P2, a corpus-task proposal) has no corresponding entry in the PRD's own ten-item Acceptance criteria list, so it was left out of this build's scope entirely rather than attempted without a proof to satisfy -- consistent with every other PRD-specific ambiguity resolution in this card's history choosing the PRD's own AC list as the actual contract, not the fuller Requirements table."
+    },
+    {
+      "question": "This card is now regenerated for PRD-mcphost-data-retention, an entirely different feature (per-table retention pruning, a disk guard, admin.usage size fields) from PRD-mcphost-wasm-kind (a new Wasmtime kind) that previously occupied it -- the same staleness class caught by reviewer-agent repeatedly in this card's own history if left byte-for-byte. Two build-time decisions also weren't fully pinned by the PRD text: (1) requirement 1 lists `calls_resource_usage` as its own retention-window table, but migration 0004 only ever added `cpu_ms`/`peak_rss_kb` as extra columns on `calls` -- there is no separate physical table to prune; (2) AC7 ('prod after ship... proof: the live read in the trailer') is a live, post-ship observation, not something a branch-local test can prove before the code has ever run in production for a day.",
+      "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence: no reviewer block yet, but the same staleness would recur if left byte-for-byte. root_motivation/user_persona/scope/non_goals/hard_constraints.additional/five_whys_trace were rewritten from this PRD's own Problem statement, Requirements, Non-goals, and Technical considerations sections; acceptance_criteria's ten entries point at the real tests/mcphost_data_retention_ac0[1-9,10]_*.rs files (AC1-6 exist, compile, and pass; AC7 is 'deferred' with no test file, matching the PRD's own AC7 wording that its proof is a live trailer read, not a build-time test; AC8-10 exist, compile, and pass); agent/test-map.json's ac_test_map was repointed to a new `retention` prefix and the prior `wasmkind` mapping preserved under ac_test_map_by_prefix (already present) rather than deleted. On the two build-time decisions: (1) `calls_resource_usage` is tracked in `retention_policy` (its own env-configurable window, `MCPHOST_RETENTION_CALLS_RESOURCE_USAGE_DAYS`, listed in host.usage/admin.usage the same as every other table) but has no entry in `retention::EXECUTABLE_TABLES` -- pruning `calls` by the `calls` window already deletes those same rows' `cpu_ms`/`peak_rss_kb` columns, so there is nothing left to independently delete under a second name; this is recorded in `PolicyTable`'s own doc comment, not silently dropped. (2) AC7 is listed as MUST (matching the PRD's own P0 marking) but deferred with no test, consistent with how this card's history already treats a PRD's own explicitly-live AC (see the share-a-tool-not-a-key entry above for AC6's identical shape) -- the coder dispatch instructions' own acceptance list confirms this by asking only for it to be named under `deferred` with a one-line reason, not built a mock for."
     }
   ]
 }
