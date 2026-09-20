@@ -8,6 +8,16 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 
+#[path = "minimal_ac1_anonymous_ok_only.rs"]
+mod minimal_ac1_anonymous_ok_only;
+#[path = "minimal_ac2_admin_full_document.rs"]
+mod minimal_ac2_admin_full_document;
+#[path = "minimal_ac3_wrong_bearer_matches_anonymous.rs"]
+mod minimal_ac3_wrong_bearer_matches_anonymous;
+#[path = "minimal_ac4_liveness_failure_returns_5xx.rs"]
+mod minimal_ac4_liveness_failure_returns_5xx;
+#[path = "minimal_ac5_tenant_bearer_gets_anonymous_body.rs"]
+mod minimal_ac5_tenant_bearer_gets_anonymous_body;
 #[path = "msg_ac01_send_reaches_inbox.rs"]
 mod msg_ac01_send_reaches_inbox;
 #[path = "msg_ac02_reply_appends_next_seq.rs"]

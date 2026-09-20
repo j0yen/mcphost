@@ -266,6 +266,8 @@ mod mcphost_data_retention_ac01_calls_prune_by_window;
 mod mcphost_data_retention_ac02_metering_rows_survive_window;
 #[path = "mcphost_data_retention_ac03_untracked_table_unchanged.rs"]
 mod mcphost_data_retention_ac03_untracked_table_unchanged;
+#[path = "mcphost_data_retention_ac04_batched_prune_no_lock_errors.rs"]
+mod mcphost_data_retention_ac04_batched_prune_no_lock_errors;
 #[path = "mcphost_host_tool_deprecation_ac01_contract_dump_deterministic.rs"]
 mod mcphost_host_tool_deprecation_ac01_contract_dump_deterministic;
 #[path = "mcphost_host_tool_deprecation_ac02_removed_field_without_deprecation_fails.rs"]
@@ -324,13 +326,3 @@ mod metering_ac12_billing_status_stripe_reported_usage;
 mod metering_billing_status_emitted_this_month;
 #[path = "migration_compat_headers.rs"]
 mod migration_compat_headers;
-#[path = "minimal_ac1_anonymous_ok_only.rs"]
-mod minimal_ac1_anonymous_ok_only;
-#[path = "minimal_ac2_admin_full_document.rs"]
-mod minimal_ac2_admin_full_document;
-#[path = "minimal_ac3_wrong_bearer_matches_anonymous.rs"]
-mod minimal_ac3_wrong_bearer_matches_anonymous;
-#[path = "minimal_ac4_liveness_failure_returns_5xx.rs"]
-mod minimal_ac4_liveness_failure_returns_5xx;
-#[path = "minimal_ac5_tenant_bearer_gets_anonymous_body.rs"]
-mod minimal_ac5_tenant_bearer_gets_anonymous_body;
