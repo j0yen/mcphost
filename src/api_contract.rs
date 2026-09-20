@@ -404,6 +404,35 @@ pub fn diff(
     violations
 }
 
+/// Requirement 3 / AC4: the `deprecations` a call to `tool` using
+/// arguments `args` should surface in its result envelope -- every entry
+/// whose `path` is `"<tool>.<field>"` for a top-level key actually present
+/// in `args`. Never matches a whole-tool entry (`path == tool`): calling a
+/// deprecated tool at all isn't "using a deprecated field", and
+/// `tools/list`'s own `x-deprecated` on the tool already carries that
+/// signal. Pure and synchronous, called once per `host.*`/`billing.*`
+/// dispatch from `handler::call_tool`.
+pub fn deprecation_notices(tool: &str, args: &Value, deprecations: &[Deprecation]) -> Vec<Value> {
+    let Some(obj) = args.as_object() else {
+        return Vec::new();
+    };
+    deprecations
+        .iter()
+        .filter_map(|d| {
+            let field = d.path.strip_prefix(tool)?.strip_prefix('.')?;
+            if field.contains('.') || !obj.contains_key(field) {
+                return None;
+            }
+            Some(json!({
+                "path": d.path,
+                "since": d.since,
+                "sunset": d.sunset,
+                "replacement": d.replacement,
+            }))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

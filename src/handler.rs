@@ -3430,6 +3430,12 @@ impl ServerHandler for McpHostHandler {
         // arguments that can no longer carry the key, at any depth (AC19),
         // rather than each callee having to remember to do it itself.
         let args = crate::secrets::redact_keys(&raw_args, &["tenant_key"]);
+        // PRD-mcphost-host-tool-deprecation requirement 3 / AC4: computed
+        // from `args` before the dispatch match below moves it into
+        // whichever arm handles `body_name` -- applied to the successful
+        // result after the match instead.
+        let deprecation_notices =
+            crate::api_contract::deprecation_notices(&body_name, &args, &self.state.deprecations);
 
         let outcome: Result<Value, AppError> = match (&auth, body_name.as_str()) {
             (_, "signup") => {
@@ -3567,7 +3573,14 @@ impl ServerHandler for McpHostHandler {
         };
 
         match outcome {
-            Ok(value) => Ok(CallToolResponse::from(CallToolResult::structured(value))),
+            Ok(mut value) => {
+                if !deprecation_notices.is_empty()
+                    && let Some(obj) = value.as_object_mut()
+                {
+                    obj.insert("deprecations".to_string(), json!(deprecation_notices));
+                }
+                Ok(CallToolResponse::from(CallToolResult::structured(value)))
+            }
             Err(app_err) => Err(app_err.into_error_data()),
         }
     }
