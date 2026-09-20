@@ -181,6 +181,11 @@ pub struct AppState {
     /// directly so `AppState`'s own `#[derive(Clone)]` stays cheap, same
     /// reason as [`AppState::checkout_sessions`].
     pub deprecations: std::sync::Arc<Vec<crate::api_contract::Deprecation>>,
+    /// PRD-mcphost-data-retention P0 requirement 4: the disk-floor write
+    /// guard `host.tool_call`/`host.tool_publish`/`signup` all check
+    /// before writing, and `/healthz`'s `disk_ok` reads -- see
+    /// [`crate::retention::DiskGuard`].
+    pub disk_guard: crate::retention::DiskGuard,
 }
 
 pub fn now_unix() -> i64 {

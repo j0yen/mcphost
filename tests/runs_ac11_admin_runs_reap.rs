@@ -46,6 +46,7 @@ async fn bare_state() -> (AppState, common::TempDataDir) {
         event_counters: mcphost::hooks::EventCounters::new(),
         event_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
         deprecations: Arc::new(Vec::new()),
+        disk_guard: mcphost::retention::DiskGuard::from_env(),
     };
     (state, data_dir)
 }

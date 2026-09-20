@@ -425,6 +425,10 @@ async fn main() -> anyhow::Result<()> {
 
             let db = Db::open(&data_dir())?;
             db.migrate().await?;
+            // PRD-mcphost-data-retention requirement 1: (re-)sync
+            // `retention_policy` from env on every start, so a changed
+            // `$MCPHOST_RETENTION_*_DAYS` takes effect on restart.
+            db.seed_retention_policy_from_env().await?;
 
             // PRD-mcphost-host-tool-deprecation requirement 2: read once at
             // startup, same convention as `plans` above. Repo-relative
@@ -499,6 +503,7 @@ async fn main() -> anyhow::Result<()> {
                 event_counters: mcphost::hooks::EventCounters::new(),
                 event_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
                 deprecations: Arc::new(deprecations),
+                disk_guard: mcphost::retention::DiskGuard::from_env(),
             });
 
             // PRD-mcphost-runs-and-jobs P0 requirement 4 / open question:
@@ -519,6 +524,9 @@ async fn main() -> anyhow::Result<()> {
             // PRD-mcphost-schedules P0 requirement 3: the scheduler tick,
             // started once here alongside the runs executor above.
             mcphost::triggers::spawn_scheduler((*state).clone());
+            // PRD-mcphost-data-retention requirement 2: the nightly prune,
+            // started once here alongside the other two background tasks.
+            mcphost::retention::spawn_prune_scheduler((*state).clone());
 
             mcphost::http::serve(bind, state).await
         }
