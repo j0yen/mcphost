@@ -45,6 +45,7 @@ async fn bare_state() -> (AppState, common::TempDataDir) {
         scheduler: mcphost::triggers::SchedulerStatus::new(),
         event_counters: mcphost::hooks::EventCounters::new(),
         event_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
+        deprecations: Arc::new(Vec::new()),
     };
     (state, data_dir)
 }

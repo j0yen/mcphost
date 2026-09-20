@@ -345,6 +345,31 @@ impl TestServer {
         .await
     }
 
+    /// PRD-mcphost-host-tool-deprecation: a server whose
+    /// `AppState::deprecations` is set directly (never via an env var --
+    /// same "field, not process environment, since tests run in parallel
+    /// in one binary" rationale `start_with_signup_rate_limit`'s own doc
+    /// comment already states) -- AC3/AC4/AC5's own tests each need a
+    /// `contracts/deprecations.json`-equivalent entry that does NOT exist
+    /// in the real, committed (empty) file.
+    pub async fn start_with_deprecations(
+        deprecations: Vec<mcphost::api_contract::Deprecation>,
+    ) -> Self {
+        Self::start_full_with_deprecations(
+            Some(ADMIN_KEY.to_string()),
+            KindRegistry::with_builtin(),
+            mcphost::state::CALL_TIMEOUT,
+            None,
+            mcphost::state::SIGNUP_RATE_LIMIT_PER_HOUR,
+            mcphost::billing::BillingConfig::default(),
+            Arc::new(mcphost::billing::FakeBillingClient::new(
+                mcphost::state::now_unix(),
+            )),
+            deprecations,
+        )
+        .await
+    }
+
     /// Same as [`Self::start_full`], with the signup rate limit also
     /// overridable (PRD-mcphost-signup-rate-configurable).
     pub async fn start_full_with_signup_rate_limit(
@@ -368,10 +393,12 @@ impl TestServer {
         .await
     }
 
-    /// The one real constructor every `start_*` helper above funnels
-    /// into -- billing config and client are the two fields
-    /// PRD-grand-loop-billing added to `AppState`; every other field is
-    /// unchanged from before this PRD.
+    /// Same as [`Self::start_full_with_deprecations`], with an empty
+    /// deprecation ledger (every `start_*` helper above except
+    /// [`Self::start_with_deprecations`] funnels in through here) --
+    /// billing config and client are the two fields PRD-grand-loop-billing
+    /// added to `AppState`; every other field is unchanged from before
+    /// that PRD.
     #[allow(clippy::too_many_arguments)]
     pub async fn start_full_with_billing(
         admin_key: Option<String>,
@@ -381,6 +408,34 @@ impl TestServer {
         signup_rate_limit_per_hour: i64,
         billing_config: mcphost::billing::BillingConfig,
         billing_client: Arc<dyn mcphost::billing::BillingClient>,
+    ) -> Self {
+        Self::start_full_with_deprecations(
+            admin_key,
+            kinds,
+            call_timeout,
+            registry,
+            signup_rate_limit_per_hour,
+            billing_config,
+            billing_client,
+            Vec::new(),
+        )
+        .await
+    }
+
+    /// The one real constructor every `start_*` helper above funnels
+    /// into -- `deprecations` is the one field
+    /// PRD-mcphost-host-tool-deprecation added to `AppState`; every other
+    /// field is unchanged from before this PRD.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn start_full_with_deprecations(
+        admin_key: Option<String>,
+        kinds: KindRegistry,
+        call_timeout: std::time::Duration,
+        registry: Option<RegistryConfig>,
+        signup_rate_limit_per_hour: i64,
+        billing_config: mcphost::billing::BillingConfig,
+        billing_client: Arc<dyn mcphost::billing::BillingClient>,
+        deprecations: Vec<mcphost::api_contract::Deprecation>,
     ) -> Self {
         let data_dir = TempDataDir::new();
         let db = Db::open(&data_dir.0).expect("open db");
@@ -425,6 +480,7 @@ impl TestServer {
             scheduler: mcphost::triggers::SchedulerStatus::new(),
             event_counters: mcphost::hooks::EventCounters::new(),
             event_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
+            deprecations: std::sync::Arc::new(deprecations),
         });
 
         // PRD-mcphost-runs-and-jobs: every test server runs the real

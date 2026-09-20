@@ -264,6 +264,8 @@ mod limits_ac05_signup_burst_atomic;
 mod mcphost_host_tool_deprecation_ac01_contract_dump_deterministic;
 #[path = "mcphost_host_tool_deprecation_ac02_removed_field_without_deprecation_fails.rs"]
 mod mcphost_host_tool_deprecation_ac02_removed_field_without_deprecation_fails;
+#[path = "mcphost_host_tool_deprecation_ac03_deprecation_entry_marks_tools_list.rs"]
+mod mcphost_host_tool_deprecation_ac03_deprecation_entry_marks_tools_list;
 #[path = "mcphost_share_a_tool_not_a_key_ac01_llms_txt_section.rs"]
 mod mcphost_share_a_tool_not_a_key_ac01_llms_txt_section;
 #[path = "mcphost_share_a_tool_not_a_key_ac02_caller_call_returns_upstream_response.rs"]

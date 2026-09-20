@@ -173,6 +173,14 @@ pub struct AppState {
     /// per-trigger `events_per_minute` ceiling -- see
     /// [`crate::hooks::EventRateLimiter`].
     pub event_rate_limiter: crate::hooks::EventRateLimiter,
+    /// PRD-mcphost-host-tool-deprecation requirement 2: the loaded
+    /// `contracts/deprecations.json` -- read once at startup (see
+    /// [`crate::api_contract::load_deprecations`]), the same "load once,
+    /// hand every request a shared read-only view" convention
+    /// [`AppState::plans`] already uses. `Arc`-wrapped rather than owned
+    /// directly so `AppState`'s own `#[derive(Clone)]` stays cheap, same
+    /// reason as [`AppState::checkout_sessions`].
+    pub deprecations: std::sync::Arc<Vec<crate::api_contract::Deprecation>>,
 }
 
 pub fn now_unix() -> i64 {

@@ -426,6 +426,17 @@ async fn main() -> anyhow::Result<()> {
             let db = Db::open(&data_dir())?;
             db.migrate().await?;
 
+            // PRD-mcphost-host-tool-deprecation requirement 2: read once at
+            // startup, same convention as `plans` above. Repo-relative
+            // (like `www/llms.txt`'s default in the `LlmsTxt` subcommand),
+            // not `$MCPHOST_DATA_DIR`-relative: this is a static, committed
+            // artifact, not per-deployment runtime data. A missing file
+            // reads as empty (see that function's own doc); anything else
+            // (malformed JSON) fails startup loudly rather than silently
+            // serving with an unenforced ledger.
+            let deprecations_path = std::path::PathBuf::from(mcphost::api_contract::DEFAULT_DEPRECATIONS_PATH);
+            let deprecations = mcphost::api_contract::load_deprecations(&deprecations_path)?;
+
             // Requirement 3's "the host's own domain" SSRF rule: a
             // published `http` tool may never target this host's own
             // public endpoint.
@@ -487,6 +498,7 @@ async fn main() -> anyhow::Result<()> {
                 scheduler: mcphost::triggers::SchedulerStatus::new(),
                 event_counters: mcphost::hooks::EventCounters::new(),
                 event_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
+                deprecations: Arc::new(deprecations),
             });
 
             // PRD-mcphost-runs-and-jobs P0 requirement 4 / open question:

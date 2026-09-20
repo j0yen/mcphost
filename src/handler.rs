@@ -3,6 +3,7 @@
 //! types and the plain `serde_json::Value` business logic in `control.rs`
 //! and `admin.rs`.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -381,6 +382,60 @@ pub fn llms_txt_tool_names(kinds: &KindRegistry) -> Vec<String> {
 /// as `llms_txt_tool_names` -- no `AppState`, no DB.
 pub fn host_tool_descriptors(kinds: &KindRegistry) -> Vec<Tool> {
     host_tools(kinds, true)
+}
+
+/// PRD-mcphost-host-tool-deprecation requirement 3 / AC3: mutates
+/// `tools` in place so every deprecated tool or field carries an
+/// `x-deprecated` object (on the tool's top-level schema for a whole-tool
+/// entry, on the specific `properties.<field>` sub-schema for a
+/// single-level field entry) and a `[DEPRECATED ...]` note prepended to
+/// its description -- the exact two places requirement 3 names ("in the
+/// `description` and in an `x-deprecated` object"). A no-op when
+/// `deprecations` is empty (the committed `contracts/deprecations.json`,
+/// today). Called once in `list_tools`, after every branch has assembled
+/// its own `tools` vec, so every auth state sees the same annotations.
+fn annotate_deprecated_tools(tools: &mut [Tool], deprecations: &[crate::api_contract::Deprecation]) {
+    for tool in tools.iter_mut() {
+        let name = tool.name.to_string();
+        for dep in deprecations {
+            let note = format!(
+                "[DEPRECATED since {}, sunset {}: use {} instead] ",
+                dep.since, dep.sunset, dep.replacement
+            );
+            let x_deprecated = json!({
+                "since": dep.since,
+                "sunset": dep.sunset,
+                "replacement": dep.replacement,
+            });
+            if dep.path == name {
+                let existing = tool.description.clone().unwrap_or_default();
+                tool.description = Some(Cow::Owned(format!("{note}{existing}")));
+                Arc::make_mut(&mut tool.input_schema).insert("x-deprecated".to_string(), x_deprecated);
+            } else if let Some(field) = dep.path.strip_prefix(&format!("{name}.")) {
+                if field.contains('.') {
+                    // Only single-level fields are annotated -- see
+                    // `api_contract::diff_properties`'s own "flat schema"
+                    // doc for why this crate's descriptors never need more.
+                    continue;
+                }
+                let schema = Arc::make_mut(&mut tool.input_schema);
+                if let Some(field_schema) = schema
+                    .get_mut("properties")
+                    .and_then(Value::as_object_mut)
+                    .and_then(|props| props.get_mut(field))
+                    .and_then(Value::as_object_mut)
+                {
+                    let existing = field_schema
+                        .get("description")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string();
+                    field_schema.insert("description".to_string(), json!(format!("{note}{existing}")));
+                    field_schema.insert("x-deprecated".to_string(), x_deprecated);
+                }
+            }
+        }
+    }
 }
 
 /// PRD-mcphost-tool-test AC9: `host.spec_test`, unlike every other `host.*`
@@ -3252,7 +3307,7 @@ impl ServerHandler for McpHostHandler {
         // tests but silently drop the fields the next time an `Auth`
         // variant is added -- see the anonymous/admin branches this
         // replaced, which did exactly that.
-        let (tools, ttl_ms) = match auth {
+        let (mut tools, ttl_ms) = match auth {
             // PRD-mcphost-session-key requirement 1 / AC1-3: the `host.*`
             // control plane (and `host.tool_call`) is discoverable before
             // signup -- an anonymous or invalid-bearer caller cannot attach
@@ -3314,6 +3369,7 @@ impl ServerHandler for McpHostHandler {
                 (tools, ttl_ms)
             }
         };
+        annotate_deprecated_tools(&mut tools, &self.state.deprecations);
         Ok(ListToolsResult::with_all_items(tools)
             .with_ttl_ms(ttl_ms)
             .with_cache_scope(CacheScope::Private))
