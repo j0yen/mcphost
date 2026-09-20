@@ -57,7 +57,7 @@
       "id": "AC8",
       "level": "MUST",
       "description": "Given a real ccx53 burst box, When burst-lane.sh prove runs on this PRD's HEAD, Then prove done routed=true and the run log shows the ac02/ac03 tests ok.",
-      "test": "tests/checkcompat_race_ac08_real_ccx53_prove.rs -- proved on a real Hetzner ccx53 (32 dedicated cores) booted for this PRD's HEAD; the prove ran there via `wm-build runner exec -- cargo ...` (cargo never runs locally) and the box was torn down afterwards. Receipt: docs/benchmarks/checkcompat-race-ccx53-prove.txt."
+      "test": "deferred -- no ccx53/Hetzner burst box reachable from this coding sandbox (no HCLOUD_TOKEN; the installed burst-lane CLI has no prove verb). See PRD frontmatter deferred_acs/mock_justifications, locked against a dangling reference by tests/checkcompat_race_ac08_deferral_is_justified.rs."
     },
     {
       "id": "AC9",
