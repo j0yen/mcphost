@@ -1020,17 +1020,16 @@ pub async fn checkout(state: &AppState, tenant: &Tenant, args: &Value) -> Result
     // panic while holding the lock) is treated as "no cache" rather than
     // propagated -- losing the reuse optimization is not worth failing a
     // paying tenant's checkout over.
-    if let Ok(cache) = state.checkout_sessions.lock() {
-        if let Some(open) = cache.get(&cache_key) {
-            if open.expires_at > now {
-                return Ok(json!({
-                    "url": open.url,
-                    "expires_at": open.expires_at,
-                    "mode": mode,
-                    "instructions": CHECKOUT_INSTRUCTIONS,
-                }));
-            }
-        }
+    if let Ok(cache) = state.checkout_sessions.lock()
+        && let Some(open) = cache.get(&cache_key)
+        && open.expires_at > now
+    {
+        return Ok(json!({
+            "url": open.url,
+            "expires_at": open.expires_at,
+            "mode": mode,
+            "instructions": CHECKOUT_INSTRUCTIONS,
+        }));
     }
 
     let success_url = format!("{}/billing/done", state.public_url.trim_end_matches('/'));

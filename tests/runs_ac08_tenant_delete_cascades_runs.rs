@@ -55,11 +55,10 @@ async fn tenant_delete_removes_its_runs_rows_and_stored_results() {
             .get_run(run_id.clone(), tenant.id)
             .await
             .expect("get_run")
+            && run.status == "done"
         {
-            if run.status == "done" {
-                assert!(run.result_ref.is_some(), "done run must have a result_ref");
-                break;
-            }
+            assert!(run.result_ref.is_some(), "done run must have a result_ref");
+            break;
         }
         assert!(Instant::now() < deadline, "echo job must finish within 5s");
         tokio::time::sleep(Duration::from_millis(50)).await;

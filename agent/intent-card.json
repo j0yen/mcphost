@@ -74,7 +74,7 @@
   ],
   "scope": [
     "`src/kinds/wasm.rs` (new): a full `Kind` impl backed by an embedded Wasmtime engine (fuel + epoch interruption configured at construction) -- spec parsing/validation (component-model check via `Component::new`, size cap, timeout_s/memory_mb range checks), per-call execution on `spawn_blocking` with a `ResourceLimiter` for the memory cap and an epoch-deadline timer task for wall time (`WALL_BUDGET_SLACK` shorter than the outer per-call timeout so the kind's own structured error always wins the race), trap/timeout/oom classification into `tool_trapped`/`tool_timeout`/`tool_oom`, a `(tenant_id, tool_name)`+content-hash compiled-component cache evicted via `on_tool_changed`/`on_tool_published`/`on_tenant_removed` (AC1-6, AC8, AC10).",
-    "`Cargo.toml`: `wasmtime`/`wasmtime-wasi` 38.0.4 (pinned, recorded in `/healthz` via `WASM_RUNTIME_VERSION`) and `base64` 0.22; version bump minor (0.57.3 -> 0.58.0).",
+    "`Cargo.toml`: `wasmtime`/`wasmtime-wasi` 46.0.3 (pinned, recorded in `/healthz` via `WASM_RUNTIME_VERSION`; bumped from 38.0.4 by a fix-pass closing 6 RUSTSEC advisories, requiring rustc 1.94+ hence the `rust-toolchain.toml`/`rust-version` bump alongside it) and `base64` 0.22; version bump minor (0.57.3 -> 0.58.0).",
     "`src/main.rs`/`src/state.rs`/`src/http.rs`: register `WasmKind` in the serve-time registry and thread `wasm_runtime_version` through `AppState` into the admin `/healthz` body beside `sandbox_mechanism` (AC9).",
     "`docs/kinds/wasm.md` (new) registered into `src/kinds/docs.rs`'s `KIND_DOCS`, regenerating README.md's `<!-- kinds:start/end -->` block and `www/llms-full.txt`/`www/llms.txt`'s kind-list prose; `host.quickstart(kind: \"wasm\")` and `host.tool_publish`'s description serve the same file's blurb/spec/call_args generically, no handler.rs change needed (AC7).",
     "`tests/fixtures/wasm-src/{echo,trap,loop_forever,oom}/`: four cargo-component guest crates (built out-of-band by the remote build runner's `cargo component build`, never by this crate's own `cargo build`/`cargo test`) plus their compiled `tests/fixtures/wasm/*.wasm` binaries, covering echo-back, an explicit trap, an infinite loop, and past-cap allocation.",
@@ -98,7 +98,7 @@
       "no_server_side_compile": "The wasm kind accepts only an already-compiled component (base64 in the spec, the same transport python's `source` field already uses for text); mcphost never invokes a Wasm toolchain itself.",
       "no_os_sandbox_dependency": "The wasm execution path never invokes bwrap, unshare, or any external sandbox binary -- isolation is Wasmtime's own fuel/StoreLimits/epoch-interruption, proven independent of `sandbox_mechanism`'s own readiness by AC4.",
       "component_model_validation_at_publish": "A core-module-only binary (no component-model wrapper) is rejected at publish with a structured error naming 'component model' as the requirement, via `wasmtime::component::Component::new`'s own parse failure -- not a hand-rolled binary-format sniff.",
-      "wasmtime_pinned_version": "wasmtime/wasmtime-wasi pinned to 38.0.4 (not a floating range), recorded verbatim in `/healthz`'s `wasm_runtime_version` field, matching this crate's other embedded-runtime dependency conventions."
+      "wasmtime_pinned_version": "wasmtime/wasmtime-wasi pinned to 46.0.3 (not a floating range), recorded verbatim in `/healthz`'s `wasm_runtime_version` field, matching this crate's other embedded-runtime dependency conventions."
     }
   },
   "five_whys_trace": [

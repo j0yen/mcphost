@@ -61,7 +61,7 @@ use super::{CallCtx, Kind, KindError, KindExample, OutputDecl, ToolDescriptor};
 
 /// Recorded in `/healthz` beside `sandbox_mechanism` (P1 requirement 8 /
 /// AC9). Kept in sync with the `wasmtime` version pinned in `Cargo.toml`.
-pub const WASM_RUNTIME_VERSION: &str = "wasmtime 38.0.4";
+pub const WASM_RUNTIME_VERSION: &str = "wasmtime 46.0.3";
 
 /// Open question resolved at build: a flat cap, not a per-plan one --
 /// mirrors `python`'s own `MAX_SOURCE_BYTES` (also a flat constant, not
@@ -314,12 +314,12 @@ impl ResourceLimiter for GuestState {
         _current: usize,
         desired: usize,
         _maximum: Option<usize>,
-    ) -> anyhow::Result<bool> {
+    ) -> wasmtime::Result<bool> {
         if desired > self.peak_bytes {
             self.peak_bytes = desired;
         }
         if desired > self.max_bytes {
-            return Err(anyhow::Error::new(MemoryCapExceeded));
+            return Err(wasmtime::Error::new(MemoryCapExceeded));
         }
         Ok(true)
     }
@@ -329,7 +329,7 @@ impl ResourceLimiter for GuestState {
         _current: usize,
         _desired: usize,
         _maximum: Option<usize>,
-    ) -> anyhow::Result<bool> {
+    ) -> wasmtime::Result<bool> {
         Ok(true)
     }
 }
