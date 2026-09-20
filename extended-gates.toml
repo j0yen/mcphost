@@ -13,3 +13,18 @@ mutation_kill_min_pct = 50.0
 # per-producer timeout ceiling (1500s) so a future real regression still
 # gets caught before the producer's own timeout would silently eat it.
 cold_build_time_max_seconds = 1500.0
+
+# binary_size_budgets (2026-09-20 gate-ready pass): binary-size has been
+# blocking with the un-set 50 MiB (52,428,800-byte) default since before
+# this branch existed -- origin/main's own tip (b14bbdf) already builds a
+# 72,470,768-byte release `mcphost` binary (measured on-box, `cargo build
+# --release` in a detached origin/main worktree, same crate/deps/toolchain
+# this branch uses -- Cargo.toml/Cargo.lock carry zero diff from main).
+# This branch's own HEAD (dfd0569, pre-this-commit) measures 72,965,896
+# bytes, +0.68% over main -- nowhere near this PRD's own 5% grown-it-myself
+# threshold, so nothing here needs removing or feature-gating; the crate
+# (51 deps incl. tokio/axum/reqwest/rusqlite/wasmtime) simply outgrew a
+# threshold nobody had ever configured, same story as cold_build_time_max_seconds
+# above. Budgeted at 10% headroom over main's measured size.
+[binary_size_budgets]
+mcphost = 79717845
