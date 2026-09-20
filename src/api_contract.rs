@@ -182,6 +182,228 @@ pub fn dump_contract_bytes(kinds: &KindRegistry) -> Vec<u8> {
     s.into_bytes()
 }
 
+/// One diff finding: a tool/field removed with no (valid, sunset-passed)
+/// deprecation entry to excuse it, or a field's schema narrowed in a way
+/// that isn't excused either. `path` is `"<tool>"` for a whole-tool
+/// removal, `"<tool>.<field>"` for a single-level field.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Violation {
+    Removed { path: String },
+    RemovedBeforeSunset { path: String, sunset: String },
+    Narrowed { path: String, detail: String },
+}
+
+impl Violation {
+    pub fn path(&self) -> &str {
+        match self {
+            Violation::Removed { path }
+            | Violation::RemovedBeforeSunset { path, .. }
+            | Violation::Narrowed { path, .. } => path,
+        }
+    }
+
+    pub fn message(&self) -> String {
+        match self {
+            Violation::Removed { path } => format!(
+                "{path} was removed with no contracts/deprecations.json entry (or an invalid \
+                 one -- sunset must be at least 60 days after since)"
+            ),
+            Violation::RemovedBeforeSunset { path, sunset } => format!(
+                "{path} was removed before its deprecation's sunset ({sunset}) has passed"
+            ),
+            Violation::Narrowed { path, detail } => format!(
+                "{path} was narrowed ({detail}) with no valid contracts/deprecations.json entry"
+            ),
+        }
+    }
+}
+
+/// A entry excuses a REMOVAL only when both hold: it exists with a valid
+/// (>=60 day) lead time (requirement 2), AND `today_unix` is on or after
+/// its `sunset` (requirement 5) -- the field isn't actually gone from a
+/// caller's perspective until that date, so removing it earlier breaks
+/// exactly the caller the lead time was supposed to protect.
+fn check_removed(
+    path: &str,
+    deprecations: &[Deprecation],
+    today_unix: i64,
+    violations: &mut Vec<Violation>,
+) {
+    match deprecations
+        .iter()
+        .find(|d| d.path == path && d.lead_time_valid())
+    {
+        None => violations.push(Violation::Removed {
+            path: path.to_string(),
+        }),
+        Some(dep) if !dep.sunset_passed(today_unix) => {
+            violations.push(Violation::RemovedBeforeSunset {
+                path: path.to_string(),
+                sunset: dep.sunset.clone(),
+            })
+        }
+        Some(_) => {}
+    }
+}
+
+/// A entry excuses a NARROWING as soon as it's announced with a valid
+/// lead time -- unlike [`check_removed`], narrowing doesn't wait on
+/// `sunset`: the field is still present and still usable (just under a
+/// stricter schema), so there's no "gone from a caller's perspective"
+/// moment to gate on the way an outright removal has. Requirement 2 only
+/// asks for the entry to exist with a valid lead time; requirement 5's
+/// extra sunset gate is stated for removal specifically.
+fn check_narrowed(
+    path: &str,
+    detail: String,
+    deprecations: &[Deprecation],
+    violations: &mut Vec<Violation>,
+) {
+    let excused = deprecations
+        .iter()
+        .any(|d| d.path == path && d.lead_time_valid());
+    if !excused {
+        violations.push(Violation::Narrowed {
+            path: path.to_string(),
+            detail,
+        });
+    }
+}
+
+fn schema_type(schema: &Value) -> Option<&Value> {
+    schema.get("type")
+}
+
+fn schema_enum(schema: &Value) -> Option<&Vec<Value>> {
+    schema.get("enum").and_then(Value::as_array)
+}
+
+/// requirement 2 / Technical considerations: "narrowed type" = the new
+/// schema does not accept every instance the old one did. Checked
+/// structurally (type change, enum shrink, newly required) rather than by
+/// generating and validating probe instances through the `jsonschema`
+/// crate -- every field this crate's own `host_schema` builds is a flat
+/// `{type, description}` (occasionally `enum`), so a structural comparison
+/// covers every real case exactly, and stays a pure, deterministic
+/// function `diff` can call with no schema-compilation cost per field.
+/// `None` when nothing about `old` narrows relative to `new`.
+fn narrowing_reason(old: &Value, new: &Value, was_required: bool, is_required: bool) -> Option<String> {
+    if !was_required && is_required {
+        return Some("became required".to_string());
+    }
+    if let (Some(old_type), Some(new_type)) = (schema_type(old), schema_type(new))
+        && old_type != new_type
+    {
+        return Some(format!("type changed from {old_type} to {new_type}"));
+    }
+    if let Some(new_enum) = schema_enum(new) {
+        match schema_enum(old) {
+            // Narrowed iff the old schema didn't already accept every
+            // value the new enum lists -- either it had no enum at all
+            // (accepted any value of the type) or its own enum was
+            // missing one of the new schema's values.
+            Some(old_enum) if !new_enum.iter().all(|v| old_enum.contains(v)) => {
+                return Some("enum narrowed".to_string());
+            }
+            None => return Some("enum added where none existed".to_string()),
+            Some(_) => {}
+        }
+    }
+    None
+}
+
+/// Walks `old_schema.properties`/`required` against `new_schema`'s own,
+/// one level deep (every real `host.*` argument schema this crate builds
+/// is flat -- see [`narrowing_reason`]'s doc), pushing a [`Violation`] for
+/// each field removed or narrowed with no excusing entry.
+#[allow(clippy::too_many_arguments)]
+fn diff_properties(
+    tool_name: &str,
+    old_schema: &Value,
+    new_schema: &Value,
+    deprecations: &[Deprecation],
+    today_unix: i64,
+    violations: &mut Vec<Violation>,
+) {
+    let Some(old_props) = old_schema.get("properties").and_then(Value::as_object) else {
+        return;
+    };
+    let new_props = new_schema.get("properties").and_then(Value::as_object);
+    let old_required: Vec<&str> = old_schema
+        .get("required")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    let new_required: Vec<&str> = new_schema
+        .get("required")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+
+    for (field, old_field_schema) in old_props {
+        let path = format!("{tool_name}.{field}");
+        match new_props.and_then(|p| p.get(field)) {
+            None => check_removed(&path, deprecations, today_unix, violations),
+            Some(new_field_schema) => {
+                if let Some(detail) = narrowing_reason(
+                    old_field_schema,
+                    new_field_schema,
+                    old_required.contains(&field.as_str()),
+                    new_required.contains(&field.as_str()),
+                ) {
+                    check_narrowed(&path, detail, deprecations, violations);
+                }
+            }
+        }
+    }
+}
+
+fn tools_by_name(contract: &Value) -> std::collections::BTreeMap<String, &Value> {
+    contract["tools"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|t| Some((t.get("name")?.as_str()?.to_string(), t)))
+        .collect()
+}
+
+/// Requirements 2 and 5 / AC2, AC3, AC5: diffs `committed` (the last
+/// contract dump on disk, e.g. `contracts/host-tools.v1.json`) against
+/// `live` (a fresh [`dump_contract`]) and returns every unexcused breaking
+/// change -- a removed tool, a removed field, or a narrowed field -- as a
+/// [`Violation`] naming its path. An addition (a tool or field in `live`
+/// but not `committed`) is never a violation. `today_unix` is threaded in
+/// (rather than read from the clock inside) so a test can exercise both
+/// sides of requirement 5's sunset gate without waiting on a real clock.
+pub fn diff(
+    committed: &Value,
+    live: &Value,
+    deprecations: &[Deprecation],
+    today_unix: i64,
+) -> Vec<Violation> {
+    let committed_tools = tools_by_name(committed);
+    let live_tools = tools_by_name(live);
+    let mut violations = Vec::new();
+    for (name, old_tool) in &committed_tools {
+        match live_tools.get(name) {
+            None => check_removed(name, deprecations, today_unix, &mut violations),
+            Some(new_tool) => {
+                let old_schema = old_tool.get("input_schema").unwrap_or(&Value::Null);
+                let new_schema = new_tool.get("input_schema").unwrap_or(&Value::Null);
+                diff_properties(
+                    name,
+                    old_schema,
+                    new_schema,
+                    deprecations,
+                    today_unix,
+                    &mut violations,
+                );
+            }
+        }
+    }
+    violations
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -204,6 +426,42 @@ mod tests {
         let mut sorted = names.clone();
         sorted.sort();
         assert_eq!(names, sorted);
+    }
+
+    #[test]
+    fn narrowing_detects_type_change_and_newly_required() {
+        let string_schema = json!({"type": "string"});
+        let number_schema = json!({"type": "number"});
+        assert!(narrowing_reason(&string_schema, &number_schema, false, false).is_some());
+        assert!(narrowing_reason(&string_schema, &string_schema, false, true).is_some());
+        assert!(narrowing_reason(&string_schema, &string_schema, false, false).is_none());
+        assert!(narrowing_reason(&string_schema, &string_schema, true, true).is_none());
+    }
+
+    #[test]
+    fn narrowing_detects_enum_shrink_but_not_enum_growth() {
+        let wide = json!({"type": "string", "enum": ["a", "b", "c"]});
+        let narrow = json!({"type": "string", "enum": ["a"]});
+        let wider = json!({"type": "string", "enum": ["a", "b", "c", "d"]});
+        assert!(narrowing_reason(&wide, &narrow, false, false).is_some());
+        assert!(narrowing_reason(&wide, &wider, false, false).is_none());
+        assert!(narrowing_reason(&wide, &wide, false, false).is_none());
+    }
+
+    #[test]
+    fn deprecation_lead_time_valid_requires_60_days() {
+        let short = Deprecation {
+            path: "x".into(),
+            since: "2026-01-01".into(),
+            sunset: "2026-02-01".into(), // 31 days
+            replacement: "y".into(),
+        };
+        let long = Deprecation {
+            sunset: "2026-03-02".into(), // exactly 60 days after since (2026-01-01)
+            ..short.clone()
+        };
+        assert!(!short.lead_time_valid());
+        assert!(long.lead_time_valid());
     }
 
     #[test]
