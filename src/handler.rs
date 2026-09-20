@@ -670,6 +670,26 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &[],
             ),
         ),
+        // PRD-mcphost-host-tool-deprecation requirement 4 / AC6: what
+        // changed in the host.*/billing.* surface itself -- additions,
+        // announced deprecations, and completed removals, derived from
+        // the same contract dump `mcphost contract dump` writes -- see
+        // `api_contract::changelog`.
+        Tool::new(
+            "host.changelog",
+            "List what changed in the host.*/billing.* tool surface -- additions, \
+             deprecations, and removals -- since an optional version. Read-only.",
+            host_schema(
+                json!({
+                    "since": {
+                        "type": "string",
+                        "description": "Only list changes after this version, e.g. \"0.57.0\". \
+                            Omit to list every tracked change.",
+                    },
+                }),
+                &[],
+            ),
+        ),
         // PRD-mcphost-sharing P0 requirement 1: a tool can be made
         // `public` (any tenant) or `group` (a named allow-list this
         // tenant owns) -- see `sharing.rs`.
@@ -2131,6 +2151,7 @@ impl McpHostHandler {
             "host.tool_run" => self.tool_run(tenant, args).await,
             "host.tool_call" => self.host_tool_call(tenant, args).await,
             "host.usage" => control::usage(&self.state, tenant, &args).await,
+            "host.changelog" => control::changelog(&self.state, &args),
             "host.tool_share" => crate::sharing::tool_share(&self.state, tenant, &args).await,
             "host.tool_unshare" => crate::sharing::tool_unshare(&self.state, tenant, &args).await,
             "host.group.create" => crate::sharing::group_create(&self.state, tenant, &args).await,

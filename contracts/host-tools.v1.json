@@ -394,6 +394,25 @@
       "since": "0.58.0"
     },
     {
+      "description": "List what changed in the host.*/billing.* tool surface -- additions, deprecations, and removals -- since an optional version. Read-only.",
+      "input_schema": {
+        "properties": {
+          "since": {
+            "description": "Only list changes after this version, e.g. \"0.57.0\". Omit to list every tracked change.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.changelog",
+      "since": "0.58.1"
+    },
+    {
       "description": "Add a tenant (by namespace) to a group this tenant owns.",
       "input_schema": {
         "properties": {

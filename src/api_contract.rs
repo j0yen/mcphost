@@ -433,6 +433,94 @@ pub fn deprecation_notices(tool: &str, args: &Value, deprecations: &[Deprecation
         .collect()
 }
 
+/// Dotted-numeric version compare (`"0.58.1" > "0.58.0"`, missing
+/// components read as `0`) -- this crate's own `since`/`sunset` versions
+/// are always plain `MAJOR.MINOR.PATCH`, so a full semver parser (build
+/// metadata, pre-release tags) would be more than this ever needs. `a > b`.
+fn version_gt(a: &str, b: &str) -> bool {
+    let parts = |v: &str| -> Vec<u64> { v.split('.').map(|p| p.parse().unwrap_or(0)).collect() };
+    let (pa, pb) = (parts(a), parts(b));
+    for i in 0..pa.len().max(pb.len()) {
+        let (x, y) = (
+            pa.get(i).copied().unwrap_or(0),
+            pb.get(i).copied().unwrap_or(0),
+        );
+        if x != y {
+            return x > y;
+        }
+    }
+    false
+}
+
+/// Requirement 4 / AC6: `host.changelog {since?}` -- every tool whose
+/// [`since_for_tool`] is newer than `since`, every deprecation entry whose
+/// own `since` is newer, and every removal (a deprecation entry whose
+/// path no longer resolves to a live tool/field, i.e. has actually been
+/// removed) newer than `since` too. `kinds` is the caller's real registry
+/// (not a fixed one) -- see [`crate::control::changelog`]'s own doc for
+/// why this differs from [`dump_contract`]'s committed-contract use.
+pub fn changelog(kinds: &KindRegistry, deprecations: &[Deprecation], since: &str) -> Value {
+    let mut tools = crate::handler::host_tool_descriptors(kinds);
+    tools.sort_by(|a, b| a.name.cmp(&b.name));
+
+    let additions: Vec<Value> = tools
+        .iter()
+        .map(|t| t.name.to_string())
+        .filter(|name| version_gt(since_for_tool(name), since))
+        .map(|name| json!({"name": name, "since": since_for_tool(&name)}))
+        .collect();
+
+    let live_field_exists = |path: &str| -> bool {
+        tools.iter().any(|t| {
+            path.strip_prefix(t.name.as_ref())
+                .and_then(|rest| rest.strip_prefix('.'))
+                .is_some_and(|field| {
+                    t.input_schema
+                        .get("properties")
+                        .and_then(Value::as_object)
+                        .is_some_and(|props| props.contains_key(field))
+                })
+                || path == t.name.as_ref()
+        })
+    };
+
+    // Still present (not yet actually removed) -- see `removals` below for
+    // the other half of a deprecation entry's lifecycle.
+    let mut deprecated_entries: Vec<&Deprecation> = deprecations
+        .iter()
+        .filter(|d| version_gt(&d.since, since) && live_field_exists(&d.path))
+        .collect();
+    deprecated_entries.sort_by(|a, b| a.path.cmp(&b.path));
+    let announced: Vec<Value> = deprecated_entries
+        .iter()
+        .map(|d| {
+            json!({
+                "path": d.path,
+                "since": d.since,
+                "sunset": d.sunset,
+                "replacement": d.replacement,
+            })
+        })
+        .collect();
+
+    let mut removed: Vec<&Deprecation> = deprecations
+        .iter()
+        .filter(|d| version_gt(&d.since, since) && !live_field_exists(&d.path))
+        .collect();
+    removed.sort_by(|a, b| a.path.cmp(&b.path));
+    let removals: Vec<Value> = removed
+        .iter()
+        .map(|d| json!({"path": d.path, "replacement": d.replacement}))
+        .collect();
+
+    json!({
+        "since": since,
+        "additions": additions,
+        "deprecations": announced,
+        "removals": removals,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

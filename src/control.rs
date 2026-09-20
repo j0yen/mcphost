@@ -560,6 +560,24 @@ pub fn whoami(tenant: &Tenant) -> Value {
     })
 }
 
+/// PRD-mcphost-host-tool-deprecation requirement 4 / AC6: `host.changelog
+/// {since?}` -- additions, announced deprecations, and completed removals
+/// in the host.*/billing.* surface, derived from the live registry (this
+/// tenant's actual `state.kinds`, not the fixed `KindRegistry::with_builtin()`
+/// [`crate::api_contract::dump_contract`]'s own committed-contract use
+/// picks, since this call answers "what does THIS deployment offer now",
+/// same distinction `llms_txt::tenant_tool_names`'s doc already draws for
+/// the analogous name-set question) and `state.deprecations`. Pure and
+/// synchronous -- no DB read needed beyond what's already in `state`.
+pub fn changelog(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let since = args.get("since").and_then(Value::as_str).unwrap_or("0.0.0");
+    Ok(crate::api_contract::changelog(
+        &state.kinds,
+        &state.deprecations,
+        since,
+    ))
+}
+
 pub async fn tool_publish(
     state: &AppState,
     tenant: &Tenant,
