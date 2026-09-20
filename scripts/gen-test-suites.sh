@@ -230,8 +230,10 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # to 1 (the only lever this cap has) needed a much bigger jump than prior
 # entries' +1..+10-file bumps: on top of tenant-data-export's 165 and core's
 # own organic growth since, the smallest tested raise that re-collapses
-# core's normal buckets to 1 is recorded below by the regenerator; landing
-# the grand total back at 10 (1 normal + 6 exclusive + 3 sandbox).
+# core's normal buckets to 1 is 323, landing the grand total back at 10
+# (1 normal + 6 exclusive + 3 sandbox). AC7's own follow-on file
+# (`checkcompat_race_ac07_suite_green_and_clippy_clean.rs`, still in the
+# `checkcompat` area group) fits inside this raise's existing margin.
 MAX_PER_SUITE = {"core": 323, "sandbox": 60}
 
 
