@@ -175,7 +175,15 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # 141 -> 146 was the smallest tested raise (on top of tenant-self-offboard's
 # 141) that re-collapses core's normal buckets to 2, landing the grand
 # total back at 10.
-MAX_PER_SUITE = {"core": 146, "sandbox": 60}
+#
+# PRD-mcphost-wasm-kind (2026-09-19, rebased onto share-a-tool-not-a-key):
+# this PRD's own 10 new `wasmkind_ac*` files (one per AC, same per-AC
+# consolidation convention) tipped core's normal buckets from 2 to 3 again,
+# spawning an 11th suite binary -- caught by the same
+# `suite_ac1_ten_binaries_and_names_preserved` P0 assertion. 146 -> 150 was
+# the smallest tested raise (on top of share-a-tool-not-a-key's 146) that
+# re-collapses core's normal buckets to 2, landing the grand total back at 10.
+MAX_PER_SUITE = {"core": 150, "sandbox": 60}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

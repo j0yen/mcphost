@@ -143,10 +143,10 @@ pub async fn tenant_delete(state: &AppState, args: &Value) -> Result<Value, AppE
         "tenant": deleted.namespace,
         "namespace": deleted.namespace,
     });
-    if let Some(obj) = result.as_object_mut() {
-        if let Some(counts_obj) = counts_json(&counts).as_object() {
-            obj.extend(counts_obj.clone());
-        }
+    if let Some(obj) = result.as_object_mut()
+        && let Some(counts_obj) = counts_json(&counts).as_object()
+    {
+        obj.extend(counts_obj.clone());
     }
     Ok(result)
 }

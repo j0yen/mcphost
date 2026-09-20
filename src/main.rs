@@ -399,6 +399,11 @@ async fn main() -> anyhow::Result<()> {
             // unconditionally, unlike `http`/`python` above which need a
             // domain or a sandbox mechanism first.
             kinds.register(std::sync::Arc::new(ChainKind));
+            // PRD-mcphost-wasm-kind requirement 5: registered unconditionally,
+            // like `ChainKind` above -- this kind has no OS dependency to
+            // probe first (no `bwrap`, no userns, no sandbox self-test), so
+            // there is no readiness gate to run before it goes live.
+            kinds.register(std::sync::Arc::new(mcphost::kinds::wasm::WasmKind::new()));
 
             let state = Arc::new(AppState {
                 db,
@@ -412,6 +417,7 @@ async fn main() -> anyhow::Result<()> {
                     .timeout(std::time::Duration::from_secs(10))
                     .build()?,
                 sandbox_mechanism,
+                wasm_runtime_version: Some(mcphost::kinds::wasm::WASM_RUNTIME_VERSION),
                 tool_run_limiter: mcphost::state::ToolRunLimiter::new(),
                 signup_rate_limit_per_hour,
                 plans,

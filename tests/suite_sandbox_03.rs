@@ -62,3 +62,5 @@ mod tooltest_ac1_python_two_invocations;
 mod tooltest_ac2_python_exception_other_still_runs;
 #[path = "warmpool_ac06_ac07_tool_run.rs"]
 mod warmpool_ac06_ac07_tool_run;
+#[path = "wasmkind_ac04_independent_of_sandbox_mechanism.rs"]
+mod wasmkind_ac04_independent_of_sandbox_mechanism;

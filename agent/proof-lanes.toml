@@ -131,3 +131,11 @@ globs = ["examples/share-a-tool/**"]
 required_commands = [
   "cargo test --workspace mcphost_share_a_tool_not_a_key_ac",
 ]
+
+[[lane]]
+id = "wasm-fixtures"
+description = "Wasm-kind test fixtures under tests/fixtures/wasm-src/** (guest component sources) and tests/fixtures/wasm/** (their compiled .wasm binaries), whose behavior is proven by the wasmkind_ac0x integration tests that load and call them. Added project-locally (PRD-mcphost-wasm-kind): same gap class as the examples lane above -- the shipped scaffold's proof-lanes.toml has no lane for these paths, and they gate the AC0x tests identically to a tests/**/*.rs edit, so proof is a name-filtered cargo test run over the tests that actually exercise them rather than the whole rust-tests lane."
+globs = ["tests/fixtures/wasm-src/**", "tests/fixtures/wasm/**"]
+required_commands = [
+  "cargo test --workspace wasmkind_ac",
+]

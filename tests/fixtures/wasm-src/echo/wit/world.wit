@@ -1,0 +1,10 @@
+package mcphost:tool@0.1.0;
+
+// The contract every wasmkind fixture (and real wasm tool) targets: a
+// single `call` export taking the JSON-encoded call arguments as a string
+// and returning either the JSON-encoded result payload or an error message.
+// See src/kinds/wasm.rs's module doc for why this shape (not full WASI) was
+// chosen for this PRD's slice.
+world tool {
+    export call: func(args: string) -> result<string, string>;
+}

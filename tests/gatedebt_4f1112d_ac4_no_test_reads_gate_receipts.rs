@@ -79,10 +79,10 @@ fn scan_dir(dir: &Path, needle: &str, self_file: &str, offenders: &mut Vec<Strin
             // not by a shortcut around the check.
             continue;
         }
-        if let Ok(text) = fs::read_to_string(&path) {
-            if text.contains(needle) || normalize(&text).contains(&normalize(needle)) {
-                offenders.push(path.display().to_string());
-            }
+        if let Ok(text) = fs::read_to_string(&path)
+            && (text.contains(needle) || normalize(&text).contains(&normalize(needle)))
+        {
+            offenders.push(path.display().to_string());
         }
     }
 }

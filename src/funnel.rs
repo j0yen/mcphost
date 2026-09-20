@@ -49,7 +49,7 @@ fn median(values: &mut [i64]) -> Option<f64> {
     values.sort_unstable();
     let n = values.len();
     let mid = n / 2;
-    if n % 2 == 0 {
+    if n.is_multiple_of(2) {
         Some((values[mid - 1] + values[mid]) as f64 / 2.0)
     } else {
         Some(values[mid] as f64)

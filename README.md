@@ -229,6 +229,26 @@ Example call arguments:
   "n": 3
 }
 ```
+
+### `wasm`
+
+component is a base64-encoded WebAssembly component (component-model, not a core module) exporting `call: func(args: string) -> result<string, string>`; args_schema is optional (defaults to accepting any object).
+
+Example spec:
+
+```json
+{
+  "component": "AGFzbQEAAAAA"
+}
+```
+
+Example call arguments:
+
+```json
+{
+  "msg": "hi"
+}
+```
 <!-- kinds:end -->
 
 ### Python spec-language notes

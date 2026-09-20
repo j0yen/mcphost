@@ -1,83 +1,92 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-share-a-tool-not-a-key.md",
-  "intent_slug": "mcphost-share-a-tool-not-a-key",
-  "root_motivation": "A team running two or more agents against one paid API has to give each agent the raw key, because no hosted MCP offers delegated, revocable access to a tool whose secret stays with the owner. Consequence: every agent's environment is a key copy, rotation means touching every agent, and a leaked agent transcript leaks the account. mcphost already has the three primitives (secrets via `host.secret_set`/`{{ secret.<name> }}` interpolation in `src/kinds/infer.rs`/`src/handler.rs`, group sharing via `host.tool_share`/`host.group.*` in `src/sharing.rs`, and host-side interpolation) and no page that puts them together; the only worked example on the host is homeward (visions/mcp-host.md 2026-09-18 addendum). This is an opportunity, not a failure: the primitives exist and are untested as one flow.",
-  "user_persona": "A team lead's agent that publishes one `http` tool wrapping a paid API with the key stored by `host.secret_set`, shares it with `host.tool_share visibility=group`, and adds teammates' tenants with `host.group.add` -- every teammate's agent can then call the tool, none can read the key, and `host.group.remove` revokes one in a single call. Also Joe, who wants `healthz`/`signup_events` to show how many real tenants complete this recipe each week.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-wasm-kind.md",
+  "intent_slug": "mcphost-wasm-kind",
+  "root_motivation": "The python kind's isolation is a property of the host's OS configuration, not of mcphost: on 2026-09-04, 45 of 45 python publishes failed on the hub because Ubuntu's apparmor_restrict_unprivileged_userns broke bwrap -- a capability dead in production while /healthz claimed the sandbox was fine. The fix was an AppArmor profile the deploy tool must carry to every box, which travels with the box, not the tool. Cold starts are the second cost: per-tenant virtualenvs mean N× disk and build time, and the first call after publish pays a warm-up. A compiled WebAssembly component with an embedded Wasmtime runtime removes both classes at once: isolation travels with the compiled binary instead of the host's userns/AppArmor policy, and instantiation is milliseconds. This is an opportunity pulled forward from a held vision component, not a failure investigation -- the python kind remains the default authoring path.",
+  "user_persona": "Three: (1) an agent with a hot path, calling often, where python's per-call budget or venv warm-up hurts -- publishes a compiled component instead, starting in milliseconds under fuel/memory/wall-time caps; (2) an operator on a locked-down box where the OS forbids unprivileged userns -- wasm tools keep working, so one distro policy change can't kill a kind again; (3) an agent testing before publish -- `host.tool_test` on a wasm spec returns the same dry-run surface every other kind returns.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 8
+    "target": 10
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given llms.txt, When the section is read, Then it lists the six calls in order with one argument block each and is under 60 lines.",
-      "test": "tests/mcphost_share_a_tool_not_a_key_ac01_llms_txt_section.rs"
+      "description": "Given a valid component that echoes its arguments, When published as `kind: wasm` and called, Then the call succeeds with the output under `result.payload` and a metering row exists.",
+      "test": "tests/wasmkind_ac01_echo_component_calls_and_meters.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given two fresh tenants, When `proof.sh` runs against `MCPHOST_URL`, Then the caller's `host.tool_call` on the shared tool returns the upstream's response.",
-      "test": "tests/mcphost_share_a_tool_not_a_key_ac02_caller_call_returns_upstream_response.rs"
+      "description": "Given a core module that is not a component, and a component over the size cap, When published, Then each is refused with a structured error naming the requirement or bound.",
+      "test": "tests/wasmkind_ac02_publish_validation_errors.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the caller tenant, When it calls `host.secret_list`, Then the list is empty and no response body to the caller contains the secret value.",
-      "test": "tests/mcphost_share_a_tool_not_a_key_ac03_caller_never_sees_secret.rs"
+      "description": "Given a component that loops forever, and one that allocates past the memory cap, When called, Then each terminates within the budget with the corresponding structured error code, and the process serves the next call normally.",
+      "test": "tests/wasmkind_ac03_timeout_and_oom_recover.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given `host.group.remove` for the caller, When the caller calls the tool again, Then the response is a permission error and the owner's own call still succeeds.",
-      "test": "tests/mcphost_share_a_tool_not_a_key_ac04_group_remove_revokes_caller.rs"
+      "description": "Given the sandbox mechanism is reported unavailable (bwrap absent), When a wasm tool is called, Then it succeeds, and a python call on the same host still fails with `sandbox_unavailable` -- proving independence.",
+      "test": "tests/wasmkind_ac04_independent_of_sandbox_mechanism.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the proof completed, When `signup_events` is queried for both tenants, Then `source=recipe:share-a-tool`.",
-      "test": "tests/mcphost_share_a_tool_not_a_key_ac05_signup_events_source_tagged.rs"
+      "description": "Given a wasm spec, When `host.tool_test` runs, Then the dry-run executes the component with the rendered arguments and returns the same test surface shape other kinds return.",
+      "test": "tests/wasmkind_ac05_tool_test_dry_run.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given the proof runs against https://mcphost.dev/mcp, When it finishes, Then every assertion above passes and the printed wall time is under 120 s. (Live; evidence: proof stdout captured in the receipt)",
-      "test": "deferred -- Live; needs a real run against production https://mcphost.dev/mcp, unreachable from this worktree's own gate (build_into: mcphost only, no live-network access here). Embodied (gated on MCPHOST_LIVE=1) by tests/mcphost_share_a_tool_not_a_key_ac08_live_test_skipped_without_env.rs::live_proof_against_real_mcphost_when_enabled -- not run by this build, run manually or by a later live-gate loop"
+      "description": "Given a component that traps, When called, Then the trap message is in `host.tool_logs` and the call error is structured, not a raw panic.",
+      "test": "tests/wasmkind_ac06_trap_is_structured_and_logged.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given the synthorg mcphost corpus, When the new task runs 5 times, Then 5 completions are recorded with wall time.",
-      "test": "tests/mcphost_share_a_tool_not_a_key_ac07_synthorg_task_five_completions.rs (the real synthorg corpus, RedBaron's corpora/mcphost/consumer-tasks.yaml, lives in a separate repository outside this worktree's scope; examples/share-a-tool/synthorg-task.yaml is the proposed task for a corpus maintainer to merge, and this test runs proof.sh -- the task's runnable embodiment -- 5 times, recording a completion and wall time per run)"
+      "level": "MUST",
+      "description": "Given the build completes, When llms.txt and the kind descriptors are read, Then the wasm kind, its limits, and the choose-wasm-vs-python sentence are present.",
+      "test": "tests/wasmkind_ac07_docs_llms_and_quickstart_document_wasm.rs"
     },
     {
       "id": "AC8",
       "level": "SHOULD",
-      "description": "Given `MCPHOST_LIVE` unset, When the test suite runs, Then the Live test is skipped, not failed.",
-      "test": "tests/mcphost_share_a_tool_not_a_key_ac08_live_test_skipped_without_env.rs"
+      "description": "Given a tool called twice, When the second call runs, Then instantiation reuses the cached compiled artifact (observable via timing or a counter), and a republish invalidates it.",
+      "test": "tests/wasmkind_ac08_cache_reuses_compiled_artifact.rs"
     },
     {
       "id": "AC9",
       "level": "SHOULD",
-      "description": "Given the public variant section, When read, Then it states why group visibility is the default.",
-      "test": "tests/mcphost_share_a_tool_not_a_key_ac09_public_variant_states_default_reason.rs"
+      "description": "Given `/healthz` after ship, When read by an admin, Then it reports wasm runtime availability and version.",
+      "test": "tests/wasmkind_ac09_healthz_reports_wasm_runtime.rs"
+    },
+    {
+      "id": "AC10",
+      "level": "MUST",
+      "description": "Given declared outputs on a wasm spec, When the tool returns a matching structure, Then promotion into `result.payload.<field>` behaves identically to the python kind on the same fixture.",
+      "test": "tests/wasmkind_ac10_declared_output_promotion_matches_python.rs"
     }
   ],
   "scope": [
-    "`www/llms.txt`: a new `## Share a tool, not a key` section (six calls in order -- `host.secret_set`, `host.tool_publish`, `host.group.create`, `host.tool_share`, `host.group.add`, `host.tool_call` -- one fenced argument block each, under 60 lines) plus a `### ... public variant` section explaining why `group` is the default (AC1, AC9).",
-    "`examples/share-a-tool/proof.sh`: a bash+curl+python3 script (no jq) that runs the full recipe against `$MCPHOST_URL` with two fresh tenants and a self-started local mock upstream, asserting the caller's call returns the upstream's response, the caller's `host.secret_list` is empty with no secret leak, and `host.group.remove` revokes the caller while the owner keeps working; prints a wall time (AC2-AC5).",
-    "`examples/share-a-tool/synthorg-task.yaml`: a proposed consumer-task entry for RedBaron's mcphost corpus (segment `integration_specialist`), not merged into that separate repository by this build (AC7).",
-    "Test-only Rust files under `tests/mcphost_share_a_tool_not_a_key_ac0[1-9]_*.rs` exercising each of the above, including a `MCPHOST_LIVE=1`-gated Live test embodying AC6 (AC8).",
-    "Zero `src/` changes -- every primitive this recipe composes (`host.secret_set`, `host.tool_publish`'s `{{ secret.<name> }}` interpolation, `host.tool_share`/`host.group.*`) already exists and is unmodified."
+    "`src/kinds/wasm.rs` (new): a full `Kind` impl backed by an embedded Wasmtime engine (fuel + epoch interruption configured at construction) -- spec parsing/validation (component-model check via `Component::new`, size cap, timeout_s/memory_mb range checks), per-call execution on `spawn_blocking` with a `ResourceLimiter` for the memory cap and an epoch-deadline timer task for wall time (`WALL_BUDGET_SLACK` shorter than the outer per-call timeout so the kind's own structured error always wins the race), trap/timeout/oom classification into `tool_trapped`/`tool_timeout`/`tool_oom`, a `(tenant_id, tool_name)`+content-hash compiled-component cache evicted via `on_tool_changed`/`on_tool_published`/`on_tenant_removed` (AC1-6, AC8, AC10).",
+    "`Cargo.toml`: `wasmtime`/`wasmtime-wasi` 46.0.3 (pinned, recorded in `/healthz` via `WASM_RUNTIME_VERSION`; bumped from 38.0.4 by a fix-pass closing 6 RUSTSEC advisories, requiring rustc 1.94+ hence the `rust-toolchain.toml`/`rust-version` bump alongside it) and `base64` 0.22; version bump minor (0.57.3 -> 0.58.0).",
+    "`src/main.rs`/`src/state.rs`/`src/http.rs`: register `WasmKind` in the serve-time registry and thread `wasm_runtime_version` through `AppState` into the admin `/healthz` body beside `sandbox_mechanism` (AC9).",
+    "`docs/kinds/wasm.md` (new) registered into `src/kinds/docs.rs`'s `KIND_DOCS`, regenerating README.md's `<!-- kinds:start/end -->` block and `www/llms-full.txt`/`www/llms.txt`'s kind-list prose; `host.quickstart(kind: \"wasm\")` and `host.tool_publish`'s description serve the same file's blurb/spec/call_args generically, no handler.rs change needed (AC7).",
+    "`tests/fixtures/wasm-src/{echo,trap,loop_forever,oom}/`: four cargo-component guest crates (built out-of-band by the remote build runner's `cargo component build`, never by this crate's own `cargo build`/`cargo test`) plus their compiled `tests/fixtures/wasm/*.wasm` binaries, covering echo-back, an explicit trap, an infinite loop, and past-cap allocation.",
+    "Ten `tests/wasmkind_ac0[1-9]_*.rs` / `tests/wasmkind_ac10_*.rs` files, one per acceptance criterion, plus the generated `tests/suite_core_*.rs` regen (`scripts/gen-test-suites.sh`, `MAX_PER_SUITE.core` raised 146 -> 150 to stay at the P0 <=10-binary cap) and `tests/support/lanecov.rs`'s `UNROUTED_ALLOWLIST` entries for the fixture paths (non-`.rs` files with no matching lane glob)."
   ],
   "non_goals": [
-    "Any change to sharing, secrets, or groups code (`src/sharing.rs`, `src/secrets.rs`, `src/kinds/http.rs`, `src/kinds/infer.rs`, `src/handler.rs`) -- this PRD is docs and an example script only.",
-    "Per-caller usage breakdown inside `host.usage` (per tenant today) -- open question in the vision, not this PRD.",
-    "Rate limits per caller on a shared tool.",
-    "Merging `examples/share-a-tool/synthorg-task.yaml` into RedBaron's actual corpus repository -- that repository is outside this worktree's scope; the file is a proposed addition for its maintainer."
+    "No server-side compilation of source to Wasm -- the agent brings a component; a compile service is its own product decision.",
+    "No Python-in-Wasm -- component tooling for Python is still immature (the reason this PRD was held); the python kind remains for Python source, unmodified.",
+    "No change to the python kind or its sandbox -- `src/kinds/python.rs`, `src/sandbox.rs` untouched.",
+    "No WASI sockets/HTTP from inside the component in this slice -- pure compute + stdin/stdout-style I/O through call arguments and the result; outbound calls stay the http kind's job. (A conforming guest still links wasi:cli/clocks/random via the Rust std allocator's own abort path -- denied at the `WasiCtx` policy level: no preopened directories, no inherited network -- not by refusing WASI as a whole.)",
+    "No per-plan component size cap -- the PRD's own Open Questions table left 'component size cap per plan (free vs pro)' to be decided 'at build'; this slice ships one global cap (47 KiB / 48128 bytes, sized to clear the oom fixture's WASI-linked footprint with margin under the 64 KiB global spec-size cap after base64 overhead) since no other kind's binary/size limits vary per plan today either -- per-plan differentiation is left to a follow-on PRD.",
+    "No P2 requirement 9 (corpus-task proposal via the promote-usecase path) -- the PRD's own ten acceptance criteria stop at AC10, none of which cover it; left out of this build's scope rather than attempted without a corresponding proof."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -86,39 +95,40 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "no_src_change": "Engineering target is docs/examples only: www/llms.txt, examples/share-a-tool/, and the synthorg corpus artifact -- zero mcphost src/ changes.",
-      "worktree_scope": "The real synthorg mcphost corpus (RedBaron's corpora/mcphost/consumer-tasks.yaml) lives in a separate repository (/home/jsy/repos/synthorg) this build is not authorized to touch; AC7 is proven by a proposed task file plus a Rust test that runs the task's runnable embodiment (proof.sh) 5 times, not by editing or executing that other repo.",
-      "secret_never_logged": "proof.sh never prints the secret value it generates in any check output, log line, or error message (PRD non-functional requirement); the mock upstream's own request log is read only via `grep -q`, never echoed."
+      "no_server_side_compile": "The wasm kind accepts only an already-compiled component (base64 in the spec, the same transport python's `source` field already uses for text); mcphost never invokes a Wasm toolchain itself.",
+      "no_os_sandbox_dependency": "The wasm execution path never invokes bwrap, unshare, or any external sandbox binary -- isolation is Wasmtime's own fuel/StoreLimits/epoch-interruption, proven independent of `sandbox_mechanism`'s own readiness by AC4.",
+      "component_model_validation_at_publish": "A core-module-only binary (no component-model wrapper) is rejected at publish with a structured error naming 'component model' as the requirement, via `wasmtime::component::Component::new`'s own parse failure -- not a hand-rolled binary-format sniff.",
+      "wasmtime_pinned_version": "wasmtime/wasmtime-wasi pinned to 46.0.3 (not a floating range), recorded verbatim in `/healthz`'s `wasm_runtime_version` field, matching this crate's other embedded-runtime dependency conventions."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does a team running multiple agents against one paid API have to give each agent the raw key?",
-      "a": "No hosted MCP offers delegated, revocable access to a tool whose secret stays with the owner -- every agent's environment ends up holding its own copy of the key."
+      "q": "Why did 45 of 45 python publishes fail on the hub on 2026-09-04?",
+      "a": "Ubuntu's apparmor_restrict_unprivileged_userns broke bwrap, the OS-level primitive the python kind's sandbox depends on -- an entire capability went dead in production while /healthz kept reporting the sandbox as fine (vision, cycle 53)."
     },
     {
       "why": 2,
-      "q": "Why does that matter operationally?",
-      "a": "Rotation means touching every agent's config individually, and a leaked transcript from any one agent leaks the whole account -- there is no single point of revocation."
+      "q": "Why does a single distro policy change take down an entire tool kind?",
+      "a": "The python kind's isolation is a property of the host box's OS configuration (userns/AppArmor), not of mcphost itself -- the fix (an AppArmor profile) has to be carried to every box by the deploy tool, and until it is, the kind is simply unavailable."
     },
     {
       "why": 3,
-      "q": "Why hasn't mcphost's own host-side secret interpolation (`{{ secret.<name> }}`) and group sharing (`host.tool_share`/`host.group.*`) already solved this?",
-      "a": "Both primitives exist (`src/kinds/infer.rs`/`src/handler.rs` interpolation, `src/sharing.rs` group visibility) and are independently tested, but no documentation or example ever composed them into one flow -- a stranger reading `www/llms.txt` had no path from 'I have a paid API key' to 'my team can call it without the key'."
+      "q": "Why not just fix cycle 53's specific AppArmor gap and move on?",
+      "a": "That fixes this one incident but not the underlying dependency: any future distro/kernel change to unprivileged userns semantics can break bwrap again. Separately, per-tenant virtualenvs mean N× disk/build time and a real warm-up cost on first call after publish -- a second, independent cost cycle 53 didn't even touch."
     },
     {
       "why": 4,
-      "q": "Why did this gap go unnoticed?",
-      "a": "The only worked example on the host (homeward, visions/mcp-host.md 2026-09-18 addendum) is a single-tenant flow; nothing exercised the three primitives together end to end against production, so the composition was untested even though every piece was."
+      "q": "Why hasn't a kind whose isolation doesn't depend on host OS policy shipped already?",
+      "a": "Component-tooling for compiled sandboxed execution was immature until recently; the vision held a Wasm runtime as the python kind's principled successor since the first fleet (2026-09-02) but WASI 0.3 with async I/O only shipped in production-supportable form in February 2026, and Wasmtime being a pure Rust library (no subprocess, no host sandbox dependency) is what makes 'isolation travels with the binary' actually true rather than aspirational."
     },
     {
       "why": 5,
-      "q": "Why fix it now with docs + an example rather than waiting for a dedicated multi-tenant sharing product surface?",
-      "a": "The primitives are already shipped and stable (zero src/ changes needed); the gap is purely that nobody wrote the recipe down and proved it works, which a stranger can verify in under 3 minutes on the free plan once written -- the highest-leverage, lowest-risk fix available."
+      "q": "Why ship this now, as a narrow additive slice, rather than a broader Wasm story (server-side compile, WASI sockets/HTTP, Python-in-Wasm)?",
+      "a": "The landscape now supports the narrow slice (component-model validation, fuel/memory/epoch limits, an embedded runtime) without those larger, riskier pieces; Joe pulled this held component forward on 2026-09-12 specifically because the operational cost of cycle 53 (an entire kind dead in production from one OS policy change) is a proven, recurring risk class the narrow slice already eliminates, while server-side compilation and Python-in-Wasm remain separate product decisions with their own tooling-maturity gates."
     }
   ],
-  "created_at": "2026-09-03T18:04:17Z",
+  "created_at": "2026-09-19T21:26:08Z",
   "ambiguities_resolved": [
     {
       "question": "The findings file records the reference Python client seeing well-formed ttlMs/cacheScope on an unauthenticated tools/list, which the code says is impossible. Which is right?",
@@ -155,6 +165,10 @@
     {
       "question": "This card is now regenerated for PRD-mcphost-share-a-tool-not-a-key, an entirely different feature from PRD-mcphost-test-suite-consolidation (test-binary linking) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same class of staleness caught by reviewer-agent at least seven times in this card's own history (see the entries above). Two PRD-specific ambiguities also needed a build-time decision rather than a byte-for-byte carry-forward: (1) the PRD's own Open Questions table asks whether the proof's second (caller) tenant counts against the synthetic panel or as real for healthz, owner Joe, due 'at build'; (2) Requirement 5/AC7 names 'the synthorg mcphost corpus' and 'the new task', but that corpus (RedBaron's corpora/mcphost/consumer-tasks.yaml) lives in a separate repository (/home/jsy/repos/synthorg), not this mcphost worktree, and the coder's own dispatch instructions forbid touching anything outside this worktree.",
       "resolution": "Fixed in place, same pattern as every prior recurrence: no reviewer block yet, but the same staleness would recur if left byte-for-byte, so scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional were rewritten from this PRD's own Problem statement, Requirements, Non-Goals, and Technical considerations sections; acceptance_criteria's `test` fields point at the real tests/mcphost_share_a_tool_not_a_key_ac0[1-9]_*.rs files, all of which exist, compile, and pass. On the two PRD-specific ambiguities: (1) proof.sh signs both tenants up with `x-mcphost-synthetic: recipe:share-a-tool` (the only existing mechanism for a custom, non-default `origin_detail` label -- see `src/state.rs`'s `classify_source_class`/`derive_origin`), which necessarily classifies them as synthetic (`tenants.origin = 'synthetic'`), answering the open question: the proof's own two tenants count as synthetic/panel, not real -- a real team lead following the llms.txt recipe by hand (no header) would sign up unlabeled and count as real for healthz, same as today; only the demo script's own tenants are tagged, which is the correct classification for a script whose purpose is repeatable verification, not a genuine team's usage. (2) AC7 is proven without touching the synthorg repository: examples/share-a-tool/synthorg-task.yaml is a proposed consumer-task entry (segment integration_specialist) matching that corpus's own id/segments/task/gold schema, left for a maintainer of that repository to merge, and tests/mcphost_share_a_tool_not_a_key_ac07_synthorg_task_five_completions.rs runs proof.sh -- the task's runnable embodiment, same recipe, same success condition -- five times end to end, recording a completion and wall time per run. AC6 (Live, P0) is deferred: it requires a real run against production https://mcphost.dev/mcp, which this worktree's gate cannot reach; it is embodied (gated on MCPHOST_LIVE=1) by ac08's own live_proof_against_real_mcphost_when_enabled so a later live-gate loop can run it without further code changes."
+    },
+    {
+      "question": "This card is now regenerated for PRD-mcphost-wasm-kind, an entirely different feature (a new Wasmtime-backed `wasm` kind) from PRD-mcphost-share-a-tool-not-a-key (secret-sharing groups) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same staleness class caught by reviewer-agent at least eight times in this card's own history (see the entries above) if left byte-for-byte. This PRD also carries its own Open Questions table with one entry due 'at build', owner Joe: 'Component size cap per plan (free vs pro)' -- a build-time decision this coder dispatch has to make, not defer (the second open question, WASI HTTP timing, is explicitly due 'after first real wasm tool', not blocking this build).",
+      "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence: no reviewer block yet, but the same staleness would recur if left byte-for-byte. root_motivation/scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional were rewritten from this PRD's own Problem statement, Goals, Non-goals, User stories, and Technical considerations sections; acceptance_criteria's ten entries (this PRD numbers AC1-10, one more than the previous card) point at the real tests/wasmkind_ac0[1-9]_*.rs / tests/wasmkind_ac10_*.rs files, all of which exist, compile, and pass, with levels taken verbatim from the PRD's own Acceptance criteria list (AC1-7 and AC10 are P0/MUST, AC8-9 are P1/SHOULD); agent/test-map.json's ac_test_map was repointed to a new `wasmkind` prefix and the prior `sharetool` mapping preserved under ac_test_map_by_prefix (already present) rather than deleted. On the size-cap open question: this slice ships one global component-size cap (47 KiB / 48128 bytes) rather than a per-plan one -- sized empirically so the largest real fixture (the oom guest, which unavoidably links the full wasi:cli world via the Rust std allocator's abort path even though the guest code itself never touches sockets/filesystem) clears it with margin, while a spec at just over the bound still stays under the pre-existing global 64 KiB spec-storage cap once base64-encoded, so AC2's 'refused with a structured error naming the bound' proof doesn't collide with a second, unrelated cap. No other kind in this codebase varies its own size/resource limits per plan today, so introducing that axis only for wasm was judged out of scope for this slice and left to a follow-on PRD (recorded in non_goals) rather than guessed at without a plans.toml precedent to follow. Requirement 9 (P2, a corpus-task proposal) has no corresponding entry in the PRD's own ten-item Acceptance criteria list, so it was left out of this build's scope entirely rather than attempted without a proof to satisfy -- consistent with every other PRD-specific ambiguity resolution in this card's history choosing the PRD's own AC list as the actual contract, not the fuller Requirements table."
     }
   ]
 }
