@@ -112,6 +112,8 @@ mod billing_ac11_healthz_paying_tenants;
 mod billing_ac13_checkout_reuse;
 #[path = "checkcompat_ac02_ac03.rs"]
 mod checkcompat_ac02_ac03;
+#[path = "checkcompat_race_ac01_previous_up_within_1s.rs"]
+mod checkcompat_race_ac01_previous_up_within_1s;
 #[path = "ci_sandbox_ac01_workflow_executes_sandbox_suites.rs"]
 mod ci_sandbox_ac01_workflow_executes_sandbox_suites;
 #[path = "ci_sandbox_ac03_incapable_in_ci_skips_and_fails_job.rs"]

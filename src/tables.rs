@@ -785,6 +785,7 @@ mod tests {
             event_rate_limiter: crate::hooks::EventRateLimiter::new(),
             deprecations: std::sync::Arc::new(Vec::new()),
             disk_guard: crate::retention::DiskGuard::from_env(),
+            compat_token: None,
         }
     }
 

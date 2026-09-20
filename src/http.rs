@@ -4,6 +4,7 @@
 //! [`advertised_protocol_version`].
 
 use std::net::SocketAddr;
+use std::os::fd::FromRawFd;
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
@@ -77,6 +78,20 @@ fn is_admin_request(state: &AppState, headers: &HeaderMap) -> bool {
 /// body (requirement 3/AC3) since [`is_admin_request`] doesn't distinguish
 /// "no header" from "wrong header".
 async fn healthz(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl IntoResponse {
+    let mut response = healthz_response(&state, &headers).await;
+    // PRD-mcphost-checkcompat-port-race requirement 5: the token header is
+    // added only when `$MCPHOST_COMPAT_TOKEN` was set in this process's own
+    // env at startup -- production `serve` never sets it, so tenants never
+    // see it.
+    if let Some(token) = state.compat_token.as_deref()
+        && let Ok(value) = HeaderValue::from_str(token)
+    {
+        response.headers_mut().insert("X-Mcphost-Compat-Token", value);
+    }
+    response
+}
+
+async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Response {
     let db_ok = state.db.is_writable().await;
     // PRD-mcphost-data-retention requirement 4 (AC6): the disk-floor guard
     // is as much a liveness signal as `db_ok` -- a box below the floor
@@ -84,7 +99,7 @@ async fn healthz(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl
     // folds into the anonymous `ok` the same way (AC14 precedent).
     let disk_ok = state.disk_guard.is_ok(state.db.data_dir());
 
-    if !is_admin_request(&state, &headers) {
+    if !is_admin_request(state, headers) {
         return if db_ok && disk_ok {
             (StatusCode::OK, Json(json!({"ok": true}))).into_response()
         } else {
@@ -459,4 +474,50 @@ pub async fn serve_on_listener(
 pub async fn serve(bind: SocketAddr, state: Arc<AppState>) -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(bind).await?;
     serve_on_listener(listener, state).await
+}
+
+/// Fd 3 -- `$LISTEN_FDS_START` in the systemd socket-activation convention.
+const LISTEN_FDS_START: std::os::fd::RawFd = 3;
+
+/// PRD-mcphost-checkcompat-port-race requirement 1: accept a listener this
+/// process didn't bind itself, via the systemd socket-activation
+/// convention (`$LISTEN_FDS=1`, `$LISTEN_PID=<this process's pid>`) --
+/// `compat_check::spawn_previous` is the first (and so far only) caller
+/// that starts mcphost this way, dup2'ing an already-bound TCP listener
+/// onto fd 3 before exec instead of handing this process a port to bind.
+/// `None` when neither var is set (the ordinary case), or when `LISTEN_PID`
+/// names a different process (someone else's inherited fds, not ours to
+/// take).
+fn inherited_listener() -> Option<std::net::TcpListener> {
+    if std::env::var("LISTEN_FDS").ok()?.trim() != "1" {
+        return None;
+    }
+    if let Ok(want_pid) = std::env::var("LISTEN_PID") {
+        let want_pid: u32 = want_pid.trim().parse().ok()?;
+        if want_pid != std::process::id() {
+            return None;
+        }
+    }
+    // SAFETY: fd 3 is the convention's first inherited descriptor; a
+    // caller that set LISTEN_FDS/LISTEN_PID this way has already dup2'd a
+    // real, bound TCP listener there and cleared CLOEXEC on it (dup2's own
+    // fd never inherits the source fd's CLOEXEC flag).
+    Some(unsafe { std::net::TcpListener::from_raw_fd(LISTEN_FDS_START) })
+}
+
+/// Requirement 6: logs whether the socket was inherited or bound by
+/// address. Requirement 4: `bind` (from `$MCPHOST_BIND` or the default)
+/// still wins when no socket was inherited.
+pub async fn serve_configured(bind: SocketAddr, state: Arc<AppState>) -> anyhow::Result<()> {
+    if let Some(std_listener) = inherited_listener() {
+        std_listener.set_nonblocking(true)?;
+        let listener = tokio::net::TcpListener::from_std(std_listener)?;
+        tracing::info!(
+            addr = ?listener.local_addr().ok(),
+            "mcphost: socket inherited via LISTEN_FDS"
+        );
+        return serve_on_listener(listener, state).await;
+    }
+    tracing::info!(%bind, "mcphost: binding by address");
+    serve(bind, state).await
 }
