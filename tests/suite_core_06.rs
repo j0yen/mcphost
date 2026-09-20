@@ -276,6 +276,8 @@ mod mcphost_data_retention_ac06_disk_floor_refuses_writes;
 mod mcphost_data_retention_ac08_host_usage_lists_retention_windows;
 #[path = "mcphost_data_retention_ac09_prune_error_sets_last_prune_ok_false.rs"]
 mod mcphost_data_retention_ac09_prune_error_sets_last_prune_ok_false;
+#[path = "mcphost_data_retention_ac10_admin_prune_now_runs_one_cycle.rs"]
+mod mcphost_data_retention_ac10_admin_prune_now_runs_one_cycle;
 #[path = "mcphost_host_tool_deprecation_ac01_contract_dump_deterministic.rs"]
 mod mcphost_host_tool_deprecation_ac01_contract_dump_deterministic;
 #[path = "mcphost_host_tool_deprecation_ac02_removed_field_without_deprecation_fails.rs"]

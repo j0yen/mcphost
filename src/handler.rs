@@ -1685,6 +1685,12 @@ fn admin_tools() -> Vec<Tool> {
             schema(json!({"window": {"type": "string"}}), &[]),
         ),
         Tool::new(
+            "admin.prune_now",
+            "Run one retention-prune cycle immediately (the same cycle the nightly scheduler \
+             runs) and return its per-table deleted counts.",
+            schema(json!({}), &[]),
+        ),
+        Tool::new(
             "admin.tool_list",
             "List a specific tenant's published tools.",
             schema(json!({"tenant": {"type": "string"}}), &["tenant"]),
@@ -2238,6 +2244,7 @@ impl McpHostHandler {
                 admin::tenant_delete_by_prefix(&self.state, &args).await
             }
             "admin.usage" => admin::usage(&self.state, &args).await,
+            "admin.prune_now" => admin::prune_now(&self.state).await,
             "admin.tool_list" => admin::tool_list(&self.state, &args).await,
             "admin.tenant_verify_namespace" => {
                 admin::tenant_verify_namespace(&self.state, &args).await

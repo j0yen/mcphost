@@ -337,6 +337,18 @@ pub async fn usage(state: &AppState, args: &Value) -> Result<Value, AppError> {
     }))
 }
 
+/// P2 requirement 7 (AC10): run one retention-prune cycle on demand and
+/// return its per-table deleted counts -- the same [`crate::db::Db::prune_once`]
+/// the nightly scheduler calls.
+pub async fn prune_now(state: &AppState) -> Result<Value, AppError> {
+    let report = state.db.prune_once().await?;
+    Ok(json!({
+        "started_unix": report.started_unix,
+        "finished_unix": report.finished_unix,
+        "deleted": report.deleted,
+    }))
+}
+
 /// PRD-mcphost-sandbox-ready requirement 4 (AC5): re-runs the sandbox
 /// self-test on demand, on every registered kind that has one (only
 /// `python` does today -- see `Kind::sandbox_recheck`'s doc comment), and
