@@ -13,7 +13,7 @@ per this repo's own build contract. As of head_sha below that runner is
 the ccx53 AC8 was proved on (docs/benchmarks/checkcompat-race-ccx53-prove.txt),
 so this suite gate and AC8's prove are the same box and the same run.
 
-head_sha: 8b2aa6b72761cd264659eaf7d3afd52913a460a3
+head_sha: d1737817e9e7f7ef6663953db36ccc21c443c8ff
 
 cargo test --workspace:
   804 passed, 0 failed, 5 ignored (hardware/cache-dependent, same as

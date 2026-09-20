@@ -58,7 +58,7 @@ routed_evidence: cargo ran on 2.28.239.92 (32 cores) via `wm-build runner
 What the prove ran
 ------------------
 prove_command: wm-build runner exec --run 34 -- cargo test --workspace --no-fail-fast -- --test-threads=32
-head_sha: 8b2aa6b72761cd264659eaf7d3afd52913a460a3
+head_sha: d1737817e9e7f7ef6663953db36ccc21c443c8ff
 cargo_content_id: b7c2a7aec2ca1d28cd9509d3c1f5080b3a4385be
 
 `cargo_content_id` is `git ls-files -s -- src tests Cargo.toml |
@@ -95,15 +95,27 @@ prove done routed=true
 
 Bootstrap note (honest ordering)
 --------------------------------
-The first ccx53 run (10:31:10Z-10:32:45Z, commit 8b2aa6b) necessarily had
-five failures: this file did not exist yet, so its own four consumer tests
-failed, and AC7's suite-gate receipt still carried a pre-AC8 head_sha.
-Everything else, including both ac02/ac03 tests quoted above, was green in
-that run. This file and AC7's receipt were then written from that run's
-output and the numbers above come from the re-run on the same ccx53 with
-the receipts in place. Only docs/benchmarks/*.txt changed between those
-runs -- `cargo_content_id` is identical across all of them, which is
-exactly the invariant the consumer test enforces.
+A receipt cannot be written before the run it records, and its own
+consumer test reads it, so the ccx53 was used three times in one sitting
+(same box, same session, 10:26Z-10:45Z):
+
+  1. 10:31:10Z-10:32:45Z, commit 8b2aa6b -- the first `cargo test
+     --workspace -- --test-threads=32`. Everything green except this
+     file's four consumer tests (this file did not exist yet) and AC7's
+     head_sha check. Both ac02/ac03 `ok` lines quoted above come from
+     this run.
+  2. 10:36Z-10:38Z, same box -- full workspace with `--no-fail-fast` plus
+     `cargo clippy --all-targets -- -D warnings` (clean, exit 0). This is
+     where the receipt-independent counts and the Cargo.lock finding
+     (cargo rewrites it mid-build, hence its exclusion from
+     `cargo_content_id`) came from.
+  3. The run recorded in `prove_result` above: this receipt in place, at
+     this receipt's `head_sha`, whose `cargo_content_id` is the one
+     recomputed live by tests/checkcompat_race_ac08_real_ccx53_prove.rs.
+
+Between runs only docs/benchmarks/*.txt changed, so every run above
+compiled and ran the same cargo inputs -- which is the invariant
+`cargo_content_id` exists to make checkable rather than trusted.
 
 Re-run (`wm-build builder down --now`, `wm-build runner acquire --run <n>
 --set builder.type=ccx53`, sync, the prove_command above, then
