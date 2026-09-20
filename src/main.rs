@@ -504,6 +504,7 @@ async fn main() -> anyhow::Result<()> {
                 event_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
                 deprecations: Arc::new(deprecations),
                 disk_guard: mcphost::retention::DiskGuard::from_env(),
+                compat_token: std::env::var("MCPHOST_COMPAT_TOKEN").ok(),
             });
 
             // PRD-mcphost-runs-and-jobs P0 requirement 4 / open question:
@@ -528,7 +529,7 @@ async fn main() -> anyhow::Result<()> {
             // started once here alongside the other two background tasks.
             mcphost::retention::spawn_prune_scheduler((*state).clone());
 
-            mcphost::http::serve(bind, state).await
+            mcphost::http::serve_configured(bind, state).await
         }
     }
 }

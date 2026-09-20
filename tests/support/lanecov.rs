@@ -75,6 +75,16 @@ pub const UNROUTED_ALLOWLIST: &[&str] = &[
     "tests/fixtures/wasm/trap.wasm",
     "tests/fixtures/wasm/loop_forever.wasm",
     "tests/fixtures/wasm/oom.wasm",
+    // PRD-mcphost-checkcompat-port-race AC5: a soak-loop convenience
+    // wrapper around `cargo test checkcompat -- --test-threads=32` (the
+    // build's own 200x verification step, not something `cargo
+    // test`/`cargo clippy` themselves invoke). Proven by the same `cargo
+    // test --workspace` proof as any other `tests/**/*.rs` change (it
+    // only re-runs a subset of that same suite); no `scripts/**` lane
+    // exists yet (agent/proof-lanes.toml is read-only for the edit-agent,
+    // same rationale as the wasm fixtures above), so a real lane is left
+    // to a follow-on PRD.
+    "scripts/checkcompat-race-soak.sh",
 ];
 
 /// Compiles one lane's globs into a matchable set, or an error naming the

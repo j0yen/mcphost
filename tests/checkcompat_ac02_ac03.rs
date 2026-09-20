@@ -139,8 +139,13 @@ fn check_compat_fails_naming_the_step_when_the_previous_binary_cannot_come_up() 
         String::from_utf8_lossy(&output.stderr)
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
+    // PRD-mcphost-checkcompat-port-race requirement 3: a previous binary
+    // that exits before /healthz answers now names step `previous-up`
+    // (distinct from `spawn`, which is reserved for the previous binary
+    // never having launched at all) -- the only change this PRD makes to
+    // this file, replacing the helper `run()` calls internally.
     assert!(
-        stderr.contains("step 'spawn'"),
+        stderr.contains("step 'previous-up'"),
         "stderr should name the failing step, got: {stderr}"
     );
 

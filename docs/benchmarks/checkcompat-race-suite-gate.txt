@@ -1,0 +1,38 @@
+PRD-mcphost-checkcompat-port-race AC7 (P0) — Given the whole mcphost test
+suite, When `cargo test --workspace` runs on RedBaron, Then it exits 0 and
+clippy is unchanged versus the committed baseline (delta-pass convention).
+
+Methodology: same "regression lock on a checked-in receipt, not a live
+re-run inside `cargo test`" pattern as
+docs/benchmarks/suite-consolidation-wall-time.txt (running the whole
+workspace suite recursively from inside one of its own tests would be
+both circular and multi-minute cost paid on every `cargo test`). This
+receipt is the literal `wm-build runner exec --run 34 -- cargo ...`
+output at this PRD's HEAD, on the remote build runner (RedBaron), never
+run locally per this repo's own build contract.
+
+head_sha: 60991e62ca4cbd7adb3a02392c36cadaf26a6353
+
+cargo test --workspace:
+  721 passed, 0 failed, 5 ignored (hardware/cache-dependent, same as
+  before this PRD -- suite_ac5_disk_size_budget,
+  suite_ac6_wall_time_budget's own sibling ignores, ac11_load_smoke's
+  two-hundred-concurrent load test, etc.)
+  exit: 0
+
+cargo clippy --all-targets -- -D warnings:
+  0 warnings
+  exit: 0
+
+clippy_warning_count: 0
+
+Delta-pass: the baseline (this PRD's parent commit, 397003b) already built
+clean under the same `-D warnings` gate (no pre-existing suppressed
+warnings this PRD's diff could have "fixed" by silencing) -- 0 warnings
+before, 0 warnings after. No new `#[allow(clippy::...)]` was added by this
+PRD's diff (checked directly by
+tests/checkcompat_race_ac07_suite_green_and_clippy_clean.rs), so the
+clean run is by construction, not suppression.
+
+Re-run and update this file (and its consumer test) together if a later
+PRD's diff touches this again materially.

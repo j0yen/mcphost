@@ -214,7 +214,29 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # 162 -> 165 was the smallest tested raise (on top of data-retention's 162)
 # that re-collapses core's normal buckets to 2, landing the grand total
 # back at 10.
-MAX_PER_SUITE = {"core": 165, "sandbox": 60}
+#
+# PRD-mcphost-checkcompat-port-race (2026-09-20, rebased onto
+# tenant-data-export): a different mechanism than every entry above -- this
+# PRD's own 6 new `checkcompat_race_ac*` files all fold into the
+# pre-existing `checkcompat` area group (its stems share one prefix before
+# the first `_`), so core's *normal* bucket count didn't move on its own.
+# What moved is the exclusive-singleton count (`is_exclusive_global`):
+# `checkcompat_race_ac02_...rs` installs a global tracing subscriber (same
+# as `autherr_ac6`/`compat_ac13_ac14`/`sessionkey_ac17`/`synthetic_ac03`/
+# `tenant_delete_ac08` already do) to capture wait_ready's "foreign server
+# on port" log line, earning its own singleton binary same as theirs --
+# core-exclusive 5 -> 6, spawning an 11th suite binary on its own even with
+# core's *normal* buckets unchanged at 2. Collapsing those 2 normal buckets
+# to 1 (the only lever this cap has) needed a much bigger jump than prior
+# entries' +1..+10-file bumps: on top of tenant-data-export's 165 and core's
+# own organic growth since, the smallest tested raise that re-collapses
+# core's normal buckets to 1 is 327, landing the grand total back at 10
+# (1 normal + 6 exclusive + 3 sandbox). AC7's own follow-on file
+# (`checkcompat_race_ac07_suite_green_and_clippy_clean.rs`, still in the
+# `checkcompat` area group) fits inside this raise's existing margin. AC8's
+# follow-on file (`checkcompat_race_ac08_deferral_is_justified.rs`, same
+# `checkcompat` area group) also fits inside it.
+MAX_PER_SUITE = {"core": 327, "sandbox": 60}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

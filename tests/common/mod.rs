@@ -487,6 +487,7 @@ impl TestServer {
             event_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
             deprecations: std::sync::Arc::new(deprecations),
             disk_guard: mcphost::retention::DiskGuard::from_env(),
+            compat_token: None,
         });
 
         // PRD-mcphost-runs-and-jobs: every test server runs the real

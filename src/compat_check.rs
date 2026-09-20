@@ -15,11 +15,30 @@
 //! ([`CompatCheckFailure::step`]) otherwise. The scratch directory --
 //! including the copied database -- is removed either way; the live
 //! database is opened read-only and never written to.
+//!
+//! PRD-mcphost-checkcompat-port-race: the port the previous release binds
+//! is never merely "chosen" and hoped for -- [`bind_loopback_listener`]
+//! binds `127.0.0.1:0` and keeps the listener open until it hands the very
+//! same socket to the child as an inherited fd (`LISTEN_FDS=1`/
+//! `LISTEN_PID=<child>`, the systemd socket-activation convention; see
+//! `src/http.rs`'s `inherited_listener`), so no other process can ever
+//! bind that exact port in between (requirement 1). A random
+//! `MCPHOST_COMPAT_TOKEN` travels with the child in its env and
+//! [`wait_ready`] only accepts a `/healthz` response carrying that token
+//! back in `X-Mcphost-Compat-Token` (requirement 2) -- a foreign process
+//! answering on the same address can no longer be mistaken for the child
+//! this check actually spawned. `wait_ready` also polls the child's own
+//! liveness (`Child::try_wait`) every iteration, so a previous release that
+//! never comes up (like `/bin/false`) fails in one poll interval instead of
+//! after a 10s timeout (requirement 3).
 
+use std::net::SocketAddr;
+use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use rand::RngCore;
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use tokio::process::{Child, Command};
@@ -28,9 +47,9 @@ use crate::db::Db;
 
 /// Which step of the check failed, plus a human-readable detail. `step`
 /// values are stable strings (`"copy"`, `"migrate"`, `"spawn"`,
-/// `"initialize"`, `"tools_list"`, `"signup"`, `"tools_call"`, `"healthz"`)
-/// so a caller (the CLI, or `mcphost-deploy redeploy`) can name the exact
-/// failing probe per requirement 2/AC3.
+/// `"previous-up"`, `"initialize"`, `"tools_list"`, `"signup"`,
+/// `"tools_call"`, `"healthz"`) so a caller (the CLI, or `mcphost-deploy
+/// redeploy`) can name the exact failing probe per requirement 2/AC3.
 #[derive(Debug)]
 pub struct CompatCheckFailure {
     pub step: &'static str,
@@ -100,14 +119,18 @@ pub async fn run(live_db_path: &Path, previous_binary: &Path) -> Result<(), Comp
         })?;
     }
 
-    let port = free_loopback_port().map_err(|e| CompatCheckFailure {
-        step: "spawn",
-        detail: format!("could not find a free loopback port: {e}"),
-    })?;
-    let base_url = format!("http://127.0.0.1:{port}");
+    let bind_plan = choose_bind_plan()?;
+    let base_url = bind_plan.base_url();
+    let port = bind_plan.port();
+    let token = generate_compat_token();
 
-    let mut child = spawn_previous(previous_binary, &scratch.0, port)?;
-    let result = probe_previous(&base_url).await;
+    let mut child = spawn_previous(previous_binary, &scratch.0, bind_plan, &token)?;
+    tracing::info!(
+        pid = ?child.id(),
+        port,
+        "check-compat: spawned previous release"
+    );
+    let result = probe_previous(&base_url, port, &token, &mut child).await;
     stop(&mut child).await;
 
     result
@@ -152,32 +175,154 @@ fn copy_live_db(src: &Path, dest: &Path) -> Result<(), CompatCheckFailure> {
     Ok(())
 }
 
-fn free_loopback_port() -> std::io::Result<u16> {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
-    let port = listener.local_addr()?.port();
-    drop(listener); // released immediately before the subprocess binds it
-    Ok(port)
+/// Bind the loopback listener the previous release will serve on. Kept
+/// open (never dropped-then-rebound) all the way through to
+/// [`spawn_previous`] handing its fd to the child -- requirement 1's "no
+/// window between choosing a port and binding it".
+fn bind_loopback_listener() -> std::io::Result<std::net::TcpListener> {
+    std::net::TcpListener::bind("127.0.0.1:0")
+}
+
+/// A random 128-bit token, hex-encoded, unique per `check_compat` run
+/// (requirement 2). Never logged; only compared.
+fn generate_compat_token() -> String {
+    let mut bytes = [0u8; 16];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// How the previous release will get its listening socket: an inherited
+/// fd this process bound itself (the default, race-free path -- goal 2),
+/// or a plain address to bind by itself (requirement 4: `$MCPHOST_BIND`
+/// set explicitly by the caller keeps working, unchanged, for callers that
+/// still pass a port).
+enum BindPlan {
+    Inherited {
+        listener: std::net::TcpListener,
+        port: u16,
+    },
+    Explicit(SocketAddr),
+}
+
+impl BindPlan {
+    fn port(&self) -> u16 {
+        match self {
+            BindPlan::Inherited { port, .. } => *port,
+            BindPlan::Explicit(addr) => addr.port(),
+        }
+    }
+
+    fn base_url(&self) -> String {
+        match self {
+            BindPlan::Inherited { port, .. } => format!("http://127.0.0.1:{port}"),
+            BindPlan::Explicit(addr) => format!("http://{addr}"),
+        }
+    }
+}
+
+fn choose_bind_plan() -> Result<BindPlan, CompatCheckFailure> {
+    if let Ok(explicit) = std::env::var("MCPHOST_BIND") {
+        let addr: SocketAddr = explicit.trim().parse().map_err(|e| CompatCheckFailure {
+            step: "spawn",
+            detail: format!("$MCPHOST_BIND '{explicit}' is not a valid address: {e}"),
+        })?;
+        tracing::info!(
+            %addr,
+            "check-compat: binding previous release by address (MCPHOST_BIND set)"
+        );
+        return Ok(BindPlan::Explicit(addr));
+    }
+    let listener = bind_loopback_listener().map_err(|e| CompatCheckFailure {
+        step: "spawn",
+        detail: format!("could not bind a loopback listener: {e}"),
+    })?;
+    let port = listener
+        .local_addr()
+        .map_err(|e| CompatCheckFailure {
+            step: "spawn",
+            detail: format!("could not read the bound listener's address: {e}"),
+        })?
+        .port();
+    tracing::info!(port, "check-compat: binding previous release via an inherited listener");
+    Ok(BindPlan::Inherited { listener, port })
+}
+
+/// Fd 3 -- `$LISTEN_FDS_START` in the systemd socket-activation convention.
+const LISTEN_FDS_START: std::os::fd::RawFd = 3;
+
+/// Set `$LISTEN_PID` to this (about-to-be-exec'd) process's own pid,
+/// without allocating -- called from [`spawn_previous`]'s `pre_exec`
+/// closure, which runs strictly between `fork` and `exec` in the freshly
+/// forked, single-threaded child (the exact same window systemd's own
+/// service manager uses to set this variable for the units it activates).
+fn set_listen_pid_to_self() -> std::io::Result<()> {
+    // SAFETY: getpid() takes no arguments and cannot fail.
+    let pid = unsafe { libc::getpid() };
+    let mut digits = [0u8; 10];
+    let mut n = pid as u32;
+    let mut i = digits.len();
+    loop {
+        i -= 1;
+        digits[i] = b'0' + (n % 10) as u8;
+        n /= 10;
+        if n == 0 {
+            break;
+        }
+    }
+    let mut value = [0u8; 11]; // up to 10 digits + nul terminator
+    let len = digits.len() - i;
+    value[..len].copy_from_slice(&digits[i..]);
+    // SAFETY: `value` is nul-terminated ASCII digits, `c"LISTEN_PID"` is a static nul-terminated literal; setenv is called once, synchronously, before this process ever execs.
+    let rc = unsafe { libc::setenv(c"LISTEN_PID".as_ptr(), value.as_ptr().cast(), 1) };
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
 }
 
 /// Spawn the previous release's binary against the scratch copy. Per
 /// requirement 2's technical considerations: reuse the caller's env
 /// contract (`/etc/mcphost/env`, already exported into this process's
-/// environment by the deploy tool) with only `MCPHOST_DATA_DIR` and
-/// `MCPHOST_BIND` overridden.
-fn spawn_previous(bin: &Path, data_dir: &Path, port: u16) -> Result<Child, CompatCheckFailure> {
-    Command::new(bin)
-        .arg("serve")
+/// environment by the deploy tool) with only `MCPHOST_DATA_DIR`,
+/// `MCPHOST_COMPAT_TOKEN`, and the bind plan's env overridden.
+fn spawn_previous(
+    bin: &Path,
+    data_dir: &Path,
+    bind_plan: BindPlan,
+    token: &str,
+) -> Result<Child, CompatCheckFailure> {
+    let mut cmd = Command::new(bin);
+    cmd.arg("serve")
         .env("MCPHOST_DATA_DIR", data_dir)
-        .env("MCPHOST_BIND", format!("127.0.0.1:{port}"))
+        .env("MCPHOST_COMPAT_TOKEN", token)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| CompatCheckFailure {
-            step: "spawn",
-            detail: format!("failed to spawn {}: {e}", bin.display()),
-        })
+        .kill_on_drop(true);
+
+    match bind_plan {
+        BindPlan::Explicit(addr) => {
+            cmd.env("MCPHOST_BIND", addr.to_string());
+        }
+        BindPlan::Inherited { listener, .. } => {
+            cmd.env("LISTEN_FDS", "1");
+            // SAFETY: this closure runs strictly between fork and exec in the freshly forked, single-threaded child; `dup2` and `setenv` (inside `set_listen_pid_to_self`) are the same primitives systemd's own service manager uses to implement this exact convention. `listener` is moved in so its fd stays open (and thus reserved) across the fork.
+            unsafe {
+                cmd.pre_exec(move || {
+                    if libc::dup2(listener.as_raw_fd(), LISTEN_FDS_START) < 0 {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    set_listen_pid_to_self()?;
+                    Ok(())
+                });
+            }
+        }
+    }
+
+    cmd.spawn().map_err(|e| CompatCheckFailure {
+        step: "spawn",
+        detail: format!("failed to spawn {}: {e}", bin.display()),
+    })
 }
 
 async fn stop(child: &mut Child) {
@@ -188,21 +333,102 @@ async fn stop(child: &mut Child) {
 const READY_TIMEOUT: Duration = Duration::from_secs(10);
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
 
-async fn wait_ready(client: &reqwest::Client, base_url: &str) -> Result<(), CompatCheckFailure> {
+/// Poll `{base_url}/healthz` until it answers with our own
+/// `X-Mcphost-Compat-Token` (requirement 2), the child exits (requirement
+/// 3 -- checked first, every iteration, so a previous release that can
+/// never come up fails in one poll interval instead of after
+/// `READY_TIMEOUT`), or `READY_TIMEOUT` elapses.
+async fn wait_ready(
+    client: &reqwest::Client,
+    base_url: &str,
+    port: u16,
+    token: &str,
+    child: &mut Child,
+) -> Result<(), CompatCheckFailure> {
     let deadline = Instant::now() + READY_TIMEOUT;
     loop {
+        if let Some(status) = child.try_wait().map_err(|e| CompatCheckFailure {
+            step: "previous-up",
+            detail: format!("failed to poll the previous release's process: {e}"),
+        })? {
+            tracing::error!(
+                exit_status = %status,
+                "previous release exited before healthz became ready"
+            );
+            return Err(CompatCheckFailure {
+                step: "previous-up",
+                detail: format!(
+                    "previous release exited before healthz became ready ({status})"
+                ),
+            });
+        }
+
         if let Ok(resp) = client.get(format!("{base_url}/healthz")).send().await
             && resp.status().is_success()
         {
-            return Ok(());
+            let has_our_token = resp
+                .headers()
+                .get("X-Mcphost-Compat-Token")
+                .and_then(|v| v.to_str().ok())
+                .is_some_and(|v| v == token);
+            if has_our_token {
+                return Ok(());
+            }
+            tracing::warn!(
+                "healthz answered without our token (foreign server on port {port})"
+            );
         }
+
         if Instant::now() >= deadline {
             return Err(CompatCheckFailure {
-                step: "spawn",
-                detail: "previous binary did not answer /healthz within 10s".into(),
+                step: "previous-up",
+                detail: "previous release did not answer /healthz with our token within 10s"
+                    .into(),
             });
         }
         tokio::time::sleep(POLL_INTERVAL).await;
+    }
+}
+
+/// Test-only entry points into this module's normally-private pieces --
+/// PRD-mcphost-checkcompat-port-race's stress/foreign-server/inherited-fd
+/// tests need to drive `wait_ready`/`spawn_previous` directly rather than
+/// only through the full `mcphost migrate --check-compat` subprocess (see
+/// `tests/checkcompat_race_ac*.rs`). Gated exactly like
+/// `billing::FakeBillingClient` and friends.
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support {
+    use super::*;
+
+    pub fn bind_loopback_listener() -> std::io::Result<std::net::TcpListener> {
+        super::bind_loopback_listener()
+    }
+
+    pub fn generate_compat_token() -> String {
+        super::generate_compat_token()
+    }
+
+    /// Spawn `bin serve` against `data_dir`, handing it `listener` as an
+    /// inherited socket and `token` as `$MCPHOST_COMPAT_TOKEN` -- the same
+    /// path `run()` takes when the caller hasn't set `$MCPHOST_BIND`.
+    pub fn spawn_previous_inherited(
+        bin: &Path,
+        data_dir: &Path,
+        listener: std::net::TcpListener,
+        token: &str,
+    ) -> Result<Child, CompatCheckFailure> {
+        let port = listener.local_addr().map(|a| a.port()).unwrap_or(0);
+        super::spawn_previous(bin, data_dir, BindPlan::Inherited { listener, port }, token)
+    }
+
+    pub async fn wait_ready(
+        base_url: &str,
+        port: u16,
+        token: &str,
+        child: &mut Child,
+    ) -> Result<(), CompatCheckFailure> {
+        let client = reqwest::Client::new();
+        super::wait_ready(&client, base_url, port, token, child).await
     }
 }
 
@@ -304,9 +530,15 @@ fn extract_structured(call_result: &Value) -> Value {
     Value::Null
 }
 
-async fn probe_previous(base_url: &str) -> Result<(), CompatCheckFailure> {
+async fn probe_previous(
+    base_url: &str,
+    port: u16,
+    token: &str,
+    child: &mut Child,
+) -> Result<(), CompatCheckFailure> {
     let client = reqwest::Client::new();
-    wait_ready(&client, base_url).await?;
+    wait_ready(&client, base_url, port, token, child).await?;
+    tracing::info!(port, "check-compat: previous release answered healthz with our token");
 
     rpc_call(
         &client,

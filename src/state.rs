@@ -186,6 +186,14 @@ pub struct AppState {
     /// before writing, and `/healthz`'s `disk_ok` reads -- see
     /// [`crate::retention::DiskGuard`].
     pub disk_guard: crate::retention::DiskGuard,
+    /// PRD-mcphost-checkcompat-port-race requirement 2/5: `Some` only when
+    /// `$MCPHOST_COMPAT_TOKEN` was set in this process's own env at
+    /// startup (only `compat_check::spawn_previous` sets it, for the
+    /// previous release it spawns) -- `/healthz` echoes it back in
+    /// `X-Mcphost-Compat-Token` so `check_compat`'s `wait_ready` can prove
+    /// the response came from the process it actually spawned, not a
+    /// foreign server that happens to answer on the same address.
+    pub compat_token: Option<String>,
 }
 
 pub fn now_unix() -> i64 {
