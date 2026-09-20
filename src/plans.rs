@@ -149,6 +149,13 @@ pub struct Plan {
     /// plan's own default (3) when a hand-edited `plans.toml` predates this
     /// key.
     pub urgent_per_day: i64,
+    /// PRD-mcphost-tenant-data-export requirement 2 / Open Questions
+    /// ("Archive size cap per plan, assumed: free 50 MB, pro 1 GB"): the
+    /// largest `host.export` archive this plan's tenants may produce.
+    /// Defaults to the `free` plan's own default (50 MiB) when a
+    /// hand-edited `plans.toml` predates this key, same tolerant-parse
+    /// convention as every other field above.
+    pub export_bytes_max: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -212,6 +219,9 @@ impl PlanCatalog {
                     // "free plan's urgent_per_day is 3".
                     contact_requests_per_day: 20,
                     urgent_per_day: 3,
+                    // PRD-mcphost-tenant-data-export Open Questions:
+                    // "free 50 MB".
+                    export_bytes_max: 50 * 1024 * 1024,
                 },
                 Plan {
                     name: "pro".to_string(),
@@ -268,6 +278,9 @@ impl PlanCatalog {
                     // 100 (~33x) for urgent_per_day.
                     contact_requests_per_day: 500,
                     urgent_per_day: 100,
+                    // PRD-mcphost-tenant-data-export Open Questions:
+                    // "pro 1 GB".
+                    export_bytes_max: 1024 * 1024 * 1024,
                 },
             ],
         }
@@ -359,6 +372,7 @@ impl PlanCatalog {
                 p.contact_requests_per_day
             ));
             out.push_str(&format!("urgent_per_day = {}\n", p.urgent_per_day));
+            out.push_str(&format!("export_bytes_max = {}\n", p.export_bytes_max));
             out.push('\n');
         }
         out
@@ -429,6 +443,7 @@ impl PlanCatalog {
                 "recipients_per_msg_max" => builder.recipients_per_msg_max = Some(int_value()),
                 "contact_requests_per_day" => builder.contact_requests_per_day = Some(int_value()),
                 "urgent_per_day" => builder.urgent_per_day = Some(int_value()),
+                "export_bytes_max" => builder.export_bytes_max = Some(int_value()),
                 _ => {}
             }
         }
@@ -473,6 +488,7 @@ struct PlanBuilder {
     recipients_per_msg_max: Option<i64>,
     contact_requests_per_day: Option<i64>,
     urgent_per_day: Option<i64>,
+    export_bytes_max: Option<i64>,
 }
 
 impl PlanBuilder {
@@ -532,6 +548,10 @@ impl PlanBuilder {
             // tolerant-parse rationale as every other field above.
             contact_requests_per_day: self.contact_requests_per_day.unwrap_or(20),
             urgent_per_day: self.urgent_per_day.unwrap_or(3),
+            // PRD-mcphost-tenant-data-export: a `plans.toml` predating this
+            // key gets the `free` plan's own default (50 MiB), same
+            // tolerant-parse rationale as every other field above.
+            export_bytes_max: self.export_bytes_max.unwrap_or(50 * 1024 * 1024),
         })
     }
 }

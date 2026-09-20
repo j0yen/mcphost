@@ -690,6 +690,30 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &[],
             ),
         ),
+        // PRD-mcphost-tenant-data-export P0 requirements 1-3: the pair of
+        // "leave the way you joined" (host.self_offboard) is "take what you
+        // made" -- a background job (see `export.rs`) that archives this
+        // tenant's tool sources, state, secret names (never values), runs
+        // and threads, downloadable by signed URL for 24h.
+        Tool::new(
+            "host.export",
+            "Build a downloadable .tar.gz of everything this tenant owns: tool sources, \
+             state, secret NAMES (never values), run/thread history and usage, plus a \
+             manifest.json re-publishable via host.tool_publish. Runs as a background job \
+             (poll host.runs.get with the returned run_id) -- calling this again while one is \
+             already running returns that same run_id rather than starting a second one. The \
+             finished run's result carries a download_url valid 24 hours.",
+            host_schema(
+                json!({
+                    "tools": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Local names of the tools to include; every tool when omitted.",
+                    },
+                }),
+                &[],
+            ),
+        ),
         // PRD-mcphost-sharing P0 requirement 1: a tool can be made
         // `public` (any tenant) or `group` (a named allow-list this
         // tenant owns) -- see `sharing.rs`.
@@ -2160,6 +2184,7 @@ impl McpHostHandler {
             "host.tool_call" => self.host_tool_call(tenant, args).await,
             "host.usage" => control::usage(&self.state, tenant, &args).await,
             "host.changelog" => control::changelog(&self.state, &args),
+            "host.export" => crate::export::export(&self.state, tenant, &args).await,
             "host.tool_share" => crate::sharing::tool_share(&self.state, tenant, &args).await,
             "host.tool_unshare" => crate::sharing::tool_unshare(&self.state, tenant, &args).await,
             "host.group.create" => crate::sharing::group_create(&self.state, tenant, &args).await,

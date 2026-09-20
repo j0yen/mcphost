@@ -78,6 +78,13 @@ wasmtime-wasi = "46.0.3"
 # the spec JSON (the same transport python's `source` field already uses for
 # text, per this PRD's technical considerations) -- needed only to decode it.
 base64 = "0.22"
+# PRD-mcphost-tenant-data-export P0 requirement 1: `host.export`'s archive
+# is a real `.tar.gz` -- unlike the small hand-rolled encodings elsewhere in
+# this crate (ULIDs, RFC 3339, HMAC-SHA256), a correct tar layout plus DEFLATE
+# framing/CRC32 is enough surface that reusing audited crates beats
+# duplicating it, the same call `sha1` above already made for HMAC-SHA1.
+tar = "0.4"
+flate2 = "1"
 
 [features]
 # PRD-mcphost-classify-precision: gates PythonKind's test-only selftest
