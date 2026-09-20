@@ -557,7 +557,30 @@ pub fn whoami(tenant: &Tenant) -> Value {
         "client_version": tenant.client_version,
         "key_age_s": key_age_s,
         "key_rotated_at": tenant.key_rotated_unix,
+        // PRD-mcphost-host-tool-deprecation P1 requirement 6 / AC7: the
+        // committed contract's own version, so an agent already calling
+        // host.whoami for its identity learns which contracts/host-tools.v<N>.json
+        // it's coding against with no extra round trip.
+        "contract_version": crate::api_contract::CONTRACT_VERSION,
     })
+}
+
+/// PRD-mcphost-host-tool-deprecation requirement 4 / AC6: `host.changelog
+/// {since?}` -- additions, announced deprecations, and completed removals
+/// in the host.*/billing.* surface, derived from the live registry (this
+/// tenant's actual `state.kinds`, not the fixed `KindRegistry::with_builtin()`
+/// [`crate::api_contract::dump_contract`]'s own committed-contract use
+/// picks, since this call answers "what does THIS deployment offer now",
+/// same distinction `llms_txt::tenant_tool_names`'s doc already draws for
+/// the analogous name-set question) and `state.deprecations`. Pure and
+/// synchronous -- no DB read needed beyond what's already in `state`.
+pub fn changelog(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let since = args.get("since").and_then(Value::as_str).unwrap_or("0.0.0");
+    Ok(crate::api_contract::changelog(
+        &state.kinds,
+        &state.deprecations,
+        since,
+    ))
 }
 
 pub async fn tool_publish(

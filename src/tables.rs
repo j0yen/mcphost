@@ -783,6 +783,7 @@ mod tests {
             scheduler: crate::triggers::SchedulerStatus::new(),
             event_counters: crate::hooks::EventCounters::new(),
             event_rate_limiter: crate::hooks::EventRateLimiter::new(),
+            deprecations: std::sync::Arc::new(Vec::new()),
         }
     }
 

@@ -260,6 +260,22 @@ mod lanecov_ac06_malformed_lane_fails_naming_it;
 mod lanecov_ac07_docs_document_adding_a_lane;
 #[path = "limits_ac05_signup_burst_atomic.rs"]
 mod limits_ac05_signup_burst_atomic;
+#[path = "mcphost_host_tool_deprecation_ac01_contract_dump_deterministic.rs"]
+mod mcphost_host_tool_deprecation_ac01_contract_dump_deterministic;
+#[path = "mcphost_host_tool_deprecation_ac02_removed_field_without_deprecation_fails.rs"]
+mod mcphost_host_tool_deprecation_ac02_removed_field_without_deprecation_fails;
+#[path = "mcphost_host_tool_deprecation_ac03_deprecation_entry_marks_tools_list.rs"]
+mod mcphost_host_tool_deprecation_ac03_deprecation_entry_marks_tools_list;
+#[path = "mcphost_host_tool_deprecation_ac04_deprecated_field_call_envelope.rs"]
+mod mcphost_host_tool_deprecation_ac04_deprecated_field_call_envelope;
+#[path = "mcphost_host_tool_deprecation_ac05_removal_gated_on_sunset.rs"]
+mod mcphost_host_tool_deprecation_ac05_removal_gated_on_sunset;
+#[path = "mcphost_host_tool_deprecation_ac06_changelog_lists_additions.rs"]
+mod mcphost_host_tool_deprecation_ac06_changelog_lists_additions;
+#[path = "mcphost_host_tool_deprecation_ac07_whoami_contract_version.rs"]
+mod mcphost_host_tool_deprecation_ac07_whoami_contract_version;
+#[path = "mcphost_host_tool_deprecation_ac08_llms_txt_links_contract.rs"]
+mod mcphost_host_tool_deprecation_ac08_llms_txt_links_contract;
 #[path = "mcphost_share_a_tool_not_a_key_ac01_llms_txt_section.rs"]
 mod mcphost_share_a_tool_not_a_key_ac01_llms_txt_section;
 #[path = "mcphost_share_a_tool_not_a_key_ac02_caller_call_returns_upstream_response.rs"]

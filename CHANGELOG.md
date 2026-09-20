@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.58.1 — 2026-09-20
+
+The `host.*`/`billing.*` tool surface is now a versioned, committed contract (`contracts/host-tools.v1.json`, `mcphost contract dump`) instead of whatever the registry happened to be at any given release: a `cargo test` diffs the live registry against it, and a removed tool, removed field, or narrowed type (type change, enum shrink, newly required) fails naming the path unless `contracts/deprecations.json` carries a `{path, since, sunset, replacement}` entry with at least a 60-day lead time, and even then a real removal is only allowed once `sunset` has passed. A live deprecation entry annotates the affected tool or field with `x-deprecated` in `tools/list` (description and schema both), and a call that actually uses a deprecated field gets a `deprecations` note in its result envelope. New `host.changelog({since?})` lists what's changed -- additions, still-live deprecations, and completed removals -- derived from the same contract; `host.whoami` gains `contract_version`; `www/llms.txt` links the current contract file. `contracts/deprecations.json` ships empty: v1 is the current surface, no deprecations at ship.
+
+PRD-mcphost-host-tool-deprecation AC1-AC8.
+
 ## v0.57.3 — 2026-09-19
 
 `www/llms.txt` gains a "Share a tool, not a key" recipe: the six calls (`host.secret_set`, `host.tool_publish`, `host.group.create`, `host.tool_share`, `host.group.add`, `host.tool_call`) a team lead's agent uses to delegate a paid-API tool to teammates without ever handing out the key, plus a `visibility=public` variant explaining why group sharing is the default. `examples/share-a-tool/proof.sh` runs the recipe end to end against two fresh tenants and a self-started local mock upstream (no jq, no real paid key), proving the caller's call reaches the upstream, the caller's `host.secret_list` is empty with no secret leak, and `host.group.remove` revokes the caller while the owner keeps working; both tenants' signups carry `x-mcphost-synthetic: recipe:share-a-tool`. `examples/share-a-tool/synthorg-task.yaml` proposes a matching consumer task for RedBaron's mcphost corpus. Zero `src/` changes -- every primitive this composes already shipped.

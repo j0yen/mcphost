@@ -3,6 +3,7 @@
 //! types and the plain `serde_json::Value` business logic in `control.rs`
 //! and `admin.rs`.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -373,6 +374,70 @@ pub fn llms_txt_tool_names(kinds: &KindRegistry) -> Vec<String> {
         .collect()
 }
 
+/// PRD-mcphost-host-tool-deprecation requirement 1: the same authenticated
+/// tool-descriptor set [`llms_txt_tool_names`] builds names from, exposed
+/// here with the full [`Tool`] (schema included) for
+/// [`crate::api_contract::dump_contract`]'s AC1 contract dump and
+/// `host.changelog`'s AC6 addition list. Pure and synchronous, same reason
+/// as `llms_txt_tool_names` -- no `AppState`, no DB.
+pub fn host_tool_descriptors(kinds: &KindRegistry) -> Vec<Tool> {
+    host_tools(kinds, true)
+}
+
+/// PRD-mcphost-host-tool-deprecation requirement 3 / AC3: mutates
+/// `tools` in place so every deprecated tool or field carries an
+/// `x-deprecated` object (on the tool's top-level schema for a whole-tool
+/// entry, on the specific `properties.<field>` sub-schema for a
+/// single-level field entry) and a `[DEPRECATED ...]` note prepended to
+/// its description -- the exact two places requirement 3 names ("in the
+/// `description` and in an `x-deprecated` object"). A no-op when
+/// `deprecations` is empty (the committed `contracts/deprecations.json`,
+/// today). Called once in `list_tools`, after every branch has assembled
+/// its own `tools` vec, so every auth state sees the same annotations.
+fn annotate_deprecated_tools(tools: &mut [Tool], deprecations: &[crate::api_contract::Deprecation]) {
+    for tool in tools.iter_mut() {
+        let name = tool.name.to_string();
+        for dep in deprecations {
+            let note = format!(
+                "[DEPRECATED since {}, sunset {}: use {} instead] ",
+                dep.since, dep.sunset, dep.replacement
+            );
+            let x_deprecated = json!({
+                "since": dep.since,
+                "sunset": dep.sunset,
+                "replacement": dep.replacement,
+            });
+            if dep.path == name {
+                let existing = tool.description.clone().unwrap_or_default();
+                tool.description = Some(Cow::Owned(format!("{note}{existing}")));
+                Arc::make_mut(&mut tool.input_schema).insert("x-deprecated".to_string(), x_deprecated);
+            } else if let Some(field) = dep.path.strip_prefix(&format!("{name}.")) {
+                if field.contains('.') {
+                    // Only single-level fields are annotated -- see
+                    // `api_contract::diff_properties`'s own "flat schema"
+                    // doc for why this crate's descriptors never need more.
+                    continue;
+                }
+                let schema = Arc::make_mut(&mut tool.input_schema);
+                if let Some(field_schema) = schema
+                    .get_mut("properties")
+                    .and_then(Value::as_object_mut)
+                    .and_then(|props| props.get_mut(field))
+                    .and_then(Value::as_object_mut)
+                {
+                    let existing = field_schema
+                        .get("description")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string();
+                    field_schema.insert("description".to_string(), json!(format!("{note}{existing}")));
+                    field_schema.insert("x-deprecated".to_string(), x_deprecated);
+                }
+            }
+        }
+    }
+}
+
 /// PRD-mcphost-tool-test AC9: `host.spec_test`, unlike every other `host.*`
 /// descriptor, must be absent from `tools/list` for an anonymous/invalid
 /// caller (present, and callable, only once authenticated) -- `authenticated`
@@ -600,6 +665,26 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                     "window": {
                         "type": "string",
                         "description": "Time window to summarize, e.g. \"24h\"; default 24h.",
+                    },
+                }),
+                &[],
+            ),
+        ),
+        // PRD-mcphost-host-tool-deprecation requirement 4 / AC6: what
+        // changed in the host.*/billing.* surface itself -- additions,
+        // announced deprecations, and completed removals, derived from
+        // the same contract dump `mcphost contract dump` writes -- see
+        // `api_contract::changelog`.
+        Tool::new(
+            "host.changelog",
+            "List what changed in the host.*/billing.* tool surface -- additions, \
+             deprecations, and removals -- since an optional version. Read-only.",
+            host_schema(
+                json!({
+                    "since": {
+                        "type": "string",
+                        "description": "Only list changes after this version, e.g. \"0.57.0\". \
+                            Omit to list every tracked change.",
                     },
                 }),
                 &[],
@@ -2066,6 +2151,7 @@ impl McpHostHandler {
             "host.tool_run" => self.tool_run(tenant, args).await,
             "host.tool_call" => self.host_tool_call(tenant, args).await,
             "host.usage" => control::usage(&self.state, tenant, &args).await,
+            "host.changelog" => control::changelog(&self.state, &args),
             "host.tool_share" => crate::sharing::tool_share(&self.state, tenant, &args).await,
             "host.tool_unshare" => crate::sharing::tool_unshare(&self.state, tenant, &args).await,
             "host.group.create" => crate::sharing::group_create(&self.state, tenant, &args).await,
@@ -3242,7 +3328,7 @@ impl ServerHandler for McpHostHandler {
         // tests but silently drop the fields the next time an `Auth`
         // variant is added -- see the anonymous/admin branches this
         // replaced, which did exactly that.
-        let (tools, ttl_ms) = match auth {
+        let (mut tools, ttl_ms) = match auth {
             // PRD-mcphost-session-key requirement 1 / AC1-3: the `host.*`
             // control plane (and `host.tool_call`) is discoverable before
             // signup -- an anonymous or invalid-bearer caller cannot attach
@@ -3304,6 +3390,7 @@ impl ServerHandler for McpHostHandler {
                 (tools, ttl_ms)
             }
         };
+        annotate_deprecated_tools(&mut tools, &self.state.deprecations);
         Ok(ListToolsResult::with_all_items(tools)
             .with_ttl_ms(ttl_ms)
             .with_cache_scope(CacheScope::Private))
@@ -3364,6 +3451,12 @@ impl ServerHandler for McpHostHandler {
         // arguments that can no longer carry the key, at any depth (AC19),
         // rather than each callee having to remember to do it itself.
         let args = crate::secrets::redact_keys(&raw_args, &["tenant_key"]);
+        // PRD-mcphost-host-tool-deprecation requirement 3 / AC4: computed
+        // from `args` before the dispatch match below moves it into
+        // whichever arm handles `body_name` -- applied to the successful
+        // result after the match instead.
+        let deprecation_notices =
+            crate::api_contract::deprecation_notices(&body_name, &args, &self.state.deprecations);
 
         let outcome: Result<Value, AppError> = match (&auth, body_name.as_str()) {
             (_, "signup") => {
@@ -3501,7 +3594,14 @@ impl ServerHandler for McpHostHandler {
         };
 
         match outcome {
-            Ok(value) => Ok(CallToolResponse::from(CallToolResult::structured(value))),
+            Ok(mut value) => {
+                if !deprecation_notices.is_empty()
+                    && let Some(obj) = value.as_object_mut()
+                {
+                    obj.insert("deprecations".to_string(), json!(deprecation_notices));
+                }
+                Ok(CallToolResponse::from(CallToolResult::structured(value)))
+            }
             Err(app_err) => Err(app_err.into_error_data()),
         }
     }

@@ -204,7 +204,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        77,
+        78,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the nine host.state.* tools (PRD-mcphost-tenant-state) \
@@ -216,7 +216,8 @@ async fn unauthenticated_tools_list_is_signup_only() {
          (PRD-mcphost-agent-directory) + the eight host.msg.* tools \
          (PRD-mcphost-agent-inbox, PRD-mcphost-agent-wake) + the seven \
          host.agent.contact_*/mute/unmute tools (PRD-mcphost-agent-consent) + \
-         host.self_offboard (PRD-mcphost-tenant-self-offboard): \
+         host.self_offboard (PRD-mcphost-tenant-self-offboard) + \
+         host.changelog (PRD-mcphost-host-tool-deprecation): \
          {tool_names:?}"
     );
 }

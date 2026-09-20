@@ -183,7 +183,18 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # `suite_ac1_ten_binaries_and_names_preserved` P0 assertion. 146 -> 150 was
 # the smallest tested raise (on top of share-a-tool-not-a-key's 146) that
 # re-collapses core's normal buckets to 2, landing the grand total back at 10.
-MAX_PER_SUITE = {"core": 150, "sandbox": 60}
+#
+# PRD-mcphost-host-tool-deprecation (2026-09-20, rebased onto wasm-kind):
+# this PRD's own up to 8 new `mcphost_host_tool_deprecation_ac*` files (one
+# per non-deferred AC, same per-AC consolidation convention) tip core's
+# normal buckets from 2 to 3 again once more than one of them lands,
+# spawning an 11th suite binary -- caught by the same
+# `suite_ac1_ten_binaries_and_names_preserved` P0 assertion. 150 -> 158
+# (149 pre-existing core-normal files + this PRD's 8 own, plus a 1-file
+# margin) was chosen up front to cover the whole PRD's file count in one
+# raise rather than one per AC, re-collapsing core's normal buckets to 2
+# and landing the grand total back at 10 for every AC in between.
+MAX_PER_SUITE = {"core": 158, "sandbox": 60}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"
