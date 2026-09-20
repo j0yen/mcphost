@@ -78,9 +78,14 @@ fn is_admin_request(state: &AppState, headers: &HeaderMap) -> bool {
 /// "no header" from "wrong header".
 async fn healthz(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl IntoResponse {
     let db_ok = state.db.is_writable().await;
+    // PRD-mcphost-data-retention requirement 4 (AC6): the disk-floor guard
+    // is as much a liveness signal as `db_ok` -- a box below the floor
+    // refuses every write the same way an unwritable database does, so it
+    // folds into the anonymous `ok` the same way (AC14 precedent).
+    let disk_ok = state.disk_guard.is_ok(state.db.data_dir());
 
     if !is_admin_request(&state, &headers) {
-        return if db_ok {
+        return if db_ok && disk_ok {
             (StatusCode::OK, Json(json!({"ok": true}))).into_response()
         } else {
             (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"ok": false}))).into_response()
@@ -118,6 +123,7 @@ async fn healthz(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl
     let mut body = json!({
         "version": env!("CARGO_PKG_VERSION"),
         "db_ok": db_ok,
+        "disk_ok": disk_ok,
         "tools_total": tools_total,
         "tenants_total": tenants_total,
         "tenants_probe": tenants_probe,

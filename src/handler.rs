@@ -3189,6 +3189,15 @@ impl McpHostHandler {
     /// 30s deadline at all; it inserts a `queued` run
     /// (`runs::enqueue`) and returns immediately.
     async fn host_tool_call(&self, tenant: &Tenant, args: Value) -> Result<Value, AppError> {
+        // PRD-mcphost-data-retention requirement 4 (AC6): refuse before
+        // any write when free space on the database's filesystem is under
+        // the configured floor.
+        if !self.state.disk_guard.is_ok(self.state.db.data_dir()) {
+            return Err(AppError::disk_floor(
+                self.state.disk_guard.free_bytes(self.state.db.data_dir()),
+                self.state.disk_guard.floor_bytes(),
+            ));
+        }
         let local_name = args
             .get("name")
             .and_then(Value::as_str)

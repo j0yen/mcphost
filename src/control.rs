@@ -80,6 +80,14 @@ pub async fn signup(
     source_ip: &str,
     attribution: SignupAttribution<'_>,
 ) -> Result<Value, AppError> {
+    // PRD-mcphost-data-retention requirement 4 (AC6): same disk-floor
+    // refusal `host_tool_call`/`tool_publish` check, before any write.
+    if !state.disk_guard.is_ok(state.db.data_dir()) {
+        return Err(AppError::disk_floor(
+            state.disk_guard.free_bytes(state.db.data_dir()),
+            state.disk_guard.floor_bytes(),
+        ));
+    }
     let display_name = arg_str(args, "name")?;
 
     // Requirement 1: `source_class` first (loopback IP or the harness
@@ -588,6 +596,14 @@ pub async fn tool_publish(
     tenant: &Tenant,
     args: &Value,
 ) -> Result<Value, AppError> {
+    // PRD-mcphost-data-retention requirement 4 (AC6): same disk-floor
+    // refusal `host_tool_call` checks, before any write.
+    if !state.disk_guard.is_ok(state.db.data_dir()) {
+        return Err(AppError::disk_floor(
+            state.disk_guard.free_bytes(state.db.data_dir()),
+            state.disk_guard.floor_bytes(),
+        ));
+    }
     let name = arg_str(args, "name")?;
     let kind_name = arg_str(args, "kind")?;
     let spec = args.get("spec").cloned().unwrap_or(Value::Null);
