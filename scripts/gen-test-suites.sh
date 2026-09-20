@@ -205,7 +205,16 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # 2, landing the grand total back at 10 through its 9th file (AC9). Its
 # 10th file (AC7, added after AC9/AC10) tipped it over the same way again;
 # 161 -> 162 was the smallest further raise that re-collapses it back to 10.
-MAX_PER_SUITE = {"core": 162, "sandbox": 60}
+#
+# PRD-mcphost-tenant-data-export (2026-09-20, rebased onto data-retention):
+# this PRD's own new `mcphost_tenant_data_export_ac*` files (one per
+# non-deferred AC, same per-AC consolidation convention) tipped core's
+# normal buckets from 2 to 3 again, spawning an 11th suite binary -- caught
+# by the same `suite_ac1_ten_binaries_and_names_preserved` P0 assertion.
+# 162 -> 165 was the smallest tested raise (on top of data-retention's 162)
+# that re-collapses core's normal buckets to 2, landing the grand total
+# back at 10.
+MAX_PER_SUITE = {"core": 165, "sandbox": 60}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

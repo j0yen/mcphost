@@ -441,6 +441,15 @@ pub struct AdminAuditRow {
     pub created_unix: i64,
 }
 
+/// PRD-mcphost-tenant-data-export P0 requirement 3 / AC3: the outcome of
+/// [`Db::start_export_run`] -- either a fresh `running` row was inserted, or
+/// this tenant already had one running and its id is returned instead.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StartExportRun {
+    Started(String),
+    AlreadyRunning(String),
+}
+
 /// PRD-mcphost-runs-and-jobs P0 requirement 1: one row of the `runs`
 /// ledger, read back by `host.runs.get`/`list`/`admin.runs` and the
 /// executor's own leasing/finalizing. `progress_json`/`result_ref`/
@@ -3812,6 +3821,73 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-tenant-data-export P0 requirement 3 / AC3: atomically
+    /// checks for an already-`running` export for this tenant and returns
+    /// its id instead of starting a second one. The check-then-insert
+    /// happens inside one [`Self::with_conn`] closure -- this crate's
+    /// single-writer SQLite connection is serialized by that method's own
+    /// mutex (the same "no separate lock needed" property
+    /// [`Self::lease_next_queued_run`]'s own doc comment relies on) -- so
+    /// two concurrent `host.export` calls can never both insert a `running`
+    /// row.
+    ///
+    /// Unlike [`Self::insert_queued_run`], this inserts a row already
+    /// `running` (never `queued`): the executor's own `tick()` only ever
+    /// leases `queued` rows and dispatches them through a tenant's
+    /// published `Kind` (see `runs::execute_job`'s `db.get_tool` lookup),
+    /// and an export has no `tools` row or `Kind` to dispatch through --
+    /// inserting straight to `running` keeps it invisible to that leasing
+    /// loop entirely, so only `export::run_export_job` ever finalizes it.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn start_export_run(
+        &self,
+        tenant_id: i64,
+        run_id: String,
+        tool_name: String,
+        deadline_s: i64,
+        args_json: String,
+    ) -> Result<StartExportRun, AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            let existing: Option<String> = conn
+                .query_row(
+                    "SELECT id FROM runs WHERE tenant_id = ?1 AND tool_name = ?2 \
+                     AND status = 'running' ORDER BY rowid LIMIT 1",
+                    params![tenant_id, tool_name],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if let Some(id) = existing {
+                return Ok(StartExportRun::AlreadyRunning(id));
+            }
+            conn.execute(
+                "INSERT INTO runs (id, tenant_id, tool_name, trigger, status, started_unix, \
+                 deadline_s, attempt, args_json) \
+                 VALUES (?1, ?2, ?3, 'job', 'running', ?4, ?5, 1, ?6)",
+                params![run_id, tenant_id, tool_name, now, deadline_s, args_json],
+            )?;
+            Ok(StartExportRun::Started(run_id.clone()))
+        })
+        .await
+    }
+
+    /// PRD-mcphost-tenant-data-export P0 requirement 2: `GET /exports/{run_id}`
+    /// has no bearer/tenant context (a signed URL is the whole auth story),
+    /// so this looks a run up by id alone -- unlike [`Self::get_run`], which
+    /// is deliberately scoped to a caller's own tenant.
+    pub async fn find_run_by_id(&self, run_id: String) -> Result<Option<RunRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                &format!("SELECT {RUN_COLUMNS} FROM runs WHERE id = ?1"),
+                params![run_id],
+                run_row_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
     /// PRD-mcphost-agent-wake requirement 4 / AC4: an enqueue attempt that
     /// lost the `jobs_concurrent` admission check
     /// (`hooks::enqueue_with_dedupe`'s own quota check, mirroring the
@@ -4359,6 +4435,29 @@ impl Db {
     }
 
     /// Per-tenant, per-tool usage for the admin view.
+    /// PRD-mcphost-tenant-data-export P2 requirement 6 / AC7: `admin.usage`'s
+    /// `exports_today` -- every `runs` row for `tool_name` started at or
+    /// after `since_unix` (the caller's own "today" boundary), across every
+    /// tenant. `runs.started_unix` is stamped at [`Self::start_export_run`]'s
+    /// insert time (never `queued`, so this is also the row's creation
+    /// time), the same column [`Self::count_running_runs_total`] and
+    /// friends already read.
+    pub async fn count_runs_by_tool_since(
+        &self,
+        tool_name: String,
+        since_unix: i64,
+    ) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM runs WHERE tool_name = ?1 AND started_unix >= ?2",
+                params![tool_name, since_unix],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
     pub async fn usage_by_tenant_and_tool(
         &self,
         window_secs: i64,

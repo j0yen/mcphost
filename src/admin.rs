@@ -327,6 +327,15 @@ pub async fn usage(state: &AppState, args: &Value) -> Result<Value, AppError> {
             "deleted": p.deleted,
         })
     });
+    // PRD-mcphost-tenant-data-export P2 requirement 6 / AC7: exports run
+    // today (UTC calendar day, host-wide) -- `now - now % 86_400` is
+    // today's UTC midnight since the Unix epoch itself starts at one.
+    let now = crate::state::now_unix();
+    let today_start = now - now.rem_euclid(86_400);
+    let exports_today = state
+        .db
+        .count_runs_by_tool_since(crate::export::EXPORT_TOOL_NAME.to_string(), today_start)
+        .await?;
     Ok(json!({
         "window": window,
         "usage": usage,
@@ -334,6 +343,7 @@ pub async fn usage(state: &AppState, args: &Value) -> Result<Value, AppError> {
         "db_page_free_bytes": size.db_page_free_bytes,
         "rows_by_table": rows_by_table,
         "last_prune": last_prune,
+        "exports_today": exports_today,
     }))
 }
 

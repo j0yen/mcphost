@@ -245,6 +245,42 @@ fn schema(props: Value, required: &[&str]) -> Map<String, Value> {
     }))
 }
 
+/// `host.tool_publish`'s own properties (minus `host_schema`'s
+/// `tenant_key`, a connection-auth concern with no counterpart in a
+/// manifest entry), factored out so both its own `Tool::new` descriptor
+/// below and [`tool_publish_input_schema`] build from the exact same
+/// literal -- a hand-copied twin here would drift the moment either changed.
+fn tool_publish_props() -> Value {
+    json!({
+        "name": {
+            "type": "string",
+            "description": "Local name for the new tool; must match ^[a-z][a-z0-9_]{1,40}$.",
+        },
+        "kind": {
+            "type": "string",
+            "description": "Which registered kind to publish under, e.g. echo, http, python.",
+        },
+        "spec": {
+            "type": "object",
+            "description": "The kind-specific spec object; see host.quickstart(kind) for a \
+                filled-in example.",
+        },
+    })
+}
+
+const TOOL_PUBLISH_REQUIRED: &[&str] = &["name", "kind", "spec"];
+
+/// PRD-mcphost-tenant-data-export P1 requirement 4 / AC5: the plain
+/// (no `tenant_key`) JSON Schema a `host.tool_publish` call's own args are
+/// validated against -- `export::build_archive`'s `manifest.json` entries
+/// are exactly `{name, kind, spec}` objects, and this crate's own test
+/// suite checks them against this SAME schema (not a hand-copied twin) so
+/// AC5's proof can never silently drift from what a real `host.tool_publish`
+/// call actually requires.
+pub fn tool_publish_input_schema() -> Value {
+    Value::Object(schema(tool_publish_props(), TOOL_PUBLISH_REQUIRED))
+}
+
 /// PRD-mcphost-session-key requirement 2 / AC3: every `host.*` descriptor
 /// (never `signup`'s or an `admin.*` descriptor -- requirement 10) gains an
 /// optional string `tenant_key` property, the key `signup` returned,
@@ -510,24 +546,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         Tool::new(
             "host.tool_publish",
             tool_publish_description(kinds),
-            host_schema(
-                json!({
-                    "name": {
-                        "type": "string",
-                        "description": "Local name for the new tool; must match ^[a-z][a-z0-9_]{1,40}$.",
-                    },
-                    "kind": {
-                        "type": "string",
-                        "description": "Which registered kind to publish under, e.g. echo, http, python.",
-                    },
-                    "spec": {
-                        "type": "object",
-                        "description": "The kind-specific spec object; see host.quickstart(kind) for a \
-                            filled-in example.",
-                    },
-                }),
-                &["name", "kind", "spec"],
-            ),
+            host_schema(tool_publish_props(), TOOL_PUBLISH_REQUIRED),
         ),
         Tool::new(
             "host.quickstart",
@@ -685,6 +704,30 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                         "type": "string",
                         "description": "Only list changes after this version, e.g. \"0.57.0\". \
                             Omit to list every tracked change.",
+                    },
+                }),
+                &[],
+            ),
+        ),
+        // PRD-mcphost-tenant-data-export P0 requirements 1-3: the pair of
+        // "leave the way you joined" (host.self_offboard) is "take what you
+        // made" -- a background job (see `export.rs`) that archives this
+        // tenant's tool sources, state, secret names (never values), runs
+        // and threads, downloadable by signed URL for 24h.
+        Tool::new(
+            "host.export",
+            "Build a downloadable .tar.gz of everything this tenant owns: tool sources, \
+             state, secret NAMES (never values), run/thread history and usage, plus a \
+             manifest.json re-publishable via host.tool_publish. Runs as a background job \
+             (poll host.runs.get with the returned run_id) -- calling this again while one is \
+             already running returns that same run_id rather than starting a second one. The \
+             finished run's result carries a download_url valid 24 hours.",
+            host_schema(
+                json!({
+                    "tools": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Local names of the tools to include; every tool when omitted.",
                     },
                 }),
                 &[],
@@ -2160,6 +2203,7 @@ impl McpHostHandler {
             "host.tool_call" => self.host_tool_call(tenant, args).await,
             "host.usage" => control::usage(&self.state, tenant, &args).await,
             "host.changelog" => control::changelog(&self.state, &args),
+            "host.export" => crate::export::export(&self.state, tenant, &args).await,
             "host.tool_share" => crate::sharing::tool_share(&self.state, tenant, &args).await,
             "host.tool_unshare" => crate::sharing::tool_unshare(&self.state, tenant, &args).await,
             "host.group.create" => crate::sharing::group_create(&self.state, tenant, &args).await,

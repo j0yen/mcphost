@@ -312,29 +312,17 @@ mod mcphost_share_a_tool_not_a_key_ac07_synthorg_task_five_completions;
 mod mcphost_share_a_tool_not_a_key_ac08_live_test_skipped_without_env;
 #[path = "mcphost_share_a_tool_not_a_key_ac09_public_variant_states_default_reason.rs"]
 mod mcphost_share_a_tool_not_a_key_ac09_public_variant_states_default_reason;
-#[path = "metering_ac01_stripe_customer_id_null_default.rs"]
-mod metering_ac01_stripe_customer_id_null_default;
-#[path = "metering_ac02_webhook_stores_stripe_customer_id.rs"]
-mod metering_ac02_webhook_stores_stripe_customer_id;
-#[path = "metering_ac03_checkout_metered_line_item.rs"]
-mod metering_ac03_checkout_metered_line_item;
-#[path = "metering_ac04_emits_pro_calls_only.rs"]
-mod metering_ac04_emits_pro_calls_only;
-#[path = "metering_ac05_crash_replay.rs"]
-mod metering_ac05_crash_replay;
-#[path = "metering_ac06_failure_leaves_state_unmoved.rs"]
-mod metering_ac06_failure_leaves_state_unmoved;
-#[path = "metering_ac07_batches_cap_at_100.rs"]
-mod metering_ac07_batches_cap_at_100;
-#[path = "metering_ac08_healthz_meter_lag.rs"]
-mod metering_ac08_healthz_meter_lag;
-#[path = "metering_ac09_deploy_units_verify.rs"]
-mod metering_ac09_deploy_units_verify;
-#[path = "metering_ac11_admin_meter_status.rs"]
-mod metering_ac11_admin_meter_status;
-#[path = "metering_ac12_billing_status_stripe_reported_usage.rs"]
-mod metering_ac12_billing_status_stripe_reported_usage;
-#[path = "metering_billing_status_emitted_this_month.rs"]
-mod metering_billing_status_emitted_this_month;
-#[path = "migration_compat_headers.rs"]
-mod migration_compat_headers;
+#[path = "mcphost_tenant_data_export_ac01_archive_contents.rs"]
+mod mcphost_tenant_data_export_ac01_archive_contents;
+#[path = "mcphost_tenant_data_export_ac02_signed_url_expiry.rs"]
+mod mcphost_tenant_data_export_ac02_signed_url_expiry;
+#[path = "mcphost_tenant_data_export_ac03_dedupe_in_progress.rs"]
+mod mcphost_tenant_data_export_ac03_dedupe_in_progress;
+#[path = "mcphost_tenant_data_export_ac04_live_export_trailer.rs"]
+mod mcphost_tenant_data_export_ac04_live_export_trailer;
+#[path = "mcphost_tenant_data_export_ac05_manifest_validates_publish_schema.rs"]
+mod mcphost_tenant_data_export_ac05_manifest_validates_publish_schema;
+#[path = "mcphost_tenant_data_export_ac06_tools_subset.rs"]
+mod mcphost_tenant_data_export_ac06_tools_subset;
+#[path = "mcphost_tenant_data_export_ac07_admin_usage_exports_today.rs"]
+mod mcphost_tenant_data_export_ac07_admin_usage_exports_today;

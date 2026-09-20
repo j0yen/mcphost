@@ -430,6 +430,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // backend, so `/hooks/...` needs no deploy-side change -- only this
         // route.
         .route("/hooks/{namespace}/{tool}", post(crate::hooks::hook_receive))
+        // PRD-mcphost-tenant-data-export P0 requirement 2: the signed
+        // download URL a completed `host.export` run's result carries --
+        // see `export::download`.
+        .route("/exports/{run_id}", get(crate::export::download))
         .route_service("/mcp", service)
         .layer(middleware::from_fn(protocol_version_and_log))
         .with_state(state)
