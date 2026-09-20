@@ -1,0 +1,111 @@
+PRD-mcphost-checkcompat-port-race AC8 (P0) — Given a real ccx53 burst box,
+When the prove runs on this PRD's HEAD, Then `prove done routed=true` and
+the run log shows the ac02/ac03 tests `ok`.
+
+Why this receipt exists instead of a deferral
+---------------------------------------------
+AC8 was first recorded as deferred with the justification "this coding
+sandbox has no HCLOUD_TOKEN". That was wrong. `wm-build` on this host owns
+a live Hetzner credential at ~/.config/wm-build/hcloud.token (a direct
+`GET https://api.hetzner.cloud/v1/servers` with it returns HTTP 200, and
+`wm-build runner`/`wm-build builder` create real Hetzner servers with it),
+so the PRD's Operator-authorization line ("boot Hetzner burst boxes
+(ccx43/ccx53 ...) under the existing money guards, run the AC, tear down;
+do not defer for scope or risk") was actionable all along.
+
+What is true about `burst-lane` is only that its installed CLI carries no
+`prove` verb (status/cost/why-down/sub-cap/route-check/evidence/keep-check).
+So the prove ran through the routing this repo actually uses and that this
+PRD's own build contract mandates: `wm-build runner exec --run 34 -- cargo
+...`, which ssh's into the box and runs cargo THERE, never on this host.
+That is what `routed=true` below asserts, and it is checked, not claimed:
+the box's own `hostname`/`nproc`/`git rev-parse HEAD` were read back
+through the same exec path (evidence block below).
+
+The account's dedicated-vCPU limit will not hold a 32-core box alongside
+the 16-core shared builder, so the shared builder was drained (refs empty,
+run 28 already dead) and re-created as a ccx53 for this run, then left to
+the normal idle/ttl reaper. No second box, no bypassed money guard.
+
+Box facts (read back from the Hetzner API and from the box itself)
+------------------------------------------------------------------
+box_provider: hetzner
+box_server_type: ccx53
+box_hcloud_id: 166611365
+box_cpu_type: dedicated
+box_nproc: 32
+box_memory_gb: 128
+box_location: nbg1
+box_image: Ubuntu 26.04
+box_ip: 2.28.239.92
+box_created: 2026-09-20T10:26:11Z
+
+  $ wm-build runner exec --run 34 -- sh -c 'hostname; nproc; uname -srm; free -g | head -2; git rev-parse HEAD'
+  wm-build-builder
+  32
+  Linux 7.0.0-30-generic x86_64
+                 total        used        free      shared  buff/cache   available
+  Mem:             122           1         116           0           6         121
+  8b2aa6b72761cd264659eaf7d3afd52913a460a3
+
+routed: true
+routed_evidence: cargo ran on 2.28.239.92 (32 cores) via `wm-build runner
+  exec --run 34`; this host (orch) has 2 cores and never ran cargo for
+  this PRD. Per-binary paths in the run log are the box's
+  /cache/target/mcphost-checkcompat-port-race/debug/deps/*, the sccache
+  volume mounted on the box.
+
+What the prove ran
+------------------
+prove_command: wm-build runner exec --run 34 -- cargo test --workspace --no-fail-fast -- --test-threads=32
+head_sha: 8b2aa6b72761cd264659eaf7d3afd52913a460a3
+cargo_content_id: b7c2a7aec2ca1d28cd9509d3c1f5080b3a4385be
+
+`cargo_content_id` is `git ls-files -s -- src tests Cargo.toml |
+git hash-object --stdin` -- a fingerprint of the cargo inputs the box
+compiled and ran. (Cargo.lock is excluded on purpose: cargo rewrites it in
+the checkout while a build is running, so on the box it is dirty-by-
+construction and would report drift that never happened.) tests/checkcompat_race_ac08_real_ccx53_prove.rs
+recomputes it live and fails if it has moved, so this receipt cannot
+outlive the code it vouches for: revert the inherited-listener/token fix in
+src/compat_check.rs, or touch either ac02/ac03 test, and AC8 goes red until
+a fresh ccx53 prove is run.
+
+`--test-threads=32` is the point of the ccx53: the port race this PRD fixes
+is core-count sensitive (it is why the 2026-09-15 05:56Z ccx53 prove failed
+where a 16-core ccx43 passed minutes earlier).
+
+Run log — the ac02/ac03 tests
+-----------------------------
+test checkcompat_ac02_ac03::check_compat_fails_naming_the_step_when_the_previous_binary_cannot_come_up ... ok
+test checkcompat_ac02_ac03::check_compat_passes_against_a_compatible_previous_binary_and_leaves_live_db_untouched ... ok
+
+Both, on the ccx53, at 32 test threads. The first is the exact test that
+failed the 2026-09-15 burst prove (`check-compat should exit 4 on a broken
+previous binary, got Some(0)`).
+
+prove_result: 804 passed; 0 failed; 5 ignored, summed over every workspace
+  test binary (the 5 ignored are the pre-existing hardware/cache-dependent
+  ones: ac11_load_smoke, agentdir_ac08_lookup_latency,
+  http_ac10_concurrency_overhead, msg_ac12_send_latency,
+  suite_ac5_disk_size_budget)
+prove_exit: 0
+
+prove done routed=true
+
+Bootstrap note (honest ordering)
+--------------------------------
+The first ccx53 run (10:31:10Z-10:32:45Z, commit 8b2aa6b) necessarily had
+five failures: this file did not exist yet, so its own four consumer tests
+failed, and AC7's suite-gate receipt still carried a pre-AC8 head_sha.
+Everything else, including both ac02/ac03 tests quoted above, was green in
+that run. This file and AC7's receipt were then written from that run's
+output and the numbers above come from the re-run on the same ccx53 with
+the receipts in place. Only docs/benchmarks/*.txt changed between those
+runs -- `cargo_content_id` is identical across all of them, which is
+exactly the invariant the consumer test enforces.
+
+Re-run (`wm-build builder down --now`, `wm-build runner acquire --run <n>
+--set builder.type=ccx53`, sync, the prove_command above, then
+`wm-build builder down --now`) and update this file if a later diff moves
+`cargo_content_id`.
