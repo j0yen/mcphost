@@ -14,7 +14,7 @@ run locally per this repo's own build contract.
 head_sha: 5e107418bee3f8fa13835efea68e318778a6acbb
 
 cargo test --workspace:
-  721 passed, 0 failed, 5 ignored (hardware/cache-dependent, same as
+  849 passed, 0 failed, 5 ignored (hardware/cache-dependent, same as
   before this PRD -- suite_ac5_disk_size_budget,
   suite_ac6_wall_time_budget's own sibling ignores, ac11_load_smoke's
   two-hundred-concurrent load test, etc.)
