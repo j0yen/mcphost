@@ -6450,6 +6450,23 @@ impl Db {
         .await
     }
 
+    /// P1 requirement 6 (AC9): `/healthz`'s own `last_prune_ok` -- a
+    /// lighter read than [`Self::usage_size_stats`] (skips the
+    /// `rows_by_table` full-table-scan pass) for a check-every-request
+    /// endpoint. `true` (nothing has failed yet) when no prune has ever
+    /// run.
+    pub async fn last_prune_ok(&self) -> Result<bool, AppError> {
+        self.with_conn(|conn| {
+            let ok: Option<i64> = conn
+                .query_row("SELECT ok FROM prune_log ORDER BY id DESC LIMIT 1", [], |r| {
+                    r.get(0)
+                })
+                .optional()?;
+            Ok(ok.map(|v| v != 0).unwrap_or(true))
+        })
+        .await
+    }
+
     /// Test-only: insert one `calls` row at an arbitrary age (AC1/AC3/AC4
     /// fixtures need rows older than any real call in a fresh test
     /// server), bypassing `host.tool_call`'s real dispatch path so a test
@@ -6540,6 +6557,7 @@ impl Db {
 
 /// [`Db::prune_once`]'s return shape: one cycle's per-physical-table
 /// deleted counts and its wall-clock span.
+#[derive(Debug)]
 pub struct PruneReport {
     pub deleted: std::collections::BTreeMap<String, i64>,
     pub started_unix: i64,

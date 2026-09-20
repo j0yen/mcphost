@@ -256,6 +256,14 @@ async fn healthz(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl
             json!(state.event_counters.rejected_1h()),
         );
     }
+    // PRD-mcphost-data-retention P1 requirement 6 (AC9): `true` (nothing
+    // has failed yet) until the first prune cycle that errors.
+    if let Some(obj) = body.as_object_mut() {
+        obj.insert(
+            "last_prune_ok".to_string(),
+            json!(state.db.last_prune_ok().await.unwrap_or(true)),
+        );
+    }
     Json(body).into_response()
 }
 
