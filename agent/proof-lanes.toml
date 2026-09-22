@@ -126,12 +126,13 @@ required_commands = [
 
 [[lane]]
 id = "examples"
-description = "Example recipes under examples/** whose behavior is proven by the mcphost_share_a_tool_not_a_key_ac*/mcphost_team_memory_ac*/mcphost_database_in_a_minute_ac* integration tests that spawn them (examples/share-a-tool/proof.sh, examples/share-a-tool/synthorg-task.yaml; examples/team-memory/proof.sh, examples/team-memory/tools/*.py, examples/team-memory/synthorg-task.yaml; examples/database-in-a-minute/proof.sh, examples/database-in-a-minute/fixture.csv, examples/database-in-a-minute/tools/*.py, examples/database-in-a-minute/synthorg-task.yaml). Added project-locally (PRD-mcphost-share-a-tool-not-a-key); examples/team-memory/** folded in 2026-09-21 (PRD-mcphost-team-memory); examples/database-in-a-minute/** folded in 2026-09-22 (PRD-mcphost-database-in-a-minute), same gap class as infer-data/db-migrations/deploy/www/docs above -- the shipped scaffold's proof-lanes.toml has no lane for examples/, and these files gate the AC0x tests identically to a tests/**/*.rs edit, so proof is a name-filtered cargo test run over the tests that actually exercise them rather than the whole rust-tests lane."
-globs = ["examples/share-a-tool/**", "examples/team-memory/**", "examples/database-in-a-minute/**"]
+description = "Example recipes under examples/** whose behavior is proven by the mcphost_share_a_tool_not_a_key_ac*/mcphost_team_memory_ac*/mcphost_database_in_a_minute_ac*/mcphost_uptime_probes_ac* integration tests that spawn them (examples/share-a-tool/proof.sh, examples/share-a-tool/synthorg-task.yaml; examples/team-memory/proof.sh, examples/team-memory/tools/*.py, examples/team-memory/synthorg-task.yaml; examples/database-in-a-minute/proof.sh, examples/database-in-a-minute/fixture.csv, examples/database-in-a-minute/tools/*.py, examples/database-in-a-minute/synthorg-task.yaml; examples/uptime-probes/proof.sh, examples/uptime-probes/tools/*.py, examples/uptime-probes/synthorg-task.yaml). Added project-locally (PRD-mcphost-share-a-tool-not-a-key); examples/team-memory/** folded in 2026-09-21 (PRD-mcphost-team-memory); examples/database-in-a-minute/** and examples/uptime-probes/** folded in 2026-09-22 (PRD-mcphost-database-in-a-minute, PRD-mcphost-uptime-probes), same gap class as infer-data/db-migrations/deploy/www/docs above -- the shipped scaffold's proof-lanes.toml has no lane for examples/, and these files gate the AC0x tests identically to a tests/**/*.rs edit, so proof is a name-filtered cargo test run over the tests that actually exercise them rather than the whole rust-tests lane."
+globs = ["examples/share-a-tool/**", "examples/team-memory/**", "examples/database-in-a-minute/**", "examples/uptime-probes/**"]
 required_commands = [
   "cargo test --workspace mcphost_share_a_tool_not_a_key_ac",
   "cargo test --workspace mcphost_team_memory_ac",
   "cargo test --workspace mcphost_database_in_a_minute_ac",
+  "cargo test --workspace mcphost_uptime_probes_ac",
 ]
 
 [[lane]]

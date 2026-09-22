@@ -348,6 +348,10 @@ mod mcphost_tenant_data_export_ac05_manifest_validates_publish_schema;
 mod mcphost_tenant_data_export_ac06_tools_subset;
 #[path = "mcphost_tenant_data_export_ac07_admin_usage_exports_today.rs"]
 mod mcphost_tenant_data_export_ac07_admin_usage_exports_today;
+#[path = "mcphost_uptime_probes_ac01_llms_txt_section.rs"]
+mod mcphost_uptime_probes_ac01_llms_txt_section;
+#[path = "mcphost_uptime_probes_ac08_live_test_skipped_without_env.rs"]
+mod mcphost_uptime_probes_ac08_live_test_skipped_without_env;
 #[path = "meshops_ac01_stats_real_vs_synthetic_volume.rs"]
 mod meshops_ac01_stats_real_vs_synthetic_volume;
 #[path = "meshops_ac02_threads_no_bodies.rs"]

@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-database-in-a-minute.md",
-  "intent_slug": "mcphost-database-in-a-minute",
-  "root_motivation": "A person with a spreadsheet and a Claude Pro subscription wants Claude to answer questions over their own rows, and today must either paste the CSV into every conversation or stand up Airtable/Notion plus its own MCP server (Problem statement). mcphost's own state tables (SQL-backed-in-spirit but filter-grammar-only, host.state.*, src/state.rs / src/tenant_state.rs, quotas in src/plans.rs) already exist and go unused by anyone but synthetic tenants. This PRD ships one llms.txt recipe (table_create, batched insert, publish a python query tool, connect Claude Desktop), a proof script with a 1,000-row fixture, and a synthorg task -- zero mcphost code changes: the recipe composes host.state.*/host.tool_publish exactly as they already exist.",
-  "user_persona": "Three (PRD User stories): (1) the owner's agent creates `expenses`, inserts 1,000 rows in batches, publishes `query`, and answers a question from Claude Desktop; (2) the owner adds a row from Claude and the next query sees it (host.state.insert's per-primary-key upsert already gives this for free, no extra code); (3) Joe's synthetic panel runs the recipe and sees p50 time to first answered question.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-uptime-probes.md",
+  "intent_slug": "mcphost-uptime-probes",
+  "root_motivation": "An agent builder running two or three small services (visions/mcphost-killer-apps.md, component 4) wants an agent to know when one is down and today either pays a monitoring SaaS or polls from a machine that is itself unmonitored -- the cheapest mcphost primitives, a schedule and a table, go unused, and host.trigger.* has no worked example beyond synthetic tasks. This PRD ships a python `probe` tool that fetches a `targets` list, writes `{url, code, ms, at}` rows to a `checks` table on a 5-minute (free-plan floor) schedule, and a `status` tool that answers up/down purely from stored rows -- with zero mcphost code changes: the recipe composes host.state.*/host.tool_publish/host.trigger.* exactly as they already exist.",
+  "user_persona": "Three (PRD User stories): (1) the builder's agent inserts three URLs into targets, sets the schedule, and 10 minutes later status shows two checks each; (2) the builder's agent sees one service return 503 and status shows it down with the first failing timestamp; (3) Joe's synthetic panel runs the recipe and sees how many tenants reach a stored check.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,74 +14,71 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given llms.txt, When the section is read, Then it shows table_create, batched insert, the query publish, and the Desktop connection line, under 70 lines.",
-      "test": "tests/mcphost_database_in_a_minute_ac01_llms_txt_section.rs"
+      "description": "Given llms.txt, When the section is read, Then it lists the two tables, two tools, and the schedule call, under 70 lines, with the calls/day arithmetic.",
+      "test": "tests/mcphost_uptime_probes_ac01_llms_txt_section.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the 1,000-row fixture and a fresh tenant, When proof.sh runs, Then all rows are present (host.state.query count = 1000).",
-      "test": "tests/mcphost_database_in_a_minute_ac02_all_rows_present.rs"
+      "description": "Given two targets and host.trigger.fire twice, When checks is queried, Then each target has exactly 2 rows with code, ms, at.",
+      "test": "tests/mcphost_uptime_probes_ac02_checks_two_rows_per_target.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the published query tool, When asked the equality, range, and count questions, Then each answer matches the fixture's known value.",
-      "test": "tests/mcphost_database_in_a_minute_ac03_query_answers_match_fixture.rs"
+      "description": "Given one target returning 503, When status is called, Then that target has up_pct_24h 0 and a down_since equal to its first check; the healthy target has 100 and no down_since.",
+      "test": "tests/mcphost_uptime_probes_ac03_status_up_pct_and_down_since.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a where with op = LIKE or a raw SQL string, When query is called, Then it returns a validation error and no rows.",
-      "test": "tests/mcphost_database_in_a_minute_ac04_query_rejects_like_and_raw_sql.rs"
+      "description": "Given a checks row older than 24h inserted by the proof, When probe runs, Then the row is gone.",
+      "test": "tests/mcphost_uptime_probes_ac04_retention_deletes_old_rows.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the proof completed, When signup_events is read, Then source=recipe:database-in-a-minute.",
-      "test": "tests/mcphost_database_in_a_minute_ac05_signup_events_source_tagged.rs"
+      "description": "Given 21 targets, When probe runs, Then it probes 20 and reports the cap in its result.",
+      "test": "tests/mcphost_uptime_probes_ac05_target_cap_at_20.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given the proof runs against https://mcphost.dev/mcp, When it finishes, Then import is under 30 s and all assertions pass. (Live)",
-      "test": "deferred -- operator-provisioned: proving it needs a real run against production https://mcphost.dev/mcp, unreachable from this worktree's own gate. Embodied (gated on MCPHOST_LIVE=1, exercises the same examples/database-in-a-minute/proof.sh) by tests/mcphost_database_in_a_minute_ac08_live_test_skipped_without_env.rs's live_proof_against_real_mcphost_when_enabled, same convention as PRD-mcphost-share-a-tool-not-a-key's and PRD-mcphost-team-memory's own AC6/AC8."
+      "description": "Given the proof runs against https://mcphost.dev/mcp, When it finishes, Then AC2-5 hold and wall time is printed. (Live)",
+      "test": "deferred -- operator-provisioned; Live proof against production https://mcphost.dev/mcp needs network egress and operator authorization this coding sandbox does not have. tests/mcphost_uptime_probes_ac08_live_test_skipped_without_env.rs's live_proof_against_real_mcphost_when_enabled (gated on MCPHOST_LIVE=1) is the AC6 embodiment, same convention as PRD-mcphost-team-memory's own AC6/AC8."
     },
     {
       "id": "AC7",
       "level": "SHOULD",
-      "description": "Given the synthorg task, When run 5 times, Then 5 exact-answer completions are recorded.",
-      "test": "tests/mcphost_database_in_a_minute_ac07_synthorg_task_five_completions.rs"
+      "description": "Given the synthorg task, When run 5 times, Then 5 completions record time to first stored check.",
+      "test": "tests/mcphost_uptime_probes_ac07_synthorg_task_five_completions.rs"
     },
     {
       "id": "AC8",
       "level": "SHOULD",
       "description": "Given MCPHOST_LIVE unset, When the suite runs, Then the Live test is skipped.",
-      "test": "tests/mcphost_database_in_a_minute_ac08_live_test_skipped_without_env.rs"
+      "test": "tests/mcphost_uptime_probes_ac08_live_test_skipped_without_env.rs"
     },
     {
       "id": "AC9",
       "level": "SHOULD",
-      "description": "Given csv_import, When given the fixture text, Then the table holds 1,000 rows without the caller batching.",
-      "test": "tests/mcphost_database_in_a_minute_ac09_csv_import_batches_internally.rs"
+      "description": "Given down_since flips for a target, When probe finishes, Then one inbox message exists for the owner.",
+      "test": "tests/mcphost_uptime_probes_ac09_down_since_flip_sends_inbox.rs"
     }
   ],
   "scope": [
-    "www/llms.txt: new '## Give Claude a database in one minute' section (46 lines), placed after '## Limits and pricing' and before '## Billing (tool calls, no dashboard)' (NOT between '## Give your agents one memory' and '## Limits and pricing' -- that span is team-memory's own AC1 test's heading-to-heading window, and a section landing inside it gets silently absorbed into that test's line-count/tool-count assertions, breaking it; caught and fixed in this PRD's own history, see ambiguities_resolved). host.state.table_create(expenses, {id,category,amount,day}), a batched host.state.insert call (batch size 200 = state_ops_per_call_max, stated explicitly), host.tool_publish(query, kind=python, source omitted for space) with query's accepted-args/rejected-ops sentence, a host.tool_call example, and a Claude Desktop claude_desktop_config.json mcpServers connection block (no pre-existing Desktop-connection doc exists anywhere in this repo to link instead, unlike the PRD's technical considerations assumed -- written out in full since there was nothing shorter to point at).",
-    "examples/database-in-a-minute/proof.sh (new): one fresh tenant tagged x-mcphost-synthetic: recipe:database-in-a-minute (requirement 4); host.state.table_create; five host.state.insert batches of 200 rows read from fixture.csv; a raw host.state.query confirming 1000 rows (AC2); publishes query; asks the equality (id=777 -> amount 317.46), range (amount>300 -> 476 rows), and count (category=produce -> 200 rows) questions against fixture.csv's own deterministic generation formula; two guardrail calls (op=LIKE, a raw SQL where string) confirming both are refused. Mirrors examples/team-memory/proof.sh's helper shape (mcp_call/structured_of/json_str/has_error/mcp_call_ready).",
-    "examples/database-in-a-minute/fixture.csv (new): 1,000 deterministic rows (id 1..1000, category cycling 5 values evenly so each is exactly 200 rows, amount = round(9.99 + (id % 500) * 1.11, 2), day = ((id-1) % 28) + 1) -- generated once by a throwaway script (not committed) so the three known-answer questions in proof.sh/AC3/AC7 have exact, hand-verifiable values.",
-    "examples/database-in-a-minute/tools/query.py (new): the P0 recipe's only published tool. Validates `where` is a list of {col, op, value} objects with op in the six-symbol set (rejects a raw string outright, and rejects any other op including LIKE -- both paths raise ValueError, surfacing as tool_exception, AC4); builds the mcphost.state.query filter-grammar string (host.state.query's own `where` argument is already a small string DSL supporting exactly = != < > <= >=, src/tenant_state.rs's parse_filter -- so query.py's validation and the host's own grammar agree by construction, not by convention); queries with no host-side limit so `count` reflects every matching row before this tool's own limit (default/cap 500) truncates the returned `rows` list.",
-    "examples/database-in-a-minute/tools/csv_import.py (new, P2 requirement 8 / AC9 only -- not part of the P0 recipe in llms.txt or proof.sh): takes the whole CSV text in one call, parses it with the stdlib csv module, and loops mcphost.state.insert itself in batches of 200 (state_ops_per_call_max) so the caller never batches.",
-    "examples/database-in-a-minute/synthorg-task.yaml (new): one task, segment spreadsheet_owner, gold.tool_name=query / gold.kind=python / gold.call_check=\"result.count == 200\" -- proposed addition for RedBaron's corpus (not merged into it, same cross-repo-scope note as share-a-tool's/team-memory's own synthorg-task.yaml).",
-    "tests/mcphost_database_in_a_minute_ac0[1-5,7-9]_*.rs (new, one per non-deferred AC): AC1 is a pure www/llms.txt string test; AC2/AC3/AC5 run examples/database-in-a-minute/proof.sh against an in-process TestServer and assert on its CHECK lines and echoed values (same convention as mcphost_share_a_tool_not_a_key_ac0[2-5]/mcphost_team_memory_ac0[2-5]); AC4 and AC9 are self-contained (no proof.sh) since neither scenario is part of the P0 happy-path recipe; AC7 rebuilds the recipe directly in Rust (no csv crate dependency -- fixture.csv has no embedded commas/quotes, so a plain split(',') parse suffices) and scores gold.call_check five times; AC8 is the MCPHOST_LIVE-gated skip test plus its own AC6-embodying live run. Every python-kind test skips cleanly (sandbox::require_user_namespaces_or_ci_skip) where unprivileged user namespaces aren't available.",
-    "agent/proof-lanes.toml: the pre-existing 'examples' lane's globs widened to also route examples/database-in-a-minute/**, and its required_commands gained a third, name-filtered `cargo test --workspace mcphost_database_in_a_minute_ac` line.",
-    "scripts/gen-test-suites.sh: MAX_PER_SUITE.core 338 -> 340 across two follow-ups (AC1's and AC8's own core-classified files each individually tipped the pre-existing single normal bucket over the cap) -- same recurring mechanism as every PRD-* comment block above it in that file, re-collapsing the grand total to the AC1 ceiling of 10 suite binaries each time; its sandbox-classified files fit inside sandbox's existing 3-suite split without a cap change.",
+    "www/llms.txt: new '## Uptime probes with no server' section (46 lines), appended after '## Full documentation' at end of file (so no existing section's own hardcoded NEXT_HEADING test boundary shifts) -- two host.state.table_create calls (targets, checks), two host.tool_publish calls (probe/status, kind python), the host.trigger.set(kind=schedule, schedule=\"*/5 * * * *\") call, and the free-plan calls/day arithmetic (288 of 500).",
+    "examples/uptime-probes/tools/probe.py, status.py (new): probe.py queries targets (mcphost.state), caps at the first 20 by added_at reporting the rest as capped, fetches each with urllib (stdlib only, no pip requirement) under a 10s timeout, writes one checks row per target via mcphost.state.insert, always runs the 24h retention delete_rows, and on an up/down flip (a target assumed up with no prior history, so a target down on its very first check counts) self-calls host.msg.send over plain HTTP -- mcphost.call/composition can only reach a tenant's own published tools, never a host.* control-plane tool, so this is a real authenticated HTTP round trip using the owner's own key (published as the self_key secret) and its own endpoint (published as the ENDPOINT_URL/OWNER_NAMESPACE plain env vars), best-effort and silently skipped if either is unset. status.py reads targets/checks only (never fetches live): up_pct_24h is the 2xx share of a target's checks rows within the last 24h; down_since (present only while currently down) walks back from the newest row through the unbroken down streak to its earliest check.",
+    "examples/uptime-probes/proof.sh (new): one fresh tenant tagged x-mcphost-synthetic: recipe:uptime-probes (requirement 5); two tables, one healthy target and one that returns 503, probe published (network: public) and scheduled, host.trigger.fire twice, asserting two checks rows per target and status's up_pct_24h/down_since for both, wall time printed. Same MCP JSON-RPC curl+python3 helper shape as examples/team-memory/proof.sh.",
+    "examples/uptime-probes/synthorg-task.yaml (new): one task, segment ops_coordinator, gold.tool_name=probe / gold.kind=python / gold.call_check=\"result.probed == 1\" -- proposed addition for RedBaron's corpus (not merged into it, same cross-repo-scope note as team-memory's own synthorg-task.yaml).",
+    "tests/mcphost_uptime_probes_ac0[1-5,7-9]_*.rs (new, one per non-deferred AC) plus tests/support/uptime_probes.rs (shared table/publish/schedule/fire-and-wait helpers, #[path]-included per file, same convention as tests/support/host.rs): AC1 is a pure www/llms.txt string test; AC2 fires a scheduled probe twice against a wiremock upstream and queries checks directly; AC3 publishes both tools against one healthy and one 503 target and checks status's shape; AC4 hand-inserts a 25h-old row and proves probe deletes it; AC5 inserts 21 targets and checks probe's own {probed, total_targets, capped} result; AC7 rebuilds the synthorg recipe directly in Rust and scores gold.call_check; AC8 is the MCPHOST_LIVE-gated skip test plus its own AC6-embodying live run; AC9 sets self_key/ENDPOINT_URL/OWNER_NAMESPACE and asserts exactly one host.msg.inbox message after a down-from-first-check probe run. All five python-kind sandbox tests skip cleanly (sandbox::require_user_namespaces_or_ci_skip) where unprivileged user namespaces aren't available.",
+    "scripts/gen-test-suites.sh: MAX_PER_SUITE.core 339 -> 340 (AC1 and AC8, this PRD's two core-classified files, each independently tip the pre-existing single normal bucket over the cap; its remaining files are all sandbox-classified and fit inside sandbox's existing 3-suite split) -- same recurring mechanism as every PRD-* comment block above it in that file, re-collapsing the grand total to the AC1 ceiling of 10 suite binaries.",
     "Cargo.toml: patch version bump (0.59.1 -> 0.59.2); CHANGELOG.md: new entry."
   ],
   "non_goals": [
-    "Uploads larger than the free row quota (10k rows); the section states the limit rather than enforcing a new one.",
-    "Joins across tables, or aggregation beyond count/sum/avg on one column (query.py returns rows + a match count; sum/avg are not implemented in this slice).",
-    "Any change to state or python-kind code (Engineering target: zero mcphost code changes -- every file this PRD touches is under www/, examples/, tests/, agent/, scripts/gen-test-suites.sh, Cargo.toml, or CHANGELOG.md)."
+    "Alerting beyond the one-line hand-off (the webhook-inbox/agent-inbox recipe's own job).",
+    "Intervals under 300s (the free plan's own schedule floor; a pro-only shorter floor is this PRD's one open question, due at build -- resolved by shipping the free-plan 300s floor only, no pro-tier branch).",
+    "Any change to trigger, python-kind, or state code (Engineering target: zero mcphost code changes -- every file this PRD touches is under www/, examples/, tests/, agent/, scripts/gen-test-suites.sh, Cargo.toml, or CHANGELOG.md)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -90,39 +87,39 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "zero_mcphost_code_changes": "Engineering target states this explicitly: no src/**/*.rs edit is part of this PRD's scope. Every requirement is met by composing host.state.*/host.tool_publish exactly as they exist today, from python tool source and shell/docs/tests.",
-      "state_not_table": "The PRD's requirement 1 names host.state.table_create/host.state.insert (the KV/filter-grammar store, src/tenant_state.rs), not host.table.* (the real-SQL store team-memory/share-a-tool use, src/tables.rs) -- deliberate: host.state.query's own `where` argument is already a small, non-SQL filter-grammar string supporting exactly the six ops requirement 3 allows, so 'no raw SQL from the caller' (AC4) is enforced by construction on the host side too, not just by query.py's own validation.",
-      "host_usage_does_not_expose_plan_quota_maxima": "Technical considerations says 'the proof reads rows_per_table_max/state_bytes_max from host.usage rather than hardcoding', but host.usage (src/control.rs's usage()) and billing.plans()/billing.status() (src/billing.rs) only ever report CURRENT usage against a quota, never the quota's own max value, for host.state.*'s state_rows_max/state_bytes_max/state_ops_per_call_max specifically (confirmed by reading both functions in full) -- and zero_mcphost_code_changes above forbids adding a new field to expose them. The llms.txt section states the free-plan numbers as prose (1,000 of the 10,000-row quota, batch size 200) instead; no AC asserts a runtime read of the quota maximum, only AC2's real row count and AC3's real answers, both of which are exercised against the live host, not hardcoded."
+      "zero_mcphost_code_changes": "Engineering target states this explicitly: no src/**/*.rs edit is part of this PRD's scope. Every requirement is met by composing host.state.*/host.tool_publish/host.trigger.* exactly as they exist today, from python tool source and shell/docs/tests.",
+      "state_not_table_store": "mcphost.table (src/tables.rs, PRD-mcphost-tenant-tables) has no row-level delete -- create/append/query/list/drop/schema only, confirmed against team-memory's own forget.py tombstone workaround. AC4's 24h retention needs an actual delete, so targets/checks use mcphost.state (src/tenant_state.rs, PRD-mcphost-tenant-state) instead, whose host.state.delete_rows(table, where) does real per-row deletion under the same small filter grammar host.state.query already uses.",
+      "composition_cannot_reach_host_tools": "kinds::compose_call (src/kinds/mod.rs) resolves its target name through db.get_tool(tenant_id, name) -- a tenant's own published-tool row -- never a host.* control-plane tool, which dispatches through a completely different path in src/handler.rs's call_tool match. AC9's alerting hand-off therefore can't use mcphost.call(\"host.msg.send\", ...) from inside probe.py; it self-calls the real MCP endpoint over plain HTTP instead, authenticated with the owner's own key (published as a python-kind `secrets` entry, arriving in the sandbox as SECRET_SELF_KEY per kinds::python::PythonKind::secret_env), matching how a real recipe author would have to wire this by hand."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does 'I have a CSV, ask Claude about it' stay a manual, copy-paste-into-every-conversation job today?",
-      "a": "The alternative is standing up Airtable or Notion plus its own MCP server and wiring auth -- too much ceremony for a one-off spreadsheet question (Problem statement)."
+      "q": "Why does an agent builder running a couple of small services end up either paying a monitoring SaaS or polling from an unmonitored box?",
+      "a": "mcphost's own primitives -- a schedule and a table -- are cheap enough to do this, but nothing demonstrates it: host.trigger.* has no worked example beyond synthetic tasks."
     },
     {
       "why": 2,
-      "q": "Why can't mcphost's existing state-table primitive (host.state.*, src/tenant_state.rs) already serve this without any new code?",
-      "a": "It can -- table_create/insert/query already exist with exactly the columns, batching, and filter-grammar this recipe needs. The gap is entirely documentation and a worked example: nothing in www/llms.txt or examples/ shows an agent using it, so state tables 'go unused by anyone but synthetic tenants' (Problem statement)."
+      "q": "Why can't the builder just publish an http-kind tool that polls a URL directly?",
+      "a": "http-kind has no per-tenant persistence of its own; something has to store the check history for `status` to answer 'is X up and since when' from rows, never a live fetch (Goal 2) -- that's what targets/checks (mcphost.state tables) are for."
     },
     {
       "why": 3,
-      "q": "Why does the published `query` tool need its own validation layer if host.state.query's own filter grammar already rejects anything but the six comparison ops?",
-      "a": "Because host.state.query's `where` argument is a string the tool itself must BUILD from the caller's structured {col,op,value} args (requirement 3's own shape) -- the validation has to happen in query.py before that string is assembled, both so a caller-supplied LIKE/raw-SQL-string is refused with a clear tool-level error (AC4) rather than a confusing host-side parse failure, and so `columns`/`limit` (which host.state.query doesn't know about at all) are enforced somewhere."
-      },
+      "q": "Why mcphost.state (host.state.*) and not mcphost.table (host.table.*), when both already exist?",
+      "a": "AC4 requires an actual delete of rows older than 24h to keep the table bounded; mcphost.table has no row-level delete (confirmed against src/tables.rs -- six ops, none of them delete), while mcphost.state's delete_rows does real per-row deletion under its own filter grammar."
+    },
     {
       "why": 4,
-      "q": "Why does the equality/range/count answer set need a hand-generated, deterministic fixture instead of random data?",
-      "a": "AC3 requires each answer to match a 'known value' -- only possible if the fixture's generation formula is deterministic and the three questions' expected answers were computed once and hardcoded into both proof.sh and its test, the same way every other proof.sh in this repo (team-memory's WRITER=, share-a-tool's payload.ok) asserts on a value it can actually predict."
+      "q": "Why does the P2 alerting hand-off (AC9) need a raw HTTP self-call instead of just calling host.msg.send from inside probe.py?",
+      "a": "kinds::compose_call only resolves a tenant's own published tools (db.get_tool), never a host.* control-plane tool -- confirmed against src/kinds/mod.rs's compose_call and src/handler.rs's call_tool dispatch, which route host.* calls through an entirely separate arm. The only way probe.py can reach host.msg.send is the same way an external client would: an authenticated HTTP POST to the endpoint itself."
     },
     {
       "why": 5,
-      "q": "Why does a synthorg task belong in this PRD rather than a follow-on?",
-      "a": "Goal 1 promises 'CSV in, question answered, under 60 s' and the PRD's third user story asks Joe's synthetic panel to measure p50 time to first answered question -- neither claim is real until something actually times it, the same reasoning every landed recipe in this repo (share-a-tool, team-memory) already established as convention."
+      "q": "Why is a synthorg task part of this PRD rather than left to a follow-on?",
+      "a": "The PRD's own secondary success metric is 'time to first stored check (synthetic, using trigger.fire), p50 under 90s, synthorg ledger, first 20 runs' -- that claim is only real once something actually times it, the same reasoning every prior recipe PRD in this repo (team-memory, share-a-tool) already established as this repo's convention for a landed recipe."
     }
   ],
-  "created_at": "2026-09-22T15:30:00Z",
+  "created_at": "2026-09-22T15:03:52Z",
   "ambiguities_resolved": [
     {
       "question": "The findings file records the reference Python client seeing well-formed ttlMs/cacheScope on an unauthenticated tools/list, which the code says is impossible. Which is right?",
@@ -183,6 +180,10 @@
     {
       "question": "This card is now regenerated for PRD-mcphost-database-in-a-minute, an entirely different feature (a CSV-to-queryable-table recipe over host.state.*) from whatever PRD last occupied it -- same recurring staleness class as every entry above if left byte-for-byte. Two build-time gaps had no PRD text to settle them directly: (1) the PRD's own technical considerations assume `host.usage` exposes `rows_per_table_max`/`state_bytes_max` for the proof to read at runtime, but neither `host.usage` (src/control.rs) nor `billing.plans`/`billing.status` (src/billing.rs) ever report a quota's MAXIMUM, only current usage against it, and zero_mcphost_code_changes forbids adding such a field; (2) requirement 1 says the Desktop connection line should 'link the existing connection doc', but no Claude-Desktop-connection doc exists anywhere in this repository (grep of docs/ and www/ before this PRD's diff found nothing) to link.",
       "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence: no reviewer block yet, but the same staleness would recur if left byte-for-byte. root_motivation/scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional were rewritten from this PRD's own Problem statement, Goals, User stories, Non-Goals, and Technical considerations sections; acceptance_criteria's nine entries point at the real tests/mcphost_database_in_a_minute_ac0[1-5,7-9]_*.rs files (AC1-9 exist, compile, and pass; AC6 is Live, deferred, same convention as every prior PRD's own Live AC in this card's history). On the two build-time gaps: (1) the llms.txt section states the free-plan numbers as prose (1,000 of the 10,000-row `state_rows_max` quota, insert batch size 200 = `state_ops_per_call_max`) rather than reading a quota maximum no tool call exposes; no AC asserts a runtime read of the max itself, only AC2's real row count and AC3's real answers, both exercised against the live host. (2) The Desktop connection line was written out in full (a `claude_desktop_config.json` `mcpServers` block naming the tenant's endpoint and bearer key) rather than linking a doc that does not exist -- the honest version of requirement 1's intent given this codebase's current state. Separately (caught mid-build, not a pre-existing ambiguity): this PRD's own new llms.txt section was first inserted between team-memory's own section heading and its NEXT_HEADING sentinel ('## Limits and pricing'), which silently widened team-memory's own AC1 test's line-count/tool-count span and broke it on the next full-suite run -- fixed by moving the new section after '## Limits and pricing' instead (a location no other section's own heading-to-heading test window spans), verified by re-running the full workspace suite green afterward."
+    },
+    {
+      "question": "This card is now regenerated for PRD-mcphost-uptime-probes, an entirely different feature (a python probe/status recipe against a schedule trigger) from PRD-mcphost-database-in-a-minute (a CSV-to-queryable-table recipe) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught by reviewer-agent repeatedly in this card's own history (see the entries above) if left byte-for-byte. Two build-time decisions also weren't fully pinned by the PRD text: (1) which of mcphost's two per-tenant table stores (mcphost.table vs mcphost.state) targets/checks should use, since the PRD's own prose just says \"a state table\"; (2) how a python-kind tool can send an alert through host.msg.send at all, since the PRD's Requirement 8/AC9 assumes it's possible but names no mechanism.",
+      "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence: no reviewer block yet, but the same staleness would recur if left byte-for-byte. root_motivation/scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional were rewritten from this PRD's own Problem statement, Goals, Non-Goals, User stories, and Technical considerations sections; acceptance_criteria's nine entries point at the real tests/mcphost_uptime_probes_ac0[1-9]_*.rs files (AC6 deferred, operator-provisioned, same Live-AC convention as every prior recipe PRD's own AC6). agent/test-map.json's ac_test_map was repointed to this PRD and the prior `databaseinaminute` mapping preserved under ac_test_map_by_prefix (newly archived there) rather than deleted. On the two build-time decisions: (1) mcphost.table's six ops (src/tables.rs) have no row-level delete, which AC4's 24h retention needs, so targets/checks use mcphost.state (src/tenant_state.rs) instead -- its host.state.delete_rows does real per-row deletion. (2) confirmed against src/kinds/mod.rs's compose_call (resolves only a tenant's own published tools via db.get_tool, never a host.* tool) and src/handler.rs's call_tool dispatch (host.* routes through a separate match arm entirely) that mcphost.call cannot reach host.msg.send from inside a python sandbox; probe.py instead self-calls the real MCP endpoint over plain HTTP, authenticated with the owner's own key published as the `self_key` python-kind secret (arriving as SECRET_SELF_KEY) and the endpoint/namespace published as plain env vars -- best-effort, silently skipped if either is unset, matching the PRD's own framing of this as 'a one-line hand-off', not a load-bearing alerting system."
     }
   ]
 }
