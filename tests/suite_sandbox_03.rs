@@ -8,6 +8,16 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 
+#[path = "runs_ac01_async_job_runs_progress_and_result.rs"]
+mod runs_ac01_async_job_runs_progress_and_result;
+#[path = "runs_ac02_job_max_s_timeout.rs"]
+mod runs_ac02_job_max_s_timeout;
+#[path = "runs_ac03_progress_shape.rs"]
+mod runs_ac03_progress_shape;
+#[path = "runs_ac04_cancel_kills_sandbox.rs"]
+mod runs_ac04_cancel_kills_sandbox;
+#[path = "runs_ac06_jobs_concurrent_gate.rs"]
+mod runs_ac06_jobs_concurrent_gate;
 #[path = "runtime_ac1_range_typeerror_fixture.rs"]
 mod runtime_ac1_range_typeerror_fixture;
 #[path = "runtime_ac2_tool_code_phase_and_line.rs"]

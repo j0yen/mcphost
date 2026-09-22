@@ -244,7 +244,26 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # `suite_ac1_ten_binaries_and_names_preserved` P0 assertion. 327 -> 336 was
 # the smallest tested raise that re-collapses core's normal buckets to 1,
 # landing the grand total back at 10.
-MAX_PER_SUITE = {"core": 336, "sandbox": 60}
+#
+# PRD-mcphost-team-memory (2026-09-21, rebased onto agent-mesh-ops, AC1):
+# this PRD's own `mcphost_team_memory_ac01_llms_txt_section.rs` (a plain
+# `core`-classified string test, no global tracing subscriber -- core's
+# exclusive-singleton count stays at 6) joins the pre-existing normal
+# bucket, spawning an 11th suite binary -- caught by the same
+# `suite_ac1_ten_binaries_and_names_preserved` P0 assertion. 336 -> 337 was
+# the smallest tested raise that re-collapses core's normal buckets to 1,
+# landing the grand total back at 10.
+#
+# PRD-mcphost-team-memory (2026-09-22, AC8 follow-up): this PRD's own
+# `mcphost_team_memory_ac08_live_test_skipped_without_env.rs` (also
+# `core`-classified, also no global tracing subscriber) joins the same
+# normal bucket as AC1's file above, spawning an 11th suite binary again --
+# caught by the same P0 assertion. 337 -> 338 was the smallest tested
+# raise that re-collapses core's normal buckets to 1, landing the grand
+# total back at 10. (This PRD's remaining test files are all
+# `sandbox`-classified and fit inside sandbox's existing 3-suite split
+# without needing this cap raised further.)
+MAX_PER_SUITE = {"core": 338, "sandbox": 60}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

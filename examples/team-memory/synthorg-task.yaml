@@ -1,0 +1,34 @@
+# Consumer task for the synthorg mcphost corpus (RedBaron's
+# corpora/mcphost/consumer-tasks.yaml, see its own header comment for the
+# id/segments/task/gold schema and the call_check mini-grammar). Proposed
+# addition for the "give your agents one memory" recipe (www/llms.txt,
+# examples/team-memory/proof.sh) -- not merged into that file by this PRD,
+# since RedBaron's corpus lives in a separate repository outside this
+# worktree's scope (build_into: mcphost only). A maintainer of that corpus
+# can fold this block into consumer-tasks.yaml's own `tasks:` list.
+#
+# Segment: ops_coordinator (incumbent: a shared Slack channel / pinned
+# messages, panel-composition.yaml). A team of agents "remembering"
+# something today means posting it into a channel no tool can search --
+# the next agent either re-reads the whole channel or repeats the work.
+# This task proves the alternative: one owner-tenant table, two shared
+# tools, and any teammate's `recall` finds what any other teammate
+# `remember`-ed, scored on the first successful cross-agent recall (PRD
+# user story 4).
+tasks:
+  - id: ops-coordinator-give-your-agents-one-memory
+    segments: [ops_coordinator]
+    task: >
+      Your team runs two agents that need to share what they learn instead
+      of re-discovering it independently. Sign up, create a `memory` table
+      with `host.table.create`, publish `remember`/`recall` as `python`
+      tools, share both to a group with `host.tool_share
+      visibility=group`, add a second tenant with `host.group.add`, have
+      the first tenant `remember` something (stating its own tenant
+      namespace as `who`, since mcphost does not expose it automatically
+      to a shared tool), and have the second tenant `recall` it -- the
+      result should show `found: true`.
+    gold:
+      tool_name: recall
+      call_check: "result.found == true"
+      kind: python

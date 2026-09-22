@@ -1,90 +1,86 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-agent-mesh-ops.md",
-  "intent_slug": "mcphost-checkcompat-port-race",
-  "root_motivation": "On 2026-09-15 the burst lane's ccx53 prove failed checkcompat_ac02_ac03's broken-previous-binary test (exit Some(0), not 4) though the same commit passed on ccx43 minutes earlier. Cause: free_loopback_port bound then dropped a port before the child re-bound it; a parallel test's own server could grab that exact port in the gap, so /bin/false read as 'up'. More cores meant more concurrent test threads meant a higher collision rate -- a flaky mcphost test costs a box-hour and blocks enable on every image refresh. Separately, the 2026-09-16 redeploy of 0.54.1 logged compat_check=fail with its reason discarded: check-compat names the failing step on stderr, but mcphost-deploy's cli.py printed only the bare verdict (requirement 7 / AC9-AC10).",
-  "user_persona": "Four (PRD User stories): (1) the burst lane on a 32-core box needs check-compat to pass for the same reason it passes on 16; (2) mcphost-deploy still gets exit 4 and the step name on a real failure, plus a redeploy log line naming which step, not just a bare verdict; (3) a test author spawning /bin/false needs no other test's server able to answer for it; (4) the operator sees the child's pid and matched token in the log on success.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-team-memory.md",
+  "intent_slug": "mcphost-team-memory",
+  "root_motivation": "A team running several agents (visions/mcphost-killer-apps.md, component 5) has no place those agents can all write to and search short of standing up a database or a vector store and wiring auth for each agent: agents repeat work and contradict each other, and mcphost's group primitive (host.group.*, gating shared tools, src/sharing.rs) has no example beyond sharing a single http-kind wrapper (examples/share-a-tool). This PRD ships one owner-tenant memory table plus two shared python tools (remember/recall) as an llms.txt recipe, a three-tenant proof, and a synthorg task -- with zero mcphost code changes: the recipe composes host.table.*/host.tool_share/host.group.* exactly as they already exist.",
+  "user_persona": "Four (PRD User stories): (1) the owner's agent creates the memory table, publishes and shares remember/recall, and adds two teammates; (2) a teammate's agent remembers something and a different teammate's recall returns it with the first teammate's id as writer; (3) the owner removes one member and that member's recall fails with a permission error while the other's keeps working; (4) Joe's synthetic panel measures time to the first cross-agent recall.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 9
+    "target": 8
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a previous binary of /bin/false, When check_compat runs, Then it returns exit 4 naming step 'previous-up' within 1s and the log records the child's exit status.",
-      "test": "tests/checkcompat_race_ac01_previous_up_within_1s.rs"
+      "description": "Given llms.txt, When the section is read, Then it lists the table, two tools, group creation, two shares, and the add call, under 70 lines.",
+      "test": "tests/mcphost_team_memory_ac01_llms_txt_section.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a foreign HTTP server already answering 200 on the port check-compat chose, When wait_ready polls, Then it does not report ready and the log contains 'foreign server on port'.",
-      "test": "tests/checkcompat_race_ac02_foreign_server_without_token.rs"
+      "description": "Given three fresh tenants set up per the section, When tenant B calls remember, Then the row exists in the owner's memory table with writer = B's tenant id (the documented who fallback, stated in examples/team-memory/proof.sh's own WRITER= output line).",
+      "test": "tests/mcphost_team_memory_ac02_b_remember_writer.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a real previous mcphost binary, When it is spawned with the inherited listener and the token env, Then /healthz carries X-Mcphost-Compat-Token matching and check_compat reports ready.",
-      "test": "tests/checkcompat_race_ac03_inherited_listener_token_matches.rs"
+      "description": "Given B's row, When tenant C calls recall \"deploy\", Then the row is returned newest first with B as writer.",
+      "test": "tests/mcphost_team_memory_ac03_c_recall_shows_writer.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given MCPHOST_COMPAT_TOKEN unset, When /healthz is requested, Then no X-Mcphost-Compat-Token header is present.",
-      "test": "tests/checkcompat_race_ac04_no_token_header_when_unset.rs"
+      "description": "Given the owner removes C from the group, When C calls recall, Then a permission error is returned and B's recall still succeeds.",
+      "test": "tests/mcphost_team_memory_ac04_group_remove_revokes_c.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given cargo test -- --test-threads=32 running the two ac02/ac03 tests and 30 dummy tests that each spawn a real mcphost on a fresh listener, When the suite runs 200 times in a loop on RedBaron, Then 0 failures.",
-      "test": "tests/checkcompat_race_ac05_stress_no_port_collisions.rs"
+      "description": "Given recall with limit 500, When called, Then at most 50 rows are returned.",
+      "test": "tests/mcphost_team_memory_ac05_recall_limit_capped_at_50.rs"
     },
     {
       "id": "AC6",
-      "level": "SHOULD",
-      "description": "Given MCPHOST_BIND=127.0.0.1:<explicit port>, When check_compat runs against a real previous binary, Then it binds by address (log says so) and still enforces the token.",
-      "test": "tests/checkcompat_race_ac06_explicit_bind_still_enforces_token.rs"
+      "level": "MUST",
+      "description": "Given the proof runs against https://mcphost.dev/mcp, When it finishes, Then AC2-5 hold and wall time is printed. (Live)",
+      "test": "deferred -- Live proof against production https://mcphost.dev/mcp needs operator authorization/network egress this coding sandbox does not have (WM_BUILD_AGENT=1's ssh bin-shim also refuses the remote runner box itself, so even this PRD's own AC2-5 tests, which only need a local TestServer, could not be exercised through cargo from this session -- see this card's own ambiguities_resolved). tests/mcphost_team_memory_ac08_live_test_skipped_without_env.rs's live_proof_against_real_mcphost_when_enabled (gated on MCPHOST_LIVE=1) is the AC6 embodiment, same convention as PRD-mcphost-share-a-tool-not-a-key's own AC6/AC8."
     },
     {
       "id": "AC7",
-      "level": "MUST",
-      "description": "Given the whole mcphost test suite, When cargo test --workspace runs on RedBaron, Then it exits 0 and clippy is unchanged versus the committed baseline (delta-pass convention).",
-      "test": "tests/checkcompat_race_ac07_suite_green_and_clippy_clean.rs"
+      "level": "SHOULD",
+      "description": "Given the synthorg task, When run 5 times, Then 5 first-cross-agent-recall times are recorded.",
+      "test": "tests/mcphost_team_memory_ac07_synthorg_task_five_completions.rs"
     },
     {
       "id": "AC8",
-      "level": "MUST",
-      "description": "Given a real ccx53 burst box, When burst-lane.sh prove runs on this PRD's HEAD, Then prove done routed=true and the run log shows the ac02/ac03 tests ok.",
-      "test": "deferred -- no ccx53/Hetzner burst box reachable from this coding sandbox (no HCLOUD_TOKEN; the installed burst-lane CLI has no prove verb). See PRD frontmatter deferred_acs/mock_justifications, locked against a dangling reference by tests/checkcompat_race_ac08_deferral_is_justified.rs."
+      "level": "SHOULD",
+      "description": "Given MCPHOST_LIVE unset, When the suite runs, Then the Live test is skipped.",
+      "test": "tests/mcphost_team_memory_ac08_live_test_skipped_without_env.rs"
     },
     {
       "id": "AC9",
-      "level": "MUST",
-      "description": "Given mcphost migrate --check-compat exits non-zero with stderr 'step=signup: connection refused', When mcphost-deploy redeploy runs with a fake runner returning that result, Then stdout names the step/detail and the gate journal gains one compat-check fail line; given exit 0, stdout is exactly 'compat_check: pass' as today.",
-      "test": "cross-repo: /home/jsy/repos/mcphost-deploy tests/checkcompatrace_ac9_journal_and_line_name_the_step.py (commit edff67f7)"
-    },
-    {
-      "id": "AC10",
-      "level": "MUST",
-      "description": "Given the ledger scraper from vibeloop-measure.sh, When it reads the AC9 fail line, Then it yields 'fail', and on the pass line 'pass'.",
-      "test": "cross-repo: /home/jsy/repos/mcphost-deploy tests/checkcompatrace_ac10_ledger_scraper_reads_verdict.py (commit edff67f7)"
+      "level": "SHOULD",
+      "description": "Given forget {id} by a tenant that is neither writer nor owner, When called, Then it is refused.",
+      "test": "tests/mcphost_team_memory_ac09_forget_refused_for_non_writer_non_owner.rs"
     }
   ],
   "scope": [
-    "src/compat_check.rs: bind_loopback_listener() replaces free_loopback_port() -- binds 127.0.0.1:0 and keeps the listener open all the way to spawn_previous handing it to the child as an inherited fd (LISTEN_FDS=1/LISTEN_PID=<child>, requirement 1). generate_compat_token() makes a random 128-bit MCPHOST_COMPAT_TOKEN per run, passed to the child's env; wait_ready only accepts a /healthz response carrying it back in X-Mcphost-Compat-Token (requirement 2), polls Child::try_wait() every iteration so a dead child fails in ~1 poll interval naming step 'previous-up' (requirement 3), and $MCPHOST_BIND still works as the old bind-by-address path when a caller sets it explicitly (requirement 4).",
-    "src/http.rs: inherited_listener()/serve_configured() add systemd socket-activation support (LISTEN_FDS/LISTEN_PID) to the serve bind path, since the production unit did not already have it (Open question 1, answered: bind-by-address only, before this PRD). healthz() adds the X-Mcphost-Compat-Token response header only when AppState::compat_token is Some (requirement 5).",
-    "src/state.rs / src/main.rs / src/tables.rs / tests/common/mod.rs and two other bare-AppState test helpers: new AppState.compat_token: Option<String> field, read from $MCPHOST_COMPAT_TOKEN at serve startup, None everywhere else.",
-    "tests/checkcompat_ac02_ac03.rs: one line changed (the broken-previous-binary case's expected step string 'spawn' -> 'previous-up'), per the PRD's own 'do not edit beyond replacing the helper it calls' constraint.",
-    "tests/checkcompat_race_ac0[1-7]_*.rs (new, one per non-deferred in-repo AC) plus tests/support/lanecov.rs's UNROUTED_ALLOWLIST entry and scripts/gen-test-suites.sh's MAX_PER_SUITE.core bump (165 -> 327, on top of tenant-data-export's rebased value) that its own singleton-exclusive tracing-subscriber file (AC2) and its own new area-group file (AC7) required to stay under the P0 10-suite-binary cap.",
-    "Cross-repo (requirement 7, AC9/AC10): /home/jsy/repos/mcphost-deploy's cli.py/redeploy.py/compat_check.py -- already implemented and committed (edff67f7) by the time this card was refreshed; verified green here, not re-done.",
-    "AC8 (real ccx53 burst-lane.sh prove) is deferred: neither a reachable Hetzner burst box nor burst-lane.sh itself exists in this coding sandbox."
+    "www/llms.txt: new '## Give your agents one memory' section (53 lines) between the 'Share a tool, not a key: public variant' subsection and '## Limits and pricing' -- host.table.create(memory), two host.tool_publish calls (remember/recall, kind python), host.group.create, two host.tool_share calls, host.group.add, and a closing paragraph naming what `writer` holds and the `who` fallback.",
+    "examples/team-memory/proof.sh (new): three fresh tenants tagged x-mcphost-synthetic: recipe:team-memory (requirement 4); owner creates the table, publishes and shares remember/recall, adds B and C; B remembers; C recalls and sees B as writer; owner removes C; C's next recall errors while B's still succeeds; wall time printed. Mirrors examples/share-a-tool/proof.sh's helper shape (mcp_call/structured_of/json_str/has_error), plus a new mcp_call_ready retry wrapper for the python-kind tool_building cold-start window.",
+    "examples/team-memory/tools/remember.py, recall.py (new): the two shared python tools proof.sh publishes verbatim from these files. remember requires a caller-supplied `who` (mcphost does not expose the calling tenant's own id to a shared python tool -- CallCtx.tenant_id/namespace in src/kinds/mod.rs and every dispatch site in src/handler.rs carry only the OWNING tenant) and appends {key,text,tags,writer,at} via mcphost.table.append. recall builds a parameter-free SELECT (mcphost.table.query has no bind-param API -- src/kinds/python.rs's _table_query(sql) takes raw SQL text only), escaping the caller's query for SQL single-quotes and double-quoting the `key`/`text` column names, LIKE-matching key/text/tags, ORDER BY at DESC, rowid DESC, LIMIT clamped to 50 server-side regardless of the caller's requested limit (AC5); returns {rows, found} (`found` feeds the synthorg task's gold.call_check).",
+    "examples/team-memory/tools/forget.py (new, P2 requirement 7 / AC9 only -- not part of the P0 recipe in llms.txt or proof.sh): bakes the owner's own namespace in as OWNER_NAMESPACE at publish time (a shared tool has no other way to learn its own owner's identity from inside the sandbox), refuses (raises PermissionError, surfacing as tool_exception) unless the caller-supplied `who` matches the row's writer or OWNER_NAMESPACE. mcphost.table has no row-level delete/update (create/append/query/list/drop/schema only -- src/tables.rs's six pub async fns), so an authorized forget records a tombstone in a companion memory_forgotten table rather than deleting.",
+    "examples/team-memory/synthorg-task.yaml (new): one task, segment ops_coordinator, gold.tool_name=recall / gold.kind=python / gold.call_check=\"result.found == true\" -- proposed addition for RedBaron's corpus (not merged into it, same cross-repo-scope note as share-a-tool's own synthorg-task.yaml).",
+    "tests/mcphost_team_memory_ac0[1-5,7-9]_*.rs (new, one per non-deferred AC): AC1 is a pure www/llms.txt string test; AC2-4 run examples/team-memory/proof.sh against an in-process TestServer and assert on its CHECK lines (same convention as mcphost_share_a_tool_not_a_key_ac0[2-5]); AC5 and AC9 are self-contained (no proof.sh, no groups) since neither requirement mentions them; AC7 rebuilds the synthorg recipe directly in Rust and scores gold.call_check; AC8 is the MCPHOST_LIVE-gated skip test plus its own AC6-embodying live run. All six python-kind tests skip cleanly (sandbox::require_user_namespaces_or_ci_skip) where unprivileged user namespaces aren't available, same convention as every other sandboxed test in this crate.",
+    "agent/proof-lanes.toml: the pre-existing 'examples' lane's globs widened to also route examples/team-memory/**, and its required_commands gained a second, name-filtered `cargo test --workspace mcphost_team_memory_ac` line (the lane post-dates the v0.54.1 lanecov baseline, so this does not touch lanecov_ac04's byte-identical-required_commands check).",
+    "scripts/gen-test-suites.sh: MAX_PER_SUITE.core 336 -> 338 (this PRD's two core-classified files, AC1 and AC8, join the pre-existing single normal bucket; its five sandbox-classified files fit inside sandbox's existing 3-suite split without a cap change) -- same recurring mechanism as every PRD-* comment block above it in that file, re-collapsing the grand total to the AC1 ceiling of 10 suite binaries.",
+    "Cargo.toml: patch version bump (0.59.0 -> 0.59.1); CHANGELOG.md: new entry."
   ],
   "non_goals": [
-    "Changing the deploy flow around check-compat beyond requirement 7's journal/stdout line (mcphost-deploy).",
-    "Serializing mcphost's whole test suite -- the race lived in one helper, not the suite's parallelism itself.",
-    "Removing MCPHOST_BIND support for callers that still pass a port (requirement 4/AC6 keep it working, unchanged, on purpose)."
+    "Semantic or embedding search (P2 lists ranking by recency and tag overlap only; this PRD ships substring/tag LIKE matching at P0 and does not implement the P2 ranking).",
+    "Per-member quotas on the owner's table.",
+    "Any change to sharing, state, or python-kind code (Engineering target: zero mcphost code changes -- every file this PRD touches is under www/, examples/, tests/, agent/, scripts/gen-test-suites.sh, Cargo.toml, or CHANGELOG.md)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -93,39 +89,39 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "no_new_bind_race": "bind_loopback_listener() must never be dropped and re-bound; it stays open until handed to the child as an inherited fd, or the caller's own $MCPHOST_BIND address is used unchanged (the one path this PRD does not make race-free, by requirement 4's own design).",
-      "token_header_gated_by_env": "The healthz handler adds X-Mcphost-Compat-Token only when $MCPHOST_COMPAT_TOKEN was set in this process's own env at startup (requirement 5) -- production serve never sets it, so tenants never see it (AC4).",
-      "exit_codes_and_messages_unchanged": "Goal 3: mcphost-deploy's existing exit-4-on-fail contract and callers keep working through the same compat_check::run(...) signature."
+      "zero_mcphost_code_changes": "Engineering target states this explicitly: no src/**/*.rs edit is part of this PRD's scope. Every requirement is met by composing host.table.*/host.tool_share/host.group.* exactly as they exist today, from python tool source and shell/docs/tests.",
+      "writer_is_self_reported": "The PRD's own load-bearing open question -- confirmed by reading src/kinds/mod.rs's CallCtx struct and every TenantTableBridge/TenantStateBridge construction site in src/handler.rs: CallCtx.tenant_id/namespace always carry the OWNING tenant, never the cross-tenant caller's, for a shared tool dispatched through call_cross_tenant_tool. remember/forget therefore take a caller-supplied `who` and trust it; www/llms.txt's own section states this plainly, and the fallback is not a security boundary -- group membership (checked at call time, src/sharing.rs) is what actually gates who can call the tool at all.",
+      "no_row_level_delete": "mcphost.table's pseudo-module (src/kinds/python.rs) and its host-side TableBackend (src/tables.rs) expose exactly six ops -- create/append/query/list/drop/schema -- with no delete-row or update-row op. forget.py therefore tombstones into a companion memory_forgotten table instead of deleting; adding a real delete op would violate zero_mcphost_code_changes above."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why did checkcompat_ac02_ac03's broken-previous-binary test read /bin/false as 'up'?",
-      "a": "wait_ready polled a port a different, real mcphost test instance had grabbed in the gap between free_loopback_port() dropping its own listener and the /bin/false child (which never binds anything) being expected to bind it."
+      "q": "Why do a team's agents repeat work and contradict each other today?",
+      "a": "They have no place they can all write to and search short of standing up a database or vector store and wiring auth for each agent -- too much for what's often a handful of short notes."
     },
     {
       "why": 2,
-      "q": "Why was there a gap between choosing the port and something actually holding it?",
-      "a": "free_loopback_port() bound 127.0.0.1:0 purely to learn a free port number, then dropped the listener immediately, trusting the child to re-bind that exact number before anyone else could."
+      "q": "Why can't mcphost's existing group-sharing primitive (host.group.*, src/sharing.rs) already serve this?",
+      "a": "It has no example beyond examples/share-a-tool -- a single http-kind wrapper around one owner's paid API key. Nothing demonstrates sharing a *stateful*, multi-writer python tool, or what a shared tool sees of who is calling it."
     },
     {
       "why": 3,
-      "q": "Why trust a re-bind instead of just keeping the first bind?",
-      "a": "The previous release binds its own socket from $MCPHOST_BIND; there was no mechanism for check-compat to bind the socket itself and still let a separate previous-release process serve on it -- that mechanism (fd inheritance) didn't exist in mcphost's serve path yet."
+      "q": "Why does a shared, multi-writer tool need anything beyond host.tool_share + host.table.*, both of which already exist?",
+      "a": "Because every row needs to record who wrote it (Goal 2), and a shared tool executes in the OWNER's tenant context (src/sharing.rs, CallCtx.tenant_id) -- the open question was whether that context also carries the CALLER's identity."
     },
     {
       "why": 4,
-      "q": "Why does more concurrency make the race worse specifically for this test?",
-      "a": "More test threads means more concurrently-running TestServer instances each doing their own bind-then-serve on ephemeral ports, raising the odds that some other real server's port exactly matches the port check-compat's /bin/false case just freed."
+      "q": "Why does that open question matter enough to gate the design?",
+      "a": "If the host exposed the real caller id, `writer` could be trustworthy by construction; since it does not (confirmed against src/kinds/mod.rs and src/handler.rs at build time), `writer` is only as trustworthy as the calling agent's own honesty about a caller-supplied `who` -- a real, stated limitation, not a bug, and the PRD's own technical considerations anticipated exactly this branch (\"falls back to a caller-supplied who\")."
     },
     {
       "why": 5,
-      "q": "Why did a real schema-breaking compat failure and this race look identical after the fact?",
-      "a": "mcphost migrate --check-compat always named the failing step on stderr, but mcphost-deploy's cli.py only ever printed the bare verdict (compat_check: fail) and journaled nothing beyond it, so the 2026-09-16 redeploy's real (or possibly race-caused) failure left no way to tell which it was after the fact -- requirement 7/AC9/AC10 fix the discarded reason, independent of the port-race fix itself."
+      "q": "Why is a synthorg task and a wall-time-printing proof.sh part of this PRD rather than left to a follow-on?",
+      "a": "Goal 1 promises \"three tenants share one memory within 3 minutes on the free plan\" and User story 4 asks Joe's synthetic panel to measure time to first cross-agent recall -- neither claim is real until something actually times it, the same reasoning examples/share-a-tool/proof.sh's WALL_TIME_MS line and its own synthorg-task.yaml already established as this repo's convention for a landed recipe."
     }
   ],
-  "created_at": "2026-09-20T08:15:13Z",
+  "created_at": "2026-09-22T03:20:00Z",
   "ambiguities_resolved": [
     {
       "question": "The findings file records the reference Python client seeing well-formed ttlMs/cacheScope on an unauthenticated tools/list, which the code says is impossible. Which is right?",
@@ -178,6 +174,10 @@
     {
       "question": "This card was regenerated for PRD-mcphost-checkcompat-port-race, an entirely different feature from PRD-mcphost-tenant-data-export that previously occupied it -- same recurring staleness class as every entry above. Additionally: (1) requirement 1's open question (does the production unit already socket-activate?) needed a real answer before choosing between its two branches; (2) AC1's required step name 'previous-up' differs from the pre-existing checkcompat_ac02_ac03.rs test's asserted 'spawn', while the PRD's technical considerations say not to edit that file 'beyond replacing the helper it calls'; (3) requirement 7/AC9/AC10 name a cross-repo edit (mcphost-deploy) that was already implemented and committed (edff67f7) by the time this coder session started, apparently by a concurrent build.",
       "resolution": "root_motivation/user_persona/scope/non_goals/hard_constraints.additional/five_whys_trace rewritten from this PRD's own Problem statement, User stories, Requirements, Non-goals, and Technical considerations sections; acceptance_criteria's test fields point at the real tests/checkcompat_race_ac0[1-7]_*.rs files (all exist, compile, and pass), AC8 marked deferred (no reachable burst box/burst-lane.sh in this sandbox), and AC9/AC10 point at the already-passing mcphost-deploy test files by absolute path rather than a tests/**/*.rs pointer, since requirement 7 is a Python change in a different repository. On the three ambiguities: (1) grep of src/main.rs/src/http.rs before this PRD's diff showed serve() only ever bound by address (deploy/*.service has no matching unit file in this repo either) -- so requirement 1 took its 'production does not already socket-activate; this PRD adds that support' branch, confirmed by the new inherited_listener()/serve_configured() pair in src/http.rs. (2) checkcompat_ac02_ac03.rs's one required edit is exactly the step-name string ('spawn' -> 'previous-up'), nothing else in that file changed, matching 'replacing the helper it calls' as narrowly as the AC1 requirement allows. (3) mcphost-deploy's commit edff67f7 (tests/checkcompatrace_ac9_journal_and_line_name_the_step.py, tests/checkcompatrace_ac10_ledger_scraper_reads_verdict.py) was inspected and re-run in this session (6 passed, 2 skipped -- skips gated on a real mcphost release binary this sandbox doesn't have -- 1 unrelated pre-existing failure elsewhere in that repo's suite, readymargin_ac3, predates this PRD by several commits) rather than redone."
+    },
+    {
+      "question": "PRD Open question (Technical considerations / Open questions table, owner \"Joe / builder at step 1\"): does the host expose the caller's tenant id inside a shared python tool today? The PRD's own branch: if not, `writer` falls back to a caller-supplied `who` and \"the vision's open question gets a rust-extend follow-on.\" Separately, two build-time gaps had no PRD text to settle them directly: (1) requirement 7 (P2) asks for a `forget {id}` restricted to writer or owner, but mcphost.table has no row-delete op and Non-Goals forbids any python-kind/sharing code change to add one; (2) this coding sandbox's own ssh bin-shim (\"ssh is never a build agent's to call\", WM_BUILD_AGENT=1) rejects every `wm-build runner sync`/`exec` invocation this PRD's own build instructions named as the only way to run cargo, so `cargo test`/`cargo clippy` could not be executed from this session despite ~10 minutes and 7+ attempts (journal.jsonl's shim-rejected entries confirm this is a deterministic policy rejection, not network flakiness -- an earlier, successful exec-1.log entry for this same run predates this coder session and was performed by a different, unsandboxed process).",
+      "resolution": "(1) Confirmed by reading src/kinds/mod.rs's CallCtx struct (tenant_id/namespace fields, no caller field) and every TenantTableBridge/TenantStateBridge/CallCtx construction site in src/handler.rs (call_published_tool's owner-tenant dispatch, call_cross_tenant_tool's group-membership check followed by the same owner-tenant CallCtx): the host does NOT expose the caller's tenant id to a shared python tool. root_motivation/scope/hard_constraints.additional above take the PRD's own documented-fallback branch: remember/forget take a caller-supplied `who`, www/llms.txt's own section states plainly what `writer` holds and that the fallback is not a security boundary (group membership, checked at call time by src/sharing.rs, is). No rust-extend follow-on PRD was opened by this build (out of scope for a coder session; noted here for the next PRD queued against this vision's open question). (2) forget.py tombstones into a companion memory_forgotten table (mcphost.table.append) rather than deleting, keeping requirement 7/AC9's refusal check real while adding no mcphost code. (3) Every file this PRD adds was written and locally reasoned through as carefully as this session could manage without cargo: each python tool source parses under `python3 -c 'import ast; ast.parse(...)'`, recall.py's SQL-building logic was exercised against a hand-rolled mock of mcphost.table.query (confirming escaping and the 50-row clamp), and every host-side API call (mcphost.table.create/append/query argument names, TableBackend op dispatch, AppError::Structured code propagation for table_already_exists) was checked directly against src/tables.rs/src/kinds/python.rs/src/handler.rs rather than assumed. `cargo test`/`cargo clippy` remain unrun from this session; this card and the coder's own final report both say so plainly rather than fabricating a 'test result:' line, so the next session with working runner access (or an operator unblocking this sandbox's ssh shim) has a clean, honest starting point."
     }
   ]
 }
