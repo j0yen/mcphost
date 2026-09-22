@@ -62,6 +62,18 @@ mod limits_ac06_quickstart_docs_match_constants;
 mod limits_ac07_process_fork_storm_capped;
 #[path = "limits_ac08_usage_capacity_refusals.rs"]
 mod limits_ac08_usage_capacity_refusals;
+#[path = "mcphost_database_in_a_minute_ac02_all_rows_present.rs"]
+mod mcphost_database_in_a_minute_ac02_all_rows_present;
+#[path = "mcphost_database_in_a_minute_ac03_query_answers_match_fixture.rs"]
+mod mcphost_database_in_a_minute_ac03_query_answers_match_fixture;
+#[path = "mcphost_database_in_a_minute_ac04_query_rejects_like_and_raw_sql.rs"]
+mod mcphost_database_in_a_minute_ac04_query_rejects_like_and_raw_sql;
+#[path = "mcphost_database_in_a_minute_ac05_signup_events_source_tagged.rs"]
+mod mcphost_database_in_a_minute_ac05_signup_events_source_tagged;
+#[path = "mcphost_database_in_a_minute_ac07_synthorg_task_five_completions.rs"]
+mod mcphost_database_in_a_minute_ac07_synthorg_task_five_completions;
+#[path = "mcphost_database_in_a_minute_ac09_csv_import_batches_internally.rs"]
+mod mcphost_database_in_a_minute_ac09_csv_import_batches_internally;
 #[path = "mcphost_team_memory_ac02_b_remember_writer.rs"]
 mod mcphost_team_memory_ac02_b_remember_writer;
 #[path = "mcphost_team_memory_ac03_c_recall_shows_writer.rs"]
@@ -96,39 +108,3 @@ mod plainenv_ac10_admin_reports_env_names_and_size;
 mod publishfirsttry_ac03_ac04_quickstart;
 #[path = "publishfirsttry_ac06_docs_shared_source.rs"]
 mod publishfirsttry_ac06_docs_shared_source;
-#[path = "python_ac01_no_deps_cpu_memory.rs"]
-mod python_ac01_no_deps_cpu_memory;
-#[path = "python_ac02_requirements_build_and_building_state.rs"]
-mod python_ac02_requirements_build_and_building_state;
-#[path = "python_ac03_invalid_source_rejected.rs"]
-mod python_ac03_invalid_source_rejected;
-#[path = "python_ac04_disallowed_requirement.rs"]
-mod python_ac04_disallowed_requirement;
-#[path = "python_ac05_exception_traceback.rs"]
-mod python_ac05_exception_traceback;
-#[path = "python_ac06_timeout.rs"]
-mod python_ac06_timeout;
-#[path = "python_ac07_oom.rs"]
-mod python_ac07_oom;
-#[path = "python_ac08_network_none_blocks.rs"]
-mod python_ac08_network_none_blocks;
-#[path = "python_ac09_filesystem_isolation.rs"]
-mod python_ac09_filesystem_isolation;
-#[path = "python_ac10_fork_bomb_contained.rs"]
-mod python_ac10_fork_bomb_contained;
-#[path = "python_ac11_secret_redaction.rs"]
-mod python_ac11_secret_redaction;
-#[path = "python_ac12_republish_atomic.rs"]
-mod python_ac12_republish_atomic;
-#[path = "python_ac13_capacity_admission.rs"]
-mod python_ac13_capacity_admission;
-#[path = "python_ac14_cpu_budget_rate_limit.rs"]
-mod python_ac14_cpu_budget_rate_limit;
-#[path = "runenvelope_ac1_call_and_tool_run_parity.rs"]
-mod runenvelope_ac1_call_and_tool_run_parity;
-#[path = "runenvelope_ac2_no_declared_outputs_raw_payload.rs"]
-mod runenvelope_ac2_no_declared_outputs_raw_payload;
-#[path = "runenvelope_ac3_descriptor_and_decision_table_name_envelope.rs"]
-mod runenvelope_ac3_descriptor_and_decision_table_name_envelope;
-#[path = "runenvelope_ac4_no_calls_row_with_payload.rs"]
-mod runenvelope_ac4_no_calls_row_with_payload;
