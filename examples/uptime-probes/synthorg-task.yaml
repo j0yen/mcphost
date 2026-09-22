@@ -1,0 +1,30 @@
+# Consumer task for the synthorg mcphost corpus (RedBaron's
+# corpora/mcphost/consumer-tasks.yaml, see its own header comment for the
+# id/segments/task/gold schema and the call_check mini-grammar). Proposed
+# addition for the "Uptime probes with no server" recipe (www/llms.txt,
+# examples/uptime-probes/proof.sh) -- not merged into that file by this
+# PRD, since RedBaron's corpus lives in a separate repository outside this
+# worktree's scope (build_into: mcphost only). A maintainer of that corpus
+# can fold this block into consumer-tasks.yaml's own `tasks:` list.
+#
+# Segment: ops_coordinator (incumbent: a monitoring SaaS account, or a
+# polling box that is itself unmonitored). This task proves the
+# alternative: one schedule, one table, one tool -- scored on reaching the
+# first stored check (PRD success metric: "time to first stored check").
+tasks:
+  - id: ops-coordinator-uptime-probes-no-server
+    segments: [ops_coordinator]
+    task: >
+      Your team runs a couple of small services and wants to know when
+      one goes down, without a monitoring SaaS account or an unmonitored
+      box polling for it. Sign up, create `targets` and `checks` tables
+      with `host.state.table_create` (`targets`: url text primary key,
+      added_at real; `checks`: url text, code integer, ms real, at real),
+      add one target URL to `targets` with `host.state.insert`, publish
+      `probe` as a `python` tool with `network: "public"` that fetches
+      every target and writes one `checks` row per target, and call it --
+      the result should show `probed: 1`.
+    gold:
+      tool_name: probe
+      call_check: "result.probed == 1"
+      kind: python

@@ -11,6 +11,8 @@ mod ci_sandbox_support;
 #[path = "support/host.rs"]
 #[allow(dead_code)]
 mod host;
+#[path = "support/uptime_probes.rs"]
+mod uptime_probes;
 
 #[path = "ac17_kind_conformance.rs"]
 mod ac17_kind_conformance;
@@ -86,6 +88,18 @@ mod mcphost_team_memory_ac05_recall_limit_capped_at_50;
 mod mcphost_team_memory_ac07_synthorg_task_five_completions;
 #[path = "mcphost_team_memory_ac09_forget_refused_for_non_writer_non_owner.rs"]
 mod mcphost_team_memory_ac09_forget_refused_for_non_writer_non_owner;
+#[path = "mcphost_uptime_probes_ac02_checks_two_rows_per_target.rs"]
+mod mcphost_uptime_probes_ac02_checks_two_rows_per_target;
+#[path = "mcphost_uptime_probes_ac03_status_up_pct_and_down_since.rs"]
+mod mcphost_uptime_probes_ac03_status_up_pct_and_down_since;
+#[path = "mcphost_uptime_probes_ac04_retention_deletes_old_rows.rs"]
+mod mcphost_uptime_probes_ac04_retention_deletes_old_rows;
+#[path = "mcphost_uptime_probes_ac05_target_cap_at_20.rs"]
+mod mcphost_uptime_probes_ac05_target_cap_at_20;
+#[path = "mcphost_uptime_probes_ac07_synthorg_task_five_completions.rs"]
+mod mcphost_uptime_probes_ac07_synthorg_task_five_completions;
+#[path = "mcphost_uptime_probes_ac09_down_since_flip_sends_inbox.rs"]
+mod mcphost_uptime_probes_ac09_down_since_flip_sends_inbox;
 #[path = "plainenv_ac01_env_reaches_process.rs"]
 mod plainenv_ac01_env_reaches_process;
 #[path = "plainenv_ac02_invalid_names_refused.rs"]
