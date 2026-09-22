@@ -48,6 +48,7 @@ const MIGRATION_0025: &str = include_str!("../migrations/0025_self_offboard.sql"
 const MIGRATION_0026: &str = include_str!("../migrations/0026_retention.sql");
 const MIGRATION_0027: &str = include_str!("../migrations/0027_mesh_ops.sql");
 const MIGRATION_0028: &str = include_str!("../migrations/0028_tool_versions.sql");
+const MIGRATION_0029: &str = include_str!("../migrations/0029_agent_channels.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -1124,7 +1125,8 @@ impl Db {
         Self::migrate_0025_self_offboard(&conn)?;
         Self::migrate_0026_retention(&conn)?;
         Self::migrate_0027_mesh_ops(&conn)?;
-        Self::migrate_0028_tool_versions(&conn)
+        Self::migrate_0028_tool_versions(&conn)?;
+        Self::migrate_0029_agent_channels(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -1541,6 +1543,19 @@ impl Db {
         }
         conn.execute_batch(MIGRATION_0028)?;
         backfill_tool_versions_sync(conn)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-agent-channels requirements 1/2/8, P1 requirement 10:
+    /// same additive-column idempotency guard as 0002/0020/0022/0025/0027
+    /// above, gated on `channels.group_id`.
+    fn migrate_0029_agent_channels(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('channels') WHERE name = 'group_id'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0029)?;
+        }
         Ok(())
     }
 
@@ -7296,6 +7311,365 @@ impl Db {
         .await
     }
 
+    // ---- group channels (PRD-mcphost-agent-channels) ----------------------
+
+    /// `host.channel.open(group)` (requirement 2 / AC1): idempotent --
+    /// re-opening an already-open group's channel returns the existing
+    /// row rather than erroring or creating a second one (`idx_channels_
+    /// group_id`'s partial unique index is what actually enforces "one
+    /// channel per group" against a race; this idempotent-select-first
+    /// path is the common case). `owner_tenant_id`/`group_name` name a
+    /// group the CALLER owns (same "group is scoped by its owner" contract
+    /// [`Self::create_group`]/[`Self::group_add_member`] already use) --
+    /// [`AppError::GroupNotFound`] when no such group exists, same code
+    /// `host.group.add`/`host.group.remove` already return for the same
+    /// mistake.
+    pub async fn channel_group_open(
+        &self,
+        owner_tenant_id: i64,
+        group_name: String,
+        channels_max: i64,
+    ) -> Result<ChannelRow, AppError> {
+        let now = now_rfc3339();
+        let now_ms = crate::state::now_unix_ms();
+        self.with_conn(move |conn| {
+            let Some(group_id) = Self::find_group_id_sync(conn, owner_tenant_id, &group_name)?
+            else {
+                return Err(AppError::GroupNotFound(group_name));
+            };
+            let existing: Option<(String, String)> = conn
+                .query_row(
+                    "SELECT id, created_at FROM channels WHERE group_id = ?1",
+                    params![group_id],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .optional()?;
+            if let Some((id, created_at)) = existing {
+                return Ok(ChannelRow { id, name: group_name, created_at });
+            }
+            let used: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM channels c JOIN groups g ON g.id = c.group_id \
+                 WHERE g.owner_tenant_id = ?1",
+                params![owner_tenant_id],
+                |r| r.get(0),
+            )?;
+            if used >= channels_max {
+                return Err(AppError::channel_quota_exceeded("channels_max", channels_max));
+            }
+            let id = crate::state::new_ulid();
+            // Never exposed as `name` in any tool response (the group's own
+            // name is what `channel_group_open`'s caller gets back) -- just
+            // a value satisfying `channels.name`'s pre-existing `NOT NULL
+            // UNIQUE` from migration 0027, distinguishable from any legacy
+            // caller-chosen name by construction.
+            let synthetic_name = format!("__group_channel__{group_id}");
+            conn.execute(
+                "INSERT INTO channels (id, name, group_id, created_by, created_at, created_unix_ms) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![id, synthetic_name, group_id, owner_tenant_id, now, now_ms],
+            )?;
+            Ok(ChannelRow { id, name: group_name, created_at: now.clone() })
+        })
+        .await
+    }
+
+    /// The group a channel id resolves to, if it's a group channel at all
+    /// (a legacy migration-0027 name-only channel, or an id naming nothing,
+    /// both answer `None` here -- [`Self::channel_group_lookup`]'s callers
+    /// treat that the same as "caller isn't a member", so a non-member and
+    /// a nonexistent id read byte-identically, AC2).
+    pub async fn channel_group_lookup(
+        &self,
+        channel_id: String,
+    ) -> Result<Option<GroupChannelCtx>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT g.owner_tenant_id, g.name, c.closed_at, c.frozen_at \
+                 FROM channels c JOIN groups g ON g.id = c.group_id WHERE c.id = ?1",
+                params![channel_id],
+                |r| {
+                    Ok(GroupChannelCtx {
+                        owner_tenant_id: r.get(0)?,
+                        group_name: r.get(1)?,
+                        closed_at: r.get(2)?,
+                        frozen_at: r.get(3)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// AC1/AC2/AC5: is `tenant_id` allowed to read/post on a group channel
+    /// whose group is owned by `owner_tenant_id` named `group_name` -- the
+    /// owner always is (same as `host.group.add`/`remove`'s own owner-only
+    /// contract), otherwise exactly [`Self::is_group_member`]'s own
+    /// resolution-time check `tools/list`'s cross-tenant path already uses
+    /// (technical considerations: "so channel and tool visibility can
+    /// never disagree").
+    pub async fn channel_group_is_authorized(
+        &self,
+        ctx: &GroupChannelCtx,
+        tenant_id: i64,
+    ) -> Result<bool, AppError> {
+        if tenant_id == ctx.owner_tenant_id {
+            return Ok(true);
+        }
+        self.is_group_member(ctx.owner_tenant_id, ctx.group_name.clone(), tenant_id).await
+    }
+
+    /// AC9/AC10: owner-only `closed_at`/`frozen_at` toggle -- `false` when
+    /// `channel_id` doesn't exist, isn't a group channel, or isn't owned by
+    /// `owner_tenant_id` (the caller's own `host.channel.close`/`freeze`/
+    /// `unfreeze` turns that into the same [`AppError::channel_not_found`]
+    /// every other "doesn't exist or isn't yours" case in this module uses).
+    async fn channel_group_set_flag(
+        &self,
+        owner_tenant_id: i64,
+        channel_id: String,
+        column: &'static str,
+        value: Option<String>,
+    ) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let sql = format!(
+                "UPDATE channels SET {column} = ?1 WHERE id = ?2 AND group_id IN \
+                 (SELECT id FROM groups WHERE owner_tenant_id = ?3)"
+            );
+            let affected = conn.execute(&sql, params![value, channel_id, owner_tenant_id])?;
+            Ok(affected > 0)
+        })
+        .await
+    }
+
+    /// `host.channel.close` (AC9).
+    pub async fn channel_group_close(
+        &self,
+        owner_tenant_id: i64,
+        channel_id: String,
+    ) -> Result<bool, AppError> {
+        self.channel_group_set_flag(owner_tenant_id, channel_id, "closed_at", Some(now_rfc3339()))
+            .await
+    }
+
+    /// `host.channel.freeze`/`unfreeze` (P1 requirement 10 / AC10).
+    pub async fn channel_group_set_frozen(
+        &self,
+        owner_tenant_id: i64,
+        channel_id: String,
+        frozen: bool,
+    ) -> Result<bool, AppError> {
+        let value = if frozen { Some(now_rfc3339()) } else { None };
+        self.channel_group_set_flag(owner_tenant_id, channel_id, "frozen_at", value)
+            .await
+    }
+
+    /// AC1/AC3/AC4/AC5/AC8: every post after `after_seq`, in `seq` order --
+    /// deleted (retention-purged) rows simply aren't there any more, so a
+    /// cursor left below the retention horizon (AC8) starts at the first
+    /// still-existing row with no special-casing needed here.
+    pub async fn channel_posts_after(
+        &self,
+        channel_id: String,
+        after_seq: i64,
+        limit: i64,
+    ) -> Result<Vec<ChannelPostRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, channel_id, seq, from_address, body, data_json, synthetic, \
+                        source_class, created_at, created_unix_ms \
+                 FROM channel_posts WHERE channel_id = ?1 AND seq > ?2 ORDER BY seq LIMIT ?3",
+            )?;
+            stmt.query_map(params![channel_id, after_seq, limit], channel_post_row_from_row)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// AC3/AC4: this tenant's stored read cursor for a group channel, if
+    /// it has ever called `host.channel.read(ack: true)` on it.
+    pub async fn channel_cursor_seq(
+        &self,
+        channel_id: String,
+        tenant_id: i64,
+    ) -> Result<Option<i64>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT seq FROM channel_cursors WHERE channel_id = ?1 AND tenant_id = ?2",
+                params![channel_id, tenant_id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// AC3/AC4: `host.channel.read(ack: true)` stores `next_cursor` as this
+    /// tenant's new `last_seq` for the channel.
+    pub async fn channel_cursor_ack(
+        &self,
+        channel_id: String,
+        tenant_id: i64,
+        seq: i64,
+    ) -> Result<(), AppError> {
+        let now = now_rfc3339();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO channel_cursors (channel_id, tenant_id, seq, updated_at) \
+                 VALUES (?1, ?2, ?3, ?4) \
+                 ON CONFLICT(channel_id, tenant_id) DO UPDATE SET seq = excluded.seq, \
+                    updated_at = excluded.updated_at",
+                params![channel_id, tenant_id, seq, now],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// AC1/AC3/AC4: `host.channel.post` on a group channel -- deliberately
+    /// NOT [`Self::channel_post`]'s own behavior of auto-advancing the
+    /// sender's read cursor to the new post: AC4 requires a poster's own
+    /// posts to still come back on its own next `host.channel.read` (a
+    /// poster is a reader too), so this table's cursor is touched only by
+    /// an explicit `ack: true` read, never by posting.
+    pub async fn channel_group_post_insert(
+        &self,
+        sender: Tenant,
+        channel_id: String,
+        body: String,
+        data_json: Option<String>,
+    ) -> Result<ChannelPostOutcome, AppError> {
+        let now = now_rfc3339();
+        let now_ms = crate::state::now_unix_ms();
+        self.with_conn(move |conn| {
+            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
+            let outcome: Result<ChannelPostOutcome, AppError> = (|| {
+                let seq: i64 = conn.query_row(
+                    "SELECT COALESCE(MAX(seq), 0) + 1 FROM channel_posts WHERE channel_id = ?1",
+                    params![channel_id],
+                    |r| r.get(0),
+                )?;
+                let post_id = crate::state::new_ulid();
+                conn.execute(
+                    "INSERT INTO channel_posts \
+                        (id, channel_id, seq, from_tenant_id, from_address, body, data_json, \
+                         synthetic, source_class, created_at, created_unix_ms) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                    params![
+                        post_id,
+                        channel_id,
+                        seq,
+                        sender.id,
+                        sender.namespace,
+                        body,
+                        data_json,
+                        sender.synthetic,
+                        sender.source_class.as_deref().unwrap_or("external"),
+                        now,
+                        now_ms
+                    ],
+                )?;
+                Ok(ChannelPostOutcome { id: post_id, channel_id: channel_id.clone(), seq, created_at: now.clone() })
+            })();
+            match &outcome {
+                Ok(_) => conn.execute("COMMIT", []).map(|_| ()).map_err(AppError::from)?,
+                Err(_) => {
+                    let _ = conn.execute("ROLLBACK", []);
+                }
+            }
+            outcome
+        })
+        .await
+    }
+
+    /// AC7's quota check: how many `host.channel.post` calls `tenant_id`
+    /// has made to any group channel in the sliding hour since `since_ms`
+    /// -- scoped to `group_id IS NOT NULL` so migration 0027's legacy,
+    /// ungated channel slice never counts against this PRD's own quota.
+    pub async fn count_channel_posts_since(
+        &self,
+        tenant_id: i64,
+        since_ms: i64,
+    ) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM channel_posts p JOIN channels c ON c.id = p.channel_id \
+                 WHERE c.group_id IS NOT NULL AND p.from_tenant_id = ?1 AND p.created_unix_ms >= ?2",
+                params![tenant_id, since_ms],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// AC6: every current member id of `owner_tenant_id`'s group
+    /// `group_name` -- `messaging::fire_message_triggers`'s own delivered-
+    /// tenant-ids loop, applied to a group's membership instead of a
+    /// message's recipient list.
+    pub async fn group_member_ids(
+        &self,
+        owner_tenant_id: i64,
+        group_name: String,
+    ) -> Result<Vec<i64>, AppError> {
+        self.with_conn(move |conn| {
+            let Some(group_id) = Self::find_group_id_sync(conn, owner_tenant_id, &group_name)?
+            else {
+                return Ok(Vec::new());
+            };
+            let mut stmt =
+                conn.prepare("SELECT member_tenant_id FROM group_members WHERE group_id = ?1")?;
+            stmt.query_map(params![group_id], |r| r.get(0))?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// AC8's housekeeping tick: every group channel, alongside its owner's
+    /// plan name (so the caller can look up that plan's own
+    /// `channel_retention_days` -- retention is per the OWNER's plan, not
+    /// the poster's, same "the channel's own owner sets the terms"
+    /// convention `channels_max`/`channel_posts_per_hour` already lean on).
+    pub async fn list_group_channels_with_owner_plan(
+        &self,
+    ) -> Result<Vec<(String, String)>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT c.id, t.plan FROM channels c \
+                 JOIN groups g ON g.id = c.group_id \
+                 JOIN tenants t ON t.id = g.owner_tenant_id \
+                 WHERE c.group_id IS NOT NULL",
+            )?;
+            stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// AC8: deletes a group channel's posts older than `cutoff_unix_ms` --
+    /// the retention half of the housekeeping tick; a stale cursor below
+    /// the new horizon needs no separate clamp (see
+    /// [`Self::channel_posts_after`]'s own doc comment).
+    pub async fn delete_channel_posts_older_than(
+        &self,
+        channel_id: String,
+        cutoff_unix_ms: i64,
+    ) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            let affected = conn.execute(
+                "DELETE FROM channel_posts WHERE channel_id = ?1 AND created_unix_ms < ?2",
+                params![channel_id, cutoff_unix_ms],
+            )?;
+            Ok(affected as i64)
+        })
+        .await
+    }
+
     /// Test-only: insert one `calls` row at an arbitrary age (AC1/AC3/AC4
     /// fixtures need rows older than any real call in a fresh test
     /// server), bypassing `host.tool_call`'s real dispatch path so a test
@@ -7708,6 +8082,17 @@ pub struct ChannelRow {
     pub id: String,
     pub name: String,
     pub created_at: String,
+}
+
+/// PRD-mcphost-agent-channels: what [`Db::channel_group_lookup`] resolves a
+/// group channel's `id` to -- the group's own owner/name (membership and
+/// owner-only checks both key off these, never a separate `channels.name`)
+/// plus its two lifecycle flags.
+pub struct GroupChannelCtx {
+    pub owner_tenant_id: i64,
+    pub group_name: String,
+    pub closed_at: Option<String>,
+    pub frozen_at: Option<String>,
 }
 
 /// `host.channel.post`'s own outcome -- deliberately not [`SendOutcome`]

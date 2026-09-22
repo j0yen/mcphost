@@ -413,9 +413,55 @@
       "since": "0.58.1"
     },
     {
-      "description": "Create a named channel, or return the existing one of that name.",
+      "description": "Owner-only: close a group channel. Further host.channel.post calls get channel_closed; host.channel.read keeps working.",
       "input_schema": {
         "properties": {
+          "channel_id": {
+            "description": "The group channel's id.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.channel.close",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Owner-only: freeze a group channel. Further host.channel.post calls get channel_frozen; host.channel.read keeps working.",
+      "input_schema": {
+        "properties": {
+          "channel_id": {
+            "description": "The group channel's id.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.channel.freeze",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Create a named channel, or return the existing one of that name; or, with group instead of name, open (idempotently) the one channel for a group you own -- every current member can then host.channel.post/read it. Refuses channels_max (quota_exceeded) past the plan's cap.",
+      "input_schema": {
+        "properties": {
+          "group": {
+            "description": "A group you own (host.group.create); open its one channel instead.",
+            "type": "string"
+          },
           "name": {
             "description": "Channel name to create or look up.",
             "type": "string"
@@ -425,16 +471,14 @@
             "type": "string"
           }
         },
-        "required": [
-          "name"
-        ],
+        "required": [],
         "type": "object"
       },
       "name": "host.channel.open",
       "since": "0.58.0"
     },
     {
-      "description": "Post to a channel by name or channel_id; advances your own read cursor to the new post.",
+      "description": "Post to a channel by name or channel_id; advances your own read cursor to the new post. Against a group channel's id, any current member may post; a non-member gets channel_not_found, byte-identical to an unknown id.",
       "input_schema": {
         "properties": {
           "body": {
@@ -461,6 +505,60 @@
         "type": "object"
       },
       "name": "host.channel.post",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Read a group channel's posts in seq order since a cursor (default: your own last read position, or 0 for a first read). ack: true stores next_cursor as your new read position. A non-member gets channel_not_found.",
+      "input_schema": {
+        "properties": {
+          "ack": {
+            "description": "Store next_cursor as your new read position.",
+            "type": "boolean"
+          },
+          "channel_id": {
+            "description": "The group channel's id, from host.channel.open(group=...).",
+            "type": "string"
+          },
+          "cursor": {
+            "description": "Read posts with seq greater than this; omit to resume from your own stored cursor.",
+            "type": "integer"
+          },
+          "limit": {
+            "description": "Max posts to return; default 50, max 100.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.channel.read",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Owner-only: undo host.channel.freeze; the next post succeeds with the next seq.",
+      "input_schema": {
+        "properties": {
+          "channel_id": {
+            "description": "The group channel's id.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.channel.unfreeze",
       "since": "0.58.0"
     },
     {
@@ -1907,6 +2005,10 @@
           "args": {
             "description": "Arguments passed to the tool on each firing/delivery (kind=\"schedule\"/\"event\" only -- a message trigger's whole argument is the message envelope).",
             "type": "object"
+          },
+          "channel_id": {
+            "description": "kind=\"message\": scope this trigger to one group channel's posts (host.channel.open's channel_id) instead of ordinary host.msg.send/reply deliveries.",
+            "type": "string"
           },
           "dedupe_header": {
             "description": "kind=\"event\": a header (e.g. X-GitHub-Delivery) whose repeated value within 24h answers 202 with the original run id instead of running again.",

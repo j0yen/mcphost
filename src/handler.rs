@@ -1275,6 +1275,12 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                         "description": "kind=\"message\": only fire for messages from this \
                             address (@handle or t_... namespace); omit to fire for any sender.",
                     },
+                    "channel_id": {
+                        "type": "string",
+                        "description": "kind=\"message\": scope this trigger to one group \
+                            channel's posts (host.channel.open's channel_id) instead of \
+                            ordinary host.msg.send/reply deliveries.",
+                    },
                     "args": {"type": "object", "description": "Arguments passed to the tool on each firing/delivery (kind=\"schedule\"/\"event\" only -- a message trigger's whole argument is the message envelope)."},
                     "tz": {"type": "string", "description": "kind=\"schedule\" P1: only \"UTC\" (or omitted) works today."},
                 }),
@@ -1698,19 +1704,29 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         // PRD-mcphost-agent-mesh-ops: the minimal `host.channel.*` vertical
         // slice this PRD's own AC4/AC7 need to exist against -- no
         // dependency PRD has built channels yet (see `channels.rs`'s
-        // module doc).
+        // module doc). PRD-mcphost-agent-channels extended `open`/`post`
+        // with the `group`/membership-gated path `channels.rs`'s own doc
+        // comment describes, and added `read`/`close`/`freeze`/`unfreeze`
+        // below.
         Tool::new(
             "host.channel.open",
-            "Create a named channel, or return the existing one of that name.",
+            "Create a named channel, or return the existing one of that name; or, with group \
+             instead of name, open (idempotently) the one channel for a group you own -- every \
+             current member can then host.channel.post/read it. Refuses channels_max \
+             (quota_exceeded) past the plan's cap.",
             host_schema(
-                json!({"name": {"type": "string", "description": "Channel name to create or look up."}}),
-                &["name"],
+                json!({
+                    "name": {"type": "string", "description": "Channel name to create or look up."},
+                    "group": {"type": "string", "description": "A group you own (host.group.create); open its one channel instead."},
+                }),
+                &[],
             ),
         ),
         Tool::new(
             "host.channel.post",
             "Post to a channel by name or channel_id; advances your own read cursor to the \
-             new post.",
+             new post. Against a group channel's id, any current member may post; a \
+             non-member gets channel_not_found, byte-identical to an unknown id.",
             host_schema(
                 json!({
                     "channel": {"type": "string", "description": "Channel name or channel_id."},
@@ -1718,6 +1734,47 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                     "data": {"type": "object", "description": "Optional structured payload."},
                 }),
                 &["channel", "body"],
+            ),
+        ),
+        Tool::new(
+            "host.channel.read",
+            "Read a group channel's posts in seq order since a cursor (default: your own last \
+             read position, or 0 for a first read). ack: true stores next_cursor as your new \
+             read position. A non-member gets channel_not_found.",
+            host_schema(
+                json!({
+                    "channel_id": {"type": "string", "description": "The group channel's id, from host.channel.open(group=...)."},
+                    "cursor": {"type": "integer", "description": "Read posts with seq greater than this; omit to resume from your own stored cursor."},
+                    "limit": {"type": "integer", "description": "Max posts to return; default 50, max 100."},
+                    "ack": {"type": "boolean", "description": "Store next_cursor as your new read position."},
+                }),
+                &["channel_id"],
+            ),
+        ),
+        Tool::new(
+            "host.channel.close",
+            "Owner-only: close a group channel. Further host.channel.post calls get \
+             channel_closed; host.channel.read keeps working.",
+            host_schema(
+                json!({"channel_id": {"type": "string", "description": "The group channel's id."}}),
+                &["channel_id"],
+            ),
+        ),
+        Tool::new(
+            "host.channel.freeze",
+            "Owner-only: freeze a group channel. Further host.channel.post calls get \
+             channel_frozen; host.channel.read keeps working.",
+            host_schema(
+                json!({"channel_id": {"type": "string", "description": "The group channel's id."}}),
+                &["channel_id"],
+            ),
+        ),
+        Tool::new(
+            "host.channel.unfreeze",
+            "Owner-only: undo host.channel.freeze; the next post succeeds with the next seq.",
+            host_schema(
+                json!({"channel_id": {"type": "string", "description": "The group channel's id."}}),
+                &["channel_id"],
             ),
         ),
     ];
@@ -2427,6 +2484,10 @@ impl McpHostHandler {
             // PRD-mcphost-agent-mesh-ops: the minimal `host.channel.*` slice.
             "host.channel.open" => channels::open(&self.state, tenant, &args).await,
             "host.channel.post" => channels::post(&self.state, tenant, &args).await,
+            "host.channel.read" => channels::read(&self.state, tenant, &args).await,
+            "host.channel.close" => channels::close(&self.state, tenant, &args).await,
+            "host.channel.freeze" => channels::freeze(&self.state, tenant, &args).await,
+            "host.channel.unfreeze" => channels::unfreeze(&self.state, tenant, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         }
     }

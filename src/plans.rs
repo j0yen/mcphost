@@ -162,6 +162,25 @@ pub struct Plan {
     /// plan's own default (5) when a hand-edited `plans.toml` predates this
     /// key, same tolerant-parse convention as every other field above.
     pub versions_max: i64,
+    /// PRD-mcphost-agent-channels requirement 2 (AC1's own quota): how many
+    /// channels this plan's tenants may have open at once, across every
+    /// group they own (`host.channel.open` refuses a further one with
+    /// `channel_quota_exceeded` naming `channels_max`). Defaults to the
+    /// `free` plan's own default (3) when a hand-edited `plans.toml`
+    /// predates this key, same tolerant-parse convention as every other
+    /// field above.
+    pub channels_max: i64,
+    /// requirement 3 / AC7: how many `host.channel.post` calls a single
+    /// tenant may make in a sliding hour, across every channel it's a
+    /// member of (`quota_exceeded` naming `channel_posts_per_hour`).
+    /// Defaults to the `free` plan's own default (120) when a hand-edited
+    /// `plans.toml` predates this key.
+    pub channel_posts_per_hour: i64,
+    /// requirement 8 / AC8: how many days a channel's posts survive the
+    /// housekeeping tick, keyed by the channel's owner's plan. Defaults to
+    /// the `free` plan's own default (14) when a hand-edited `plans.toml`
+    /// predates this key.
+    pub channel_retention_days: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -231,6 +250,12 @@ impl PlanCatalog {
                     // PRD-mcphost-tool-versions requirement 2: "free keeps 5
                     // versions".
                     versions_max: 5,
+                    // PRD-mcphost-agent-channels open questions, resolved
+                    // at build: "free channels_max 3, channel_posts_per_hour
+                    // 120, channel_retention_days 14".
+                    channels_max: 3,
+                    channel_posts_per_hour: 120,
+                    channel_retention_days: 14,
                 },
                 Plan {
                     name: "pro".to_string(),
@@ -293,6 +318,14 @@ impl PlanCatalog {
                     // PRD-mcphost-tool-versions requirement 2: "pro keeps 20
                     // versions".
                     versions_max: 20,
+                    // PRD-mcphost-agent-channels: pro gets a higher channel
+                    // cap, post rate and retention window than free, same
+                    // free/pro scaling shape as every other quota above --
+                    // open question, no published pro number, sized against
+                    // the ~16x-33x ratio the rest of this catalog uses.
+                    channels_max: 25,
+                    channel_posts_per_hour: 2_000,
+                    channel_retention_days: 90,
                 },
             ],
         }
@@ -386,6 +419,15 @@ impl PlanCatalog {
             out.push_str(&format!("urgent_per_day = {}\n", p.urgent_per_day));
             out.push_str(&format!("export_bytes_max = {}\n", p.export_bytes_max));
             out.push_str(&format!("versions_max = {}\n", p.versions_max));
+            out.push_str(&format!("channels_max = {}\n", p.channels_max));
+            out.push_str(&format!(
+                "channel_posts_per_hour = {}\n",
+                p.channel_posts_per_hour
+            ));
+            out.push_str(&format!(
+                "channel_retention_days = {}\n",
+                p.channel_retention_days
+            ));
             out.push('\n');
         }
         out
@@ -458,6 +500,9 @@ impl PlanCatalog {
                 "urgent_per_day" => builder.urgent_per_day = Some(int_value()),
                 "export_bytes_max" => builder.export_bytes_max = Some(int_value()),
                 "versions_max" => builder.versions_max = Some(int_value()),
+                "channels_max" => builder.channels_max = Some(int_value()),
+                "channel_posts_per_hour" => builder.channel_posts_per_hour = Some(int_value()),
+                "channel_retention_days" => builder.channel_retention_days = Some(int_value()),
                 _ => {}
             }
         }
@@ -504,6 +549,9 @@ struct PlanBuilder {
     urgent_per_day: Option<i64>,
     export_bytes_max: Option<i64>,
     versions_max: Option<i64>,
+    channels_max: Option<i64>,
+    channel_posts_per_hour: Option<i64>,
+    channel_retention_days: Option<i64>,
 }
 
 impl PlanBuilder {
@@ -571,6 +619,12 @@ impl PlanBuilder {
             // gets the `free` plan's own default (5), same tolerant-parse
             // rationale as every other field above.
             versions_max: self.versions_max.unwrap_or(5),
+            // PRD-mcphost-agent-channels: a plans.toml predating these
+            // three keys gets the `free` plan's own defaults, same
+            // tolerant-parse rationale as every other field above.
+            channels_max: self.channels_max.unwrap_or(3),
+            channel_posts_per_hour: self.channel_posts_per_hour.unwrap_or(120),
+            channel_retention_days: self.channel_retention_days.unwrap_or(14),
         })
     }
 }
