@@ -350,7 +350,10 @@ impl AppError {
                 // not an internal failure).
                 "agent_not_found" | "thread_not_found" | "contact_request_not_found"
                 | "channel_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
-                "mesh_frozen" => ErrorCode::INVALID_REQUEST,
+                // PRD-mcphost-agent-channels requirement 2 / P1 requirement
+                // 10: a closed/frozen channel is a caller-state gate, same
+                // INVALID_REQUEST bucket as `mesh_frozen` above.
+                "mesh_frozen" | "channel_closed" | "channel_frozen" => ErrorCode::INVALID_REQUEST,
                 _ => ErrorCode::INTERNAL_ERROR,
             },
             AppError::MultiInvalid { errors, .. } => errors
@@ -735,6 +738,40 @@ impl AppError {
             code: "channel_not_found",
             message: "no channel found for that name or id".to_string(),
             data: json!({}),
+        }
+    }
+
+    /// PRD-mcphost-agent-channels requirement 2 / AC9: `host.channel.post`
+    /// against a channel the owner has closed -- reads keep working
+    /// (`host.channel.read` never checks `closed_at`).
+    pub fn channel_closed() -> Self {
+        AppError::Structured {
+            code: "channel_closed",
+            message: "this channel is closed; posting is refused, reads still work".to_string(),
+            data: json!({}),
+        }
+    }
+
+    /// P1 requirement 10 / AC10: `host.channel.post` against a channel the
+    /// owner has frozen -- same "reads still work" posture as
+    /// [`Self::channel_closed`].
+    pub fn channel_frozen() -> Self {
+        AppError::Structured {
+            code: "channel_frozen",
+            message: "this channel is frozen; posting is refused, reads still work".to_string(),
+            data: json!({}),
+        }
+    }
+
+    /// requirement 2/3 (AC7): `host.channel.open`/`host.channel.post` over
+    /// a plan's `channels_max`/`channel_posts_per_hour` -- same flattened
+    /// `data.limit`/`data.value` shape as [`Self::msg_quota_exceeded`],
+    /// under the generic `quota_exceeded` code AC7 names.
+    pub fn channel_quota_exceeded(limit_name: &'static str, limit_value: i64) -> Self {
+        AppError::Structured {
+            code: "quota_exceeded",
+            message: format!("channel quota exceeded: {limit_name} (limit {limit_value})"),
+            data: json!({"limit": limit_name, "value": limit_value}),
         }
     }
 

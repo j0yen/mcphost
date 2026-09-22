@@ -110,6 +110,26 @@ mod billing_ac10_webhook_mode_mismatch;
 mod billing_ac11_healthz_paying_tenants;
 #[path = "billing_ac13_checkout_reuse.rs"]
 mod billing_ac13_checkout_reuse;
+#[path = "channel_ac01_group_open_and_broadcast_read.rs"]
+mod channel_ac01_group_open_and_broadcast_read;
+#[path = "channel_ac02_non_member_channel_not_found.rs"]
+mod channel_ac02_non_member_channel_not_found;
+#[path = "channel_ac03_ack_resumes_from_stored_cursor.rs"]
+mod channel_ac03_ack_resumes_from_stored_cursor;
+#[path = "channel_ac04_concurrent_posts_no_dups_no_gaps.rs"]
+mod channel_ac04_concurrent_posts_no_dups_no_gaps;
+#[path = "channel_ac05_removed_member_loses_access_posts_remain.rs"]
+mod channel_ac05_removed_member_loses_access_posts_remain;
+#[path = "channel_ac06_message_trigger_fires_per_member_not_poster.rs"]
+mod channel_ac06_message_trigger_fires_per_member_not_poster;
+#[path = "channel_ac07_post_quota_120_per_hour.rs"]
+mod channel_ac07_post_quota_120_per_hour;
+#[path = "channel_ac08_retention_tick_purges_old_posts.rs"]
+mod channel_ac08_retention_tick_purges_old_posts;
+#[path = "channel_ac09_close_blocks_posts_not_reads.rs"]
+mod channel_ac09_close_blocks_posts_not_reads;
+#[path = "channel_ac10_freeze_blocks_posts_unfreeze_restores.rs"]
+mod channel_ac10_freeze_blocks_posts_unfreeze_restores;
 #[path = "checkcompat_ac02_ac03.rs"]
 mod checkcompat_ac02_ac03;
 #[path = "checkcompat_race_ac01_previous_up_within_1s.rs"]

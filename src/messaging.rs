@@ -359,6 +359,14 @@ async fn fire_message_triggers(state: &AppState, outcome: &SendOutcome, ctx: &Me
             _ => continue,
         };
         for row in triggers {
+            // PRD-mcphost-agent-channels requirement 7: a `channel_id`-
+            // scoped trigger only fires through `channels::
+            // fire_channel_message_triggers`, never here -- otherwise an
+            // ordinary DM to this recipient would also wake a tool the
+            // recipient bound to one specific channel's posts.
+            if crate::triggers::parse_message_trigger_channel_id(&row.config_json).is_some() {
+                continue;
+            }
             if let Some(from_scope) = crate::triggers::parse_message_trigger_from(&row.config_json)
                 && from_scope != from_address
             {

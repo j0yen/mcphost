@@ -265,6 +265,15 @@ async fn set_message_trigger(
     args: &Value,
 ) -> Result<Value, AppError> {
     let from = arg_str_opt(args, "from");
+    // PRD-mcphost-agent-channels requirement 7 / AC6: `channel_id` scopes
+    // this trigger to one group channel's posts instead of ordinary
+    // `host.msg.send`/`reply` deliveries -- `channels::
+    // fire_channel_message_triggers` is the only fire path that ever
+    // matches a trigger carrying one; `messaging::fire_message_triggers`
+    // (the DM path) skips any trigger that has one (see that function's
+    // own doc comment) so a channel-scoped trigger never double-fires on
+    // an unrelated DM.
+    let channel_id = arg_str_opt(args, "channel_id");
 
     let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
         AppError::Internal(format!(
@@ -287,7 +296,7 @@ async fn set_message_trigger(
         });
     }
 
-    let config = build_message_config(from.as_deref());
+    let config = build_message_config(from.as_deref(), channel_id.as_deref());
     let config_json = serde_json::to_string(&config)
         .map_err(|e| AppError::Internal(format!("trigger config serialize: {e}")))?;
     let hash = config_hash(&config_json);
@@ -321,8 +330,8 @@ async fn set_message_trigger(
     Ok(trigger_to_json_message(state, tenant, &row).await)
 }
 
-fn build_message_config(from: Option<&str>) -> Value {
-    json!({"from": from})
+fn build_message_config(from: Option<&str>, channel_id: Option<&str>) -> Value {
+    json!({"from": from, "channel_id": channel_id})
 }
 
 /// `pub(crate)`: `messaging.rs`'s `fire_message_triggers` reuses this to
@@ -331,6 +340,15 @@ fn build_message_config(from: Option<&str>) -> Value {
 pub(crate) fn parse_message_trigger_from(config_json: &str) -> Option<String> {
     let config: Value = serde_json::from_str(config_json).unwrap_or_else(|_| json!({}));
     config.get("from").and_then(Value::as_str).map(str::to_string)
+}
+
+/// `pub(crate)`: `channels::fire_channel_message_triggers` reuses this to
+/// read a message trigger's own `channel_id` scope back out; `messaging::
+/// fire_message_triggers` (the DM path) reuses it too, to skip any trigger
+/// that has one (see that function's own doc comment).
+pub(crate) fn parse_message_trigger_channel_id(config_json: &str) -> Option<String> {
+    let config: Value = serde_json::from_str(config_json).unwrap_or_else(|_| json!({}));
+    config.get("channel_id").and_then(Value::as_str).map(str::to_string)
 }
 
 /// The message-kind shape of `host.trigger.list`/`get`'s per-trigger JSON --
@@ -351,6 +369,10 @@ async fn trigger_to_json_message(state: &AppState, tenant: &Tenant, row: &Trigge
     let mut value = trigger_base_json(row, last_status);
     if let Some(obj) = value.as_object_mut() {
         obj.insert("from".to_string(), json!(parse_message_trigger_from(&row.config_json)));
+        obj.insert(
+            "channel_id".to_string(),
+            json!(parse_message_trigger_channel_id(&row.config_json)),
+        );
     }
     value
 }

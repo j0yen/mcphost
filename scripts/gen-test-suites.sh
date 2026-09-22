@@ -296,7 +296,15 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # total back at 10. (This PRD's remaining test files are all
 # `sandbox`-classified and fit inside sandbox's existing 3-suite split
 # without needing this cap raised further.)
-MAX_PER_SUITE = {"core": 350, "sandbox": 60}
+#
+# PRD-mcphost-agent-channels (2026-09-22): this PRD's own new
+# `channel_ac*` area group (10 files, one per AC, same per-AC
+# consolidation convention) tipped core's normal buckets from 1 to 2
+# again, spawning an 11th suite binary -- caught by the same
+# `suite_ac1_ten_binaries_and_names_preserved` P0 assertion, rebased onto
+# the 342 -> 350 raise above; re-tuned post-rebase to re-collapse core's
+# normal buckets to 1, landing the grand total back at 10.
+MAX_PER_SUITE = {"core": 360, "sandbox": 60}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"
