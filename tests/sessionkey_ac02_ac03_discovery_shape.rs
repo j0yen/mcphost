@@ -51,10 +51,11 @@ async fn every_host_star_descriptor_declares_an_optional_tenant_key() {
         .collect();
     assert_eq!(
         host_tools.len(),
-        77,
+        80,
         "the thirteen host.* control tools (incl. host.quickstart, host.tool_run, and \
          host.bridge_test) plus host.redeem plus host.key_rotate (PRD-mcphost-handoff-token) \
-         plus host.tool_call plus the nine host.state.* tools \
+         plus host.tool_call plus the three host.tool_history/host.tool_rollback/host.tool_diff \
+         tools (PRD-mcphost-tool-versions) plus the nine host.state.* tools \
          (PRD-mcphost-tenant-state) plus the six host.table.* tools \
          (PRD-mcphost-tenant-tables) plus the eight host.tool_share/host.tool_unshare/ \
          host.group.*/host.catalog.* tools (PRD-mcphost-sharing) plus the five \

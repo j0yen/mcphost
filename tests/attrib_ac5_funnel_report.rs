@@ -43,7 +43,7 @@ async fn funnel_reports_six_stages_split_real_and_synthetic() {
         )
         .await
         .expect("create tenant a");
-    db.upsert_tool(tenant_a.id, "greet".to_string(), "echo".to_string(), json!({}))
+    db.upsert_tool(tenant_a.id, "greet".to_string(), "echo".to_string(), json!({}), 5)
         .await
         .expect("publish tool");
     db.record_call(

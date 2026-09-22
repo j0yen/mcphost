@@ -183,6 +183,13 @@ pub enum AppError {
     /// after `state::HANDOFF_TOKEN_TTL_SECS` elapsed since issuance.
     #[error("handoff token has expired")]
     HandoffTokenExpired,
+    /// PRD-mcphost-tool-versions requirement 4/5 (AC4): `host.tool_rollback`
+    /// or a version-pinned call named a version this tool never had (or no
+    /// longer has, after retention pruned it) -- names the surviving range
+    /// rather than a bare not-found, so a caller can pick a real one without
+    /// a round trip through `host.tool_history`.
+    #[error("version {requested} not found; valid range is {min}-{max}")]
+    VersionNotFound { requested: i64, min: i64, max: i64 },
 }
 
 impl AppError {
@@ -228,6 +235,9 @@ impl AppError {
             AppError::HandoffTokenInvalid => "handoff_token_invalid",
             AppError::HandoffTokenRedeemed => "handoff_token_redeemed",
             AppError::HandoffTokenExpired => "handoff_token_expired",
+            // AC4: an argument error, same code as every other bad-argument
+            // rejection in this file.
+            AppError::VersionNotFound { .. } => "args_invalid",
         }
     }
 
@@ -244,6 +254,7 @@ impl AppError {
             | AppError::InvalidArgs(_)
             | AppError::InvalidParams(_)
             | AppError::ShareQuotaExceeded { .. }
+            | AppError::VersionNotFound { .. }
             | AppError::SecretMissing(_) => ErrorCode::INVALID_PARAMS,
             AppError::Storage(_)
             | AppError::Internal(_)

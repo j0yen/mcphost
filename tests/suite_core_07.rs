@@ -348,6 +348,22 @@ mod mcphost_tenant_data_export_ac05_manifest_validates_publish_schema;
 mod mcphost_tenant_data_export_ac06_tools_subset;
 #[path = "mcphost_tenant_data_export_ac07_admin_usage_exports_today.rs"]
 mod mcphost_tenant_data_export_ac07_admin_usage_exports_today;
+#[path = "mcphost_tool_versions_ac01_publish_twice_lists_two_versions.rs"]
+mod mcphost_tool_versions_ac01_publish_twice_lists_two_versions;
+#[path = "mcphost_tool_versions_ac02_rollback_runs_old_source.rs"]
+mod mcphost_tool_versions_ac02_rollback_runs_old_source;
+#[path = "mcphost_tool_versions_ac03_free_plan_retains_five_versions.rs"]
+mod mcphost_tool_versions_ac03_free_plan_retains_five_versions;
+#[path = "mcphost_tool_versions_ac04_rollback_unknown_version_names_range.rs"]
+mod mcphost_tool_versions_ac04_rollback_unknown_version_names_range;
+#[path = "mcphost_tool_versions_ac05_pinned_caller_survives_republish.rs"]
+mod mcphost_tool_versions_ac05_pinned_caller_survives_republish;
+#[path = "mcphost_tool_versions_ac07_sharer_sees_version_changed_once.rs"]
+mod mcphost_tool_versions_ac07_sharer_sees_version_changed_once;
+#[path = "mcphost_tool_versions_ac08_remove_clears_all_versions.rs"]
+mod mcphost_tool_versions_ac08_remove_clears_all_versions;
+#[path = "mcphost_tool_versions_ac09_diff_returns_unified_diff.rs"]
+mod mcphost_tool_versions_ac09_diff_returns_unified_diff;
 #[path = "mcphost_uptime_probes_ac01_llms_txt_section.rs"]
 mod mcphost_uptime_probes_ac01_llms_txt_section;
 #[path = "mcphost_uptime_probes_ac08_live_test_skipped_without_env.rs"]

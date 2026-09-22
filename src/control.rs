@@ -32,6 +32,15 @@ fn arg_bool(args: &Value, name: &str) -> bool {
     args.get(name).and_then(Value::as_bool).unwrap_or(false)
 }
 
+/// PRD-mcphost-tool-versions requirement 4/8: `host.tool_rollback`'s
+/// `version` and `host.tool_diff`'s `from`/`to` -- required integer
+/// arguments, same `args_invalid` shape as [`arg_str`] for a missing one.
+fn arg_i64(args: &Value, name: &str) -> Result<i64, AppError> {
+    args.get(name)
+        .and_then(Value::as_i64)
+        .ok_or_else(|| AppError::InvalidArgs(format!("missing required argument '{name}'")))
+}
+
 /// PRD-mcphost-synthetic-flag requirement 2: read only at signup, never
 /// later. An absent or empty header is silent (this is the overwhelmingly
 /// common case -- every real signup) and returns `None`; a present-but-invalid
@@ -689,19 +698,23 @@ pub async fn tool_publish(
         }
     }
 
+    // PRD-grand-loop-billing requirement 3 / PRD-mcphost-tool-versions
+    // requirement 2: needed either way now -- `tools_max` below (new tools
+    // only) and `versions_max` (every publish, new or republish).
+    let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
+        AppError::Internal(format!(
+            "tenant's plan '{}' is not in the loaded plan catalog",
+            tenant.plan
+        ))
+    })?;
+
     // A re-publish of an existing name must not count against the limit.
     let already_exists = state.db.get_tool(tenant.id, name.clone()).await?.is_some();
     if !already_exists {
         let count = state.db.count_tools(tenant.id).await?;
-        // PRD-grand-loop-billing requirement 3: `MAX_TOOLS_PER_TENANT`
-        // becomes the ceiling of any plan's `tools_max` -- an operator
-        // hand-editing plans.toml cannot raise a plan past this hard cap.
-        let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
-            AppError::Internal(format!(
-                "tenant's plan '{}' is not in the loaded plan catalog",
-                tenant.plan
-            ))
-        })?;
+        // `MAX_TOOLS_PER_TENANT` becomes the ceiling of any plan's
+        // `tools_max` -- an operator hand-editing plans.toml cannot raise a
+        // plan past this hard cap.
         let effective_max = plan.tools_max.min(MAX_TOOLS_PER_TENANT);
         if count >= effective_max {
             return Err(crate::billing::quota_exceeded(
@@ -714,9 +727,18 @@ pub async fn tool_publish(
         }
     }
 
-    state
+    // PRD-mcphost-tool-versions requirement 2 (AC1/AC3): every publish is a
+    // new, immutable version; the oldest beyond `plan.versions_max` is
+    // pruned.
+    let version = state
         .db
-        .upsert_tool(tenant.id, name.clone(), kind_name.clone(), spec.clone())
+        .upsert_tool(
+            tenant.id,
+            name.clone(),
+            kind_name.clone(),
+            spec.clone(),
+            plan.versions_max,
+        )
         .await?;
 
     // PRD-mcphost-python-kind-plain-env requirement 4 (AC9): the publish
@@ -761,6 +783,102 @@ pub async fn tool_publish(
     Ok(json!({
         "name": format!("{}.{}", tenant.namespace, name),
         "kind": kind_name,
+        "version": version,
+    }))
+}
+
+/// `host.tool_history(name)` (PRD-mcphost-tool-versions requirement 3,
+/// AC1/AC8): every version of `name`, newest-first, `current: true` on the
+/// one `tools.current_version` points at. `tool_not_found` for an unknown
+/// (or removed -- AC8) name, checked directly against `tools` rather than
+/// inferred from an empty version list.
+pub async fn tool_history(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let name = arg_str(args, "name")?;
+    let tool = state
+        .db
+        .get_tool(tenant.id, name.clone())
+        .await?
+        .ok_or_else(|| AppError::ToolNotFound(name.clone()))?;
+    let versions = state.db.list_tool_versions(tenant.id, name.clone()).await?;
+    let versions: Vec<Value> = versions
+        .into_iter()
+        .map(|v| {
+            json!({
+                "version": v.version,
+                "created": v.created_at,
+                "source_sha256": v.source_sha256,
+                "current": v.version == tool.current_version,
+            })
+        })
+        .collect();
+    Ok(json!({
+        "name": format!("{}.{}", tenant.namespace, name),
+        "versions": versions,
+    }))
+}
+
+/// `host.tool_rollback(name, version)` (requirement 4, AC2/AC4): moves
+/// `current_version` to `version` and notifies every `Kind` (same
+/// "eviction cost is a no-op for a kind with no such state" convention
+/// `tool_remove`/republish already use) so the next unpinned call sees it.
+pub async fn tool_rollback(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let name = arg_str(args, "name")?;
+    let version = arg_i64(args, "version")?;
+    match state.db.rollback_tool_version(tenant.id, name.clone(), version).await? {
+        crate::db::RollbackOutcome::NotFound => Err(AppError::ToolNotFound(name)),
+        crate::db::RollbackOutcome::OutOfRange { min, max } => {
+            Err(AppError::VersionNotFound { requested: version, min, max })
+        }
+        crate::db::RollbackOutcome::Ok { .. } => {
+            for k in state.kinds.all() {
+                k.on_tool_changed(tenant.id, &name).await;
+            }
+            Ok(json!({
+                "name": format!("{}.{}", tenant.namespace, name),
+                "version": version,
+            }))
+        }
+    }
+}
+
+/// `host.tool_diff(name, from, to)` (requirement 8, P2/AC9): a unified diff
+/// between two versions' own stored spec (pretty-printed JSON, since a spec
+/// isn't always just a `source` string -- `echo`/`http` specs have no such
+/// field at all).
+pub async fn tool_diff(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let name = arg_str(args, "name")?;
+    let from = arg_i64(args, "from")?;
+    let to = arg_i64(args, "to")?;
+    state
+        .db
+        .get_tool(tenant.id, name.clone())
+        .await?
+        .ok_or_else(|| AppError::ToolNotFound(name.clone()))?;
+    let range = state.db.tool_version_range(tenant.id, name.clone()).await?;
+    let (min, max) = range.unwrap_or((1, 1));
+    let from_row = state
+        .db
+        .get_tool_version(tenant.id, name.clone(), from)
+        .await?
+        .ok_or(AppError::VersionNotFound { requested: from, min, max })?;
+    let to_row = state
+        .db
+        .get_tool_version(tenant.id, name.clone(), to)
+        .await?
+        .ok_or(AppError::VersionNotFound { requested: to, min, max })?;
+    let from_text = serde_json::to_string_pretty(&from_row.spec).unwrap_or_default();
+    let to_text = serde_json::to_string_pretty(&to_row.spec).unwrap_or_default();
+    let diff = crate::difftext::unified_diff(
+        &from_text,
+        &to_text,
+        &format!("v{from}"),
+        &format!("v{to}"),
+    );
+    Ok(json!({
+        "name": format!("{}.{}", tenant.namespace, name),
+        "from": from,
+        "to": to,
+        "diff": diff,
     }))
 }
 

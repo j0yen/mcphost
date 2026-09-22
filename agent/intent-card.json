@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-uptime-probes.md",
-  "intent_slug": "mcphost-uptime-probes",
-  "root_motivation": "An agent builder running two or three small services (visions/mcphost-killer-apps.md, component 4) wants an agent to know when one is down and today either pays a monitoring SaaS or polls from a machine that is itself unmonitored -- the cheapest mcphost primitives, a schedule and a table, go unused, and host.trigger.* has no worked example beyond synthetic tasks. This PRD ships a python `probe` tool that fetches a `targets` list, writes `{url, code, ms, at}` rows to a `checks` table on a 5-minute (free-plan floor) schedule, and a `status` tool that answers up/down purely from stored rows -- with zero mcphost code changes: the recipe composes host.state.*/host.tool_publish/host.trigger.* exactly as they already exist.",
-  "user_persona": "Three (PRD User stories): (1) the builder's agent inserts three URLs into targets, sets the schedule, and 10 minutes later status shows two checks each; (2) the builder's agent sees one service return 503 and status shows it down with the first failing timestamp; (3) Joe's synthetic panel runs the recipe and sees how many tenants reach a stored check.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tool-versions.md",
+  "intent_slug": "mcphost-tool-versions",
+  "root_motivation": "An agent iterating on its own tools (visions/mcp-host.md addendum 2026-09-18, leaf 3) publishes, calls, fixes, and republishes -- today a republish overwrites the previous source outright (kinds/python.rs:41's on_tool_changed rebuilds the env and discards it, no version_history/tool_version concept anywhere in src), so a worse fix leaves the agent nothing to go back to, and a sharer of that tool (src/sharing.rs) sees the change with no warning and no way to pin. This PRD makes every publish an immutable, numbered version kept per plan, host.tool_rollback restores one in a single call, and a caller may pin a shared tool to a version so the owner's own iteration doesn't break it out from under them.",
+  "user_persona": "Three (PRD User stories): (1) the owner calls host.tool_rollback {name, version: 3} to make version 3 current again after a bad republish; (2) the owner calls host.tool_history {name} to see every version with its timestamp and source hash before deciding what to roll back to; (3) a sharer pins {name, version: 3} on a cross-tenant call and keeps working unaffected while the owner iterates, with an unpinned sharer instead getting a one-time version_changed note in its result envelope.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,71 +14,75 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given llms.txt, When the section is read, Then it lists the two tables, two tools, and the schedule call, under 70 lines, with the calls/day arithmetic.",
-      "test": "tests/mcphost_uptime_probes_ac01_llms_txt_section.rs"
+      "description": "Given a tool published twice, When host.tool_history is called, Then two versions are listed, version 2 current, with distinct source_sha256.",
+      "test": "tests/mcphost_tool_versions_ac01_publish_twice_lists_two_versions.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given two targets and host.trigger.fire twice, When checks is queried, Then each target has exactly 2 rows with code, ms, at.",
-      "test": "tests/mcphost_uptime_probes_ac02_checks_two_rows_per_target.rs"
+      "description": "Given version 2 current, When host.tool_rollback {version: 1} is called, Then the next host.tool_call runs version 1's source.",
+      "test": "tests/mcphost_tool_versions_ac02_rollback_runs_old_source.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given one target returning 503, When status is called, Then that target has up_pct_24h 0 and a down_since equal to its first check; the healthy target has 100 and no down_since.",
-      "test": "tests/mcphost_uptime_probes_ac03_status_up_pct_and_down_since.rs"
+      "description": "Given a free tenant with 5 versions, When a sixth is published, Then version 1 is deleted and versions 2-6 remain.",
+      "test": "tests/mcphost_tool_versions_ac03_free_plan_retains_five_versions.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a checks row older than 24h inserted by the proof, When probe runs, Then the row is gone.",
-      "test": "tests/mcphost_uptime_probes_ac04_retention_deletes_old_rows.rs"
+      "description": "Given host.tool_rollback {version: 9} for a tool with 2 versions, When called, Then an argument error names the valid range.",
+      "test": "tests/mcphost_tool_versions_ac04_rollback_unknown_version_names_range.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given 21 targets, When probe runs, Then it probes 20 and reports the cap in its result.",
-      "test": "tests/mcphost_uptime_probes_ac05_target_cap_at_20.rs"
+      "description": "Given a shared tool at version 3 and a caller pinning version: 2, When the owner publishes version 4, Then the pinned call still runs version 2.",
+      "test": "tests/mcphost_tool_versions_ac05_pinned_caller_survives_republish.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given the proof runs against https://mcphost.dev/mcp, When it finishes, Then AC2-5 hold and wall time is printed. (Live)",
-      "test": "deferred -- operator-provisioned; Live proof against production https://mcphost.dev/mcp needs network egress and operator authorization this coding sandbox does not have. tests/mcphost_uptime_probes_ac08_live_test_skipped_without_env.rs's live_proof_against_real_mcphost_when_enabled (gated on MCPHOST_LIVE=1) is the AC6 embodiment, same convention as PRD-mcphost-team-memory's own AC6/AC8."
+      "description": "Given prod after ship, When homeward's tool is republished and rolled back once during the build's live check, Then host.tool_history on prod shows both versions (proof: the live call output in the trailer).",
+      "test": "deferred -- operator-provisioned; a real run against production https://mcphost.dev/mcp needs homeward's own operator-held bearer key (MCPHOST_HOMEWARD_KEY/MCPHOST_HOMEWARD_TOOL) and network egress this build does not have, and prod does not serve host.tool_history/host.tool_rollback until this branch ships. Per the PRD's own mock_justifications, the live check is written and ready for the operator's post-ship run at tests/mcphost_tool_versions_ac06_live_rollback_trailer.rs (gated on MCPHOST_LIVE=1) -- same convention as PRD-mcphost-uptime-probes/PRD-mcphost-team-memory's own AC6/AC8, not built in this coder dispatch since AC6 is outside this build's non-deferred AC list."
     },
     {
       "id": "AC7",
       "level": "SHOULD",
-      "description": "Given the synthorg task, When run 5 times, Then 5 completions record time to first stored check.",
-      "test": "tests/mcphost_uptime_probes_ac07_synthorg_task_five_completions.rs"
+      "description": "Given an unpinned sharer, When the owner rolls back, Then the sharer's next result carries version_changed once and not on the following call.",
+      "test": "tests/mcphost_tool_versions_ac07_sharer_sees_version_changed_once.rs"
     },
     {
       "id": "AC8",
       "level": "SHOULD",
-      "description": "Given MCPHOST_LIVE unset, When the suite runs, Then the Live test is skipped.",
-      "test": "tests/mcphost_uptime_probes_ac08_live_test_skipped_without_env.rs"
+      "description": "Given host.tool_remove, When called, Then all versions are gone and host.tool_history returns not-found.",
+      "test": "tests/mcphost_tool_versions_ac08_remove_clears_all_versions.rs"
     },
     {
       "id": "AC9",
-      "level": "SHOULD",
-      "description": "Given down_since flips for a target, When probe finishes, Then one inbox message exists for the owner.",
-      "test": "tests/mcphost_uptime_probes_ac09_down_since_flip_sends_inbox.rs"
+      "level": "MAY",
+      "description": "Given two versions, When host.tool_diff is called, Then a unified diff is returned.",
+      "test": "tests/mcphost_tool_versions_ac09_diff_returns_unified_diff.rs"
     }
   ],
   "scope": [
-    "www/llms.txt: new '## Uptime probes with no server' section (46 lines), appended after '## Full documentation' at end of file (so no existing section's own hardcoded NEXT_HEADING test boundary shifts) -- two host.state.table_create calls (targets, checks), two host.tool_publish calls (probe/status, kind python), the host.trigger.set(kind=schedule, schedule=\"*/5 * * * *\") call, and the free-plan calls/day arithmetic (288 of 500).",
-    "examples/uptime-probes/tools/probe.py, status.py (new): probe.py queries targets (mcphost.state), caps at the first 20 by added_at reporting the rest as capped, fetches each with urllib (stdlib only, no pip requirement) under a 10s timeout, writes one checks row per target via mcphost.state.insert, always runs the 24h retention delete_rows, and on an up/down flip (a target assumed up with no prior history, so a target down on its very first check counts) self-calls host.msg.send over plain HTTP -- mcphost.call/composition can only reach a tenant's own published tools, never a host.* control-plane tool, so this is a real authenticated HTTP round trip using the owner's own key (published as the self_key secret) and its own endpoint (published as the ENDPOINT_URL/OWNER_NAMESPACE plain env vars), best-effort and silently skipped if either is unset. status.py reads targets/checks only (never fetches live): up_pct_24h is the 2xx share of a target's checks rows within the last 24h; down_since (present only while currently down) walks back from the newest row through the unbroken down streak to its earliest check.",
-    "examples/uptime-probes/proof.sh (new): one fresh tenant tagged x-mcphost-synthetic: recipe:uptime-probes (requirement 5); two tables, one healthy target and one that returns 503, probe published (network: public) and scheduled, host.trigger.fire twice, asserting two checks rows per target and status's up_pct_24h/down_since for both, wall time printed. Same MCP JSON-RPC curl+python3 helper shape as examples/team-memory/proof.sh.",
-    "examples/uptime-probes/synthorg-task.yaml (new): one task, segment ops_coordinator, gold.tool_name=probe / gold.kind=python / gold.call_check=\"result.probed == 1\" -- proposed addition for RedBaron's corpus (not merged into it, same cross-repo-scope note as team-memory's own synthorg-task.yaml).",
-    "tests/mcphost_uptime_probes_ac0[1-5,7-9]_*.rs (new, one per non-deferred AC) plus tests/support/uptime_probes.rs (shared table/publish/schedule/fire-and-wait helpers, #[path]-included per file, same convention as tests/support/host.rs): AC1 is a pure www/llms.txt string test; AC2 fires a scheduled probe twice against a wiremock upstream and queries checks directly; AC3 publishes both tools against one healthy and one 503 target and checks status's shape; AC4 hand-inserts a 25h-old row and proves probe deletes it; AC5 inserts 21 targets and checks probe's own {probed, total_targets, capped} result; AC7 rebuilds the synthorg recipe directly in Rust and scores gold.call_check; AC8 is the MCPHOST_LIVE-gated skip test plus its own AC6-embodying live run; AC9 sets self_key/ENDPOINT_URL/OWNER_NAMESPACE and asserts exactly one host.msg.inbox message after a down-from-first-check probe run. All five python-kind sandbox tests skip cleanly (sandbox::require_user_namespaces_or_ci_skip) where unprivileged user namespaces aren't available.",
-    "scripts/gen-test-suites.sh: MAX_PER_SUITE.core 339 -> 340 (AC1 and AC8, this PRD's two core-classified files, each independently tip the pre-existing single normal bucket over the cap; its remaining files are all sandbox-classified and fit inside sandbox's existing 3-suite split) -- same recurring mechanism as every PRD-* comment block above it in that file, re-collapsing the grand total to the AC1 ceiling of 10 suite binaries.",
-    "Cargo.toml: patch version bump (0.59.1 -> 0.59.2); CHANGELOG.md: new entry."
+    "migrations/0028_tool_versions.sql (new): tool_versions(tenant_id, name, version, kind, spec, created_at, created_unix, source_sha256) UNIQUE(tenant_id, name, version), tools.current_version (default 1), and tool_version_watermarks(tenant_id, name, caller_tenant_id, last_version) for the AC7 sharer note -- backfills every pre-existing tools row as its own version 1 with a real SHA-256 over its spec (Db::migrate_0028_tool_versions/backfill_tool_versions_sync).",
+    "src/db.rs: Db::upsert_tool now takes a plan's versions_max, inserts a new tool_versions row (version = MAX(version)+1, never reused even across a rollback), advances tools.current_version, and prunes the oldest surviving rows beyond versions_max. New list_tool_versions/get_tool_version/tool_version_range/rollback_tool_version (RollbackOutcome)/check_version_watermark; remove_tool now cascades the delete to tool_versions and the watermark table.",
+    "src/control.rs: host.tool_history/host.tool_rollback/host.tool_diff (new), tool_publish's response gains a version field, tool_publish now fetches the tenant's plan unconditionally (needed for versions_max regardless of the tools_max branch).",
+    "src/handler.rs: call_published_tool/call_shared_tool gain an Option<i64> version parameter -- a version-pinned call dispatches against tool_versions' own stored kind/spec instead of the tools row's (which always mirrors CURRENT); host.tool_call accepts version as a sibling of name/args; a cross-tenant <owner_ns>.<name> call reserves version as a key inside the wire call-args object (stripped before schema validation, same shape tenant_key already uses); an unpinned cross-tenant success result gets a one-time version_changed note via Db::check_version_watermark. Three new Tool::new descriptors (host.tool_history/tool_rollback/tool_diff) and a version property on host.tool_call's schema.",
+    "src/plans.rs: Plan.versions_max (free 5, pro 20), tolerant-parsed (defaults to 5) for a plans.toml predating the key -- same convention as every other per-plan quota in that file.",
+    "src/errors.rs: AppError::VersionNotFound {requested, min, max} (wire code args_invalid, AC4's 'names the valid range').",
+    "src/difftext.rs (new): a small hand-rolled unified_diff (LCS line diff, --- /+++/@@ output) for host.tool_diff -- no new crate dependency, same 'hand-roll when it's this small' call this crate already makes for plans.toml's TOML writer and state.rs's RFC 3339 math.",
+    "tests/mcphost_tool_versions_ac0[1-5,7-9]_*.rs (new, one per non-deferred AC), each against a real local mcphost server via tests/common (McpClient/TestServer, no new support module needed).",
+    "www/llms.txt, contracts/host-tools.v1.json regenerated (mcphost llms-txt / mcphost contract dump) for the three new host.* tools; five pre-existing tests hardcoding the live host.* tool count (ac01_unauthenticated_lists_signup, compat_ac01_ac02_ac03/ac04_ac05/ac11_ac12, sessionkey_ac02_ac03) updated from 81/77 to 84/80.",
+    "scripts/gen-test-suites.sh: MAX_PER_SUITE.core 342 -> 350 (this PRD's eight new core-classified test files, one at a time as each AC's own commit added its file) -- same recurring mechanism as every PRD-* comment block above it in that file, re-collapsing the grand total to the AC1 ceiling of 10 suite binaries.",
+    "Cargo.toml: patch version bump (0.59.3 -> 0.59.4); CHANGELOG.md: new entry."
   ],
   "non_goals": [
-    "Alerting beyond the one-line hand-off (the webhook-inbox/agent-inbox recipe's own job).",
-    "Intervals under 300s (the free plan's own schedule floor; a pro-only shorter floor is this PRD's one open question, due at build -- resolved by shipping the free-plan 300s floor only, no pro-tier branch).",
-    "Any change to trigger, python-kind, or state code (Engineering target: zero mcphost code changes -- every file this PRD touches is under www/, examples/, tests/, agent/, scripts/gen-test-suites.sh, Cargo.toml, or CHANGELOG.md)."
+    "Branching or named tags beyond a plain integer version (PRD Non-goals).",
+    "Retaining sandbox envs for every version -- envs are rebuilt on rollback the same way a republish already rebuilds them (PRD Non-goals); kinds::python's env cache is keyed by requirements hash, so a rollback to a version with unchanged requirements reuses the env for free, but that's an existing cache property, not new per-version storage.",
+    "AC6's live prod proof (see acceptance_criteria AC6 and Technical considerations below) -- deferred, operator-provisioned."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -87,36 +91,37 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "zero_mcphost_code_changes": "Engineering target states this explicitly: no src/**/*.rs edit is part of this PRD's scope. Every requirement is met by composing host.state.*/host.tool_publish/host.trigger.* exactly as they exist today, from python tool source and shell/docs/tests.",
-      "state_not_table_store": "mcphost.table (src/tables.rs, PRD-mcphost-tenant-tables) has no row-level delete -- create/append/query/list/drop/schema only, confirmed against team-memory's own forget.py tombstone workaround. AC4's 24h retention needs an actual delete, so targets/checks use mcphost.state (src/tenant_state.rs, PRD-mcphost-tenant-state) instead, whose host.state.delete_rows(table, where) does real per-row deletion under the same small filter grammar host.state.query already uses.",
-      "composition_cannot_reach_host_tools": "kinds::compose_call (src/kinds/mod.rs) resolves its target name through db.get_tool(tenant_id, name) -- a tenant's own published-tool row -- never a host.* control-plane tool, which dispatches through a completely different path in src/handler.rs's call_tool match. AC9's alerting hand-off therefore can't use mcphost.call(\"host.msg.send\", ...) from inside probe.py; it self-calls the real MCP endpoint over plain HTTP instead, authenticated with the owner's own key (published as a python-kind `secrets` entry, arriving in the sandbox as SECRET_SELF_KEY per kinds::python::PythonKind::secret_env), matching how a real recipe author would have to wire this by hand."
+      "no_new_dependency_for_diff": "host.tool_diff (P2/AC9) needs a unified diff of two spec JSON blobs; rather than add a diff crate for one small feature, src/difftext.rs hand-rolls a standard LCS line diff -- the same 'hand-roll when it's small and self-contained' call plans.rs's TOML writer and state.rs's RFC 3339 math already make in this crate.",
+      "version_numbering_never_reused": "tools.current_version is a POINTER (rollback can move it backward), not a counter -- the next version number a publish issues is MAX(version)+1 over that tool's own tool_versions rows (never the pointer), which stays correct across a rollback because retention only ever prunes the OLDEST surviving rows, never the highest version number ever issued.",
+      "source_sha256_is_over_the_whole_spec": "source_sha256 hashes the canonical (default serde_json::Value, so deterministically key-sorted) serialized spec JSON, not a kind-specific 'source' field -- echo/http specs have no such field at all, so a kind-agnostic hash is the only one that works for every kind uniformly.",
+      "version_changed_scoped_to_cross_tenant": "requirement 6's own wording ('a shared tool's unpinned caller') scopes the version_changed note to cross-tenant calls (caller.is_some() in call_published_tool) -- an owner's own unpinned host.tool_call after its own rollback never gets a version_changed note, since the owner already knows it just rolled back."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does an agent builder running a couple of small services end up either paying a monitoring SaaS or polling from an unmonitored box?",
-      "a": "mcphost's own primitives -- a schedule and a table -- are cheap enough to do this, but nothing demonstrates it: host.trigger.* has no worked example beyond synthetic tasks."
+      "q": "Why does one wrong republish break a running workflow for the owner and every sharer, with no undo short of pasting old source from a transcript?",
+      "a": "kinds/python.rs:41's on_tool_changed rebuilds the sandbox env and discards the old source on every republish -- there is no version_history/previous_version concept anywhere in src (confirmed: grep -rniE 'tool_version|previous_version|version_history' src finds nothing before this PRD)."
     },
     {
       "why": 2,
-      "q": "Why can't the builder just publish an http-kind tool that polls a URL directly?",
-      "a": "http-kind has no per-tenant persistence of its own; something has to store the check history for `status` to answer 'is X up and since when' from rows, never a live fetch (Goal 2) -- that's what targets/checks (mcphost.state tables) are for."
+      "q": "Why can't a sharer just re-fetch the tool by name after a bad republish to see what changed?",
+      "a": "sharing.rs lets a caller reach an owner's tool by name with no version at all -- the caller has no way to even know a republish happened, let alone reach the version it depended on."
     },
     {
       "why": 3,
-      "q": "Why mcphost.state (host.state.*) and not mcphost.table (host.table.*), when both already exist?",
-      "a": "AC4 requires an actual delete of rows older than 24h to keep the table bounded; mcphost.table has no row-level delete (confirmed against src/tables.rs -- six ops, none of them delete), while mcphost.state's delete_rows does real per-row deletion under its own filter grammar."
+      "q": "Why version the whole tools row (kind + spec together) rather than just the source text?",
+      "a": "A spec isn't always just source -- echo/http specs have no 'source' field at all -- so tool_versions stores each publish's whole (kind, spec) pair; source_sha256 is computed over the canonical serialized spec JSON, kind-agnostically, for the same reason."
     },
     {
       "why": 4,
-      "q": "Why does the P2 alerting hand-off (AC9) need a raw HTTP self-call instead of just calling host.msg.send from inside probe.py?",
-      "a": "kinds::compose_call only resolves a tenant's own published tools (db.get_tool), never a host.* control-plane tool -- confirmed against src/kinds/mod.rs's compose_call and src/handler.rs's call_tool dispatch, which route host.* calls through an entirely separate arm. The only way probe.py can reach host.msg.send is the same way an external client would: an authenticated HTTP POST to the endpoint itself."
+      "q": "Why is the next version number MAX(version)+1 over tool_versions rather than current_version+1?",
+      "a": "current_version is a POINTER a rollback can move backward (e.g. from 6 to 1) -- if the next publish's version number were current_version+1, a publish right after that rollback would try to insert version 2, colliding with the UNIQUE(tenant_id, name, version) constraint on the version 2 row retention never deleted. MAX(version)+1 stays correct because retention only prunes the OLDEST surviving rows, never the highest version number ever issued."
     },
     {
       "why": 5,
-      "q": "Why is a synthorg task part of this PRD rather than left to a follow-on?",
-      "a": "The PRD's own secondary success metric is 'time to first stored check (synthetic, using trigger.fire), p50 under 90s, synthorg ledger, first 20 runs' -- that claim is only real once something actually times it, the same reasoning every prior recipe PRD in this repo (team-memory, share-a-tool) already established as this repo's convention for a landed recipe."
+      "q": "Why does a version-pinned call need a reserved 'version' key inside the wire call-args object for the cross-tenant <owner_ns>.<name> path, instead of a cleaner sibling parameter?",
+      "a": "Confirmed against handler.rs's call_tool dispatch: a direct <owner_ns>.<name> tools/call has no side channel beyond the wire arguments object itself (unlike host.tool_call, whose RPC params already have name/args/async as siblings) -- version has to be a reserved key inside that same object, stripped before schema validation/dispatch, the same shape this codebase's own tenant_key argument (PRD-mcphost-session-key) already uses for an analogous problem."
     }
   ],
   "created_at": "2026-09-22T15:03:52Z",
@@ -184,6 +189,10 @@
     {
       "question": "This card is now regenerated for PRD-mcphost-uptime-probes, an entirely different feature (a python probe/status recipe against a schedule trigger) from PRD-mcphost-database-in-a-minute (a CSV-to-queryable-table recipe) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught by reviewer-agent repeatedly in this card's own history (see the entries above) if left byte-for-byte. Two build-time decisions also weren't fully pinned by the PRD text: (1) which of mcphost's two per-tenant table stores (mcphost.table vs mcphost.state) targets/checks should use, since the PRD's own prose just says \"a state table\"; (2) how a python-kind tool can send an alert through host.msg.send at all, since the PRD's Requirement 8/AC9 assumes it's possible but names no mechanism.",
       "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence: no reviewer block yet, but the same staleness would recur if left byte-for-byte. root_motivation/scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional were rewritten from this PRD's own Problem statement, Goals, Non-Goals, User stories, and Technical considerations sections; acceptance_criteria's nine entries point at the real tests/mcphost_uptime_probes_ac0[1-9]_*.rs files (AC6 deferred, operator-provisioned, same Live-AC convention as every prior recipe PRD's own AC6). agent/test-map.json's ac_test_map was repointed to this PRD and the prior `databaseinaminute` mapping preserved under ac_test_map_by_prefix (newly archived there) rather than deleted. On the two build-time decisions: (1) mcphost.table's six ops (src/tables.rs) have no row-level delete, which AC4's 24h retention needs, so targets/checks use mcphost.state (src/tenant_state.rs) instead -- its host.state.delete_rows does real per-row deletion. (2) confirmed against src/kinds/mod.rs's compose_call (resolves only a tenant's own published tools via db.get_tool, never a host.* tool) and src/handler.rs's call_tool dispatch (host.* routes through a separate match arm entirely) that mcphost.call cannot reach host.msg.send from inside a python sandbox; probe.py instead self-calls the real MCP endpoint over plain HTTP, authenticated with the owner's own key published as the `self_key` python-kind secret (arriving as SECRET_SELF_KEY) and the endpoint/namespace published as plain env vars -- best-effort, silently skipped if either is unset, matching the PRD's own framing of this as 'a one-line hand-off', not a load-bearing alerting system."
+    },
+    {
+      "question": "This card is now regenerated for PRD-mcphost-tool-versions, an entirely different feature (immutable tool versions/rollback/diff) from PRD-mcphost-uptime-probes (a python probe/status recipe) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught by reviewer-agent repeatedly in this card's own history if left byte-for-byte. Unlike every prior PRD this card has been regenerated for, this one is NOT a zero-mcphost-code-changes recipe -- it edits src/handler.rs, src/db.rs, src/control.rs, src/errors.rs, src/plans.rs directly, plus a migration. Three build-time decisions had no PRD text to settle them directly: (1) requirement 1's migration column list names source/config/requirements as separate columns, but this codebase stores a kind's whole spec as one opaque JSON blob (no kind-agnostic split into those three fields exists anywhere in src today); (2) how a version-pinned call reaches the wire protocol for the cross-tenant <owner_ns>.<name> path, which has no side-channel argument slot the way host.tool_call's RPC params do; (3) requirement 6 (AC7)'s version_changed note names 'a shared tool's unpinned caller' but not whether that includes the owner's own calls after its own rollback.",
+      "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence: no reviewer block yet, but the same staleness would recur if left byte-for-byte. root_motivation/scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional were rewritten from this PRD's own Problem statement, Goals, Requirements, Non-goals, and Technical considerations sections; acceptance_criteria's nine entries point at the real tests/mcphost_tool_versions_ac0[1-5,7-9]_*.rs files (AC1-5, AC7-9 exist, compile, and pass; AC6 is Live/operator-provisioned, deferred, same convention as every prior PRD's own Live AC in this card's history -- not built in this coder dispatch since the dispatch's own non-deferred AC list omits it entirely). agent/test-map.json's ac_test_map was repointed to this PRD and the prior uptimeprobes mapping preserved under ac_test_map_by_prefix (newly archived there) rather than deleted. On the three build-time decisions: (1) migration 0028's tool_versions table stores one `spec` TEXT column (the tool's whole JSON spec, exactly like `tools.spec` already does) plus `kind`, rather than inventing a source/config/requirements split this codebase has no other precedent for -- source_sha256 hashes that same canonical spec JSON, kind-agnostically. (2) resolved by treating `version` as a reserved key inside the cross-tenant call's own wire arguments object (stripped before schema validation/dispatch), the same shape `tenant_key` already uses for an analogous problem in this exact call path (see five_whys_trace above); `host.tool_call`'s own RPC params (which DO have a name/args/async sibling shape) get a real sibling `version` parameter instead, since that path has room for one. (3) scoped to cross-tenant calls only (`caller.is_some()` in `call_published_tool`), per requirement 6's own 'a shared tool's unpinned caller' wording -- an owner's own unpinned `host.tool_call` after its own rollback never gets a `version_changed` note, since `host.tool_call` only ever resolves the caller's OWN tools (there is no `caller` tenant distinct from the tool's owner on that path at all)."
     }
   ]
 }
