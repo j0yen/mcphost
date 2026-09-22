@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-checkcompat-port-race.md (test_prefix: checkcompat_race)",
+  "ac_test_map_prd": "PRD-mcphost-team-memory.md (test_prefix: mcphost_team_memory)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,16 +28,15 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/checkcompat_race_ac01_previous_up_within_1s.rs",
-    "AC2": "tests/checkcompat_race_ac02_foreign_server_without_token.rs",
-    "AC3": "tests/checkcompat_race_ac03_inherited_listener_token_matches.rs",
-    "AC4": "tests/checkcompat_race_ac04_no_token_header_when_unset.rs",
-    "AC5": "tests/checkcompat_race_ac05_stress_no_port_collisions.rs",
-    "AC6": "tests/checkcompat_race_ac06_explicit_bind_still_enforces_token.rs",
-    "AC7": "tests/checkcompat_race_ac07_suite_green_and_clippy_clean.rs",
-    "AC8": "deferred -- no ccx53/Hetzner burst box reachable from this coding sandbox (no HCLOUD_TOKEN; the installed burst-lane CLI has no prove verb). See PRD frontmatter deferred_acs/mock_justifications, locked against a dangling reference by tests/checkcompat_race_ac08_deferral_is_justified.rs.",
-    "AC9": "cross-repo: /home/jsy/repos/mcphost-deploy tests/checkcompatrace_ac9_journal_and_line_name_the_step.py (mcphost-deploy commit edff67f7, requirement 7 -- not a tests/**/*.rs file since requirement 7 is a mcphost-deploy/Python change, not a mcphost one)",
-    "AC10": "cross-repo: /home/jsy/repos/mcphost-deploy tests/checkcompatrace_ac10_ledger_scraper_reads_verdict.py (mcphost-deploy commit edff67f7, requirement 7)"
+    "AC1": "tests/mcphost_team_memory_ac01_llms_txt_section.rs",
+    "AC2": "tests/mcphost_team_memory_ac02_b_remember_writer.rs",
+    "AC3": "tests/mcphost_team_memory_ac03_c_recall_shows_writer.rs",
+    "AC4": "tests/mcphost_team_memory_ac04_group_remove_revokes_c.rs",
+    "AC5": "tests/mcphost_team_memory_ac05_recall_limit_capped_at_50.rs",
+    "AC6": "deferred -- Live proof against production https://mcphost.dev/mcp needs operator authorization/network egress this coding sandbox does not have. See PRD Acceptance criteria 6 and tests/mcphost_team_memory_ac08_live_test_skipped_without_env.rs's live_proof_against_real_mcphost_when_enabled (gated on MCPHOST_LIVE=1, exercises the same examples/team-memory/proof.sh).",
+    "AC7": "tests/mcphost_team_memory_ac07_synthorg_task_five_completions.rs",
+    "AC8": "tests/mcphost_team_memory_ac08_live_test_skipped_without_env.rs",
+    "AC9": "tests/mcphost_team_memory_ac09_forget_refused_for_non_writer_non_owner.rs"
   },
   "ac_test_map_by_prefix": {
     "runenvelope": {
@@ -61,17 +60,17 @@
       "AC9": "tests/ac09_signup_rate_limit.rs",
       "AC10": "tests/ac10_publish_validation_errors.rs",
       "AC11": "tests/ac11_load_smoke.rs (#[ignore]d hardware-relative load test)",
-      "AC12": "no unit test file; live smoke \u2014 mcphost serve + synthorg consume --preflight <url>, recorded as target/autobuilder/ac12-preflight-smoke.json",
+      "AC12": "no unit test file; live smoke — mcphost serve + synthorg consume --preflight <url>, recorded as target/autobuilder/ac12-preflight-smoke.json",
       "AC13": "tests/ac13_mcp_name_mismatch_metering.rs",
       "AC14": "tests/ac14_storage_unwritable.rs",
       "AC15": "tests/ac15_call_timeout.rs",
       "AC16": "tests/ac16_request_body_too_large.rs",
       "AC17": "tests/ac17_kind_conformance.rs",
       "AC18": "tests/ac18_tools_list_ttl.rs",
-      "AC19": "deferred \u2014 no test; see agent/intent-card.json acceptance_criteria AC19.test and PRD Open Questions (registry namespace verification not yet resolved)"
+      "AC19": "deferred — no test; see agent/intent-card.json acceptance_criteria AC19.test and PRD Open Questions (registry namespace verification not yet resolved)"
     },
     "lanecov": {
-      "_prd": "PRD-mcphost-proof-lane-loop-config.md \u2014 same as ac_test_map above while this PRD is the one at HEAD",
+      "_prd": "PRD-mcphost-proof-lane-loop-config.md — same as ac_test_map above while this PRD is the one at HEAD",
       "AC1": "tests/lanecov_ac01_every_tracked_path_routes.rs",
       "AC2": "tests/lanecov_ac02_coverage_test_is_actually_run.rs",
       "AC3": "tests/lanecov_ac03_unrouted_path_is_named.rs",
@@ -97,7 +96,7 @@
       "AC7": "tests/suite_ac7_junit_per_test_timing.rs",
       "AC8": "deferred -- see PRD deferred_acs/mock_justifications (cross-host parity script needs a second box; casper deleted); AC1's nextest list diff proves the name-matching change single-host",
       "AC9": "tests/suite_ac9_selftest_named_and_green.rs",
-      "_prd": "PRD-mcphost-test-suite-consolidation.md \u2014 superseded by mcphost-share-a-tool-not-a-key at HEAD"
+      "_prd": "PRD-mcphost-test-suite-consolidation.md — superseded by mcphost-share-a-tool-not-a-key at HEAD"
     },
     "sharetool": {
       "AC1": "tests/mcphost_share_a_tool_not_a_key_ac01_llms_txt_section.rs",
@@ -109,7 +108,7 @@
       "AC7": "tests/mcphost_share_a_tool_not_a_key_ac07_synthorg_task_five_completions.rs",
       "AC8": "tests/mcphost_share_a_tool_not_a_key_ac08_live_test_skipped_without_env.rs",
       "AC9": "tests/mcphost_share_a_tool_not_a_key_ac09_public_variant_states_default_reason.rs",
-      "_prd": "PRD-mcphost-share-a-tool-not-a-key.md \u2014 same as ac_test_map above while this PRD is the one at HEAD; real test_prefix is mcphost_share_a_tool_not_a_key (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo above)"
+      "_prd": "PRD-mcphost-share-a-tool-not-a-key.md — same as ac_test_map above while this PRD is the one at HEAD; real test_prefix is mcphost_share_a_tool_not_a_key (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo above)"
     },
     "wasmkind": {
       "AC1": "tests/wasmkind_ac01_echo_component_calls_and_meters.rs",
@@ -122,7 +121,7 @@
       "AC8": "tests/wasmkind_ac08_cache_reuses_compiled_artifact.rs",
       "AC9": "tests/wasmkind_ac09_healthz_reports_wasm_runtime.rs",
       "AC10": "tests/wasmkind_ac10_declared_output_promotion_matches_python.rs",
-      "_prd": "PRD-mcphost-wasm-kind.md \u2014 superseded by mcphost-host-tool-deprecation at HEAD"
+      "_prd": "PRD-mcphost-wasm-kind.md — superseded by mcphost-host-tool-deprecation at HEAD"
     },
     "mcphost_host_tool_deprecation": {
       "AC1": "tests/mcphost_host_tool_deprecation_ac01_contract_dump_deterministic.rs",
@@ -133,7 +132,7 @@
       "AC6": "tests/mcphost_host_tool_deprecation_ac06_changelog_lists_additions.rs",
       "AC7": "tests/mcphost_host_tool_deprecation_ac07_whoami_contract_version.rs",
       "AC8": "tests/mcphost_host_tool_deprecation_ac08_llms_txt_links_contract.rs",
-      "_prd": "PRD-mcphost-host-tool-deprecation.md \u2014 superseded by mcphost-data-retention at HEAD"
+      "_prd": "PRD-mcphost-host-tool-deprecation.md — superseded by mcphost-data-retention at HEAD"
     },
     "retention": {
       "AC1": "tests/mcphost_data_retention_ac01_calls_prune_by_window.rs",
@@ -146,7 +145,7 @@
       "AC8": "tests/mcphost_data_retention_ac08_host_usage_lists_retention_windows.rs",
       "AC9": "tests/mcphost_data_retention_ac09_prune_error_sets_last_prune_ok_false.rs",
       "AC10": "tests/mcphost_data_retention_ac10_admin_prune_now_runs_one_cycle.rs",
-      "_prd": "PRD-mcphost-data-retention.md \u2014 superseded by mcphost-tenant-data-export at HEAD; real test_prefix is mcphost_data_retention (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool above)"
+      "_prd": "PRD-mcphost-data-retention.md — superseded by mcphost-tenant-data-export at HEAD; real test_prefix is mcphost_data_retention (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool above)"
     },
     "tenantdataexport": {
       "AC1": "tests/mcphost_tenant_data_export_ac01_archive_contents.rs",
@@ -156,7 +155,20 @@
       "AC5": "tests/mcphost_tenant_data_export_ac05_manifest_validates_publish_schema.rs",
       "AC6": "tests/mcphost_tenant_data_export_ac06_tools_subset.rs",
       "AC7": "tests/mcphost_tenant_data_export_ac07_admin_usage_exports_today.rs",
-      "_prd": "PRD-mcphost-tenant-data-export.md \u2014 superseded by mcphost-checkcompat-port-race at HEAD; real test_prefix is mcphost_tenant_data_export (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind above)"
+      "_prd": "PRD-mcphost-tenant-data-export.md — superseded by mcphost-checkcompat-port-race at HEAD; real test_prefix is mcphost_tenant_data_export (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind above)"
+    },
+    "checkcompatrace": {
+      "_prd": "PRD-mcphost-checkcompat-port-race.md -- superseded by mcphost-team-memory at HEAD; real test_prefix is checkcompat_race (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind/tenantdataexport above)",
+      "AC1": "tests/checkcompat_race_ac01_previous_up_within_1s.rs",
+      "AC2": "tests/checkcompat_race_ac02_foreign_server_without_token.rs",
+      "AC3": "tests/checkcompat_race_ac03_inherited_listener_token_matches.rs",
+      "AC4": "tests/checkcompat_race_ac04_no_token_header_when_unset.rs",
+      "AC5": "tests/checkcompat_race_ac05_stress_no_port_collisions.rs",
+      "AC6": "tests/checkcompat_race_ac06_explicit_bind_still_enforces_token.rs",
+      "AC7": "tests/checkcompat_race_ac07_suite_green_and_clippy_clean.rs",
+      "AC8": "deferred -- no ccx53/Hetzner burst box reachable from this coding sandbox (no HCLOUD_TOKEN; the installed burst-lane CLI has no prove verb). See PRD frontmatter deferred_acs/mock_justifications, locked against a dangling reference by tests/checkcompat_race_ac08_deferral_is_justified.rs.",
+      "AC9": "cross-repo: /home/jsy/repos/mcphost-deploy tests/checkcompatrace_ac9_journal_and_line_name_the_step.py (mcphost-deploy commit edff67f7, requirement 7 -- not a tests/**/*.rs file since requirement 7 is a mcphost-deploy/Python change, not a mcphost one)",
+      "AC10": "cross-repo: /home/jsy/repos/mcphost-deploy tests/checkcompatrace_ac10_ledger_scraper_reads_verdict.py (mcphost-deploy commit edff67f7, requirement 7)"
     }
   }
 }

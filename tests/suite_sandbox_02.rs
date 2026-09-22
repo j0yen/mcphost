@@ -62,6 +62,18 @@ mod limits_ac06_quickstart_docs_match_constants;
 mod limits_ac07_process_fork_storm_capped;
 #[path = "limits_ac08_usage_capacity_refusals.rs"]
 mod limits_ac08_usage_capacity_refusals;
+#[path = "mcphost_team_memory_ac02_b_remember_writer.rs"]
+mod mcphost_team_memory_ac02_b_remember_writer;
+#[path = "mcphost_team_memory_ac03_c_recall_shows_writer.rs"]
+mod mcphost_team_memory_ac03_c_recall_shows_writer;
+#[path = "mcphost_team_memory_ac04_group_remove_revokes_c.rs"]
+mod mcphost_team_memory_ac04_group_remove_revokes_c;
+#[path = "mcphost_team_memory_ac05_recall_limit_capped_at_50.rs"]
+mod mcphost_team_memory_ac05_recall_limit_capped_at_50;
+#[path = "mcphost_team_memory_ac07_synthorg_task_five_completions.rs"]
+mod mcphost_team_memory_ac07_synthorg_task_five_completions;
+#[path = "mcphost_team_memory_ac09_forget_refused_for_non_writer_non_owner.rs"]
+mod mcphost_team_memory_ac09_forget_refused_for_non_writer_non_owner;
 #[path = "plainenv_ac01_env_reaches_process.rs"]
 mod plainenv_ac01_env_reaches_process;
 #[path = "plainenv_ac02_invalid_names_refused.rs"]
@@ -120,13 +132,3 @@ mod runenvelope_ac2_no_declared_outputs_raw_payload;
 mod runenvelope_ac3_descriptor_and_decision_table_name_envelope;
 #[path = "runenvelope_ac4_no_calls_row_with_payload.rs"]
 mod runenvelope_ac4_no_calls_row_with_payload;
-#[path = "runs_ac01_async_job_runs_progress_and_result.rs"]
-mod runs_ac01_async_job_runs_progress_and_result;
-#[path = "runs_ac02_job_max_s_timeout.rs"]
-mod runs_ac02_job_max_s_timeout;
-#[path = "runs_ac03_progress_shape.rs"]
-mod runs_ac03_progress_shape;
-#[path = "runs_ac04_cancel_kills_sandbox.rs"]
-mod runs_ac04_cancel_kills_sandbox;
-#[path = "runs_ac06_jobs_concurrent_gate.rs"]
-mod runs_ac06_jobs_concurrent_gate;

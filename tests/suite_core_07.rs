@@ -326,6 +326,10 @@ mod mcphost_share_a_tool_not_a_key_ac07_synthorg_task_five_completions;
 mod mcphost_share_a_tool_not_a_key_ac08_live_test_skipped_without_env;
 #[path = "mcphost_share_a_tool_not_a_key_ac09_public_variant_states_default_reason.rs"]
 mod mcphost_share_a_tool_not_a_key_ac09_public_variant_states_default_reason;
+#[path = "mcphost_team_memory_ac01_llms_txt_section.rs"]
+mod mcphost_team_memory_ac01_llms_txt_section;
+#[path = "mcphost_team_memory_ac08_live_test_skipped_without_env.rs"]
+mod mcphost_team_memory_ac08_live_test_skipped_without_env;
 #[path = "mcphost_tenant_data_export_ac01_archive_contents.rs"]
 mod mcphost_tenant_data_export_ac01_archive_contents;
 #[path = "mcphost_tenant_data_export_ac02_signed_url_expiry.rs"]

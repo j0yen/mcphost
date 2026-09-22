@@ -109,6 +109,59 @@ them and your key's rate limit or bill. Reach for `public` when the tool
 has no paid or limited upstream behind it -- a free API, or a tool with no
 secrets at all.
 
+## Give your agents one memory
+
+A team's agents write to and search one shared log instead of each keeping
+its own. Every row remembers who wrote it.
+
+1. Create the table once, on the owner's tenant:
+   ```
+   host.table.create(name="memory", columns={
+     "key": "text", "text": "text", "tags": "json",
+     "writer": "text", "at": "real"
+   })
+   ```
+2. Publish the two tools (`python` kind, source omitted below for space --
+   `writer` holds the caller's tenant namespace, `at` an epoch timestamp):
+   ```
+   host.tool_publish(name="remember", kind="python", spec={"source": "..."})
+   host.tool_publish(name="recall", kind="python", spec={"source": "..."})
+   ```
+   mcphost does not yet expose a caller's own tenant id inside a shared
+   `python` tool (open question, this recipe's own load-bearing check), so
+   `remember` takes a `who` argument and trusts it: state your own tenant
+   namespace when you call it. That is what `writer` holds today; the day
+   the host exposes the real caller id to a shared tool, `who` becomes
+   optional and `writer` stops trusting it.
+3. Create a group for the team:
+   ```
+   host.group.create(name="team")
+   ```
+4. Share both tools to it:
+   ```
+   host.tool_share(name="remember", visibility="group", group="team")
+   host.tool_share(name="recall", visibility="group", group="team")
+   ```
+5. Add each teammate's tenant by namespace:
+   ```
+   host.group.add(name="team", namespace="<teammate_namespace>")
+   ```
+6. Any teammate remembers and recalls like any shared tool:
+   ```
+   host.tool_call(name="<owner_namespace>.remember", args={
+     "key": "deploy", "text": "deploy window is Tuesday 9pm",
+     "who": "<my_own_namespace>"})
+   host.tool_call(name="<owner_namespace>.recall", args={"query": "deploy"})
+   ```
+
+`recall` matches key/text/tags by substring, newest first, capped at 50
+rows even if you ask for more. The table is the owner's: shared tools run
+in the owner's tenant (`src/sharing.rs`), so rows count against the
+owner's `table_rows_max`/`table_bytes_max`, and
+`host.group.remove(name, namespace)` cuts a teammate off on their next
+call, no republish needed. Runnable end-to-end proof:
+`examples/team-memory/proof.sh`.
+
 ## Limits and pricing
 
 - 50 tools per tenant; tool names match `^[a-z][a-z0-9_]{1,40}$`
