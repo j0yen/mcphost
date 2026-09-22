@@ -156,6 +156,12 @@ pub struct Plan {
     /// hand-edited `plans.toml` predates this key, same tolerant-parse
     /// convention as every other field above.
     pub export_bytes_max: i64,
+    /// PRD-mcphost-tool-versions requirement 2 (AC3): how many immutable
+    /// versions of one tool this plan keeps at once -- a publish beyond
+    /// this deletes the oldest surviving version. Defaults to the `free`
+    /// plan's own default (5) when a hand-edited `plans.toml` predates this
+    /// key, same tolerant-parse convention as every other field above.
+    pub versions_max: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -222,6 +228,9 @@ impl PlanCatalog {
                     // PRD-mcphost-tenant-data-export Open Questions:
                     // "free 50 MB".
                     export_bytes_max: 50 * 1024 * 1024,
+                    // PRD-mcphost-tool-versions requirement 2: "free keeps 5
+                    // versions".
+                    versions_max: 5,
                 },
                 Plan {
                     name: "pro".to_string(),
@@ -281,6 +290,9 @@ impl PlanCatalog {
                     // PRD-mcphost-tenant-data-export Open Questions:
                     // "pro 1 GB".
                     export_bytes_max: 1024 * 1024 * 1024,
+                    // PRD-mcphost-tool-versions requirement 2: "pro keeps 20
+                    // versions".
+                    versions_max: 20,
                 },
             ],
         }
@@ -373,6 +385,7 @@ impl PlanCatalog {
             ));
             out.push_str(&format!("urgent_per_day = {}\n", p.urgent_per_day));
             out.push_str(&format!("export_bytes_max = {}\n", p.export_bytes_max));
+            out.push_str(&format!("versions_max = {}\n", p.versions_max));
             out.push('\n');
         }
         out
@@ -444,6 +457,7 @@ impl PlanCatalog {
                 "contact_requests_per_day" => builder.contact_requests_per_day = Some(int_value()),
                 "urgent_per_day" => builder.urgent_per_day = Some(int_value()),
                 "export_bytes_max" => builder.export_bytes_max = Some(int_value()),
+                "versions_max" => builder.versions_max = Some(int_value()),
                 _ => {}
             }
         }
@@ -489,6 +503,7 @@ struct PlanBuilder {
     contact_requests_per_day: Option<i64>,
     urgent_per_day: Option<i64>,
     export_bytes_max: Option<i64>,
+    versions_max: Option<i64>,
 }
 
 impl PlanBuilder {
@@ -552,6 +567,10 @@ impl PlanBuilder {
             // key gets the `free` plan's own default (50 MiB), same
             // tolerant-parse rationale as every other field above.
             export_bytes_max: self.export_bytes_max.unwrap_or(50 * 1024 * 1024),
+            // PRD-mcphost-tool-versions: a `plans.toml` predating this key
+            // gets the `free` plan's own default (5), same tolerant-parse
+            // rationale as every other field above.
+            versions_max: self.versions_max.unwrap_or(5),
         })
     }
 }

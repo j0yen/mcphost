@@ -43,6 +43,7 @@ async fn deleting_a_tenant_cascades_every_owned_row() {
                 format!("tool{i}"),
                 "echo".to_string(),
                 json!({"schema": {"type": "object"}}),
+                5,
             )
             .await
             .expect("upsert_tool");

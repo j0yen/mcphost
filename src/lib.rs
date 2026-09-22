@@ -15,6 +15,7 @@ pub mod consent;
 pub mod control;
 pub mod cron;
 pub mod db;
+pub mod difftext;
 pub mod errors;
 pub mod export;
 pub mod funnel;

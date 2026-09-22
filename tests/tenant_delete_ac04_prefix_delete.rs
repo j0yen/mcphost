@@ -29,6 +29,7 @@ async fn dry_run_false_deletes_matches_and_spares_the_rest() {
             "t1".to_string(),
             "echo".to_string(),
             json!({"schema": {"type": "object"}}),
+            5,
         )
         .await
         .expect("upsert_tool");

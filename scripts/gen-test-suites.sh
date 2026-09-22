@@ -296,7 +296,7 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # total back at 10. (This PRD's remaining test files are all
 # `sandbox`-classified and fit inside sandbox's existing 3-suite split
 # without needing this cap raised further.)
-MAX_PER_SUITE = {"core": 342, "sandbox": 60}
+MAX_PER_SUITE = {"core": 350, "sandbox": 60}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

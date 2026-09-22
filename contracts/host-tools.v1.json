@@ -1445,7 +1445,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Invoke a tool this tenant has already published, by its local name -- the same real, metered call as calling it directly by its namespaced name (<namespace>.<name>), for a session that has no way to see its own namespaced tool name yet. Unlike host.tool_test, this counts toward host.usage and appears in host.tool_logs. Pass async: true for a tool that needs more than the call deadline: returns {run_id, status: \"queued\"} immediately instead of running inline -- see host.runs.get/wait.",
+      "description": "Invoke a tool this tenant has already published, by its local name -- the same real, metered call as calling it directly by its namespaced name (<namespace>.<name>), for a session that has no way to see its own namespaced tool name yet. Unlike host.tool_test, this counts toward host.usage and appears in host.tool_logs. Pass async: true for a tool that needs more than the call deadline: returns {run_id, status: \"queued\"} immediately instead of running inline -- see host.runs.get/wait. Pass version to pin the call to one of host.tool_history's versions instead of whichever is current.",
       "input_schema": {
         "properties": {
           "args": {
@@ -1463,6 +1463,10 @@
           "tenant_key": {
             "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
             "type": "string"
+          },
+          "version": {
+            "description": "Pin the call to this version instead of whichever is current; see host.tool_history. An unknown version is an argument error.",
+            "type": "integer"
           }
         },
         "required": [
@@ -1472,6 +1476,58 @@
         "type": "object"
       },
       "name": "host.tool_call",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Return a unified diff between two published versions of one of this tenant's tools.",
+      "input_schema": {
+        "properties": {
+          "from": {
+            "description": "The earlier version number.",
+            "type": "integer"
+          },
+          "name": {
+            "description": "Local name of the tool.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "to": {
+            "description": "The later version number.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "from",
+          "to"
+        ],
+        "type": "object"
+      },
+      "name": "host.tool_diff",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List every published version of one of this tenant's tools, newest first, each with its creation time, source_sha256, and whether it's the current one.",
+      "input_schema": {
+        "properties": {
+          "name": {
+            "description": "Local name of the tool.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host.tool_history",
       "since": "0.58.0"
     },
     {
@@ -1564,6 +1620,32 @@
         "type": "object"
       },
       "name": "host.tool_remove",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Make an earlier published version of one of this tenant's tools current again -- the next host.tool_call (or namespaced call) runs that version's source. See host.tool_history for the valid version numbers.",
+      "input_schema": {
+        "properties": {
+          "name": {
+            "description": "Local name of the tool to roll back.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "version": {
+            "description": "The version number (from host.tool_history) to make current.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "version"
+        ],
+        "type": "object"
+      },
+      "name": "host.tool_rollback",
       "since": "0.58.0"
     },
     {

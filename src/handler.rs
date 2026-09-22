@@ -659,7 +659,9 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              namespaced tool name yet. Unlike host.tool_test, this counts toward \
              host.usage and appears in host.tool_logs. Pass async: true for a tool \
              that needs more than the call deadline: returns {run_id, status: \"queued\"} \
-             immediately instead of running inline -- see host.runs.get/wait.",
+             immediately instead of running inline -- see host.runs.get/wait. Pass \
+             version to pin the call to one of host.tool_history's versions instead of \
+             whichever is current.",
             host_schema(
                 json!({
                     "name": {"type": "string", "description": "Local name of the tool to invoke."},
@@ -672,8 +674,56 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                         "description": "Run as a job instead of inline: returns {run_id, status} \
                             within ~50ms under the plan's job_max_s deadline; default false.",
                     },
+                    "version": {
+                        "type": "integer",
+                        "description": "Pin the call to this version instead of whichever is \
+                            current; see host.tool_history. An unknown version is an argument error.",
+                    },
                 }),
                 &["name", "args"],
+            ),
+        ),
+        // PRD-mcphost-tool-versions P0 requirements 3/4, P2 requirement 8:
+        // every publish is a new, immutable version; these three read/undo
+        // that history.
+        Tool::new(
+            "host.tool_history",
+            "List every published version of one of this tenant's tools, newest first, \
+             each with its creation time, source_sha256, and whether it's the current one.",
+            host_schema(
+                json!({
+                    "name": {"type": "string", "description": "Local name of the tool."},
+                }),
+                &["name"],
+            ),
+        ),
+        Tool::new(
+            "host.tool_rollback",
+            "Make an earlier published version of one of this tenant's tools current \
+             again -- the next host.tool_call (or namespaced call) runs that version's \
+             source. See host.tool_history for the valid version numbers.",
+            host_schema(
+                json!({
+                    "name": {"type": "string", "description": "Local name of the tool to roll back."},
+                    "version": {
+                        "type": "integer",
+                        "description": "The version number (from host.tool_history) to make current.",
+                    },
+                }),
+                &["name", "version"],
+            ),
+        ),
+        Tool::new(
+            "host.tool_diff",
+            "Return a unified diff between two published versions of one of this \
+             tenant's tools.",
+            host_schema(
+                json!({
+                    "name": {"type": "string", "description": "Local name of the tool."},
+                    "from": {"type": "integer", "description": "The earlier version number."},
+                    "to": {"type": "integer", "description": "The later version number."},
+                }),
+                &["name", "from", "to"],
             ),
         ),
         Tool::new(
@@ -2298,6 +2348,9 @@ impl McpHostHandler {
             "host.spec_test" => self.spec_test(tenant, args).await,
             "host.tool_run" => self.tool_run(tenant, args).await,
             "host.tool_call" => self.host_tool_call(tenant, args).await,
+            "host.tool_history" => control::tool_history(&self.state, tenant, &args).await,
+            "host.tool_rollback" => control::tool_rollback(&self.state, tenant, &args).await,
+            "host.tool_diff" => control::tool_diff(&self.state, tenant, &args).await,
             "host.usage" => control::usage(&self.state, tenant, &args).await,
             "host.changelog" => control::changelog(&self.state, &args),
             "host.export" => crate::export::export(&self.state, tenant, &args).await,
@@ -2526,6 +2579,7 @@ impl McpHostHandler {
         args: Value,
         mcp_name_mismatch: bool,
         caller: Option<&Tenant>,
+        version: Option<i64>,
     ) -> Result<Value, AppError> {
         let row: ToolRow = self
             .state
@@ -2533,14 +2587,33 @@ impl McpHostHandler {
             .get_tool(tenant.id, local_name.to_string())
             .await?
             .ok_or_else(|| AppError::ToolNotFound(local_name.to_string()))?;
-        let kind: Arc<dyn Kind> = self.state.kinds.get(&row.kind).ok_or_else(|| {
+        // PRD-mcphost-tool-versions requirement 5 (AC5): a pinned call
+        // dispatches against that version's own stored kind/spec instead of
+        // `row`'s (which always mirrors whatever is CURRENT) -- an unpinned
+        // caller sees no change at all here, `kind_name`/`spec` just being
+        // `row`'s own fields.
+        let (kind_name, spec): (String, Value) = match version {
+            Some(v) => match self.state.db.get_tool_version(tenant.id, local_name.to_string(), v).await? {
+                Some(vrow) => (vrow.kind, vrow.spec),
+                None => {
+                    let (min, max) = self
+                        .state
+                        .db
+                        .tool_version_range(tenant.id, local_name.to_string())
+                        .await?
+                        .unwrap_or((row.current_version, row.current_version));
+                    return Err(AppError::VersionNotFound { requested: v, min, max });
+                }
+            },
+            None => (row.kind.clone(), row.spec.clone()),
+        };
+        let kind: Arc<dyn Kind> = self.state.kinds.get(&kind_name).ok_or_else(|| {
             AppError::Internal(format!(
-                "published tool names unregistered kind '{}'",
-                row.kind
+                "published tool names unregistered kind '{kind_name}'"
             ))
         })?;
 
-        let descriptor = kind.describe(&row.spec);
+        let descriptor = kind.describe(&spec);
         if let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
             && let Err(e) = validator.validate(&args)
         {
@@ -2574,7 +2647,7 @@ impl McpHostHandler {
         let secrets = build_secret_resolver(&self.state, tenant.id).await?;
         let log = Arc::new(BufferedLog(std::sync::Mutex::new(Vec::new())));
         let resources = Arc::new(CellResourceSink(std::sync::Mutex::new(None)));
-        let resolved_timeout = self.resolve_call_timeout(&kind, &row.spec);
+        let resolved_timeout = self.resolve_call_timeout(&kind, &spec);
         let ctx = CallCtx {
             tenant_id: tenant.id,
             namespace: tenant.namespace.clone(),
@@ -2623,7 +2696,7 @@ impl McpHostHandler {
         if mcp_name_mismatch {
             tracing::warn!(tenant = %tenant.namespace, tool = %local_name, "Mcp-Name header does not match call body's tool name");
         }
-        let outcome = tokio::time::timeout(resolved_timeout, kind.call(&row.spec, args, &ctx)).await;
+        let outcome = tokio::time::timeout(resolved_timeout, kind.call(&spec, args, &ctx)).await;
         let duration_ms = start.elapsed().as_millis() as i64;
         let (cpu_ms, peak_rss_kb) = resources.0.lock().map(|g| *g).unwrap_or_default().unzip();
 
@@ -2705,6 +2778,35 @@ impl McpHostHandler {
                     tenant = %tenant.namespace, method = "tools/call", tool = %local_name,
                     duration_ms, status = "ok", outcome = call_outcome, mcp_name_mismatch,
                 );
+                // PRD-mcphost-tool-versions requirement 6 (AC7): an
+                // unpinned sharer's result carries `version_changed` once,
+                // the call after a real change on the owner's side --
+                // `row.current_version` is what actually ran (this branch
+                // never reaches here for a pinned call's own version drift,
+                // since `version.is_none()` guards it), scoped to
+                // cross-tenant calls only (`caller.is_some()`) per the
+                // requirement's own "a shared tool's unpinned caller"
+                // wording.
+                let mut value = value;
+                if version.is_none()
+                    && let Some(caller) = caller
+                    && let Ok(Some(prev)) = self
+                        .state
+                        .db
+                        .check_version_watermark(
+                            tenant.id,
+                            local_name.to_string(),
+                            caller.id,
+                            row.current_version,
+                        )
+                        .await
+                    && let Some(obj) = value.as_object_mut()
+                {
+                    obj.insert(
+                        "version_changed".to_string(),
+                        json!({"from": prev, "to": row.current_version}),
+                    );
+                }
                 Ok(value)
             }
             Ok(Err(kind_err)) => {
@@ -3365,6 +3467,12 @@ impl McpHostHandler {
             .get("args")
             .cloned()
             .unwrap_or_else(|| Value::Object(Default::default()));
+        // PRD-mcphost-tool-versions requirement 5: a sibling of `args`/
+        // `name`, not folded into the call args themselves (unlike the
+        // cross-tenant `<owner_ns>.<name>` path, where the wire arguments
+        // object IS the call args and `version` has to be a reserved key
+        // inside it -- see the dispatch match arm below).
+        let version = args.get("version").and_then(Value::as_i64);
         if args.get("async").and_then(Value::as_bool) == Some(true) {
             return crate::runs::enqueue(&self.state, tenant, &local_name, call_args).await;
         }
@@ -3373,7 +3481,7 @@ impl McpHostHandler {
         // isn't found here -- `ToolNotFound`, with nothing in the error to
         // distinguish "never published by anyone" from "published by
         // someone else".
-        self.call_published_tool(tenant, &local_name, call_args, false, None)
+        self.call_published_tool(tenant, &local_name, call_args, false, None, version)
             .await
     }
 
@@ -3396,6 +3504,7 @@ impl McpHostHandler {
         local_name: &str,
         args: Value,
         mcp_name_mismatch: bool,
+        version: Option<i64>,
     ) -> Result<Value, AppError> {
         let not_found = || AppError::ToolNotFound(format!("{owner_ns}.{local_name}"));
         let (owner, row) = self
@@ -3422,7 +3531,7 @@ impl McpHostHandler {
             return Err(not_found());
         }
 
-        self.call_published_tool(&owner, local_name, args, mcp_name_mismatch, Some(caller))
+        self.call_published_tool(&owner, local_name, args, mcp_name_mismatch, Some(caller), version)
             .await
     }
 }
@@ -3746,7 +3855,7 @@ impl ServerHandler for McpHostHandler {
             }
             (Auth::Tenant(tenant), name) => match name.split_once('.') {
                 Some((ns, local)) if ns == tenant.namespace => {
-                    self.call_published_tool(tenant, local, args, mismatch, None)
+                    self.call_published_tool(tenant, local, args, mismatch, None, None)
                         .await
                 }
                 // PRD-mcphost-sharing P0 requirement 2: `<ns>.<name>` for
@@ -3755,7 +3864,21 @@ impl ServerHandler for McpHostHandler {
                 // which is the only place that decides whether `ns.local`'s
                 // visibility lets `tenant` (the caller here) reach it.
                 Some((ns, local)) => {
-                    self.call_shared_tool(tenant, ns, local, args, mismatch)
+                    // PRD-mcphost-tool-versions requirement 5 (AC5): this
+                    // wire `arguments` object IS the call's own args (there
+                    // is no separate top-level slot the way host.tool_call
+                    // has), so a pinning caller reserves `version` as a key
+                    // inside it, stripped before schema validation/dispatch
+                    // -- same "reserved key inside the call args" shape
+                    // `tenant_key` already uses for the session-key path.
+                    let (version, args) = match args {
+                        Value::Object(mut map) => {
+                            let version = map.remove("version").and_then(|v| v.as_i64());
+                            (version, Value::Object(map))
+                        }
+                        other => (None, other),
+                    };
+                    self.call_shared_tool(tenant, ns, local, args, mismatch, version)
                         .await
                 }
                 None => Err(AppError::ToolNotFound(name.to_string())),
