@@ -294,6 +294,10 @@ mod mcphost_data_retention_ac08_host_usage_lists_retention_windows;
 mod mcphost_data_retention_ac09_prune_error_sets_last_prune_ok_false;
 #[path = "mcphost_data_retention_ac10_admin_prune_now_runs_one_cycle.rs"]
 mod mcphost_data_retention_ac10_admin_prune_now_runs_one_cycle;
+#[path = "mcphost_database_in_a_minute_ac01_llms_txt_section.rs"]
+mod mcphost_database_in_a_minute_ac01_llms_txt_section;
+#[path = "mcphost_database_in_a_minute_ac08_live_test_skipped_without_env.rs"]
+mod mcphost_database_in_a_minute_ac08_live_test_skipped_without_env;
 #[path = "mcphost_host_tool_deprecation_ac01_contract_dump_deterministic.rs"]
 mod mcphost_host_tool_deprecation_ac01_contract_dump_deterministic;
 #[path = "mcphost_host_tool_deprecation_ac02_removed_field_without_deprecation_fails.rs"]

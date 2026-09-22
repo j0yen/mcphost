@@ -1,0 +1,30 @@
+# Consumer task for the synthorg mcphost corpus (RedBaron's
+# corpora/mcphost/consumer-tasks.yaml, see its own header comment for the
+# id/segments/task/gold schema and the call_check mini-grammar). Proposed
+# addition for the "Give Claude a database in one minute" recipe
+# (www/llms.txt, examples/database-in-a-minute/proof.sh) -- not merged
+# into that file by this PRD, since RedBaron's corpus lives in a separate
+# repository outside this worktree's scope (build_into: mcphost only). A
+# maintainer of that corpus can fold this block into
+# consumer-tasks.yaml's own `tasks:` list.
+#
+# Segment: spreadsheet_owner (incumbent: pasting the CSV into every
+# conversation, or standing up Airtable/Notion plus its own MCP server,
+# problem statement). This task proves the alternative: one state table,
+# one batched import, one `python` tool, scored on whether `query`
+# answers a known question about the caller's own rows (PRD user story 1).
+tasks:
+  - id: spreadsheet-owner-database-in-a-minute
+    segments: [spreadsheet_owner]
+    task: >
+      You have a CSV and want Claude to answer questions about your own
+      rows without pasting the file into every conversation. Sign up,
+      create an `expenses` table with `host.state.table_create` (columns
+      id integer, category text, amount real, day integer), insert the
+      fixture's 1,000 rows in batches of 200 with `host.state.insert`,
+      publish `query` as a `python` tool, and ask it how many rows have
+      category "produce" -- the result should show `count: 200`.
+    gold:
+      tool_name: query
+      call_check: "result.count == 200"
+      kind: python

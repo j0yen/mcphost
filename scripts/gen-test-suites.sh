@@ -263,7 +263,22 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # total back at 10. (This PRD's remaining test files are all
 # `sandbox`-classified and fit inside sandbox's existing 3-suite split
 # without needing this cap raised further.)
-MAX_PER_SUITE = {"core": 338, "sandbox": 60}
+#
+# PRD-mcphost-database-in-a-minute (2026-09-22, AC1): this PRD's own
+# `mcphost_database_in_a_minute_ac01_llms_txt_section.rs` (also
+# `core`-classified, no global tracing subscriber) joins the same "mcphost"
+# normal bucket, spawning an 11th suite binary again -- caught by the same
+# P0 assertion. 338 -> 339 was the smallest tested raise that re-collapses
+# core's normal buckets to 1, landing the grand total back at 10.
+#
+# PRD-mcphost-database-in-a-minute (2026-09-22, AC8 follow-up): this PRD's
+# own `mcphost_database_in_a_minute_ac08_live_test_skipped_without_env.rs`
+# (also `core`-classified, no global tracing subscriber, no python/sandbox
+# surface) joins the same "mcphost" normal bucket, spawning an 11th suite
+# binary again -- caught by the same P0 assertion. 339 -> 340 was the
+# smallest tested raise that re-collapses core's normal buckets to 1,
+# landing the grand total back at 10.
+MAX_PER_SUITE = {"core": 340, "sandbox": 60}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"
