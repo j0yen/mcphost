@@ -526,6 +526,7 @@ pub async fn set_event_trigger(
             config_json,
             hash,
             None,
+            None,
         )
         .await
         .map_err(|_| {
@@ -927,11 +928,17 @@ pub async fn test(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         // claim one with).
         return test_message_trigger(state, tenant, &row, args).await;
     }
+    if row.kind == "webhook" {
+        // PRD-mcphost-webhook-inbox P1 requirement 8 / AC11: a synthetic,
+        // self-signed delivery run through the exact same accept path a
+        // real `POST /hook/...` would use.
+        return crate::webhooks::test_webhook_trigger(state, tenant, &row, args).await;
+    }
     if row.kind != "event" {
         return Err(trigger_invalid(
             "id",
-            "host.trigger.test only supports an event ('kind: \"event\"') or message \
-             ('kind: \"message\"') trigger"
+            "host.trigger.test only supports an event ('kind: \"event\"'), message \
+             ('kind: \"message\"') or webhook ('kind: \"webhook\"') trigger"
                 .to_string(),
         ));
     }
@@ -1048,6 +1055,29 @@ async fn test_message_trigger(
 /// original's own `trigger`/`message_id` (rather than hardcoding `"event"`)
 /// so a message-triggered replay still reads `trigger: "message"`.
 pub async fn replay(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    // PRD-mcphost-webhook-inbox AC6: a webhook trigger's own replay is
+    // addressed by a stored *row* id, not a run id -- a paused delivery is
+    // stored with no run at all (requirement 4), so there is sometimes no
+    // run to name. `row_id` present selects this branch; `id` names the
+    // trigger (same argument name `host.trigger.get`/`pause`/`test` already
+    // use), never the run.
+    if let Some(row_id) = crate::webhooks::arg_i64(args, "row_id") {
+        let id = arg_str(args, "id")?;
+        let row = state
+            .db
+            .get_trigger(tenant.id, id.clone())
+            .await?
+            .ok_or_else(|| crate::triggers::trigger_not_found(&id))?;
+        if row.kind != "webhook" {
+            return Err(trigger_invalid(
+                "row_id",
+                "row_id is only valid for a webhook trigger; an event- or message-triggered run \
+                 is replayed by run_id instead"
+                    .to_string(),
+            ));
+        }
+        return crate::webhooks::replay_webhook_row(state, tenant, &row, row_id).await;
+    }
     let run_id = arg_str(args, "run_id")?;
     let original = state
         .db

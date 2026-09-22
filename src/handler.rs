@@ -1241,28 +1241,39 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             "host.trigger.set",
             "Run a published tool on a cron schedule (5-field: minute hour day-of-month month \
              day-of-week, UTC), give it a public webhook URL (kind=\"event\"): a signed POST to \
-             that URL runs the tool with the event as its argument, or fire it whenever this \
-             tenant receives a message (kind=\"message\"): the tool runs with the message \
-             envelope as its argument. Each firing/delivery is a run visible in \
-             host.runs.list(trigger=\"schedule\"|\"event\"|\"message\"). Refuses \
-             schedules_max/event_triggers_max (trigger_quota_exceeded, shared by event and \
-             message triggers) or a too-short schedule interval (trigger_interval_too_short); an \
-             invalid expression or verify config fails trigger_invalid naming the field.",
+             that URL runs the tool with the event as its argument, fire it whenever this tenant \
+             receives a message (kind=\"message\"): the tool runs with the message envelope as \
+             its argument, or give it an inbound-inbox URL (kind=\"webhook\"): a verified POST \
+             lands as a row in state table inbox_<name> and fires the tool with that row as its \
+             argument -- the response carries {url, secret} once (host.trigger.get afterwards \
+             never returns the secret again). Each firing/delivery is a run visible in \
+             host.runs.list(trigger=\"schedule\"|\"event\"|\"message\"|\"webhook\"). Refuses \
+             schedules_max (trigger_quota_exceeded, shared by schedule and webhook triggers), \
+             event_triggers_max (shared by event and message triggers) or a too-short schedule \
+             interval (trigger_interval_too_short); an invalid expression or verify config fails \
+             trigger_invalid naming the field.",
             host_schema(
                 json!({
                     "tool": {"type": "string", "description": "The published tool this trigger runs."},
-                    "kind": {"type": "string", "description": "\"schedule\" (default), \"event\" or \"message\"."},
+                    "kind": {"type": "string", "description": "\"schedule\" (default), \"event\", \"message\" or \"webhook\"."},
                     "schedule": {
                         "type": "string",
                         "description": "kind=\"schedule\": 5-field cron expression (minute hour \
                             day-of-month month day-of-week), UTC. Supports *, lists, ranges and steps.",
                     },
+                    "name": {
+                        "type": "string",
+                        "description": "kind=\"webhook\": letters/digits/underscore -- becomes the \
+                            inbox_<name> state table each accepted delivery is stored in.",
+                    },
                     "verify": {
-                        "type": "object",
                         "description": "kind=\"event\": {scheme: \"hmac-sha256\"|\"hmac-sha1\"|\
                             \"token\"|\"none\", header, secret (a host.secret_set name), prefix?, \
                             timestamp_header?, tolerance_s?, allow_unverified? (required true for \
-                            scheme \"none\")}.",
+                            scheme \"none\")}. kind=\"webhook\": a plain string, one of \"hmac\" \
+                            (default; checks X-Mcphost-Signature: sha256=<hex>), \"none\", or \
+                            \"stripe\" (checks Stripe-Signature the way Stripe itself signs, using \
+                            the same generated secret).",
                     },
                     "dedupe_header": {
                         "type": "string",
@@ -1281,7 +1292,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                             channel's posts (host.channel.open's channel_id) instead of \
                             ordinary host.msg.send/reply deliveries.",
                     },
-                    "args": {"type": "object", "description": "Arguments passed to the tool on each firing/delivery (kind=\"schedule\"/\"event\" only -- a message trigger's whole argument is the message envelope)."},
+                    "args": {"type": "object", "description": "Arguments passed to the tool on each firing/delivery (kind=\"schedule\"/\"event\" only -- a message trigger's whole argument is the message envelope and a webhook trigger's whole argument is the stored inbox row)."},
                     "tz": {"type": "string", "description": "kind=\"schedule\" P1: only \"UTC\" (or omitted) works today."},
                 }),
                 &["tool"],
@@ -1290,7 +1301,8 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         Tool::new(
             "host.trigger.list",
             "List this tenant's triggers (optionally filtered by tool), each with next_unix, \
-             last_run_id and last_status (schedule), or url/verify/unverified (event).",
+             last_run_id and last_status (schedule), url/verify/unverified (event), or \
+             url/name/verify with no secret (webhook).",
             host_schema(
                 json!({"tool": {"type": "string", "description": "Only triggers on this tool name."}}),
                 &[],
@@ -1344,14 +1356,16 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             "host.trigger.test",
             "Dry-run an event trigger's verify config against a payload you supply, without \
              exposing its real URL -- verifies the signature exactly as POST /hooks/... would, \
-             then runs the tool with the event as its argument. Or, on a message trigger, runs \
-             the tool with a synthetic envelope (test: true, no messages row created). The run is \
-             marked test: true. A wrong signature fails signature_invalid, naming the header it \
-             checked.",
+             then runs the tool with the event as its argument. On a message trigger, runs the \
+             tool with a synthetic envelope (test: true, no messages row created). On a webhook \
+             trigger, builds and self-signs a synthetic body exactly like a real sender would, \
+             then stores and fires it through the same path POST /hook/... uses (one inbox row, \
+             one run). The run is marked test: true. A wrong signature fails signature_invalid, \
+             naming the header it checked.",
             host_schema(
                 json!({
-                    "id": {"type": "string", "description": "The event or message trigger id."},
-                    "body": {"description": "kind=\"event\": the payload to verify and run with -- any JSON value. kind=\"message\": the synthetic envelope's body text."},
+                    "id": {"type": "string", "description": "The event, message or webhook trigger id."},
+                    "body": {"description": "kind=\"event\"/\"webhook\": the payload to verify and run with -- any JSON value. kind=\"message\": the synthetic envelope's body text."},
                     "headers": {"type": "object", "description": "kind=\"event\": header name -> string value, e.g. {\"X-Hub-Signature-256\": \"sha256=...\"}."},
                     "from": {"type": "string", "description": "kind=\"message\": the synthetic envelope's from address; default \"@test\"."},
                     "data": {"description": "kind=\"message\": the synthetic envelope's data payload."},
@@ -1363,10 +1377,16 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             "host.trigger.replay",
             "Re-run a past event- or message-triggered run's exact stored event/envelope (no \
              re-verification -- the original delivery already passed it). The new run's \
-             trigger_ref names the original run id.",
+             trigger_ref names the original run id. For a webhook trigger, pass id (the trigger) \
+             and row_id (an inbox_<name> row id, e.g. from POST /hook/...'s own response or \
+             host.state.query) instead of run_id -- a paused delivery has no run to replay from.",
             host_schema(
-                json!({"run_id": {"type": "string", "description": "The event- or message-triggered run id to replay."}}),
-                &["run_id"],
+                json!({
+                    "run_id": {"type": "string", "description": "The event- or message-triggered run id to replay."},
+                    "id": {"type": "string", "description": "kind=\"webhook\" only: the trigger id (paired with row_id)."},
+                    "row_id": {"type": "integer", "description": "kind=\"webhook\" only: the inbox_<name> row id to replay (paired with id)."},
+                }),
+                &[],
             ),
         ),
         Tool::new(

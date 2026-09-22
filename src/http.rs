@@ -460,6 +460,12 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // backend, so `/hooks/...` needs no deploy-side change -- only this
         // route.
         .route("/hooks/{namespace}/{tool}", post(crate::hooks::hook_receive))
+        // PRD-mcphost-webhook-inbox P0 requirement 2: the opaque-id
+        // webhook-trigger route, alongside `/hooks/...` above -- distinct
+        // path (`/hook/`, singular, no namespace/tool segments) since a
+        // webhook trigger is addressed by its own `hook_id`, not
+        // `(namespace, tool)`.
+        .route("/hook/{id}", post(crate::webhooks::hook_receive))
         // PRD-mcphost-tenant-data-export P0 requirement 2: the signed
         // download URL a completed `host.export` run's result carries --
         // see `export::download`.

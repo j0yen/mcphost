@@ -38,3 +38,4 @@ pub mod state;
 pub mod tables;
 pub mod tenant_state;
 pub mod triggers;
+pub mod webhooks;

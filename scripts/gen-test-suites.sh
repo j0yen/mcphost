@@ -304,7 +304,14 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # `suite_ac1_ten_binaries_and_names_preserved` P0 assertion, rebased onto
 # the 342 -> 350 raise above; re-tuned post-rebase to re-collapse core's
 # normal buckets to 1, landing the grand total back at 10.
-MAX_PER_SUITE = {"core": 360, "sandbox": 60}
+#
+# PRD-mcphost-webhook-inbox (2026-09-22, rebased onto agent-channels): this
+# PRD's own eleven `mcphost_webhook_inbox_ac*.rs` files (also
+# `core`-classified, also no global tracing subscriber) join the same
+# normal bucket, spawning an 11th suite binary again -- caught by the same
+# P0 assertion. 360 -> 375 is the smallest tested raise that re-collapses
+# core's normal buckets to 1, landing the grand total back at 10.
+MAX_PER_SUITE = {"core": 375, "sandbox": 60}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

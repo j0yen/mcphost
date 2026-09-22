@@ -1896,7 +1896,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "List this tenant's triggers (optionally filtered by tool), each with next_unix, last_run_id and last_status (schedule), or url/verify/unverified (event).",
+      "description": "List this tenant's triggers (optionally filtered by tool), each with next_unix, last_run_id and last_status (schedule), url/verify/unverified (event), or url/name/verify with no secret (webhook).",
       "input_schema": {
         "properties": {
           "tenant_key": {
@@ -1957,9 +1957,17 @@
       "since": "0.58.0"
     },
     {
-      "description": "Re-run a past event- or message-triggered run's exact stored event/envelope (no re-verification -- the original delivery already passed it). The new run's trigger_ref names the original run id.",
+      "description": "Re-run a past event- or message-triggered run's exact stored event/envelope (no re-verification -- the original delivery already passed it). The new run's trigger_ref names the original run id. For a webhook trigger, pass id (the trigger) and row_id (an inbox_<name> row id, e.g. from POST /hook/...'s own response or host.state.query) instead of run_id -- a paused delivery has no run to replay from.",
       "input_schema": {
         "properties": {
+          "id": {
+            "description": "kind=\"webhook\" only: the trigger id (paired with row_id).",
+            "type": "string"
+          },
+          "row_id": {
+            "description": "kind=\"webhook\" only: the inbox_<name> row id to replay (paired with id).",
+            "type": "integer"
+          },
           "run_id": {
             "description": "The event- or message-triggered run id to replay.",
             "type": "string"
@@ -1969,9 +1977,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "run_id"
-        ],
+        "required": [],
         "type": "object"
       },
       "name": "host.trigger.replay",
@@ -1999,11 +2005,11 @@
       "since": "0.58.0"
     },
     {
-      "description": "Run a published tool on a cron schedule (5-field: minute hour day-of-month month day-of-week, UTC), give it a public webhook URL (kind=\"event\"): a signed POST to that URL runs the tool with the event as its argument, or fire it whenever this tenant receives a message (kind=\"message\"): the tool runs with the message envelope as its argument. Each firing/delivery is a run visible in host.runs.list(trigger=\"schedule\"|\"event\"|\"message\"). Refuses schedules_max/event_triggers_max (trigger_quota_exceeded, shared by event and message triggers) or a too-short schedule interval (trigger_interval_too_short); an invalid expression or verify config fails trigger_invalid naming the field.",
+      "description": "Run a published tool on a cron schedule (5-field: minute hour day-of-month month day-of-week, UTC), give it a public webhook URL (kind=\"event\"): a signed POST to that URL runs the tool with the event as its argument, fire it whenever this tenant receives a message (kind=\"message\"): the tool runs with the message envelope as its argument, or give it an inbound-inbox URL (kind=\"webhook\"): a verified POST lands as a row in state table inbox_<name> and fires the tool with that row as its argument -- the response carries {url, secret} once (host.trigger.get afterwards never returns the secret again). Each firing/delivery is a run visible in host.runs.list(trigger=\"schedule\"|\"event\"|\"message\"|\"webhook\"). Refuses schedules_max (trigger_quota_exceeded, shared by schedule and webhook triggers), event_triggers_max (shared by event and message triggers) or a too-short schedule interval (trigger_interval_too_short); an invalid expression or verify config fails trigger_invalid naming the field.",
       "input_schema": {
         "properties": {
           "args": {
-            "description": "Arguments passed to the tool on each firing/delivery (kind=\"schedule\"/\"event\" only -- a message trigger's whole argument is the message envelope).",
+            "description": "Arguments passed to the tool on each firing/delivery (kind=\"schedule\"/\"event\" only -- a message trigger's whole argument is the message envelope and a webhook trigger's whole argument is the stored inbox row).",
             "type": "object"
           },
           "channel_id": {
@@ -2019,7 +2025,11 @@
             "type": "string"
           },
           "kind": {
-            "description": "\"schedule\" (default), \"event\" or \"message\".",
+            "description": "\"schedule\" (default), \"event\", \"message\" or \"webhook\".",
+            "type": "string"
+          },
+          "name": {
+            "description": "kind=\"webhook\": letters/digits/underscore -- becomes the inbox_<name> state table each accepted delivery is stored in.",
             "type": "string"
           },
           "schedule": {
@@ -2039,8 +2049,7 @@
             "type": "string"
           },
           "verify": {
-            "description": "kind=\"event\": {scheme: \"hmac-sha256\"|\"hmac-sha1\"|\"token\"|\"none\", header, secret (a host.secret_set name), prefix?, timestamp_header?, tolerance_s?, allow_unverified? (required true for scheme \"none\")}.",
-            "type": "object"
+            "description": "kind=\"event\": {scheme: \"hmac-sha256\"|\"hmac-sha1\"|\"token\"|\"none\", header, secret (a host.secret_set name), prefix?, timestamp_header?, tolerance_s?, allow_unverified? (required true for scheme \"none\")}. kind=\"webhook\": a plain string, one of \"hmac\" (default; checks X-Mcphost-Signature: sha256=<hex>), \"none\", or \"stripe\" (checks Stripe-Signature the way Stripe itself signs, using the same generated secret)."
           }
         },
         "required": [
@@ -2052,11 +2061,11 @@
       "since": "0.58.0"
     },
     {
-      "description": "Dry-run an event trigger's verify config against a payload you supply, without exposing its real URL -- verifies the signature exactly as POST /hooks/... would, then runs the tool with the event as its argument. Or, on a message trigger, runs the tool with a synthetic envelope (test: true, no messages row created). The run is marked test: true. A wrong signature fails signature_invalid, naming the header it checked.",
+      "description": "Dry-run an event trigger's verify config against a payload you supply, without exposing its real URL -- verifies the signature exactly as POST /hooks/... would, then runs the tool with the event as its argument. On a message trigger, runs the tool with a synthetic envelope (test: true, no messages row created). On a webhook trigger, builds and self-signs a synthetic body exactly like a real sender would, then stores and fires it through the same path POST /hook/... uses (one inbox row, one run). The run is marked test: true. A wrong signature fails signature_invalid, naming the header it checked.",
       "input_schema": {
         "properties": {
           "body": {
-            "description": "kind=\"event\": the payload to verify and run with -- any JSON value. kind=\"message\": the synthetic envelope's body text."
+            "description": "kind=\"event\"/\"webhook\": the payload to verify and run with -- any JSON value. kind=\"message\": the synthetic envelope's body text."
           },
           "data": {
             "description": "kind=\"message\": the synthetic envelope's data payload."
@@ -2070,7 +2079,7 @@
             "type": "object"
           },
           "id": {
-            "description": "The event or message trigger id.",
+            "description": "The event, message or webhook trigger id.",
             "type": "string"
           },
           "tenant_key": {
