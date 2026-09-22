@@ -196,6 +196,11 @@ async fn unauthenticated_tools_list_is_signup_only() {
         "host.agent.mute",
         "host.agent.unmute",
         "host.agent.contacts_import",
+        // PRD-mcphost-agent-mesh-ops: the two host.channel.* tools are
+        // discoverable unauthenticated too, same as every other
+        // host.*-style tool above.
+        "host.channel.open",
+        "host.channel.post",
     ] {
         assert!(
             tool_names.contains(&expected),
@@ -208,7 +213,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        79,
+        81,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the nine host.state.* tools (PRD-mcphost-tenant-state) \
@@ -222,7 +227,8 @@ async fn unauthenticated_tools_list_is_signup_only() {
          host.agent.contact_*/mute/unmute tools (PRD-mcphost-agent-consent) + \
          host.self_offboard (PRD-mcphost-tenant-self-offboard) + \
          host.changelog (PRD-mcphost-host-tool-deprecation) + \
-         host.export (PRD-mcphost-tenant-data-export): \
+         host.export (PRD-mcphost-tenant-data-export) + \
+         the two host.channel.* tools (PRD-mcphost-agent-mesh-ops): \
          {tool_names:?}"
     );
 }

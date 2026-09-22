@@ -222,6 +222,21 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
             json!(state.db.count_paying_tenants().await.unwrap_or(0)),
         );
     }
+    // PRD-mcphost-agent-mesh-ops requirement 6 / AC8: additive, always
+    // present (0s on a box with no mesh traffic yet) -- the operator's
+    // first fact about the mesh beyond the tenant/tool counts above.
+    if let Some(obj) = body.as_object_mut() {
+        let (messages_24h, posts_24h, frozen_tenants) =
+            state.db.mesh_healthz_counts().await.unwrap_or((0, 0, 0));
+        obj.insert(
+            "mesh".to_string(),
+            json!({
+                "messages_24h": messages_24h,
+                "posts_24h": posts_24h,
+                "frozen_tenants": frozen_tenants,
+            }),
+        );
+    }
     // PRD-mcphost-synthetic-flag P1 requirement 6 / AC10: `paying_tenants_real`
     // appears only once a labeled tenant has actually gone paid -- absent,
     // not present-and-equal, on every host where it can never have

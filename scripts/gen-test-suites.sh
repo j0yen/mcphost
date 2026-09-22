@@ -236,7 +236,15 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # `checkcompat` area group) fits inside this raise's existing margin. AC8's
 # follow-on file (`checkcompat_race_ac08_deferral_is_justified.rs`, same
 # `checkcompat` area group) also fits inside it.
-MAX_PER_SUITE = {"core": 327, "sandbox": 60}
+#
+# PRD-mcphost-agent-mesh-ops (2026-09-20, rebased onto checkcompat-port-race):
+# this PRD's own new `meshops_ac*` area group (9 files, one per AC, same
+# per-AC consolidation convention) tipped core's normal buckets from 1 to 2
+# again, spawning an 11th suite binary -- caught by the same
+# `suite_ac1_ten_binaries_and_names_preserved` P0 assertion. 327 -> 336 was
+# the smallest tested raise that re-collapses core's normal buckets to 1,
+# landing the grand total back at 10.
+MAX_PER_SUITE = {"core": 336, "sandbox": 60}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"
