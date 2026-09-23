@@ -8,6 +8,8 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 mod ci_sandbox_support;
+#[path = "support/egress_proxy_lock.rs"]
+mod egress_proxy_lock;
 #[path = "support/host.rs"]
 #[allow(dead_code)]
 mod host;
@@ -92,6 +94,22 @@ mod mcphost_python_dependency_policy_ac07_supplied_lock_stored_without_reresolvi
 mod mcphost_python_dependency_policy_ac08_reaudit_flags_new_advisory;
 #[path = "mcphost_python_dependency_policy_ac09_admin_usage_counts_network_and_advisories.rs"]
 mod mcphost_python_dependency_policy_ac09_admin_usage_counts_network_and_advisories;
+#[path = "mcphost_sandbox_egress_allowlist_ac01_free_publish_public_refused.rs"]
+mod mcphost_sandbox_egress_allowlist_ac01_free_publish_public_refused;
+#[path = "mcphost_sandbox_egress_allowlist_ac02_free_publish_egress_refused.rs"]
+mod mcphost_sandbox_egress_allowlist_ac02_free_publish_egress_refused;
+#[path = "mcphost_sandbox_egress_allowlist_ac03_pro_no_proxy_egress_unavailable.rs"]
+mod mcphost_sandbox_egress_allowlist_ac03_pro_no_proxy_egress_unavailable;
+#[path = "mcphost_sandbox_egress_allowlist_ac04_egress_proxy_command_and_env.rs"]
+mod mcphost_sandbox_egress_allowlist_ac04_egress_proxy_command_and_env;
+#[path = "mcphost_sandbox_egress_allowlist_ac06_downgrade_then_upgrade_republish_hint.rs"]
+mod mcphost_sandbox_egress_allowlist_ac06_downgrade_then_upgrade_republish_hint;
+#[path = "mcphost_sandbox_egress_allowlist_ac07_healthz_network_denied_counters.rs"]
+mod mcphost_sandbox_egress_allowlist_ac07_healthz_network_denied_counters;
+#[path = "mcphost_sandbox_egress_allowlist_ac08_concurrent_free_publishes_refused.rs"]
+mod mcphost_sandbox_egress_allowlist_ac08_concurrent_free_publishes_refused;
+#[path = "mcphost_sandbox_egress_allowlist_ac10_uptime_probes_fixture_no_longer_free.rs"]
+mod mcphost_sandbox_egress_allowlist_ac10_uptime_probes_fixture_no_longer_free;
 #[path = "mcphost_team_memory_ac02_b_remember_writer.rs"]
 mod mcphost_team_memory_ac02_b_remember_writer;
 #[path = "mcphost_team_memory_ac03_c_recall_shows_writer.rs"]
@@ -116,21 +134,3 @@ mod mcphost_uptime_probes_ac05_target_cap_at_20;
 mod mcphost_uptime_probes_ac07_synthorg_task_five_completions;
 #[path = "mcphost_uptime_probes_ac09_down_since_flip_sends_inbox.rs"]
 mod mcphost_uptime_probes_ac09_down_since_flip_sends_inbox;
-#[path = "plainenv_ac01_env_reaches_process.rs"]
-mod plainenv_ac01_env_reaches_process;
-#[path = "plainenv_ac02_invalid_names_refused.rs"]
-mod plainenv_ac02_invalid_names_refused;
-#[path = "plainenv_ac03_bounds.rs"]
-mod plainenv_ac03_bounds;
-#[path = "plainenv_ac04_secret_env_collision.rs"]
-mod plainenv_ac04_secret_env_collision;
-#[path = "plainenv_ac05_tool_test_environment_rendering.rs"]
-mod plainenv_ac05_tool_test_environment_rendering;
-#[path = "plainenv_ac06_env_only_tool_under_sandbox.rs"]
-mod plainenv_ac06_env_only_tool_under_sandbox;
-#[path = "plainenv_ac07_docs_and_tool_list.rs"]
-mod plainenv_ac07_docs_and_tool_list;
-#[path = "plainenv_ac08_warm_pool_invalidates_on_env_change.rs"]
-mod plainenv_ac08_warm_pool_invalidates_on_env_change;
-#[path = "plainenv_ac10_admin_reports_env_names_and_size.rs"]
-mod plainenv_ac10_admin_reports_env_names_and_size;

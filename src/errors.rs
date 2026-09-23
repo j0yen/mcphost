@@ -829,13 +829,19 @@ impl AppError {
         }
     }
 
-    /// requirement 3: `network: egress` requested on any plan other than
-    /// `pro`.
-    pub fn network_policy_denied(reason: &str) -> Self {
+    /// PRD-mcphost-sandbox-egress-allowlist requirement 1 (AC1/AC2): a
+    /// `network: "public"`/`"egress"` spec published by a tenant whose plan
+    /// isn't `plan` -- shared wording (via `network_policy::
+    /// plan_required_fields`) with the run-time refusal
+    /// `kinds::python::PythonKind::network_mode` raises for requirement 3
+    /// (AC6), so an agent sees the same `code`/message/republish hint
+    /// whichever path refused it.
+    pub fn plan_required(field: &str, plan: &str) -> Self {
+        let (message, data) = crate::network_policy::plan_required_fields(field, plan);
         AppError::Structured {
-            code: "network_policy",
-            message: format!("network_policy: denied ({reason})"),
-            data: json!({"reason": reason}),
+            code: "plan_required",
+            message,
+            data,
         }
     }
 

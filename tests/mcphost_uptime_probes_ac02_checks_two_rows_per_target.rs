@@ -35,8 +35,9 @@ async fn checks_has_two_rows_per_target_after_two_fires() {
 
     let envs_dir = TempDataDir::new();
     let server = TestServer::start_with_kinds(python_kind_registry(&envs_dir.0)).await;
-    let (_ns, key) = signup(&server.base_url, "AC2 Tenant").await;
+    let (ns, key) = signup(&server.base_url, "AC2 Tenant").await;
     let client = McpClient::with_bearer(&server.base_url, &key);
+    let _egress_guard = uptime_probes::grant_egress(&server, &ns).await;
 
     uptime_probes::create_tables(&client).await;
     client

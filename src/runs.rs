@@ -455,6 +455,11 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
         run_id: Some(run.id.clone()),
         progress,
         cancel_pid: cancel_pid.clone(),
+        // PRD-mcphost-sandbox-egress-allowlist requirement 1/2/3: a
+        // scheduled/async job call is still that tenant's own plan --
+        // resolved the same way `handler.rs`'s synchronous dispatch paths
+        // do.
+        egress_allowed: tenant.plan == "pro",
     };
 
     let outcome = tokio::time::timeout(

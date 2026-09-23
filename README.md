@@ -147,10 +147,43 @@ cargo build --release
 | `MCPHOST_LOG_LEVEL` | `tracing` filter, e.g. `info` | `info` |
 | `MCPHOST_REGISTRY_URL` | Enables `host.registry_publish` (P1) and names the registry API's base URL; `mcphost serve --registry-url <url>` takes precedence | unset (registry-publish disabled) |
 | `MCPHOST_SIGNUP_RATE_LIMIT_PER_HOUR` | Overrides the per-source-IP `signup` rate limit (PRD-mcphost-signup-rate-configurable) — raise it for a many-session measure run from one IP; absent or non-integer falls back to the default. Effective value is logged once at startup | `5` |
+| `MCPHOST_EGRESS_PROXY` | `http(s)://host:port` of the operator's outbound HTTP(S) proxy. Required for a `pro` tenant's `python`/`wasm` tool published with `network: "public"` or `"egress"` to get any sandbox network at all — see "Egress proxy" below | unset (no `pro` tenant gets outbound network) |
 
 `mcphost migrate` applies pending SQL migrations and exits. `mcphost version`
 prints the version and exits. `mcphost serve --registry-url <url>` is the
 CLI-flag form of `MCPHOST_REGISTRY_URL` above.
+
+### Egress proxy (`network: "public"` / `"egress"`)
+
+A `free` tenant can never publish a tool with `network: "public"` or
+`"egress"` — both spellings grant the same sandbox access, and both are
+refused at `host.tool_publish` with `plan_required` naming `pro` and the
+`network` field. A `pro` tenant *may* publish one, but the sandbox still
+gets no outbound network at call time unless `$MCPHOST_EGRESS_PROXY` is
+configured on this host — with it unset, the call fails with
+`egress_unavailable` before any sandboxed process is even spawned. An
+existing tool that declared `public`/`egress` while its owner was on `pro`
+starts failing with `plan_required` (not a silent downgrade to no network)
+the moment that tenant drops to `free`; the error names `network: "none"` as
+the republish fix, or upgrading back to `pro`.
+
+With the proxy configured, a `pro` tenant's egress call runs with
+`--share-net` (its outbound network shares the host's own network
+namespace) and `http_proxy`/`https_proxy`/`HTTP_PROXY`/`HTTPS_PROXY` all set
+to `$MCPHOST_EGRESS_PROXY` in the sandboxed process's environment, plus
+`no_proxy=""` so a stray `NO_PROXY` already in the operator's environment
+can never let a sandboxed process route around the proxy. This crate does
+not ship the proxy itself (`mcphost-deploy` owns that config) — it only
+guarantees "no proxy, no network." Whatever proxy is deployed **must**
+enforce a private/link-local deny list on every connection it forwards, the
+same ranges the `http` kind's own `VettingResolver` already refuses for a
+rendered request URL:
+
+- RFC 1918 private ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`)
+- `169.254.0.0/16` (link-local, including the cloud metadata address
+  `169.254.169.254`)
+- `127.0.0.0/8` (loopback) and `::1`
+- `fc00::/7` (IPv6 unique local addresses)
 
 ### Registry publish (P1)
 

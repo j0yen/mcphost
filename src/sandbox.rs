@@ -520,6 +520,30 @@ unsafe fn pre_exec_setup(limits: ResourceLimits) -> std::io::Result<()> {
     Ok(())
 }
 
+/// PRD-mcphost-sandbox-egress-allowlist requirement 6 (AC4): the proxy
+/// environment a `NetworkMode::Public` run's `http_proxy` needs to actually
+/// be honored by common Python HTTP clients -- all four casings (some
+/// libraries only read the upper-case pair) plus `no_proxy=""` so a
+/// pre-existing `NO_PROXY` in the operator's own environment can never let
+/// a sandboxed process bypass the configured proxy (the deny-list
+/// enforcement this PRD's Non-goals leave to that proxy). Injected once,
+/// here, rather than by every `Kind` that builds a `RunSpec` -- one place
+/// for `bwrap_command`/`unshare_setpriv_command`/`no_isolation_command` to
+/// agree on, matching this crate's `NetworkMode` already living in this
+/// module rather than in `kinds::python`.
+fn proxy_env_vars(network: &NetworkMode) -> Vec<(String, String)> {
+    match network {
+        NetworkMode::Public {
+            http_proxy: Some(proxy),
+        } => ["http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"]
+            .into_iter()
+            .map(|k| (k.to_string(), proxy.clone()))
+            .chain(std::iter::once(("no_proxy".to_string(), String::new())))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
 /// Builds the `bwrap` argv: only `read_only_dirs` (the interpreter's own
 /// tree plus the venv) and `scratch_dir` (writable) are visible; every
 /// other host path, including the host's own database and every other
@@ -534,7 +558,7 @@ fn bwrap_command(spec: &RunSpec) -> Command {
     cmd.args(["--uid", &SANDBOX_UID.to_string()]);
     cmd.args(["--gid", &SANDBOX_GID.to_string()]);
     cmd.arg("--clearenv");
-    for (key, value) in &spec.extra_env {
+    for (key, value) in proxy_env_vars(&spec.network).iter().chain(spec.extra_env.iter()) {
         cmd.args(["--setenv", key, value]);
     }
     cmd.args(["--proc", "/proc"]);
@@ -586,8 +610,12 @@ fn unshare_setpriv_command(spec: &RunSpec) -> Command {
     cmd.arg("--user");
     cmd.arg("--map-root-user");
     cmd.arg("--mount");
+    // PRD-mcphost-sandbox-egress-allowlist AC5: `-n` (short for `--net`,
+    // same flag) is the form the AC's own wording pins -- only added for
+    // `NetworkMode::None`; a `Public` run omits it (AC4) so the sandbox
+    // keeps the parent's network namespace instead of an isolated one.
     if matches!(spec.network, NetworkMode::None) {
-        cmd.arg("--net");
+        cmd.arg("-n");
     }
     cmd.arg("--");
     cmd.arg("setpriv");
@@ -605,7 +633,7 @@ fn unshare_setpriv_command(spec: &RunSpec) -> Command {
     cmd.arg(&spec.script_path);
     cmd.current_dir(&spec.scratch_dir);
     cmd.env_clear();
-    for (key, value) in &spec.extra_env {
+    for (key, value) in proxy_env_vars(&spec.network).iter().chain(spec.extra_env.iter()) {
         cmd.env(key, value);
     }
     cmd
@@ -623,7 +651,7 @@ fn no_isolation_command(spec: &RunSpec) -> Command {
     cmd.arg(&spec.script_path);
     cmd.current_dir(&spec.scratch_dir);
     cmd.env_clear();
-    for (key, value) in &spec.extra_env {
+    for (key, value) in proxy_env_vars(&spec.network).iter().chain(spec.extra_env.iter()) {
         cmd.env(key, value);
     }
     cmd
@@ -633,8 +661,12 @@ fn no_isolation_command(spec: &RunSpec) -> Command {
 /// [`spawn_persistent`] (PRD-mcphost-code-tools-warm-pool: a long-lived
 /// sandbox serving more than one call) -- the isolation wrapper's argv
 /// doesn't know or care whether its stdin will be closed after one line or
-/// kept open for many.
-fn build_isolated_command(spec: &RunSpec) -> Command {
+/// kept open for many. `pub` (rather than private, like the three
+/// mechanism-specific builders above) so
+/// PRD-mcphost-sandbox-egress-allowlist's AC4/AC5 tests can inspect a
+/// constructed command's argv/env directly (`std::process::Command::
+/// get_args`/`get_envs`) without ever spawning it.
+pub fn build_isolated_command(spec: &RunSpec) -> Command {
     match spec.isolation {
         IsolationMechanism::Bwrap => bwrap_command(spec),
         IsolationMechanism::UnshareSetpriv => unshare_setpriv_command(spec),

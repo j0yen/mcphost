@@ -1076,6 +1076,20 @@ pub struct CallCtx {
     /// degrades to "mark cancelled in the ledger, nothing to kill" (still
     /// correct: an `http` call has no process to leave running either).
     pub cancel_pid: Arc<Mutex<Option<i32>>>,
+    /// PRD-mcphost-sandbox-egress-allowlist requirement 1/2/3: whether this
+    /// call's tenant may be granted `network: "public"`/`"egress"` at all --
+    /// resolved by `handler.rs`/`runs.rs` from the tenant's plan
+    /// (`tenant.plan == "pro"`) before dispatch, same "resolved once by the
+    /// real dispatch path, from the tenant's plan" convention
+    /// [`Self::concurrent_calls_per_tenant`] already uses.
+    /// `kinds::python::PythonKind::network_mode` is the one place that
+    /// reads this (see its own doc comment for why the decision lives
+    /// there, not here, and not in `handler.rs`). `true` in every context
+    /// with no notion of a tenant plan (`for_test`, the conformance suite,
+    /// `python.rs`'s own unit tests) -- same permissive default
+    /// `concurrent_calls_per_tenant`'s `usize::MAX` already uses for the
+    /// same class of context.
+    pub egress_allowed: bool,
 }
 
 impl CallCtx {
@@ -1100,6 +1114,7 @@ impl CallCtx {
             run_id: None,
             progress: Arc::new(NullProgress),
             cancel_pid: Arc::new(Mutex::new(None)),
+            egress_allowed: true,
         }
     }
 
@@ -1263,6 +1278,12 @@ pub async fn compose_call(
         run_id: ctx.run_id.clone(),
         progress: ctx.progress.clone(),
         cancel_pid: ctx.cancel_pid.clone(),
+        // PRD-mcphost-sandbox-egress-allowlist: composition stays inside
+        // one tenant (same reasoning as `state`/`table`/
+        // `concurrent_calls_per_tenant` above) -- a composed child call is
+        // still that tenant's own plan, inherited rather than re-derived
+        // since this call site has no `Tenant` to resolve it from.
+        egress_allowed: ctx.egress_allowed,
     };
 
     kind.call(&row.spec, args, &child_ctx).await

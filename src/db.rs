@@ -53,6 +53,7 @@ const MIGRATION_0029: &str = include_str!("../migrations/0029_agent_channels.sql
 const MIGRATION_0030: &str = include_str!("../migrations/0030_tool_lock.sql");
 const MIGRATION_0031: &str = include_str!("../migrations/0031_webhook_triggers.sql");
 const MIGRATION_0032: &str = include_str!("../migrations/0032_signup_source.sql");
+const MIGRATION_0033: &str = include_str!("../migrations/0033_network_denials.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -1146,7 +1147,8 @@ impl Db {
         Self::migrate_0029_agent_channels(&conn)?;
         Self::migrate_0030_tool_lock(&conn)?;
         Self::migrate_0031_webhook_triggers(&conn)?;
-        Self::migrate_0032_signup_source(&conn)
+        Self::migrate_0032_signup_source(&conn)?;
+        Self::migrate_0033_network_denials(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -1612,6 +1614,19 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0032)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-sandbox-egress-allowlist migration 0033 (requirement 4):
+    /// same idempotency pattern as 0021/0026/0030, gated on the table's own
+    /// existence (a pure `CREATE TABLE IF NOT EXISTS` batch).
+    fn migrate_0033_network_denials(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'network_denials'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0033)?;
         }
         Ok(())
     }
@@ -3018,6 +3033,46 @@ impl Db {
                 |r| r.get(0),
             )
             .map_err(AppError::from)
+        })
+        .await
+    }
+
+    // ---- network policy denials (PRD-mcphost-sandbox-egress-allowlist) --
+
+    /// requirement 4 (AC7): one row per refused publish/run -- `reason` is
+    /// `"publish_plan"` (AC1/AC2), `"run_plan"` (AC6), or `"run_no_proxy"`
+    /// (AC3).
+    pub async fn record_network_denial(&self, reason: &'static str) -> Result<(), AppError> {
+        let ts = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO network_denials (reason, created_unix) VALUES (?1, ?2)",
+                params![reason, ts],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `/healthz`'s `network_denied.<reason>` -- `(last 24h, all-time)`,
+    /// requirement 4's own pair.
+    pub async fn network_denial_counts(
+        &self,
+        reason: &'static str,
+        since_unix: i64,
+    ) -> Result<(i64, i64), AppError> {
+        self.with_conn(move |conn| {
+            let last_24h: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM network_denials WHERE reason = ?1 AND created_unix >= ?2",
+                params![reason, since_unix],
+                |r| r.get(0),
+            )?;
+            let all_time: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM network_denials WHERE reason = ?1",
+                params![reason],
+                |r| r.get(0),
+            )?;
+            Ok((last_24h, all_time))
         })
         .await
     }

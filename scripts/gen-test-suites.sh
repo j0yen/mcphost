@@ -318,7 +318,17 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # normal bucket, spawning an 11th suite binary again -- caught by the same
 # P0 assertion. 375 -> 395 is the smallest tested raise that re-collapses
 # core's normal buckets to 1, landing the grand total back at 10.
-MAX_PER_SUITE = {"core": 395, "sandbox": 60}
+#
+# PRD-mcphost-sandbox-egress-allowlist (2026-09-23): this PRD's own new
+# `mcphost_sandbox_egress_allowlist_ac*` area group (10 files, one per AC,
+# same per-AC consolidation convention) is mostly `sandbox`-classified
+# (every file that publishes/calls through `python_kind_registry`) --
+# unlike every prior follow-up above, this one tipped SANDBOX's bucketing
+# over, not core's, spawning a 4th sandbox suite binary (11th overall) --
+# caught by the same `suite_ac1_ten_binaries_and_names_preserved` P0
+# assertion. 60 -> 62 is the smallest tested raise that re-collapses
+# sandbox's buckets to 3, landing the grand total back at 10.
+MAX_PER_SUITE = {"core": 395, "sandbox": 62}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"
