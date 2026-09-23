@@ -2773,6 +2773,10 @@ impl McpHostHandler {
             compose_db: Some(self.state.db.clone()),
             compose_kinds: Some(self.state.kinds.clone()),
             concurrent_calls_per_tenant: self.concurrent_calls_cap(tenant),
+            // PRD-mcphost-sandbox-egress-allowlist requirement 1/2/3: resolved
+            // from the tenant's plan here, once, same convention as
+            // `concurrent_calls_per_tenant` just above.
+            egress_allowed: tenant.plan == "pro",
             // PRD-mcphost-runs-and-jobs: an ordinary synchronous dispatch is
             // never a job -- no run id to report progress against, no pid
             // slot `host.runs.cancel` would ever look up.
@@ -2900,6 +2904,22 @@ impl McpHostHandler {
             }
             Ok(Err(kind_err)) => {
                 let app_err = AppError::from(kind_err);
+                // PRD-mcphost-sandbox-egress-allowlist requirement 4 (AC7):
+                // a call refused for `network`'s sake counts toward admin
+                // healthz's `network_denied` -- `run_plan` (AC6: an
+                // existing public/egress tool, now non-pro) and
+                // `run_no_proxy` (AC3: a pro tenant with no
+                // `$MCPHOST_EGRESS_PROXY`) are the two codes
+                // `kinds::python::PythonKind::network_mode` raises.
+                match app_err.code() {
+                    "plan_required" => {
+                        let _ = self.state.db.record_network_denial("run_plan").await;
+                    }
+                    "egress_unavailable" => {
+                        let _ = self.state.db.record_network_denial("run_no_proxy").await;
+                    }
+                    _ => {}
+                }
                 let _ = self
                     .state
                     .db
@@ -3046,6 +3066,10 @@ impl McpHostHandler {
             compose_db: None,
             compose_kinds: None,
             concurrent_calls_per_tenant: self.concurrent_calls_cap(tenant),
+            // PRD-mcphost-sandbox-egress-allowlist requirement 1/2/3: resolved
+            // from the tenant's plan here, once, same convention as
+            // `concurrent_calls_per_tenant` just above.
+            egress_allowed: tenant.plan == "pro",
             // PRD-mcphost-runs-and-jobs: an ordinary synchronous dispatch is
             // never a job -- no run id to report progress against, no pid
             // slot `host.runs.cancel` would ever look up.
@@ -3154,6 +3178,10 @@ impl McpHostHandler {
             compose_db: None,
             compose_kinds: None,
             concurrent_calls_per_tenant: self.concurrent_calls_cap(tenant),
+            // PRD-mcphost-sandbox-egress-allowlist requirement 1/2/3: resolved
+            // from the tenant's plan here, once, same convention as
+            // `concurrent_calls_per_tenant` just above.
+            egress_allowed: tenant.plan == "pro",
             // PRD-mcphost-runs-and-jobs: an ordinary synchronous dispatch is
             // never a job -- no run id to report progress against, no pid
             // slot `host.runs.cancel` would ever look up.
@@ -3308,6 +3336,7 @@ impl McpHostHandler {
             run_id: None,
             progress: Arc::new(crate::kinds::NullProgress),
             cancel_pid: Arc::new(std::sync::Mutex::new(None)),
+            egress_allowed: tenant.plan == "pro",
         })
         .await;
 
@@ -3496,6 +3525,10 @@ impl McpHostHandler {
             compose_db: None,
             compose_kinds: None,
             concurrent_calls_per_tenant: self.concurrent_calls_cap(tenant),
+            // PRD-mcphost-sandbox-egress-allowlist requirement 1/2/3: resolved
+            // from the tenant's plan here, once, same convention as
+            // `concurrent_calls_per_tenant` just above.
+            egress_allowed: tenant.plan == "pro",
             // PRD-mcphost-runs-and-jobs: an ordinary synchronous dispatch is
             // never a job -- no run id to report progress against, no pid
             // slot `host.runs.cancel` would ever look up.

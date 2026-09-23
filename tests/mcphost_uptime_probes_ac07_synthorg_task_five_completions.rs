@@ -127,6 +127,7 @@ async fn run_task_once(gold: &Gold, envs_dir: &TempDataDir, upstream_url: &str) 
     let ns = signup_struct["tenant"].as_str().expect("tenant").to_string();
     let key = signup_struct["key"].as_str().expect("key").to_string();
     let client = McpClient::with_bearer(&server.base_url, &key).with_client_info(SYNTHORG_CLIENT_NAME, "1.0.0");
+    let _egress_guard = uptime_probes::grant_egress(&server, &ns).await;
 
     uptime_probes::create_tables(&client).await;
     client

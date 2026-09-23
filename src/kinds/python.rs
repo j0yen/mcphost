@@ -3358,19 +3358,43 @@ impl PythonKind {
         Ok(scratch)
     }
 
-    fn network_mode(&self, spec: &PythonSpec) -> NetworkMode {
-        // PRD-mcphost-python-dependency-policy requirement 3: `"egress"` is
-        // the plan-gated spelling `control::tool_publish` enforces at
-        // publish time (free tenants can't publish it at all); once
-        // published, it grants the same sandbox network access `"public"`
-        // always has -- the two differ only in who may publish them, not
-        // in what the sandbox does at call time.
-        if matches!(spec.effective_network(), "public" | "egress") {
-            NetworkMode::Public {
-                http_proxy: std::env::var("MCPHOST_EGRESS_PROXY").ok(),
-            }
-        } else {
-            NetworkMode::None
+    /// PRD-mcphost-sandbox-egress-allowlist requirement 1/2/3: the single
+    /// point `call` and `tool_run` both resolve a spec's `network` field
+    /// into an actual sandbox grant from -- `"public"`/`"egress"` (the same
+    /// spelling `network_policy::wants_egress` treats as one tier) need
+    /// BOTH `egress_allowed` (this call's tenant's plan, resolved by
+    /// `handler.rs`/`runs.rs` before dispatch -- see [`CallCtx::
+    /// egress_allowed`]'s own doc comment) AND `$MCPHOST_EGRESS_PROXY` to
+    /// actually grant network; either missing refuses the call outright.
+    /// Called before any admission-control slot, warm-pool lookup, or
+    /// scratch dir is touched (both call sites resolve this first), so a
+    /// refusal here spawns no sandbox process (AC3) -- requirement 2's
+    /// "`NetworkMode::Public` is only constructed when the proxy is set"
+    /// and requirement 3's "an existing public/egress tool fails at run for
+    /// a now-non-pro tenant" are the same check, run on every call rather
+    /// than only at publish, so the two paths can never drift again (this
+    /// PRD's whole reason for existing -- see `network_policy`'s module
+    /// doc).
+    fn network_mode(
+        &self,
+        spec: &PythonSpec,
+        egress_allowed: bool,
+    ) -> Result<NetworkMode, KindError> {
+        if !crate::network_policy::wants_egress(Some(spec.effective_network())) {
+            return Ok(NetworkMode::None);
+        }
+        if !egress_allowed {
+            let (message, data) = crate::network_policy::plan_required_fields("network", "pro");
+            return Err(KindError::structured_with("plan_required", message, data));
+        }
+        match std::env::var("MCPHOST_EGRESS_PROXY").ok() {
+            Some(proxy) => Ok(NetworkMode::Public {
+                http_proxy: Some(proxy),
+            }),
+            None => Err(KindError::structured(
+                "egress_unavailable",
+                "network: \"egress\" requires $MCPHOST_EGRESS_PROXY to be configured",
+            )),
         }
     }
 
@@ -3510,6 +3534,12 @@ impl PythonKind {
         site_packages: String,
         env_dir: PathBuf,
         secret_env: &[(String, String)],
+        // PRD-mcphost-sandbox-egress-allowlist: the cold call that's
+        // promoting this tool already resolved (and passed) `network_mode`
+        // once -- reused verbatim rather than re-resolved (which would need
+        // its own `ctx.egress_allowed` this best-effort, fire-and-forget
+        // path has no `CallCtx` to read).
+        network: NetworkMode,
     ) {
         if !self.warm.has_room(key.0) {
             return;
@@ -3539,7 +3569,7 @@ impl PythonKind {
                 max_processes: MAX_PROCESSES,
             },
             wall_clock_timeout: Duration::from_secs(parsed.effective_timeout_s() + 2),
-            network: self.network_mode(parsed),
+            network,
             // PRD-mcphost-python-kind-plain-env requirement 1 (AC1/AC6):
             // `parsed.env` is already available on `parsed` here, so this
             // reads it directly rather than taking a third `env: &[(String,
@@ -3836,6 +3866,11 @@ impl Kind for PythonKind {
         let parsed = parse_spec(spec)?;
         validate_spec_fields(&parsed)?;
 
+        // PRD-mcphost-sandbox-egress-allowlist requirement 2/3 (AC3/AC6):
+        // resolved once, up front -- `?` refuses before any admission-
+        // control slot, warm-pool lookup, or scratch dir is touched.
+        let network = self.network_mode(&parsed, ctx.egress_allowed)?;
+
         let effective_schema = parsed.effective_args_schema()?;
         let validator = jsonschema::validator_for(&effective_schema)
             .map_err(|e| KindError::InvalidSpec(format!("args_schema: {e}")))?;
@@ -4026,7 +4061,7 @@ impl Kind for PythonKind {
                 max_processes: MAX_PROCESSES,
             },
             wall_clock_timeout: Duration::from_secs(parsed.effective_timeout_s() + 2),
-            network: self.network_mode(&parsed),
+            network: network.clone(),
             // PRD-mcphost-python-kind-plain-env requirement 1 (AC1/AC6):
             // this spec's own `env` joins `secret_env` at the same
             // injection point -- see `merge_env`'s doc comment.
@@ -4078,6 +4113,7 @@ impl Kind for PythonKind {
                 site_packages,
                 env_dir,
                 &secret_env,
+                network,
             )
             .await;
         }
@@ -4133,6 +4169,10 @@ impl Kind for PythonKind {
     async fn tool_run(&self, spec: &Value, args: Value, ctx: &CallCtx) -> Result<Value, KindError> {
         let parsed = parse_spec(spec)?;
         validate_spec_fields(&parsed)?;
+
+        // PRD-mcphost-sandbox-egress-allowlist requirement 2/3: same
+        // up-front resolution as `call` above.
+        let network = self.network_mode(&parsed, ctx.egress_allowed)?;
 
         let effective_schema = parsed.effective_args_schema()?;
         let validator = jsonschema::validator_for(&effective_schema)
@@ -4216,7 +4256,7 @@ impl Kind for PythonKind {
                 max_processes: MAX_PROCESSES,
             },
             wall_clock_timeout: Duration::from_secs(parsed.effective_timeout_s() + 2),
-            network: self.network_mode(&parsed),
+            network,
             extra_env: merge_env(&secret_env, &plain_env),
             isolation: self.isolation,
         };
@@ -4610,6 +4650,7 @@ mod tests {
             run_id: None,
             progress: Arc::new(crate::kinds::NullProgress),
             cancel_pid: Arc::new(Mutex::new(None)),
+            egress_allowed: true,
         }
     }
 
@@ -4912,6 +4953,7 @@ mod tests {
             run_id: None,
             progress: Arc::new(crate::kinds::NullProgress),
             cancel_pid: Arc::new(Mutex::new(None)),
+            egress_allowed: true,
         }
     }
 

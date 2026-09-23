@@ -29,6 +29,7 @@ async fn probe_caps_at_20_targets_and_reports_it() {
     let server = TestServer::start_with_kinds(python_kind_registry(&envs_dir.0)).await;
     let (ns, key) = signup(&server.base_url, "AC5 Tenant").await;
     let client = McpClient::with_bearer(&server.base_url, &key);
+    let _egress_guard = uptime_probes::grant_egress(&server, &ns).await;
 
     uptime_probes::create_tables(&client).await;
     let rows: Vec<_> = (0..21)

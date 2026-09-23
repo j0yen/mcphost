@@ -8,6 +8,24 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 
+#[path = "plainenv_ac01_env_reaches_process.rs"]
+mod plainenv_ac01_env_reaches_process;
+#[path = "plainenv_ac02_invalid_names_refused.rs"]
+mod plainenv_ac02_invalid_names_refused;
+#[path = "plainenv_ac03_bounds.rs"]
+mod plainenv_ac03_bounds;
+#[path = "plainenv_ac04_secret_env_collision.rs"]
+mod plainenv_ac04_secret_env_collision;
+#[path = "plainenv_ac05_tool_test_environment_rendering.rs"]
+mod plainenv_ac05_tool_test_environment_rendering;
+#[path = "plainenv_ac06_env_only_tool_under_sandbox.rs"]
+mod plainenv_ac06_env_only_tool_under_sandbox;
+#[path = "plainenv_ac07_docs_and_tool_list.rs"]
+mod plainenv_ac07_docs_and_tool_list;
+#[path = "plainenv_ac08_warm_pool_invalidates_on_env_change.rs"]
+mod plainenv_ac08_warm_pool_invalidates_on_env_change;
+#[path = "plainenv_ac10_admin_reports_env_names_and_size.rs"]
+mod plainenv_ac10_admin_reports_env_names_and_size;
 #[path = "publishfirsttry_ac03_ac04_quickstart.rs"]
 mod publishfirsttry_ac03_ac04_quickstart;
 #[path = "publishfirsttry_ac06_docs_shared_source.rs"]

@@ -38,6 +38,7 @@ async fn status_reports_up_pct_and_down_since() {
     let server = TestServer::start_with_kinds(python_kind_registry(&envs_dir.0)).await;
     let (ns, key) = signup(&server.base_url, "AC3 Tenant").await;
     let client = McpClient::with_bearer(&server.base_url, &key);
+    let _egress_guard = uptime_probes::grant_egress(&server, &ns).await;
 
     uptime_probes::create_tables(&client).await;
     client

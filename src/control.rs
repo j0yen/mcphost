@@ -780,13 +780,18 @@ pub async fn tool_publish(
     let mut pending_lock: Option<(String, i64, String)> = None;
     let mut lock_summary: Option<Value> = None;
     if kind_name == "python" {
-        // requirement 3: `network: egress` is a `pro`-only opt-in -- a
-        // `free` tenant publishing it is refused outright, before any
-        // resolution work runs.
-        if spec.get("network").and_then(Value::as_str) == Some("egress") && plan.name != "pro" {
-            return Err(AppError::network_policy_denied(
-                "network: egress requires the pro plan",
-            ));
+        // PRD-mcphost-sandbox-egress-allowlist requirement 1 (AC1/AC2): a
+        // `free` tenant publishing `network: "public"` OR `network:
+        // "egress"` is refused outright, before any resolution work runs --
+        // `network_policy::wants_egress` treats both spellings identically
+        // (the hole this PRD closes: only `"egress"` used to be checked
+        // here, even though `kinds::python::network_mode` has always
+        // granted the same sandbox access for `"public"`).
+        if crate::network_policy::wants_egress(spec.get("network").and_then(Value::as_str))
+            && plan.name != "pro"
+        {
+            let _ = state.db.record_network_denial("publish_plan").await;
+            return Err(AppError::plan_required("network", "pro"));
         }
         let reqs = crate::kinds::python::effective_requirements_for_publish(&spec)?;
         if !reqs.is_empty() {

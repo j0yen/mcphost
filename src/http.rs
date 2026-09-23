@@ -19,7 +19,7 @@ use rmcp::model::ProtocolVersion;
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::handler::McpHostHandler;
 use crate::state::{AppState, MAX_REQUEST_BODY_BYTES};
@@ -327,6 +327,25 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
             "last_prune_ok".to_string(),
             json!(state.db.last_prune_ok().await.unwrap_or(true)),
         );
+    }
+    // PRD-mcphost-sandbox-egress-allowlist requirement 4 (AC7): one
+    // `{"24h": _, "all_time": _}` pair per denial reason -- `publish_plan`
+    // (control::tool_publish, AC1/AC2), `run_plan` (a non-pro tenant's
+    // existing public/egress tool, AC6), `run_no_proxy` (a pro tenant with
+    // no `$MCPHOST_EGRESS_PROXY` configured, AC3) -- so an operator can see
+    // denials (this PRD's Goals) without a direct `sqlite3` query.
+    if let Some(obj) = body.as_object_mut() {
+        let since = crate::state::now_unix() - 86_400;
+        let mut network_denied = serde_json::Map::new();
+        for reason in ["publish_plan", "run_plan", "run_no_proxy"] {
+            let (last_24h, all_time) =
+                state.db.network_denial_counts(reason, since).await.unwrap_or((0, 0));
+            network_denied.insert(
+                reason.to_string(),
+                json!({"24h": last_24h, "all_time": all_time}),
+            );
+        }
+        obj.insert("network_denied".to_string(), Value::Object(network_denied));
     }
     Json(body).into_response()
 }
