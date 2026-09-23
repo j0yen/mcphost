@@ -786,6 +786,7 @@ mod tests {
             deprecations: std::sync::Arc::new(Vec::new()),
             disk_guard: crate::retention::DiskGuard::from_env(),
             compat_token: None,
+            signup_pause: crate::state::SignupPause::from_env(dir),
         }
     }
 

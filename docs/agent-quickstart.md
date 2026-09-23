@@ -17,8 +17,15 @@ own tool is **42.4s**.
    only tool offered is `signup`.
 2. Call `signup(name)`. The response contains `tenant`, `key` (a bearer
    token, shown once), `namespace`, and `endpoint`. Signup is rate-limited
-   to 5 per IP per hour. Recommended: `signup(name, handoff: true)` returns
-   a short-lived, single-use `handoff_token` instead of `key`; call
+   to 5 per IP per hour. Pass `source` (e.g. `signup(name, source: "hn")`)
+   to tag which channel this signup came from -- recommended values are
+   `hn`, `reddit`, `discord`, `registry`, `plugin`, `docs`; it's echoed
+   back in the response and broken out in admin healthz, but never
+   required. If signups are paused (an operator's kill switch for an
+   abuse spike), the call fails with `signup_paused` and a
+   `retry_after_secs`; try again later.
+   Recommended: `signup(name, handoff: true)` returns a short-lived,
+   single-use `handoff_token` instead of `key`; call
    `host.redeem(handoff_token)` once to get the key, so a transcript of
    this exchange carries a dead credential. `host.key_rotate` invalidates
    the current key and issues a new one in one call, any time you suspect

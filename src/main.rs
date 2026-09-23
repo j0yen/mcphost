@@ -505,6 +505,7 @@ async fn main() -> anyhow::Result<()> {
                 deprecations: Arc::new(deprecations),
                 disk_guard: mcphost::retention::DiskGuard::from_env(),
                 compat_token: std::env::var("MCPHOST_COMPAT_TOKEN").ok(),
+                signup_pause: mcphost::state::SignupPause::from_env(&data_dir()),
             });
 
             // PRD-mcphost-runs-and-jobs P0 requirement 4 / open question:

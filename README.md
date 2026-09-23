@@ -20,8 +20,15 @@ own tool is **42.4s**.
    only tool offered is `signup`.
 2. Call `signup(name)`. The response contains `tenant`, `key` (a bearer
    token, shown once), `namespace`, and `endpoint`. Signup is rate-limited
-   to 5 per IP per hour. Recommended: `signup(name, handoff: true)` returns
-   a short-lived, single-use `handoff_token` instead of `key`; call
+   to 5 per IP per hour. Pass `source` (e.g. `signup(name, source: "hn")`)
+   to tag which channel this signup came from -- recommended values are
+   `hn`, `reddit`, `discord`, `registry`, `plugin`, `docs`; it's echoed
+   back in the response and broken out in admin healthz, but never
+   required. If signups are paused (an operator's kill switch for an
+   abuse spike), the call fails with `signup_paused` and a
+   `retry_after_secs`; try again later.
+   Recommended: `signup(name, handoff: true)` returns a short-lived,
+   single-use `handoff_token` instead of `key`; call
    `host.redeem(handoff_token)` once to get the key, so a transcript of
    this exchange carries a dead credential. `host.key_rotate` invalidates
    the current key and issues a new one in one call, any time you suspect
@@ -54,6 +61,23 @@ own tool is **42.4s**.
    `secrets`, which stay redacted there.
 
 <!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
+
+## Contributing: routing a new top-level path
+
+Adding a new top-level directory or file to this repo (like `www/`,
+`deploy/`, or `.buildloop/`) needs a matching `[[lane]]` entry in
+`agent/proof-lanes.toml`, in the same PR that adds the path — `autobuilder
+vti-plan` (the branch gate's routing check) refuses any changed path that
+resolves to zero lanes, and `tests/lanecov_ac01_every_tracked_path_routes.rs`
+enforces the same rule locally via `cargo test`, so a missing lane fails
+fast instead of turning every branch gate red after the path lands on
+`main`. Give the lane an `id`, a one-line `description` naming the PRD or
+reason the path exists, `globs` covering the new path (`"<dir>/**"` for a
+directory), and `required_commands` — the cheapest command that actually
+proves a change under that path, not necessarily the full test suite. The
+`loop-config` lane (routing `.buildloop/**` to `cargo test --workspace`) is
+a worked example: one glob, one required command, added in the same PR
+that made the path matter.
 <!-- agent-quickstart:end -->
 
 `mcphost serve` is a streamable-HTTP MCP server, stateless per the 2026-07-28

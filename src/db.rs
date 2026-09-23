@@ -52,6 +52,7 @@ const MIGRATION_0028: &str = include_str!("../migrations/0028_tool_versions.sql"
 const MIGRATION_0029: &str = include_str!("../migrations/0029_agent_channels.sql");
 const MIGRATION_0030: &str = include_str!("../migrations/0030_tool_lock.sql");
 const MIGRATION_0031: &str = include_str!("../migrations/0031_webhook_triggers.sql");
+const MIGRATION_0032: &str = include_str!("../migrations/0032_signup_source.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -66,7 +67,8 @@ const MSG_DEDUPE_WINDOW_MS: i64 = 86_400_000;
 const TENANT_COLUMNS: &str = "id, namespace, display_name, key_hash, created_at, disabled, \
     last_tool_change_unix, namespace_verified, registry_namespace, plan, plan_since, billing_ref, \
     stripe_customer_id, synthetic, source_class, client_name, client_version, classified_by, \
-    created_unix, origin, origin_detail, key_rotated_unix, disabled_reason, mesh_frozen_at";
+    created_unix, origin, origin_detail, key_rotated_unix, disabled_reason, mesh_frozen_at, \
+    signup_source";
 
 fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
     Ok(Tenant {
@@ -94,6 +96,7 @@ fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
         key_rotated_unix: r.get(21)?,
         disabled_reason: r.get(22)?,
         mesh_frozen_at: r.get(23)?,
+        signup_source: r.get(24)?,
     })
 }
 
@@ -384,6 +387,13 @@ pub struct Tenant {
     /// a read, an ack, `host.msg.wait`, inbound delivery, a trigger, or any
     /// non-messaging tool (migration 0026).
     pub mesh_frozen_at: Option<String>,
+    /// PRD-mcphost-signup-kill-switch-and-source requirement 1/2: the
+    /// caller-claimed `source` argument `signup` validated and stored
+    /// verbatim (`^[a-z0-9][a-z0-9._-]*$`, 1-64 chars), or `None` for a
+    /// signup that omitted it (including every tenant from before
+    /// migration 0032). Untrusted, display-only -- never consulted by
+    /// `origin`/`source_class`/any provenance logic.
+    pub signup_source: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1135,7 +1145,8 @@ impl Db {
         Self::migrate_0028_tool_versions(&conn)?;
         Self::migrate_0029_agent_channels(&conn)?;
         Self::migrate_0030_tool_lock(&conn)?;
-        Self::migrate_0031_webhook_triggers(&conn)
+        Self::migrate_0031_webhook_triggers(&conn)?;
+        Self::migrate_0032_signup_source(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -1592,6 +1603,19 @@ impl Db {
         Ok(())
     }
 
+    /// PRD-mcphost-signup-kill-switch-and-source migration 0032 (requirement
+    /// 2): same idempotency pattern as 0002-0031, gated on
+    /// `tenants.signup_source`.
+    fn migrate_0032_signup_source(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'signup_source'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0032)?;
+        }
+        Ok(())
+    }
+
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
     /// subcommand.
@@ -1734,13 +1758,51 @@ impl Db {
         origin: String,
         origin_detail: Option<String>,
     ) -> Result<Tenant, AppError> {
+        self.create_tenant_attributed_with_source(
+            display_name,
+            namespace,
+            key_hash,
+            synthetic,
+            source_class,
+            client_name,
+            client_version,
+            origin,
+            origin_detail,
+            None,
+        )
+        .await
+    }
+
+    /// PRD-mcphost-signup-kill-switch-and-source requirement 2: same as
+    /// [`Self::create_tenant_attributed`], plus the validated `source`
+    /// argument (`control::signup`'s own [`crate::state::is_valid_signup_source`]
+    /// check has already run by the time this is called), written
+    /// atomically with the rest of the row -- a separate method rather than
+    /// a widened [`Self::create_tenant_attributed`] signature so its
+    /// existing test callers (positional arguments, several `tests/*.rs`
+    /// files) keep compiling unmodified.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_tenant_attributed_with_source(
+        &self,
+        display_name: String,
+        namespace: String,
+        key_hash: String,
+        synthetic: Option<String>,
+        source_class: Option<String>,
+        client_name: Option<String>,
+        client_version: Option<String>,
+        origin: String,
+        origin_detail: Option<String>,
+        signup_source: Option<String>,
+    ) -> Result<Tenant, AppError> {
         let created_at = now_rfc3339();
         let created_unix = now_unix();
         self.with_conn(move |conn| {
             conn.execute(
                 "INSERT INTO tenants (namespace, display_name, key_hash, created_at, disabled, \
-                 synthetic, source_class, client_name, client_version, created_unix, origin, origin_detail) \
-                 VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                 synthetic, source_class, client_name, client_version, created_unix, origin, origin_detail, \
+                 signup_source) \
+                 VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 params![
                     namespace,
                     display_name,
@@ -1753,6 +1815,7 @@ impl Db {
                     created_unix,
                     origin,
                     origin_detail,
+                    signup_source,
                 ],
             )?;
             let id = conn.last_insert_rowid();
@@ -1781,6 +1844,7 @@ impl Db {
                 key_rotated_unix: None,
                 disabled_reason: None,
                 mesh_frozen_at: None,
+                signup_source,
             })
         })
         .await
@@ -2402,6 +2466,32 @@ impl Db {
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-signup-kill-switch-and-source requirement 2 / AC6:
+    /// `/healthz`'s `signups_by_source.external` -- external tenants
+    /// grouped by their (validated, caller-claimed) `signup_source`,
+    /// `NULL` sources excluded (requirement 2: "external only", and an
+    /// unlabeled signup has nothing to group under). `since_unix: Some`
+    /// restricts to tenants created at or after that time (the 24h
+    /// variant); `None` is all-time.
+    pub async fn count_external_signups_by_source(
+        &self,
+        since_unix: Option<i64>,
+    ) -> Result<Vec<(String, i64)>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT signup_source, COUNT(*) FROM tenants \
+                 WHERE origin = 'external' AND signup_source IS NOT NULL \
+                   AND (?1 IS NULL OR created_unix >= ?1) \
+                 GROUP BY signup_source",
+            )?;
+            let rows = stmt
+                .query_map(params![since_unix], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<Result<Vec<(String, i64)>, rusqlite::Error>>()?;
+            Ok(rows)
         })
         .await
     }

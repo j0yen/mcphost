@@ -23,6 +23,33 @@ fn arg_str_opt(args: &Value, name: &str) -> Option<String> {
     args.get(name).and_then(Value::as_str).map(str::to_string)
 }
 
+/// PRD-mcphost-signup-kill-switch-and-source requirement 1 / AC3: `signup`'s
+/// optional `source` argument -- absent or JSON `null` reads as `None`
+/// (requirement 1: "absent means `signup_source = NULL`"), any other
+/// non-string value is rejected the same as a string that fails
+/// [`crate::state::is_valid_signup_source`], rather than silently treated
+/// as absent -- unlike [`arg_bool`]'s handoff flag, a caller that sent a
+/// malformed `source` needs to know it was rejected, not that it was
+/// quietly dropped.
+fn validate_source(args: &Value) -> Result<Option<String>, AppError> {
+    let Some(value) = args.get("source") else {
+        return Ok(None);
+    };
+    if value.is_null() {
+        return Ok(None);
+    }
+    let raw = value
+        .as_str()
+        .ok_or_else(|| AppError::InvalidArgs("source: must be a string".to_string()))?;
+    if crate::state::is_valid_signup_source(raw) {
+        Ok(Some(raw.to_string()))
+    } else {
+        Err(AppError::InvalidArgs(format!(
+            "source: must be 1-64 chars matching ^[a-z0-9][a-z0-9._-]*$; got '{raw}'"
+        )))
+    }
+}
+
 /// PRD-mcphost-handoff-token requirement 1: `signup`'s `handoff` argument.
 /// Absent, `null`, or any non-`bool` value all read as `false` (the
 /// existing raw-key behavior, requirement 5 / AC5 -- an old client that has
@@ -89,6 +116,15 @@ pub async fn signup(
     source_ip: &str,
     attribution: SignupAttribution<'_>,
 ) -> Result<Value, AppError> {
+    // PRD-mcphost-signup-kill-switch-and-source requirement 3 / AC4: checked
+    // first, fresh off disk on every call -- an operator's `touch`/`rm`
+    // takes effect on the very next signup, no restart. Requirement 4/AC5:
+    // this check lives only here, in `signup` -- every authenticated
+    // `host.*`/`billing.*` call and every trigger fire never calls this
+    // function, so pausing signups can never affect them.
+    if let Some(pause) = state.signup_pause.status() {
+        return Err(AppError::signup_paused(pause.message, pause.retry_after_secs));
+    }
     // PRD-mcphost-data-retention requirement 4 (AC6): same disk-floor
     // refusal `host_tool_call`/`tool_publish` check, before any write.
     if !state.disk_guard.is_ok(state.db.data_dir()) {
@@ -98,6 +134,10 @@ pub async fn signup(
         ));
     }
     let display_name = arg_str(args, "name")?;
+    // PRD-mcphost-signup-kill-switch-and-source requirement 1 / AC3:
+    // validated before the rate-limit admit/tenant insert below, so a
+    // rejected `source` never consumes a rate-limit slot or creates a row.
+    let signup_source = validate_source(args)?;
 
     // Requirement 1: `source_class` first (loopback IP or the harness
     // marker header; known-fleet display name or synthorg client name;
@@ -153,7 +193,7 @@ pub async fn signup(
     let key_hash = hash_key(&key);
     let tenant = state
         .db
-        .create_tenant_attributed(
+        .create_tenant_attributed_with_source(
             display_name,
             namespace.clone(),
             key_hash,
@@ -163,6 +203,7 @@ pub async fn signup(
             attribution.client_version.map(str::to_string),
             origin.to_string(),
             origin_detail,
+            signup_source,
         )
         .await?;
 
@@ -191,7 +232,7 @@ pub async fn signup(
             expires_in = HANDOFF_TOKEN_TTL_SECS,
             "handoff token issued"
         );
-        return Ok(json!({
+        let mut response = json!({
             "tenant": tenant.namespace,
             "tenant_id": tenant.namespace,
             "handoff_token": token,
@@ -201,10 +242,22 @@ pub async fn signup(
                 single-use and expires in expires_in seconds -- a transcript that captured \
                 this response is worthless to anyone who reads it after redemption.",
             "next": "host.redeem",
-        }));
+        });
+        // PRD-mcphost-signup-kill-switch-and-source requirement 1 / AC1-2:
+        // additive -- present only when the caller passed a valid `source`
+        // (requirement 5 / AC5 of PRD-mcphost-handoff-token's own
+        // "byte-identical when absent" guarantee stays true either way,
+        // since this insert is a no-op for every pre-existing caller that
+        // never sends `source`).
+        if let Some(source) = &tenant.signup_source
+            && let Some(obj) = response.as_object_mut()
+        {
+            obj.insert("source".to_string(), json!(source));
+        }
+        return Ok(response);
     }
 
-    Ok(json!({
+    let mut response = json!({
         "tenant": tenant.namespace,
         "key": key,
         "namespace": namespace,
@@ -220,7 +273,16 @@ pub async fn signup(
         // shortest path to a working tool, rather than leaving the agent
         // to discover `host.quickstart` on its own.
         "next": "host.quickstart",
-    }))
+    });
+    // PRD-mcphost-signup-kill-switch-and-source requirement 1 / AC1-2: the
+    // response echoes `source` back only when the caller sent a valid one
+    // (AC2: "the response omits ... source" when absent).
+    if let Some(source) = &tenant.signup_source
+        && let Some(obj) = response.as_object_mut()
+    {
+        obj.insert("source".to_string(), json!(source));
+    }
+    Ok(response)
 }
 
 /// `host.redeem` (PRD-mcphost-handoff-token requirement 2 / AC2):

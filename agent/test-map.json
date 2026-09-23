@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-webhook-inbox.md (test_prefix: mcphost_webhook_inbox)",
+  "ac_test_map_prd": "PRD-mcphost-signup-kill-switch-and-source.md (test_prefix: mcphost_signup_kill_switch_and_source)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,18 +28,16 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/mcphost_webhook_inbox_ac01_set_returns_url_and_secret_get_omits_secret.rs",
-    "AC2": "tests/mcphost_webhook_inbox_ac02_signed_post_stores_row_and_fires_run.rs",
-    "AC3": "tests/mcphost_webhook_inbox_ac03_unsigned_or_wrong_signature_401_no_row.rs",
-    "AC4": "tests/mcphost_webhook_inbox_ac04_unknown_id_404_empty_body.rs",
-    "AC5": "tests/mcphost_webhook_inbox_ac05_oversized_body_413_no_row.rs",
-    "AC6": "tests/mcphost_webhook_inbox_ac06_paused_stores_no_run_replay_fires_once.rs",
-    "AC7": "tests/mcphost_webhook_inbox_ac07_repeated_delivery_id_dedupes_row.rs",
-    "AC8": "tests/mcphost_webhook_inbox_ac08_free_tenant_three_schedules_webhook_refused.rs",
-    "AC9": "tests/mcphost_webhook_inbox_ac09_concurrent_deliveries_all_land.rs",
-    "AC10": "deferred -- operator-provisioned; a real examples/webhook-inbox/proof.sh run against production https://mcphost.dev/mcp needs a fresh tenant on prod and network egress this build does not have, and P1 requirement 7 (the llms.txt recipe section and proof.sh itself) is outside this coder dispatch's non-deferred AC list.",
-    "AC11": "tests/mcphost_webhook_inbox_ac11_trigger_test_stores_and_fires_synthetic_delivery.rs",
-    "AC12": "tests/mcphost_webhook_inbox_ac12_stripe_verify_scheme_accepted.rs"
+    "AC1": "tests/mcphost_signup_kill_switch_and_source_ac01_source_echoed_and_stored.rs",
+    "AC2": "tests/mcphost_signup_kill_switch_and_source_ac02_no_source_is_null.rs",
+    "AC3": "tests/mcphost_signup_kill_switch_and_source_ac03_invalid_source_rejected.rs",
+    "AC4": "tests/mcphost_signup_kill_switch_and_source_ac04_pause_file_stops_and_resumes_signups.rs",
+    "AC5": "tests/mcphost_signup_kill_switch_and_source_ac05_pause_does_not_affect_authenticated_calls.rs",
+    "AC6": "tests/mcphost_signup_kill_switch_and_source_ac06_healthz_signups_by_source.rs",
+    "AC7": "tests/mcphost_signup_kill_switch_and_source_ac07_healthz_reports_paused.rs",
+    "AC8": "tests/mcphost_signup_kill_switch_and_source_ac08_concurrent_burst_with_pause_toggle.rs",
+    "AC9": "tests/mcphost_signup_kill_switch_and_source_ac09_llms_txt_documents_source.rs",
+    "AC10": "tests/mcphost_signup_kill_switch_and_source_ac10_until_line_bounds_retry_after.rs"
   },
   "ac_test_map_by_prefix": {
     "agentchannels": {
@@ -68,7 +66,6 @@
       "AC9": "tests/mcphost_tool_versions_ac09_diff_returns_unified_diff.rs"
     },
     "uptimeprobes": {
-      "_prd": "PRD-mcphost-uptime-probes.md -- superseded by mcphost-tool-versions at HEAD; real test_prefix is mcphost_uptime_probes (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind/tenantdataexport/checkcompatrace/teammemory/databaseinaminute above)",
       "AC1": "tests/mcphost_uptime_probes_ac01_llms_txt_section.rs",
       "AC2": "tests/mcphost_uptime_probes_ac02_checks_two_rows_per_target.rs",
       "AC3": "tests/mcphost_uptime_probes_ac03_status_up_pct_and_down_since.rs",
@@ -77,7 +74,8 @@
       "AC6": "deferred -- Live proof against production https://mcphost.dev/mcp needs operator authorization/network egress this coding sandbox does not have. See PRD Acceptance criteria 6 and tests/mcphost_uptime_probes_ac08_live_test_skipped_without_env.rs's live_proof_against_real_mcphost_when_enabled (gated on MCPHOST_LIVE=1, exercises the same examples/uptime-probes/proof.sh).",
       "AC7": "tests/mcphost_uptime_probes_ac07_synthorg_task_five_completions.rs",
       "AC8": "tests/mcphost_uptime_probes_ac08_live_test_skipped_without_env.rs",
-      "AC9": "tests/mcphost_uptime_probes_ac09_down_since_flip_sends_inbox.rs"
+      "AC9": "tests/mcphost_uptime_probes_ac09_down_since_flip_sends_inbox.rs",
+      "_prd": "PRD-mcphost-uptime-probes.md (test_prefix: mcphost_uptime_probes)"
     },
     "databaseinaminute": {
       "_prd": "PRD-mcphost-database-in-a-minute.md -- superseded by mcphost-uptime-probes at HEAD; real test_prefix is mcphost_database_in_a_minute (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind/tenantdataexport/checkcompatrace/teammemory above)",
@@ -234,17 +232,20 @@
       "AC9": "cross-repo: /home/jsy/repos/mcphost-deploy tests/checkcompatrace_ac9_journal_and_line_name_the_step.py (mcphost-deploy commit edff67f7, requirement 7 -- not a tests/**/*.rs file since requirement 7 is a mcphost-deploy/Python change, not a mcphost one)",
       "AC10": "cross-repo: /home/jsy/repos/mcphost-deploy tests/checkcompatrace_ac10_ledger_scraper_reads_verdict.py (mcphost-deploy commit edff67f7, requirement 7)"
     },
-    "uptimeprobes": {
-      "AC1": "tests/mcphost_uptime_probes_ac01_llms_txt_section.rs",
-      "AC2": "tests/mcphost_uptime_probes_ac02_checks_two_rows_per_target.rs",
-      "AC3": "tests/mcphost_uptime_probes_ac03_status_up_pct_and_down_since.rs",
-      "AC4": "tests/mcphost_uptime_probes_ac04_retention_deletes_old_rows.rs",
-      "AC5": "tests/mcphost_uptime_probes_ac05_target_cap_at_20.rs",
-      "AC6": "deferred -- Live proof against production https://mcphost.dev/mcp needs operator authorization/network egress this coding sandbox does not have. See PRD Acceptance criteria 6 and tests/mcphost_uptime_probes_ac08_live_test_skipped_without_env.rs's live_proof_against_real_mcphost_when_enabled (gated on MCPHOST_LIVE=1, exercises the same examples/uptime-probes/proof.sh).",
-      "AC7": "tests/mcphost_uptime_probes_ac07_synthorg_task_five_completions.rs",
-      "AC8": "tests/mcphost_uptime_probes_ac08_live_test_skipped_without_env.rs",
-      "AC9": "tests/mcphost_uptime_probes_ac09_down_since_flip_sends_inbox.rs",
-      "_prd": "PRD-mcphost-uptime-probes.md (test_prefix: mcphost_uptime_probes)"
+    "webhookinbox": {
+      "_prd": "PRD-mcphost-webhook-inbox.md -- superseded by mcphost-signup-kill-switch-and-source at HEAD; real test_prefix is mcphost_webhook_inbox (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind/tenantdataexport/checkcompatrace/teammemory/databaseinaminute/uptimeprobes/toolversions/agentchannels above)",
+      "AC1": "tests/mcphost_webhook_inbox_ac01_set_returns_url_and_secret_get_omits_secret.rs",
+      "AC2": "tests/mcphost_webhook_inbox_ac02_signed_post_stores_row_and_fires_run.rs",
+      "AC3": "tests/mcphost_webhook_inbox_ac03_unsigned_or_wrong_signature_401_no_row.rs",
+      "AC4": "tests/mcphost_webhook_inbox_ac04_unknown_id_404_empty_body.rs",
+      "AC5": "tests/mcphost_webhook_inbox_ac05_oversized_body_413_no_row.rs",
+      "AC6": "tests/mcphost_webhook_inbox_ac06_paused_stores_no_run_replay_fires_once.rs",
+      "AC7": "tests/mcphost_webhook_inbox_ac07_repeated_delivery_id_dedupes_row.rs",
+      "AC8": "tests/mcphost_webhook_inbox_ac08_free_tenant_three_schedules_webhook_refused.rs",
+      "AC9": "tests/mcphost_webhook_inbox_ac09_concurrent_deliveries_all_land.rs",
+      "AC10": "deferred -- operator-provisioned; a real examples/webhook-inbox/proof.sh run against production https://mcphost.dev/mcp needs a fresh tenant on prod and network egress this build does not have, and P1 requirement 7 (the llms.txt recipe section and proof.sh itself) is outside this coder dispatch's non-deferred AC list.",
+      "AC11": "tests/mcphost_webhook_inbox_ac11_trigger_test_stores_and_fires_synthetic_delivery.rs",
+      "AC12": "tests/mcphost_webhook_inbox_ac12_stripe_verify_scheme_accepted.rs"
     }
   }
 }
