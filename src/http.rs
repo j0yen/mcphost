@@ -182,6 +182,40 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
             ),
         );
     }
+    // PRD-mcphost-signup-kill-switch-and-source requirement 2 / AC6: a
+    // caller-claimed-channel breakdown of external signups, all-time and
+    // (requirement 2's other named window) the last 24h -- both additive,
+    // both `{}` (not absent) on a box with no sourced signups yet.
+    // Requirement 5 / AC7: `signups_enabled` mirrors whether the pause file
+    // exists right now (same fresh-stat-per-call contract `signup` itself
+    // uses); `signup_pause_message` is present only while paused, matching
+    // requirement 5's own "and `signup_pause_message` when paused" wording
+    // rather than a present-and-null field on every unpaused host.
+    if let Some(obj) = body.as_object_mut() {
+        let by_source = state
+            .db
+            .count_external_signups_by_source(None)
+            .await
+            .unwrap_or_default();
+        let by_source_24h = state
+            .db
+            .count_external_signups_by_source(Some(crate::state::now_unix() - 86_400))
+            .await
+            .unwrap_or_default();
+        obj.insert(
+            "signups_by_source".to_string(),
+            json!({"external": by_source.into_iter().collect::<std::collections::BTreeMap<_, _>>()}),
+        );
+        obj.insert(
+            "signups_by_source_24h".to_string(),
+            json!({"external": by_source_24h.into_iter().collect::<std::collections::BTreeMap<_, _>>()}),
+        );
+        let pause = state.signup_pause.status();
+        obj.insert("signups_enabled".to_string(), json!(pause.is_none()));
+        if let Some(pause) = pause {
+            obj.insert("signup_pause_message".to_string(), json!(pause.message));
+        }
+    }
     // PRD-mcphost-sandbox-ready requirement 2: additive fields, populated
     // from an actual sandboxed-process probe rather than the `on_path`
     // check `sandbox_mechanism` above has always been. `None` (absent

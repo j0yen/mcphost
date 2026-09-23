@@ -311,7 +311,14 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # normal bucket, spawning an 11th suite binary again -- caught by the same
 # P0 assertion. 360 -> 375 is the smallest tested raise that re-collapses
 # core's normal buckets to 1, landing the grand total back at 10.
-MAX_PER_SUITE = {"core": 375, "sandbox": 60}
+#
+# PRD-mcphost-signup-kill-switch-and-source (2026-09-23): this PRD's own
+# ten `mcphost_signup_kill_switch_and_source_ac*.rs` files (also
+# `core`-classified, also no global tracing subscriber) join the same
+# normal bucket, spawning an 11th suite binary again -- caught by the same
+# P0 assertion. 375 -> 395 is the smallest tested raise that re-collapses
+# core's normal buckets to 1, landing the grand total back at 10.
+MAX_PER_SUITE = {"core": 395, "sandbox": 60}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

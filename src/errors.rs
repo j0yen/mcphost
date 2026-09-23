@@ -278,7 +278,11 @@ impl AppError {
             // host itself didn't cause, so they line up with the other
             // INTERNAL_ERROR-mapped variants above.
             AppError::Structured { code, .. } => match *code {
-                "rate_limited" => ErrorCode::INVALID_REQUEST,
+                // PRD-mcphost-signup-kill-switch-and-source requirement 3:
+                // a paused `signup` is the same "come back later" caller-
+                // state gate as `rate_limited` right above it, not a bad
+                // argument and not an internal failure.
+                "rate_limited" | "signup_paused" => ErrorCode::INVALID_REQUEST,
                 // PRD-mcphost-spec-output-paths requirement 1: a structured
                 // `invalid_spec` (kinds::http/python's own `parse_spec` and
                 // `normalize_outputs`) is exactly the same caller-input
@@ -844,6 +848,21 @@ impl AppError {
             code: "dependency_resolve_failed",
             message: format!("dependency resolution failed: {tail}"),
             data: json!({"tail": tail}),
+        }
+    }
+
+    /// PRD-mcphost-signup-kill-switch-and-source requirement 3 / AC4:
+    /// `signup` while the pause file exists. `message` is the file's own
+    /// first line (or [`crate::state::SIGNUP_PAUSE_DEFAULT_MESSAGE`]) --
+    /// carried verbatim as this error's own `message` (the
+    /// `#[error("{message}")]` on [`AppError::Structured`] above), not
+    /// wrapped in extra prose, so AC4's "message equals the file's first
+    /// line" holds byte-for-byte.
+    pub fn signup_paused(message: String, retry_after_secs: i64) -> Self {
+        AppError::Structured {
+            code: "signup_paused",
+            message,
+            data: json!({"retry_after_secs": retry_after_secs}),
         }
     }
 

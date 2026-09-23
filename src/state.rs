@@ -2,6 +2,7 @@
 //! window parsing) used by both the control plane and the admin tools.
 
 use std::collections::{HashMap, VecDeque};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -48,6 +49,11 @@ pub const TOOL_RUN_RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
 /// `host.redeem` call (open question: "minutes vs the session's practical
 /// length" -- resolved here at 5 minutes, stated in the build receipt).
 pub const HANDOFF_TOKEN_TTL_SECS: i64 = 300;
+/// PRD-mcphost-signup-kill-switch-and-source requirement 3: the default
+/// `message` when the pause file's first line is empty, and the default
+/// `retry_after_secs` when the file carries no `until=` second line.
+pub const SIGNUP_PAUSE_DEFAULT_MESSAGE: &str = "signups are paused";
+pub const SIGNUP_PAUSE_DEFAULT_RETRY_AFTER_SECS: i64 = 3600;
 
 /// A per-tenant sliding-window call counter for `host.tool_run`
 /// (requirement 3 / AC7). Kept in `handler.rs`'s territory (cross-kind,
@@ -84,6 +90,72 @@ impl ToolRunLimiter {
         }
         window.push_back(now);
         true
+    }
+}
+
+/// PRD-mcphost-signup-kill-switch-and-source requirement 3: `signup`'s pause
+/// state, read fresh off disk on every call (never cached beyond 1s --
+/// deliberately not cached at all, so an operator's `touch`/`rm` of the
+/// pause file takes effect on the very next request). `Clone`-able and
+/// carries no interior mutability of its own -- unlike [`ToolRunLimiter`]
+/// above, there is nothing to keep in sync across clones, since the source
+/// of truth is the file itself, not a value this process caches.
+#[derive(Clone)]
+pub struct SignupPause {
+    path: PathBuf,
+}
+
+/// [`SignupPause::status`]'s return shape: the operator message to surface
+/// verbatim as the `signup_paused` error's own message, and how long to
+/// tell the caller to wait before retrying.
+pub struct SignupPauseStatus {
+    pub message: String,
+    pub retry_after_secs: i64,
+}
+
+impl SignupPause {
+    /// `$MCPHOST_SIGNUP_PAUSE_FILE` when set, else `<data_dir>/signup.paused`
+    /// (requirement 3) -- a file path rather than an env-only flag so an
+    /// operator without redeploy access (mcphost-deploy's env contract is
+    /// untouched, technical considerations) can pause signups with one
+    /// `touch` over ssh.
+    pub fn from_env(data_dir: &Path) -> Self {
+        let path = std::env::var("MCPHOST_SIGNUP_PAUSE_FILE")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| data_dir.join("signup.paused"));
+        Self { path }
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// `None` when the pause file doesn't exist (the overwhelmingly common
+    /// case -- every unpaused request); `Some` otherwise. A read failure
+    /// (the file existed a moment ago but was removed by the time this
+    /// `read_to_string` runs -- the exact race an operator's `rm` creates)
+    /// also reads as "not paused" rather than a spurious refusal, the same
+    /// fail-open posture [`crate::retention::DiskGuard::free_bytes`] takes
+    /// on its own probe failure.
+    pub fn status(&self) -> Option<SignupPauseStatus> {
+        let contents = std::fs::read_to_string(&self.path).ok()?;
+        let mut lines = contents.lines();
+        let message = lines
+            .next()
+            .filter(|l| !l.is_empty())
+            .unwrap_or(SIGNUP_PAUSE_DEFAULT_MESSAGE)
+            .to_string();
+        // Requirement 7 / AC10: a second `until=<unix_ts>` line derives
+        // `retry_after_secs` from the deadline instead of the flat default;
+        // `.max(0)` so a deadline already in the past never reports a
+        // negative wait.
+        let retry_after_secs = lines
+            .next()
+            .and_then(|l| l.strip_prefix("until="))
+            .and_then(|v| v.trim().parse::<i64>().ok())
+            .map(|until| (until - now_unix()).max(0))
+            .unwrap_or(SIGNUP_PAUSE_DEFAULT_RETRY_AFTER_SECS);
+        Some(SignupPauseStatus { message, retry_after_secs })
     }
 }
 
@@ -194,6 +266,9 @@ pub struct AppState {
     /// the response came from the process it actually spawned, not a
     /// foreign server that happens to answer on the same address.
     pub compat_token: Option<String>,
+    /// PRD-mcphost-signup-kill-switch-and-source requirement 3: `signup`'s
+    /// pause-file kill switch. See [`SignupPause`].
+    pub signup_pause: SignupPause,
 }
 
 pub fn now_unix() -> i64 {
@@ -363,6 +438,26 @@ pub fn is_valid_synthetic_label(label: &str) -> bool {
         .is_some_and(|b| b.is_ascii_lowercase() || b.is_ascii_digit());
     let rest_ok = bytes[1.min(bytes.len())..].iter().all(|b| {
         b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b':' || *b == b'_' || *b == b'-'
+    });
+    len_ok && first_ok && rest_ok
+}
+
+/// PRD-mcphost-signup-kill-switch-and-source requirement 1:
+/// `^[a-z0-9][a-z0-9._-]*$`, 1-64 chars -- `signup`'s optional `source`
+/// argument. Same hand-rolled-byte-check shape as
+/// [`is_valid_synthetic_label`] just above (this crate has no regex
+/// dependency), with `.` added to the allowed body characters (a caller
+/// naming a channel like `docs.quickstart` is plausible) and no `:`
+/// (unlike a synthetic label, `source` is display-only, never parsed for a
+/// `kind:detail` structure).
+pub fn is_valid_signup_source(source: &str) -> bool {
+    let bytes = source.as_bytes();
+    let len_ok = (1..=64).contains(&bytes.len());
+    let first_ok = bytes
+        .first()
+        .is_some_and(|b| b.is_ascii_lowercase() || b.is_ascii_digit());
+    let rest_ok = bytes[1.min(bytes.len())..].iter().all(|b| {
+        b.is_ascii_lowercase() || b.is_ascii_digit() || *b == b'.' || *b == b'_' || *b == b'-'
     });
     len_ok && first_ok && rest_ok
 }

@@ -1,107 +1,97 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-webhook-inbox.md",
-  "intent_slug": "mcphost-webhook-inbox",
-  "root_motivation": "An indie agent builder whose agent needs to react to an external event -- a payment, a push, a form submission -- must today run and expose a web server, because every hosted MCP surface is outbound-only, including mcphost whose own trigger surface (src/triggers.rs) has only kind=schedule and kind=event (a tenant-registered secret, never stored, never a URL not keyed by namespace/tool). This PRD gives kind=\"webhook\" its own opaque, host-generated-secret URL: a verified POST lands as a row in the tenant's own inbox_<name> state table and fires the bound tool with that row as its argument, so an agent that needs to receive Stripe/GitHub-shaped events needs no server of its own at all.",
-  "user_persona": "Four (PRD User stories): (1) the builder's agent binds a webhook to on_payment and the tool runs on every event; (2) the agent queries inbox_payments with no tool run; (3) the builder pauses/resumes/replays one chosen row by id; (4) Joe: an unknown URL 404s, a bad signature is 401 and never stored, deliveries count against calls/day.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-signup-kill-switch-and-source.md",
+  "intent_slug": "mcphost-signup-kill-switch-and-source",
+  "root_motivation": "The launch plan runs three traffic waves three days apart and needs to know which one produced each tenant, but `signup(attribution, source_ip, ...)` (src/control.rs) only ever recorded provenance CLASS (synthetic/external) and computed origin -- every external stranger looked identical, with no caller-claimed channel label. Separately, the only abuse brake on signups was the per-IP rate limit read once at startup (MCPHOST_SIGNUP_RATE_LIMIT_PER_HOUR); there was no way to stop a bad-hour abuse spike short of a redeploy through mcphost-deploy, which the operator explicitly wants to avoid doing at 2am on launch night (PRD Problem statement, citing Railway/Fly both losing their free tiers to exactly this kind of unbraked abuse). This PRD gives `signup` an optional, caller-claimed `source` string (stored, echoed, broken out in admin healthz) and a file-based pause kill switch an operator can flip with one `touch`/`rm` over ssh, in under a second, with no restart and no redeploy.",
+  "user_persona": "Three (PRD User stories): (1) Operator: posts the HN link with `source: \"hn\"` and the Reddit link with `source: \"reddit\"` in each snippet; the next morning healthz tells them signups per source. (2) Operator: mining bots start signing up at 3am; they `touch` the pause file over ssh and signups stop while existing tenants keep running unaffected. (3) Agent: calls signup during a pause and gets a clear, structured `signup_paused` error naming when to retry, never a 500 or an opaque failure.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 11
+    "target": 10
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given host.trigger.set kind=webhook name=pay tool=on_payment, When it returns, Then the response has url and secret, and host.trigger.get afterwards has the url and no secret.",
-      "test": "tests/mcphost_webhook_inbox_ac01_set_returns_url_and_secret_get_omits_secret.rs"
+      "description": "Given signup(name, source: \"hn\"), When it succeeds, Then the response echoes source: \"hn\" and the tenant row has signup_source = 'hn'.",
+      "test": "tests/mcphost_signup_kill_switch_and_source_ac01_source_echoed_and_stored.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a body signed with the secret, When POSTed to the url, Then 200, one row in inbox_pay, and one run of on_payment whose argument equals the row.",
-      "test": "tests/mcphost_webhook_inbox_ac02_signed_post_stores_row_and_fires_run.rs"
+      "description": "Given signup(name) with no source, When it succeeds, Then signup_source is NULL and the response omits or nulls source.",
+      "test": "tests/mcphost_signup_kill_switch_and_source_ac02_no_source_is_null.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given an unsigned or wrongly signed body, When POSTed, Then 401 and no row.",
-      "test": "tests/mcphost_webhook_inbox_ac03_unsigned_or_wrong_signature_401_no_row.rs"
+      "description": "Given source: \"HN!\" or a 65-character value, When signup is called, Then invalid_argument (this crate's args_invalid code) names source and no tenant is created.",
+      "test": "tests/mcphost_signup_kill_switch_and_source_ac03_invalid_source_rejected.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given an unknown opaque id, When POSTed, Then 404 with an empty body.",
-      "test": "tests/mcphost_webhook_inbox_ac04_unknown_id_404_empty_body.rs"
+      "description": "Given the pause file is created while the server runs, When signup is called 1s later, Then the error code is signup_paused, message equals the file's first line, and retry_after_secs is present; When the file is removed, Then a signup 1s later succeeds. No restart in between.",
+      "test": "tests/mcphost_signup_kill_switch_and_source_ac04_pause_file_stops_and_resumes_signups.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a 300 KB body, When POSTed, Then 413 and no row.",
-      "test": "tests/mcphost_webhook_inbox_ac05_oversized_body_413_no_row.rs"
+      "description": "Given the pause file exists, When an existing tenant calls host.tool_call, host.trigger.fire, and billing.status, Then all succeed as before.",
+      "test": "tests/mcphost_signup_kill_switch_and_source_ac05_pause_does_not_affect_authenticated_calls.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given the hook paused, When a signed body is POSTed, Then 200, a row, and no run; resume creates no run; replay <row> creates exactly one.",
-      "test": "tests/mcphost_webhook_inbox_ac06_paused_stores_no_run_replay_fires_once.rs"
+      "description": "Given three external signups with sources hn, hn, reddit and one synthetic signup, When admin healthz is read, Then signups_by_source.external is {\"hn\": 2, \"reddit\": 1} and signups_enabled is true.",
+      "test": "tests/mcphost_signup_kill_switch_and_source_ac06_healthz_signups_by_source.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given the same X-Mcphost-Delivery-Id twice within 24h, When POSTed, Then the second is 200 and the table has one row.",
-      "test": "tests/mcphost_webhook_inbox_ac07_repeated_delivery_id_dedupes_row.rs"
+      "description": "Given the pause file exists, When admin healthz is read, Then signups_enabled is false and signup_pause_message matches the file.",
+      "test": "tests/mcphost_signup_kill_switch_and_source_ac07_healthz_reports_paused.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given a free tenant with 3 schedule triggers, When it sets a webhook, Then it is refused with the schedules quota error.",
-      "test": "tests/mcphost_webhook_inbox_ac08_free_tenant_three_schedules_webhook_refused.rs"
+      "description": "Given 50 concurrent signups while the pause file is toggled on mid-burst, When the burst completes, Then every response is either success or signup_paused, never a 500, and tenant count equals the success count.",
+      "test": "tests/mcphost_signup_kill_switch_and_source_ac08_concurrent_burst_with_pause_toggle.rs"
     },
     {
       "id": "AC9",
-      "level": "MUST",
-      "description": "Given 100 concurrent signed deliveries to one hook, When they complete, Then the table has 100 rows and 100 runs exist.",
-      "test": "tests/mcphost_webhook_inbox_ac09_concurrent_deliveries_all_land.rs"
+      "level": "SHOULD",
+      "description": "Given www/llms.txt on the built tree, When grepped, Then it documents source and lists hn and registry.",
+      "test": "tests/mcphost_signup_kill_switch_and_source_ac09_llms_txt_documents_source.rs"
     },
     {
       "id": "AC10",
       "level": "SHOULD",
-      "description": "Given the fix deployed to mcphost.dev, When examples/webhook-inbox/proof.sh runs against it with a fresh tenant, Then every assertion in AC1-7 holds and wall time is printed. (Live; evidence: proof stdout in the receipt)",
-      "test": "deferred -- operator-provisioned; a real examples/webhook-inbox/proof.sh run against production https://mcphost.dev/mcp needs a fresh tenant on prod and network egress this build does not have, and P1 requirement 7 (the llms.txt recipe section and proof.sh itself) is outside this coder dispatch's own non-deferred AC list -- same convention as every prior PRD's own Live AC in this card's history."
-    },
-    {
-      "id": "AC11",
-      "level": "SHOULD",
-      "description": "Given host.trigger.test on a webhook trigger, When called, Then one synthetic signed delivery is stored and fired.",
-      "test": "tests/mcphost_webhook_inbox_ac11_trigger_test_stores_and_fires_synthetic_delivery.rs"
-    },
-    {
-      "id": "AC12",
-      "level": "MAY",
-      "description": "Given verify=stripe and a body signed the Stripe way with the hook secret, When POSTed, Then it is accepted.",
-      "test": "tests/mcphost_webhook_inbox_ac12_stripe_verify_scheme_accepted.rs"
+      "description": "Given a pause file whose second line is until=<now+120>, When signup is called, Then retry_after_secs is between 100 and 120.",
+      "test": "tests/mcphost_signup_kill_switch_and_source_ac10_until_line_bounds_retry_after.rs"
     }
   ],
   "scope": [
-    "migrations/0029_webhook_triggers.sql (new): triggers.hook_id (additive column, ALTER TABLE) plus its index, and a new webhook_dedupe(trigger_id, dedupe_key, created_unix) table (row-level, not run-level, idempotency -- distinct from migration 0017's event_dedupe).",
-    "src/webhooks.rs (new): the fourth trigger kind's whole business logic -- host.trigger.set(kind=\"webhook\") (generates and AES-GCM-encrypts a random secret via AppState::secrets, auto-creates the inbox_<name> state table via tenant_state.rs, shares the schedules_max quota), the shared accept_delivery path (body-size check reusing Plan.event_body_bytes_max, calls_per_day check, hmac/none/stripe verify, row-level dedupe via Db::claim_webhook_dedupe, tenant_state::state_insert, then hooks::enqueue_with_dedupe to fire), the POST /hook/{id} axum handler (empty-body error responses, unlike hooks.rs's JSON ones), and the webhook branches of host.trigger.test/replay.",
-    "src/db.rs: TriggerRow.hook_id, Db::insert_trigger gains a hook_id parameter, Db::find_trigger_by_hook_id (the route's one indexed lookup), Db::claim_webhook_dedupe (the row-level 24h claim), Db::count_schedule_triggers_for_tenant widened to kind IN ('schedule', 'webhook').",
-    "src/triggers.rs: the kind=\"webhook\" dispatch arm in set()/trigger_to_json()/admin_triggers(), delegating into webhooks.rs the same way kind=\"event\" already delegates into hooks.rs.",
-    "src/hooks.rs: host.trigger.test's and host.trigger.replay's webhook branches (replay gains an id+row_id argument pair, distinct from the existing run_id path, since a paused delivery has no run to replay from) -- both delegate into webhooks.rs, reusing the shared pub(crate) enqueue_with_dedupe/EnqueueSpec this PRD's accept path also calls.",
-    "src/http.rs: POST /hook/{id}, alongside the existing POST /hooks/{namespace}/{tool}.",
-    "src/handler.rs: host.trigger.set/list/test/replay Tool::new descriptors extended to document kind=\"webhook\" (name, a string verify enum distinct from event's object verify, row_id-based replay); no new host.* tool name added, so no live tool-count assertion needed updating.",
-    "tests/mcphost_webhook_inbox_ac0[1-9]_*.rs, ac11, ac12 (new, one per non-deferred AC), each against a real local mcphost server via tests/common (McpClient/TestServer, no new support module needed).",
-    "contracts/host-tools.v1.json regenerated (mcphost contract dump) for the widened host.trigger.* schemas -- every change is an added optional field or a required->optional relaxation, never a removal/narrowing, so api_contract::diff reports no violation either way; regenerated anyway to keep the byte-identical contract-dump test green.",
-    "scripts/gen-test-suites.sh: MAX_PER_SUITE.core 350 -> 365 (this PRD's eleven new core-classified test files) -- same recurring mechanism as every PRD-* comment block above it in that file, re-collapsing the grand total to the AC1 ceiling of 10 suite binaries.",
-    "Cargo.toml: patch version bump (0.59.4 -> 0.59.5); CHANGELOG.md: new entry."
+    "migrations/0032_signup_source.sql (new): tenants.signup_source TEXT NULL (additive ALTER TABLE) plus an index -- the one migration this PRD's own Migration/compatibility section calls for.",
+    "src/state.rs: is_valid_signup_source (^[a-z0-9][a-z0-9._-]*$, 1-64 chars, same hand-rolled-byte-check shape as the pre-existing is_valid_synthetic_label -- this crate has no regex dependency); the new SignupPause type (from_env(data_dir), path(), status() -- a fresh fs::read_to_string per call, never cached) plus SignupPauseStatus and the SIGNUP_PAUSE_DEFAULT_MESSAGE/SIGNUP_PAUSE_DEFAULT_RETRY_AFTER_SECS constants; AppState gains a signup_pause: SignupPause field.",
+    "src/errors.rs: AppError::signup_paused(message, retry_after_secs) (a Structured variant, code \"signup_paused\", data.retry_after_secs) plus its jsonrpc_code mapping alongside the existing rate_limited (both are caller-state \"come back later\" gates, INVALID_REQUEST).",
+    "src/control.rs: signup() checks state.signup_pause.status() first, before the disk-floor guard, before any write, returning signup_paused when Some; validate_source(args) parses/validates the optional source argument (InvalidArgs on a non-string or a value failing is_valid_signup_source, code args_invalid, field source) before the rate-limit admit so a rejected source never consumes a rate-limit slot or creates a row; the validated source flows into Db::create_tenant_attributed_with_source and is echoed back into both the raw-key and handoff-mode response bodies (present only when Some, per AC2's \"omits ... when absent\").",
+    "src/db.rs: Tenant.signup_source: Option<String> (TENANT_COLUMNS/tenant_from_row widened); Db::create_tenant_attributed_with_source (the real insert, one more parameter than create_tenant_attributed) with create_tenant_attributed now a thin wrapper passing None, so its several existing tests/*.rs positional callers keep compiling unmodified; Db::count_external_signups_by_source(since_unix: Option<i64>) grouping tenants by signup_source where origin = 'external', for healthz's all-time and last-24h breakdowns.",
+    "src/http.rs: /healthz (admin-authenticated body) gains signups_by_source / signups_by_source_24h (each {\"external\": {source: count}}, additive, always present) and signups_enabled (mirrors state.signup_pause.status().is_none(), fresh per request) / signup_pause_message (present only while paused).",
+    "src/main.rs, src/tables.rs (bare_state test helper), tests/common/mod.rs (TestServer), tests/runs_ac11_admin_runs_reap.rs and tests/sched_ac5_overlap_skips_and_records.rs (their own bare-AppState test helpers): every AppState construction site wired up with the new signup_pause field.",
+    "docs/agent-quickstart.md (the shared source scripts/gen-agent-docs.sh copies into both README.md and www/llms.txt's marked block): documents source's recommended values (hn, reddit, discord, registry, plugin, docs) and the signup_paused error, rewrapped so the pre-existing \"handoff: true)\" wording stays on one line (handoff_ac07_docs_recommend_handoff_flow's own literal substring check).",
+    "www/llms-full.txt regenerated (scripts/gen-llms-full.sh) to stay in sync with the llms.txt edit -- required by scripts/www-check.sh's own drift check.",
+    "scripts/gen-test-suites.sh: MAX_PER_SUITE.core 375 -> 395 (this PRD's ten new core-classified test files) -- same recurring re-collapse-to-10-binaries mechanism as every prior PRD-* comment block already in that file.",
+    "tests/mcphost_signup_kill_switch_and_source_ac0[1-9]_*.rs, ac10 (new, one per AC), each against a real local mcphost server via tests/common (McpClient/TestServer/control::signup directly for AC6, the same seam attrib_ac4_external_signup_counts_real.rs already documents for forcing an external, non-loopback classification against a listener that is always reached over loopback).",
+    "Cargo.toml / Cargo.lock: patch version bump (0.60.2 -> 0.60.3); CHANGELOG.md: new entry."
   ],
   "non_goals": [
-    "Provider-specific signature schemes beyond stripe -- github's X-Hub-Signature-256 scheme is P2 requirement 9 but has no corresponding AC in this PRD's own Acceptance criteria list, so it was left out of this build's scope entirely (PRD Non-Goals: 'P2 adapters, the P0 is mcphost's own HMAC plus an unverified mode').",
-    "Outbound retries to the bound tool beyond the existing runs semantics (PRD Non-Goals) -- a webhook-fired run gets exactly the same queued/rejected/replay behavior any other trigger-fired run already has, nothing new.",
-    "Public (unauthenticated) hooks without a secret (PRD Non-Goals) -- verify=\"none\" still stores/returns a real generated secret, it simply skips checking it against the request.",
-    "P1 requirement 7 (the llms.txt \"Receive webhooks as an agent\" section and examples/webhook-inbox/proof.sh) and AC10's own live production proof -- both are outside this coder dispatch's non-deferred AC list, per its own explicit instruction to stop once AC1-9/AC11/AC12 are committed and green."
+    "Referrer capture on www pages (PRD Non-goals) -- a separate, static-site concern this build does not touch.",
+    "Per-source quotas or pricing (PRD Non-goals) -- source is display/attribution only, never consulted by the rate limiter, plan quotas, or billing.",
+    "Captcha (PRD Non-goals).",
+    "P2 requirement 8 (admin.signup_pause tool, for operators without shell access) -- no corresponding AC in this PRD's own Acceptance criteria list, so left out of this build's scope entirely, same convention as every other PRD-specific requirement-with-no-AC in this card's history (e.g. the webhook-inbox entry below, requirement 9's provider-specific signatures).",
+    "Auto-stamping a synthetic (synthorg) signup's source -- requirement 1 makes source purely caller-supplied and optional; nothing in this PRD's own Acceptance criteria asks for a default value on the synthetic path, and AC6's own signups_by_source is explicitly external-only (see ambiguities_resolved below for the PRD's open question this resolves)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -110,40 +100,40 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "secret_is_host_generated_not_tenant_registered": "unlike kind=\"event\"'s verify.secret (a name resolved through secrets.rs, a tenant-managed store the tenant had to populate first via host.secret_set), a webhook trigger's secret is generated by mcphost itself (auth::generate_key(), the same 32-byte-random-hex shape host tenant keys already use) and encrypted at rest directly via AppState::secrets (the same AES-256-GCM box host.secret_set values use) -- no secrets.rs row, no secret name, returned in cleartext exactly once at host.trigger.set time and never again.",
-      "row_level_dedupe_not_run_level_dedupe": "requirement 6's idempotency is about the STORED ROW, not the run it might cause -- a paused hook still inserts a row on every otherwise-fresh delivery, so migration 0017's event_dedupe (which caches a run_id to answer a duplicate WITHOUT re-running the tool, but the event kind never stores a row to begin with) is the wrong table to reuse; webhook_dedupe (new) claims (trigger_id, X-Mcphost-Delivery-Id) before the row insert even happens, so a duplicate answers 200 with nothing new written at all, not just nothing new fired.",
-      "replay_is_row_id_addressed_not_run_id_addressed": "hooks::replay's existing run_id path assumes a run always exists to replay from -- true for event/message triggers (kind=\"event\"/\"message\" 404 outright while paused, so every stored thing there IS a run), false for webhook (paused deliveries are stored with no run at all, per requirement 4). host.trigger.replay(id, row_id) is a second argument shape on the SAME tool, not a new tool, since AC6's own wording (\"replay <row>\") names a row, and route selection is simply \"row_id present -> the webhook branch\".",
-      "body_size_limit_reuses_the_event_kind_field": "requirement 2's \"up to 256 KB body\" is numerically identical to kind=\"event\"'s existing Plan.event_body_bytes_max (256 KiB on both free and pro) -- rather than add a second, identically-valued plan field, webhooks.rs reads the same one; the field's name predates this PRD but its meaning (\"this plan's inbound-delivery body ceiling\") is not kind-specific."
+      "source_is_display_only_never_provenance": "Technical considerations: \"Keep source separate from origin/origin_detail; provenance is computed, source is claimed by the caller and therefore untrusted (display only)\" -- signup_source never feeds classify_source_class/derive_origin, and signups_by_source's own query filters on the host-computed origin = 'external', not on anything source-derived, so a caller cannot spoof its way into (or out of) the external bucket by choosing a source string.",
+      "pause_file_is_never_cached": "Requirement 3: \"the check is per request (stat), never cached beyond 1s\" -- SignupPause::status() does a fresh std::fs::read_to_string on every call with no interior-mutability cache layer at all (simpler than a 1s TTL cache and trivially satisfies the 1s upper bound), so an operator's touch/rm takes effect on the very next signup with no restart, exactly AC4's own proof.",
+      "signups_by_source_reuses_tenants_not_a_new_signup_events_column": "signup_events (the per-attempt rate-limit ledger) already has its own count_signup_events_by_origin reader for the pre-existing signups.{external,synthetic} healthz field; this PRD's signups_by_source instead groups the tenants table directly (WHERE origin = 'external' AND signup_source IS NOT NULL GROUP BY signup_source, optionally created_unix >= since for the 24h variant) since every admitted signup writes exactly one tenants row carrying both origin and (now) signup_source already -- a second signup_source column on signup_events would duplicate data this PRD's migration.md explicitly pins to \"one additive migration (signup_source TEXT NULL + index)\", singular.",
+      "signup_paused_reuses_the_structured_error_shape": "AppError::signup_paused follows the exact same Structured-variant, doc-commented constructor pattern as the pre-existing AppError::disk_floor right above it in errors.rs (a code, a message, a data object merged into the JSON-RPC error's own data) rather than a new enum variant -- message is the file's first line verbatim (no wrapping prose), since AC4 requires message to equal it byte-for-byte, and retry_after_secs rides in data the same way disk_floor's free_bytes/floor_bytes already do."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does an agent builder need to run and expose their own web server today just to react to a payment or a push?",
-      "a": "mcphost's only prior trigger surface with an inbound URL is kind=\"event\" (src/hooks.rs), and that URL is keyed by (namespace, tool) with a tenant-registered secret name -- there is no opaque, host-generated-secret URL, and no stored delivery row a caller could query without a tool having run at all (Grounding: 'src/triggers.rs has kind=schedule only and host.trigger.fire is manual, no inbound URL' undersells it slightly -- kind=\"event\" existed already -- but neither stores a row, which is this PRD's own goal 3: 'Deliveries are rows the agent can query and a tool call it did not have to poll for')."
+      "q": "Why does the operator need a way to stop signups without a redeploy?",
+      "a": "The launch plan runs three traffic waves and the only existing abuse brake is a per-IP rate limit read once at startup (MCPHOST_SIGNUP_RATE_LIMIT_PER_HOUR) -- there is no way to react to a bad-hour abuse spike except a redeploy through mcphost-deploy, which the operator explicitly does not want to do at 2am on launch night (Problem statement), and Railway/Fly both lost their free tiers to exactly this unbraked-abuse shape."
     },
     {
       "why": 2,
-      "q": "Why can't kind=\"webhook\" just be kind=\"event\" with a stored row bolted on?",
-      "a": "kind=\"event\" requires the tenant to have already registered a named secret via host.secret_set before host.trigger.set, and 404s outright (not 200-and-stored) whenever the trigger is paused -- both are wrong for this PRD's own AC1 ('the response has url and secret', generated by the host, not supplied by the caller) and AC6 ('paused... 200, a row, and no run'), so kind=\"webhook\" needed its own set/accept path in a new module, reusing only the pieces that already generalize (hooks::enqueue_with_dedupe, tenant_state's row storage/quota machinery)."
+      "q": "Why a file flag instead of an env var the operator sets and restarts to pick up?",
+      "a": "Technical considerations: \"File flag rather than env so mcphost-deploy's env contract is untouched\" -- an env-var toggle would need a redeploy to take effect, defeating the whole point (goal 2: \"paused and resumed in under a second by a file touch\"), and mcphost-deploy's own env contract is out of this PRD's scope to renegotiate."
     },
     {
       "why": 3,
-      "q": "Why generate the secret on the host instead of asking the tenant to host.secret_set one first, the way kind=\"event\" does?",
-      "a": "AC1's own wording -- 'the response has url and secret' -- describes a single host.trigger.set call producing both; asking the tenant to pre-register a secret would be an extra round trip the PRD's TL;DR explicitly sells against ('An agent that today needs a server ... needs none'), and a host-generated secret is strictly harder to reuse-across-services by accident than a tenant-chosen one."
+      "q": "Why must the pause check be a fresh stat every call instead of a periodically-refreshed cache?",
+      "a": "Requirement 3's own wording -- \"never cached beyond 1s\" -- and the success-metrics table's own target (\"Pause-to-first-refusal latency: < 1s\") both describe a near-immediate reaction; a fresh stat per call is simpler than a bounded-TTL cache and trivially satisfies the bound with no background refresh task to keep alive."
     },
     {
       "why": 4,
-      "q": "Why deny AC6's paused-hook delivery a run instead of just rejecting it the way a paused kind=\"event\" trigger 404s?",
-      "a": "requirement 4's own wording -- 'pause stores without firing' -- and AC6's own wording -- 'paused, ... 200, a row, and no run' -- both describe acceptance without execution, not refusal; goal/user-story 3 explicitly wants a pause to keep collecting deliveries an agent can later choose to replay, which only works if they are stored."
+      "q": "Why must source be kept separate from the host's own origin/source_class provenance fields instead of folded into them?",
+      "a": "Technical considerations: \"provenance is computed, source is claimed by the caller and therefore untrusted (display only)\" -- origin/source_class drive real behavior elsewhere (tenants_real counts, synthetic-panel classification); letting an untrusted caller-chosen string influence that would let anyone mislabel their own provenance by picking a convincing source value."
     },
     {
       "why": 5,
-      "q": "Why is the row-level dedupe a brand new table (webhook_dedupe) instead of reusing event_dedupe's existing (trigger_id, dedupe_key) -> run_id shape?",
-      "a": "event_dedupe's whole contract is 'answer a duplicate with the FIRST RUN'S id' -- it has nothing to say about a delivery that was accepted but never fired at all (the paused case), and reusing its run_id column to hold something else (a row id, or nothing) would silently break enqueue_with_dedupe's own event-kind callers, which still expect that column to be a real run id. A second table with the identical claim shape (same 24h window constant, same single-with_conn-call atomicity) costs one migration and keeps both kinds' own invariants intact."
+      "q": "Why must the pause never affect an authenticated call, a tool run, a trigger fire, or billing?",
+      "a": "Requirement 4's own wording -- \"Paused state never affects authenticated calls, tool runs, triggers, or billing\" -- and AC5's own scenario (an existing tenant's host.tool_call/host.trigger.fire/billing.status all succeed while paused) both describe the pause as a front-door-only gate: an operator stopping new signups during an abuse spike must not also stop existing, paying tenants' traffic, which is exactly the blast radius a redeploy (the thing this PRD replaces) would have had."
     }
   ],
-  "created_at": "2026-09-22T21:42:24Z",
+  "created_at": "2026-09-23T06:59:23Z",
   "ambiguities_resolved": [
     {
       "question": "The findings file records the reference Python client seeing well-formed ttlMs/cacheScope on an unauthenticated tools/list, which the code says is impossible. Which is right?",
@@ -216,6 +206,10 @@
     {
       "question": "This card is now regenerated for PRD-mcphost-webhook-inbox, an entirely different feature (a fourth trigger kind with an opaque host-generated-secret URL and a stored inbox row) from PRD-mcphost-tool-versions (immutable publish versions/rollback/diff) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught by reviewer-agent repeatedly in this card's own history if left byte-for-byte. Three build-time decisions had no PRD text to settle them directly: (1) whether a webhook trigger's secret should follow kind=\"event\"'s existing pattern (a tenant-registered secrets.rs name) or be host-generated, given AC1's own wording ('the response has url and secret'); (2) how host.trigger.replay should address a webhook delivery, given requirement 4/AC6 ('paused... a row, and no run') means a paused delivery has no run_id the existing replay(run_id) tool could possibly name; (3) whether the row-level idempotency of requirement 6/AC7 could reuse migration 0017's existing event_dedupe table.",
       "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence: no reviewer block yet, but the same staleness would recur if left byte-for-byte. root_motivation/scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional were rewritten from this PRD's own Problem statement, Goals, User stories, Requirements, Non-Goals, and Technical considerations sections; acceptance_criteria's twelve entries point at the real tests/mcphost_webhook_inbox_ac0[1-9]_*.rs / ac11 / ac12 files (AC1-9, AC11-12 exist, compile, and pass; AC10 is Live/operator-provisioned, deferred, same convention as every prior PRD's own Live AC in this card's history -- not built in this coder dispatch since the dispatch's own non-deferred AC list omits it entirely, and P1 requirement 7's llms.txt section/proof.sh it depends on were left unbuilt for the same reason). agent/test-map.json's ac_test_map was repointed to this PRD and the prior toolversions mapping preserved under ac_test_map_by_prefix (newly archived there) rather than deleted. On the three build-time decisions: (1) the secret is host-generated (auth::generate_key(), AES-GCM-encrypted via AppState::secrets directly, no secrets.rs row) rather than tenant-registered, matching AC1's own 'the response has url and secret' -- a single call producing both, no pre-registration round trip. (2) host.trigger.replay gained a second, row_id-addressed argument shape (id + row_id) alongside its existing run_id shape, rather than a new tool, since AC6's own wording ('replay <row>') names a row and the existing run_id path structurally cannot apply to something that was never run. (3) a new webhook_dedupe table (same claim shape as event_dedupe, same 24h window) rather than reusing event_dedupe, since that table's whole contract is 'return the first RUN's id', which has nothing sensible to return for a paused, never-fired delivery -- see hard_constraints.additional.row_level_dedupe_not_run_level_dedupe above for the full reasoning."
+    },
+    {
+      "question": "This card is now regenerated for PRD-mcphost-signup-kill-switch-and-source, an entirely different feature (signup source attribution + a file-based pause kill switch) from PRD-mcphost-webhook-inbox (a fourth trigger kind) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught by reviewer-agent repeatedly in this card's own history if left byte-for-byte. This PRD also carries its own Open Questions table with one entry due 'at build', owner Joe: 'Should synthetic (synthorg) signups also carry source for harness runs? Draft says yes, labelled synthorg.' Two further build-time decisions had no PRD text to settle them directly: (1) AC3's own wording names the wire code 'invalid_argument', but this crate's existing bad-argument rejections (InvalidArgs) all emit 'args_invalid' -- is a brand-new wire code needed, or does the PRD's prose describe the existing convention generically? (2) requirement 2's 'admin healthz adds signups_by_source (external only) for the last 24h and all-time' names two windows, but AC6's own assertion only checks one field (signups_by_source.external) with no time qualifier -- does the all-time field need its own distinctly-named sibling, and if so what does AC6 actually check?",
+      "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence: no reviewer block yet, but the same staleness would recur if left byte-for-byte. root_motivation/scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional were rewritten from this PRD's own Problem statement, Goals, User stories, Requirements, Non-Goals, and Technical considerations sections; acceptance_criteria's ten entries point at the real tests/mcphost_signup_kill_switch_and_source_ac0[1-9]_*.rs / ac10 files, all of which exist, compile, and pass -- none of this PRD's own listed ACs are Live/deferred, unlike every prior PRD this card's history documents. agent/test-map.json's ac_test_map was repointed to this PRD and the prior webhookinbox mapping preserved under ac_test_map_by_prefix (newly archived there) rather than deleted. On the synthorg open question: source stays purely caller-supplied and optional (requirement 1's own text: 'absent means signup_source = NULL', no mention of a synthetic-path default) -- nothing in this PRD's own Acceptance criteria list asks for an auto-stamped value on a synthetic signup, and AC6's own signups_by_source is explicitly external-only, so a synthetic signup's source (if any) would never surface there regardless; auto-labelling was left out of scope rather than guessed at without an AC to prove it against, recorded in non_goals. On the two build-time decisions: (1) source's validation error uses AppError::InvalidArgs, this crate's existing 'args_invalid' code (field 'source', same '<field>: <expected>' message-split convention every other bad-argument rejection in errors.rs already follows) rather than a new 'invalid_argument' wire code -- a grep of every prior PRD's own PRD-*.md and tests/*.rs found zero uses of the literal string 'invalid_argument' anywhere in this repo's history, confirming the PRD's AC3 wording describes the existing bad-argument convention generically rather than naming a new code to introduce; tests/mcphost_signup_kill_switch_and_source_ac03_invalid_source_rejected.rs asserts error_code == 'args_invalid' and data.field == 'source' directly, so this reading is test-enforced, not just documented here. (2) requirement 2's two windows both shipped: signups_by_source (all-time) and signups_by_source_24h (last 24h), each {\"external\": {source: count}} -- AC6's own assertion checks the all-time field (the one it names verbatim), with the 24h sibling additive and unqualified by any AC, same 'ship the fuller requirement, let the AC pick which field it names' precedent the distinct_source_ips_24h field elsewhere in http.rs already set."
     }
   ]
 }

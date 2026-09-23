@@ -56,6 +56,7 @@ async fn bare_state() -> (AppState, common::TempDataDir) {
         deprecations: Arc::new(Vec::new()),
         disk_guard: mcphost::retention::DiskGuard::from_env(),
         compat_token: None,
+        signup_pause: mcphost::state::SignupPause::from_env(&data_dir.0),
     };
     (state, data_dir)
 }

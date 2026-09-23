@@ -488,6 +488,7 @@ impl TestServer {
             deprecations: std::sync::Arc::new(deprecations),
             disk_guard: mcphost::retention::DiskGuard::from_env(),
             compat_token: None,
+            signup_pause: mcphost::state::SignupPause::from_env(&data_dir.0),
         });
 
         // PRD-mcphost-runs-and-jobs: every test server runs the real
