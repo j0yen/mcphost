@@ -1,89 +1,107 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-python-dependency-policy.md",
-  "intent_slug": "mcphost-python-dependency-policy",
-  "root_motivation": "A python tool declares up to twenty PyPI names and the host installs whatever resolves today (kinds/python.rs:114 caps count only; grep -niE 'allowlist|denylist|index-url' python.rs finds nothing), so a typo-squatted name with network access and a stored secret (host.secret_set, a 23-tool registry) is an exfiltration path through one package, and a tool whose transitive dependency changes upstream stops working on the next env rebuild with no change on the tenant's side (visions/mcp-host.md addendum 2026-09-18, leaf 5). This PRD resolves requirements to a hash-locked env at publish, runs an advisory check against a known-vulnerability database, applies a per-plan package/network policy, and rebuilds envs from the lock -- never from names -- so a publish that would fail later fails now with a reason.",
-  "user_persona": "Four (PRD User stories): (1) an agent publishing a python tool sees host.tool_publish return lock: {packages: 7, hashes: true} and its tool runs the same next month; (2) an agent with a vulnerable pin sees publish fail with the advisory id and the fixed version; (3) the operator relies on free tools running network: none by default, with pro tenants opting into egress explicitly; (4) an agent calling host.tool_test sees the resolved lock and the advisory result alongside the rest of a dry run.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-webhook-inbox.md",
+  "intent_slug": "mcphost-webhook-inbox",
+  "root_motivation": "An indie agent builder whose agent needs to react to an external event -- a payment, a push, a form submission -- must today run and expose a web server, because every hosted MCP surface is outbound-only, including mcphost whose own trigger surface (src/triggers.rs) has only kind=schedule and kind=event (a tenant-registered secret, never stored, never a URL not keyed by namespace/tool). This PRD gives kind=\"webhook\" its own opaque, host-generated-secret URL: a verified POST lands as a row in the tenant's own inbox_<name> state table and fires the bound tool with that row as its argument, so an agent that needs to receive Stripe/GitHub-shaped events needs no server of its own at all.",
+  "user_persona": "Four (PRD User stories): (1) the builder's agent binds a webhook to on_payment and the tool runs on every event; (2) the agent queries inbox_payments with no tool run; (3) the builder pauses/resumes/replays one chosen row by id; (4) Joe: an unknown URL 404s, a bad signature is 401 and never stored, deliveries count against calls/day.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 8
+    "target": 11
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given `requirements: [\"requests\"]`, When published, Then a lock with hashes is stored and the env is built with `--require-hashes`.",
-      "test": "tests/mcphost_python_dependency_policy_ac01_lock_stored_and_require_hashes.rs"
+      "description": "Given host.trigger.set kind=webhook name=pay tool=on_payment, When it returns, Then the response has url and secret, and host.trigger.get afterwards has the url and no secret.",
+      "test": "tests/mcphost_webhook_inbox_ac01_set_returns_url_and_secret_get_omits_secret.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a stored lock, When the env is rebuilt a day later with a newer upstream release available, Then the resolved versions equal the lock.",
-      "test": "tests/mcphost_python_dependency_policy_ac02_rebuild_matches_lock.rs"
+      "description": "Given a body signed with the secret, When POSTed to the url, Then 200, one row in inbox_pay, and one run of on_payment whose argument equals the row.",
+      "test": "tests/mcphost_webhook_inbox_ac02_signed_post_stores_row_and_fires_run.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a requirement pinned to a version with a known advisory and a fix, When published with `MCPHOST_ADVISORY_MODE=fail`, Then publish fails naming the advisory and the fixed version.",
-      "test": "tests/mcphost_python_dependency_policy_ac03_advisory_fails_publish.rs"
+      "description": "Given an unsigned or wrongly signed body, When POSTed, Then 401 and no row.",
+      "test": "tests/mcphost_webhook_inbox_ac03_unsigned_or_wrong_signature_401_no_row.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a `free` tenant, When a python tool is published without `network`, Then it runs with `network: none` and an outbound connect from it fails.",
-      "test": "tests/mcphost_python_dependency_policy_ac04_free_tenant_network_none_default.rs"
+      "description": "Given an unknown opaque id, When POSTed, Then 404 with an empty body.",
+      "test": "tests/mcphost_webhook_inbox_ac04_unknown_id_404_empty_body.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given `reqeusts` in requirements, When published, Then it fails with `dependency_policy: denied (near-name of requests)`.",
-      "test": "tests/mcphost_python_dependency_policy_ac05_near_name_denied.rs"
+      "description": "Given a 300 KB body, When POSTed, Then 413 and no row.",
+      "test": "tests/mcphost_webhook_inbox_ac05_oversized_body_413_no_row.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given prod after ship, When the synthetic panel's python tasks run, Then first-try publish rate for python tools is unchanged within the seed noise floor (proof: the next measure row in the trailer).",
-      "test": "deferred -- operator-provisioned: AC6's own Given is prod after ship and its proof is the next synthetic-panel measure row in the trailer, which no pre-land worktree can produce. Per the PRD's own frontmatter (deferred_acs: [6], Operator-authorization 2026-09-22 23:05Z Joe via Claude, verbatim \"defer AC6 to the post-ship measure row\"), this build lands AC1-5/7-9 paired and defers AC6 with that reason; the operator pairs AC6 from the first post-deploy measure row. The code path AC6 would exercise is not a mock -- it is the same publish pipeline AC1-5/7-9 already run through end to end."
+      "description": "Given the hook paused, When a signed body is POSTed, Then 200, a row, and no run; resume creates no run; replay <row> creates exactly one.",
+      "test": "tests/mcphost_webhook_inbox_ac06_paused_stores_no_run_replay_fires_once.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given a lock text with hashes supplied as `requirements`, When published, Then the host validates and stores it without re-resolving.",
-      "test": "tests/mcphost_python_dependency_policy_ac07_supplied_lock_stored_without_reresolving.rs"
+      "level": "MUST",
+      "description": "Given the same X-Mcphost-Delivery-Id twice within 24h, When POSTed, Then the second is 200 and the table has one row.",
+      "test": "tests/mcphost_webhook_inbox_ac07_repeated_delivery_id_dedupes_row.rs"
     },
     {
       "id": "AC8",
-      "level": "SHOULD",
-      "description": "Given a new advisory for a stored lock, When the daily re-audit runs, Then `host.tool_list` shows `advisories: 1` for that tool and the tool still runs.",
-      "test": "tests/mcphost_python_dependency_policy_ac08_reaudit_flags_new_advisory.rs"
+      "level": "MUST",
+      "description": "Given a free tenant with 3 schedule triggers, When it sets a webhook, Then it is refused with the schedules quota error.",
+      "test": "tests/mcphost_webhook_inbox_ac08_free_tenant_three_schedules_webhook_refused.rs"
     },
     {
       "id": "AC9",
+      "level": "MUST",
+      "description": "Given 100 concurrent signed deliveries to one hook, When they complete, Then the table has 100 rows and 100 runs exist.",
+      "test": "tests/mcphost_webhook_inbox_ac09_concurrent_deliveries_all_land.rs"
+    },
+    {
+      "id": "AC10",
+      "level": "SHOULD",
+      "description": "Given the fix deployed to mcphost.dev, When examples/webhook-inbox/proof.sh runs against it with a fresh tenant, Then every assertion in AC1-7 holds and wall time is printed. (Live; evidence: proof stdout in the receipt)",
+      "test": "deferred -- operator-provisioned; a real examples/webhook-inbox/proof.sh run against production https://mcphost.dev/mcp needs a fresh tenant on prod and network egress this build does not have, and P1 requirement 7 (the llms.txt recipe section and proof.sh itself) is outside this coder dispatch's own non-deferred AC list -- same convention as every prior PRD's own Live AC in this card's history."
+    },
+    {
+      "id": "AC11",
+      "level": "SHOULD",
+      "description": "Given host.trigger.test on a webhook trigger, When called, Then one synthetic signed delivery is stored and fired.",
+      "test": "tests/mcphost_webhook_inbox_ac11_trigger_test_stores_and_fires_synthetic_delivery.rs"
+    },
+    {
+      "id": "AC12",
       "level": "MAY",
-      "description": "Given `admin.usage`, When read, Then tools are counted by network mode and advisory state.",
-      "test": "tests/mcphost_python_dependency_policy_ac09_admin_usage_counts_network_and_advisories.rs"
+      "description": "Given verify=stripe and a body signed the Stripe way with the hook secret, When POSTed, Then it is accepted.",
+      "test": "tests/mcphost_webhook_inbox_ac12_stripe_verify_scheme_accepted.rs"
     }
   ],
   "scope": [
-    "migrations/0029_tool_lock.sql (new): tool_lock(tenant_id, name, version, lock_text, resolved_unix, advisories_json, audited_unix) PRIMARY KEY(tenant_id, name, version) -- one durable row per published python-tool version's resolved lock, mirroring tool_versions' own per-version shape; advisories_json/audited_unix are the only columns a later re-audit ever updates in place, with no republish.",
-    "src/deps.rs (new): the whole dependency-policy engine -- classify() (requirement 5/AC7: recognizes a caller-supplied --require-hashes lock vs a plain name list), resolve()/resolve_names() (requirement 1: shells out to `uv pip compile --generate-hashes`, same bare-subprocess convention kinds::python::run_build_steps already uses for `uv venv`/`uv pip install`), check_package_policy() (requirement 3/AC5: denylist + Damerau-Levenshtein-1-of-top-100 near-name check), check_advisories()/embedded_advisories()/advisory_db() (requirement 2/AC3: an offline, $MCPHOST_ADVISORY_DB_PATH-overridable advisory table), and reaudit_once()/spawn_reaudit_scheduler() (requirement 6/AC8: the daily re-audit and its on-demand admin.dependency_reaudit trigger).",
-    "src/kinds/python.rs: PythonSpec gains an internal dependency_lock field (parsed from a stored spec's `_dependency_lock` key, injected by control::tool_publish, never caller-writable) and env_source()/env_cache_key() methods; EnvStatus's build helpers (build_env/run_build_steps/EnvRegistry::start_build/resolve_env_readiness) now take an EnvSource (Lock -- `uv pip sync --require-hashes` -- or the pre-PRD Names path) instead of a bare Vec<String>; env_dir keys on the lock's own hash when present, falling back to the pre-existing requirements-name hash otherwise (Migration/compatibility: an already-built env is left untouched). New pub effective_requirements_for_publish/requirement_name/network_mode_label helpers for control.rs/deps.rs/admin.rs. `network` gains a third accepted value, `\"egress\"` (validate_spec_fields_all, network_mode) -- see hard_constraints.additional.egress_is_a_new_value_not_a_rename_of_public.",
-    "src/control.rs: tool_publish gains the whole publish-time pipeline for kind == \"python\" -- network:egress plan gate, package-policy check, classify+resolve, MCPHOST_ADVISORY_MODE=fail gate, `_dependency_lock` injection into the stored spec, and the durable tool_lock row (written once `version` is known); its response gains a `lock: {packages, hashes}` field. tool_list's response gains an `advisories` count per tool, read live from tool_lock (not the immutable spec) so a re-audit's update is visible with no republish.",
-    "src/admin.rs: dependency_reaudit() (on-demand re-audit trigger, same admin.prune_now precedent); admin.usage gains tools_by_network/tools_by_advisory_state (requirement 7/AC9), sourced from Db::list_all_tool_specs + Db::current_tool_lock_advisory_counts.",
-    "src/db.rs: store_tool_lock/list_current_tool_locks/update_tool_lock_advisories/current_tool_lock_advisory_counts(_for_tenant)/list_all_tool_specs, plus the migration wiring (Db::migrate_0029_tool_lock).",
-    "src/errors.rs: AppError::dependency_policy_denied/dependency_advisory/network_policy_denied/dependency_resolve_failed -- the first two pin the AC5/AC3 message text verbatim.",
-    "src/handler.rs: admin.dependency_reaudit Tool::new descriptor + dispatch arm.",
-    "src/main.rs: mcphost::deps::spawn_reaudit_scheduler wired alongside the other background tasks (runs executor, trigger scheduler, retention prune) at serve start.",
-    "tests/mcphost_python_dependency_policy_ac0[1-5,7-9]_*.rs (new, one per non-deferred AC), each against a real local mcphost server via tests/common (McpClient/TestServer); scripts/gen-test-suites.sh re-run to fold them into the existing tests/suite_sandbox_02.rs/03.rs binaries (every one of these tests calls sandbox::require_user_namespaces_or_ci_skip, so they route to the sandbox partition, not core).",
-    "No version bump/CHANGELOG entry in this coder dispatch -- the build instructions' own version-bump rule (patch) is handled by the orchestrator at integrate time, per this PRD's own PM/build-loop convention."
+    "migrations/0029_webhook_triggers.sql (new): triggers.hook_id (additive column, ALTER TABLE) plus its index, and a new webhook_dedupe(trigger_id, dedupe_key, created_unix) table (row-level, not run-level, idempotency -- distinct from migration 0017's event_dedupe).",
+    "src/webhooks.rs (new): the fourth trigger kind's whole business logic -- host.trigger.set(kind=\"webhook\") (generates and AES-GCM-encrypts a random secret via AppState::secrets, auto-creates the inbox_<name> state table via tenant_state.rs, shares the schedules_max quota), the shared accept_delivery path (body-size check reusing Plan.event_body_bytes_max, calls_per_day check, hmac/none/stripe verify, row-level dedupe via Db::claim_webhook_dedupe, tenant_state::state_insert, then hooks::enqueue_with_dedupe to fire), the POST /hook/{id} axum handler (empty-body error responses, unlike hooks.rs's JSON ones), and the webhook branches of host.trigger.test/replay.",
+    "src/db.rs: TriggerRow.hook_id, Db::insert_trigger gains a hook_id parameter, Db::find_trigger_by_hook_id (the route's one indexed lookup), Db::claim_webhook_dedupe (the row-level 24h claim), Db::count_schedule_triggers_for_tenant widened to kind IN ('schedule', 'webhook').",
+    "src/triggers.rs: the kind=\"webhook\" dispatch arm in set()/trigger_to_json()/admin_triggers(), delegating into webhooks.rs the same way kind=\"event\" already delegates into hooks.rs.",
+    "src/hooks.rs: host.trigger.test's and host.trigger.replay's webhook branches (replay gains an id+row_id argument pair, distinct from the existing run_id path, since a paused delivery has no run to replay from) -- both delegate into webhooks.rs, reusing the shared pub(crate) enqueue_with_dedupe/EnqueueSpec this PRD's accept path also calls.",
+    "src/http.rs: POST /hook/{id}, alongside the existing POST /hooks/{namespace}/{tool}.",
+    "src/handler.rs: host.trigger.set/list/test/replay Tool::new descriptors extended to document kind=\"webhook\" (name, a string verify enum distinct from event's object verify, row_id-based replay); no new host.* tool name added, so no live tool-count assertion needed updating.",
+    "tests/mcphost_webhook_inbox_ac0[1-9]_*.rs, ac11, ac12 (new, one per non-deferred AC), each against a real local mcphost server via tests/common (McpClient/TestServer, no new support module needed).",
+    "contracts/host-tools.v1.json regenerated (mcphost contract dump) for the widened host.trigger.* schemas -- every change is an added optional field or a required->optional relaxation, never a removal/narrowing, so api_contract::diff reports no violation either way; regenerated anyway to keep the byte-identical contract-dump test green.",
+    "scripts/gen-test-suites.sh: MAX_PER_SUITE.core 350 -> 365 (this PRD's eleven new core-classified test files) -- same recurring mechanism as every PRD-* comment block above it in that file, re-collapsing the grand total to the AC1 ceiling of 10 suite binaries.",
+    "Cargo.toml: patch version bump (0.59.4 -> 0.59.5); CHANGELOG.md: new entry."
   ],
   "non_goals": [
-    "A private package index or vendoring wheels (PRD Non-goals).",
-    "Scanning tool source for malware (PRD Non-goals).",
-    "An SSRF-filtering egress proxy for network: public/egress -- unchanged from the pre-existing kinds::python module doc's own scoped decision; no acceptance criterion in this PRD exercises that path.",
-    "AC6's live prod proof (see acceptance_criteria AC6) -- deferred, operator-provisioned, operator-authorized in the PRD's own frontmatter."
+    "Provider-specific signature schemes beyond stripe -- github's X-Hub-Signature-256 scheme is P2 requirement 9 but has no corresponding AC in this PRD's own Acceptance criteria list, so it was left out of this build's scope entirely (PRD Non-Goals: 'P2 adapters, the P0 is mcphost's own HMAC plus an unverified mode').",
+    "Outbound retries to the bound tool beyond the existing runs semantics (PRD Non-Goals) -- a webhook-fired run gets exactly the same queued/rejected/replay behavior any other trigger-fired run already has, nothing new.",
+    "Public (unauthenticated) hooks without a secret (PRD Non-Goals) -- verify=\"none\" still stores/returns a real generated secret, it simply skips checking it against the request.",
+    "P1 requirement 7 (the llms.txt \"Receive webhooks as an agent\" section and examples/webhook-inbox/proof.sh) and AC10's own live production proof -- both are outside this coder dispatch's non-deferred AC list, per its own explicit instruction to stop once AC1-9/AC11/AC12 are committed and green."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -92,42 +110,40 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "dual_lock_representation": "A resolved lock is stored in TWO places on purpose: embedded in the stored spec's own `_dependency_lock` field (what kinds::python reads at env-build time) AND in the new tool_lock DB table (the durable, re-auditable ledger host.tool_list/admin.usage/the daily re-audit read from). This is not duplication for its own sake -- PythonKind has no AppState/Db handle (the module's own pre-existing doc comment already names this exact structural gap for secrets/on_tool_published), so a DB-only design could never let Kind::call build an env from the lock; a spec-only design could never let a re-audit update advisory state without a republish (specs are immutable per version). Both are needed, each for a different reader.",
-      "damerau_not_plain_levenshtein": "requirement 3's near-name check uses restricted (optimal string alignment) Damerau-Levenshtein distance, not plain Levenshtein -- AC5's own example (`reqeusts` vs `requests`) is a single adjacent-character transposition, distance 2 under plain Levenshtein (which has no transposition operation) but 1 under Damerau-Levenshtein, matching both the AC's literal expectation and common typosquat-detection practice.",
-      "embedded_offline_advisory_db": "Neither pip-audit nor `uv pip audit` exists on the build host (confirmed: `which pip-audit` -> nothing, `uv pip audit` -> 'unrecognized subcommand'), and building real vulnerability-database infrastructure is explicitly out of scope (PRD Non-goals: no scanning infrastructure). deps::embedded_advisories is a small, hand-seeded table (urllib3==1.26.4 / GHSA-5phf-pp7p-vc2r, fixed 1.26.5 -- a real, historical advisory, not a fabricated id) standing in for requirement 2's 'offline database', overridable wholesale via $MCPHOST_ADVISORY_DB_PATH -- the same seam both a production daily refresh and this PRD's own AC8 test use.",
-      "egress_is_a_new_value_not_a_rename_of_public": "requirement 3's plan-gated `network: egress` is a THIRD accepted `network` value, added alongside the pre-existing `none`/`public`, never replacing `public`. Two already-shipped, still-green tests (tests/mcphost_uptime_probes_ac07_synthorg_task_five_completions.rs, tests/mcphost_uptime_probes_ac09_down_since_flip_sends_inbox.rs) publish `network: \"public\"` on default (free-plan) tenants and depend on it working ungated; repurposing `public` itself as the pro-gated value would have broken both. `network_mode()` treats `\"public\"` and `\"egress\"` identically at the sandbox level (both grant NetworkMode::Public) -- they differ only in who may PUBLISH them (control::tool_publish's own plan check), not in what the sandbox does at call time.",
-      "supplied_lock_detection": "requirement 5/AC7's 'lock text ... supplied as requirements' is recognized by classifying the WHOLE requirements array (every entry joined by newline) against the strict `--require-hashes` line grammar: every non-comment logical line must be `name==version` followed by one or more well-formed `--hash=sha256:<64 lowercase hex>` tokens. Any requirements array that doesn't fit that shape (the overwhelming majority -- a bare name list fails at the very first entry, no `==` or `--hash=`) falls back to being treated as plain PyPI names, so every pre-existing publish is unaffected. kinds::python::validate_requirements_all skips its own per-entry name-grammar check (requirement_is_allowed) for a classified lock -- that check would otherwise reject a `--hash=sha256:...` continuation line's own literal `\\`.",
-      "requirements_hash_seam_preserved_for_pre_existing_envs": "env-dir cache keying (PythonKind::env_dir, via PythonSpec::env_cache_key) uses the lock text's own SHA-256 when a spec has one, falling back to the pre-existing sorted-requirement-names hash otherwise -- so an env built before this PRD shipped (no `_dependency_lock` field on its stored spec) is found at the SAME path it always was and is left untouched, matching Migration/compatibility's 'existing tools keep their envs; the first republish locks them' verbatim."
+      "secret_is_host_generated_not_tenant_registered": "unlike kind=\"event\"'s verify.secret (a name resolved through secrets.rs, a tenant-managed store the tenant had to populate first via host.secret_set), a webhook trigger's secret is generated by mcphost itself (auth::generate_key(), the same 32-byte-random-hex shape host tenant keys already use) and encrypted at rest directly via AppState::secrets (the same AES-256-GCM box host.secret_set values use) -- no secrets.rs row, no secret name, returned in cleartext exactly once at host.trigger.set time and never again.",
+      "row_level_dedupe_not_run_level_dedupe": "requirement 6's idempotency is about the STORED ROW, not the run it might cause -- a paused hook still inserts a row on every otherwise-fresh delivery, so migration 0017's event_dedupe (which caches a run_id to answer a duplicate WITHOUT re-running the tool, but the event kind never stores a row to begin with) is the wrong table to reuse; webhook_dedupe (new) claims (trigger_id, X-Mcphost-Delivery-Id) before the row insert even happens, so a duplicate answers 200 with nothing new written at all, not just nothing new fired.",
+      "replay_is_row_id_addressed_not_run_id_addressed": "hooks::replay's existing run_id path assumes a run always exists to replay from -- true for event/message triggers (kind=\"event\"/\"message\" 404 outright while paused, so every stored thing there IS a run), false for webhook (paused deliveries are stored with no run at all, per requirement 4). host.trigger.replay(id, row_id) is a second argument shape on the SAME tool, not a new tool, since AC6's own wording (\"replay <row>\") names a row, and route selection is simply \"row_id present -> the webhook branch\".",
+      "body_size_limit_reuses_the_event_kind_field": "requirement 2's \"up to 256 KB body\" is numerically identical to kind=\"event\"'s existing Plan.event_body_bytes_max (256 KiB on both free and pro) -- rather than add a second, identically-valued plan field, webhooks.rs reads the same one; the field's name predates this PRD but its meaning (\"this plan's inbound-delivery body ceiling\") is not kind-specific."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can a mistyped or malicious PyPI name in a python tool's requirements become a secret-exfiltration path?",
-      "a": "kinds/python.rs:114 (pre-PRD) caps `requirements` at 20 entries and nothing else -- confirmed: grep -niE 'allowlist|denylist|index-url' python.rs found nothing -- so `uv pip install <any name>` installs whatever resolves, and a tool with `network: public` plus a `host.secret_set` secret can ship that secret to wherever the installed package's code sends it."
+      "q": "Why does an agent builder need to run and expose their own web server today just to react to a payment or a push?",
+      "a": "mcphost's only prior trigger surface with an inbound URL is kind=\"event\" (src/hooks.rs), and that URL is keyed by (namespace, tool) with a tenant-registered secret name -- there is no opaque, host-generated-secret URL, and no stored delivery row a caller could query without a tool having run at all (Grounding: 'src/triggers.rs has kind=schedule only and host.trigger.fire is manual, no inbound URL' undersells it slightly -- kind=\"event\" existed already -- but neither stores a row, which is this PRD's own goal 3: 'Deliveries are rows the agent can query and a tool call it did not have to poll for')."
     },
     {
       "why": 2,
-      "q": "Why does a typo like `reqeusts` matter more than any other wrong name?",
-      "a": "PyPI has no reservation system stopping a malicious actor from registering `reqeusts` itself, distinct from the real `requests` -- a Damerau-Levenshtein-1 typo of a top-100 package name is exactly the shape a typosquat attack takes, and it's indistinguishable from an honest fat-fingered publish without an explicit check naming the near-match."
+      "q": "Why can't kind=\"webhook\" just be kind=\"event\" with a stored row bolted on?",
+      "a": "kind=\"event\" requires the tenant to have already registered a named secret via host.secret_set before host.trigger.set, and 404s outright (not 200-and-stored) whenever the trigger is paused -- both are wrong for this PRD's own AC1 ('the response has url and secret', generated by the host, not supplied by the caller) and AC6 ('paused... 200, a row, and no run'), so kind=\"webhook\" needed its own set/accept path in a new module, reusing only the pieces that already generalize (hooks::enqueue_with_dedupe, tenant_state's row storage/quota machinery)."
     },
     {
       "why": 3,
-      "q": "Why can't the host just re-resolve requirements fresh on every env rebuild, the way it did before this PRD?",
-      "a": "A tenant's tool source never changes on its own, but the wider PyPI ecosystem does -- an unpinned `uv pip install requests` run today and the same command run next month can resolve to two different versions with two different sets of transitive dependencies, silently changing a tool's behavior (or introducing a fresh vulnerability) with no change on the tenant's side. Locking at publish time and rebuilding only ever from that lock (`uv pip sync --require-hashes`) is what makes the env reproducible."
+      "q": "Why generate the secret on the host instead of asking the tenant to host.secret_set one first, the way kind=\"event\" does?",
+      "a": "AC1's own wording -- 'the response has url and secret' -- describes a single host.trigger.set call producing both; asking the tenant to pre-register a secret would be an extra round trip the PRD's TL;DR explicitly sells against ('An agent that today needs a server ... needs none'), and a host-generated secret is strictly harder to reuse-across-services by accident than a tenant-chosen one."
     },
     {
       "why": 4,
-      "q": "Why does PythonKind need its lock stored in the stored spec's own JSON (`_dependency_lock`) rather than just querying the new tool_lock DB table directly at build time?",
-      "a": "PythonKind is constructed once at `main.rs` startup with only a data directory (`PythonKind::new(data_dir)`) -- it holds no `Arc<AppState>`/`Db` handle at all, a structural gap the module's own pre-existing doc comment already names for an analogous problem (`on_tool_published` can't resolve a tenant's secrets either, for the same reason). Since `Kind::call`'s only per-call state is the stored `spec: &Value` a caller already has via `state.db.get_tool`, embedding the lock inside that spec is the only way a cold call (or a process restart) can ever see it without changing that trait's contract."
+      "q": "Why deny AC6's paused-hook delivery a run instead of just rejecting it the way a paused kind=\"event\" trigger 404s?",
+      "a": "requirement 4's own wording -- 'pause stores without firing' -- and AC6's own wording -- 'paused, ... 200, a row, and no run' -- both describe acceptance without execution, not refusal; goal/user-story 3 explicitly wants a pause to keep collecting deliveries an agent can later choose to replay, which only works if they are stored."
     },
     {
       "why": 5,
-      "q": "Why keep a SEPARATE tool_lock DB table at all, if the spec already carries the lock?",
-      "a": "A spec's own JSON is immutable once published (tool_versions' own per-version design, from PRD-mcphost-tool-versions) -- if the daily re-audit (requirement 6/AC8) could only ever update the stored spec, it would have to fabricate a new tool version just to record a newly-discovered advisory, which is not a republish and must not look like one. tool_lock's advisories_json/audited_unix columns are mutable specifically so a re-audit can update them in place, independent of the spec's own immutability."
+      "q": "Why is the row-level dedupe a brand new table (webhook_dedupe) instead of reusing event_dedupe's existing (trigger_id, dedupe_key) -> run_id shape?",
+      "a": "event_dedupe's whole contract is 'answer a duplicate with the FIRST RUN'S id' -- it has nothing to say about a delivery that was accepted but never fired at all (the paused case), and reusing its run_id column to hold something else (a row id, or nothing) would silently break enqueue_with_dedupe's own event-kind callers, which still expect that column to be a real run id. A second table with the identical claim shape (same 24h window constant, same single-with_conn-call atomicity) costs one migration and keeps both kinds' own invariants intact."
     }
   ],
-  "created_at": "2026-09-22T23:12:00Z",
+  "created_at": "2026-09-22T21:42:24Z",
   "ambiguities_resolved": [
     {
       "question": "The findings file records the reference Python client seeing well-formed ttlMs/cacheScope on an unauthenticated tools/list, which the code says is impossible. Which is right?",
@@ -198,8 +214,8 @@
       "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence: no reviewer block yet, but the same staleness would recur if left byte-for-byte. root_motivation/scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional were rewritten from this PRD's own Problem statement, Goals, Requirements, Non-goals, and Technical considerations sections; acceptance_criteria's nine entries point at the real tests/mcphost_tool_versions_ac0[1-5,7-9]_*.rs files (AC1-5, AC7-9 exist, compile, and pass; AC6 is Live/operator-provisioned, deferred, same convention as every prior PRD's own Live AC in this card's history -- not built in this coder dispatch since the dispatch's own non-deferred AC list omits it entirely). agent/test-map.json's ac_test_map was repointed to this PRD and the prior uptimeprobes mapping preserved under ac_test_map_by_prefix (newly archived there) rather than deleted. On the three build-time decisions: (1) migration 0028's tool_versions table stores one `spec` TEXT column (the tool's whole JSON spec, exactly like `tools.spec` already does) plus `kind`, rather than inventing a source/config/requirements split this codebase has no other precedent for -- source_sha256 hashes that same canonical spec JSON, kind-agnostically. (2) resolved by treating `version` as a reserved key inside the cross-tenant call's own wire arguments object (stripped before schema validation/dispatch), the same shape `tenant_key` already uses for an analogous problem in this exact call path (see five_whys_trace above); `host.tool_call`'s own RPC params (which DO have a name/args/async sibling shape) get a real sibling `version` parameter instead, since that path has room for one. (3) scoped to cross-tenant calls only (`caller.is_some()` in `call_published_tool`), per requirement 6's own 'a shared tool's unpinned caller' wording -- an owner's own unpinned `host.tool_call` after its own rollback never gets a `version_changed` note, since `host.tool_call` only ever resolves the caller's OWN tools (there is no `caller` tenant distinct from the tool's owner on that path at all)."
     },
     {
-      "question": "This card is now regenerated for PRD-mcphost-python-dependency-policy, an entirely different feature (requirement hash-locking, advisory checking, package/network policy for the python kind) from PRD-mcphost-tool-versions (immutable tool versions/rollback/diff) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught by reviewer-agent repeatedly in this card's own history if left byte-for-byte. The PRD's own Open Questions table left two decisions to the builder ('at build', owner Joe): 'Fail vs warn on advisories with no fix available (assumed: warn)' and 'Initial denylist contents'. Several further build-time gaps had no PRD text to settle them directly: (1) PythonKind (src/kinds/python.rs) is constructed with no AppState/Db handle at all, yet requirement 1 needs an env build to read back a lock stored at publish time; (2) neither pip-audit nor a `uv pip audit` subcommand exists on the build host, so requirement 2's 'offline database' needed a concrete implementation; (3) AC5's own literal example (`reqeusts` vs `requests`) is a transposition scoring 2 under plain Levenshtein distance, which would fail to catch it under a naive reading of 'Levenshtein-1'; (4) requirement 3's plan-gated `network: egress` had to coexist with two already-shipped, still-green tests that publish `network: \"public\"` on free-plan tenants; (5) requirement 5/AC7's 'a lock text ... supplied as requirements' needed a concrete detection rule that doesn't collide with the pre-existing per-entry requirement-name validation; (6) this PRD's own required test-file naming convention (`mcphost-python-dependency-policy_ac<NN>_*.rs`, hyphenated to match the PRD slug) does not compile under this repo's test-suite-consolidation generator (scripts/gen-test-suites.sh emits `#[path] mod <stem>;`, and a Rust module path cannot contain a hyphen) -- caught immediately by a real `cargo check` failure, not a paper-trail issue.",
-      "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence: no reviewer block yet, but the same staleness would recur if left byte-for-byte. root_motivation/scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional were rewritten from this PRD's own Problem statement, Goals, User stories, Requirements, Non-goals, and Technical considerations sections; acceptance_criteria's nine entries point at the real tests/mcphost_python_dependency_policy_ac0[1-5,7-9]_*.rs files (AC1-5, AC7-9 exist, compile, and pass; AC6 is deferred, operator-provisioned, and already pre-authorized in the PRD's own frontmatter -- not built in this coder dispatch since the dispatch's own non-deferred AC list omits it entirely). agent/test-map.json's ac_test_map was repointed to this PRD and the prior toolversions mapping preserved under ac_test_map_by_prefix (newly archived there) rather than deleted. On the PRD's own two open questions: advisory mode defaults to 'warn' (a known advisory with no fix, or any advisory under the default mode, is recorded but does not fail publish) exactly as the PRD's own assumption states, env-overridable via MCPHOST_ADVISORY_MODE=fail; the initial denylist (deps::DEFAULT_DENYLIST) is a short, explicitly-labelled-as-builder's-own-choice seed list, operator-overridable wholesale via MCPHOST_PKG_DENY, matching the PRD's own framing of this as an open question with no canonical answer. On the six further build-time decisions: (1)-(6) are each documented in hard_constraints.additional above (dual_lock_representation, embedded_offline_advisory_db, damerau_not_plain_levenshtein, egress_is_a_new_value_not_a_rename_of_public, supplied_lock_detection) except (6), which has no code-behavior implication and is recorded only here: every tests/mcphost-python-dependency-policy_ac*.rs file was renamed to tests/mcphost_python_dependency_policy_ac*.rs (underscores, matching this repo's own real convention for every other hyphenated PRD slug it already has tests for, e.g. mcphost_uptime_probes_ac09_*.rs for PRD-mcphost-uptime-probes) before scripts/gen-test-suites.sh was re-run -- a real `cargo check --tests` failure (`error: expected one of ';' or '{', found '-'`) surfaced this immediately, it was not silently worked around."
+      "question": "This card is now regenerated for PRD-mcphost-webhook-inbox, an entirely different feature (a fourth trigger kind with an opaque host-generated-secret URL and a stored inbox row) from PRD-mcphost-tool-versions (immutable publish versions/rollback/diff) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught by reviewer-agent repeatedly in this card's own history if left byte-for-byte. Three build-time decisions had no PRD text to settle them directly: (1) whether a webhook trigger's secret should follow kind=\"event\"'s existing pattern (a tenant-registered secrets.rs name) or be host-generated, given AC1's own wording ('the response has url and secret'); (2) how host.trigger.replay should address a webhook delivery, given requirement 4/AC6 ('paused... a row, and no run') means a paused delivery has no run_id the existing replay(run_id) tool could possibly name; (3) whether the row-level idempotency of requirement 6/AC7 could reuse migration 0017's existing event_dedupe table.",
+      "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence: no reviewer block yet, but the same staleness would recur if left byte-for-byte. root_motivation/scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional were rewritten from this PRD's own Problem statement, Goals, User stories, Requirements, Non-Goals, and Technical considerations sections; acceptance_criteria's twelve entries point at the real tests/mcphost_webhook_inbox_ac0[1-9]_*.rs / ac11 / ac12 files (AC1-9, AC11-12 exist, compile, and pass; AC10 is Live/operator-provisioned, deferred, same convention as every prior PRD's own Live AC in this card's history -- not built in this coder dispatch since the dispatch's own non-deferred AC list omits it entirely, and P1 requirement 7's llms.txt section/proof.sh it depends on were left unbuilt for the same reason). agent/test-map.json's ac_test_map was repointed to this PRD and the prior toolversions mapping preserved under ac_test_map_by_prefix (newly archived there) rather than deleted. On the three build-time decisions: (1) the secret is host-generated (auth::generate_key(), AES-GCM-encrypted via AppState::secrets directly, no secrets.rs row) rather than tenant-registered, matching AC1's own 'the response has url and secret' -- a single call producing both, no pre-registration round trip. (2) host.trigger.replay gained a second, row_id-addressed argument shape (id + row_id) alongside its existing run_id shape, rather than a new tool, since AC6's own wording ('replay <row>') names a row and the existing run_id path structurally cannot apply to something that was never run. (3) a new webhook_dedupe table (same claim shape as event_dedupe, same 24h window) rather than reusing event_dedupe, since that table's whole contract is 'return the first RUN's id', which has nothing sensible to return for a paused, never-fired delivery -- see hard_constraints.additional.row_level_dedupe_not_run_level_dedupe above for the full reasoning."
     }
   ]
 }

@@ -51,6 +51,7 @@ const MIGRATION_0027: &str = include_str!("../migrations/0027_mesh_ops.sql");
 const MIGRATION_0028: &str = include_str!("../migrations/0028_tool_versions.sql");
 const MIGRATION_0029: &str = include_str!("../migrations/0029_agent_channels.sql");
 const MIGRATION_0030: &str = include_str!("../migrations/0030_tool_lock.sql");
+const MIGRATION_0031: &str = include_str!("../migrations/0031_webhook_triggers.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -631,10 +632,13 @@ pub struct TriggerRow {
     pub next_unix: Option<i64>,
     pub last_run_id: Option<String>,
     pub last_fired_unix: Option<i64>,
+    /// PRD-mcphost-webhook-inbox migration 0030: the opaque `POST
+    /// /hook/<hook_id>` path segment -- `Some` only for `kind = "webhook"`.
+    pub hook_id: Option<String>,
 }
 
 const TRIGGER_COLUMNS: &str = "id, tenant_id, tool_name, kind, config_json, enabled, \
-    created_unix, next_unix, last_run_id, last_fired_unix";
+    created_unix, next_unix, last_run_id, last_fired_unix, hook_id";
 
 fn trigger_row_from_row(r: &Row) -> rusqlite::Result<TriggerRow> {
     Ok(TriggerRow {
@@ -648,6 +652,7 @@ fn trigger_row_from_row(r: &Row) -> rusqlite::Result<TriggerRow> {
         next_unix: r.get(7)?,
         last_run_id: r.get(8)?,
         last_fired_unix: r.get(9)?,
+        hook_id: r.get(10)?,
     })
 }
 
@@ -1129,7 +1134,8 @@ impl Db {
         Self::migrate_0027_mesh_ops(&conn)?;
         Self::migrate_0028_tool_versions(&conn)?;
         Self::migrate_0029_agent_channels(&conn)?;
-        Self::migrate_0030_tool_lock(&conn)
+        Self::migrate_0030_tool_lock(&conn)?;
+        Self::migrate_0031_webhook_triggers(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -1570,6 +1576,18 @@ impl Db {
             .exists([])?;
         if !has_table {
             conn.execute_batch(MIGRATION_0030)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-webhook-inbox migration 0031 (requirements 1-6): same
+    /// idempotency pattern as 0002-0030, gated on `triggers.hook_id`.
+    fn migrate_0031_webhook_triggers(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('triggers') WHERE name = 'hook_id'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0031)?;
         }
         Ok(())
     }
@@ -5500,6 +5518,7 @@ impl Db {
     /// `trigger_invalid` naming `schedule` (the config, not the id, is what
     /// collided).
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub async fn insert_trigger(
         &self,
         id: String,
@@ -5509,15 +5528,76 @@ impl Db {
         config_json: String,
         config_hash: String,
         next_unix: Option<i64>,
+        hook_id: Option<String>,
     ) -> Result<(), AppError> {
         let now = now_unix();
         self.with_conn(move |conn| {
             conn.execute(
                 "INSERT INTO triggers (id, tenant_id, tool_name, kind, config_json, config_hash, \
-                 enabled, created_unix, next_unix) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8)",
-                params![id, tenant_id, tool_name, kind, config_json, config_hash, now, next_unix],
+                 enabled, created_unix, next_unix, hook_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8, ?9)",
+                params![id, tenant_id, tool_name, kind, config_json, config_hash, now, next_unix, hook_id],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-webhook-inbox requirement 2: the unauthenticated `POST
+    /// /hook/<hook_id>` route's own lookup -- `idx_triggers_hook_id`
+    /// (migration 0030) backs this with one indexed lookup rather than a
+    /// per-tenant scan, since the route has no tenant to scope by yet (the
+    /// opaque id IS how the tenant is found).
+    pub async fn find_trigger_by_hook_id(
+        &self,
+        hook_id: String,
+    ) -> Result<Option<TriggerRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                &format!("SELECT {TRIGGER_COLUMNS} FROM triggers WHERE hook_id = ?1"),
+                params![hook_id],
+                trigger_row_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-webhook-inbox requirement 6 / AC7: claims
+    /// `(trigger_id, dedupe_key)` in `webhook_dedupe` (migration 0030) --
+    /// `true` on a fresh claim (the caller should insert the delivery row
+    /// and fire), `false` if already claimed within the last 24h (the
+    /// caller must answer 200 without inserting or firing again). Same
+    /// read-then-conditionally-insert-or-replace shape and single
+    /// `with_conn` atomicity as [`Self::claim_event_dedupe`] -- SQLite's
+    /// single-writer mutex already serializes concurrent callers, and a
+    /// claim older than the window is overwritten rather than blocked
+    /// forever, matching requirement 6's own "within 24h" wording.
+    pub async fn claim_webhook_dedupe(
+        &self,
+        trigger_id: String,
+        dedupe_key: String,
+    ) -> Result<bool, AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            let existing: Option<i64> = conn
+                .query_row(
+                    "SELECT created_unix FROM webhook_dedupe WHERE trigger_id = ?1 AND dedupe_key = ?2",
+                    params![trigger_id, dedupe_key],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if let Some(created_unix) = existing
+                && now - created_unix < EVENT_DEDUPE_WINDOW_S
+            {
+                return Ok(false);
+            }
+            conn.execute(
+                "INSERT OR REPLACE INTO webhook_dedupe (trigger_id, dedupe_key, created_unix) \
+                 VALUES (?1, ?2, ?3)",
+                params![trigger_id, dedupe_key, now],
+            )?;
+            Ok(true)
         })
         .await
     }
@@ -5571,10 +5651,17 @@ impl Db {
     /// triggers this tenant holds right now, paused or not -- only
     /// `host.trigger.remove` frees a slot (pausing doesn't), so a paused
     /// trigger still counts.
+    /// PRD-mcphost-webhook-inbox requirement 5: widened to `kind IN
+    /// ('schedule', 'webhook')` -- a webhook trigger shares this same
+    /// `schedules_max` ceiling rather than a `webhook_triggers_max` of its
+    /// own (the PRD's own wording: "webhooks share the existing
+    /// schedules=3 quota"), the same "one shared ceiling, no new plan
+    /// field" choice `count_event_triggers_for_tenant`'s own doc comment
+    /// already made for message triggers joining event triggers.
     pub async fn count_schedule_triggers_for_tenant(&self, tenant_id: i64) -> Result<i64, AppError> {
         self.with_conn(move |conn| {
             conn.query_row(
-                "SELECT COUNT(*) FROM triggers WHERE tenant_id = ?1 AND kind = 'schedule'",
+                "SELECT COUNT(*) FROM triggers WHERE tenant_id = ?1 AND kind IN ('schedule', 'webhook')",
                 params![tenant_id],
                 |r| r.get(0),
             )

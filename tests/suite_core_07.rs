@@ -388,6 +388,28 @@ mod mcphost_tool_versions_ac09_diff_returns_unified_diff;
 mod mcphost_uptime_probes_ac01_llms_txt_section;
 #[path = "mcphost_uptime_probes_ac08_live_test_skipped_without_env.rs"]
 mod mcphost_uptime_probes_ac08_live_test_skipped_without_env;
+#[path = "mcphost_webhook_inbox_ac01_set_returns_url_and_secret_get_omits_secret.rs"]
+mod mcphost_webhook_inbox_ac01_set_returns_url_and_secret_get_omits_secret;
+#[path = "mcphost_webhook_inbox_ac02_signed_post_stores_row_and_fires_run.rs"]
+mod mcphost_webhook_inbox_ac02_signed_post_stores_row_and_fires_run;
+#[path = "mcphost_webhook_inbox_ac03_unsigned_or_wrong_signature_401_no_row.rs"]
+mod mcphost_webhook_inbox_ac03_unsigned_or_wrong_signature_401_no_row;
+#[path = "mcphost_webhook_inbox_ac04_unknown_id_404_empty_body.rs"]
+mod mcphost_webhook_inbox_ac04_unknown_id_404_empty_body;
+#[path = "mcphost_webhook_inbox_ac05_oversized_body_413_no_row.rs"]
+mod mcphost_webhook_inbox_ac05_oversized_body_413_no_row;
+#[path = "mcphost_webhook_inbox_ac06_paused_stores_no_run_replay_fires_once.rs"]
+mod mcphost_webhook_inbox_ac06_paused_stores_no_run_replay_fires_once;
+#[path = "mcphost_webhook_inbox_ac07_repeated_delivery_id_dedupes_row.rs"]
+mod mcphost_webhook_inbox_ac07_repeated_delivery_id_dedupes_row;
+#[path = "mcphost_webhook_inbox_ac08_free_tenant_three_schedules_webhook_refused.rs"]
+mod mcphost_webhook_inbox_ac08_free_tenant_three_schedules_webhook_refused;
+#[path = "mcphost_webhook_inbox_ac09_concurrent_deliveries_all_land.rs"]
+mod mcphost_webhook_inbox_ac09_concurrent_deliveries_all_land;
+#[path = "mcphost_webhook_inbox_ac11_trigger_test_stores_and_fires_synthetic_delivery.rs"]
+mod mcphost_webhook_inbox_ac11_trigger_test_stores_and_fires_synthetic_delivery;
+#[path = "mcphost_webhook_inbox_ac12_stripe_verify_scheme_accepted.rs"]
+mod mcphost_webhook_inbox_ac12_stripe_verify_scheme_accepted;
 #[path = "meshops_ac01_stats_real_vs_synthetic_volume.rs"]
 mod meshops_ac01_stats_real_vs_synthetic_volume;
 #[path = "meshops_ac02_threads_no_bodies.rs"]

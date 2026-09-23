@@ -186,6 +186,9 @@ async fn trigger_to_json(state: &AppState, tenant: &Tenant, row: TriggerRow) -> 
     if row.kind == "message" {
         return trigger_to_json_message(state, tenant, &row).await;
     }
+    if row.kind == "webhook" {
+        return crate::webhooks::trigger_to_json_webhook(state, tenant, &row).await;
+    }
     let last_status = match &row.last_run_id {
         Some(run_id) => state
             .db
@@ -235,11 +238,16 @@ pub async fn set(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Valu
         // HTTP- or delivery-specific, only the same generic trigger CRUD
         // `set_schedule` above already has on hand).
         "message" => set_message_trigger(state, tenant, &tool, args).await,
+        // PRD-mcphost-webhook-inbox P0 requirement 1: the fourth trigger
+        // kind -- own config/quota/URL-building lives in `webhooks.rs`
+        // (that module also owns `POST /hook/...`), same split `hooks.rs`'s
+        // `set_event_trigger` already established for `kind = "event"`.
+        "webhook" => crate::webhooks::set_webhook_trigger(state, tenant, &tool, args).await,
         other => Err(trigger_invalid(
             "kind",
             format!(
-                "kind: '{other}' is not supported yet -- only \"schedule\", \"event\" and \
-                 \"message\" work in this version"
+                "kind: '{other}' is not supported yet -- only \"schedule\", \"event\", \"message\" \
+                 and \"webhook\" work in this version"
             ),
         )),
     }
@@ -310,6 +318,7 @@ async fn set_message_trigger(
             "message".to_string(),
             config_json,
             hash,
+            None,
             None,
         )
         .await
@@ -453,6 +462,7 @@ async fn set_schedule(
             config_json,
             hash,
             Some(next1),
+            None,
         )
         .await
         .map_err(|_| {
@@ -614,6 +624,14 @@ pub async fn admin_triggers(state: &AppState, args: &Value) -> Result<Value, App
                 json!({"verify": config.get("verify").cloned().unwrap_or(Value::Null)})
             } else if row.kind == "message" {
                 json!({"from": parse_message_trigger_from(&row.config_json)})
+            } else if row.kind == "webhook" {
+                // Same "no plaintext secret in an admin listing" posture as
+                // the event branch above -- `name`/`verify` only.
+                let config: Value = serde_json::from_str(&row.config_json).unwrap_or_else(|_| json!({}));
+                json!({
+                    "name": config.get("name").cloned().unwrap_or(Value::Null),
+                    "verify": config.get("verify").cloned().unwrap_or(Value::Null),
+                })
             } else {
                 let (schedule, _args, tz) = parse_stored_config(&row.config_json);
                 json!({"schedule": schedule, "tz": tz})
