@@ -1,5 +1,7 @@
 //! Business logic for the `admin.*` tools, visible only to `$MCPHOST_ADMIN_KEY`.
 
+use std::collections::HashMap;
+
 use serde_json::{Value, json};
 
 use crate::db::TenantDeleteCounts;
@@ -336,6 +338,33 @@ pub async fn usage(state: &AppState, args: &Value) -> Result<Value, AppError> {
         .db
         .count_runs_by_tool_since(crate::export::EXPORT_TOOL_NAME.to_string(), today_start)
         .await?;
+    // PRD-mcphost-python-dependency-policy requirement 7 (AC9): a
+    // host-wide, unwindowed snapshot -- every currently-published python
+    // tool counted by its own network mode, and separately by whether its
+    // current lock carries any live advisory (from `tool_lock`, so a
+    // re-audit's update is reflected with no republish -- same reasoning
+    // as `control::tool_list`'s own `advisories` field).
+    let all_tools = state.db.list_all_tool_specs().await?;
+    let advisory_counts = state.db.current_tool_lock_advisory_counts().await?;
+    let mut tools_by_network: HashMap<String, i64> = HashMap::new();
+    let mut advisory_clean = 0i64;
+    let mut advisory_flagged = 0i64;
+    for (tenant_id, name, kind, spec) in &all_tools {
+        if kind != "python" {
+            continue;
+        }
+        let network = crate::kinds::python::network_mode_label(spec).unwrap_or_else(|| "none".to_string());
+        *tools_by_network.entry(network).or_insert(0) += 1;
+        let advisories = advisory_counts.get(&(*tenant_id, name.clone())).copied().unwrap_or(0);
+        if advisories > 0 {
+            advisory_flagged += 1;
+        } else {
+            advisory_clean += 1;
+        }
+    }
+    let tools_by_network: serde_json::Map<String, Value> =
+        tools_by_network.into_iter().map(|(k, v)| (k, json!(v))).collect();
+
     Ok(json!({
         "window": window,
         "usage": usage,
@@ -344,7 +373,17 @@ pub async fn usage(state: &AppState, args: &Value) -> Result<Value, AppError> {
         "rows_by_table": rows_by_table,
         "last_prune": last_prune,
         "exports_today": exports_today,
+        "tools_by_network": tools_by_network,
+        "tools_by_advisory_state": {"clean": advisory_clean, "advisory": advisory_flagged},
     }))
+}
+
+/// PRD-mcphost-python-dependency-policy requirement 6 (AC8): run one
+/// dependency re-audit cycle immediately (the same cycle the daily
+/// scheduler runs) and return its summary -- same on-demand-trigger shape
+/// as [`prune_now`] below.
+pub async fn dependency_reaudit(state: &AppState) -> Result<Value, AppError> {
+    crate::deps::reaudit_once(state).await
 }
 
 /// P2 requirement 7 (AC10): run one retention-prune cycle on demand and

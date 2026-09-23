@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tool-versions.md",
-  "intent_slug": "mcphost-tool-versions",
-  "root_motivation": "An agent iterating on its own tools (visions/mcp-host.md addendum 2026-09-18, leaf 3) publishes, calls, fixes, and republishes -- today a republish overwrites the previous source outright (kinds/python.rs:41's on_tool_changed rebuilds the env and discards it, no version_history/tool_version concept anywhere in src), so a worse fix leaves the agent nothing to go back to, and a sharer of that tool (src/sharing.rs) sees the change with no warning and no way to pin. This PRD makes every publish an immutable, numbered version kept per plan, host.tool_rollback restores one in a single call, and a caller may pin a shared tool to a version so the owner's own iteration doesn't break it out from under them.",
-  "user_persona": "Three (PRD User stories): (1) the owner calls host.tool_rollback {name, version: 3} to make version 3 current again after a bad republish; (2) the owner calls host.tool_history {name} to see every version with its timestamp and source hash before deciding what to roll back to; (3) a sharer pins {name, version: 3} on a cross-tenant call and keeps working unaffected while the owner iterates, with an unpinned sharer instead getting a one-time version_changed note in its result envelope.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-python-dependency-policy.md",
+  "intent_slug": "mcphost-python-dependency-policy",
+  "root_motivation": "A python tool declares up to twenty PyPI names and the host installs whatever resolves today (kinds/python.rs:114 caps count only; grep -niE 'allowlist|denylist|index-url' python.rs finds nothing), so a typo-squatted name with network access and a stored secret (host.secret_set, a 23-tool registry) is an exfiltration path through one package, and a tool whose transitive dependency changes upstream stops working on the next env rebuild with no change on the tenant's side (visions/mcp-host.md addendum 2026-09-18, leaf 5). This PRD resolves requirements to a hash-locked env at publish, runs an advisory check against a known-vulnerability database, applies a per-plan package/network policy, and rebuilds envs from the lock -- never from names -- so a publish that would fail later fails now with a reason.",
+  "user_persona": "Four (PRD User stories): (1) an agent publishing a python tool sees host.tool_publish return lock: {packages: 7, hashes: true} and its tool runs the same next month; (2) an agent with a vulnerable pin sees publish fail with the advisory id and the fixed version; (3) the operator relies on free tools running network: none by default, with pro tenants opting into egress explicitly; (4) an agent calling host.tool_test sees the resolved lock and the advisory result alongside the rest of a dry run.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,75 +14,76 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a tool published twice, When host.tool_history is called, Then two versions are listed, version 2 current, with distinct source_sha256.",
-      "test": "tests/mcphost_tool_versions_ac01_publish_twice_lists_two_versions.rs"
+      "description": "Given `requirements: [\"requests\"]`, When published, Then a lock with hashes is stored and the env is built with `--require-hashes`.",
+      "test": "tests/mcphost_python_dependency_policy_ac01_lock_stored_and_require_hashes.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given version 2 current, When host.tool_rollback {version: 1} is called, Then the next host.tool_call runs version 1's source.",
-      "test": "tests/mcphost_tool_versions_ac02_rollback_runs_old_source.rs"
+      "description": "Given a stored lock, When the env is rebuilt a day later with a newer upstream release available, Then the resolved versions equal the lock.",
+      "test": "tests/mcphost_python_dependency_policy_ac02_rebuild_matches_lock.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a free tenant with 5 versions, When a sixth is published, Then version 1 is deleted and versions 2-6 remain.",
-      "test": "tests/mcphost_tool_versions_ac03_free_plan_retains_five_versions.rs"
+      "description": "Given a requirement pinned to a version with a known advisory and a fix, When published with `MCPHOST_ADVISORY_MODE=fail`, Then publish fails naming the advisory and the fixed version.",
+      "test": "tests/mcphost_python_dependency_policy_ac03_advisory_fails_publish.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given host.tool_rollback {version: 9} for a tool with 2 versions, When called, Then an argument error names the valid range.",
-      "test": "tests/mcphost_tool_versions_ac04_rollback_unknown_version_names_range.rs"
+      "description": "Given a `free` tenant, When a python tool is published without `network`, Then it runs with `network: none` and an outbound connect from it fails.",
+      "test": "tests/mcphost_python_dependency_policy_ac04_free_tenant_network_none_default.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a shared tool at version 3 and a caller pinning version: 2, When the owner publishes version 4, Then the pinned call still runs version 2.",
-      "test": "tests/mcphost_tool_versions_ac05_pinned_caller_survives_republish.rs"
+      "description": "Given `reqeusts` in requirements, When published, Then it fails with `dependency_policy: denied (near-name of requests)`.",
+      "test": "tests/mcphost_python_dependency_policy_ac05_near_name_denied.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given prod after ship, When homeward's tool is republished and rolled back once during the build's live check, Then host.tool_history on prod shows both versions (proof: the live call output in the trailer).",
-      "test": "deferred -- operator-provisioned; a real run against production https://mcphost.dev/mcp needs homeward's own operator-held bearer key (MCPHOST_HOMEWARD_KEY/MCPHOST_HOMEWARD_TOOL) and network egress this build does not have, and prod does not serve host.tool_history/host.tool_rollback until this branch ships. Per the PRD's own mock_justifications, the live check is written and ready for the operator's post-ship run at tests/mcphost_tool_versions_ac06_live_rollback_trailer.rs (gated on MCPHOST_LIVE=1) -- same convention as PRD-mcphost-uptime-probes/PRD-mcphost-team-memory's own AC6/AC8, not built in this coder dispatch since AC6 is outside this build's non-deferred AC list."
+      "description": "Given prod after ship, When the synthetic panel's python tasks run, Then first-try publish rate for python tools is unchanged within the seed noise floor (proof: the next measure row in the trailer).",
+      "test": "deferred -- operator-provisioned: AC6's own Given is prod after ship and its proof is the next synthetic-panel measure row in the trailer, which no pre-land worktree can produce. Per the PRD's own frontmatter (deferred_acs: [6], Operator-authorization 2026-09-22 23:05Z Joe via Claude, verbatim \"defer AC6 to the post-ship measure row\"), this build lands AC1-5/7-9 paired and defers AC6 with that reason; the operator pairs AC6 from the first post-deploy measure row. The code path AC6 would exercise is not a mock -- it is the same publish pipeline AC1-5/7-9 already run through end to end."
     },
     {
       "id": "AC7",
       "level": "SHOULD",
-      "description": "Given an unpinned sharer, When the owner rolls back, Then the sharer's next result carries version_changed once and not on the following call.",
-      "test": "tests/mcphost_tool_versions_ac07_sharer_sees_version_changed_once.rs"
+      "description": "Given a lock text with hashes supplied as `requirements`, When published, Then the host validates and stores it without re-resolving.",
+      "test": "tests/mcphost_python_dependency_policy_ac07_supplied_lock_stored_without_reresolving.rs"
     },
     {
       "id": "AC8",
       "level": "SHOULD",
-      "description": "Given host.tool_remove, When called, Then all versions are gone and host.tool_history returns not-found.",
-      "test": "tests/mcphost_tool_versions_ac08_remove_clears_all_versions.rs"
+      "description": "Given a new advisory for a stored lock, When the daily re-audit runs, Then `host.tool_list` shows `advisories: 1` for that tool and the tool still runs.",
+      "test": "tests/mcphost_python_dependency_policy_ac08_reaudit_flags_new_advisory.rs"
     },
     {
       "id": "AC9",
       "level": "MAY",
-      "description": "Given two versions, When host.tool_diff is called, Then a unified diff is returned.",
-      "test": "tests/mcphost_tool_versions_ac09_diff_returns_unified_diff.rs"
+      "description": "Given `admin.usage`, When read, Then tools are counted by network mode and advisory state.",
+      "test": "tests/mcphost_python_dependency_policy_ac09_admin_usage_counts_network_and_advisories.rs"
     }
   ],
   "scope": [
-    "migrations/0028_tool_versions.sql (new): tool_versions(tenant_id, name, version, kind, spec, created_at, created_unix, source_sha256) UNIQUE(tenant_id, name, version), tools.current_version (default 1), and tool_version_watermarks(tenant_id, name, caller_tenant_id, last_version) for the AC7 sharer note -- backfills every pre-existing tools row as its own version 1 with a real SHA-256 over its spec (Db::migrate_0028_tool_versions/backfill_tool_versions_sync).",
-    "src/db.rs: Db::upsert_tool now takes a plan's versions_max, inserts a new tool_versions row (version = MAX(version)+1, never reused even across a rollback), advances tools.current_version, and prunes the oldest surviving rows beyond versions_max. New list_tool_versions/get_tool_version/tool_version_range/rollback_tool_version (RollbackOutcome)/check_version_watermark; remove_tool now cascades the delete to tool_versions and the watermark table.",
-    "src/control.rs: host.tool_history/host.tool_rollback/host.tool_diff (new), tool_publish's response gains a version field, tool_publish now fetches the tenant's plan unconditionally (needed for versions_max regardless of the tools_max branch).",
-    "src/handler.rs: call_published_tool/call_shared_tool gain an Option<i64> version parameter -- a version-pinned call dispatches against tool_versions' own stored kind/spec instead of the tools row's (which always mirrors CURRENT); host.tool_call accepts version as a sibling of name/args; a cross-tenant <owner_ns>.<name> call reserves version as a key inside the wire call-args object (stripped before schema validation, same shape tenant_key already uses); an unpinned cross-tenant success result gets a one-time version_changed note via Db::check_version_watermark. Three new Tool::new descriptors (host.tool_history/tool_rollback/tool_diff) and a version property on host.tool_call's schema.",
-    "src/plans.rs: Plan.versions_max (free 5, pro 20), tolerant-parsed (defaults to 5) for a plans.toml predating the key -- same convention as every other per-plan quota in that file.",
-    "src/errors.rs: AppError::VersionNotFound {requested, min, max} (wire code args_invalid, AC4's 'names the valid range').",
-    "src/difftext.rs (new): a small hand-rolled unified_diff (LCS line diff, --- /+++/@@ output) for host.tool_diff -- no new crate dependency, same 'hand-roll when it's this small' call this crate already makes for plans.toml's TOML writer and state.rs's RFC 3339 math.",
-    "tests/mcphost_tool_versions_ac0[1-5,7-9]_*.rs (new, one per non-deferred AC), each against a real local mcphost server via tests/common (McpClient/TestServer, no new support module needed).",
-    "www/llms.txt, contracts/host-tools.v1.json regenerated (mcphost llms-txt / mcphost contract dump) for the three new host.* tools; five pre-existing tests hardcoding the live host.* tool count (ac01_unauthenticated_lists_signup, compat_ac01_ac02_ac03/ac04_ac05/ac11_ac12, sessionkey_ac02_ac03) updated from 81/77 to 84/80.",
-    "scripts/gen-test-suites.sh: MAX_PER_SUITE.core 342 -> 350 (this PRD's eight new core-classified test files, one at a time as each AC's own commit added its file) -- same recurring mechanism as every PRD-* comment block above it in that file, re-collapsing the grand total to the AC1 ceiling of 10 suite binaries.",
-    "Cargo.toml: patch version bump (0.59.3 -> 0.59.4); CHANGELOG.md: new entry."
+    "migrations/0029_tool_lock.sql (new): tool_lock(tenant_id, name, version, lock_text, resolved_unix, advisories_json, audited_unix) PRIMARY KEY(tenant_id, name, version) -- one durable row per published python-tool version's resolved lock, mirroring tool_versions' own per-version shape; advisories_json/audited_unix are the only columns a later re-audit ever updates in place, with no republish.",
+    "src/deps.rs (new): the whole dependency-policy engine -- classify() (requirement 5/AC7: recognizes a caller-supplied --require-hashes lock vs a plain name list), resolve()/resolve_names() (requirement 1: shells out to `uv pip compile --generate-hashes`, same bare-subprocess convention kinds::python::run_build_steps already uses for `uv venv`/`uv pip install`), check_package_policy() (requirement 3/AC5: denylist + Damerau-Levenshtein-1-of-top-100 near-name check), check_advisories()/embedded_advisories()/advisory_db() (requirement 2/AC3: an offline, $MCPHOST_ADVISORY_DB_PATH-overridable advisory table), and reaudit_once()/spawn_reaudit_scheduler() (requirement 6/AC8: the daily re-audit and its on-demand admin.dependency_reaudit trigger).",
+    "src/kinds/python.rs: PythonSpec gains an internal dependency_lock field (parsed from a stored spec's `_dependency_lock` key, injected by control::tool_publish, never caller-writable) and env_source()/env_cache_key() methods; EnvStatus's build helpers (build_env/run_build_steps/EnvRegistry::start_build/resolve_env_readiness) now take an EnvSource (Lock -- `uv pip sync --require-hashes` -- or the pre-PRD Names path) instead of a bare Vec<String>; env_dir keys on the lock's own hash when present, falling back to the pre-existing requirements-name hash otherwise (Migration/compatibility: an already-built env is left untouched). New pub effective_requirements_for_publish/requirement_name/network_mode_label helpers for control.rs/deps.rs/admin.rs. `network` gains a third accepted value, `\"egress\"` (validate_spec_fields_all, network_mode) -- see hard_constraints.additional.egress_is_a_new_value_not_a_rename_of_public.",
+    "src/control.rs: tool_publish gains the whole publish-time pipeline for kind == \"python\" -- network:egress plan gate, package-policy check, classify+resolve, MCPHOST_ADVISORY_MODE=fail gate, `_dependency_lock` injection into the stored spec, and the durable tool_lock row (written once `version` is known); its response gains a `lock: {packages, hashes}` field. tool_list's response gains an `advisories` count per tool, read live from tool_lock (not the immutable spec) so a re-audit's update is visible with no republish.",
+    "src/admin.rs: dependency_reaudit() (on-demand re-audit trigger, same admin.prune_now precedent); admin.usage gains tools_by_network/tools_by_advisory_state (requirement 7/AC9), sourced from Db::list_all_tool_specs + Db::current_tool_lock_advisory_counts.",
+    "src/db.rs: store_tool_lock/list_current_tool_locks/update_tool_lock_advisories/current_tool_lock_advisory_counts(_for_tenant)/list_all_tool_specs, plus the migration wiring (Db::migrate_0029_tool_lock).",
+    "src/errors.rs: AppError::dependency_policy_denied/dependency_advisory/network_policy_denied/dependency_resolve_failed -- the first two pin the AC5/AC3 message text verbatim.",
+    "src/handler.rs: admin.dependency_reaudit Tool::new descriptor + dispatch arm.",
+    "src/main.rs: mcphost::deps::spawn_reaudit_scheduler wired alongside the other background tasks (runs executor, trigger scheduler, retention prune) at serve start.",
+    "tests/mcphost_python_dependency_policy_ac0[1-5,7-9]_*.rs (new, one per non-deferred AC), each against a real local mcphost server via tests/common (McpClient/TestServer); scripts/gen-test-suites.sh re-run to fold them into the existing tests/suite_sandbox_02.rs/03.rs binaries (every one of these tests calls sandbox::require_user_namespaces_or_ci_skip, so they route to the sandbox partition, not core).",
+    "No version bump/CHANGELOG entry in this coder dispatch -- the build instructions' own version-bump rule (patch) is handled by the orchestrator at integrate time, per this PRD's own PM/build-loop convention."
   ],
   "non_goals": [
-    "Branching or named tags beyond a plain integer version (PRD Non-goals).",
-    "Retaining sandbox envs for every version -- envs are rebuilt on rollback the same way a republish already rebuilds them (PRD Non-goals); kinds::python's env cache is keyed by requirements hash, so a rollback to a version with unchanged requirements reuses the env for free, but that's an existing cache property, not new per-version storage.",
-    "AC6's live prod proof (see acceptance_criteria AC6 and Technical considerations below) -- deferred, operator-provisioned."
+    "A private package index or vendoring wheels (PRD Non-goals).",
+    "Scanning tool source for malware (PRD Non-goals).",
+    "An SSRF-filtering egress proxy for network: public/egress -- unchanged from the pre-existing kinds::python module doc's own scoped decision; no acceptance criterion in this PRD exercises that path.",
+    "AC6's live prod proof (see acceptance_criteria AC6) -- deferred, operator-provisioned, operator-authorized in the PRD's own frontmatter."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -91,40 +92,42 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "no_new_dependency_for_diff": "host.tool_diff (P2/AC9) needs a unified diff of two spec JSON blobs; rather than add a diff crate for one small feature, src/difftext.rs hand-rolls a standard LCS line diff -- the same 'hand-roll when it's small and self-contained' call plans.rs's TOML writer and state.rs's RFC 3339 math already make in this crate.",
-      "version_numbering_never_reused": "tools.current_version is a POINTER (rollback can move it backward), not a counter -- the next version number a publish issues is MAX(version)+1 over that tool's own tool_versions rows (never the pointer), which stays correct across a rollback because retention only ever prunes the OLDEST surviving rows, never the highest version number ever issued.",
-      "source_sha256_is_over_the_whole_spec": "source_sha256 hashes the canonical (default serde_json::Value, so deterministically key-sorted) serialized spec JSON, not a kind-specific 'source' field -- echo/http specs have no such field at all, so a kind-agnostic hash is the only one that works for every kind uniformly.",
-      "version_changed_scoped_to_cross_tenant": "requirement 6's own wording ('a shared tool's unpinned caller') scopes the version_changed note to cross-tenant calls (caller.is_some() in call_published_tool) -- an owner's own unpinned host.tool_call after its own rollback never gets a version_changed note, since the owner already knows it just rolled back."
+      "dual_lock_representation": "A resolved lock is stored in TWO places on purpose: embedded in the stored spec's own `_dependency_lock` field (what kinds::python reads at env-build time) AND in the new tool_lock DB table (the durable, re-auditable ledger host.tool_list/admin.usage/the daily re-audit read from). This is not duplication for its own sake -- PythonKind has no AppState/Db handle (the module's own pre-existing doc comment already names this exact structural gap for secrets/on_tool_published), so a DB-only design could never let Kind::call build an env from the lock; a spec-only design could never let a re-audit update advisory state without a republish (specs are immutable per version). Both are needed, each for a different reader.",
+      "damerau_not_plain_levenshtein": "requirement 3's near-name check uses restricted (optimal string alignment) Damerau-Levenshtein distance, not plain Levenshtein -- AC5's own example (`reqeusts` vs `requests`) is a single adjacent-character transposition, distance 2 under plain Levenshtein (which has no transposition operation) but 1 under Damerau-Levenshtein, matching both the AC's literal expectation and common typosquat-detection practice.",
+      "embedded_offline_advisory_db": "Neither pip-audit nor `uv pip audit` exists on the build host (confirmed: `which pip-audit` -> nothing, `uv pip audit` -> 'unrecognized subcommand'), and building real vulnerability-database infrastructure is explicitly out of scope (PRD Non-goals: no scanning infrastructure). deps::embedded_advisories is a small, hand-seeded table (urllib3==1.26.4 / GHSA-5phf-pp7p-vc2r, fixed 1.26.5 -- a real, historical advisory, not a fabricated id) standing in for requirement 2's 'offline database', overridable wholesale via $MCPHOST_ADVISORY_DB_PATH -- the same seam both a production daily refresh and this PRD's own AC8 test use.",
+      "egress_is_a_new_value_not_a_rename_of_public": "requirement 3's plan-gated `network: egress` is a THIRD accepted `network` value, added alongside the pre-existing `none`/`public`, never replacing `public`. Two already-shipped, still-green tests (tests/mcphost_uptime_probes_ac07_synthorg_task_five_completions.rs, tests/mcphost_uptime_probes_ac09_down_since_flip_sends_inbox.rs) publish `network: \"public\"` on default (free-plan) tenants and depend on it working ungated; repurposing `public` itself as the pro-gated value would have broken both. `network_mode()` treats `\"public\"` and `\"egress\"` identically at the sandbox level (both grant NetworkMode::Public) -- they differ only in who may PUBLISH them (control::tool_publish's own plan check), not in what the sandbox does at call time.",
+      "supplied_lock_detection": "requirement 5/AC7's 'lock text ... supplied as requirements' is recognized by classifying the WHOLE requirements array (every entry joined by newline) against the strict `--require-hashes` line grammar: every non-comment logical line must be `name==version` followed by one or more well-formed `--hash=sha256:<64 lowercase hex>` tokens. Any requirements array that doesn't fit that shape (the overwhelming majority -- a bare name list fails at the very first entry, no `==` or `--hash=`) falls back to being treated as plain PyPI names, so every pre-existing publish is unaffected. kinds::python::validate_requirements_all skips its own per-entry name-grammar check (requirement_is_allowed) for a classified lock -- that check would otherwise reject a `--hash=sha256:...` continuation line's own literal `\\`.",
+      "requirements_hash_seam_preserved_for_pre_existing_envs": "env-dir cache keying (PythonKind::env_dir, via PythonSpec::env_cache_key) uses the lock text's own SHA-256 when a spec has one, falling back to the pre-existing sorted-requirement-names hash otherwise -- so an env built before this PRD shipped (no `_dependency_lock` field on its stored spec) is found at the SAME path it always was and is left untouched, matching Migration/compatibility's 'existing tools keep their envs; the first republish locks them' verbatim."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does one wrong republish break a running workflow for the owner and every sharer, with no undo short of pasting old source from a transcript?",
-      "a": "kinds/python.rs:41's on_tool_changed rebuilds the sandbox env and discards the old source on every republish -- there is no version_history/previous_version concept anywhere in src (confirmed: grep -rniE 'tool_version|previous_version|version_history' src finds nothing before this PRD)."
+      "q": "Why can a mistyped or malicious PyPI name in a python tool's requirements become a secret-exfiltration path?",
+      "a": "kinds/python.rs:114 (pre-PRD) caps `requirements` at 20 entries and nothing else -- confirmed: grep -niE 'allowlist|denylist|index-url' python.rs found nothing -- so `uv pip install <any name>` installs whatever resolves, and a tool with `network: public` plus a `host.secret_set` secret can ship that secret to wherever the installed package's code sends it."
     },
     {
       "why": 2,
-      "q": "Why can't a sharer just re-fetch the tool by name after a bad republish to see what changed?",
-      "a": "sharing.rs lets a caller reach an owner's tool by name with no version at all -- the caller has no way to even know a republish happened, let alone reach the version it depended on."
+      "q": "Why does a typo like `reqeusts` matter more than any other wrong name?",
+      "a": "PyPI has no reservation system stopping a malicious actor from registering `reqeusts` itself, distinct from the real `requests` -- a Damerau-Levenshtein-1 typo of a top-100 package name is exactly the shape a typosquat attack takes, and it's indistinguishable from an honest fat-fingered publish without an explicit check naming the near-match."
     },
     {
       "why": 3,
-      "q": "Why version the whole tools row (kind + spec together) rather than just the source text?",
-      "a": "A spec isn't always just source -- echo/http specs have no 'source' field at all -- so tool_versions stores each publish's whole (kind, spec) pair; source_sha256 is computed over the canonical serialized spec JSON, kind-agnostically, for the same reason."
+      "q": "Why can't the host just re-resolve requirements fresh on every env rebuild, the way it did before this PRD?",
+      "a": "A tenant's tool source never changes on its own, but the wider PyPI ecosystem does -- an unpinned `uv pip install requests` run today and the same command run next month can resolve to two different versions with two different sets of transitive dependencies, silently changing a tool's behavior (or introducing a fresh vulnerability) with no change on the tenant's side. Locking at publish time and rebuilding only ever from that lock (`uv pip sync --require-hashes`) is what makes the env reproducible."
     },
     {
       "why": 4,
-      "q": "Why is the next version number MAX(version)+1 over tool_versions rather than current_version+1?",
-      "a": "current_version is a POINTER a rollback can move backward (e.g. from 6 to 1) -- if the next publish's version number were current_version+1, a publish right after that rollback would try to insert version 2, colliding with the UNIQUE(tenant_id, name, version) constraint on the version 2 row retention never deleted. MAX(version)+1 stays correct because retention only prunes the OLDEST surviving rows, never the highest version number ever issued."
+      "q": "Why does PythonKind need its lock stored in the stored spec's own JSON (`_dependency_lock`) rather than just querying the new tool_lock DB table directly at build time?",
+      "a": "PythonKind is constructed once at `main.rs` startup with only a data directory (`PythonKind::new(data_dir)`) -- it holds no `Arc<AppState>`/`Db` handle at all, a structural gap the module's own pre-existing doc comment already names for an analogous problem (`on_tool_published` can't resolve a tenant's secrets either, for the same reason). Since `Kind::call`'s only per-call state is the stored `spec: &Value` a caller already has via `state.db.get_tool`, embedding the lock inside that spec is the only way a cold call (or a process restart) can ever see it without changing that trait's contract."
     },
     {
       "why": 5,
-      "q": "Why does a version-pinned call need a reserved 'version' key inside the wire call-args object for the cross-tenant <owner_ns>.<name> path, instead of a cleaner sibling parameter?",
-      "a": "Confirmed against handler.rs's call_tool dispatch: a direct <owner_ns>.<name> tools/call has no side channel beyond the wire arguments object itself (unlike host.tool_call, whose RPC params already have name/args/async as siblings) -- version has to be a reserved key inside that same object, stripped before schema validation/dispatch, the same shape this codebase's own tenant_key argument (PRD-mcphost-session-key) already uses for an analogous problem."
+      "q": "Why keep a SEPARATE tool_lock DB table at all, if the spec already carries the lock?",
+      "a": "A spec's own JSON is immutable once published (tool_versions' own per-version design, from PRD-mcphost-tool-versions) -- if the daily re-audit (requirement 6/AC8) could only ever update the stored spec, it would have to fabricate a new tool version just to record a newly-discovered advisory, which is not a republish and must not look like one. tool_lock's advisories_json/audited_unix columns are mutable specifically so a re-audit can update them in place, independent of the spec's own immutability."
     }
   ],
-  "created_at": "2026-09-22T15:03:52Z",
+  "created_at": "2026-09-22T23:12:00Z",
   "ambiguities_resolved": [
     {
       "question": "The findings file records the reference Python client seeing well-formed ttlMs/cacheScope on an unauthenticated tools/list, which the code says is impossible. Which is right?",
@@ -193,6 +196,10 @@
     {
       "question": "This card is now regenerated for PRD-mcphost-tool-versions, an entirely different feature (immutable tool versions/rollback/diff) from PRD-mcphost-uptime-probes (a python probe/status recipe) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught by reviewer-agent repeatedly in this card's own history if left byte-for-byte. Unlike every prior PRD this card has been regenerated for, this one is NOT a zero-mcphost-code-changes recipe -- it edits src/handler.rs, src/db.rs, src/control.rs, src/errors.rs, src/plans.rs directly, plus a migration. Three build-time decisions had no PRD text to settle them directly: (1) requirement 1's migration column list names source/config/requirements as separate columns, but this codebase stores a kind's whole spec as one opaque JSON blob (no kind-agnostic split into those three fields exists anywhere in src today); (2) how a version-pinned call reaches the wire protocol for the cross-tenant <owner_ns>.<name> path, which has no side-channel argument slot the way host.tool_call's RPC params do; (3) requirement 6 (AC7)'s version_changed note names 'a shared tool's unpinned caller' but not whether that includes the owner's own calls after its own rollback.",
       "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence: no reviewer block yet, but the same staleness would recur if left byte-for-byte. root_motivation/scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional were rewritten from this PRD's own Problem statement, Goals, Requirements, Non-goals, and Technical considerations sections; acceptance_criteria's nine entries point at the real tests/mcphost_tool_versions_ac0[1-5,7-9]_*.rs files (AC1-5, AC7-9 exist, compile, and pass; AC6 is Live/operator-provisioned, deferred, same convention as every prior PRD's own Live AC in this card's history -- not built in this coder dispatch since the dispatch's own non-deferred AC list omits it entirely). agent/test-map.json's ac_test_map was repointed to this PRD and the prior uptimeprobes mapping preserved under ac_test_map_by_prefix (newly archived there) rather than deleted. On the three build-time decisions: (1) migration 0028's tool_versions table stores one `spec` TEXT column (the tool's whole JSON spec, exactly like `tools.spec` already does) plus `kind`, rather than inventing a source/config/requirements split this codebase has no other precedent for -- source_sha256 hashes that same canonical spec JSON, kind-agnostically. (2) resolved by treating `version` as a reserved key inside the cross-tenant call's own wire arguments object (stripped before schema validation/dispatch), the same shape `tenant_key` already uses for an analogous problem in this exact call path (see five_whys_trace above); `host.tool_call`'s own RPC params (which DO have a name/args/async sibling shape) get a real sibling `version` parameter instead, since that path has room for one. (3) scoped to cross-tenant calls only (`caller.is_some()` in `call_published_tool`), per requirement 6's own 'a shared tool's unpinned caller' wording -- an owner's own unpinned `host.tool_call` after its own rollback never gets a `version_changed` note, since `host.tool_call` only ever resolves the caller's OWN tools (there is no `caller` tenant distinct from the tool's owner on that path at all)."
+    },
+    {
+      "question": "This card is now regenerated for PRD-mcphost-python-dependency-policy, an entirely different feature (requirement hash-locking, advisory checking, package/network policy for the python kind) from PRD-mcphost-tool-versions (immutable tool versions/rollback/diff) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught by reviewer-agent repeatedly in this card's own history if left byte-for-byte. The PRD's own Open Questions table left two decisions to the builder ('at build', owner Joe): 'Fail vs warn on advisories with no fix available (assumed: warn)' and 'Initial denylist contents'. Several further build-time gaps had no PRD text to settle them directly: (1) PythonKind (src/kinds/python.rs) is constructed with no AppState/Db handle at all, yet requirement 1 needs an env build to read back a lock stored at publish time; (2) neither pip-audit nor a `uv pip audit` subcommand exists on the build host, so requirement 2's 'offline database' needed a concrete implementation; (3) AC5's own literal example (`reqeusts` vs `requests`) is a transposition scoring 2 under plain Levenshtein distance, which would fail to catch it under a naive reading of 'Levenshtein-1'; (4) requirement 3's plan-gated `network: egress` had to coexist with two already-shipped, still-green tests that publish `network: \"public\"` on free-plan tenants; (5) requirement 5/AC7's 'a lock text ... supplied as requirements' needed a concrete detection rule that doesn't collide with the pre-existing per-entry requirement-name validation; (6) this PRD's own required test-file naming convention (`mcphost-python-dependency-policy_ac<NN>_*.rs`, hyphenated to match the PRD slug) does not compile under this repo's test-suite-consolidation generator (scripts/gen-test-suites.sh emits `#[path] mod <stem>;`, and a Rust module path cannot contain a hyphen) -- caught immediately by a real `cargo check` failure, not a paper-trail issue.",
+      "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence: no reviewer block yet, but the same staleness would recur if left byte-for-byte. root_motivation/scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional were rewritten from this PRD's own Problem statement, Goals, User stories, Requirements, Non-goals, and Technical considerations sections; acceptance_criteria's nine entries point at the real tests/mcphost_python_dependency_policy_ac0[1-5,7-9]_*.rs files (AC1-5, AC7-9 exist, compile, and pass; AC6 is deferred, operator-provisioned, and already pre-authorized in the PRD's own frontmatter -- not built in this coder dispatch since the dispatch's own non-deferred AC list omits it entirely). agent/test-map.json's ac_test_map was repointed to this PRD and the prior toolversions mapping preserved under ac_test_map_by_prefix (newly archived there) rather than deleted. On the PRD's own two open questions: advisory mode defaults to 'warn' (a known advisory with no fix, or any advisory under the default mode, is recorded but does not fail publish) exactly as the PRD's own assumption states, env-overridable via MCPHOST_ADVISORY_MODE=fail; the initial denylist (deps::DEFAULT_DENYLIST) is a short, explicitly-labelled-as-builder's-own-choice seed list, operator-overridable wholesale via MCPHOST_PKG_DENY, matching the PRD's own framing of this as an open question with no canonical answer. On the six further build-time decisions: (1)-(6) are each documented in hard_constraints.additional above (dual_lock_representation, embedded_offline_advisory_db, damerau_not_plain_levenshtein, egress_is_a_new_value_not_a_rename_of_public, supplied_lock_detection) except (6), which has no code-behavior implication and is recorded only here: every tests/mcphost-python-dependency-policy_ac*.rs file was renamed to tests/mcphost_python_dependency_policy_ac*.rs (underscores, matching this repo's own real convention for every other hyphenated PRD slug it already has tests for, e.g. mcphost_uptime_probes_ac09_*.rs for PRD-mcphost-uptime-probes) before scripts/gen-test-suites.sh was re-run -- a real `cargo check --tests` failure (`error: expected one of ';' or '{', found '-'`) surfaced this immediately, it was not silently worked around."
     }
   ]
 }

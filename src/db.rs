@@ -3,6 +3,7 @@
 //! slow query never stalls the async runtime, per the PRD's technical
 //! considerations.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -49,6 +50,7 @@ const MIGRATION_0026: &str = include_str!("../migrations/0026_retention.sql");
 const MIGRATION_0027: &str = include_str!("../migrations/0027_mesh_ops.sql");
 const MIGRATION_0028: &str = include_str!("../migrations/0028_tool_versions.sql");
 const MIGRATION_0029: &str = include_str!("../migrations/0029_agent_channels.sql");
+const MIGRATION_0030: &str = include_str!("../migrations/0030_tool_lock.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -1126,7 +1128,8 @@ impl Db {
         Self::migrate_0026_retention(&conn)?;
         Self::migrate_0027_mesh_ops(&conn)?;
         Self::migrate_0028_tool_versions(&conn)?;
-        Self::migrate_0029_agent_channels(&conn)
+        Self::migrate_0029_agent_channels(&conn)?;
+        Self::migrate_0030_tool_lock(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -1555,6 +1558,18 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0029)?;
+        }
+        Ok(())
+    }
+
+    /// Same idempotency pattern as 0021/0026: `sqlite_master` gates the
+    /// whole (pure `CREATE TABLE IF NOT EXISTS`) 0030 batch.
+    fn migrate_0030_tool_lock(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tool_lock'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0030)?;
         }
         Ok(())
     }
@@ -3097,6 +3112,183 @@ impl Db {
                 },
             )
             .map_err(AppError::from)
+        })
+        .await
+    }
+
+    // ---- dependency lock (PRD-mcphost-python-dependency-policy) --------
+
+    /// requirement 1/2: stores this version's resolved dependency lock,
+    /// including whatever advisories `deps::resolve` already found at
+    /// publish time (requirement 2: `MCPHOST_ADVISORY_MODE=warn` lets a
+    /// known advisory through with the publish still succeeding -- this is
+    /// how that gets recorded rather than silently dropped). `audited_unix`
+    /// starts `NULL`: a later re-audit (requirement 6) is what sets it.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn store_tool_lock(
+        &self,
+        tenant_id: i64,
+        name: String,
+        version: i64,
+        lock_text: String,
+        resolved_unix: i64,
+        advisories_json: String,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO tool_lock \
+                 (tenant_id, name, version, lock_text, resolved_unix, advisories_json, audited_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL) \
+                 ON CONFLICT(tenant_id, name, version) DO UPDATE SET \
+                 lock_text = excluded.lock_text, resolved_unix = excluded.resolved_unix, \
+                 advisories_json = excluded.advisories_json, audited_unix = NULL",
+                params![tenant_id, name, version, lock_text, resolved_unix, advisories_json],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// requirement 6 (AC8): every currently-active tool's dependency lock,
+    /// across every tenant -- what the daily re-audit (or its on-demand
+    /// `admin.dependency_reaudit` trigger) iterates. `(tenant_id, name,
+    /// version, lock_text)`.
+    pub async fn list_current_tool_locks(&self) -> Result<Vec<(i64, String, i64, String)>, AppError> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT tl.tenant_id, tl.name, tl.version, tl.lock_text \
+                 FROM tool_lock tl JOIN tools t \
+                 ON t.tenant_id = tl.tenant_id AND t.name = tl.name \
+                 WHERE tl.version = t.current_version",
+            )?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// requirement 6 (AC8): records a fresh re-audit result for one
+    /// version's lock -- the only writer of `advisories_json`/`audited_unix`
+    /// past publish time.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn update_tool_lock_advisories(
+        &self,
+        tenant_id: i64,
+        name: String,
+        version: i64,
+        advisories_json: String,
+        audited_unix: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tool_lock SET advisories_json = ?1, audited_unix = ?2 \
+                 WHERE tenant_id = ?3 AND name = ?4 AND version = ?5",
+                params![advisories_json, audited_unix, tenant_id, name, version],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// requirement 7 (AC9): current-version advisory counts for every
+    /// python tool with a stored lock, across every tenant, keyed by
+    /// `(tenant_id, name)` -- read fresh from `tool_lock` (not the tool's
+    /// immutable stored `spec`) so a re-audit's update is visible here
+    /// without a republish, same reasoning as `host.tool_list`'s own
+    /// `advisories` field (see `control::tool_list`).
+    pub async fn current_tool_lock_advisory_counts(
+        &self,
+    ) -> Result<HashMap<(i64, String), i64>, AppError> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT tl.tenant_id, tl.name, tl.advisories_json \
+                 FROM tool_lock tl JOIN tools t \
+                 ON t.tenant_id = tl.tenant_id AND t.name = tl.name \
+                 WHERE tl.version = t.current_version",
+            )?;
+            let rows = stmt
+                .query_map([], |r| {
+                    let tenant_id: i64 = r.get(0)?;
+                    let name: String = r.get(1)?;
+                    let advisories_json: String = r.get(2)?;
+                    Ok((tenant_id, name, advisories_json))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows
+                .into_iter()
+                .map(|(tenant_id, name, advisories_json)| {
+                    let count = serde_json::from_str::<Vec<Value>>(&advisories_json)
+                        .map(|v| v.len() as i64)
+                        .unwrap_or(0);
+                    ((tenant_id, name), count)
+                })
+                .collect())
+        })
+        .await
+    }
+
+    /// requirement 6 (AC8): the same per-tool advisory count as
+    /// [`Self::current_tool_lock_advisory_counts`], scoped to one tenant
+    /// and keyed by bare tool name -- what `control::tool_list`'s
+    /// `advisories` field reads (a tenant only ever lists its own tools).
+    pub async fn current_tool_lock_advisory_counts_for_tenant(
+        &self,
+        tenant_id: i64,
+    ) -> Result<HashMap<String, i64>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT tl.name, tl.advisories_json \
+                 FROM tool_lock tl JOIN tools t \
+                 ON t.tenant_id = tl.tenant_id AND t.name = tl.name \
+                 WHERE tl.tenant_id = ?1 AND tl.version = t.current_version",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id], |r| {
+                    let name: String = r.get(0)?;
+                    let advisories_json: String = r.get(1)?;
+                    Ok((name, advisories_json))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows
+                .into_iter()
+                .map(|(name, advisories_json)| {
+                    let count = serde_json::from_str::<Vec<Value>>(&advisories_json)
+                        .map(|v| v.len() as i64)
+                        .unwrap_or(0);
+                    (name, count)
+                })
+                .collect())
+        })
+        .await
+    }
+
+    /// requirement 7 (AC9): every tenant's every tool's `tenant_id`/`name`/
+    /// `kind`/`spec`, host-wide -- what `admin.usage`'s network-mode tally
+    /// reads (python specs only; other kinds have no network-mode concept
+    /// and are skipped by the caller). `tenant_id`/`name` are what joins
+    /// this against [`Self::current_tool_lock_advisory_counts`]'s own key.
+    pub async fn list_all_tool_specs(&self) -> Result<Vec<(i64, String, String, Value)>, AppError> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare("SELECT tenant_id, name, kind, spec FROM tools")?;
+            let rows = stmt
+                .query_map([], |r| {
+                    let tenant_id: i64 = r.get(0)?;
+                    let name: String = r.get(1)?;
+                    let kind: String = r.get(2)?;
+                    let spec_text: String = r.get(3)?;
+                    Ok((tenant_id, name, kind, spec_text))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows
+                .into_iter()
+                .filter_map(|(tenant_id, name, kind, spec_text)| {
+                    serde_json::from_str::<Value>(&spec_text)
+                        .ok()
+                        .map(|spec| (tenant_id, name, kind, spec))
+                })
+                .collect())
         })
         .await
     }
