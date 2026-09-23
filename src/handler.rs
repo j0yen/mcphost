@@ -1866,6 +1866,13 @@ fn admin_tools() -> Vec<Tool> {
             schema(json!({}), &[]),
         ),
         Tool::new(
+            "admin.dependency_reaudit",
+            "Run one dependency-advisory re-audit cycle immediately (the same cycle the daily \
+             scheduler runs) against every currently-published python tool's stored lock, and \
+             return how many were newly flagged.",
+            schema(json!({}), &[]),
+        ),
+        Tool::new(
             "admin.tool_list",
             "List a specific tenant's published tools.",
             schema(json!({"tenant": {"type": "string"}}), &["tenant"]),
@@ -2503,6 +2510,7 @@ impl McpHostHandler {
             }
             "admin.usage" => admin::usage(&self.state, &args).await,
             "admin.prune_now" => admin::prune_now(&self.state).await,
+            "admin.dependency_reaudit" => admin::dependency_reaudit(&self.state).await,
             "admin.tool_list" => admin::tool_list(&self.state, &args).await,
             "admin.tenant_verify_namespace" => {
                 admin::tenant_verify_namespace(&self.state, &args).await

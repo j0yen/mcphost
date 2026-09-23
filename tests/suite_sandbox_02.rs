@@ -76,6 +76,22 @@ mod mcphost_database_in_a_minute_ac05_signup_events_source_tagged;
 mod mcphost_database_in_a_minute_ac07_synthorg_task_five_completions;
 #[path = "mcphost_database_in_a_minute_ac09_csv_import_batches_internally.rs"]
 mod mcphost_database_in_a_minute_ac09_csv_import_batches_internally;
+#[path = "mcphost_python_dependency_policy_ac01_lock_stored_and_require_hashes.rs"]
+mod mcphost_python_dependency_policy_ac01_lock_stored_and_require_hashes;
+#[path = "mcphost_python_dependency_policy_ac02_rebuild_matches_lock.rs"]
+mod mcphost_python_dependency_policy_ac02_rebuild_matches_lock;
+#[path = "mcphost_python_dependency_policy_ac03_advisory_fails_publish.rs"]
+mod mcphost_python_dependency_policy_ac03_advisory_fails_publish;
+#[path = "mcphost_python_dependency_policy_ac04_free_tenant_network_none_default.rs"]
+mod mcphost_python_dependency_policy_ac04_free_tenant_network_none_default;
+#[path = "mcphost_python_dependency_policy_ac05_near_name_denied.rs"]
+mod mcphost_python_dependency_policy_ac05_near_name_denied;
+#[path = "mcphost_python_dependency_policy_ac07_supplied_lock_stored_without_reresolving.rs"]
+mod mcphost_python_dependency_policy_ac07_supplied_lock_stored_without_reresolving;
+#[path = "mcphost_python_dependency_policy_ac08_reaudit_flags_new_advisory.rs"]
+mod mcphost_python_dependency_policy_ac08_reaudit_flags_new_advisory;
+#[path = "mcphost_python_dependency_policy_ac09_admin_usage_counts_network_and_advisories.rs"]
+mod mcphost_python_dependency_policy_ac09_admin_usage_counts_network_and_advisories;
 #[path = "mcphost_team_memory_ac02_b_remember_writer.rs"]
 mod mcphost_team_memory_ac02_b_remember_writer;
 #[path = "mcphost_team_memory_ac03_c_recall_shows_writer.rs"]
@@ -118,7 +134,3 @@ mod plainenv_ac07_docs_and_tool_list;
 mod plainenv_ac08_warm_pool_invalidates_on_env_change;
 #[path = "plainenv_ac10_admin_reports_env_names_and_size.rs"]
 mod plainenv_ac10_admin_reports_env_names_and_size;
-#[path = "publishfirsttry_ac03_ac04_quickstart.rs"]
-mod publishfirsttry_ac03_ac04_quickstart;
-#[path = "publishfirsttry_ac06_docs_shared_source.rs"]
-mod publishfirsttry_ac06_docs_shared_source;

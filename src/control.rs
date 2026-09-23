@@ -615,7 +615,7 @@ pub async fn tool_publish(
     }
     let name = arg_str(args, "name")?;
     let kind_name = arg_str(args, "kind")?;
-    let spec = args.get("spec").cloned().unwrap_or(Value::Null);
+    let mut spec = args.get("spec").cloned().unwrap_or(Value::Null);
 
     validate_tool_name(&name)?;
 
@@ -708,6 +708,54 @@ pub async fn tool_publish(
         ))
     })?;
 
+    // PRD-mcphost-python-dependency-policy requirement 1/2/3/5: resolve,
+    // lock, policy-check and advisory-check a python tool's requirements
+    // before anything is stored. `spec` gains a `_dependency_lock` field
+    // (read back by `kinds::python` at env-build time, see
+    // `PythonSpec::dependency_lock`'s doc comment) and a durable
+    // `tool_lock` row is written right after `upsert_tool` below, once
+    // `version` is known.
+    let mut pending_lock: Option<(String, i64, String)> = None;
+    let mut lock_summary: Option<Value> = None;
+    if kind_name == "python" {
+        // requirement 3: `network: egress` is a `pro`-only opt-in -- a
+        // `free` tenant publishing it is refused outright, before any
+        // resolution work runs.
+        if spec.get("network").and_then(Value::as_str) == Some("egress") && plan.name != "pro" {
+            return Err(AppError::network_policy_denied(
+                "network: egress requires the pro plan",
+            ));
+        }
+        let reqs = crate::kinds::python::effective_requirements_for_publish(&spec)?;
+        if !reqs.is_empty() {
+            let input = crate::deps::classify(&reqs);
+            crate::deps::check_package_policy(&input)?;
+            let resolved = crate::deps::resolve(input).await?;
+            let advisory_mode =
+                std::env::var("MCPHOST_ADVISORY_MODE").unwrap_or_else(|_| "warn".to_string());
+            if advisory_mode == "fail"
+                && let Some(hit) = resolved.advisories.first()
+            {
+                return Err(AppError::dependency_advisory(&hit.id, &hit.package, &hit.fixed));
+            }
+            let resolved_unix = now_unix();
+            let advisories_json = crate::deps::advisories_to_json(&resolved.advisories);
+            if let Value::Object(map) = &mut spec {
+                map.insert(
+                    "_dependency_lock".to_string(),
+                    json!({
+                        "lock_text": resolved.lock_text,
+                        "packages": resolved.packages,
+                        "resolved_unix": resolved_unix,
+                        "advisories": advisories_json,
+                    }),
+                );
+            }
+            lock_summary = Some(json!({"packages": resolved.packages, "hashes": true}));
+            pending_lock = Some((resolved.lock_text, resolved_unix, advisories_json.to_string()));
+        }
+    }
+
     // A re-publish of an existing name must not count against the limit.
     let already_exists = state.db.get_tool(tenant.id, name.clone()).await?.is_some();
     if !already_exists {
@@ -740,6 +788,23 @@ pub async fn tool_publish(
             plan.versions_max,
         )
         .await?;
+
+    // requirement 1: the durable audit row -- written only once `version`
+    // is known, so it lines up with the `tool_versions` row `upsert_tool`
+    // just inserted above.
+    if let Some((lock_text, resolved_unix, advisories_json)) = pending_lock {
+        state
+            .db
+            .store_tool_lock(
+                tenant.id,
+                name.clone(),
+                version,
+                lock_text,
+                resolved_unix,
+                advisories_json,
+            )
+            .await?;
+    }
 
     // PRD-mcphost-python-kind-plain-env requirement 4 (AC9): the publish
     // journal row for a spec declaring `env` -- names only, never values,
@@ -780,11 +845,18 @@ pub async fn tool_publish(
     kind.on_tool_published(tenant.id, &tenant.namespace, &name, &spec)
         .await;
 
-    Ok(json!({
+    let mut response = json!({
         "name": format!("{}.{}", tenant.namespace, name),
         "kind": kind_name,
         "version": version,
-    }))
+    });
+    // requirement 1 (user story): "host.tool_publish returns lock:
+    // {packages: 7, hashes: true}" -- present only for a python tool that
+    // actually declared/inferred requirements.
+    if let (Some(lock), Value::Object(map)) = (lock_summary, &mut response) {
+        map.insert("lock".to_string(), lock);
+    }
+    Ok(response)
 }
 
 /// `host.tool_history(name)` (PRD-mcphost-tool-versions requirement 3,
@@ -884,6 +956,15 @@ pub async fn tool_diff(state: &AppState, tenant: &Tenant, args: &Value) -> Resul
 
 pub async fn tool_list(state: &AppState, tenant: &Tenant) -> Result<Value, AppError> {
     let rows = state.db.list_tools(tenant.id).await?;
+    // PRD-mcphost-python-dependency-policy requirement 6 (AC8): read fresh
+    // from `tool_lock`, not the tool's immutable stored `spec` -- a daily
+    // re-audit updates this count in place, with no republish, so this
+    // must see that update on the very next `host.tool_list` (see
+    // `deps::reaudit_once`).
+    let advisory_counts = state
+        .db
+        .current_tool_lock_advisory_counts_for_tenant(tenant.id)
+        .await?;
     let tools: Vec<Value> = rows
         .into_iter()
         .map(|row| {
@@ -899,6 +980,9 @@ pub async fn tool_list(state: &AppState, tenant: &Tenant) -> Result<Value, AppEr
                 .get(&row.kind)
                 .map(|kind| kind.env_map(&row.spec))
                 .unwrap_or_default();
+            // requirement 6 (AC8): 0 for a tool with no stored lock (not
+            // `python`, or `python` with no requirements) -- never omitted.
+            let advisories = advisory_counts.get(&row.name).copied().unwrap_or(0);
             json!({
                 "name": format!("{}.{}", tenant.namespace, row.name),
                 "kind": row.kind,
@@ -911,6 +995,7 @@ pub async fn tool_list(state: &AppState, tenant: &Tenant) -> Result<Value, AppEr
                 "share_description": row.share_description,
                 "unshared_by": row.unshared_by,
                 "env": env,
+                "advisories": advisories,
             })
         })
         .collect();

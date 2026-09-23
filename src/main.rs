@@ -532,6 +532,11 @@ async fn main() -> anyhow::Result<()> {
             // retention tick, started once here alongside the other
             // background tasks.
             mcphost::channels::spawn_channel_retention((*state).clone());
+            // PRD-mcphost-python-dependency-policy requirement 6: the daily
+            // dependency-advisory re-audit, started once here alongside the
+            // other background tasks (`admin.dependency_reaudit` triggers
+            // the same cycle on demand).
+            mcphost::deps::spawn_reaudit_scheduler((*state).clone());
 
             mcphost::http::serve_configured(bind, state).await
         }

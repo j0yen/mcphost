@@ -798,6 +798,55 @@ impl AppError {
     /// `$MCPHOST_DISK_FLOOR_MB` -- the PRD's own wire wording ("returns
     /// `service_unavailable: disk floor`") pins both the `code` and the
     /// leading words of `message`.
+    /// PRD-mcphost-python-dependency-policy requirement 3 (AC5): a
+    /// `requirements` entry that is denylisted, or within
+    /// Damerau-Levenshtein distance 1 of a top-100 PyPI package name (and
+    /// isn't that name itself) -- refused before any network resolution is
+    /// attempted. The PRD's own AC pins the message text verbatim
+    /// (`dependency_policy: denied (near-name of requests)`).
+    pub fn dependency_policy_denied(reason: &str) -> Self {
+        AppError::Structured {
+            code: "dependency_policy",
+            message: format!("dependency_policy: denied ({reason})"),
+            data: json!({"reason": reason}),
+        }
+    }
+
+    /// requirement 2 (AC3): a pinned requirement (or a supplied lock's own
+    /// pin) matches a known advisory with a fix available, and
+    /// `MCPHOST_ADVISORY_MODE=fail` is set -- the PRD's own AC pins the
+    /// message text verbatim (`dependency_advisory: <id> <package>
+    /// fix=<version>`).
+    pub fn dependency_advisory(id: &str, package: &str, fixed: &str) -> Self {
+        AppError::Structured {
+            code: "dependency_advisory",
+            message: format!("dependency_advisory: {id} {package} fix={fixed}"),
+            data: json!({"advisory_id": id, "package": package, "fixed": fixed}),
+        }
+    }
+
+    /// requirement 3: `network: egress` requested on any plan other than
+    /// `pro`.
+    pub fn network_policy_denied(reason: &str) -> Self {
+        AppError::Structured {
+            code: "network_policy",
+            message: format!("network_policy: denied ({reason})"),
+            data: json!({"reason": reason}),
+        }
+    }
+
+    /// requirement 1: `uv pip compile --generate-hashes` failed, or a
+    /// caller-supplied lock (requirement 5) failed hash validation -- `tail`
+    /// is the resolver's own capped tail, same convention
+    /// `kinds::python::run_command_tail` uses for a failed env build.
+    pub fn dependency_resolve_failed(tail: &str) -> Self {
+        AppError::Structured {
+            code: "dependency_resolve_failed",
+            message: format!("dependency resolution failed: {tail}"),
+            data: json!({"tail": tail}),
+        }
+    }
+
     pub fn disk_floor(free_bytes: u64, floor_bytes: u64) -> Self {
         AppError::Structured {
             code: "service_unavailable",

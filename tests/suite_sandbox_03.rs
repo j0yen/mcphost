@@ -8,6 +8,10 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 
+#[path = "publishfirsttry_ac03_ac04_quickstart.rs"]
+mod publishfirsttry_ac03_ac04_quickstart;
+#[path = "publishfirsttry_ac06_docs_shared_source.rs"]
+mod publishfirsttry_ac06_docs_shared_source;
 #[path = "python_ac01_no_deps_cpu_memory.rs"]
 mod python_ac01_no_deps_cpu_memory;
 #[path = "python_ac02_requirements_build_and_building_state.rs"]

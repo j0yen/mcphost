@@ -237,6 +237,14 @@ struct PythonSpec {
     /// object it's deserialized from already enforces that).
     env: BTreeMap<String, String>,
     description: Option<String>,
+    /// PRD-mcphost-python-dependency-policy requirement 1: this tool's
+    /// resolved dependency lock, when `effective_requirements()` is
+    /// non-empty -- injected by `control::tool_publish` right before
+    /// storing (never caller-writable: any value a caller sends under this
+    /// key is simply overwritten). `None` for a spec with no requirements,
+    /// or one published before this PRD shipped (Migration/compatibility:
+    /// "Existing tools keep their envs; the first republish locks them").
+    dependency_lock: Option<DependencyLock>,
     /// PRD-mcphost-result-envelope-contract requirement 1, extended by
     /// PRD-mcphost-spec-output-paths requirement 2/3: field names this
     /// tool's caller can expect to read at `result.payload.<field>`, each
@@ -280,8 +288,32 @@ struct PythonSpecRaw {
     env: BTreeMap<String, String>,
     #[serde(default)]
     description: Option<String>,
+    /// PRD-mcphost-python-dependency-policy requirement 1: see
+    /// [`PythonSpec::dependency_lock`]. `#[serde(rename)]` rather than a
+    /// leading-underscore Rust field name, so the reserved wire key stays
+    /// visually distinct (`_dependency_lock`) from every author-facing
+    /// field above it.
+    #[serde(default, rename = "_dependency_lock")]
+    dependency_lock: Option<DependencyLock>,
     #[serde(default = "default_outputs")]
     outputs: Value,
+}
+
+/// PRD-mcphost-python-dependency-policy requirement 1: the shape
+/// `control::tool_publish` injects under a stored spec's `_dependency_lock`
+/// key -- `Deserialize` only (this crate never serializes it back out of a
+/// [`PythonSpec`]; `control::tool_publish` builds the wire JSON itself via
+/// `json!`). Only `lock_text` is read back here (what an env build needs);
+/// `control::tool_publish`'s injected object carries a few more fields
+/// (`packages`, `resolved_unix`, `advisories`) that are simply ignored on
+/// this end -- they exist for a human inspecting a stored spec directly,
+/// not for `kinds::python` itself, which gets its own copy of `packages`/
+/// `advisories` from `deps::resolve`'s return value at publish time, and
+/// the durable, re-auditable copy from the `tool_lock` table (see
+/// `control::tool_list`/`admin::usage`), not from here.
+#[derive(Debug, Clone, Deserialize)]
+struct DependencyLock {
+    lock_text: String,
 }
 
 fn default_outputs() -> Value {
@@ -301,7 +333,7 @@ fn python_field_hint(field: &str) -> Option<(&'static str, Value)> {
         "args_schema" => ("a JSON Schema object", json!({"type": "object"})),
         "timeout_s" => ("a positive integer number of seconds", json!(10)),
         "memory_mb" => ("a positive integer number of megabytes", json!(256)),
-        "network" => ("\"none\" or \"public\"", json!("none")),
+        "network" => ("\"none\", \"public\", or \"egress\"", json!("none")),
         "secrets" => ("a list of strings", json!(["api_key"])),
         "env" => (
             "a map of name to string value; names must match ^[A-Z][A-Z0-9_]{0,63}$",
@@ -349,6 +381,31 @@ impl PythonSpec {
     fn effective_network(&self) -> &str {
         self.network.as_deref().unwrap_or("none")
     }
+
+    /// PRD-mcphost-python-dependency-policy requirement 1: what to build
+    /// this tool's env from -- its own stored lock (`uv pip sync
+    /// --require-hashes`), when it has one, else `effective_requirements`
+    /// by bare name (`uv pip install`, the pre-PRD path every env published
+    /// before this feature shipped still uses -- Migration/compatibility).
+    fn env_source(&self, effective_requirements: &[String]) -> EnvSource {
+        match &self.dependency_lock {
+            Some(lock) => EnvSource::Lock(lock.lock_text.clone()),
+            None => EnvSource::Names(effective_requirements.to_vec()),
+        }
+    }
+
+    /// The env-cache key [`PythonKind::env_dir`] keys `envs/<namespace>/<key>`
+    /// on: the lock text's own hash when this spec has one (so AC2's "a day
+    /// later, a newer upstream release exists" rebuild still finds -- or
+    /// rebuilds to -- the exact same env, since the key never changes for
+    /// an unchanged lock), else the legacy hash of the sorted requirement
+    /// names.
+    fn env_cache_key(&self, effective_requirements: &[String]) -> String {
+        match &self.dependency_lock {
+            Some(lock) => text_hash(&lock.lock_text),
+            None => requirements_hash(effective_requirements),
+        }
+    }
 }
 
 fn parse_spec(spec: &Value) -> Result<PythonSpec, KindError> {
@@ -368,8 +425,29 @@ fn parse_spec(spec: &Value) -> Result<PythonSpec, KindError> {
         secrets: raw.secrets,
         env: raw.env,
         description: raw.description,
+        dependency_lock: raw.dependency_lock,
         outputs,
     })
+}
+
+/// PRD-mcphost-python-dependency-policy requirement 1: the requirements
+/// `control::tool_publish` resolves into a lock -- the author's own, or
+/// inferred from `source` (the same rule
+/// [`PythonSpec::effective_requirements`] uses everywhere else), computed
+/// from the caller's own spec, before the host's `_dependency_lock` field
+/// is ever injected.
+pub fn effective_requirements_for_publish(spec: &Value) -> Result<Vec<String>, KindError> {
+    parse_spec(spec)?.effective_requirements()
+}
+
+/// PRD-mcphost-python-dependency-policy requirement 7 (AC9): this spec's
+/// network mode, as `admin.usage` reports it -- `"none"`, `"public"`, or
+/// `"egress"`, straight from [`PythonSpec::effective_network`]. `None` for
+/// a spec this crate can no longer parse (should not happen for anything
+/// actually stored, but `admin.usage` must never fail outright over one
+/// malformed row).
+pub fn network_mode_label(spec: &Value) -> Option<String> {
+    parse_spec(spec).ok().map(|p| p.effective_network().to_string())
 }
 
 /// requirement 2: "no `requirements` entry uses a URL, path or VCS
@@ -396,11 +474,39 @@ fn requirement_is_allowed(req: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
 }
 
+/// PRD-mcphost-python-dependency-policy requirement 3: the bare package
+/// name portion of a `requirements` entry (before any version specifier,
+/// extras, or marker) -- same name/version split [`requirement_is_allowed`]
+/// already uses internally, exposed here for
+/// [`crate::deps::check_package_policy`]'s denylist/near-name check, which
+/// needs the name alone, not the whole PEP 508 string.
+pub(crate) fn requirement_name(req: &str) -> &str {
+    let r = req.trim();
+    let name_end = r.find(|c: char| "<>=!~;[ ".contains(c)).unwrap_or(r.len());
+    &r[..name_end]
+}
+
 /// Requirement 3 / AC2: every `requirements` entry is checked independently
 /// -- collects every disallowed entry instead of stopping at the first --
 /// so [`PythonKind::validate_all`] can report them all in one rejection.
 fn validate_requirements_all(reqs: &[String]) -> Vec<KindError> {
     let mut errors = Vec::new();
+    // PRD-mcphost-python-dependency-policy requirement 5 (AC7): a supplied
+    // lock (every entry, joined by newline, already forms a complete
+    // `--require-hashes` lock -- `crate::deps::classify`'s own detection)
+    // has a per-line grammar (`name==version --hash=sha256:...`, with
+    // `\`-continued hash lines) that isn't meant to look like a plain PyPI
+    // name and would otherwise trip `requirement_is_allowed` below (a
+    // continuation line's trailing `\` alone fails it) -- `classify`
+    // already strictly validated the whole shape, so skip the per-entry
+    // name-list checks entirely for this case (both the count cap, sized
+    // for names, and the per-entry grammar).
+    if matches!(
+        crate::deps::classify(reqs),
+        crate::deps::RequirementsInput::Lock(_)
+    ) {
+        return errors;
+    }
     if reqs.len() > MAX_REQUIREMENTS {
         errors.push(KindError::InvalidSpec(format!(
             "requirements: at most {MAX_REQUIREMENTS} entries; got {}",
@@ -559,9 +665,10 @@ fn validate_spec_fields_all(parsed: &PythonSpec) -> Vec<KindError> {
     if let Some(n) = &parsed.network
         && n != "none"
         && n != "public"
+        && n != "egress"
     {
         errors.push(KindError::InvalidSpec(format!(
-            "network: must be 'none' or 'public'; got '{n}'"
+            "network: must be 'none', 'public', or 'egress'; got '{n}'"
         )));
     }
     errors
@@ -1037,10 +1144,35 @@ enum EnvStatus {
 fn requirements_hash(reqs: &[String]) -> String {
     let mut sorted = reqs.to_vec();
     sorted.sort();
+    text_hash(&sorted.join("\n"))
+}
+
+fn text_hash(text: &str) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(sorted.join("\n").as_bytes());
+    hasher.update(text.as_bytes());
     let digest = hasher.finalize();
     digest.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// PRD-mcphost-python-dependency-policy requirement 1: what
+/// [`build_env`]/[`run_build_steps`] install an env from.
+#[derive(Debug, Clone)]
+enum EnvSource {
+    /// A resolved, hashed lock -- installed with `uv pip sync
+    /// --require-hashes`, never `uv pip install <names>`.
+    Lock(String),
+    /// Pre-existing tools published before this PRD shipped (Migration/
+    /// compatibility) -- installed the old way, by bare package name.
+    Names(Vec<String>),
+}
+
+impl EnvSource {
+    fn is_empty(&self) -> bool {
+        match self {
+            EnvSource::Lock(text) => text.trim().is_empty(),
+            EnvSource::Names(names) => names.is_empty(),
+        }
+    }
 }
 
 fn ready_marker(env_dir: &Path) -> PathBuf {
@@ -1120,9 +1252,8 @@ fn ensure_uv_discoverable_for_test() {
 /// Runs `uv venv` + (if any) `uv pip install`, all under the PRD's 120s
 /// build timeout, and writes the durable disk marker so a process restart
 /// doesn't rebuild an already-good environment.
-async fn build_env(env_dir: PathBuf, requirements: Vec<String>) -> EnvStatus {
-    let result =
-        tokio::time::timeout(BUILD_TIMEOUT, run_build_steps(&env_dir, &requirements)).await;
+async fn build_env(env_dir: PathBuf, source: EnvSource) -> EnvStatus {
+    let result = tokio::time::timeout(BUILD_TIMEOUT, run_build_steps(&env_dir, &source)).await;
     match result {
         Ok(Ok(site_packages)) => {
             let _ = tokio::fs::write(ready_marker(&env_dir), &site_packages).await;
@@ -1158,7 +1289,7 @@ async fn run_command_tail(mut cmd: tokio::process::Command) -> Result<Vec<u8>, S
     }
 }
 
-async fn run_build_steps(env_dir: &Path, requirements: &[String]) -> Result<String, String> {
+async fn run_build_steps(env_dir: &Path, source: &EnvSource) -> Result<String, String> {
     tokio::fs::create_dir_all(env_dir)
         .await
         .map_err(|e| format!("mkdir env dir: {e}"))?;
@@ -1168,15 +1299,39 @@ async fn run_build_steps(env_dir: &Path, requirements: &[String]) -> Result<Stri
     run_command_tail(venv_cmd).await?;
 
     let python_bin = env_dir.join("bin").join("python");
-    if !requirements.is_empty() {
-        let mut install_cmd = tokio::process::Command::new("uv");
-        install_cmd
-            .arg("pip")
-            .arg("install")
-            .arg("--python")
-            .arg(&python_bin)
-            .args(requirements);
-        run_command_tail(install_cmd).await?;
+    if !source.is_empty() {
+        match source {
+            // PRD-mcphost-python-dependency-policy requirement 1: the env
+            // is built from the resolved lock, `--require-hashes`, never
+            // from names -- a hash mismatch (a tampered or corrupted
+            // cached wheel) fails the build instead of silently installing
+            // something that doesn't match what was audited at publish.
+            EnvSource::Lock(lock_text) => {
+                let lock_path = env_dir.join("requirements.lock");
+                tokio::fs::write(&lock_path, lock_text)
+                    .await
+                    .map_err(|e| format!("write requirements.lock: {e}"))?;
+                let mut sync_cmd = tokio::process::Command::new("uv");
+                sync_cmd
+                    .arg("pip")
+                    .arg("sync")
+                    .arg(&lock_path)
+                    .arg("--python")
+                    .arg(&python_bin)
+                    .arg("--require-hashes");
+                run_command_tail(sync_cmd).await?;
+            }
+            EnvSource::Names(names) => {
+                let mut install_cmd = tokio::process::Command::new("uv");
+                install_cmd
+                    .arg("pip")
+                    .arg("install")
+                    .arg("--python")
+                    .arg(&python_bin)
+                    .args(names);
+                run_command_tail(install_cmd).await?;
+            }
+        }
     }
 
     let mut sitepkg_cmd = tokio::process::Command::new(&python_bin);
@@ -1252,17 +1407,12 @@ impl EnvRegistry {
     /// background, gated on this namespace's build-queue-of-1 semaphore.
     /// Never awaited by the caller -- requirement 3: a call during the
     /// build returns `tool_building` immediately.
-    fn start_build(
-        self: &Arc<Self>,
-        env_dir: PathBuf,
-        namespace: String,
-        requirements: Vec<String>,
-    ) {
+    fn start_build(self: &Arc<Self>, env_dir: PathBuf, namespace: String, source: EnvSource) {
         self.set(&env_dir, EnvStatus::Building);
         let this = self.clone();
         tokio::spawn(async move {
             let permit = this.queue_for(&namespace).acquire_owned().await;
-            let status = build_env(env_dir.clone(), requirements).await;
+            let status = build_env(env_dir.clone(), source).await;
             drop(permit);
             this.set(&env_dir, status);
         });
@@ -1324,10 +1474,10 @@ async fn resolve_env_readiness(
     envs: &Arc<EnvRegistry>,
     env_dir: &Path,
     namespace: &str,
-    requirements: Vec<String>,
+    source: EnvSource,
 ) -> EnvReadiness {
     if envs.status(env_dir).await.is_none() {
-        envs.start_build(env_dir.to_path_buf(), namespace.to_string(), requirements);
+        envs.start_build(env_dir.to_path_buf(), namespace.to_string(), source);
     }
     let bound = call_ready_wait_bound();
     let (status, waited_ms) = envs.wait_ready(env_dir, bound).await;
@@ -3150,10 +3300,8 @@ impl PythonKind {
         self.warm.metrics()
     }
 
-    fn env_dir(&self, namespace: &str, requirements: &[String]) -> PathBuf {
-        self.envs_root
-            .join(namespace)
-            .join(requirements_hash(requirements))
+    fn env_dir(&self, namespace: &str, cache_key: &str) -> PathBuf {
+        self.envs_root.join(namespace).join(cache_key)
     }
 
     async fn prepare_scratch(
@@ -3211,7 +3359,13 @@ impl PythonKind {
     }
 
     fn network_mode(&self, spec: &PythonSpec) -> NetworkMode {
-        if spec.effective_network() == "public" {
+        // PRD-mcphost-python-dependency-policy requirement 3: `"egress"` is
+        // the plan-gated spelling `control::tool_publish` enforces at
+        // publish time (free tenants can't publish it at all); once
+        // published, it grants the same sandbox network access `"public"`
+        // always has -- the two differ only in who may publish them, not
+        // in what the sandbox does at call time.
+        if matches!(spec.effective_network(), "public" | "egress") {
             NetworkMode::Public {
                 http_proxy: std::env::var("MCPHOST_EGRESS_PROXY").ok(),
             }
@@ -3799,15 +3953,15 @@ impl Kind for PythonKind {
         // early returns) since even a call that never reaches the sandbox
         // spent real wall time getting there.
         let cold_call_started = Instant::now();
-        let env_dir = self.env_dir(&ctx.namespace, &effective_requirements);
+        let env_key = parsed.env_cache_key(&effective_requirements);
+        let env_dir = self.env_dir(&ctx.namespace, &env_key);
+        let env_source = parsed.env_source(&effective_requirements);
         // PRD-mcphost-first-call-reliability requirement 1/2: waits (bounded)
         // for a building environment instead of failing the call outright;
         // past the bound, returns the structured `building` result rather
         // than the old free-text "try again shortly" error.
         let (python, site_packages) =
-            match resolve_env_readiness(&self.envs, &env_dir, &ctx.namespace, effective_requirements)
-                .await
-            {
+            match resolve_env_readiness(&self.envs, &env_dir, &ctx.namespace, env_source).await {
                 EnvReadiness::Ready {
                     python,
                     site_packages,
@@ -3998,15 +4152,15 @@ impl Kind for PythonKind {
             parsed.env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
 
         let effective_requirements = parsed.effective_requirements()?;
-        let env_dir = self.env_dir(&ctx.namespace, &effective_requirements);
+        let env_key = parsed.env_cache_key(&effective_requirements);
+        let env_dir = self.env_dir(&ctx.namespace, &env_key);
+        let env_source = parsed.env_source(&effective_requirements);
         // PRD-mcphost-first-call-reliability requirement 1/2: same bounded
         // wait + structured `building` result as `call` above, through the
         // same helper -- `host.tool_run` duplicated the same free-text
         // "try again shortly" sites `call` did.
         let (python, site_packages) =
-            match resolve_env_readiness(&self.envs, &env_dir, &ctx.namespace, effective_requirements)
-                .await
-            {
+            match resolve_env_readiness(&self.envs, &env_dir, &ctx.namespace, env_source).await {
                 EnvReadiness::Ready {
                     python,
                     site_packages,
@@ -4114,10 +4268,11 @@ impl Kind for PythonKind {
         let Ok(requirements) = parsed.effective_requirements() else {
             return;
         };
-        let env_dir = self.env_dir(namespace, &requirements);
+        let env_key = parsed.env_cache_key(&requirements);
+        let env_dir = self.env_dir(namespace, &env_key);
         if self.envs.status(&env_dir).await.is_none() {
             self.envs
-                .start_build(env_dir, namespace.to_string(), requirements);
+                .start_build(env_dir, namespace.to_string(), parsed.env_source(&requirements));
         }
     }
 
@@ -4804,14 +4959,14 @@ mod tests {
             "requirements": [],
         });
         let requirements: Vec<String> = vec![];
-        let env_dir = kind.env_dir("firstcall1", &requirements);
+        let env_dir = kind.env_dir("firstcall1", &requirements_hash(&requirements));
 
         kind.envs.set(&env_dir, EnvStatus::Building);
         let envs = kind.envs.clone();
         let build_env_dir = env_dir.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(5)).await;
-            let status = build_env(build_env_dir.clone(), Vec::new()).await;
+            let status = build_env(build_env_dir.clone(), EnvSource::Names(Vec::new())).await;
             envs.set(&build_env_dir, status);
         });
 
@@ -4877,7 +5032,7 @@ mod tests {
         // Never resolves within the 300ms bound -- `envs` never sees this
         // `env_dir` reach `Ready`/`Failed`, so the wait always times out.
         let requirements: Vec<String> = vec![];
-        let env_dir = kind.env_dir("firstcall2", &requirements);
+        let env_dir = kind.env_dir("firstcall2", &requirements_hash(&requirements));
         kind.envs.set(&env_dir, EnvStatus::Building);
 
         let result = kind
@@ -4935,7 +5090,7 @@ mod tests {
             "requirements": ["requests"],
         });
         let requirements = vec!["requests".to_string()];
-        let env_dir = kind.env_dir("firstcall4", &requirements);
+        let env_dir = kind.env_dir("firstcall4", &requirements_hash(&requirements));
 
         assert!(
             kind.envs.status(&env_dir).await.is_none(),
@@ -4968,7 +5123,7 @@ mod tests {
             "requirements": [],
         });
         let requirements: Vec<String> = vec![];
-        let env_dir = kind.env_dir("firstcall4b", &requirements);
+        let env_dir = kind.env_dir("firstcall4b", &requirements_hash(&requirements));
         let planted = EnvStatus::Ready {
             python: env_dir.join("bin").join("python"),
             site_packages: "already-here".to_string(),
