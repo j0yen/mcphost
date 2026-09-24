@@ -328,7 +328,16 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # caught by the same `suite_ac1_ten_binaries_and_names_preserved` P0
 # assertion. 60 -> 62 is the smallest tested raise that re-collapses
 # sandbox's buckets to 3, landing the grand total back at 10.
-MAX_PER_SUITE = {"core": 395, "sandbox": 62}
+#
+# PRD-mcphost-human-claim-magic-link (2026-09-23, rebased onto
+# sandbox-egress-allowlist): this PRD's own thirteen
+# `mcphost_human_claim_magic_link_ac*.rs` files (also `core`-classified,
+# also no global tracing subscriber) join the same normal bucket, spawning
+# an 11th suite binary again -- caught by the same P0 assertion. 395 -> 440
+# is the smallest tested raise that re-collapses core's normal buckets to
+# 1, landing the grand total back at 10. sandbox's own 60 -> 62 raise above
+# is independent (a different bucket) and stands unchanged.
+MAX_PER_SUITE = {"core": 440, "sandbox": 62}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

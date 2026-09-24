@@ -25,10 +25,22 @@ async fn signup_without_handoff_argument_is_unchanged() {
         .keys()
         .cloned()
         .collect();
-    let expected: BTreeSet<String> = ["tenant", "key", "namespace", "endpoint", "usage", "next"]
-        .into_iter()
-        .map(str::to_string)
-        .collect();
+    // PRD-mcphost-human-claim-magic-link requirement 1 / AC1: `claim_url`
+    // is the one additive field every signup response now carries
+    // (Migration/compatibility: "Signup response is additive; existing
+    // clients ignore claim_url") -- every other field stays byte-identical.
+    let expected: BTreeSet<String> = [
+        "tenant",
+        "key",
+        "namespace",
+        "endpoint",
+        "usage",
+        "next",
+        "claim_url",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect();
     assert_eq!(fields, expected, "raw signup's field set must be unchanged: {result}");
     assert!(result.get("handoff_token").is_none());
     assert!(result["key"].as_str().is_some_and(|k| !k.is_empty()));

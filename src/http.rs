@@ -347,6 +347,27 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
         }
         obj.insert("network_denied".to_string(), Value::Object(network_denied));
     }
+    // PRD-mcphost-human-claim-magic-link requirement 5 / AC6: whether the
+    // claim flow can actually send a magic link on this host --
+    // unconfigured is a supported, non-error state (claim pages still
+    // render), so the operator needs a direct signal rather than having to
+    // infer it from an absence of claim traffic.
+    if let Some(obj) = body.as_object_mut() {
+        obj.insert(
+            "claim_email_configured".to_string(),
+            json!(state.email_config.is_configured()),
+        );
+    }
+    // requirement 6 / AC9: same `{external, synthetic}` shape as
+    // `tenants`/`signups`/`calls` above, restricted to claimed tenants.
+    if let Some(obj) = body.as_object_mut() {
+        let (claimed_external, claimed_synthetic) =
+            state.db.count_claimed_tenants_by_origin().await.unwrap_or((0, 0));
+        obj.insert(
+            "tenants_claimed".to_string(),
+            json!({"external": claimed_external, "synthetic": claimed_synthetic}),
+        );
+    }
     Json(body).into_response()
 }
 
@@ -523,6 +544,13 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // download URL a completed `host.export` run's result carries --
         // see `export::download`.
         .route("/exports/{run_id}", get(crate::export::download))
+        // PRD-mcphost-human-claim-magic-link requirements 2-3: the claim
+        // flow's own three plain-HTML routes -- `/claim/verify/{code}` is
+        // registered alongside `/claim/{token}` without ambiguity since
+        // matchit resolves by segment count/literal-first, same as
+        // `/exports/{run_id}` alongside every other top-level route here.
+        .route("/claim/{token}", get(crate::claim::get_claim).post(crate::claim::post_claim))
+        .route("/claim/verify/{code}", get(crate::claim::get_verify))
         .route_service("/mcp", service)
         .layer(middleware::from_fn(protocol_version_and_log))
         .with_state(state)

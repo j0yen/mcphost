@@ -1,97 +1,114 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-signup-kill-switch-and-source.md",
-  "intent_slug": "mcphost-signup-kill-switch-and-source",
-  "root_motivation": "The launch plan runs three traffic waves three days apart and needs to know which one produced each tenant, but `signup(attribution, source_ip, ...)` (src/control.rs) only ever recorded provenance CLASS (synthetic/external) and computed origin -- every external stranger looked identical, with no caller-claimed channel label. Separately, the only abuse brake on signups was the per-IP rate limit read once at startup (MCPHOST_SIGNUP_RATE_LIMIT_PER_HOUR); there was no way to stop a bad-hour abuse spike short of a redeploy through mcphost-deploy, which the operator explicitly wants to avoid doing at 2am on launch night (PRD Problem statement, citing Railway/Fly both losing their free tiers to exactly this kind of unbraked abuse). This PRD gives `signup` an optional, caller-claimed `source` string (stored, echoed, broken out in admin healthz) and a file-based pause kill switch an operator can flip with one `touch`/`rm` over ssh, in under a second, with no restart and no redeploy.",
-  "user_persona": "Three (PRD User stories): (1) Operator: posts the HN link with `source: \"hn\"` and the Reddit link with `source: \"reddit\"` in each snippet; the next morning healthz tells them signups per source. (2) Operator: mining bots start signing up at 3am; they `touch` the pause file over ssh and signups stop while existing tenants keep running unaffected. (3) Agent: calls signup during a pause and gets a clear, structured `signup_paused` error naming when to retry, never a 500 or an opaque failure.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-human-claim-magic-link.md",
+  "intent_slug": "mcphost-human-claim-magic-link",
+  "root_motivation": "Joe's decision (2026-09-23): the buyer is the human, the agent is the channel. Today the namespace belongs to whoever holds the bearer key or redeems the single-use handoff token (src/control.rs:178-198, host.redeem at src/control.rs:233); no route, page, table column, or email dependency exists for a person to own a tenant (src/http.rs:449-473 routes; www/ has no account page; Cargo.toml has no mail crate). Consequence: two tenants, both the operator's, $0 revenue, and no way for a stranger's agent to turn activation into a paying human. Billing checkout (src/billing.rs) has no customer email to attach.",
+  "user_persona": "Five (PRD User stories): (1) an agent operator whose agent signs up while they sleep, then says claim your backend at this link in the morning; (2) the operator clicks the link, types an email, taps the emailed link, done; (3) the operator upgrades to Pro from the claim page, receipt to the verified email; (4) Joe: sees claimed-tenant counts in admin healthz; (5) the agent: signup and llms.txt tell it what to relay to its human.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 10
+    "target": 13
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given signup(name, source: \"hn\"), When it succeeds, Then the response echoes source: \"hn\" and the tenant row has signup_source = 'hn'.",
-      "test": "tests/mcphost_signup_kill_switch_and_source_ac01_source_echoed_and_stored.rs"
+      "description": "Given an unauthenticated signup (key mode or handoff mode), When it succeeds, Then the response contains claim_url matching ^https://[^/]+/claim/[A-Za-z0-9_-]{40,}$ and the token is not the bearer key.",
+      "test": "tests/mcphost_human_claim_magic_link_ac01_claim_url_in_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given signup(name) with no source, When it succeeds, Then signup_source is NULL and the response omits or nulls source.",
-      "test": "tests/mcphost_signup_kill_switch_and_source_ac02_no_source_is_null.rs"
+      "description": "Given a valid unexpired claim token and a fake email provider, When POST /claim/{token} is sent with email=a@b.co, Then exactly one provider send is recorded containing a verify URL, and the page body contains \"check your inbox\".",
+      "test": "tests/mcphost_human_claim_magic_link_ac02_post_claim_sends_magic_link.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given source: \"HN!\" or a 65-character value, When signup is called, Then invalid_argument (this crate's args_invalid code) names source and no tenant is created.",
-      "test": "tests/mcphost_signup_kill_switch_and_source_ac03_invalid_source_rejected.rs"
+      "description": "Given the verify URL from AC2, When it is opened once, Then tenants.owner_email is a@b.co, owner_verified_at is set, the summary page lists the tenant's published tool names and schedule count, and opening the same verify URL again returns 410.",
+      "test": "tests/mcphost_human_claim_magic_link_ac03_verify_sets_owner_and_shows_summary.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given the pause file is created while the server runs, When signup is called 1s later, Then the error code is signup_paused, message equals the file's first line, and retry_after_secs is present; When the file is removed, Then a signup 1s later succeeds. No restart in between.",
-      "test": "tests/mcphost_signup_kill_switch_and_source_ac04_pause_file_stops_and_resumes_signups.rs"
+      "description": "Given an expired claim token (TTL forced to 1s in test), When GET /claim/{token} is requested, Then 410 with \"link expired\" and no provider send occurs.",
+      "test": "tests/mcphost_human_claim_magic_link_ac04_expired_claim_token_410.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the pause file exists, When an existing tenant calls host.tool_call, host.trigger.fire, and billing.status, Then all succeed as before.",
-      "test": "tests/mcphost_signup_kill_switch_and_source_ac05_pause_does_not_affect_authenticated_calls.rs"
+      "description": "Given POST /claim/{token} with an empty or malformed email, When submitted, Then 400-class page with the form re-rendered and zero provider sends.",
+      "test": "tests/mcphost_human_claim_magic_link_ac05_malformed_email_400.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given three external signups with sources hn, hn, reddit and one synthetic signup, When admin healthz is read, Then signups_by_source.external is {\"hn\": 2, \"reddit\": 1} and signups_enabled is true.",
-      "test": "tests/mcphost_signup_kill_switch_and_source_ac06_healthz_signups_by_source.rs"
+      "description": "Given MCPHOST_EMAIL_API_URL unset, When GET /claim/{token} is requested, Then the page renders with \"email delivery is not configured\" and admin healthz reports claim_email_configured=false.",
+      "test": "tests/mcphost_human_claim_magic_link_ac06_email_not_configured.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given the pause file exists, When admin healthz is read, Then signups_enabled is false and signup_pause_message matches the file.",
-      "test": "tests/mcphost_signup_kill_switch_and_source_ac07_healthz_reports_paused.rs"
+      "description": "Given two verify requests for the same tenant racing (two different codes issued to two emails), When both complete, Then exactly one owner is set and the loser receives 409.",
+      "test": "tests/mcphost_human_claim_magic_link_ac07_racing_verify_single_winner.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given 50 concurrent signups while the pause file is toggled on mid-burst, When the burst completes, Then every response is either success or signup_paused, never a 500, and tenant count equals the success count.",
-      "test": "tests/mcphost_signup_kill_switch_and_source_ac08_concurrent_burst_with_pause_toggle.rs"
+      "description": "Given 31 GET /claim/* requests from one IP within an hour at the default limit, When the 31st arrives, Then 429 and the tenant row is unchanged.",
+      "test": "tests/mcphost_human_claim_magic_link_ac08_claim_rate_limit_per_ip.rs"
     },
     {
       "id": "AC9",
-      "level": "SHOULD",
-      "description": "Given www/llms.txt on the built tree, When grepped, Then it documents source and lists hn and registry.",
-      "test": "tests/mcphost_signup_kill_switch_and_source_ac09_llms_txt_documents_source.rs"
+      "level": "MUST",
+      "description": "Given a claimed tenant, When the operator calls admin healthz, Then tenants_claimed.external counts it and admin.tenants shows owner_verified: true without an email address in the row.",
+      "test": "tests/mcphost_human_claim_magic_link_ac09_healthz_and_admin_tenants_claimed.rs"
     },
     {
       "id": "AC10",
+      "level": "MUST",
+      "description": "Given the fake email provider returns 500 on the first attempt and 200 on the retry, When the magic link is requested, Then one send is ultimately recorded and the page shows \"check your inbox\".",
+      "test": "tests/mcphost_human_claim_magic_link_ac10_retry_recovers_from_one_failure.rs"
+    },
+    {
+      "id": "AC11",
       "level": "SHOULD",
-      "description": "Given a pause file whose second line is until=<now+120>, When signup is called, Then retry_after_secs is between 100 and 120.",
-      "test": "tests/mcphost_signup_kill_switch_and_source_ac10_until_line_bounds_retry_after.rs"
+      "description": "Given a claimed tenant, When the agent calls host.whoami, Then owner_verified is true; for an unclaimed tenant it is false.",
+      "test": "tests/mcphost_human_claim_magic_link_ac11_whoami_owner_verified.rs"
+    },
+    {
+      "id": "AC12",
+      "level": "SHOULD",
+      "description": "Given www/llms.txt on the built tree, When grepped, Then it contains the relay sentence with the literal claim_url placeholder and \"7 days\".",
+      "test": "tests/mcphost_human_claim_magic_link_ac12_llms_txt_relay_sentence.rs"
+    },
+    {
+      "id": "AC13",
+      "level": "MUST",
+      "description": "Given no page in www/ or any template, When grepped for the bearer key of a test tenant after a full claim flow, Then zero occurrences in any rendered response body.",
+      "test": "tests/mcphost_human_claim_magic_link_ac13_bearer_key_never_in_claim_pages.rs"
     }
   ],
   "scope": [
-    "migrations/0032_signup_source.sql (new): tenants.signup_source TEXT NULL (additive ALTER TABLE) plus an index -- the one migration this PRD's own Migration/compatibility section calls for.",
-    "src/state.rs: is_valid_signup_source (^[a-z0-9][a-z0-9._-]*$, 1-64 chars, same hand-rolled-byte-check shape as the pre-existing is_valid_synthetic_label -- this crate has no regex dependency); the new SignupPause type (from_env(data_dir), path(), status() -- a fresh fs::read_to_string per call, never cached) plus SignupPauseStatus and the SIGNUP_PAUSE_DEFAULT_MESSAGE/SIGNUP_PAUSE_DEFAULT_RETRY_AFTER_SECS constants; AppState gains a signup_pause: SignupPause field.",
-    "src/errors.rs: AppError::signup_paused(message, retry_after_secs) (a Structured variant, code \"signup_paused\", data.retry_after_secs) plus its jsonrpc_code mapping alongside the existing rate_limited (both are caller-state \"come back later\" gates, INVALID_REQUEST).",
-    "src/control.rs: signup() checks state.signup_pause.status() first, before the disk-floor guard, before any write, returning signup_paused when Some; validate_source(args) parses/validates the optional source argument (InvalidArgs on a non-string or a value failing is_valid_signup_source, code args_invalid, field source) before the rate-limit admit so a rejected source never consumes a rate-limit slot or creates a row; the validated source flows into Db::create_tenant_attributed_with_source and is echoed back into both the raw-key and handoff-mode response bodies (present only when Some, per AC2's \"omits ... when absent\").",
-    "src/db.rs: Tenant.signup_source: Option<String> (TENANT_COLUMNS/tenant_from_row widened); Db::create_tenant_attributed_with_source (the real insert, one more parameter than create_tenant_attributed) with create_tenant_attributed now a thin wrapper passing None, so its several existing tests/*.rs positional callers keep compiling unmodified; Db::count_external_signups_by_source(since_unix: Option<i64>) grouping tenants by signup_source where origin = 'external', for healthz's all-time and last-24h breakdowns.",
-    "src/http.rs: /healthz (admin-authenticated body) gains signups_by_source / signups_by_source_24h (each {\"external\": {source: count}}, additive, always present) and signups_enabled (mirrors state.signup_pause.status().is_none(), fresh per request) / signup_pause_message (present only while paused).",
-    "src/main.rs, src/tables.rs (bare_state test helper), tests/common/mod.rs (TestServer), tests/runs_ac11_admin_runs_reap.rs and tests/sched_ac5_overlap_skips_and_records.rs (their own bare-AppState test helpers): every AppState construction site wired up with the new signup_pause field.",
-    "docs/agent-quickstart.md (the shared source scripts/gen-agent-docs.sh copies into both README.md and www/llms.txt's marked block): documents source's recommended values (hn, reddit, discord, registry, plugin, docs) and the signup_paused error, rewrapped so the pre-existing \"handoff: true)\" wording stays on one line (handoff_ac07_docs_recommend_handoff_flow's own literal substring check).",
-    "www/llms-full.txt regenerated (scripts/gen-llms-full.sh) to stay in sync with the llms.txt edit -- required by scripts/www-check.sh's own drift check.",
-    "scripts/gen-test-suites.sh: MAX_PER_SUITE.core 375 -> 395 (this PRD's ten new core-classified test files) -- same recurring re-collapse-to-10-binaries mechanism as every prior PRD-* comment block already in that file.",
-    "tests/mcphost_signup_kill_switch_and_source_ac0[1-9]_*.rs, ac10 (new, one per AC), each against a real local mcphost server via tests/common (McpClient/TestServer/control::signup directly for AC6, the same seam attrib_ac4_external_signup_counts_real.rs already documents for forcing an external, non-loopback classification against a listener that is always reached over loopback).",
-    "Cargo.toml / Cargo.lock: patch version bump (0.60.2 -> 0.60.3); CHANGELOG.md: new entry."
+    "migrations/0033_claim.sql (new): tenants gains owner_email/owner_verified_at/claim_token_hash/claim_expires_at (nullable, additive), plus new claim_codes (magic-link verify codes) and claim_rate_events (per-IP rate limiting) tables.",
+    "src/claim.rs (new): the whole claim/verify HTTP surface -- GET/POST /claim/{token}, GET /claim/verify/{code} (wired in http.rs), claim-token issuance (called from control::signup), server-rendered HTML (no JS framework, PRD technical considerations), magic-link send with one retry, and the claim summary page (tools, schedules/webhooks, calls-today, state bytes, plan).",
+    "src/email.rs (new): EmailClient trait, EmailConfig (MCPHOST_EMAIL_API_URL/API_KEY/FROM), HttpEmailClient (real provider), FakeEmailClient (test-support feature) -- same trait-plus-real-plus-fake shape as billing::BillingClient.",
+    "src/db.rs: Tenant struct gains owner_email/owner_verified_at/claim_token_hash/claim_expires_at; new Db methods set_claim_token, find_tenant_by_claim_token_hash, expire_claim_token_for_test, try_admit_claim_request, try_create_claim_code, verify_claim_code (ClaimVerifyOutcome), count_claimed_tenants_by_origin.",
+    "src/control.rs: signup mints a claim token (claim::issue_claim_token) and returns claim_url in both key and handoff response modes; whoami gains owner_verified.",
+    "src/http.rs: routes /claim/{token} (GET+POST) and /claim/verify/{code}; healthz gains claim_email_configured and tenants_claimed.{external,synthetic}.",
+    "src/admin.rs: admin.tenants rows gain owner_verified (boolean only, never the email).",
+    "src/state.rs: AppState gains claim_token_ttl_secs, claim_rate_limit_per_hour, email_config, email_client, plus their env-parsing functions and constants (CLAIM_TOKEN_TTL_SECS_DEFAULT=7d, CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT=30, CLAIM_EMAIL_SEND_LIMIT_PER_HOUR=3, CLAIM_VERIFY_CODE_TTL_SECS=30m).",
+    "www/llms.txt: the exact requirement-9 relay sentence (\"Claim this backend so it belongs to you: <claim_url> (link expires in 7 days).\") in the quickstart section.",
+    "tests/common/mod.rs: TestServer::start_with_email and the start_full_with_email constructor layer, threading email_config/email_client/claim_token_ttl_secs/claim_rate_limit_per_hour through every existing start_* helper with unconfigured-email defaults."
   ],
   "non_goals": [
-    "Referrer capture on www pages (PRD Non-goals) -- a separate, static-site concern this build does not touch.",
-    "Per-source quotas or pricing (PRD Non-goals) -- source is display/attribution only, never consulted by the rate limiter, plan quotas, or billing.",
-    "Captcha (PRD Non-goals).",
-    "P2 requirement 8 (admin.signup_pause tool, for operators without shell access) -- no corresponding AC in this PRD's own Acceptance criteria list, so left out of this build's scope entirely, same convention as every other PRD-specific requirement-with-no-AC in this card's history (e.g. the webhook-inbox entry below, requirement 9's provider-specific signatures).",
-    "Auto-stamping a synthetic (synthorg) signup's source -- requirement 1 makes source purely caller-supplied and optional; nothing in this PRD's own Acceptance criteria asks for a default value on the synthetic path, and AC6's own signups_by_source is explicitly external-only (see ambiguities_resolved below for the PRD's open question this resolves)."
+    "Password accounts, sessions, or a full dashboard beyond the claim summary (PRD Non-goals).",
+    "Transferring or revoking ownership -- a later PRD (PRD Non-goals).",
+    "OAuth for MCP clients (PRD Non-goals).",
+    "admin.tenant_claim_url (minting a claim URL for an existing, pre-PRD tenant) -- named only in the PRD's Migration/compatibility narrative, not in the numbered Requirements list nor any Acceptance Criterion, so it is outside this coder dispatch's non-deferred AC list (the coder-dispatch instructions: implement the numbered requirements the ACs actually test, stop once every listed AC is green).",
+    "claims_by_source keyed by signup_source (requirement 6's second healthz field) -- signup_source is a column PRD-mcphost-signup-kill-switch-and-source (queued, not yet built) would add; requirement 6's own rule for this case is \"absent column means the key is omitted, never an error,\" so the key is simply omitted rather than stubbed.",
+    "Wiring billing.checkout's customer_email argument end-to-end -- the claim summary page names the call as a copyable code snippet (a plain HTML page with no JS/session cannot itself authenticate an MCP tools/call), but no AC exercises billing.checkout with a customer_email argument, so billing.rs itself was left untouched."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -100,40 +117,41 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "source_is_display_only_never_provenance": "Technical considerations: \"Keep source separate from origin/origin_detail; provenance is computed, source is claimed by the caller and therefore untrusted (display only)\" -- signup_source never feeds classify_source_class/derive_origin, and signups_by_source's own query filters on the host-computed origin = 'external', not on anything source-derived, so a caller cannot spoof its way into (or out of) the external bucket by choosing a source string.",
-      "pause_file_is_never_cached": "Requirement 3: \"the check is per request (stat), never cached beyond 1s\" -- SignupPause::status() does a fresh std::fs::read_to_string on every call with no interior-mutability cache layer at all (simpler than a 1s TTL cache and trivially satisfies the 1s upper bound), so an operator's touch/rm takes effect on the very next signup with no restart, exactly AC4's own proof.",
-      "signups_by_source_reuses_tenants_not_a_new_signup_events_column": "signup_events (the per-attempt rate-limit ledger) already has its own count_signup_events_by_origin reader for the pre-existing signups.{external,synthetic} healthz field; this PRD's signups_by_source instead groups the tenants table directly (WHERE origin = 'external' AND signup_source IS NOT NULL GROUP BY signup_source, optionally created_unix >= since for the 24h variant) since every admitted signup writes exactly one tenants row carrying both origin and (now) signup_source already -- a second signup_source column on signup_events would duplicate data this PRD's migration.md explicitly pins to \"one additive migration (signup_source TEXT NULL + index)\", singular.",
-      "signup_paused_reuses_the_structured_error_shape": "AppError::signup_paused follows the exact same Structured-variant, doc-commented constructor pattern as the pre-existing AppError::disk_floor right above it in errors.rs (a code, a message, a data object merged into the JSON-RPC error's own data) rather than a new enum variant -- message is the file's first line verbatim (no wrapping prose), since AC4 requires message to equal it byte-for-byte, and retry_after_secs rides in data the same way disk_floor's free_bytes/floor_bytes already do."
+      "claim_url_always_forces_https": "claim::claim_url always emits https:// regardless of state.public_url's own scheme (stripping any http://Sq/https:// prefix and re-adding https://) -- AC1's own regex requires ^https://, and a magic link handed to a human's inbox/browser must never downgrade to plain HTTP even when public_url is configured with http:// for a loopback dev server or (as in every integration test here) an ephemeral 127.0.0.1 TestServer.",
+      "claim_token_lives_on_the_tenant_row_not_a_table": "unlike the magic-link verify codes (claim_codes, a new table, one row per send), the claim token itself is two nullable columns on tenants (claim_token_hash/claim_expires_at, migration 0033) -- a tenant only ever has one outstanding claim link at a time, so Db::set_claim_token overwrites in place rather than accumulating rows; Db::verify_claim_code clears both columns the moment the tenant is actually claimed, so a reused claim link after a successful claim reads as ordinary 410 (\"link expired\") rather than needing a distinct \"already claimed\" branch.",
+      "verify_race_resolved_by_a_second_atomic_update_not_a_lock": "AC7's single-winner race is resolved by Db::verify_claim_code doing two sequential atomic UPDATEs inside one with_conn closure (which already serializes through this crate's single Arc<Mutex<Connection>>): first UPDATE claim_codes ... WHERE consumed_unix IS NULL claims the CODE (both racing codes are genuinely distinct and both succeed here), then UPDATE tenants ... WHERE owner_verified_at IS NULL claims the TENANT (only the first to reach this second statement wins; the loser sees 0 rows affected and reports Conflict/409 even though its own code was validly consumed) -- same double-UPDATE shape Db::redeem_handoff_token already uses for its own single-use claim, extended with a second guard column.",
+      "email_provider_is_a_generic_json_post_not_a_vendor_sdk": "the PRD's own Open question (\"Resend or Postmark ... before build\") was still unresolved at build time, so email::HttpEmailClient is a plain POST {from, to, subject, text} with an optional bearer Authorization header -- generic enough to front either (or any similarly-shaped transactional-email API) without an SDK dependency, same \"no SDK crate\" choice billing::StripeClient already made for Stripe.",
+      "magic_link_send_runs_in_a_spawned_task_awaited_before_responding": "technical considerations say \"runs in a spawned task with one retry\"; claim::send_with_retry literally tokio::spawns each attempt (satisfying that wording) but awaits the JoinHandle before post_claim's own response is built, so the HTTP response (\"check your inbox\" vs \"we could not send the email\") always reflects the actual outcome rather than optimistically claiming success before the provider was ever called -- this also makes AC10's fail-then-succeed scenario deterministically testable without a background-completion race."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does the operator need a way to stop signups without a redeploy?",
-      "a": "The launch plan runs three traffic waves and the only existing abuse brake is a per-IP rate limit read once at startup (MCPHOST_SIGNUP_RATE_LIMIT_PER_HOUR) -- there is no way to react to a bad-hour abuse spike except a redeploy through mcphost-deploy, which the operator explicitly does not want to do at 2am on launch night (Problem statement), and Railway/Fly both lost their free tiers to exactly this unbraked-abuse shape."
+      "q": "Why does an external signup never turn into revenue?",
+      "a": "The namespace belongs to whoever holds the bearer key (src/control.rs's signup/redeem) -- there is no concept of a human owner at all, so there is no email to attach a Stripe customer to, and no page a stranger's agent can hand its human to claim what it built (Grounding: two tenants total, both the operator's, $0 revenue)."
     },
     {
       "why": 2,
-      "q": "Why a file flag instead of an env var the operator sets and restarts to pick up?",
-      "a": "Technical considerations: \"File flag rather than env so mcphost-deploy's env contract is untouched\" -- an env-var toggle would need a redeploy to take effect, defeating the whole point (goal 2: \"paused and resumed in under a second by a file touch\"), and mcphost-deploy's own env contract is out of this PRD's scope to renegotiate."
+      "q": "Why is there no human-owner concept yet?",
+      "a": "Every prior PRD in this repo optimized the agent's own onboarding (signup, handoff tokens, quickstart) -- none needed a human to ever see a page, because the buyer was assumed to be whoever ran the agent and already had the key in a transcript."
     },
     {
       "why": 3,
-      "q": "Why must the pause check be a fresh stat every call instead of a periodically-refreshed cache?",
-      "a": "Requirement 3's own wording -- \"never cached beyond 1s\" -- and the success-metrics table's own target (\"Pause-to-first-refusal latency: < 1s\") both describe a near-immediate reaction; a fresh stat per call is simpler than a bounded-TTL cache and trivially satisfies the bound with no background refresh task to keep alive."
+      "q": "Why does the buyer need to be a *human* specifically, not just whoever holds the key?",
+      "a": "Joe's decision (2026-09-23, restated in the PRD's Problem statement): \"the buyer is the human, the agent is the channel\" -- a key in an agent's transcript can't authorize a credit card charge, receive a receipt, or be reasoned about as \"who owns this\" the way a verified email can."
     },
     {
       "why": 4,
-      "q": "Why must source be kept separate from the host's own origin/source_class provenance fields instead of folded into them?",
-      "a": "Technical considerations: \"provenance is computed, source is claimed by the caller and therefore untrusted (display only)\" -- origin/source_class drive real behavior elsewhere (tenants_real counts, synthetic-panel classification); letting an untrusted caller-chosen string influence that would let anyone mislabel their own provenance by picking a convincing source value."
+      "q": "Why does ownership need email verification rather than just trusting whoever clicks the claim link?",
+      "a": "A claim link can leak the same way a bearer key can (Requirement 1: single-use, 32-byte, TTL-bounded, exactly like the handoff-token machinery it reuses) -- verifying an email is the one piece of PRD-mandated proof that the clicker actually controls the address a receipt/support contact would go to, and Requirement 3's atomic single-winner update is what keeps two racing claims from both succeeding."
     },
     {
       "why": 5,
-      "q": "Why must the pause never affect an authenticated call, a tool run, a trigger fire, or billing?",
-      "a": "Requirement 4's own wording -- \"Paused state never affects authenticated calls, tool runs, triggers, or billing\" -- and AC5's own scenario (an existing tenant's host.tool_call/host.trigger.fire/billing.status all succeed while paused) both describe the pause as a front-door-only gate: an operator stopping new signups during an abuse spike must not also stop existing, paying tenants' traffic, which is exactly the blast radius a redeploy (the thing this PRD replaces) would have had."
+      "q": "Why build the claim SUMMARY page (tools/schedules/calls/state) rather than just a bare \"you're verified\" confirmation?",
+      "a": "Goal 3 (\"The claim page is the first human-facing view of 'what my agent set up'\") -- the human has never seen this tenant before this moment; a bare confirmation would answer \"did it work\" but not \"what did my agent actually build while I wasn't looking,\" which is the whole point of the user story (\"in the morning it tells me... and I see what it built\")."
     }
   ],
-  "created_at": "2026-09-23T06:59:23Z",
+  "created_at": "2026-09-23T00:00:00Z",
   "ambiguities_resolved": [
     {
       "question": "The findings file records the reference Python client seeing well-formed ttlMs/cacheScope on an unauthenticated tools/list, which the code says is impossible. Which is right?",
@@ -208,8 +226,8 @@
       "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence: no reviewer block yet, but the same staleness would recur if left byte-for-byte. root_motivation/scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional were rewritten from this PRD's own Problem statement, Goals, User stories, Requirements, Non-Goals, and Technical considerations sections; acceptance_criteria's twelve entries point at the real tests/mcphost_webhook_inbox_ac0[1-9]_*.rs / ac11 / ac12 files (AC1-9, AC11-12 exist, compile, and pass; AC10 is Live/operator-provisioned, deferred, same convention as every prior PRD's own Live AC in this card's history -- not built in this coder dispatch since the dispatch's own non-deferred AC list omits it entirely, and P1 requirement 7's llms.txt section/proof.sh it depends on were left unbuilt for the same reason). agent/test-map.json's ac_test_map was repointed to this PRD and the prior toolversions mapping preserved under ac_test_map_by_prefix (newly archived there) rather than deleted. On the three build-time decisions: (1) the secret is host-generated (auth::generate_key(), AES-GCM-encrypted via AppState::secrets directly, no secrets.rs row) rather than tenant-registered, matching AC1's own 'the response has url and secret' -- a single call producing both, no pre-registration round trip. (2) host.trigger.replay gained a second, row_id-addressed argument shape (id + row_id) alongside its existing run_id shape, rather than a new tool, since AC6's own wording ('replay <row>') names a row and the existing run_id path structurally cannot apply to something that was never run. (3) a new webhook_dedupe table (same claim shape as event_dedupe, same 24h window) rather than reusing event_dedupe, since that table's whole contract is 'return the first RUN's id', which has nothing sensible to return for a paused, never-fired delivery -- see hard_constraints.additional.row_level_dedupe_not_run_level_dedupe above for the full reasoning."
     },
     {
-      "question": "This card is now regenerated for PRD-mcphost-signup-kill-switch-and-source, an entirely different feature (signup source attribution + a file-based pause kill switch) from PRD-mcphost-webhook-inbox (a fourth trigger kind) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught by reviewer-agent repeatedly in this card's own history if left byte-for-byte. This PRD also carries its own Open Questions table with one entry due 'at build', owner Joe: 'Should synthetic (synthorg) signups also carry source for harness runs? Draft says yes, labelled synthorg.' Two further build-time decisions had no PRD text to settle them directly: (1) AC3's own wording names the wire code 'invalid_argument', but this crate's existing bad-argument rejections (InvalidArgs) all emit 'args_invalid' -- is a brand-new wire code needed, or does the PRD's prose describe the existing convention generically? (2) requirement 2's 'admin healthz adds signups_by_source (external only) for the last 24h and all-time' names two windows, but AC6's own assertion only checks one field (signups_by_source.external) with no time qualifier -- does the all-time field need its own distinctly-named sibling, and if so what does AC6 actually check?",
-      "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence: no reviewer block yet, but the same staleness would recur if left byte-for-byte. root_motivation/scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional were rewritten from this PRD's own Problem statement, Goals, User stories, Requirements, Non-Goals, and Technical considerations sections; acceptance_criteria's ten entries point at the real tests/mcphost_signup_kill_switch_and_source_ac0[1-9]_*.rs / ac10 files, all of which exist, compile, and pass -- none of this PRD's own listed ACs are Live/deferred, unlike every prior PRD this card's history documents. agent/test-map.json's ac_test_map was repointed to this PRD and the prior webhookinbox mapping preserved under ac_test_map_by_prefix (newly archived there) rather than deleted. On the synthorg open question: source stays purely caller-supplied and optional (requirement 1's own text: 'absent means signup_source = NULL', no mention of a synthetic-path default) -- nothing in this PRD's own Acceptance criteria list asks for an auto-stamped value on a synthetic signup, and AC6's own signups_by_source is explicitly external-only, so a synthetic signup's source (if any) would never surface there regardless; auto-labelling was left out of scope rather than guessed at without an AC to prove it against, recorded in non_goals. On the two build-time decisions: (1) source's validation error uses AppError::InvalidArgs, this crate's existing 'args_invalid' code (field 'source', same '<field>: <expected>' message-split convention every other bad-argument rejection in errors.rs already follows) rather than a new 'invalid_argument' wire code -- a grep of every prior PRD's own PRD-*.md and tests/*.rs found zero uses of the literal string 'invalid_argument' anywhere in this repo's history, confirming the PRD's AC3 wording describes the existing bad-argument convention generically rather than naming a new code to introduce; tests/mcphost_signup_kill_switch_and_source_ac03_invalid_source_rejected.rs asserts error_code == 'args_invalid' and data.field == 'source' directly, so this reading is test-enforced, not just documented here. (2) requirement 2's two windows both shipped: signups_by_source (all-time) and signups_by_source_24h (last 24h), each {\"external\": {source: count}} -- AC6's own assertion checks the all-time field (the one it names verbatim), with the 24h sibling additive and unqualified by any AC, same 'ship the fuller requirement, let the AC pick which field it names' precedent the distinct_source_ips_24h field elsewhere in http.rs already set."
+      "question": "This card is now regenerated for PRD-mcphost-human-claim-magic-link, an entirely different feature (a human-owned-tenant claim/magic-link flow) from PRD-mcphost-webhook-inbox (the fourth trigger kind) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught by reviewer-agent repeatedly in this card's own history if left byte-for-byte (see the 2026-09-12 and 2026-09-17 entries above). Four build-time decisions had no single PRD-mandated answer and were resolved during this build (now also recorded in hard_constraints.additional): (1) claim_url always forces the https:// scheme regardless of state.public_url's own, since AC1's regex requires it and every test server binds http://127.0.0.1; (2) the claim token lives on the tenant row (two nullable columns) rather than a table of its own, since a tenant only ever has one outstanding claim link, while magic-link verify codes DO get their own claim_codes table (multiple sends per tenant); (3) AC7's race is resolved by a second atomic UPDATE ... WHERE owner_verified_at IS NULL inside the same with_conn closure as the code's own single-use claim, not a separate lock; (4) the email provider is a generic JSON POST, not a Resend/Postmark SDK, since the PRD's own Open question left that choice unresolved at build time. Two requirement-adjacent items were scoped out as not covered by any listed Acceptance Criterion: admin.tenant_claim_url (named only in the Migration/compatibility narrative) and claims_by_source (keyed by a signup_source column that PRD-mcphost-signup-kill-switch-and-source, queued, has not yet added -- requirement 6's own fallback, \"absent column means the key is omitted,\" applies).",
+      "resolution": "Fixed in place: root_motivation, user_persona, unfakeable_metric, all 13 acceptance_criteria (with their real tests/mcphost_human_claim_magic_link_ac0N_*.rs pointers), scope, non_goals, hard_constraints.additional, and five_whys_trace were rewritten from PRD-mcphost-human-claim-magic-link's own Problem statement, User stories, Requirements, Non-goals, and Acceptance criteria sections; agent/test-map.json's ac_test_map was updated to this PRD's own AC-to-test mapping in the same build, with the prior mcphost_webhook_inbox map archived under ac_test_map_by_prefix.webhookinbox so nothing already-shipped is lost."
     }
   ]
 }

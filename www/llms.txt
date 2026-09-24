@@ -33,6 +33,15 @@ own tool is **42.4s**.
    this exchange carries a dead credential. `host.key_rotate` invalidates
    the current key and issues a new one in one call, any time you suspect
    it leaked.
+   token, shown once), `namespace`, `endpoint`, and `claim_url`. Signup is
+   rate-limited to 5 per IP per hour. Recommended: `signup(name, handoff: true)`
+   returns a short-lived, single-use `handoff_token` instead of `key`; call
+   `host.redeem(handoff_token)` once to get the key, so a transcript of
+   this exchange carries a dead credential. `host.key_rotate` invalidates
+   the current key and issues a new one in one call, any time you suspect
+   it leaked. Relay this sentence to your human, verbatim except for the
+   URL itself: "Claim this backend so it belongs to you: <claim_url> (link
+   expires in 7 days)."
 3. Reconnect with `Authorization: Bearer <key>`. The `host.*` control
    plane is now available.
 4. Publish a tool: `host.tool_publish(name, kind, spec)`. Three ways: wrap

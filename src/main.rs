@@ -423,6 +423,31 @@ async fn main() -> anyhow::Result<()> {
                 mcphost::billing::StripeClient::new(billing_http_client, stripe_secret_key),
             );
 
+            // PRD-mcphost-human-claim-magic-link requirement 5 (AC6): same
+            // "always build the real client, let the config's own
+            // `is_configured()` gate behavior" choice as billing above --
+            // an empty `api_url`/`from` stand-in is harmless since
+            // `claim::post_claim` never calls `send` when
+            // `!email_config.is_configured()`.
+            let email_config = mcphost::email::EmailConfig::from_env();
+            if !email_config.is_configured() {
+                tracing::info!(
+                    "claim email delivery is disabled (no MCPHOST_EMAIL_API_URL); claim pages still render"
+                );
+            }
+            let email_http_client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(10))
+                .build()?;
+            let email_client: Arc<dyn mcphost::email::EmailClient> =
+                Arc::new(mcphost::email::HttpEmailClient::new(
+                    email_http_client,
+                    email_config.api_url.clone().unwrap_or_default(),
+                    email_config.api_key.clone(),
+                    email_config.from.clone().unwrap_or_default(),
+                ));
+            let claim_token_ttl_secs = mcphost::state::claim_token_ttl_secs_from_env();
+            let claim_rate_limit_per_hour = mcphost::state::claim_rate_limit_per_hour_from_env();
+
             let db = Db::open(&data_dir())?;
             db.migrate().await?;
             // PRD-mcphost-data-retention requirement 1: (re-)sync
@@ -506,6 +531,10 @@ async fn main() -> anyhow::Result<()> {
                 disk_guard: mcphost::retention::DiskGuard::from_env(),
                 compat_token: std::env::var("MCPHOST_COMPAT_TOKEN").ok(),
                 signup_pause: mcphost::state::SignupPause::from_env(&data_dir()),
+                claim_token_ttl_secs,
+                claim_rate_limit_per_hour,
+                email_config,
+                email_client,
             });
 
             // PRD-mcphost-runs-and-jobs P0 requirement 4 / open question:
