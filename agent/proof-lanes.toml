@@ -158,3 +158,11 @@ globs = ["scripts/checkcompat-race-soak.sh"]
 required_commands = [
   "cargo test --workspace checkcompat",
 ]
+
+[[lane]]
+id = "plugin"
+description = "PRD-mcphost-claude-code-plugin-and-snippets: the static Claude Code plugin (plugin/.claude-plugin/plugin.json, plugin/.mcp.json, plugin/skills/mcphost/SKILL.md) and its own asset-check script (tests/plugin_assets.sh, AC1). Added project-locally: same gap class as www/docs/deploy above -- the shipped scaffold's proof-lanes.toml has no lane for plugin/, and tests/plugin_assets.sh is a shell script, not a tests/**/*.rs file, so it falls outside the rust-tests lane's glob. The AC2-9 behavior itself (JSON/markdown content, no build step) is proven by cargo -- covered by the pre-existing rust-tests lane since those live in tests/*.rs -- so this lane's own required command is tests/plugin_assets.sh, matching the www lane's self-contained-check-script pattern."
+globs = ["plugin/**", "tests/plugin_assets.sh"]
+required_commands = [
+  "tests/plugin_assets.sh",
+]

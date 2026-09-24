@@ -46,6 +46,14 @@
          padding: .35rem .8rem; margin: 1.6rem 0 0; font: inherit; color: #8b949e;
          cursor: pointer; }
   .snd:hover { color: #e6edf3; border-color: #484f58; }
+  .connect { margin: 0 0 1.6rem; }
+  .snip { margin: 0 0 .8rem; position: relative; }
+  .snip-label { color: #e6edf3; font-size: .85em; margin: 0 0 .3rem; }
+  .snip .listing { margin: 0; padding-right: 4.5rem; }
+  .copy { position: absolute; top: .6rem; right: .6rem; background: none;
+          border: 1px solid #21262d; border-radius: 6px; padding: .2rem .6rem;
+          font: inherit; font-size: .8em; color: #8b949e; cursor: pointer; }
+  .copy:hover { color: #e6edf3; border-color: #484f58; }
 </style>
 </head>
 <body>
@@ -66,6 +74,38 @@
 
 <p>Mid-task, an agent finds the tool it needs does not exist. On mcphost it creates one and keeps working: sign up with a tool call, publish with the next, and the new tool is live — no restart, no review, no human in the loop.</p>
 <p>mcphost is a hosted runtime for <a href="https://modelcontextprotocol.io">Model Context Protocol</a> tools. Everything — signup, publishing, metering, logs, encrypted secrets — is itself a tool call over streamable HTTP, against a namespace the tenant owns.</p>
+
+<h2>connect</h2>
+<p>Paste one line and your agent has mcphost. No key needed to sign up.</p>
+<div class="connect">
+  <div class="snip">
+    <p class="snip-label">Claude Code</p>
+    <pre class="listing"><code id="snip-claude-code">claude mcp add --transport http mcphost https://mcphost.dev/mcp</code></pre>
+    <button class="copy" type="button" data-copy-target="snip-claude-code">copy</button>
+  </div>
+  <div class="snip">
+    <p class="snip-label">Codex CLI</p>
+    <pre class="listing"><code id="snip-codex">codex mcp add mcphost --url https://mcphost.dev/mcp</code></pre>
+    <button class="copy" type="button" data-copy-target="snip-codex">copy</button>
+  </div>
+  <div class="snip">
+    <p class="snip-label">Cursor (mcp.json)</p>
+    <pre class="listing"><code id="snip-cursor">{
+  "mcpServers": {
+    "mcphost": {
+      "url": "https://mcphost.dev/mcp",
+      "headers": { "Authorization": "Bearer &lt;key&gt;" }
+    }
+  }
+}</code></pre>
+    <button class="copy" type="button" data-copy-target="snip-cursor">copy</button>
+  </div>
+  <div class="snip">
+    <p class="snip-label">Claude.ai</p>
+    <pre class="listing"><code id="snip-claude-ai">Settings -&gt; Connectors -&gt; Add custom connector -&gt; https://mcphost.dev/mcp</code></pre>
+    <button class="copy" type="button" data-copy-target="snip-claude-ai">copy</button>
+  </div>
+</div>
 
 <h2>how it works</h2>
 <pre class="listing"><code>connect https://mcphost.dev/mcp
@@ -100,6 +140,36 @@
 
 <footer>mcphost · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/aup">Acceptable Use</a> · <a href="/status">status</a></footer>
 </main>
+<script>
+(function () {
+  "use strict";
+  document.querySelectorAll(".copy").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var target = document.getElementById(btn.getAttribute("data-copy-target"));
+      if (!target) return;
+      var text = target.textContent;
+      var done = function () {
+        var was = btn.textContent;
+        btn.textContent = "copied";
+        setTimeout(function () { btn.textContent = was; }, 1200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done);
+      } else {
+        var ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand("copy"); } catch (e) { /* no-op */ }
+        document.body.removeChild(ta);
+        done();
+      }
+    });
+  });
+})();
+</script>
 <script>
 (function () {
   "use strict";
