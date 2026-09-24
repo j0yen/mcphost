@@ -55,6 +55,24 @@ pub const HANDOFF_TOKEN_TTL_SECS: i64 = 300;
 pub const SIGNUP_PAUSE_DEFAULT_MESSAGE: &str = "signups are paused";
 pub const SIGNUP_PAUSE_DEFAULT_RETRY_AFTER_SECS: i64 = 3600;
 
+/// PRD-mcphost-human-claim-magic-link requirement 1 / AC4: how long a
+/// `signup`-minted claim token stays redeemable, absent
+/// `$MCPHOST_CLAIM_TOKEN_TTL_SECS` -- 7 days (the PRD's own relay sentence:
+/// "link expires in 7 days").
+pub const CLAIM_TOKEN_TTL_SECS_DEFAULT: i64 = 7 * 24 * 3600;
+/// requirement 7 / AC8: the per-IP `GET`/`POST /claim/*` ceiling, absent
+/// `$MCPHOST_CLAIM_RATE_LIMIT_PER_HOUR`.
+pub const CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT: i64 = 30;
+/// requirement 7: magic-link sends are capped per tenant, not per IP (an
+/// agent operator and their human plausibly share one address with the
+/// per-IP claim-page limit above) -- 3 per hour, not configurable (the PRD
+/// names this as a fixed guardrail, unlike the two limits above).
+pub const CLAIM_EMAIL_SEND_LIMIT_PER_HOUR: i64 = 3;
+/// requirement 3: how long a magic-link verify code stays redeemable --
+/// short, since it's a same-session round trip through the human's own
+/// inbox, not a durable credential.
+pub const CLAIM_VERIFY_CODE_TTL_SECS: i64 = 30 * 60;
+
 /// A per-tenant sliding-window call counter for `host.tool_run`
 /// (requirement 3 / AC7). Kept in `handler.rs`'s territory (cross-kind,
 /// control-plane-level) rather than inside `kinds::python`'s own
@@ -269,6 +287,25 @@ pub struct AppState {
     /// PRD-mcphost-signup-kill-switch-and-source requirement 3: `signup`'s
     /// pause-file kill switch. See [`SignupPause`].
     pub signup_pause: SignupPause,
+    /// PRD-mcphost-human-claim-magic-link requirement 1 / AC4: how long a
+    /// freshly-minted claim token stays redeemable. A field (like
+    /// [`AppState::signup_rate_limit_per_hour`]) rather than only
+    /// [`CLAIM_TOKEN_TTL_SECS_DEFAULT`], so AC4's test can force it to 1s
+    /// without a real 7-day wait.
+    pub claim_token_ttl_secs: i64,
+    /// requirement 7 / AC8: the per-IP `GET`/`POST /claim/*` ceiling, same
+    /// field-not-just-a-constant rationale as
+    /// [`AppState::claim_token_ttl_secs`].
+    pub claim_rate_limit_per_hour: i64,
+    /// The `MCPHOST_EMAIL_*` settings; `is_configured() == false` is the
+    /// supported "email delivery is not configured" state (requirement 5 /
+    /// AC6).
+    pub email_config: crate::email::EmailConfig,
+    /// The outbound magic-link client `claim::post_claim` calls --
+    /// `HttpEmailClient` in production, `FakeEmailClient` in every test
+    /// (technical considerations: "Tests never reach the network"), same
+    /// shape as [`AppState::billing_client`].
+    pub email_client: std::sync::Arc<dyn crate::email::EmailClient>,
 }
 
 pub fn now_unix() -> i64 {
@@ -714,6 +751,48 @@ pub fn signup_rate_limit_per_hour_from_env() -> i64 {
         "signup rate limit configured"
     );
     limit
+}
+
+/// Same pure-parse-then-fallback shape as [`parse_signup_rate_limit_per_hour`],
+/// for `$MCPHOST_CLAIM_TOKEN_TTL_SECS` (requirement 1 / AC4).
+pub fn parse_claim_token_ttl_secs(raw: Option<&str>) -> i64 {
+    match raw {
+        None => CLAIM_TOKEN_TTL_SECS_DEFAULT,
+        Some(raw) => raw.parse::<i64>().unwrap_or_else(|_| {
+            tracing::warn!(
+                raw,
+                default = CLAIM_TOKEN_TTL_SECS_DEFAULT,
+                "MCPHOST_CLAIM_TOKEN_TTL_SECS is not a valid integer; falling back to default"
+            );
+            CLAIM_TOKEN_TTL_SECS_DEFAULT
+        }),
+    }
+}
+
+pub fn claim_token_ttl_secs_from_env() -> i64 {
+    let raw = std::env::var("MCPHOST_CLAIM_TOKEN_TTL_SECS").ok();
+    parse_claim_token_ttl_secs(raw.as_deref())
+}
+
+/// Same shape, for `$MCPHOST_CLAIM_RATE_LIMIT_PER_HOUR` (requirement 7 /
+/// AC8).
+pub fn parse_claim_rate_limit_per_hour(raw: Option<&str>) -> i64 {
+    match raw {
+        None => CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
+        Some(raw) => raw.parse::<i64>().unwrap_or_else(|_| {
+            tracing::warn!(
+                raw,
+                default = CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
+                "MCPHOST_CLAIM_RATE_LIMIT_PER_HOUR is not a valid integer; falling back to default"
+            );
+            CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT
+        }),
+    }
+}
+
+pub fn claim_rate_limit_per_hour_from_env() -> i64 {
+    let raw = std::env::var("MCPHOST_CLAIM_RATE_LIMIT_PER_HOUR").ok();
+    parse_claim_rate_limit_per_hour(raw.as_deref())
 }
 
 #[cfg(test)]

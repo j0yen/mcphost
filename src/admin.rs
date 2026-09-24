@@ -95,6 +95,12 @@ pub async fn tenants(state: &AppState, args: &Value) -> Result<Value, AppError> 
                 "source_class": t.source_class,
                 "client_name": t.client_name,
                 "client_version": t.client_version,
+                // PRD-mcphost-human-claim-magic-link requirement 6 / AC9:
+                // additive, boolean only -- never `owner_email` itself, so
+                // an operator can see claim progress in this listing
+                // without this row becoming a second place a human's
+                // address is stored.
+                "owner_verified": t.owner_verified_at.is_some(),
             })
         })
         .collect();

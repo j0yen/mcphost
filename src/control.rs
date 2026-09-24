@@ -207,6 +207,12 @@ pub async fn signup(
         )
         .await?;
 
+    // PRD-mcphost-human-claim-magic-link requirement 1 / AC1: minted once,
+    // right after the tenant row exists, for both branches below -- the
+    // claim link is a property of the tenant, not of which signup mode the
+    // caller picked.
+    let claim_url = crate::claim::issue_claim_token(state, &tenant).await?;
+
     // PRD-mcphost-handoff-token requirement 1 / AC1: opt-in only -- an
     // absent (or non-true) `handoff` argument is byte-identical to today's
     // response below (requirement 5 / AC5). In handoff mode, `key` never
@@ -242,6 +248,10 @@ pub async fn signup(
                 single-use and expires in expires_in seconds -- a transcript that captured \
                 this response is worthless to anyone who reads it after redemption.",
             "next": "host.redeem",
+            // PRD-mcphost-human-claim-magic-link requirement 1 / AC1: present
+            // in both signup modes -- the claim link belongs to the tenant,
+            // not to whichever way this call chose to hand back the key.
+            "claim_url": claim_url,
         });
         // PRD-mcphost-signup-kill-switch-and-source requirement 1 / AC1-2:
         // additive -- present only when the caller passed a valid `source`
@@ -262,6 +272,7 @@ pub async fn signup(
         "key": key,
         "namespace": namespace,
         "endpoint": format!("{}/mcp", state.public_url.trim_end_matches('/')),
+        "claim_url": claim_url,
         // PRD-mcphost-session-key requirement 3 / AC4: told by the payload
         // it is already reading, not a reconnect instruction it cannot
         // follow (this key never attaches to a connection property; the
@@ -636,6 +647,12 @@ pub fn whoami(tenant: &Tenant) -> Value {
         "client_version": tenant.client_version,
         "key_age_s": key_age_s,
         "key_rotated_at": tenant.key_rotated_unix,
+        // PRD-mcphost-human-claim-magic-link P1 requirement 8 / AC11: lets
+        // the agent tell its human whether the claim actually happened,
+        // without ever exposing the email address itself (same
+        // bool-only-derived-from-owner_verified_at shape as
+        // `admin.tenants`' own `owner_verified`).
+        "owner_verified": tenant.owner_verified_at.is_some(),
         // PRD-mcphost-host-tool-deprecation P1 requirement 6 / AC7: the
         // committed contract's own version, so an agent already calling
         // host.whoami for its identity learns which contracts/host-tools.v<N>.json

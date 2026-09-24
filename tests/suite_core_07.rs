@@ -334,6 +334,32 @@ mod mcphost_host_tool_deprecation_ac06_changelog_lists_additions;
 mod mcphost_host_tool_deprecation_ac07_whoami_contract_version;
 #[path = "mcphost_host_tool_deprecation_ac08_llms_txt_links_contract.rs"]
 mod mcphost_host_tool_deprecation_ac08_llms_txt_links_contract;
+#[path = "mcphost_human_claim_magic_link_ac01_claim_url_in_signup.rs"]
+mod mcphost_human_claim_magic_link_ac01_claim_url_in_signup;
+#[path = "mcphost_human_claim_magic_link_ac02_post_claim_sends_magic_link.rs"]
+mod mcphost_human_claim_magic_link_ac02_post_claim_sends_magic_link;
+#[path = "mcphost_human_claim_magic_link_ac03_verify_sets_owner_and_shows_summary.rs"]
+mod mcphost_human_claim_magic_link_ac03_verify_sets_owner_and_shows_summary;
+#[path = "mcphost_human_claim_magic_link_ac04_expired_claim_token_410.rs"]
+mod mcphost_human_claim_magic_link_ac04_expired_claim_token_410;
+#[path = "mcphost_human_claim_magic_link_ac05_malformed_email_400.rs"]
+mod mcphost_human_claim_magic_link_ac05_malformed_email_400;
+#[path = "mcphost_human_claim_magic_link_ac06_email_not_configured.rs"]
+mod mcphost_human_claim_magic_link_ac06_email_not_configured;
+#[path = "mcphost_human_claim_magic_link_ac07_racing_verify_single_winner.rs"]
+mod mcphost_human_claim_magic_link_ac07_racing_verify_single_winner;
+#[path = "mcphost_human_claim_magic_link_ac08_claim_rate_limit_per_ip.rs"]
+mod mcphost_human_claim_magic_link_ac08_claim_rate_limit_per_ip;
+#[path = "mcphost_human_claim_magic_link_ac09_healthz_and_admin_tenants_claimed.rs"]
+mod mcphost_human_claim_magic_link_ac09_healthz_and_admin_tenants_claimed;
+#[path = "mcphost_human_claim_magic_link_ac10_retry_recovers_from_one_failure.rs"]
+mod mcphost_human_claim_magic_link_ac10_retry_recovers_from_one_failure;
+#[path = "mcphost_human_claim_magic_link_ac11_whoami_owner_verified.rs"]
+mod mcphost_human_claim_magic_link_ac11_whoami_owner_verified;
+#[path = "mcphost_human_claim_magic_link_ac12_llms_txt_relay_sentence.rs"]
+mod mcphost_human_claim_magic_link_ac12_llms_txt_relay_sentence;
+#[path = "mcphost_human_claim_magic_link_ac13_bearer_key_never_in_claim_pages.rs"]
+mod mcphost_human_claim_magic_link_ac13_bearer_key_never_in_claim_pages;
 #[path = "mcphost_sandbox_egress_allowlist_ac05_none_network_unshare_all.rs"]
 mod mcphost_sandbox_egress_allowlist_ac05_none_network_unshare_all;
 #[path = "mcphost_sandbox_egress_allowlist_ac09_readme_documents_proxy_and_deny_list.rs"]

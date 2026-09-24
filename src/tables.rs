@@ -787,6 +787,10 @@ mod tests {
             disk_guard: crate::retention::DiskGuard::from_env(),
             compat_token: None,
             signup_pause: crate::state::SignupPause::from_env(dir),
+            claim_token_ttl_secs: crate::state::CLAIM_TOKEN_TTL_SECS_DEFAULT,
+            claim_rate_limit_per_hour: crate::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
+            email_config: crate::email::EmailConfig::default(),
+            email_client: std::sync::Arc::new(crate::email::FakeEmailClient::new()),
         }
     }
 

@@ -422,6 +422,39 @@ impl TestServer {
         .await
     }
 
+    /// PRD-mcphost-human-claim-magic-link: a server whose claim email is
+    /// actually configured (a caller-supplied `Arc<FakeEmailClient>`
+    /// cloned before this call so the test can inspect `sends()`/
+    /// `send_count()` afterward, same "clone before, inspect after"
+    /// rationale as [`Self::start_with_billing`]). Every other `start_*`
+    /// helper defaults to `EmailConfig::default()` (unconfigured, AC6) and
+    /// a fresh, uninspected fake client.
+    pub async fn start_with_email(
+        email_client: Arc<mcphost::email::FakeEmailClient>,
+    ) -> Self {
+        Self::start_full_with_email(
+            Some(ADMIN_KEY.to_string()),
+            KindRegistry::with_builtin(),
+            mcphost::state::CALL_TIMEOUT,
+            None,
+            mcphost::state::SIGNUP_RATE_LIMIT_PER_HOUR,
+            mcphost::billing::BillingConfig::default(),
+            Arc::new(mcphost::billing::FakeBillingClient::new(
+                mcphost::state::now_unix(),
+            )),
+            Vec::new(),
+            mcphost::email::EmailConfig {
+                api_url: Some("https://email.invalid/send".to_string()),
+                api_key: Some("test-email-key".to_string()),
+                from: Some("noreply@mcphost.invalid".to_string()),
+            },
+            email_client,
+            mcphost::state::CLAIM_TOKEN_TTL_SECS_DEFAULT,
+            mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
+        )
+        .await
+    }
+
     /// The one real constructor every `start_*` helper above funnels
     /// into -- `deprecations` is the one field
     /// PRD-mcphost-host-tool-deprecation added to `AppState`; every other
@@ -436,6 +469,43 @@ impl TestServer {
         billing_config: mcphost::billing::BillingConfig,
         billing_client: Arc<dyn mcphost::billing::BillingClient>,
         deprecations: Vec<mcphost::api_contract::Deprecation>,
+    ) -> Self {
+        Self::start_full_with_email(
+            admin_key,
+            kinds,
+            call_timeout,
+            registry,
+            signup_rate_limit_per_hour,
+            billing_config,
+            billing_client,
+            deprecations,
+            mcphost::email::EmailConfig::default(),
+            Arc::new(mcphost::email::FakeEmailClient::new()),
+            mcphost::state::CLAIM_TOKEN_TTL_SECS_DEFAULT,
+            mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
+        )
+        .await
+    }
+
+    /// The one real constructor every `start_*` helper above funnels
+    /// into, transitively -- `email_config`/`email_client`/
+    /// `claim_token_ttl_secs`/`claim_rate_limit_per_hour` are the fields
+    /// PRD-mcphost-human-claim-magic-link added to `AppState`; every other
+    /// field is unchanged from before this PRD.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn start_full_with_email(
+        admin_key: Option<String>,
+        kinds: KindRegistry,
+        call_timeout: std::time::Duration,
+        registry: Option<RegistryConfig>,
+        signup_rate_limit_per_hour: i64,
+        billing_config: mcphost::billing::BillingConfig,
+        billing_client: Arc<dyn mcphost::billing::BillingClient>,
+        deprecations: Vec<mcphost::api_contract::Deprecation>,
+        email_config: mcphost::email::EmailConfig,
+        email_client: Arc<dyn mcphost::email::EmailClient>,
+        claim_token_ttl_secs: i64,
+        claim_rate_limit_per_hour: i64,
     ) -> Self {
         let data_dir = TempDataDir::new();
         let db = Db::open(&data_dir.0).expect("open db");
@@ -489,6 +559,10 @@ impl TestServer {
             disk_guard: mcphost::retention::DiskGuard::from_env(),
             compat_token: None,
             signup_pause: mcphost::state::SignupPause::from_env(&data_dir.0),
+            claim_token_ttl_secs,
+            claim_rate_limit_per_hour,
+            email_config,
+            email_client,
         });
 
         // PRD-mcphost-runs-and-jobs: every test server runs the real

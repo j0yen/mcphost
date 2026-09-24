@@ -57,6 +57,10 @@ async fn bare_state() -> (AppState, common::TempDataDir) {
         disk_guard: mcphost::retention::DiskGuard::from_env(),
         compat_token: None,
         signup_pause: mcphost::state::SignupPause::from_env(&data_dir.0),
+        claim_token_ttl_secs: mcphost::state::CLAIM_TOKEN_TTL_SECS_DEFAULT,
+        claim_rate_limit_per_hour: mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
+        email_config: mcphost::email::EmailConfig::default(),
+        email_client: Arc::new(mcphost::email::FakeEmailClient::new()),
     };
     (state, data_dir)
 }

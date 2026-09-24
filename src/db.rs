@@ -54,6 +54,7 @@ const MIGRATION_0030: &str = include_str!("../migrations/0030_tool_lock.sql");
 const MIGRATION_0031: &str = include_str!("../migrations/0031_webhook_triggers.sql");
 const MIGRATION_0032: &str = include_str!("../migrations/0032_signup_source.sql");
 const MIGRATION_0033: &str = include_str!("../migrations/0033_network_denials.sql");
+const MIGRATION_0034: &str = include_str!("../migrations/0034_claim.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -69,7 +70,7 @@ const TENANT_COLUMNS: &str = "id, namespace, display_name, key_hash, created_at,
     last_tool_change_unix, namespace_verified, registry_namespace, plan, plan_since, billing_ref, \
     stripe_customer_id, synthetic, source_class, client_name, client_version, classified_by, \
     created_unix, origin, origin_detail, key_rotated_unix, disabled_reason, mesh_frozen_at, \
-    signup_source";
+    signup_source, owner_email, owner_verified_at, claim_token_hash, claim_expires_at";
 
 fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
     Ok(Tenant {
@@ -98,6 +99,10 @@ fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
         disabled_reason: r.get(22)?,
         mesh_frozen_at: r.get(23)?,
         signup_source: r.get(24)?,
+        owner_email: r.get(25)?,
+        owner_verified_at: r.get(26)?,
+        claim_token_hash: r.get(27)?,
+        claim_expires_at: r.get(28)?,
     })
 }
 
@@ -395,6 +400,28 @@ pub struct Tenant {
     /// migration 0032). Untrusted, display-only -- never consulted by
     /// `origin`/`source_class`/any provenance logic.
     pub signup_source: Option<String>,
+    /// PRD-mcphost-human-claim-magic-link requirement 3 / AC3, AC7: the
+    /// human owner's address, set (together with
+    /// [`Self::owner_verified_at`]) exactly once by `Db::verify_claim_code`'s
+    /// single-winner `UPDATE ... WHERE owner_verified_at IS NULL`. Never
+    /// surfaced by `admin.tenants` or any other tenant-facing listing
+    /// (AC9) -- only the claim summary page (rendered straight to the
+    /// verifying browser) and this struct itself ever read it. `None` for
+    /// an unclaimed tenant (migration 0033).
+    pub owner_email: Option<String>,
+    /// Unix seconds of the claim that set [`Self::owner_email`]; `None`
+    /// until then. `host.whoami`'s `owner_verified` (AC11) and
+    /// `admin.tenants`' `owner_verified` (AC9) are both just
+    /// `.is_some()` on this field.
+    pub owner_verified_at: Option<i64>,
+    /// sha256 hex of this tenant's single active claim token (same
+    /// hash-at-rest convention as [`Self::key_hash`]/`handoff_tokens.token_hash`);
+    /// `None` once the tenant is claimed (`Db::verify_claim_code` clears
+    /// it) or before any `signup`/`admin.tenant_claim_url` has minted one.
+    pub claim_token_hash: Option<String>,
+    /// Unix seconds after which [`Self::claim_token_hash`] no longer
+    /// resolves (AC4: `MCPHOST_CLAIM_TOKEN_TTL_SECS`, default 7 days).
+    pub claim_expires_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -737,6 +764,18 @@ pub enum HandoffRedeemOutcome {
     AlreadyRedeemed {
         token_id: i64,
     },
+}
+
+/// [`Db::verify_claim_code`]'s outcome (PRD-mcphost-human-claim-magic-link
+/// requirement 3 / AC3, AC7).
+pub enum ClaimVerifyOutcome {
+    Verified { tenant_id: i64, email: String },
+    NotFound,
+    Expired,
+    AlreadyConsumed,
+    /// AC7: this code was valid and got consumed, but another verify
+    /// already won the race to set this tenant's owner first.
+    Conflict,
 }
 
 fn now_rfc3339() -> String {
@@ -1148,7 +1187,8 @@ impl Db {
         Self::migrate_0030_tool_lock(&conn)?;
         Self::migrate_0031_webhook_triggers(&conn)?;
         Self::migrate_0032_signup_source(&conn)?;
-        Self::migrate_0033_network_denials(&conn)
+        Self::migrate_0033_network_denials(&conn)?;
+        Self::migrate_0034_claim(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -1631,6 +1671,19 @@ impl Db {
         Ok(())
     }
 
+    /// PRD-mcphost-human-claim-magic-link migration 0034 (requirements
+    /// 1-7): same idempotency pattern as 0002-0033, gated on
+    /// `tenants.claim_token_hash`.
+    fn migrate_0034_claim(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'claim_token_hash'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0034)?;
+        }
+        Ok(())
+    }
+
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
     /// subcommand.
@@ -1860,6 +1913,10 @@ impl Db {
                 disabled_reason: None,
                 mesh_frozen_at: None,
                 signup_source,
+                owner_email: None,
+                owner_verified_at: None,
+                claim_token_hash: None,
+                claim_expires_at: None,
             })
         })
         .await
@@ -2393,6 +2450,187 @@ impl Db {
         .await
     }
 
+    // ---- claim (PRD-mcphost-human-claim-magic-link) --------------------
+
+    /// PRD-mcphost-human-claim-magic-link requirement 1 / AC1: mints (or
+    /// replaces) this tenant's single active claim token, sha256-hashed at
+    /// rest -- same convention as [`Self::create_handoff_token`]'s
+    /// `token_hash`. Stored on the tenant row itself (migration 0033),
+    /// not a table of its own, since a tenant only ever has one
+    /// outstanding claim link at a time; a later call (a fresh `signup`
+    /// re-run is not possible, but a future `admin.tenant_claim_url`
+    /// would) simply overwrites it.
+    pub async fn set_claim_token(
+        &self,
+        tenant_id: i64,
+        token_hash: String,
+        expires_unix: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tenants SET claim_token_hash = ?1, claim_expires_at = ?2 WHERE id = ?3",
+                params![token_hash, expires_unix, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// AC4: `GET /claim/{token}`'s own lookup -- resolves straight to the
+    /// full [`Tenant`] row so the caller can check expiry
+    /// (`claim_expires_at`) and already-claimed (`owner_verified_at`)
+    /// itself, same "one lookup, caller decides the outcome" shape as
+    /// [`Self::find_tenant_by_namespace`]. `None` for a token that never
+    /// existed -- `claim_token_hash = ?1` never matches a `NULL` column,
+    /// so no extra guard is needed for an unclaimed-and-never-tokened row.
+    pub async fn find_tenant_by_claim_token_hash(
+        &self,
+        token_hash: String,
+    ) -> Result<Option<Tenant>, AppError> {
+        self.with_conn(move |conn| {
+            let sql = format!("SELECT {TENANT_COLUMNS} FROM tenants WHERE claim_token_hash = ?1");
+            conn.query_row(&sql, params![token_hash], tenant_from_row)
+                .optional()
+                .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Test-only: force one tenant's claim token past its expiry without a
+    /// real multi-day wait -- same "flip an internal knob for a test"
+    /// shape as [`Self::expire_handoff_token_for_test`] (AC4).
+    pub async fn expire_claim_token_for_test(&self, token_hash: String) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tenants SET claim_expires_at = 0 WHERE claim_token_hash = ?1",
+                params![token_hash],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// requirement 7 / AC8: the per-IP `GET`/`POST /claim/*` ceiling
+    /// (default 30/hour) -- same atomic check-and-insert-in-one-statement
+    /// shape as [`Self::try_admit_signup`], keyed by `source_ip` instead of
+    /// tenant so a burst against one token (or a scan across many) from
+    /// the same address is capped either way.
+    pub async fn try_admit_claim_request(
+        &self,
+        source_ip: String,
+        since_unix: i64,
+        limit: i64,
+    ) -> Result<bool, AppError> {
+        let created_unix = crate::state::now_unix();
+        self.with_conn(move |conn| {
+            let inserted = conn.execute(
+                "INSERT INTO claim_rate_events (source_ip, created_unix) \
+                 SELECT ?1, ?2 \
+                 WHERE (SELECT COUNT(*) FROM claim_rate_events \
+                        WHERE source_ip = ?1 AND created_unix >= ?3) < ?4",
+                params![source_ip, created_unix, since_unix, limit],
+            )?;
+            Ok(inserted > 0)
+        })
+        .await
+    }
+
+    /// requirement 7 / AC7's own guardrail: at most
+    /// [`crate::state::CLAIM_EMAIL_SEND_LIMIT_PER_HOUR`] magic-link sends
+    /// per tenant per hour -- same atomic check-and-insert-in-one-statement
+    /// shape as [`Self::try_admit_signup`], so a burst of concurrent
+    /// `POST /claim/{token}` calls for the same tenant can't all read
+    /// "under the cap" and all insert. Returns `false` (nothing written)
+    /// once the cap is already met for this tenant/window.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn try_create_claim_code(
+        &self,
+        tenant_id: i64,
+        code_hash: String,
+        email: String,
+        expires_unix: i64,
+        since_unix: i64,
+        limit: i64,
+    ) -> Result<bool, AppError> {
+        let created_unix = crate::state::now_unix();
+        self.with_conn(move |conn| {
+            let inserted = conn.execute(
+                "INSERT INTO claim_codes (tenant_id, code_hash, email, expires_unix, created_unix) \
+                 SELECT ?1, ?2, ?3, ?4, ?5 \
+                 WHERE (SELECT COUNT(*) FROM claim_codes \
+                        WHERE tenant_id = ?1 AND created_unix >= ?6) < ?7",
+                params![tenant_id, code_hash, email, expires_unix, created_unix, since_unix, limit],
+            )?;
+            Ok(inserted > 0)
+        })
+        .await
+    }
+
+    /// requirement 3 / AC3, AC7: the atomic verify-and-claim -- consult,
+    /// claim (single-use, same `UPDATE ... WHERE consumed_unix IS NULL`
+    /// shape as [`Self::redeem_handoff_token`]), then attempt to set the
+    /// TENANT's ownership with a second atomic `UPDATE ... WHERE
+    /// owner_verified_at IS NULL`. That second `UPDATE` is what AC7's race
+    /// resolves on: two different, both-genuinely-valid codes for the same
+    /// tenant can both claim their own `claim_codes` row, but only the
+    /// first to reach this `UPDATE` actually flips
+    /// `owner_verified_at` from `NULL` -- the second sees `0` rows affected
+    /// and reports [`ClaimVerifyOutcome::Conflict`] even though its own
+    /// code was validly consumed.
+    pub async fn verify_claim_code(&self, code_hash: String) -> Result<ClaimVerifyOutcome, AppError> {
+        let now = crate::state::now_unix();
+        self.with_conn(move |conn| {
+            struct Row {
+                tenant_id: i64,
+                email: String,
+                expires_unix: i64,
+                consumed_unix: Option<i64>,
+            }
+            let row: Option<Row> = conn
+                .query_row(
+                    "SELECT tenant_id, email, expires_unix, consumed_unix FROM claim_codes \
+                     WHERE code_hash = ?1",
+                    params![code_hash],
+                    |r| {
+                        Ok(Row {
+                            tenant_id: r.get(0)?,
+                            email: r.get(1)?,
+                            expires_unix: r.get(2)?,
+                            consumed_unix: r.get(3)?,
+                        })
+                    },
+                )
+                .optional()?;
+            let Some(Row { tenant_id, email, expires_unix, consumed_unix }) = row else {
+                return Ok(ClaimVerifyOutcome::NotFound);
+            };
+            if consumed_unix.is_some() {
+                return Ok(ClaimVerifyOutcome::AlreadyConsumed);
+            }
+            if now > expires_unix {
+                return Ok(ClaimVerifyOutcome::Expired);
+            }
+            let claimed = conn.execute(
+                "UPDATE claim_codes SET consumed_unix = ?1 WHERE code_hash = ?2 AND consumed_unix IS NULL",
+                params![now, code_hash],
+            )?;
+            if claimed == 0 {
+                return Ok(ClaimVerifyOutcome::AlreadyConsumed);
+            }
+            let set = conn.execute(
+                "UPDATE tenants SET owner_email = ?1, owner_verified_at = ?2, \
+                 claim_token_hash = NULL, claim_expires_at = NULL \
+                 WHERE id = ?3 AND owner_verified_at IS NULL",
+                params![email, now, tenant_id],
+            )?;
+            if set == 0 {
+                return Ok(ClaimVerifyOutcome::Conflict);
+            }
+            Ok(ClaimVerifyOutcome::Verified { tenant_id, email })
+        })
+        .await
+    }
+
     pub async fn list_tenants(&self) -> Result<Vec<Tenant>, AppError> {
         self.with_conn(|conn| {
             let sql = format!("SELECT {TENANT_COLUMNS} FROM tenants ORDER BY id");
@@ -2507,6 +2745,23 @@ impl Db {
                 .query_map(params![since_unix], |r| Ok((r.get(0)?, r.get(1)?)))?
                 .collect::<Result<Vec<(String, i64)>, rusqlite::Error>>()?;
             Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-human-claim-magic-link requirement 6 / AC9: `/healthz`'s
+    /// `tenants_claimed.{external,synthetic}` -- the same `origin`-keyed
+    /// split every other `/healthz` counter uses (`signups`, `calls`),
+    /// restricted to `owner_verified_at IS NOT NULL`.
+    pub async fn count_claimed_tenants_by_origin(&self) -> Result<(i64, i64), AppError> {
+        self.with_conn(|conn| {
+            conn.query_row(
+                "SELECT (SELECT COUNT(*) FROM tenants WHERE owner_verified_at IS NOT NULL AND origin = 'external'), \
+                        (SELECT COUNT(*) FROM tenants WHERE owner_verified_at IS NOT NULL AND origin = 'synthetic')",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(AppError::from)
         })
         .await
     }
