@@ -97,9 +97,13 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // lane (routes plugin/** and tests/plugin_assets.sh to the AC1
     // asset-check proof) -- a sixth, intended addition since the
     // baseline, not drift.
+    // PRD-mcphost-admin-schema-contract added its own "admin-schemas" lane
+    // (routes schemas/** to the mcphost_admin_schema_contract_ac0x proof
+    // tests) -- a seventh, intended addition since the baseline, not drift.
     assert_eq!(
         added,
         vec![
+            "admin-schemas",
             "checkcompat-race-soak",
             "contracts",
             "examples",
@@ -107,7 +111,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "plugin",
             "wasm-fixtures"
         ],
-        "only checkcompat-race-soak, contracts, examples, loop-config, plugin, and \
+        "only admin-schemas, checkcompat-race-soak, contracts, examples, loop-config, plugin, and \
          wasm-fixtures may have been added since {BASELINE_REV}"
     );
 }

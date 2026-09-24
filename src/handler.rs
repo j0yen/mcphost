@@ -3965,6 +3965,12 @@ impl ServerHandler for McpHostHandler {
             (Auth::Admin, name) if name.starts_with("admin.") => {
                 self.dispatch_admin_tool(name, args).await
             }
+            // PRD-mcphost-admin-schema-contract P2 requirement 7 (AC7): the
+            // one host.* tool an admin-scoped caller (the admin key, not a
+            // tenant) may reach directly -- so an operator already holding
+            // the admin key can learn the admin schema version with no
+            // extra tenant signup.
+            (Auth::Admin, "host.whoami") => Ok(control::whoami_admin()),
             (Auth::Admin, _) => Err(AppError::Forbidden),
             (Auth::Tenant(_), name) if name.starts_with("admin.") => {
                 let _ = name;

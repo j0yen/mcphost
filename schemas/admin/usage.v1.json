@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mcphost.dev/schemas/admin/usage.v1.json",
+  "title": "admin.usage v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "window",
+    "usage",
+    "db_bytes",
+    "db_page_free_bytes",
+    "rows_by_table",
+    "last_prune",
+    "exports_today",
+    "tools_by_network",
+    "tools_by_advisory_state"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "window": { "type": "string" },
+    "usage": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/usage_row" }
+    },
+    "db_bytes": { "type": "integer" },
+    "db_page_free_bytes": { "type": "integer" },
+    "rows_by_table": {
+      "type": "object",
+      "additionalProperties": { "type": "integer" }
+    },
+    "last_prune": {
+      "type": ["object", "null"],
+      "description": "null if no prune cycle has ever run",
+      "required": ["at", "ok", "deleted"],
+      "additionalProperties": false,
+      "properties": {
+        "at": { "type": "string" },
+        "ok": { "type": "boolean" },
+        "deleted": {
+          "type": "object",
+          "additionalProperties": { "type": "integer" }
+        }
+      }
+    },
+    "exports_today": { "type": "integer" },
+    "tools_by_network": {
+      "type": "object",
+      "additionalProperties": { "type": "integer" }
+    },
+    "tools_by_advisory_state": {
+      "type": "object",
+      "required": ["clean", "advisory"],
+      "additionalProperties": false,
+      "properties": {
+        "clean": { "type": "integer" },
+        "advisory": { "type": "integer" }
+      }
+    }
+  },
+  "$defs": {
+    "usage_row": {
+      "type": "object",
+      "required": ["tenant", "tool", "calls", "errors", "p50_ms", "p95_ms"],
+      "additionalProperties": false,
+      "properties": {
+        "tenant": { "type": "string" },
+        "tool": { "type": "string" },
+        "calls": { "type": "integer" },
+        "errors": { "type": "integer" },
+        "p50_ms": { "type": "number" },
+        "p95_ms": { "type": "number" }
+      }
+    }
+  }
+}
