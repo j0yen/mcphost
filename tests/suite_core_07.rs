@@ -294,6 +294,20 @@ mod lanecov_ac06_malformed_lane_fails_naming_it;
 mod lanecov_ac07_docs_document_adding_a_lane;
 #[path = "limits_ac05_signup_burst_atomic.rs"]
 mod limits_ac05_signup_burst_atomic;
+#[path = "mcphost_admin_schema_contract_ac01_tenants_schema_version.rs"]
+mod mcphost_admin_schema_contract_ac01_tenants_schema_version;
+#[path = "mcphost_admin_schema_contract_ac02_listings_validate_v1_schema.rs"]
+mod mcphost_admin_schema_contract_ac02_listings_validate_v1_schema;
+#[path = "mcphost_admin_schema_contract_ac03_unknown_field_fails_naming_it.rs"]
+mod mcphost_admin_schema_contract_ac03_unknown_field_fails_naming_it;
+#[path = "mcphost_admin_schema_contract_ac04_unsupported_version_refused.rs"]
+mod mcphost_admin_schema_contract_ac04_unsupported_version_refused;
+#[path = "mcphost_admin_schema_contract_ac05_doctor_live_schema_version.rs"]
+mod mcphost_admin_schema_contract_ac05_doctor_live_schema_version;
+#[path = "mcphost_admin_schema_contract_ac06_admin_rs_fields_match_schema.rs"]
+mod mcphost_admin_schema_contract_ac06_admin_rs_fields_match_schema;
+#[path = "mcphost_admin_schema_contract_ac07_whoami_admin_schema_version.rs"]
+mod mcphost_admin_schema_contract_ac07_whoami_admin_schema_version;
 #[path = "mcphost_claude_code_plugin_and_snippets_ac01_plugin_assets_script.rs"]
 mod mcphost_claude_code_plugin_and_snippets_ac01_plugin_assets_script;
 #[path = "mcphost_claude_code_plugin_and_snippets_ac02_plugin_json_and_mcp_json_version.rs"]

@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mcphost.dev/schemas/admin/tenants.v1.json",
+  "title": "admin.tenants v1",
+  "type": "object",
+  "required": ["schema_version", "tenants"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "tenants": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/tenant_row" }
+    }
+  },
+  "$defs": {
+    "tenant_row": {
+      "type": "object",
+      "required": [
+        "tenant",
+        "display_name",
+        "created_at",
+        "disabled",
+        "disabled_reason",
+        "synthetic",
+        "source_class",
+        "client_name",
+        "client_version",
+        "owner_verified"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "tenant": { "type": "string" },
+        "display_name": { "type": "string" },
+        "created_at": { "type": "string" },
+        "disabled": { "type": "boolean" },
+        "disabled_reason": {
+          "type": ["string", "null"],
+          "description": "\"self_offboard\" | \"admin_disable\" | null (enabled, or disabled before this column existed)"
+        },
+        "synthetic": {
+          "type": ["string", "null"],
+          "description": "free-form harness/synthetic label, or null for an unlabeled real tenant"
+        },
+        "source_class": {
+          "type": ["string", "null"],
+          "description": "\"loopback\" | \"fleet\" | \"external\", or null for a row missed by classification"
+        },
+        "client_name": { "type": ["string", "null"] },
+        "client_version": { "type": ["string", "null"] },
+        "owner_verified": { "type": "boolean" }
+      }
+    }
+  }
+}

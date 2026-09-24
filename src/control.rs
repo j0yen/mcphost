@@ -661,6 +661,19 @@ pub fn whoami(tenant: &Tenant) -> Value {
     })
 }
 
+/// PRD-mcphost-admin-schema-contract P2 requirement 7 (AC7): `host.whoami`
+/// for the admin key itself, not a tenant -- there is no `Tenant` row to
+/// report identity from, so this is a minimal admin-only identity reply
+/// naming the one thing an operator holding the admin key needs from it:
+/// the schema version `admin.tenants`/`admin.usage` are currently pinned
+/// to (`admin::SCHEMA_VERSION`, the same constant those two listings emit).
+pub fn whoami_admin() -> Value {
+    json!({
+        "admin": true,
+        "admin_schema_version": crate::admin::SCHEMA_VERSION,
+    })
+}
+
 /// PRD-mcphost-host-tool-deprecation requirement 4 / AC6: `host.changelog
 /// {since?}` -- additions, announced deprecations, and completed removals
 /// in the host.*/billing.* surface, derived from the live registry (this

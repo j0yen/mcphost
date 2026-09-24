@@ -15,6 +15,13 @@ const MAX_PREFIX_BATCH: i64 = 500;
 /// characters (empty included) is refused, so a typo cannot empty the box.
 const MIN_PREFIX_LEN: usize = 4;
 
+/// PRD-mcphost-admin-schema-contract requirement 1: the row shape
+/// `admin.tenants`/`admin.usage` carry today, pinned by
+/// `schemas/admin/tenants.v1.json`/`schemas/admin/usage.v1.json`. A change
+/// to either listing's row fields must bump this alongside a schema file
+/// change, or `mcphost_admin_schema_contract_ac06_*` fails naming the drift.
+pub const SCHEMA_VERSION: i64 = 1;
+
 fn arg_str(args: &Value, name: &str) -> Result<String, AppError> {
     args.get(name)
         .and_then(Value::as_str)
@@ -104,7 +111,7 @@ pub async fn tenants(state: &AppState, args: &Value) -> Result<Value, AppError> 
             })
         })
         .collect();
-    Ok(json!({ "tenants": tenants }))
+    Ok(json!({ "schema_version": SCHEMA_VERSION, "tenants": tenants }))
 }
 
 fn counts_json(counts: &TenantDeleteCounts) -> Value {
@@ -372,6 +379,7 @@ pub async fn usage(state: &AppState, args: &Value) -> Result<Value, AppError> {
         tools_by_network.into_iter().map(|(k, v)| (k, json!(v))).collect();
 
     Ok(json!({
+        "schema_version": SCHEMA_VERSION,
         "window": window,
         "usage": usage,
         "db_bytes": size.db_bytes,

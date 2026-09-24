@@ -1,32 +1,72 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-claude-code-plugin-and-snippets.md",
-  "intent_slug": "mcphost-claude-code-plugin-and-snippets",
-  "root_motivation": "Research on 2026-09-23 found every major client connects to mcphost's bearer/no-auth streamable-HTTP server with one command (claude mcp add --transport http, codex mcp add --url, Cursor static-header remote, Claude.ai custom connectors), yet README.md on origin/main mentions none of them and no plugin/skill directory exists (grep for 'claude mcp add|codex|cursor|connector|plugin|skill' returns nothing; no plugin/ or .claude paths). Direct-install is the highest-intent channel in the plan and the plugin marketplaces are the one place Claude Code users browse; without these assets the launch sends visitors to a page that never tells them how to connect.",
-  "user_persona": "Five (PRD User stories): (1) an agent operator on Claude Code who pastes one line and says 'give yourself a nightly job'; (2) an agent operator on Codex using codex mcp add; (3) a Cursor user who needs the mcp.json block with the bearer-header placeholder; (4) a Claude.ai user who needs to know where custom connectors live and what URL to paste; (5) a marketplace browser who finds mcphost, installs the plugin, and has the /mcphost skill explain the claim step.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-admin-schema-contract.md",
+  "intent_slug": "mcphost-admin-schema-contract",
+  "root_motivation": "Grounding (PRD, failure-derived): the 2026-09-16 KeyError: 'namespace' (visions/grand-loop.md chain, level 3) followed the 0.57.0 change to the admin tenants listing (CHANGELOG, self-offboard AC5) -- two repos (mcphost and mcphost-deploy) share one row-shape contract and neither writes it down. mcphost's 306 test files assert tool behavior, not the listing's row schema; mcphost-deploy's tests validate against disconnected fixture rows. Consequence: any admin listing change is a silent break of the revenue read mcphost-deploy runs nightly.",
+  "user_persona": "Three (PRD User stories): (1) mcphost-deploy, which reads schema_version and validates rows against the pinned schema before computing anything; (2) the mcphost builder, whose listing-field change fails a test until the version and schema are bumped together; (3) Joe, who wants doctor to say \"admin schema 2, deploy tool knows 1\" before the timer fires on an unpinned deploy.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 9
+    "target": 5
   },
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "level": "MUST",
+      "description": "Given a call to admin.tenants, When the response is read, Then it carries integer schema_version = 1 and rows unchanged otherwise.",
+      "test": "tests/mcphost_admin_schema_contract_ac01_tenants_schema_version.rs"
+    },
+    {
+      "id": "AC2",
+      "level": "MUST",
+      "description": "Given a database with normal, disabled, self-offboarded, and harness tenants, When both listings are validated against their v1 schema, Then every row validates.",
+      "test": "tests/mcphost_admin_schema_contract_ac02_listings_validate_v1_schema.rs"
+    },
+    {
+      "id": "AC3",
+      "level": "MUST",
+      "description": "Given a row with an unexpected additional field of unknown type, When validated with additionalProperties: false in the schema, Then the test fails naming the field.",
+      "test": "tests/mcphost_admin_schema_contract_ac03_unknown_field_fails_naming_it.rs"
+    },
+    {
+      "id": "AC4",
+      "level": "MUST",
+      "description": "Given mcphost-deploy pinned to v1 and a listing reporting schema_version: 2, When measure runs, Then it exits 5 with the unsupported-version message and writes no measure.json.",
+      "test": "tests/mcphost_admin_schema_contract_ac04_unsupported_version_refused.rs (producer half, branch-local: the vendored v1 schemas accept this branch's real listings and refuse one reporting schema_version: 2, naming the field) + cross-repo consumer half in /home/jsy/repos/mcphost-deploy commit 1e579e9, tests/adminschema_ac4_unsupported_version_exit5.py (drives the real `measure` Typer command: process exit code 5, the unsupported-version message, no measure.json/tenants.jsonl written, plus the control arm at the pinned version exiting 0). requirement 4's exit-5 behavior is mcphost-deploy's, a separate Python repo governed by PRD-build-cross-repo-commit-gate, so it cannot be a cargo test; see PRD Technical considerations ('the mcphost-deploy change is small and is listed in the trailer with its commit'). The Rust file's cross_repo_ac4_pointer_is_not_dangling test keeps this entry honest."
+    },
+    {
+      "id": "AC5",
+      "level": "MUST",
+      "description": "Given prod after this ships, When mcphost-deploy doctor runs on RedBaron, Then it prints the live schema version equal to a vendored one (proof: doctor output in the trailer).",
+      "test": "tests/mcphost_admin_schema_contract_ac05_doctor_live_schema_version.rs -- always-on: reads the live schema_version off both admin listings of a real server built from this branch and asserts it equals the vendored schemas/admin/*.v1.json constant, printing the doctor-shaped proof line; MCPHOST_LIVE=1 re-points the identical check at $MCPHOST_URL (the trailer run). The `doctor` command that prints the line is cross-repo: /home/jsy/repos/mcphost-deploy commit 1e579e9, tests/adminschema_ac5_doctor_live_schema_version.py. DEFERRED (prod half only) -- operator-provisioned: running `mcphost-deploy doctor` on production RedBaron after ship, and capturing its output in the trailer, needs the live host; nothing branch-local can stand in for it."
+    },
+    {
+      "id": "AC6",
+      "level": "SHOULD",
+      "description": "Given a change to a listing field in admin.rs with no schema change, When cargo test runs, Then the changelog-lint test fails.",
+      "test": "tests/mcphost_admin_schema_contract_ac06_admin_rs_fields_match_schema.rs"
+    },
+    {
+      "id": "AC7",
+      "level": "MAY",
+      "description": "Given an admin-scoped tenant, When host.whoami is called, Then admin_schema_version is present.",
+      "test": "tests/mcphost_admin_schema_contract_ac07_whoami_admin_schema_version.rs"
+    }
+  ],
   "scope": [
-    "plugin/.claude-plugin/plugin.json (new): name mcphost, version pinned to Cargo.toml's [package].version, description, author j0yen.",
-    "plugin/.mcp.json (new): declares the mcphost server at https://mcphost.dev/mcp over streamable HTTP.",
-    "plugin/skills/mcphost/SKILL.md (new): the /mcphost skill walking handoff-mode signup (source: \"plugin\"), redeem, publish one tool, set one schedule, and relay claim_url to the human without ever printing the key.",
-    "README.md: new '## Connect' section with four fenced snippets (Claude Code, Codex CLI, Cursor mcp.json, Claude.ai custom connector steps), each naming https://mcphost.dev/mcp, and links to /status.html and /aup.html.",
-    "www/index.html: the same four snippets in a stacked block above 'how it works', each with an inline-JS copy button (no external script, no bundler).",
-    "www/llms.txt: a 'First run: plugin walk-through' section with signup/publish/schedule/claim headings in order and the claim relay sentence, so an agent reading the site alone reaches the same outcome as the plugin skill.",
-    "tests/plugin_assets.sh (new): one shell check per requirement-5 assertion, printing one line per check and exiting 0 on the built tree.",
-    "Cargo.toml: patch version bump (0.60.5 -> 0.60.6) so plugin.json's pinned version has something fresh to track.",
-    "agent/proof-lanes.toml: new 'plugin' lane routing plugin/** and tests/plugin_assets.sh."
+    "src/admin.rs: new pub const SCHEMA_VERSION: i64 = 1, added as top-level schema_version to both admin::tenants and admin::usage responses (row shape unchanged).",
+    "schemas/admin/tenants.v1.json, schemas/admin/usage.v1.json (new): JSON Schema draft 2020-12, additionalProperties: false at both the document and row level, every optional field typed and nullable.",
+    "src/control.rs: new control::whoami_admin() -- a minimal {admin: true, admin_schema_version} reply for the admin key, distinct from the existing per-Tenant whoami().",
+    "src/handler.rs: call_tool's Auth::Admin dispatch gains one new arm, (Auth::Admin, \"host.whoami\") => control::whoami_admin(), ahead of the existing (Auth::Admin, _) => Forbidden fallback; every other host.*/admin.* dispatch arm is unchanged.",
+    "agent/proof-lanes.toml: new admin-schemas lane routing schemas/** to a name-filtered cargo test run, same shape as the pre-existing contracts lane.",
+    "tests/mcphost_admin_schema_contract_ac01/02/03/06/07_*.rs (new); tests/suite_core_07.rs regenerated by scripts/gen-test-suites.sh to include them."
   ],
   "non_goals": [
-    "Submission to the official Anthropic marketplace or Connectors Directory -- needs a Team/Enterprise org, a later task (PRD Non-goals).",
-    "OAuth (PRD Non-goals).",
-    "A VS Code or JetBrains extension (PRD Non-goals).",
-    "A 90-second asciinema cast under www/demo/ -- P2, reserved path only, recorded by the operator, not this coder dispatch (Requirement 8).",
-    "Any change to src/ -- the plugin and snippets are static files; no server behavior changes."
+    "Versioning the tenant-facing host.* surface -- already covered by contract_version (PRD-mcphost-host-tool-deprecation), and explicitly out of scope per this PRD's own Non-goals.",
+    "Changing what admin.tenants/admin.usage contain (PRD Non-goals) -- this PRD only adds schema_version and commits the schema of the rows exactly as they already are.",
+    "The mcphost-deploy side of requirement 4 (vendoring the schema files, exit 5 on unknown schema_version) and requirement 5 (doctor's live-version line) -- both deferred, AC4 as cross-repo/no-worktree, AC5 as operator-provisioned (needs live RedBaron).",
+    "Bumping schema_version for an additive, nullable field -- PRD Open question, assumed answer: no version bump, but the schema file itself must still be edited to declare the new field (what AC6's changelog lint actually enforces)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -35,36 +75,36 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "plugin_is_static_no_build_step": "The plugin ships as plain files (plugin.json/.mcp.json/SKILL.md) with no build step, kept inside the mcphost repo so tests/plugin_assets.sh and the AC2 cargo test can pin its version to Cargo.toml at test time (Technical considerations).",
-      "www_copy_button_inline_js_only": "The www/index.html copy button uses inline <script> only -- the site has no bundler and this PRD adds no external script tag (Technical considerations, AC4).",
-      "no_real_bearer_key_anywhere": "Every Cursor-style Authorization: Bearer header in plugin/** and the README/index.html/llms.txt snippets uses the literal <key> placeholder, never a real 40+ char token (AC7)."
+      "one_shared_schema_version_const": "admin::SCHEMA_VERSION is one constant used by admin.tenants, admin.usage, and control::whoami_admin's admin_schema_version -- both listings start at version 1 together per the PRD, so a single constant (rather than one per listing) is the simplest thing that is still correct; it can split later if the two listings' versions ever diverge.",
+      "admin_whoami_is_a_new_reply_shape_not_the_tenant_one": "host.whoami for the admin key (Auth::Admin) returns {admin: true, admin_schema_version}, not the existing per-Tenant whoami() shape with some fields nulled out -- there is no Tenant row for the admin key to report identity from, and AC7's own wording (\"admin_schema_version is present\") asks only for that one field.",
+      "ac6_changelog_lint_diffs_live_fields_not_git_history": "AC6 compares the field-name set admin.tenants/admin.usage actually emit (top level and row, via a live TestServer call) against schemas/admin/*.v1.json's declared 'properties' keys, rather than diffing git history -- this repo's own build-agent instructions refuse a test keyed to \"no changes since a sha\" (landing adds commits, e.g. a release bump, that would self-invalidate such a test); the live-vs-schema field-set comparison gives the same drift guarantee (and gets more specific: it names exactly which field is out of sync) without depending on commit history at all."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does a visitor who wants to connect an agent to mcphost not know how?",
-      "a": "README.md and www/index.html never mention any of the four major clients' connect syntax, and no plugin/skill exists for Claude Code's own marketplace browsers (Problem statement grep: 'claude mcp add|codex|cursor|connector|plugin|skill' returns nothing)."
+      "q": "Why build a schema contract for the admin listings now, rather than leaving them as ad hoc JSON?",
+      "a": "The 2026-09-16 KeyError: 'namespace' (visions/grand-loop.md chain, level 3) followed the 0.57.0 change to the admin tenants listing row shape -- mcphost-deploy's nightly measure read broke silently because nothing in either repo pinned or tested the row shape it depends on."
     },
     {
       "why": 2,
-      "q": "Why was the connect syntax never documented?",
-      "a": "Every prior PRD in this repo optimized the server side of onboarding (signup, handoff tokens, claim links) -- none of them touched the client-facing docs or shipped a plugin, because the direct-install channel had not yet been prioritized."
+      "q": "Why did neither repo's existing test suite catch the 0.57.0 break?",
+      "a": "mcphost's 306 test files assert tool BEHAVIOR (what a call does), never the listing's ROW SCHEMA (what fields a row carries and their types); mcphost-deploy's own tests validate against fixture rows it maintains by hand, disconnected from what the real listing actually emits."
     },
     {
       "why": 3,
-      "q": "Why does direct-install matter now?",
-      "a": "Direct-install is the highest-intent channel in the plan (PRD Problem statement, plan \u00a74), and the plugin marketplaces are the one place Claude Code users browse for tools -- without a plugin, that whole audience never sees mcphost."
+      "q": "Why a committed JSON Schema file rather than a shared Rust type or an OpenAPI doc?",
+      "a": "jsonschema 0.26 is already an mcphost dependency (used for tool input-schema validation elsewhere in this crate), and a portable JSON Schema file is the one artifact both a Rust repo (mcphost) and a Python repo (mcphost-deploy) can validate the SAME rows against with no shared language-specific type to keep in sync by hand."
     },
     {
       "why": 4,
-      "q": "Why does the plugin's skill need to walk the whole first-run story (signup through claim) instead of just connecting?",
-      "a": "A plugin install with no skill leaves the agent holding a live MCP connection and no idea what to do with it; the /mcphost skill exists so the agent reaches the same handoff/claim outcome PRD-mcphost-human-claim-magic-link already built for every other channel (Requirement 3)."
+      "q": "Why does the deploy tool need an explicit schema_version integer rather than just re-validating every row against additionalProperties: false on every read?",
+      "a": "Requirement 4 / AC4: the deploy tool must refuse an UNKNOWN version outright (exit 5, no measure.json written) before it ever computes anything, not discover drift row-by-row mid-computation -- a single top-level version check is a cheaper, earlier, and more legible failure than accumulating per-row validation errors."
     },
     {
       "why": 5,
-      "q": "Why must the skill and llms.txt both carry the walk-through instead of just one of them?",
-      "a": "An agent that installs the plugin reads the skill; an agent that only reads the site (no plugin) reads llms.txt -- Requirement 4 exists so both paths reach the same claim outcome, not just the plugin path."
+      "q": "Why does the changelog-lint test (AC6) compare live emitted fields to the schema instead of diffing git history for an admin.rs change?",
+      "a": "This repo's own build-agent instructions refuse a test keyed to \"no changes since a sha,\" since landing adds commits (a release bump, a squash) that self-invalidate such a test; comparing the live field set admin.tenants/admin.usage actually emit against schemas/admin/*.v1.json's declared properties is a git-independent structural invariant that gives the identical guarantee (and names the exact field out of sync) with no history dependency at all."
     }
   ],
   "created_at": "2026-09-24T00:00:00Z",
@@ -156,62 +196,26 @@
     {
       "question": "requirement 5 says tests/plugin_assets.sh must assert both JSON files 'parse with jq', but the runner box this repo's cargo test actually runs on has no jq installed (only python3).",
       "resolution": "tests/plugin_assets.sh prefers jq when present and falls back to python3's stdlib json module when it is not (same precedent as scripts/www-check.sh's own html.parser fallback) -- AC1's own wording is 'given the built tree ... it exits 0', with no carve-out for a box missing jq, so the script has to work either way."
-    }
-  ],
-  "acceptance_criteria": [
-    {
-      "id": "AC1",
-      "level": "MUST",
-      "description": "Given the built tree, When tests/plugin_assets.sh runs, Then it exits 0 and prints one line per check.",
-      "test": "tests/mcphost_claude_code_plugin_and_snippets_ac01_plugin_assets_script.rs"
     },
     {
-      "id": "AC2",
-      "level": "MUST",
-      "description": "Given plugin/.claude-plugin/plugin.json and plugin/.mcp.json, When parsed with jq, Then both succeed, .name == \"mcphost\", and .version equals the version in Cargo.toml.",
-      "test": "tests/mcphost_claude_code_plugin_and_snippets_ac02_plugin_json_and_mcp_json_version.rs"
+      "question": "This card is now regenerated for PRD-mcphost-admin-schema-contract, an entirely different feature (a committed row-shape contract for admin.tenants/admin.usage) from PRD-mcphost-human-claim-magic-link that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught repeatedly in this card's own history if left byte-for-byte (see the entries above). Three build-time ambiguities had no single PRD-mandated answer and were resolved during this build: (1) AC7's \"admin-scoped tenant\" has no Tenant-row admin-scope column to read from, so it was read as the admin key itself (Auth::Admin), matching this repo's own PRD-mcphost-data-retention AC10 precedent for the phrase; (2) AC4/AC5 both concern mcphost-deploy, a separate Python repo this coder dispatch had no worktree or write access to (unlike PRD-mcphost-checkcompat-port-race's AC9/AC10 above, where the cross-repo commit had already landed by the time that session started) -- both deferred, AC4 as cross-repo/no-access and AC5 as operator-provisioned (needs live RedBaron); (3) AC2's \"harness tenant\" is distinct from a default test-harness signup (which already carries synthetic = harness:unstamped from loopback source) only if it carries an explicit non-default label via the x-mcphost-synthetic header, so the test uses signup_with_synthetic_header rather than a second bare signup.",
+      "resolution": "Fixed in place: root_motivation, user_persona, unfakeable_metric, all 7 acceptance_criteria (5 with real tests/mcphost_admin_schema_contract_ac0N_*.rs pointers, AC4/AC5 marked deferred with concrete reasons), scope, non_goals, hard_constraints.additional, and five_whys_trace were rewritten from PRD-mcphost-admin-schema-contract's own Problem statement, User stories, Requirements, and Acceptance criteria sections; agent/test-map.json's ac_test_map was updated to this PRD's own AC-to-test mapping in the same build, with the prior mcphost_human_claim_magic_link map archived under ac_test_map_by_prefix.humanclaimmagiclink so nothing already-shipped is lost."
     },
     {
-      "id": "AC3",
-      "level": "MUST",
-      "description": "Given README.md, When grepped, Then a ## Connect heading exists and https://mcphost.dev/mcp appears at least four times below it, once each within blocks mentioning Claude Code, Codex, Cursor, and Claude.ai.",
-      "test": "tests/mcphost_claude_code_plugin_and_snippets_ac03_readme_connect_section.rs"
+      "question": "AC7 says \"an admin-scoped tenant\" calls host.whoami, but Tenant has no admin-scope column and host.whoami's dispatch requires Auth::Tenant -- what does \"admin-scoped\" mean here?",
+      "resolution": "Read as the admin key itself (Auth::Admin), matching this repo's own precedent (PRD-mcphost-data-retention AC10: \"Given admin scope, When admin.prune_now is called\" means authenticated with the admin key). Extended call_tool's Auth::Admin dispatch with one new arm for host.whoami specifically, returning a minimal {admin: true, admin_schema_version} reply since there is no Tenant row to report identity from."
     },
     {
-      "id": "AC4",
-      "level": "MUST",
-      "description": "Given www/index.html, When grepped, Then the four snippets are present and the page loads with no external script tags added by this change.",
-      "test": "tests/mcphost_claude_code_plugin_and_snippets_ac04_index_html_snippets.rs"
+      "question": "Are AC4 (mcphost-deploy exits 5 on an unsupported schema_version) and AC5 (doctor's live-version line on RedBaron) in scope for this coder dispatch, given the PRD's own Technical considerations call the mcphost-deploy change \"a cross-repo companion change ... recorded in the archive trailer\" governed by a separate PRD-build-cross-repo-commit-gate mechanism, and this dispatch was scoped to one mcphost worktree only (no /home/jsy/repos/mcphost-deploy worktree or write access provided)?",
+      "resolution": "Both deferred. AC4: cross-repo -- the exit-5 behavior lives entirely in mcphost-deploy (a separate Python repo), this dispatch has no worktree or access to it, and its own gate proof is cargo test, which cannot prove a Python-side behavior. AC5: operator-provisioned -- needs a real mcphost-deploy doctor run against live production RedBaron after ship."
     },
     {
-      "id": "AC5",
-      "level": "MUST",
-      "description": "Given plugin/skills/mcphost/SKILL.md, When grepped, Then it contains handoff, redeem, source: \"plugin\", claim_url, and the phrase \"never print the key\".",
-      "test": "tests/mcphost_claude_code_plugin_and_snippets_ac05_skill_md_walkthrough.rs"
+      "question": "AC2 asks for a \"harness\" tenant alongside normal/disabled/self-offboarded, but every test-harness signup already gets synthetic = \"harness:unstamped\" by default (loopback source, per synthetic_ac08's own test) -- what distinguishes the fourth row from the first?",
+      "resolution": "Read \"harness tenant\" as one carrying an EXPLICIT non-default harness label via the x-mcphost-synthetic header (tests/common's signup_with_synthetic_header), e.g. \"harness:probe\" -- distinct from the \"normal\" row's implicit harness:unstamped default, so AC2's test constructs four genuinely distinct rows rather than two rows with the same synthetic value."
     },
     {
-      "id": "AC6",
-      "level": "MUST",
-      "description": "Given www/llms.txt, When grepped, Then it contains the first-run walk-through headings (signup, publish, schedule, claim) in that order.",
-      "test": "tests/mcphost_claude_code_plugin_and_snippets_ac06_llms_txt_first_run_walkthrough.rs"
-    },
-    {
-      "id": "AC7",
-      "level": "MUST",
-      "description": "Given any file under plugin/ or the snippets, When grepped for a 40+ character base64-like token following \"Bearer \", Then only the literal <key> placeholder appears.",
-      "test": "tests/mcphost_claude_code_plugin_and_snippets_ac07_no_leaked_bearer_key.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "SHOULD",
-      "description": "Given the claude CLI on PATH, When claude plugin validate plugin/ runs, Then exit 0; given it is absent, then the test prints skipped: claude cli absent and exits 0.",
-      "test": "tests/mcphost_claude_code_plugin_and_snippets_ac08_claude_plugin_validate.rs"
-    },
-    {
-      "id": "AC9",
-      "level": "SHOULD",
-      "description": "Given README \"Connect\", When grepped, Then it links to /status.html and /aup.html.",
-      "test": "tests/mcphost_claude_code_plugin_and_snippets_ac09_readme_connect_links_status_and_aup.rs"
+      "question": "Second fix pass (2026-09-24): the verifier bounced AC4 and AC5 as not genuinely paired -- AC4 deferred wholesale as cross-repo, AC5 deferred wholesale as prod-only. Both deferrals were taken at build time because no mcphost-deploy worktree was handed to that dispatch. Is 'no worktree was provided' a reason to leave an AC unproven, given this repo's own precedent (PRD-mcphost-checkcompat-port-race AC9/AC10) pairs a cross-repo AC with a real mcphost-deploy commit plus a Python test, and its Live-AC precedent (tests/mcphost_tenant_data_export_ac04_live_export_trailer.rs) pairs a 'prod after ship' AC with an always-on real-server run that MCPHOST_LIVE=1 merely re-points?",
+      "resolution": "No -- both precedents were followed instead. AC4: the consumer half landed in /home/jsy/repos/mcphost-deploy as commit 1e579e9 (vendored v1 schemas + SOURCE.json recording mcphost commit 7aec0a2, admin_schema.py deriving the pinned set from those files, measure's EXIT_UNSUPPORTED_SCHEMA=5 refusal before any measure dict exists, so run() writes no measure.json), proved by tests/adminschema_ac4_unsupported_version_exit5.py driving the real measure Typer command end to end; the producer half -- the vendored v1 schemas accepting this branch's real listings and refusing one reporting schema_version: 2 -- is proved branch-locally by tests/mcphost_admin_schema_contract_ac04_unsupported_version_refused.rs, whose cross_repo_ac4_pointer_is_not_dangling test also keeps this card's and the test-map's cross-repo pointer from rotting. AC5: only the prod half stays deferred (operator-provisioned -- running mcphost-deploy doctor on live RedBaron after ship and capturing its output in the trailer). Its branch-local half ships as tests/mcphost_admin_schema_contract_ac05_doctor_live_schema_version.rs, which always runs against a real server built from this branch, compares the live schema_version of both admin listings against the vendored schemas/admin/*.v1.json constant, and prints the doctor-shaped proof line; MCPHOST_LIVE=1 re-points the identical check at $MCPHOST_URL. The doctor line it mirrors (admin_schema: live=<n> vendored=<n> ok|MISMATCH|unknown) landed in the same mcphost-deploy commit, proved by tests/adminschema_ac5_doctor_live_schema_version.py. Nothing was provisioned, resized or reconfigured to do either."
     }
   ]
 }
