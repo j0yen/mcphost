@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-human-claim-magic-link.md (test_prefix: mcphost_human_claim_magic_link)",
+  "ac_test_map_prd": "PRD-mcphost-claude-code-plugin-and-snippets.md (test_prefix: mcphost_claude_code_plugin_and_snippets)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,21 +28,33 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/mcphost_human_claim_magic_link_ac01_claim_url_in_signup.rs",
-    "AC2": "tests/mcphost_human_claim_magic_link_ac02_post_claim_sends_magic_link.rs",
-    "AC3": "tests/mcphost_human_claim_magic_link_ac03_verify_sets_owner_and_shows_summary.rs",
-    "AC4": "tests/mcphost_human_claim_magic_link_ac04_expired_claim_token_410.rs",
-    "AC5": "tests/mcphost_human_claim_magic_link_ac05_malformed_email_400.rs",
-    "AC6": "tests/mcphost_human_claim_magic_link_ac06_email_not_configured.rs",
-    "AC7": "tests/mcphost_human_claim_magic_link_ac07_racing_verify_single_winner.rs",
-    "AC8": "tests/mcphost_human_claim_magic_link_ac08_claim_rate_limit_per_ip.rs",
-    "AC9": "tests/mcphost_human_claim_magic_link_ac09_healthz_and_admin_tenants_claimed.rs",
-    "AC10": "tests/mcphost_human_claim_magic_link_ac10_retry_recovers_from_one_failure.rs",
-    "AC11": "tests/mcphost_human_claim_magic_link_ac11_whoami_owner_verified.rs",
-    "AC12": "tests/mcphost_human_claim_magic_link_ac12_llms_txt_relay_sentence.rs",
-    "AC13": "tests/mcphost_human_claim_magic_link_ac13_bearer_key_never_in_claim_pages.rs"
+    "AC1": "tests/mcphost_claude_code_plugin_and_snippets_ac01_plugin_assets_script.rs",
+    "AC2": "tests/mcphost_claude_code_plugin_and_snippets_ac02_plugin_json_and_mcp_json_version.rs",
+    "AC3": "tests/mcphost_claude_code_plugin_and_snippets_ac03_readme_connect_section.rs",
+    "AC4": "tests/mcphost_claude_code_plugin_and_snippets_ac04_index_html_snippets.rs",
+    "AC5": "tests/mcphost_claude_code_plugin_and_snippets_ac05_skill_md_walkthrough.rs",
+    "AC6": "tests/mcphost_claude_code_plugin_and_snippets_ac06_llms_txt_first_run_walkthrough.rs",
+    "AC7": "tests/mcphost_claude_code_plugin_and_snippets_ac07_no_leaked_bearer_key.rs",
+    "AC8": "tests/mcphost_claude_code_plugin_and_snippets_ac08_claude_plugin_validate.rs",
+    "AC9": "tests/mcphost_claude_code_plugin_and_snippets_ac09_readme_connect_links_status_and_aup.rs"
   },
   "ac_test_map_by_prefix": {
+    "humanclaimmagiclink": {
+      "_prd": "PRD-mcphost-human-claim-magic-link.md -- superseded by mcphost-claude-code-plugin-and-snippets at HEAD; real test_prefix is mcphost_human_claim_magic_link (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind/tenantdataexport/checkcompatrace/teammemory/databaseinaminute/uptimeprobes/toolversions/agentchannels/webhookinbox/signupkillswitchandsource/sandboxegressallowlist above)",
+      "AC1": "tests/mcphost_human_claim_magic_link_ac01_claim_url_in_signup.rs",
+      "AC2": "tests/mcphost_human_claim_magic_link_ac02_post_claim_sends_magic_link.rs",
+      "AC3": "tests/mcphost_human_claim_magic_link_ac03_verify_sets_owner_and_shows_summary.rs",
+      "AC4": "tests/mcphost_human_claim_magic_link_ac04_expired_claim_token_410.rs",
+      "AC5": "tests/mcphost_human_claim_magic_link_ac05_malformed_email_400.rs",
+      "AC6": "tests/mcphost_human_claim_magic_link_ac06_email_not_configured.rs",
+      "AC7": "tests/mcphost_human_claim_magic_link_ac07_racing_verify_single_winner.rs",
+      "AC8": "tests/mcphost_human_claim_magic_link_ac08_claim_rate_limit_per_ip.rs",
+      "AC9": "tests/mcphost_human_claim_magic_link_ac09_healthz_and_admin_tenants_claimed.rs",
+      "AC10": "tests/mcphost_human_claim_magic_link_ac10_retry_recovers_from_one_failure.rs",
+      "AC11": "tests/mcphost_human_claim_magic_link_ac11_whoami_owner_verified.rs",
+      "AC12": "tests/mcphost_human_claim_magic_link_ac12_llms_txt_relay_sentence.rs",
+      "AC13": "tests/mcphost_human_claim_magic_link_ac13_bearer_key_never_in_claim_pages.rs"
+    },
     "sandboxegressallowlist": {
       "_prd": "PRD-mcphost-sandbox-egress-allowlist.md -- superseded by mcphost-human-claim-magic-link at HEAD; real test_prefix is mcphost_sandbox_egress_allowlist (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind/tenantdataexport/checkcompatrace/teammemory/databaseinaminute/uptimeprobes/agentchannels/toolversions/webhookinbox/signupkillswitchandsource above)",
       "AC1": "tests/mcphost_sandbox_egress_allowlist_ac01_free_publish_public_refused.rs",

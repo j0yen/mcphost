@@ -122,6 +122,44 @@ Built from `PRD-mcphost-endpoint.md` (vision: `visions/mcp-host.md`).
   /.well-known/mcp/<namespace>/server.json` are implemented behind the
   `--registry-url` flag (AC19, see "Registry publish (P1)" below).
 
+## Connect
+
+Paste one line into your client and it has mcphost. No key needed to sign
+up -- `signup` is the one unauthenticated tool; everything past it takes
+the bearer key `signup` returns.
+
+**Claude Code**
+
+```
+claude mcp add --transport http mcphost https://mcphost.dev/mcp
+```
+
+**Codex CLI**
+
+```
+codex mcp add mcphost --url https://mcphost.dev/mcp
+```
+
+**Cursor** -- add this block to `mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "mcphost": {
+      "url": "https://mcphost.dev/mcp",
+      "headers": { "Authorization": "Bearer <key>" }
+    }
+  }
+}
+```
+
+**Claude.ai** -- Settings -> Connectors -> Add custom connector, then paste
+`https://mcphost.dev/mcp` as the URL.
+
+See the live [status page](/status.html) and the
+[Acceptable Use Policy](/aup.html) before you point production traffic at
+it.
+
 ## Install
 
 ```

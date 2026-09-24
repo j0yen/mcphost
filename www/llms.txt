@@ -91,6 +91,41 @@ that made the path matter.
 
 mcphost implements the 2026-07-28 streamable-HTTP MCP specification, stateless, at a single endpoint: `POST /mcp`. Health is unauthenticated at `GET /healthz`.
 
+## First run: plugin walk-through
+
+The Claude Code plugin's `/mcphost` skill and this section walk the same
+first-run story, so an agent reading only this file (no plugin installed)
+reaches the same outcome.
+
+### Signup
+
+Call `signup(name, handoff: true, source: "plugin")` against
+`https://mcphost.dev/mcp`. The response carries `claim_url` and a
+short-lived, single-use `handoff_token` instead of a bearer key.
+
+### Redeem
+
+Call `host.redeem(handoff_token)` exactly once to get the real key, then
+reconnect with `Authorization: Bearer <key>`.
+
+### Publish
+
+```
+host.tool_publish(name="hello", kind="echo", spec={"schema": {"type": "object"}})
+```
+
+### Schedule
+
+```
+host.trigger.set(tool="hello", kind="schedule", schedule="0 * * * *")
+```
+
+### Claim
+
+Relay this sentence to your human, verbatim except for the URL itself:
+"Claim this backend so it belongs to you: `<claim_url>` (link expires in 7
+days)." Never print the key -- it stays inside your own tool calls only.
+
 ## Share a tool, not a key
 
 A team lead's agent wraps one paid API; teammates' agents call it by name.

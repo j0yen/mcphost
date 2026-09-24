@@ -1,114 +1,32 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-human-claim-magic-link.md",
-  "intent_slug": "mcphost-human-claim-magic-link",
-  "root_motivation": "Joe's decision (2026-09-23): the buyer is the human, the agent is the channel. Today the namespace belongs to whoever holds the bearer key or redeems the single-use handoff token (src/control.rs:178-198, host.redeem at src/control.rs:233); no route, page, table column, or email dependency exists for a person to own a tenant (src/http.rs:449-473 routes; www/ has no account page; Cargo.toml has no mail crate). Consequence: two tenants, both the operator's, $0 revenue, and no way for a stranger's agent to turn activation into a paying human. Billing checkout (src/billing.rs) has no customer email to attach.",
-  "user_persona": "Five (PRD User stories): (1) an agent operator whose agent signs up while they sleep, then says claim your backend at this link in the morning; (2) the operator clicks the link, types an email, taps the emailed link, done; (3) the operator upgrades to Pro from the claim page, receipt to the verified email; (4) Joe: sees claimed-tenant counts in admin healthz; (5) the agent: signup and llms.txt tell it what to relay to its human.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-claude-code-plugin-and-snippets.md",
+  "intent_slug": "mcphost-claude-code-plugin-and-snippets",
+  "root_motivation": "Research on 2026-09-23 found every major client connects to mcphost's bearer/no-auth streamable-HTTP server with one command (claude mcp add --transport http, codex mcp add --url, Cursor static-header remote, Claude.ai custom connectors), yet README.md on origin/main mentions none of them and no plugin/skill directory exists (grep for 'claude mcp add|codex|cursor|connector|plugin|skill' returns nothing; no plugin/ or .claude paths). Direct-install is the highest-intent channel in the plan and the plugin marketplaces are the one place Claude Code users browse; without these assets the launch sends visitors to a page that never tells them how to connect.",
+  "user_persona": "Five (PRD User stories): (1) an agent operator on Claude Code who pastes one line and says 'give yourself a nightly job'; (2) an agent operator on Codex using codex mcp add; (3) a Cursor user who needs the mcp.json block with the bearer-header placeholder; (4) a Claude.ai user who needs to know where custom connectors live and what URL to paste; (5) a marketplace browser who finds mcphost, installs the plugin, and has the /mcphost skill explain the claim step.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 13
+    "target": 9
   },
-  "acceptance_criteria": [
-    {
-      "id": "AC1",
-      "level": "MUST",
-      "description": "Given an unauthenticated signup (key mode or handoff mode), When it succeeds, Then the response contains claim_url matching ^https://[^/]+/claim/[A-Za-z0-9_-]{40,}$ and the token is not the bearer key.",
-      "test": "tests/mcphost_human_claim_magic_link_ac01_claim_url_in_signup.rs"
-    },
-    {
-      "id": "AC2",
-      "level": "MUST",
-      "description": "Given a valid unexpired claim token and a fake email provider, When POST /claim/{token} is sent with email=a@b.co, Then exactly one provider send is recorded containing a verify URL, and the page body contains \"check your inbox\".",
-      "test": "tests/mcphost_human_claim_magic_link_ac02_post_claim_sends_magic_link.rs"
-    },
-    {
-      "id": "AC3",
-      "level": "MUST",
-      "description": "Given the verify URL from AC2, When it is opened once, Then tenants.owner_email is a@b.co, owner_verified_at is set, the summary page lists the tenant's published tool names and schedule count, and opening the same verify URL again returns 410.",
-      "test": "tests/mcphost_human_claim_magic_link_ac03_verify_sets_owner_and_shows_summary.rs"
-    },
-    {
-      "id": "AC4",
-      "level": "MUST",
-      "description": "Given an expired claim token (TTL forced to 1s in test), When GET /claim/{token} is requested, Then 410 with \"link expired\" and no provider send occurs.",
-      "test": "tests/mcphost_human_claim_magic_link_ac04_expired_claim_token_410.rs"
-    },
-    {
-      "id": "AC5",
-      "level": "MUST",
-      "description": "Given POST /claim/{token} with an empty or malformed email, When submitted, Then 400-class page with the form re-rendered and zero provider sends.",
-      "test": "tests/mcphost_human_claim_magic_link_ac05_malformed_email_400.rs"
-    },
-    {
-      "id": "AC6",
-      "level": "MUST",
-      "description": "Given MCPHOST_EMAIL_API_URL unset, When GET /claim/{token} is requested, Then the page renders with \"email delivery is not configured\" and admin healthz reports claim_email_configured=false.",
-      "test": "tests/mcphost_human_claim_magic_link_ac06_email_not_configured.rs"
-    },
-    {
-      "id": "AC7",
-      "level": "MUST",
-      "description": "Given two verify requests for the same tenant racing (two different codes issued to two emails), When both complete, Then exactly one owner is set and the loser receives 409.",
-      "test": "tests/mcphost_human_claim_magic_link_ac07_racing_verify_single_winner.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "MUST",
-      "description": "Given 31 GET /claim/* requests from one IP within an hour at the default limit, When the 31st arrives, Then 429 and the tenant row is unchanged.",
-      "test": "tests/mcphost_human_claim_magic_link_ac08_claim_rate_limit_per_ip.rs"
-    },
-    {
-      "id": "AC9",
-      "level": "MUST",
-      "description": "Given a claimed tenant, When the operator calls admin healthz, Then tenants_claimed.external counts it and admin.tenants shows owner_verified: true without an email address in the row.",
-      "test": "tests/mcphost_human_claim_magic_link_ac09_healthz_and_admin_tenants_claimed.rs"
-    },
-    {
-      "id": "AC10",
-      "level": "MUST",
-      "description": "Given the fake email provider returns 500 on the first attempt and 200 on the retry, When the magic link is requested, Then one send is ultimately recorded and the page shows \"check your inbox\".",
-      "test": "tests/mcphost_human_claim_magic_link_ac10_retry_recovers_from_one_failure.rs"
-    },
-    {
-      "id": "AC11",
-      "level": "SHOULD",
-      "description": "Given a claimed tenant, When the agent calls host.whoami, Then owner_verified is true; for an unclaimed tenant it is false.",
-      "test": "tests/mcphost_human_claim_magic_link_ac11_whoami_owner_verified.rs"
-    },
-    {
-      "id": "AC12",
-      "level": "SHOULD",
-      "description": "Given www/llms.txt on the built tree, When grepped, Then it contains the relay sentence with the literal claim_url placeholder and \"7 days\".",
-      "test": "tests/mcphost_human_claim_magic_link_ac12_llms_txt_relay_sentence.rs"
-    },
-    {
-      "id": "AC13",
-      "level": "MUST",
-      "description": "Given no page in www/ or any template, When grepped for the bearer key of a test tenant after a full claim flow, Then zero occurrences in any rendered response body.",
-      "test": "tests/mcphost_human_claim_magic_link_ac13_bearer_key_never_in_claim_pages.rs"
-    }
-  ],
   "scope": [
-    "migrations/0033_claim.sql (new): tenants gains owner_email/owner_verified_at/claim_token_hash/claim_expires_at (nullable, additive), plus new claim_codes (magic-link verify codes) and claim_rate_events (per-IP rate limiting) tables.",
-    "src/claim.rs (new): the whole claim/verify HTTP surface -- GET/POST /claim/{token}, GET /claim/verify/{code} (wired in http.rs), claim-token issuance (called from control::signup), server-rendered HTML (no JS framework, PRD technical considerations), magic-link send with one retry, and the claim summary page (tools, schedules/webhooks, calls-today, state bytes, plan).",
-    "src/email.rs (new): EmailClient trait, EmailConfig (MCPHOST_EMAIL_API_URL/API_KEY/FROM), HttpEmailClient (real provider), FakeEmailClient (test-support feature) -- same trait-plus-real-plus-fake shape as billing::BillingClient.",
-    "src/db.rs: Tenant struct gains owner_email/owner_verified_at/claim_token_hash/claim_expires_at; new Db methods set_claim_token, find_tenant_by_claim_token_hash, expire_claim_token_for_test, try_admit_claim_request, try_create_claim_code, verify_claim_code (ClaimVerifyOutcome), count_claimed_tenants_by_origin.",
-    "src/control.rs: signup mints a claim token (claim::issue_claim_token) and returns claim_url in both key and handoff response modes; whoami gains owner_verified.",
-    "src/http.rs: routes /claim/{token} (GET+POST) and /claim/verify/{code}; healthz gains claim_email_configured and tenants_claimed.{external,synthetic}.",
-    "src/admin.rs: admin.tenants rows gain owner_verified (boolean only, never the email).",
-    "src/state.rs: AppState gains claim_token_ttl_secs, claim_rate_limit_per_hour, email_config, email_client, plus their env-parsing functions and constants (CLAIM_TOKEN_TTL_SECS_DEFAULT=7d, CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT=30, CLAIM_EMAIL_SEND_LIMIT_PER_HOUR=3, CLAIM_VERIFY_CODE_TTL_SECS=30m).",
-    "www/llms.txt: the exact requirement-9 relay sentence (\"Claim this backend so it belongs to you: <claim_url> (link expires in 7 days).\") in the quickstart section.",
-    "tests/common/mod.rs: TestServer::start_with_email and the start_full_with_email constructor layer, threading email_config/email_client/claim_token_ttl_secs/claim_rate_limit_per_hour through every existing start_* helper with unconfigured-email defaults."
+    "plugin/.claude-plugin/plugin.json (new): name mcphost, version pinned to Cargo.toml's [package].version, description, author j0yen.",
+    "plugin/.mcp.json (new): declares the mcphost server at https://mcphost.dev/mcp over streamable HTTP.",
+    "plugin/skills/mcphost/SKILL.md (new): the /mcphost skill walking handoff-mode signup (source: \"plugin\"), redeem, publish one tool, set one schedule, and relay claim_url to the human without ever printing the key.",
+    "README.md: new '## Connect' section with four fenced snippets (Claude Code, Codex CLI, Cursor mcp.json, Claude.ai custom connector steps), each naming https://mcphost.dev/mcp, and links to /status.html and /aup.html.",
+    "www/index.html: the same four snippets in a stacked block above 'how it works', each with an inline-JS copy button (no external script, no bundler).",
+    "www/llms.txt: a 'First run: plugin walk-through' section with signup/publish/schedule/claim headings in order and the claim relay sentence, so an agent reading the site alone reaches the same outcome as the plugin skill.",
+    "tests/plugin_assets.sh (new): one shell check per requirement-5 assertion, printing one line per check and exiting 0 on the built tree.",
+    "Cargo.toml: patch version bump (0.60.5 -> 0.60.6) so plugin.json's pinned version has something fresh to track.",
+    "agent/proof-lanes.toml: new 'plugin' lane routing plugin/** and tests/plugin_assets.sh."
   ],
   "non_goals": [
-    "Password accounts, sessions, or a full dashboard beyond the claim summary (PRD Non-goals).",
-    "Transferring or revoking ownership -- a later PRD (PRD Non-goals).",
-    "OAuth for MCP clients (PRD Non-goals).",
-    "admin.tenant_claim_url (minting a claim URL for an existing, pre-PRD tenant) -- named only in the PRD's Migration/compatibility narrative, not in the numbered Requirements list nor any Acceptance Criterion, so it is outside this coder dispatch's non-deferred AC list (the coder-dispatch instructions: implement the numbered requirements the ACs actually test, stop once every listed AC is green).",
-    "claims_by_source keyed by signup_source (requirement 6's second healthz field) -- signup_source is a column PRD-mcphost-signup-kill-switch-and-source (queued, not yet built) would add; requirement 6's own rule for this case is \"absent column means the key is omitted, never an error,\" so the key is simply omitted rather than stubbed.",
-    "Wiring billing.checkout's customer_email argument end-to-end -- the claim summary page names the call as a copyable code snippet (a plain HTML page with no JS/session cannot itself authenticate an MCP tools/call), but no AC exercises billing.checkout with a customer_email argument, so billing.rs itself was left untouched."
+    "Submission to the official Anthropic marketplace or Connectors Directory -- needs a Team/Enterprise org, a later task (PRD Non-goals).",
+    "OAuth (PRD Non-goals).",
+    "A VS Code or JetBrains extension (PRD Non-goals).",
+    "A 90-second asciinema cast under www/demo/ -- P2, reserved path only, recorded by the operator, not this coder dispatch (Requirement 8).",
+    "Any change to src/ -- the plugin and snippets are static files; no server behavior changes."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -117,41 +35,39 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "claim_url_always_forces_https": "claim::claim_url always emits https:// regardless of state.public_url's own scheme (stripping any http://Sq/https:// prefix and re-adding https://) -- AC1's own regex requires ^https://, and a magic link handed to a human's inbox/browser must never downgrade to plain HTTP even when public_url is configured with http:// for a loopback dev server or (as in every integration test here) an ephemeral 127.0.0.1 TestServer.",
-      "claim_token_lives_on_the_tenant_row_not_a_table": "unlike the magic-link verify codes (claim_codes, a new table, one row per send), the claim token itself is two nullable columns on tenants (claim_token_hash/claim_expires_at, migration 0033) -- a tenant only ever has one outstanding claim link at a time, so Db::set_claim_token overwrites in place rather than accumulating rows; Db::verify_claim_code clears both columns the moment the tenant is actually claimed, so a reused claim link after a successful claim reads as ordinary 410 (\"link expired\") rather than needing a distinct \"already claimed\" branch.",
-      "verify_race_resolved_by_a_second_atomic_update_not_a_lock": "AC7's single-winner race is resolved by Db::verify_claim_code doing two sequential atomic UPDATEs inside one with_conn closure (which already serializes through this crate's single Arc<Mutex<Connection>>): first UPDATE claim_codes ... WHERE consumed_unix IS NULL claims the CODE (both racing codes are genuinely distinct and both succeed here), then UPDATE tenants ... WHERE owner_verified_at IS NULL claims the TENANT (only the first to reach this second statement wins; the loser sees 0 rows affected and reports Conflict/409 even though its own code was validly consumed) -- same double-UPDATE shape Db::redeem_handoff_token already uses for its own single-use claim, extended with a second guard column.",
-      "email_provider_is_a_generic_json_post_not_a_vendor_sdk": "the PRD's own Open question (\"Resend or Postmark ... before build\") was still unresolved at build time, so email::HttpEmailClient is a plain POST {from, to, subject, text} with an optional bearer Authorization header -- generic enough to front either (or any similarly-shaped transactional-email API) without an SDK dependency, same \"no SDK crate\" choice billing::StripeClient already made for Stripe.",
-      "magic_link_send_runs_in_a_spawned_task_awaited_before_responding": "technical considerations say \"runs in a spawned task with one retry\"; claim::send_with_retry literally tokio::spawns each attempt (satisfying that wording) but awaits the JoinHandle before post_claim's own response is built, so the HTTP response (\"check your inbox\" vs \"we could not send the email\") always reflects the actual outcome rather than optimistically claiming success before the provider was ever called -- this also makes AC10's fail-then-succeed scenario deterministically testable without a background-completion race."
+      "plugin_is_static_no_build_step": "The plugin ships as plain files (plugin.json/.mcp.json/SKILL.md) with no build step, kept inside the mcphost repo so tests/plugin_assets.sh and the AC2 cargo test can pin its version to Cargo.toml at test time (Technical considerations).",
+      "www_copy_button_inline_js_only": "The www/index.html copy button uses inline <script> only -- the site has no bundler and this PRD adds no external script tag (Technical considerations, AC4).",
+      "no_real_bearer_key_anywhere": "Every Cursor-style Authorization: Bearer header in plugin/** and the README/index.html/llms.txt snippets uses the literal <key> placeholder, never a real 40+ char token (AC7)."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does an external signup never turn into revenue?",
-      "a": "The namespace belongs to whoever holds the bearer key (src/control.rs's signup/redeem) -- there is no concept of a human owner at all, so there is no email to attach a Stripe customer to, and no page a stranger's agent can hand its human to claim what it built (Grounding: two tenants total, both the operator's, $0 revenue)."
+      "q": "Why does a visitor who wants to connect an agent to mcphost not know how?",
+      "a": "README.md and www/index.html never mention any of the four major clients' connect syntax, and no plugin/skill exists for Claude Code's own marketplace browsers (Problem statement grep: 'claude mcp add|codex|cursor|connector|plugin|skill' returns nothing)."
     },
     {
       "why": 2,
-      "q": "Why is there no human-owner concept yet?",
-      "a": "Every prior PRD in this repo optimized the agent's own onboarding (signup, handoff tokens, quickstart) -- none needed a human to ever see a page, because the buyer was assumed to be whoever ran the agent and already had the key in a transcript."
+      "q": "Why was the connect syntax never documented?",
+      "a": "Every prior PRD in this repo optimized the server side of onboarding (signup, handoff tokens, claim links) -- none of them touched the client-facing docs or shipped a plugin, because the direct-install channel had not yet been prioritized."
     },
     {
       "why": 3,
-      "q": "Why does the buyer need to be a *human* specifically, not just whoever holds the key?",
-      "a": "Joe's decision (2026-09-23, restated in the PRD's Problem statement): \"the buyer is the human, the agent is the channel\" -- a key in an agent's transcript can't authorize a credit card charge, receive a receipt, or be reasoned about as \"who owns this\" the way a verified email can."
+      "q": "Why does direct-install matter now?",
+      "a": "Direct-install is the highest-intent channel in the plan (PRD Problem statement, plan \u00a74), and the plugin marketplaces are the one place Claude Code users browse for tools -- without a plugin, that whole audience never sees mcphost."
     },
     {
       "why": 4,
-      "q": "Why does ownership need email verification rather than just trusting whoever clicks the claim link?",
-      "a": "A claim link can leak the same way a bearer key can (Requirement 1: single-use, 32-byte, TTL-bounded, exactly like the handoff-token machinery it reuses) -- verifying an email is the one piece of PRD-mandated proof that the clicker actually controls the address a receipt/support contact would go to, and Requirement 3's atomic single-winner update is what keeps two racing claims from both succeeding."
+      "q": "Why does the plugin's skill need to walk the whole first-run story (signup through claim) instead of just connecting?",
+      "a": "A plugin install with no skill leaves the agent holding a live MCP connection and no idea what to do with it; the /mcphost skill exists so the agent reaches the same handoff/claim outcome PRD-mcphost-human-claim-magic-link already built for every other channel (Requirement 3)."
     },
     {
       "why": 5,
-      "q": "Why build the claim SUMMARY page (tools/schedules/calls/state) rather than just a bare \"you're verified\" confirmation?",
-      "a": "Goal 3 (\"The claim page is the first human-facing view of 'what my agent set up'\") -- the human has never seen this tenant before this moment; a bare confirmation would answer \"did it work\" but not \"what did my agent actually build while I wasn't looking,\" which is the whole point of the user story (\"in the morning it tells me... and I see what it built\")."
+      "q": "Why must the skill and llms.txt both carry the walk-through instead of just one of them?",
+      "a": "An agent that installs the plugin reads the skill; an agent that only reads the site (no plugin) reads llms.txt -- Requirement 4 exists so both paths reach the same claim outcome, not just the plugin path."
     }
   ],
-  "created_at": "2026-09-23T00:00:00Z",
+  "created_at": "2026-09-24T00:00:00Z",
   "ambiguities_resolved": [
     {
       "question": "The findings file records the reference Python client seeing well-formed ttlMs/cacheScope on an unauthenticated tools/list, which the code says is impossible. Which is right?",
@@ -228,6 +144,74 @@
     {
       "question": "This card is now regenerated for PRD-mcphost-human-claim-magic-link, an entirely different feature (a human-owned-tenant claim/magic-link flow) from PRD-mcphost-webhook-inbox (the fourth trigger kind) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught by reviewer-agent repeatedly in this card's own history if left byte-for-byte (see the 2026-09-12 and 2026-09-17 entries above). Four build-time decisions had no single PRD-mandated answer and were resolved during this build (now also recorded in hard_constraints.additional): (1) claim_url always forces the https:// scheme regardless of state.public_url's own, since AC1's regex requires it and every test server binds http://127.0.0.1; (2) the claim token lives on the tenant row (two nullable columns) rather than a table of its own, since a tenant only ever has one outstanding claim link, while magic-link verify codes DO get their own claim_codes table (multiple sends per tenant); (3) AC7's race is resolved by a second atomic UPDATE ... WHERE owner_verified_at IS NULL inside the same with_conn closure as the code's own single-use claim, not a separate lock; (4) the email provider is a generic JSON POST, not a Resend/Postmark SDK, since the PRD's own Open question left that choice unresolved at build time. Two requirement-adjacent items were scoped out as not covered by any listed Acceptance Criterion: admin.tenant_claim_url (named only in the Migration/compatibility narrative) and claims_by_source (keyed by a signup_source column that PRD-mcphost-signup-kill-switch-and-source, queued, has not yet added -- requirement 6's own fallback, \"absent column means the key is omitted,\" applies).",
       "resolution": "Fixed in place: root_motivation, user_persona, unfakeable_metric, all 13 acceptance_criteria (with their real tests/mcphost_human_claim_magic_link_ac0N_*.rs pointers), scope, non_goals, hard_constraints.additional, and five_whys_trace were rewritten from PRD-mcphost-human-claim-magic-link's own Problem statement, User stories, Requirements, Non-goals, and Acceptance criteria sections; agent/test-map.json's ac_test_map was updated to this PRD's own AC-to-test mapping in the same build, with the prior mcphost_webhook_inbox map archived under ac_test_map_by_prefix.webhookinbox so nothing already-shipped is lost."
+    },
+    {
+      "question": "This card is now regenerated for PRD-mcphost-claude-code-plugin-and-snippets, an entirely different feature (a Claude Code plugin plus client-connect snippets, all static files) from PRD-mcphost-human-claim-magic-link (the claim/magic-link HTTP surface) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught by reviewer-agent repeatedly in this card's own history if left byte-for-byte (see the entries above).",
+      "resolution": "Fixed in place, same 'rewrite the per-PRD fields, keep the accumulated ambiguities_resolved log' pattern used for every prior recurrence (see e.g. the share-a-tool-not-a-key and human-claim-magic-link entries above). agent/test-map.json's ac_test_map was repointed to this PRD's own test_prefix (mcphost_claude_code_plugin_and_snippets, AC1-9), and the human-claim-magic-link mapping was preserved under ac_test_map_by_prefix.humanclaimmagiclink rather than deleted. autobuilder intake --validate confirmed the regenerated card is schema-valid before commit."
+    },
+    {
+      "question": "AC1's script (tests/plugin_assets.sh) asserts on plugin.json/README/index.html/llms.txt/SKILL.md all existing and being correct at once, but the PRD numbers it AC1 -- first in the list -- while every file it checks is itself the subject of a later AC (2-9). In what order should a coder dispatch actually build these?",
+      "resolution": "Built AC2 through AC9 first (the underlying plugin/README/www files, each with its own narrow test), then AC1's tests/plugin_assets.sh last, once every file it asserts on already exists -- the PRD's own AC numbering is the acceptance-criteria LIST's order, not a mandated build order, and AC1 is structurally an aggregate check over the other eight."
+    },
+    {
+      "question": "requirement 5 says tests/plugin_assets.sh must assert both JSON files 'parse with jq', but the runner box this repo's cargo test actually runs on has no jq installed (only python3).",
+      "resolution": "tests/plugin_assets.sh prefers jq when present and falls back to python3's stdlib json module when it is not (same precedent as scripts/www-check.sh's own html.parser fallback) -- AC1's own wording is 'given the built tree ... it exits 0', with no carve-out for a box missing jq, so the script has to work either way."
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "level": "MUST",
+      "description": "Given the built tree, When tests/plugin_assets.sh runs, Then it exits 0 and prints one line per check.",
+      "test": "tests/mcphost_claude_code_plugin_and_snippets_ac01_plugin_assets_script.rs"
+    },
+    {
+      "id": "AC2",
+      "level": "MUST",
+      "description": "Given plugin/.claude-plugin/plugin.json and plugin/.mcp.json, When parsed with jq, Then both succeed, .name == \"mcphost\", and .version equals the version in Cargo.toml.",
+      "test": "tests/mcphost_claude_code_plugin_and_snippets_ac02_plugin_json_and_mcp_json_version.rs"
+    },
+    {
+      "id": "AC3",
+      "level": "MUST",
+      "description": "Given README.md, When grepped, Then a ## Connect heading exists and https://mcphost.dev/mcp appears at least four times below it, once each within blocks mentioning Claude Code, Codex, Cursor, and Claude.ai.",
+      "test": "tests/mcphost_claude_code_plugin_and_snippets_ac03_readme_connect_section.rs"
+    },
+    {
+      "id": "AC4",
+      "level": "MUST",
+      "description": "Given www/index.html, When grepped, Then the four snippets are present and the page loads with no external script tags added by this change.",
+      "test": "tests/mcphost_claude_code_plugin_and_snippets_ac04_index_html_snippets.rs"
+    },
+    {
+      "id": "AC5",
+      "level": "MUST",
+      "description": "Given plugin/skills/mcphost/SKILL.md, When grepped, Then it contains handoff, redeem, source: \"plugin\", claim_url, and the phrase \"never print the key\".",
+      "test": "tests/mcphost_claude_code_plugin_and_snippets_ac05_skill_md_walkthrough.rs"
+    },
+    {
+      "id": "AC6",
+      "level": "MUST",
+      "description": "Given www/llms.txt, When grepped, Then it contains the first-run walk-through headings (signup, publish, schedule, claim) in that order.",
+      "test": "tests/mcphost_claude_code_plugin_and_snippets_ac06_llms_txt_first_run_walkthrough.rs"
+    },
+    {
+      "id": "AC7",
+      "level": "MUST",
+      "description": "Given any file under plugin/ or the snippets, When grepped for a 40+ character base64-like token following \"Bearer \", Then only the literal <key> placeholder appears.",
+      "test": "tests/mcphost_claude_code_plugin_and_snippets_ac07_no_leaked_bearer_key.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "SHOULD",
+      "description": "Given the claude CLI on PATH, When claude plugin validate plugin/ runs, Then exit 0; given it is absent, then the test prints skipped: claude cli absent and exits 0.",
+      "test": "tests/mcphost_claude_code_plugin_and_snippets_ac08_claude_plugin_validate.rs"
+    },
+    {
+      "id": "AC9",
+      "level": "SHOULD",
+      "description": "Given README \"Connect\", When grepped, Then it links to /status.html and /aup.html.",
+      "test": "tests/mcphost_claude_code_plugin_and_snippets_ac09_readme_connect_links_status_and_aup.rs"
     }
   ]
 }

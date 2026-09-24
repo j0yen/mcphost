@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "mcphost": {
+      "type": "http",
+      "url": "https://mcphost.dev/mcp"
+    }
+  }
+}

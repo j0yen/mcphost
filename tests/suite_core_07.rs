@@ -294,6 +294,24 @@ mod lanecov_ac06_malformed_lane_fails_naming_it;
 mod lanecov_ac07_docs_document_adding_a_lane;
 #[path = "limits_ac05_signup_burst_atomic.rs"]
 mod limits_ac05_signup_burst_atomic;
+#[path = "mcphost_claude_code_plugin_and_snippets_ac01_plugin_assets_script.rs"]
+mod mcphost_claude_code_plugin_and_snippets_ac01_plugin_assets_script;
+#[path = "mcphost_claude_code_plugin_and_snippets_ac02_plugin_json_and_mcp_json_version.rs"]
+mod mcphost_claude_code_plugin_and_snippets_ac02_plugin_json_and_mcp_json_version;
+#[path = "mcphost_claude_code_plugin_and_snippets_ac03_readme_connect_section.rs"]
+mod mcphost_claude_code_plugin_and_snippets_ac03_readme_connect_section;
+#[path = "mcphost_claude_code_plugin_and_snippets_ac04_index_html_snippets.rs"]
+mod mcphost_claude_code_plugin_and_snippets_ac04_index_html_snippets;
+#[path = "mcphost_claude_code_plugin_and_snippets_ac05_skill_md_walkthrough.rs"]
+mod mcphost_claude_code_plugin_and_snippets_ac05_skill_md_walkthrough;
+#[path = "mcphost_claude_code_plugin_and_snippets_ac06_llms_txt_first_run_walkthrough.rs"]
+mod mcphost_claude_code_plugin_and_snippets_ac06_llms_txt_first_run_walkthrough;
+#[path = "mcphost_claude_code_plugin_and_snippets_ac07_no_leaked_bearer_key.rs"]
+mod mcphost_claude_code_plugin_and_snippets_ac07_no_leaked_bearer_key;
+#[path = "mcphost_claude_code_plugin_and_snippets_ac08_claude_plugin_validate.rs"]
+mod mcphost_claude_code_plugin_and_snippets_ac08_claude_plugin_validate;
+#[path = "mcphost_claude_code_plugin_and_snippets_ac09_readme_connect_links_status_and_aup.rs"]
+mod mcphost_claude_code_plugin_and_snippets_ac09_readme_connect_links_status_and_aup;
 #[path = "mcphost_data_retention_ac01_calls_prune_by_window.rs"]
 mod mcphost_data_retention_ac01_calls_prune_by_window;
 #[path = "mcphost_data_retention_ac02_metering_rows_survive_window.rs"]
