@@ -369,6 +369,10 @@ impl AppError {
                 // trigger -- `POST /hooks/...` itself never goes through
                 // this jsonrpc mapping, it builds its own HTTP status).
                 "signature_invalid" | "event_body_too_large" => ErrorCode::INVALID_PARAMS,
+                // PRD-mcphost-alerting-webhook requirement 5 / AC11: an
+                // oversized `admin.alerts.raise` body is the same
+                // caller-input problem as `event_body_too_large` above.
+                "alert_body_too_large" => ErrorCode::INVALID_PARAMS,
                 "events_rate_limited" => ErrorCode::INVALID_REQUEST,
                 "hook_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
                 // PRD-mcphost-tenant-tables requirements 1-6: a schema

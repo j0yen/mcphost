@@ -2403,6 +2403,41 @@ fn admin_tools() -> Vec<Tool> {
              unknown-kid throttle.",
             schema(json!({"issuer": {"type": "string"}}), &["issuer"]),
         ),
+        // PRD-mcphost-alerting-webhook requirement 5.
+        Tool::new(
+            "admin.alerts.list",
+            "List raised alerts, newest first, each with delivery_status/repeat_count/acked \
+             state. `unacked_only: true` narrows to alerts not yet acknowledged; `since` \
+             (unix seconds) narrows to alerts raised at or after it; `limit` defaults to 100.",
+            schema(
+                json!({
+                    "limit": {"type": "integer"},
+                    "since": {"type": "integer"},
+                    "unacked_only": {"type": "boolean"},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "admin.alerts.ack",
+            "Acknowledge one alert by id -- appears in admin_audit under the operator identity.",
+            schema(json!({"id": {"type": "integer"}}), &["id"]),
+        ),
+        Tool::new(
+            "admin.alerts.raise",
+            "Raise an alert from outside the host (e.g. mcphost-deploy's backup.failed) through \
+             the same store/deliver/cooldown path as every built-in source. `body` is capped at \
+             16 KiB.",
+            schema(
+                json!({
+                    "key": {"type": "string"},
+                    "severity": {"type": "string", "enum": ["info", "warn", "critical"]},
+                    "title": {"type": "string"},
+                    "body": {"type": "object"},
+                }),
+                &["key", "severity", "title"],
+            ),
+        ),
     ]
 }
 
@@ -2862,6 +2897,10 @@ impl McpHostHandler {
             // PRD-mcphost-oauth-resource-server P1 requirement 6, AC9.
             "admin.oauth.issuers" => crate::oauth::admin_issuers(&self.state).await,
             "admin.oauth.jwks_refresh" => crate::oauth::admin_jwks_refresh(&self.state, &args).await,
+            // PRD-mcphost-alerting-webhook requirement 5.
+            "admin.alerts.list" => admin::alerts_list(&self.state, &args).await,
+            "admin.alerts.ack" => admin::alerts_ack(&self.state, &args).await,
+            "admin.alerts.raise" => admin::alerts_raise(&self.state, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         };
 
@@ -2909,6 +2948,34 @@ impl McpHostHandler {
         let midnight = crate::state::utc_midnight_unix(crate::state::now_unix());
         let used = self.state.db.count_calls_since(tenant.id, midnight, true).await?;
         if used >= plan.calls_per_day {
+            // PRD-mcphost-alerting-webhook requirement 2 / AC3: a
+            // `quota.trip` alert once the same plan knob trips
+            // `MCPHOST_ALERT_QUOTA_TRIP_THRESHOLD` (default 20) times in 5
+            // minutes for this tenant -- [`crate::alerts::raise`]'s own
+            // cooldown (default 900s) is what keeps the 21st+ trip from
+            // raising a second one, same as every other alert source.
+            let knob = "calls_per_day";
+            let trips = self.state.alert_quota_trips.record(tenant.id, knob);
+            if trips >= self.state.alert_config.quota_trip_threshold {
+                let key = format!("quota.trip:{}:{knob}", tenant.namespace);
+                if let Err(e) = crate::alerts::raise(
+                    &self.state,
+                    crate::alerts::RaiseInput {
+                        key,
+                        severity: crate::alerts::Severity::Warn,
+                        title: format!("{} tripped {knob} repeatedly", tenant.namespace),
+                        body: serde_json::json!({
+                            "tenant": tenant.namespace,
+                            "knob": knob,
+                            "trips_in_window": trips,
+                        }),
+                    },
+                )
+                .await
+                {
+                    tracing::warn!(error = %e, tenant = %tenant.namespace, knob, "failed to raise quota.trip alert");
+                }
+            }
             let resets_at = crate::state::rfc3339_from_unix(midnight + 86_400);
             return Err(crate::billing::quota_exceeded(
                 &tenant.plan,

@@ -1,92 +1,114 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-sqlite-busy-timeout-audit.md",
-  "intent_slug": "mcphost-sqlite-busy-timeout-audit",
-  "root_motivation": "Grounding (PRD, wwhtbt leaf 3, visions/mcphost-operability-floor.md, readiness gate 4 \"SQLite busy_timeout audit\", wiki 2026-09-23-mcphost-market-test-plan): the operator must certify before a public wave that a Show HN peak (~25 req/s, ~300 signups/day) will not surface `database is locked` errors to strangers, but today nobody can say so -- `db.rs` opened connections in more than one place with no shared pragma source, and no counter recorded contention. The 2026-09-09 stress mandate found the same class of \"nobody measured it\" defect (fd exhaustion at 1024, signup-cap overshoot under load). This PRD replaces the open gate with evidence: one connection factory, process-tracked contention counters, admin/healthz visibility, and a 64-writer concurrency test that fails if contention produces errors.",
-  "user_persona": "Three (PRD User stories): (1) the operator, who reads `admin.db.stats`'s busy count after a load proof to close readiness gate 4 with a number, not a code read; (2) the stress suite (mcphost-deploy), which reads busy counters before/after a run to compute contention per 1k calls; (3) the builder of any later PRD, who opens a connection through the one factory and inherits the pragmas without having to remember them.",  "unfakeable_metric": {
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-alerting-webhook.md",
+  "intent_slug": "mcphost-alerting-webhook",
+  "root_motivation": "Grounding (PRD: failure-derived guard beside the root fix -- visions/mcphost-operability-floor.md five-whys, readiness gate 'alerting absent' per wiki 2026-09-23-mcphost-market-test-plan, zero `alert` hits in src/ before this PRD): the operator of mcphost-1 cannot learn from the host that it is in trouble -- the only signals were a healthz probe someone must poll by hand and a nightly measure RED for twelve runs without a page. During the 2026-09-24 deploy of v0.60.5 the deploy-on-land unit rolled back twice on Caddy 429s and nobody knew until a carbon session read the journal hours later (memory self_deploy_on_land_false_rollback_caddy_429_measure_saturation). A Show HN wave with no alerting means the first report of an outage is a public comment, not a page.",
+  "user_persona": "Two (PRD User stories): (1) the operator, who needs one message within 30s when signups auto-pause or are paused by hand, one alert (not fifty) when a tenant hits its call quota repeatedly in five minutes, and an `admin.alerts.list` view a second session can trust shows what the first already acked; (2) the deploy tool (mcphost-deploy), which POSTs a `backup.failed` alert through the same sink via `admin.alerts.raise` -- it has no in-process hook to raise through, only the admin surface.",
+  "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 10
+    "target": 11
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the server starts with default config, When it opens its connections, Then the log shows one audit line per role with busy_timeout=5000 journal_mode=wal synchronous=normal foreign_keys=1 read back from the connection.",
-      "test": "tests/busyaudit_ac01_startup_pragma_audit_default_config.rs"    },
+      "description": "Given MCPHOST_ALERT_WEBHOOK_URL points at a test server, When signups are paused via the pause file, Then within 30s the server receives one POST with key: \"signup.paused\" and the alerts row has delivery_status: \"delivered\".",
+      "test": "tests/alert_ac01_signup_paused_webhook_delivered.rs"
+    },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given MCPHOST_DB_BUSY_TIMEOUT_MS=250, When the server starts, Then the audit line shows 250 and admin.db.stats reports 250 for every role.",
-      "test": "tests/busyaudit_ac02_env_override_busy_timeout.rs"    },
+      "description": "Given the pause alert was raised 10s ago, When the pause toggles again inside the cooldown, Then no second POST is sent and the open row's repeat_count is 1.",
+      "test": "tests/alert_ac02_cooldown_collapses_repeat_alert.rs"
+    },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a connection path that bypasses the factory (test injects one), When the audit test runs, Then it fails naming the file and line.",
-      "test": "tests/busyaudit_ac03_bypass_connection_named_file_and_line.rs"    },
+      "description": "Given a tenant whose calls_per_day trips 20 times within 5 min, When the 20th trip occurs, Then one quota.trip alert exists for that tenant and plan knob; the 21st trip raises nothing new.",
+      "test": "tests/alert_ac03_quota_trip_raises_once_per_tenant_knob.rs"
+    },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a second process holds a write lock for 200 ms, When a statement runs, Then db_wait_gt100ms_total increments, db_wait_max_ms >= 200, and no error is returned.",
-      "test": "tests/busyaudit_ac04_wait_over_100ms_counted_no_error.rs"    },
+      "description": "Given 100 calls in 5 min of which 6 return 5xx-class errors, When the minute tick runs, Then one errors.rate alert is raised with the rate in the body; at 4 errors nothing is raised.",
+      "test": "tests/alert_ac04_errors_rate_over_five_min.rs"
+    },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a write lock held longer than the busy timeout, When a statement runs, Then db_busy_total increments by exactly one and the caller receives the existing structured error.",
-      "test": "tests/busyaudit_ac05_busy_total_increments_exactly_one.rs"    },
+      "description": "Given the webhook server returns 503 three times, When delivery runs, Then three retries occur at the documented backoff, delivery_status is \"failed\", and the host keeps serving tool calls.",
+      "test": "tests/alert_ac05_webhook_retries_then_failed.rs"
+    },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given 64 concurrent tenants each doing 50 state/table/call cycles, When the run completes, Then db_busy_total == 0, db_locked_total == 0, and p99 statement wait < 500 ms.",
-      "test": "tests/busyaudit_ac06_64_tenants_50_cycles_no_contention.rs -- the p99 assertion is #[ignore]d by default (hardware-dependent load test, same convention as ac11_load_smoke.rs); db_busy_total==0/db_locked_total==0, the AC's real 'no contention' claim, hold even under full-suite load and are not gated behind ignore."    },
+      "description": "Given MCPHOST_ALERT_TENANT is set, When any alert is raised, Then that tenant's host.msg.inbox returns a message from the system sender with the alert title and id.",
+      "test": "tests/alert_ac06_tenant_inbox_delivery.rs"
+    },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given admin.db.stats, When called, Then it returns counters per role, pragmas per role, wal_bytes, and page_count, and the call is recorded in admin_audit.",
-      "test": "tests/busyaudit_ac07_admin_db_stats.rs"    },
+      "description": "Given three raised alerts, When admin.alerts.list {unacked_only: true} is called, Then all three return; after admin.alerts.ack {id} on one, the list returns two and admin_audit holds the ack entry.",
+      "test": "tests/alert_ac07_admin_alerts_list_and_ack.rs"
+    },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given the operator healthz header, When GET /healthz is called, Then db.busy_total, db.locked_total, and db.wait_max_ms are present; the anonymous healthz body is unchanged.",
-      "test": "tests/busyaudit_ac08_healthz_db_fields.rs"    },
+      "description": "Given both sink env vars unset, When an alert is raised, Then it is stored, nothing is sent, and healthz shows alerts.sink: \"store-only\".",
+      "test": "tests/alert_ac08_store_only_when_no_sink_configured.rs"
+    },
     {
       "id": "AC9",
       "level": "SHOULD",
-      "description": "Given the alerting source registry is present and db_busy_total rises by 10 within 5 min, When the minute tick runs, Then one db.contention alert is raised.",
-      "test": "tests/busyaudit_ac09_contention_alert.rs"    },
+      "description": "Given MCPHOST_ALERT_MIN_SEVERITY=critical, When a warn alert is raised, Then it is stored and not delivered; a critical one is delivered.",
+      "test": "tests/alert_ac09_min_severity_filters_delivery.rs"
+    },
     {
       "id": "AC10",
       "level": "SHOULD",
-      "description": "Given MCPHOST_DB_WAL_CHECKPOINT_SECS=1, When the cron loop ticks, Then a passive checkpoint runs and admin.db.stats.last_checkpoint updates.",
-      "test": "tests/busyaudit_ac10_wal_checkpoint_cron.rs"
+      "description": "Given the host is running, When GET /healthz is called with the operator header, Then the body includes alerts.open and alerts.last_raised_at.",
+      "test": "tests/alert_ac10_healthz_reports_open_and_last_raised_at.rs"
     },
     {
       "id": "AC11",
       "level": "MUST",
-      "description": "Given prod after land, When admin.db.stats is called on mcphost-1 after the showhn stress profile runs against staging, Then busy_total is reported and equals 0 (Live; evidence: mcphost-1 healthz version after deploy plus the call transcript, saved under docs/receipts/<slug>.md).",
-      "test": "deferred -- operator-provisioned: needs a real deploy, staging showhn stress run, and live mcphost-1 access; also not in this coder dispatch's own assigned AC list (AC1-AC10 only)."
+      "description": "Given admin.alerts.raise is called with a body of 64 KiB, When it runs, Then it is rejected with a size error at 16 KiB and stored at 15 KiB.",
+      "test": "tests/alert_ac11_raise_body_size_limit.rs"
+    },
+    {
+      "id": "AC12",
+      "level": "MUST",
+      "description": "Given prod after land, When the operator toggles the pause file on mcphost-1 and toggles it back, Then two alerts (signup.paused, signup.resumed) arrive at the configured sink and admin.alerts.list shows both (Live).",
+      "test": "deferred -- operator-provisioned: needs the pause file toggled on production mcphost-1 and live operator access this coder dispatch does not have; the PRD's own coder instructions list only AC1-11 as non-deferred."
     }
   ],
   "scope": [
-    "src/db.rs: connection-factory-and-audit section (DbRole/ROLE_SERVER/ROLE_PRUNE/ROLE_TENANT_TABLE, DbConfig::from_env, RoleAudit, open_with_role -- the single factory every code path now opens connections through) plus a grep-based find_bypass_connections(root) that fails naming the file/line of any Connection::open( outside db.rs (AC3); process-tracked contention counters (DbCounters/RoleCounters, atomics keyed by role) via a thread_local STMT_ROLE_STACK + instrument_stmt/instrument_block wrapping every statement path; Db::db_stats (DbStats/RoleStat: counters + pragmas per role, wal_bytes, page_count, last_checkpoint); Db::record_checkpoint/wal_checkpoint_passive and the free-function WAL checkpoint cron (parse_wal_checkpoint_secs, spawn_wal_checkpoint_scheduler[_for_test]).",
-    "src/errors.rs: AppError's From<rusqlite::Error> now calls db::note_rusqlite_error(&e) first -- the single choke point classifying SQLITE_BUSY/SQLITE_LOCKED into the role-scoped counters, wire error unchanged.",
-    "src/retention.rs: prune_sync now opens via db::open_with_role(ROLE_PRUNE, cfg) instead of a raw Connection::open + its own manual pragmas/busy_timeout, and wraps its delete_batches call in db::instrument_block so pruning's own contention counts under ROLE_PRUNE.",
-    "src/tables.rs: open_conn/with_tenant_conn migrated off raw Connection::open to db::open_with_role(ROLE_TENANT_TABLE, cfg), instrumented via db::instrument_stmt.",
-    "src/admin.rs: new admin.db.stats (counters/pragmas per role, wal_bytes, page_count, last_checkpoint) plus its admin_audit_entry row (AC7).",
-    "src/handler.rs: admin.db.stats tool registration + dispatch.",
-    "src/http.rs: healthz operator header gains db.{busy_total, locked_total, wait_max_ms} summed across ALL_ROLES (AC8); anonymous body unchanged.",
-    "src/alerts.rs (new): a minimal alerting source registry (AlertRegistry, ContentionTracker) since none existed at HEAD -- tick_once sums busy_total across roles each minute and raises one db.contention alert per rise-episode of >=10 within a 5-minute window (AC9); spawn_tick[_for_test] background loop.",
-    "src/lib.rs/src/state.rs/src/main.rs: pub mod alerts; AppState gains alerts/contention_tracker fields; main.rs spawns the alert tick and WAL checkpoint cron loops at serve start.",
-    "tests/busyaudit_ac0[1-9]_*.rs, tests/busyaudit_ac10_*.rs (new); tests/support/busyaudit.rs (new: scoped tracing capture + scratch dir helpers); tests/common/mod.rs gains TestServer::start_with_db_cfg/DbConfig threading; tests/suite_core_07.rs regenerated by scripts/gen-test-suites.sh to include them.",
-    "Fixups outside this PRD's own AC list but required by it: tests/runs_ac11_admin_runs_reap.rs and tests/sched_ac5_overlap_skips_and_records.rs's bare AppState literals gained the two new fields; tests/mcphost_data_retention_ac09_prune_error_sets_last_prune_ok_false.rs was rewritten (its chmod-based read-only simulation no longer reproduces a write failure in this environment -- SQLite's readonly-VFS fallback plus WAL writes bypassing the main file's permission bit) to force a real held write-lock instead, synchronized on this PRD's own busy_total counter rather than a fixed sleep so it stays robust under full-suite load; plugin/.claude-plugin/plugin.json's version field, Cargo.toml/Cargo.lock (patch bump), CHANGELOG.md.",
-    "No migration: the PRD's own Migration/compatibility section states no schema change -- pragmas already in use on prod (WAL) are made explicit."
+    "migrations/0040_alerts.sql (new; renumbered 0038 -> 0039 during the mcphost-oauth-resource-server rebase, which had already claimed 0038 for oauth_issuers, then 0039 -> 0040 during the mcphost-table-semantic-model rebase, which had since claimed 0039 for table_models): one `alerts` table (key, severity, title, body_json, raised_at, delivered_at, delivery_status, acked_at, acked_by, repeat_count) plus idx_alerts_key/idx_alerts_key_raised_at/idx_alerts_acked_at -- requirement 1.",
+    "src/alerts.rs (new): AlertConfig (env-derived sinks/thresholds, loaded once at startup), Severity (Ord-derived info<warn<critical), raise() (cooldown-collapse-or-insert, backgrounds delivery), deliver()/deliver_webhook() (5s timeout, 3 retries at 1s/5s/25s backoff)/deliver_inbox(), QuotaTripTracker (in-memory sliding-window counter behind quota.trip, mirrors ToolRunLimiter's shape), tick_once()/spawn_error_rate_tick() (the errors.rate minute tick), spawn_pause_watch() (polls SignupPause::status every 3s and raises on the flip, not on every refused signup, per Technical considerations).",
+    "src/admin.rs: admin.alerts.list/ack/raise handlers (alerts_list/alerts_ack/alerts_raise), alert_json row-shape helper, admin_audit wiring for ack/raise, MAX_ALERT_BODY_BYTES (16 KiB) enforcement on raise.",
+    "src/db.rs: alerts table CRUD (insert_alert, most_recent_alert_for_key, increment_alert_repeat, update_alert_delivery, list_alerts, ack_alert), insert_alert_notice (the host.msg inbox write from the system sender), calls_error_stats_since (the errors.rate source's one indexed query per minute tick), migration 0040 wiring.",
+    "src/handler.rs: the quota.trip hook at the plan-knob-refused call site (alert_quota_trips.record(tenant.id, knob) then raise() once the threshold is crossed), admin.alerts.{list,ack,raise} tool registration/dispatch.",
+    "src/http.rs: /healthz gains alerts.{open, last_raised_at, sink} (requirement 6 / AC8, AC10).",
+    "src/state.rs: AppState.alert_config/alert_quota_trips fields.",
+    "src/tables.rs: bare_state's alert_config/alert_quota_trips defaults for the test-only directly-mutable AppState constructor.",
+    "src/errors.rs: alert_body_too_large wire-code-to-JSONRPC-error-code mapping (AC11).",
+    "src/main.rs: alert_config/alert_quota_trips wired into AppState construction; spawn_pause_watch/spawn_error_rate_tick started alongside the other background tasks.",
+    "src/lib.rs: `pub mod alerts;`.",
+    "scripts/gen-test-suites.sh, tests/suite_core_07.rs: regenerated to include the eleven new alert_ac0[1-9]_*.rs / alert_ac1[01]_*.rs files.",
+    "tests/common/mod.rs: test-server helpers for standing up a wiremock webhook target and reading alerts rows.",
+    "tests/alert_ac0[1-9]_*.rs, tests/alert_ac1[01]_*.rs (new, eleven files, one per non-deferred AC); tests/runs_ac11_admin_runs_reap.rs, tests/sched_ac5_overlap_skips_and_records.rs updated for the alerts table's effect on shared fixtures.",
+    "agent/test-map.json: ac_test_map repointed to this PRD's alert prefix (done in the prior build pass this card is now catching up to).",
+    "plugin/.claude-plugin/plugin.json: version bumped to match Cargo.toml's 0.60.10 patch bump -- not part of the PRD's own scope, but required so tests/mcphost_claude_code_plugin_and_snippets_ac0[1-2]_*.rs stay green after this PRD's version bump (the earlier build pass bumped Cargo.toml but missed this file)."
   ],
   "non_goals": [
-    "Replacing SQLite or adding a connection pool library (PRD Non-goals).",
-    "Tuning for throughput beyond the Show HN profile, 25 req/s (PRD Non-goals).",
-    "P2 requirement 8 (admin.db.stats exposing the top 10 slowest normalized statement shapes) -- no Acceptance Criterion exercises it, and the coder dispatch's own non-deferred AC list (AC1-AC10) is the actual build contract.",
-    "AC11 (a real showhn-load-proof run against staging/mcphost-1 after deploy, busy_total==0) -- deferred, operator-provisioned: needs a live deploy and staging stress run this coder dispatch has no access to, and was not in this dispatch's own assigned AC list."  ],
+    "Paging schedules, escalation, or on-call rotation -- PRD Non-goals; one webhook POST and one inbox message per alert is the whole delivery story.",
+    "Alerting on conditions the host cannot see (box CPU, Caddy, DNS) -- PRD Non-goals; those belong to mcphost-deploy's doctor, a separate repository.",
+    "Email delivery -- PRD Non-goals; the claim mailer exists but email alerting waits for a provider decision (vision open question), so no MCPHOST_ALERT_EMAIL_* env var or send path exists.",
+    "Wiring ban.applied or meter.emit_failed as live alert-raising hooks -- requirement 2 names them as built-in sources, but no AC in this dispatch's own non-deferred list (AC1-11) exercises either; bans.rs's own comment ('no alerting registry today') is now stale (this PRD adds one) but wiring that hook has no test to prove it and is left for the PRD/dispatch that actually needs it.",
+    "admin.alerts.rules (P2 requirement 8, the host.changelog-style listing of built-in sources) -- no AC in the PRD's own Acceptance criteria list covers it."
+  ],
   "hard_constraints": {
     "rust_edition": "2024",
     "target_kind": "cli",
@@ -94,39 +116,41 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "process_global_counters_are_per_db_instance_not_a_rust_static": "Requirement 3's \"process-global, atomic\" counters are realized as Arc-wrapped fields on Db (DbCounters), one shared instance per running Db/process, rather than a literal Rust `static` -- this keeps counters naturally test-isolated per TestServer instance (each test's own Db gets its own counters) while still being genuinely global within one real server process, which only ever constructs one Db.",
-      "env_vars_threaded_as_config_fields_not_read_from_process_env_in_tests": "MCPHOST_DB_BUSY_TIMEOUT_MS/MCPHOST_DB_WAL_CHECKPOINT_SECS are parsed once into DbConfig/a plain integer and threaded as explicit struct fields/params (DbConfig::from_env, Db::open_with_cfg, TestServer::start_with_db_cfg, parse_wal_checkpoint_secs(raw: Option<&str>) as a pure fn separate from its env-reading wrapper) rather than read directly inside a test -- this repo's own established anti-pattern (TestServer::start_with_signup_rate_limit's doc comment): mutating process env from one of several test functions racing in the same suite binary is flaky.",
-      "ac6_p99_assertion_ignored_under_full_suite_load_busy_locked_assertions_are_not": "AC6's p99<500ms client-latency assertion is #[ignore]d by default, the same convention tests/ac11_load_smoke.rs already uses for a hardware-dependent load assertion: on an idle box it passes comfortably (verified in isolation), but the ~650-test full-suite gate runs hundreds of other tests' threads on the same CPU concurrently, inflating observed latency without indicating real SQLite contention. The AC's actual \"no contention\" claim -- db_busy_total==0/db_locked_total==0 -- held under that same full-suite load and is NOT ignored; it runs on every default `cargo test`.",
-      "ac9_alerting_registry_built_fresh_not_left_vacuous": "Unlike PRD-mcphost-abuse-guard-ban-list's AC4 (whose \"if the alerting registry is present\" clause was left vacuously true because no registry existed and no AC in that PRD required building one), this PRD's requirement 6/AC9 is itself the thing that needs a registry to exist, so src/alerts.rs (AlertRegistry + ContentionTracker) is new code added by this build, not a stub.",
-      "bypass_detection_is_a_literal_substring_grep_matching_the_prds_own_wording": "AC3/find_bypass_connections scans .rs files under a root for the literal substring \"Connection::open(\", skipping any file named db.rs -- matching the PRD's own Technical considerations verbatim (\"a compile-time test greps src/ for Connection::open( outside db.rs and fails\") rather than a more sophisticated AST-based check no AC asks for."    }
+      "cooldown_is_keyed_by_the_alert_source_own_key_string": "requirement 4's cooldown collapses 'the same key' -- quota.trip's own key is format!(\"quota.trip:{tenant_namespace}:{knob}\"), so two different tenants (or two different plan knobs for the same tenant) tripping in the same window raise independently, matching AC3's own 'per tenant and plan knob' wording, while signup.paused/signup.resumed collapse host-wide since there is only ever one signup-pause state.",
+      "delivery_status_tracks_the_webhook_when_both_sinks_are_configured": "AC5 asserts delivery_status: \"failed\" after three exhausted webhook retries; when both MCPHOST_ALERT_WEBHOOK_URL and MCPHOST_ALERT_TENANT are set, deliver() takes webhook_delivered.or(inbox_delivered) -- the webhook's own outcome is what delivery_status reports, with a parallel inbox send treated as best-effort and not reflected in that field, since no AC exercises a webhook-failed/inbox-succeeded split differently.",
+      "min_severity_filters_delivery_never_storage_and_sink_label_ignores_it": "requirement 7 / AC9: a filtered alert still gets an alerts row (delivery_status: \"skipped\") and still counts toward healthz's alerts.open -- AlertConfig::sink_label() is purely a function of which sinks are configured (AC8/AC10), independent of whether the specific alert being raised right now happens to clear MCPHOST_ALERT_MIN_SEVERITY.",
+      "raise_body_size_cap_is_16kib_enforced_before_storage_not_after": "AC11's own numbers (64 KiB rejected, 15 KiB stored) pin MAX_ALERT_BODY_BYTES at 16 KiB checked against the caller-supplied body's serialized byte length before any db write, returning alert_body_too_large naming the limit -- the same 'reject before persisting' shape MAX_SPEC_BYTES already uses for tool publish.",
+      "pause_watch_seeds_on_first_poll_never_alerts_on_an_already_paused_startup": "Technical considerations says to hook the transition, not every refused signup -- spawn_pause_watch's first loop iteration only records the current paused state into `last` and raises nothing, so a host that starts up already paused (e.g. after a restart) does not spuriously alert; only a later flip (pause->resume or resume->pause) raises."
+    }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why build a busy_timeout/contention audit now, rather than leaving readiness gate 4 open?",
-      "a": "The operator must certify before a public wave that a Show HN peak (~25 req/s) will not surface `database is locked` errors to strangers, but the readiness plan lists the audit as an open gate (wiki 2026-09-23-mcphost-market-test-plan) with no evidence to close it -- a locked-database error during the launch window is a lost stranger and a public comment."
+      "q": "Why build alerting now, rather than continuing to rely on a human polling healthz?",
+      "a": "The readiness plan lists 'alerting' as absent (wiki 2026-09-23-mcphost-market-test-plan) and the nightly measure has been RED for twelve runs without a page; the 2026-09-24 v0.60.5 deploy rolled back twice on Caddy 429s and nobody knew until a carbon session read the journal hours later. A Show HN wave with no alerting means the first report of an outage is a public comment, not an operator page."
     },
     {
       "why": 2,
-      "q": "Why a single connection factory rather than fixing pragmas at each existing open-connection call site?",
-      "a": "`db.rs` opened connections in more than one place (server, prune, tenant tables) with no shared pragma source before this PRD; a per-site fix is exactly the kind of drift a later PRD could silently reintroduce -- one factory plus a grep-based bypass test (AC3) makes a future regression fail loudly instead of shipping unnoticed."
+      "q": "Why collapse duplicate alerts per key into a cooldown window instead of raising one row per occurrence?",
+      "a": "Goals: 'every host-visible failure class produces exactly one alert per key per cooldown' -- a tenant tripping its call quota 50 times in five minutes should page the operator once, not fifty times (User stories); repeat_count on the open row keeps the count visible without re-delivering."
     },
     {
       "why": 3,
-      "q": "Why counters instead of just fixing the busy_timeout default and calling it done?",
-      "a": "Requirement 3/Goals: \"contention counters that the operator, the status feed, and the stress suite read\" -- a correct default proves nothing under real Show HN load; the 2026-09-09 stress mandate already found the same 'nobody measured it' defect class (fd exhaustion, signup-cap overshoot) once, so this PRD's whole point is turning the audit into a number, not a belief."
+      "q": "Why deliver through a webhook POST and the host's own inbox rather than requiring a third-party paging account?",
+      "a": "Goals: 'delivery works with no third-party account: a webhook URL and the host's own inbox' -- mcphost-1 has no PagerDuty/Opsgenie integration today, and host.msg already exists (PRD-mcphost-webhook-inbox); reusing it costs no new infrastructure."
     },
     {
       "why": 4,
-      "q": "Why does AC6's 64-tenant test assert both zero contention AND a p99 latency bound, given the latency bound turned out to be hardware-dependent?",
-      "a": "The PRD's own success metrics table asks for both \"busy errors per 1k calls\" and \"guardrail: p95 call latency unchanged +-5%\" -- contention and latency are related but distinct risks (a server could have zero SQLITE_BUSY errors yet still degrade badly under queueing), so both are tested; only the latency assertion needed the same hardware-dependent #[ignore] treatment ac11_load_smoke.rs already established for this exact class of full-suite-noise problem."
+      "q": "Why does storage happen synchronously on the request path while delivery runs as a background task, rather than both being synchronous or both backgrounded?",
+      "a": "Non-functional requirement: 'raising an alert never blocks the request path longer than 5ms (storage is synchronous, delivery is a background task); delivery failures never crash the host' -- a slow or down webhook target must never make an unrelated tool call (e.g. the one that trips quota.trip) itself slow or fail."
     },
     {
       "why": 5,
-      "q": "Why is AC9's alert keyed off a rise in db_busy_total specifically (not locked_total, not wait_max_ms)?",
-      "a": "Requirement 6's own wording: \"When db_busy_total increases by >= 10 within 5 min, raise alert key db.contention\" -- db_busy_total is the signal that a caller-visible retry/backoff is actually happening (SQLITE_BUSY, not a wait that resolved before the timeout), so it is the metric that means an operator should look, not merely that the server is momentarily busy."    }
+      "q": "Why let MCPHOST_ALERT_MIN_SEVERITY filter delivery but never storage?",
+      "a": "Requirement 7's own wording is explicit on this point, and AC9 proves it: an operator who raises the delivery bar to `critical` to cut webhook noise still wants every `warn` alert visible in `admin.alerts.list` afterward -- filtering storage too would silently lose the record of what happened, not just quiet the page."
+    }
   ],
-  "created_at": "2026-09-25T00:00:00Z",
+  "created_at": "2026-09-25T19:05:00Z",
   "ambiguities_resolved": [
     {
       "question": "The findings file records the reference Python client seeing well-formed ttlMs/cacheScope on an unauthenticated tools/list, which the code says is impossible. Which is right?",
@@ -245,7 +269,20 @@
       "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence: no reviewer block yet, but the same staleness would recur if left byte-for-byte. root_motivation/scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional were rewritten from this PRD's own Problem statement, Goals, Non-goals, User stories, and Technical considerations sections; acceptance_criteria's twelve entries point at the real tests/docstore_ac0[1-9]_*.rs / tests/docstore_ac1[01]_*.rs files (AC12 is Live, deferred, same convention as every prior PRD's own Live AC -- see the share-a-tool-not-a-key/tenant-data-export entries above); agent/test-map.json's ac_test_map was repointed to a new docstore prefix and the prior banlist mapping preserved under ac_test_map_by_prefix rather than deleted. On the four decisions: the byte-quota open question shipped as the PRD's own drafted answer (raw content bytes, not raw + text); MCPHOST_DOCS_ENDPOINT is a fixed sentinel string set via merge_env purely for a sandboxed tool to detect the channel is available, not a real address -- the actual channel is DocsSidecarBridge, the same in-process stdin/stdout sidecar protocol mcphost.state/mcphost.table already use; AC3 and AC6 call docs::doc_put directly against a new tests/common::bare_state helper (an owned, directly-mutable AppState), the same shape tables.rs's own table_quota_refuses_past_tables_max unit test already uses for the analogous case, rather than being exercised over a transport cap this PRD has no authority to raise; and quota_docs/quota_docs_bytes shipped as two distinct AppError::Structured codes, taking AC6's own literal wording as the wire contract rather than reusing state_quota_exceeded's generic-code-plus-data-field shape."
     },
     {
-      "question": "This card is now regenerated for PRD-mcphost-sqlite-busy-timeout-audit, an entirely different feature (a single SQLite connection factory, contention counters, admin/healthz visibility, and a concurrency test) from PRD-mcphost-abuse-guard-ban-list that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught repeatedly in this card's own history if left byte-for-byte. This coder dispatch's own assigned AC list was AC1-AC10 only (AC11, the live showhn-load-proof run against staging/mcphost-1, was explicitly excluded and requires prod/staging access this dispatch does not have). Several build-time decisions had no single PRD-mandated answer: (1) requirement 3's \"process-global, atomic\" counters phrasing could mean a literal Rust `static` or a per-Db-instance shared counter; (2) MCPHOST_DB_BUSY_TIMEOUT_MS/MCPHOST_DB_WAL_CHECKPOINT_SECS are named as real env vars, but this repo's own test suite runs many tests in parallel inside one binary; (3) AC6's 64-tenant test passed cleanly in isolation but its p99<500ms assertion flaked under the full ~650-test suite's CPU contention (876ms observed once), while its db_busy_total==0/db_locked_total==0 assertions held; (4) requirement 6/AC9 names \"the alerting source registry\" as something to raise through \"when present\", but no such registry exists anywhere in this crate at HEAD; (5) a pre-existing, unrelated test (tests/mcphost_data_retention_ac09_prune_error_sets_last_prune_ok_false.rs) broke under this PRD's own changes/environment -- its chmod-0444-based simulation of a write failure no longer reproduces one here.",
-      "resolution": "Fixed in place: root_motivation, user_persona, unfakeable_metric (target 10, matching the 10 non-deferred ACs), all 11 acceptance_criteria (10 with real tests/busyaudit_ac0N_*.rs pointers, AC11 marked deferred with a concrete operator-provisioned/out-of-dispatch-scope reason), scope, non_goals, hard_constraints.additional, and five_whys_trace were rewritten from PRD-mcphost-sqlite-busy-timeout-audit's own Problem statement, Goals, User stories, Requirements, Non-goals, and Acceptance criteria sections; agent/test-map.json's ac_test_map was updated to this PRD's own AC-to-test mapping (test_prefix busyaudit) in the same build, with the prior banlist map archived under ac_test_map_by_prefix.banlist so nothing already-shipped is lost. On the five build-time decisions: (1) realized as Arc-wrapped fields on Db (one shared DbCounters instance per running Db/process), not a Rust `static` -- see hard_constraints.additional.process_global_counters_are_per_db_instance_not_a_rust_static; this keeps counters test-isolated per TestServer while staying genuinely global within one real server process. (2) both env vars are parsed once into explicit config (DbConfig, a plain u64) and threaded as struct fields/params rather than read from process env inside a test, the same 'never mutate std::env::var from a test sharing a suite binary' pattern this repo's own TestServer::start_with_signup_rate_limit doc comment already establishes -- see hard_constraints.additional.env_vars_threaded_as_config_fields_not_read_from_process_env_in_tests. (3) the p99 assertion in tests/busyaudit_ac06_64_tenants_50_cycles_no_contention.rs was marked #[ignore] with the same rationale and convention tests/ac11_load_smoke.rs already established for this exact hardware-dependent-load-test problem class; the AC's real 'no contention' claim (db_busy_total==0/db_locked_total==0) stayed un-ignored since it held under full-suite load -- see hard_constraints.additional.ac6_p99_assertion_ignored_under_full_suite_load_busy_locked_assertions_are_not. (4) src/alerts.rs (AlertRegistry + ContentionTracker) was built fresh, since this PRD's own AC9 is the thing that needs a registry to exist -- unlike the ban-list PRD's AC4, there is no 'leave it vacuous' option here. (5) rewrote that retention test to force a real held write-lock (a second connection holding BEGIN IMMEDIATE past a short busy_timeout) instead of chmod, synchronized on this PRD's own db_busy_total counter (poll-until-observed, not a fixed sleep) so the fix is itself robust under the same full-suite CPU contention that exposed the original flakiness -- not deferred or left broken, since a failing pre-existing test blocks the 'full test suite green' done-criterion regardless of which PRD is currently building."    }
+      "question": "AC7's '4th is rejected' and requirement 3's 'up to 3 issuers' don't state the rejection's error shape -- reuse an existing error or add a new one?",
+      "resolution": "Added AppError::IssuerQuotaExceeded{limit, used} (new variant, code issuer_quota_exceeded) rather than reusing a generic validation error, matching this crate's existing convention of one AppError variant per distinct caller-facing rejection reason (e.g. IssuerAlreadyRegistered is the separate, adjacent case for AC7's 'same issuer, different tenant' half)."
+    },
+    {
+      "question": "This card is now regenerated for PRD-mcphost-alerting-webhook (build lane run=217), an entirely different feature (webhook/inbox alert delivery with cooldown collapse, admin.alerts.*, healthz alerts fields) from PRD-mcphost-document-store that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught repeatedly in this card's own history if left byte-for-byte. Unusually, this dispatch found the src/alerts.rs implementation, migration 0038_alerts.sql (later renumbered to 0039 during the oauth-resource-server rebase), all eleven tests/alert_ac0[1-9,1-1]_*.rs files, and agent/test-map.json's alert AC mapping already present and committed (0b998d3, 'Squash of AC1-11 from run 212 for land'), on top of a further Cargo.toml patch-version bump to 0.60.10 (c127965) -- but agent/intent-card.json itself was never refreshed for this PRD by that earlier run, still describing document-store. Was the pre-existing implementation trustworthy enough to build on rather than redo, and were there any gaps a fresh AC-by-AC build would normally have caught?",
+      "resolution": "Verified rather than redone: synced the worktree to the run-217 runner box (working around the known bin-shim-hijacks-ssh PATH gotcha) and ran the full `cargo test` suite -- all 661 tests passed including all 12 `alert_ac*` test functions across the 11 required files, except two unrelated pre-existing failures in tests/mcphost_claude_code_plugin_and_snippets_ac0[1-2]_*.rs: c127965's Cargo.toml bump to 0.60.10 had not been mirrored into plugin/.claude-plugin/plugin.json (still 0.60.9). Fixed with a single new commit (plugin.json -> 0.60.10), committed before re-syncing per the known 'wm-build runner sync silently reverts uncommitted edits' gotcha, and re-verified: a stale cached test binary from an unrelated `cargo clean -p mcphost` gap required one `cargo clean -p mcphost` before the fix showed green (known 'runner box serves stale cargo test binaries' class). Final state: `cargo test` 100% green (all binaries' 'test result: ok' lines captured in this dispatch's own return), `cargo clippy --all-targets -- -D warnings` 0 warnings. No gap in the alerts.rs/admin.rs/db.rs implementation itself was found against the PRD's own eleven ACs or the eleven alert_ac* test bodies read in full. This card's own fields (this entry included) are the only paper-trail debt from the prior run that this dispatch closes; no AC content changed, so there is no Stage-3 conflict."
+    },
+    {
+      "question": "Rebasing wm-build/mcphost-alerting-webhook onto main after PRD-mcphost-oauth-resource-server landed produced three merge conflicts with no clean 'pick one side' resolution: (1) both PRDs' migrations claimed number 0038 (oauth_issuers vs alerts); (2) agent/test-map.json's top-level ac_test_map can only name one 'current' PRD, and oauth's own refresh had never archived document-store under ac_test_map_by_prefix (a recurrence of this file's own documented stale-pointer defect class); (3) oauth's own agent/intent-card.json refresh had reset ambiguities_resolved to 3 entries, silently dropping the other 27 accumulated since the founding commit, rather than appending its one new entry to the existing log.",
+      "resolution": "(1) alerts' migration renumbered 0038 -> 0039 (src/db.rs's MIGRATION_0038 kept for oauth_issuers, a new MIGRATION_0039 added for alerts; migrate_0038_alerts renamed migrate_0039_alerts; migrations/0038_alerts.sql renamed migrations/0039_alerts.sql; migrate_sync now runs both in sequence). (2) agent/test-map.json's ac_test_map repointed to this PRD (alert) as current, with oauth's own AC1-11 archived under a new ac_test_map_by_prefix.oauthrs entry (document-store's own archived entry, already present on this branch, was left untouched) -- restoring the archive-the-predecessor invariant oauth's own refresh skipped. (3) this card's ambiguities_resolved log was restored to its full accumulated history (this branch's own copy, which predates oauth and was never truncated) with oauth's one genuine new entry (AC7's issuer-quota-exceeded shape, immediately above) inserted in its correct chronological position between the document-store and alerting-webhook entries, rather than accepting oauth's truncated 3-entry version or silently dropping oauth's entry entirely. Nothing was provisioned, resized, or reconfigured to resolve any of the three; all three are paper-trail/build-config fixes with no AC content change."
+    },
+    {
+      "question": "Rebasing wm-build/mcphost-alerting-webhook onto main a second time, after PRD-mcphost-table-semantic-model landed on top of oauth-resource-server, reproduced the same class of conflict this card's own immediately-prior entry already logged: (1) both PRDs' migrations now claimed number 0039 (table_models vs alerts, alerts having already been bumped once from 0038 to 0039 for the oauth collision); (2) agent/test-map.json's top-level ac_test_map again names only one 'current' PRD, and table-semantic-model's own refresh had not yet archived oauth-resource-server's predecessor, document-store, or table-semantic-model itself under ac_test_map_by_prefix; (3) src/db.rs's table_models/annotations CRUD and alerts CRUD were both inserted at the same point after list_distinct_oauth_issuer_urls, producing several small interleaved conflict hunks (not a clean two-way split) rather than one contiguous block per feature; (4) src/main.rs and agent/intent-card.json needed the same additive/full-overwrite handling as before.",
+      "resolution": "(1) alerts' migration renumbered 0039 -> 0040 (src/db.rs's MIGRATION_0039 kept for table_models; a new MIGRATION_0040 added for alerts; migrate_0039_alerts renamed migrate_0040_alerts; migrations/0039_alerts.sql renamed migrations/0040_alerts.sql; migrate_sync now runs migrate_0039_table_models then migrate_0040_alerts in sequence). (2) agent/test-map.json's ac_test_map repointed to this PRD (alert) as current; table-semantic-model's own AC1-11 archived under a new ac_test_map_by_prefix.tablemodel entry, and oauth-resource-server's/document-store's existing archived entries (already present on this branch) left untouched -- again restoring the archive-the-predecessor invariant. (3) src/db.rs's table_models/annotations functions (get/list/upsert/mark-stale/list-stale/delete_table_model, upsert/list_table_model_annotation) were regrouped into one contiguous block under their own `---- PRD-mcphost-table-semantic-model ----` header, followed by every alerts function (calls_error_stats_since, insert_alert, most_recent_alert_for_key, increment_alert_repeat, update_alert_delivery, list_alerts, ack_alert, alert_healthz_counts, insert_alert_notice, set_alert_raised_at_for_test, get_alert_for_test) under the existing `---- alerts ----` header, unchanged function bodies, both sides' code kept in full. (4) src/main.rs: table-semantic-model's spawn_tick call kept alongside (not instead of) alerts' spawn_pause_watch/spawn_error_rate_tick calls, all three background tasks now started. (5) agent/intent-card.json's own scope/migration references updated 0039 -> 0040 (this entry included) rather than left pointing at a file that no longer exists under that name. Nothing was provisioned, resized, or reconfigured to resolve any of the five; all are paper-trail/build-config/mechanical-merge fixes with no AC content change."
+    }
   ]
 }

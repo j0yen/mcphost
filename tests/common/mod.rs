@@ -284,6 +284,8 @@ pub async fn bare_app_state() -> (AppState, TempDataDir) {
         oauth_jwks_ttl_secs: mcphost::oauth::DEFAULT_JWKS_TTL_SECS,
         alerts: mcphost::alerts::AlertRegistry::new(),
         contention_tracker: mcphost::alerts::ContentionTracker::new(),
+        alert_config: mcphost::alerts::AlertConfig::default(),
+        alert_quota_trips: mcphost::alerts::QuotaTripTracker::new(),
     };
     (state, data_dir)
 }
@@ -506,6 +508,7 @@ impl TestServer {
             mcphost::state::CLAIM_TOKEN_TTL_SECS_DEFAULT,
             mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
             mcphost::db::DbConfig::from_env(),
+            mcphost::alerts::AlertConfig::default(),
         )
         .await
     }
@@ -532,6 +535,33 @@ impl TestServer {
             mcphost::state::CLAIM_TOKEN_TTL_SECS_DEFAULT,
             mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
             db_cfg,
+            mcphost::alerts::AlertConfig::default(),
+        )
+        .await
+    }
+
+    /// PRD-mcphost-alerting-webhook: a server whose `AppState::alert_config`
+    /// is set directly (never via an env var -- same "field, not process
+    /// environment, since tests run in parallel in one binary" rationale
+    /// `start_with_signup_rate_limit`'s own doc comment already states).
+    pub async fn start_with_alert_config(alert_config: mcphost::alerts::AlertConfig) -> Self {
+        Self::start_full_with_email(
+            Some(ADMIN_KEY.to_string()),
+            KindRegistry::with_builtin(),
+            mcphost::state::CALL_TIMEOUT,
+            None,
+            mcphost::state::SIGNUP_RATE_LIMIT_PER_HOUR,
+            mcphost::billing::BillingConfig::default(),
+            Arc::new(mcphost::billing::FakeBillingClient::new(
+                mcphost::state::now_unix(),
+            )),
+            Vec::new(),
+            mcphost::email::EmailConfig::default(),
+            Arc::new(mcphost::email::FakeEmailClient::new()),
+            mcphost::state::CLAIM_TOKEN_TTL_SECS_DEFAULT,
+            mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
+            mcphost::db::DbConfig::from_env(),
+            alert_config,
         )
         .await
     }
@@ -565,6 +595,7 @@ impl TestServer {
             mcphost::state::CLAIM_TOKEN_TTL_SECS_DEFAULT,
             mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
             mcphost::db::DbConfig::from_env(),
+            mcphost::alerts::AlertConfig::default(),
         )
         .await
     }
@@ -573,7 +604,8 @@ impl TestServer {
     /// into, transitively -- `email_config`/`email_client`/
     /// `claim_token_ttl_secs`/`claim_rate_limit_per_hour` are the fields
     /// PRD-mcphost-human-claim-magic-link added to `AppState`; `db_cfg` is
-    /// PRD-mcphost-sqlite-busy-timeout-audit's own addition (AC2); every
+    /// PRD-mcphost-sqlite-busy-timeout-audit's own addition (AC2) and
+    /// `alert_config` is PRD-mcphost-alerting-webhook's own addition; every
     /// other field is unchanged from before those PRDs.
     #[allow(clippy::too_many_arguments)]
     pub async fn start_full_with_email(
@@ -590,6 +622,7 @@ impl TestServer {
         claim_token_ttl_secs: i64,
         claim_rate_limit_per_hour: i64,
         db_cfg: mcphost::db::DbConfig,
+        alert_config: mcphost::alerts::AlertConfig,
     ) -> Self {
         let data_dir = TempDataDir::new();
         let db = Db::open_with_cfg(&data_dir.0, db_cfg).expect("open db");
@@ -655,6 +688,8 @@ impl TestServer {
             oauth_jwks_ttl_secs: mcphost::oauth::DEFAULT_JWKS_TTL_SECS,
             alerts: mcphost::alerts::AlertRegistry::new(),
             contention_tracker: mcphost::alerts::ContentionTracker::new(),
+            alert_config,
+            alert_quota_trips: mcphost::alerts::QuotaTripTracker::new(),
         });
 
         // PRD-mcphost-runs-and-jobs: every test server runs the real
@@ -667,6 +702,10 @@ impl TestServer {
         // deterministic single tick instead of waiting on this loop's own
         // 30s cadence.
         mcphost::triggers::spawn_scheduler((*state).clone());
+        // PRD-mcphost-alerting-webhook: same "every test server runs the
+        // real background task too" rationale as the two spawns above --
+        // AC1/AC2's pause-file tests rely on this watcher actually running.
+        mcphost::alerts::spawn_pause_watch((*state).clone());
 
         let serve_state = state.clone();
         tokio::spawn(async move {
@@ -1195,6 +1234,8 @@ pub async fn bare_state(dir: &std::path::Path) -> AppState {
         oauth_jwks_ttl_secs: mcphost::oauth::DEFAULT_JWKS_TTL_SECS,
         alerts: mcphost::alerts::AlertRegistry::new(),
         contention_tracker: mcphost::alerts::ContentionTracker::new(),
+        alert_config: mcphost::alerts::AlertConfig::default(),
+        alert_quota_trips: mcphost::alerts::QuotaTripTracker::new(),
     }
 }
 

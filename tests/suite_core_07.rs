@@ -64,6 +64,28 @@ mod agentdir_ac05_ac06_search;
 mod agentdir_ac07_ac09_ac10_lifecycle;
 #[path = "agentdir_ac08_lookup_latency.rs"]
 mod agentdir_ac08_lookup_latency;
+#[path = "alert_ac01_signup_paused_webhook_delivered.rs"]
+mod alert_ac01_signup_paused_webhook_delivered;
+#[path = "alert_ac02_cooldown_collapses_repeat_alert.rs"]
+mod alert_ac02_cooldown_collapses_repeat_alert;
+#[path = "alert_ac03_quota_trip_raises_once_per_tenant_knob.rs"]
+mod alert_ac03_quota_trip_raises_once_per_tenant_knob;
+#[path = "alert_ac04_errors_rate_over_five_min.rs"]
+mod alert_ac04_errors_rate_over_five_min;
+#[path = "alert_ac05_webhook_retries_then_failed.rs"]
+mod alert_ac05_webhook_retries_then_failed;
+#[path = "alert_ac06_tenant_inbox_delivery.rs"]
+mod alert_ac06_tenant_inbox_delivery;
+#[path = "alert_ac07_admin_alerts_list_and_ack.rs"]
+mod alert_ac07_admin_alerts_list_and_ack;
+#[path = "alert_ac08_store_only_when_no_sink_configured.rs"]
+mod alert_ac08_store_only_when_no_sink_configured;
+#[path = "alert_ac09_min_severity_filters_delivery.rs"]
+mod alert_ac09_min_severity_filters_delivery;
+#[path = "alert_ac10_healthz_reports_open_and_last_raised_at.rs"]
+mod alert_ac10_healthz_reports_open_and_last_raised_at;
+#[path = "alert_ac11_raise_body_size_limit.rs"]
+mod alert_ac11_raise_body_size_limit;
 #[path = "attrib_ac1_loopback_signup_unstamped.rs"]
 mod attrib_ac1_loopback_signup_unstamped;
 #[path = "attrib_ac2_clientinfo_captured.rs"]

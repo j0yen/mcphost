@@ -831,6 +831,20 @@ pub fn admin_audit_entry(
         // stay absent, same convention `admin.ban.list`'s own comment
         // above names).
         "admin.db.stats" => Some(("db_stats".into(), None, None)),
+        // PRD-mcphost-alerting-webhook requirement 5 / AC7: `admin.alerts.ack`
+        // and `admin.alerts.raise` are mutations like every other admin.*
+        // write above -- `admin.alerts.list` (read-only) is absent, same
+        // convention `admin.ban.list`/`admin.tenants` already follow.
+        "admin.alerts.ack" => Some((
+            "alerts_ack".into(),
+            args.get("id").and_then(Value::as_i64).map(|n| n.to_string()),
+            None,
+        )),
+        "admin.alerts.raise" => Some((
+            "alerts_raise".into(),
+            args.get("key").and_then(Value::as_str).map(String::from),
+            args.get("severity").and_then(Value::as_str).map(String::from),
+        )),
         _ => None,
     }
 }
@@ -1203,4 +1217,85 @@ pub async fn ban_list(state: &AppState, args: &Value) -> Result<Value, AppError>
     let subject_kind = arg_str_opt(args, "subject_kind");
     let rows = state.db.list_bans(active_only, subject_kind).await?;
     Ok(json!({ "bans": rows.iter().map(ban_json).collect::<Vec<_>>() }))
+}
+
+// ---- alerts (PRD-mcphost-alerting-webhook) --------------------------------
+
+fn alert_json(a: &crate::db::Alert) -> Value {
+    json!({
+        "id": a.id,
+        "key": a.key,
+        "severity": a.severity,
+        "title": a.title,
+        "body": serde_json::from_str::<Value>(&a.body_json).unwrap_or(Value::Null),
+        "raised_at": a.raised_at,
+        "delivered_at": a.delivered_at,
+        "delivery_status": a.delivery_status,
+        "acked_at": a.acked_at,
+        "acked_by": a.acked_by,
+        "repeat_count": a.repeat_count,
+    })
+}
+
+/// `admin.alerts.list {limit?, since?, unacked_only?}` (requirement 5 /
+/// AC7): newest first.
+pub async fn alerts_list(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let limit = args.get("limit").and_then(Value::as_i64).unwrap_or(100).clamp(1, 500);
+    let since = args.get("since").and_then(Value::as_i64);
+    let unacked_only = args.get("unacked_only").and_then(Value::as_bool).unwrap_or(false);
+    let rows = state.db.list_alerts(limit, since, unacked_only).await?;
+    Ok(json!({ "alerts": rows.iter().map(alert_json).collect::<Vec<_>>() }))
+}
+
+/// `admin.alerts.ack {id}` (requirement 5 / AC7): `false` (from
+/// `Db::ack_alert`) when `id` names no row, or one already acked.
+pub async fn alerts_ack(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let id = arg_i64(args, "id")?;
+    let acked = state.db.ack_alert(id, operator_identity(state)).await?;
+    if !acked {
+        return Err(AppError::ToolNotFound(format!("alert {id}")));
+    }
+    Ok(json!({ "id": id, "acked": true }))
+}
+
+/// `admin.alerts.raise {key, severity, title, body}` (requirement 5 /
+/// AC11): the sink mcphost-deploy (or any other out-of-process source,
+/// e.g. `backup.failed`) posts through. `body` is capped at
+/// `MAX_ALERT_BODY_BYTES` (16 KiB, requirement 5's own size floor) so a
+/// misbehaving caller can't bloat the `alerts` table.
+pub async fn alerts_raise(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let key = arg_str(args, "key")?;
+    let severity_raw = arg_str(args, "severity")?;
+    let severity = crate::alerts::Severity::parse(&severity_raw).ok_or_else(|| {
+        AppError::InvalidParams(format!(
+            "severity must be one of \"info\", \"warn\", \"critical\"; got '{severity_raw}'"
+        ))
+    })?;
+    let title = arg_str(args, "title")?;
+    let body = args.get("body").cloned().unwrap_or_else(|| json!({}));
+    let body_bytes = body.to_string().len();
+    if body_bytes > crate::alerts::MAX_ALERT_BODY_BYTES {
+        return Err(AppError::Structured {
+            code: "alert_body_too_large",
+            message: format!(
+                "body is {body_bytes} bytes, over the {} byte limit",
+                crate::alerts::MAX_ALERT_BODY_BYTES
+            ),
+            data: json!({
+                "limit_bytes": crate::alerts::MAX_ALERT_BODY_BYTES,
+                "actual_bytes": body_bytes,
+            }),
+        });
+    }
+    let id = crate::alerts::raise(
+        state,
+        crate::alerts::RaiseInput {
+            key,
+            severity,
+            title,
+            body,
+        },
+    )
+    .await?;
+    Ok(json!({ "id": id }))
 }

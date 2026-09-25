@@ -395,6 +395,23 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
             json!({"busy_total": busy_total, "locked_total": locked_total, "wait_max_ms": wait_max_ms}),
         );
     }
+    // PRD-mcphost-alerting-webhook requirement 6 / AC8, AC10: `open` is
+    // "not yet acknowledged" (same definition `Db::alert_healthz_counts`
+    // uses), `last_raised_at` is `null` on a host with no alerts yet, and
+    // `sink` is purely a function of which delivery sinks are configured
+    // (`AlertConfig::sink_label`) -- independent of `MCPHOST_ALERT_MIN_SEVERITY`
+    // filtering any individual alert's own delivery.
+    if let Some(obj) = body.as_object_mut() {
+        let (open, last_raised_at) = state.db.alert_healthz_counts().await.unwrap_or((0, None));
+        obj.insert(
+            "alerts".to_string(),
+            json!({
+                "open": open,
+                "last_raised_at": last_raised_at,
+                "sink": state.alert_config.sink_label(),
+            }),
+        );
+    }
     Json(body).into_response()
 }
 
