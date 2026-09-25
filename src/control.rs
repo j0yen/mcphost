@@ -624,7 +624,14 @@ pub fn quickstart(
     }))
 }
 
-pub fn whoami(tenant: &Tenant) -> Value {
+/// `subject` (PRD-mcphost-oauth-resource-server requirement 4 / AC2): the
+/// JWT `sub` claim when this call authenticated via an OAuth bearer,
+/// `None` for a key-authenticated caller (header or `tenant_key`
+/// argument) -- `caller.subject` is "unused by this PRD beyond logging"
+/// per the PRD's own technical considerations, except here, where
+/// surfacing it on `host.whoami` is exactly how a caller (or a test)
+/// confirms which subject a token resolved to.
+pub fn whoami(tenant: &Tenant, subject: Option<&str>) -> Value {
     // PRD-mcphost-handoff-token P1 requirement 7 / AC8: age is measured
     // from the last rotation when there's been one, else from the
     // tenant's own creation -- a never-rotated key is exactly as old as
@@ -663,6 +670,7 @@ pub fn whoami(tenant: &Tenant) -> Value {
         // host.whoami for its identity learns which contracts/host-tools.v<N>.json
         // it's coding against with no extra round trip.
         "contract_version": crate::api_contract::CONTRACT_VERSION,
+        "subject": subject,
     })
 }
 

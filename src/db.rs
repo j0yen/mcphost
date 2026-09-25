@@ -58,6 +58,7 @@ const MIGRATION_0034: &str = include_str!("../migrations/0034_claim.sql");
 const MIGRATION_0035: &str = include_str!("../migrations/0035_bans.sql");
 const MIGRATION_0036: &str = include_str!("../migrations/0036_ban_removed_at.sql");
 const MIGRATION_0037: &str = include_str!("../migrations/0037_documents.sql");
+const MIGRATION_0038: &str = include_str!("../migrations/0038_oauth_issuers.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -1194,7 +1195,8 @@ impl Db {
         Self::migrate_0034_claim(&conn)?;
         Self::migrate_0035_bans(&conn)?;
         Self::migrate_0036_ban_removed_at(&conn)?;
-        Self::migrate_0037_documents(&conn)
+        Self::migrate_0037_documents(&conn)?;
+        Self::migrate_0038_oauth_issuers(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -1732,6 +1734,15 @@ impl Db {
         if !has_table {
             conn.execute_batch(MIGRATION_0037)?;
         }
+        Ok(())
+    }
+
+    /// `oauth_issuers`/`oauth_rejections` are both `CREATE TABLE IF NOT
+    /// EXISTS`, so this migration is idempotent on its own -- no separate
+    /// existence check needed, unlike 0035/0036 above which mix a
+    /// conditional `ALTER TABLE` into the same file.
+    fn migrate_0038_oauth_issuers(conn: &Connection) -> Result<(), AppError> {
+        conn.execute_batch(MIGRATION_0038)?;
         Ok(())
     }
 
@@ -9509,6 +9520,216 @@ impl Db {
         })
         .await
     }
+
+    // ---- PRD-mcphost-oauth-resource-server: oauth_issuers/oauth_rejections ----
+
+    /// `host.oauth.issuer_set` (requirement 3): the issuer is globally
+    /// unique (migration 0038's UNIQUE constraint), so this is only ever
+    /// called after `find_oauth_issuer_by_issuer` has already confirmed no
+    /// row (of any tenant's) exists for it -- the same count-then-insert
+    /// (not a single atomic transaction) convention `sharing::tool_share`'s
+    /// `ShareQuotaExceeded` check already uses, safe here because every
+    /// `with_conn` call fully serializes behind [`Self::conn`]'s single
+    /// mutex.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_oauth_issuer(
+        &self,
+        tenant_id: i64,
+        issuer: String,
+        audience: String,
+        jwks_url: String,
+        created_at: String,
+    ) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO oauth_issuers (tenant_id, issuer, audience, jwks_url, created_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![tenant_id, issuer, audience, jwks_url, created_at],
+            )?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+    }
+
+    /// `host.oauth.issuer_set` re-registering the same issuer it already
+    /// owns: updates `audience`/`jwks_url` in place rather than erroring
+    /// (idempotent re-registration), leaving `jwks_json`/`last_jwks_at`
+    /// untouched -- a changed `jwks_url` takes effect the next time
+    /// `oauth::JwksCache` needs to fetch, not immediately.
+    pub async fn update_oauth_issuer(
+        &self,
+        tenant_id: i64,
+        issuer: String,
+        audience: String,
+        jwks_url: String,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE oauth_issuers SET audience = ?1, jwks_url = ?2 \
+                 WHERE tenant_id = ?3 AND issuer = ?4",
+                params![audience, jwks_url, tenant_id, issuer],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// The one lookup [`crate::oauth::validate_bearer`] (by `iss` claim)
+    /// and `host.oauth.issuer_set`'s own already-registered-elsewhere check
+    /// both funnel through.
+    pub async fn find_oauth_issuer_by_issuer(
+        &self,
+        issuer: String,
+    ) -> Result<Option<OauthIssuerRow>, AppError> {
+        self.with_conn(move |conn| {
+            let sql = format!("SELECT {OAUTH_ISSUER_COLUMNS} FROM oauth_issuers WHERE issuer = ?1");
+            conn.query_row(&sql, params![issuer], oauth_issuer_from_row)
+                .optional()
+                .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 3: "one tenant may register up to 3 issuers" -- checked
+    /// by `oauth::issuer_set` before [`Self::insert_oauth_issuer`].
+    pub async fn count_oauth_issuers_by_tenant(&self, tenant_id: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM oauth_issuers WHERE tenant_id = ?1",
+                params![tenant_id],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `host.oauth.issuers`: this tenant's own registered issuers, oldest
+    /// first.
+    pub async fn list_oauth_issuers_by_tenant(
+        &self,
+        tenant_id: i64,
+    ) -> Result<Vec<OauthIssuerRow>, AppError> {
+        self.with_conn(move |conn| {
+            let sql = format!(
+                "SELECT {OAUTH_ISSUER_COLUMNS} FROM oauth_issuers WHERE tenant_id = ?1 ORDER BY id"
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(params![tenant_id], oauth_issuer_from_row)?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// AC9: `admin.oauth.issuers` -- every registered issuer across every
+    /// tenant, paired with that tenant's own `namespace` (never a raw
+    /// `tenant_id` alone, so the admin listing reads the same tenant handle
+    /// `admin.tenants` already does).
+    pub async fn list_oauth_issuers_with_tenant(&self) -> Result<Vec<(OauthIssuerRow, String)>, AppError> {
+        self.with_conn(move |conn| {
+            let sql = format!(
+                "SELECT {cols}, t.namespace FROM oauth_issuers o JOIN tenants t ON t.id = o.tenant_id ORDER BY o.id",
+                cols = OAUTH_ISSUER_COLUMNS
+                    .split(", ")
+                    .map(|c| format!("o.{c}"))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map([], |r| {
+                    let row = oauth_issuer_from_row(r)?;
+                    let namespace: String = r.get(OAUTH_ISSUER_COLUMN_COUNT)?;
+                    Ok((row, namespace))
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// `host.oauth.issuer_remove`: `false` when `issuer` names no row this
+    /// tenant owns (never a row another tenant owns -- the `tenant_id`
+    /// filter makes that indistinguishable from "doesn't exist").
+    pub async fn remove_oauth_issuer(&self, tenant_id: i64, issuer: String) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "DELETE FROM oauth_issuers WHERE tenant_id = ?1 AND issuer = ?2",
+                params![tenant_id, issuer],
+            )?;
+            Ok(n > 0)
+        })
+        .await
+    }
+
+    /// [`crate::oauth::JwksCache`]'s durable mirror: written on every
+    /// successful JWKS fetch (proactive TTL refresh, reactive unknown-kid
+    /// refetch, or an operator's `admin.oauth.jwks_refresh`) so
+    /// `admin.oauth.issuers`' JWKS age (AC9) survives a restart even though
+    /// the in-process cache itself doesn't.
+    pub async fn update_oauth_issuer_jwks(
+        &self,
+        issuer: String,
+        jwks_json: String,
+        fetched_at: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE oauth_issuers SET jwks_json = ?1, last_jwks_at = ?2 WHERE issuer = ?3",
+                params![jwks_json, fetched_at, issuer],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// requirement 5 (AC3, AC9): `reason` is one of `unknown_issuer`,
+    /// `bad_signature`, `expired`, `wrong_audience`, `malformed` --
+    /// upserted so the very first rejection for a given `(issuer, reason)`
+    /// pair doesn't need a separate insert path.
+    pub async fn increment_oauth_rejection(&self, issuer: String, reason: String) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO oauth_rejections (issuer, reason, count) VALUES (?1, ?2, 1) \
+                 ON CONFLICT(issuer, reason) DO UPDATE SET count = count + 1",
+                params![issuer, reason],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// AC9: `admin.oauth.issuers`' per-reason rejection counters for one
+    /// issuer.
+    pub async fn oauth_rejection_counts(&self, issuer: String) -> Result<Vec<(String, i64)>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt =
+                conn.prepare("SELECT reason, count FROM oauth_rejections WHERE issuer = ?1")?;
+            let rows = stmt
+                .query_map(params![issuer], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// AC1: `GET /.well-known/oauth-protected-resource`'s
+    /// `authorization_servers` -- the distinct issuer URLs currently
+    /// registered, across every tenant, never a tenant id or namespace
+    /// (Technical considerations: "the metadata document ... must not
+    /// enumerate tenants").
+    pub async fn list_distinct_oauth_issuer_urls(&self) -> Result<Vec<String>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare("SELECT issuer FROM oauth_issuers ORDER BY issuer")?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, String>(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
 }
 
 /// requirement 1: one `documents` row -- `docs.rs`'s own business logic
@@ -9761,5 +9982,44 @@ fn ban_from_row(r: &Row) -> rusqlite::Result<Ban> {
         auto: r.get(8)?,
         hits: r.get(9)?,
         removed_at: r.get(10)?,
+    })
+}
+
+/// PRD-mcphost-oauth-resource-server requirement 3: one `oauth_issuers`
+/// row, as `host.oauth.issuers`/`admin.oauth.issuers` and
+/// [`crate::oauth::validate_bearer`] all read it back.
+#[derive(Debug, Clone, Serialize)]
+pub struct OauthIssuerRow {
+    pub id: i64,
+    pub tenant_id: i64,
+    pub issuer: String,
+    pub audience: String,
+    pub jwks_url: String,
+    pub created_at: String,
+    pub last_jwks_at: Option<i64>,
+    pub jwks_json: Option<String>,
+}
+
+/// Shared by every query that selects a whole `oauth_issuers` row -- same
+/// column-list/row-mapper lockstep convention as [`TENANT_COLUMNS`]/
+/// [`tenant_from_row`]. [`OAUTH_ISSUER_COLUMN_COUNT`] is how many columns
+/// this list carries, so [`Db::list_oauth_issuers_with_tenant`]'s joined
+/// `t.namespace` column (appended after these) can be read back by a fixed
+/// index rather than a hand-counted literal that would silently drift if
+/// this list ever grows.
+const OAUTH_ISSUER_COLUMNS: &str =
+    "id, tenant_id, issuer, audience, jwks_url, created_at, last_jwks_at, jwks_json";
+const OAUTH_ISSUER_COLUMN_COUNT: usize = 8;
+
+fn oauth_issuer_from_row(r: &Row) -> rusqlite::Result<OauthIssuerRow> {
+    Ok(OauthIssuerRow {
+        id: r.get(0)?,
+        tenant_id: r.get(1)?,
+        issuer: r.get(2)?,
+        audience: r.get(3)?,
+        jwks_url: r.get(4)?,
+        created_at: r.get(5)?,
+        last_jwks_at: r.get(6)?,
+        jwks_json: r.get(7)?,
     })
 }

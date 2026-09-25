@@ -85,6 +85,12 @@ base64 = "0.22"
 # duplicating it, the same call `sha1` above already made for HMAC-SHA1.
 tar = "0.4"
 flate2 = "1"
+# PRD-mcphost-oauth-resource-server requirement 4: bearer-JWT signature
+# (RS256/ES256) and claim validation against a tenant-registered issuer's
+# JWKS -- an audited crate rather than hand-rolled RSA/EC signature
+# verification, the same "reuse audited crypto" call `sha1`/`aes-gcm` above
+# already make.
+jsonwebtoken = "9"
 
 [features]
 # PRD-mcphost-classify-precision: gates PythonKind's test-only selftest
@@ -104,6 +110,14 @@ proptest = "1"
 # AC19: mocks the registry API in tests/ac19_registry_publish.rs (the
 # fleet's standard HTTP-mock crate).
 wiremock = "0.6"
+# PRD-mcphost-oauth-resource-server: tests/support/oauth.rs generates its
+# ES256 test keypairs at process start (a secrets scanner correctly
+# blocks embedded PEM private keys, test-only or not) instead of hardcoding
+# them. Pinned exact: its default features already select the `ring`
+# crypto backend and `pem` serialization, both of which resolve to the
+# same `ring`/`pem` versions `jsonwebtoken` above already pulls in --
+# 0.14.10 bumps its `pem` requirement to a second, unshared major version.
+rcgen = "=0.14.9"
 # PRD-mcphost-proof-lane-loop-config AC2: tests/lanecov_ac01_every_tracked_
 # path_routes.rs parses agent/proof-lanes.toml and compiles its globs with
 # the SAME crates autobuilder's vti-plan uses (autobuilder/Cargo.toml pins

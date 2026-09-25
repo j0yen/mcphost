@@ -794,6 +794,9 @@ mod tests {
             bans: crate::bans::BanCache::new(),
             ban_denials_threshold: crate::bans::BAN_DENIALS_THRESHOLD_DEFAULT,
             ban_claim_rate_threshold: crate::bans::BAN_CLAIM_RATE_THRESHOLD_DEFAULT,
+            oauth: crate::oauth::JwksCache::new(),
+            oauth_allowed_algs: crate::oauth::parse_allowed_algs(None),
+            oauth_jwks_ttl_secs: crate::oauth::DEFAULT_JWKS_TTL_SECS,
         }
     }
 

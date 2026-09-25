@@ -538,6 +538,9 @@ async fn main() -> anyhow::Result<()> {
                 bans: mcphost::bans::BanCache::new(),
                 ban_denials_threshold: mcphost::bans::ban_denials_threshold_from_env(),
                 ban_claim_rate_threshold: mcphost::bans::ban_claim_rate_threshold_from_env(),
+                oauth: mcphost::oauth::JwksCache::new(),
+                oauth_allowed_algs: mcphost::oauth::allowed_algs_from_env(),
+                oauth_jwks_ttl_secs: mcphost::oauth::jwks_ttl_secs_from_env(),
             });
             // PRD-mcphost-abuse-guard-ban-list requirement 6: load the ban
             // cache once before this process ever serves a request, so the

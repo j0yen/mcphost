@@ -32,6 +32,7 @@ pub mod llms_txt;
 pub mod messaging;
 pub mod metering;
 pub mod network_policy;
+pub mod oauth;
 pub mod plans;
 pub mod registry;
 pub mod retention;

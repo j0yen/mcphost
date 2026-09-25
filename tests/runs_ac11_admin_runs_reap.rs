@@ -13,51 +13,10 @@
 //! instead.
 
 use crate::common;
-use mcphost::db::Db;
-use mcphost::kinds::KindRegistry;
-use mcphost::secrets::SecretBox;
 use mcphost::state::AppState;
-use std::sync::Arc;
 
 async fn bare_state() -> (AppState, common::TempDataDir) {
-    let data_dir = common::TempDataDir::new();
-    let db = Db::open(&data_dir.0).expect("open db");
-    db.migrate().await.expect("migrate");
-    let state = AppState {
-        db,
-        kinds: KindRegistry::with_builtin(),
-        secrets: SecretBox::from_passphrase("test-secret-key"),
-        admin_key: Some("test-admin-key".to_string()),
-        public_url: "http://127.0.0.1:0".to_string(),
-        call_timeout: mcphost::state::CALL_TIMEOUT,
-        registry: None,
-        http_client: reqwest::Client::new(),
-        sandbox_mechanism: None,
-        wasm_runtime_version: None,
-        tool_run_limiter: mcphost::state::ToolRunLimiter::new(),
-        signup_rate_limit_per_hour: mcphost::state::SIGNUP_RATE_LIMIT_PER_HOUR,
-        plans: mcphost::plans::PlanCatalog::default_catalog(),
-        billing_config: mcphost::billing::BillingConfig::default(),
-        billing_client: Arc::new(mcphost::billing::FakeBillingClient::new(mcphost::state::now_unix())),
-        checkout_sessions: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
-        accepted_usage_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
-        runs: mcphost::runs::RunsRegistry::new(),
-        scheduler: mcphost::triggers::SchedulerStatus::new(),
-        event_counters: mcphost::hooks::EventCounters::new(),
-        event_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
-        deprecations: Arc::new(Vec::new()),
-        disk_guard: mcphost::retention::DiskGuard::from_env(),
-        compat_token: None,
-        signup_pause: mcphost::state::SignupPause::from_env(&data_dir.0),
-        claim_token_ttl_secs: mcphost::state::CLAIM_TOKEN_TTL_SECS_DEFAULT,
-        claim_rate_limit_per_hour: mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
-        email_config: mcphost::email::EmailConfig::default(),
-        email_client: Arc::new(mcphost::email::FakeEmailClient::new()),
-        bans: mcphost::bans::BanCache::new(),
-        ban_denials_threshold: mcphost::bans::BAN_DENIALS_THRESHOLD_DEFAULT,
-        ban_claim_rate_threshold: mcphost::bans::BAN_CLAIM_RATE_THRESHOLD_DEFAULT,
-    };
-    (state, data_dir)
+    common::bare_app_state().await
 }
 
 #[tokio::test]

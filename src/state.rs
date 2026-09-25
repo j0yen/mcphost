@@ -317,6 +317,16 @@ pub struct AppState {
     /// requirement 4(b): `claim_rate_events` rows in 10 minutes that trip an
     /// auto addr-ban, absent `$MCPHOST_BAN_CLAIM_RATE_THRESHOLD`.
     pub ban_claim_rate_threshold: i64,
+    /// PRD-mcphost-oauth-resource-server requirement 4: the in-process JWKS
+    /// cache bearer validation resolves a `kid` through -- see
+    /// [`crate::oauth::JwksCache`].
+    pub oauth: crate::oauth::JwksCache,
+    /// P2 requirement 8: `$MCPHOST_OAUTH_ALLOWED_ALGS`, default
+    /// `RS256,ES256` -- see [`crate::oauth::allowed_algs_from_env`].
+    pub oauth_allowed_algs: Vec<jsonwebtoken::Algorithm>,
+    /// P2 requirement 8: `$MCPHOST_OAUTH_JWKS_TTL_SECS`, default 3600 --
+    /// see [`crate::oauth::jwks_ttl_secs_from_env`].
+    pub oauth_jwks_ttl_secs: i64,
 }
 
 pub fn now_unix() -> i64 {
