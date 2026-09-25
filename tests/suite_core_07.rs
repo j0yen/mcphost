@@ -86,6 +86,30 @@ mod autherr_ac3_disabled_tenant_key_invalid;
 mod autherr_ac4_bearer_invalid_unchanged;
 #[path = "autherr_ac5_instructions_mention_codes.rs"]
 mod autherr_ac5_instructions_mention_codes;
+#[path = "banlist_ac01_addr_ban_blocks_signup.rs"]
+mod banlist_ac01_addr_ban_blocks_signup;
+#[path = "banlist_ac02_key_ban_blocks_authenticated_calls.rs"]
+mod banlist_ac02_key_ban_blocks_authenticated_calls;
+#[path = "banlist_ac03_public_flag_controls_reason_visibility.rs"]
+mod banlist_ac03_public_flag_controls_reason_visibility;
+#[path = "banlist_ac04_auto_ban_on_network_denials.rs"]
+mod banlist_ac04_auto_ban_on_network_denials;
+#[path = "banlist_ac05_auto_ban_on_claim_rate_events.rs"]
+mod banlist_ac05_auto_ban_on_claim_rate_events;
+#[path = "banlist_ac06_expiry_lifts_ban_without_restart.rs"]
+mod banlist_ac06_expiry_lifts_ban_without_restart;
+#[path = "banlist_ac07_ban_remove_audited_with_operator_identity.rs"]
+mod banlist_ac07_ban_remove_audited_with_operator_identity;
+#[path = "banlist_ac08_list_active_only_excludes_expired.rs"]
+mod banlist_ac08_list_active_only_excludes_expired;
+#[path = "banlist_ac09_permanent_requires_literal_true.rs"]
+mod banlist_ac09_permanent_requires_literal_true;
+#[path = "banlist_ac10_cache_lookup_latency_at_scale.rs"]
+mod banlist_ac10_cache_lookup_latency_at_scale;
+#[path = "banlist_ac11_healthz_bans_block.rs"]
+mod banlist_ac11_healthz_bans_block;
+#[path = "banlist_ac12_live_ban_unban_trailer.rs"]
+mod banlist_ac12_live_ban_unban_trailer;
 #[path = "billing_ac01_plans_toml_and_billing_plans.rs"]
 mod billing_ac01_plans_toml_and_billing_plans;
 #[path = "billing_ac02_publish_quota_exceeded.rs"]

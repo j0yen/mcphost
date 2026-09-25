@@ -2143,6 +2143,49 @@ fn admin_tools() -> Vec<Tool> {
                 &["older_than_days"],
             ),
         ),
+        // PRD-mcphost-abuse-guard-ban-list requirement 3.
+        Tool::new(
+            "admin.ban.add",
+            "Ban a subject (a tenant key, a source address, or a claim email domain): refuses \
+             signup/tool calls/claim routes/inbound hooks from it with error `banned`. Exactly \
+             one of `ttl` (\"30m\", \"24h\", \"7d\") or the literal `permanent: true` is \
+             required. `public: true` includes `reason` in the caller-visible refusal; \
+             otherwise it never does.",
+            schema(
+                json!({
+                    "subject_kind": {"type": "string", "enum": ["key", "addr", "email_domain"]},
+                    "subject": {
+                        "type": "string",
+                        "description": "The raw tenant key, a literal address, or an email domain.",
+                    },
+                    "ttl": {"type": "string", "description": "e.g. \"30m\", \"24h\", \"7d\"."},
+                    "permanent": {"type": "boolean"},
+                    "reason": {"type": "string"},
+                    "public": {"type": "boolean", "description": "Include reason in the refusal; default false."},
+                }),
+                &["subject_kind", "subject", "reason"],
+            ),
+        ),
+        Tool::new(
+            "admin.ban.remove",
+            "Remove a ban by id; the subject is unbanned on its very next request. The ban \
+             stays in admin.ban.list's history (stamped removed_at) until the 7-day sweep.",
+            schema(json!({"id": {"type": "integer"}}), &["id"]),
+        ),
+        Tool::new(
+            "admin.ban.list",
+            "List bans, newest first, each with hits/reason/expires_at/auto plus \
+             removed_at/active. `active_only` (default false) narrows to the bans still \
+             enforcing; the default is the full history, including bans that expired or were \
+             removed by admin.ban.remove. `subject_kind` restricts to one kind.",
+            schema(
+                json!({
+                    "active_only": {"type": "boolean"},
+                    "subject_kind": {"type": "string", "enum": ["key", "addr", "email_domain"]},
+                }),
+                &[],
+            ),
+        ),
     ]
 }
 
@@ -2559,6 +2602,10 @@ impl McpHostHandler {
             "admin.mesh.freeze" => admin::mesh_freeze(&self.state, &args).await,
             "admin.mesh.unfreeze" => admin::mesh_unfreeze(&self.state, &args).await,
             "admin.mesh.purge" => admin::mesh_purge(&self.state, &args).await,
+            // PRD-mcphost-abuse-guard-ban-list requirement 3.
+            "admin.ban.add" => admin::ban_add(&self.state, &args).await,
+            "admin.ban.remove" => admin::ban_remove(&self.state, &args).await,
+            "admin.ban.list" => admin::ban_list(&self.state, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         };
 
@@ -2913,10 +2960,10 @@ impl McpHostHandler {
                 // `kinds::python::PythonKind::network_mode` raises.
                 match app_err.code() {
                     "plan_required" => {
-                        let _ = self.state.db.record_network_denial("run_plan").await;
+                        let _ = self.state.db.record_network_denial("run_plan", Some(tenant.id)).await;
                     }
                     "egress_unavailable" => {
-                        let _ = self.state.db.record_network_denial("run_no_proxy").await;
+                        let _ = self.state.db.record_network_denial("run_no_proxy", Some(tenant.id)).await;
                     }
                     _ => {}
                 }
@@ -3844,6 +3891,23 @@ impl ServerHandler for McpHostHandler {
             && let Some((name, version)) = peer_client_info(&ctx)
         {
             let _ = self.state.db.set_tenant_client_info(tenant.id, name, version).await;
+        }
+        // PRD-mcphost-abuse-guard-ban-list requirement 2 / AC2: every
+        // authenticated tool call (header or tenant_key-argument alike)
+        // checks the caller's key before dispatch -- before any
+        // `dispatch_tenant_tool`/`call_published_tool` path could write a
+        // `calls` row (AC2's "the call is not recorded in calls"). Excludes
+        // `signup` alone: it's reachable regardless of `auth` (the match
+        // arm below matches on `body_name` before `auth` at all), and a
+        // resolved `Auth::Tenant` here only ever means a caller happened to
+        // send a valid `tenant_key` argument alongside an otherwise
+        // unauthenticated call signup never needs.
+        if let Auth::Tenant(tenant) = &auth
+            && body_name != "signup"
+            && let Err(err) = crate::bans::enforce(&self.state, "key", &tenant.key_hash).await
+        {
+            tracing::warn!(code = err.code(), tenant = %tenant.namespace, tool = %body_name, "call refused: tenant banned");
+            return Err(err.into_error_data());
         }
         // Requirements 16/17: redacted by key name, recursively, exactly
         // once here, so every dispatch branch below -- a `host.*` tool, an

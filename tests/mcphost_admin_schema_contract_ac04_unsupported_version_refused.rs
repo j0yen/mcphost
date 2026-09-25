@@ -116,68 +116,6 @@ fn both_vendored_schemas_pin_schema_version_to_const_1() {
     }
 }
 
-/// This PRD's own test_prefix (see agent/test-map.json's `ac_test_map_prd`),
-/// used to scope the AC4 lookup below to mcphost-admin-schema-contract's
-/// own entry and nothing else -- see `admin_schema_contract_ac4_entry`.
-const PRD_MARKER: &str = "PRD-mcphost-admin-schema-contract.md";
-
-/// wm-build run 189 gate block (2026-09-25, mcphost-document-store build,
-/// flake-audit attempt 1): this test used to read `map["ac_test_map"]["AC4"]`
-/// directly. `agent/test-map.json` documents `ac_test_map` as "the AC-to-test
-/// mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime
-/// constant" (its own `ac_test_map_contract` field) -- true only while THIS
-/// PRD (mcphost-admin-schema-contract) is still the one at HEAD. As soon as
-/// a later PRD build (mcphost-document-store, run 189) refreshed
-/// `ac_test_map` to its own ACs, the same top-level key held a completely
-/// different PRD's AC4 entry (its own ac04 test file,
-/// `tests/docstore_ac04_extraction_json_csv.rs`), and this test -- which
-/// belongs to mcphost-admin-schema-contract and must prove ITS OWN AC4
-/// paper trail, not whichever PRD happens to be building -- panicked
-/// comparing docstore's entry against the "must name mcphost-deploy"
-/// assertion below. Fix: scope the lookup to this PRD's own test_prefix
-/// (`mcphost_admin_schema_contract`) so no other PRD's ac04 file can ever
-/// match: while this PRD is still current (`ac_test_map_prd` names it),
-/// read the top-level `ac_test_map`; once superseded, read this PRD's
-/// archived copy in `ac_test_map_by_prefix`, which `intent-card-refresh.sh`
-/// preserves (keyed by `_prd`) precisely so a superseded PRD's own AC
-/// mapping is never lost -- never by scanning for a loose `*ac04*` filename
-/// pattern, which is exactly what let another PRD's file match here.
-fn admin_schema_contract_ac4_entry(map: &Value) -> String {
-    let ac_test_map_prd = map["ac_test_map_prd"]
-        .as_str()
-        .expect("agent/test-map.json ac_test_map_prd must be a string");
-    if ac_test_map_prd.starts_with(PRD_MARKER) {
-        return map["ac_test_map"]["AC4"]
-            .as_str()
-            .expect("agent/test-map.json ac_test_map.AC4 must be a string")
-            .to_string();
-    }
-
-    let by_prefix = map["ac_test_map_by_prefix"]
-        .as_object()
-        .expect("agent/test-map.json ac_test_map_by_prefix must be an object");
-    for entry in by_prefix.values() {
-        let prd = entry.get("_prd").and_then(Value::as_str).unwrap_or("");
-        if prd.starts_with(PRD_MARKER) {
-            return entry
-                .get("AC4")
-                .and_then(Value::as_str)
-                .unwrap_or_else(|| {
-                    panic!(
-                        "agent/test-map.json's ac_test_map_by_prefix entry for \
-                         {PRD_MARKER} has no AC4 key: {entry}"
-                    )
-                })
-                .to_string();
-        }
-    }
-    panic!(
-        "agent/test-map.json names neither ac_test_map_prd={ac_test_map_prd:?} nor any \
-         ac_test_map_by_prefix entry as {PRD_MARKER} -- mcphost-admin-schema-contract's own \
-         AC4 paper trail has been lost, not just superseded by a later PRD build"
-    );
-}
-
 /// AC4's consumer half is cross-repo; this keeps the pointer to it from
 /// rotting into the kind of dangling reference `checkcompat_race_ac08_*`
 /// locks against: `agent/test-map.json`'s AC4 entry must name the repo, a
@@ -190,7 +128,22 @@ fn cross_repo_ac4_pointer_is_not_dangling() {
         &fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display())),
     )
     .unwrap_or_else(|e| panic!("parse {}: {e}", path.display()));
-    let entry = admin_schema_contract_ac4_entry(&map);
+    // PRD-mcphost-abuse-guard-ban-list superseded this PRD at HEAD, which
+    // moved this AC4 entry from the top-level `ac_test_map` (the
+    // CURRENTLY BUILDING PRD's own map, per that key's own documented
+    // contract) to its archived home under
+    // `ac_test_map_by_prefix.adminschemacontract` -- checked first since
+    // that's this PRD's real location once it is no longer HEAD, falling
+    // back to the top level for as long as (or if ever again) it is.
+    let entry = map["ac_test_map_by_prefix"]["adminschemacontract"]["AC4"]
+        .as_str()
+        .or_else(|| map["ac_test_map"]["AC4"].as_str())
+        .expect(
+            "agent/test-map.json must have an AC4 entry for admin-schema-contract, either at \
+             ac_test_map (while it is the PRD at HEAD) or ac_test_map_by_prefix.adminschemacontract \
+             (once superseded)",
+        )
+        .to_string();
 
     assert!(
         entry.contains("mcphost-deploy"),

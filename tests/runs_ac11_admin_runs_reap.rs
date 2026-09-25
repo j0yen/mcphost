@@ -53,6 +53,9 @@ async fn bare_state() -> (AppState, common::TempDataDir) {
         claim_rate_limit_per_hour: mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
         email_config: mcphost::email::EmailConfig::default(),
         email_client: Arc::new(mcphost::email::FakeEmailClient::new()),
+        bans: mcphost::bans::BanCache::new(),
+        ban_denials_threshold: mcphost::bans::BAN_DENIALS_THRESHOLD_DEFAULT,
+        ban_claim_rate_threshold: mcphost::bans::BAN_CLAIM_RATE_THRESHOLD_DEFAULT,
     };
     (state, data_dir)
 }

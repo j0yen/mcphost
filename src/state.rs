@@ -306,6 +306,17 @@ pub struct AppState {
     /// (technical considerations: "Tests never reach the network"), same
     /// shape as [`AppState::billing_client`].
     pub email_client: std::sync::Arc<dyn crate::email::EmailClient>,
+    /// PRD-mcphost-abuse-guard-ban-list requirement 6: the in-memory mirror
+    /// of every active `bans` row -- see [`crate::bans::BanCache`].
+    pub bans: crate::bans::BanCache,
+    /// requirement 4(a): `network_denials` rows in 10 minutes that trip an
+    /// auto key-ban, absent `$MCPHOST_BAN_DENIALS_THRESHOLD`. A field (like
+    /// [`AppState::signup_rate_limit_per_hour`]) so a test can shrink it
+    /// without a real burst of 25 denials.
+    pub ban_denials_threshold: i64,
+    /// requirement 4(b): `claim_rate_events` rows in 10 minutes that trip an
+    /// auto addr-ban, absent `$MCPHOST_BAN_CLAIM_RATE_THRESHOLD`.
+    pub ban_claim_rate_threshold: i64,
 }
 
 pub fn now_unix() -> i64 {
