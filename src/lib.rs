@@ -8,6 +8,7 @@ pub mod admin;
 pub mod agents;
 pub mod api_contract;
 pub mod auth;
+pub mod bans;
 pub mod billing;
 pub mod channels;
 pub mod claim;

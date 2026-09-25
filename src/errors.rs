@@ -282,7 +282,11 @@ impl AppError {
                 // a paused `signup` is the same "come back later" caller-
                 // state gate as `rate_limited` right above it, not a bad
                 // argument and not an internal failure.
-                "rate_limited" | "signup_paused" => ErrorCode::INVALID_REQUEST,
+                // PRD-mcphost-abuse-guard-ban-list requirement 2: a banned
+                // subject is the same "come back later/never" caller-state
+                // gate as a paused signup or a rate limit, not a bad
+                // argument and not an internal failure.
+                "rate_limited" | "signup_paused" | "banned" => ErrorCode::INVALID_REQUEST,
                 // PRD-mcphost-spec-output-paths requirement 1: a structured
                 // `invalid_spec` (kinds::http/python's own `parse_spec` and
                 // `normalize_outputs`) is exactly the same caller-input
@@ -869,6 +873,26 @@ impl AppError {
             code: "signup_paused",
             message,
             data: json!({"retry_after_secs": retry_after_secs}),
+        }
+    }
+
+    /// PRD-mcphost-abuse-guard-ban-list requirement 2 / AC1-3: a banned
+    /// subject's refusal -- `expires_at` always present (`null` for a
+    /// permanent ban), `reason` present as a key only when the operator
+    /// marked the ban `public: true` (AC3): the `data` object omits the
+    /// key entirely rather than carrying it as `null`, so a caller checking
+    /// `"reason" in data` (not just its value) still sees "no reason" for a
+    /// private ban.
+    pub fn banned(expires_at: Option<i64>, reason: Option<String>) -> Self {
+        let mut data = Map::new();
+        data.insert("expires_at".to_string(), json!(expires_at));
+        if let Some(reason) = reason {
+            data.insert("reason".to_string(), json!(reason));
+        }
+        AppError::Structured {
+            code: "banned",
+            message: "this subject is banned".to_string(),
+            data: Value::Object(data),
         }
     }
 

@@ -33,6 +33,13 @@ fn arg_str_opt(args: &Value, name: &str) -> Option<String> {
     args.get(name).and_then(Value::as_str).map(str::to_string)
 }
 
+/// PRD-mcphost-abuse-guard-ban-list: `admin.ban.remove`'s required `id`.
+fn arg_i64(args: &Value, name: &str) -> Result<i64, AppError> {
+    args.get(name)
+        .and_then(Value::as_i64)
+        .ok_or_else(|| AppError::InvalidArgs(format!("missing required argument '{name}'")))
+}
+
 /// PRD-mcphost-tenant-tables requirement 5 (AC7): removes a deleted
 /// tenant's whole `host.table.*` store -- one file removal (plus its WAL/
 /// SHM sidecars), not a set of `DELETE ... WHERE tenant_id` statements that
@@ -760,6 +767,20 @@ pub fn admin_audit_entry(
                 .and_then(Value::as_i64)
                 .map(|n| n.to_string()),
         )),
+        // PRD-mcphost-abuse-guard-ban-list requirement 3 / AC7: both
+        // `admin.ban.add` and `admin.ban.remove` are mutations like every
+        // other admin.* write above -- `admin.ban.list` (read-only) is
+        // absent, same convention `admin.tenants`/`admin.audit_log` follow.
+        "admin.ban.add" => Some((
+            "ban_add".into(),
+            args.get("subject").and_then(Value::as_str).map(String::from),
+            args.get("reason").and_then(Value::as_str).map(String::from),
+        )),
+        "admin.ban.remove" => Some((
+            "ban_remove".into(),
+            args.get("id").and_then(Value::as_i64).map(|n| n.to_string()),
+            None,
+        )),
         _ => None,
     }
 }
@@ -1004,4 +1025,132 @@ pub async fn mesh_purge(state: &AppState, args: &Value) -> Result<Value, AppErro
         "messages_removed": counts.messages_removed,
         "channel_posts_removed": counts.channel_posts_removed,
     }))
+}
+
+// ---- bans (PRD-mcphost-abuse-guard-ban-list) ------------------------------
+
+fn ban_json(b: &crate::db::Ban) -> Value {
+    json!({
+        "id": b.id,
+        "subject_kind": b.subject_kind,
+        "subject": b.subject,
+        "reason": b.reason,
+        "public": b.public,
+        "created_at": b.created_at,
+        "created_by": b.created_by,
+        "expires_at": b.expires_at,
+        "auto": b.auto,
+        "hits": b.hits,
+        // AC12: a removed ban stays in the listing's history, stamped with
+        // when it was lifted; `active` is the same "still enforcing?"
+        // decision `active_only: true` filters on, spelled out per row so
+        // the operator reading the history does not have to recompute it.
+        "removed_at": b.removed_at,
+        "active": b.removed_at.is_none()
+            && b.expires_at.is_none_or(|e| e > crate::state::now_unix()),
+    })
+}
+
+/// The operator identity every `admin.*` mutation is recorded under --
+/// there is no per-operator auth on top of the single shared
+/// `$MCPHOST_ADMIN_KEY` (same identity `handler::dispatch_admin_tool`
+/// computes for `admin_audit.actor_key_id`), so a ban's own `created_by`
+/// uses the identical hash rather than inventing a second notion of "who".
+fn operator_identity(state: &AppState) -> String {
+    state.admin_key.as_deref().map(crate::auth::hash_key).unwrap_or_default()
+}
+
+/// `admin.ban.add {subject_kind, subject, ttl|permanent, reason, public}`
+/// (requirement 3 / AC1-3, AC9): `subject_kind` must be one of `key`,
+/// `addr`, `email_domain`; exactly one of `ttl` (`"30m"`/`"24h"`/`"7d"`) or
+/// the literal `permanent: true` is required (AC9 -- neither is a
+/// validation error, and so is both at once, since they disagree about
+/// whether this ban ever expires). `subject` is normalized to its at-rest
+/// form (`bans::normalize_subject` -- the sha256 hex of the raw key for
+/// `subject_kind: "key"`, unchanged otherwise) before it's ever stored or
+/// cached, same "never a credential in the clear" rule `tenants.key_hash`
+/// already follows.
+pub async fn ban_add(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let subject_kind = arg_str(args, "subject_kind")?;
+    if !matches!(subject_kind.as_str(), "key" | "addr" | "email_domain") {
+        return Err(AppError::InvalidParams(format!(
+            "subject_kind must be one of \"key\", \"addr\", \"email_domain\"; got '{subject_kind}'"
+        )));
+    }
+    let raw_subject = arg_str(args, "subject")?;
+    let reason = arg_str(args, "reason")?;
+    let public = args.get("public").and_then(Value::as_bool).unwrap_or(false);
+    let permanent = args.get("permanent").and_then(Value::as_bool) == Some(true);
+    let ttl = arg_str_opt(args, "ttl");
+
+    let expires_at = match (&ttl, permanent) {
+        (Some(_), true) => {
+            return Err(AppError::InvalidParams(
+                "ttl and permanent: true are mutually exclusive".to_string(),
+            ));
+        }
+        (None, false) => {
+            return Err(AppError::InvalidParams(
+                "either ttl (\"30m\", \"24h\", \"7d\") or the literal permanent: true is required"
+                    .to_string(),
+            ));
+        }
+        (None, true) => None,
+        (Some(ttl), false) => {
+            let secs = crate::bans::parse_ban_ttl_secs(ttl).ok_or_else(|| {
+                AppError::InvalidParams(format!(
+                    "ttl must look like \"30m\", \"24h\", or \"7d\"; got '{ttl}'"
+                ))
+            })?;
+            Some(crate::state::now_unix() + secs)
+        }
+    };
+
+    let subject = crate::bans::normalize_subject(&subject_kind, &raw_subject);
+    let id = state
+        .db
+        .insert_ban(
+            subject_kind.clone(),
+            subject,
+            reason.clone(),
+            public,
+            operator_identity(state),
+            expires_at,
+            false,
+        )
+        .await?;
+    state.bans.refresh(&state.db).await?;
+    Ok(json!({
+        "id": id,
+        "subject_kind": subject_kind,
+        "subject": raw_subject,
+        "reason": reason,
+        "public": public,
+        "expires_at": expires_at,
+    }))
+}
+
+/// `admin.ban.remove {id}` (AC7, AC12): stops the ban enforcing at once
+/// (the row is stamped `removed_at` and the cache reloaded without it) and
+/// keeps it in `admin.ban.list`'s history, so a listing shows both the ban
+/// and its removal -- AC12's operator check reads the outcome of both
+/// actions off the same listing.
+pub async fn ban_remove(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let id = arg_i64(args, "id")?;
+    let removed = state.db.remove_ban(id).await?;
+    if !removed {
+        return Err(AppError::ToolNotFound(format!("ban {id}")));
+    }
+    state.bans.refresh(&state.db).await?;
+    Ok(json!({ "id": id, "removed": true }))
+}
+
+/// `admin.ban.list {active_only?, subject_kind?}` (AC8, AC12): the default
+/// (`active_only` absent or false) is the history -- expired and removed
+/// rows included, each carrying `expires_at`/`removed_at`/`active`.
+pub async fn ban_list(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let active_only = args.get("active_only").and_then(Value::as_bool).unwrap_or(false);
+    let subject_kind = arg_str_opt(args, "subject_kind");
+    let rows = state.db.list_bans(active_only, subject_kind).await?;
+    Ok(json!({ "bans": rows.iter().map(ban_json).collect::<Vec<_>>() }))
 }

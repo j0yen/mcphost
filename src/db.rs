@@ -55,6 +55,8 @@ const MIGRATION_0031: &str = include_str!("../migrations/0031_webhook_triggers.s
 const MIGRATION_0032: &str = include_str!("../migrations/0032_signup_source.sql");
 const MIGRATION_0033: &str = include_str!("../migrations/0033_network_denials.sql");
 const MIGRATION_0034: &str = include_str!("../migrations/0034_claim.sql");
+const MIGRATION_0035: &str = include_str!("../migrations/0035_bans.sql");
+const MIGRATION_0036: &str = include_str!("../migrations/0036_ban_removed_at.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -1188,7 +1190,9 @@ impl Db {
         Self::migrate_0031_webhook_triggers(&conn)?;
         Self::migrate_0032_signup_source(&conn)?;
         Self::migrate_0033_network_denials(&conn)?;
-        Self::migrate_0034_claim(&conn)
+        Self::migrate_0034_claim(&conn)?;
+        Self::migrate_0035_bans(&conn)?;
+        Self::migrate_0036_ban_removed_at(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -1680,6 +1684,36 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0034)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-abuse-guard-ban-list migration 0035: same new-table
+    /// idempotency guard as 0011/0014/0015 above, gated on `bans`'
+    /// existence -- the batch also adds `ban_hits` and
+    /// `network_denials.tenant_id`, which land together, atomically, the
+    /// first time this runs.
+    fn migrate_0035_bans(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'bans'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0035)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-abuse-guard-ban-list migration 0036 (requirement 3 /
+    /// AC12): same single-`ALTER TABLE ADD COLUMN` idempotency guard as
+    /// 0002/0032/0034 above, gated on `bans.removed_at` -- the column
+    /// `admin.ban.remove`'s soft remove writes so a removed ban still
+    /// appears in `admin.ban.list`'s history.
+    fn migrate_0036_ban_removed_at(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('bans') WHERE name = 'removed_at'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0036)?;
         }
         Ok(())
     }
@@ -3296,15 +3330,45 @@ impl Db {
 
     /// requirement 4 (AC7): one row per refused publish/run -- `reason` is
     /// `"publish_plan"` (AC1/AC2), `"run_plan"` (AC6), or `"run_no_proxy"`
-    /// (AC3).
-    pub async fn record_network_denial(&self, reason: &'static str) -> Result<(), AppError> {
+    /// (AC3). `tenant_id` (PRD-mcphost-abuse-guard-ban-list migration 0035)
+    /// is the tenant whose publish/run was refused, `None` only for a call
+    /// site with no tenant in scope (should not happen today, but a NULL
+    /// row is simply excluded from `tenants_over_denial_threshold`'s
+    /// per-tenant count rather than crashing).
+    pub async fn record_network_denial(
+        &self,
+        reason: &'static str,
+        tenant_id: Option<i64>,
+    ) -> Result<(), AppError> {
         let ts = now_unix();
         self.with_conn(move |conn| {
             conn.execute(
-                "INSERT INTO network_denials (reason, created_unix) VALUES (?1, ?2)",
-                params![reason, ts],
+                "INSERT INTO network_denials (reason, created_unix, tenant_id) VALUES (?1, ?2, ?3)",
+                params![reason, ts, tenant_id],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-abuse-guard-ban-list requirement 4(a) / AC4: tenant ids
+    /// with at least `threshold` `network_denials` rows since `since_unix`
+    /// -- the windowed count [`crate::bans::tick_once`] auto-bans against.
+    pub async fn tenants_over_denial_threshold(
+        &self,
+        since_unix: i64,
+        threshold: i64,
+    ) -> Result<Vec<i64>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT tenant_id FROM network_denials \
+                 WHERE tenant_id IS NOT NULL AND created_unix >= ?1 \
+                 GROUP BY tenant_id HAVING COUNT(*) >= ?2",
+            )?;
+            let rows = stmt
+                .query_map(params![since_unix, threshold], |r| r.get::<_, i64>(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
         })
         .await
     }
@@ -8723,6 +8787,244 @@ impl Db {
         })
         .await
     }
+
+    // ---- bans (PRD-mcphost-abuse-guard-ban-list) --------------------------
+
+    /// requirement 3: `admin.ban.add` -- `subject` is already in its
+    /// at-rest form by the time it reaches here (the sha256 hex of the raw
+    /// key for `subject_kind: "key"`, the literal address/domain
+    /// otherwise; see `bans::hash_subject`), `created_by` the operator
+    /// identity (`admin_audit.actor_key_id`'s own hash, or `"auto"` for a
+    /// [`crate::bans::tick_once`] auto-ban), `expires_at: None` for a
+    /// permanent ban. Returns the new row's id.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_ban(
+        &self,
+        subject_kind: String,
+        subject: String,
+        reason: String,
+        public: bool,
+        created_by: String,
+        expires_at: Option<i64>,
+        auto: bool,
+    ) -> Result<i64, AppError> {
+        let created_at = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO bans (subject_kind, subject, reason, public, created_at, created_by, expires_at, auto, hits) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0)",
+                params![subject_kind, subject, reason, public, created_at, created_by, expires_at, auto],
+            )?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+    }
+
+    /// `admin.ban.remove(id)` (AC7, AC12): a *soft* remove -- stamps
+    /// `removed_at` instead of deleting the row, so the ban and its removal
+    /// both stay visible in `admin.ban.list`'s history (AC12's third
+    /// clause), while every active-ban reader (the cache
+    /// [`Self::list_active_bans`] feeds, [`Self::has_active_ban`],
+    /// `/healthz`'s counts) skips a stamped row exactly as it skips an
+    /// expired one. Requirement 5's sweep is what eventually deletes it.
+    /// `false` when `id` names no row, or one already removed.
+    pub async fn remove_ban(&self, id: i64) -> Result<bool, AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "UPDATE bans SET removed_at = ?1 WHERE id = ?2 AND removed_at IS NULL",
+                params![now, id],
+            )?;
+            Ok(n > 0)
+        })
+        .await
+    }
+
+    /// requirement 4(a)/(b)'s de-dupe check: is there already an active ban
+    /// for this exact `(subject_kind, subject)` -- [`crate::bans::tick_once`]
+    /// consults this before inserting an auto-ban, so a subject that stays
+    /// over threshold across several ticks gets one ban row, not one per
+    /// tick.
+    pub async fn has_active_ban(&self, subject_kind: String, subject: String) -> Result<bool, AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            conn.prepare(
+                "SELECT 1 FROM bans WHERE subject_kind = ?1 AND subject = ?2 \
+                 AND removed_at IS NULL AND (expires_at IS NULL OR expires_at > ?3)",
+            )?
+            .exists(params![subject_kind, subject, now])
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `admin.ban.list(active_only?, subject_kind?)` (AC8, AC12): newest
+    /// first. `active_only: true` is "still enforcing": neither expired nor
+    /// removed. The default (`false`) is the history AC12 asks for -- every
+    /// row this instance still holds, each carrying its own `expires_at` and
+    /// `removed_at` so the operator can see a ban AND its later removal.
+    pub async fn list_bans(&self, active_only: bool, subject_kind: Option<String>) -> Result<Vec<Ban>, AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            const COLS: &str = "id, subject_kind, subject, reason, public, created_at, created_by, expires_at, auto, hits, removed_at";
+            let rows = match (active_only, &subject_kind) {
+                (true, Some(sk)) => conn
+                    .prepare(&format!(
+                        "SELECT {COLS} FROM bans WHERE removed_at IS NULL \
+                         AND (expires_at IS NULL OR expires_at > ?1) \
+                         AND subject_kind = ?2 ORDER BY id DESC"
+                    ))?
+                    .query_map(params![now, sk], ban_from_row)?
+                    .collect::<rusqlite::Result<Vec<_>>>()?,
+                (true, None) => conn
+                    .prepare(&format!(
+                        "SELECT {COLS} FROM bans WHERE removed_at IS NULL \
+                         AND (expires_at IS NULL OR expires_at > ?1) ORDER BY id DESC"
+                    ))?
+                    .query_map(params![now], ban_from_row)?
+                    .collect::<rusqlite::Result<Vec<_>>>()?,
+                (false, Some(sk)) => conn
+                    .prepare(&format!("SELECT {COLS} FROM bans WHERE subject_kind = ?1 ORDER BY id DESC"))?
+                    .query_map(params![sk], ban_from_row)?
+                    .collect::<rusqlite::Result<Vec<_>>>()?,
+                (false, None) => conn
+                    .prepare(&format!("SELECT {COLS} FROM bans ORDER BY id DESC"))?
+                    .query_map([], ban_from_row)?
+                    .collect::<rusqlite::Result<Vec<_>>>()?,
+            };
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// requirement 6 / AC10: every currently-active ban, for
+    /// [`crate::bans::BanCache::refresh`] to load whole -- same shape as
+    /// `list_bans(active_only: true, None)` but without the admin-facing
+    /// `subject_kind` filter option.
+    pub async fn list_active_bans(&self) -> Result<Vec<Ban>, AppError> {
+        self.list_bans(true, None).await
+    }
+
+    /// requirement 5: delete every ban whose enforcement ended more than 7
+    /// days ago -- expired that long ago, or (AC12's soft remove) removed
+    /// that long ago, which is the bound on how long a removed row stays in
+    /// `admin.ban.list`'s history. The audit row outlives it either way
+    /// (`admin_audit`'s own add/remove entries, plus `ban_hits`, are what
+    /// "keeping the audit row" refers to -- a `bans` row itself was never
+    /// the audit record). Returns the number removed.
+    pub async fn sweep_expired_bans(&self, cutoff_unix: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "DELETE FROM bans WHERE (expires_at IS NOT NULL AND expires_at < ?1) \
+                 OR (removed_at IS NOT NULL AND removed_at < ?1)",
+                params![cutoff_unix],
+            )?;
+            Ok(n as i64)
+        })
+        .await
+    }
+
+    /// requirement 2: one hash-map lookup's worth of enforcement, plus this
+    /// -- `hits` increments (AC2) both as the lifetime counter on the `bans`
+    /// row itself (`admin.ban.list`'s own `hits`, AC8) and as a fresh
+    /// `ban_hits` row (`/healthz`'s windowed `bans.hits_24h`, AC11).
+    pub async fn record_ban_hit(&self, id: i64) -> Result<(), AppError> {
+        let ts = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute("UPDATE bans SET hits = hits + 1 WHERE id = ?1", params![id])?;
+            conn.execute(
+                "INSERT INTO ban_hits (ban_id, created_unix) VALUES (?1, ?2)",
+                params![id, ts],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-abuse-guard-ban-list requirement 4(b) / AC5: source
+    /// addresses with at least `threshold` `claim_rate_events` rows since
+    /// `since_unix` -- the claim-flood counterpart of
+    /// [`Self::tenants_over_denial_threshold`].
+    pub async fn addrs_over_claim_rate_threshold(
+        &self,
+        since_unix: i64,
+        threshold: i64,
+    ) -> Result<Vec<String>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT source_ip FROM claim_rate_events WHERE created_unix >= ?1 \
+                 GROUP BY source_ip HAVING COUNT(*) >= ?2",
+            )?;
+            let rows = stmt
+                .query_map(params![since_unix, threshold], |r| r.get::<_, String>(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// requirement 7 / AC11: `/healthz`'s `bans.{active, auto_active,
+    /// hits_24h}`.
+    pub async fn ban_healthz_counts(&self) -> Result<(i64, i64, i64), AppError> {
+        let now = now_unix();
+        let since_24h = now - 86_400;
+        self.with_conn(move |conn| {
+            let active: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM bans WHERE removed_at IS NULL \
+                 AND (expires_at IS NULL OR expires_at > ?1)",
+                params![now],
+                |r| r.get(0),
+            )?;
+            let auto_active: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM bans WHERE auto = 1 AND removed_at IS NULL \
+                 AND (expires_at IS NULL OR expires_at > ?1)",
+                params![now],
+                |r| r.get(0),
+            )?;
+            let hits_24h: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM ban_hits WHERE created_unix > ?1",
+                params![since_24h],
+                |r| r.get(0),
+            )?;
+            Ok((active, auto_active, hits_24h))
+        })
+        .await
+    }
+
+    /// Test-only: force one ban's `expires_at` to a near-future second
+    /// without a real-duration `ttl`, same "flip an internal knob for a
+    /// test" shape as [`Self::expire_handoff_token_for_test`] (AC6).
+    pub async fn set_ban_expires_at_for_test(&self, id: i64, expires_at: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute("UPDATE bans SET expires_at = ?1 WHERE id = ?2", params![expires_at, id])?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Test-only: AC10's 10k-active-bans fixture in one transaction rather
+    /// than 10k individual `insert_ban` round trips -- the AC is about
+    /// enforcement latency against a populated cache, not about how fast
+    /// this test can seed the database.
+    pub async fn bulk_insert_addr_bans_for_test(&self, count: i64, expires_at: i64) -> Result<(), AppError> {
+        let created_at = now_unix();
+        self.with_conn(move |conn| {
+            let tx = conn.unchecked_transaction()?;
+            {
+                let mut stmt = tx.prepare(
+                    "INSERT INTO bans (subject_kind, subject, reason, public, created_at, created_by, expires_at, auto, hits) \
+                     VALUES ('addr', ?1, 'load fixture', 0, ?2, 'test', ?3, 0, 0)",
+                )?;
+                for i in 0..count {
+                    let subject = format!("10.{}.{}.{}", (i >> 16) & 0xff, (i >> 8) & 0xff, i & 0xff);
+                    stmt.execute(params![subject, created_at, expires_at])?;
+                }
+            }
+            tx.commit()?;
+            Ok(())
+        })
+        .await
+    }
 }
 
 /// [`Db::prune_once`]'s return shape: one cycle's per-physical-table
@@ -8906,4 +9208,41 @@ pub struct MeterGroup {
     pub count: i64,
     pub first_call_id: i64,
     pub last_call_id: i64,
+}
+
+/// PRD-mcphost-abuse-guard-ban-list requirement 1: one `bans` row, as
+/// `admin.ban.list` and [`crate::bans::BanCache::refresh`] both read it
+/// back.
+#[derive(Debug, Clone, Serialize)]
+pub struct Ban {
+    pub id: i64,
+    pub subject_kind: String,
+    pub subject: String,
+    pub reason: String,
+    pub public: bool,
+    pub created_at: i64,
+    pub created_by: String,
+    pub expires_at: Option<i64>,
+    pub auto: bool,
+    pub hits: i64,
+    /// AC12: when `admin.ban.remove` retired this ban (unix seconds), or
+    /// `None` for one that was never removed. A removed ban stops enforcing
+    /// immediately but stays in `admin.ban.list`'s history.
+    pub removed_at: Option<i64>,
+}
+
+fn ban_from_row(r: &Row) -> rusqlite::Result<Ban> {
+    Ok(Ban {
+        id: r.get(0)?,
+        subject_kind: r.get(1)?,
+        subject: r.get(2)?,
+        reason: r.get(3)?,
+        public: r.get(4)?,
+        created_at: r.get(5)?,
+        created_by: r.get(6)?,
+        expires_at: r.get(7)?,
+        auto: r.get(8)?,
+        hits: r.get(9)?,
+        removed_at: r.get(10)?,
+    })
 }

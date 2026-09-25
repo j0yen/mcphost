@@ -535,7 +535,15 @@ async fn main() -> anyhow::Result<()> {
                 claim_rate_limit_per_hour,
                 email_config,
                 email_client,
+                bans: mcphost::bans::BanCache::new(),
+                ban_denials_threshold: mcphost::bans::ban_denials_threshold_from_env(),
+                ban_claim_rate_threshold: mcphost::bans::ban_claim_rate_threshold_from_env(),
             });
+            // PRD-mcphost-abuse-guard-ban-list requirement 6: load the ban
+            // cache once before this process ever serves a request, so the
+            // very first request after a restart already sees every ban
+            // that was active before it.
+            state.bans.refresh(&state.db).await?;
 
             // PRD-mcphost-runs-and-jobs P0 requirement 4 / open question:
             // before the executor ever leases a `queued` run, re-queue
@@ -567,6 +575,11 @@ async fn main() -> anyhow::Result<()> {
             // other background tasks (`admin.dependency_reaudit` triggers
             // the same cycle on demand).
             mcphost::deps::spawn_reaudit_scheduler((*state).clone());
+            // PRD-mcphost-abuse-guard-ban-list requirement 4/5/6: the
+            // minute auto-ban/sweep tick and the 30s cache refresh,
+            // started once here alongside the other background tasks.
+            mcphost::bans::spawn_tick((*state).clone());
+            mcphost::bans::spawn_cache_refresh((*state).clone());
 
             mcphost::http::serve_configured(bind, state).await
         }

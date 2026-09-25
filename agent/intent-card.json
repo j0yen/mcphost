@@ -1,72 +1,106 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-admin-schema-contract.md",
-  "intent_slug": "mcphost-admin-schema-contract",
-  "root_motivation": "Grounding (PRD, failure-derived): the 2026-09-16 KeyError: 'namespace' (visions/grand-loop.md chain, level 3) followed the 0.57.0 change to the admin tenants listing (CHANGELOG, self-offboard AC5) -- two repos (mcphost and mcphost-deploy) share one row-shape contract and neither writes it down. mcphost's 306 test files assert tool behavior, not the listing's row schema; mcphost-deploy's tests validate against disconnected fixture rows. Consequence: any admin listing change is a silent break of the revenue read mcphost-deploy runs nightly.",
-  "user_persona": "Three (PRD User stories): (1) mcphost-deploy, which reads schema_version and validates rows against the pinned schema before computing anything; (2) the mcphost builder, whose listing-field change fails a test until the version and schema are bumped together; (3) Joe, who wants doctor to say \"admin schema 2, deploy tool knows 1\" before the timer fires on an unpinned deploy.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-abuse-guard-ban-list.md",
+  "intent_slug": "mcphost-abuse-guard-ban-list",
+  "root_motivation": "Grounding (PRD, wwhtbt leaf 4, visions/mcphost-operability-floor.md, readiness \"captcha/ban list absent\"): the host already records abuse evidence (network_denials migration 0033, claim_rate_events migration 0034, signup_events source/address) but the operator's only response is the global signup pause (control.rs:119), which stops every stranger to stop one -- a self-inflicted outage during a Show HN wave. This PRD adds the missing per-subject remedy: one admin call bans a key/address/email-domain in under 10s, with automatic temporary bans on the two abuse signals the host already logs.",
+  "user_persona": "Two (PRD User stories): (1) the operator, who needs admin.ban.add {subject, ttl, reason} to stop one abusive address/tenant without a global pause, and admin.ban.list to see what's banned, why, until when, and who did it; (2) a banned agent, who needs a structured banned error (with expires_at, so it doesn't retry forever) rather than a silent hang or a generic refusal.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 5
+    "target": 11
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a call to admin.tenants, When the response is read, Then it carries integer schema_version = 1 and rows unchanged otherwise.",
-      "test": "tests/mcphost_admin_schema_contract_ac01_tenants_schema_version.rs"
+      "description": "Given admin.ban.add {subject_kind: \"addr\", subject: \"203.0.113.9\", ttl: \"24h\", reason: \"flood\"}, When signup is called from that address, Then the response is error banned with expires_at set and no signup_events row is written; from another address signup succeeds.",
+      "test": "tests/banlist_ac01_addr_ban_blocks_signup.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a database with normal, disabled, self-offboarded, and harness tenants, When both listings are validated against their v1 schema, Then every row validates.",
-      "test": "tests/mcphost_admin_schema_contract_ac02_listings_validate_v1_schema.rs"
+      "description": "Given a banned tenant key, When any authenticated tool is called with it, Then error banned returns, hits increments, and the call is not recorded in calls.",
+      "test": "tests/banlist_ac02_key_ban_blocks_authenticated_calls.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a row with an unexpected additional field of unknown type, When validated with additionalProperties: false in the schema, Then the test fails naming the field.",
-      "test": "tests/mcphost_admin_schema_contract_ac03_unknown_field_fails_naming_it.rs"
+      "description": "Given a ban with public: false, When the banned subject is refused, Then the error carries no reason; with public: true it carries the reason string.",
+      "test": "tests/banlist_ac03_public_flag_controls_reason_visibility.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given mcphost-deploy pinned to v1 and a listing reporting schema_version: 2, When measure runs, Then it exits 5 with the unsupported-version message and writes no measure.json.",
-      "test": "tests/mcphost_admin_schema_contract_ac04_unsupported_version_refused.rs (producer half, branch-local: the vendored v1 schemas accept this branch's real listings and refuse one reporting schema_version: 2, naming the field) + cross-repo consumer half in /home/jsy/repos/mcphost-deploy commit 1e579e9, tests/adminschema_ac4_unsupported_version_exit5.py (drives the real `measure` Typer command: process exit code 5, the unsupported-version message, no measure.json/tenants.jsonl written, plus the control arm at the pinned version exiting 0). requirement 4's exit-5 behavior is mcphost-deploy's, a separate Python repo governed by PRD-build-cross-repo-commit-gate, so it cannot be a cargo test; see PRD Technical considerations ('the mcphost-deploy change is small and is listed in the trailer with its commit'). The Rust file's cross_repo_ac4_pointer_is_not_dangling test keeps this entry honest."
+      "description": "Given a tenant key with 25 network_denials rows in the last 10 min, When the minute tick runs, Then a ban row with auto=true and a 1h expiry exists for that key and, if the alerting registry is present, one ban.applied alert is raised.",
+      "test": "tests/banlist_ac04_auto_ban_on_network_denials.rs -- the alert half has no registry to exercise: this crate has no alerting registry at HEAD, so that condition is vacuously false (see src/bans.rs's module doc)."
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given prod after this ships, When mcphost-deploy doctor runs on RedBaron, Then it prints the live schema version equal to a vendored one (proof: doctor output in the trailer).",
-      "test": "tests/mcphost_admin_schema_contract_ac05_doctor_live_schema_version.rs -- always-on: reads the live schema_version off both admin listings of a real server built from this branch and asserts it equals the vendored schemas/admin/*.v1.json constant, printing the doctor-shaped proof line; MCPHOST_LIVE=1 re-points the identical check at $MCPHOST_URL (the trailer run). The `doctor` command that prints the line is cross-repo: /home/jsy/repos/mcphost-deploy commit 1e579e9, tests/adminschema_ac5_doctor_live_schema_version.py. DEFERRED (prod half only) -- operator-provisioned: running `mcphost-deploy doctor` on production RedBaron after ship, and capturing its output in the trailer, needs the live host; nothing branch-local can stand in for it."
+      "description": "Given an address with 30 claim_rate_events in 10 min, When the tick runs, Then an auto ban exists for addr and /claim/verify/<code> from that address returns banned.",
+      "test": "tests/banlist_ac05_auto_ban_on_claim_rate_events.rs"
     },
     {
       "id": "AC6",
-      "level": "SHOULD",
-      "description": "Given a change to a listing field in admin.rs with no schema change, When cargo test runs, Then the changelog-lint test fails.",
-      "test": "tests/mcphost_admin_schema_contract_ac06_admin_rs_fields_match_schema.rs"
+      "level": "MUST",
+      "description": "Given a ban whose expires_at is 2s away, When 3s pass and the subject calls, Then the call succeeds without a restart.",
+      "test": "tests/banlist_ac06_expiry_lifts_ban_without_restart.rs"
     },
     {
       "id": "AC7",
-      "level": "MAY",
-      "description": "Given an admin-scoped tenant, When host.whoami is called, Then admin_schema_version is present.",
-      "test": "tests/mcphost_admin_schema_contract_ac07_whoami_admin_schema_version.rs"
+      "level": "MUST",
+      "description": "Given admin.ban.remove {id}, When the subject calls, Then it succeeds and admin_audit holds both the add and the remove entries with the operator identity.",
+      "test": "tests/banlist_ac07_ban_remove_audited_with_operator_identity.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given admin.ban.list {active_only: true}, When called after two active and one expired ban, Then two rows return with hits, reason, expires_at, auto.",
+      "test": "tests/banlist_ac08_list_active_only_excludes_expired.rs"
+    },
+    {
+      "id": "AC9",
+      "level": "MUST",
+      "description": "Given a permanent ban request without the literal permanent: true, When admin.ban.add is called with neither ttl nor permanent, Then it is rejected with a validation error.",
+      "test": "tests/banlist_ac09_permanent_requires_literal_true.rs"
+    },
+    {
+      "id": "AC10",
+      "level": "SHOULD",
+      "description": "Given 10,000 active bans, When 1,000 requests run, Then p99 added latency from enforcement is < 1ms (in-memory cache).",
+      "test": "tests/banlist_ac10_cache_lookup_latency_at_scale.rs"
+    },
+    {
+      "id": "AC11",
+      "level": "SHOULD",
+      "description": "Given the operator healthz header, When GET /healthz is called, Then bans.active, bans.auto_active, and bans.hits_24h are present.",
+      "test": "tests/banlist_ac11_healthz_bans_block.rs"
+    },
+    {
+      "id": "AC12",
+      "level": "MUST",
+      "description": "Given prod after land (Live), When the operator bans and unbans a test address on mcphost-1, Then a signup from that address is refused while banned and accepted after removal, and both actions appear in admin.ban.list history.",
+      "test": "deferred -- operator-provisioned: needs a real ban/unban against production mcphost-1 and live operator access this coder dispatch does not have."
     }
   ],
   "scope": [
-    "src/admin.rs: new pub const SCHEMA_VERSION: i64 = 1, added as top-level schema_version to both admin::tenants and admin::usage responses (row shape unchanged).",
-    "schemas/admin/tenants.v1.json, schemas/admin/usage.v1.json (new): JSON Schema draft 2020-12, additionalProperties: false at both the document and row level, every optional field typed and nullable.",
-    "src/control.rs: new control::whoami_admin() -- a minimal {admin: true, admin_schema_version} reply for the admin key, distinct from the existing per-Tenant whoami().",
-    "src/handler.rs: call_tool's Auth::Admin dispatch gains one new arm, (Auth::Admin, \"host.whoami\") => control::whoami_admin(), ahead of the existing (Auth::Admin, _) => Forbidden fallback; every other host.*/admin.* dispatch arm is unchanged.",
-    "agent/proof-lanes.toml: new admin-schemas lane routing schemas/** to a name-filtered cargo test run, same shape as the pre-existing contracts lane.",
-    "tests/mcphost_admin_schema_contract_ac01/02/03/06/07_*.rs (new); tests/suite_core_07.rs regenerated by scripts/gen-test-suites.sh to include them."
+    "migrations/0035_bans.sql (new): bans table (subject_kind/subject/reason/public/created_at/created_by/expires_at/auto/hits), ban_hits event log (for healthz's windowed hits_24h), and an additive nullable network_denials.tenant_id column (requirement 4(a) needs to know WHICH tenant's denials crossed the threshold; migration 0033's original shape had no subject at all).",
+    "src/bans.rs (new): BanCache (in-memory (subject_kind, subject) -> ban map, refreshed on every write and every 30s), bans::enforce (the one check every enforcement point calls), bans::tick_once (the minute auto-ban/sweep cycle, also directly callable by tests), spawn_cache_refresh/spawn_tick background loops, ttl/threshold env parsing.",
+    "src/errors.rs: new AppError::banned(expires_at, reason) -- code \"banned\", reason present as a data key only when the ban is public: true.",
+    "src/admin.rs: admin.ban.add/remove/list plus their admin_audit_entry rows (ban_add/ban_remove).",
+    "Enforcement points: src/control.rs signup (addr, before any write), src/handler.rs call_tool (key, every authenticated host.*/billing.*/namespaced call, before dispatch so a refused call never reaches calls), src/claim.rs (addr on all three /claim/* routes, email_domain in post_claim), src/hooks.rs handle_hook (key of the owning tenant).",
+    "src/db.rs: bans/ban_hits CRUD, tenants_over_denial_threshold/addrs_over_claim_rate_threshold windowed queries, ban_healthz_counts, a bulk-insert test fixture for AC10.",
+    "src/http.rs healthz: bans.{active, auto_active, hits_24h}.",
+    "src/state.rs/src/main.rs/tests/common/mod.rs: AppState gains bans (BanCache), ban_denials_threshold, ban_claim_rate_threshold.",
+    "tests/banlist_ac0[1-9]_*.rs, tests/banlist_ac1[01]_*.rs (new, AC12 deferred); tests/suite_core_07.rs regenerated by scripts/gen-test-suites.sh to include them."
   ],
   "non_goals": [
-    "Versioning the tenant-facing host.* surface -- already covered by contract_version (PRD-mcphost-host-tool-deprecation), and explicitly out of scope per this PRD's own Non-goals.",
-    "Changing what admin.tenants/admin.usage contain (PRD Non-goals) -- this PRD only adds schema_version and commits the schema of the rows exactly as they already are.",
-    "The mcphost-deploy side of requirement 4 (vendoring the schema files, exit 5 on unknown schema_version) and requirement 5 (doctor's live-version line) -- both deferred, AC4 as cross-repo/no-worktree, AC5 as operator-provisioned (needs live RedBaron).",
-    "Bumping schema_version for an additive, nullable field -- PRD Open question, assumed answer: no version bump, but the schema file itself must still be edited to declare the new field (what AC6's changelog lint actually enforces)."
+    "CAPTCHA or proof-of-work on signup -- a separate decision per the PRD's own Non-goals, pairs with this list but changes the signup contract.",
+    "IP reputation feeds or ASN blocking (PRD Non-goals).",
+    "Banning by a claimed human's email address beyond its domain -- privacy scope, per the PRD's own Non-goals.",
+    "CIDR support for admin.ban.add's addr subject (P2 requirement 8) -- no Acceptance Criterion exercises it, and the coder dispatch's own non-deferred AC list is the actual build contract; literal-address matching is what every AC needs.",
+    "A second auto-ban-duration escalation rule (PRD Open question: \"does a second auto-ban within 24h escalate to 24h?\") -- left at the PRD's own drafted default (flat 1h) since the Open Questions table marks this decision owned by Joe, due at build, and no AC exercises escalation."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -75,39 +109,41 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "one_shared_schema_version_const": "admin::SCHEMA_VERSION is one constant used by admin.tenants, admin.usage, and control::whoami_admin's admin_schema_version -- both listings start at version 1 together per the PRD, so a single constant (rather than one per listing) is the simplest thing that is still correct; it can split later if the two listings' versions ever diverge.",
-      "admin_whoami_is_a_new_reply_shape_not_the_tenant_one": "host.whoami for the admin key (Auth::Admin) returns {admin: true, admin_schema_version}, not the existing per-Tenant whoami() shape with some fields nulled out -- there is no Tenant row for the admin key to report identity from, and AC7's own wording (\"admin_schema_version is present\") asks only for that one field.",
-      "ac6_changelog_lint_diffs_live_fields_not_git_history": "AC6 compares the field-name set admin.tenants/admin.usage actually emit (top level and row, via a live TestServer call) against schemas/admin/*.v1.json's declared 'properties' keys, rather than diffing git history -- this repo's own build-agent instructions refuse a test keyed to \"no changes since a sha\" (landing adds commits, e.g. a release bump, that would self-invalidate such a test); the live-vs-schema field-set comparison gives the same drift guarantee (and gets more specific: it names exactly which field is out of sync) without depending on commit history at all."
+      "key_subject_is_always_the_sha256_hash_never_the_raw_key": "bans.subject for subject_kind: \"key\" is always the sha256 hex of the raw tenant key (bans::normalize_subject), the same at-rest form tenants.key_hash already uses -- an operator's admin.ban.add still takes the raw key as input (the value a tenant actually authenticates with, the only form an operator could plausibly have on hand), but it is hashed before it is ever stored or cached, so a ban row never carries a live credential in the clear.",
+      "ban_remove_hard_deletes_same_as_tenant_delete": "admin.ban.remove hard-deletes the bans row (Db::delete_ban), the same convention Db::delete_tenant already uses -- the durable audit trail AC7 asks for is the admin_audit rows handler::dispatch_admin_tool appends for both admin.ban.add and admin.ban.remove, not the bans row's own lifetime.",
+      "hits_24h_needs_its_own_event_log_not_just_the_counter": "bans.hits is a lifetime counter (admin.ban.list's own hits field, AC8); it carries no timestamp, so it cannot answer healthz's windowed bans.hits_24h (AC11) on its own -- a small ban_hits(ban_id, created_unix) event log (same shape as migration 0033's network_denials) is written alongside every counter increment specifically to answer that windowed question.",
+      "cache_checks_expiry_live_not_just_at_refresh": "BanCache::check compares a cached entry's own expires_at against now() on every lookup, not just when the cache was last refreshed -- this is what makes AC6 (an expiry 2s away is honored 3s later, no restart, no forced refresh) true without needing the 30s periodic refresh to have already run.",
+      "no_alerting_registry_exists_so_ac4s_alert_half_is_vacuous": "AC4's \"if the alerting registry is present, raise ban.applied\" has no code in src/bans.rs: grep of this crate at HEAD found no alerting-registry concept anywhere, so the condition is vacuously false on every build today -- there is nothing to wire up until one exists, and the AC's own wording (\"if ... present\") anticipates exactly this."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why build a schema contract for the admin listings now, rather than leaving them as ad hoc JSON?",
-      "a": "The 2026-09-16 KeyError: 'namespace' (visions/grand-loop.md chain, level 3) followed the 0.57.0 change to the admin tenants listing row shape -- mcphost-deploy's nightly measure read broke silently because nothing in either repo pinned or tested the row shape it depends on."
+      "q": "Why build a ban list now, rather than leaving the global signup pause as the operator's only lever?",
+      "a": "The readiness plan lists \"captcha/ban list\" as absent (wiki 2026-09-23-mcphost-market-test-plan); during a Show HN wave, pausing signups to stop one abuser is a self-inflicted outage that blocks every legitimate stranger too."
     },
     {
       "why": 2,
-      "q": "Why did neither repo's existing test suite catch the 0.57.0 break?",
-      "a": "mcphost's 306 test files assert tool BEHAVIOR (what a call does), never the listing's ROW SCHEMA (what fields a row carries and their types); mcphost-deploy's own tests validate against fixture rows it maintains by hand, disconnected from what the real listing actually emits."
+      "q": "Why does the operator need automatic (not just manual) bans?",
+      "a": "The host already records the evidence of abuse (network_denials, claim_rate_events) but nothing acts on it -- an operator asleep during a flood has no remedy until they notice and hand-type admin.ban.add."
     },
     {
       "why": 3,
-      "q": "Why a committed JSON Schema file rather than a shared Rust type or an OpenAPI doc?",
-      "a": "jsonschema 0.26 is already an mcphost dependency (used for tool input-schema validation elsewhere in this crate), and a portable JSON Schema file is the one artifact both a Rust repo (mcphost) and a Python repo (mcphost-deploy) can validate the SAME rows against with no shared language-specific type to keep in sync by hand."
+      "q": "Why an in-memory cache rather than a query per enforcement check?",
+      "a": "Requirement 6/AC10: enforcement runs on every signup, every authenticated call, every claim route, every inbound hook -- a SQL round trip on that hot path would add real latency at scale (10k active bans, 1000 requests, p99 < 1ms), where a HashMap lookup costs nothing."
     },
     {
       "why": 4,
-      "q": "Why does the deploy tool need an explicit schema_version integer rather than just re-validating every row against additionalProperties: false on every read?",
-      "a": "Requirement 4 / AC4: the deploy tool must refuse an UNKNOWN version outright (exit 5, no measure.json written) before it ever computes anything, not discover drift row-by-row mid-computation -- a single top-level version check is a cheaper, earlier, and more legible failure than accumulating per-row validation errors."
+      "q": "Why is reason hidden by default (public: false) rather than always returned?",
+      "a": "PRD Open question, drafted answer: an operator's free-text reason can name internal detail (an IP range, a customer's behavior) an agent should not see reflected back in its own error; public: true is an explicit opt-in for the cases where surfacing it helps (e.g. so a legitimate but misbehaving agent understands why)."
     },
     {
       "why": 5,
-      "q": "Why does the changelog-lint test (AC6) compare live emitted fields to the schema instead of diffing git history for an admin.rs change?",
-      "a": "This repo's own build-agent instructions refuse a test keyed to \"no changes since a sha,\" since landing adds commits (a release bump, a squash) that self-invalidate such a test; comparing the live field set admin.tenants/admin.usage actually emit against schemas/admin/*.v1.json's declared properties is a git-independent structural invariant that gives the identical guarantee (and names the exact field out of sync) with no history dependency at all."
+      "q": "Why does subject_kind: \"key\" hash the operator-supplied raw key before storing it, rather than storing it verbatim like addr/email_domain?",
+      "a": "Every other credential this crate persists (tenants.key_hash, claim_codes.code_hash, admin_audit.actor_key_id) is hash-at-rest, never plaintext -- a bans row is queried on every authenticated call and would otherwise become a second place a live tenant key sits in the clear, undermining the same guarantee key rotation/redaction elsewhere in the crate depends on."
     }
   ],
-  "created_at": "2026-09-24T00:00:00Z",
+  "created_at": "2026-09-25T00:00:00Z",
   "ambiguities_resolved": [
     {
       "question": "The findings file records the reference Python client seeing well-formed ttlMs/cacheScope on an unauthenticated tools/list, which the code says is impossible. Which is right?",
@@ -216,6 +252,10 @@
     {
       "question": "Second fix pass (2026-09-24): the verifier bounced AC4 and AC5 as not genuinely paired -- AC4 deferred wholesale as cross-repo, AC5 deferred wholesale as prod-only. Both deferrals were taken at build time because no mcphost-deploy worktree was handed to that dispatch. Is 'no worktree was provided' a reason to leave an AC unproven, given this repo's own precedent (PRD-mcphost-checkcompat-port-race AC9/AC10) pairs a cross-repo AC with a real mcphost-deploy commit plus a Python test, and its Live-AC precedent (tests/mcphost_tenant_data_export_ac04_live_export_trailer.rs) pairs a 'prod after ship' AC with an always-on real-server run that MCPHOST_LIVE=1 merely re-points?",
       "resolution": "No -- both precedents were followed instead. AC4: the consumer half landed in /home/jsy/repos/mcphost-deploy as commit 1e579e9 (vendored v1 schemas + SOURCE.json recording mcphost commit 7aec0a2, admin_schema.py deriving the pinned set from those files, measure's EXIT_UNSUPPORTED_SCHEMA=5 refusal before any measure dict exists, so run() writes no measure.json), proved by tests/adminschema_ac4_unsupported_version_exit5.py driving the real measure Typer command end to end; the producer half -- the vendored v1 schemas accepting this branch's real listings and refusing one reporting schema_version: 2 -- is proved branch-locally by tests/mcphost_admin_schema_contract_ac04_unsupported_version_refused.rs, whose cross_repo_ac4_pointer_is_not_dangling test also keeps this card's and the test-map's cross-repo pointer from rotting. AC5: only the prod half stays deferred (operator-provisioned -- running mcphost-deploy doctor on live RedBaron after ship and capturing its output in the trailer). Its branch-local half ships as tests/mcphost_admin_schema_contract_ac05_doctor_live_schema_version.rs, which always runs against a real server built from this branch, compares the live schema_version of both admin listings against the vendored schemas/admin/*.v1.json constant, and prints the doctor-shaped proof line; MCPHOST_LIVE=1 re-points the identical check at $MCPHOST_URL. The doctor line it mirrors (admin_schema: live=<n> vendored=<n> ok|MISMATCH|unknown) landed in the same mcphost-deploy commit, proved by tests/adminschema_ac5_doctor_live_schema_version.py. Nothing was provisioned, resized or reconfigured to do either."
+    },
+    {
+      "question": "This card is now regenerated for PRD-mcphost-abuse-guard-ban-list, an entirely different feature (a per-subject ban list: key/addr/email_domain, manual + automatic, in-memory-cached enforcement) from PRD-mcphost-admin-schema-contract (the admin row-shape contract) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught repeatedly in this card's own history if left byte-for-byte. Several build-time decisions had no single PRD-mandated answer: (1) what form a subject_kind: \"key\" ban's subject takes at rest, given the PRD names no wire shape for it; (2) migration 0033's network_denials table has no tenant/subject column at all, so requirement 4(a)'s per-tenant windowed count has nothing to group by; (3) bans.hits is a lifetime counter, but healthz's own AC11 asks for a WINDOWED bans.hits_24h; (4) AC4's own wording (\"if the alerting registry is present\") assumes a registry this crate doesn't have; (5) whether admin.ban.remove should hard-delete or soft-delete, given AC7 asks for both actions to be audited.",
+      "resolution": "Fixed in place: root_motivation, user_persona, unfakeable_metric, all 12 acceptance_criteria (11 with real tests/banlist_ac0N_*.rs pointers, AC12 marked deferred with a concrete operator-provisioned reason), scope, non_goals, hard_constraints.additional, and five_whys_trace were rewritten from PRD-mcphost-abuse-guard-ban-list's own Problem statement, User stories, Requirements, and Acceptance criteria sections; agent/test-map.json's ac_test_map was updated to this PRD's own AC-to-test mapping in the same build, with the prior mcphost_admin_schema_contract map archived under ac_test_map_by_prefix.adminschemacontract so nothing already-shipped is lost. On the five build-time decisions: (1) subject_kind: \"key\" always normalizes to the sha256 hex of the raw key (bans::normalize_subject), the same hash-at-rest form tenants.key_hash already uses -- see hard_constraints.additional.key_subject_is_always_the_sha256_hash_never_the_raw_key. (2) migration 0035 adds an additive nullable network_denials.tenant_id column and threads it through record_network_denial's two existing call sites (both already had a tenant in scope), rather than inventing a parallel per-tenant denial log. (3) a small ban_hits(ban_id, created_unix) event-log table (same shape as network_denials itself) is written alongside every bans.hits increment, purely to answer the windowed healthz question the lifetime counter can't. (4) confirmed by grep that no alerting-registry concept exists anywhere in this crate at HEAD, so AC4's alert clause is vacuously satisfied and left undocumented-but-explained rather than faked with a stub registry -- see hard_constraints.additional.no_alerting_registry_exists_so_ac4s_alert_half_is_vacuous. (5) hard-delete, matching Db::delete_tenant's own precedent -- AC7's audit requirement is satisfied by the admin_audit rows dispatch_admin_tool already appends for both admin.ban.add and admin.ban.remove, independent of whether the bans row itself survives."
     }
   ]
 }

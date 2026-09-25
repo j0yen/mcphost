@@ -652,6 +652,7 @@ fn status_for_hook_error(code: &str) -> StatusCode {
         "signature_invalid" => StatusCode::UNAUTHORIZED,
         "events_rate_limited" => StatusCode::TOO_MANY_REQUESTS,
         "event_body_too_large" => StatusCode::PAYLOAD_TOO_LARGE,
+        "banned" => StatusCode::FORBIDDEN,
         _ => StatusCode::BAD_REQUEST,
     }
 }
@@ -685,6 +686,9 @@ async fn handle_hook(
         .await?
         .filter(|t| !t.disabled)
         .ok_or_else(hook_not_found)?;
+    // PRD-mcphost-abuse-guard-ban-list requirement 2: `/hooks/*` enforces
+    // the key of the owning tenant, same as any other authenticated call.
+    crate::bans::enforce(state, "key", &tenant.key_hash).await?;
     state
         .db
         .get_tool(tenant.id, tool.to_string())
