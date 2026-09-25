@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-abuse-guard-ban-list.md",
-  "intent_slug": "mcphost-abuse-guard-ban-list",
-  "root_motivation": "Grounding (PRD, wwhtbt leaf 4, visions/mcphost-operability-floor.md, readiness \"captcha/ban list absent\"): the host already records abuse evidence (network_denials migration 0033, claim_rate_events migration 0034, signup_events source/address) but the operator's only response is the global signup pause (control.rs:119), which stops every stranger to stop one -- a self-inflicted outage during a Show HN wave. This PRD adds the missing per-subject remedy: one admin call bans a key/address/email-domain in under 10s, with automatic temporary bans on the two abuse signals the host already logs.",
-  "user_persona": "Two (PRD User stories): (1) the operator, who needs admin.ban.add {subject, ttl, reason} to stop one abusive address/tenant without a global pause, and admin.ban.list to see what's banned, why, until when, and who did it; (2) a banned agent, who needs a structured banned error (with expires_at, so it doesn't retry forever) rather than a silent hang or a generic refusal.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-document-store.md",
+  "intent_slug": "mcphost-document-store",
+  "root_motivation": "Grounding (PRD, visions/mcphost-data-layer-first-slice.md wwhtbt leaf 3; rag_indexer 61.8% vs 81.4% overall baseline, wiki 2026-09-23-mcphost-market-test-plan; no document type in migrations 0001-0034): a rapid prototyper who wants a Q&A tool over their own docs has no place on mcphost to put them -- host.state (migration 0011) is a key-value and row store sized for small state, not corpora, and host.table.* holds CSV rows, not whole documents. 'RAG index refresh' recurs in three independent discovery panels (projects/mcp-host.md, notes 2026-09-02). Every other component in the data-layer slice (search, recipe) needs a document identity with a version and a change watermark; this PRD is the first slice that gives them one.",
+  "user_persona": "Four (PRD User stories): (1) the prototyper's agent, putting and listing versioned documents; (2) the tool author (python kind), reading a document by id in-process without re-uploading; (3) the indexer (a later PRD), polling host.docs.status's watermark and list {since} for changed documents only; (4) the operator, tuning docs_max/docs_bytes_max in plans.toml like every other per-tenant quota.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,93 +14,96 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given admin.ban.add {subject_kind: \"addr\", subject: \"203.0.113.9\", ttl: \"24h\", reason: \"flood\"}, When signup is called from that address, Then the response is error banned with expires_at set and no signup_events row is written; from another address signup succeeds.",
-      "test": "tests/banlist_ac01_addr_ban_blocks_signup.rs"
+      "description": "Given an empty tenant, When host.docs.put {name: \"a.md\", content: \"# hi\"} runs, Then it returns version: 1, seq: 1, and status shows documents: 1 and watermark: 1.",
+      "test": "tests/docstore_ac01_first_put_returns_version1_seq1.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a banned tenant key, When any authenticated tool is called with it, Then error banned returns, hits increments, and the call is not recorded in calls.",
-      "test": "tests/banlist_ac02_key_ban_blocks_authenticated_calls.rs"
+      "description": "Given a.md at version 1, When put runs again with different content, Then the same id returns with version: 2 and seq: 2; with identical content the response repeats version 2 and seq is unchanged.",
+      "test": "tests/docstore_ac02_put_bumps_version_noop_on_identical_content.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a ban with public: false, When the banned subject is refused, Then the error carries no reason; with public: true it carries the reason string.",
-      "test": "tests/banlist_ac03_public_flag_controls_reason_visibility.rs"
+      "description": "Given a 2 MiB + 1 byte payload, When put runs, Then it is rejected with a size error; at exactly 2 MiB it succeeds.",
+      "test": "tests/docstore_ac03_size_cap_rejects_over_2mib_accepts_exactly.rs -- exercised directly against docs::doc_put (bare_state), not the MCP transport: MCPHOST_DOC_MAX_BYTES's 2 MiB default is bigger than the unrelated, already-pinned 1 MiB MAX_REQUEST_BODY_BYTES transport cap every tools/call request shares."
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a tenant key with 25 network_denials rows in the last 10 min, When the minute tick runs, Then a ban row with auto=true and a 1h expiry exists for that key and, if the alerting registry is present, one ban.applied alert is raised.",
-      "test": "tests/banlist_ac04_auto_ban_on_network_denials.rs -- the alert half has no registry to exercise: this crate has no alerting registry at HEAD, so that condition is vacuously false (see src/bans.rs's module doc)."
+      "description": "Given a JSON document {\"a\": {\"b\": 1}}, When get {text: true} runs, Then the text contains the line a.b: 1; given a CSV with header x,y and row 1,2, the text contains x=1, y=2.",
+      "test": "tests/docstore_ac04_extraction_json_and_csv.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given an address with 30 claim_rate_events in 10 min, When the tick runs, Then an auto ban exists for addr and /claim/verify/<code> from that address returns banned.",
-      "test": "tests/banlist_ac05_auto_ban_on_claim_rate_events.rs"
+      "description": "Given three documents and one deleted, When list {since: 0} runs, Then four rows return, the deleted one with deleted: true; list without since returns three.",
+      "test": "tests/docstore_ac05_list_since_includes_deleted.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a ban whose expires_at is 2s away, When 3s pass and the subject calls, Then the call succeeds without a restart.",
-      "test": "tests/banlist_ac06_expiry_lifts_ban_without_restart.rs"
+      "description": "Given plan docs_max: 2, When a third document is put, Then quota_docs returns; given docs_bytes_max exceeded, quota_docs_bytes returns.",
+      "test": "tests/docstore_ac06_quota_docs_and_docs_bytes.rs -- against bare_state (a directly mutable AppState.plans), since TestServer hands back an Arc<AppState> that can't be mutated after construction."
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given admin.ban.remove {id}, When the subject calls, Then it succeeds and admin_audit holds both the add and the remove entries with the operator identity.",
-      "test": "tests/banlist_ac07_ban_remove_audited_with_operator_identity.rs"
+      "description": "Given a put of 1 000 bytes, When metering is read, Then a docs.put_bytes event of 1 000 exists for the tenant.",
+      "test": "tests/docstore_ac07_put_bytes_metering_event.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given admin.ban.list {active_only: true}, When called after two active and one expired ban, Then two rows return with hits, reason, expires_at, auto.",
-      "test": "tests/banlist_ac08_list_active_only_excludes_expired.rs"
+      "description": "Given a document with unsupported mime (image/png by content sniff), When put runs, Then it is rejected naming the allowed mimes.",
+      "test": "tests/docstore_ac08_unsupported_mime_by_content_sniff.rs"
     },
     {
       "id": "AC9",
-      "level": "MUST",
-      "description": "Given a permanent ban request without the literal permanent: true, When admin.ban.add is called with neither ttl nor permanent, Then it is rejected with a validation error.",
-      "test": "tests/banlist_ac09_permanent_requires_literal_true.rs"
+      "level": "SHOULD",
+      "description": "Given a python-kind tool, When it reads MCPHOST_DOCS_ENDPOINT and fetches a document by id using the documented helper, Then it receives the extracted text without a tool call round trip.",
+      "test": "tests/docstore_ac09_python_mcphost_docs_get_without_tool_call.rs"
     },
     {
       "id": "AC10",
       "level": "SHOULD",
-      "description": "Given 10,000 active bans, When 1,000 requests run, Then p99 added latency from enforcement is < 1ms (in-memory cache).",
-      "test": "tests/banlist_ac10_cache_lookup_latency_at_scale.rs"
+      "description": "Given a document with 5 versions, When purge {older_than_versions: 2} runs, Then versions 1-3 are gone, 4-5 remain, and get {version: 3} returns not found.",
+      "test": "tests/docstore_ac10_purge_older_than_versions.rs"
     },
     {
       "id": "AC11",
-      "level": "SHOULD",
-      "description": "Given the operator healthz header, When GET /healthz is called, Then bans.active, bans.auto_active, and bans.hits_24h are present.",
-      "test": "tests/banlist_ac11_healthz_bans_block.rs"
+      "level": "MUST",
+      "description": "Given a tenant export, When host.export runs, Then the bundle includes the tenant's documents with their current version text.",
+      "test": "tests/docstore_ac11_export_includes_documents.rs"
     },
     {
       "id": "AC12",
       "level": "MUST",
-      "description": "Given prod after land (Live), When the operator bans and unbans a test address on mcphost-1, Then a signup from that address is refused while banned and accepted after removal, and both actions appear in admin.ban.list history.",
-      "test": "deferred -- operator-provisioned: needs a real ban/unban against production mcphost-1 and live operator access this coder dispatch does not have."
+      "description": "Given prod after land, When the operator tenant puts a markdown document on mcphost-1 and lists it, Then status reports one document and the watermark, and a second put with changed content yields version 2 (Live).",
+      "test": "deferred -- operator-provisioned: needs a real put/list against production mcphost-1 and live operator access this coder dispatch does not have."
     }
   ],
   "scope": [
-    "migrations/0035_bans.sql (new): bans table (subject_kind/subject/reason/public/created_at/created_by/expires_at/auto/hits), ban_hits event log (for healthz's windowed hits_24h), and an additive nullable network_denials.tenant_id column (requirement 4(a) needs to know WHICH tenant's denials crossed the threshold; migration 0033's original shape had no subject at all).",
-    "src/bans.rs (new): BanCache (in-memory (subject_kind, subject) -> ban map, refreshed on every write and every 30s), bans::enforce (the one check every enforcement point calls), bans::tick_once (the minute auto-ban/sweep cycle, also directly callable by tests), spawn_cache_refresh/spawn_tick background loops, ttl/threshold env parsing.",
-    "src/errors.rs: new AppError::banned(expires_at, reason) -- code \"banned\", reason present as a data key only when the ban is public: true.",
-    "src/admin.rs: admin.ban.add/remove/list plus their admin_audit_entry rows (ban_add/ban_remove).",
-    "Enforcement points: src/control.rs signup (addr, before any write), src/handler.rs call_tool (key, every authenticated host.*/billing.*/namespaced call, before dispatch so a refused call never reaches calls), src/claim.rs (addr on all three /claim/* routes, email_domain in post_claim), src/hooks.rs handle_hook (key of the owning tenant).",
-    "src/db.rs: bans/ban_hits CRUD, tenants_over_denial_threshold/addrs_over_claim_rate_threshold windowed queries, ban_healthz_counts, a bulk-insert test fixture for AC10.",
-    "src/http.rs healthz: bans.{active, auto_active, hits_24h}.",
-    "src/state.rs/src/main.rs/tests/common/mod.rs: AppState gains bans (BanCache), ban_denials_threshold, ban_claim_rate_threshold.",
-    "tests/banlist_ac0[1-9]_*.rs, tests/banlist_ac1[01]_*.rs (new, AC12 deferred); tests/suite_core_07.rs regenerated by scripts/gen-test-suites.sh to include them."
+    "migrations/0037_documents.sql (new): documents/document_blobs/document_usage_events tables -- documents carries current-version metadata plus a per-tenant seq watermark bumped on every put that actually changes something and every delete; document_blobs carries every kept version's raw content and extracted text; document_usage_events is the docs.put_bytes metering event log.",
+    "src/docs.rs (new): host.docs.* business logic -- mime detection (explicit, then content sniff against a handful of binary magic numbers, then name-extension inference), deterministic text extraction (JSON leaf-path flattening, naive CSV col=value rows, markdown/text passthrough), size/quota enforcement, put/get/list/delete/status/purge.",
+    "src/db.rs: documents_put (the one transactional new/bump/no-op write path plus seq assignment), document_soft_delete, documents_list_live/since, document_blob_get, document_blobs_purge_below, document_usage_event_insert/quantities, documents_for_export, migration 0037 wiring.",
+    "src/plans.rs: docs_max/docs_bytes_max knobs (free 200/50 MiB, pro 20,000/5 GiB).",
+    "src/handler.rs: host.docs.{put,get,list,delete,status,purge} tool registration and dispatch; TenantDocsBridge (CallCtx.docs's real implementation) wired at every real dispatch path (call_published_tool, tool_test, bridge_test, spec_test, tool_run).",
+    "src/kinds/mod.rs: DocsBackend trait, NoDocs, CallCtx.docs field (mirrors StateBackend/TableBackend), compose_call child_ctx forwarding.",
+    "src/kinds/python.rs: DocsSidecarBridge, HostSidecarBridge wiring, PY_RUNNER_SCRIPT's mcphost.docs module (get(id) only -- the one op AC9 needs), MCPHOST_DOCS_ENDPOINT injected via merge_env.",
+    "src/export.rs: documents/<id>.json per live document in the export bundle (id/name/version/current text).",
+    "src/errors.rs: docs_not_found/docs_too_large/docs_mime_unsupported/quota_docs/quota_docs_bytes wire-code-to-JSONRPC-error-code mapping.",
+    "docs/kinds/python.md: mcphost.docs section.",
+    "tests/common/mod.rs: bare_state/bare_tenant helpers (an owned, directly-mutable AppState + a fresh tenant) for AC3/AC6, which TestServer's Arc<AppState> and 1 MiB transport cap can't exercise.",
+    "tests/docstore_ac0[1-9]_*.rs, tests/docstore_ac1[01]_*.rs (new, AC12 deferred); tests/ac01_unauthenticated_lists_signup.rs, tests/compat_ac01_ac02_ac03_cache_fields.rs, tests/compat_ac04_ac05_admin_and_tenant_cache_fields.rs, tests/compat_ac11_ac12_claude_sdk_replay.rs, tests/sessionkey_ac02_ac03_discovery_shape.rs updated for the six new host.docs.* tools' effect on their pinned anonymous-tools/list counts; contracts/host-tools.v1.json and www/llms.txt regenerated (mcphost contract dump, mcphost llms-txt); tests/suite_core_07.rs / tests/suite_sandbox_02.rs regenerated by scripts/gen-test-suites.sh to include the new files."
   ],
   "non_goals": [
-    "CAPTCHA or proof-of-work on signup -- a separate decision per the PRD's own Non-goals, pairs with this list but changes the signup contract.",
-    "IP reputation feeds or ASN blocking (PRD Non-goals).",
-    "Banning by a claimed human's email address beyond its domain -- privacy scope, per the PRD's own Non-goals.",
-    "CIDR support for admin.ban.add's addr subject (P2 requirement 8) -- no Acceptance Criterion exercises it, and the coder dispatch's own non-deferred AC list is the actual build contract; literal-address matching is what every AC needs.",
-    "A second auto-ban-duration escalation rule (PRD Open question: \"does a second auto-ban within 24h escalate to 24h?\") -- left at the PRD's own drafted default (flat 1h) since the Open Questions table marks this decision owned by Joe, due at build, and no AC exercises escalation."
+    "Search or embeddings over document text -- explicitly the next PRD in the data-layer slice (PRD's own Non-goals); this PRD only gives that PRD a document identity, extracted text, and a change watermark to index from.",
+    "PDF, DOCX, or image document types -- PRD Non-goals, an open vision question for a later slice; only text/plain, text/markdown, application/json, text/csv are accepted.",
+    "Public serving of documents (no URL) -- documents are tenant-private, reached only through host.docs.* or the mcphost.docs sandbox bridge, never a public download link the way host.export's signed URL is.",
+    "A wasm-kind mcphost.docs bridge -- P1 requirement 6 names both python and wasm, but AC9 (the only testable proof of this requirement) names python only, and the wasm kind has no mcphost.state/mcphost.table bridge to mirror at all yet; adding one is out of this dispatch's own AC list.",
+    "End-user scoping (end_user: \"self\") -- P2 requirement 8, gated on the identity PRD, which is not present in this codebase yet."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -109,38 +112,38 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "key_subject_is_always_the_sha256_hash_never_the_raw_key": "bans.subject for subject_kind: \"key\" is always the sha256 hex of the raw tenant key (bans::normalize_subject), the same at-rest form tenants.key_hash already uses -- an operator's admin.ban.add still takes the raw key as input (the value a tenant actually authenticates with, the only form an operator could plausibly have on hand), but it is hashed before it is ever stored or cached, so a ban row never carries a live credential in the clear.",
-      "ban_remove_hard_deletes_same_as_tenant_delete": "admin.ban.remove hard-deletes the bans row (Db::delete_ban), the same convention Db::delete_tenant already uses -- the durable audit trail AC7 asks for is the admin_audit rows handler::dispatch_admin_tool appends for both admin.ban.add and admin.ban.remove, not the bans row's own lifetime.",
-      "hits_24h_needs_its_own_event_log_not_just_the_counter": "bans.hits is a lifetime counter (admin.ban.list's own hits field, AC8); it carries no timestamp, so it cannot answer healthz's windowed bans.hits_24h (AC11) on its own -- a small ban_hits(ban_id, created_unix) event log (same shape as migration 0033's network_denials) is written alongside every counter increment specifically to answer that windowed question.",
-      "cache_checks_expiry_live_not_just_at_refresh": "BanCache::check compares a cached entry's own expires_at against now() on every lookup, not just when the cache was last refreshed -- this is what makes AC6 (an expiry 2s away is honored 3s later, no restart, no forced refresh) true without needing the 30s periodic refresh to have already run.",
-      "no_alerting_registry_exists_so_ac4s_alert_half_is_vacuous": "AC4's \"if the alerting registry is present, raise ban.applied\" has no code in src/bans.rs: grep of this crate at HEAD found no alerting-registry concept anywhere, so the condition is vacuously false on every build today -- there is nothing to wire up until one exists, and the AC's own wording (\"if ... present\") anticipates exactly this."
+      "docs_bytes_max_counts_raw_bytes_not_raw_plus_text": "The PRD's own Open Questions table left this undecided, 'drafted raw'. This build took the drafted answer: docs_bytes_max (and host.docs.status's bytes field) sum documents.bytes (the raw content size), never text_bytes -- the same 'measure what's charged, not what's derived from it' stance table_bytes_max/state_bytes_max already take for their own stores.",
+      "mcphost_docs_endpoint_is_not_a_real_network_address": "Requirement 6 names 'MCPHOST_DOCS_ENDPOINT (the in-process loopback the state helpers use)', but mcphost.state/mcphost.table have never used a real network endpoint -- they're a synchronous stdin/stdout JSON-line sidecar protocol (kinds::python::StateSidecarBridge/TableSidecarBridge). MCPHOST_DOCS_ENDPOINT is set to a fixed sentinel string (stdio://mcphost.docs) purely so a tool can detect the channel is available (AC9: 'reads MCPHOST_DOCS_ENDPOINT'); the actual channel is DocsSidecarBridge, the same mechanism, not a URL anything connects to.",
+      "ac3_and_ac6_bypass_the_mcp_transport_not_business_logic": "MAX_REQUEST_BODY_BYTES (1 MiB, PRD-mcphost-call-limits-honest, pinned by tests/ac16_request_body_too_large.rs and tests/limits_ac06_*.rs) is smaller than MCPHOST_DOC_MAX_BYTES's 2 MiB default, so AC3's exactly-2-MiB put cannot reach docs::doc_put over a real tools/call HTTP request at all -- that cap belongs to a different, already-shipped PRD and is out of this dispatch's scope to raise. AC3 and AC6 (which also needs a directly-mutable plan quota TestServer's Arc<AppState> can't give) call docs::doc_put directly against tests/common's new bare_state helper, the same 'business logic, not the transport' shape tables.rs's own table_quota_refuses_past_tables_max unit test already uses for the analogous case.",
+      "quota_docs_and_quota_docs_bytes_are_distinct_codes": "AC6's own wording names 'quota_docs' and 'quota_docs_bytes' as the returned codes, not one generic docs_quota_exceeded carrying a quota: \"docs_max\"/\"docs_bytes_max\" data field the way tenant_state.rs's state_quota_exceeded does -- this build took the AC's literal wording as the wire contract rather than reusing the state/table quota-error shape.",
+      "purge_keeps_older_than_versions_plus_the_current_one": "AC10's worked example (version 5, older_than_versions: 2, keeps 4 and 5) pins the arithmetic: kept_from_version = current_version - older_than_versions + 1, not older_than_versions versions total -- 'older than N versions back' includes the current version as one of the kept ones, matching the AC's own numbers exactly."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why build a ban list now, rather than leaving the global signup pause as the operator's only lever?",
-      "a": "The readiness plan lists \"captcha/ban list\" as absent (wiki 2026-09-23-mcphost-market-test-plan); during a Show HN wave, pausing signups to stop one abuser is a self-inflicted outage that blocks every legitimate stranger too."
+      "q": "Why build a document store now, rather than waiting for the search PRD that actually needs indexed text?",
+      "a": "rag_indexer scores 61.8% against an 81.4% overall baseline (wiki 2026-09-23-mcphost-market-test-plan) and 'RAG index refresh' recurs in three independent discovery panels -- but search has nothing to index without a document identity, version, and change watermark existing first; this PRD is the prerequisite, not the fix itself (Success metrics: 'this PRD moves it only in combination' with the recipe PRD)."
     },
     {
       "why": 2,
-      "q": "Why does the operator need automatic (not just manual) bans?",
-      "a": "The host already records the evidence of abuse (network_denials, claim_rate_events) but nothing acts on it -- an operator asleep during a flood has no remedy until they notice and hand-type admin.ban.add."
+      "q": "Why does a document need a version and a per-tenant seq watermark, not just an overwrite-in-place KV value the way host.state already works?",
+      "a": "The indexer user story needs to answer 'what changed since I last looked' without scanning every document on every tick -- a per-tenant monotonic seq bumped only on a real change (requirement 1) is a changefeed a search index can page through with list {since}, the same shape meter_events/ban_hits already use for their own append-only event logs, just applied to a mutable-with-history resource instead."
     },
     {
       "why": 3,
-      "q": "Why an in-memory cache rather than a query per enforcement check?",
-      "a": "Requirement 6/AC10: enforcement runs on every signup, every authenticated call, every claim route, every inbound hook -- a SQL round trip on that hot path would add real latency at scale (10k active bans, 1000 requests, p99 < 1ms), where a HashMap lookup costs nothing."
+      "q": "Why store extracted text separately from raw content, computed once at put time, rather than extracting on every get?",
+      "a": "Requirement 3's own wording -- 'the extracted text is what search will index and what get {text: true} returns' -- means the search PRD will read this same stored text on a hot indexing path; computing it once at write time (the same 'the write is where the expensive/authoritative work happens' shape host.export's tar-gz build already follows) keeps every later read O(1) instead of repeating JSON-flatten/CSV-parse work per read."
     },
     {
       "why": 4,
-      "q": "Why is reason hidden by default (public: false) rather than always returned?",
-      "a": "PRD Open question, drafted answer: an operator's free-text reason can name internal detail (an IP range, a customer's behavior) an agent should not see reflected back in its own error; public: true is an explicit opt-in for the cases where surfacing it helps (e.g. so a legitimate but misbehaving agent understands why)."
+      "q": "Why reject a sniffed binary format (e.g. image/png) even when the caller never declared a mime at all, rather than defaulting silently to text/plain?",
+      "a": "AC8's own scenario is exactly this: no explicit mime, and the document is refused naming the allowed mimes. A document store whose 'text' extraction defaulted to lossy-decoding arbitrary binary bytes as UTF-8 would silently corrupt exactly the documents most likely to be a mistake (a caller who meant to attach an image), and would poison the search index the next PRD builds on top of this one."
     },
     {
       "why": 5,
-      "q": "Why does subject_kind: \"key\" hash the operator-supplied raw key before storing it, rather than storing it verbatim like addr/email_domain?",
-      "a": "Every other credential this crate persists (tenants.key_hash, claim_codes.code_hash, admin_audit.actor_key_id) is hash-at-rest, never plaintext -- a bans row is queried on every authenticated call and would otherwise become a second place a live tenant key sits in the clear, undermining the same guarantee key rotation/redaction elsewhere in the crate depends on."
+      "q": "Why keep blobs in a table (document_blobs) instead of the filesystem, when 2 MiB documents could get large in aggregate?",
+      "a": "Technical considerations: 'blobs are stored in SQLite (no filesystem paths) so backup and export cover them' -- the same reasoning tables.rs's own per-tenant SQLite files and tenant_state_rows's JSON blobs already follow in this crate; a filesystem path would need its own backup/restore story and its own tenant-delete-cascade path instead of getting both for free from the existing mcphost.db ON DELETE CASCADE."
     }
   ],
   "created_at": "2026-09-25T00:00:00Z",
@@ -256,6 +259,10 @@
     {
       "question": "This card is now regenerated for PRD-mcphost-abuse-guard-ban-list, an entirely different feature (a per-subject ban list: key/addr/email_domain, manual + automatic, in-memory-cached enforcement) from PRD-mcphost-admin-schema-contract (the admin row-shape contract) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught repeatedly in this card's own history if left byte-for-byte. Several build-time decisions had no single PRD-mandated answer: (1) what form a subject_kind: \"key\" ban's subject takes at rest, given the PRD names no wire shape for it; (2) migration 0033's network_denials table has no tenant/subject column at all, so requirement 4(a)'s per-tenant windowed count has nothing to group by; (3) bans.hits is a lifetime counter, but healthz's own AC11 asks for a WINDOWED bans.hits_24h; (4) AC4's own wording (\"if the alerting registry is present\") assumes a registry this crate doesn't have; (5) whether admin.ban.remove should hard-delete or soft-delete, given AC7 asks for both actions to be audited.",
       "resolution": "Fixed in place: root_motivation, user_persona, unfakeable_metric, all 12 acceptance_criteria (11 with real tests/banlist_ac0N_*.rs pointers, AC12 marked deferred with a concrete operator-provisioned reason), scope, non_goals, hard_constraints.additional, and five_whys_trace were rewritten from PRD-mcphost-abuse-guard-ban-list's own Problem statement, User stories, Requirements, and Acceptance criteria sections; agent/test-map.json's ac_test_map was updated to this PRD's own AC-to-test mapping in the same build, with the prior mcphost_admin_schema_contract map archived under ac_test_map_by_prefix.adminschemacontract so nothing already-shipped is lost. On the five build-time decisions: (1) subject_kind: \"key\" always normalizes to the sha256 hex of the raw key (bans::normalize_subject), the same hash-at-rest form tenants.key_hash already uses -- see hard_constraints.additional.key_subject_is_always_the_sha256_hash_never_the_raw_key. (2) migration 0035 adds an additive nullable network_denials.tenant_id column and threads it through record_network_denial's two existing call sites (both already had a tenant in scope), rather than inventing a parallel per-tenant denial log. (3) a small ban_hits(ban_id, created_unix) event-log table (same shape as network_denials itself) is written alongside every bans.hits increment, purely to answer the windowed healthz question the lifetime counter can't. (4) confirmed by grep that no alerting-registry concept exists anywhere in this crate at HEAD, so AC4's alert clause is vacuously satisfied and left undocumented-but-explained rather than faked with a stub registry -- see hard_constraints.additional.no_alerting_registry_exists_so_ac4s_alert_half_is_vacuous. (5) hard-delete, matching Db::delete_tenant's own precedent -- AC7's audit requirement is satisfied by the admin_audit rows dispatch_admin_tool already appends for both admin.ban.add and admin.ban.remove, independent of whether the bans row itself survives."
+    },
+    {
+      "question": "This card is now regenerated for PRD-mcphost-document-store, an entirely different feature (a per-tenant document store) from PRD-mcphost-abuse-guard-ban-list (per-subject bans) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught by reviewer-agent many times in this card's own history (see the entries above) if left byte-for-byte. This PRD also carries its own Open Questions table with one entry due 'at build', owner Joe: whether docs_bytes_max counts raw bytes or raw + extracted text (drafted: raw). Three further build-time decisions had no PRD text to settle them directly: (1) requirement 6 names 'MCPHOST_DOCS_ENDPOINT (the in-process loopback the state helpers use)' but no such env var, or any real network loopback, exists anywhere in this codebase for mcphost.state/mcphost.table either; (2) AC3's exactly-2-MiB put and AC6's plan-quota override cannot be exercised through the real MCP transport at all (MAX_REQUEST_BODY_BYTES is a pinned, already-shipped 1 MiB cap smaller than MCPHOST_DOC_MAX_BYTES's 2 MiB default, and TestServer hands back an un-mutable Arc<AppState>); (3) AC6 names two distinct wire codes (quota_docs, quota_docs_bytes) where tenant_state.rs's own analogous check uses one generic code plus a data field.",
+      "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence: no reviewer block yet, but the same staleness would recur if left byte-for-byte. root_motivation/scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional were rewritten from this PRD's own Problem statement, Goals, Non-goals, User stories, and Technical considerations sections; acceptance_criteria's twelve entries point at the real tests/docstore_ac0[1-9]_*.rs / tests/docstore_ac1[01]_*.rs files (AC12 is Live, deferred, same convention as every prior PRD's own Live AC -- see the share-a-tool-not-a-key/tenant-data-export entries above); agent/test-map.json's ac_test_map was repointed to a new docstore prefix and the prior banlist mapping preserved under ac_test_map_by_prefix rather than deleted. On the four decisions: the byte-quota open question shipped as the PRD's own drafted answer (raw content bytes, not raw + text); MCPHOST_DOCS_ENDPOINT is a fixed sentinel string set via merge_env purely for a sandboxed tool to detect the channel is available, not a real address -- the actual channel is DocsSidecarBridge, the same in-process stdin/stdout sidecar protocol mcphost.state/mcphost.table already use; AC3 and AC6 call docs::doc_put directly against a new tests/common::bare_state helper (an owned, directly-mutable AppState), the same shape tables.rs's own table_quota_refuses_past_tables_max unit test already uses for the analogous case, rather than being exercised over a transport cap this PRD has no authority to raise; and quota_docs/quota_docs_bytes shipped as two distinct AppError::Structured codes, taking AC6's own literal wording as the wire contract rather than reusing state_quota_exceeded's generic-code-plus-data-field shape."
     }
   ]
 }

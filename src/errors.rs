@@ -339,6 +339,15 @@ impl AppError {
                 // already uses for the analogous KV-store rejections.
                 "table_schema_violation" | "table_not_found" | "table_query_rejected"
                 | "table_bound_exceeded" | "table_already_exists" => ErrorCode::INVALID_PARAMS,
+                // PRD-mcphost-document-store P0 requirements 2-5: a too-large
+                // put, an unsupported mime, or either quota overrun are all
+                // caller-input problems, same INVALID_PARAMS bucket as the
+                // `table_*`/`state_*` groups above; `docs_not_found` mirrors
+                // `table_not_found`'s own RESOURCE_NOT_FOUND.
+                "docs_too_large" | "docs_mime_unsupported" | "quota_docs" | "quota_docs_bytes" => {
+                    ErrorCode::INVALID_PARAMS
+                }
+                "docs_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
                 // PRD-mcphost-agent-directory requirement 3 (AC3/AC9): a
                 // handle collision or a claim against the reserved list is
                 // the same caller-input problem as the `table_*`/`state_*`

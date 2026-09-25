@@ -204,6 +204,26 @@ mod compose_ac8_tool_test_dry_run;
 mod consent_ac01_ac02_ac03_ac04_contact_lifecycle;
 #[path = "consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox.rs"]
 mod consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox;
+#[path = "docstore_ac01_first_put_returns_version1_seq1.rs"]
+mod docstore_ac01_first_put_returns_version1_seq1;
+#[path = "docstore_ac02_put_bumps_version_noop_on_identical_content.rs"]
+mod docstore_ac02_put_bumps_version_noop_on_identical_content;
+#[path = "docstore_ac03_size_cap_rejects_over_2mib_accepts_exactly.rs"]
+mod docstore_ac03_size_cap_rejects_over_2mib_accepts_exactly;
+#[path = "docstore_ac04_extraction_json_and_csv.rs"]
+mod docstore_ac04_extraction_json_and_csv;
+#[path = "docstore_ac05_list_since_includes_deleted.rs"]
+mod docstore_ac05_list_since_includes_deleted;
+#[path = "docstore_ac06_quota_docs_and_docs_bytes.rs"]
+mod docstore_ac06_quota_docs_and_docs_bytes;
+#[path = "docstore_ac07_put_bytes_metering_event.rs"]
+mod docstore_ac07_put_bytes_metering_event;
+#[path = "docstore_ac08_unsupported_mime_by_content_sniff.rs"]
+mod docstore_ac08_unsupported_mime_by_content_sniff;
+#[path = "docstore_ac10_purge_older_than_versions.rs"]
+mod docstore_ac10_purge_older_than_versions;
+#[path = "docstore_ac11_export_includes_documents.rs"]
+mod docstore_ac11_export_includes_documents;
 #[path = "envelope_ac1_http_declared_output_promoted.rs"]
 mod envelope_ac1_http_declared_output_promoted;
 #[path = "envelope_ac4_tool_test_reports_missing_declared_output.rs"]

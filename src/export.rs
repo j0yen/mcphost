@@ -199,16 +199,21 @@ fn add_entry(
 /// `tools/<name>/v1/{source,config.json}` for the current version (P0
 /// requirement 1's "all kept versions once tool-versions ships" is
 /// explicitly deferred: `tool_versions` doesn't exist yet), `state/<key>.json`
-/// per stored key, `secrets.txt` (names only), `runs.jsonl`/`threads.jsonl`
-/// (metadata only -- neither line ever carries a stored run result or
-/// message body's full attachment, just the same fields `host.runs.list`/
-/// `host.msg.inbox` already surface), and `usage.json`.
+/// per stored key, `documents/<id>.json` per live document (PRD-mcphost-
+/// document-store AC11: the tenant's documents with their current version
+/// text, not every kept version -- old versions are `host.docs.purge`'s
+/// concern, not the export's), `secrets.txt` (names only),
+/// `runs.jsonl`/`threads.jsonl` (metadata only -- neither line ever carries
+/// a stored run result or message body's full attachment, just the same
+/// fields `host.runs.list`/`host.msg.inbox` already surface), and
+/// `usage.json`.
 #[allow(clippy::too_many_arguments)]
 fn build_tar_gz(
     manifest: &[Value],
     tools: &[ToolRow],
     secret_names: &[String],
     state_rows: &[(String, String, i64)],
+    documents: &[(String, String, i64, String)],
     run_rows: &[RunRow],
     messages: &[MessageRow],
     usage: &Value,
@@ -232,6 +237,13 @@ fn build_tar_gz(
 
     for (key, value_json, _updated_unix) in state_rows {
         add_entry(&mut builder, &format!("state/{key}.json"), value_json.as_bytes())?;
+    }
+
+    // AC11: one file per live document, its current version's id/name/
+    // version/extracted text.
+    for (id, name, version, text) in documents {
+        let doc_json = to_json_bytes(&json!({"id": id, "name": name, "version": version, "text": text}))?;
+        add_entry(&mut builder, &format!("documents/{id}.json"), &doc_json)?;
     }
 
     // AC1: names only, never values -- `secret_names` already comes from
@@ -309,6 +321,7 @@ async fn build_archive(
     }
     let secret_names = state.db.list_secret_names(tenant.id).await?;
     let state_rows = state.db.state_kv_list(tenant.id, None, 100_000).await?;
+    let documents = state.db.documents_for_export(tenant.id).await?;
     let run_rows = state.db.list_runs(tenant.id, None, None, None, 1000).await?;
     let messages = state.db.msg_inbox(tenant.id, None, 1000, false).await?;
     let usage = crate::control::usage(state, tenant, &json!({})).await?;
@@ -327,6 +340,7 @@ async fn build_archive(
         &tools,
         &secret_names,
         &state_rows,
+        &documents,
         &run_rows,
         &messages,
         &usage,

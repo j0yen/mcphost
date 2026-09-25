@@ -1051,6 +1051,74 @@ pub fn wasm_fixture_b64(name: &str) -> String {
     base64::engine::general_purpose::STANDARD.encode(bytes)
 }
 
+/// PRD-mcphost-document-store AC3/AC6: an owned (not `Arc`-wrapped)
+/// `AppState` over a scratch data dir, the same literal `tables.rs`'s own
+/// `#[cfg(test)]` `bare_state()` builds -- duplicated here (rather than
+/// imported) because that one lives in the lib crate's own unit tests,
+/// unreachable from this integration-test crate. Needed for two AC shapes
+/// `TestServer`'s real HTTP transport can't exercise: a `put` at/over
+/// `MCPHOST_DOC_MAX_BYTES` (2 MiB by default), which is bigger than the
+/// unrelated, already-pinned `MAX_REQUEST_BODY_BYTES` (1 MiB, PRD-mcphost-
+/// call-limits-honest) transport cap every `tools/call` request shares; and
+/// a plan quota overridden to a small number directly on an owned
+/// `AppState.plans` (an `Arc<AppState>`, which `TestServer` hands back,
+/// can't be mutated after construction).
+pub async fn bare_state(dir: &std::path::Path) -> AppState {
+    let db = mcphost::db::Db::open(dir).expect("open db");
+    db.migrate().await.expect("migrate");
+    AppState {
+        db,
+        kinds: mcphost::kinds::KindRegistry::with_builtin(),
+        secrets: SecretBox::from_passphrase("test-secret-key"),
+        admin_key: Some(ADMIN_KEY.to_string()),
+        public_url: "http://127.0.0.1:0".to_string(),
+        call_timeout: mcphost::state::CALL_TIMEOUT,
+        registry: None,
+        http_client: reqwest::Client::new(),
+        sandbox_mechanism: None,
+        wasm_runtime_version: None,
+        tool_run_limiter: mcphost::state::ToolRunLimiter::new(),
+        signup_rate_limit_per_hour: mcphost::state::SIGNUP_RATE_LIMIT_PER_HOUR,
+        plans: mcphost::plans::PlanCatalog::default_catalog(),
+        billing_config: mcphost::billing::BillingConfig::default(),
+        billing_client: std::sync::Arc::new(mcphost::billing::FakeBillingClient::new(
+            mcphost::state::now_unix(),
+        )),
+        checkout_sessions: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        accepted_usage_cache: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        runs: mcphost::runs::RunsRegistry::new(),
+        scheduler: mcphost::triggers::SchedulerStatus::new(),
+        event_counters: mcphost::hooks::EventCounters::new(),
+        event_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
+        deprecations: std::sync::Arc::new(Vec::new()),
+        disk_guard: mcphost::retention::DiskGuard::from_env(),
+        compat_token: None,
+        signup_pause: mcphost::state::SignupPause::from_env(dir),
+        claim_token_ttl_secs: mcphost::state::CLAIM_TOKEN_TTL_SECS_DEFAULT,
+        claim_rate_limit_per_hour: mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
+        email_config: mcphost::email::EmailConfig::default(),
+        email_client: std::sync::Arc::new(mcphost::email::FakeEmailClient::new()),
+        bans: mcphost::bans::BanCache::new(),
+        ban_denials_threshold: mcphost::bans::BAN_DENIALS_THRESHOLD_DEFAULT,
+        ban_claim_rate_threshold: mcphost::bans::BAN_CLAIM_RATE_THRESHOLD_DEFAULT,
+    }
+}
+
+/// A fresh tenant in `state`'s own db, for direct `docs::doc_*` calls
+/// against a [`bare_state`].
+pub async fn bare_tenant(state: &AppState, namespace: &str) -> mcphost::db::Tenant {
+    state
+        .db
+        .create_tenant(
+            format!("{namespace} display"),
+            namespace.to_string(),
+            format!("key-hash-{namespace}"),
+            None,
+        )
+        .await
+        .expect("create_tenant")
+}
+
 /// `CallToolResult::structured` puts the value in `structuredContent`;
 /// fall back to parsing the first text content block for safety.
 pub fn extract_structured(call_result: &Value) -> Value {
