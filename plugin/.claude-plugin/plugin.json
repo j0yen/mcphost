@@ -1,19 +1,19 @@
 {
-  "name": "mcphost",
-  "version": "0.60.11",
-  "description": "Connect to mcphost, sign up with one tool call, and let the agent publish, schedule, and hand the claim link to its human.",
   "author": {
-    "name": "j0yen",
     "email": "hello@mcphost.dev",
+    "name": "j0yen",
     "url": "https://mcphost.dev"
   },
+  "description": "Connect to mcphost, sign up with one tool call, and let the agent publish, schedule, and hand the claim link to its human.",
   "homepage": "https://mcphost.dev",
-  "repository": "https://github.com/j0yen/mcphost",
-  "license": "MIT OR Apache-2.0",
   "keywords": [
     "mcp",
     "mcphost",
     "tools",
     "agent"
-  ]
+  ],
+  "license": "MIT OR Apache-2.0",
+  "name": "mcphost",
+  "repository": "https://github.com/j0yen/mcphost",
+  "version": "0.60.12"
 }

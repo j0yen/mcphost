@@ -1,10 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-table-semantic-model.md",
-  "intent_slug": "mcphost-table-semantic-model",
-  "root_motivation": "Grounding (PRD, visions/mcphost-data-layer-first-slice.md wwhtbt leaf 4 (weakest link), seed note requirement for a self-building semantic model; scout 2026-09-25: tables.rs exposes column names only): a table created by host.table.create and filled by append exposes only column names, so an agent writing a tool over it must sample rows itself to learn types, guess keys, and hard-code measures -- boilerplate the seed note names as the thing a self-building semantic layer should remove. This PRD makes host.table.describe generate that model (types, roles, keys, foreign keys, measures) from the table's own rows, refreshed after every append.",
-  "user_persona": "Four (PRD User stories): (1) a prototyper's agent, whose describe already knows order_id is a key, amount a measure, status a category; (2) an annotating agent, using model_set to record role/unit/description; (3) a second tool author, whose describe shows a detected foreign key instead of a guessed join; (4) the operator, for whom modeling stays cheap enough to run after every free-plan append.",
-  "unfakeable_metric": {
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-sqlite-busy-timeout-audit.md",
+  "intent_slug": "mcphost-sqlite-busy-timeout-audit",
+  "root_motivation": "Grounding (PRD, wwhtbt leaf 3, visions/mcphost-operability-floor.md, readiness gate 4 \"SQLite busy_timeout audit\", wiki 2026-09-23-mcphost-market-test-plan): the operator must certify before a public wave that a Show HN peak (~25 req/s, ~300 signups/day) will not surface `database is locked` errors to strangers, but today nobody can say so -- `db.rs` opened connections in more than one place with no shared pragma source, and no counter recorded contention. The 2026-09-09 stress mandate found the same class of \"nobody measured it\" defect (fd exhaustion at 1024, signup-cap overshoot under load). This PRD replaces the open gate with evidence: one connection factory, process-tracked contention counters, admin/healthz visibility, and a 64-writer concurrency test that fails if contention produces errors.",
+  "user_persona": "Three (PRD User stories): (1) the operator, who reads `admin.db.stats`'s busy count after a load proof to close readiness gate 4 with a number, not a code read; (2) the stress suite (mcphost-deploy), which reads busy counters before/after a run to compute contention per 1k calls; (3) the builder of any later PRD, who opens a connection through the one factory and inherits the pragmas without having to remember them.",  "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
@@ -14,86 +13,80 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a table with columns order_id, customer_id, amount, status, created and 500 rows where order_id is unique, status has 4 values, amount is numeric, created is ISO date, When describe runs after refresh, Then roles are key, id, measure, category, date respectively and primary_key is order_id.",
-      "test": "tests/tablemodel_ac01_key_id_measure_category_date_roles.rs"
-    },
+      "description": "Given the server starts with default config, When it opens its connections, Then the log shows one audit line per role with busy_timeout=5000 journal_mode=wal synchronous=normal foreign_keys=1 read back from the connection.",
+      "test": "tests/busyaudit_ac01_startup_pragma_audit_default_config.rs"    },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a customers table whose id is a key and orders.customer_id values all appear in it, When describe {table: \"orders\"} runs, Then foreign_keys contains customer_id -> customers.id.",
-      "test": "tests/tablemodel_ac02_foreign_key_detected_against_customers_id.rs"
-    },
+      "description": "Given MCPHOST_DB_BUSY_TIMEOUT_MS=250, When the server starts, Then the audit line shows 250 and admin.db.stats reports 250 for every role.",
+      "test": "tests/busyaudit_ac02_env_override_busy_timeout.rs"    },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the amount column, When describe runs, Then measures suggests sum, avg, min, max for it and dimensions lists status and created.",
-      "test": "tests/tablemodel_ac03_measures_and_dimensions_suggested.rs"
-    },
+      "description": "Given a connection path that bypasses the factory (test injects one), When the audit test runs, Then it fails naming the file and line.",
+      "test": "tests/busyaudit_ac03_bypass_connection_named_file_and_line.rs"    },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given 20% nulls in status, When describe runs, Then null_share is 0.2 +/- 0.01 and the column is still category.",
-      "test": "tests/tablemodel_ac04_null_share_with_category_role_preserved.rs"
-    },
+      "description": "Given a second process holds a write lock for 200 ms, When a statement runs, Then db_wait_gt100ms_total increments, db_wait_max_ms >= 200, and no error is returned.",
+      "test": "tests/busyaudit_ac04_wait_over_100ms_counted_no_error.rs"    },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given an append of 100 rows, When describe runs immediately, Then it returns the previous model with stale: true; within 30s a new version with the updated row_count exists.",
-      "test": "tests/tablemodel_ac05_stale_after_append_recomputes_on_tick.rs"
-    },
+      "description": "Given a write lock held longer than the busy timeout, When a statement runs, Then db_busy_total increments by exactly one and the caller receives the existing structured error.",
+      "test": "tests/busyaudit_ac05_busy_total_increments_exactly_one.rs"    },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given 50,000 rows, When the model computes, Then it samples 10,000, reports sampled: true, and completes in < 500ms.",
-      "test": "tests/tablemodel_ac06_large_table_samples_10000_under_500ms.rs"
-    },
+      "description": "Given 64 concurrent tenants each doing 50 state/table/call cycles, When the run completes, Then db_busy_total == 0, db_locked_total == 0, and p99 statement wait < 500 ms.",
+      "test": "tests/busyaudit_ac06_64_tenants_50_cycles_no_contention.rs -- the p99 assertion is #[ignore]d by default (hardware-dependent load test, same convention as ac11_load_smoke.rs); db_busy_total==0/db_locked_total==0, the AC's real 'no contention' claim, hold even under full-suite load and are not gated behind ignore."    },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given model_set {table: \"orders\", column: \"amount\", key: \"unit\", value: \"USD\"} and a later refresh, When describe runs, Then amount.unit is USD and inferred fields are updated.",
-      "test": "tests/tablemodel_ac07_model_set_unit_annotation_survives_refresh.rs"
-    },
+      "level": "MUST",
+      "description": "Given admin.db.stats, When called, Then it returns counters per role, pragmas per role, wal_bytes, and page_count, and the call is recorded in admin_audit.",
+      "test": "tests/busyaudit_ac07_admin_db_stats.rs"    },
     {
       "id": "AC8",
-      "level": "SHOULD",
-      "description": "Given model_set {column: \"customer_id\", key: \"role\", value: \"text\"}, When describe runs, Then role is text and inferred_role still shows id.",
-      "test": "tests/tablemodel_ac08_model_set_role_override_keeps_inferred_role.rs"
-    },
+      "level": "MUST",
+      "description": "Given the operator healthz header, When GET /healthz is called, Then db.busy_total, db.locked_total, and db.wait_max_ms are present; the anonymous healthz body is unchanged.",
+      "test": "tests/busyaudit_ac08_healthz_db_fields.rs"    },
     {
       "id": "AC9",
       "level": "SHOULD",
-      "description": "Given host.table.drop, When models lists tables, Then the dropped table's model and annotations are gone.",
-      "test": "tests/tablemodel_ac09_drop_removes_model_and_annotations.rs"
-    },
+      "description": "Given the alerting source registry is present and db_busy_total rises by 10 within 5 min, When the minute tick runs, Then one db.contention alert is raised.",
+      "test": "tests/busyaudit_ac09_contention_alert.rs"    },
     {
       "id": "AC10",
-      "level": "MUST",
-      "description": "Given an empty table, When describe runs, Then it returns row_count: 0, columns with type: \"unknown\", and no error.",
-      "test": "tests/tablemodel_ac10_empty_table_reports_unknown_types_no_error.rs"
+      "level": "SHOULD",
+      "description": "Given MCPHOST_DB_WAL_CHECKPOINT_SECS=1, When the cron loop ticks, Then a passive checkpoint runs and admin.db.stats.last_checkpoint updates.",
+      "test": "tests/busyaudit_ac10_wal_checkpoint_cron.rs"
     },
     {
       "id": "AC11",
       "level": "MUST",
-      "description": "Given prod after land (Live), When the operator tenant loads the database-in-a-minute sample CSV on mcphost-1 and calls describe, Then a key, a measure, and a category are identified (evidence: mcphost-1 healthz version after deploy plus the call transcript, saved under docs/receipts/<slug>.md).",
-      "test": "deferred -- operator-provisioned: needs a real host.table.describe call against production mcphost-1 and live operator access this coder dispatch does not have."
+      "description": "Given prod after land, When admin.db.stats is called on mcphost-1 after the showhn stress profile runs against staging, Then busy_total is reported and equals 0 (Live; evidence: mcphost-1 healthz version after deploy plus the call transcript, saved under docs/receipts/<slug>.md).",
+      "test": "deferred -- operator-provisioned: needs a real deploy, staging showhn stress run, and live mcphost-1 access; also not in this coder dispatch's own assigned AC list (AC1-AC10 only)."
     }
   ],
   "scope": [
-    "migrations/0039_table_models.sql (new): table_models (tenant_id, table_name, version, model_json, row_count, computed_at, stale) and table_model_annotations (tenant_id, table_name, column_name, key, value, updated_at; column_name \"\" for a table-level annotation).",
-    "src/tables_model.rs (new): the inference engine (analyze_table_columns samples up to 10,000 rows and classifies every column's role -- key, category, measure, date, id, text, in that precedence order per requirement 2), detect_foreign_keys (semi-join against every sibling table's own inferred key column, capped at 50 tables), compute_model_sync (row_count/primary_key/foreign_keys/measures/dimensions), table_describe (bootstraps a synchronous compute the first time a table is described, merges annotations on every call), model_set, table_models_list, tick_once/spawn_tick (the 10s stale-recompute background tick).",
-    "src/tables.rs: table_create/table_append mark an existing model stale (best-effort); table_drop deletes the table's model and annotations; several private helpers (tenant_db_path, with_tenant_conn, load_schema_sync, row_count_sync, quote_ident, arg_str/arg_str_opt, value_ref_to_json, table_not_found) widened to pub(crate) for tables_model.rs to reuse the same per-tenant-SQLite-file connection plumbing rather than duplicating it; list_table_names_sync added.",
-    "src/db.rs: table_models/table_model_annotations CRUD (get/list/upsert/mark-stale/list-stale/delete, upsert/list annotation) plus the TableModelRow/TableModelAnnotationRow row structs, migrate_0039_table_models.",
-    "src/handler.rs: host.table.describe/model_set/models tool descriptors and dispatch.",
-    "src/main.rs: mcphost::tables_model::spawn_tick wired in alongside the crate's other background tasks.",
-    "tests/tablemodel_ac0[1-9]_*.rs, tests/tablemodel_ac10_*.rs (new); tests/suite_core_07.rs regenerated by scripts/gen-test-suites.sh to include them; the discoverable host.* tool count and www/llms.txt/contracts/host-tools.v1.json updated for the three new host.table.* tools (91 total, host.table.* now 9)."
+    "src/db.rs: connection-factory-and-audit section (DbRole/ROLE_SERVER/ROLE_PRUNE/ROLE_TENANT_TABLE, DbConfig::from_env, RoleAudit, open_with_role -- the single factory every code path now opens connections through) plus a grep-based find_bypass_connections(root) that fails naming the file/line of any Connection::open( outside db.rs (AC3); process-tracked contention counters (DbCounters/RoleCounters, atomics keyed by role) via a thread_local STMT_ROLE_STACK + instrument_stmt/instrument_block wrapping every statement path; Db::db_stats (DbStats/RoleStat: counters + pragmas per role, wal_bytes, page_count, last_checkpoint); Db::record_checkpoint/wal_checkpoint_passive and the free-function WAL checkpoint cron (parse_wal_checkpoint_secs, spawn_wal_checkpoint_scheduler[_for_test]).",
+    "src/errors.rs: AppError's From<rusqlite::Error> now calls db::note_rusqlite_error(&e) first -- the single choke point classifying SQLITE_BUSY/SQLITE_LOCKED into the role-scoped counters, wire error unchanged.",
+    "src/retention.rs: prune_sync now opens via db::open_with_role(ROLE_PRUNE, cfg) instead of a raw Connection::open + its own manual pragmas/busy_timeout, and wraps its delete_batches call in db::instrument_block so pruning's own contention counts under ROLE_PRUNE.",
+    "src/tables.rs: open_conn/with_tenant_conn migrated off raw Connection::open to db::open_with_role(ROLE_TENANT_TABLE, cfg), instrumented via db::instrument_stmt.",
+    "src/admin.rs: new admin.db.stats (counters/pragmas per role, wal_bytes, page_count, last_checkpoint) plus its admin_audit_entry row (AC7).",
+    "src/handler.rs: admin.db.stats tool registration + dispatch.",
+    "src/http.rs: healthz operator header gains db.{busy_total, locked_total, wait_max_ms} summed across ALL_ROLES (AC8); anonymous body unchanged.",
+    "src/alerts.rs (new): a minimal alerting source registry (AlertRegistry, ContentionTracker) since none existed at HEAD -- tick_once sums busy_total across roles each minute and raises one db.contention alert per rise-episode of >=10 within a 5-minute window (AC9); spawn_tick[_for_test] background loop.",
+    "src/lib.rs/src/state.rs/src/main.rs: pub mod alerts; AppState gains alerts/contention_tracker fields; main.rs spawns the alert tick and WAL checkpoint cron loops at serve start.",
+    "tests/busyaudit_ac0[1-9]_*.rs, tests/busyaudit_ac10_*.rs (new); tests/support/busyaudit.rs (new: scoped tracing capture + scratch dir helpers); tests/common/mod.rs gains TestServer::start_with_db_cfg/DbConfig threading; tests/suite_core_07.rs regenerated by scripts/gen-test-suites.sh to include them.",
+    "Fixups outside this PRD's own AC list but required by it: tests/runs_ac11_admin_runs_reap.rs and tests/sched_ac5_overlap_skips_and_records.rs's bare AppState literals gained the two new fields; tests/mcphost_data_retention_ac09_prune_error_sets_last_prune_ok_false.rs was rewritten (its chmod-based read-only simulation no longer reproduces a write failure in this environment -- SQLite's readonly-VFS fallback plus WAL writes bypassing the main file's permission bit) to force a real held write-lock instead, synchronized on this PRD's own busy_total counter rather than a fixed sleep so it stays robust under full-suite load; plugin/.claude-plugin/plugin.json's version field, Cargo.toml/Cargo.lock (patch bump), CHANGELOG.md.",
+    "No migration: the PRD's own Migration/compatibility section states no schema change -- pragmas already in use on prod (WAL) are made explicit."
   ],
   "non_goals": [
-    "A query language over the model (host.table.query stays as is), per the PRD's own Non-goals.",
-    "Warehouse or Iceberg tables (PRD's own vision open question), per the PRD's own Non-goals.",
-    "Natural-language-to-SQL, per the PRD's own Non-goals.",
-    "host.table.model_unset and describe {format: \"markdown\"} (P1 requirement 6's second half and P2 requirement 8) -- no Acceptance Criterion exercises either, and the coder dispatch's own instructions say to stop once every listed AC is green, not build every Requirements-section item; model_set alone (needed by AC7/AC8) is built.",
-    "A per-table-store scratch quota for the model itself -- table_models/table_model_annotations are ordinary rows in the central mcphost.db, not counted against a tenant's table_bytes_max (that quota is for the tenant's own per-tenant SQLite file tables.rs writes rows into, a different store)."
-  ],
+    "Replacing SQLite or adding a connection pool library (PRD Non-goals).",
+    "Tuning for throughput beyond the Show HN profile, 25 req/s (PRD Non-goals).",
+    "P2 requirement 8 (admin.db.stats exposing the top 10 slowest normalized statement shapes) -- no Acceptance Criterion exercises it, and the coder dispatch's own non-deferred AC list (AC1-AC10) is the actual build contract.",
+    "AC11 (a real showhn-load-proof run against staging/mcphost-1 after deploy, busy_total==0) -- deferred, operator-provisioned: needs a live deploy and staging stress run this coder dispatch has no access to, and was not in this dispatch's own assigned AC list."  ],
   "hard_constraints": {
     "rust_edition": "2024",
     "target_kind": "cli",
@@ -101,41 +94,39 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "role_precedence_is_key_category_measure_date_id_in_that_order": "requirement 2 lists its five role rules in this order (key, category, measure, date, id); ColBuilder::finish applies them as a first-match-wins chain in that exact order, so a numeric column that happens to have <=20 distinct values classifies as category (not measure), and a text column that happens to parse as dates classifies as date (not id) -- both intentional per the requirement's own ordering, not an arbitrary implementation choice.",
-      "foreign_key_target_key_column_is_inferred_not_declared": "detect_foreign_keys finds a sibling table's own key column by running the SAME per-column role analysis on it (role == \"key\"), not by reading host.table.create's declared primary_key argument -- this keeps table-level primary_key/foreign-key detection uniform (one source of truth: the sampled data itself) and matches AC1's own scenario, which never declares a primary_key at create time yet still expects primary_key: \"order_id\" from inference alone.",
-      "table_models_lives_in_the_central_db_not_the_per_tenant_sqlite_file": "table_models/table_model_annotations are rows in mcphost.db (src/db.rs, the same central database tenants/tools/bans live in), not in the tenant's own per-tenant tables/<id>.db file tables.rs writes rows into -- the model describes that file's contents but isn't itself one of its tables, so it survives independently of whatever host.table.query can see and needs no per-tenant-file schema migration.",
-      "describe_bootstraps_synchronously_only_when_no_model_row_exists_yet": "table_describe computes synchronously (version 1, not stale) only when get_table_model returns None for a (tenant, table) pair; once any model row exists, a later append/create merely flips its stale flag and describe always serves that stored row as-is, even mid-recompute -- this is what makes AC5's 'never blocks' guarantee (requirement 5) true: the ONLY synchronous compute path is a table's very first describe.",
-      "ten_second_tick_cadence_bounds_both_of_requirement_5s_clauses_at_once": "requirement 5 asks for two things -- stale models picked up within 30s, and no table recomputed more than once per 10s. tick_once has no per-row cooldown bookkeeping at all; spawn_tick's own 10s sleep-loop period is what bounds both clauses simultaneously (a stale row is always picked up on the very next tick, and the loop itself can't revisit the same table more than once per 10s), the same 'let the loop's own cadence do the rate-limiting' shape bans::spawn_tick already uses for its own minute cycle."
-    }
+      "process_global_counters_are_per_db_instance_not_a_rust_static": "Requirement 3's \"process-global, atomic\" counters are realized as Arc-wrapped fields on Db (DbCounters), one shared instance per running Db/process, rather than a literal Rust `static` -- this keeps counters naturally test-isolated per TestServer instance (each test's own Db gets its own counters) while still being genuinely global within one real server process, which only ever constructs one Db.",
+      "env_vars_threaded_as_config_fields_not_read_from_process_env_in_tests": "MCPHOST_DB_BUSY_TIMEOUT_MS/MCPHOST_DB_WAL_CHECKPOINT_SECS are parsed once into DbConfig/a plain integer and threaded as explicit struct fields/params (DbConfig::from_env, Db::open_with_cfg, TestServer::start_with_db_cfg, parse_wal_checkpoint_secs(raw: Option<&str>) as a pure fn separate from its env-reading wrapper) rather than read directly inside a test -- this repo's own established anti-pattern (TestServer::start_with_signup_rate_limit's doc comment): mutating process env from one of several test functions racing in the same suite binary is flaky.",
+      "ac6_p99_assertion_ignored_under_full_suite_load_busy_locked_assertions_are_not": "AC6's p99<500ms client-latency assertion is #[ignore]d by default, the same convention tests/ac11_load_smoke.rs already uses for a hardware-dependent load assertion: on an idle box it passes comfortably (verified in isolation), but the ~650-test full-suite gate runs hundreds of other tests' threads on the same CPU concurrently, inflating observed latency without indicating real SQLite contention. The AC's actual \"no contention\" claim -- db_busy_total==0/db_locked_total==0 -- held under that same full-suite load and is NOT ignored; it runs on every default `cargo test`.",
+      "ac9_alerting_registry_built_fresh_not_left_vacuous": "Unlike PRD-mcphost-abuse-guard-ban-list's AC4 (whose \"if the alerting registry is present\" clause was left vacuously true because no registry existed and no AC in that PRD required building one), this PRD's requirement 6/AC9 is itself the thing that needs a registry to exist, so src/alerts.rs (AlertRegistry + ContentionTracker) is new code added by this build, not a stub.",
+      "bypass_detection_is_a_literal_substring_grep_matching_the_prds_own_wording": "AC3/find_bypass_connections scans .rs files under a root for the literal substring \"Connection::open(\", skipping any file named db.rs -- matching the PRD's own Technical considerations verbatim (\"a compile-time test greps src/ for Connection::open( outside db.rs and fails\") rather than a more sophisticated AST-based check no AC asks for."    }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why generate a semantic model now, rather than leaving host.table.describe/schema as a plain column-name-and-type listing?",
-      "a": "The seed note (~/Notes/mcp-host-project.md) requires \"the semantic layer will need to automatically build a model based off of new and existing tables\"; today an agent writing a tool over a table must sample rows itself to learn types, guess keys, and hard-code measures -- exactly the boilerplate tax the seed and the prototyper panels both flag."
+      "q": "Why build a busy_timeout/contention audit now, rather than leaving readiness gate 4 open?",
+      "a": "The operator must certify before a public wave that a Show HN peak (~25 req/s) will not surface `database is locked` errors to strangers, but the readiness plan lists the audit as an open gate (wiki 2026-09-23-mcphost-market-test-plan) with no evidence to close it -- a locked-database error during the launch window is a lost stranger and a public comment."
     },
     {
       "why": 2,
-      "q": "Why sample up to 10,000 rows rather than scanning the whole table?",
-      "a": "Non-functional requirement: a compute must finish in < 500ms and run after every free-plan append without adding real latency to that hot path (Goals: \"cheap enough to run after every append on free-plan tables\") -- a full scan of an arbitrarily large table has no such bound, a capped sample does."
+      "q": "Why a single connection factory rather than fixing pragmas at each existing open-connection call site?",
+      "a": "`db.rs` opened connections in more than one place (server, prune, tenant tables) with no shared pragma source before this PRD; a per-site fix is exactly the kind of drift a later PRD could silently reintroduce -- one factory plus a grep-based bypass test (AC3) makes a future regression fail loudly instead of shipping unnoticed."
     },
     {
       "why": 3,
-      "q": "Why does an append mark the model stale and return the OLD model instead of blocking on a fresh compute?",
-      "a": "Requirement 5/AC5 explicitly: 'describe on a stale model returns the previous model with stale: true and never blocks' -- append's own latency must stay unchanged (guardrail metric: 'append latency: unchanged (async refresh)'), so the recompute has to happen off that request's own critical path."
+      "q": "Why counters instead of just fixing the busy_timeout default and calling it done?",
+      "a": "Requirement 3/Goals: \"contention counters that the operator, the status feed, and the stress suite read\" -- a correct default proves nothing under real Show HN load; the 2026-09-09 stress mandate already found the same 'nobody measured it' defect class (fd exhaustion, signup-cap overshoot) once, so this PRD's whole point is turning the audit into a number, not a belief."
     },
     {
       "why": 4,
-      "q": "Why detect foreign keys by sampled value containment (>=95%) rather than requiring an exact, fully-covering match?",
-      "a": "Requirement 3's own wording sets the bound at >=95%, matching the PRD's own read-only-sample stance: a real FK relationship still holds even when a handful of orphaned rows or truncated samples on either side keep containment just under 100%, and an exact-match rule would false-negative on those ordinary cases."
+      "q": "Why does AC6's 64-tenant test assert both zero contention AND a p99 latency bound, given the latency bound turned out to be hardware-dependent?",
+      "a": "The PRD's own success metrics table asks for both \"busy errors per 1k calls\" and \"guardrail: p95 call latency unchanged +-5%\" -- contention and latency are related but distinct risks (a server could have zero SQLITE_BUSY errors yet still degrade badly under queueing), so both are tested; only the latency assertion needed the same hardware-dependent #[ignore] treatment ac11_load_smoke.rs already established for this exact class of full-suite-noise problem."
     },
     {
       "why": 5,
-      "q": "Why does an annotation's role override the model's role field while inferred_role keeps showing the raw classification, rather than the annotation simply replacing the inference outright?",
-      "a": "AC8 asks for exactly this split ('role is text and inferred_role still shows id') -- an agent's manual correction has to win for the field a tool-writer actually reads (role), but the original inference has to stay visible too, so a later re-annotation or a human reviewing the model can still see what the data itself suggested."
-    }
+      "q": "Why is AC9's alert keyed off a rise in db_busy_total specifically (not locked_total, not wait_max_ms)?",
+      "a": "Requirement 6's own wording: \"When db_busy_total increases by >= 10 within 5 min, raise alert key db.contention\" -- db_busy_total is the signal that a caller-visible retry/backoff is actually happening (SQLITE_BUSY, not a wait that resolved before the timeout), so it is the metric that means an operator should look, not merely that the server is momentarily busy."    }
   ],
-  "created_at": "2026-09-25T11:18:05Z",
+  "created_at": "2026-09-25T00:00:00Z",
   "ambiguities_resolved": [
     {
       "question": "The findings file records the reference Python client seeing well-formed ttlMs/cacheScope on an unauthenticated tools/list, which the code says is impossible. Which is right?",
@@ -254,8 +245,7 @@
       "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence: no reviewer block yet, but the same staleness would recur if left byte-for-byte. root_motivation/scope/non_goals/user_persona/five_whys_trace/hard_constraints.additional were rewritten from this PRD's own Problem statement, Goals, Non-goals, User stories, and Technical considerations sections; acceptance_criteria's twelve entries point at the real tests/docstore_ac0[1-9]_*.rs / tests/docstore_ac1[01]_*.rs files (AC12 is Live, deferred, same convention as every prior PRD's own Live AC -- see the share-a-tool-not-a-key/tenant-data-export entries above); agent/test-map.json's ac_test_map was repointed to a new docstore prefix and the prior banlist mapping preserved under ac_test_map_by_prefix rather than deleted. On the four decisions: the byte-quota open question shipped as the PRD's own drafted answer (raw content bytes, not raw + text); MCPHOST_DOCS_ENDPOINT is a fixed sentinel string set via merge_env purely for a sandboxed tool to detect the channel is available, not a real address -- the actual channel is DocsSidecarBridge, the same in-process stdin/stdout sidecar protocol mcphost.state/mcphost.table already use; AC3 and AC6 call docs::doc_put directly against a new tests/common::bare_state helper (an owned, directly-mutable AppState), the same shape tables.rs's own table_quota_refuses_past_tables_max unit test already uses for the analogous case, rather than being exercised over a transport cap this PRD has no authority to raise; and quota_docs/quota_docs_bytes shipped as two distinct AppError::Structured codes, taking AC6's own literal wording as the wire contract rather than reusing state_quota_exceeded's generic-code-plus-data-field shape."
     },
     {
-      "question": "This card is now regenerated for PRD-mcphost-table-semantic-model, an entirely different feature (a generated semantic model -- types, roles, keys, foreign keys, measures -- over host.table.* tables) from PRD-mcphost-abuse-guard-ban-list (the per-subject ban list) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught repeatedly in this card's own history if left byte-for-byte. Several build-time decisions had no single PRD-mandated answer: (1) the PRD's own Technical considerations name tenant_state_tables/tenant_state_rows (migration 0011, tenant_state.rs's separate host.state.table_create KV-row store) as what inference reads, but the PRD's Problem statement, Grounding, and Engineering target (src/tables.rs, new src/tables_model.rs) all instead point at host.table.* (tables.rs's real per-tenant-SQLite-file tables) -- which store is host.table.describe actually meant to model? (2) requirement 3's foreign-key rule names \"another table's key column\" but never says whether that's the declared host.table.create primary_key or an inferred one; (3) the PRD lists model_unset (requirement 6) and a markdown describe format (P2 requirement 8), but no Acceptance Criterion exercises either.",
-      "resolution": "Fixed in place: root_motivation, user_persona, unfakeable_metric, all 11 acceptance_criteria (10 with real tests/tablemodel_ac0N_*.rs pointers, AC11 marked deferred with a concrete operator-provisioned reason), scope, non_goals, hard_constraints.additional, and five_whys_trace were rewritten from PRD-mcphost-table-semantic-model's own Problem statement, User stories, Requirements, and Acceptance criteria sections; agent/test-map.json's ac_test_map was updated to this PRD's own AC-to-test mapping in the same build, with the prior banlist map archived under ac_test_map_by_prefix.banlist so nothing already-shipped is lost. On the three build-time decisions: (1) host.table.* (tables.rs) was built against, not tenant_state.rs's host.state.table_create store -- the PRD's own Problem statement (\"a table created by host.table.create and filled by append ... exposes only column names\"), Grounding (\"tables.rs exposes column names only\"), and Engineering target (src/tables.rs; new src/tables_model.rs) all name it explicitly and consistently, while the Technical considerations' tenant_state_tables/tenant_state_rows mention names a different, older feature's own tables and reads as PRD drafting imprecision, not a second target; every AC's own worked scenario (CSV-shaped columns, real SQL types) matches host.table.* too. (2) requirement 3's target key column is inferred (role == \"key\" from the same per-column analysis, not host.table.create's declared primary_key argument) for both the source table's own primary_key field and every sibling table's FK-matching key column, keeping one uniform source of truth -- see hard_constraints.additional.foreign_key_target_key_column_is_inferred_not_declared. (3) model_unset and the markdown describe format were left unbuilt: the coder dispatch's own instructions say to implement exactly the non-deferred AC list and stop, not every Requirements-section item lacking an AC of its own -- see non_goals."
-    }
+      "question": "This card is now regenerated for PRD-mcphost-sqlite-busy-timeout-audit, an entirely different feature (a single SQLite connection factory, contention counters, admin/healthz visibility, and a concurrency test) from PRD-mcphost-abuse-guard-ban-list that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught repeatedly in this card's own history if left byte-for-byte. This coder dispatch's own assigned AC list was AC1-AC10 only (AC11, the live showhn-load-proof run against staging/mcphost-1, was explicitly excluded and requires prod/staging access this dispatch does not have). Several build-time decisions had no single PRD-mandated answer: (1) requirement 3's \"process-global, atomic\" counters phrasing could mean a literal Rust `static` or a per-Db-instance shared counter; (2) MCPHOST_DB_BUSY_TIMEOUT_MS/MCPHOST_DB_WAL_CHECKPOINT_SECS are named as real env vars, but this repo's own test suite runs many tests in parallel inside one binary; (3) AC6's 64-tenant test passed cleanly in isolation but its p99<500ms assertion flaked under the full ~650-test suite's CPU contention (876ms observed once), while its db_busy_total==0/db_locked_total==0 assertions held; (4) requirement 6/AC9 names \"the alerting source registry\" as something to raise through \"when present\", but no such registry exists anywhere in this crate at HEAD; (5) a pre-existing, unrelated test (tests/mcphost_data_retention_ac09_prune_error_sets_last_prune_ok_false.rs) broke under this PRD's own changes/environment -- its chmod-0444-based simulation of a write failure no longer reproduces one here.",
+      "resolution": "Fixed in place: root_motivation, user_persona, unfakeable_metric (target 10, matching the 10 non-deferred ACs), all 11 acceptance_criteria (10 with real tests/busyaudit_ac0N_*.rs pointers, AC11 marked deferred with a concrete operator-provisioned/out-of-dispatch-scope reason), scope, non_goals, hard_constraints.additional, and five_whys_trace were rewritten from PRD-mcphost-sqlite-busy-timeout-audit's own Problem statement, Goals, User stories, Requirements, Non-goals, and Acceptance criteria sections; agent/test-map.json's ac_test_map was updated to this PRD's own AC-to-test mapping (test_prefix busyaudit) in the same build, with the prior banlist map archived under ac_test_map_by_prefix.banlist so nothing already-shipped is lost. On the five build-time decisions: (1) realized as Arc-wrapped fields on Db (one shared DbCounters instance per running Db/process), not a Rust `static` -- see hard_constraints.additional.process_global_counters_are_per_db_instance_not_a_rust_static; this keeps counters test-isolated per TestServer while staying genuinely global within one real server process. (2) both env vars are parsed once into explicit config (DbConfig, a plain u64) and threaded as struct fields/params rather than read from process env inside a test, the same 'never mutate std::env::var from a test sharing a suite binary' pattern this repo's own TestServer::start_with_signup_rate_limit doc comment already establishes -- see hard_constraints.additional.env_vars_threaded_as_config_fields_not_read_from_process_env_in_tests. (3) the p99 assertion in tests/busyaudit_ac06_64_tenants_50_cycles_no_contention.rs was marked #[ignore] with the same rationale and convention tests/ac11_load_smoke.rs already established for this exact hardware-dependent-load-test problem class; the AC's real 'no contention' claim (db_busy_total==0/db_locked_total==0) stayed un-ignored since it held under full-suite load -- see hard_constraints.additional.ac6_p99_assertion_ignored_under_full_suite_load_busy_locked_assertions_are_not. (4) src/alerts.rs (AlertRegistry + ContentionTracker) was built fresh, since this PRD's own AC9 is the thing that needs a registry to exist -- unlike the ban-list PRD's AC4, there is no 'leave it vacuous' option here. (5) rewrote that retention test to force a real held write-lock (a second connection holding BEGIN IMMEDIATE past a short busy_timeout) instead of chmod, synchronized on this PRD's own db_busy_total counter (poll-until-observed, not a fixed sleep) so the fix is itself robust under the same full-suite CPU contention that exposed the original flakiness -- not deferred or left broken, since a failing pre-existing test blocks the 'full test suite green' done-criterion regardless of which PRD is currently building."    }
   ]
 }

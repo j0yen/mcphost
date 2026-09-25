@@ -6,10 +6,10 @@
 //! The prune's batched deletes run on their own dedicated SQLite
 //! connection (`retention::prune_sync`), separate from the app's shared
 //! one `host.tool_call` writes through -- both now set `busy_timeout`
-//! (see `Db::open`/`retention::PRUNE_BUSY_TIMEOUT`), so the two
-//! connections genuinely contend for SQLite's single write lock while
-//! this test's concurrent callers race the prune, instead of only ever
-//! serializing through one in-process mutex.
+//! (see `db::open_with_role`, PRD-mcphost-sqlite-busy-timeout-audit), so
+//! the two connections genuinely contend for SQLite's single write lock
+//! while this test's concurrent callers race the prune, instead of only
+//! ever serializing through one in-process mutex.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

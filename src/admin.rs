@@ -399,6 +399,40 @@ pub async fn usage(state: &AppState, args: &Value) -> Result<Value, AppError> {
     }))
 }
 
+/// PRD-mcphost-sqlite-busy-timeout-audit requirement 4 (AC7): counters and
+/// pragmas per [`crate::db::DbRole`], WAL file size, and page count --
+/// `db::Db::db_stats` already assembled the shape, this just serializes
+/// it. Recorded in `admin_audit` (see `admin_audit_entry` below) even
+/// though it's read-only, per AC7's own wording.
+pub async fn db_stats(state: &AppState) -> Result<Value, AppError> {
+    let stats = state.db.db_stats().await?;
+    let roles: Vec<Value> = stats
+        .roles
+        .into_iter()
+        .map(|r| {
+            json!({
+                "role": r.audit.role,
+                "pragmas": {
+                    "busy_timeout": r.audit.busy_timeout,
+                    "journal_mode": r.audit.journal_mode,
+                    "synchronous": r.audit.synchronous,
+                    "foreign_keys": r.audit.foreign_keys,
+                },
+                "busy_total": r.counters.busy_total,
+                "locked_total": r.counters.locked_total,
+                "wait_gt100ms_total": r.counters.wait_gt100ms_total,
+                "wait_max_ms": r.counters.wait_max_ms,
+            })
+        })
+        .collect();
+    Ok(json!({
+        "roles": roles,
+        "wal_bytes": stats.wal_bytes,
+        "page_count": stats.page_count,
+        "last_checkpoint": stats.last_checkpoint.map(crate::state::rfc3339_from_unix),
+    }))
+}
+
 /// PRD-mcphost-python-dependency-policy requirement 6 (AC8): run one
 /// dependency re-audit cycle immediately (the same cycle the daily
 /// scheduler runs) and return its summary -- same on-demand-trigger shape
@@ -791,6 +825,12 @@ pub fn admin_audit_entry(
         // one is required to record admin_audit on every call, mutation or
         // not.
         "admin.oauth.issuers" => Some(("oauth_issuers_list".into(), None, None)),
+        // PRD-mcphost-sqlite-busy-timeout-audit AC7: read-only, but this
+        // AC pins it into `admin_audit` unlike every other read-only
+        // admin.* call (`admin.tenants`/`admin.usage`/`admin.audit_log`
+        // stay absent, same convention `admin.ban.list`'s own comment
+        // above names).
+        "admin.db.stats" => Some(("db_stats".into(), None, None)),
         _ => None,
     }
 }

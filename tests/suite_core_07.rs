@@ -8,6 +8,8 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 mod ci_sandbox_support;
+#[path = "support/busyaudit.rs"]
+mod busyaudit;
 #[path = "support/host.rs"]
 #[allow(dead_code)]
 mod host;
@@ -136,6 +138,26 @@ mod billing_ac10_webhook_mode_mismatch;
 mod billing_ac11_healthz_paying_tenants;
 #[path = "billing_ac13_checkout_reuse.rs"]
 mod billing_ac13_checkout_reuse;
+#[path = "busyaudit_ac01_startup_pragma_audit_default_config.rs"]
+mod busyaudit_ac01_startup_pragma_audit_default_config;
+#[path = "busyaudit_ac02_env_override_busy_timeout.rs"]
+mod busyaudit_ac02_env_override_busy_timeout;
+#[path = "busyaudit_ac03_bypass_connection_named_file_and_line.rs"]
+mod busyaudit_ac03_bypass_connection_named_file_and_line;
+#[path = "busyaudit_ac04_wait_over_100ms_counted_no_error.rs"]
+mod busyaudit_ac04_wait_over_100ms_counted_no_error;
+#[path = "busyaudit_ac05_busy_total_increments_exactly_one.rs"]
+mod busyaudit_ac05_busy_total_increments_exactly_one;
+#[path = "busyaudit_ac06_64_tenants_50_cycles_no_contention.rs"]
+mod busyaudit_ac06_64_tenants_50_cycles_no_contention;
+#[path = "busyaudit_ac07_admin_db_stats.rs"]
+mod busyaudit_ac07_admin_db_stats;
+#[path = "busyaudit_ac08_healthz_db_fields.rs"]
+mod busyaudit_ac08_healthz_db_fields;
+#[path = "busyaudit_ac09_contention_alert.rs"]
+mod busyaudit_ac09_contention_alert;
+#[path = "busyaudit_ac10_wal_checkpoint_cron.rs"]
+mod busyaudit_ac10_wal_checkpoint_cron;
 #[path = "channel_ac01_group_open_and_broadcast_read.rs"]
 mod channel_ac01_group_open_and_broadcast_read;
 #[path = "channel_ac02_non_member_channel_not_found.rs"]

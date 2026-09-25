@@ -2082,6 +2082,14 @@ fn admin_tools() -> Vec<Tool> {
             schema(json!({}), &[]),
         ),
         Tool::new(
+            "admin.db.stats",
+            "SQLite contention counters (busy_total, locked_total, wait_gt100ms_total, \
+             wait_max_ms) and pragmas in force (busy_timeout, journal_mode, synchronous, \
+             foreign_keys) per connection role, plus wal_bytes, page_count, and \
+             last_checkpoint.",
+            schema(json!({}), &[]),
+        ),
+        Tool::new(
             "admin.dependency_reaudit",
             "Run one dependency-advisory re-audit cycle immediately (the same cycle the daily \
              scheduler runs) against every currently-published python tool's stored lock, and \
@@ -2817,6 +2825,7 @@ impl McpHostHandler {
             }
             "admin.usage" => admin::usage(&self.state, &args).await,
             "admin.prune_now" => admin::prune_now(&self.state).await,
+            "admin.db.stats" => admin::db_stats(&self.state).await,
             "admin.dependency_reaudit" => admin::dependency_reaudit(&self.state).await,
             "admin.tool_list" => admin::tool_list(&self.state, &args).await,
             "admin.tenant_verify_namespace" => {
