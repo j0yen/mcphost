@@ -836,6 +836,26 @@ mod synthetic_ac08_admin_tenants_field;
 mod synthetic_ac09_metering_filter;
 #[path = "synthetic_ac10_healthz_paying_real.rs"]
 mod synthetic_ac10_healthz_paying_real;
+#[path = "tablemodel_ac01_key_id_measure_category_date_roles.rs"]
+mod tablemodel_ac01_key_id_measure_category_date_roles;
+#[path = "tablemodel_ac02_foreign_key_detected_against_customers_id.rs"]
+mod tablemodel_ac02_foreign_key_detected_against_customers_id;
+#[path = "tablemodel_ac03_measures_and_dimensions_suggested.rs"]
+mod tablemodel_ac03_measures_and_dimensions_suggested;
+#[path = "tablemodel_ac04_null_share_with_category_role_preserved.rs"]
+mod tablemodel_ac04_null_share_with_category_role_preserved;
+#[path = "tablemodel_ac05_stale_after_append_recomputes_on_tick.rs"]
+mod tablemodel_ac05_stale_after_append_recomputes_on_tick;
+#[path = "tablemodel_ac06_large_table_samples_10000_under_500ms.rs"]
+mod tablemodel_ac06_large_table_samples_10000_under_500ms;
+#[path = "tablemodel_ac07_model_set_unit_annotation_survives_refresh.rs"]
+mod tablemodel_ac07_model_set_unit_annotation_survives_refresh;
+#[path = "tablemodel_ac08_model_set_role_override_keeps_inferred_role.rs"]
+mod tablemodel_ac08_model_set_role_override_keeps_inferred_role;
+#[path = "tablemodel_ac09_drop_removes_model_and_annotations.rs"]
+mod tablemodel_ac09_drop_removes_model_and_annotations;
+#[path = "tablemodel_ac10_empty_table_reports_unknown_types_no_error.rs"]
+mod tablemodel_ac10_empty_table_reports_unknown_types_no_error;
 #[path = "tables_ac07_tenant_delete_cascade.rs"]
 mod tables_ac07_tenant_delete_cascade;
 #[path = "tenant_delete_ac01_cascade_delete.rs"]

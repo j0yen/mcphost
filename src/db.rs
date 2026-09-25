@@ -59,6 +59,7 @@ const MIGRATION_0035: &str = include_str!("../migrations/0035_bans.sql");
 const MIGRATION_0036: &str = include_str!("../migrations/0036_ban_removed_at.sql");
 const MIGRATION_0037: &str = include_str!("../migrations/0037_documents.sql");
 const MIGRATION_0038: &str = include_str!("../migrations/0038_oauth_issuers.sql");
+const MIGRATION_0039: &str = include_str!("../migrations/0039_table_models.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -1196,7 +1197,8 @@ impl Db {
         Self::migrate_0035_bans(&conn)?;
         Self::migrate_0036_ban_removed_at(&conn)?;
         Self::migrate_0037_documents(&conn)?;
-        Self::migrate_0038_oauth_issuers(&conn)
+        Self::migrate_0038_oauth_issuers(&conn)?;
+        Self::migrate_0039_table_models(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -1743,6 +1745,20 @@ impl Db {
     /// conditional `ALTER TABLE` into the same file.
     fn migrate_0038_oauth_issuers(conn: &Connection) -> Result<(), AppError> {
         conn.execute_batch(MIGRATION_0038)?;
+        Ok(())
+    }
+
+    /// PRD-mcphost-table-semantic-model migration 0039 (requirement 1):
+    /// same new-table idempotency guard as 0011/0014/0015/0035 above,
+    /// gated on `table_models`' existence -- `table_model_annotations`
+    /// lands in the same batch, atomically, the first time this runs.
+    fn migrate_0039_table_models(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'table_models'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0039)?;
+        }
         Ok(())
     }
 
@@ -9730,6 +9746,167 @@ impl Db {
         })
         .await
     }
+
+    // ---- PRD-mcphost-table-semantic-model: table_models / annotations ----
+
+    /// requirement 4: the latest stored model for one (tenant, table) pair,
+    /// or `None` when `describe` has never computed one yet -- the caller
+    /// (`tables_model::table_describe`) bootstraps a fresh compute in that
+    /// case rather than blocking on the tick.
+    pub async fn get_table_model(&self, tenant_id: i64, table: String) -> Result<Option<TableModelRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT tenant_id, table_name, version, model_json, row_count, computed_at, stale \
+                 FROM table_models WHERE tenant_id = ?1 AND table_name = ?2",
+                params![tenant_id, table],
+                table_model_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 4: every stored model for a tenant, table name
+    /// ascending -- `host.table.models`' own listing.
+    pub async fn list_table_models(&self, tenant_id: i64) -> Result<Vec<TableModelRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT tenant_id, table_name, version, model_json, row_count, computed_at, stale \
+                 FROM table_models WHERE tenant_id = ?1 ORDER BY table_name",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id], table_model_from_row)?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// Writes a freshly computed model as the next version, `stale: false`
+    /// -- both the bootstrap compute (`describe` on a table with no model
+    /// yet, first version) and [`crate::tables_model::tick_once`]'s
+    /// recompute (next version, replacing the stale row) call this.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upsert_table_model(
+        &self,
+        tenant_id: i64,
+        table: String,
+        version: i64,
+        model_json: String,
+        row_count: i64,
+    ) -> Result<(), AppError> {
+        let computed_at = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO table_models (tenant_id, table_name, version, model_json, row_count, computed_at, stale) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0) \
+                 ON CONFLICT(tenant_id, table_name) DO UPDATE SET \
+                 version = excluded.version, model_json = excluded.model_json, \
+                 row_count = excluded.row_count, computed_at = excluded.computed_at, stale = 0",
+                params![tenant_id, table, version, model_json, row_count, computed_at],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// requirement 5: `append`/`create` call this to mark an existing
+    /// model stale (a table with no model yet has nothing to mark --
+    /// its first `describe` bootstraps a fresh, non-stale compute anyway).
+    pub async fn mark_table_model_stale(&self, tenant_id: i64, table: String) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE table_models SET stale = 1 WHERE tenant_id = ?1 AND table_name = ?2",
+                params![tenant_id, table],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// requirement 5: every stale (tenant_id, table_name, current version)
+    /// triple -- [`crate::tables_model::tick_once`]'s own worklist.
+    pub async fn list_stale_table_models(&self) -> Result<Vec<(i64, String, i64)>, AppError> {
+        self.with_conn(|conn| {
+            let mut stmt =
+                conn.prepare("SELECT tenant_id, table_name, version FROM table_models WHERE stale = 1")?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// AC9: `host.table.drop` removes both the model and every annotation
+    /// for that table -- no orphaned row for `host.table.models` to keep
+    /// showing after the table itself is gone.
+    pub async fn delete_table_model_and_annotations(&self, tenant_id: i64, table: String) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "DELETE FROM table_models WHERE tenant_id = ?1 AND table_name = ?2",
+                params![tenant_id, table],
+            )?;
+            conn.execute(
+                "DELETE FROM table_model_annotations WHERE tenant_id = ?1 AND table_name = ?2",
+                params![tenant_id, table],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// requirement 6: `host.table.model_set` -- `column` is `""` for a
+    /// table-level annotation, matching the migration's default.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upsert_table_model_annotation(
+        &self,
+        tenant_id: i64,
+        table: String,
+        column: String,
+        key: String,
+        value: String,
+    ) -> Result<(), AppError> {
+        let updated_at = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO table_model_annotations (tenant_id, table_name, column_name, key, value, updated_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
+                 ON CONFLICT(tenant_id, table_name, column_name, key) DO UPDATE SET \
+                 value = excluded.value, updated_at = excluded.updated_at",
+                params![tenant_id, table, column, key, value, updated_at],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// requirement 4: every annotation for one table -- `describe` merges
+    /// these over the inferred model.
+    pub async fn list_table_model_annotations(
+        &self,
+        tenant_id: i64,
+        table: String,
+    ) -> Result<Vec<TableModelAnnotationRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT column_name, key, value FROM table_model_annotations \
+                 WHERE tenant_id = ?1 AND table_name = ?2",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id, table], |r| {
+                    Ok(TableModelAnnotationRow {
+                        column_name: r.get(0)?,
+                        key: r.get(1)?,
+                        value: r.get(2)?,
+                    })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
 }
 
 /// requirement 1: one `documents` row -- `docs.rs`'s own business logic
@@ -10022,4 +10199,41 @@ fn oauth_issuer_from_row(r: &Row) -> rusqlite::Result<OauthIssuerRow> {
         last_jwks_at: r.get(6)?,
         jwks_json: r.get(7)?,
     })
+}
+
+/// PRD-mcphost-table-semantic-model requirement 1: one `table_models` row.
+/// `model_json` is the full inferred-plus-annotated model
+/// (`tables_model::TableModel`, serialized) -- kept as opaque text here so
+/// this module doesn't need to know that shape.
+#[derive(Debug, Clone)]
+pub struct TableModelRow {
+    pub tenant_id: i64,
+    pub table_name: String,
+    pub version: i64,
+    pub model_json: String,
+    pub row_count: i64,
+    pub computed_at: i64,
+    pub stale: bool,
+}
+
+fn table_model_from_row(r: &Row) -> rusqlite::Result<TableModelRow> {
+    Ok(TableModelRow {
+        tenant_id: r.get(0)?,
+        table_name: r.get(1)?,
+        version: r.get(2)?,
+        model_json: r.get(3)?,
+        row_count: r.get(4)?,
+        computed_at: r.get(5)?,
+        stale: r.get(6)?,
+    })
+}
+
+/// One `table_model_annotations` row, as
+/// [`Db::list_table_model_annotations`] reads it back. `column_name` is
+/// `""` for a table-level annotation.
+#[derive(Debug, Clone)]
+pub struct TableModelAnnotationRow {
+    pub column_name: String,
+    pub key: String,
+    pub value: String,
 }

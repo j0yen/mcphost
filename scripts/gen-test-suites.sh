@@ -344,7 +344,17 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # again -- caught by the same P0 assertion. 440 -> 444 is the smallest
 # tested raise that re-collapses core's normal buckets to 1, landing the
 # grand total back at 10.
-MAX_PER_SUITE = {"core": 444, "sandbox": 62}
+#
+# PRD-mcphost-table-semantic-model (2026-09-25): this PRD's own ten
+# `tablemodel_ac*.rs` files (also `core`-classified, also no global tracing
+# subscriber) join the same normal bucket, spawning an 11th suite binary
+# again -- caught by the same P0 assertion. The 444 -> 448 raise landed
+# alongside the AC7-10 commits was not actually re-checked against
+# --check afterward and undershot; 448 -> 454 is the smallest tested raise
+# that reproduces the already-committed suite files byte-for-byte and
+# re-collapses core's normal buckets to 1, landing the grand total back
+# at 10.
+MAX_PER_SUITE = {"core": 454, "sandbox": 62}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

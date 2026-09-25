@@ -68,7 +68,7 @@ pub const ROW_CAP: i64 = 1_000;
 /// thread executing it).
 pub const QUERY_TIME_CAP: Duration = Duration::from_secs(5);
 
-const META_TABLE: &str = "_mcphost_meta";
+pub(crate) const META_TABLE: &str = "_mcphost_meta";
 
 /// requirement 1: the small type set `host.table.create`'s `columns`
 /// argument may declare. `Timestamp` is stored as `TEXT` (an RFC 3339
@@ -135,14 +135,14 @@ impl ColumnType {
     }
 }
 
-fn arg_str(args: &Value, name: &str) -> Result<String, AppError> {
+pub(crate) fn arg_str(args: &Value, name: &str) -> Result<String, AppError> {
     args.get(name)
         .and_then(Value::as_str)
         .map(str::to_string)
         .ok_or_else(|| AppError::InvalidArgs(format!("missing required argument '{name}'")))
 }
 
-fn arg_str_opt(args: &Value, name: &str) -> Option<String> {
+pub(crate) fn arg_str_opt(args: &Value, name: &str) -> Option<String> {
     args.get(name).and_then(Value::as_str).map(str::to_string)
 }
 
@@ -174,11 +174,11 @@ fn is_valid_ident(s: &str) -> bool {
 /// belt-and-suspenders alongside [`is_valid_ident`] (which already rejects
 /// `"` outright), the same defense-in-depth stance `host.table.query`'s
 /// three-layer read-only check takes.
-fn quote_ident(s: &str) -> String {
+pub(crate) fn quote_ident(s: &str) -> String {
     format!("\"{}\"", s.replace('"', "\"\""))
 }
 
-fn table_not_found(table: &str) -> AppError {
+pub(crate) fn table_not_found(table: &str) -> AppError {
     AppError::Structured {
         code: "table_not_found",
         message: format!("no table '{table}' is declared for this tenant"),
@@ -228,7 +228,7 @@ fn bound_exceeded(bound: &'static str, limit: i64) -> AppError {
 /// `Db::data_dir()` (the same directory `mcphost.db` lives in) rather than
 /// a second `MCPHOST_DATA_DIR` env read, so tests that point `Db::open` at
 /// a scratch dir automatically get a matching scratch `tables/` dir too.
-fn tenant_db_path(state: &AppState, tenant_id: i64) -> PathBuf {
+pub(crate) fn tenant_db_path(state: &AppState, tenant_id: i64) -> PathBuf {
     state
         .db
         .data_dir()
@@ -264,7 +264,7 @@ fn open_conn(path: &Path) -> Result<Connection, AppError> {
 /// the per-tenant-file analogue of `Db::with_conn`, minus the shared-mutex
 /// guard (each call gets its own `Connection`; there is no cross-call state
 /// to protect beyond what SQLite's own file locking already provides).
-async fn with_tenant_conn<F, T>(path: PathBuf, f: F) -> Result<T, AppError>
+pub(crate) async fn with_tenant_conn<F, T>(path: PathBuf, f: F) -> Result<T, AppError>
 where
     F: FnOnce(&Connection) -> Result<T, AppError> + Send + 'static,
     T: Send + 'static,
@@ -277,13 +277,13 @@ where
     .map_err(|e| AppError::Internal(e.to_string()))?
 }
 
-struct LoadedSchema {
-    columns: BTreeMap<String, ColumnType>,
+pub(crate) struct LoadedSchema {
+    pub(crate) columns: BTreeMap<String, ColumnType>,
     #[allow(dead_code)] // read for completeness; no caller needs it yet beyond append's upsert-free model
-    primary_key: Option<String>,
+    pub(crate) primary_key: Option<String>,
 }
 
-fn load_schema_sync(conn: &Connection, table: &str) -> Result<LoadedSchema, AppError> {
+pub(crate) fn load_schema_sync(conn: &Connection, table: &str) -> Result<LoadedSchema, AppError> {
     let row: Option<(String, Option<String>)> = conn
         .query_row(
             &format!("SELECT schema_json, primary_key FROM {META_TABLE} WHERE name = ?1"),
@@ -310,13 +310,24 @@ fn load_schema_sync(conn: &Connection, table: &str) -> Result<LoadedSchema, AppE
     Ok(LoadedSchema { columns, primary_key })
 }
 
-fn row_count_sync(conn: &Connection, table: &str) -> Result<i64, AppError> {
+pub(crate) fn row_count_sync(conn: &Connection, table: &str) -> Result<i64, AppError> {
     conn.query_row(
         &format!("SELECT COUNT(*) FROM {}", quote_ident(table)),
         [],
         |r| r.get(0),
     )
     .map_err(AppError::from)
+}
+
+/// requirement 3 (foreign-key detection): every table name this tenant has
+/// declared, in no particular order -- [`crate::tables_model`]'s own
+/// candidate list when checking a column against every other table's key.
+pub(crate) fn list_table_names_sync(conn: &Connection) -> Result<Vec<String>, AppError> {
+    let mut stmt = conn.prepare(&format!("SELECT name FROM {META_TABLE}"))?;
+    let names = stmt
+        .query_map([], |r| r.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(names)
 }
 
 // ---- host.table.create / host.table.drop -----------------------------
@@ -419,6 +430,14 @@ pub async fn table_create(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     })
     .await?;
 
+    // PRD-mcphost-table-semantic-model requirement 5: `create` marks the
+    // model stale too -- a no-op `UPDATE` here (no model exists yet for a
+    // table that was just created), kept for symmetry with `append` below.
+    // Best-effort: a failure here must never fail the create itself.
+    if let Err(e) = state.db.mark_table_model_stale(tenant.id, name.clone()).await {
+        tracing::warn!(error = %e, table = %name, "failed to mark table model stale after create");
+    }
+
     Ok(json!({"name": name, "created": true}))
 }
 
@@ -446,6 +465,14 @@ pub async fn table_drop(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
         Ok(true)
     })
     .await?;
+
+    // PRD-mcphost-table-semantic-model AC9: a dropped table's model and
+    // annotations must not survive it -- `host.table.models` must never
+    // list a table that no longer exists. Unconditional (harmless no-op
+    // when neither ever existed): `dropped == false` for a name that was
+    // never declared, in which case there is nothing to clean up either.
+    state.db.delete_table_model_and_annotations(tenant.id, name.clone()).await?;
+
     Ok(json!({"name": name, "dropped": dropped}))
 }
 
@@ -602,6 +629,16 @@ pub async fn table_append(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     })
     .await?;
 
+    // PRD-mcphost-table-semantic-model requirement 5: an append marks any
+    // existing model for this table stale -- `describe` keeps serving the
+    // previous model (with `stale: true`) until the background tick
+    // recomputes it; a table never described yet has no model row to mark,
+    // which is fine (its first `describe` bootstraps a fresh compute
+    // anyway). Best-effort: a failure here must never fail the append.
+    if let Err(e) = state.db.mark_table_model_stale(tenant.id, table.clone()).await {
+        tracing::warn!(error = %e, table = %table, "failed to mark table model stale after append");
+    }
+
     Ok(json!({"table": table, "appended": ids.len(), "ids": ids}))
 }
 
@@ -624,7 +661,7 @@ fn validate_query_structure(sql: &str) -> Result<(), AppError> {
     }
 }
 
-fn value_ref_to_json(v: ValueRef<'_>) -> Value {
+pub(crate) fn value_ref_to_json(v: ValueRef<'_>) -> Value {
     match v {
         ValueRef::Null => Value::Null,
         ValueRef::Integer(i) => json!(i),

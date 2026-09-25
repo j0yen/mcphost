@@ -1275,6 +1275,58 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &["older_than_versions"],
             ),
         ),
+        // PRD-mcphost-table-semantic-model requirement 4: the generated
+        // semantic model over a declared table -- per column its inferred
+        // type/role/null-share/distinct/min-max/top-values, per table its
+        // row count, candidate primary key, detected foreign keys, and
+        // suggested measures/dimensions. Refreshes after `append`/`create`
+        // (requirement 5); never blocks on a stale recompute.
+        Tool::new(
+            "host.table.describe",
+            "Return the generated semantic model for a declared table: per column its \
+             inferred type, null share, distinct count, min/max or top values, and role \
+             (key|category|measure|date|id|text); per table its row count, candidate \
+             primary key, detected foreign keys, and suggested measures/dimensions. \
+             Refreshes after append/create within 30s; a call right after a write returns \
+             the previous model with stale: true rather than blocking.",
+            host_schema(
+                json!({
+                    "table": {"type": "string", "description": "Name of the declared table to describe."},
+                }),
+                &["table"],
+            ),
+        ),
+        // PRD-mcphost-table-semantic-model requirement 6: an agent
+        // annotation that survives refresh -- `describe` merges it back
+        // in (annotation wins over inference for `role`) on every call.
+        Tool::new(
+            "host.table.model_set",
+            "Annotate a declared table or one of its columns -- the next describe merges this \
+             back in (an annotation's role wins over the inferred one; unit/description are \
+             added; hidden marks a column to omit from a summary). key must be one of role, \
+             unit, description, hidden.",
+            host_schema(
+                json!({
+                    "table": {"type": "string", "description": "Name of the declared table to annotate."},
+                    "column": {
+                        "type": "string",
+                        "description": "Column name to annotate; omit for a table-level annotation.",
+                    },
+                    "key": {
+                        "type": "string",
+                        "description": "One of role, unit, description, hidden.",
+                    },
+                    "value": {"description": "The annotation's value."},
+                }),
+                &["table", "key", "value"],
+            ),
+        ),
+        Tool::new(
+            "host.table.models",
+            "List every declared table that has a computed semantic model, each with its \
+             version, staleness, row count and when it was last computed.",
+            host_schema(json!({}), &[]),
+        ),
         // PRD-mcphost-runs-and-jobs P0 requirement 7: the ledger's own
         // tenant-facing tools, alongside host.state.* above.
         Tool::new(
@@ -2698,6 +2750,9 @@ impl McpHostHandler {
             "host.docs.delete" => docs::doc_delete(&self.state, tenant, &args).await,
             "host.docs.status" => docs::doc_status(&self.state, tenant, &args).await,
             "host.docs.purge" => docs::doc_purge(&self.state, tenant, &args).await,
+            "host.table.describe" => crate::tables_model::table_describe(&self.state, tenant, &args).await,
+            "host.table.model_set" => crate::tables_model::model_set(&self.state, tenant, &args).await,
+            "host.table.models" => crate::tables_model::table_models_list(&self.state, tenant, &args).await,
             "host.runs.get" => crate::runs::get(&self.state, tenant, &args).await,
             "host.runs.list" => crate::runs::list(&self.state, tenant, &args).await,
             "host.runs.cancel" => crate::runs::cancel(&self.state, tenant, &args).await,

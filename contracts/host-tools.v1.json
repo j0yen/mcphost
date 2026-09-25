@@ -1696,6 +1696,27 @@
       "since": "0.58.0"
     },
     {
+      "description": "Return the generated semantic model for a declared table: per column its inferred type, null share, distinct count, min/max or top values, and role (key|category|measure|date|id|text); per table its row count, candidate primary key, detected foreign keys, and suggested measures/dimensions. Refreshes after append/create within 30s; a call right after a write returns the previous model with stale: true rather than blocking.",
+      "input_schema": {
+        "properties": {
+          "table": {
+            "description": "Name of the declared table to describe.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "table"
+        ],
+        "type": "object"
+      },
+      "name": "host.table.describe",
+      "since": "0.58.0"
+    },
+    {
       "description": "Drop a declared table and every row it holds.",
       "input_schema": {
         "properties": {
@@ -1729,6 +1750,55 @@
         "type": "object"
       },
       "name": "host.table.list",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Annotate a declared table or one of its columns -- the next describe merges this back in (an annotation's role wins over the inferred one; unit/description are added; hidden marks a column to omit from a summary). key must be one of role, unit, description, hidden.",
+      "input_schema": {
+        "properties": {
+          "column": {
+            "description": "Column name to annotate; omit for a table-level annotation.",
+            "type": "string"
+          },
+          "key": {
+            "description": "One of role, unit, description, hidden.",
+            "type": "string"
+          },
+          "table": {
+            "description": "Name of the declared table to annotate.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "value": {
+            "description": "The annotation's value."
+          }
+        },
+        "required": [
+          "table",
+          "key",
+          "value"
+        ],
+        "type": "object"
+      },
+      "name": "host.table.model_set",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List every declared table that has a computed semantic model, each with its version, staleness, row count and when it was last computed.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.table.models",
       "since": "0.58.0"
     },
     {

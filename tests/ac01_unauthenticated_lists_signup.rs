@@ -122,6 +122,12 @@ async fn unauthenticated_tools_list_is_signup_only() {
         "host.table.list",
         "host.table.drop",
         "host.table.schema",
+        // PRD-mcphost-table-semantic-model requirement 4: the generated
+        // semantic model is discoverable unauthenticated too, same as
+        // every other host.*-style tool above.
+        "host.table.describe",
+        "host.table.model_set",
+        "host.table.models",
         // PRD-mcphost-sharing requirement 1: the sharing/catalog control
         // plane is discoverable unauthenticated too, same as every other
         // host.*-style tool above.
@@ -233,13 +239,14 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        97,
+        100,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the three host.tool_history/host.tool_rollback/host.tool_diff \
          tools (PRD-mcphost-tool-versions) + the nine host.state.* tools \
          (PRD-mcphost-tenant-state) \
-         + the six host.table.* tools (PRD-mcphost-tenant-tables) \
+         + the nine host.table.* tools (PRD-mcphost-tenant-tables, \
+         PRD-mcphost-table-semantic-model) \
          + the eight host.tool_share/host.tool_unshare/host.group.*/host.catalog.* tools \
          (PRD-mcphost-sharing) + the five host.runs.* tools (PRD-mcphost-runs-and-jobs) \
          + the nine host.trigger.* tools (PRD-mcphost-schedules, PRD-mcphost-inbound-events) \
