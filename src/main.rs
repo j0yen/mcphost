@@ -583,6 +583,10 @@ async fn main() -> anyhow::Result<()> {
             // started once here alongside the other background tasks.
             mcphost::bans::spawn_tick((*state).clone());
             mcphost::bans::spawn_cache_refresh((*state).clone());
+            // PRD-mcphost-table-semantic-model requirement 5: the stale
+            // table-model recompute tick, started once here alongside the
+            // other background tasks.
+            mcphost::tables_model::spawn_tick((*state).clone());
 
             mcphost::http::serve_configured(bind, state).await
         }

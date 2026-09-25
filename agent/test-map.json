@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-oauth-resource-server.md (test_prefix: oauthrs)",
+  "ac_test_map_prd": "PRD-mcphost-table-semantic-model.md (test_prefix: tablemodel)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,19 +28,48 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/oauthrs_ac01_protected_resource_metadata_empty.rs",
-    "AC2": "tests/oauthrs_ac02_bearer_jwt_runs_as_tenant.rs",
-    "AC3": "tests/oauthrs_ac03_invalid_tokens_rejected_with_reasons.rs",
-    "AC4": "tests/oauthrs_ac04_401_challenge_signup_still_open.rs",
-    "AC5": "tests/oauthrs_ac05_unknown_kid_refetch_throttled.rs",
-    "AC6": "tests/oauthrs_ac06_jwks_server_down_unknown_issuer.rs",
-    "AC7": "tests/oauthrs_ac07_issuer_registration_limits.rs",
-    "AC8": "tests/oauthrs_ac08_conflicting_credentials.rs",
-    "AC9": "tests/oauthrs_ac09_admin_lists_issuers_and_audits.rs",
-    "AC10": "tests/oauthrs_ac10_key_based_flow_unchanged.rs",
-    "AC11": "deferred -- operator-provisioned; AC11 is the Live/production-only requirement (real prod issuer registered against https://mcphost.dev/mcp) and needs operator authorization/network egress this coding sandbox does not have. See the coder dispatch's own deferred list."
+    "AC1": "tests/tablemodel_ac01_key_id_measure_category_date_roles.rs",
+    "AC2": "tests/tablemodel_ac02_foreign_key_detected_against_customers_id.rs",
+    "AC3": "tests/tablemodel_ac03_measures_and_dimensions_suggested.rs",
+    "AC4": "tests/tablemodel_ac04_null_share_with_category_role_preserved.rs",
+    "AC5": "tests/tablemodel_ac05_stale_after_append_recomputes_on_tick.rs",
+    "AC6": "tests/tablemodel_ac06_large_table_samples_10000_under_500ms.rs",
+    "AC7": "tests/tablemodel_ac07_model_set_unit_annotation_survives_refresh.rs",
+    "AC8": "tests/tablemodel_ac08_model_set_role_override_keeps_inferred_role.rs",
+    "AC9": "tests/tablemodel_ac09_drop_removes_model_and_annotations.rs",
+    "AC10": "tests/tablemodel_ac10_empty_table_reports_unknown_types_no_error.rs",
+    "AC11": "deferred -- operator-provisioned: needs a real host.table.describe call against production mcphost-1 and live operator access this coder dispatch does not have."
   },
   "ac_test_map_by_prefix": {
+    "docstore": {
+      "_prd": "PRD-mcphost-document-store.md -- superseded by mcphost-table-semantic-model at HEAD; real test_prefix is docstore (this dict key matches it directly, same convention as every other archived entry below)",
+      "AC1": "tests/docstore_ac01_first_put_returns_version1_seq1.rs",
+      "AC2": "tests/docstore_ac02_put_bumps_version_noop_on_identical_content.rs",
+      "AC3": "tests/docstore_ac03_size_cap_rejects_over_2mib_accepts_exactly.rs",
+      "AC4": "tests/docstore_ac04_extraction_json_and_csv.rs",
+      "AC5": "tests/docstore_ac05_list_since_includes_deleted.rs",
+      "AC6": "tests/docstore_ac06_quota_docs_and_docs_bytes.rs",
+      "AC7": "tests/docstore_ac07_put_bytes_metering_event.rs",
+      "AC8": "tests/docstore_ac08_unsupported_mime_by_content_sniff.rs",
+      "AC9": "tests/docstore_ac09_python_mcphost_docs_get_without_tool_call.rs",
+      "AC10": "tests/docstore_ac10_purge_older_than_versions.rs",
+      "AC11": "tests/docstore_ac11_export_includes_documents.rs",
+      "AC12": "deferred -- operator-provisioned: needs a real put/list against production mcphost-1 and live operator access this coder dispatch does not have."
+    },
+    "oauthrs": {
+      "_prd": "PRD-mcphost-oauth-resource-server.md -- superseded by mcphost-table-semantic-model at HEAD; real test_prefix is oauthrs (this dict key matches it directly, same convention as every other archived entry below)",
+      "AC1": "tests/oauthrs_ac01_protected_resource_metadata_empty.rs",
+      "AC2": "tests/oauthrs_ac02_bearer_jwt_runs_as_tenant.rs",
+      "AC3": "tests/oauthrs_ac03_invalid_tokens_rejected_with_reasons.rs",
+      "AC4": "tests/oauthrs_ac04_401_challenge_signup_still_open.rs",
+      "AC5": "tests/oauthrs_ac05_unknown_kid_refetch_throttled.rs",
+      "AC6": "tests/oauthrs_ac06_jwks_server_down_unknown_issuer.rs",
+      "AC7": "tests/oauthrs_ac07_issuer_registration_limits.rs",
+      "AC8": "tests/oauthrs_ac08_conflicting_credentials.rs",
+      "AC9": "tests/oauthrs_ac09_admin_lists_issuers_and_audits.rs",
+      "AC10": "tests/oauthrs_ac10_key_based_flow_unchanged.rs",
+      "AC11": "deferred -- operator-provisioned; AC11 is the Live/production-only requirement (real prod issuer registered against https://mcphost.dev/mcp) and needs operator authorization/network egress this coding sandbox does not have. See the coder dispatch's own deferred list."
+    },
     "adminschemacontract": {
       "_prd": "PRD-mcphost-admin-schema-contract.md -- superseded by mcphost-abuse-guard-ban-list at HEAD; real test_prefix is mcphost_admin_schema_contract (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind/tenantdataexport/checkcompatrace/teammemory/databaseinaminute/uptimeprobes/toolversions/agentchannels/webhookinbox/signupkillswitchandsource/sandboxegressallowlist/humanclaimmagiclink/claudecodepluginandsnippets above)",
       "AC1": "tests/mcphost_admin_schema_contract_ac01_tenants_schema_version.rs",

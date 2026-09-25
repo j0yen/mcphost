@@ -44,11 +44,11 @@ async fn ac1_anonymous_tools_list_has_cache_fields() {
     assert!(names.contains(&"signup"), "{names:?}");
     assert_eq!(
         names.len(),
-        97,
+        100,
         "signup + host.* (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + host.tool_history/host.tool_rollback/host.tool_diff \
          (3 tools, PRD-mcphost-tool-versions) + host.state.* (9 tools, PRD-mcphost-tenant-state) + \
-         host.table.* (6 tools, PRD-mcphost-tenant-tables) + \
+         host.table.* (9 tools, PRD-mcphost-tenant-tables, PRD-mcphost-table-semantic-model) + \
          host.tool_share/host.tool_unshare/host.group.*/host.catalog.* (8 tools, \
          PRD-mcphost-sharing) + host.runs.* (5 tools, PRD-mcphost-runs-and-jobs) + \
          host.trigger.* (9 tools, PRD-mcphost-schedules, PRD-mcphost-inbound-events) + billing.* (3 tools) + \
@@ -138,11 +138,11 @@ async fn ac3_invalid_bearer_tools_list_has_cache_fields() {
     assert!(names.contains(&"signup"), "{names:?}");
     assert_eq!(
         names.len(),
-        97,
+        100,
         "signup + host.* (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + host.tool_history/host.tool_rollback/host.tool_diff \
          (3 tools, PRD-mcphost-tool-versions) + host.state.* (9 tools, PRD-mcphost-tenant-state) + \
-         host.table.* (6 tools, PRD-mcphost-tenant-tables) + \
+         host.table.* (9 tools, PRD-mcphost-tenant-tables, PRD-mcphost-table-semantic-model) + \
          host.tool_share/host.tool_unshare/host.group.*/host.catalog.* (8 tools, \
          PRD-mcphost-sharing) + host.runs.* (5 tools, PRD-mcphost-runs-and-jobs) + \
          host.trigger.* (9 tools, PRD-mcphost-schedules, PRD-mcphost-inbound-events) + billing.* (3 tools) + \
