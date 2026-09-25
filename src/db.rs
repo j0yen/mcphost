@@ -60,6 +60,7 @@ const MIGRATION_0036: &str = include_str!("../migrations/0036_ban_removed_at.sql
 const MIGRATION_0037: &str = include_str!("../migrations/0037_documents.sql");
 const MIGRATION_0038: &str = include_str!("../migrations/0038_oauth_issuers.sql");
 const MIGRATION_0039: &str = include_str!("../migrations/0039_table_models.sql");
+const MIGRATION_0040: &str = include_str!("../migrations/0040_alerts.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -1484,6 +1485,32 @@ pub(crate) fn instrument_block<T>(counters: &Arc<DbCounters>, role: DbRole, f: i
     result
 }
 
+/// PRD-mcphost-alerting-webhook requirement 2 / AC4: is `error_class` (an
+/// `AppError::code()`/`KindError` code, the same string [`record_call`]
+/// persists) a "5xx-class" failure -- the host's own or an upstream's own
+/// fault -- rather than a caller-fault rejection (a bad argument, an
+/// unknown tool, a rate limit, ...)? Mirrors the same split
+/// `AppError::jsonrpc_code`'s `INTERNAL_ERROR` arm already draws (its own
+/// doc comment: "upstream_* ... are upstream-side failures the host
+/// itself didn't cause"), expressed as an allowlist over the small,
+/// closed set of codes a tool *call* (as opposed to a control-plane
+/// operation) can actually fail with here -- `kinds::http`'s upstream
+/// failures, the host's own call deadline/storage/internal errors, and a
+/// rejected cross-tenant share fetch.
+fn is_5xx_class_error(error_class: &str) -> bool {
+    matches!(
+        error_class,
+        "upstream_status"
+            | "upstream_timeout"
+            | "upstream_unreachable"
+            | "response_too_large"
+            | "call_timeout"
+            | "storage"
+            | "internal"
+            | "registry_rejected"
+    )
+}
+
 pub struct Db {
     conn: Arc<Mutex<Connection>>,
     path: PathBuf,
@@ -1704,7 +1731,8 @@ impl Db {
         Self::migrate_0036_ban_removed_at(&conn)?;
         Self::migrate_0037_documents(&conn)?;
         Self::migrate_0038_oauth_issuers(&conn)?;
-        Self::migrate_0039_table_models(&conn)
+        Self::migrate_0039_table_models(&conn)?;
+        Self::migrate_0040_alerts(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -2264,6 +2292,20 @@ impl Db {
             .exists([])?;
         if !has_table {
             conn.execute_batch(MIGRATION_0039)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-alerting-webhook migration 0040 (renumbered from 0039
+    /// during the mcphost-table-semantic-model rebase, which had already
+    /// claimed 0039 for table_models): same new-table idempotency guard as
+    /// 0011/0014/0015/0035 above, gated on `alerts`' existence.
+    fn migrate_0040_alerts(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'alerts'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0040)?;
         }
         Ok(())
     }
@@ -10418,6 +10460,267 @@ impl Db {
         })
         .await
     }
+
+    /// PRD-mcphost-alerting-webhook requirement 2 / AC4: host-wide `(total,
+    /// errors)` call counts since `since_unix`, for
+    /// [`crate::alerts::tick_once`]'s minute tick -- `total` is every row
+    /// (the same column `count_calls_since`'s own `ok_only` filters on),
+    /// not scoped to one tenant (the PRD's own AC4 wording names no
+    /// tenant, unlike `quota.trip`). `errors` is narrower than plain
+    /// `ok = 0`: AC4 and requirement 2 both say "5xx-class tool errors"
+    /// specifically -- a client sending malformed arguments (echo's
+    /// `KindError::InvalidArgs` -> `error_class = "args_invalid"`, a
+    /// caller-fault/4xx-class rejection) must not trip this alert just
+    /// because it also sets `ok = 0`, so [`is_5xx_class_error`] narrows
+    /// the count to the codes that represent the host's or an upstream's
+    /// own fault.
+    pub async fn calls_error_stats_since(&self, since_unix: i64) -> Result<(i64, i64), AppError> {
+        self.with_conn(move |conn| {
+            let total: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM calls WHERE started_unix >= ?1",
+                params![since_unix],
+                |r| r.get(0),
+            )?;
+            let mut stmt = conn.prepare(
+                "SELECT error_class FROM calls WHERE started_unix >= ?1 AND ok = 0",
+            )?;
+            let errors = stmt
+                .query_map(params![since_unix], |r| r.get::<_, Option<String>>(0))?
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .filter(|class| class.as_deref().is_some_and(is_5xx_class_error))
+                .count() as i64;
+            Ok((total, errors))
+        })
+        .await
+    }
+
+    // ---- alerts (PRD-mcphost-alerting-webhook) ----------------------------
+
+    /// requirement 1: a fresh alert row -- `repeat_count` always starts at
+    /// 0 (AC2: the row's `repeat_count` only moves once a duplicate raise
+    /// within the cooldown collapses into it). Returns the new row's id.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_alert(
+        &self,
+        key: String,
+        severity: String,
+        title: String,
+        body_json: String,
+        raised_at: i64,
+    ) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO alerts (key, severity, title, body_json, raised_at, delivery_status, repeat_count) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, 'pending', 0)",
+                params![key, severity, title, body_json, raised_at],
+            )?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+    }
+
+    /// requirement 4: the most recent row for `key`, regardless of age --
+    /// [`crate::alerts::raise`] compares its own `raised_at` against
+    /// `MCPHOST_ALERT_COOLDOWN_SECS` to decide whether this raise collapses
+    /// into it (still within cooldown) or starts a fresh row (cooldown has
+    /// elapsed).
+    pub async fn most_recent_alert_for_key(&self, key: String) -> Result<Option<Alert>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT id, key, severity, title, body_json, raised_at, delivered_at, \
+                 delivery_status, acked_at, acked_by, repeat_count \
+                 FROM alerts WHERE key = ?1 ORDER BY id DESC LIMIT 1",
+                params![key],
+                alert_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 4 / AC2: a duplicate raise within cooldown collapses
+    /// into the open row -- no new row, no re-delivery, just the counter.
+    pub async fn increment_alert_repeat(&self, id: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE alerts SET repeat_count = repeat_count + 1 WHERE id = ?1",
+                params![id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// The delivery task's own write-back once it knows the outcome --
+    /// `delivered_at` is `Some(now)` only for `delivery_status: "delivered"`.
+    pub async fn update_alert_delivery(
+        &self,
+        id: i64,
+        delivery_status: &'static str,
+        delivered_at: Option<i64>,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE alerts SET delivery_status = ?1, delivered_at = ?2 WHERE id = ?3",
+                params![delivery_status, delivered_at, id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `admin.alerts.list {limit, since, unacked_only}` (requirement 5).
+    pub async fn list_alerts(
+        &self,
+        limit: i64,
+        since: Option<i64>,
+        unacked_only: bool,
+    ) -> Result<Vec<Alert>, AppError> {
+        self.with_conn(move |conn| {
+            const COLS: &str = "id, key, severity, title, body_json, raised_at, delivered_at, \
+                 delivery_status, acked_at, acked_by, repeat_count";
+            let mut sql = format!("SELECT {COLS} FROM alerts WHERE 1 = 1");
+            if since.is_some() {
+                sql.push_str(" AND raised_at >= ?2");
+            }
+            if unacked_only {
+                sql.push_str(" AND acked_at IS NULL");
+            }
+            sql.push_str(" ORDER BY id DESC LIMIT ?1");
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = match since {
+                Some(s) => stmt
+                    .query_map(params![limit, s], alert_from_row)?
+                    .collect::<rusqlite::Result<Vec<_>>>()?,
+                None => stmt
+                    .query_map(params![limit], alert_from_row)?
+                    .collect::<rusqlite::Result<Vec<_>>>()?,
+            };
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// `admin.alerts.ack {id}` (requirement 5): `false` when `id` names no
+    /// row, or one already acked.
+    pub async fn ack_alert(&self, id: i64, acked_by: String) -> Result<bool, AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "UPDATE alerts SET acked_at = ?1, acked_by = ?2 WHERE id = ?3 AND acked_at IS NULL",
+                params![now, acked_by, id],
+            )?;
+            Ok(n > 0)
+        })
+        .await
+    }
+
+    /// requirement 6 / AC10: `/healthz`'s `alerts.{open, last_raised_at}`.
+    pub async fn alert_healthz_counts(&self) -> Result<(i64, Option<i64>), AppError> {
+        self.with_conn(move |conn| {
+            let open: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM alerts WHERE acked_at IS NULL",
+                [],
+                |r| r.get(0),
+            )?;
+            let last_raised_at: Option<i64> =
+                conn.query_row("SELECT MAX(raised_at) FROM alerts", [], |r| r.get(0))?;
+            Ok((open, last_raised_at))
+        })
+        .await
+    }
+
+    /// requirement 3 / AC6: a synthetic "system" message announcing a
+    /// raised alert, appended to a per-recipient synthetic thread
+    /// (`alerts-inbox-<tenant_id>`, created on first use) -- same
+    /// `from_tenant_id: NULL` / hardcoded `from_address` shape
+    /// `insert_contact_request_notice` already establishes for a
+    /// host-authored system message, so it surfaces via the existing
+    /// `Db::msg_inbox` query with no changes there.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_alert_notice(
+        &self,
+        tenant_id: i64,
+        alert_id: i64,
+        key: String,
+        severity: String,
+        title: String,
+    ) -> Result<(), AppError> {
+        let now = now_rfc3339();
+        let now_ms = crate::state::now_unix_ms();
+        self.with_conn(move |conn| {
+            let thread_id = format!("alerts-inbox-{tenant_id}");
+            let thread_exists: bool =
+                conn.prepare("SELECT 1 FROM threads WHERE id = ?1")?.exists(params![thread_id])?;
+            if !thread_exists {
+                conn.execute(
+                    "INSERT INTO threads (id, created_by, created_at, created_unix_ms) VALUES (?1, NULL, ?2, ?3)",
+                    params![thread_id, now, now_ms],
+                )?;
+            }
+            conn.execute(
+                "INSERT OR IGNORE INTO thread_participants (thread_id, tenant_id, joined_at) VALUES (?1, ?2, ?3)",
+                params![thread_id, tenant_id, now],
+            )?;
+            let seq: i64 = conn.query_row(
+                "SELECT COALESCE(MAX(seq), 0) + 1 FROM messages WHERE thread_id = ?1",
+                params![thread_id],
+                |r| r.get(0),
+            )?;
+            let message_id = crate::state::new_ulid();
+            let body = format!("[{severity}] {title} (alert #{alert_id})");
+            let data_json =
+                json!({"kind": "alert", "alert_id": alert_id, "key": key, "severity": severity}).to_string();
+            conn.execute(
+                "INSERT INTO messages \
+                     (id, thread_id, seq, from_tenant_id, from_address, body, data_json, in_reply_to, \
+                      dedupe_key, synthetic, source_class, created_at, created_unix_ms, refused_json, urgent) \
+                 VALUES (?1, ?2, ?3, NULL, 'system', ?4, ?5, NULL, NULL, NULL, 'host', ?6, ?7, NULL, 0)",
+                params![message_id, thread_id, seq, body, data_json, now, now_ms],
+            )?;
+            conn.execute(
+                "INSERT INTO message_receipts (message_id, tenant_id, read_at) VALUES (?1, ?2, NULL)",
+                params![message_id, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Test-only: AC2's "the pause alert was raised 10s ago" precondition
+    /// without a real 10s wait -- same "flip an internal knob for a test"
+    /// shape as [`Self::set_ban_expires_at_for_test`].
+    pub async fn set_alert_raised_at_for_test(&self, id: i64, raised_at: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE alerts SET raised_at = ?1 WHERE id = ?2",
+                params![raised_at, id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Test-only: a direct row fetch by id, for asserting on a just-raised
+    /// alert's `delivery_status`/`repeat_count` without going through
+    /// `admin.alerts.list` -- same "test reads the db handle `TestServer`
+    /// exposes" convention `billing_ac03`'s own seeding already uses.
+    pub async fn get_alert_for_test(&self, id: i64) -> Result<Option<Alert>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT id, key, severity, title, body_json, raised_at, delivered_at, \
+                 delivery_status, acked_at, acked_by, repeat_count \
+                 FROM alerts WHERE id = ?1",
+                params![id],
+                alert_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
 }
 
 /// requirement 1: one `documents` row -- `docs.rs`'s own business logic
@@ -10500,6 +10803,39 @@ fn spawn_wal_checkpoint_loop(
                 tracing::warn!(error = %e, "wal checkpoint failed");
             }
         }
+    })
+}
+
+/// PRD-mcphost-alerting-webhook requirement 1: one `alerts` row, as
+/// `admin.alerts.list` and the delivery task both read it back.
+#[derive(Debug, Clone, Serialize)]
+pub struct Alert {
+    pub id: i64,
+    pub key: String,
+    pub severity: String,
+    pub title: String,
+    pub body_json: String,
+    pub raised_at: i64,
+    pub delivered_at: Option<i64>,
+    pub delivery_status: String,
+    pub acked_at: Option<i64>,
+    pub acked_by: Option<String>,
+    pub repeat_count: i64,
+}
+
+fn alert_from_row(r: &Row) -> rusqlite::Result<Alert> {
+    Ok(Alert {
+        id: r.get(0)?,
+        key: r.get(1)?,
+        severity: r.get(2)?,
+        title: r.get(3)?,
+        body_json: r.get(4)?,
+        raised_at: r.get(5)?,
+        delivered_at: r.get(6)?,
+        delivery_status: r.get(7)?,
+        acked_at: r.get(8)?,
+        acked_by: r.get(9)?,
+        repeat_count: r.get(10)?,
     })
 }
 

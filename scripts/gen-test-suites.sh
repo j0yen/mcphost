@@ -362,7 +362,15 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # 11th suite binary again -- caught by the same P0 assertion. 454 -> 464 is
 # the smallest tested raise that re-collapses core's normal buckets to 1,
 # landing the grand total back at 10.
-MAX_PER_SUITE = {"core": 464, "sandbox": 62}
+#
+# PRD-mcphost-alerting-webhook (2026-09-25, rebased onto
+# mcphost-sqlite-busy-timeout-audit): this PRD's own eleven `alert_ac*.rs`
+# files (also `core`-classified) join the same normal bucket on top of
+# busyaudit's own raise above, spilling core past the 464 cap again --
+# caught by the same P0 assertion. 464 -> 475 is the smallest tested raise
+# that re-collapses core's normal buckets back to 1, landing the grand
+# total back at 10.
+MAX_PER_SUITE = {"core": 475, "sandbox": 62}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

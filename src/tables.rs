@@ -839,6 +839,8 @@ mod tests {
             oauth_jwks_ttl_secs: crate::oauth::DEFAULT_JWKS_TTL_SECS,
             alerts: crate::alerts::AlertRegistry::new(),
             contention_tracker: crate::alerts::ContentionTracker::new(),
+            alert_config: crate::alerts::AlertConfig::default(),
+            alert_quota_trips: crate::alerts::QuotaTripTracker::new(),
         }
     }
 

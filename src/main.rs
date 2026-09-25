@@ -543,6 +543,8 @@ async fn main() -> anyhow::Result<()> {
                 oauth_jwks_ttl_secs: mcphost::oauth::jwks_ttl_secs_from_env(),
                 alerts: mcphost::alerts::AlertRegistry::new(),
                 contention_tracker: mcphost::alerts::ContentionTracker::new(),
+                alert_config: mcphost::alerts::AlertConfig::from_env(),
+                alert_quota_trips: mcphost::alerts::QuotaTripTracker::new(),
             });
             // PRD-mcphost-abuse-guard-ban-list requirement 6: load the ban
             // cache once before this process ever serves a request, so the
@@ -592,11 +594,19 @@ async fn main() -> anyhow::Result<()> {
             // PRD-mcphost-sqlite-busy-timeout-audit requirement 6: the
             // minute contention-alert tick, started once here alongside
             // the other background tasks.
-            mcphost::alerts::spawn_tick((*state).clone());
+            mcphost::alerts::spawn_contention_tick((*state).clone());
             // PRD-mcphost-sqlite-busy-timeout-audit requirement 7: the
             // periodic passive WAL checkpoint, started once here alongside
             // the other background tasks.
             mcphost::db::spawn_wal_checkpoint_scheduler((*state).clone());
+            // PRD-mcphost-alerting-webhook requirement 2: the pause-file
+            // transition watcher, started once here alongside the other
+            // background tasks.
+            mcphost::alerts::spawn_pause_watch((*state).clone());
+            // PRD-mcphost-alerting-webhook requirement 2: the errors.rate
+            // minute tick, started once here alongside the other
+            // background tasks.
+            mcphost::alerts::spawn_error_rate_tick((*state).clone());
 
             mcphost::http::serve_configured(bind, state).await
         }

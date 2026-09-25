@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-sqlite-busy-timeout-audit.md (test_prefix: busyaudit)",
+  "ac_test_map_prd": "PRD-mcphost-alerting-webhook.md (test_prefix: alert)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,19 +28,48 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/busyaudit_ac01_startup_pragma_audit_default_config.rs",
-    "AC2": "tests/busyaudit_ac02_env_override_busy_timeout.rs",
-    "AC3": "tests/busyaudit_ac03_bypass_connection_named_file_and_line.rs",
-    "AC4": "tests/busyaudit_ac04_wait_over_100ms_counted_no_error.rs",
-    "AC5": "tests/busyaudit_ac05_busy_total_increments_exactly_one.rs",
-    "AC6": "tests/busyaudit_ac06_64_tenants_50_cycles_no_contention.rs -- #[ignore]d by default (hardware-dependent load test, same convention as ac11_load_smoke.rs): the db_busy_total==0/db_locked_total==0 assertions this AC actually gates held under full-suite load, but the p99<500ms client-latency assertion is noisy under ~650 concurrently-running tests on one box. Run explicitly with --ignored to see real numbers.",
-    "AC7": "tests/busyaudit_ac07_admin_db_stats.rs",
-    "AC8": "tests/busyaudit_ac08_healthz_db_fields.rs",
-    "AC9": "tests/busyaudit_ac09_contention_alert.rs",
-    "AC10": "tests/busyaudit_ac10_wal_checkpoint_cron.rs",
-    "AC11": "DEFERRED -- operator-provisioned: a real staging/mcphost-1 load-proof run (busy_total==0 against prod-shaped traffic) needs a live operator-provisioned box; not in this dispatch's assigned AC list (AC1-AC10 only)."
+    "AC1": "tests/alert_ac01_signup_paused_webhook_delivered.rs",
+    "AC2": "tests/alert_ac02_cooldown_collapses_repeat_alert.rs",
+    "AC3": "tests/alert_ac03_quota_trip_raises_once_per_tenant_knob.rs",
+    "AC4": "tests/alert_ac04_errors_rate_over_five_min.rs",
+    "AC5": "tests/alert_ac05_webhook_retries_then_failed.rs",
+    "AC6": "tests/alert_ac06_tenant_inbox_delivery.rs",
+    "AC7": "tests/alert_ac07_admin_alerts_list_and_ack.rs",
+    "AC8": "tests/alert_ac08_store_only_when_no_sink_configured.rs",
+    "AC9": "tests/alert_ac09_min_severity_filters_delivery.rs",
+    "AC10": "tests/alert_ac10_healthz_reports_open_and_last_raised_at.rs",
+    "AC11": "tests/alert_ac11_raise_body_size_limit.rs",
+    "AC12": "deferred -- operator-provisioned: needs the pause file toggled on real production mcphost-1 and live operator/deploy access this coder dispatch does not have."
   },
   "ac_test_map_by_prefix": {
+    "busyaudit": {
+      "_prd": "PRD-mcphost-sqlite-busy-timeout-audit.md -- superseded by mcphost-alerting-webhook at HEAD; real test_prefix is busyaudit",
+      "AC1": "tests/busyaudit_ac01_startup_pragma_audit_default_config.rs",
+      "AC2": "tests/busyaudit_ac02_env_override_busy_timeout.rs",
+      "AC3": "tests/busyaudit_ac03_bypass_connection_named_file_and_line.rs",
+      "AC4": "tests/busyaudit_ac04_wait_over_100ms_counted_no_error.rs",
+      "AC5": "tests/busyaudit_ac05_busy_total_increments_exactly_one.rs",
+      "AC6": "tests/busyaudit_ac06_64_tenants_50_cycles_no_contention.rs -- #[ignore]d by default (hardware-dependent load test, same convention as ac11_load_smoke.rs): the db_busy_total==0/db_locked_total==0 assertions this AC actually gates held under full-suite load, but the p99<500ms client-latency assertion is noisy under ~650 concurrently-running tests on one box. Run explicitly with --ignored to see real numbers.",
+      "AC7": "tests/busyaudit_ac07_admin_db_stats.rs",
+      "AC8": "tests/busyaudit_ac08_healthz_db_fields.rs",
+      "AC9": "tests/busyaudit_ac09_contention_alert.rs",
+      "AC10": "tests/busyaudit_ac10_wal_checkpoint_cron.rs",
+      "AC11": "DEFERRED -- operator-provisioned: a real staging/mcphost-1 load-proof run (busy_total==0 against prod-shaped traffic) needs a live operator-provisioned box; not in this dispatch's assigned AC list (AC1-AC10 only)."
+    },
+    "tablemodel": {
+      "_prd": "PRD-mcphost-table-semantic-model.md -- superseded by mcphost-alerting-webhook at HEAD; real test_prefix is tablemodel (this dict key matches it directly, same convention as every other archived entry below)",
+      "AC1": "tests/tablemodel_ac01_key_id_measure_category_date_roles.rs",
+      "AC2": "tests/tablemodel_ac02_foreign_key_detected_against_customers_id.rs",
+      "AC3": "tests/tablemodel_ac03_measures_and_dimensions_suggested.rs",
+      "AC4": "tests/tablemodel_ac04_null_share_with_category_role_preserved.rs",
+      "AC5": "tests/tablemodel_ac05_stale_after_append_recomputes_on_tick.rs",
+      "AC6": "tests/tablemodel_ac06_large_table_samples_10000_under_500ms.rs",
+      "AC7": "tests/tablemodel_ac07_model_set_unit_annotation_survives_refresh.rs",
+      "AC8": "tests/tablemodel_ac08_model_set_role_override_keeps_inferred_role.rs",
+      "AC9": "tests/tablemodel_ac09_drop_removes_model_and_annotations.rs",
+      "AC10": "tests/tablemodel_ac10_empty_table_reports_unknown_types_no_error.rs",
+      "AC11": "deferred -- operator-provisioned: needs a real host.table.describe call against production mcphost-1 and live operator access this coder dispatch does not have."
+    },
     "docstore": {
       "_prd": "PRD-mcphost-document-store.md -- superseded by mcphost-sqlite-busy-timeout-audit at HEAD; real test_prefix is docstore",
       "AC1": "tests/docstore_ac01_first_put_returns_version1_seq1.rs",
@@ -356,6 +385,7 @@
       "AC10": "tests/mcphost_signup_kill_switch_and_source_ac10_until_line_bounds_retry_after.rs"
     },
     "banlist": {
+      "_prd": "PRD-mcphost-abuse-guard-ban-list.md -- archived by PRD-mcphost-document-store's own test-map refresh (this dict key is the PRD's test_prefix, matching the convention every other entry in ac_test_map_by_prefix already follows).",
       "AC1": "tests/banlist_ac01_addr_ban_blocks_signup.rs",
       "AC2": "tests/banlist_ac02_key_ban_blocks_authenticated_calls.rs",
       "AC3": "tests/banlist_ac03_public_flag_controls_reason_visibility.rs",

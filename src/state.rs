@@ -332,8 +332,15 @@ pub struct AppState {
     /// [`crate::alerts::AlertRegistry`].
     pub alerts: crate::alerts::AlertRegistry,
     /// requirement 6 (AC9): the trailing-5-minute `db_busy_total` rise
-    /// tracker `alerts::tick_once` feeds every minute.
+    /// tracker `alerts::contention_tick_once` feeds every minute.
     pub contention_tracker: crate::alerts::ContentionTracker,
+    /// PRD-mcphost-alerting-webhook: the env-derived alert delivery/
+    /// threshold settings every alert source and the delivery task read
+    /// through -- see [`crate::alerts::AlertConfig`].
+    pub alert_config: crate::alerts::AlertConfig,
+    /// requirement 2 / AC3: the in-memory sliding-window counter behind
+    /// `quota.trip` -- see [`crate::alerts::QuotaTripTracker`].
+    pub alert_quota_trips: crate::alerts::QuotaTripTracker,
 }
 
 pub fn now_unix() -> i64 {
