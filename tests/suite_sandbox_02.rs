@@ -28,6 +28,8 @@ mod ci_sandbox_ac07_docs_state_the_capability_requirement;
 mod compose_ac1_python_call_child_result;
 #[path = "compose_ac2_child_exception_propagates.rs"]
 mod compose_ac2_child_exception_propagates;
+#[path = "docstore_ac09_python_mcphost_docs_get_without_tool_call.rs"]
+mod docstore_ac09_python_mcphost_docs_get_without_tool_call;
 #[path = "envelope_ac2_python_object_declared_output_promoted.rs"]
 mod envelope_ac2_python_object_declared_output_promoted;
 #[path = "envelope_ac3_python_scalar_promotion_warns.rs"]

@@ -19,10 +19,10 @@ use serde_json::{Value, json};
 use crate::db::{RunRow, Tenant};
 use crate::errors::AppError;
 use crate::handler::{
-    BufferedLog, CellResourceSink, CountingStateBackend, TenantStateBridge, TenantTableBridge,
-    build_secret_resolver,
+    BufferedLog, CellResourceSink, CountingStateBackend, TenantDocsBridge, TenantStateBridge,
+    TenantTableBridge, build_secret_resolver,
 };
-use crate::kinds::{CallCtx, CallLog, ProgressSink, ResourceSink, TableBackend};
+use crate::kinds::{CallCtx, CallLog, DocsBackend, ProgressSink, ResourceSink, TableBackend};
 use crate::state::AppState;
 
 /// P0 requirement 4: the host-wide ceiling on concurrently-`running` jobs,
@@ -447,6 +447,10 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
             state: Arc::new(state.clone()),
             tenant: tenant.clone(),
         }) as Arc<dyn TableBackend>,
+        docs: Arc::new(TenantDocsBridge {
+            state: Arc::new(state.clone()),
+            tenant: tenant.clone(),
+        }) as Arc<dyn DocsBackend>,
         compose_depth: 0,
         compose_children: Some(Arc::new(std::sync::atomic::AtomicU32::new(0))),
         compose_db: Some(state.db.clone()),

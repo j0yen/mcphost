@@ -21,14 +21,14 @@ use crate::auth::{extract_bearer, hash_key};
 use crate::db::{Tenant, ToolRow};
 use crate::errors::AppError;
 use crate::kinds::{
-    CallCtx, CallLog, Kind, KindError, KindRegistry, MAX_TEST_INVOCATIONS, NoState, NoTable,
-    NullLog, NullResourceSink, ResourceSink, SecretResolver, StateBackend, TableBackend,
-    describe_args_error, run_spec_test,
+    CallCtx, CallLog, DocsBackend, Kind, KindError, KindRegistry, MAX_TEST_INVOCATIONS, NoDocs,
+    NoState, NoTable, NullLog, NullResourceSink, ResourceSink, SecretResolver, StateBackend,
+    TableBackend, describe_args_error, run_spec_test,
 };
 use crate::state::{
     AppState, MAX_SPEC_BYTES, TOOLS_LIST_TTL_GRACE_SECS, TOOLS_LIST_TTL_MS_STEADY, now_unix,
 };
-use crate::{admin, agents, channels, consent, control, messaging, tables, tenant_state};
+use crate::{admin, agents, channels, consent, control, docs, messaging, tables, tenant_state};
 
 /// Who is making this request, resolved once per request from the bearer
 /// key (or its absence).
@@ -1163,6 +1163,91 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                     "table": {"type": "string", "description": "Name of the declared table to describe."},
                 }),
                 &["table"],
+            ),
+        ),
+        // PRD-mcphost-document-store P0 requirements 2-5, P1 requirement 7:
+        // a per-tenant document store (text, markdown, JSON, CSV) with a
+        // content hash, extracted text, and a per-tenant change watermark
+        // the search PRD will index from -- a third data-ish store
+        // alongside host.state.*'s KV namespace and host.table.*'s real SQL
+        // rows, for whole documents rather than small values or table rows.
+        Tool::new(
+            "host.docs.put",
+            "Write (or, for an already-used name, create a new version of) a document in this \
+             tenant's document store. mime is detected from name and content when omitted; \
+             allowed mimes are text/plain, text/markdown, application/json, text/csv. content \
+             (or content_base64 for arbitrary bytes) must be at most MCPHOST_DOC_MAX_BYTES \
+             (default 2 MiB). Identical content to the current version is a no-op that repeats \
+             the current version.",
+            host_schema(
+                json!({
+                    "name": {"type": "string", "description": "Document name; same name on a later put creates a new version of the same id."},
+                    "content": {"type": "string", "description": "Document content as text; use content_base64 instead for arbitrary bytes."},
+                    "content_base64": {"type": "string", "description": "Document content, base64-encoded; use content instead for plain text."},
+                    "mime": {"type": "string", "description": "One of text/plain, text/markdown, application/json, text/csv; detected from name/content when omitted."},
+                    "metadata": {"description": "Arbitrary caller metadata stored alongside the document; any JSON value."},
+                }),
+                &["name"],
+            ),
+        ),
+        Tool::new(
+            "host.docs.get",
+            "Read a document by id or name -- version defaults to the current one; text: true \
+             also returns the extracted plain text this document's mime produced at put time.",
+            host_schema(
+                json!({
+                    "id": {"type": "string", "description": "Document id to read; use name instead if you don't have it."},
+                    "name": {"type": "string", "description": "Document name to read; use id instead if you have it."},
+                    "version": {"type": "integer", "description": "Version to read; defaults to the document's current version."},
+                    "text": {"type": "boolean", "description": "Also return the extracted plain text; default false."},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.docs.list",
+            "List documents in this tenant's document store. Without since, returns the current \
+             live snapshot; with since (a watermark from host.docs.status, 0 for everything), \
+             returns every document changed since, including deleted ones (deleted: true).",
+            host_schema(
+                json!({
+                    "since": {"type": "integer", "description": "Return documents changed since this watermark (a host.docs.status seq); omit for the current live snapshot only."},
+                    "prefix": {"type": "string", "description": "Only list documents whose name starts with this prefix."},
+                    "limit": {"type": "integer", "description": "Max documents to return; default 100."},
+                    "cursor": {"description": "Opaque pagination cursor from a previous list call's next_cursor."},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.docs.delete",
+            "Soft-delete a document by id or name; still visible via host.docs.list {since} \
+             with deleted: true.",
+            host_schema(
+                json!({
+                    "id": {"type": "string", "description": "Document id to delete; use name instead if you don't have it."},
+                    "name": {"type": "string", "description": "Document name to delete; use id instead if you have it."},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.docs.status",
+            "This tenant's document store counters: documents, bytes, text_bytes, the current \
+             change watermark, and this plan's document/byte quotas.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "host.docs.purge",
+            "Drop stored versions of a document older than older_than_versions versions back \
+             from its current one -- get {version: <a dropped version>} then reads not found.",
+            host_schema(
+                json!({
+                    "id": {"type": "string", "description": "Document id to purge old versions of; use name instead if you don't have it."},
+                    "name": {"type": "string", "description": "Document name to purge old versions of; use id instead if you have it."},
+                    "older_than_versions": {"type": "integer", "description": "How many versions back from the current one to keep."},
+                }),
+                &["older_than_versions"],
             ),
         ),
         // PRD-mcphost-runs-and-jobs P0 requirement 7: the ledger's own
@@ -2326,6 +2411,27 @@ impl TableBackend for TenantTableBridge {
     }
 }
 
+/// PRD-mcphost-document-store P1 requirement 6: [`TenantStateBridge`]'s
+/// counterpart for `CallCtx.docs` -- bridges `Kind::call`'s sandboxed
+/// `mcphost.docs` requests to `docs.rs`'s real business logic for this
+/// call's own tenant. `op` is one of the bare verb names `kinds::python`'s
+/// `mcphost.docs` sandbox module sends (today just `"get"`).
+pub(crate) struct TenantDocsBridge {
+    pub(crate) state: Arc<AppState>,
+    pub(crate) tenant: Tenant,
+}
+
+#[async_trait::async_trait]
+impl DocsBackend for TenantDocsBridge {
+    async fn call(&self, op: &str, args: Value) -> Result<Value, KindError> {
+        let result = match op {
+            "get" => docs::doc_get(&self.state, &self.tenant, &args).await,
+            other => Err(AppError::InvalidArgs(format!("unknown docs op '{other}'"))),
+        };
+        result.map_err(app_error_to_kind_error)
+    }
+}
+
 /// requirement 5 / AC7: the per-call tally `CountingStateBackend` builds up
 /// as `mcphost.state`/`host.state.*` ops flow through this call's
 /// `CallCtx.state`, read back after `Kind::call`/`Kind::tool_run` returns
@@ -2513,6 +2619,12 @@ impl McpHostHandler {
             "host.table.list" => tables::table_list(&self.state, tenant, &args).await,
             "host.table.drop" => tables::table_drop(&self.state, tenant, &args).await,
             "host.table.schema" => tables::table_schema(&self.state, tenant, &args).await,
+            "host.docs.put" => docs::doc_put(&self.state, tenant, &args).await,
+            "host.docs.get" => docs::doc_get(&self.state, tenant, &args).await,
+            "host.docs.list" => docs::doc_list(&self.state, tenant, &args).await,
+            "host.docs.delete" => docs::doc_delete(&self.state, tenant, &args).await,
+            "host.docs.status" => docs::doc_status(&self.state, tenant, &args).await,
+            "host.docs.purge" => docs::doc_purge(&self.state, tenant, &args).await,
             "host.runs.get" => crate::runs::get(&self.state, tenant, &args).await,
             "host.runs.list" => crate::runs::list(&self.state, tenant, &args).await,
             "host.runs.cancel" => crate::runs::cancel(&self.state, tenant, &args).await,
@@ -2809,6 +2921,10 @@ impl McpHostHandler {
                 state: self.state.clone(),
                 tenant: tenant.clone(),
             }),
+            docs: Arc::new(TenantDocsBridge {
+                state: self.state.clone(),
+                tenant: tenant.clone(),
+            }),
             // PRD-mcphost-composition requirement 1/2: every real
             // `tools/call`/`host.tool_call` dispatch is the root of its own
             // composition tree -- depth 0, a fresh per-tree children
@@ -3089,6 +3205,10 @@ impl McpHostHandler {
             state: self.state.clone(),
             tenant: tenant.clone(),
         });
+        let docs_backend: Arc<dyn DocsBackend> = Arc::new(TenantDocsBridge {
+            state: self.state.clone(),
+            tenant: tenant.clone(),
+        });
         let resolved_timeout = self.resolve_call_timeout(&kind, &row.spec);
         let ctx = CallCtx {
             tenant_id: tenant.id,
@@ -3104,6 +3224,7 @@ impl McpHostHandler {
             // -- read back from `state_backend` after the call below.
             state: state_backend.clone() as Arc<dyn StateBackend>,
             table: table_backend.clone(),
+            docs: docs_backend.clone(),
             // PRD-mcphost-composition requirement 3/AC8: `chain`'s dry run
             // (`ctx.test_mode`) resolves only literal and `$.input.*`
             // mappings -- it never dispatches a step, so it never needs
@@ -3220,6 +3341,7 @@ impl McpHostHandler {
             // `NoState` is correct here, not a stand-in for a real backend.
             state: Arc::new(NoState),
             table: Arc::new(NoTable),
+            docs: Arc::new(NoDocs),
             compose_depth: 0,
             compose_children: None,
             compose_db: None,
@@ -3361,6 +3483,10 @@ impl McpHostHandler {
             state: self.state.clone(),
             tenant: tenant.clone(),
         });
+        let docs_backend: Arc<dyn DocsBackend> = Arc::new(TenantDocsBridge {
+            state: self.state.clone(),
+            tenant: tenant.clone(),
+        });
         let results = run_spec_test(&kind, &spec, &invocations, call_timeout, || CallCtx {
             tenant_id,
             namespace: namespace.clone(),
@@ -3375,6 +3501,7 @@ impl McpHostHandler {
             tool_name: None,
             state: state_backend.clone(),
             table: table_backend.clone(),
+            docs: docs_backend.clone(),
             compose_depth: 0,
             compose_children: None,
             compose_db: None,
@@ -3551,6 +3678,10 @@ impl McpHostHandler {
             state: self.state.clone(),
             tenant: tenant.clone(),
         });
+        let docs_backend: Arc<dyn DocsBackend> = Arc::new(TenantDocsBridge {
+            state: self.state.clone(),
+            tenant: tenant.clone(),
+        });
         let resolved_timeout = self.resolve_call_timeout(&kind, &row.spec);
         let ctx = CallCtx {
             tenant_id: tenant.id,
@@ -3563,6 +3694,7 @@ impl McpHostHandler {
             tool_name: Some(local_name.clone()),
             state: state_backend.clone() as Arc<dyn StateBackend>,
             table: table_backend.clone(),
+            docs: docs_backend.clone(),
             // PRD-mcphost-composition: `host.tool_run` has no notion of a
             // composition tree of its own yet (see `CallCtx::compose_db`'s
             // doc) -- `chain`/`mcphost.call` are unavailable from here,

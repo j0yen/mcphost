@@ -181,6 +181,20 @@ pub struct Plan {
     /// the `free` plan's own default (14) when a hand-edited `plans.toml`
     /// predates this key.
     pub channel_retention_days: i64,
+    /// PRD-mcphost-document-store P0 requirement 5: how many live documents
+    /// this plan's tenants may hold at once (`host.docs.put` on a name that
+    /// doesn't already exist refuses past this with `quota_docs`). Defaults
+    /// to the `free` plan's own default (200) when a hand-edited
+    /// `plans.toml` predates this key, same tolerant-parse convention as
+    /// every other field above.
+    pub docs_max: i64,
+    /// requirement 5: total bytes across this plan's tenants' live
+    /// documents' current versions (`host.docs.put` refuses past this with
+    /// `quota_docs_bytes`) -- the Open Questions table's drafted answer
+    /// ("raw bytes"), not raw plus extracted text. Defaults to the `free`
+    /// plan's own default (50 MiB) when a hand-edited `plans.toml` predates
+    /// this key.
+    pub docs_bytes_max: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -256,6 +270,10 @@ impl PlanCatalog {
                     channels_max: 3,
                     channel_posts_per_hour: 120,
                     channel_retention_days: 14,
+                    // PRD-mcphost-document-store P0 requirement 5: "free
+                    // 200" documents, "free 50 MiB".
+                    docs_max: 200,
+                    docs_bytes_max: 50 * 1024 * 1024,
                 },
                 Plan {
                     name: "pro".to_string(),
@@ -326,6 +344,10 @@ impl PlanCatalog {
                     channels_max: 25,
                     channel_posts_per_hour: 2_000,
                     channel_retention_days: 90,
+                    // PRD-mcphost-document-store P0 requirement 5: "pro
+                    // 20,000" documents, "pro 5 GiB".
+                    docs_max: 20_000,
+                    docs_bytes_max: 5 * 1024 * 1024 * 1024,
                 },
             ],
         }
@@ -428,6 +450,8 @@ impl PlanCatalog {
                 "channel_retention_days = {}\n",
                 p.channel_retention_days
             ));
+            out.push_str(&format!("docs_max = {}\n", p.docs_max));
+            out.push_str(&format!("docs_bytes_max = {}\n", p.docs_bytes_max));
             out.push('\n');
         }
         out
@@ -503,6 +527,8 @@ impl PlanCatalog {
                 "channels_max" => builder.channels_max = Some(int_value()),
                 "channel_posts_per_hour" => builder.channel_posts_per_hour = Some(int_value()),
                 "channel_retention_days" => builder.channel_retention_days = Some(int_value()),
+                "docs_max" => builder.docs_max = Some(int_value()),
+                "docs_bytes_max" => builder.docs_bytes_max = Some(int_value()),
                 _ => {}
             }
         }
@@ -552,6 +578,8 @@ struct PlanBuilder {
     channels_max: Option<i64>,
     channel_posts_per_hour: Option<i64>,
     channel_retention_days: Option<i64>,
+    docs_max: Option<i64>,
+    docs_bytes_max: Option<i64>,
 }
 
 impl PlanBuilder {
@@ -625,6 +653,11 @@ impl PlanBuilder {
             channels_max: self.channels_max.unwrap_or(3),
             channel_posts_per_hour: self.channel_posts_per_hour.unwrap_or(120),
             channel_retention_days: self.channel_retention_days.unwrap_or(14),
+            // PRD-mcphost-document-store: a `plans.toml` predating these two
+            // keys gets the `free` plan's own defaults, same
+            // tolerant-parse rationale as every other field above.
+            docs_max: self.docs_max.unwrap_or(200),
+            docs_bytes_max: self.docs_bytes_max.unwrap_or(50 * 1024 * 1024),
         })
     }
 }

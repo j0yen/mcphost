@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-abuse-guard-ban-list.md (test_prefix: banlist)",
+  "ac_test_map_prd": "PRD-mcphost-document-store.md (test_prefix: docstore)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,18 +28,18 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/banlist_ac01_addr_ban_blocks_signup.rs",
-    "AC2": "tests/banlist_ac02_key_ban_blocks_authenticated_calls.rs",
-    "AC3": "tests/banlist_ac03_public_flag_controls_reason_visibility.rs",
-    "AC4": "tests/banlist_ac04_auto_ban_on_network_denials.rs",
-    "AC5": "tests/banlist_ac05_auto_ban_on_claim_rate_events.rs",
-    "AC6": "tests/banlist_ac06_expiry_lifts_ban_without_restart.rs",
-    "AC7": "tests/banlist_ac07_ban_remove_audited_with_operator_identity.rs",
-    "AC8": "tests/banlist_ac08_list_active_only_excludes_expired.rs",
-    "AC9": "tests/banlist_ac09_permanent_requires_literal_true.rs",
-    "AC10": "tests/banlist_ac10_cache_lookup_latency_at_scale.rs",
-    "AC11": "tests/banlist_ac11_healthz_bans_block.rs",
-    "AC12": "tests/banlist_ac12_live_ban_unban_trailer.rs -- always-on half proves the ban/unban/audit mechanism against a real branch-built server; the prod-Live half (mcphost-1, MCPHOST_LIVE=1) stays deferred -- operator-provisioned. See the coder dispatch's own deferred list."
+    "AC1": "tests/docstore_ac01_first_put_returns_version1_seq1.rs",
+    "AC2": "tests/docstore_ac02_put_bumps_version_noop_on_identical_content.rs",
+    "AC3": "tests/docstore_ac03_size_cap_rejects_over_2mib_accepts_exactly.rs",
+    "AC4": "tests/docstore_ac04_extraction_json_and_csv.rs",
+    "AC5": "tests/docstore_ac05_list_since_includes_deleted.rs",
+    "AC6": "tests/docstore_ac06_quota_docs_and_docs_bytes.rs",
+    "AC7": "tests/docstore_ac07_put_bytes_metering_event.rs",
+    "AC8": "tests/docstore_ac08_unsupported_mime_by_content_sniff.rs",
+    "AC9": "tests/docstore_ac09_python_mcphost_docs_get_without_tool_call.rs",
+    "AC10": "tests/docstore_ac10_purge_older_than_versions.rs",
+    "AC11": "tests/docstore_ac11_export_includes_documents.rs",
+    "AC12": "deferred -- operator-provisioned: needs a real put/list against production mcphost-1 and live operator access this coder dispatch does not have."
   },
   "ac_test_map_by_prefix": {
     "adminschemacontract": {
@@ -325,6 +325,20 @@
       "AC8": "tests/mcphost_signup_kill_switch_and_source_ac08_concurrent_burst_with_pause_toggle.rs",
       "AC9": "tests/mcphost_signup_kill_switch_and_source_ac09_llms_txt_documents_source.rs",
       "AC10": "tests/mcphost_signup_kill_switch_and_source_ac10_until_line_bounds_retry_after.rs"
+    },
+    "banlist": {
+      "AC1": "tests/banlist_ac01_addr_ban_blocks_signup.rs",
+      "AC2": "tests/banlist_ac02_key_ban_blocks_authenticated_calls.rs",
+      "AC3": "tests/banlist_ac03_public_flag_controls_reason_visibility.rs",
+      "AC4": "tests/banlist_ac04_auto_ban_on_network_denials.rs",
+      "AC5": "tests/banlist_ac05_auto_ban_on_claim_rate_events.rs",
+      "AC6": "tests/banlist_ac06_expiry_lifts_ban_without_restart.rs",
+      "AC7": "tests/banlist_ac07_ban_remove_audited_with_operator_identity.rs",
+      "AC8": "tests/banlist_ac08_list_active_only_excludes_expired.rs",
+      "AC9": "tests/banlist_ac09_permanent_requires_literal_true.rs",
+      "AC10": "tests/banlist_ac10_cache_lookup_latency_at_scale.rs",
+      "AC11": "tests/banlist_ac11_healthz_bans_block.rs",
+      "AC12": "tests/banlist_ac12_live_ban_unban_trailer.rs -- always-on half proves the ban/unban/audit mechanism against a real branch-built server; the prod-Live half (mcphost-1, MCPHOST_LIVE=1) stays deferred -- operator-provisioned. See the coder dispatch's own deferred list."
     }
   }
 }

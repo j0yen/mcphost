@@ -205,6 +205,15 @@ async fn unauthenticated_tools_list_is_signup_only() {
         "host.channel.close",
         "host.channel.freeze",
         "host.channel.unfreeze",
+        // PRD-mcphost-document-store: the six host.docs.* tools are
+        // discoverable unauthenticated too, same as every other host.*-style
+        // tool above.
+        "host.docs.put",
+        "host.docs.get",
+        "host.docs.list",
+        "host.docs.delete",
+        "host.docs.status",
+        "host.docs.purge",
     ] {
         assert!(
             tool_names.contains(&expected),
@@ -217,7 +226,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        88,
+        94,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the three host.tool_history/host.tool_rollback/host.tool_diff \
@@ -235,7 +244,8 @@ async fn unauthenticated_tools_list_is_signup_only() {
          host.changelog (PRD-mcphost-host-tool-deprecation) + \
          host.export (PRD-mcphost-tenant-data-export) + \
          the six host.channel.* tools (PRD-mcphost-agent-mesh-ops, \
-         PRD-mcphost-agent-channels): \
+         PRD-mcphost-agent-channels) + the six host.docs.* tools \
+         (PRD-mcphost-document-store): \
          {tool_names:?}"
     );
 }

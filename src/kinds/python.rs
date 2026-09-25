@@ -102,7 +102,10 @@ use sha2::{Digest, Sha256};
 use tokio::sync::Semaphore;
 
 use super::infer;
-use super::{CallCtx, Kind, KindError, KindExample, OutputDecl, StateBackend, TableBackend, ToolDescriptor};
+use super::{
+    CallCtx, DocsBackend, Kind, KindError, KindExample, OutputDecl, StateBackend, TableBackend,
+    ToolDescriptor,
+};
 use crate::sandbox::{
     self, IsolationMechanism, NetworkMode, PersistentCallOutcome, PersistentSandbox,
     ResourceLimits, SandboxOutcome, SidecarBridge,
@@ -1901,6 +1904,15 @@ fn call_fingerprint(
 fn merge_env(secret_env: &[(String, String)], env: &[(String, String)]) -> Vec<(String, String)> {
     let mut combined = secret_env.to_vec();
     combined.extend(env.iter().cloned());
+    // PRD-mcphost-document-store P1 requirement 6: every sandboxed call
+    // carries this so a tool can `os.environ["MCPHOST_DOCS_ENDPOINT"]` to
+    // detect it's running inside mcphost before calling `mcphost.docs.get`
+    // -- the value itself names no reachable network address (the real
+    // channel is the same in-process stdin/stdout bridge `mcphost.state`
+    // uses, see `DocsSidecarBridge`), same as this crate's other
+    // `MCPHOST_*`-reserved, host-injected (never tool-declared -- see
+    // `env_name_reason_if_reserved`) environment entries.
+    combined.push(("MCPHOST_DOCS_ENDPOINT".to_string(), "stdio://mcphost.docs".to_string()));
     combined
 }
 
@@ -2122,9 +2134,52 @@ def _mcphost_call(name, args=None, timeout_s=None):
         )
     return resp.get("result")
 
+# ---- mcphost.docs (PRD-mcphost-document-store P1 requirement 6) -----------
+#
+# Same synchronous request-line-out/response-line-in round trip as
+# `mcphost.state`/`mcphost.table` above, marked `__mcphost_docs__` so the
+# host side (`kinds::python::DocsSidecarBridge`) can tell it apart on the
+# same stdin/stdout pair. `get(id)` returns just the document's extracted
+# text (AC9: "receives the extracted text without a tool call round trip"),
+# not the full host.docs.get envelope -- a tool that wants the rest (mime,
+# version, ...) can still call host.docs.get as an ordinary tool call.
+class McphostDocsError(Exception):
+    def __init__(self, code, message, data=None):
+        super().__init__(message)
+        self.code = code
+        self.data = data or {}
+
+def _docs_call(op, **kwargs):
+    _real_stdout.write(json.dumps({"__mcphost_docs__": True, "op": op, "args": kwargs}))
+    _real_stdout.write("\n")
+    _real_stdout.flush()
+    line = sys.stdin.readline()
+    if not line:
+        raise McphostDocsError("docs_unavailable", "the docs channel closed")
+    resp = json.loads(line)
+    if not resp.get("ok"):
+        raise McphostDocsError(
+            resp.get("code", "docs_error"), resp.get("message", "docs call failed"), resp.get("data")
+        )
+    return resp.get("result")
+
+def _docs_get(id=None, name=None):
+    kwargs = {"text": True}
+    if id is not None:
+        kwargs["id"] = id
+    if name is not None:
+        kwargs["name"] = name
+    r = _docs_call("get", **kwargs)
+    return r["text"]
+
+_mcphost_docs_mod = _mcphost_types.ModuleType("mcphost.docs")
+_mcphost_docs_mod.get = _docs_get
+_mcphost_docs_mod.DocsError = McphostDocsError
+
 _mcphost_mod = _mcphost_types.ModuleType("mcphost")
 _mcphost_mod.state = _mcphost_state_mod
 _mcphost_mod.table = _mcphost_table_mod
+_mcphost_mod.docs = _mcphost_docs_mod
 _mcphost_mod.call = _mcphost_call
 _mcphost_mod.CallError = McphostCallError
 
@@ -2155,6 +2210,7 @@ _mcphost_mod.progress = _mcphost_progress
 sys.modules["mcphost"] = _mcphost_mod
 sys.modules["mcphost.state"] = _mcphost_state_mod
 sys.modules["mcphost.table"] = _mcphost_table_mod
+sys.modules["mcphost.docs"] = _mcphost_docs_mod
 
 def run_one(payload):
     site_packages = payload.get("site_packages")
@@ -2465,6 +2521,46 @@ impl SidecarBridge for TableSidecarBridge<'_> {
     }
 }
 
+/// PRD-mcphost-document-store P1 requirement 6: [`StateSidecarBridge`]'s
+/// counterpart for `CallCtx.docs` -- `PY_RUNNER_SCRIPT`'s `mcphost.docs`
+/// functions emit `{"__mcphost_docs__": true, "op": ..., "args": {...}}`
+/// and block reading the response line this produces.
+struct DocsSidecarBridge<'a> {
+    docs: &'a Arc<dyn DocsBackend>,
+}
+
+#[async_trait::async_trait]
+impl SidecarBridge for DocsSidecarBridge<'_> {
+    async fn intercept(&self, line: &[u8]) -> Option<Vec<u8>> {
+        let request: Value = serde_json::from_slice(line).ok()?;
+        if request.get("__mcphost_docs__").and_then(Value::as_bool) != Some(true) {
+            return None;
+        }
+        let op = request.get("op").and_then(Value::as_str).unwrap_or("");
+        let args = request.get("args").cloned().unwrap_or(Value::Null);
+        let response = match self.docs.call(op, args).await {
+            Ok(result) => json!({"ok": true, "result": result}),
+            Err(e) => {
+                let (code, message, data) = match e {
+                    KindError::Structured {
+                        code,
+                        message,
+                        data,
+                    } => (code, message, data),
+                    KindError::InvalidArgs(m) => ("docs_args_invalid", m, Value::Null),
+                    KindError::InvalidSpec(m) => ("docs_args_invalid", m, Value::Null),
+                    KindError::Exec(m) => ("docs_error", m, Value::Null),
+                };
+                json!({"ok": false, "code": code, "message": message, "data": data})
+            }
+        };
+        Some(serde_json::to_vec(&response).unwrap_or_else(|_| {
+            br#"{"ok":false,"code":"docs_error","message":"internal: response not serializable"}"#
+                .to_vec()
+        }))
+    }
+}
+
 /// PRD-mcphost-composition requirement 1: bridges the same sidecar channel
 /// to `kinds::compose_call` -- `PY_RUNNER_SCRIPT`'s `mcphost.call(name,
 /// args, timeout_s=None)` emits `{"__mcphost_call__": true, "name": ...,
@@ -2570,6 +2666,12 @@ impl SidecarBridge for HostSidecarBridge<'_> {
             table: &self.ctx.table,
         };
         if let Some(response) = table_bridge.intercept(line).await {
+            return Some(response);
+        }
+        let docs_bridge = DocsSidecarBridge {
+            docs: &self.ctx.docs,
+        };
+        if let Some(response) = docs_bridge.intercept(line).await {
             return Some(response);
         }
         let progress_bridge = ProgressSidecarBridge { ctx: self.ctx };
@@ -4642,6 +4744,7 @@ mod tests {
             tool_name: Some(tool_name.to_string()),
             state: Arc::new(crate::kinds::NoState),
             table: Arc::new(crate::kinds::NoTable),
+            docs: Arc::new(crate::kinds::NoDocs),
             compose_depth: 0,
             compose_children: None,
             compose_db: None,
@@ -4945,6 +5048,7 @@ mod tests {
             tool_name: Some(tool_name.to_string()),
             state: Arc::new(crate::kinds::NoState),
             table: Arc::new(crate::kinds::NoTable),
+            docs: Arc::new(crate::kinds::NoDocs),
             compose_depth: 0,
             compose_children: None,
             compose_db: None,

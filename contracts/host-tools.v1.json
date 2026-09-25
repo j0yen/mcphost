@@ -562,6 +562,170 @@
       "since": "0.58.0"
     },
     {
+      "description": "Soft-delete a document by id or name; still visible via host.docs.list {since} with deleted: true.",
+      "input_schema": {
+        "properties": {
+          "id": {
+            "description": "Document id to delete; use name instead if you don't have it.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Document name to delete; use id instead if you have it.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.docs.delete",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Read a document by id or name -- version defaults to the current one; text: true also returns the extracted plain text this document's mime produced at put time.",
+      "input_schema": {
+        "properties": {
+          "id": {
+            "description": "Document id to read; use name instead if you don't have it.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Document name to read; use id instead if you have it.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "text": {
+            "description": "Also return the extracted plain text; default false.",
+            "type": "boolean"
+          },
+          "version": {
+            "description": "Version to read; defaults to the document's current version.",
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.docs.get",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List documents in this tenant's document store. Without since, returns the current live snapshot; with since (a watermark from host.docs.status, 0 for everything), returns every document changed since, including deleted ones (deleted: true).",
+      "input_schema": {
+        "properties": {
+          "cursor": {
+            "description": "Opaque pagination cursor from a previous list call's next_cursor."
+          },
+          "limit": {
+            "description": "Max documents to return; default 100.",
+            "type": "integer"
+          },
+          "prefix": {
+            "description": "Only list documents whose name starts with this prefix.",
+            "type": "string"
+          },
+          "since": {
+            "description": "Return documents changed since this watermark (a host.docs.status seq); omit for the current live snapshot only.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.docs.list",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Drop stored versions of a document older than older_than_versions versions back from its current one -- get {version: <a dropped version>} then reads not found.",
+      "input_schema": {
+        "properties": {
+          "id": {
+            "description": "Document id to purge old versions of; use name instead if you don't have it.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Document name to purge old versions of; use id instead if you have it.",
+            "type": "string"
+          },
+          "older_than_versions": {
+            "description": "How many versions back from the current one to keep.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "older_than_versions"
+        ],
+        "type": "object"
+      },
+      "name": "host.docs.purge",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Write (or, for an already-used name, create a new version of) a document in this tenant's document store. mime is detected from name and content when omitted; allowed mimes are text/plain, text/markdown, application/json, text/csv. content (or content_base64 for arbitrary bytes) must be at most MCPHOST_DOC_MAX_BYTES (default 2 MiB). Identical content to the current version is a no-op that repeats the current version.",
+      "input_schema": {
+        "properties": {
+          "content": {
+            "description": "Document content as text; use content_base64 instead for arbitrary bytes.",
+            "type": "string"
+          },
+          "content_base64": {
+            "description": "Document content, base64-encoded; use content instead for plain text.",
+            "type": "string"
+          },
+          "metadata": {
+            "description": "Arbitrary caller metadata stored alongside the document; any JSON value."
+          },
+          "mime": {
+            "description": "One of text/plain, text/markdown, application/json, text/csv; detected from name/content when omitted.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Document name; same name on a later put creates a new version of the same id.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host.docs.put",
+      "since": "0.58.0"
+    },
+    {
+      "description": "This tenant's document store counters: documents, bytes, text_bytes, the current change watermark, and this plan's document/byte quotas.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.docs.status",
+      "since": "0.58.0"
+    },
+    {
       "description": "Build a downloadable .tar.gz of everything this tenant owns: tool sources, state, secret NAMES (never values), run/thread history and usage, plus a manifest.json re-publishable via host.tool_publish. Runs as a background job (poll host.runs.get with the returned run_id) -- calling this again while one is already running returns that same run_id rather than starting a second one. The finished run's result carries a download_url valid 24 hours.",
       "input_schema": {
         "properties": {

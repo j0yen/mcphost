@@ -57,6 +57,7 @@ const MIGRATION_0033: &str = include_str!("../migrations/0033_network_denials.sq
 const MIGRATION_0034: &str = include_str!("../migrations/0034_claim.sql");
 const MIGRATION_0035: &str = include_str!("../migrations/0035_bans.sql");
 const MIGRATION_0036: &str = include_str!("../migrations/0036_ban_removed_at.sql");
+const MIGRATION_0037: &str = include_str!("../migrations/0037_documents.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -1192,7 +1193,8 @@ impl Db {
         Self::migrate_0033_network_denials(&conn)?;
         Self::migrate_0034_claim(&conn)?;
         Self::migrate_0035_bans(&conn)?;
-        Self::migrate_0036_ban_removed_at(&conn)
+        Self::migrate_0036_ban_removed_at(&conn)?;
+        Self::migrate_0037_documents(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -1714,6 +1716,21 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0036)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-document-store migration 0037 (requirement 1): same
+    /// new-table idempotency guard as 0011/0014/0015/0035 above, gated on
+    /// `documents`' existence -- the batch also creates `document_blobs`
+    /// and `document_usage_events`, which land together, atomically, the
+    /// first time this runs.
+    fn migrate_0037_documents(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'documents'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0037)?;
         }
         Ok(())
     }
@@ -9025,6 +9042,506 @@ impl Db {
         })
         .await
     }
+
+    // ---- documents (PRD-mcphost-document-store) --------------------------
+    //
+    // `docs.rs` owns mime detection, size/quota checks, and text extraction;
+    // these methods are the same thin "one prepared statement (or one small
+    // transaction), one shape" storage layer every other section of this
+    // file already is. `documents_put` is the one method that decides
+    // new-document/new-version/no-op (requirement 2, AC1/AC2) and computes
+    // the next `seq` -- kept as a single transactional method (rather than a
+    // separate lookup call plus a separate write call, the shape
+    // `tenant_state.rs`'s own quota checks use) because the new-vs-bump-vs-
+    // no-op decision and the `seq` it produces must never straddle two
+    // separate `with_conn` round trips, or a no-op put could still observe
+    // (and even collide with) a `seq` a concurrent write already claimed.
+
+    fn document_from_row(r: &Row) -> rusqlite::Result<DocumentRow> {
+        Ok(DocumentRow {
+            id: r.get(0)?,
+            name: r.get(1)?,
+            version: r.get(2)?,
+            content_hash: r.get(3)?,
+            bytes: r.get(4)?,
+            mime: r.get(5)?,
+            metadata_json: r.get(6)?,
+            text_bytes: r.get(7)?,
+            created_at: r.get(8)?,
+            updated_at: r.get(9)?,
+            deleted_at: r.get(10)?,
+            seq: r.get(11)?,
+        })
+    }
+
+    const DOCUMENT_COLUMNS: &'static str =
+        "id, name, version, content_hash, bytes, mime, metadata_json, text_bytes, \
+         created_at, updated_at, deleted_at, seq";
+
+    /// requirement 2: the document currently registered under `name` for
+    /// this tenant (live or soft-deleted) -- `docs::doc_put`'s own
+    /// new-vs-bump decision reads this first (informationally; the
+    /// authoritative decision is re-made inside [`Self::documents_put`]'s
+    /// own transaction).
+    pub async fn document_find_by_name(
+        &self,
+        tenant_id: i64,
+        name: String,
+    ) -> Result<Option<DocumentRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                &format!(
+                    "SELECT {} FROM documents WHERE tenant_id = ?1 AND name = ?2",
+                    Self::DOCUMENT_COLUMNS
+                ),
+                params![tenant_id, name],
+                Self::document_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    pub async fn document_find_by_id(
+        &self,
+        tenant_id: i64,
+        id: String,
+    ) -> Result<Option<DocumentRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                &format!(
+                    "SELECT {} FROM documents WHERE tenant_id = ?1 AND id = ?2",
+                    Self::DOCUMENT_COLUMNS
+                ),
+                params![tenant_id, id],
+                Self::document_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 4/5: `(documents, bytes, text_bytes)` across this
+    /// tenant's *live* (not soft-deleted) documents -- the quota-check input
+    /// and `host.docs.status`'s own counters.
+    pub async fn documents_usage(&self, tenant_id: i64) -> Result<(i64, i64, i64), AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*), COALESCE(SUM(bytes), 0), COALESCE(SUM(text_bytes), 0) \
+                 FROM documents WHERE tenant_id = ?1 AND deleted_at IS NULL",
+                params![tenant_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 1: the tenant's current change watermark -- the highest
+    /// `seq` across every document (live or deleted), `0` for a tenant with
+    /// none yet.
+    pub async fn documents_watermark(&self, tenant_id: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COALESCE(MAX(seq), 0) FROM documents WHERE tenant_id = ?1",
+                params![tenant_id],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 2/AC1/AC2: the one write path for `host.docs.put`.
+    /// `new_id` is a pre-generated ULID, used only when this call turns out
+    /// to create a brand-new document (an existing, live row with the same
+    /// `name` bumps its own `id` instead). Returns the document's `id`,
+    /// resulting `version`/`seq`/`bytes`/`text_bytes`, and whether this call
+    /// actually wrote anything (`false` for AC2's identical-content no-op,
+    /// whose `seq` is deliberately left unchanged).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn documents_put(
+        &self,
+        tenant_id: i64,
+        new_id: String,
+        name: String,
+        content_hash: String,
+        content: Vec<u8>,
+        bytes: i64,
+        mime: String,
+        metadata_json: String,
+        text: String,
+        text_bytes: i64,
+        now: i64,
+    ) -> Result<DocPutOutcome, AppError> {
+        // (id, version, content_hash, seq, deleted_at) -- just enough of the
+        // existing row (if any) by this name to decide new/bump/no-op.
+        type ExistingByName = (String, i64, String, i64, Option<i64>);
+        self.with_conn(move |conn| {
+            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
+            let outcome: Result<DocPutOutcome, AppError> = (|| {
+                let existing: Option<ExistingByName> = conn
+                    .query_row(
+                        "SELECT id, version, content_hash, seq, deleted_at FROM documents \
+                         WHERE tenant_id = ?1 AND name = ?2",
+                        params![tenant_id, name],
+                        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+                    )
+                    .optional()?;
+
+                match existing {
+                    Some((id, version, existing_hash, seq, deleted_at))
+                        if deleted_at.is_none() && existing_hash == content_hash =>
+                    {
+                        // AC2: identical content -- repeats the current
+                        // version/seq, writes nothing.
+                        Ok(DocPutOutcome {
+                            id,
+                            version,
+                            seq,
+                            bytes,
+                            text_bytes,
+                            changed: false,
+                        })
+                    }
+                    Some((id, version, _, _, _)) => {
+                        let next_seq: i64 = conn.query_row(
+                            "SELECT COALESCE(MAX(seq), 0) + 1 FROM documents WHERE tenant_id = ?1",
+                            params![tenant_id],
+                            |r| r.get(0),
+                        )?;
+                        let new_version = version + 1;
+                        conn.execute(
+                            "UPDATE documents SET version = ?1, content_hash = ?2, bytes = ?3, \
+                                 mime = ?4, metadata_json = ?5, text_bytes = ?6, updated_at = ?7, \
+                                 deleted_at = NULL, seq = ?8 \
+                             WHERE tenant_id = ?9 AND id = ?10",
+                            params![
+                                new_version,
+                                content_hash,
+                                bytes,
+                                mime,
+                                metadata_json,
+                                text_bytes,
+                                now,
+                                next_seq,
+                                tenant_id,
+                                id,
+                            ],
+                        )?;
+                        conn.execute(
+                            "INSERT INTO document_blobs (tenant_id, document_id, version, content, text, created_at) \
+                             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                            params![tenant_id, id, new_version, content, text, now],
+                        )?;
+                        Ok(DocPutOutcome {
+                            id,
+                            version: new_version,
+                            seq: next_seq,
+                            bytes,
+                            text_bytes,
+                            changed: true,
+                        })
+                    }
+                    None => {
+                        let next_seq: i64 = conn.query_row(
+                            "SELECT COALESCE(MAX(seq), 0) + 1 FROM documents WHERE tenant_id = ?1",
+                            params![tenant_id],
+                            |r| r.get(0),
+                        )?;
+                        conn.execute(
+                            "INSERT INTO documents (id, tenant_id, name, version, content_hash, \
+                                 bytes, mime, metadata_json, text_bytes, created_at, updated_at, \
+                                 deleted_at, seq) \
+                             VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, ?8, ?9, ?9, NULL, ?10)",
+                            params![
+                                new_id, tenant_id, name, content_hash, bytes, mime, metadata_json,
+                                text_bytes, now, next_seq
+                            ],
+                        )?;
+                        conn.execute(
+                            "INSERT INTO document_blobs (tenant_id, document_id, version, content, text, created_at) \
+                             VALUES (?1, ?2, 1, ?3, ?4, ?5)",
+                            params![tenant_id, new_id, content, text, now],
+                        )?;
+                        Ok(DocPutOutcome {
+                            id: new_id,
+                            version: 1,
+                            seq: next_seq,
+                            bytes,
+                            text_bytes,
+                            changed: true,
+                        })
+                    }
+                }
+            })();
+            match outcome {
+                Ok(v) => {
+                    conn.execute("COMMIT", []).map_err(AppError::from)?;
+                    Ok(v)
+                }
+                Err(e) => {
+                    let _ = conn.execute("ROLLBACK", []);
+                    Err(e)
+                }
+            }
+        })
+        .await
+    }
+
+    /// requirement 4: soft-delete (bumps `seq`, requirement 1's watermark).
+    /// `None` if no live document by this id exists for this tenant.
+    pub async fn document_soft_delete(
+        &self,
+        tenant_id: i64,
+        id: String,
+        now: i64,
+    ) -> Result<Option<i64>, AppError> {
+        self.with_conn(move |conn| {
+            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
+            let outcome: Result<Option<i64>, AppError> = (|| {
+                let live: bool = conn
+                    .query_row(
+                        "SELECT 1 FROM documents WHERE tenant_id = ?1 AND id = ?2 AND deleted_at IS NULL",
+                        params![tenant_id, id],
+                        |_| Ok(true),
+                    )
+                    .optional()?
+                    .unwrap_or(false);
+                if !live {
+                    return Ok(None);
+                }
+                let next_seq: i64 = conn.query_row(
+                    "SELECT COALESCE(MAX(seq), 0) + 1 FROM documents WHERE tenant_id = ?1",
+                    params![tenant_id],
+                    |r| r.get(0),
+                )?;
+                conn.execute(
+                    "UPDATE documents SET deleted_at = ?1, seq = ?2 WHERE tenant_id = ?3 AND id = ?4",
+                    params![now, next_seq, tenant_id, id],
+                )?;
+                Ok(Some(next_seq))
+            })();
+            match outcome {
+                Ok(v) => {
+                    conn.execute("COMMIT", []).map_err(AppError::from)?;
+                    Ok(v)
+                }
+                Err(e) => {
+                    let _ = conn.execute("ROLLBACK", []);
+                    Err(e)
+                }
+            }
+        })
+        .await
+    }
+
+    /// requirement 4: live documents only, ordered by name, optionally
+    /// `name`-prefix filtered and paginated by a last-seen-name cursor.
+    pub async fn documents_list_live(
+        &self,
+        tenant_id: i64,
+        prefix: Option<String>,
+        cursor: Option<String>,
+        limit: i64,
+    ) -> Result<Vec<DocumentRow>, AppError> {
+        self.with_conn(move |conn| {
+            let pattern = prefix
+                .as_deref()
+                .map(|p| format!("{}%", p.replace('%', "\\%").replace('_', "\\_")));
+            let mut stmt = conn.prepare(&format!(
+                "SELECT {} FROM documents \
+                 WHERE tenant_id = ?1 AND deleted_at IS NULL \
+                   AND (?2 IS NULL OR name LIKE ?2 ESCAPE '\\') \
+                   AND (?3 IS NULL OR name > ?3) \
+                 ORDER BY name LIMIT ?4",
+                Self::DOCUMENT_COLUMNS
+            ))?;
+            let rows = stmt
+                .query_map(params![tenant_id, pattern, cursor, limit], |r| {
+                    Self::document_from_row(r)
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// requirement 4: every document (live or deleted) whose own `seq` is
+    /// past `since`, ordered by `seq` -- the changefeed `list {since}`
+    /// returns (AC5).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn documents_list_since(
+        &self,
+        tenant_id: i64,
+        since: i64,
+        prefix: Option<String>,
+        cursor: Option<i64>,
+        limit: i64,
+    ) -> Result<Vec<DocumentRow>, AppError> {
+        self.with_conn(move |conn| {
+            let pattern = prefix
+                .as_deref()
+                .map(|p| format!("{}%", p.replace('%', "\\%").replace('_', "\\_")));
+            let floor = cursor.map(|c| c.max(since)).unwrap_or(since);
+            let mut stmt = conn.prepare(&format!(
+                "SELECT {} FROM documents \
+                 WHERE tenant_id = ?1 AND seq > ?2 \
+                   AND (?3 IS NULL OR name LIKE ?3 ESCAPE '\\') \
+                 ORDER BY seq LIMIT ?4",
+                Self::DOCUMENT_COLUMNS
+            ))?;
+            let rows = stmt
+                .query_map(params![tenant_id, floor, pattern, limit], |r| {
+                    Self::document_from_row(r)
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// requirement 3: one stored version's raw content and extracted text,
+    /// `None` if this document never had that version (or it has since been
+    /// purged).
+    pub async fn document_blob_get(
+        &self,
+        tenant_id: i64,
+        document_id: String,
+        version: i64,
+    ) -> Result<Option<(Vec<u8>, String)>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT content, text FROM document_blobs \
+                 WHERE tenant_id = ?1 AND document_id = ?2 AND version = ?3",
+                params![tenant_id, document_id, version],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// P1 requirement 7/AC10: drops every stored version of `document_id`
+    /// strictly below `keep_from_version` -- the document's own current
+    /// `documents` row (and its live blob) are never touched by this, only
+    /// older `document_blobs` rows. Returns how many versions were dropped.
+    pub async fn document_blobs_purge_below(
+        &self,
+        tenant_id: i64,
+        document_id: String,
+        keep_from_version: i64,
+    ) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "DELETE FROM document_blobs \
+                 WHERE tenant_id = ?1 AND document_id = ?2 AND version < ?3",
+                params![tenant_id, document_id, keep_from_version],
+            )?;
+            Ok(n as i64)
+        })
+        .await
+    }
+
+    /// requirement 5/AC7: records one named-quantity usage event (e.g.
+    /// `docs.put_bytes`) for this tenant.
+    pub async fn document_usage_event_insert(
+        &self,
+        tenant_id: i64,
+        event_name: String,
+        quantity: i64,
+        created_unix: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO document_usage_events (tenant_id, event_name, quantity, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![tenant_id, event_name, quantity, created_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Test/verification-only: every quantity recorded for `event_name`,
+    /// oldest first -- AC7 asserts a `docs.put_bytes` event of the exact
+    /// size just written exists for the tenant.
+    pub async fn document_usage_event_quantities(
+        &self,
+        tenant_id: i64,
+        event_name: String,
+    ) -> Result<Vec<i64>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT quantity FROM document_usage_events \
+                 WHERE tenant_id = ?1 AND event_name = ?2 ORDER BY id",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id, event_name], |r| r.get(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// AC11: every live document's id/name/version/current extracted text,
+    /// for `export.rs`'s archive bundle.
+    pub async fn documents_for_export(
+        &self,
+        tenant_id: i64,
+    ) -> Result<Vec<(String, String, i64, String)>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT d.id, d.name, d.version, b.text FROM documents d \
+                 JOIN document_blobs b \
+                   ON b.tenant_id = d.tenant_id AND b.document_id = d.id AND b.version = d.version \
+                 WHERE d.tenant_id = ?1 AND d.deleted_at IS NULL ORDER BY d.name",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id], |r| {
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+}
+
+/// requirement 1: one `documents` row -- `docs.rs`'s own business logic
+/// (quota arithmetic, response shaping) reads these fields; `db.rs` itself
+/// only ever constructs and returns them.
+#[derive(Debug, Clone)]
+pub struct DocumentRow {
+    pub id: String,
+    pub name: String,
+    pub version: i64,
+    pub content_hash: String,
+    pub bytes: i64,
+    pub mime: String,
+    pub metadata_json: String,
+    pub text_bytes: i64,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub deleted_at: Option<i64>,
+    pub seq: i64,
+}
+
+/// [`Db::documents_put`]'s return shape.
+#[derive(Debug, Clone)]
+pub struct DocPutOutcome {
+    pub id: String,
+    pub version: i64,
+    pub seq: i64,
+    pub bytes: i64,
+    pub text_bytes: i64,
+    /// `false` for AC2's identical-content no-op -- `docs.rs` uses this to
+    /// decide whether to also emit a `docs.put_bytes` metering event
+    /// (requirement 5): a no-op write shouldn't be metered as one.
+    pub changed: bool,
 }
 
 /// [`Db::prune_once`]'s return shape: one cycle's per-physical-table

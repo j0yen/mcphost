@@ -960,6 +960,30 @@ impl TableBackend for NoTable {
     }
 }
 
+/// PRD-mcphost-document-store P1 requirement 6: `mcphost.docs` inside the
+/// python kind's sandbox -- the same shape [`StateBackend`]/[`TableBackend`]
+/// give their own stores, for the document store instead. `op` names one of
+/// `docs.rs`'s own verbs (today just `"get"`) and `args` is that verb's own
+/// JSON argument object.
+#[async_trait::async_trait]
+pub trait DocsBackend: Send + Sync {
+    async fn call(&self, op: &str, args: Value) -> Result<Value, KindError>;
+}
+
+/// A backend with no document store behind it -- [`NoState`]/[`NoTable`]'s
+/// counterpart for [`DocsBackend`], same "fail clearly rather than silently
+/// no-op" stance.
+pub struct NoDocs;
+#[async_trait::async_trait]
+impl DocsBackend for NoDocs {
+    async fn call(&self, _op: &str, _args: Value) -> Result<Value, KindError> {
+        Err(KindError::structured(
+            "docs_unavailable",
+            "no tenant document backend is wired for this call context",
+        ))
+    }
+}
+
 /// PRD-mcphost-runs-and-jobs P0 requirement 5: where a sandboxed call's
 /// `mcphost.progress(pct, msg)` (see `kinds::python`'s `ProgressSidecarBridge`)
 /// lands. `handler.rs`'s real dispatch path wires this to a sink that
@@ -1017,6 +1041,10 @@ pub struct CallCtx {
     /// `handler.rs`'s real dispatch path, which wires this call's own
     /// tenant into `tables.rs`.
     pub table: Arc<dyn TableBackend>,
+    /// See [`DocsBackend`]. Defaults to [`NoDocs`] everywhere but
+    /// `handler.rs`'s real dispatch path, which wires this call's own
+    /// tenant into `docs.rs`.
+    pub docs: Arc<dyn DocsBackend>,
     /// PRD-mcphost-composition requirement 2: how many levels of
     /// composition already led to this call -- `0` for every ordinary
     /// top-level `tools/call`/`host.tool_call`. [`compose_call`] refuses a
@@ -1106,6 +1134,7 @@ impl CallCtx {
             tool_name: None,
             state: Arc::new(NoState),
             table: Arc::new(NoTable),
+            docs: Arc::new(NoDocs),
             compose_depth: 0,
             compose_children: None,
             compose_db: None,
@@ -1259,6 +1288,10 @@ pub async fn compose_call(
         // composition stays inside one tenant, so the child's
         // `mcphost.table` reaches the exact same tenant's table store.
         table: ctx.table.clone(),
+        // PRD-mcphost-document-store: same reasoning as `state`/`table`
+        // above -- composition stays inside one tenant, so the child's
+        // `mcphost.docs` reaches the exact same tenant's document store.
+        docs: ctx.docs.clone(),
         compose_depth: next_depth,
         compose_children: Some(children.clone()),
         compose_db: Some(db.clone()),
