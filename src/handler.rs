@@ -46,7 +46,12 @@ enum Auth {
     /// boxed per the lint's own suggestion rather than shrinking `Tenant`
     /// itself (every other variant is unaffected; every call site already
     /// takes `&Tenant`, which `Box<Tenant>` derefs to for free).
-    Tenant(Box<Tenant>),
+    ///
+    /// PRD-mcphost-oauth-resource-server requirement 4: the second field is
+    /// the JWT `sub` claim when this tenant was resolved from an OAuth
+    /// bearer, `None` for the pre-existing key paths (header or
+    /// `tenant_key` argument) -- see `control::whoami`'s own doc comment.
+    Tenant(Box<Tenant>, Option<String>),
 }
 
 fn value_to_json_object(v: Value) -> Map<String, Value> {
@@ -85,7 +90,27 @@ async fn resolve_auth(state: &AppState, parts: &http::request::Parts) -> Result<
             if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
                 tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump last_seen_unix");
             }
-            Ok(Auth::Tenant(Box::new(t)))
+            Ok(Auth::Tenant(Box::new(t), None))
+        }
+        // PRD-mcphost-oauth-resource-server requirement 4: a bearer that
+        // matches no tenant key hash falls through to OAuth JWT validation
+        // ONLY when it's shaped like a JWT (three dot-separated segments)
+        // -- this crate's own tenant keys are 64 hex chars and never
+        // contain '.', so a garden-variety wrong key keeps resolving to
+        // `Auth::Invalid` exactly as before (AC10:
+        // autherr_ac4's "not-a-real-key-at-all" case is unaffected).
+        None if key.split('.').count() == 3 => {
+            let result = crate::oauth::validate_bearer(state, &key).await?;
+            match state.db.find_tenant_by_id(result.tenant_id).await? {
+                Some(t) if t.disabled => Err(AppError::TenantDisabled),
+                Some(t) => {
+                    if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
+                        tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump last_seen_unix");
+                    }
+                    Ok(Auth::Tenant(Box::new(t), Some(result.subject)))
+                }
+                None => Ok(Auth::Invalid),
+            }
         }
         None => Ok(Auth::Invalid),
     }
@@ -121,7 +146,7 @@ async fn resolve_tenant_key_auth(state: &AppState, args: &Value) -> Result<Auth,
             if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
                 tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump last_seen_unix");
             }
-            Ok(Auth::Tenant(Box::new(t)))
+            Ok(Auth::Tenant(Box::new(t), None))
         }
         None => Ok(Auth::Invalid),
     }
@@ -1882,6 +1907,40 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &["channel_id"],
             ),
         ),
+        // PRD-mcphost-oauth-resource-server requirement 3: OAuth-only
+        // clients authenticate via a bearer JWT from their own registered
+        // issuer instead of a pasted tenant key -- these three set up the
+        // issuer that validates it.
+        Tool::new(
+            "host.oauth.issuer_set",
+            "Register (or update) an OAuth issuer for this tenant: bearer JWTs with iss equal \
+             to issuer, a matching aud, verified against jwks_url, authenticate as this tenant. \
+             Up to 3 issuers per tenant; an issuer already registered by another tenant is \
+             refused issuer_already_registered.",
+            host_schema(
+                json!({
+                    "issuer": {"type": "string", "description": "The JWT `iss` claim value to match, e.g. https://issuer.example.com."},
+                    "audience": {"type": "string", "description": "The JWT `aud` claim value to require."},
+                    "jwks_url": {"type": "string", "description": "URL this host fetches the issuer's JWKS from."},
+                }),
+                &["issuer", "audience", "jwks_url"],
+            ),
+        ),
+        Tool::new(
+            "host.oauth.issuer_remove",
+            "Remove one of this tenant's registered OAuth issuers; bearer JWTs from it stop \
+             authenticating immediately.",
+            host_schema(
+                json!({"issuer": {"type": "string", "description": "The issuer to remove."}}),
+                &["issuer"],
+            ),
+        ),
+        Tool::new(
+            "host.oauth.issuers",
+            "List this tenant's registered OAuth issuers with their audience, jwks_url, and \
+             JWKS fetch age.",
+            host_schema(json!({}), &[]),
+        ),
     ];
     if authenticated {
         tools.push(Tool::new(
@@ -2271,6 +2330,19 @@ fn admin_tools() -> Vec<Tool> {
                 &[],
             ),
         ),
+        // PRD-mcphost-oauth-resource-server P1 requirement 6, AC9.
+        Tool::new(
+            "admin.oauth.issuers",
+            "List every registered OAuth issuer across every tenant, with the owning tenant's \
+             namespace, JWKS fetch age, and per-reason rejection counters.",
+            schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "admin.oauth.jwks_refresh",
+            "Force an immediate JWKS refetch for one issuer, bypassing the normal TTL and \
+             unknown-kid throttle.",
+            schema(json!({"issuer": {"type": "string"}}), &["issuer"]),
+        ),
     ]
 }
 
@@ -2565,11 +2637,12 @@ impl McpHostHandler {
     async fn dispatch_tenant_tool(
         &self,
         tenant: &Tenant,
+        subject: Option<&str>,
         name: &str,
         args: Value,
     ) -> Result<Value, AppError> {
         match name {
-            "host.whoami" => Ok(control::whoami(tenant)),
+            "host.whoami" => Ok(control::whoami(tenant, subject)),
             "host.key_rotate" => control::key_rotate(&self.state, tenant).await,
             "host.self_offboard" => control::self_offboard(&self.state, tenant).await,
             "host.tool_publish" => control::tool_publish(&self.state, tenant, &args).await,
@@ -2670,6 +2743,10 @@ impl McpHostHandler {
             "host.channel.close" => channels::close(&self.state, tenant, &args).await,
             "host.channel.freeze" => channels::freeze(&self.state, tenant, &args).await,
             "host.channel.unfreeze" => channels::unfreeze(&self.state, tenant, &args).await,
+            // PRD-mcphost-oauth-resource-server requirement 3.
+            "host.oauth.issuer_set" => crate::oauth::issuer_set(&self.state, tenant, &args).await,
+            "host.oauth.issuer_remove" => crate::oauth::issuer_remove(&self.state, tenant, &args).await,
+            "host.oauth.issuers" => crate::oauth::issuers_list(&self.state, tenant).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         }
     }
@@ -2718,6 +2795,9 @@ impl McpHostHandler {
             "admin.ban.add" => admin::ban_add(&self.state, &args).await,
             "admin.ban.remove" => admin::ban_remove(&self.state, &args).await,
             "admin.ban.list" => admin::ban_list(&self.state, &args).await,
+            // PRD-mcphost-oauth-resource-server P1 requirement 6, AC9.
+            "admin.oauth.issuers" => crate::oauth::admin_issuers(&self.state).await,
+            "admin.oauth.jwks_refresh" => crate::oauth::admin_jwks_refresh(&self.state, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         };
 
@@ -3923,7 +4003,7 @@ impl ServerHandler for McpHostHandler {
                 (tools, TOOLS_LIST_TTL_MS_STEADY)
             }
             Auth::Admin => (admin_tools(), TOOLS_LIST_TTL_MS_STEADY),
-            Auth::Tenant(tenant) => {
+            Auth::Tenant(tenant, _subject) => {
                 let mut tools = host_tools(&self.state.kinds, true);
                 let rows = self
                     .state
@@ -4010,6 +4090,24 @@ impl ServerHandler for McpHostHandler {
                 .await
                 .map_err(AppError::into_error_data)?;
         }
+        // PRD-mcphost-oauth-resource-server requirement 7 / AC8: the header
+        // already won (requirement 5/6's usual precedence -- `auth` above
+        // is already resolved from it), but when it won via an OAuth
+        // bearer (a subject is present) a `tenant_key` argument is still
+        // read here and compared: two valid, DIFFERENT tenants is a
+        // `conflicting_credentials` refusal, never a silent pick of one.
+        // An absent, non-string, or unrecognized `tenant_key` is not a
+        // conflict (the PRD's own "both ... valid") and changes nothing.
+        if let Auth::Tenant(header_tenant, Some(_)) = &auth
+            && let Some(key) = raw_args.get("tenant_key").and_then(Value::as_str)
+        {
+            let hash = hash_key(key);
+            if let Ok(Some(key_tenant)) = self.state.db.find_tenant_by_key_hash(hash).await
+                && key_tenant.id != header_tenant.id
+            {
+                return Err(AppError::ConflictingCredentials.into_error_data());
+            }
+        }
         // PRD-mcphost-tenant-attribution requirement 2's "first
         // authenticated session if signup preceded capture" fallback: an
         // already-authenticated tenant with no captured client yet gets
@@ -4018,7 +4116,7 @@ impl ServerHandler for McpHostHandler {
         // guards against a race with signup's own capture (its `WHERE
         // client_name IS NULL` only ever writes once). Best-effort: a
         // failure here must never fail the call it rides along with.
-        if let Auth::Tenant(tenant) = &auth
+        if let Auth::Tenant(tenant, _) = &auth
             && tenant.client_name.is_none()
             && let Some((name, version)) = peer_client_info(&ctx)
         {
@@ -4034,7 +4132,7 @@ impl ServerHandler for McpHostHandler {
         // resolved `Auth::Tenant` here only ever means a caller happened to
         // send a valid `tenant_key` argument alongside an otherwise
         // unauthenticated call signup never needs.
-        if let Auth::Tenant(tenant) = &auth
+        if let Auth::Tenant(tenant, _) = &auth
             && body_name != "signup"
             && let Err(err) = crate::bans::enforce(&self.state, "key", &tenant.key_hash).await
         {
@@ -4080,7 +4178,7 @@ impl ServerHandler for McpHostHandler {
             // tenant data. Deliberately checked before the blanket
             // Anonymous/Invalid -> auth-error arm below, the same way
             // `signup` itself is.
-            (Auth::Tenant(tenant), "host.quickstart") => {
+            (Auth::Tenant(tenant, _), "host.quickstart") => {
                 match control::quickstart(&self.state, Some(tenant), &args) {
                     Ok(mut result) => {
                         // PRD-mcphost-composition requirement 6: once this
@@ -4168,16 +4266,16 @@ impl ServerHandler for McpHostHandler {
             // extra tenant signup.
             (Auth::Admin, "host.whoami") => Ok(control::whoami_admin()),
             (Auth::Admin, _) => Err(AppError::Forbidden),
-            (Auth::Tenant(_), name) if name.starts_with("admin.") => {
+            (Auth::Tenant(_, _), name) if name.starts_with("admin.") => {
                 let _ = name;
                 Err(AppError::Forbidden)
             }
-            (Auth::Tenant(tenant), name)
+            (Auth::Tenant(tenant, subject), name)
                 if name.starts_with("host.") || name.starts_with("billing.") =>
             {
-                self.dispatch_tenant_tool(tenant, name, args).await
+                self.dispatch_tenant_tool(tenant, subject.as_deref(), name, args).await
             }
-            (Auth::Tenant(tenant), name) => match name.split_once('.') {
+            (Auth::Tenant(tenant, _), name) => match name.split_once('.') {
                 Some((ns, local)) if ns == tenant.namespace => {
                     self.call_published_tool(tenant, local, args, mismatch, None, None)
                         .await

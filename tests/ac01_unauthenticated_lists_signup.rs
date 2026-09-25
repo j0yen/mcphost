@@ -214,6 +214,13 @@ async fn unauthenticated_tools_list_is_signup_only() {
         "host.docs.delete",
         "host.docs.status",
         "host.docs.purge",
+        // PRD-mcphost-oauth-resource-server requirement 3: discoverable
+        // unauthenticated too, same as every other host.*-style tool
+        // above -- registering an issuer is itself an authenticated
+        // (tenant_key/bearer-gated) call, not the discovery of it.
+        "host.oauth.issuer_set",
+        "host.oauth.issuer_remove",
+        "host.oauth.issuers",
     ] {
         assert!(
             tool_names.contains(&expected),
@@ -226,7 +233,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        94,
+        97,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the three host.tool_history/host.tool_rollback/host.tool_diff \
@@ -245,7 +252,8 @@ async fn unauthenticated_tools_list_is_signup_only() {
          host.export (PRD-mcphost-tenant-data-export) + \
          the six host.channel.* tools (PRD-mcphost-agent-mesh-ops, \
          PRD-mcphost-agent-channels) + the six host.docs.* tools \
-         (PRD-mcphost-document-store): \
+         (PRD-mcphost-document-store) + \
+         the three host.oauth.* tools (PRD-mcphost-oauth-resource-server): \
          {tool_names:?}"
     );
 }

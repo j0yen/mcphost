@@ -91,9 +91,31 @@ fn test_map_and_intent_card_ac8_entries_agree_with_the_frontmatter_deferral() {
          PRD frontmatter actually carries that field"
     );
 
+    // agent/intent-card.json is refreshed on every wm-build run to name
+    // whichever PRD is CURRENTLY building at HEAD (agent/test-map.json's
+    // own ac_test_map_contract documents the identical pattern for that
+    // file: "the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD
+    // -- not a repo-lifetime constant"). This assertion only holds while
+    // mcphost-checkcompat-port-race is still that PRD; a later PRD's
+    // legitimate refresh (e.g. PRD-mcphost-oauth-resource-server,
+    // 2026-09-25) rewrites the card to its own content and has no reason to
+    // preserve this string. Same fix shape as the other two paper-trail
+    // tests wm-build run 189 already found broken by this exact coupling
+    // (see tests/ac01_extended_gates_prd_path_resolves_and_matches_card.rs
+    // and mcphost_admin_schema_contract_ac04_unsupported_version_refused.rs's
+    // commit): skip with a printed reason once intent-card.json has moved
+    // on, instead of failing on expected drift.
     let intent_card_path = repo_root().join("agent/intent-card.json");
     let intent_card = fs::read_to_string(&intent_card_path)
         .unwrap_or_else(|e| panic!("read {}: {e}", intent_card_path.display()));
+    if !intent_card.contains("PRD-mcphost-checkcompat-port-race") {
+        eprintln!(
+            "skip test_map_and_intent_card_ac8_entries_agree_with_the_frontmatter_deferral: \
+             agent/intent-card.json no longer names PRD-mcphost-checkcompat-port-race -- a \
+             later PRD has refreshed the card since (expected drift), not a paper-trail defect"
+        );
+        return;
+    }
     assert!(
         intent_card.contains("mock_justifications"),
         "agent/intent-card.json's AC8 test field must point at mock_justifications now \

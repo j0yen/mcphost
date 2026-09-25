@@ -190,6 +190,36 @@ pub enum AppError {
     /// a round trip through `host.tool_history`.
     #[error("version {requested} not found; valid range is {min}-{max}")]
     VersionNotFound { requested: i64, min: i64, max: i64 },
+    /// PRD-mcphost-oauth-resource-server requirement 3: `host.oauth.issuer_set`
+    /// on an issuer URL another tenant already registered -- issuers are
+    /// globally unique (migration 0038's UNIQUE constraint), never shared
+    /// between tenants.
+    #[error("issuer already registered by another tenant")]
+    IssuerAlreadyRegistered,
+    /// requirement 3: a tenant may register at most
+    /// [`crate::oauth::MAX_ISSUERS_PER_TENANT`] issuers.
+    #[error("tenant already registers {used} issuers, the maximum of {limit}")]
+    IssuerQuotaExceeded { limit: i64, used: i64 },
+    /// `host.oauth.issuer_remove`/`admin.oauth.jwks_refresh` on an issuer
+    /// this tenant never registered (or that no tenant has, for the admin
+    /// path).
+    #[error("issuer not found: {0}")]
+    IssuerNotFound(String),
+    /// requirement 5 (AC3, AC5, AC6): bearer JWT validation failed. The
+    /// wire `error_code` is always `invalid_token` (RFC 6750's own
+    /// bearer-error vocabulary, requirement 5's own wording); the reason
+    /// (`unknown_issuer`, `bad_signature`, `expired`, `wrong_audience`, or
+    /// `malformed`) is carried separately in `data.error_description` --
+    /// see [`Self::into_error_data`].
+    #[error("invalid_token: {0}")]
+    InvalidToken(&'static str),
+    /// requirement 7 (AC8): a `tenant_key` argument and an
+    /// `Authorization: Bearer` header both present and resolving to
+    /// different tenants.
+    #[error(
+        "conflicting_credentials: a tenant_key argument and an Authorization bearer resolved to different tenants"
+    )]
+    ConflictingCredentials,
 }
 
 impl AppError {
@@ -238,6 +268,11 @@ impl AppError {
             // AC4: an argument error, same code as every other bad-argument
             // rejection in this file.
             AppError::VersionNotFound { .. } => "args_invalid",
+            AppError::IssuerAlreadyRegistered => "issuer_already_registered",
+            AppError::IssuerQuotaExceeded { .. } => "issuer_quota_exceeded",
+            AppError::IssuerNotFound(_) => "issuer_not_found",
+            AppError::InvalidToken(_) => "invalid_token",
+            AppError::ConflictingCredentials => "conflicting_credentials",
         }
     }
 
@@ -255,7 +290,10 @@ impl AppError {
             | AppError::InvalidParams(_)
             | AppError::ShareQuotaExceeded { .. }
             | AppError::VersionNotFound { .. }
+            | AppError::IssuerAlreadyRegistered
+            | AppError::IssuerQuotaExceeded { .. }
             | AppError::SecretMissing(_) => ErrorCode::INVALID_PARAMS,
+            AppError::IssuerNotFound(_) => ErrorCode::RESOURCE_NOT_FOUND,
             AppError::Storage(_)
             | AppError::Internal(_)
             | AppError::CallTimeout(_)
@@ -270,7 +308,9 @@ impl AppError {
             | AppError::NamespaceUnverified
             | AppError::HandoffTokenInvalid
             | AppError::HandoffTokenRedeemed
-            | AppError::HandoffTokenExpired => ErrorCode::INVALID_REQUEST,
+            | AppError::HandoffTokenExpired
+            | AppError::InvalidToken(_)
+            | AppError::ConflictingCredentials => ErrorCode::INVALID_REQUEST,
             // `host_not_allowed`/`args_invalid`/`template_error` are caller
             // (or spec-author) input problems; `rate_limited` mirrors
             // AppError::RateLimited above; the remaining `upstream_*` /
@@ -490,6 +530,17 @@ impl AppError {
             _ => Map::new(),
         };
         obj.insert("error_code".to_string(), json!(code));
+        // requirement 5 (AC3, AC5, AC6): the reason `error_code` alone
+        // can't carry (every bearer-validation failure shares the same
+        // `invalid_token` code) -- `unknown_issuer`, `bad_signature`,
+        // `expired`, `wrong_audience`, or `malformed`.
+        if let AppError::InvalidToken(reason) = &self {
+            obj.insert("error_description".to_string(), json!(reason));
+        }
+        if let AppError::IssuerQuotaExceeded { limit, used } = &self {
+            obj.insert("limit".to_string(), json!(limit));
+            obj.insert("used".to_string(), json!(used));
+        }
         if let Some(field) = field {
             obj.insert("field".to_string(), json!(field));
         }

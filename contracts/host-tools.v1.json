@@ -1083,6 +1083,73 @@
       "since": "0.58.0"
     },
     {
+      "description": "Remove one of this tenant's registered OAuth issuers; bearer JWTs from it stop authenticating immediately.",
+      "input_schema": {
+        "properties": {
+          "issuer": {
+            "description": "The issuer to remove.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "issuer"
+        ],
+        "type": "object"
+      },
+      "name": "host.oauth.issuer_remove",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Register (or update) an OAuth issuer for this tenant: bearer JWTs with iss equal to issuer, a matching aud, verified against jwks_url, authenticate as this tenant. Up to 3 issuers per tenant; an issuer already registered by another tenant is refused issuer_already_registered.",
+      "input_schema": {
+        "properties": {
+          "audience": {
+            "description": "The JWT `aud` claim value to require.",
+            "type": "string"
+          },
+          "issuer": {
+            "description": "The JWT `iss` claim value to match, e.g. https://issuer.example.com.",
+            "type": "string"
+          },
+          "jwks_url": {
+            "description": "URL this host fetches the issuer's JWKS from.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "issuer",
+          "audience",
+          "jwks_url"
+        ],
+        "type": "object"
+      },
+      "name": "host.oauth.issuer_set",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List this tenant's registered OAuth issuers with their audience, jwks_url, and JWKS fetch age.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.oauth.issuers",
+      "since": "0.58.0"
+    },
+    {
       "description": "Return the shortest ordered sequence of calls to a working tool of `kind`, with your namespace and a filled-in example already substituted in, plus the current limits and a try_before_call table naming the one dry-run tool for each case. Read-only. Call this before host.tool_publish if you're not sure what a spec should look like. Unauthenticated callers get the signup step first.",
       "input_schema": {
         "properties": {

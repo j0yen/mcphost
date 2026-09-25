@@ -781,6 +781,16 @@ pub fn admin_audit_entry(
             args.get("id").and_then(Value::as_i64).map(|n| n.to_string()),
             None,
         )),
+        "admin.oauth.jwks_refresh" => Some((
+            "oauth_jwks_refresh".into(),
+            args.get("issuer").and_then(Value::as_str).map(String::from),
+            None,
+        )),
+        // PRD-mcphost-oauth-resource-server AC9: unlike every other
+        // read-only admin.* listing (admin.tenants, admin.ban.list), this
+        // one is required to record admin_audit on every call, mutation or
+        // not.
+        "admin.oauth.issuers" => Some(("oauth_issuers_list".into(), None, None)),
         _ => None,
     }
 }

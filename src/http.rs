@@ -449,6 +449,21 @@ async fn well_known_server_json(
     }
 }
 
+/// PRD-mcphost-oauth-resource-server requirement 1 / AC1: `GET
+/// /.well-known/oauth-protected-resource`, unauthenticated (RFC 9728's own
+/// discovery contract) -- always 200; an empty `authorization_servers: []`
+/// is the no-issuers-registered state, not an error.
+async fn well_known_oauth_protected_resource(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    match crate::oauth::protected_resource_metadata(&state).await {
+        Ok(doc) => (StatusCode::OK, Json(doc)).into_response(),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error_code": "storage", "error": "storage error"})),
+        )
+            .into_response(),
+    }
+}
+
 /// PRD-mcphost-sharing requirement 5 (AC7): `GET /.well-known/mcp/catalog.json`,
 /// unauthenticated (same public-discovery-document rationale as
 /// `well_known_server_json` above) -- mirrors `host.catalog.search`'s
@@ -505,6 +520,47 @@ async fn protocol_version_and_log(req: Request<Body>, next: Next) -> Response {
     response
 }
 
+/// PRD-mcphost-oauth-resource-server requirement 2 / AC3-4: re-surfaces
+/// `/mcp`'s JSON-RPC-level auth rejections that mean "no usable credential
+/// was presented" (`tenant_key_missing` -- the code an already-anonymous
+/// caller of a tenant-requiring tool gets today, AC4; this PRD's own
+/// `invalid_token`, AC3) as a real HTTP 401 carrying `WWW-Authenticate:
+/// Bearer resource_metadata="..."`, per the MCP authorization spec.
+/// `call_tool`'s own JSON-RPC error body is untouched -- this only
+/// upgrades the wrapping HTTP status and adds the header, so every
+/// existing test that reads the JSON-RPC body regardless of HTTP status
+/// (AC10) keeps passing unchanged. A no-op for every route but `/mcp`
+/// (`signup`/`host.quickstart`/`billing.plans`/`host.redeem` never reach
+/// `tenant_key_missing` in the first place -- see `handler::call_tool`'s
+/// own match-arm ordering -- so this never fires for them).
+async fn oauth_401_upgrade(State(state): State<Arc<AppState>>, req: Request<Body>, next: Next) -> Response {
+    if req.uri().path() != "/mcp" {
+        return next.run(req).await;
+    }
+    let response = next.run(req).await;
+    let (parts, body) = response.into_parts();
+    let Ok(bytes) = axum::body::to_bytes(body, usize::MAX).await else {
+        return Response::from_parts(parts, Body::empty());
+    };
+    let error_code = serde_json::from_slice::<Value>(&bytes)
+        .ok()
+        .and_then(|v| v.get("error").cloned())
+        .and_then(|e| e.get("data").cloned())
+        .and_then(|d| d.get("error_code").cloned())
+        .and_then(|c| c.as_str().map(str::to_string));
+    let mut response = Response::from_parts(parts, Body::from(bytes));
+    if matches!(error_code.as_deref(), Some("tenant_key_missing") | Some("invalid_token")) {
+        *response.status_mut() = StatusCode::UNAUTHORIZED;
+        let url = format!("{}/.well-known/oauth-protected-resource", state.public_url);
+        if let Ok(value) = HeaderValue::from_str(&format!("Bearer resource_metadata=\"{url}\"")) {
+            response
+                .headers_mut()
+                .insert(axum::http::header::WWW_AUTHENTICATE, value);
+        }
+    }
+    response
+}
+
 pub fn build_router(state: Arc<AppState>) -> Router {
     let config = StreamableHttpServerConfig::default()
         .with_json_response(true)
@@ -534,6 +590,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(well_known_server_json),
         )
         .route("/.well-known/mcp/catalog.json", get(well_known_catalog))
+        .route(
+            "/.well-known/oauth-protected-resource",
+            get(well_known_oauth_protected_resource),
+        )
         .route("/billing/webhook", post(billing_webhook))
         .route("/billing/done", get(billing_done))
         .route("/billing/cancel", get(billing_cancel))
@@ -561,6 +621,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/claim/verify/{code}", get(crate::claim::get_verify))
         .route_service("/mcp", service)
         .layer(middleware::from_fn(protocol_version_and_log))
+        .layer(middleware::from_fn_with_state(state.clone(), oauth_401_upgrade))
         .with_state(state)
 }
 
