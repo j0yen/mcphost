@@ -201,6 +201,18 @@ fn render_rate_limited() -> String {
     )
 }
 
+/// PRD-mcphost-abuse-guard-ban-list requirement 2 / AC5: every `/claim/*`
+/// route's refusal for a banned address -- `reason` is never rendered here
+/// even when the ban is `public: true` (the HTML page is not the JSON-RPC
+/// `data` object AC3 governs; keeping this page fixed avoids a second
+/// place that could leak an operator's free-text reason to a browser).
+fn render_banned() -> String {
+    page(
+        "mcphost — banned",
+        "<h1>This address is banned</h1><p>Contact the operator if you believe this is a mistake.</p>",
+    )
+}
+
 fn render_send_error(token: &str) -> String {
     page(
         "mcphost — could not send",
@@ -380,6 +392,19 @@ async fn check_claim_rate_limit(state: &AppState, headers: &HeaderMap, peer: Soc
     }
 }
 
+/// PRD-mcphost-abuse-guard-ban-list requirement 2 / AC5: shared by every
+/// `/claim/*` route -- `None` on success, the 403 banned page otherwise.
+/// Checked before [`check_claim_rate_limit`] at each call site: a banned
+/// address shouldn't spend the rate-limit budget it's about to be refused
+/// from anyway.
+async fn check_addr_ban(state: &AppState, headers: &HeaderMap, peer: SocketAddr) -> Option<Response> {
+    let ip = source_ip(headers, peer);
+    match crate::bans::enforce(state, "addr", &ip).await {
+        Ok(()) => None,
+        Err(_) => Some(html_response(StatusCode::FORBIDDEN, render_banned())),
+    }
+}
+
 /// Shared by [`get_claim`]/[`post_claim`]: resolves a claim token to its
 /// tenant, or the 410 page every unknown/expired token gets alike (AC4;
 /// not distinguishing "never existed" from "expired" avoids leaking which
@@ -409,6 +434,9 @@ pub async fn get_claim(
     headers: HeaderMap,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
 ) -> Response {
+    if let Some(response) = check_addr_ban(&state, &headers, peer).await {
+        return response;
+    }
     if let Some(response) = check_claim_rate_limit(&state, &headers, peer).await {
         return response;
     }
@@ -434,6 +462,9 @@ pub async fn post_claim(
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     Form(form): Form<ClaimForm>,
 ) -> Response {
+    if let Some(response) = check_addr_ban(&state, &headers, peer).await {
+        return response;
+    }
     if let Some(response) = check_claim_rate_limit(&state, &headers, peer).await {
         return response;
     }
@@ -448,6 +479,14 @@ pub async fn post_claim(
             render_claim_form(&token, Some("Enter a valid email address.")),
         );
     }
+    // PRD-mcphost-abuse-guard-ban-list requirement 2: the claim flow's own
+    // email_domain enforcement point -- checked once the address has
+    // passed the shape check above, before a verify email is ever sent.
+    if let Some(domain) = email.rsplit_once('@').map(|(_, d)| d)
+        && crate::bans::enforce(&state, "email_domain", domain).await.is_err()
+    {
+        return html_response(StatusCode::FORBIDDEN, render_banned());
+    }
     match send_verify_email(&state, &tenant, email).await {
         Ok(()) => html_response(StatusCode::OK, render_check_inbox()),
         Err(_) => html_response(StatusCode::OK, render_send_error(&token)),
@@ -461,6 +500,9 @@ pub async fn get_verify(
     headers: HeaderMap,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
 ) -> Response {
+    if let Some(response) = check_addr_ban(&state, &headers, peer).await {
+        return response;
+    }
     if let Some(response) = check_claim_rate_limit(&state, &headers, peer).await {
         return response;
     }

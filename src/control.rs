@@ -116,6 +116,11 @@ pub async fn signup(
     source_ip: &str,
     attribution: SignupAttribution<'_>,
 ) -> Result<Value, AppError> {
+    // PRD-mcphost-abuse-guard-ban-list requirement 2 / AC1: checked before
+    // anything else -- a banned address never consumes a rate-limit slot,
+    // never trips the pause/disk-floor checks below, and (the AC's own
+    // wording) never gets a `signup_events` row written for it.
+    crate::bans::enforce(state, "addr", source_ip).await?;
     // PRD-mcphost-signup-kill-switch-and-source requirement 3 / AC4: checked
     // first, fresh off disk on every call -- an operator's `touch`/`rm`
     // takes effect on the very next signup, no restart. Requirement 4/AC5:
@@ -820,7 +825,7 @@ pub async fn tool_publish(
         if crate::network_policy::wants_egress(spec.get("network").and_then(Value::as_str))
             && plan.name != "pro"
         {
-            let _ = state.db.record_network_denial("publish_plan").await;
+            let _ = state.db.record_network_denial("publish_plan", Some(tenant.id)).await;
             return Err(AppError::plan_required("network", "pro"));
         }
         let reqs = crate::kinds::python::effective_requirements_for_publish(&spec)?;

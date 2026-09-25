@@ -128,9 +128,21 @@ fn cross_repo_ac4_pointer_is_not_dangling() {
         &fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display())),
     )
     .unwrap_or_else(|e| panic!("parse {}: {e}", path.display()));
-    let entry = map["ac_test_map"]["AC4"]
+    // PRD-mcphost-abuse-guard-ban-list superseded this PRD at HEAD, which
+    // moved this AC4 entry from the top-level `ac_test_map` (the
+    // CURRENTLY BUILDING PRD's own map, per that key's own documented
+    // contract) to its archived home under
+    // `ac_test_map_by_prefix.adminschemacontract` -- checked first since
+    // that's this PRD's real location once it is no longer HEAD, falling
+    // back to the top level for as long as (or if ever again) it is.
+    let entry = map["ac_test_map_by_prefix"]["adminschemacontract"]["AC4"]
         .as_str()
-        .expect("agent/test-map.json ac_test_map.AC4 must be a string")
+        .or_else(|| map["ac_test_map"]["AC4"].as_str())
+        .expect(
+            "agent/test-map.json must have an AC4 entry for admin-schema-contract, either at \
+             ac_test_map (while it is the PRD at HEAD) or ac_test_map_by_prefix.adminschemacontract \
+             (once superseded)",
+        )
         .to_string();
 
     assert!(

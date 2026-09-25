@@ -1,6 +1,6 @@
 {
   "name": "mcphost",
-  "version": "0.60.7",
+  "version": "0.60.8",
   "description": "Connect to mcphost, sign up with one tool call, and let the agent publish, schedule, and hand the claim link to its human.",
   "author": {
     "name": "j0yen",

@@ -368,6 +368,14 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
             json!({"external": claimed_external, "synthetic": claimed_synthetic}),
         );
     }
+    // PRD-mcphost-abuse-guard-ban-list requirement 7 / AC11.
+    if let Some(obj) = body.as_object_mut() {
+        let (active, auto_active, hits_24h) = state.db.ban_healthz_counts().await.unwrap_or((0, 0, 0));
+        obj.insert(
+            "bans".to_string(),
+            json!({"active": active, "auto_active": auto_active, "hits_24h": hits_24h}),
+        );
+    }
     Json(body).into_response()
 }
 

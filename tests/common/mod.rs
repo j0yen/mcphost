@@ -563,6 +563,9 @@ impl TestServer {
             claim_rate_limit_per_hour,
             email_config,
             email_client,
+            bans: mcphost::bans::BanCache::new(),
+            ban_denials_threshold: mcphost::bans::BAN_DENIALS_THRESHOLD_DEFAULT,
+            ban_claim_rate_threshold: mcphost::bans::BAN_CLAIM_RATE_THRESHOLD_DEFAULT,
         });
 
         // PRD-mcphost-runs-and-jobs: every test server runs the real
