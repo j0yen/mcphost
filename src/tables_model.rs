@@ -461,7 +461,7 @@ pub async fn table_describe(state: &AppState, tenant: &Tenant, args: &Value) -> 
         None => {
             let path = tables::tenant_db_path(state, tenant.id);
             let table_for_conn = table.clone();
-            let model = tables::with_tenant_conn(path, move |conn| compute_model_sync(conn, &table_for_conn)).await?;
+            let model = tables::with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| compute_model_sync(conn, &table_for_conn)).await?;
             let row_count = model["row_count"].as_i64().unwrap_or(0);
             let model_json = serde_json::to_string(&model)
                 .map_err(|e| AppError::Internal(format!("table model serialize: {e}")))?;
@@ -505,7 +505,7 @@ pub async fn model_set(state: &AppState, tenant: &Tenant, args: &Value) -> Resul
     // never be described.
     let path = tables::tenant_db_path(state, tenant.id);
     let table_for_check = table.clone();
-    tables::with_tenant_conn(path, move |conn| tables::load_schema_sync(conn, &table_for_check).map(|_| ())).await?;
+    tables::with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| tables::load_schema_sync(conn, &table_for_check).map(|_| ())).await?;
 
     state.db.upsert_table_model_annotation(tenant.id, table.clone(), column, key, value).await?;
     Ok(json!({"table": table, "set": true}))
@@ -547,7 +547,7 @@ pub async fn tick_once(state: &AppState) -> Result<(), AppError> {
     for (tenant_id, table, prev_version) in stale {
         let path = tables::tenant_db_path(state, tenant_id);
         let table_for_conn = table.clone();
-        let model = match tables::with_tenant_conn(path, move |conn| compute_model_sync(conn, &table_for_conn)).await
+        let model = match tables::with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| compute_model_sync(conn, &table_for_conn)).await
         {
             Ok(m) => m,
             Err(e) => {

@@ -240,15 +240,11 @@ pub(crate) fn tenant_db_path(state: &AppState, tenant_id: i64) -> PathBuf {
 /// table-store connection, in WAL mode with a `_mcphost_meta` bookkeeping
 /// table guaranteed to exist -- the per-tenant-file analogue of
 /// `Db::open`'s own migration-on-open contract.
-fn open_conn(path: &Path) -> Result<Connection, AppError> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| AppError::Storage(format!("cannot create tables dir: {e}")))?;
-    }
-    let conn = Connection::open(path)?;
-    conn.pragma_update(None, "journal_mode", "WAL")?;
-    conn.pragma_update(None, "synchronous", "NORMAL")?;
-    conn.busy_timeout(Duration::from_secs(5))?;
+/// PRD-mcphost-sqlite-busy-timeout-audit requirement 1: opens through the
+/// single factory (role `tenant_table`), which sets `busy_timeout`,
+/// `journal_mode=WAL`, `synchronous=NORMAL`, and `foreign_keys=ON`.
+fn open_conn(path: &Path, cfg: &crate::db::DbConfig) -> Result<Connection, AppError> {
+    let (conn, _audit) = crate::db::open_with_role(path, crate::db::ROLE_TENANT_TABLE, cfg)?;
     conn.execute_batch(&format!(
         "CREATE TABLE IF NOT EXISTS {META_TABLE} (
             name TEXT PRIMARY KEY,
@@ -264,14 +260,21 @@ fn open_conn(path: &Path) -> Result<Connection, AppError> {
 /// the per-tenant-file analogue of `Db::with_conn`, minus the shared-mutex
 /// guard (each call gets its own `Connection`; there is no cross-call state
 /// to protect beyond what SQLite's own file locking already provides).
-pub(crate) async fn with_tenant_conn<F, T>(path: PathBuf, f: F) -> Result<T, AppError>
+pub(crate) async fn with_tenant_conn<F, T>(
+    path: PathBuf,
+    cfg: crate::db::DbConfig,
+    counters: std::sync::Arc<crate::db::DbCounters>,
+    f: F,
+) -> Result<T, AppError>
 where
     F: FnOnce(&Connection) -> Result<T, AppError> + Send + 'static,
     T: Send + 'static,
 {
     tokio::task::spawn_blocking(move || {
-        let conn = open_conn(&path)?;
-        f(&conn)
+        crate::db::instrument_stmt(&counters, crate::db::ROLE_TENANT_TABLE, move || {
+            let conn = open_conn(&path, &cfg)?;
+            f(&conn)
+        })
     })
     .await
     .map_err(|e| AppError::Internal(e.to_string()))?
@@ -389,7 +392,7 @@ pub async fn table_create(state: &AppState, tenant: &Tenant, args: &Value) -> Re
 
     let path = tenant_db_path(state, tenant.id);
     let name_for_conn = name.clone();
-    with_tenant_conn(path, move |conn| {
+    with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
         let existing: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM {META_TABLE}"), [], |r| r.get(0))?;
         if existing >= tables_max {
             return Err(crate::billing::quota_exceeded(
@@ -448,7 +451,7 @@ pub async fn table_drop(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
     }
     let path = tenant_db_path(state, tenant.id);
     let name_for_conn = name.clone();
-    let dropped = with_tenant_conn(path, move |conn| {
+    let dropped = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
         let existing: i64 = conn.query_row(
             &format!("SELECT COUNT(*) FROM {META_TABLE} WHERE name = ?1"),
             params![name_for_conn],
@@ -596,7 +599,7 @@ pub async fn table_append(state: &AppState, tenant: &Tenant, args: &Value) -> Re
 
     let path = tenant_db_path(state, tenant.id);
     let table_for_conn = table.clone();
-    let ids = with_tenant_conn(path, move |conn| {
+    let ids = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
         let schema = load_schema_sync(conn, &table_for_conn)?;
         validate_rows(&schema, &rows)?;
 
@@ -724,7 +727,7 @@ pub async fn table_query(state: &AppState, tenant: &Tenant, args: &Value) -> Res
     validate_query_structure(&sql)?;
 
     let path = tenant_db_path(state, tenant.id);
-    let rows = with_tenant_conn(path, move |conn| run_query_sync(conn, &sql)).await?;
+    let rows = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| run_query_sync(conn, &sql)).await?;
     Ok(json!({"rows": rows}))
 }
 
@@ -736,7 +739,7 @@ pub async fn table_query(state: &AppState, tenant: &Tenant, args: &Value) -> Res
 pub async fn table_list(state: &AppState, tenant: &Tenant, _args: &Value) -> Result<Value, AppError> {
     let path = tenant_db_path(state, tenant.id);
     let path_for_size = path.clone();
-    let tables = with_tenant_conn(path, move |conn| {
+    let tables = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
         let mut stmt = conn.prepare(&format!("SELECT name FROM {META_TABLE} ORDER BY name"))?;
         let names: Vec<String> = stmt
             .query_map([], |r| r.get(0))?
@@ -764,7 +767,7 @@ pub async fn table_schema(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     let path = tenant_db_path(state, tenant.id);
     let path_for_size = path.clone();
     let table_for_conn = table.clone();
-    let (schema, row_count) = with_tenant_conn(path, move |conn| {
+    let (schema, row_count) = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
         let schema = load_schema_sync(conn, &table_for_conn)?;
         let row_count = row_count_sync(conn, &table_for_conn)?;
         Ok((schema, row_count))
@@ -834,6 +837,8 @@ mod tests {
             oauth: crate::oauth::JwksCache::new(),
             oauth_allowed_algs: crate::oauth::parse_allowed_algs(None),
             oauth_jwks_ttl_secs: crate::oauth::DEFAULT_JWKS_TTL_SECS,
+            alerts: crate::alerts::AlertRegistry::new(),
+            contention_tracker: crate::alerts::ContentionTracker::new(),
         }
     }
 

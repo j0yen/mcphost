@@ -6,6 +6,7 @@
 
 pub mod admin;
 pub mod agents;
+pub mod alerts;
 pub mod api_contract;
 pub mod auth;
 pub mod bans;

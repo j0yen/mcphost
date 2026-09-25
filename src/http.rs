@@ -376,6 +376,25 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
             json!({"active": active, "auto_active": auto_active, "hits_24h": hits_24h}),
         );
     }
+    // PRD-mcphost-sqlite-busy-timeout-audit requirement 4 / AC8: summed
+    // across every `db::DbRole` (`admin.db.stats`, AC7, has the per-role
+    // breakdown) -- `busy_total`/`locked_total` add, `wait_max_ms` takes
+    // the worst wait observed by any role.
+    if let Some(obj) = body.as_object_mut() {
+        let mut busy_total = 0u64;
+        let mut locked_total = 0u64;
+        let mut wait_max_ms = 0u64;
+        for role in crate::db::ALL_ROLES {
+            let c = state.db.counters(role);
+            busy_total += c.busy_total;
+            locked_total += c.locked_total;
+            wait_max_ms = wait_max_ms.max(c.wait_max_ms);
+        }
+        obj.insert(
+            "db".to_string(),
+            json!({"busy_total": busy_total, "locked_total": locked_total, "wait_max_ms": wait_max_ms}),
+        );
+    }
     Json(body).into_response()
 }
 

@@ -992,6 +992,12 @@ impl From<KindError> for AppError {
 
 impl From<rusqlite::Error> for AppError {
     fn from(e: rusqlite::Error) -> Self {
+        // PRD-mcphost-sqlite-busy-timeout-audit requirement 3: the one
+        // place every rusqlite error in this crate passes through, so
+        // this is where SQLITE_BUSY/SQLITE_LOCKED get counted -- the wire
+        // error stays exactly what it was (AC5: "the caller receives the
+        // existing structured error").
+        crate::db::note_rusqlite_error(&e);
         AppError::Storage(e.to_string())
     }
 }

@@ -541,6 +541,8 @@ async fn main() -> anyhow::Result<()> {
                 oauth: mcphost::oauth::JwksCache::new(),
                 oauth_allowed_algs: mcphost::oauth::allowed_algs_from_env(),
                 oauth_jwks_ttl_secs: mcphost::oauth::jwks_ttl_secs_from_env(),
+                alerts: mcphost::alerts::AlertRegistry::new(),
+                contention_tracker: mcphost::alerts::ContentionTracker::new(),
             });
             // PRD-mcphost-abuse-guard-ban-list requirement 6: load the ban
             // cache once before this process ever serves a request, so the
@@ -587,6 +589,14 @@ async fn main() -> anyhow::Result<()> {
             // table-model recompute tick, started once here alongside the
             // other background tasks.
             mcphost::tables_model::spawn_tick((*state).clone());
+            // PRD-mcphost-sqlite-busy-timeout-audit requirement 6: the
+            // minute contention-alert tick, started once here alongside
+            // the other background tasks.
+            mcphost::alerts::spawn_tick((*state).clone());
+            // PRD-mcphost-sqlite-busy-timeout-audit requirement 7: the
+            // periodic passive WAL checkpoint, started once here alongside
+            // the other background tasks.
+            mcphost::db::spawn_wal_checkpoint_scheduler((*state).clone());
 
             mcphost::http::serve_configured(bind, state).await
         }

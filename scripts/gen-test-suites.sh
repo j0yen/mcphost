@@ -354,7 +354,15 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # that reproduces the already-committed suite files byte-for-byte and
 # re-collapses core's normal buckets to 1, landing the grand total back
 # at 10.
-MAX_PER_SUITE = {"core": 454, "sandbox": 62}
+#
+# PRD-mcphost-sqlite-busy-timeout-audit (2026-09-25, rebased onto
+# table-semantic-model): this PRD's own ten `busyaudit_ac*.rs` files plus
+# tests/support/busyaudit.rs (also `core`-classified) join the same normal
+# bucket on top of table-semantic-model's own raise above, spawning an
+# 11th suite binary again -- caught by the same P0 assertion. 454 -> 464 is
+# the smallest tested raise that re-collapses core's normal buckets to 1,
+# landing the grand total back at 10.
+MAX_PER_SUITE = {"core": 464, "sandbox": 62}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

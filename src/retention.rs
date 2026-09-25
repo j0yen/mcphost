@@ -23,12 +23,6 @@ pub const PRUNE_BATCH_SIZE: i64 = 5_000;
 /// many megabytes.
 pub const DEFAULT_DISK_FLOOR_MB: u64 = 512;
 
-/// How long the prune's own dedicated connection waits on a busy write
-/// lock before giving up -- same value `tables.rs`'s per-tenant
-/// connections already use for the analogous "rare concurrent write"
-/// case.
-pub const PRUNE_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
-
 /// One entry per env-configurable retention window (requirement 1). A
 /// table not listed here is never pruned (AC3).
 ///
@@ -201,8 +195,9 @@ fn cutoff_for(column: &AgeColumn, window_days: i64, now_unix: i64) -> Cutoff {
 /// DELETE_LIMIT`, which this crate's bundled `rusqlite` build does not
 /// enable. Each batch is its own implicit (autocommit) transaction, so a
 /// concurrent `host.tool_call` write on the main connection is blocked for
-/// at most one batch, not the whole cycle -- `PRUNE_BUSY_TIMEOUT` covers
-/// the wait rather than failing it with `database is locked` (AC4).
+/// at most one batch, not the whole cycle -- the `prune` role's
+/// `busy_timeout` (`db::DbConfig`, set through `db::open_with_role`)
+/// covers the wait rather than failing it with `database is locked` (AC4).
 fn delete_batches(
     conn: &Connection,
     table: &ExecutableTable,
@@ -253,12 +248,33 @@ pub struct PruneOutcome {
 /// in-process lock) exists to cover, and the one AC4 exercises.
 pub(crate) fn prune_sync(
     db_path: &Path,
+    db_cfg: &crate::db::DbConfig,
+    counters: &std::sync::Arc<crate::db::DbCounters>,
+    windows: &[(String, i64)],
+    now_unix: i64,
+) -> PruneOutcome {
+    crate::db::instrument_block(counters, crate::db::ROLE_PRUNE, || {
+        prune_sync_inner(db_path, db_cfg, windows, now_unix)
+    })
+}
+
+fn prune_sync_inner(
+    db_path: &Path,
+    db_cfg: &crate::db::DbConfig,
     windows: &[(String, i64)],
     now_unix: i64,
 ) -> PruneOutcome {
     let mut deleted = std::collections::BTreeMap::new();
-    let conn = match Connection::open(db_path) {
-        Ok(c) => c,
+    // PRD-mcphost-sqlite-busy-timeout-audit requirement 1: opens through
+    // the single factory (role `prune`), which sets `busy_timeout` from
+    // `db_cfg` and `foreign_keys=ON` -- needed here (a fresh connection to
+    // an existing file does not inherit `foreign_keys=ON` from the
+    // connection that set it; SQLite: it's a per-connection pragma) so
+    // deleting an old `threads` row cascades onto its
+    // `messages`/`thread_participants`/`message_receipts` (migration
+    // 0021's own cascade shape) instead of orphaning them.
+    let conn = match crate::db::open_with_role(db_path, crate::db::ROLE_PRUNE, db_cfg) {
+        Ok((conn, _audit)) => conn,
         Err(e) => {
             return PruneOutcome {
                 deleted,
@@ -266,24 +282,6 @@ pub(crate) fn prune_sync(
             };
         }
     };
-    if let Err(e) = conn.busy_timeout(PRUNE_BUSY_TIMEOUT) {
-        return PruneOutcome {
-            deleted,
-            error: Some(format!("busy_timeout: {e}")),
-        };
-    }
-    // A fresh connection to an existing file does not inherit
-    // `foreign_keys=ON` from the connection that set it (SQLite: it's a
-    // per-connection pragma) -- needed here so deleting an old `threads`
-    // row cascades onto its `messages`/`thread_participants`/
-    // `message_receipts` (migration 0021's own cascade shape) instead of
-    // orphaning them.
-    if let Err(e) = conn.pragma_update(None, "foreign_keys", "ON") {
-        return PruneOutcome {
-            deleted,
-            error: Some(format!("foreign_keys pragma: {e}")),
-        };
-    }
     for table in EXECUTABLE_TABLES {
         let Some(&(_, days)) = windows.iter().find(|(name, _)| name == table.policy_name) else {
             continue;
@@ -294,6 +292,11 @@ pub(crate) fn prune_sync(
                 deleted.insert(table.physical_table.to_string(), n);
             }
             Err(e) => {
+                // requirement 3: `delete_batches` returns a raw
+                // `rusqlite::Error` (never converted through
+                // `AppError::from`, which is where this normally happens),
+                // so this is the one spot that needs its own call.
+                crate::db::note_rusqlite_error(&e);
                 return PruneOutcome {
                     deleted,
                     error: Some(format!("{}: {e}", table.physical_table)),

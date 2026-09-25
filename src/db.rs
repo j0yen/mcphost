@@ -1097,9 +1097,403 @@ fn percentile(sorted: &[i64], p: f64) -> f64 {
     sorted[rank.min(sorted.len() - 1)] as f64
 }
 
+// ---- connection factory and startup pragma audit -----------------------
+//
+// PRD-mcphost-sqlite-busy-timeout-audit requirement 1/2: one factory sets
+// every pragma (`busy_timeout`, `journal_mode`, `synchronous`,
+// `foreign_keys`) on every connection this process opens, then reads them
+// back to prove they took -- refusing to start if any differs.
+
+/// Which long-lived connection kind opened a given `rusqlite::Connection`.
+/// A fixed, small set (not a free-form string) because every role's pragma
+/// expectations are identical by construction -- see [`RoleAudit::matches`].
+pub type DbRole = &'static str;
+pub const ROLE_SERVER: DbRole = "server";
+/// `retention::prune_sync`'s dedicated connection to the same file (see
+/// that function's doc comment for why it isn't the shared one).
+pub const ROLE_PRUNE: DbRole = "prune";
+/// `tables.rs`'s per-tenant `tables/<tenant_id>.db` connections.
+pub const ROLE_TENANT_TABLE: DbRole = "tenant_table";
+pub const ALL_ROLES: [DbRole; 3] = [ROLE_SERVER, ROLE_PRUNE, ROLE_TENANT_TABLE];
+
+const DEFAULT_BUSY_TIMEOUT_MS: u64 = 5000;
+
+/// `$MCPHOST_DB_BUSY_TIMEOUT_MS` (default 5000) -- the one env-configurable
+/// pragma; `journal_mode=WAL`, `synchronous=NORMAL`, and `foreign_keys=ON`
+/// are fixed (requirement 1).
+#[derive(Debug, Clone, Copy)]
+pub struct DbConfig {
+    pub busy_timeout_ms: u64,
+}
+
+impl Default for DbConfig {
+    fn default() -> Self {
+        Self {
+            busy_timeout_ms: DEFAULT_BUSY_TIMEOUT_MS,
+        }
+    }
+}
+
+impl DbConfig {
+    pub fn from_env() -> Self {
+        Self::parse(std::env::var("MCPHOST_DB_BUSY_TIMEOUT_MS").ok().as_deref())
+    }
+
+    fn parse(raw: Option<&str>) -> Self {
+        let busy_timeout_ms = raw
+            .and_then(|v| v.parse::<u64>().ok())
+            .filter(|v| *v > 0)
+            .unwrap_or(DEFAULT_BUSY_TIMEOUT_MS);
+        Self { busy_timeout_ms }
+    }
+}
+
+/// The pragma values read back from a connection right after
+/// [`open_with_role`] set them (requirement 2, AC1/AC2).
+#[derive(Debug, Clone, Serialize)]
+pub struct RoleAudit {
+    pub role: DbRole,
+    pub busy_timeout: i64,
+    pub journal_mode: String,
+    pub synchronous: String,
+    pub foreign_keys: i64,
+}
+
+impl RoleAudit {
+    /// AC1's exact line shape: `role=<role> busy_timeout=<n>
+    /// journal_mode=<mode> synchronous=<mode> foreign_keys=<0|1>`.
+    pub fn log_line(&self) -> String {
+        format!(
+            "role={} busy_timeout={} journal_mode={} synchronous={} foreign_keys={}",
+            self.role, self.busy_timeout, self.journal_mode, self.synchronous, self.foreign_keys
+        )
+    }
+
+    fn matches(&self, cfg: &DbConfig) -> bool {
+        self.busy_timeout == cfg.busy_timeout_ms as i64
+            && self.journal_mode == "wal"
+            && self.synchronous == "normal"
+            && self.foreign_keys == 1
+    }
+}
+
+fn synchronous_name(raw: i64) -> String {
+    match raw {
+        0 => "off",
+        1 => "normal",
+        2 => "full",
+        3 => "extra",
+        _ => "unknown",
+    }
+    .to_string()
+}
+
+fn apply_pragmas(conn: &Connection, cfg: &DbConfig) -> Result<(), AppError> {
+    conn.pragma_update(None, "busy_timeout", cfg.busy_timeout_ms as i64)
+        .map_err(AppError::from)?;
+    conn.pragma_update(None, "journal_mode", "WAL")
+        .map_err(AppError::from)?;
+    conn.pragma_update(None, "synchronous", "NORMAL")
+        .map_err(AppError::from)?;
+    conn.pragma_update(None, "foreign_keys", "ON")
+        .map_err(AppError::from)?;
+    Ok(())
+}
+
+fn read_pragmas(conn: &Connection, role: DbRole) -> Result<RoleAudit, AppError> {
+    let busy_timeout: i64 = conn
+        .query_row("PRAGMA busy_timeout", [], |r| r.get(0))
+        .map_err(AppError::from)?;
+    let journal_mode: String = conn
+        .query_row("PRAGMA journal_mode", [], |r| r.get(0))
+        .map_err(AppError::from)?;
+    let synchronous_raw: i64 = conn
+        .query_row("PRAGMA synchronous", [], |r| r.get(0))
+        .map_err(AppError::from)?;
+    let foreign_keys: i64 = conn
+        .query_row("PRAGMA foreign_keys", [], |r| r.get(0))
+        .map_err(AppError::from)?;
+    Ok(RoleAudit {
+        role,
+        busy_timeout,
+        journal_mode,
+        synchronous: synchronous_name(synchronous_raw),
+        foreign_keys,
+    })
+}
+
+/// The single factory every SQLite connection to an mcphost-owned file
+/// opens through (requirement 1) -- applies the four pragmas, reads them
+/// back, and refuses (`Err`) if any differs from `cfg` (requirement 2,
+/// AC1/AC2). `AC3`'s `find_bypass_connections` fails a build that grows a
+/// second `Connection::open(` outside this file.
+pub fn open_with_role(
+    path: &Path,
+    role: DbRole,
+    cfg: &DbConfig,
+) -> Result<(Connection, RoleAudit), AppError> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| AppError::Storage(format!("cannot create data dir: {e}")))?;
+    }
+    let conn = Connection::open(path).map_err(AppError::from)?;
+    apply_pragmas(&conn, cfg)?;
+    let audit = read_pragmas(&conn, role)?;
+    if !audit.matches(cfg) {
+        return Err(AppError::Storage(format!(
+            "startup pragma audit failed for role={role}: expected busy_timeout={} \
+             journal_mode=wal synchronous=normal foreign_keys=1, got {}",
+            cfg.busy_timeout_ms,
+            audit.log_line()
+        )));
+    }
+    Ok((conn, audit))
+}
+
+/// A `Connection::open(` call found outside `db.rs` -- requirement 1's
+/// consolidation, AC3's own subject.
+#[derive(Debug, Clone)]
+pub struct BypassHit {
+    pub file: PathBuf,
+    pub line: usize,
+    pub text: String,
+}
+
+/// Walks every `.rs` file under `root` (recursively) looking for a literal
+/// `Connection::open(` outside a file named `db.rs` -- the one bypass shape
+/// requirement 1's technical considerations names. Takes a root path
+/// (rather than being hardcoded to `src/`) so AC3's test can point it at a
+/// scratch tree it injects a fixture bypass into, proving the check itself
+/// -- not just this crate's current cleanliness -- actually fires.
+pub fn find_bypass_connections(root: &Path) -> Vec<BypassHit> {
+    let mut hits = Vec::new();
+    scan_dir_for_bypass(root, &mut hits);
+    hits.sort_by(|a, b| (&a.file, a.line).cmp(&(&b.file, b.line)));
+    hits
+}
+
+fn scan_dir_for_bypass(dir: &Path, hits: &mut Vec<BypassHit>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            scan_dir_for_bypass(&path, hits);
+            continue;
+        }
+        if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+            continue;
+        }
+        if path.file_name().and_then(|f| f.to_str()) == Some("db.rs") {
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        for (i, line) in content.lines().enumerate() {
+            if line.contains("Connection::open(") {
+                hits.push(BypassHit {
+                    file: path.clone(),
+                    line: i + 1,
+                    text: line.trim().to_string(),
+                });
+            }
+        }
+    }
+}
+
+// ---- contention counters ------------------------------------------------
+//
+// PRD-mcphost-sqlite-busy-timeout-audit requirement 3: process-global
+// (one instance per running server), atomic, labelled by [`DbRole`].
+// `wait_gt100ms_total`/`wait_max_ms` are timed around each
+// [`instrument_stmt`] call (one per `with_conn`/`with_tenant_conn`/
+// `prune_sync` invocation); `busy_total`/`locked_total` come from
+// [`note_rusqlite_error`], called from `AppError`'s `From<rusqlite::Error>`
+// impl -- the one place every rusqlite error in this crate passes through
+// -- via a thread-local stack [`instrument_stmt`] pushes/pops around `f`,
+// so contention gets attributed to the right role without every call site
+// needing its own instrumentation.
+
+#[derive(Debug, Clone, Copy, Default, Serialize)]
+pub struct RoleCounterSnapshot {
+    pub busy_total: u64,
+    pub locked_total: u64,
+    pub wait_gt100ms_total: u64,
+    pub wait_max_ms: u64,
+}
+
+/// Requirement 4, AC7: one role's slice of `admin.db.stats`.
+#[derive(Debug, Clone)]
+pub struct RoleStat {
+    pub audit: RoleAudit,
+    pub counters: RoleCounterSnapshot,
+}
+
+/// Requirement 4, AC7: `admin.db.stats`'s whole payload.
+#[derive(Debug, Clone)]
+pub struct DbStats {
+    pub roles: Vec<RoleStat>,
+    pub wal_bytes: i64,
+    pub page_count: i64,
+    pub last_checkpoint: Option<i64>,
+}
+
+#[derive(Default)]
+struct RoleCounters {
+    busy_total: std::sync::atomic::AtomicU64,
+    locked_total: std::sync::atomic::AtomicU64,
+    wait_gt100ms_total: std::sync::atomic::AtomicU64,
+    wait_max_ms: std::sync::atomic::AtomicU64,
+}
+
+impl RoleCounters {
+    /// Requirement 3 / non-functional: only an `Instant::now()` diff and a
+    /// couple of atomic ops -- no lock, no allocation -- per statement.
+    fn record_wait(&self, elapsed: std::time::Duration) {
+        use std::sync::atomic::Ordering::Relaxed;
+        let ms = elapsed.as_millis() as u64;
+        if ms > 100 {
+            self.wait_gt100ms_total.fetch_add(1, Relaxed);
+        }
+        self.wait_max_ms.fetch_max(ms, Relaxed);
+    }
+
+    fn snapshot(&self) -> RoleCounterSnapshot {
+        use std::sync::atomic::Ordering::Relaxed;
+        RoleCounterSnapshot {
+            busy_total: self.busy_total.load(Relaxed),
+            locked_total: self.locked_total.load(Relaxed),
+            wait_gt100ms_total: self.wait_gt100ms_total.load(Relaxed),
+            wait_max_ms: self.wait_max_ms.load(Relaxed),
+        }
+    }
+}
+
+/// One process's whole set of contention counters, one [`RoleCounters`]
+/// per [`DbRole`] -- a fixed 3-field struct rather than a `HashMap`, since
+/// the role set is fixed and small (no lock needed to look one up).
+#[derive(Default)]
+pub struct DbCounters {
+    server: RoleCounters,
+    prune: RoleCounters,
+    tenant_table: RoleCounters,
+}
+
+impl DbCounters {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self::default())
+    }
+
+    fn for_role(&self, role: DbRole) -> &RoleCounters {
+        match role {
+            ROLE_PRUNE => &self.prune,
+            ROLE_TENANT_TABLE => &self.tenant_table,
+            _ => &self.server,
+        }
+    }
+
+    pub fn snapshot(&self, role: DbRole) -> RoleCounterSnapshot {
+        self.for_role(role).snapshot()
+    }
+}
+
+thread_local! {
+    /// A stack (not a single slot) so a nested `instrument_stmt` -- none
+    /// exist today, but a future one wouldn't silently mis-attribute --
+    /// still resolves to its own innermost role. Each blocking-pool thread
+    /// runs one `spawn_blocking` closure at a time, so this is never
+    /// touched by two roles concurrently.
+    static STMT_ROLE_STACK: std::cell::RefCell<Vec<(Arc<DbCounters>, DbRole)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+struct RoleScope;
+
+impl RoleScope {
+    fn enter(counters: Arc<DbCounters>, role: DbRole) -> Self {
+        STMT_ROLE_STACK.with(|s| s.borrow_mut().push((counters, role)));
+        RoleScope
+    }
+}
+
+impl Drop for RoleScope {
+    fn drop(&mut self) {
+        STMT_ROLE_STACK.with(|s| {
+            s.borrow_mut().pop();
+        });
+    }
+}
+
+/// Called from `AppError`'s `From<rusqlite::Error>` impl. Only
+/// `SQLITE_BUSY`/`SQLITE_LOCKED` count as contention (technical
+/// considerations); everything else (a bad statement, a missing table) is
+/// a no-op here.
+pub(crate) fn note_rusqlite_error(e: &rusqlite::Error) {
+    let code = match e {
+        rusqlite::Error::SqliteFailure(ffi_err, _) => Some(ffi_err.code),
+        _ => None,
+    };
+    let Some(code) = code else { return };
+    STMT_ROLE_STACK.with(|s| {
+        let stack = s.borrow();
+        let Some((counters, role)) = stack.last() else {
+            return;
+        };
+        use std::sync::atomic::Ordering::Relaxed;
+        let counters = counters.for_role(role);
+        match code {
+            rusqlite::ErrorCode::DatabaseBusy => {
+                counters.busy_total.fetch_add(1, Relaxed);
+            }
+            rusqlite::ErrorCode::DatabaseLocked => {
+                counters.locked_total.fetch_add(1, Relaxed);
+            }
+            _ => {}
+        }
+    });
+}
+
+/// Times `f` (one statement, or a small fixed batch treated as one unit)
+/// and records its wait against `role`'s counters -- any
+/// `SQLITE_BUSY`/`SQLITE_LOCKED` `f` raises is picked up by
+/// [`note_rusqlite_error`] via the [`RoleScope`] entered here.
+pub(crate) fn instrument_stmt<T>(
+    counters: &Arc<DbCounters>,
+    role: DbRole,
+    f: impl FnOnce() -> Result<T, AppError>,
+) -> Result<T, AppError> {
+    let _scope = RoleScope::enter(counters.clone(), role);
+    let start = std::time::Instant::now();
+    let result = f();
+    counters.for_role(role).record_wait(start.elapsed());
+    result
+}
+
+/// Same as [`instrument_stmt`], for a caller whose own return type isn't
+/// `Result<_, AppError>` (`retention::prune_sync` returns `PruneOutcome`,
+/// converting rusqlite errors to plain strings itself) -- still enters the
+/// [`RoleScope`] so any `note_rusqlite_error` call `f` makes directly
+/// attributes correctly, and still records the wait.
+pub(crate) fn instrument_block<T>(counters: &Arc<DbCounters>, role: DbRole, f: impl FnOnce() -> T) -> T {
+    let _scope = RoleScope::enter(counters.clone(), role);
+    let start = std::time::Instant::now();
+    let result = f();
+    counters.for_role(role).record_wait(start.elapsed());
+    result
+}
+
 pub struct Db {
     conn: Arc<Mutex<Connection>>,
     path: PathBuf,
+    cfg: DbConfig,
+    counters: Arc<DbCounters>,
+    /// requirement 7 / AC10: unix timestamp of the last passive WAL
+    /// checkpoint the cron loop ran, `0` before the first one. An
+    /// `AtomicI64` (not behind the `conn` mutex) since it's set from the
+    /// checkpoint cron task, independent of any single statement.
+    last_checkpoint_unix: Arc<std::sync::atomic::AtomicI64>,
 }
 
 impl Clone for Db {
@@ -1107,42 +1501,73 @@ impl Clone for Db {
         Self {
             conn: self.conn.clone(),
             path: self.path.clone(),
+            cfg: self.cfg,
+            counters: self.counters.clone(),
+            last_checkpoint_unix: self.last_checkpoint_unix.clone(),
         }
     }
 }
 
 impl Db {
     /// Open (creating if absent) `<data_dir>/mcphost.db` in WAL mode and run
-    /// migrations.
+    /// migrations. Every pragma comes from [`open_with_role`] (requirement
+    /// 1); this also runs (and logs) the startup pragma audit for the
+    /// `server` role's own connection and, via a throwaway connection to
+    /// the same file, the `prune` role -- `retention::prune_sync`'s real
+    /// per-cycle connection isn't opened until the nightly cycle fires, so
+    /// this is the only chance to audit and refuse to start on its behalf
+    /// too (requirement 2, AC1).
     pub fn open(data_dir: &Path) -> Result<Self, AppError> {
+        Self::open_with_cfg(data_dir, DbConfig::from_env())
+    }
+
+    /// Same as [`Self::open`], with the pragma config passed explicitly
+    /// instead of read from `$MCPHOST_DB_BUSY_TIMEOUT_MS` -- AC2's own
+    /// test (and `tests/common`'s `TestServer::start_with_db_cfg`) uses
+    /// this rather than mutating process environment, which would race
+    /// against every other test in the same suite binary reading the same
+    /// var.
+    pub fn open_with_cfg(data_dir: &Path, cfg: DbConfig) -> Result<Self, AppError> {
         std::fs::create_dir_all(data_dir)
             .map_err(|e| AppError::Storage(format!("cannot create data dir: {e}")))?;
         let path = data_dir.join("mcphost.db");
-        let conn = Connection::open(&path).map_err(AppError::from)?;
-        conn.pragma_update(None, "journal_mode", "WAL")
-            .map_err(AppError::from)?;
-        conn.pragma_update(None, "synchronous", "NORMAL")
-            .map_err(AppError::from)?;
-        conn.pragma_update(None, "foreign_keys", "ON")
-            .map_err(AppError::from)?;
-        // PRD-mcphost-data-retention requirement 2 / technical
-        // considerations: the nightly prune runs its batched deletes on a
-        // second, dedicated connection to this same file (see
-        // `retention::prune_sync`) rather than this shared one, so the two
-        // can genuinely contend for SQLite's single write lock -- without
-        // a `busy_timeout` on THIS connection too, a prune batch holding
-        // the write lock would make an ordinary `host.tool_call` insert
-        // fail immediately with `database is locked` instead of waiting
-        // it out. Same 5s value `tables.rs`'s own per-tenant connections
-        // already use for this.
-        conn.busy_timeout(crate::retention::PRUNE_BUSY_TIMEOUT)
-            .map_err(AppError::from)?;
+
+        let (conn, server_audit) = open_with_role(&path, ROLE_SERVER, &cfg)?;
+        tracing::info!(target: "db_audit", "{}", server_audit.log_line());
+        let (_prune_conn, prune_audit) = open_with_role(&path, ROLE_PRUNE, &cfg)?;
+        tracing::info!(target: "db_audit", "{}", prune_audit.log_line());
+
         let db = Db {
             conn: Arc::new(Mutex::new(conn)),
             path,
+            cfg,
+            counters: DbCounters::new(),
+            last_checkpoint_unix: Arc::new(std::sync::atomic::AtomicI64::new(0)),
         };
         db.migrate_sync()?;
         Ok(db)
+    }
+
+    /// Requirement 3, AC4/AC5: this role's contention counters right now.
+    pub fn counters(&self, role: DbRole) -> RoleCounterSnapshot {
+        self.counters.snapshot(role)
+    }
+
+    /// Test-only (AC9): bumps `busy_total` directly rather than driving 10
+    /// real lock timeouts through the whole retry/`busy_timeout` wait,
+    /// same "seed the observable state directly" convention as
+    /// `insert_calls_row_for_test`.
+    pub fn bump_busy_total_for_test(&self, role: DbRole, n: u64) {
+        self.counters
+            .for_role(role)
+            .busy_total
+            .fetch_add(n, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// `tables.rs`'s per-tenant connections (role `tenant_table`) share
+    /// this same process-global counter set.
+    pub(crate) fn counters_handle(&self) -> Arc<DbCounters> {
+        self.counters.clone()
     }
 
     /// PRD-mcphost-tenant-tables: the directory `mcphost.db` itself lives
@@ -1153,6 +1578,87 @@ impl Db {
     /// under, including in tests that point `Db::open` at a scratch dir.
     pub fn data_dir(&self) -> &Path {
         self.path.parent().unwrap_or_else(|| Path::new("."))
+    }
+
+    /// `tables.rs`'s per-tenant connections (role `tenant_table`) open
+    /// through the same [`open_with_role`] factory with this same config,
+    /// so they need it too.
+    pub fn cfg(&self) -> DbConfig {
+        self.cfg
+    }
+
+    /// Requirement 1/4, AC2/AC7: the pragmas in force for every
+    /// [`DbRole`] -- uniform by construction (every role opens through
+    /// [`open_with_role`] with this same `cfg`), so this needs no live
+    /// connection per role, just `self.cfg`. `admin.db.stats` (AC7) reuses
+    /// this directly; AC2's own test calls it straight from `Db` before
+    /// that RPC exists.
+    pub fn role_audits(&self) -> Vec<RoleAudit> {
+        ALL_ROLES
+            .iter()
+            .map(|&role| RoleAudit {
+                role,
+                busy_timeout: self.cfg.busy_timeout_ms as i64,
+                journal_mode: "wal".to_string(),
+                synchronous: "normal".to_string(),
+                foreign_keys: 1,
+            })
+            .collect()
+    }
+
+    /// Requirement 4, AC7: `admin.db.stats`'s whole payload -- counters and
+    /// pragmas per role, WAL file size, and page count.
+    pub async fn db_stats(&self) -> Result<DbStats, AppError> {
+        let roles = self
+            .role_audits()
+            .into_iter()
+            .map(|audit| RoleStat {
+                counters: self.counters.snapshot(audit.role),
+                audit,
+            })
+            .collect();
+        let wal_path = {
+            let mut p = self.path.clone().into_os_string();
+            p.push("-wal");
+            PathBuf::from(p)
+        };
+        let wal_bytes = std::fs::metadata(&wal_path).map(|m| m.len() as i64).unwrap_or(0);
+        let page_count: i64 = self
+            .with_conn(|conn| {
+                conn.query_row("PRAGMA page_count", [], |r| r.get(0))
+                    .map_err(AppError::from)
+            })
+            .await?;
+        let last_checkpoint = match self.last_checkpoint_unix.load(std::sync::atomic::Ordering::Relaxed) {
+            0 => None,
+            ts => Some(ts),
+        };
+        Ok(DbStats {
+            roles,
+            wal_bytes,
+            page_count,
+            last_checkpoint,
+        })
+    }
+
+    /// requirement 7 / AC10: called after the cron loop's passive
+    /// checkpoint completes.
+    pub(crate) fn record_checkpoint(&self, at_unix: i64) {
+        self.last_checkpoint_unix
+            .store(at_unix, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// requirement 7 / AC10: `PRAGMA wal_checkpoint(PASSIVE)` on the shared
+    /// connection -- passive never blocks a writer (unlike FULL/RESTART/
+    /// TRUNCATE), matching the requirement's own wording.
+    pub async fn wal_checkpoint_passive(&self) -> Result<(), AppError> {
+        self.with_conn(|conn| {
+            conn.query_row("PRAGMA wal_checkpoint(PASSIVE)", [], |_row| Ok(()))
+                .map_err(AppError::from)
+        })
+        .await?;
+        self.record_checkpoint(crate::state::now_unix());
+        Ok(())
     }
 
     fn migrate_sync(&self) -> Result<(), AppError> {
@@ -1778,11 +2284,14 @@ impl Db {
         T: Send + 'static,
     {
         let conn = self.conn.clone();
+        let counters = self.counters.clone();
         tokio::task::spawn_blocking(move || {
-            let guard = conn
-                .lock()
-                .map_err(|_| AppError::Storage("db lock poisoned".into()))?;
-            f(&guard)
+            instrument_stmt(&counters, ROLE_SERVER, move || {
+                let guard = conn
+                    .lock()
+                    .map_err(|_| AppError::Storage("db lock poisoned".into()))?;
+                f(&guard)
+            })
         })
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
@@ -7707,9 +8216,11 @@ impl Db {
     pub async fn prune_once(&self) -> Result<PruneReport, AppError> {
         let windows = self.retention_windows().await?;
         let path = self.path.clone();
+        let cfg = self.cfg;
+        let counters = self.counters.clone();
         let started = crate::state::now_unix();
         let outcome = tokio::task::spawn_blocking(move || {
-            crate::retention::prune_sync(&path, &windows, started)
+            crate::retention::prune_sync(&path, &cfg, &counters, &windows, started)
         })
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
@@ -9940,6 +10451,56 @@ pub struct DocPutOutcome {
     /// decide whether to also emit a `docs.put_bytes` metering event
     /// (requirement 5): a no-op write shouldn't be metered as one.
     pub changed: bool,
+}
+
+const DEFAULT_WAL_CHECKPOINT_SECS: u64 = 300;
+
+/// requirement 7: `$MCPHOST_DB_WAL_CHECKPOINT_SECS` (default 300).
+pub fn wal_checkpoint_secs_from_env() -> u64 {
+    parse_wal_checkpoint_secs(std::env::var("MCPHOST_DB_WAL_CHECKPOINT_SECS").ok().as_deref())
+}
+
+/// AC10's own test calls this directly (rather than mutating process
+/// environment, which would race every other test in the same suite
+/// binary reading the same var -- same rationale as `DbConfig::parse`).
+pub fn parse_wal_checkpoint_secs(raw: Option<&str>) -> u64 {
+    raw.and_then(|v| v.parse::<u64>().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or(DEFAULT_WAL_CHECKPOINT_SECS)
+}
+
+/// requirement 7, AC10: the periodic passive-checkpoint cron loop, started
+/// once alongside the other background tasks (`retention::spawn_prune_scheduler`,
+/// `bans::spawn_tick`, ...).
+pub fn spawn_wal_checkpoint_scheduler(state: crate::state::AppState) -> tokio::task::JoinHandle<()> {
+    let interval = std::time::Duration::from_secs(wal_checkpoint_secs_from_env());
+    spawn_wal_checkpoint_loop(state, interval)
+}
+
+/// Test-only (AC10): same loop [`spawn_wal_checkpoint_scheduler`] runs at
+/// real `serve` startup, but firing every `interval` instead of waiting
+/// out `$MCPHOST_DB_WAL_CHECKPOINT_SECS`'s real cadence -- same "swap a
+/// short interval in for the test" convention as
+/// `retention::spawn_prune_scheduler_for_test`.
+pub fn spawn_wal_checkpoint_scheduler_for_test(
+    state: crate::state::AppState,
+    interval: std::time::Duration,
+) -> tokio::task::JoinHandle<()> {
+    spawn_wal_checkpoint_loop(state, interval)
+}
+
+fn spawn_wal_checkpoint_loop(
+    state: crate::state::AppState,
+    interval: std::time::Duration,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(interval).await;
+            if let Err(e) = state.db.wal_checkpoint_passive().await {
+                tracing::warn!(error = %e, "wal checkpoint failed");
+            }
+        }
+    })
 }
 
 /// [`Db::prune_once`]'s return shape: one cycle's per-physical-table

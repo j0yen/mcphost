@@ -327,6 +327,13 @@ pub struct AppState {
     /// P2 requirement 8: `$MCPHOST_OAUTH_JWKS_TTL_SECS`, default 3600 --
     /// see [`crate::oauth::jwks_ttl_secs_from_env`].
     pub oauth_jwks_ttl_secs: i64,
+    /// PRD-mcphost-sqlite-busy-timeout-audit requirement 6 (AC9): every
+    /// alert this process has raised, in memory -- see
+    /// [`crate::alerts::AlertRegistry`].
+    pub alerts: crate::alerts::AlertRegistry,
+    /// requirement 6 (AC9): the trailing-5-minute `db_busy_total` rise
+    /// tracker `alerts::tick_once` feeds every minute.
+    pub contention_tracker: crate::alerts::ContentionTracker,
 }
 
 pub fn now_unix() -> i64 {

@@ -282,6 +282,8 @@ pub async fn bare_app_state() -> (AppState, TempDataDir) {
         oauth: mcphost::oauth::JwksCache::new(),
         oauth_allowed_algs: mcphost::oauth::parse_allowed_algs(None),
         oauth_jwks_ttl_secs: mcphost::oauth::DEFAULT_JWKS_TTL_SECS,
+        alerts: mcphost::alerts::AlertRegistry::new(),
+        contention_tracker: mcphost::alerts::ContentionTracker::new(),
     };
     (state, data_dir)
 }
@@ -503,6 +505,33 @@ impl TestServer {
             email_client,
             mcphost::state::CLAIM_TOKEN_TTL_SECS_DEFAULT,
             mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
+            mcphost::db::DbConfig::from_env(),
+        )
+        .await
+    }
+
+    /// PRD-mcphost-sqlite-busy-timeout-audit AC2: a server whose
+    /// `$MCPHOST_DB_BUSY_TIMEOUT_MS`-equivalent is set directly on the
+    /// `Db`, never via the process environment -- same "field, not
+    /// process environment, since tests run in parallel in one binary"
+    /// rationale as `start_with_signup_rate_limit`'s own doc comment.
+    pub async fn start_with_db_cfg(db_cfg: mcphost::db::DbConfig) -> Self {
+        Self::start_full_with_email(
+            Some(ADMIN_KEY.to_string()),
+            KindRegistry::with_builtin(),
+            mcphost::state::CALL_TIMEOUT,
+            None,
+            mcphost::state::SIGNUP_RATE_LIMIT_PER_HOUR,
+            mcphost::billing::BillingConfig::default(),
+            Arc::new(mcphost::billing::FakeBillingClient::new(
+                mcphost::state::now_unix(),
+            )),
+            Vec::new(),
+            mcphost::email::EmailConfig::default(),
+            Arc::new(mcphost::email::FakeEmailClient::new()),
+            mcphost::state::CLAIM_TOKEN_TTL_SECS_DEFAULT,
+            mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
+            db_cfg,
         )
         .await
     }
@@ -535,6 +564,7 @@ impl TestServer {
             Arc::new(mcphost::email::FakeEmailClient::new()),
             mcphost::state::CLAIM_TOKEN_TTL_SECS_DEFAULT,
             mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
+            mcphost::db::DbConfig::from_env(),
         )
         .await
     }
@@ -542,8 +572,9 @@ impl TestServer {
     /// The one real constructor every `start_*` helper above funnels
     /// into, transitively -- `email_config`/`email_client`/
     /// `claim_token_ttl_secs`/`claim_rate_limit_per_hour` are the fields
-    /// PRD-mcphost-human-claim-magic-link added to `AppState`; every other
-    /// field is unchanged from before this PRD.
+    /// PRD-mcphost-human-claim-magic-link added to `AppState`; `db_cfg` is
+    /// PRD-mcphost-sqlite-busy-timeout-audit's own addition (AC2); every
+    /// other field is unchanged from before those PRDs.
     #[allow(clippy::too_many_arguments)]
     pub async fn start_full_with_email(
         admin_key: Option<String>,
@@ -558,9 +589,10 @@ impl TestServer {
         email_client: Arc<dyn mcphost::email::EmailClient>,
         claim_token_ttl_secs: i64,
         claim_rate_limit_per_hour: i64,
+        db_cfg: mcphost::db::DbConfig,
     ) -> Self {
         let data_dir = TempDataDir::new();
-        let db = Db::open(&data_dir.0).expect("open db");
+        let db = Db::open_with_cfg(&data_dir.0, db_cfg).expect("open db");
         db.migrate().await.expect("migrate");
         // PRD-mcphost-data-retention requirement 1: same as real `serve`
         // startup -- every test server's `retention_policy` starts from
@@ -621,6 +653,8 @@ impl TestServer {
             oauth: mcphost::oauth::JwksCache::new(),
             oauth_allowed_algs: mcphost::oauth::parse_allowed_algs(None),
             oauth_jwks_ttl_secs: mcphost::oauth::DEFAULT_JWKS_TTL_SECS,
+            alerts: mcphost::alerts::AlertRegistry::new(),
+            contention_tracker: mcphost::alerts::ContentionTracker::new(),
         });
 
         // PRD-mcphost-runs-and-jobs: every test server runs the real
@@ -1159,6 +1193,8 @@ pub async fn bare_state(dir: &std::path::Path) -> AppState {
         oauth: mcphost::oauth::JwksCache::new(),
         oauth_allowed_algs: mcphost::oauth::parse_allowed_algs(None),
         oauth_jwks_ttl_secs: mcphost::oauth::DEFAULT_JWKS_TTL_SECS,
+        alerts: mcphost::alerts::AlertRegistry::new(),
+        contention_tracker: mcphost::alerts::ContentionTracker::new(),
     }
 }
 
