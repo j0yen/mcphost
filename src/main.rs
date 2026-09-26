@@ -545,6 +545,7 @@ async fn main() -> anyhow::Result<()> {
                 contention_tracker: mcphost::alerts::ContentionTracker::new(),
                 alert_config: mcphost::alerts::AlertConfig::from_env(),
                 alert_quota_trips: mcphost::alerts::QuotaTripTracker::new(),
+                status_probe_override: mcphost::statusfeed::ProbeOverrides::new(),
             });
             // PRD-mcphost-abuse-guard-ban-list requirement 6: load the ban
             // cache once before this process ever serves a request, so the
@@ -607,6 +608,11 @@ async fn main() -> anyhow::Result<()> {
             // minute tick, started once here alongside the other
             // background tasks.
             mcphost::alerts::spawn_error_rate_tick((*state).clone());
+            // PRD-mcphost-status-feed requirement 2/1: the minute
+            // self-sampler and the daily rollup+prune tick, started once
+            // here alongside the other background tasks.
+            mcphost::statusfeed::spawn_tick((*state).clone());
+            mcphost::statusfeed::spawn_daily_tick((*state).clone());
 
             mcphost::http::serve_configured(bind, state).await
         }

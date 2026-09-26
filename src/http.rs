@@ -3,14 +3,15 @@
 //! protocol version this build of `rmcp` actually negotiates -- see
 //! [`advertised_protocol_version`].
 
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::os::fd::FromRawFd;
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
 use axum::body::{Body, Bytes};
-use axum::extract::{Path, State};
-use axum::http::{HeaderMap, HeaderValue, Request, StatusCode};
+use axum::extract::{Path, Query, State};
+use axum::http::{HeaderMap, HeaderValue, Request, StatusCode, header::CACHE_CONTROL};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -516,6 +517,41 @@ async fn well_known_catalog(State(state): State<Arc<AppState>>) -> impl IntoResp
     }
 }
 
+/// PRD-mcphost-status-feed requirement 3/AC1/AC10: `GET /status.json`,
+/// anonymous, cacheable 60s. With `component`/`days` query params both
+/// present (AC10), returns that one component's daily rollup rows instead
+/// of the whole feed.
+async fn status_json_route(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Response {
+    let by_component = params
+        .get("component")
+        .cloned()
+        .zip(params.get("days").and_then(|d| d.parse::<i64>().ok()));
+
+    let body = match by_component {
+        Some((component, days)) => crate::statusfeed::daily_rows(&state, &component, days).await,
+        None => crate::statusfeed::status_json(&state).await,
+    };
+
+    let mut response = match body {
+        Ok(value) => (StatusCode::OK, Json(value)).into_response(),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error_code": "storage", "error": "storage error"})),
+        )
+            .into_response(),
+    };
+    if let Ok(value) = HeaderValue::from_str(&format!(
+        "max-age={}",
+        crate::statusfeed::CACHE_MAX_AGE_SECS
+    )) {
+        response.headers_mut().insert(CACHE_CONTROL, value);
+    }
+    response
+}
+
 /// Ensures every response carries `MCP-Protocol-Version` (AC1), and emits
 /// one structured request-line log entry. This layer is attached to the
 /// whole router (see `build_router` below), not just `/mcp` -- `/healthz`
@@ -621,6 +657,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 
     Router::new()
         .route("/healthz", get(healthz))
+        .route("/status.json", get(status_json_route))
         .route(
             "/.well-known/mcp/{namespace}/server.json",
             get(well_known_server_json),

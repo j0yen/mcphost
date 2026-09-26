@@ -841,6 +841,7 @@ mod tests {
             contention_tracker: crate::alerts::ContentionTracker::new(),
             alert_config: crate::alerts::AlertConfig::default(),
             alert_quota_trips: crate::alerts::QuotaTripTracker::new(),
+            status_probe_override: crate::statusfeed::ProbeOverrides::new(),
         }
     }
 

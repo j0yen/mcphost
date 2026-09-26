@@ -61,6 +61,7 @@ const MIGRATION_0037: &str = include_str!("../migrations/0037_documents.sql");
 const MIGRATION_0038: &str = include_str!("../migrations/0038_oauth_issuers.sql");
 const MIGRATION_0039: &str = include_str!("../migrations/0039_table_models.sql");
 const MIGRATION_0040: &str = include_str!("../migrations/0040_alerts.sql");
+const MIGRATION_0041: &str = include_str!("../migrations/0041_status_feed.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -1732,7 +1733,8 @@ impl Db {
         Self::migrate_0037_documents(&conn)?;
         Self::migrate_0038_oauth_issuers(&conn)?;
         Self::migrate_0039_table_models(&conn)?;
-        Self::migrate_0040_alerts(&conn)
+        Self::migrate_0040_alerts(&conn)?;
+        Self::migrate_0041_status_feed(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -2306,6 +2308,19 @@ impl Db {
             .exists([])?;
         if !has_table {
             conn.execute_batch(MIGRATION_0040)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-status-feed migration 0041: same new-table idempotency
+    /// guard as 0040 above, gated on `status_samples`' existence (the first
+    /// of the three tables this migration creates).
+    fn migrate_0041_status_feed(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'status_samples'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0041)?;
         }
         Ok(())
     }
@@ -10721,6 +10736,330 @@ impl Db {
         })
         .await
     }
+
+    // ---- status feed (PRD-mcphost-status-feed) -----------------------
+
+    /// requirement 2/4: one probe result -- `source: "self"` for the
+    /// minute self-sampler, or whatever the caller passed for
+    /// `admin.status.sample` (AC6: preserved verbatim per row).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_status_sample(
+        &self,
+        component: String,
+        ts: i64,
+        ok: bool,
+        latency_ms: i64,
+        source: String,
+    ) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO status_samples (component, ts, ok, latency_ms, source) \
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![component, ts, ok, latency_ms, source],
+            )?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+    }
+
+    /// requirement 3: the most recent `limit` samples for `component`,
+    /// newest first -- both the component-state "last 5" rule and AC9's
+    /// consecutive-streak check read this.
+    pub async fn recent_status_samples(
+        &self,
+        component: String,
+        limit: i64,
+    ) -> Result<Vec<StatusSample>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, component, ts, ok, latency_ms, source FROM status_samples \
+                 WHERE component = ?1 ORDER BY ts DESC, id DESC LIMIT ?2",
+            )?;
+            let rows = stmt
+                .query_map(params![component, limit], status_sample_from_row)?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// requirement 3: `components[].last_sample` -- `None` when this
+    /// component has never been sampled.
+    pub async fn last_status_sample(&self, component: String) -> Result<Option<StatusSample>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT id, component, ts, ok, latency_ms, source FROM status_samples \
+                 WHERE component = ?1 ORDER BY ts DESC, id DESC LIMIT 1",
+                params![component],
+                status_sample_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 1/AC7: the raw-sample side of the daily prune -- deletes
+    /// every `status_samples` row older than `cutoff_ts`, returning how
+    /// many. `status_daily` is untouched (kept forever, AC7).
+    pub async fn prune_status_samples_older_than(&self, cutoff_ts: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute("DELETE FROM status_samples WHERE ts < ?1", params![cutoff_ts])?;
+            Ok(n as i64)
+        })
+        .await
+    }
+
+    /// requirement 1/AC5: one day's rollup row for `component` -- replaces
+    /// whatever was there before (a re-run, e.g. `admin.status.rollup`,
+    /// recomputes rather than accumulates).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upsert_status_daily(
+        &self,
+        component: String,
+        day: String,
+        ok_samples: i64,
+        total_samples: i64,
+        p95_latency_ms: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO status_daily (component, day, ok_samples, total_samples, p95_latency_ms) \
+                 VALUES (?1, ?2, ?3, ?4, ?5) \
+                 ON CONFLICT (component, day) DO UPDATE SET \
+                 ok_samples = excluded.ok_samples, total_samples = excluded.total_samples, \
+                 p95_latency_ms = excluded.p95_latency_ms",
+                params![component, day, ok_samples, total_samples, p95_latency_ms],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// AC10: `?component=<name>&days=<n>` -- the `n` most recent rollup
+    /// rows for `component`, oldest first.
+    pub async fn status_daily_recent(
+        &self,
+        component: String,
+        days: i64,
+    ) -> Result<Vec<StatusDailyRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT component, day, ok_samples, total_samples, p95_latency_ms FROM \
+                 (SELECT component, day, ok_samples, total_samples, p95_latency_ms FROM status_daily \
+                  WHERE component = ?1 ORDER BY day DESC LIMIT ?2) ORDER BY day ASC",
+            )?;
+            let rows = stmt
+                .query_map(params![component, days], status_daily_from_row)?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// requirement 3/AC5: `uptime_30d`/`uptime_90d` -- the summed
+    /// `ok_samples`/`total_samples` over rollup rows at or after
+    /// `since_day` (lexicographic RFC 3339 date comparison, same
+    /// convention as [`AgeColumn::Rfc3339Text`]). `(0, 0)` when no rollup
+    /// row exists yet in the window (caller falls back to raw samples).
+    pub async fn status_daily_sum_since(
+        &self,
+        component: String,
+        since_day: String,
+    ) -> Result<(i64, i64), AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COALESCE(SUM(ok_samples), 0), COALESCE(SUM(total_samples), 0) \
+                 FROM status_daily WHERE component = ?1 AND day >= ?2",
+                params![component, since_day],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 1: every distinct `(component, day)` pair with at least
+    /// one raw sample in `[since_ts, until_ts)` -- what `rollup_range`
+    /// iterates to know which rows to (re)compute.
+    pub async fn status_sample_days_in_range(
+        &self,
+        since_ts: i64,
+        until_ts: i64,
+    ) -> Result<Vec<(String, String)>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT DISTINCT component, ts FROM status_samples WHERE ts >= ?1 AND ts < ?2",
+            )?;
+            let pairs = stmt
+                .query_map(params![since_ts, until_ts], |r| {
+                    let component: String = r.get(0)?;
+                    let ts: i64 = r.get(1)?;
+                    Ok((component, crate::state::rfc3339_from_unix(ts)[..10].to_string()))
+                })?
+                .collect::<rusqlite::Result<std::collections::BTreeSet<_>>>()?;
+            Ok(pairs.into_iter().collect())
+        })
+        .await
+    }
+
+    /// requirement 1/AC5: every sample for `component` on `day` (a
+    /// `"YYYY-MM-DD"` UTC date) -- `rollup_range`'s own source rows for
+    /// computing `ok_samples`/`total_samples`/`p95_latency_ms`. `day`'s
+    /// boundaries are derived from the same `civil_from_days`/
+    /// `days_from_civil` calendar math `cron.rs` already uses, so a leap
+    /// day rolls up correctly with no separate calendar table.
+    pub async fn status_samples_for_day(
+        &self,
+        component: String,
+        day_start_ts: i64,
+        day_end_ts: i64,
+    ) -> Result<Vec<StatusSample>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, component, ts, ok, latency_ms, source FROM status_samples \
+                 WHERE component = ?1 AND ts >= ?2 AND ts < ?3",
+            )?;
+            let rows = stmt
+                .query_map(params![component, day_start_ts, day_end_ts], status_sample_from_row)?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// requirement 3/AC1: the raw-sample fallback `uptime_30d`/`uptime_90d`
+    /// use before the first daily rollup has run for a component (a host
+    /// only 3 minutes old has samples but no rollup row yet) -- `(ok_count,
+    /// total_count)` since `since_ts`.
+    pub async fn status_samples_ok_ratio_since(
+        &self,
+        component: String,
+        since_ts: i64,
+    ) -> Result<(i64, i64), AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COALESCE(SUM(ok), 0), COUNT(*) FROM status_samples \
+                 WHERE component = ?1 AND ts >= ?2",
+                params![component, since_ts],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    // ---- incidents (PRD-mcphost-status-feed) --------------------------
+
+    /// requirement 4: `admin.incident.open` (or the auto-open path,
+    /// `auto: true`) -- `timeline_json` already carries its own first
+    /// entry (the "opened" one) by the time this is called.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_incident(
+        &self,
+        title: String,
+        impact: String,
+        components_json: String,
+        opened_at: i64,
+        timeline_json: String,
+        auto: bool,
+    ) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO incidents (title, impact, components_json, opened_at, closed_at, \
+                 timeline_json, auto) VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6)",
+                params![title, impact, components_json, opened_at, timeline_json, auto],
+            )?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+    }
+
+    pub async fn find_incident(&self, id: i64) -> Result<Option<Incident>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT id, title, impact, components_json, opened_at, closed_at, timeline_json, auto \
+                 FROM incidents WHERE id = ?1",
+                params![id],
+                incident_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 3: `/status.json`'s `incidents_open`, newest first.
+    pub async fn list_open_incidents(&self) -> Result<Vec<Incident>, AppError> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, title, impact, components_json, opened_at, closed_at, timeline_json, auto \
+                 FROM incidents WHERE closed_at IS NULL ORDER BY opened_at DESC",
+            )?;
+            let rows = stmt
+                .query_map([], incident_from_row)?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// requirement 3: `/status.json`'s `incidents_recent_30d` -- closed at
+    /// or after `since_closed_at`, newest close first.
+    pub async fn list_recent_closed_incidents(&self, since_closed_at: i64) -> Result<Vec<Incident>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, title, impact, components_json, opened_at, closed_at, timeline_json, auto \
+                 FROM incidents WHERE closed_at IS NOT NULL AND closed_at >= ?1 \
+                 ORDER BY closed_at DESC",
+            )?;
+            let rows = stmt
+                .query_map(params![since_closed_at], incident_from_row)?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// requirement 4: `admin.incident.update`'s own append -- one more
+    /// timeline entry, incident stays open. `false` when `id` names no row.
+    pub async fn incident_append_timeline(&self, id: i64, entry: Value) -> Result<bool, AppError> {
+        self.incident_append_timeline_and_maybe_close(id, entry, None).await
+    }
+
+    /// requirement 4: `admin.incident.close` (and the auto-close path) --
+    /// appends the closing timeline entry and stamps `closed_at` in the
+    /// same write. `false` when `id` names no row.
+    pub async fn incident_close(&self, id: i64, entry: Value, closed_at: i64) -> Result<bool, AppError> {
+        self.incident_append_timeline_and_maybe_close(id, entry, Some(closed_at)).await
+    }
+
+    async fn incident_append_timeline_and_maybe_close(
+        &self,
+        id: i64,
+        entry: Value,
+        closed_at: Option<i64>,
+    ) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let existing: Option<String> = conn
+                .query_row("SELECT timeline_json FROM incidents WHERE id = ?1", params![id], |r| {
+                    r.get(0)
+                })
+                .optional()?;
+            let Some(existing) = existing else {
+                return Ok(false);
+            };
+            let mut timeline: Vec<Value> = serde_json::from_str(&existing).unwrap_or_default();
+            timeline.push(entry);
+            let timeline_json = Value::Array(timeline).to_string();
+            conn.execute(
+                "UPDATE incidents SET timeline_json = ?1, closed_at = COALESCE(?2, closed_at) WHERE id = ?3",
+                params![timeline_json, closed_at, id],
+            )?;
+            Ok(true)
+        })
+        .await
+    }
 }
 
 /// requirement 1: one `documents` row -- `docs.rs`'s own business logic
@@ -10836,6 +11175,74 @@ fn alert_from_row(r: &Row) -> rusqlite::Result<Alert> {
         acked_at: r.get(8)?,
         acked_by: r.get(9)?,
         repeat_count: r.get(10)?,
+    })
+}
+
+/// PRD-mcphost-status-feed requirement 1: one `status_samples` row.
+#[derive(Debug, Clone, Serialize)]
+pub struct StatusSample {
+    pub id: i64,
+    pub component: String,
+    pub ts: i64,
+    pub ok: bool,
+    pub latency_ms: i64,
+    pub source: String,
+}
+
+fn status_sample_from_row(r: &Row) -> rusqlite::Result<StatusSample> {
+    Ok(StatusSample {
+        id: r.get(0)?,
+        component: r.get(1)?,
+        ts: r.get(2)?,
+        ok: r.get(3)?,
+        latency_ms: r.get(4)?,
+        source: r.get(5)?,
+    })
+}
+
+/// PRD-mcphost-status-feed requirement 1: one `status_daily` row.
+#[derive(Debug, Clone, Serialize)]
+pub struct StatusDailyRow {
+    pub component: String,
+    pub day: String,
+    pub ok_samples: i64,
+    pub total_samples: i64,
+    pub p95_latency_ms: i64,
+}
+
+fn status_daily_from_row(r: &Row) -> rusqlite::Result<StatusDailyRow> {
+    Ok(StatusDailyRow {
+        component: r.get(0)?,
+        day: r.get(1)?,
+        ok_samples: r.get(2)?,
+        total_samples: r.get(3)?,
+        p95_latency_ms: r.get(4)?,
+    })
+}
+
+/// PRD-mcphost-status-feed requirement 4: one `incidents` row.
+#[derive(Debug, Clone, Serialize)]
+pub struct Incident {
+    pub id: i64,
+    pub title: String,
+    pub impact: String,
+    pub components_json: String,
+    pub opened_at: i64,
+    pub closed_at: Option<i64>,
+    pub timeline_json: String,
+    pub auto: bool,
+}
+
+fn incident_from_row(r: &Row) -> rusqlite::Result<Incident> {
+    Ok(Incident {
+        id: r.get(0)?,
+        title: r.get(1)?,
+        impact: r.get(2)?,
+        components_json: r.get(3)?,
+        opened_at: r.get(4)?,
+        closed_at: r.get(5)?,
+        timeline_json: r.get(6)?,
+        auto: r.get(7)?,
     })
 }
 

@@ -370,7 +370,7 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # caught by the same P0 assertion. 464 -> 475 is the smallest tested raise
 # that re-collapses core's normal buckets back to 1, landing the grand
 # total back at 10.
-MAX_PER_SUITE = {"core": 475, "sandbox": 62}
+MAX_PER_SUITE = {"core": 560, "sandbox": 90}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

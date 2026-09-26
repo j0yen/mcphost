@@ -42,6 +42,7 @@ pub mod sandbox;
 pub mod secrets;
 pub mod sharing;
 pub mod state;
+pub mod statusfeed;
 pub mod tables;
 pub mod tables_model;
 pub mod tenant_state;

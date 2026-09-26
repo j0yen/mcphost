@@ -125,6 +125,13 @@ rcgen = "=0.14.9"
 # own would be worse than no test at all.
 toml = "0.8"
 globset = "0.4"
+# AC8: www/status.html is a static file only mcphost-deploy's Caddy ever
+# serves, so no headless browser sits in this test harness -- boa_engine
+# (pure-Rust JS engine, no C toolchain/browser needed on the runner box)
+# lets tests/statusfeed_ac08_status_html_renders.rs actually execute the
+# page's inline <script> against a mocked `document`/`fetch`, instead of
+# grepping the committed markup and hoping the runtime behavior matches.
+boa_engine = "0.22.0"
 # Self-dependency (standard Cargo idiom): enables `test-support` only for
 # the lib crate integration tests (`tests/*.rs`) link against, without
 # leaking it into `default` for ordinary consumers/binaries.
