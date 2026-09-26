@@ -44,15 +44,110 @@
 //! only its mechanism (locked by
 //! `tests/vaultst_ac09_deferral_is_justified.rs`).
 //!
+//! AC9's Then names one artifact by path: "both transcripts saved under
+//! docs/receipts/<slug>.md" plus the post-deploy healthz version. That file
+//! is committed at `docs/receipts/mcphost-upstream-token-vault-status.md`,
+//! and it is not prose a reader has to trust: the branch-local transcript
+//! block in it is compared, byte for byte, against what a real server built
+//! from this branch actually serves
+//! ([`receipt_records_the_transcripts_the_server_actually_serves`]), with
+//! only the tenant namespace and the crate version replaced by named
+//! placeholders. So the receipt cannot drift from the code, and reverting
+//! the `LEFT JOIN` in [`mcphost::db::Db::vault_stats`] fails the comparison
+//! as loudly as it fails the assertions below. The receipt's *prod* section
+//! is explicitly marked pending -- it is what the operator's
+//! `MCPHOST_LIVE=1` run appends, and is the half that stays deferred.
+//!
 //! Env vars, read only when `MCPHOST_LIVE=1`:
 //!   MCPHOST_URL           endpoint to run against (default: https://mcphost.dev)
 //!   MCPHOST_OPERATOR_KEY  bearer key for the operator tenant (mcphost-1 /etc/mcphost/operator-tenant.key)
 //!   MCPHOST_ADMIN_KEY     the admin key (orch ~/.config/mcphost/admin-key)
 
-use serde_json::json;
+use std::fs;
+use std::path::PathBuf;
+
+use serde_json::{Value, json};
 
 use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, extract_structured, signup};
+
+/// AC9's own named evidence artifact, relative to the crate root.
+const RECEIPT_REL: &str = "docs/receipts/mcphost-upstream-token-vault-status.md";
+
+/// The two values the committed transcript deliberately does not freeze:
+/// the stand-in operator tenant's namespace (freshly generated per run) and
+/// the crate version (bumped by every release commit). Everything else in
+/// the block is compared literally.
+const TENANT_PLACEHOLDER: &str = "<operator-tenant>";
+const VERSION_PLACEHOLDER: &str = "<crate version>";
+
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+}
+
+fn receipt_text() -> String {
+    let path = repo_root().join(RECEIPT_REL);
+    fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!(
+            "read {}: {e} -- AC9's Then names this file as the artifact its two transcripts \
+             are saved under, so it must exist on the branch, not only after the ship trailer \
+             runs",
+            path.display()
+        )
+    })
+}
+
+/// `GET /healthz` with the admin bearer -- the full document, which is the
+/// only shape that carries `version`/`db_ok` (the anonymous body is
+/// `{"ok": bool}` and nothing else, per PRD-mcphost-healthz-minimal
+/// requirement 1, so the version AC9's evidence line names is unreadable
+/// without the admin bearer).
+async fn fetch_healthz(base_url: &str, admin_key: &str) -> Value {
+    let resp = reqwest::Client::new()
+        .get(format!("{base_url}/healthz"))
+        .bearer_auth(admin_key)
+        .send()
+        .await
+        .unwrap_or_else(|e| panic!("GET {base_url}/healthz: {e}"));
+    resp.json()
+        .await
+        .unwrap_or_else(|e| panic!("GET {base_url}/healthz body is not JSON: {e}"))
+}
+
+/// The receipt's branch-local transcript block, rendered from live response
+/// bodies. Deterministic given the state AC9's Given describes (one tenant,
+/// one registered-never-connected `slack` provider), because the only
+/// run-varying values -- the namespace and the crate version -- are replaced
+/// by [`TENANT_PLACEHOLDER`] / [`VERSION_PLACEHOLDER`].
+fn canonical_transcript(namespace: &str, healthz: &Value, status: &Value, stats: &Value) -> String {
+    assert!(
+        !namespace.is_empty(),
+        "an empty namespace would make the placeholder substitution meaningless"
+    );
+    let redact = |v: &Value| -> String {
+        serde_json::to_string_pretty(v)
+            .expect("response bodies serialize")
+            .replace(namespace, TENANT_PLACEHOLDER)
+    };
+    // Only the two fields AC9's evidence line actually names -- the rest of
+    // the admin healthz document is volatile box telemetry (counts, disk
+    // figures) that would make this block unstable for no added proof.
+    let healthz_evidence = json!({
+        "db_ok": healthz.get("db_ok").cloned().unwrap_or(Value::Null),
+        "version": VERSION_PLACEHOLDER,
+    });
+    let mut out = String::new();
+    out.push_str("`GET /healthz` (admin bearer):\n\n```json\n");
+    out.push_str(&redact(&healthz_evidence));
+    out.push_str("\n```\n\n");
+    out.push_str("`host.vault.status {\"end_user\": \"vaultst-probe\"}` (operator key):\n\n```json\n");
+    out.push_str(&redact(status));
+    out.push_str("\n```\n\n");
+    out.push_str("`admin.vault.stats {}` (admin key):\n\n```json\n");
+    out.push_str(&redact(stats));
+    out.push_str("\n```");
+    out
+}
 
 /// Pure predicate, deliberately not reading `std::env` itself, so its
 /// behavior for an unset variable is asserted deterministically instead of
@@ -186,16 +281,140 @@ async fn operator_tenant_slack_shows_disconnected_and_zero_tokens() {
         .unwrap_or_else(|| panic!("slack missing from admin.vault.stats for {namespace}: {tenant_providers:?}"));
     assert_eq!(slack_stats["tokens"], json!(0), "{slack_stats:?}");
 
-    // AC9's proof: the two response bodies captured in the ship trailer.
+    // And: the version AC9's evidence line pairs with those two transcripts
+    // ("healthz version after deploy"), read the way the live trailer reads
+    // it -- the admin-bearer healthz document, since the anonymous body
+    // carries no version at all.
+    let healthz = fetch_healthz(&target.base_url, &target.admin_key).await;
+    assert_eq!(healthz["db_ok"], json!(true), "{healthz:?}");
+    let version = healthz["version"]
+        .as_str()
+        .unwrap_or_else(|| panic!("admin GET /healthz carries no version field: {healthz:?}"))
+        .to_string();
+
+    // AC9's proof: the three bodies captured in the ship trailer, in the
+    // shape docs/receipts/mcphost-upstream-token-vault-status.md records
+    // them, so an operator's MCPHOST_LIVE=1 run can paste the block straight
+    // into that file's prod section.
     println!(
-        "AC9 live proof ({}) -- host.vault.status for {namespace}: {}",
+        "AC9 live proof ({}) -- version {version}\n{}",
         target.label,
-        serde_json::to_string_pretty(&status).unwrap_or_else(|_| status.to_string())
+        canonical_transcript(&namespace, &healthz, &status, &stats)
     );
-    println!(
-        "AC9 live proof ({}) -- admin.vault.stats: {}",
-        target.label,
-        serde_json::to_string_pretty(&stats).unwrap_or_else(|_| stats.to_string())
+}
+
+/// AC9's Then, branch-local half: the transcript block committed in
+/// `docs/receipts/mcphost-upstream-token-vault-status.md` is what a real
+/// server built from this branch actually serves for AC9's Given, not a
+/// hand-written sample. Always local -- comparing a committed branch
+/// transcript against a remote deployment's body would be comparing two
+/// different things, so this deliberately does not follow `MCPHOST_LIVE`.
+#[tokio::test]
+async fn receipt_records_the_transcripts_the_server_actually_serves() {
+    let target = Target::local().await;
+    let operator = McpClient::with_bearer(&target.base_url, &target.operator_key);
+    let admin = McpClient::with_bearer(&target.base_url, &target.admin_key);
+
+    let whoami = extract_structured(
+        &operator
+            .tools_call("host.whoami", json!({}))
+            .await
+            .unwrap_or_else(|e| panic!("host.whoami: {} {}", e.code, e.message)),
+    );
+    let namespace = whoami["namespace"].as_str().expect("namespace field").to_string();
+
+    let status = extract_structured(
+        &operator
+            .tools_call("host.vault.status", json!({"end_user": "vaultst-probe"}))
+            .await
+            .unwrap_or_else(|e| panic!("host.vault.status: {} {}", e.code, e.message)),
+    );
+    let stats = extract_structured(
+        &admin
+            .tools_call("admin.vault.stats", json!({}))
+            .await
+            .unwrap_or_else(|e| panic!("admin.vault.stats: {} {}", e.code, e.message)),
+    );
+    let healthz = fetch_healthz(&target.base_url, &target.admin_key).await;
+
+    // The placeholder the receipt carries stands for *this* crate version,
+    // which is what makes substituting it honest rather than a hole.
+    assert_eq!(
+        healthz["version"],
+        json!(env!("CARGO_PKG_VERSION")),
+        "admin healthz must report this build's own version: {healthz:?}"
+    );
+
+    let block = canonical_transcript(&namespace, &healthz, &status, &stats);
+    let receipt = receipt_text();
+    assert!(
+        receipt.contains(&block),
+        "{RECEIPT_REL}'s branch-local transcript does not match what the server serves \
+         for AC9's Given. Replace that block with:\n\n{block}\n\nReceipt currently reads:\n\n{receipt}"
+    );
+}
+
+/// The receipt is AC9's evidence artifact, so it has to say what AC9's Then
+/// says -- and it has to obey AC9's own guardrail ("no key or secret text").
+/// A receipt that quietly pasted a bearer token in would satisfy the
+/// transcript comparison above and still be unpublishable.
+#[test]
+fn receipt_names_ac9s_evidence_and_leaks_no_key_or_secret() {
+    let receipt = receipt_text();
+
+    for needle in [
+        "host.vault.status",
+        "admin.vault.stats",
+        "/healthz",
+        "vaultst-probe",
+        "mcphost-1",
+        "https://mcphost.dev/mcp",
+        "tests/vaultst_ac09_live_vault_status_trailer.rs",
+    ] {
+        assert!(
+            receipt.contains(needle),
+            "{RECEIPT_REL} does not mention {needle:?}, which AC9's Given/When/Then names"
+        );
+    }
+    assert!(
+        receipt.to_lowercase().contains("pending"),
+        "{RECEIPT_REL} must mark AC9's prod leg as still pending the operator's run rather \
+         than reading as though prod had already been verified from this sandbox"
+    );
+
+    // AC9's guardrail. `ADMIN_KEY` is the suite's own admin bearer and the
+    // placeholder credentials are what the stand-in tenant registers; none
+    // of them belong in a committed, publicly rendered receipt (this file is
+    // concatenated into www/llms-full.txt by scripts/gen-llms-full.sh).
+    for secret in [
+        ADMIN_KEY,
+        "placeholder-client-secret",
+        "placeholder-client-id",
+    ] {
+        assert!(
+            !receipt.contains(secret),
+            "{RECEIPT_REL} contains {secret:?} -- AC9 requires no key or secret text in the \
+             saved evidence"
+        );
+    }
+    // A bearer header is allowed to *appear* in the operator's copy-paste
+    // command, but only ever reading a key out of the environment -- never
+    // with a literal token after it. Checking the header's presence alone
+    // would force the runnable command out of the receipt for no gain.
+    for (idx, _) in receipt.match_indices("Authorization: Bearer ") {
+        let rest = &receipt[idx + "Authorization: Bearer ".len()..];
+        assert!(
+            rest.starts_with('$'),
+            "{RECEIPT_REL} has an Authorization: Bearer header followed by something other \
+             than a shell variable -- AC9 requires no key text in the saved evidence: \
+             {:?}",
+            &rest[..rest.len().min(40)]
+        );
+    }
+    assert!(
+        !receipt.contains("client_secret\":"),
+        "{RECEIPT_REL} carries a client_secret field -- neither the status nor the stats body \
+         emits one, so its presence means a provider row got pasted in raw"
     );
 }
 

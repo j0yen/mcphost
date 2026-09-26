@@ -18,6 +18,12 @@
 use std::fs;
 use std::path::PathBuf;
 
+/// AC9's Then names this path as where its evidence lives; every layer of
+/// the paper trail has to agree on it, and
+/// `tests/vaultst_ac09_live_vault_status_trailer.rs` is what keeps the file's
+/// own contents honest.
+const RECEIPT_REL: &str = "docs/receipts/mcphost-upstream-token-vault-status.md";
+
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
@@ -76,6 +82,14 @@ fn mock_justifications_names_ac9_with_a_concrete_reason() {
          mechanism proof: {justification_block:?}"
     );
     assert!(
+        justification_block.contains("docs/receipts/mcphost-upstream-token-vault-status.md"),
+        "AC9's justification must name the evidence receipt AC9's own Then names \
+         (docs/receipts/<slug>.md): that file is committed on this branch, carries the \
+         branch-local transcript the server is checked against, and marks the prod leg \
+         pending -- a justification that does not point at it leaves the artifact AC9 \
+         names undiscoverable: {justification_block:?}"
+    );
+    assert!(
         justification_block.contains("not counted as AC9's proof"),
         "AC9's justification must state the honest scope -- the always-on test proves the \
          branch's mechanism, not AC9 itself: {justification_block:?}"
@@ -91,6 +105,12 @@ fn test_map_and_intent_card_ac9_entries_agree_with_the_frontmatter_deferral() {
         test_map.contains("\"AC9\"") && test_map.contains("mock_justifications"),
         "agent/test-map.json's AC9 entry must point at mock_justifications now that the PRD \
          frontmatter actually carries that field"
+    );
+    assert!(
+        test_map.contains(RECEIPT_REL),
+        "agent/test-map.json's AC9 entry must name {RECEIPT_REL} -- AC9's Then names that \
+         file as where its evidence is saved, so the test map is where a reader looking up \
+         AC9 has to find it"
     );
 
     // agent/intent-card.json is refreshed on every wm-build run to name
@@ -118,5 +138,10 @@ fn test_map_and_intent_card_ac9_entries_agree_with_the_frontmatter_deferral() {
         intent_card.contains("mock_justifications"),
         "agent/intent-card.json's AC9 test field must point at mock_justifications now that \
          the PRD frontmatter actually carries that field"
+    );
+    assert!(
+        intent_card.contains(RECEIPT_REL),
+        "agent/intent-card.json's AC9 test field must name {RECEIPT_REL} for the same reason \
+         agent/test-map.json's does"
     );
 }

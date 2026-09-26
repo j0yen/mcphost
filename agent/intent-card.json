@@ -63,7 +63,7 @@
       "id": "AC9",
       "level": "MUST",
       "description": "Given prod after deploy with the operator tenant holding provider slack from preset: \"slack\" (placeholder creds, no handoff), When host.vault.status {end_user: \"vaultst-probe\"} runs with the operator key over https://mcphost.dev/mcp and admin.vault.stats with the admin key, Then status lists slack connected: false and stats lists the operator tenant's slack {tokens: 0} (Live; evidence: healthz version plus both transcripts under docs/receipts/<slug>.md, no key/secret text).",
-      "test": "deferred (prod leg only) -- see PRD frontmatter mock_justifications; always-on mechanism proof: tests/vaultst_ac09_live_vault_status_trailer.rs (MCPHOST_LIVE=1 for the real leg); deferral paper trail locked by tests/vaultst_ac09_deferral_is_justified.rs"
+      "test": "deferred (prod leg only) -- see PRD frontmatter mock_justifications; always-on mechanism proof: tests/vaultst_ac09_live_vault_status_trailer.rs (MCPHOST_LIVE=1 for the real leg), which also checks AC9's own named evidence artifact docs/receipts/mcphost-upstream-token-vault-status.md against what the server actually serves; deferral paper trail locked by tests/vaultst_ac09_deferral_is_justified.rs"
     }
   ],
   "scope": [
