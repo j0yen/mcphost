@@ -101,6 +101,14 @@ required_commands = [
 ]
 
 [[lane]]
+id = "sharing-docs"
+description = "PRD-mcphost-shared-tool-call-path (2026-09-26): docs/sharing.md (the canonical source www/llms.txt's sharing section is generated from) and scripts/gen-docs-sharing.sh -- given its own lane rather than folded into the pre-existing docs lane above, since PRD-mcphost-proof-lane-loop-config's own AC4 (tests/lanecov_ac04_existing_lanes_unchanged.rs) pins every pre-existing lane's required_commands as an immutable baseline and folding in here would have changed the docs lane's own required_commands (caught by that test on the first full-suite run). docs-check.sh (unmodified lane membership) also validates docs/sharing.md now, so this lane's own proof is just the drift check gen-docs-sharing.sh --check already provides."
+globs = ["docs/sharing.md", "scripts/gen-docs-sharing.sh"]
+required_commands = [
+  "scripts/gen-docs-sharing.sh --check",
+]
+
+[[lane]]
 id = "harness-readonly"
 description = "Harness files; should never change after scaffold"
 globs = [

@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-end-user-identity.md (test_prefix: enduser)",
+  "ac_test_map_prd": "PRD-mcphost-shared-tool-call-path.md (test_prefix: sharedcall)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,20 +28,33 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/enduser_ac01_oauth_python_env_and_calls_row.rs",
-    "AC2": "tests/enduser_ac02_assertion_http_headers_and_calls_row.rs",
-    "AC3": "tests/enduser_ac03_invalid_assertion_rejected.rs",
-    "AC4": "tests/enduser_ac04_no_identity_env_unset_and_calls_row_null.rs",
-    "AC5": "tests/enduser_ac05_state_set_get_end_user_self_isolation.rs",
-    "AC6": "tests/enduser_ac06_state_query_end_user_self_scales_via_index.rs",
-    "AC7": "tests/enduser_ac07_end_user_required_and_explicit_impersonation.rs",
-    "AC8": "tests/enduser_ac08_explicit_subject_forbidden_with_own_identity.rs",
-    "AC9": "tests/enduser_ac09_quota_end_users.rs",
-    "AC10": "tests/enduser_ac10_whoami.rs",
-    "AC11": "tests/enduser_ac11_assertion_secret_rotate_invalidates_and_never_leaks.rs",
-    "AC12": "deferred -- operator-provisioned; AC12 is the Live/production-only requirement and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
+    "AC1": "tests/sharedcall_ac01_host_tool_call_public_cross_tenant.rs",
+    "AC2": "tests/sharedcall_ac02_group_share_non_member_gets_hint.rs",
+    "AC3": "tests/sharedcall_ac03_not_found_reasons_indistinguishable.rs",
+    "AC4": "tests/sharedcall_ac04_async_qualified_call_scoped_to_caller.rs",
+    "AC5": "tests/sharedcall_ac05_gen_docs_sharing_check.rs",
+    "AC6": "tests/sharedcall_ac06_proof_script_qualified_host_tool_call.rs",
+    "AC7": "tests/sharedcall_ac07_own_unqualified_call_unchanged.rs",
+    "AC8": "tests/sharedcall_ac08_get_info_lists_shared_tools_with_via.rs",
+    "AC9": "tests/sharedcall_ac09_quota_exhausted_qualified_call_refused.rs",
+    "AC10": "deferred -- operator-provisioned; AC10 is the Live/production-only requirement and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
   },
   "ac_test_map_by_prefix": {
+    "enduser": {
+      "_prd": "PRD-mcphost-end-user-identity.md -- superseded by mcphost-shared-tool-call-path at HEAD; real test_prefix is enduser",
+      "AC1": "tests/enduser_ac01_oauth_python_env_and_calls_row.rs",
+      "AC2": "tests/enduser_ac02_assertion_http_headers_and_calls_row.rs",
+      "AC3": "tests/enduser_ac03_invalid_assertion_rejected.rs",
+      "AC4": "tests/enduser_ac04_no_identity_env_unset_and_calls_row_null.rs",
+      "AC5": "tests/enduser_ac05_state_set_get_end_user_self_isolation.rs",
+      "AC6": "tests/enduser_ac06_state_query_end_user_self_scales_via_index.rs",
+      "AC7": "tests/enduser_ac07_end_user_required_and_explicit_impersonation.rs",
+      "AC8": "tests/enduser_ac08_explicit_subject_forbidden_with_own_identity.rs",
+      "AC9": "tests/enduser_ac09_quota_end_users.rs",
+      "AC10": "tests/enduser_ac10_whoami.rs",
+      "AC11": "tests/enduser_ac11_assertion_secret_rotate_invalidates_and_never_leaks.rs",
+      "AC12": "deferred -- operator-provisioned; AC12 is the Live/production-only requirement and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
+    },
     "docsearch": {
       "_prd": "PRD-mcphost-docs-semantic-search.md -- superseded by mcphost-end-user-identity at HEAD; real test_prefix is docsearch",
       "AC1": "tests/docsearch_ac01_status_reports_watermark_lag_and_chunks.rs",

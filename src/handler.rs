@@ -2917,7 +2917,7 @@ impl McpHostHandler {
         args: Value,
     ) -> Result<Value, AppError> {
         match name {
-            "host.whoami" => Ok(control::whoami(tenant, subject)),
+            "host.whoami" => control::whoami(&self.state, tenant, subject).await,
             "host.key_rotate" => control::key_rotate(&self.state, tenant).await,
             "host.self_offboard" => control::self_offboard(&self.state, tenant).await,
             "host.tool_publish" => control::tool_publish(&self.state, tenant, &args).await,
@@ -4210,7 +4210,7 @@ impl McpHostHandler {
                 self.state.disk_guard.floor_bytes(),
             ));
         }
-        let local_name = args
+        let name = args
             .get("name")
             .and_then(Value::as_str)
             .ok_or_else(|| AppError::InvalidArgs("missing required argument 'name'".into()))?
@@ -4225,16 +4225,47 @@ impl McpHostHandler {
         // object IS the call args and `version` has to be a reserved key
         // inside it -- see the dispatch match arm below).
         let version = args.get("version").and_then(Value::as_i64);
-        if args.get("async").and_then(Value::as_bool) == Some(true) {
-            return crate::runs::enqueue(&self.state, tenant, &local_name, call_args).await;
-        }
+        let is_async = args.get("async").and_then(Value::as_bool) == Some(true);
         // AC15: `call_published_tool`'s `get_tool` lookup is already scoped
         // to `tenant.id`, so a name only some other tenant published simply
         // isn't found here -- `ToolNotFound`, with nothing in the error to
         // distinguish "never published by anyone" from "published by
         // someone else".
-        self.call_published_tool(tenant, &local_name, call_args, false, None, version, end_user)
-            .await
+        //
+        // PRD-mcphost-shared-tool-call-path requirement 1/3 (AC1, AC4, AC7,
+        // AC9): `<owner_ns>.<local>` is now accepted here too, resolved
+        // exactly the way raw `tools/call` resolves it in the dispatch match
+        // arm below -- the caller's own namespace short-circuits straight to
+        // `call_published_tool`/`runs::enqueue` (no sharing lookup,
+        // resolving to the local tool regardless of its own visibility, per
+        // this PRD's own "at build" open question), any other namespace
+        // goes through `call_shared_tool`/`runs::enqueue_shared`, the same
+        // functions raw dispatch already uses, so metering/quota/audit
+        // behavior is identical either way.
+        match name.split_once('.') {
+            Some((ns, local)) if ns == tenant.namespace => {
+                if is_async {
+                    return crate::runs::enqueue(&self.state, tenant, local, call_args).await;
+                }
+                self.call_published_tool(tenant, local, call_args, false, None, version, end_user)
+                    .await
+            }
+            Some((ns, local)) => {
+                if is_async {
+                    return crate::runs::enqueue_shared(&self.state, tenant, ns, local, call_args)
+                        .await;
+                }
+                self.call_shared_tool(tenant, ns, local, call_args, false, version, end_user)
+                    .await
+            }
+            None => {
+                if is_async {
+                    return crate::runs::enqueue(&self.state, tenant, &name, call_args).await;
+                }
+                self.call_published_tool(tenant, &name, call_args, false, None, version, end_user)
+                    .await
+            }
+        }
     }
 
     /// PRD-mcphost-sharing P0 requirement 2 (AC1-3): resolve `<owner_ns>.
@@ -4259,30 +4290,8 @@ impl McpHostHandler {
         version: Option<i64>,
         end_user: Option<&crate::enduser::EndUser>,
     ) -> Result<Value, AppError> {
-        let not_found = || AppError::ToolNotFound(format!("{owner_ns}.{local_name}"));
-        let (owner, row) = self
-            .state
-            .db
-            .get_tool_by_owner_namespace(owner_ns.to_string(), local_name.to_string())
-            .await?
-            .ok_or_else(not_found)?;
-
-        let visible = match row.visibility.as_str() {
-            "public" => true,
-            "group" => match &row.shared_group {
-                Some(group) => {
-                    self.state
-                        .db
-                        .is_group_member(owner.id, group.clone(), caller.id)
-                        .await?
-                }
-                None => false,
-            },
-            _ => false,
-        };
-        if !visible {
-            return Err(not_found());
-        }
+        let (owner, _row) =
+            crate::sharing::resolve_shared_tool(&self.state, caller, owner_ns, local_name).await?;
 
         self.call_published_tool(
             &owner,

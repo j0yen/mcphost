@@ -425,6 +425,12 @@ impl AppError {
                     ErrorCode::INVALID_PARAMS
                 }
                 "end_user_assertion_invalid" => ErrorCode::INVALID_REQUEST,
+                // PRD-mcphost-shared-tool-call-path requirement 2:
+                // `AppError::shared_tool_not_found`'s own code, mirroring
+                // `AppError::ToolNotFound`'s RESOURCE_NOT_FOUND above -- a
+                // `Structured` variant only because it carries `data.hint`,
+                // not because it's a different class of error.
+                "tool_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
                 _ => ErrorCode::INTERNAL_ERROR,
             },
             AppError::MultiInvalid { errors, .. } => errors
@@ -980,6 +986,24 @@ impl AppError {
                 "reason": "disk_floor",
                 "free_bytes": free_bytes,
                 "floor_bytes": floor_bytes,
+            }),
+        }
+    }
+
+    /// PRD-mcphost-shared-tool-call-path requirement 2 (AC2, AC3): the
+    /// cross-tenant `<owner_ns>.<local_name>` not-found shape --
+    /// [`crate::sharing::resolve_shared_tool`]'s only error, identical bytes
+    /// for every miss reason (owner namespace doesn't exist, tool doesn't
+    /// exist, tool is private, or caller isn't in the sharing group) so a
+    /// probe can never learn which of those is true from the message, the
+    /// data, or (same one-or-two-query shape either way) response timing.
+    pub fn shared_tool_not_found(owner_ns: &str, local_name: &str) -> Self {
+        AppError::Structured {
+            code: "tool_not_found",
+            message: format!("tool not found: {owner_ns}.{local_name}"),
+            data: json!({
+                "hint": "shared tools are called as <owner_namespace>.<tool>; ask the owner \
+                    to host.tool_share it with you or your group",
             }),
         }
     }

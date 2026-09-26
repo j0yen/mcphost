@@ -631,7 +631,7 @@ pub fn quickstart(
 /// per the PRD's own technical considerations, except here, where
 /// surfacing it on `host.whoami` is exactly how a caller (or a test)
 /// confirms which subject a token resolved to.
-pub fn whoami(tenant: &Tenant, subject: Option<&str>) -> Value {
+pub async fn whoami(state: &AppState, tenant: &Tenant, subject: Option<&str>) -> Result<Value, AppError> {
     // PRD-mcphost-handoff-token P1 requirement 7 / AC8: age is measured
     // from the last rotation when there's been one, else from the
     // tenant's own creation -- a never-rotated key is exactly as old as
@@ -640,7 +640,26 @@ pub fn whoami(tenant: &Tenant, subject: Option<&str>) -> Value {
     // unknowable rather than a misleading guess.
     let key_since = tenant.key_rotated_unix.or(tenant.created_unix);
     let key_age_s = key_since.map(|since| (now_unix() - since).max(0));
-    json!({
+    // PRD-mcphost-shared-tool-call-path P1 requirement 6 (AC8): every
+    // shared tool this tenant can currently reach, direct (public) or via a
+    // group it belongs to -- see `Db::shared_tools_for_caller`'s own doc
+    // comment for why "host.get_info" (the PRD's own name for this) landed
+    // on `host.whoami`, this crate's real "tell the caller about itself"
+    // tool, rather than a new tool of that literal name.
+    let shared_tools: Vec<Value> = state
+        .db
+        .shared_tools_for_caller(tenant.id, tenant.namespace.clone())
+        .await?
+        .into_iter()
+        .map(|(owner_ns, tool_name, via)| {
+            json!({
+                "name": format!("{owner_ns}.{tool_name}"),
+                "owner": owner_ns,
+                "via": via,
+            })
+        })
+        .collect();
+    Ok(json!({
         "tenant": tenant.namespace,
         "namespace": tenant.namespace,
         "display_name": tenant.display_name,
@@ -671,7 +690,8 @@ pub fn whoami(tenant: &Tenant, subject: Option<&str>) -> Value {
         // it's coding against with no extra round trip.
         "contract_version": crate::api_contract::CONTRACT_VERSION,
         "subject": subject,
-    })
+        "shared_tools": shared_tools,
+    }))
 }
 
 /// PRD-mcphost-admin-schema-contract P2 requirement 7 (AC7): `host.whoami`

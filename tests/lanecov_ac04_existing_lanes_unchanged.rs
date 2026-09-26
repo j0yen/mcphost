@@ -103,6 +103,12 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // PRD-mcphost-docs-semantic-search added its own "docsearch-fixtures"
     // lane (routes tests/fixtures/docsearch/** to the docsearch_ac09 proof
     // test) -- an eighth, intended addition since the baseline, not drift.
+    // PRD-mcphost-shared-tool-call-path added its own "sharing-docs" lane
+    // (routes docs/sharing.md and scripts/gen-docs-sharing.sh to that
+    // script's own --check, kept separate from the pre-existing docs lane
+    // specifically so THIS test's own required_commands-unchanged half
+    // stays green) -- a ninth, intended addition since the baseline, not
+    // drift.
     assert_eq!(
         added,
         vec![
@@ -113,9 +119,10 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "examples",
             "loop-config",
             "plugin",
+            "sharing-docs",
             "wasm-fixtures"
         ],
         "only admin-schemas, checkcompat-race-soak, contracts, docsearch-fixtures, examples, \
-         loop-config, plugin, and wasm-fixtures may have been added since {BASELINE_REV}"
+         loop-config, plugin, sharing-docs, and wasm-fixtures may have been added since {BASELINE_REV}"
     );
 }

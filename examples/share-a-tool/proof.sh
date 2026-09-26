@@ -268,6 +268,21 @@ if ! has_error "$caller_call_resp"; then
 fi
 check "caller_tool_call_returns_upstream_response" "$caller_call_ok"
 
+# 8b. The caller calls the same shared tool through host.tool_call with the
+#     qualified name -- PRD-mcphost-shared-tool-call-path AC6: the form
+#     www/llms.txt has documented all along (host.tool_call(name="<owner_ns>.
+#     <tool>")) must actually work, not just the raw tools/call form step 8
+#     already exercised.
+host_tool_call_args=$(python3 -c 'import json,sys; print(json.dumps({"name": sys.argv[1], "args": {}}))' "$QUALIFIED")
+caller_host_tool_call_resp=$(mcp_call "host.tool_call" "$host_tool_call_args" "$CALLER_KEY")
+caller_host_tool_call_ok=0
+if ! has_error "$caller_host_tool_call_resp"; then
+  if [[ "$MOCK_LOCAL" == "0" ]] || contains_str "$caller_host_tool_call_resp" "share-a-tool-mock"; then
+    caller_host_tool_call_ok=1
+  fi
+fi
+check "caller_host_tool_call_returns_upstream_response" "$caller_host_tool_call_ok"
+
 # 9. The caller sees no secrets of the owner's -- AC3.
 secret_list_resp=$(mcp_call "host.secret_list" '{}' "$CALLER_KEY")
 secret_list_struct=$(structured_of "$secret_list_resp")
@@ -277,6 +292,7 @@ check "caller_secret_list_empty" "$([[ "$names_len" == "0" ]] && echo 1 || echo 
 # 10. No response body the caller received ever carries the raw secret.
 leak_free=1
 contains_str "$caller_call_resp" "$SECRET_VALUE" && leak_free=0
+contains_str "$caller_host_tool_call_resp" "$SECRET_VALUE" && leak_free=0
 contains_str "$secret_list_resp" "$SECRET_VALUE" && leak_free=0
 check "no_secret_leak_in_caller_responses" "$leak_free"
 
@@ -295,6 +311,28 @@ check "owner_call_still_succeeds_after_remove" "$(has_error "$owner_call_after_r
 END_EPOCH=$(python3 -c 'import time; print(time.time())')
 WALL_MS=$(python3 -c "print(int((${END_EPOCH} - ${START_EPOCH}) * 1000))")
 echo "WALL_TIME_MS=${WALL_MS}"
+
+# PRD-mcphost-shared-tool-call-path AC6: "the receipt records both" -- a
+# small JSON file naming whether the raw tools/call qualified-name form and
+# the host.tool_call qualified-name form each succeeded this run, plus this
+# run's own wall time. Defaults under the OS temp dir, not this repo's own
+# docs/receipts/, since this script also runs (repeatedly, concurrently)
+# from the mcphost_share_a_tool_not_a_key_ac*/sharedcall_ac06 test suites
+# against an ephemeral in-process host -- pass SHARE_A_TOOL_RECEIPT to save
+# a real run's receipt into the repo on purpose.
+RECEIPT_PATH="${SHARE_A_TOOL_RECEIPT:-${TMPDIR:-/tmp}/share-a-tool-receipt-$$.json}"
+mkdir -p "$(dirname "$RECEIPT_PATH")"
+python3 -c 'import json, sys
+path, raw_ok, host_tool_call_ok, wall_ms = sys.argv[1:5]
+with open(path, "w") as f:
+    json.dump({
+        "raw_tools_call_qualified_ok": raw_ok == "1",
+        "host_tool_call_qualified_ok": host_tool_call_ok == "1",
+        "wall_time_ms": int(wall_ms),
+    }, f, indent=2)
+    f.write("\n")
+' "$RECEIPT_PATH" "$caller_call_ok" "$caller_host_tool_call_ok" "$WALL_MS"
+echo "RECEIPT=${RECEIPT_PATH}"
 
 if [[ "$FAILURES" -eq 0 ]]; then
   echo "RESULT: PASS"

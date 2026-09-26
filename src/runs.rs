@@ -342,6 +342,69 @@ pub async fn enqueue(
     Ok(json!({"run_id": run_id, "status": "queued"}))
 }
 
+/// PRD-mcphost-shared-tool-call-path requirement 3 (AC4): the qualified-name
+/// sibling of [`enqueue`] above -- `host.tool_call {name: "<owner_ns>.
+/// <local_name>", async: true}` delegates here instead. The row is inserted
+/// under `caller`'s own tenant id (so `host.runs.get`/`host.runs.wait`
+/// return it to `caller` only, and never to the owner -- same scoping
+/// `get_run` already enforces for every other run), with `tool_name` stored
+/// as the full qualified `<owner_ns>.<local_name>` string so
+/// [`execute_job`] can tell a shared run apart from an own-tool one and
+/// resolve it against the owner's tool, not the caller's, at lease time.
+pub async fn enqueue_shared(
+    state: &AppState,
+    caller: &Tenant,
+    owner_ns: &str,
+    local_name: &str,
+    args: Value,
+) -> Result<Value, AppError> {
+    let (_owner, row) = crate::sharing::resolve_shared_tool(state, caller, owner_ns, local_name).await?;
+    let kind = state.kinds.get(&row.kind).ok_or_else(|| {
+        AppError::Internal(format!(
+            "published tool names unregistered kind '{}'",
+            row.kind
+        ))
+    })?;
+    let descriptor = kind.describe(&row.spec);
+    if let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
+        && let Err(e) = validator.validate(&args)
+    {
+        let data = crate::kinds::describe_args_error(&e);
+        return Err(AppError::Structured {
+            code: "args_invalid",
+            message: e.to_string(),
+            data,
+        });
+    }
+    let plan = state.plans.get(&caller.plan).ok_or_else(|| {
+        AppError::Internal(format!(
+            "tenant's plan '{}' is not in the loaded plan catalog",
+            caller.plan
+        ))
+    })?;
+    let deadline_s = plan.job_max_s;
+    let run_id = crate::state::new_ulid();
+    let args_json = serde_json::to_string(&args)
+        .map_err(|e| AppError::Internal(format!("args serialize: {e}")))?;
+    state
+        .db
+        .insert_queued_run(
+            run_id.clone(),
+            caller.id,
+            format!("{owner_ns}.{local_name}"),
+            "job".to_string(),
+            None,
+            None,
+            deadline_s,
+            args_json,
+            false,
+            false,
+            None,
+        )
+        .await?;
+    Ok(json!({"run_id": run_id, "status": "queued"}))
+}
+
 /// Bridges `ctx.progress` (P0 requirement 5) to a throttled (at most
 /// once/second) `runs.progress_json` write. Holds the last-write `Instant`
 /// behind a `Mutex` since `ProgressSink::report` is a plain, non-async
@@ -393,15 +456,36 @@ enum JobOutcome {
 async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) -> JobOutcome {
     let deadline_s = run.deadline_s.unwrap_or(300).max(1) as u64;
 
-    let Ok(Some(tenant)) = state.db.find_tenant_by_id(run.tenant_id).await else {
+    let Ok(Some(run_tenant)) = state.db.find_tenant_by_id(run.tenant_id).await else {
         return JobOutcome::Error {
             error_class: "tenant_not_found".to_string(),
         };
     };
-    let Ok(Some(row)) = state.db.get_tool(run.tenant_id, run.tool_name.clone()).await else {
-        return JobOutcome::Error {
-            error_class: "tool_not_found".to_string(),
-        };
+    // PRD-mcphost-shared-tool-call-path requirement 3 (AC4): a shared async
+    // run's `tool_name` is stored as the qualified `<owner_ns>.<local_name>`
+    // (see `enqueue_shared`) -- resolved here against the OWNER's tool,
+    // re-checking visibility the same way the synchronous cross-tenant path
+    // does, so a share revoked between enqueue and lease is honored rather
+    // than silently still running. An own-tool run's `tool_name` never
+    // contains a `.` (`validate_tool_name` forbids it), so this is a no-op
+    // for every run this executor ran before this PRD.
+    let (tenant, local_name, row) = match run.tool_name.split_once('.') {
+        Some((ns, local)) => match crate::sharing::resolve_shared_tool(state, &run_tenant, ns, local).await {
+            Ok((owner, row)) => (owner, local.to_string(), row),
+            Err(_) => {
+                return JobOutcome::Error {
+                    error_class: "tool_not_found".to_string(),
+                };
+            }
+        },
+        None => match state.db.get_tool(run_tenant.id, run.tool_name.clone()).await {
+            Ok(Some(row)) => (run_tenant.clone(), run.tool_name.clone(), row),
+            _ => {
+                return JobOutcome::Error {
+                    error_class: "tool_not_found".to_string(),
+                };
+            }
+        },
     };
     let Some(kind) = state.kinds.get(&row.kind) else {
         return JobOutcome::Error {
@@ -435,7 +519,7 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
         log: log.clone() as Arc<dyn CallLog>,
         test_mode: false,
         resources: resources.clone() as Arc<dyn ResourceSink>,
-        tool_name: Some(run.tool_name.clone()),
+        tool_name: Some(local_name.clone()),
         state: Arc::new(CountingStateBackend::new(
             Arc::new(TenantStateBridge {
                 state: Arc::new(state.clone()),
@@ -490,7 +574,7 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
     for line in log.0.lock().map(|g| g.clone()).unwrap_or_default() {
         let _ = state
             .db
-            .append_log(tenant.id, run.tool_name.clone(), format!("{log_prefix} {line}"))
+            .append_log(tenant.id, local_name.clone(), format!("{log_prefix} {line}"))
             .await;
     }
 
