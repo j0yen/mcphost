@@ -49,4 +49,5 @@ pub mod tables;
 pub mod tables_model;
 pub mod tenant_state;
 pub mod triggers;
+pub mod vault;
 pub mod webhooks;

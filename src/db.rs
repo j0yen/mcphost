@@ -65,6 +65,7 @@ const MIGRATION_0041: &str = include_str!("../migrations/0041_status_feed.sql");
 const MIGRATION_0042: &str = include_str!("../migrations/0042_end_user_identity.sql");
 const MIGRATION_0044: &str = include_str!("../migrations/0044_docs_index.sql");
 const MIGRATION_0045: &str = include_str!("../migrations/0045_run_counters_and_error_data.sql");
+const MIGRATION_0046: &str = include_str!("../migrations/0046_vault.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -791,6 +792,67 @@ pub enum HandoffRedeemOutcome {
     AlreadyRedeemed {
         token_id: i64,
     },
+}
+
+/// PRD-mcphost-upstream-token-vault requirement 2: a tenant's registered
+/// upstream OAuth application. `client_secret_enc`/`client_secret_nonce`
+/// are `AppState::secrets`-encrypted -- `host.vault.providers` (AC9) never
+/// includes them in its output; only [`crate::vault`]'s own token-exchange
+/// code ever decrypts them.
+#[derive(Debug, Clone)]
+pub struct VaultProviderRow {
+    pub name: String,
+    pub auth_url: String,
+    pub token_url: String,
+    pub client_id: String,
+    pub client_secret_enc: Vec<u8>,
+    pub client_secret_nonce: Vec<u8>,
+    pub scopes: String,
+    pub created_unix: i64,
+}
+
+/// PRD-mcphost-upstream-token-vault requirement 1: one end user's stored
+/// upstream token for one tenant's provider. `access_enc`/`refresh_enc`
+/// (with their own nonces) are `AppState::secrets`-encrypted; `refresh_enc`/
+/// `refresh_nonce` are `None` when the provider issued no refresh token.
+#[derive(Debug, Clone)]
+pub struct VaultTokenRow {
+    pub access_enc: Vec<u8>,
+    pub access_nonce: Vec<u8>,
+    pub refresh_enc: Option<Vec<u8>>,
+    pub refresh_nonce: Option<Vec<u8>>,
+    pub expires_unix: i64,
+    pub scopes: String,
+    pub connected_unix: i64,
+    pub last_refreshed_unix: Option<i64>,
+    pub revoked_unix: Option<i64>,
+    pub revoked_reason: Option<String>,
+}
+
+/// PRD-mcphost-upstream-token-vault requirement 3: the one-time
+/// `/vault/connect/<token>` handoff row.
+#[derive(Debug, Clone)]
+pub struct VaultHandoffRow {
+    pub tenant_id: i64,
+    pub provider: String,
+    pub end_user_subject: String,
+    pub end_user_issuer: Option<String>,
+    pub pkce_verifier_enc: Vec<u8>,
+    pub pkce_verifier_nonce: Vec<u8>,
+    pub oauth_state: String,
+    pub expires_unix: i64,
+    pub redeemed_unix: Option<i64>,
+}
+
+/// [`Db::redeem_vault_handoff_token`]'s outcome -- same single-use-claim
+/// shape as [`HandoffRedeemOutcome`], distinct type since the row shape
+/// (provider/end-user/PKCE, not a tenant key) differs entirely.
+#[derive(Debug, Clone)]
+pub enum VaultHandoffOutcome {
+    Redeemed(VaultHandoffRow),
+    NotFound,
+    Expired,
+    AlreadyRedeemed,
 }
 
 /// [`Db::verify_claim_code`]'s outcome (PRD-mcphost-human-claim-magic-link
@@ -1757,7 +1819,8 @@ impl Db {
         Self::migrate_0041_status_feed(&conn)?;
         Self::migrate_0042_end_user_identity(&conn)?;
         Self::migrate_0044_docs_index(&conn)?;
-        Self::migrate_0045_run_counters_and_error_data(&conn)
+        Self::migrate_0045_run_counters_and_error_data(&conn)?;
+        Self::migrate_0046_vault(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -2386,6 +2449,19 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0045)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-upstream-token-vault requirement 1 (renumbered from 0045
+    /// during the mcphost-run-result-overflow-to-state rebase, which had
+    /// already claimed 0045 for run_counters_and_error_data).
+    fn migrate_0046_vault(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'vault_providers'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0046)?;
         }
         Ok(())
     }
@@ -5107,6 +5183,409 @@ impl Db {
             )
             .optional()
             .map_err(AppError::from)
+        })
+        .await
+    }
+
+    // ---- vault (PRD-mcphost-upstream-token-vault) -------------------------
+    //
+    // `vault.rs` owns the OAuth exchange, PKCE, and tool/route handlers;
+    // these methods are the same thin "one prepared statement, one shape"
+    // layer every other section of this file already is.
+
+    pub async fn count_vault_providers(&self, tenant_id: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM vault_providers WHERE tenant_id = ?1",
+                params![tenant_id],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    pub async fn list_vault_provider_names(&self, tenant_id: i64) -> Result<Vec<String>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt =
+                conn.prepare("SELECT name FROM vault_providers WHERE tenant_id = ?1 ORDER BY name")?;
+            let rows = stmt
+                .query_map(params![tenant_id], |r| r.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upsert_vault_provider(
+        &self,
+        tenant_id: i64,
+        name: String,
+        auth_url: String,
+        token_url: String,
+        client_id: String,
+        client_secret_enc: Vec<u8>,
+        client_secret_nonce: Vec<u8>,
+        scopes: String,
+    ) -> Result<(), AppError> {
+        let created_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO vault_providers (tenant_id, name, auth_url, token_url, client_id, \
+                 client_secret_enc, client_secret_nonce, scopes, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) \
+                 ON CONFLICT(tenant_id, name) DO UPDATE SET \
+                     auth_url = excluded.auth_url, token_url = excluded.token_url, \
+                     client_id = excluded.client_id, client_secret_enc = excluded.client_secret_enc, \
+                     client_secret_nonce = excluded.client_secret_nonce, scopes = excluded.scopes",
+                params![
+                    tenant_id,
+                    name,
+                    auth_url,
+                    token_url,
+                    client_id,
+                    client_secret_enc,
+                    client_secret_nonce,
+                    scopes,
+                    created_unix
+                ],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn get_vault_provider(
+        &self,
+        tenant_id: i64,
+        name: String,
+    ) -> Result<Option<VaultProviderRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT name, auth_url, token_url, client_id, client_secret_enc, \
+                 client_secret_nonce, scopes, created_unix \
+                 FROM vault_providers WHERE tenant_id = ?1 AND name = ?2",
+                params![tenant_id, name],
+                |r| {
+                    Ok(VaultProviderRow {
+                        name: r.get(0)?,
+                        auth_url: r.get(1)?,
+                        token_url: r.get(2)?,
+                        client_id: r.get(3)?,
+                        client_secret_enc: r.get(4)?,
+                        client_secret_nonce: r.get(5)?,
+                        scopes: r.get(6)?,
+                        created_unix: r.get(7)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    pub async fn list_vault_providers(&self, tenant_id: i64) -> Result<Vec<VaultProviderRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT name, auth_url, token_url, client_id, client_secret_enc, \
+                 client_secret_nonce, scopes, created_unix \
+                 FROM vault_providers WHERE tenant_id = ?1 ORDER BY name",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id], |r| {
+                    Ok(VaultProviderRow {
+                        name: r.get(0)?,
+                        auth_url: r.get(1)?,
+                        token_url: r.get(2)?,
+                        client_id: r.get(3)?,
+                        client_secret_enc: r.get(4)?,
+                        client_secret_nonce: r.get(5)?,
+                        scopes: r.get(6)?,
+                        created_unix: r.get(7)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// The one-time `/vault/connect/<token>` handoff row: mints it with a
+    /// PKCE verifier already encrypted at rest (Technical considerations).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_vault_handoff_token(
+        &self,
+        tenant_id: i64,
+        token_hash: String,
+        provider: String,
+        end_user_subject: String,
+        end_user_issuer: Option<String>,
+        pkce_verifier_enc: Vec<u8>,
+        pkce_verifier_nonce: Vec<u8>,
+        oauth_state: String,
+        expires_unix: i64,
+    ) -> Result<(), AppError> {
+        let created_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO vault_handoff_tokens (tenant_id, token_hash, provider, \
+                 end_user_subject, end_user_issuer, pkce_verifier_enc, pkce_verifier_nonce, \
+                 oauth_state, expires_unix, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![
+                    tenant_id,
+                    token_hash,
+                    provider,
+                    end_user_subject,
+                    end_user_issuer,
+                    pkce_verifier_enc,
+                    pkce_verifier_nonce,
+                    oauth_state,
+                    expires_unix,
+                    created_unix
+                ],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Same atomic-claim shape as [`Self::redeem_handoff_token`]: the
+    /// `UPDATE ... WHERE redeemed_unix IS NULL` is what makes a second
+    /// `GET /vault/connect/<token>` see [`VaultHandoffOutcome::AlreadyRedeemed`]
+    /// (AC7) even under a race, not just a later check.
+    pub async fn redeem_vault_handoff_token(
+        &self,
+        token_hash: String,
+    ) -> Result<VaultHandoffOutcome, AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            let row: Option<VaultHandoffRow> = conn
+                .query_row(
+                    "SELECT tenant_id, provider, end_user_subject, end_user_issuer, \
+                     pkce_verifier_enc, pkce_verifier_nonce, oauth_state, expires_unix, \
+                     redeemed_unix \
+                     FROM vault_handoff_tokens WHERE token_hash = ?1",
+                    params![token_hash],
+                    |r| {
+                        Ok(VaultHandoffRow {
+                            tenant_id: r.get(0)?,
+                            provider: r.get(1)?,
+                            end_user_subject: r.get(2)?,
+                            end_user_issuer: r.get(3)?,
+                            pkce_verifier_enc: r.get(4)?,
+                            pkce_verifier_nonce: r.get(5)?,
+                            oauth_state: r.get(6)?,
+                            expires_unix: r.get(7)?,
+                            redeemed_unix: r.get(8)?,
+                        })
+                    },
+                )
+                .optional()?;
+            let Some(row) = row else {
+                return Ok(VaultHandoffOutcome::NotFound);
+            };
+            if row.redeemed_unix.is_some() {
+                return Ok(VaultHandoffOutcome::AlreadyRedeemed);
+            }
+            if now > row.expires_unix {
+                return Ok(VaultHandoffOutcome::Expired);
+            }
+            let claimed = conn.execute(
+                "UPDATE vault_handoff_tokens SET redeemed_unix = ?1 \
+                 WHERE token_hash = ?2 AND redeemed_unix IS NULL",
+                params![now, token_hash],
+            )?;
+            if claimed == 0 {
+                return Ok(VaultHandoffOutcome::AlreadyRedeemed);
+            }
+            Ok(VaultHandoffOutcome::Redeemed(row))
+        })
+        .await
+    }
+
+    /// `/vault/callback`'s own lookup, keyed by the anti-CSRF `state`
+    /// parameter the provider's redirect carries back -- distinct from
+    /// [`Self::redeem_vault_handoff_token`] (keyed by the raw connect
+    /// token's hash, and single-use-claiming) since by the time the
+    /// callback runs, `GET /vault/connect/<token>` has already claimed the
+    /// row (AC7's redemption happens at the connect step, not here).
+    pub async fn find_vault_handoff_by_oauth_state(
+        &self,
+        oauth_state: String,
+    ) -> Result<Option<VaultHandoffRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT tenant_id, provider, end_user_subject, end_user_issuer, \
+                 pkce_verifier_enc, pkce_verifier_nonce, oauth_state, expires_unix, redeemed_unix \
+                 FROM vault_handoff_tokens WHERE oauth_state = ?1",
+                params![oauth_state],
+                |r| {
+                    Ok(VaultHandoffRow {
+                        tenant_id: r.get(0)?,
+                        provider: r.get(1)?,
+                        end_user_subject: r.get(2)?,
+                        end_user_issuer: r.get(3)?,
+                        pkce_verifier_enc: r.get(4)?,
+                        pkce_verifier_nonce: r.get(5)?,
+                        oauth_state: r.get(6)?,
+                        expires_unix: r.get(7)?,
+                        redeemed_unix: r.get(8)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// The stored token row for one `(tenant, provider, end user)`,
+    /// revoked or not -- callers (`vault::resolve_for_call`, and tests
+    /// asserting on `revoked_unix`) decide what "connected" means from the
+    /// fields, this is just the read.
+    pub async fn get_vault_token(
+        &self,
+        tenant_id: i64,
+        provider: String,
+        end_user_subject: String,
+    ) -> Result<Option<VaultTokenRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT access_enc, access_nonce, refresh_enc, refresh_nonce, expires_unix, \
+                 scopes, connected_unix, last_refreshed_unix, revoked_unix, revoked_reason \
+                 FROM vault_tokens WHERE tenant_id = ?1 AND provider = ?2 AND end_user_subject = ?3",
+                params![tenant_id, provider, end_user_subject],
+                |r| {
+                    Ok(VaultTokenRow {
+                        access_enc: r.get(0)?,
+                        access_nonce: r.get(1)?,
+                        refresh_enc: r.get(2)?,
+                        refresh_nonce: r.get(3)?,
+                        expires_unix: r.get(4)?,
+                        scopes: r.get(5)?,
+                        connected_unix: r.get(6)?,
+                        last_refreshed_unix: r.get(7)?,
+                        revoked_unix: r.get(8)?,
+                        revoked_reason: r.get(9)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `/vault/callback`'s own write (AC2): a fresh connect always clears
+    /// any prior `revoked_unix`/`revoked_reason` -- reconnecting is how an
+    /// end user recovers from a revoked token (AC8, AC10), not a distinct
+    /// operation.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upsert_vault_token(
+        &self,
+        tenant_id: i64,
+        provider: String,
+        end_user_subject: String,
+        end_user_issuer: Option<String>,
+        access_enc: Vec<u8>,
+        access_nonce: Vec<u8>,
+        refresh_enc: Option<Vec<u8>>,
+        refresh_nonce: Option<Vec<u8>>,
+        expires_unix: i64,
+        scopes: String,
+    ) -> Result<(), AppError> {
+        let connected_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO vault_tokens (tenant_id, provider, end_user_subject, \
+                 end_user_issuer, access_enc, access_nonce, refresh_enc, refresh_nonce, \
+                 expires_unix, scopes, connected_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11) \
+                 ON CONFLICT(tenant_id, provider, end_user_subject) DO UPDATE SET \
+                     end_user_issuer = excluded.end_user_issuer, \
+                     access_enc = excluded.access_enc, access_nonce = excluded.access_nonce, \
+                     refresh_enc = excluded.refresh_enc, refresh_nonce = excluded.refresh_nonce, \
+                     expires_unix = excluded.expires_unix, scopes = excluded.scopes, \
+                     connected_unix = excluded.connected_unix, last_refreshed_unix = NULL, \
+                     revoked_unix = NULL, revoked_reason = NULL",
+                params![
+                    tenant_id,
+                    provider,
+                    end_user_subject,
+                    end_user_issuer,
+                    access_enc,
+                    access_nonce,
+                    refresh_enc,
+                    refresh_nonce,
+                    expires_unix,
+                    scopes,
+                    connected_unix
+                ],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// P0 requirement 4 / AC5: a successful inline refresh's own write --
+    /// distinct from [`Self::upsert_vault_token`] (a fresh connect) since it
+    /// never touches `connected_unix`/`scopes`/`end_user_issuer`.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn update_vault_token_refreshed(
+        &self,
+        tenant_id: i64,
+        provider: String,
+        end_user_subject: String,
+        access_enc: Vec<u8>,
+        access_nonce: Vec<u8>,
+        refresh_enc: Option<Vec<u8>>,
+        refresh_nonce: Option<Vec<u8>>,
+        expires_unix: i64,
+    ) -> Result<(), AppError> {
+        let last_refreshed_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE vault_tokens SET access_enc = ?1, access_nonce = ?2, refresh_enc = ?3, \
+                 refresh_nonce = ?4, expires_unix = ?5, last_refreshed_unix = ?6 \
+                 WHERE tenant_id = ?7 AND provider = ?8 AND end_user_subject = ?9",
+                params![
+                    access_enc,
+                    access_nonce,
+                    refresh_enc,
+                    refresh_nonce,
+                    expires_unix,
+                    last_refreshed_unix,
+                    tenant_id,
+                    provider,
+                    end_user_subject
+                ],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `host.vault.disconnect` (AC8) and a failed refresh (P1 requirement 6
+    /// / AC10) both funnel through here -- `reason` is `None` for an
+    /// explicit disconnect, `Some(...)` for a refresh failure.
+    pub async fn revoke_vault_token(
+        &self,
+        tenant_id: i64,
+        provider: String,
+        end_user_subject: String,
+        reason: Option<String>,
+    ) -> Result<(), AppError> {
+        let revoked_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE vault_tokens SET revoked_unix = ?1, revoked_reason = ?2 \
+                 WHERE tenant_id = ?3 AND provider = ?4 AND end_user_subject = ?5",
+                params![revoked_unix, reason, tenant_id, provider, end_user_subject],
+            )?;
+            Ok(())
         })
         .await
     }

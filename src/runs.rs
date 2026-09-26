@@ -797,6 +797,13 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
         // request to carry an end user from -- `None`, same as every other
         // job-executor call.
         end_user: None,
+        // PRD-mcphost-upstream-token-vault: an async/scheduled job never
+        // pre-resolves a vault token (out of this PRD's tested scope, same
+        // as `handler.rs`'s own `host.tool_test`/`host.tool_run` paths) --
+        // a job tool declaring `upstream_provider` degrades to
+        // `upstream_not_connected` inside `HttpKind::call` rather than
+        // sending an unauthenticated request.
+        vault_token: None,
     };
 
     let outcome = tokio::time::timeout(

@@ -1126,6 +1126,16 @@ pub struct CallCtx {
     /// context that hasn't wired one in) -- never fabricated (Goals: "an
     /// unverified claim is absent, not present").
     pub end_user: Option<crate::enduser::EndUser>,
+    /// PRD-mcphost-upstream-token-vault requirement 4: the calling end
+    /// user's already-resolved (and, if needed, already-refreshed) bearer
+    /// token for the provider [`Kind::declared_upstream_provider`] names,
+    /// resolved once by `handler.rs::call_published_tool` before `Kind::call`
+    /// runs. `None` for a spec that declares no `upstream_provider`, and
+    /// for every dispatch path that doesn't pre-resolve one (`host.tool_test`,
+    /// `host.tool_run`, the conformance suite) -- `http`'s own `call` treats
+    /// a declared provider with no resolved token here as `upstream_not_connected`
+    /// rather than sending an unauthenticated request.
+    pub vault_token: Option<String>,
 }
 
 impl CallCtx {
@@ -1153,6 +1163,7 @@ impl CallCtx {
             cancel_pid: Arc::new(Mutex::new(None)),
             egress_allowed: true,
             end_user: None,
+            vault_token: None,
         }
     }
 
@@ -1331,6 +1342,11 @@ pub async fn compose_call(
         // `state`/`table`/`docs` above -- so the child call carries
         // whatever end user (if any) the parent call already resolved.
         end_user: ctx.end_user.clone(),
+        // PRD-mcphost-upstream-token-vault: composition stays inside one
+        // tenant AND one call's own identity (same reasoning as `end_user`
+        // above), so a composed child call carries whatever upstream token
+        // the parent call already resolved.
+        vault_token: ctx.vault_token.clone(),
     };
 
     kind.call(&row.spec, args, &child_ctx).await
@@ -1388,6 +1404,19 @@ pub trait Kind: Send + Sync {
     /// override this; the default is "none needed."
     fn referenced_secrets(&self, _spec: &Value) -> Vec<String> {
         Vec::new()
+    }
+
+    /// PRD-mcphost-upstream-token-vault requirement 4: the vault provider
+    /// name this `spec` declares (`upstream_provider: "<provider>"`), if
+    /// any. The host's real dispatch path (`handler.rs::call_published_tool`)
+    /// resolves (and refreshes) the calling end user's stored token for
+    /// this provider BEFORE `Kind::call` ever runs, so a call with no
+    /// connected token never reaches the kind at all (`upstream_not_connected`,
+    /// AC6) -- the resolved token then rides along on [`CallCtx::vault_token`].
+    /// Kinds with no such notion (`echo`, `python`) don't override this;
+    /// only `http` does.
+    fn declared_upstream_provider(&self, _spec: &Value) -> Option<String> {
+        None
     }
 
     /// PRD-mcphost-python-kind-plain-env requirement 1: this `spec`'s own

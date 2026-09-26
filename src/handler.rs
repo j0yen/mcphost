@@ -3019,6 +3019,12 @@ impl McpHostHandler {
             "host.enduser.assertion_secret_rotate" => {
                 crate::enduser::assertion_secret_rotate(&self.state, tenant, &args).await
             }
+            "host.vault.provider_set" => crate::vault::provider_set(&self.state, tenant, &args).await,
+            "host.vault.providers" => crate::vault::providers(&self.state, tenant).await,
+            "host.vault.connect_link" => {
+                crate::vault::connect_link(&self.state, tenant, &args, end_user).await
+            }
+            "host.vault.disconnect" => crate::vault::disconnect(&self.state, tenant, &args, end_user).await,
             "host.table.create" => tables::table_create(&self.state, tenant, &args).await,
             "host.table.append" => tables::table_append(&self.state, tenant, &args).await,
             "host.table.query" => tables::table_query(&self.state, tenant, &args).await,
@@ -3354,6 +3360,16 @@ impl McpHostHandler {
         // counts against the CALLER's quota, not the owner's.
         self.check_calls_quota(caller.unwrap_or(tenant)).await?;
 
+        // PRD-mcphost-upstream-token-vault requirement 4 / AC6: resolved
+        // (and, if it's within 120s of expiry, refreshed) BEFORE any of
+        // this call's secrets/log/resources are even built -- a caller with
+        // no connected token for a declared `upstream_provider` never
+        // reaches `kind.call` at all, so no outbound request is ever made.
+        let vault_token = match kind.declared_upstream_provider(&spec) {
+            Some(provider) => Some(crate::vault::resolve_for_call(&self.state, tenant, &provider, end_user).await?),
+            None => None,
+        };
+
         let secrets = build_secret_resolver(&self.state, tenant.id).await?;
         let log = Arc::new(BufferedLog(std::sync::Mutex::new(Vec::new())));
         let resources = Arc::new(CellResourceSink(std::sync::Mutex::new(None)));
@@ -3410,6 +3426,7 @@ impl McpHostHandler {
             progress: Arc::new(crate::kinds::NullProgress),
             cancel_pid: Arc::new(std::sync::Mutex::new(None)),
             end_user: end_user.cloned(),
+            vault_token,
         };
         // requirement 4 (AC1/AC2): the three `calls` columns every branch
         // below's `record_call_attributed_with_end_user` writes.
@@ -3730,6 +3747,7 @@ impl McpHostHandler {
             // against the real upstream, not a metered call -- no end user
             // to thread through.
             end_user: None,
+            vault_token: None,
         };
 
         match tokio::time::timeout(resolved_timeout, kind.call(&row.spec, call_args, &ctx)).await {
@@ -3846,6 +3864,7 @@ impl McpHostHandler {
             // PRD-mcphost-end-user-identity: `host.bridge_test` is a dry
             // run, not a metered call -- no end user to thread through.
             end_user: None,
+            vault_token: None,
         };
 
         match tokio::time::timeout(resolved_timeout, kind.call(&spec, call_args, &ctx)).await {
@@ -4007,6 +4026,7 @@ impl McpHostHandler {
             // PRD-mcphost-end-user-identity: `host.spec_test` runs a pre-
             // publish spec, not a real caller's identity-carrying call.
             end_user: None,
+            vault_token: None,
         })
         .await;
 
@@ -4219,6 +4239,7 @@ impl McpHostHandler {
             // out of this PRD's tested scope (AC1/AC2 exercise the plain
             // `tools/call` path, `call_published_tool`).
             end_user: None,
+            vault_token: None,
         };
 
         let start = Instant::now();

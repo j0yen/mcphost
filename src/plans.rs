@@ -210,6 +210,11 @@ pub struct Plan {
     /// refuses with `quota_end_users` (reads are unaffected). Requirement
     /// 6 names both defaults directly: "free 100, pro 10,000".
     pub end_users_max: i64,
+    /// PRD-mcphost-upstream-token-vault requirement 2 (AC11): how many
+    /// `host.vault.provider_set` rows this plan's tenants may register at
+    /// once -- a further one is rejected with `quota_vault_providers`.
+    /// Requirement 2 names both defaults directly: "free 2, pro 20".
+    pub vault_providers_max: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -295,6 +300,9 @@ impl PlanCatalog {
                     // PRD-mcphost-end-user-identity P1 requirement 6:
                     // "free 100" distinct end users.
                     end_users_max: 100,
+                    // PRD-mcphost-upstream-token-vault requirement 2:
+                    // "free 2" vault providers.
+                    vault_providers_max: 2,
                 },
                 Plan {
                     name: "pro".to_string(),
@@ -375,6 +383,9 @@ impl PlanCatalog {
                     // PRD-mcphost-end-user-identity P1 requirement 6:
                     // "pro 10,000" distinct end users.
                     end_users_max: 10_000,
+                    // PRD-mcphost-upstream-token-vault requirement 2:
+                    // "pro 20" vault providers.
+                    vault_providers_max: 20,
                 },
             ],
         }
@@ -481,6 +492,10 @@ impl PlanCatalog {
             out.push_str(&format!("docs_bytes_max = {}\n", p.docs_bytes_max));
             out.push_str(&format!("docs_chunks_max = {}\n", p.docs_chunks_max));
             out.push_str(&format!("end_users_max = {}\n", p.end_users_max));
+            out.push_str(&format!(
+                "vault_providers_max = {}\n",
+                p.vault_providers_max
+            ));
             out.push('\n');
         }
         out
@@ -560,6 +575,7 @@ impl PlanCatalog {
                 "docs_bytes_max" => builder.docs_bytes_max = Some(int_value()),
                 "docs_chunks_max" => builder.docs_chunks_max = Some(int_value()),
                 "end_users_max" => builder.end_users_max = Some(int_value()),
+                "vault_providers_max" => builder.vault_providers_max = Some(int_value()),
                 _ => {}
             }
         }
@@ -613,6 +629,7 @@ struct PlanBuilder {
     docs_bytes_max: Option<i64>,
     docs_chunks_max: Option<i64>,
     end_users_max: Option<i64>,
+    vault_providers_max: Option<i64>,
 }
 
 impl PlanBuilder {
@@ -699,6 +716,10 @@ impl PlanBuilder {
             // key gets the `free` plan's own default (100), same
             // tolerant-parse rationale as every other field above.
             end_users_max: self.end_users_max.unwrap_or(100),
+            // PRD-mcphost-upstream-token-vault: a `plans.toml` predating
+            // this key gets the `free` plan's own default (2), same
+            // tolerant-parse rationale as every other field above.
+            vault_providers_max: self.vault_providers_max.unwrap_or(2),
         })
     }
 }

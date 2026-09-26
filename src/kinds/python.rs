@@ -4844,6 +4844,7 @@ mod tests {
             cancel_pid: Arc::new(Mutex::new(None)),
             egress_allowed: true,
             end_user: None,
+            vault_token: None,
         }
     }
 
@@ -5149,6 +5150,7 @@ mod tests {
             cancel_pid: Arc::new(Mutex::new(None)),
             egress_allowed: true,
             end_user: None,
+            vault_token: None,
         }
     }
 
