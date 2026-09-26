@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-shared-tool-caller-usage.md (test_prefix: callerusage)",
+  "ac_test_map_prd": "PRD-mcphost-plan-catalog-state-quota-defaults.md (test_prefix: plancat)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,46 +28,16 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/callerusage_ac01_caller_breakdown.rs",
-    "AC2": "tests/callerusage_ac02_end_user_breakdown.rs",
-    "AC3": "tests/callerusage_ac03_caller_limit_enforced.rs",
-    "AC4": "tests/callerusage_ac04_caller_requires_shared_tool.rs",
-    "AC5": "tests/callerusage_ac05_end_user_pagination.rs",
-    "AC6": "tests/callerusage_ac06_no_by_shape_unchanged.rs",
-    "AC7": "tests/callerusage_ac07_rollup_speed_at_scale.rs",
-    "AC8": "tests/callerusage_ac08_end_user_key_includes_caller.rs",
-    "AC9": "tests/callerusage_ac09_admin_usage_top_audited.rs",
-    "AC10": "deferred -- operator-provisioned; AC10 is the Live/production-only requirement (a second tenant calling the operator's shared test tool on prod) and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
+    "AC1": "tests/plancat_ac01_missing_state_quotas_default_from_catalog.rs",
+    "AC2": "tests/plancat_ac02_startup_logs_defaulted_fields.rs",
+    "AC3": "tests/plancat_ac03_unknown_plan_name_defaults_from_free.rs",
+    "AC4": "tests/plancat_ac04_healthz_lists_plans_with_quotas.rs",
+    "AC5": "tests/plancat_ac05_full_plans_toml_unchanged_and_silent.rs",
+    "AC6": "tests/plancat_ac06_build_has_no_hardcoded_quota_defaults.rs",
+    "AC7": "tests/plancat_ac07_llms_txt_names_defaulting_and_startup_line.rs",
+    "AC8": "deferred -- operator-provisioned; AC8 is the Live/production-only requirement (real plans.toml on mcphost-1, admin healthz through https://mcphost.dev, a receipt under docs/receipts/) and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
   },
   "ac_test_map_by_prefix": {
-    "vault": {
-      "_prd": "PRD-mcphost-upstream-token-vault.md -- superseded by mcphost-shared-tool-caller-usage at HEAD; real test_prefix is vault",
-      "AC1": "tests/vault_ac01_connect_link_redirects_to_auth_url.rs",
-      "AC2": "tests/vault_ac02_callback_exchanges_code_and_stores_tokens.rs",
-      "AC3": "tests/vault_ac03_injects_bearer_overriding_tool_header.rs",
-      "AC4": "tests/vault_ac04_call_log_never_contains_token.rs",
-      "AC5": "tests/vault_ac05_refresh_before_expiry_used_once.rs",
-      "AC6": "tests/vault_ac06_unconnected_end_user_gets_connect_link.rs",
-      "AC7": "tests/vault_ac07_used_handoff_token_returns_410.rs",
-      "AC8": "tests/vault_ac08_disconnect_revokes_and_blocks_calls.rs",
-      "AC9": "tests/vault_ac09_providers_hides_client_secret.rs",
-      "AC10": "tests/vault_ac10_refresh_401_revokes_no_retry_storm.rs",
-      "AC11": "tests/vault_ac11_quota_vault_providers.rs",
-      "AC12": "deferred -- operator-provisioned; AC12 is the Live/production-only requirement (a real Slack test app plus one real browser handoff on prod) and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
-    },
-    "firstpub": {
-      "_prd": "PRD-mcphost-first-publish-real-kind.md -- superseded by mcphost-shared-tool-caller-usage at HEAD; real test_prefix is firstpub",
-      "AC1": "tests/firstpub_ac01_quickstart_starter_tool.rs",
-      "AC2": "tests/firstpub_ac02_sandbox_unavailable_retry.rs",
-      "AC3": "tests/firstpub_ac03_dry_run_gates.rs",
-      "AC4": "tests/firstpub_ac04_real_publish_carries_gates.rs",
-      "AC5": "tests/firstpub_ac05_stub_flag_in_tools_list.rs",
-      "AC6": "tests/firstpub_ac06_get_info_no_echo_steering.rs",
-      "AC7": "tests/firstpub_ac07_llms_txt_first_run_executes.rs",
-      "AC8": "tests/firstpub_ac08_quickstart_http_starter.rs",
-      "AC9": "tests/firstpub_ac09_dry_run_spec_size_short_circuits.rs",
-      "AC10": "deferred (prod leg only) -- operator-provisioned: needs a real deploy to https://mcphost.dev and the healthz-version-plus-transcript receipt this coding sandbox cannot produce; always-on mechanism proof: tests/firstpub_ac10_live_proof_against_real_mcphost.rs (MCPHOST_LIVE=1 for the real leg)."
-    },
     "sharedcall": {
       "_prd": "PRD-mcphost-shared-tool-call-path.md -- superseded by mcphost-first-publish-real-kind at HEAD; real test_prefix is sharedcall",
       "AC1": "tests/sharedcall_ac01_host_tool_call_public_cross_tenant.rs",
@@ -95,19 +65,6 @@
       "AC10": "tests/enduser_ac10_whoami.rs",
       "AC11": "tests/enduser_ac11_assertion_secret_rotate_invalidates_and_never_leaks.rs",
       "AC12": "deferred -- operator-provisioned; AC12 is the Live/production-only requirement and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
-    },
-    "sharedcall": {
-      "_prd": "PRD-mcphost-shared-tool-call-path.md -- superseded by mcphost-shared-tool-caller-usage at HEAD; real test_prefix is sharedcall",
-      "AC1": "tests/sharedcall_ac01_host_tool_call_public_cross_tenant.rs",
-      "AC2": "tests/sharedcall_ac02_group_share_non_member_gets_hint.rs",
-      "AC3": "tests/sharedcall_ac03_not_found_reasons_indistinguishable.rs",
-      "AC4": "tests/sharedcall_ac04_async_qualified_call_scoped_to_caller.rs",
-      "AC5": "tests/sharedcall_ac05_gen_docs_sharing_check.rs",
-      "AC6": "tests/sharedcall_ac06_proof_script_qualified_host_tool_call.rs",
-      "AC7": "tests/sharedcall_ac07_own_unqualified_call_unchanged.rs",
-      "AC8": "tests/sharedcall_ac08_get_info_lists_shared_tools_with_via.rs",
-      "AC9": "tests/sharedcall_ac09_quota_exhausted_qualified_call_refused.rs",
-      "AC10": "deferred -- operator-provisioned; AC10 is the Live/production-only requirement and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
     },
     "docsearch": {
       "_prd": "PRD-mcphost-docs-semantic-search.md -- superseded by mcphost-end-user-identity at HEAD; real test_prefix is docsearch",
@@ -371,17 +328,17 @@
       "AC9": "tests/ac09_signup_rate_limit.rs",
       "AC10": "tests/ac10_publish_validation_errors.rs",
       "AC11": "tests/ac11_load_smoke.rs (#[ignore]d hardware-relative load test)",
-      "AC12": "no unit test file; live smoke \u2014 mcphost serve + synthorg consume --preflight <url>, recorded as target/autobuilder/ac12-preflight-smoke.json",
+      "AC12": "no unit test file; live smoke — mcphost serve + synthorg consume --preflight <url>, recorded as target/autobuilder/ac12-preflight-smoke.json",
       "AC13": "tests/ac13_mcp_name_mismatch_metering.rs",
       "AC14": "tests/ac14_storage_unwritable.rs",
       "AC15": "tests/ac15_call_timeout.rs",
       "AC16": "tests/ac16_request_body_too_large.rs",
       "AC17": "tests/ac17_kind_conformance.rs",
       "AC18": "tests/ac18_tools_list_ttl.rs",
-      "AC19": "deferred \u2014 no test; see agent/intent-card.json acceptance_criteria AC19.test and PRD Open Questions (registry namespace verification not yet resolved)"
+      "AC19": "deferred — no test; see agent/intent-card.json acceptance_criteria AC19.test and PRD Open Questions (registry namespace verification not yet resolved)"
     },
     "lanecov": {
-      "_prd": "PRD-mcphost-proof-lane-loop-config.md \u2014 same as ac_test_map above while this PRD is the one at HEAD",
+      "_prd": "PRD-mcphost-proof-lane-loop-config.md — same as ac_test_map above while this PRD is the one at HEAD",
       "AC1": "tests/lanecov_ac01_every_tracked_path_routes.rs",
       "AC2": "tests/lanecov_ac02_coverage_test_is_actually_run.rs",
       "AC3": "tests/lanecov_ac03_unrouted_path_is_named.rs",
@@ -407,7 +364,7 @@
       "AC7": "tests/suite_ac7_junit_per_test_timing.rs",
       "AC8": "deferred -- see PRD deferred_acs/mock_justifications (cross-host parity script needs a second box; casper deleted); AC1's nextest list diff proves the name-matching change single-host",
       "AC9": "tests/suite_ac9_selftest_named_and_green.rs",
-      "_prd": "PRD-mcphost-test-suite-consolidation.md \u2014 superseded by mcphost-share-a-tool-not-a-key at HEAD"
+      "_prd": "PRD-mcphost-test-suite-consolidation.md — superseded by mcphost-share-a-tool-not-a-key at HEAD"
     },
     "sharetool": {
       "AC1": "tests/mcphost_share_a_tool_not_a_key_ac01_llms_txt_section.rs",
@@ -419,7 +376,7 @@
       "AC7": "tests/mcphost_share_a_tool_not_a_key_ac07_synthorg_task_five_completions.rs",
       "AC8": "tests/mcphost_share_a_tool_not_a_key_ac08_live_test_skipped_without_env.rs",
       "AC9": "tests/mcphost_share_a_tool_not_a_key_ac09_public_variant_states_default_reason.rs",
-      "_prd": "PRD-mcphost-share-a-tool-not-a-key.md \u2014 same as ac_test_map above while this PRD is the one at HEAD; real test_prefix is mcphost_share_a_tool_not_a_key (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo above)"
+      "_prd": "PRD-mcphost-share-a-tool-not-a-key.md — same as ac_test_map above while this PRD is the one at HEAD; real test_prefix is mcphost_share_a_tool_not_a_key (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo above)"
     },
     "wasmkind": {
       "AC1": "tests/wasmkind_ac01_echo_component_calls_and_meters.rs",
@@ -432,7 +389,7 @@
       "AC8": "tests/wasmkind_ac08_cache_reuses_compiled_artifact.rs",
       "AC9": "tests/wasmkind_ac09_healthz_reports_wasm_runtime.rs",
       "AC10": "tests/wasmkind_ac10_declared_output_promotion_matches_python.rs",
-      "_prd": "PRD-mcphost-wasm-kind.md \u2014 superseded by mcphost-host-tool-deprecation at HEAD"
+      "_prd": "PRD-mcphost-wasm-kind.md — superseded by mcphost-host-tool-deprecation at HEAD"
     },
     "mcphost_host_tool_deprecation": {
       "AC1": "tests/mcphost_host_tool_deprecation_ac01_contract_dump_deterministic.rs",
@@ -443,7 +400,7 @@
       "AC6": "tests/mcphost_host_tool_deprecation_ac06_changelog_lists_additions.rs",
       "AC7": "tests/mcphost_host_tool_deprecation_ac07_whoami_contract_version.rs",
       "AC8": "tests/mcphost_host_tool_deprecation_ac08_llms_txt_links_contract.rs",
-      "_prd": "PRD-mcphost-host-tool-deprecation.md \u2014 superseded by mcphost-data-retention at HEAD"
+      "_prd": "PRD-mcphost-host-tool-deprecation.md — superseded by mcphost-data-retention at HEAD"
     },
     "retention": {
       "AC1": "tests/mcphost_data_retention_ac01_calls_prune_by_window.rs",
@@ -456,7 +413,7 @@
       "AC8": "tests/mcphost_data_retention_ac08_host_usage_lists_retention_windows.rs",
       "AC9": "tests/mcphost_data_retention_ac09_prune_error_sets_last_prune_ok_false.rs",
       "AC10": "tests/mcphost_data_retention_ac10_admin_prune_now_runs_one_cycle.rs",
-      "_prd": "PRD-mcphost-data-retention.md \u2014 superseded by mcphost-tenant-data-export at HEAD; real test_prefix is mcphost_data_retention (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool above)"
+      "_prd": "PRD-mcphost-data-retention.md — superseded by mcphost-tenant-data-export at HEAD; real test_prefix is mcphost_data_retention (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool above)"
     },
     "tenantdataexport": {
       "AC1": "tests/mcphost_tenant_data_export_ac01_archive_contents.rs",
@@ -466,7 +423,7 @@
       "AC5": "tests/mcphost_tenant_data_export_ac05_manifest_validates_publish_schema.rs",
       "AC6": "tests/mcphost_tenant_data_export_ac06_tools_subset.rs",
       "AC7": "tests/mcphost_tenant_data_export_ac07_admin_usage_exports_today.rs",
-      "_prd": "PRD-mcphost-tenant-data-export.md \u2014 superseded by mcphost-checkcompat-port-race at HEAD; real test_prefix is mcphost_tenant_data_export (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind above)"
+      "_prd": "PRD-mcphost-tenant-data-export.md — superseded by mcphost-checkcompat-port-race at HEAD; real test_prefix is mcphost_tenant_data_export (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind above)"
     },
     "checkcompatrace": {
       "_prd": "PRD-mcphost-checkcompat-port-race.md -- superseded by mcphost-team-memory at HEAD; real test_prefix is checkcompat_race (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind/tenantdataexport above)",
@@ -508,6 +465,19 @@
       "AC8": "tests/mcphost_signup_kill_switch_and_source_ac08_concurrent_burst_with_pause_toggle.rs",
       "AC9": "tests/mcphost_signup_kill_switch_and_source_ac09_llms_txt_documents_source.rs",
       "AC10": "tests/mcphost_signup_kill_switch_and_source_ac10_until_line_bounds_retry_after.rs"
+    },
+    "firstpub": {
+      "_prd": "PRD-mcphost-first-publish-real-kind.md -- superseded by mcphost-plan-catalog-state-quota-defaults at HEAD; real test_prefix is firstpub",
+      "AC1": "tests/firstpub_ac01_quickstart_starter_tool.rs",
+      "AC2": "tests/firstpub_ac02_sandbox_unavailable_retry.rs",
+      "AC3": "tests/firstpub_ac03_dry_run_gates.rs",
+      "AC4": "tests/firstpub_ac04_real_publish_carries_gates.rs",
+      "AC5": "tests/firstpub_ac05_stub_flag_in_tools_list.rs",
+      "AC6": "tests/firstpub_ac06_get_info_no_echo_steering.rs",
+      "AC7": "tests/firstpub_ac07_llms_txt_first_run_executes.rs",
+      "AC8": "tests/firstpub_ac08_quickstart_http_starter.rs",
+      "AC9": "tests/firstpub_ac09_dry_run_spec_size_short_circuits.rs",
+      "AC10": "deferred (prod leg only) -- operator-provisioned: needs a real deploy to https://mcphost.dev and the healthz-version-plus-transcript receipt this coding sandbox cannot produce; always-on mechanism proof: tests/firstpub_ac10_live_proof_against_real_mcphost.rs (MCPHOST_LIVE=1 for the real leg)."
     }
   }
 }

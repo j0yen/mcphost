@@ -222,6 +222,12 @@ pub struct PlanCatalog {
     pub plans: Vec<Plan>,
 }
 
+/// requirement 2: one `(plan_name, defaulted_field_names)` entry per plan
+/// that had at least one quota filled in from [`PlanCatalog::default_catalog`]
+/// rather than named on disk -- [`PlanCatalog::from_toml`]'s own report,
+/// aliased since clippy's `type_complexity` flags the bare nested type.
+pub type DefaultedFieldsReport = Vec<(String, Vec<String>)>;
+
 impl PlanCatalog {
     /// PRD-mcphost-metered-overage requirement 55: the published-numbers
     /// alignment (decided 2026-09-06) -- `free` (0, 50, 500, 2) and `pro`
@@ -419,7 +425,14 @@ impl PlanCatalog {
         }
         let text = std::fs::read_to_string(path)
             .map_err(|e| AppError::Storage(format!("read plans.toml: {e}")))?;
-        Self::from_toml(&text)
+        let (catalog, defaulted) = Self::from_toml(&text)?;
+        // requirement 2: one INFO line per plan that had at least one
+        // field filled in; a `plans.toml` naming every field (AC5) logs
+        // nothing.
+        for (plan, fields) in &defaulted {
+            tracing::info!("plans.toml: plan={plan} defaulted=[{}]", fields.join(", "));
+        }
+        Ok(catalog)
     }
 
     /// A minimal, hand-written serializer for this crate's one fixed plan
@@ -509,8 +522,10 @@ impl PlanCatalog {
     /// listing") must stick to this shape -- this is not a general TOML
     /// parser, deliberately, to avoid a new dependency for a file this
     /// crate itself writes the only complex form of.
-    pub fn from_toml(text: &str) -> Result<Self, AppError> {
+    pub fn from_toml(text: &str) -> Result<(Self, DefaultedFieldsReport), AppError> {
+        let defaults = Self::default_catalog();
         let mut plans = Vec::new();
+        let mut defaulted_report = Vec::new();
         let mut current: Option<PlanBuilder> = None;
         for raw_line in text.lines() {
             let line = raw_line.trim();
@@ -519,7 +534,7 @@ impl PlanCatalog {
             }
             if line == "[[plan]]" {
                 if let Some(builder) = current.take() {
-                    plans.push(builder.build()?);
+                    plans.push(Self::finalize_plan(builder, &defaults, &mut defaulted_report)?);
                 }
                 current = Some(PlanBuilder::default());
                 continue;
@@ -580,14 +595,35 @@ impl PlanCatalog {
             }
         }
         if let Some(builder) = current.take() {
-            plans.push(builder.build()?);
+            plans.push(Self::finalize_plan(builder, &defaults, &mut defaulted_report)?);
         }
         if plans.is_empty() {
             return Err(AppError::Storage(
                 "plans.toml has no [[plan]] entries".to_string(),
             ));
         }
-        Ok(Self { plans })
+        Ok((Self { plans }, defaulted_report))
+    }
+
+    /// requirement 1: looks up `builder`'s own default row by name (`free`
+    /// for a name absent from [`Self::default_catalog`], e.g. AC3's `team`)
+    /// and hands it to [`PlanBuilder::build`]; requirement 2: records this
+    /// plan's defaulted field names in `report` when it defaulted any.
+    fn finalize_plan(
+        builder: PlanBuilder,
+        defaults: &Self,
+        report: &mut DefaultedFieldsReport,
+    ) -> Result<Plan, AppError> {
+        let default_name = builder.name.as_deref().unwrap_or("free");
+        let default_plan = defaults
+            .get(default_name)
+            .or_else(|| defaults.get("free"))
+            .expect("default_catalog always has a free plan");
+        let (plan, defaulted) = builder.build(default_plan)?;
+        if !defaulted.is_empty() {
+            report.push((plan.name.clone(), defaulted));
+        }
+        Ok(plan)
     }
 }
 
@@ -633,94 +669,67 @@ struct PlanBuilder {
 }
 
 impl PlanBuilder {
-    fn build(self) -> Result<Plan, AppError> {
-        Ok(Plan {
-            name: self
-                .name
-                .ok_or_else(|| AppError::Storage("plans.toml: a [[plan]] is missing name".into()))?,
-            price_usd_month: self.price_usd_month.unwrap_or(0),
-            tools_max: self.tools_max.unwrap_or(0),
-            calls_per_day: self.calls_per_day.unwrap_or(0),
-            secrets_max: self.secrets_max.unwrap_or(0),
-            description: self.description.unwrap_or_default(),
-            state_bytes_max: self.state_bytes_max.unwrap_or(0),
-            state_rows_max: self.state_rows_max.unwrap_or(0),
-            state_ops_per_call_max: self.state_ops_per_call_max.unwrap_or(0),
-            // Requirement 3: a `plans.toml` hand-edited (or generated)
-            // before this PRD has no `concurrent_calls_per_tenant` line at
-            // all -- `4` (the `free` plan's own default) keeps such a file
-            // loadable rather than failing `load_or_init` outright.
-            concurrent_calls_per_tenant: self.concurrent_calls_per_tenant.unwrap_or(4),
-            // PRD-mcphost-sharing requirement 4: a `plans.toml` predating
-            // this key gets the `free` plan's own default (3), same
-            // tolerant-parse rationale as `concurrent_calls_per_tenant`.
-            shared_tools_max: self.shared_tools_max.unwrap_or(3),
-            // PRD-mcphost-tenant-tables: a `plans.toml` predating these
-            // three keys gets the `free` plan's own defaults, same
-            // tolerant-parse rationale as every other field above.
-            table_tables_max: self.table_tables_max.unwrap_or(5),
-            table_rows_max: self.table_rows_max.unwrap_or(5_000),
-            table_bytes_max: self.table_bytes_max.unwrap_or(10 * 1024 * 1024),
-            // PRD-mcphost-runs-and-jobs: a `plans.toml` predating these two
-            // keys gets the `free` plan's own defaults, same
-            // tolerant-parse rationale as every other field above.
-            job_max_s: self.job_max_s.unwrap_or(300),
-            jobs_concurrent: self.jobs_concurrent.unwrap_or(1),
-            // PRD-mcphost-schedules: a `plans.toml` predating these two
-            // keys gets the `free` plan's own defaults, same
-            // tolerant-parse rationale as every other field above.
-            schedules_max: self.schedules_max.unwrap_or(3),
-            schedule_min_interval_s: self.schedule_min_interval_s.unwrap_or(300),
-            // PRD-mcphost-inbound-events: a `plans.toml` predating these
-            // three keys gets the `free` plan's own defaults, same
-            // tolerant-parse rationale as every other field above.
-            event_triggers_max: self.event_triggers_max.unwrap_or(3),
-            events_per_minute: self.events_per_minute.unwrap_or(30),
-            event_body_bytes_max: self.event_body_bytes_max.unwrap_or(256 * 1024),
-            // PRD-mcphost-agent-inbox: a `plans.toml` predating these four
-            // keys gets the `free` plan's own defaults, same tolerant-parse
-            // rationale as every other field above.
-            msgs_per_hour: self.msgs_per_hour.unwrap_or(60),
-            msg_body_bytes_max: self.msg_body_bytes_max.unwrap_or(16 * 1024),
-            inbox_rows_max: self.inbox_rows_max.unwrap_or(2_000),
-            recipients_per_msg_max: self.recipients_per_msg_max.unwrap_or(5),
-            // PRD-mcphost-agent-consent: a `plans.toml` predating these two
-            // keys gets the `free` plan's own defaults, same
-            // tolerant-parse rationale as every other field above.
-            contact_requests_per_day: self.contact_requests_per_day.unwrap_or(20),
-            urgent_per_day: self.urgent_per_day.unwrap_or(3),
-            // PRD-mcphost-tenant-data-export: a `plans.toml` predating this
-            // key gets the `free` plan's own default (50 MiB), same
-            // tolerant-parse rationale as every other field above.
-            export_bytes_max: self.export_bytes_max.unwrap_or(50 * 1024 * 1024),
-            // PRD-mcphost-tool-versions: a `plans.toml` predating this key
-            // gets the `free` plan's own default (5), same tolerant-parse
-            // rationale as every other field above.
-            versions_max: self.versions_max.unwrap_or(5),
-            // PRD-mcphost-agent-channels: a plans.toml predating these
-            // three keys gets the `free` plan's own defaults, same
-            // tolerant-parse rationale as every other field above.
-            channels_max: self.channels_max.unwrap_or(3),
-            channel_posts_per_hour: self.channel_posts_per_hour.unwrap_or(120),
-            channel_retention_days: self.channel_retention_days.unwrap_or(14),
-            // PRD-mcphost-document-store: a `plans.toml` predating these two
-            // keys gets the `free` plan's own defaults, same
-            // tolerant-parse rationale as every other field above.
-            docs_max: self.docs_max.unwrap_or(200),
-            docs_bytes_max: self.docs_bytes_max.unwrap_or(50 * 1024 * 1024),
-            // PRD-mcphost-docs-semantic-search: a `plans.toml` predating
-            // this key gets the `free` plan's own default (10 000), same
-            // tolerant-parse rationale as every other field above.
-            docs_chunks_max: self.docs_chunks_max.unwrap_or(10_000),
-            // PRD-mcphost-end-user-identity: a `plans.toml` predating this
-            // key gets the `free` plan's own default (100), same
-            // tolerant-parse rationale as every other field above.
-            end_users_max: self.end_users_max.unwrap_or(100),
-            // PRD-mcphost-upstream-token-vault: a `plans.toml` predating
-            // this key gets the `free` plan's own default (2), same
-            // tolerant-parse rationale as every other field above.
-            vault_providers_max: self.vault_providers_max.unwrap_or(2),
-        })
+    /// PRD-mcphost-plan-catalog-state-quota-defaults requirement 1: every
+    /// `Option<i64>` quota absent from the on-disk file is filled from
+    /// `defaults` -- the loading plan's own row in
+    /// [`PlanCatalog::default_catalog`] (already resolved by name, `free`
+    /// for an unrecognized one, by [`PlanCatalog::finalize_plan`]) -- never
+    /// a literal duplicated here. Returns the built [`Plan`] alongside the
+    /// list of field names this call defaulted, in field order, for
+    /// [`PlanCatalog::from_toml`] to report (requirement 2).
+    fn build(self, defaults: &Plan) -> Result<(Plan, Vec<String>), AppError> {
+        let name = self
+            .name
+            .ok_or_else(|| AppError::Storage("plans.toml: a [[plan]] is missing name".into()))?;
+        let mut defaulted = Vec::new();
+        macro_rules! quota {
+            ($field:ident) => {{
+                if self.$field.is_none() {
+                    defaulted.push(stringify!($field).to_string());
+                }
+                self.$field.unwrap_or(defaults.$field)
+            }};
+        }
+        let plan = Plan {
+            name,
+            price_usd_month: quota!(price_usd_month),
+            tools_max: quota!(tools_max),
+            calls_per_day: quota!(calls_per_day),
+            secrets_max: quota!(secrets_max),
+            description: self.description.unwrap_or_else(|| defaults.description.clone()),
+            state_bytes_max: quota!(state_bytes_max),
+            state_rows_max: quota!(state_rows_max),
+            state_ops_per_call_max: quota!(state_ops_per_call_max),
+            concurrent_calls_per_tenant: quota!(concurrent_calls_per_tenant),
+            shared_tools_max: quota!(shared_tools_max),
+            table_tables_max: quota!(table_tables_max),
+            table_rows_max: quota!(table_rows_max),
+            table_bytes_max: quota!(table_bytes_max),
+            job_max_s: quota!(job_max_s),
+            jobs_concurrent: quota!(jobs_concurrent),
+            schedules_max: quota!(schedules_max),
+            schedule_min_interval_s: quota!(schedule_min_interval_s),
+            event_triggers_max: quota!(event_triggers_max),
+            events_per_minute: quota!(events_per_minute),
+            event_body_bytes_max: quota!(event_body_bytes_max),
+            msgs_per_hour: quota!(msgs_per_hour),
+            msg_body_bytes_max: quota!(msg_body_bytes_max),
+            inbox_rows_max: quota!(inbox_rows_max),
+            recipients_per_msg_max: quota!(recipients_per_msg_max),
+            contact_requests_per_day: quota!(contact_requests_per_day),
+            urgent_per_day: quota!(urgent_per_day),
+            export_bytes_max: quota!(export_bytes_max),
+            versions_max: quota!(versions_max),
+            channels_max: quota!(channels_max),
+            channel_posts_per_hour: quota!(channel_posts_per_hour),
+            channel_retention_days: quota!(channel_retention_days),
+            docs_max: quota!(docs_max),
+            docs_bytes_max: quota!(docs_bytes_max),
+            docs_chunks_max: quota!(docs_chunks_max),
+            end_users_max: quota!(end_users_max),
+            vault_providers_max: quota!(vault_providers_max),
+        };
+        Ok((plan, defaulted))
     }
 }
 
@@ -833,8 +842,9 @@ mod tests {
     fn round_trips_through_toml() {
         let catalog = PlanCatalog::default_catalog();
         let text = catalog.to_toml();
-        let parsed = PlanCatalog::from_toml(&text).expect("parse own output");
+        let (parsed, defaulted) = PlanCatalog::from_toml(&text).expect("parse own output");
         assert_eq!(parsed, catalog);
+        assert!(defaulted.is_empty(), "a full file must default nothing: {defaulted:?}");
     }
 
     #[test]
@@ -871,7 +881,7 @@ state_rows_max = 100
 state_ops_per_call_max = 50
 made_up_key = \"ignored\"
 ";
-        let catalog = PlanCatalog::from_toml(text).expect("parse");
+        let (catalog, _defaulted) = PlanCatalog::from_toml(text).expect("parse");
         assert_eq!(catalog.plans.len(), 1);
         assert_eq!(catalog.plans[0].name, "free");
     }

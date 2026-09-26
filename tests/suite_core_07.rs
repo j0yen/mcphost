@@ -748,6 +748,20 @@ mod oauthrs_ac08_conflicting_credentials;
 mod oauthrs_ac09_admin_lists_issuers_and_audits;
 #[path = "oauthrs_ac10_key_based_flow_unchanged.rs"]
 mod oauthrs_ac10_key_based_flow_unchanged;
+#[path = "plancat_ac01_missing_state_quotas_default_from_catalog.rs"]
+mod plancat_ac01_missing_state_quotas_default_from_catalog;
+#[path = "plancat_ac02_startup_logs_defaulted_fields.rs"]
+mod plancat_ac02_startup_logs_defaulted_fields;
+#[path = "plancat_ac03_unknown_plan_name_defaults_from_free.rs"]
+mod plancat_ac03_unknown_plan_name_defaults_from_free;
+#[path = "plancat_ac04_healthz_lists_plans_with_quotas.rs"]
+mod plancat_ac04_healthz_lists_plans_with_quotas;
+#[path = "plancat_ac05_full_plans_toml_unchanged_and_silent.rs"]
+mod plancat_ac05_full_plans_toml_unchanged_and_silent;
+#[path = "plancat_ac06_build_has_no_hardcoded_quota_defaults.rs"]
+mod plancat_ac06_build_has_no_hardcoded_quota_defaults;
+#[path = "plancat_ac07_llms_txt_names_defaulting_and_startup_line.rs"]
+mod plancat_ac07_llms_txt_names_defaulting_and_startup_line;
 #[path = "proptest_invariants.rs"]
 mod proptest_invariants;
 #[path = "provaudit_ac01_synthetic_signup_stamped.rs"]
