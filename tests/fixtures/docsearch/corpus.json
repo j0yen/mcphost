@@ -1,0 +1,82 @@
+[
+  {
+    "name": "refund-policy.md",
+    "content": "Refund policy\n\nRefunds are processed within fourteen days of the return being received at our warehouse. The refund is issued to the original payment method. If a refund has not appeared after fourteen days, contact support with your order number."
+  },
+  {
+    "name": "shipping-times.md",
+    "content": "Shipping times\n\nStandard shipping takes three to five business days within the continental United States. Express shipping takes one to two business days for an additional fee. Shipping times begin once an order has been packed and handed to the carrier."
+  },
+  {
+    "name": "return-process.md",
+    "content": "Return process\n\nItems may be returned within thirty days of delivery, in their original packaging with all tags attached. Print a prepaid return label from your order history page and drop the package at any carrier location."
+  },
+  {
+    "name": "account-security.md",
+    "content": "Account security\n\nWe strongly recommend enabling two-factor authentication on your account. Two-factor authentication adds a one-time code from an authenticator app to every sign-in, so a leaked password alone cannot be used to access your account."
+  },
+  {
+    "name": "password-reset.md",
+    "content": "Password reset\n\nTo reset your password, click forgot password on the sign-in page and enter your email address. The password reset link that arrives by email expires one hour after it is sent, after which you must request a new one."
+  },
+  {
+    "name": "api-rate-limits.md",
+    "content": "API rate limits\n\nEach API key is limited to one thousand requests per hour. Requests beyond the limit receive a 429 response with a Retry-After header naming how many seconds to wait before the limit resets."
+  },
+  {
+    "name": "api-authentication.md",
+    "content": "API authentication\n\nEvery API request must carry a bearer token in the Authorization header, in the form Authorization: Bearer <token>. Tokens are issued from the developer dashboard and can be revoked at any time."
+  },
+  {
+    "name": "billing-cycle.md",
+    "content": "Billing cycle\n\nSubscriptions are billed monthly on the same calendar day the subscription started. If that day does not exist in a shorter month, billing happens on the last day of that month instead."
+  },
+  {
+    "name": "subscription-cancellation.md",
+    "content": "Subscription cancellation\n\nA subscription can be cancelled at any time from the billing page. Cancellation takes effect at the end of the current billing period; there are no partial refunds for the remaining days."
+  },
+  {
+    "name": "data-export.md",
+    "content": "Data export\n\nYou can export all of your account data as a single zip archive from the privacy settings page. The archive contains your profile, documents, and usage history in JSON files, and is ready to download within a few minutes."
+  },
+  {
+    "name": "data-retention.md",
+    "content": "Data retention\n\nApplication logs are retained for ninety days and then permanently purged. Backups of deleted account data are kept for an additional thirty days before being erased for good."
+  },
+  {
+    "name": "privacy-policy.md",
+    "content": "Privacy policy\n\nWe do not sell personal data to third parties, ever. Personal data is shared only with subprocessors strictly necessary to operate the service, under a written data processing agreement."
+  },
+  {
+    "name": "support-hours.md",
+    "content": "Support hours\n\nSupport is available Monday through Friday, nine in the morning to five in the evening, in the account's own configured time zone. Messages sent outside those hours are answered the next business day."
+  },
+  {
+    "name": "outage-status.md",
+    "content": "Outage status\n\nReal-time incident updates and historical uptime are published on the status page. Subscribe to the status page to receive an email the moment a new incident is declared or resolved."
+  },
+  {
+    "name": "warranty-coverage.md",
+    "content": "Warranty coverage\n\nHardware ships with a one year warranty covering manufacturing defects. The warranty does not cover accidental damage, liquid damage, or normal wear and tear from everyday use."
+  },
+  {
+    "name": "loyalty-points.md",
+    "content": "Loyalty points\n\nEvery purchase earns one loyalty point per dollar spent. Points can be redeemed for a discount on a future order once your balance reaches one hundred points."
+  },
+  {
+    "name": "gift-cards.md",
+    "content": "Gift cards\n\nGift cards never expire and carry no maintenance fees. Gift card balances cannot be redeemed for cash and cannot be transferred to a different account once activated."
+  },
+  {
+    "name": "international-shipping.md",
+    "content": "International shipping\n\nOrders shipped outside the country of origin may be subject to customs duties and import taxes. Those charges are the responsibility of the recipient and are collected by the carrier on delivery."
+  },
+  {
+    "name": "accessibility-statement.md",
+    "content": "Accessibility statement\n\nThe product is designed to meet the WCAG 2.1 AA accessibility standard, including keyboard navigation, screen reader labels, and sufficient color contrast throughout the interface."
+  },
+  {
+    "name": "environmental-policy.md",
+    "content": "Environmental policy\n\nAll shipping packaging is made from one hundred percent recyclable cardboard and printed with soy-based ink. We offset the carbon footprint of every shipment through a verified reforestation program."
+  }
+]

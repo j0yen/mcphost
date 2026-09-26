@@ -42,6 +42,15 @@ async fn whoami_via_tenant_key_matches_the_bearer_path() {
             .expect("tenant_key whoami"),
     );
 
+    // key_age_s is wall-clock derived and the two calls can straddle a second
+    // boundary under load; compare it with 1 s tolerance and everything else exactly.
+    let mut bearer_result = bearer_result;
+    let mut arg_result = arg_result;
+    let bearer_age = bearer_result["key_age_s"].as_i64().expect("bearer key_age_s");
+    let arg_age = arg_result["key_age_s"].as_i64().expect("arg key_age_s");
+    assert!((bearer_age - arg_age).abs() <= 1, "key_age_s drift: {bearer_age} vs {arg_age}");
+    bearer_result.as_object_mut().unwrap().remove("key_age_s");
+    arg_result.as_object_mut().unwrap().remove("key_age_s");
     assert_eq!(
         bearer_result, arg_result,
         "an argument-authenticated whoami must return exactly what the bearer path returns"

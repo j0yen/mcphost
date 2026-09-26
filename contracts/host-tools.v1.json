@@ -616,6 +616,43 @@
       "since": "0.58.0"
     },
     {
+      "description": "Configure this tenant's search index provider. provider: \"none\" (lexical only, the default) or \"openai-compatible\" (endpoint, model, and secret -- a tenant secret name used as the embeddings request's bearer -- all required). Changing config re-indexes every document from scratch in the background.",
+      "input_schema": {
+        "properties": {
+          "dims": {
+            "description": "Expected embedding dimensionality, for documentation purposes.",
+            "type": "integer"
+          },
+          "endpoint": {
+            "description": "Embeddings API URL; required for openai-compatible.",
+            "type": "string"
+          },
+          "model": {
+            "description": "Embeddings model name; required for openai-compatible.",
+            "type": "string"
+          },
+          "provider": {
+            "description": "\"none\" or \"openai-compatible\".",
+            "type": "string"
+          },
+          "secret": {
+            "description": "Name of a tenant secret (host.secret_set) used as the bearer; required for openai-compatible.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider"
+        ],
+        "type": "object"
+      },
+      "name": "host.docs.index_config",
+      "since": "0.58.0"
+    },
+    {
       "description": "List documents in this tenant's document store. Without since, returns the current live snapshot; with since (a watermark from host.docs.status, 0 for everything), returns every document changed since, including deleted ones (deleted: true).",
       "input_schema": {
         "properties": {
@@ -711,7 +748,65 @@
       "since": "0.58.0"
     },
     {
-      "description": "This tenant's document store counters: documents, bytes, text_bytes, the current change watermark, and this plan's document/byte quotas.",
+      "description": "Force this tenant's search index to re-chunk (and re-embed, if a provider is configured) one document (document_id) or, without document_id, every document, on the indexer's next tick.",
+      "input_schema": {
+        "properties": {
+          "document_id": {
+            "description": "Reindex only this document; omit to reindex every document.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.docs.reindex",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Ranked passage search over this tenant's document store. Lexical (BM25) by default; embeddings mode (set via host.docs.index_config) ranks by cosine and falls back to lexical (index.mode: \"lexical-fallback\") if the provider call fails. Returns [{document_id, name, version, chunk_no, offset, text, score}] plus an index block naming the mode and how stale the index is.",
+      "input_schema": {
+        "properties": {
+          "filter": {
+            "description": "Restrict results to documents matching prefix and/or name.",
+            "properties": {
+              "name": {
+                "description": "Only match this exact document name.",
+                "type": "string"
+              },
+              "prefix": {
+                "description": "Only match documents whose name starts with this prefix.",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "k": {
+            "description": "Max results to return, 1-20; default 5.",
+            "type": "integer"
+          },
+          "query": {
+            "description": "Search query text.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object"
+      },
+      "name": "host.docs.search",
+      "since": "0.58.0"
+    },
+    {
+      "description": "This tenant's document store counters: documents, bytes, text_bytes, the current change watermark, this plan's document/byte quotas, and an index block (mode, indexed_watermark, lag_seconds, pending_documents, chunks, rebuilding, quota_chunks_reached) describing the search index's own freshness.",
       "input_schema": {
         "properties": {
           "tenant_key": {

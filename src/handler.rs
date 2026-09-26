@@ -1272,8 +1272,66 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         Tool::new(
             "host.docs.status",
             "This tenant's document store counters: documents, bytes, text_bytes, the current \
-             change watermark, and this plan's document/byte quotas.",
+             change watermark, this plan's document/byte quotas, and an index block (mode, \
+             indexed_watermark, lag_seconds, pending_documents, chunks, rebuilding, \
+             quota_chunks_reached) describing the search index's own freshness.",
             host_schema(json!({}), &[]),
+        ),
+        // PRD-mcphost-docs-semantic-search P0 requirements 2-5, P1
+        // requirement 7: ranked passage search over the document store
+        // above, kept fresh by a background indexer -- host.docs.search
+        // and its own config/reindex controls.
+        Tool::new(
+            "host.docs.search",
+            "Ranked passage search over this tenant's document store. Lexical (BM25) by \
+             default; embeddings mode (set via host.docs.index_config) ranks by cosine and \
+             falls back to lexical (index.mode: \"lexical-fallback\") if the provider call \
+             fails. Returns [{document_id, name, version, chunk_no, offset, text, score}] plus \
+             an index block naming the mode and how stale the index is.",
+            host_schema(
+                json!({
+                    "query": {"type": "string", "description": "Search query text."},
+                    "k": {"type": "integer", "description": "Max results to return, 1-20; default 5."},
+                    "filter": {
+                        "type": "object",
+                        "description": "Restrict results to documents matching prefix and/or name.",
+                        "properties": {
+                            "prefix": {"type": "string", "description": "Only match documents whose name starts with this prefix."},
+                            "name": {"type": "string", "description": "Only match this exact document name."},
+                        },
+                    },
+                }),
+                &["query"],
+            ),
+        ),
+        Tool::new(
+            "host.docs.index_config",
+            "Configure this tenant's search index provider. provider: \"none\" (lexical only, \
+             the default) or \"openai-compatible\" (endpoint, model, and secret -- a tenant \
+             secret name used as the embeddings request's bearer -- all required). Changing \
+             config re-indexes every document from scratch in the background.",
+            host_schema(
+                json!({
+                    "provider": {"type": "string", "description": "\"none\" or \"openai-compatible\"."},
+                    "endpoint": {"type": "string", "description": "Embeddings API URL; required for openai-compatible."},
+                    "model": {"type": "string", "description": "Embeddings model name; required for openai-compatible."},
+                    "secret": {"type": "string", "description": "Name of a tenant secret (host.secret_set) used as the bearer; required for openai-compatible."},
+                    "dims": {"type": "integer", "description": "Expected embedding dimensionality, for documentation purposes."},
+                }),
+                &["provider"],
+            ),
+        ),
+        Tool::new(
+            "host.docs.reindex",
+            "Force this tenant's search index to re-chunk (and re-embed, if a provider is \
+             configured) one document (document_id) or, without document_id, every document, \
+             on the indexer's next tick.",
+            host_schema(
+                json!({
+                    "document_id": {"type": "string", "description": "Reindex only this document; omit to reindex every document."},
+                }),
+                &[],
+            ),
         ),
         Tool::new(
             "host.docs.purge",
@@ -2865,6 +2923,9 @@ impl McpHostHandler {
             "host.table.describe" => crate::tables_model::table_describe(&self.state, tenant, &args).await,
             "host.table.model_set" => crate::tables_model::model_set(&self.state, tenant, &args).await,
             "host.table.models" => crate::tables_model::table_models_list(&self.state, tenant, &args).await,
+            "host.docs.search" => docs::doc_search(&self.state, tenant, &args).await,
+            "host.docs.index_config" => docs::doc_index_config(&self.state, tenant, &args).await,
+            "host.docs.reindex" => docs::doc_reindex(&self.state, tenant, &args).await,
             "host.runs.get" => crate::runs::get(&self.state, tenant, &args).await,
             "host.runs.list" => crate::runs::list(&self.state, tenant, &args).await,
             "host.runs.cancel" => crate::runs::cancel(&self.state, tenant, &args).await,

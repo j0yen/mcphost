@@ -21,6 +21,7 @@ pub mod db;
 pub mod deps;
 pub mod difftext;
 pub mod docs;
+pub mod docs_index;
 pub mod email;
 pub mod errors;
 pub mod export;

@@ -195,6 +195,15 @@ pub struct Plan {
     /// plan's own default (50 MiB) when a hand-edited `plans.toml` predates
     /// this key.
     pub docs_bytes_max: i64,
+    /// PRD-mcphost-docs-semantic-search P0 requirement 5: how many
+    /// `doc_chunks` rows this plan's tenants may have indexed at once,
+    /// across every document (the indexer stops chunking further once a
+    /// tick would exceed this, `host.docs.status` reports
+    /// `quota_chunks_reached: true`, `search` keeps answering over what's
+    /// already indexed). Defaults to the `free` plan's own default
+    /// (10 000) when a hand-edited `plans.toml` predates this key, same
+    /// tolerant-parse convention as every other field above.
+    pub docs_chunks_max: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -274,6 +283,9 @@ impl PlanCatalog {
                     // 200" documents, "free 50 MiB".
                     docs_max: 200,
                     docs_bytes_max: 50 * 1024 * 1024,
+                    // PRD-mcphost-docs-semantic-search P0 requirement 5:
+                    // "docs_chunks_max (free 10 000, pro 50 000)".
+                    docs_chunks_max: 10_000,
                 },
                 Plan {
                     name: "pro".to_string(),
@@ -348,6 +360,9 @@ impl PlanCatalog {
                     // 20,000" documents, "pro 5 GiB".
                     docs_max: 20_000,
                     docs_bytes_max: 5 * 1024 * 1024 * 1024,
+                    // PRD-mcphost-docs-semantic-search P0 requirement 5:
+                    // "docs_chunks_max (free 10 000, pro 50 000)".
+                    docs_chunks_max: 50_000,
                 },
             ],
         }
@@ -452,6 +467,7 @@ impl PlanCatalog {
             ));
             out.push_str(&format!("docs_max = {}\n", p.docs_max));
             out.push_str(&format!("docs_bytes_max = {}\n", p.docs_bytes_max));
+            out.push_str(&format!("docs_chunks_max = {}\n", p.docs_chunks_max));
             out.push('\n');
         }
         out
@@ -529,6 +545,7 @@ impl PlanCatalog {
                 "channel_retention_days" => builder.channel_retention_days = Some(int_value()),
                 "docs_max" => builder.docs_max = Some(int_value()),
                 "docs_bytes_max" => builder.docs_bytes_max = Some(int_value()),
+                "docs_chunks_max" => builder.docs_chunks_max = Some(int_value()),
                 _ => {}
             }
         }
@@ -580,6 +597,7 @@ struct PlanBuilder {
     channel_retention_days: Option<i64>,
     docs_max: Option<i64>,
     docs_bytes_max: Option<i64>,
+    docs_chunks_max: Option<i64>,
 }
 
 impl PlanBuilder {
@@ -658,6 +676,10 @@ impl PlanBuilder {
             // tolerant-parse rationale as every other field above.
             docs_max: self.docs_max.unwrap_or(200),
             docs_bytes_max: self.docs_bytes_max.unwrap_or(50 * 1024 * 1024),
+            // PRD-mcphost-docs-semantic-search: a `plans.toml` predating
+            // this key gets the `free` plan's own default (10 000), same
+            // tolerant-parse rationale as every other field above.
+            docs_chunks_max: self.docs_chunks_max.unwrap_or(10_000),
         })
     }
 }

@@ -474,18 +474,233 @@ pub async fn doc_delete(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
 // ---- host.docs.status -----------------------------------------------------
 
 /// requirement 4: `{documents, bytes, text_bytes, watermark, quota:
-/// {documents_max, bytes_max}}` -- AC1's own post-put assertion.
+/// {documents_max, bytes_max}, index: {mode, indexed_watermark,
+/// lag_seconds, pending_documents, chunks, rebuilding,
+/// quota_chunks_reached}}` -- AC1's own post-put assertion; the `index`
+/// block is PRD-mcphost-docs-semantic-search's own addition alongside the
+/// document-store counters above it.
 pub async fn doc_status(state: &AppState, tenant: &Tenant, _args: &Value) -> Result<Value, AppError> {
     let (documents, bytes, text_bytes) = state.db.documents_usage(tenant.id).await?;
     let watermark = state.db.documents_watermark(tenant.id).await?;
     let plan = plan_of(state, &tenant.plan)?;
+
+    let now = crate::state::now_unix();
+    state.db.doc_index_state_ensure(tenant.id, now).await?;
+    let idx = state
+        .db
+        .doc_index_state_get(tenant.id)
+        .await?
+        .ok_or_else(|| AppError::Internal("doc_index_state row missing after ensure".into()))?;
+    let pending_documents = state.db.documents_pending_count(tenant.id, idx.indexed_watermark).await?;
+    let chunks = state.db.doc_chunks_count(tenant.id).await?;
+    let lag_seconds = index_lag_seconds(state, tenant.id, idx.indexed_watermark, now).await?;
+    let mode = if idx.provider == "openai-compatible" { "embeddings" } else { "lexical" };
+
     Ok(json!({
         "documents": documents,
         "bytes": bytes,
         "text_bytes": text_bytes,
         "watermark": watermark,
         "quota": {"documents_max": plan.docs_max, "bytes_max": plan.docs_bytes_max},
+        "index": {
+            "mode": mode,
+            "indexed_watermark": idx.indexed_watermark,
+            "lag_seconds": lag_seconds,
+            "pending_documents": pending_documents,
+            "chunks": chunks,
+            "rebuilding": idx.rebuilding,
+            "quota_chunks_reached": idx.quota_chunks_reached,
+        },
     }))
+}
+
+/// `lag_seconds`' own computation, shared by `doc_status` and `doc_search`:
+/// the age (seconds) of the oldest document still pending past `watermark`,
+/// `0` once nothing is pending (the index is fully caught up).
+async fn index_lag_seconds(
+    state: &AppState,
+    tenant_id: i64,
+    watermark: i64,
+    now: i64,
+) -> Result<i64, AppError> {
+    match state.db.documents_pending_oldest_updated_at(tenant_id, watermark).await? {
+        Some(t) => Ok((now - t).max(0)),
+        None => Ok(0),
+    }
+}
+
+// ---- host.docs.search (P0 requirement 3) -----------------------------
+
+fn search_filter_prefix(args: &Value) -> Option<String> {
+    args.get("filter").and_then(|f| f.get("prefix")).and_then(Value::as_str).map(str::to_string)
+}
+
+fn search_filter_name(args: &Value) -> Option<String> {
+    args.get("filter").and_then(|f| f.get("name")).and_then(Value::as_str).map(str::to_string)
+}
+
+/// requirement 3/AC2/AC5/AC6/AC8: lexical by default (BM25 over the FTS5
+/// index); embeddings mode (a provider configured via `index_config`)
+/// embeds the query itself through that same provider and ranks by
+/// cosine, falling back to lexical (`index.mode: "lexical-fallback"`) the
+/// moment that provider call fails for any reason -- AC6's own
+/// non-functional requirement ("a provider outage degrades to lexical
+/// answers ... never to an error").
+pub async fn doc_search(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let query = arg_str(args, "query")?;
+    let k = args.get("k").and_then(Value::as_i64).unwrap_or(5).clamp(1, 20);
+    let prefix = search_filter_prefix(args);
+    let name = search_filter_name(args);
+
+    let now = crate::state::now_unix();
+    state.db.doc_index_state_ensure(tenant.id, now).await?;
+    let idx = state
+        .db
+        .doc_index_state_get(tenant.id)
+        .await?
+        .ok_or_else(|| AppError::Internal("doc_index_state row missing after ensure".into()))?;
+    let lag_seconds = index_lag_seconds(state, tenant.id, idx.indexed_watermark, now).await?;
+
+    let mut mode = "lexical".to_string();
+    let results = if idx.provider == "openai-compatible"
+        && let (Some(endpoint), Some(model), Some(secret_name)) =
+            (idx.endpoint.as_deref(), idx.model.as_deref(), idx.secret_name.as_deref())
+    {
+        match crate::docs_index::call_embeddings_provider(
+            state,
+            tenant.id,
+            endpoint,
+            model,
+            secret_name,
+            std::slice::from_ref(&query),
+        )
+        .await
+        {
+            Ok(vectors) if !vectors.is_empty() => {
+                mode = "embeddings".to_string();
+                let qvec = &vectors[0];
+                let rows = state.db.doc_chunks_with_vectors(tenant.id).await?;
+                let mut scored: Vec<(f64, crate::db::ChunkVecRow)> = rows
+                    .into_iter()
+                    .filter(|r| crate::docs_index::matches_filter(r, &prefix, &name))
+                    .map(|r| {
+                        let v = crate::docs_index::decode_vector(&r.vector);
+                        (crate::docs_index::cosine(qvec, &v), r)
+                    })
+                    .collect();
+                scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+                scored.truncate(k as usize);
+                scored
+                    .into_iter()
+                    .map(|(score, r)| {
+                        json!({
+                            "document_id": r.document_id, "name": r.name, "version": r.version,
+                            "chunk_no": r.chunk_no, "offset": r.offset, "text": r.text, "score": score,
+                        })
+                    })
+                    .collect()
+            }
+            _ => {
+                mode = "lexical-fallback".to_string();
+                lexical_search_results(state, tenant.id, &query, k, &prefix, &name).await?
+            }
+        }
+    } else {
+        lexical_search_results(state, tenant.id, &query, k, &prefix, &name).await?
+    };
+
+    let _ = state.db.document_usage_event_insert(tenant.id, "docs.search".to_string(), 1, now).await;
+
+    Ok(json!({
+        "results": results,
+        "index": {"mode": mode, "indexed_watermark": idx.indexed_watermark, "lag_seconds": lag_seconds},
+    }))
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn lexical_search_results(
+    state: &AppState,
+    tenant_id: i64,
+    query: &str,
+    k: i64,
+    prefix: &Option<String>,
+    name: &Option<String>,
+) -> Result<Vec<Value>, AppError> {
+    let Some(match_expr) = crate::docs_index::sanitize_fts_query(query) else {
+        return Ok(Vec::new());
+    };
+    let hits = state
+        .db
+        .doc_chunks_search_lexical(tenant_id, match_expr, prefix.clone(), name.clone(), k)
+        .await?;
+    Ok(hits
+        .into_iter()
+        .map(|h| {
+            json!({
+                "document_id": h.document_id, "name": h.name, "version": h.version,
+                "chunk_no": h.chunk_no, "offset": h.offset, "text": h.text, "score": h.score,
+            })
+        })
+        .collect())
+}
+
+// ---- host.docs.index_config (P0 requirement 4) -------------------------
+
+/// requirement 4: `{provider: "none"|"openai-compatible", endpoint?,
+/// model?, secret?, dims?}` -- switches provider config and forces a full
+/// rebuild (`rebuilding: true`, watermark reset to 0).
+pub async fn doc_index_config(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let provider = arg_str(args, "provider")?;
+    if provider != "none" && provider != "openai-compatible" {
+        return Err(AppError::InvalidArgs(format!(
+            "provider must be 'none' or 'openai-compatible', got '{provider}'"
+        )));
+    }
+    let endpoint = arg_str_opt(args, "endpoint");
+    let model = arg_str_opt(args, "model");
+    let secret = arg_str_opt(args, "secret");
+    let dims = arg_i64_opt(args, "dims");
+
+    if provider == "openai-compatible" {
+        if endpoint.is_none() || model.is_none() || secret.is_none() {
+            return Err(AppError::InvalidArgs(
+                "provider 'openai-compatible' requires 'endpoint', 'model', and 'secret'".to_string(),
+            ));
+        }
+        let secret_name = secret.clone().expect("checked above");
+        if state.db.get_secret(tenant.id, secret_name.clone()).await?.is_none() {
+            return Err(AppError::SecretMissing(secret_name));
+        }
+    }
+
+    let now = crate::state::now_unix();
+    state.db.doc_index_state_ensure(tenant.id, now).await?;
+    state
+        .db
+        .doc_index_state_configure(tenant.id, provider.clone(), endpoint, model, secret, dims, now)
+        .await?;
+    Ok(json!({"provider": provider, "rebuilding": true}))
+}
+
+// ---- host.docs.reindex (P1 requirement 7) ------------------------------
+
+/// P1 requirement 7/AC10: `{document_id?}` -- forces one document (or,
+/// without `document_id`, every document) back into the pending set for
+/// the indexer's next tick.
+pub async fn doc_reindex(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let now = crate::state::now_unix();
+    state.db.doc_index_state_ensure(tenant.id, now).await?;
+    if let Some(id) = arg_str_opt(args, "document_id") {
+        let doc = state
+            .db
+            .document_find_by_id(tenant.id, id.clone())
+            .await?
+            .ok_or_else(|| doc_not_found(&format!("id '{id}'")))?;
+        state.db.doc_index_state_rewind_watermark(tenant.id, doc.seq - 1, now).await?;
+    } else {
+        state.db.doc_index_state_rewind_watermark(tenant.id, 0, now).await?;
+    }
+    Ok(json!({"rebuilding": true}))
 }
 
 // ---- host.docs.purge (P1) -------------------------------------------------
