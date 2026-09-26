@@ -606,6 +606,9 @@ pub async fn replay_webhook_row(state: &AppState, tenant: &Tenant, row: &Trigger
             false,
             false,
             None,
+            None,
+            None,
+            None,
         )
         .await?;
     Ok(json!({"run_id": new_run_id, "status": "queued", "replay_of_row": row_id}))

@@ -332,6 +332,11 @@ host.progress(run_id="<run_id>", counters={"items_processed": 1000})
 host.runs.wait(run_id="<run_id>")
 host.runs.part(run_id="<run_id>", n=5)
 ```
+  `limits.plan` both report the same two numbers.
+- Every run row names the end user it ran as, when any: `host.runs.get`/
+  `list`/`wait` carry `end_user: {subject, issuer, method} | null`.
+  `host.runs.list(end_user_subject="...")` filters to just that end user's
+  runs.
 
 ## Give Claude a database in one minute
 

@@ -862,6 +862,9 @@ pub(crate) async fn enqueue_with_dedupe(
             false,
             false,
             message_id.map(str::to_string),
+            None,
+            None,
+            None,
         )
         .await?;
     let _ = state
@@ -987,6 +990,9 @@ pub async fn test(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
             false,
             true,
             None,
+            None,
+            None,
+            None,
         )
         .await?;
     Ok(json!({"run_id": run_id, "status": "queued", "test": true}))
@@ -1043,6 +1049,9 @@ async fn test_message_trigger(
             args_json,
             false,
             true,
+            None,
+            None,
+            None,
             None,
         )
         .await?;
@@ -1116,6 +1125,9 @@ pub async fn replay(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
             false,
             false,
             original.message_id.clone(),
+            None,
+            None,
+            None,
         )
         .await?;
     Ok(json!({"run_id": new_run_id, "status": "queued", "replay_of": run_id}))

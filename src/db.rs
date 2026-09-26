@@ -67,6 +67,7 @@ const MIGRATION_0043: &str = include_str!("../migrations/0043_shared_tool_caller
 const MIGRATION_0044: &str = include_str!("../migrations/0044_docs_index.sql");
 const MIGRATION_0045: &str = include_str!("../migrations/0045_run_counters_and_error_data.sql");
 const MIGRATION_0046: &str = include_str!("../migrations/0046_vault.sql");
+const MIGRATION_0048: &str = include_str!("../migrations/0048_runs_end_user_subject.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -648,12 +649,21 @@ pub struct RunRow {
     /// -- surfaced as `error: {kind, data}` by `run_to_json`. `None` for
     /// every run whose error carries no extra data of its own.
     pub error_data_json: Option<String>,
+    /// PRD-mcphost-runs-end-user-subject P0 requirement 2/3 / migration
+    /// 0048: the end user this run ran as, when any -- the same value the
+    /// `calls` row gets for a synchronous call (`end_user_issuer` only
+    /// ever set alongside `end_user_method = "oauth"`); `None`/`None`/
+    /// `None` for every trigger-fired run (schedule, event, message,
+    /// webhook), which has no end user at all.
+    pub end_user_subject: Option<String>,
+    pub end_user_issuer: Option<String>,
+    pub end_user_method: Option<String>,
 }
 
 const RUN_COLUMNS: &str = "id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, \
     status, progress_json, result_ref, error_class, started_unix, finished_unix, duration_ms, \
     deadline_s, attempt, purged_unix, args_json, manual, test_run, message_id, counters_json, \
-    error_data_json";
+    error_data_json, end_user_subject, end_user_issuer, end_user_method";
 
 fn run_row_from_row(r: &Row) -> rusqlite::Result<RunRow> {
     Ok(RunRow {
@@ -679,6 +689,9 @@ fn run_row_from_row(r: &Row) -> rusqlite::Result<RunRow> {
         message_id: r.get(19)?,
         counters_json: r.get(20)?,
         error_data_json: r.get(21)?,
+        end_user_subject: r.get(22)?,
+        end_user_issuer: r.get(23)?,
+        end_user_method: r.get(24)?,
     })
 }
 
@@ -1852,7 +1865,8 @@ impl Db {
         Self::migrate_0043_shared_tool_caller_usage(&conn)?;
         Self::migrate_0044_docs_index(&conn)?;
         Self::migrate_0045_run_counters_and_error_data(&conn)?;
-        Self::migrate_0046_vault(&conn)
+        Self::migrate_0046_vault(&conn)?;
+        Self::migrate_0048_runs_end_user_subject(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -2504,6 +2518,24 @@ impl Db {
             .exists([])?;
         if !has_table {
             conn.execute_batch(MIGRATION_0046)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-runs-end-user-subject migration 0048 (requirement 1):
+    /// same additive-`ALTER TABLE` + gate-on-the-new-column idempotency
+    /// shape 0042 uses for `calls`. (Renumbered twice during rebases onto
+    /// main: from this PRD's own 0043 -- claimed first by
+    /// shared_tool_caller_usage -- to 0047, which run 255's
+    /// mcphost-end-user-audit-and-revoke branch claimed first (pushed
+    /// 7b4ead2, lands ahead of this one in the lane) -- to 0048, the next
+    /// number actually free on this branch at push time.)
+    fn migrate_0048_runs_end_user_subject(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('runs') WHERE name = 'end_user_subject'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0048)?;
         }
         Ok(())
     }
@@ -6254,8 +6286,8 @@ impl Db {
             tx.execute(
                 "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, \
                  status, progress_json, result_ref, error_class, started_unix, finished_unix, \
-                 duration_ms, deadline_s, attempt) \
-                 VALUES (?1, ?2, ?3, 'call', NULL, ?4, ?5, NULL, NULL, ?6, ?7, ?8, ?9, NULL, 1)",
+                 duration_ms, deadline_s, attempt, end_user_subject, end_user_issuer, end_user_method) \
+                 VALUES (?1, ?2, ?3, 'call', NULL, ?4, ?5, NULL, NULL, ?6, ?7, ?8, ?9, NULL, 1, ?10, ?11, ?12)",
                 params![
                     run_id,
                     tenant_id,
@@ -6266,6 +6298,9 @@ impl Db {
                     started_unix,
                     started_unix + (duration_ms / 1000).max(0),
                     duration_ms,
+                    end_user_subject,
+                    end_user_issuer,
+                    end_user_method,
                 ],
             )?;
             tx.commit()?;
@@ -6304,13 +6339,22 @@ impl Db {
         // other caller (including a message trigger's own
         // `host.trigger.test`, whose envelope is synthetic) passes `None`.
         message_id: Option<String>,
+        // PRD-mcphost-runs-end-user-subject P0 requirement 2 (AC1/AC3):
+        // the caller's resolved end user for an ordinary `async: true`
+        // tool call; every trigger-fired enqueue (schedule, event, message,
+        // webhook, replay) has no end user and passes `None`/`None`/`None`
+        // (AC4).
+        end_user_subject: Option<String>,
+        end_user_issuer: Option<String>,
+        end_user_method: Option<String>,
     ) -> Result<(), AppError> {
         self.with_conn(move |conn| {
             conn.execute(
                 "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, \
-                 caller_tenant_id, status, deadline_s, attempt, args_json, manual, test_run, message_id) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'queued', ?7, 1, ?8, ?9, ?10, ?11)",
-                params![run_id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, deadline_s, args_json, manual, test, message_id],
+                 caller_tenant_id, status, deadline_s, attempt, args_json, manual, test_run, message_id, \
+                 end_user_subject, end_user_issuer, end_user_method) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'queued', ?7, 1, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                params![run_id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, deadline_s, args_json, manual, test, message_id, end_user_subject, end_user_issuer, end_user_method],
             )?;
             Ok(())
         })
@@ -6665,7 +6709,12 @@ impl Db {
         .await
     }
 
-    /// `host.runs.list(tool?, status?, trigger?, limit?)` -- newest first.
+    /// `host.runs.list(tool?, status?, trigger?, end_user_subject?, limit?)`
+    /// -- newest first. PRD-mcphost-runs-end-user-subject P0 requirement 4
+    /// (AC2): `end_user_subject`, when given, filters within this tenant;
+    /// a subject no run carries (even a real one, just never used) is an
+    /// empty list, never an error -- same "unknown filter value is an empty
+    /// result" shape `tool_name`/`status`/`trigger` above already have.
     #[allow(clippy::too_many_arguments)]
     pub async fn list_runs(
         &self,
@@ -6673,6 +6722,7 @@ impl Db {
         tool_name: Option<String>,
         status: Option<String>,
         trigger: Option<String>,
+        end_user_subject: Option<String>,
         limit: i64,
     ) -> Result<Vec<RunRow>, AppError> {
         self.with_conn(move |conn| {
@@ -6692,6 +6742,11 @@ impl Db {
             if let Some(tr) = trigger {
                 sql.push_str(&format!(" AND trigger = ?{idx}"));
                 binds.push(Box::new(tr));
+                idx += 1;
+            }
+            if let Some(eu) = end_user_subject {
+                sql.push_str(&format!(" AND end_user_subject = ?{idx}"));
+                binds.push(Box::new(eu));
                 idx += 1;
             }
             // `rowid`, not `id` (a ulid): see `lease_next_queued_run`'s

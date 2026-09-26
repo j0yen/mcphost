@@ -818,6 +818,20 @@ mod runs_ac09_quickstart_and_llms_txt_name_job_limits;
 mod runs_ac10_wait_long_polls;
 #[path = "runs_ac11_admin_runs_reap.rs"]
 mod runs_ac11_admin_runs_reap;
+#[path = "runsubject_ac01_async_assertion_end_user_on_run.rs"]
+mod runsubject_ac01_async_assertion_end_user_on_run;
+#[path = "runsubject_ac02_list_filters_by_end_user_subject.rs"]
+mod runsubject_ac02_list_filters_by_end_user_subject;
+#[path = "runsubject_ac03_oauth_run_carries_issuer_and_method.rs"]
+mod runsubject_ac03_oauth_run_carries_issuer_and_method;
+#[path = "runsubject_ac04_schedule_fired_run_end_user_null.rs"]
+mod runsubject_ac04_schedule_fired_run_end_user_null;
+#[path = "runsubject_ac05_list_output_unchanged_but_for_end_user.rs"]
+mod runsubject_ac05_list_output_unchanged_but_for_end_user;
+#[path = "runsubject_ac06_migration_0048_under_1s_at_100k_rows.rs"]
+mod runsubject_ac06_migration_0048_under_1s_at_100k_rows;
+#[path = "runsubject_ac07_llms_txt_names_end_user_and_filter.rs"]
+mod runsubject_ac07_llms_txt_names_end_user_and_filter;
 #[path = "sandboxready_ac7_conformance_suite.rs"]
 mod sandboxready_ac7_conformance_suite;
 #[path = "sched_ac10_trigger_fire_manual.rs"]

@@ -1501,13 +1501,18 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         Tool::new(
             "host.runs.list",
             "List this tenant's recent runs, newest first, optionally filtered by tool, \
-             status (queued|running|done|error|timeout|cancelled) or trigger \
-             (call|job|schedule|event|chain).",
+             status (queued|running|done|error|timeout|cancelled), trigger \
+             (call|job|schedule|event|chain) or end_user_subject (the end user, if any, the \
+             run ran as).",
             host_schema(
                 json!({
                     "tool": {"type": "string", "description": "Only runs of this tool name."},
                     "status": {"type": "string", "description": "Only runs in this status."},
                     "trigger": {"type": "string", "description": "Only runs of this trigger kind."},
+                    "end_user_subject": {
+                        "type": "string",
+                        "description": "Only runs that ran as this end user's subject.",
+                    },
                     "limit": {"type": "integer", "description": "Max runs to return; default 20."},
                 }),
                 &[],
@@ -4441,7 +4446,8 @@ impl McpHostHandler {
         match name.split_once('.') {
             Some((ns, local)) if ns == tenant.namespace => {
                 if is_async {
-                    return crate::runs::enqueue(&self.state, tenant, local, call_args).await;
+                    return crate::runs::enqueue(&self.state, tenant, local, call_args, end_user)
+                        .await;
                 }
                 self.call_published_tool(tenant, local, call_args, false, None, version, end_user)
                     .await
@@ -4456,7 +4462,8 @@ impl McpHostHandler {
             }
             None => {
                 if is_async {
-                    return crate::runs::enqueue(&self.state, tenant, &name, call_args).await;
+                    return crate::runs::enqueue(&self.state, tenant, &name, call_args, end_user)
+                        .await;
                 }
                 self.call_published_tool(tenant, &name, call_args, false, None, version, end_user)
                     .await
