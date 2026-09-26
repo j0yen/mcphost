@@ -159,6 +159,31 @@ If `hello` (or any tool) needs more than the call deadline, see "Long-running
 jobs" below before your first `async: true` call -- the sync cap, the async
 parts contract, and progress counters are all documented there together.
 
+## Upstream token vault
+
+An end user's Slack/GitHub/Google token lives in the host, never in the
+model. Register an upstream OAuth application once with
+`host.vault.provider_set(name, preset?, auth_url?, token_url?, client_id,
+client_secret, scopes)` -- `preset: "slack" | "github" | "google"` fills
+`auth_url`/`token_url` from a built-in table; an explicit `auth_url:`/
+`token_url:` always overrides the matching preset value. Mint a one-time
+handoff link for an end user with `host.vault.connect_link(provider,
+end_user: "self")`; their browser completes it. `host.vault.status
+(end_user)` reports, per registered provider, whether that end user is
+connected, when the token expires, its granted scopes, and (if
+disconnected) when and why it was revoked. `host.vault.disconnect
+(provider, end_user: "self")` revokes one end user's token;
+`host.vault.provider_remove(name)` removes the provider and revokes every
+end user's token for it at once.
+
+An http-kind tool spec declares which provider it needs with the
+`upstream_provider:` field (short-hand: an `upstream:` provider name) --
+at call time the host resolves and injects that end user's token as
+`Authorization: Bearer <token>`, overriding any `Authorization` the spec's
+own headers set. A caller with no connected token for that provider gets
+`upstream_not_connected`, carrying a fresh `connect_link` in its error
+data instead of a partial request.
+
 <!-- sharing:start -->
 ## Share a tool, not a key
 
