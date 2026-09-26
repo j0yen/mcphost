@@ -316,6 +316,10 @@ mod envelope_ac1_http_declared_output_promoted;
 mod envelope_ac4_tool_test_reports_missing_declared_output;
 #[path = "firstcall_ac6_outcome_metering.rs"]
 mod firstcall_ac6_outcome_metering;
+#[path = "firstpub_ac09_dry_run_spec_size_short_circuits.rs"]
+mod firstpub_ac09_dry_run_spec_size_short_circuits;
+#[path = "firstpub_ac10_live_proof_against_real_mcphost.rs"]
+mod firstpub_ac10_live_proof_against_real_mcphost;
 #[path = "gatedebt_4f1112d_ac4_no_test_reads_gate_receipts.rs"]
 mod gatedebt_4f1112d_ac4_no_test_reads_gate_receipts;
 #[path = "gatedebt_4f1112d_ac5_no_flake_audit_selftest_names.rs"]

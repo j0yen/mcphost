@@ -32,14 +32,20 @@ own tool is **42.4s**.
    it leaked.
 3. Reconnect with `Authorization: Bearer <key>`. The `host.*` control
    plane is now available.
-4. Publish a tool: `host.tool_publish(name, kind, spec)`. Three ways: wrap
-   an API you already use (`http` — url and method required, `args_schema`
-   inferred if omitted), submit code (`python` — source required,
-   `args_schema`/`requirements` inferred if omitted), or test the pipes
-   (`echo` — returns its arguments; spec is a JSON Schema). Dry-run first
-   with `host.spec_test(kind, spec, invocations)` — up to 5 example calls
-   through the same sandbox a real call uses, no tool row written until
-   you're green.
+4. Publish a tool: `host.tool_publish(name, kind, spec)`. Call
+   `host.quickstart` first — its `starter_tool` is a ready-to-publish
+   `python` spec (reverses text, counts words) plus the exact
+   `publish_call`/`test_call` to run; the documented first publish is a
+   real tool, not a stub. Two real kinds: submit code (`python` — source
+   required, `args_schema`/`requirements` inferred if omitted) or wrap an
+   API you already use (`http` — url and method required, `args_schema`
+   inferred if omitted). `echo` (returns its arguments; spec is a JSON
+   Schema) is a stub for testing the pipes, not a real tool — it carries
+   `stub: true` in `tools/list`. Before publishing anything, dry-run with
+   `host.tool_publish({..., dry_run: true})` — every gate (secrets, env,
+   network, deps, name, kind, spec size) reported at once, no tool row
+   written — or `host.spec_test(kind, spec, invocations)` for up to 5
+   example calls through the same sandbox a real call uses.
 5. Call your tool. Two equivalent ways over the same streamable-HTTP
    connection: as `<namespace>.<tool_name>` (its own entry in
    `tools/list`), or `host.tool_call(name, args)` (same dispatch path,

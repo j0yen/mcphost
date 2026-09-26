@@ -42,6 +42,22 @@ mod envelope_ac2_python_object_declared_output_promoted;
 mod envelope_ac3_python_scalar_promotion_warns;
 #[path = "envelope_ac5_replay_recorded_sessions.rs"]
 mod envelope_ac5_replay_recorded_sessions;
+#[path = "firstpub_ac01_quickstart_starter_tool.rs"]
+mod firstpub_ac01_quickstart_starter_tool;
+#[path = "firstpub_ac02_sandbox_unavailable_retry.rs"]
+mod firstpub_ac02_sandbox_unavailable_retry;
+#[path = "firstpub_ac03_dry_run_gates.rs"]
+mod firstpub_ac03_dry_run_gates;
+#[path = "firstpub_ac04_real_publish_carries_gates.rs"]
+mod firstpub_ac04_real_publish_carries_gates;
+#[path = "firstpub_ac05_stub_flag_in_tools_list.rs"]
+mod firstpub_ac05_stub_flag_in_tools_list;
+#[path = "firstpub_ac06_get_info_no_echo_steering.rs"]
+mod firstpub_ac06_get_info_no_echo_steering;
+#[path = "firstpub_ac07_llms_txt_first_run_executes.rs"]
+mod firstpub_ac07_llms_txt_first_run_executes;
+#[path = "firstpub_ac08_quickstart_http_starter.rs"]
+mod firstpub_ac08_quickstart_http_starter;
 #[path = "infer_ac01_ac02_ac03_python_schema.rs"]
 mod infer_ac01_ac02_ac03_python_schema;
 #[path = "infer_ac04_python_explicit_schema.rs"]
@@ -164,31 +180,3 @@ mod plainenv_ac10_admin_reports_env_names_and_size;
 mod publishfirsttry_ac03_ac04_quickstart;
 #[path = "publishfirsttry_ac06_docs_shared_source.rs"]
 mod publishfirsttry_ac06_docs_shared_source;
-#[path = "python_ac01_no_deps_cpu_memory.rs"]
-mod python_ac01_no_deps_cpu_memory;
-#[path = "python_ac02_requirements_build_and_building_state.rs"]
-mod python_ac02_requirements_build_and_building_state;
-#[path = "python_ac03_invalid_source_rejected.rs"]
-mod python_ac03_invalid_source_rejected;
-#[path = "python_ac04_disallowed_requirement.rs"]
-mod python_ac04_disallowed_requirement;
-#[path = "python_ac05_exception_traceback.rs"]
-mod python_ac05_exception_traceback;
-#[path = "python_ac06_timeout.rs"]
-mod python_ac06_timeout;
-#[path = "python_ac07_oom.rs"]
-mod python_ac07_oom;
-#[path = "python_ac08_network_none_blocks.rs"]
-mod python_ac08_network_none_blocks;
-#[path = "python_ac09_filesystem_isolation.rs"]
-mod python_ac09_filesystem_isolation;
-#[path = "python_ac10_fork_bomb_contained.rs"]
-mod python_ac10_fork_bomb_contained;
-#[path = "python_ac11_secret_redaction.rs"]
-mod python_ac11_secret_redaction;
-#[path = "python_ac12_republish_atomic.rs"]
-mod python_ac12_republish_atomic;
-#[path = "python_ac13_capacity_admission.rs"]
-mod python_ac13_capacity_admission;
-#[path = "python_ac14_cpu_budget_rate_limit.rs"]
-mod python_ac14_cpu_budget_rate_limit;

@@ -417,6 +417,47 @@ pub async fn self_offboard(state: &AppState, tenant: &Tenant) -> Result<Value, A
     }))
 }
 
+/// PRD-mcphost-first-publish-real-kind requirement 1 (AC1): the documented
+/// first publish -- a real python tool, not the echo stub. Reverses its
+/// input and counts its words, so `host.quickstart`'s own `test_call`
+/// (`{"text": "hello"}`) proves the tool actually does something
+/// (`{"reversed": "olleh", "words": 1}`) rather than merely publishing.
+/// Free-plan-safe by construction: no `secrets`, no `network`, no
+/// `requirements`.
+const STARTER_TOOL_NAME: &str = "text_stats";
+const STARTER_TOOL_SOURCE: &str = "def main(args):\n    text = args.get(\"text\", \"\")\n    reversed_text = text[::-1]\n    words = len(text.split())\n    return {\n        \"reversed\": reversed_text,\n        \"words\": words,\n    }\n";
+
+/// PRD-mcphost-first-publish-real-kind requirement 6 (AC8): `host.quickstart
+/// {kind: "http"}`'s own starter -- a public JSON API with no auth, for a
+/// tenant that cannot use the python sandbox. `MCPHOST_HTTP_STARTER_URL`
+/// overrides the default (test-only in practice today -- a test pointing
+/// this at a local fixture upstream is the only real-world reason to set
+/// it); production never sets it.
+const HTTP_STARTER_TOOL_NAME: &str = "public_fact";
+const HTTP_STARTER_DEFAULT_URL: &str = "https://catfact.ninja/fact";
+
+/// Builds the value `quickstart`'s `starter_tool` field carries for
+/// `kind == "http"` -- same shape as the python starter (requirement 1),
+/// just a wrapped public endpoint instead of a sandboxed script.
+fn http_starter_tool() -> Value {
+    let url = std::env::var("MCPHOST_HTTP_STARTER_URL")
+        .unwrap_or_else(|_| HTTP_STARTER_DEFAULT_URL.to_string());
+    let spec = json!({"method": "GET", "url": url});
+    json!({
+        "name": HTTP_STARTER_TOOL_NAME,
+        "kind": "http",
+        "spec": spec,
+        "publish_call": {
+            "call": "host.tool_publish",
+            "arguments": {"name": HTTP_STARTER_TOOL_NAME, "kind": "http", "spec": spec},
+        },
+        "test_call": {
+            "call": "host.tool_test",
+            "arguments": {"name": HTTP_STARTER_TOOL_NAME, "args": {}},
+        },
+    })
+}
+
 /// `host.quickstart(kind)` (requirement 4, AC3/AC4): the ordered sequence
 /// to a working tool of `kind`, with the tenant's own namespace and a
 /// filled-in [`crate::kinds::KindExample`] substituted in, plus the current
@@ -460,7 +501,11 @@ pub fn quickstart(
         }));
     };
 
-    let kind_name = arg_str(args, "kind")?;
+    // PRD-mcphost-first-publish-real-kind requirement 1 (AC1): `kind` is now
+    // optional -- an agent that just calls `host.quickstart` with no
+    // arguments (the documented "First run" flow) gets the python starter
+    // recipe below rather than an `args_invalid` rejection.
+    let kind_name = arg_str_opt(args, "kind").unwrap_or_else(|| "python".to_string());
     let kind = state
         .kinds
         .get(&kind_name)
@@ -565,46 +610,82 @@ pub fn quickstart(
         }));
     }
 
+    let steps = vec![
+        json!({
+            "call": "host.tool_publish",
+            "arguments": {"name": tool_name, "kind": kind_name, "spec": example.spec},
+            "note": "Publish the tool. A rejection names the field, what was expected, \
+                and a corrected example -- fix it and resubmit.",
+        }),
+        json!({
+            "call": "host.tool_test",
+            "arguments": {"name": tool_name, "args": example.call_args},
+            "note": "Dry-run it: the real call, but it counts toward neither \
+                host.usage nor host.tool_logs, so it's safe to repeat while iterating.",
+        }),
+        json!({
+            "call": qualified_name,
+            "arguments": example.call_args.clone(),
+            "alternative_call": "host.tool_call",
+            "alternative_arguments": {"name": tool_name, "args": example.call_args},
+            "note": "The real call, either by its namespaced name directly or via \
+                host.tool_call by local name -- identical for metering and logs.",
+        }),
+        json!({
+            "call": "host.state.set",
+            "arguments": {"key": "example", "value": {"n": 1}},
+            // PRD-mcphost-tenant-tables P0 requirement 6 / AC8: one
+            // sentence on the table-store vs key-value store choice,
+            // placed where an agent actually discovers host.state in
+            // the first place.
+            "note": "Optional: remember something between calls. host.state.get(key) \
+                reads it back; a python tool's own code can read/write the same store. \
+                For small unstructured values, host.state stays the right store; for \
+                typed rows you'll filter, sort, or aggregate with real SQL, create a \
+                table instead with host.table.create/append/query.",
+        }),
+    ];
+    // PRD-mcphost-first-publish-real-kind requirement 1/6 (AC1/AC8): the
+    // starter recipe defaults to python (a real tool, not the echo stub)
+    // for any request, except `kind: "http"`, which gets its own starter
+    // (requirement 6: "for tenants that cannot use the sandbox") --
+    // `steps`/`try_before_call` above stay scoped to the requested kind;
+    // `starter_tool` is the one, fixed, always-works-on-free recommendation
+    // for a tenant with nothing published yet. `next` is the tail of
+    // `steps` (the real call, then the optional state-set) -- the actions
+    // that come after the starter's own publish+test, which `starter_tool`
+    // already carries as `publish_call`/`test_call`.
+    let starter_tool = if kind_name == "http" {
+        http_starter_tool()
+    } else {
+        json!({
+            "name": STARTER_TOOL_NAME,
+            "kind": "python",
+            "spec": {"source": STARTER_TOOL_SOURCE},
+            "publish_call": {
+                "call": "host.tool_publish",
+                "arguments": {
+                    "name": STARTER_TOOL_NAME,
+                    "kind": "python",
+                    "spec": {"source": STARTER_TOOL_SOURCE},
+                },
+            },
+            "test_call": {
+                "call": "host.tool_test",
+                "arguments": {"name": STARTER_TOOL_NAME, "args": {"text": "hello"}},
+            },
+        })
+    };
+    let next = steps[2..].to_vec();
+
     Ok(json!({
         "authenticated": true,
         "namespace": tenant.namespace,
         "kind": kind_name,
         "try_before_call": try_before_call,
-        "steps": [
-            {
-                "call": "host.tool_publish",
-                "arguments": {"name": tool_name, "kind": kind_name, "spec": example.spec},
-                "note": "Publish the tool. A rejection names the field, what was expected, \
-                    and a corrected example -- fix it and resubmit.",
-            },
-            {
-                "call": "host.tool_test",
-                "arguments": {"name": tool_name, "args": example.call_args},
-                "note": "Dry-run it: the real call, but it counts toward neither \
-                    host.usage nor host.tool_logs, so it's safe to repeat while iterating.",
-            },
-            {
-                "call": qualified_name,
-                "arguments": example.call_args.clone(),
-                "alternative_call": "host.tool_call",
-                "alternative_arguments": {"name": tool_name, "args": example.call_args},
-                "note": "The real call, either by its namespaced name directly or via \
-                    host.tool_call by local name -- identical for metering and logs.",
-            },
-            {
-                "call": "host.state.set",
-                "arguments": {"key": "example", "value": {"n": 1}},
-                // PRD-mcphost-tenant-tables P0 requirement 6 / AC8: one
-                // sentence on the table-store vs key-value store choice,
-                // placed where an agent actually discovers host.state in
-                // the first place.
-                "note": "Optional: remember something between calls. host.state.get(key) \
-                    reads it back; a python tool's own code can read/write the same store. \
-                    For small unstructured values, host.state stays the right store; for \
-                    typed rows you'll filter, sort, or aggregate with real SQL, create a \
-                    table instead with host.table.create/append/query.",
-            },
-        ],
+        "starter_tool": starter_tool,
+        "next": next,
+        "steps": steps,
         "limits": {
             "max_spec_bytes": MAX_SPEC_BYTES,
             "max_tools_per_tenant": MAX_TOOLS_PER_TENANT,
@@ -725,6 +806,33 @@ pub fn changelog(state: &AppState, args: &Value) -> Result<Value, AppError> {
     ))
 }
 
+/// PRD-mcphost-first-publish-real-kind requirement 4: one entry of
+/// `host.tool_publish`'s `gates` array (both the `dry_run: true` response
+/// and, on failure, a real publish's own error `data`) -- `{gate, ok,
+/// message, fix}`, `message`/`fix` present only when `ok` is `false`.
+fn publish_gate(gate: &'static str, ok: bool, message: Option<String>, fix: Option<String>) -> Value {
+    json!({"gate": gate, "ok": ok, "message": message, "fix": fix})
+}
+
+/// Requirement 4 / AC4: a real (non-`dry_run`) publish that fails one of
+/// the "collectible" gates (secrets, env, network, deps) keeps its own
+/// original `code`/`message`/`data` (every field an existing test already
+/// asserts on) -- this only adds `gates`, so a caller sees every other
+/// simultaneously-failing gate too, not just the one this error is named
+/// for.
+fn attach_gates(err: AppError, gates: &[Value]) -> AppError {
+    let code = err.code();
+    let message = err.to_string();
+    let mut data = match &err {
+        AppError::Structured { data, .. } if data.is_object() => data.clone(),
+        _ => json!({}),
+    };
+    if let Value::Object(map) = &mut data {
+        map.insert("gates".to_string(), json!(gates));
+    }
+    AppError::Structured { code, message, data }
+}
+
 pub async fn tool_publish(
     state: &AppState,
     tenant: &Tenant,
@@ -738,6 +846,11 @@ pub async fn tool_publish(
             state.disk_guard.floor_bytes(),
         ));
     }
+    // PRD-mcphost-first-publish-real-kind requirement 4 (AC3/AC4): every
+    // gate below this call runs regardless -- `dry_run` just means "collect
+    // and report, never write" instead of "stop at the first failure and
+    // write once every gate passes."
+    let dry_run = arg_bool(args, "dry_run");
     let name = arg_str(args, "name")?;
     let kind_name = arg_str(args, "kind")?;
     let mut spec = args.get("spec").cloned().unwrap_or(Value::Null);
@@ -748,6 +861,22 @@ pub async fn tool_publish(
         .map_err(|e| AppError::Internal(format!("spec serialize: {e}")))?
         .len();
     if spec_bytes > MAX_SPEC_BYTES {
+        // PRD-mcphost-first-publish-real-kind requirement 4 (AC9): under
+        // dry_run, spec_size is reported as a failing gate -- on its own,
+        // with no other gate evaluated after it, since a spec too large to
+        // safely inspect makes every later gate meaningless. A real publish
+        // keeps its original, unchanged `spec_too_large` error.
+        if dry_run {
+            return Ok(json!({
+                "ok": false,
+                "gates": [publish_gate(
+                    "spec_size",
+                    false,
+                    Some(format!("spec is {spec_bytes} bytes, over the {MAX_SPEC_BYTES}-byte limit")),
+                    Some(format!("shrink the spec under {MAX_SPEC_BYTES} bytes")),
+                )],
+            }));
+        }
         return Err(AppError::SpecTooLarge(spec_bytes));
     }
 
@@ -780,10 +909,20 @@ pub async fn tool_publish(
     // rejected here, before `parse_spec`/`ast_check` (inside
     // `validate_all`/`validate_async` below) ever run -- no sandboxed
     // process is spawned for a doomed publish.
-    if let Some(status) = kind.sandbox_status()
+    // Non-functional requirement ("dry_run answers ... with no sandbox
+    // spin-up"): a `dry_run` never blocks on, or reports, this host's
+    // sandbox *readiness* -- unlike a real publish, a busy/broken sandbox
+    // mechanism isn't one of `dry_run`'s own named gates (kind, spec size,
+    // secrets, env, network, deps, name).
+    if !dry_run
+        && let Some(status) = kind.sandbox_status()
         && !status.ready
     {
-        return Err(AppError::sandbox_unavailable(&status));
+        // PRD-mcphost-first-publish-real-kind requirement 3 (AC2): the
+        // kind's own current wait estimate when it has one, else a fixed
+        // 5s -- clamped to [1, 30] either way.
+        let retry_after_s = kind.queue_wait_estimate_s().unwrap_or(5).clamp(1, 30);
+        return Err(AppError::sandbox_unavailable(&status, retry_after_s));
     }
 
     // Requirement 3 / AC2: every simultaneously-failing field is reported
@@ -793,35 +932,64 @@ pub async fn tool_publish(
     }
     kind.validate_async(&spec).await?;
 
-    // Requirement 3 / AC3: every `secret.<name>` the spec references must
-    // already exist for this tenant, checked before the tool is ever
-    // stored. Kinds with no secret-templating concept (`echo`) return no
-    // references here, so this is a no-op for them.
+    // PRD-mcphost-first-publish-real-kind requirement 4 (AC3/AC4): from here
+    // on, every remaining pre-check is "collectible" -- it's recorded as its
+    // own `gates` entry and evaluated regardless of whether an earlier one
+    // already failed, so a `dry_run` (or a real publish's own rejection)
+    // reports every simultaneously-failing gate, not just the first.
+    let mut gates: Vec<Value> = Vec::new();
+
+    // gate: secrets -- every `secret.<name>` the spec references must
+    // already exist for this tenant. Kinds with no secret-templating
+    // concept (`echo`) return no references here, so this is trivially ok
+    // for them.
     let referenced = kind.referenced_secrets(&spec);
+    let mut missing_secrets: Vec<String> = Vec::new();
     if !referenced.is_empty() {
         let known = state.db.list_secret_names(tenant.id).await?;
         for secret_name in referenced {
             if !known.contains(&secret_name) {
-                return Err(AppError::SecretMissing(secret_name));
+                missing_secrets.push(secret_name);
             }
         }
     }
+    gates.push(publish_gate(
+        "secrets",
+        missing_secrets.is_empty(),
+        (!missing_secrets.is_empty())
+            .then(|| format!("spec references unknown secret(s): {}", missing_secrets.join(", "))),
+        (!missing_secrets.is_empty())
+            .then(|| "call host.secret_set for each missing name, then republish".to_string()),
+    ));
 
-    // PRD-mcphost-python-kind-plain-env requirement 3 (AC4): a spec's own
-    // `env` names must never collide with a secret name already known for
-    // this tenant. The secret store is tenant-scoped, not per-tool (see
-    // `secret_set` below), so this checks against every secret the tenant
-    // has ever set -- not just the `referenced` subset just above, which is
-    // this *spec's own* `secrets` list, a different, narrower thing.
+    // gate: env -- a spec's own `env` names must never collide with a
+    // secret name already known for this tenant (PRD-mcphost-python-kind-
+    // plain-env requirement 3). The secret store is tenant-scoped, not
+    // per-tool, so this checks against every secret the tenant has ever
+    // set -- not just the `referenced` subset above, which is this spec's
+    // own `secrets` list, a different, narrower thing.
     let env_names: Vec<String> = kind.env_map(&spec).into_keys().collect();
+    let mut env_collisions: Vec<String> = Vec::new();
     if !env_names.is_empty() {
         let known_secrets = state.db.list_secret_names(tenant.id).await?;
         for env_name in &env_names {
             if known_secrets.contains(env_name) {
-                return Err(AppError::env_collides_with_secret(env_name));
+                env_collisions.push(env_name.clone());
             }
         }
     }
+    gates.push(publish_gate(
+        "env",
+        env_collisions.is_empty(),
+        (!env_collisions.is_empty()).then(|| {
+            format!(
+                "env name(s) collide with an existing secret of the same name: {}",
+                env_collisions.join(", ")
+            )
+        }),
+        (!env_collisions.is_empty())
+            .then(|| "rename the colliding env key(s), or remove the secret first".to_string()),
+    ));
 
     // PRD-grand-loop-billing requirement 3 / PRD-mcphost-tool-versions
     // requirement 2: needed either way now -- `tools_max` below (new tools
@@ -833,57 +1001,123 @@ pub async fn tool_publish(
         ))
     })?;
 
-    // PRD-mcphost-python-dependency-policy requirement 1/2/3/5: resolve,
-    // lock, policy-check and advisory-check a python tool's requirements
-    // before anything is stored. `spec` gains a `_dependency_lock` field
-    // (read back by `kinds::python` at env-build time, see
-    // `PythonSpec::dependency_lock`'s doc comment) and a durable
-    // `tool_lock` row is written right after `upsert_tool` below, once
-    // `version` is known.
+    // gate: network -- PRD-mcphost-sandbox-egress-allowlist requirement 1
+    // (AC1/AC2): a `free` tenant publishing `network: "public"` OR
+    // `network: "egress"` is refused -- `network_policy::wants_egress`
+    // treats both spellings identically. python-only: the other kinds have
+    // no `network` concept to gate.
+    let mut network_denied = false;
+    if kind_name == "python" {
+        network_denied = crate::network_policy::wants_egress(spec.get("network").and_then(Value::as_str))
+            && plan.name != "pro";
+        if network_denied && !dry_run {
+            let _ = state.db.record_network_denial("publish_plan", Some(tenant.id)).await;
+        }
+        gates.push(publish_gate(
+            "network",
+            !network_denied,
+            network_denied
+                .then(|| "network: \"public\"/\"egress\" requires the pro plan".to_string()),
+            network_denied.then(|| "upgrade to pro, or publish with network: \"none\"".to_string()),
+        ));
+    }
+
+    // gate: deps -- PRD-mcphost-python-dependency-policy requirement 1/2/3/5:
+    // resolve, lock, policy-check and advisory-check a python tool's
+    // requirements before anything is stored. Only present when the spec
+    // actually declares (or infers) requirements -- a python spec with none
+    // has nothing to gate. `spec` gains a `_dependency_lock` field (read
+    // back by `kinds::python` at env-build time) and a durable `tool_lock`
+    // row is written right after `upsert_tool` below, once `version` is
+    // known -- both only for a real (non-`dry_run`) publish that reaches
+    // that far.
     let mut pending_lock: Option<(String, i64, String)> = None;
     let mut lock_summary: Option<Value> = None;
+    let mut deps_err: Option<AppError> = None;
     if kind_name == "python" {
-        // PRD-mcphost-sandbox-egress-allowlist requirement 1 (AC1/AC2): a
-        // `free` tenant publishing `network: "public"` OR `network:
-        // "egress"` is refused outright, before any resolution work runs --
-        // `network_policy::wants_egress` treats both spellings identically
-        // (the hole this PRD closes: only `"egress"` used to be checked
-        // here, even though `kinds::python::network_mode` has always
-        // granted the same sandbox access for `"public"`).
-        if crate::network_policy::wants_egress(spec.get("network").and_then(Value::as_str))
-            && plan.name != "pro"
-        {
-            let _ = state.db.record_network_denial("publish_plan", Some(tenant.id)).await;
-            return Err(AppError::plan_required("network", "pro"));
-        }
         let reqs = crate::kinds::python::effective_requirements_for_publish(&spec)?;
         if !reqs.is_empty() {
             let input = crate::deps::classify(&reqs);
-            crate::deps::check_package_policy(&input)?;
-            let resolved = crate::deps::resolve(input).await?;
-            let advisory_mode =
-                std::env::var("MCPHOST_ADVISORY_MODE").unwrap_or_else(|_| "warn".to_string());
-            if advisory_mode == "fail"
-                && let Some(hit) = resolved.advisories.first()
-            {
-                return Err(AppError::dependency_advisory(&hit.id, &hit.package, &hit.fixed));
+            match crate::deps::check_package_policy(&input) {
+                Err(e) => {
+                    gates.push(publish_gate(
+                        "deps",
+                        false,
+                        Some(e.to_string()),
+                        Some("choose a different package, or pin an allowed version".to_string()),
+                    ));
+                    deps_err = Some(e);
+                }
+                Ok(()) => {
+                    let resolved = crate::deps::resolve(input).await?;
+                    let advisory_mode = std::env::var("MCPHOST_ADVISORY_MODE")
+                        .unwrap_or_else(|_| "warn".to_string());
+                    if advisory_mode == "fail"
+                        && let Some(hit) = resolved.advisories.first()
+                    {
+                        let e = AppError::dependency_advisory(&hit.id, &hit.package, &hit.fixed);
+                        gates.push(publish_gate(
+                            "deps",
+                            false,
+                            Some(e.to_string()),
+                            Some(format!("upgrade {} to {}, or pin a fixed version", hit.package, hit.fixed)),
+                        ));
+                        deps_err = Some(e);
+                    } else {
+                        gates.push(publish_gate("deps", true, None, None));
+                        let resolved_unix = now_unix();
+                        let advisories_json = crate::deps::advisories_to_json(&resolved.advisories);
+                        if let Value::Object(map) = &mut spec {
+                            map.insert(
+                                "_dependency_lock".to_string(),
+                                json!({
+                                    "lock_text": resolved.lock_text,
+                                    "packages": resolved.packages,
+                                    "resolved_unix": resolved_unix,
+                                    "advisories": advisories_json,
+                                }),
+                            );
+                        }
+                        lock_summary = Some(json!({"packages": resolved.packages, "hashes": true}));
+                        pending_lock =
+                            Some((resolved.lock_text, resolved_unix, advisories_json.to_string()));
+                    }
+                }
             }
-            let resolved_unix = now_unix();
-            let advisories_json = crate::deps::advisories_to_json(&resolved.advisories);
-            if let Value::Object(map) = &mut spec {
-                map.insert(
-                    "_dependency_lock".to_string(),
-                    json!({
-                        "lock_text": resolved.lock_text,
-                        "packages": resolved.packages,
-                        "resolved_unix": resolved_unix,
-                        "advisories": advisories_json,
-                    }),
-                );
-            }
-            lock_summary = Some(json!({"packages": resolved.packages, "hashes": true}));
-            pending_lock = Some((resolved.lock_text, resolved_unix, advisories_json.to_string()));
         }
+    }
+
+    let gates_ok = gates.iter().all(|g| g["ok"] == json!(true));
+    if dry_run {
+        return Ok(json!({"ok": gates_ok, "gates": gates}));
+    }
+    if !gates_ok {
+        // Every existing single-failure test asserts on one of these four
+        // errors' own original code/message/data -- `attach_gates` keeps
+        // all of that unchanged and only adds `gates`, so a publish that
+        // fails more than one at once (AC4) still names its first failure
+        // as the top-level error while surfacing every other one too.
+        if !missing_secrets.is_empty() {
+            return Err(attach_gates(
+                AppError::SecretMissing(missing_secrets[0].clone()),
+                &gates,
+            ));
+        }
+        if !env_collisions.is_empty() {
+            return Err(attach_gates(
+                AppError::env_collides_with_secret(&env_collisions[0]),
+                &gates,
+            ));
+        }
+        if network_denied {
+            return Err(attach_gates(AppError::plan_required("network", "pro"), &gates));
+        }
+        if let Some(e) = deps_err {
+            return Err(attach_gates(e, &gates));
+        }
+        return Err(AppError::Internal(
+            "publish gate reported failure with no recognized cause".to_string(),
+        ));
     }
 
     // A re-publish of an existing name must not count against the limit.
@@ -1113,7 +1347,7 @@ pub async fn tool_list(state: &AppState, tenant: &Tenant) -> Result<Value, AppEr
             // requirement 6 (AC8): 0 for a tool with no stored lock (not
             // `python`, or `python` with no requirements) -- never omitted.
             let advisories = advisory_counts.get(&row.name).copied().unwrap_or(0);
-            json!({
+            let mut entry = json!({
                 "name": format!("{}.{}", tenant.namespace, row.name),
                 "kind": row.kind,
                 "created_at": row.created_at,
@@ -1126,7 +1360,17 @@ pub async fn tool_list(state: &AppState, tenant: &Tenant) -> Result<Value, AppEr
                 "unshared_by": row.unshared_by,
                 "env": env,
                 "advisories": advisories,
-            })
+            });
+            // PRD-mcphost-first-publish-real-kind requirement 5 (AC5):
+            // `stub: true` on an echo-kind tool, absent (not `false`) for
+            // every other kind -- same derivation as `tools/list`'s own
+            // `_meta.stub`.
+            if row.kind == "echo"
+                && let Value::Object(map) = &mut entry
+            {
+                map.insert("stub".to_string(), json!(true));
+            }
+            entry
         })
         .collect();
     Ok(json!({ "tools": tools }))
