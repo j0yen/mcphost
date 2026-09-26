@@ -14,7 +14,7 @@ use mcphost::kinds::KindRegistry;
 use mcphost::kinds::http::{HttpKind, LookupFuture, NameLookup};
 use mcphost::kinds::python::PythonKind;
 use mcphost::sandbox;
-use serde_json::json;
+use serde_json::{Value, json};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -80,10 +80,19 @@ fn assert_sandbox_unavailable_shape(err: &common::RpcError) {
         "data.docs must be present: {}",
         err.data
     );
+    // PRD-mcphost-first-publish-real-kind requirement 3 (AC2): `echo` is a
+    // stub, never offered as a real fallback for a rejected python publish
+    // -- `alternatives` now names only `http`, and a `retry_after_s` comes
+    // along with it.
     assert_eq!(
         err.data.get("alternatives"),
-        Some(&json!(["echo", "http"])),
+        Some(&json!(["http"])),
         "data: {}",
+        err.data
+    );
+    assert!(
+        err.data.get("retry_after_s").and_then(Value::as_u64).is_some_and(|s| (1..=30).contains(&s)),
+        "data.retry_after_s must be present and in [1, 30]: {}",
         err.data
     );
 }

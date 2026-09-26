@@ -620,15 +620,24 @@ impl AppError {
     /// uselessly. `data.docs` is filled in by `into_error_data`'s existing
     /// unconditional `"host.quickstart"` insert, same as every other
     /// rejection this crate returns -- not overridden here.
-    pub fn sandbox_unavailable(status: &crate::sandbox::SandboxStatus) -> Self {
+    /// PRD-mcphost-first-publish-real-kind requirement 3 (AC2): `retry_after_s`
+    /// (the caller's own best current estimate, already clamped to `[1,
+    /// 30]`) and `alternatives` now name only `http` -- `echo` is a stub
+    /// (Goal 3), never a real fallback for a rejected python publish. The
+    /// message itself now names the seconds too, so the hint survives a
+    /// client that only surfaces `message`, not `data`.
+    pub fn sandbox_unavailable(status: &crate::sandbox::SandboxStatus, retry_after_s: u32) -> Self {
         AppError::Structured {
             code: "sandbox_unavailable",
-            message: "the python kind is unavailable on this host; the spec was not evaluated"
-                .to_string(),
+            message: format!(
+                "the python kind is unavailable on this host; the spec was not evaluated -- \
+                 retry in {retry_after_s}s or use http instead"
+            ),
             data: json!({
                 "mechanism": status.mechanism.as_str(),
                 "detail": status.detail,
-                "alternatives": ["echo", "http"],
+                "retry_after_s": retry_after_s,
+                "alternatives": ["http"],
             }),
         }
     }

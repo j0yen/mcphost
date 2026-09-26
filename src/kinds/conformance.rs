@@ -162,7 +162,7 @@ pub fn check_sandbox_unavailable_shape(
                 .to_string(),
         });
     }
-    let error_data = crate::errors::AppError::sandbox_unavailable(status).into_error_data();
+    let error_data = crate::errors::AppError::sandbox_unavailable(status, 5).into_error_data();
     if error_data.message.trim().is_empty() {
         return Err(ConformanceFailure {
             method: "sandbox_unavailable",
@@ -189,14 +189,27 @@ pub fn check_sandbox_unavailable_shape(
             });
         }
     }
+    // PRD-mcphost-first-publish-real-kind requirement 3 (AC2/AC6): `echo` is
+    // a stub, never offered as a real fallback for a rejected sandboxed
+    // publish -- `alternatives` names only `http` now.
     let alternatives_ok = data
         .get("alternatives")
         .and_then(Value::as_array)
-        .is_some_and(|a| a.iter().any(|v| v == "echo") && a.iter().any(|v| v == "http"));
+        .is_some_and(|a| a.iter().any(|v| v == "http") && !a.iter().any(|v| v == "echo"));
     if !alternatives_ok {
         return Err(ConformanceFailure {
             method: "sandbox_unavailable",
-            reason: format!("data.alternatives must include 'echo' and 'http', got: {data}"),
+            reason: format!("data.alternatives must include 'http' and never 'echo', got: {data}"),
+        });
+    }
+    let retry_after_ok = data
+        .get("retry_after_s")
+        .and_then(Value::as_u64)
+        .is_some_and(|s| (1..=30).contains(&s));
+    if !retry_after_ok {
+        return Err(ConformanceFailure {
+            method: "sandbox_unavailable",
+            reason: format!("data.retry_after_s must be present and in [1, 30], got: {data}"),
         });
     }
     Ok(())

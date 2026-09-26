@@ -3138,6 +3138,14 @@ pub struct PythonKind {
     /// Requirement 8: last time a `capacity` refusal was logged for a
     /// given tenant, so a burst logs at most one line/second/tenant.
     capacity_log_gate: Arc<Mutex<HashMap<i64, Instant>>>,
+    /// PRD-mcphost-first-publish-real-kind requirement 3: a test-only
+    /// override for [`Kind::queue_wait_estimate_s`] -- production never sets
+    /// this (sandbox capacity estimation is explicitly out of scope, PRD
+    /// non-goals), so it stays `None` and `errors::AppError::sandbox_unavailable`'s
+    /// caller falls back to its own fixed default. A test simulating "the
+    /// sandbox pool reports an N second wait" (AC2) sets this directly
+    /// rather than this crate actually tracking queue depth.
+    queue_wait_estimate_s: RwLock<Option<u32>>,
 }
 
 impl PythonKind {
@@ -3257,7 +3265,19 @@ impl PythonKind {
             tenant_admission: Arc::new(Mutex::new(HashMap::new())),
             recent_durations: Arc::new(Mutex::new(VecDeque::new())),
             capacity_log_gate: Arc::new(Mutex::new(HashMap::new())),
+            queue_wait_estimate_s: RwLock::new(None),
         }
+    }
+
+    /// Test-only: simulates "the sandbox pool reports an N second wait"
+    /// (AC2) -- production never calls this (see the field's own doc
+    /// comment).
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_queue_wait_estimate_for_test(&self, secs: Option<u32>) {
+        *self
+            .queue_wait_estimate_s
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = secs;
     }
 
     /// Requirement 3: this tenant's own admission semaphore, sized from
@@ -4498,6 +4518,16 @@ impl Kind for PythonKind {
     /// PRD-mcphost-sandbox-ready requirement 4: `admin.sandbox_recheck`.
     async fn sandbox_recheck(&self) -> Option<sandbox::SandboxStatus> {
         Some(self.selftest.recheck().await)
+    }
+
+    /// PRD-mcphost-first-publish-real-kind requirement 3 (AC2): test-only in
+    /// practice today (see the field's own doc comment) -- `None` in
+    /// production, same as every other kind's default.
+    fn queue_wait_estimate_s(&self) -> Option<u32> {
+        *self
+            .queue_wait_estimate_s
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
     }
 }
 

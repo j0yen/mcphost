@@ -3650,7 +3650,10 @@ impl McpHostHandler {
         if let Some(status) = kind.sandbox_status()
             && !status.ready
         {
-            return Err(AppError::sandbox_unavailable(&status));
+            // PRD-mcphost-first-publish-real-kind requirement 3 (AC2): same
+            // retry-after estimate `control::tool_publish` computes.
+            let retry_after_s = kind.queue_wait_estimate_s().unwrap_or(5).clamp(1, 30);
+            return Err(AppError::sandbox_unavailable(&status, retry_after_s));
         }
 
         let descriptor = kind.describe(&row.spec);
@@ -3928,7 +3931,10 @@ impl McpHostHandler {
         if let Some(status) = kind.sandbox_status()
             && !status.ready
         {
-            return Err(AppError::sandbox_unavailable(&status));
+            // PRD-mcphost-first-publish-real-kind requirement 3 (AC2): same
+            // retry-after estimate `control::tool_publish` computes.
+            let retry_after_s = kind.queue_wait_estimate_s().unwrap_or(5).clamp(1, 30);
+            return Err(AppError::sandbox_unavailable(&status, retry_after_s));
         }
 
         if let Some(err) = AppError::from_kind_violations(kind.validate_all(&spec)) {
@@ -4132,7 +4138,10 @@ impl McpHostHandler {
         if let Some(status) = kind.sandbox_status()
             && !status.ready
         {
-            return Err(AppError::sandbox_unavailable(&status));
+            // PRD-mcphost-first-publish-real-kind requirement 3 (AC2): same
+            // retry-after estimate `control::tool_publish` computes.
+            let retry_after_s = kind.queue_wait_estimate_s().unwrap_or(5).clamp(1, 30);
+            return Err(AppError::sandbox_unavailable(&status, retry_after_s));
         }
 
         let descriptor = kind.describe(&row.spec);
@@ -4399,9 +4408,12 @@ impl ServerHandler for McpHostHandler {
             .find_map(|k| k.sandbox_status())
             .filter(|s| !s.ready)
         {
+            // PRD-mcphost-first-publish-real-kind requirement 3 (AC6): never
+            // steers to echo -- a stub, not a real fallback for a rejected
+            // sandboxed publish.
             instructions.push_str(&format!(
                 " NOTE: this host's sandboxed kinds are currently rejected with \
-                 sandbox_unavailable ({}) -- publish echo or http instead.",
+                 sandbox_unavailable ({}) -- publish http instead.",
                 status.detail
             ));
         }
@@ -4461,6 +4473,15 @@ impl ServerHandler for McpHostHandler {
                         // can verify what kind actually shipped.
                         let mut meta = rmcp::model::MetaObject::new();
                         meta.0.insert("kind".to_string(), json!(row.kind));
+                        // PRD-mcphost-first-publish-real-kind requirement 5
+                        // (AC5): `stub: true` on an echo-kind tool's own
+                        // wire metadata, derived from `kind == "echo"` at
+                        // listing time -- absent (not `false`) for every
+                        // other kind, so a client/judge can tell a demo
+                        // stub from a real published tool.
+                        if row.kind == "echo" {
+                            meta.0.insert("stub".to_string(), json!(true));
+                        }
                         tools.push(
                             Tool::new(
                                 format!("{}.{}", tenant.namespace, row.name),

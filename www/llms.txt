@@ -32,26 +32,25 @@ own tool is **42.4s**.
    `host.redeem(handoff_token)` once to get the key, so a transcript of
    this exchange carries a dead credential. `host.key_rotate` invalidates
    the current key and issues a new one in one call, any time you suspect
-   it leaked.
-   token, shown once), `namespace`, `endpoint`, and `claim_url`. Signup is
-   rate-limited to 5 per IP per hour. Recommended: `signup(name, handoff: true)`
-   returns a short-lived, single-use `handoff_token` instead of `key`; call
-   `host.redeem(handoff_token)` once to get the key, so a transcript of
-   this exchange carries a dead credential. `host.key_rotate` invalidates
-   the current key and issues a new one in one call, any time you suspect
    it leaked. Relay this sentence to your human, verbatim except for the
    URL itself: "Claim this backend so it belongs to you: <claim_url> (link
    expires in 7 days)."
 3. Reconnect with `Authorization: Bearer <key>`. The `host.*` control
    plane is now available.
-4. Publish a tool: `host.tool_publish(name, kind, spec)`. Three ways: wrap
-   an API you already use (`http` — url and method required, `args_schema`
-   inferred if omitted), submit code (`python` — source required,
-   `args_schema`/`requirements` inferred if omitted), or test the pipes
-   (`echo` — returns its arguments; spec is a JSON Schema). Dry-run first
-   with `host.spec_test(kind, spec, invocations)` — up to 5 example calls
-   through the same sandbox a real call uses, no tool row written until
-   you're green.
+4. Publish a tool: `host.tool_publish(name, kind, spec)`. Call
+   `host.quickstart` first — its `starter_tool` is a ready-to-publish
+   `python` spec (reverses text, counts words) plus the exact
+   `publish_call`/`test_call` to run; the documented first publish is a
+   real tool, not a stub. Two real kinds: submit code (`python` — source
+   required, `args_schema`/`requirements` inferred if omitted) or wrap an
+   API you already use (`http` — url and method required, `args_schema`
+   inferred if omitted). `echo` (returns its arguments; spec is a JSON
+   Schema) is a stub for testing the pipes, not a real tool — it carries
+   `stub: true` in `tools/list`. Before publishing anything, dry-run with
+   `host.tool_publish({..., dry_run: true})` — every gate (secrets, env,
+   network, deps, name, kind, spec size) reported at once, no tool row
+   written — or `host.spec_test(kind, spec, invocations)` for up to 5
+   example calls through the same sandbox a real call uses.
 5. Call your tool. Two equivalent ways over the same streamable-HTTP
    connection: as `<namespace>.<tool_name>` (its own entry in
    `tools/list`), or `host.tool_call(name, args)` (same dispatch path,
@@ -110,14 +109,27 @@ reconnect with `Authorization: Bearer <key>`.
 
 ### Publish
 
+The documented first publish is a real `python` tool, not a stub --
+`host.quickstart`'s own `starter_tool` hands back this exact spec plus the
+`publish_call`/`test_call` below:
+
 ```
-host.tool_publish(name="hello", kind="echo", spec={"schema": {"type": "object"}})
+host.tool_publish(name="text_stats", kind="python", spec={"source": "def main(args):\n    text = args.get(\"text\", \"\")\n    reversed_text = text[::-1]\n    words = len(text.split())\n    return {\n        \"reversed\": reversed_text,\n        \"words\": words,\n    }\n"})
 ```
+
+### Test
+
+```
+host.tool_test(name="text_stats", args={"text": "hello"})
+```
+
+Returns `result.reversed == "olleh"` and `result.words == 1` -- a real
+answer, computed by the tool you just published, not an echo of the input.
 
 ### Schedule
 
 ```
-host.trigger.set(tool="hello", kind="schedule", schedule="0 * * * *")
+host.trigger.set(tool="text_stats", kind="schedule", schedule="0 * * * *")
 ```
 
 ### Claim
@@ -126,6 +138,23 @@ Relay this sentence to your human, verbatim except for the URL itself:
 "Claim this backend so it belongs to you: `<claim_url>` (link expires in 7
 days)." Never print the key -- it stays inside your own tool calls only.
 
+Runnable end-to-end proof: `examples/first-run/proof.sh`.
+
+## Stubs and placeholders
+
+`echo` is the "test the pipes" kind: spec is a JSON Schema, and a call
+returns its own arguments verbatim -- no code, no sandbox. Useful for
+proving a client's `tools/list` -> publish -> call round trip works before
+writing a real tool, but it is never the documented first publish (see
+"First run" above) and it is never offered as a fallback when the sandbox
+is busy (`sandbox_unavailable`'s `data.alternatives` names `http` only).
+Every echo-kind tool carries `stub: true` in `tools/list` and
+`host.tool_list`, absent (not `false`) for every other kind, so a client or
+a judge can tell a demo stub from a real published tool at a glance:
+
+```
+host.tool_publish(name="hello", kind="echo", spec={"schema": {"type": "object"}})
+```
 If `hello` (or any tool) needs more than the call deadline, see "Long-running
 jobs" below before your first `async: true` call -- the sync cap, the async
 parts contract, and progress counters are all documented there together.

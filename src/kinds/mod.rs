@@ -1521,6 +1521,17 @@ pub trait Kind: Send + Sync {
         None
     }
 
+    /// PRD-mcphost-first-publish-real-kind requirement 3: this kind's own
+    /// current estimate (in seconds) of how long a caller hitting
+    /// `sandbox_unavailable` should wait before retrying, when it can offer
+    /// one. `None` (the default, and every kind but `python` today) means
+    /// "no estimate" -- [`crate::errors::AppError::sandbox_unavailable`]'s
+    /// caller falls back to a fixed 5s in that case, same as a kind that
+    /// never overrides this at all.
+    fn queue_wait_estimate_s(&self) -> Option<u32> {
+        None
+    }
+
     /// PRD-mcphost-result-envelope-contract requirement 1 (extended by
     /// PRD-mcphost-spec-output-paths requirement 2/3 to carry each entry's
     /// optional [`Path`]): the output fields this `spec` declares (its own
