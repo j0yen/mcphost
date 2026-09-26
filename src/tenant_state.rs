@@ -22,6 +22,7 @@
 use serde_json::{Map, Value, json};
 
 use crate::db::{Db, Tenant};
+use crate::enduser::EndUser;
 use crate::errors::AppError;
 use crate::plans::Plan;
 use crate::state::AppState;
@@ -178,21 +179,47 @@ fn parse_schema(schema_json: &str) -> Result<TableSchema, AppError> {
     })
 }
 
+/// PRD-mcphost-end-user-identity requirement 5: adds `"impersonated": true`
+/// to an op's own JSON result when [`crate::enduser::resolve_end_user`]
+/// returned `impersonated` -- the "recorded on the call row" language
+/// (requirement 5) surfaced on the op's own result, since a `host.state.*`/
+/// `mcphost.state` op writes no `calls` row of its own for it to mark.
+fn with_impersonated(mut value: Value, impersonated: bool) -> Value {
+    if impersonated
+        && let Value::Object(map) = &mut value
+    {
+        map.insert("impersonated".to_string(), json!(true));
+    }
+    value
+}
+
 // ---- host.state.get/set/delete/list ------------------------------------
 
-pub async fn state_get(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+pub async fn state_get(
+    state: &AppState,
+    tenant: &Tenant,
+    args: &Value,
+    call_end_user: Option<&EndUser>,
+) -> Result<Value, AppError> {
     let key = arg_str(args, "key")?;
-    match state.db.state_kv_get(tenant.id, key.clone()).await? {
+    let (end_user_norm, impersonated) = crate::enduser::resolve_end_user(args, call_end_user)?;
+    let result = match state.db.state_kv_get(tenant.id, key.clone(), end_user_norm).await? {
         Some((value_json, updated_unix)) => {
             let value: Value = serde_json::from_str(&value_json)
                 .map_err(|e| AppError::Internal(format!("stored value_json is corrupt: {e}")))?;
-            Ok(json!({"key": key, "value": value, "updated_unix": updated_unix, "found": true}))
+            json!({"key": key, "value": value, "updated_unix": updated_unix, "found": true})
         }
-        None => Ok(json!({"key": key, "value": Value::Null, "found": false})),
-    }
+        None => json!({"key": key, "value": Value::Null, "found": false}),
+    };
+    Ok(with_impersonated(result, impersonated))
 }
 
-pub async fn state_set(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+pub async fn state_set(
+    state: &AppState,
+    tenant: &Tenant,
+    args: &Value,
+    call_end_user: Option<&EndUser>,
+) -> Result<Value, AppError> {
     let key = arg_str(args, "key")?;
     let value = args
         .get("value")
@@ -200,15 +227,17 @@ pub async fn state_set(state: &AppState, tenant: &Tenant, args: &Value) -> Resul
         .ok_or_else(|| AppError::InvalidArgs("missing required argument 'value'".to_string()))?;
     let value_json = serde_json::to_string(&value)
         .map_err(|e| AppError::Internal(format!("value serialize: {e}")))?;
+    let (end_user_norm, impersonated) = crate::enduser::resolve_end_user(args, call_end_user)?;
 
     let plan = plan_of(state, &tenant.plan)?;
+    crate::enduser::check_end_user_quota(state, tenant, &end_user_norm).await?;
 
     // A re-set of an existing key must not double-count its own prior
     // bytes against the quota (same "already_exists" carve-out
     // `control::secret_set` uses for `secrets_max`).
     let existing_bytes = state
         .db
-        .state_kv_get(tenant.id, key.clone())
+        .state_kv_get(tenant.id, key.clone(), end_user_norm.clone())
         .await?
         .map(|(v, _)| v.len() as i64)
         .unwrap_or(0);
@@ -221,31 +250,58 @@ pub async fn state_set(state: &AppState, tenant: &Tenant, args: &Value) -> Resul
     .await?;
 
     let bytes_delta = value_json.len() as i64 - existing_bytes;
-    state.db.state_kv_set(tenant.id, key.clone(), value_json).await?;
-    Ok(json!({"key": key, "set": true, "bytes_delta": bytes_delta}))
+    state
+        .db
+        .state_kv_set(tenant.id, key.clone(), end_user_norm.clone(), value_json)
+        .await?;
+    if !end_user_norm.is_empty() {
+        state
+            .db
+            .touch_end_user_activity(tenant.id, end_user_norm, crate::state::now_unix())
+            .await?;
+    }
+    Ok(with_impersonated(
+        json!({"key": key, "set": true, "bytes_delta": bytes_delta}),
+        impersonated,
+    ))
 }
 
 /// requirement 5 / AC7: `bytes_delta` is negative-of-what-was-stored (0 if
 /// the key never existed), the same "stored byte length" measure
 /// `state_bytes_used` sums -- read by `handler.rs`'s `CountingStateBackend`
 /// to log a state write's size without a second round trip.
-pub async fn state_delete(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+pub async fn state_delete(
+    state: &AppState,
+    tenant: &Tenant,
+    args: &Value,
+    call_end_user: Option<&EndUser>,
+) -> Result<Value, AppError> {
     let key = arg_str(args, "key")?;
+    let (end_user_norm, impersonated) = crate::enduser::resolve_end_user(args, call_end_user)?;
     let existing_bytes = state
         .db
-        .state_kv_get(tenant.id, key.clone())
+        .state_kv_get(tenant.id, key.clone(), end_user_norm.clone())
         .await?
         .map(|(v, _)| v.len() as i64)
         .unwrap_or(0);
-    let deleted = state.db.state_kv_delete(tenant.id, key.clone()).await?;
+    let deleted = state.db.state_kv_delete(tenant.id, key.clone(), end_user_norm).await?;
     let bytes_delta = if deleted { -existing_bytes } else { 0 };
-    Ok(json!({"key": key, "deleted": deleted, "bytes_delta": bytes_delta}))
+    Ok(with_impersonated(
+        json!({"key": key, "deleted": deleted, "bytes_delta": bytes_delta}),
+        impersonated,
+    ))
 }
 
-pub async fn state_list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+pub async fn state_list(
+    state: &AppState,
+    tenant: &Tenant,
+    args: &Value,
+    call_end_user: Option<&EndUser>,
+) -> Result<Value, AppError> {
     let prefix = arg_str_opt(args, "prefix");
     let limit = arg_i64_opt(args, "limit").unwrap_or(100).clamp(1, 1000);
-    let rows = state.db.state_kv_list(tenant.id, prefix, limit).await?;
+    let (end_user_norm, impersonated) = crate::enduser::resolve_end_user(args, call_end_user)?;
+    let rows = state.db.state_kv_list(tenant.id, prefix, limit, end_user_norm).await?;
     let keys: Vec<Value> = rows
         .into_iter()
         .map(|(key, value_json, updated_unix)| {
@@ -253,7 +309,7 @@ pub async fn state_list(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
             json!({"key": key, "value": value, "updated_unix": updated_unix})
         })
         .collect();
-    Ok(json!({"keys": keys}))
+    Ok(with_impersonated(json!({"keys": keys}), impersonated))
 }
 
 // ---- host.state.table_create/table_drop ---------------------------------
@@ -367,9 +423,15 @@ fn validate_row(schema: &TableSchema, row: &Map<String, Value>) -> Result<(), Ap
 /// inserting a row whose PK value matches an existing row replaces it
 /// (the "reads the row, writes the new value" shape the monitor user
 /// story needs) rather than accumulating duplicates.
-pub async fn state_insert(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+pub async fn state_insert(
+    state: &AppState,
+    tenant: &Tenant,
+    args: &Value,
+    call_end_user: Option<&EndUser>,
+) -> Result<Value, AppError> {
     let table = arg_str(args, "table")?;
     let (schema, primary_key) = load_table(state, tenant.id, &table).await?;
+    let (end_user_norm, impersonated) = crate::enduser::resolve_end_user(args, call_end_user)?;
     let rows_val = args
         .get("rows")
         .ok_or_else(|| AppError::InvalidArgs("missing required argument 'rows'".to_string()))?;
@@ -390,6 +452,7 @@ pub async fn state_insert(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     }
 
     let plan = plan_of(state, &tenant.plan)?;
+    crate::enduser::check_end_user_quota(state, tenant, &end_user_norm).await?;
 
     let ops = rows.len() as i64;
     if ops > plan.state_ops_per_call_max {
@@ -400,9 +463,16 @@ pub async fn state_insert(state: &AppState, tenant: &Tenant, args: &Value) -> Re
         ));
     }
 
-    // requirement 4: `state_rows_max` per table.
-    let existing_rows = state.db.state_rows_all(tenant.id, table.clone()).await?;
-    let mut row_count = existing_rows.len() as i64;
+    // requirement 4: `state_rows_max` per table (tenant-wide, across every
+    // end user -- this quota is unchanged by requirement 5's scoping).
+    let mut row_count = state.db.state_rows_all(tenant.id, table.clone()).await?.len() as i64;
+    // requirement 5/AC5: primary-key upsert matching stays WITHIN this
+    // write's own `end_user_norm` -- u1 inserting a row whose PK matches
+    // one of u2's rows must never replace u2's row.
+    let existing_rows_for_end_user = state
+        .db
+        .state_rows_for_end_user(tenant.id, table.clone(), end_user_norm.clone())
+        .await?;
 
     let mut total_new_bytes = 0i64;
     let mut total_replaced_bytes = 0i64;
@@ -411,13 +481,14 @@ pub async fn state_insert(state: &AppState, tenant: &Tenant, args: &Value) -> Re
         let row_json = serde_json::to_string(&row)
             .map_err(|e| AppError::Internal(format!("row serialize: {e}")))?;
 
-        // Upsert-on-primary-key: delete any existing row with the same PK
-        // value first (net row-count effect is zero for a replace).
+        // Upsert-on-primary-key: delete any existing row (this write's own
+        // end user's) with the same PK value first (net row-count effect
+        // is zero for a replace).
         if let Some(pk) = &primary_key
             && let Some(pk_value) = row.get(pk)
         {
             let mut to_delete = Vec::new();
-            for (id, existing_json) in &existing_rows {
+            for (id, existing_json) in &existing_rows_for_end_user {
                 if let Ok(existing) = serde_json::from_str::<Value>(existing_json)
                     && existing.get(pk) == Some(pk_value)
                 {
@@ -439,17 +510,29 @@ pub async fn state_insert(state: &AppState, tenant: &Tenant, args: &Value) -> Re
         }
         total_new_bytes += row_json.len() as i64;
         row_count += 1;
-        let id = state.db.state_row_insert(tenant.id, table.clone(), row_json).await?;
+        let id = state
+            .db
+            .state_row_insert(tenant.id, table.clone(), row_json, end_user_norm.clone())
+            .await?;
         inserted_ids.push(id);
     }
 
     check_bytes_quota(&state.db, tenant.id, plan, total_new_bytes).await?;
+    if !end_user_norm.is_empty() {
+        state
+            .db
+            .touch_end_user_activity(tenant.id, end_user_norm, crate::state::now_unix())
+            .await?;
+    }
 
     // requirement 5 / AC7: net byte change, so a run of pure replaces (same
     // PK, similar-sized row) reports close to 0 rather than double-counting
     // the bytes the upsert just freed.
     let bytes_delta = total_new_bytes - total_replaced_bytes;
-    Ok(json!({"table": table, "inserted": inserted_ids.len(), "ids": inserted_ids, "bytes_delta": bytes_delta}))
+    Ok(with_impersonated(
+        json!({"table": table, "inserted": inserted_ids.len(), "ids": inserted_ids, "bytes_delta": bytes_delta}),
+        impersonated,
+    ))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -602,14 +685,25 @@ fn parse_order_by(input: &str) -> (String, bool) {
     (input.to_string(), false)
 }
 
-pub async fn state_query(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+/// requirement 5/AC6: `end_user` (`"self" | "<subject>" | null`) is an
+/// implicit `AND end_user_subject = ?` predicate, pushed down to SQL via
+/// [`crate::db::Db::state_rows_for_end_user`] (the composite index) rather
+/// than fetched-then-filtered like the free-text `where` grammar below it
+/// -- the one piece of `host.state.query` that runs as real, indexed SQL.
+pub async fn state_query(
+    state: &AppState,
+    tenant: &Tenant,
+    args: &Value,
+    call_end_user: Option<&EndUser>,
+) -> Result<Value, AppError> {
     let table = arg_str(args, "table")?;
     load_table(state, tenant.id, &table).await?; // 404s if undeclared
+    let (end_user_norm, impersonated) = crate::enduser::resolve_end_user(args, call_end_user)?;
     let clauses = match arg_str_opt(args, "where") {
         Some(w) => parse_filter(&w)?,
         None => Vec::new(),
     };
-    let rows = state.db.state_rows_all(tenant.id, table.clone()).await?;
+    let rows = state.db.state_rows_for_end_user(tenant.id, table.clone(), end_user_norm).await?;
     let mut matched: Vec<Value> = rows
         .into_iter()
         .filter_map(|(_, row_json)| serde_json::from_str::<Value>(&row_json).ok())
@@ -629,21 +723,23 @@ pub async fn state_query(state: &AppState, tenant: &Tenant, args: &Value) -> Res
         matched.truncate(limit.max(0) as usize);
     }
 
-    Ok(json!({"table": table, "rows": matched}))
+    Ok(with_impersonated(json!({"table": table, "rows": matched}), impersonated))
 }
 
 pub async fn state_delete_rows(
     state: &AppState,
     tenant: &Tenant,
     args: &Value,
+    call_end_user: Option<&EndUser>,
 ) -> Result<Value, AppError> {
     let table = arg_str(args, "table")?;
     load_table(state, tenant.id, &table).await?;
+    let (end_user_norm, impersonated) = crate::enduser::resolve_end_user(args, call_end_user)?;
     let clauses = match arg_str_opt(args, "where") {
         Some(w) => parse_filter(&w)?,
         None => Vec::new(),
     };
-    let rows = state.db.state_rows_all(tenant.id, table.clone()).await?;
+    let rows = state.db.state_rows_for_end_user(tenant.id, table.clone(), end_user_norm).await?;
     let mut freed_bytes = 0i64;
     let ids: Vec<i64> = rows
         .into_iter()
@@ -659,7 +755,10 @@ pub async fn state_delete_rows(
         .collect();
     let deleted = state.db.state_rows_delete_by_ids(tenant.id, table.clone(), ids).await?;
     // requirement 5 / AC7.
-    Ok(json!({"table": table, "deleted": deleted, "bytes_delta": -freed_bytes}))
+    Ok(with_impersonated(
+        json!({"table": table, "deleted": deleted, "bytes_delta": -freed_bytes}),
+        impersonated,
+    ))
 }
 
 #[cfg(test)]

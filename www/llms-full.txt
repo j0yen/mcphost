@@ -672,6 +672,18 @@ Result envelope contract: an optional `outputs` array of field names (`"outputs"
 
 `mcphost.state.get(key, default=None)` returns `default` when the key was never set; every other function takes the same arguments as its `host.state.*` counterpart (`table_create(name, schema, primary_key=None)`, `query(table, where=None, order_by=None, limit=None)`, and so on) and raises `mcphost.state.StateError` (with `.code`/`.data`) on a quota or schema violation rather than returning an error value. A call's `mcphost.state` operations are attributed to that call and see its own writes immediately; there is no state visible across tenants.
 
+## mcphost.docs (read a stored document)
+
+`import mcphost` and call `mcphost.docs.get(id)` (or `mcphost.docs.get(name="a.md")`) to read a document from this tenant's `host.docs.*` store and get back its extracted plain text directly -- no `host.tool_call` round trip. `MCPHOST_DOCS_ENDPOINT` is set in the sandboxed process's environment whenever this channel is available, so a tool can check for it before importing:
+
+```json
+{
+  "source": "import os, mcphost\ndef main(args):\n    if not os.environ.get(\"MCPHOST_DOCS_ENDPOINT\"):\n        return {\"error\": \"docs unavailable\"}\n    text = mcphost.docs.get(args[\"id\"])\n    return {\"text\": text}\n"
+}
+```
+
+A failure (unknown id/name) raises `mcphost.docs.DocsError` (`.code`/`.data`, e.g. `error_code: docs_not_found`). `http`/`wasm` kinds don't get this channel; `python` reaches it the same `network: none` way `mcphost.state`/`mcphost.table` already do.
+
 ## mcphost.call (call another tool)
 
 `import mcphost` and call `mcphost.call(name, args, timeout_s=None)` to run another tool in this same tenant as a child call, synchronously, and get its result back -- reachable with `network: none`, over the same channel `mcphost.state` uses:

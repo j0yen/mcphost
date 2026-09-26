@@ -8,6 +8,14 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 
+#[path = "runenvelope_ac1_call_and_tool_run_parity.rs"]
+mod runenvelope_ac1_call_and_tool_run_parity;
+#[path = "runenvelope_ac2_no_declared_outputs_raw_payload.rs"]
+mod runenvelope_ac2_no_declared_outputs_raw_payload;
+#[path = "runenvelope_ac3_descriptor_and_decision_table_name_envelope.rs"]
+mod runenvelope_ac3_descriptor_and_decision_table_name_envelope;
+#[path = "runenvelope_ac4_no_calls_row_with_payload.rs"]
+mod runenvelope_ac4_no_calls_row_with_payload;
 #[path = "runs_ac01_async_job_runs_progress_and_result.rs"]
 mod runs_ac01_async_job_runs_progress_and_result;
 #[path = "runs_ac02_job_max_s_timeout.rs"]

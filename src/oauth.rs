@@ -308,6 +308,11 @@ impl JwksCache {
 pub struct OauthCaller {
     pub tenant_id: i64,
     pub subject: String,
+    /// PRD-mcphost-end-user-identity requirement 1: the registered
+    /// issuer's own URL (`issuer_row.issuer`) -- the JWT's own `iss` claim
+    /// re-read from the row a registered issuer already matched, not a
+    /// second parse of the token.
+    pub issuer: String,
 }
 
 /// The JWT's `payload` segment, decoded (base64url) but NOT signature
@@ -455,7 +460,7 @@ pub async fn validate_bearer(state: &AppState, token: &str) -> Result<OauthCalle
         return Err(AppError::InvalidToken("malformed"));
     };
 
-    Ok(OauthCaller { tenant_id: issuer_row.tenant_id, subject: sub })
+    Ok(OauthCaller { tenant_id: issuer_row.tenant_id, subject: sub, issuer: issuer_row.issuer })
 }
 
 // ---- host.oauth.* tenant tools --------------------------------------------

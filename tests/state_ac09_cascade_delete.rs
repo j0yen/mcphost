@@ -46,7 +46,7 @@ async fn deleting_a_tenant_cascades_its_state_kv_and_table_rows() {
         server
             .state
             .db
-            .state_kv_get(tenant.id, "a".to_string())
+            .state_kv_get(tenant.id, "a".to_string(), String::new())
             .await
             .unwrap()
             .is_some(),
@@ -86,7 +86,7 @@ async fn deleting_a_tenant_cascades_its_state_kv_and_table_rows() {
         server
             .state
             .db
-            .state_kv_get(tenant.id, "a".to_string())
+            .state_kv_get(tenant.id, "a".to_string(), String::new())
             .await
             .unwrap()
             .is_none(),

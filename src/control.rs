@@ -1232,6 +1232,18 @@ pub async fn secret_set(
     let name = arg_str(args, "name")?;
     let value = arg_str(args, "value")?;
 
+    // PRD-mcphost-end-user-identity requirement 2: the reserved secret name
+    // `assertion_secret_rotate` alone writes to -- a tenant setting this
+    // name directly would let it choose (and therefore know) its own
+    // assertion secret, defeating "the secret value appears in neither
+    // logs nor host.secret_list output" (AC11: only a rotation the host
+    // itself generated is ever trustworthy as unguessable).
+    if name == crate::enduser::ASSERTION_SECRET_NAME {
+        return Err(AppError::InvalidArgs(format!(
+            "name: '{name}' is reserved; use host.enduser.assertion_secret_rotate instead"
+        )));
+    }
+
     // PRD-mcphost-python-kind-plain-env requirement 3 (AC4), the symmetric
     // direction of `tool_publish`'s own env/secret collision check above: a
     // new secret name must not collide with any of this tenant's

@@ -1256,6 +1256,32 @@ impl Kind for HttpKind {
             header_map.insert(header_name, header_value);
         }
 
+        // PRD-mcphost-end-user-identity requirement 3: an http-kind call
+        // carrying a verified end user forwards it to the upstream request
+        // as `X-MCPHost-End-User` (plus `-Issuer` for an OAuth-verified
+        // one) -- absent identity means the headers are absent too, never
+        // sent empty. A malformed subject/issuer (non-ASCII or a control
+        // character `HeaderValue` rejects) degrades to omitting just that
+        // header rather than failing the whole call -- the same
+        // best-effort posture this kind already takes for other derived
+        // headers it builds rather than the caller's own template.
+        if let Some(end_user) = &ctx.end_user {
+            if let Ok(value) = reqwest::header::HeaderValue::from_str(&end_user.subject) {
+                header_map.insert(
+                    reqwest::header::HeaderName::from_static("x-mcphost-end-user"),
+                    value,
+                );
+            }
+            if let Some(issuer) = &end_user.issuer
+                && let Ok(value) = reqwest::header::HeaderValue::from_str(issuer)
+            {
+                header_map.insert(
+                    reqwest::header::HeaderName::from_static("x-mcphost-end-user-issuer"),
+                    value,
+                );
+            }
+        }
+
         let mut query_pairs: Vec<(String, String)> = Vec::with_capacity(parsed.query.len());
         for (key, template) in &parsed.query {
             let field = format!("query.{key}");

@@ -1118,6 +1118,14 @@ pub struct CallCtx {
     /// `concurrent_calls_per_tenant`'s `usize::MAX` already uses for the
     /// same class of context.
     pub egress_allowed: bool,
+    /// PRD-mcphost-end-user-identity requirement 1: the verified end user
+    /// (if any) this call carries -- from the bearer token's `sub`/`iss`
+    /// when the OAuth PRD validated it, or a verified `end_user_assertion`
+    /// for a key-based caller. `None` for every call with no verified
+    /// identity (an ordinary key-based call with no assertion, or any test
+    /// context that hasn't wired one in) -- never fabricated (Goals: "an
+    /// unverified claim is absent, not present").
+    pub end_user: Option<crate::enduser::EndUser>,
 }
 
 impl CallCtx {
@@ -1144,6 +1152,7 @@ impl CallCtx {
             progress: Arc::new(NullProgress),
             cancel_pid: Arc::new(Mutex::new(None)),
             egress_allowed: true,
+            end_user: None,
         }
     }
 
@@ -1317,6 +1326,11 @@ pub async fn compose_call(
         // still that tenant's own plan, inherited rather than re-derived
         // since this call site has no `Tenant` to resolve it from.
         egress_allowed: ctx.egress_allowed,
+        // PRD-mcphost-end-user-identity: composition stays inside one
+        // tenant AND one call's own identity -- same reasoning as
+        // `state`/`table`/`docs` above -- so the child call carries
+        // whatever end user (if any) the parent call already resolved.
+        end_user: ctx.end_user.clone(),
     };
 
     kind.call(&row.spec, args, &child_ctx).await

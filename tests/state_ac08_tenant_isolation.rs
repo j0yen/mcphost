@@ -60,7 +60,7 @@ async fn a_tenants_state_is_invisible_to_another_tenant() {
         server
             .state
             .db
-            .state_kv_get(tenant_a.id, "secret".to_string())
+            .state_kv_get(tenant_a.id, "secret".to_string(), String::new())
             .await
             .unwrap()
             .is_some(),

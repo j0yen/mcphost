@@ -1,108 +1,115 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-docs-semantic-search.md",
-  "intent_slug": "mcphost-docs-semantic-search",
-  "root_motivation": "Grounding (PRD, visions/mcphost-data-layer-first-slice.md wwhtbt leaf 2; rag_indexer 61.8% lowest of the panel, wiki 2026-09-23-mcphost-market-test-plan; 'RAG index refresh' recurring in three independent discovery panels, projects/mcp-host.md notes 2026-09-02; no index anywhere in src/ before this PRD). PRD-mcphost-document-store gave every document an identity, a version, and a per-tenant change watermark, but the only way to search that text today is a tool author hand-rolling an embeddings pipeline inside a python-kind tool -- fetching an embeddings API through the egress proxy on every query, keeping vectors in host.state rows, and re-indexing by hand on every change. That is the setup tax the persona reports, and it is where staleness bugs live: nothing on the host can tell a tool 'your index is 40 seconds behind'. A search primitive with self-refresh and visible lag removes the pipeline and the guessing.",
-  "user_persona": "Four (PRD User stories): (1) the prototyper's agent, waiting for lag_seconds == 0 then searching; (2) the tool author, calling search then answering -- no vectors in state, no embeddings key unless wanted; (3) the tenant with a provider, switching to embeddings via index_config; (4) the operator, whose egress proxy sees the indexer's provider calls like any tool egress.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-end-user-identity.md",
+  "intent_slug": "mcphost-end-user-identity",
+  "root_motivation": "Grounding (PRD: opportunity -- visions/mcphost-end-user-auth.md wwhtbt leaf 3; ICP rank 2 pain per-end-user auth passthrough, modelcontextprotocol/servers#2173 via wiki 2026-09-23): every call on mcphost is the tenant's -- `calls` (migration 0001) has tenant and tool, no caller; a python-kind tool receives the `MCPHOST_*` environment contract with nothing about who asked; `host.state` rows (0011) are keyed by tenant only. A tool that must answer 'show my invoices' for a thousand different humans cannot exist without the tool author building identity, storage partitioning, and a trust path from scratch. Zero multi-user tools exist on the host today.",
+  "user_persona": "Four (PRD User stories): (1) a SaaS PM (tenant) whose tool reads a logged-in user's own rows via `host.state.list {end_user: \"self\"}`, no per-user tools/keys; (2) an agent operator with OAuth, whose login token becomes the end-user identity inside every tool it calls; (3) a python-kind tool author, who adds two env vars and one argument, nothing else; (4) an auditor, who sees which end user, if any, each call served.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 12
+    "target": 11
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given three documents put and 10 s elapsed, When host.docs.status runs, Then index.indexed_watermark equals the documents' watermark, lag_seconds is 0, and chunks > 0.",
-      "test": "tests/docsearch_ac01_status_reports_watermark_lag_and_chunks.rs -- calls docs_index::tick_once directly instead of sleeping wall-clock 10s, the same 'expose a single deterministic tick' shape triggers::tick_once/retention::prune_sync already use."
+      "description": "Given a bearer token with sub=u1 validated by the OAuth PRD, When a python-kind tool runs, Then its environment has MCPHOST_END_USER_ID=u1, MCPHOST_END_USER_METHOD=oauth, and the calls row has end_user_subject=u1.",
+      "test": "tests/enduser_ac01_oauth_python_env_and_calls_row.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a document containing the phrase \"refunds are processed within 14 days\" in its third paragraph, When search {query: \"refund window\", k: 3} runs in lexical mode, Then the top result names that document with the passage text and an offset inside the third paragraph.",
-      "test": "tests/docsearch_ac02_lexical_search_returns_passage_and_offset.rs"
+      "description": "Given a key-based call with a valid end_user_assertion for sub=u2, When an http-kind tool runs, Then the upstream request carries X-MCPHost-End-User: u2 and the call row records method=assertion.",
+      "test": "tests/enduser_ac02_assertion_http_headers_and_calls_row.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a document is updated to version 2 with the phrase removed, When the indexer runs, Then the old chunks are gone, the search no longer returns it, and indexed_watermark advanced.",
-      "test": "tests/docsearch_ac03_version_update_drops_old_chunks.rs"
+      "description": "Given an assertion signed with the wrong secret or with exp in the past, When the call runs, Then it is rejected with end_user_assertion_invalid and no tool executes.",
+      "test": "tests/enduser_ac03_invalid_assertion_rejected.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a document is deleted, When the indexer runs, Then its chunks are removed and status.chunks decreases accordingly.",
-      "test": "tests/docsearch_ac04_delete_removes_chunks.rs"
+      "description": "Given no identity, When a python-kind tool runs, Then MCPHOST_END_USER_ID is unset (not empty) and the call row's end-user columns are null.",
+      "test": "tests/enduser_ac04_no_identity_env_unset_and_calls_row_null.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given index_config {provider: \"openai-compatible\", endpoint: <test server>, model: \"m\", secret: \"EMBED_KEY\"}, When the rebuild completes, Then status.index.mode is \"embeddings\", the test server received one embeddings request per chunk batch with the bearer from the tenant secret, and search ranks by cosine.",
-      "test": "tests/docsearch_ac05_embeddings_mode_ranks_by_cosine.rs -- a wiremock provider with a deterministic fake embedder (apple/banana -> orthogonal vectors)."
+      "description": "Given u1 writes host.state.set {key: \"k\", end_user: \"self\"} and u2 writes the same key, When each reads with end_user: \"self\", Then each sees only its own value, and a read without end_user sees the tenant-wide value or null.",
+      "test": "tests/enduser_ac05_state_set_get_end_user_self_isolation.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given embeddings mode and the provider returns 503, When search runs, Then results come from the lexical index and the response has index.mode: \"lexical-fallback\".",
-      "test": "tests/docsearch_ac06_provider_503_falls_back_to_lexical.rs"
+      "description": "Given host.state.query with end_user: \"self\" for u1 over 1,000 rows of which 10 are u1's, When it runs, Then exactly 10 rows return and the query plan uses the composite index (asserted via EXPLAIN QUERY PLAN in the test).",
+      "test": "tests/enduser_ac06_state_query_end_user_self_scales_via_index.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given docs_chunks_max: 100 and documents that would produce 120 chunks, When the indexer runs, Then it stops at 100, status reports quota_chunks_reached: true, and search still answers over the indexed 100.",
-      "test": "tests/docsearch_ac07_chunk_quota_stops_indexer.rs"
+      "description": "Given no end user on the call, When host.state.get {end_user: \"self\"} runs, Then it errors end_user_required; with an explicit subject it succeeds and the call row is marked impersonated.",
+      "test": "tests/enduser_ac07_end_user_required_and_explicit_impersonation.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given a query from tenant A, When it runs, Then no chunk of tenant B is ever returned (test seeds identical text in both).",
-      "test": "tests/docsearch_ac08_cross_tenant_isolation.rs"
+      "description": "Given a call that has an end user u1, When the tool passes end_user: \"u9\" explicitly, Then it is rejected (explicit subject only allowed when the call's own identity is absent).",
+      "test": "tests/enduser_ac08_explicit_subject_forbidden_with_own_identity.rs"
     },
     {
       "id": "AC9",
       "level": "SHOULD",
-      "description": "Given the fixture corpus and 30 gold questions, When the hit-rate test runs in lexical mode, Then top-5 hit rate >= 0.9.",
-      "test": "tests/docsearch_ac09_fixture_corpus_hit_rate.rs against tests/fixtures/docsearch/{corpus.json,gold_questions.json} (20 documents, 30 questions)."
+      "description": "Given plan end_users_max=100, When the 101st distinct subject writes state within 30 days, Then the write is rejected with quota_end_users and reads still work.",
+      "test": "tests/enduser_ac09_quota_end_users.rs"
     },
     {
       "id": "AC10",
       "level": "SHOULD",
-      "description": "Given reindex {} on a tenant with 5 documents, When the indexer runs, Then all five are re-chunked and indexed_watermark ends at the current watermark.",
-      "test": "tests/docsearch_ac10_reindex_forces_all_documents.rs"
+      "description": "Given an OAuth caller, When host.enduser.whoami runs, Then it returns {subject, issuer, method, verified_at}; without identity it returns null.",
+      "test": "tests/enduser_ac10_whoami.rs"
     },
     {
       "id": "AC11",
       "level": "MUST",
-      "description": "Given 10 000 chunks, When 100 lexical searches run, Then p95 < 50 ms.",
-      "test": "tests/docsearch_ac11_lexical_search_p95_latency.rs -- against Db::doc_chunks_bulk_insert_for_test's one-transaction 10k-chunk fixture, same shape banlist_ac10_cache_lookup_latency_at_scale.rs's bulk_insert_addr_bans_for_test already uses."
+      "description": "Given host.enduser.assertion_secret_rotate, When called twice, Then assertions signed with the first secret are rejected after the second call and the secret value appears in neither logs nor host.secret_list output.",
+      "test": "tests/enduser_ac11_assertion_secret_rotate_invalidates_and_never_leaks.rs"
     },
     {
       "id": "AC12",
       "level": "MUST",
-      "description": "Given prod after land, When the operator tenant puts a document on mcphost-1 and searches a phrase from it within 60 s, Then the passage returns with lag_seconds reported (Live).",
-      "test": "deferred -- operator-provisioned: needs a real put/search against production mcphost-1 within 60s of a deploy and live operator access this coder dispatch does not have."
+      "description": "Given prod after land, When the operator tenant publishes a python tool that echoes MCPHOST_END_USER_ID and calls it with two different assertions, Then the two calls return the two subjects and host.runs.list shows both (Live; evidence: mcphost-1 healthz version after deploy plus the call transcript, saved under docs/receipts/<slug>.md).",
+      "test": "deferred: operator-provisioned -- needs a real published tool call against production after deploy; no branch-local test can prove a live two-subject call transcript"
     }
   ],
   "scope": [
-    "migrations/0044_docs_index.sql (new): doc_chunks (paragraph windows with document-absolute offset/len, an optional little-endian f32 vector, denormalized name), a standalone (not content-linked) FTS5 doc_chunks_fts (porter unicode61 tokenizer), and doc_index_state (one row per tenant: indexed_watermark, provider config, rebuilding/quota_chunks_reached flags).",
-    "src/docs_index.rs (new): chunk_text (paragraph-greedy packing into <=800-char windows, a 100-char text-prefix overlap that never shifts a chunk's own offset), sanitize_fts_query (per-term OR, quoted), encode_vector/decode_vector/cosine, call_embeddings_provider (POST endpoint with the tenant secret as bearer, reusing AppState::http_client), tick_once/tick_tenant (the 10s indexer: replace-atomically, per-document chunk-quota truncation that stops the tick, watermark advance), spawn_scheduler.",
-    "src/docs.rs: doc_status extended with an index block; new doc_search (lexical BM25 by default, embeddings+cosine when configured, query-time provider-failure fallback to lexical), doc_index_config, doc_reindex.",
-    "src/db.rs: documents_pending_batch/count/oldest_updated_at, tenants_with_pending_docs, doc_index_state_get/ensure/configure/rewind_watermark/advance, doc_chunks_delete_for_document/count/insert_batch/search_lexical/with_vectors, doc_chunks_bulk_insert_for_test (AC11's fixture), migration 0044 wiring.",
-    "src/plans.rs: docs_chunks_max knob (free 10,000, pro 50,000).",
-    "src/handler.rs: host.docs.search/index_config/reindex tool registration and dispatch alongside the existing host.docs.* tools; host.docs.status's description updated for the new index block.",
-    "src/main.rs: docs_index::spawn_scheduler started alongside every other background task.",
-    "Cargo.toml/Cargo.lock: version bump only -- FTS5 needed no new dependency or feature flag (rusqlite's bundled SQLite build already compiles -DSQLITE_ENABLE_FTS5 unconditionally; an initial belief that a cargo `fts5` feature existed was wrong and reverted, see hard_constraints.additional).",
-    "tests/fixtures/docsearch/{corpus.json,gold_questions.json} (new, AC9's own repo fixture) plus a docsearch-fixtures proof lane in agent/proof-lanes.toml routing them, same shape the pre-existing wasm-fixtures lane already uses.",
-    "tests/docsearch_ac0[1-9]_*.rs, tests/docsearch_ac1[01]_*.rs (new, AC12 deferred); tests/ac01_unauthenticated_lists_signup.rs, tests/compat_ac01_ac02_ac03_cache_fields.rs, tests/compat_ac04_ac05_admin_and_tenant_cache_fields.rs, tests/compat_ac11_ac12_claude_sdk_replay.rs, tests/sessionkey_ac02_ac03_discovery_shape.rs updated for the three new host.docs.* tools' effect on their pinned anonymous-tools/list counts; tests/lanecov_ac04_existing_lanes_unchanged.rs's added-lanes ledger updated for docsearch-fixtures; contracts/host-tools.v1.json and www/llms.txt regenerated (mcphost contract dump, mcphost llms-txt); tests/suite_core_0[7-8].rs regenerated by scripts/gen-test-suites.sh to include the new files.",
-    "CHANGELOG.md: new v0.60.10 entry."
+    "migrations/0042_end_user_identity.sql (new): calls gains end_user_subject/end_user_issuer/end_user_method (nullable) plus idx_calls_tenant_end_user (requirement 4); tenant_state_kv's primary key is rebuilt to (tenant_id, key, end_user_subject) with a '' tenant-wide sentinel (SQLite PRIMARY KEY treats two NULLs as distinct, which would defeat the one-tenant-wide-row invariant, so '' is used instead of NULL -- '' is never a real subject, every real one comes from a JWT sub or a signed assertion's sub); tenant_state_rows gains the same end_user_subject TEXT NOT NULL DEFAULT '' column plus a composite index (tenant_id, table_name, end_user_subject) for AC6's pushed-down predicate; new tenant_end_user_activity table (tenant_id, end_user_subject, last_write_unix) for the AC9 quota count.",
+    "src/enduser.rs (new): EndUser{subject, issuer, method, verified_at} and EndUserMethod{Oauth, Assertion} (requirement 1); ASSERTION_SECRET_NAME (the reserved host.secret_set-blocked tenant secret name); verify_assertion() (HS256 decode, exp <= iat + 3600, exp not in the past, every failure -> end_user_assertion_invalid, never a fallback to anonymous -- AC2/AC3); assertion_secret_rotate() (host.enduser.assertion_secret_rotate -- AC11); whoami() (host.enduser.whoami -- AC10); resolve_end_user() (the end_user: \"self\" | \"<subject>\" | null argument shared by every host.state.* op -- self resolves the call's own identity or errors end_user_required, an explicit subject is only accepted when the call carries no identity of its own or errors end_user_explicit_forbidden and marks impersonated -- AC5/AC7/AC8); check_end_user_quota() (plan.end_users_max over the trailing 30 days -- AC9).",
+    "src/oauth.rs: OauthCaller gains an issuer field (the registered issuer row's own URL, re-read from the row a registered issuer already matched) so validate_bearer's caller can populate EndUser.issuer without a second token parse.",
+    "src/kinds/mod.rs: CallCtx gains an end_user: Option<EndUser> field, threaded through every CallCtx construction site.",
+    "src/kinds/python.rs: end_user travels inside the existing per-call JSON payload (payload_end_user()/call_payload()), not spawn-time environment -- the python kind runs a persistent worker process shared across calls, so setting MCPHOST_END_USER_* once at spawn would leak one caller's identity into a later, different caller's call; the sandboxed run_one() sets/restores MCPHOST_END_USER_ID/ISSUER/METHOD around each individual call instead (requirement 3, AC1/AC4).",
+    "src/kinds/http.rs: ctx.end_user, when present, adds X-MCPHost-End-User (subject) and X-MCPHost-End-User-Issuer (when set) headers to the upstream request (requirement 3, AC2).",
+    "src/tenant_state.rs: state_get/state_set/state_delete/state_list/state_insert/state_query/state_delete_rows all gain an end_user: Option<&EndUser> parameter, resolve the end_user argument via enduser::resolve_end_user, enforce the quota on writes via enduser::check_end_user_quota, and pass the resolved subject down to db.rs's scoped queries (requirement 5, AC5-AC9).",
+    "src/db.rs: state_kv_get/state_kv_set/state_kv_delete/state_kv_list gain an end_user_subject parameter (matching the '' tenant-wide sentinel); state_rows_for_end_user/explain_state_rows_for_end_user_for_test (AC6's EXPLAIN QUERY PLAN assertion); end_user_active_since/count_distinct_end_users_since/touch_end_user_activity (AC9's quota bookkeeping); record_call_attributed_with_end_user (writes end_user_subject/end_user_issuer/end_user_method plus an impersonated flag onto the calls row); last_call_end_user_for_test.",
+    "src/handler.rs: resolves Caller.end_user before dispatch -- from the validated OAuth bearer's sub/iss (method: oauth) or a verified end_user_assertion argument (method: assertion, argument stripped from args before schema validation/dispatch so it never reaches a tool); an assertion verification failure short-circuits the whole call before any dispatch arm runs (AC3); end_user threaded through call_published_tool/call_shared_tool/dispatch_tenant_tool and into every host.state.*/host.enduser.* dispatch arm; host.enduser.whoami/host.enduser.assertion_secret_rotate tool registration; end_user_arg_schema() shared by every host.state.*/host.table.* tool schema.",
+    "src/control.rs: secret_set's existing name-collision guard extended to reject a direct host.secret_set write to enduser::ASSERTION_SECRET_NAME (only assertion_secret_rotate may set it) -- host.secret_list still reports the name exists, never its value (AC11).",
+    "src/plans.rs: Plan.end_users_max (free 100, pro 10,000 -- requirement 6).",
+    "src/errors.rs: end_user_required/end_user_explicit_forbidden/quota_end_users mapped to INVALID_PARAMS, end_user_assertion_invalid mapped to INVALID_REQUEST.",
+    "src/runs.rs, src/export.rs, src/webhooks.rs: call sites of the now end-user-scoped state_kv_get/state_kv_delete/state_kv_list/state_set updated to pass the tenant-wide '' sentinel (these paths never carry an end user of their own).",
+    "src/lib.rs: `pub mod enduser;`.",
+    "tests/enduser_ac0[1-9]_*.rs, tests/enduser_ac1[01]_*.rs (new, eleven files, one per non-deferred AC); scripts/gen-test-suites.sh / tests/suite_*.rs regenerated to include them.",
+    "agent/test-map.json: ac_test_map repointed to this PRD's enduser prefix, status-feed's own map archived under ac_test_map_by_prefix.statusfeed.",
+    "Cargo.toml/Cargo.lock: patch version bump 0.60.14 -> 0.60.15; plugin/.claude-plugin/plugin.json and plugin/.mcp.json mirrored to match (known drift class -- see the alerting-webhook ambiguities_resolved entry below); CHANGELOG.md: new v0.60.15 entry.",
+    "src/enduser.rs's own unit-test AppState literal: fixed to include status_probe_override (a rebase-leftover gap left by PRD-mcphost-status-feed landing after this branch's implementation was written -- see the new ambiguities_resolved entry below)."
   ],
   "non_goals": [
-    "Cross-tenant or public search -- PRD's own Non-goals; every doc_chunks/doc_chunks_fts query is tenant-scoped server-side, proven against identical seeded text in two tenants (AC8).",
-    "Reranking with an LLM -- PRD's own Non-goals; a tool can layer that on top of host.docs.search's own ranked results.",
-    "Iceberg or an external vector database -- PRD's own Non-goals; vectors are little-endian f32 blobs in doc_chunks, brute-force cosine in Rust, capped by the same docs_chunks_max quota that bounds lexical search's own working set.",
-    "Hybrid ranking (BM25 + cosine, reciprocal rank fusion) -- P2 requirement 8, not in this dispatch's non-deferred AC list.",
-    "Real allowlist/DNS-resolution egress plumbing for the embeddings provider call (the kind::http-style hickory-resolver IP-allowlist machinery) -- the PRD's technical considerations say the indexer 'reuses the http-kind outbound client and the egress policy', but no AC in this dispatch's list tests allowlist enforcement itself, so the provider call is a plain reqwest POST through AppState::http_client with the tenant secret as bearer, not routed through kinds::http's own network_policy allowlist checks."
+    "Storing end-user credentials for upstream services -- PRD Non-goals; that is the token vault PRD's job.",
+    "Listing, auditing, or revoking end users -- PRD Non-goals; a control-plane PRD's job.",
+    "Authorization rules between end users -- PRD Non-goals; a tool's own business, not the host's.",
+    "Whether impersonated (AC7/AC8's explicit-subject path) requires a Pro plan -- PRD Open question, owner Joe, due 'at build'; left ungated by plan since no AC exercises a plan check on it and check_end_user_quota already gates the one place a plan tier matters (distinct end-user count, requirement 6/AC9) -- adding a second, unrequested gate was judged out of scope for this slice.",
+    "host.runs.get/host.runs.list surfacing end_user_subject/end_user_issuer on their own response shape -- requirement 4 names this, but no AC in the PRD's own eleven-item list exercises it (AC1/AC2/AC4 all assert on the calls row directly, not a host.runs.* read of it), so it was left out of this build's scope per this card's own established 'the PRD's own AC list is the actual contract' precedent (see the wasm-kind/status-feed entries below)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -111,39 +118,38 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "fts5_needed_no_new_dependency_or_feature": "The PRD's own technical considerations flagged 'if absent, enable the feature flag in the SQLite dependency' as a risk to check. rusqlite 0.32 has no `fts5` cargo feature at all (confirmed by reading libsqlite3-sys 0.30.1's build.rs on the runner box); its `bundled` feature already compiles SQLite with -DSQLITE_ENABLE_FTS5 unconditionally. An initial `features = [\"bundled\", \"fts5\"]` edit failed cargo's own feature resolution and was reverted before the first commit landed.",
-      "chunk_offset_never_shifts_backward_for_the_100_char_overlap": "requirement 2 names both '<=800-character windows' and 'a 100-character overlap', which naively conflict with AC2's own 'an offset inside the third paragraph' once a chunk boundary's start is shifted back into the PREVIOUS paragraph's tail. Resolved by defining `offset` as always pinned to the real document-absolute start of the paragraph that opens a chunk (never shifted back), while the overlap is realized as up to 100 characters of the PREVIOUS chunk's own final text prepended to `text` (folded into `len`, not `offset`) -- a paragraph long enough to exceed the whole window budget on its own is the one case that gets a true, offset-shifting overlap instead, since there's no paragraph boundary to anchor to.",
-      "search_embeds_the_query_too_not_just_indexed_chunks": "requirement 3's 'cosine over the tenant's vectors ... with a lexical fallback when the provider call fails' only makes sense if a query string has its own vector to compare against -- so `docs::doc_search` calls the SAME embeddings provider once per query (not just once per document at index time) when embeddings mode is configured, and AC6's 503 scenario is specifically a SEARCH-time provider failure, not an indexing-time one (indexing already degrades to lexical-only chunks on its own provider failure, proven by the same AC6 test).",
-      "chunk_quota_truncates_the_current_document_and_stops_the_tick": "AC7 names an exact stopping point ('stops at 100') with no PRD text on HOW a partial document is handled. Resolved as: truncate the CURRENT document's own chunk batch to whatever room remains under `docs_chunks_max`, insert only that many, mark `quota_chunks_reached: true`, and stop the whole tick without advancing the watermark past that document -- the next tick deletes that same partial set and recomputes an identical truncation (proven idempotent by AC7's own second-tick assertion), rather than skipping to try a smaller later document or accumulating across ticks.",
-      "porter_tokenizer_added_after_ac2_first_failed": "AC2's query ('refund window') must match a document containing 'refunds' (plural) and no occurrence of 'window' at all -- FTS5's default unicode61 tokenizer does exact-token matching, which failed AC2 on the first real test run. Fixed by adding `tokenize = 'porter unicode61'` to doc_chunks_fts (stems both indexed text and query terms) and building the MATCH expression as a per-term OR (`sanitize_fts_query`) rather than an implicit AND, so a single stemmed term match is enough to rank a chunk, with BM25 itself doing the relevance ordering.",
-      "docs_chunks_max_default_free_10000_pro_50000": "requirement 5's own drafted numbers, added as `Plan.docs_chunks_max` following the exact tolerant-parse/to_toml/from_toml convention every other per-plan quota in plans.rs already uses."
+      "unverified_claim_is_absent_never_present": "Goals: 'Identity is recorded, never fabricated: an unverified claim is absent, not present' -- EndUser is only ever constructed from a bearer sub the OAuth PRD already validated, or from verify_assertion()'s successful HS256/exp checks; a failed assertion produces an Err the caller must surface as end_user_assertion_invalid (AC3), never a None that silently degrades to 'no end user' (requirement 2's own 'never fall back to no end user').",
+      "tenant_wide_sentinel_is_empty_string_not_null": "SQLite's PRIMARY KEY uniqueness treats two NULLs as distinct rows, which would silently defeat tenant_state_kv's 'one tenant-wide row per key' invariant every existing pre-migration row depends on -- migration 0042 backfills every existing row's end_user_subject to '' and every scoped db.rs function (state_kv_get/set/delete/list, state_rows_for_end_user) takes end_user_subject as a plain (never-NULL) String, matching the sentinel enduser::resolve_end_user() itself returns for the tenant-wide branch.",
+      "python_kind_is_a_persistent_worker_so_end_user_travels_per_call_not_at_spawn": "src/kinds/python.rs runs one long-lived worker process per published tool, shared across many different callers' calls over its lifetime -- setting MCPHOST_END_USER_* once at process spawn (the way MCPHOST_TENANT_* already works) would leak one caller's identity into every later call until the worker restarts. end_user instead rides inside the existing per-call JSON payload the worker already reads, and run_one() sets/restores the three env vars around each individual call.",
+      "impersonated_is_recorded_on_the_calls_row_not_a_separate_table": "requirement 5's 'that use is recorded on the call row as impersonated' is satisfied by a boolean column record_call_attributed_with_end_user writes alongside end_user_subject/issuer/method -- host.state.* calls themselves write no calls row of their own (they are in-process bridge calls, not a separate dispatched tool), so the flag is threaded down from handler.rs's own outer call-recording path, the same one AC1/AC2/AC4 already assert end_user_subject/method on.",
+      "assertion_secret_is_a_reserved_tenant_secret_name_not_a_new_table": "requirement 2: 'stored encrypted at rest with the host's existing secret encryption in secrets.rs' -- ASSERTION_SECRET_NAME is stored through the same upsert_secret/get_secret path host.secret_set/host.secret_list already use, with control.rs's secret_set guard extended to refuse a direct tenant write to that one reserved name (only assertion_secret_rotate may set it), so host.secret_list's existing 'name exists, value never shown' contract covers AC11 for free rather than needing a parallel secret-storage mechanism."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why build the indexer as a background tick following a watermark, rather than embedding synchronously inside host.docs.put itself?",
-      "a": "requirement 2's own 10s-cadence, batch-50 design keeps `put` fast and provider-outage-proof -- a synchronous embed-on-put would make every put's latency and error rate depend on a third-party API the tenant may not have configured at all (the default is provider: \"none\", lexical-only, zero external calls ever)."
+      "q": "Why does per-end-user identity need to exist at all, rather than leaving multi-user tools as a problem for each tool author to solve?",
+      "a": "Problem statement: the second ICP in the 2026-09-23 synthesis, SaaS product managers, is blocked on per-end-user auth passthrough (modelcontextprotocol/servers#2173) -- today every call on mcphost is the tenant's, calls has no caller, host.state rows are keyed by tenant only, and zero multi-user tools exist on the host. A tool author who must answer 'show my invoices' for a thousand different humans cannot build that without identity, storage partitioning, and a trust path from scratch."
     },
     {
       "why": 2,
-      "q": "Why does host.docs.status need to report lag_seconds and pending_documents at all, rather than just indexed_watermark?",
-      "a": "The whole problem statement is staleness invisibility -- 'nothing on the host can tell a tool your index is 40 seconds behind'. A raw watermark number means nothing to a caller without also knowing the CURRENT watermark and how old the oldest unindexed change is; lag_seconds and pending_documents are that comparison already done, so a caller never has to poll host.docs.put's own seq separately to compute staleness itself."
+      "q": "Why two verification methods (OAuth bearer sub, and a tenant-signed assertion) rather than just one?",
+      "a": "User stories name two distinct callers: 'an agent operator with OAuth' (whose login token already carries an authenticated sub -- requirement 1) and 'a SaaS PM (tenant)' whose web app has its own logged-in users but calls mcphost with a plain tenant key, not an OAuth token of its own -- requirement 2's tenant-signed end_user_assertion is the only way that second caller can vouch for a specific human without minting one OAuth token per end user."
     },
     {
       "why": 3,
-      "q": "Why fall back to lexical on ANY embeddings-provider failure rather than surfacing an error, when a caller configured embeddings specifically because they wanted better ranking?",
-      "a": "Non-functional requirement: 'a provider outage degrades to lexical answers ... never to an error'. search is a read path a tool's own control flow depends on; a transient 503 from a third-party API turning every search into a hard failure would make the search primitive itself the single point of failure the PRD's whole pitch (self-refresh, visible lag, no pipeline) was supposed to remove."
+      "q": "Why does an invalid assertion reject the whole call rather than falling back to 'no end user', the same way an absent identity is already handled?",
+      "a": "Requirement 2's own wording: 'invalid assertions reject the call ... and never fall back to no end user' -- Goals: 'Identity is recorded, never fabricated: an unverified claim is absent, not present' cuts the other way for a claim that was ATTEMPTED and failed verification (wrong secret, expired) versus one that was never made; silently downgrading a forged/expired assertion to anonymous would let a caller probe for a working secret with no visible failure."
     },
     {
       "why": 4,
-      "q": "Why cap docs_chunks_max per plan at all, when the PRD's own success metric is about search QUALITY, not storage cost?",
-      "a": "Technical considerations: 'brute-force cosine ... under 50 ms' is explicitly bounded by 'the 50k chunk cap' -- embeddings-mode cosine ranking is O(n) over every one of a tenant's chunks with no index to prune the scan, so the quota is what keeps AC11's own p95 guarantee (and the embeddings-mode equivalent the PRD's success metrics table names) from silently degrading as a tenant's corpus grows past what brute force can serve in the plan's own SLA."
+      "q": "Why a single end_user argument shared by every host.state.*/host.table.* op, resolving \"self\"/an explicit subject/null, rather than a separate scoped tool surface (e.g. host.state.my_get)?",
+      "a": "Requirement 5 and the tool-author user story: 'two environment variables and one extra argument on state calls; nothing else changes' -- reusing the existing six host.state.* tools with one new argument keeps every already-published tool's schema and dispatch path unchanged for tools that never pass end_user at all, rather than doubling the tool surface."
     },
     {
       "why": 5,
-      "q": "Why replace a document's WHOLE chunk set on every reindex (delete then insert) rather than diffing old vs new chunks and only touching what changed?",
-      "a": "requirement 2's own wording -- 'replace that document's chunks atomically' -- and a paragraph-boundary edit anywhere in a document shifts every chunk_no/offset after it, so a byte-level diff would still end up rewriting most of the set; a full replace inside one transaction is simpler, is the same 'delete outdated rows plus insert current ones in one operation' shape documents_put already uses for a version bump's own document_blobs row, and is what makes AC7's quota-truncation idempotent across repeated ticks (the exact same recomputation every time, not a diff against a different starting point)."
+      "q": "Why cap distinct end-user subjects per plan (end_users_max, requirement 6) at all, rather than letting a tenant's state grow unbounded per end user?",
+      "a": "Non-functional/Success metrics: the state index must keep list p95 within 10% of today's at 100k rows, and an unbounded number of distinct end-user subjects writing tenant_state_kv/tenant_state_rows is the one axis this PRD adds that could grow that table far past what a tenant's own key count alone ever did; end_users_max (free 100, pro 10,000) is the same plan-tiered quota shape every other unbounded-growth surface on this host (docs, tables, rows) already gets, gating writes while keeping reads unaffected (AC9's own 'reads still work')."
     }
   ],
   "created_at": "2026-09-25T00:00:00Z",
@@ -302,7 +308,9 @@
     },
     {
       "question": "Rebasing wm-build/mcphost-docs-semantic-search onto main a second time, after PRD-mcphost-status-feed landed on top of this branch's own busyaudit/alerting-webhook base, reproduced the same class of conflict this card's own two immediately-prior rebase entries already logged: (1) this card's single-current-PRD fields were status-feed's own version at HEAD, and status-feed's own 'regenerated for status-feed' entry (immediately above) had not yet been followed by an entry archiving it in turn; (2) agent/test-map.json's top-level ac_test_map named status-feed as current, with alert's own archived entry pointing at 'superseded by mcphost-status-feed' rather than at this PRD; (3) scripts/gen-test-suites.sh's MAX_PER_SUITE core/sandbox caps had already been independently raised past this PRD's own prior rebase entry's 475/62 assumption (to 560/90 on the base branch, accounting for busyaudit/alerting-webhook/status-feed's combined files), a plain textual continuation of the same 'neither number accounts for all PRDs' files landing together' problem the entry above already named; (4) agent/intent-card.json, Cargo.lock, and src/db.rs conflicted for the same additive/interleaving reasons as before.",
-      "resolution": "(1) root_motivation/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace/created_at/prd_source/intent_slug were kept as this branch's own docs-semantic-search versions (unchanged from the entry above); status-feed's own single-current-PRD fields were not carried forward as fields (already shipped on main under status-feed's own history) -- its 'regenerated for status-feed' entry was instead inserted into this log in chronological order, immediately after alerting-webhook's own entries and before this PRD's prior rebase entry, so nothing already-shipped is silently dropped. (2) agent/test-map.json's ac_test_map repointed to this PRD (docsearch) as current; status-feed's own AC1-11 archived under a new ac_test_map_by_prefix.statusfeed entry; alert's existing archived entry was corrected back to 'superseded by mcphost-status-feed' (status-feed, not docsearch, is what actually archived it) rather than left claiming this PRD superseded it directly; busyaudit's and tablemodel's existing archived entries were left untouched. (3) MAX_PER_SUITE was regenerated by running scripts/gen-test-suites.sh against the fully-rebased file set (busyaudit + alerting-webhook + status-feed + this PRD's own eleven docsearch_ac*.rs files all present together) rather than hand-picking a number ahead of a real generator run. (4) src/db.rs's status-feed CRUD functions and row-structs were placed alongside (not instead of) alerts' and docs_index's own sections, each under its own PRD-labeled header, all three sides' bodies kept unchanged. Nothing was provisioned, resized, or reconfigured to resolve any of the four; all are paper-trail/build-config/mechanical-merge fixes with no AC content change."
+      "resolution": "(1) root_motivation/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace/created_at/prd_source/intent_slug were kept as this branch's own docs-semantic-search versions (unchanged from the entry above); status-feed's own single-current-PRD fields were not carried forward as fields (already shipped on main under status-feed's own history) -- its 'regenerated for status-feed' entry was instead inserted into this log in chronological order, immediately after alerting-webhook's own entries and before this PRD's prior rebase entry, so nothing already-shipped is silently dropped. (2) agent/test-map.json's ac_test_map repointed to this PRD (docsearch) as current; status-feed's own AC1-11 archived under a new ac_test_map_by_prefix.statusfeed entry; alert's existing archived entry was corrected back to 'superseded by mcphost-status-feed' (status-feed, not docsearch, is what actually archived it) rather than left claiming this PRD superseded it directly; busyaudit's and tablemodel's existing archived entries were left untouched. (3) MAX_PER_SUITE was regenerated by running scripts/gen-test-suites.sh against the fully-rebased file set (busyaudit + alerting-webhook + status-feed + this PRD's own eleven docsearch_ac*.rs files all present together) rather than hand-picking a number ahead of a real generator run. (4) src/db.rs's status-feed CRUD functions and row-structs were placed alongside (not instead of) alerts' and docs_index's own sections, each under its own PRD-labeled header, all three sides' bodies kept unchanged. Nothing was provisioned, resized, or reconfigured to resolve any of the four; all are paper-trail/build-config/mechanical-merge fixes with no AC content change.",
+      "question": "This card is now regenerated for PRD-mcphost-end-user-identity, an entirely different feature (a verified per-call end-user identity, tenant-signed assertions, and end-user-scoped host.state.*/host.table.* storage) from PRD-mcphost-status-feed (the self-reported /status.json feed) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught repeatedly in this card's own history if left byte-for-byte. Unlike most prior entries, this dispatch found src/enduser.rs, migration 0042_end_user_identity.sql, every kinds.rs/tenant_state.rs/handler.rs/db.rs wiring point, and all eleven tests/enduser_ac0[1-9,1-1]_*.rs files already implemented and committed (8ce9b26, 'Squash of ACs from run 233 for land', plus two small follow-up commits) before this session started -- but agent/intent-card.json itself was never refreshed for this PRD, still describing status-feed, and `cargo clippy --all-targets` failed to compile: src/enduser.rs's own unit test builds an AppState literal by hand and was missing the status_probe_override field PRD-mcphost-status-feed added after this branch's implementation was written (a rebase leftover). The PRD's own two Open Questions also needed a build-time answer: (1) whether an end-user subject is opaque or normalized email-shaped; (2) whether impersonated (the explicit-subject path) requires a Pro plan.",
+      "resolution": "Verified rather than redone, with one real fix: synced the worktree to the run-237 runner box (working around the known bin-shim-hijacks-ssh PATH gotcha by dropping /home/jsy/.local/state/wm-build/bin-shim from PATH for the wm-build invocation itself) and hit the status_probe_override compile error on the first clippy run; fixed with a one-line addition to src/enduser.rs's test AppState literal, committed on its own (099016c) before re-syncing per the known 'wm-build runner sync silently reverts uncommitted edits' gotcha. Re-verified fully green: `cargo clippy --all-targets -- -D warnings` 0 warnings; `cargo test` 100% green across every binary (1121 total passed: 223+1+1+2+1+1+1+721+1+122+49, 0 failed, 6 ignored, unrelated to this PRD), including all eleven enduser_ac0[1-9,1-1]_* test functions and src/enduser.rs's own 6 unit tests. No gap in the enduser.rs/handler.rs/tenant_state.rs/db.rs implementation itself was found against the PRD's own eleven listed ACs or the eleven AC test bodies read in full. On the two open questions: (1) subject stays opaque -- no code path anywhere in the diff normalizes, lowercases, or validates email shape on a subject string, matching the PRD's own 'drafted' answer; recorded in non_goals rather than silently decided. (2) impersonated is NOT plan-gated -- check_end_user_quota (the one place a plan tier is read for end-user identity) only ever gates the distinct-subject-count quota (requirement 6/AC9), never the explicit-subject/impersonated path itself, and no AC in the PRD's own list exercises a plan check on impersonation; recorded in non_goals as the resolved-but-unrequested-so-left-alone answer. This card's own fields (this entry included), agent/test-map.json's enduser mapping, and the version bump (0.60.14 -> 0.60.15, including the plugin.json/.mcp.json mirrors the alerting-webhook entry above already flagged as a recurring drift point) are the only paper-trail/build debt this dispatch closes; no AC content changed, so there is no Stage-3 conflict."
     }
   ]
 }

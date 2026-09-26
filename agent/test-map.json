@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-docs-semantic-search.md (test_prefix: docsearch)",
+  "ac_test_map_prd": "PRD-mcphost-end-user-identity.md (test_prefix: enduser)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,22 +28,37 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/docsearch_ac01_status_reports_watermark_lag_and_chunks.rs",
-    "AC2": "tests/docsearch_ac02_lexical_search_returns_passage_and_offset.rs",
-    "AC3": "tests/docsearch_ac03_version_update_drops_old_chunks.rs",
-    "AC4": "tests/docsearch_ac04_delete_removes_chunks.rs",
-    "AC5": "tests/docsearch_ac05_embeddings_mode_ranks_by_cosine.rs",
-    "AC6": "tests/docsearch_ac06_provider_503_falls_back_to_lexical.rs",
-    "AC7": "tests/docsearch_ac07_chunk_quota_stops_indexer.rs",
-    "AC8": "tests/docsearch_ac08_cross_tenant_isolation.rs",
-    "AC9": "tests/docsearch_ac09_fixture_corpus_hit_rate.rs",
-    "AC10": "tests/docsearch_ac10_reindex_forces_all_documents.rs",
-    "AC11": "tests/docsearch_ac11_lexical_search_p95_latency.rs",
-    "AC12": "deferred -- operator-provisioned: needs a real put/search against production mcphost-1 within 60s of a deploy and live operator access this coder dispatch does not have."
+    "AC1": "tests/enduser_ac01_oauth_python_env_and_calls_row.rs",
+    "AC2": "tests/enduser_ac02_assertion_http_headers_and_calls_row.rs",
+    "AC3": "tests/enduser_ac03_invalid_assertion_rejected.rs",
+    "AC4": "tests/enduser_ac04_no_identity_env_unset_and_calls_row_null.rs",
+    "AC5": "tests/enduser_ac05_state_set_get_end_user_self_isolation.rs",
+    "AC6": "tests/enduser_ac06_state_query_end_user_self_scales_via_index.rs",
+    "AC7": "tests/enduser_ac07_end_user_required_and_explicit_impersonation.rs",
+    "AC8": "tests/enduser_ac08_explicit_subject_forbidden_with_own_identity.rs",
+    "AC9": "tests/enduser_ac09_quota_end_users.rs",
+    "AC10": "tests/enduser_ac10_whoami.rs",
+    "AC11": "tests/enduser_ac11_assertion_secret_rotate_invalidates_and_never_leaks.rs",
+    "AC12": "deferred -- operator-provisioned; AC12 is the Live/production-only requirement and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
   },
   "ac_test_map_by_prefix": {
+    "docsearch": {
+      "_prd": "PRD-mcphost-docs-semantic-search.md -- superseded by mcphost-end-user-identity at HEAD; real test_prefix is docsearch",
+      "AC1": "tests/docsearch_ac01_status_reports_watermark_lag_and_chunks.rs",
+      "AC2": "tests/docsearch_ac02_lexical_search_returns_passage_and_offset.rs",
+      "AC3": "tests/docsearch_ac03_version_update_drops_old_chunks.rs",
+      "AC4": "tests/docsearch_ac04_delete_removes_chunks.rs",
+      "AC5": "tests/docsearch_ac05_embeddings_mode_ranks_by_cosine.rs",
+      "AC6": "tests/docsearch_ac06_provider_503_falls_back_to_lexical.rs",
+      "AC7": "tests/docsearch_ac07_chunk_quota_stops_indexer.rs",
+      "AC8": "tests/docsearch_ac08_cross_tenant_isolation.rs",
+      "AC9": "tests/docsearch_ac09_fixture_corpus_hit_rate.rs",
+      "AC10": "tests/docsearch_ac10_reindex_forces_all_documents.rs",
+      "AC11": "tests/docsearch_ac11_lexical_search_p95_latency.rs",
+      "AC12": "deferred -- operator-provisioned: needs a real put/search against production mcphost-1 within 60s of a deploy and live operator access this coder dispatch does not have."
+    },
     "statusfeed": {
-      "_prd": "PRD-mcphost-status-feed.md -- superseded by mcphost-docs-semantic-search at HEAD; real test_prefix is statusfeed",
+      "_prd": "PRD-mcphost-status-feed.md -- superseded by mcphost-end-user-identity at HEAD; real test_prefix is statusfeed",
       "AC1": "tests/statusfeed_ac01_operational_after_three_minutes.rs",
       "AC2": "tests/statusfeed_ac02_exec_disabled_degrades.rs",
       "AC3": "tests/statusfeed_ac03_major_incident_outage.rs",
@@ -72,7 +87,7 @@
       "AC12": "deferred -- operator-provisioned: needs the pause file toggled on real production mcphost-1 and live operator/deploy access this coder dispatch does not have."
     },
     "busyaudit": {
-      "_prd": "PRD-mcphost-sqlite-busy-timeout-audit.md -- superseded by mcphost-alerting-webhook at HEAD; real test_prefix is busyaudit",
+      "_prd": "PRD-mcphost-sqlite-busy-timeout-audit.md -- superseded by mcphost-end-user-identity at HEAD; real test_prefix is busyaudit",
       "AC1": "tests/busyaudit_ac01_startup_pragma_audit_default_config.rs",
       "AC2": "tests/busyaudit_ac02_env_override_busy_timeout.rs",
       "AC3": "tests/busyaudit_ac03_bypass_connection_named_file_and_line.rs",
@@ -86,7 +101,7 @@
       "AC11": "DEFERRED -- operator-provisioned: a real staging/mcphost-1 load-proof run (busy_total==0 against prod-shaped traffic) needs a live operator-provisioned box; not in this dispatch's assigned AC list (AC1-AC10 only)."
     },
     "tablemodel": {
-      "_prd": "PRD-mcphost-table-semantic-model.md -- superseded by mcphost-alerting-webhook at HEAD; real test_prefix is tablemodel (this dict key matches it directly, same convention as every other archived entry below)",
+      "_prd": "PRD-mcphost-table-semantic-model.md -- superseded by mcphost-end-user-identity at HEAD; real test_prefix is tablemodel (this dict key matches it directly, same convention as every other archived entry below)",
       "AC1": "tests/tablemodel_ac01_key_id_measure_category_date_roles.rs",
       "AC2": "tests/tablemodel_ac02_foreign_key_detected_against_customers_id.rs",
       "AC3": "tests/tablemodel_ac03_measures_and_dimensions_suggested.rs",
@@ -128,6 +143,20 @@
       "AC10": "tests/banlist_ac10_cache_lookup_latency_at_scale.rs",
       "AC11": "tests/banlist_ac11_healthz_bans_block.rs",
       "AC12": "tests/banlist_ac12_live_ban_unban_trailer.rs -- always-on half proves the ban/unban/audit mechanism against a real branch-built server; the prod-Live half (mcphost-1, MCPHOST_LIVE=1) stays deferred -- operator-provisioned. See the coder dispatch's own deferred list."
+    },
+    "oauthrs": {
+      "_prd": "PRD-mcphost-oauth-resource-server.md -- superseded by mcphost-end-user-identity at HEAD; real test_prefix is oauthrs (this dict key is a short alias, matching the convention of banlist, ac, adminschemacontract, agentchannels, checkcompatrace, claudecodepluginandsnippets, databaseinaminute, humanclaimmagiclink, lanecov, mcphost_host_tool_deprecation, retention, runenvelope, sandboxegressallowlist, sharetool, signupkillswitch, signupkillswitchandsource, stdlibpseudo, suite, teammemory, tenantdataexport, toolversions, uptimeprobes, wasmkind, webhookinbox above)",
+      "AC1": "tests/oauthrs_ac01_protected_resource_metadata_empty.rs",
+      "AC2": "tests/oauthrs_ac02_bearer_jwt_runs_as_tenant.rs",
+      "AC3": "tests/oauthrs_ac03_invalid_tokens_rejected_with_reasons.rs",
+      "AC4": "tests/oauthrs_ac04_401_challenge_signup_still_open.rs",
+      "AC5": "tests/oauthrs_ac05_unknown_kid_refetch_throttled.rs",
+      "AC6": "tests/oauthrs_ac06_jwks_server_down_unknown_issuer.rs",
+      "AC7": "tests/oauthrs_ac07_issuer_registration_limits.rs",
+      "AC8": "tests/oauthrs_ac08_conflicting_credentials.rs",
+      "AC9": "tests/oauthrs_ac09_admin_lists_issuers_and_audits.rs",
+      "AC10": "tests/oauthrs_ac10_key_based_flow_unchanged.rs",
+      "AC11": "deferred -- operator-provisioned; AC11 is the Live/production-only requirement (real prod issuer registered against https://mcphost.dev/mcp) and needs operator authorization/network egress this coding sandbox does not have. See the coder dispatch's own deferred list."
     },
     "adminschemacontract": {
       "_prd": "PRD-mcphost-admin-schema-contract.md -- superseded by mcphost-abuse-guard-ban-list at HEAD; real test_prefix is mcphost_admin_schema_contract (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind/tenantdataexport/checkcompatrace/teammemory/databaseinaminute/uptimeprobes/toolversions/agentchannels/webhookinbox/signupkillswitchandsource/sandboxegressallowlist/humanclaimmagiclink/claudecodepluginandsnippets above)",

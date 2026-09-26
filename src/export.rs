@@ -162,7 +162,7 @@ async fn run_export_job(
             // directly.
             let result_key = format!("runs/{run_id}");
             let set_args = json!({"key": result_key, "value": result_value});
-            match crate::tenant_state::state_set(&state, &tenant, &set_args).await {
+            match crate::tenant_state::state_set(&state, &tenant, &set_args, None).await {
                 Ok(_) => ("done".to_string(), Some(result_key), None),
                 Err(e) => ("error".to_string(), None, Some(e.code().to_string())),
             }
@@ -320,7 +320,7 @@ async fn build_archive(
         tools.retain(|t| filter.iter().any(|name| name == &t.name));
     }
     let secret_names = state.db.list_secret_names(tenant.id).await?;
-    let state_rows = state.db.state_kv_list(tenant.id, None, 100_000).await?;
+    let state_rows = state.db.state_kv_list(tenant.id, None, 100_000, String::new()).await?;
     let documents = state.db.documents_for_export(tenant.id).await?;
     let run_rows = state.db.list_runs(tenant.id, None, None, None, 1000).await?;
     let messages = state.db.msg_inbox(tenant.id, None, 1000, false).await?;
