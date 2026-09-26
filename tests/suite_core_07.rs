@@ -1076,6 +1076,10 @@ mod vaultst_ac06_provider_remove_revokes_all_tokens;
 mod vaultst_ac07_provider_set_presets_fill_urls;
 #[path = "vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green.rs"]
 mod vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green;
+#[path = "vaultst_ac09_deferral_is_justified.rs"]
+mod vaultst_ac09_deferral_is_justified;
+#[path = "vaultst_ac09_live_vault_status_trailer.rs"]
+mod vaultst_ac09_live_vault_status_trailer;
 #[path = "wake_ac1_message_trigger_fires_run.rs"]
 mod wake_ac1_message_trigger_fires_run;
 #[path = "wake_ac2_from_filter.rs"]

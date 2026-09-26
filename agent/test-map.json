@@ -36,7 +36,7 @@
     "AC6": "tests/vaultst_ac06_provider_remove_revokes_all_tokens.rs",
     "AC7": "tests/vaultst_ac07_provider_set_presets_fill_urls.rs",
     "AC8": "tests/vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green.rs",
-    "AC9": "deferred -- operator-provisioned; AC9 is the Live/production-only requirement (operator-provisioned Given: the operator tenant's placeholder-credential slack provider on mcphost-1, done by hand from orch) and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
+    "AC9": "deferred (prod leg only) -- see PRD frontmatter mock_justifications; always-on mechanism proof: tests/vaultst_ac09_live_vault_status_trailer.rs (MCPHOST_LIVE=1 for the real leg); deferral paper trail locked by tests/vaultst_ac09_deferral_is_justified.rs"
   },
   "ac_test_map_by_prefix": {
     "vault": {

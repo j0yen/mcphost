@@ -5724,25 +5724,37 @@ impl Db {
         .await
     }
 
-    /// `admin.vault.stats` (P0 requirement 2, AC4): one row per
-    /// `(tenant, provider)` with non-revoked/revoked/24h-refresh-failure
-    /// counts -- no new table, just an aggregate over the pre-existing
-    /// `vault_tokens` (joined to `tenants` for the caller-facing
-    /// `namespace`, never the raw `client_secret`-bearing provider row).
-    /// `revoked_reason GLOB 'refresh_*'` (not `LIKE`) since SQLite `LIKE`
-    /// treats `_` as a single-character wildcard, which `refresh_http_401`/
-    /// `refresh_malformed_response` would still happen to match, but is the
-    /// wrong operator for "the literal prefix `refresh_`".
+    /// `admin.vault.stats` (P0 requirement 2, AC4; AC9's Live check also
+    /// depends on this): one row per `(tenant, provider)` with
+    /// non-revoked/revoked/24h-refresh-failure counts -- no new table, just
+    /// an aggregate over the pre-existing `vault_tokens` (joined to
+    /// `tenants` for the caller-facing `namespace`, never the raw
+    /// `client_secret`-bearing provider row). The row set is driven from
+    /// `vault_providers` with a `LEFT JOIN` onto `vault_tokens`, not the
+    /// other way around: a provider a tenant registered but that has never
+    /// had a token stored for it (AC9's operator tenant, mid-deploy, before
+    /// any end user connects) must still appear as `{tokens: 0, revoked: 0,
+    /// refresh_failures_24h: 0}` rather than being silently absent -- an
+    /// `INNER JOIN` from `vault_tokens` (the pre-AC9 shape) has no row to
+    /// start from in that case and drops the provider from the output
+    /// entirely, which is indistinguishable from "never registered" to a
+    /// caller and is exactly the gap `tests/vaultst_ac09_live_vault_status_trailer.rs`
+    /// exercises. `revoked_reason GLOB 'refresh_*'` (not `LIKE`) since
+    /// SQLite `LIKE` treats `_` as a single-character wildcard, which
+    /// `refresh_http_401`/`refresh_malformed_response` would still happen
+    /// to match, but is the wrong operator for "the literal prefix
+    /// `refresh_`".
     pub async fn vault_stats(&self) -> Result<Vec<VaultTenantStats>, AppError> {
         let since_unix = now_unix() - 86_400;
         self.with_conn(move |conn| {
             let mut stmt = conn.prepare(
-                "SELECT t.namespace, vt.provider, COUNT(*), \
+                "SELECT t.namespace, vp.name, COUNT(vt.id), \
                      SUM(CASE WHEN vt.revoked_unix IS NOT NULL THEN 1 ELSE 0 END), \
                      SUM(CASE WHEN vt.revoked_unix IS NOT NULL AND vt.revoked_unix >= ?1 \
                                AND vt.revoked_reason GLOB 'refresh_*' THEN 1 ELSE 0 END) \
-                 FROM vault_tokens vt JOIN tenants t ON t.id = vt.tenant_id \
-                 GROUP BY t.namespace, vt.provider ORDER BY t.namespace, vt.provider",
+                 FROM vault_providers vp JOIN tenants t ON t.id = vp.tenant_id \
+                 LEFT JOIN vault_tokens vt ON vt.tenant_id = vp.tenant_id AND vt.provider = vp.name \
+                 GROUP BY t.namespace, vp.name ORDER BY t.namespace, vp.name",
             )?;
             let rows: Vec<(String, String, i64, i64, i64)> = stmt
                 .query_map(params![since_unix], |r| {
