@@ -145,10 +145,12 @@ pub async fn signup(
     let signup_source = validate_source(args)?;
 
     // Requirement 1: `source_class` first (loopback IP or the harness
-    // marker header; known-fleet display name or synthorg client name;
-    // else external), then `tenants.synthetic` from it -- the explicit
-    // stamp when the header carried a valid one, else `harness:unstamped`
-    // for loopback/fleet, else `None` for a real (`external`) tenant.
+    // marker header; known-fleet display name, synthorg client name, or
+    // now $MCPHOST_FLEET_IPS; else external), then `tenants.synthetic`
+    // from it -- the explicit stamp when the header carried a valid one,
+    // else `harness:fleet-ip` for a fleet-IP-only match (loop/mcphost-
+    // fleet-ips requirement 2), else `harness:unstamped` for every other
+    // loopback/fleet path, else `None` for a real (`external`) tenant.
     let explicit_label = validate_synthetic_header(attribution.synthetic_header);
     let harness_marker_present = attribution.synthetic_header.is_some();
     let class = crate::state::classify_source_class(
@@ -156,9 +158,23 @@ pub async fn signup(
         harness_marker_present,
         &display_name,
         attribution.client_name,
+        &state.fleet_ips,
     );
+    // requirement 2: distinguish *why* `class` came back `Fleet` only to
+    // pick the right default label -- a fleet-IP match that isn't also a
+    // known display name/synthorg client is exactly the "our own boxes,
+    // no header, public IP" case this PRD backfills.
+    let fleet_ip_only_match = class == crate::state::SourceClass::Fleet
+        && !crate::state::is_known_fleet_display_name(&display_name)
+        && !attribution.client_name.is_some_and(crate::state::is_known_synthorg_client);
     let synthetic = if class.is_synthetic() {
-        Some(explicit_label.unwrap_or_else(|| "harness:unstamped".to_string()))
+        Some(explicit_label.unwrap_or_else(|| {
+            if fleet_ip_only_match {
+                "harness:fleet-ip".to_string()
+            } else {
+                "harness:unstamped".to_string()
+            }
+        }))
     } else {
         None
     };

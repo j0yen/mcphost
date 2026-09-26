@@ -747,6 +747,30 @@ pub async fn tenants_set_synthetic(state: &AppState, args: &Value) -> Result<Val
     }))
 }
 
+/// `admin.reclassify_fleet_ips()`: loop/mcphost-fleet-ips requirement 3 --
+/// the idempotent backfill for every `signup_events`/`tenants`/`calls` row
+/// still `external` that a fleet box (orch, hub) actually produced,
+/// running synthorg against this host from a public IP before
+/// `$MCPHOST_FLEET_IPS` existed. No arguments: the fleet list is whatever
+/// `AppState::fleet_ips` was parsed from at this process's own startup,
+/// same "one contract, one source of truth" reasoning as
+/// `state::classify_source_class`'s live-path use of it.
+pub async fn reclassify_fleet_ips(state: &AppState) -> Result<Value, AppError> {
+    let counts = state.db.reclassify_fleet_ips(state.fleet_ips.clone()).await?;
+    tracing::info!(
+        signup_events = counts.signup_events,
+        tenants = counts.tenants,
+        calls = counts.calls,
+        action = "reclassify_fleet_ips",
+        "admin reclassified fleet-ip signups"
+    );
+    Ok(json!({
+        "signup_events": counts.signup_events,
+        "tenants": counts.tenants,
+        "calls": counts.calls,
+    }))
+}
+
 /// PRD-mcphost-provenance-audit requirement 4: which `admin.*` tools are
 /// mutations worth an audit row, and how to name their target/detail.
 /// Read-only tools are deliberately absent -- auditing a read doesn't serve
@@ -799,6 +823,19 @@ pub fn admin_audit_entry(
             "tenants_set_synthetic".into(),
             args.get("name_like").and_then(Value::as_str).map(String::from),
             args.get("label").and_then(Value::as_str).map(String::from),
+        )),
+        // loop/mcphost-fleet-ips requirement 3: no arguments and no single
+        // tenant target, but a mutation like every other admin.* write
+        // above -- the row counts it touched are worth a durable record.
+        "admin.reclassify_fleet_ips" => Some((
+            "reclassify_fleet_ips".into(),
+            None,
+            Some(format!(
+                "signup_events={} tenants={} calls={}",
+                _result.get("signup_events").and_then(Value::as_i64).unwrap_or(0),
+                _result.get("tenants").and_then(Value::as_i64).unwrap_or(0),
+                _result.get("calls").and_then(Value::as_i64).unwrap_or(0),
+            )),
         )),
         // PRD-mcphost-sharing AC9: an admin-forced unshare is a mutation
         // like any other admin.* write above.

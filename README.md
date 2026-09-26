@@ -186,6 +186,7 @@ cargo build --release
 | `MCPHOST_REGISTRY_URL` | Enables `host.registry_publish` (P1) and names the registry API's base URL; `mcphost serve --registry-url <url>` takes precedence | unset (registry-publish disabled) |
 | `MCPHOST_SIGNUP_RATE_LIMIT_PER_HOUR` | Overrides the per-source-IP `signup` rate limit (PRD-mcphost-signup-rate-configurable) — raise it for a many-session measure run from one IP; absent or non-integer falls back to the default. Effective value is logged once at startup | `5` |
 | `MCPHOST_EGRESS_PROXY` | `http(s)://host:port` of the operator's outbound HTTP(S) proxy. Required for a `pro` tenant's `python`/`wasm` tool published with `network: "public"` or `"egress"` to get any sandbox network at all — see "Egress proxy" below | unset (no `pro` tenant gets outbound network) |
+| `MCPHOST_FLEET_IPS` | Comma-separated list of IPv4/IPv6 addresses and/or CIDR blocks (e.g. `46.225.110.44,178.105.64.66,10.0.0.0/8`) this operator's own fleet signs up from. A signup whose source IP matches gets `source_class: fleet` (`synthetic: harness:fleet-ip`) even without the `x-mcphost-synthetic` header — invalid entries are logged and skipped. See `admin.reclassify_fleet_ips` to backfill signups that predate this var | unset (no IP is ever classified `fleet` by address alone) |
 
 `mcphost migrate` applies pending SQL migrations and exits. `mcphost version`
 prints the version and exits. `mcphost serve --registry-url <url>` is the

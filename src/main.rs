@@ -447,6 +447,10 @@ async fn main() -> anyhow::Result<()> {
                 ));
             let claim_token_ttl_secs = mcphost::state::claim_token_ttl_secs_from_env();
             let claim_rate_limit_per_hour = mcphost::state::claim_rate_limit_per_hour_from_env();
+            // loop/mcphost-fleet-ips: our own fleet boxes (orch, hub) now
+            // run synthorg against this host from public IPs -- read once
+            // at startup alongside every other MCPHOST_* env var here.
+            let fleet_ips = mcphost::state::fleet_ips_from_env();
 
             let db = Db::open(&data_dir())?;
             db.migrate().await?;
@@ -546,6 +550,7 @@ async fn main() -> anyhow::Result<()> {
                 alert_config: mcphost::alerts::AlertConfig::from_env(),
                 alert_quota_trips: mcphost::alerts::QuotaTripTracker::new(),
                 status_probe_override: mcphost::statusfeed::ProbeOverrides::new(),
+                fleet_ips,
             });
             // PRD-mcphost-abuse-guard-ban-list requirement 6: load the ban
             // cache once before this process ever serves a request, so the

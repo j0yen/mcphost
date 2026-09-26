@@ -566,6 +566,16 @@ pub struct ProvenanceBackfillCounts {
     pub calls_external: i64,
 }
 
+/// loop/mcphost-fleet-ips requirement 3: `admin.reclassify_fleet_ips`'s
+/// return shape and [`reclassify_fleet_ips_sync`]'s own row counts, same
+/// per-table-count convention as [`ProvenanceBackfillCounts`] above.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub struct ReclassifyFleetIpsCounts {
+    pub signup_events: i64,
+    pub tenants: i64,
+    pub calls: i64,
+}
+
 /// PRD-mcphost-provenance-audit requirement 4: a single row in
 /// `admin_audit`, exposed read-only via `admin.audit_log`. Distinct from
 /// `admin_events` (migration 0005, delete-only, no actor identity) --
@@ -1058,6 +1068,99 @@ fn backfill_provenance_sync(conn: &Connection) -> Result<ProvenanceBackfillCount
          WHERE calls.origin = 'unclassified'",
         [],
     )?;
+
+    Ok(counts)
+}
+
+/// loop/mcphost-fleet-ips: `admin.reclassify_fleet_ips`'s idempotent
+/// backfill for signups that predate `$MCPHOST_FLEET_IPS` -- our own
+/// fleet boxes (orch, hub) running synthorg against this host from public
+/// IPs, classified `external` before this PRD. CIDR matching can't be
+/// pushed into SQL (rusqlite/SQLite have no bitmask-AND-of-a-parsed-IPv4
+/// operator worth building), so `signup_events.source_ip` is read out and
+/// matched in Rust via [`crate::state::FleetIps::contains`] the same way
+/// the live signup path does, then applied back by row id.
+///
+/// `signup_events` carries no `tenant_id` (requirement 3's own note), so
+/// the matching `tenants` rows are found by `created_unix` equality
+/// instead -- verified exact against prod (83/83 rows, 0 collisions)
+/// before this PRD shipped. Only rows still `origin = 'external'` are
+/// touched at every step, which is what makes a second call a no-op
+/// (idempotent): nothing left to match once the first call already
+/// flipped them to `'synthetic'`.
+fn reclassify_fleet_ips_sync(
+    conn: &Connection,
+    fleet_ips: &crate::state::FleetIps,
+) -> Result<ReclassifyFleetIpsCounts, AppError> {
+    let mut counts = ReclassifyFleetIpsCounts::default();
+    if fleet_ips.is_empty() {
+        return Ok(counts);
+    }
+
+    // 1. `signup_events` rows from a fleet IP, still `external`.
+    let candidates: Vec<(i64, String, i64)> = {
+        let mut stmt = conn.prepare(
+            "SELECT id, source_ip, created_unix FROM signup_events WHERE origin = 'external'",
+        )?;
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    let matched: Vec<(i64, i64)> = candidates
+        .into_iter()
+        .filter(|(_, ip, _)| fleet_ips.contains(ip))
+        .map(|(id, _, created_unix)| (id, created_unix))
+        .collect();
+    counts.signup_events = matched.len() as i64;
+
+    let mut created_unixes: Vec<i64> = matched.iter().map(|(_, c)| *c).collect();
+    created_unixes.sort_unstable();
+    created_unixes.dedup();
+
+    for (id, _) in &matched {
+        conn.execute(
+            "UPDATE signup_events SET origin = 'synthetic', origin_detail = 'fleet', \
+             synthetic = 'harness:fleet-ip' WHERE id = ?1",
+            params![id],
+        )?;
+    }
+
+    // 2. `tenants` rows still `external` whose `created_unix` matches one
+    // of the fleet-ip signups just reclassified above.
+    let mut tenant_ids: Vec<i64> = Vec::new();
+    if !created_unixes.is_empty() {
+        let placeholders = created_unixes.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT id FROM tenants WHERE origin = 'external' AND created_unix IN ({placeholders})"
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let bound: Vec<&dyn rusqlite::ToSql> =
+            created_unixes.iter().map(|c| c as &dyn rusqlite::ToSql).collect();
+        tenant_ids = stmt
+            .query_map(bound.as_slice(), |r| r.get(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+    }
+    counts.tenants = tenant_ids.len() as i64;
+
+    for id in &tenant_ids {
+        conn.execute(
+            "UPDATE tenants SET source_class = 'fleet', synthetic = 'harness:fleet-ip', \
+             origin = 'synthetic', origin_detail = 'fleet', classified_by = 'reclassify-fleet-ips' \
+             WHERE id = ?1",
+            params![id],
+        )?;
+    }
+
+    // 3. `calls` rows of those tenants still `external`.
+    if !tenant_ids.is_empty() {
+        let placeholders = tenant_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "UPDATE calls SET origin = 'synthetic', origin_detail = 'fleet' \
+             WHERE origin = 'external' AND tenant_id IN ({placeholders})"
+        );
+        let bound: Vec<&dyn rusqlite::ToSql> =
+            tenant_ids.iter().map(|c| c as &dyn rusqlite::ToSql).collect();
+        counts.calls = conn.execute(&sql, bound.as_slice())? as i64;
+    }
 
     Ok(counts)
 }
@@ -2765,6 +2868,18 @@ impl Db {
     /// nothing is left `origin = 'unclassified'` anywhere.
     pub async fn backfill_provenance(&self) -> Result<ProvenanceBackfillCounts, AppError> {
         self.with_conn(backfill_provenance_sync).await
+    }
+
+    /// loop/mcphost-fleet-ips requirement 3: `admin.reclassify_fleet_ips`'s
+    /// entry point -- the directly-testable, idempotent backfill behind
+    /// [`reclassify_fleet_ips_sync`]. `fleet_ips` is a clone of
+    /// [`crate::state::AppState::fleet_ips`] (moved into the blocking
+    /// closure, same as every other `with_conn` caller here).
+    pub async fn reclassify_fleet_ips(
+        &self,
+        fleet_ips: crate::state::FleetIps,
+    ) -> Result<ReclassifyFleetIpsCounts, AppError> {
+        self.with_conn(move |conn| reclassify_fleet_ips_sync(conn, &fleet_ips)).await
     }
 
     /// PRD-mcphost-tenant-attribution requirement 2's "first authenticated

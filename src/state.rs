@@ -346,6 +346,12 @@ pub struct AppState {
     /// Empty (every probe runs for real) in every real `mcphost serve`
     /// start.
     pub status_probe_override: crate::statusfeed::ProbeOverrides,
+    /// loop/mcphost-fleet-ips: `$MCPHOST_FLEET_IPS`, parsed once at
+    /// startup -- see [`FleetIps`]. Empty (no IP is ever classified
+    /// `Fleet` by address) when the env var is absent or unset, same
+    /// "field read once, not re-parsed per request" convention as
+    /// [`AppState::signup_rate_limit_per_hour`].
+    pub fleet_ips: FleetIps,
 }
 
 pub fn now_unix() -> i64 {
@@ -649,6 +655,125 @@ pub fn is_known_synthorg_client(client_name: &str) -> bool {
     client_name.to_ascii_lowercase().starts_with("synthorg")
 }
 
+/// loop/mcphost-fleet-ips: one parsed entry of `$MCPHOST_FLEET_IPS` -- a
+/// single address (an implicit /32 or /128) or an explicit CIDR block.
+/// Hand-rolled rather than pulling in a CIDR-parsing crate (`ipnet` sits in
+/// `Cargo.lock` today only as a transitive dependency of `hickory-proto`,
+/// never a direct one of this crate) -- matching one address against a
+/// short, startup-parsed list is a mask-and-compare, not something worth a
+/// new direct dependency for.
+#[derive(Debug, Clone, Copy)]
+enum FleetIpEntry {
+    V4 { addr: u32, prefix: u32 },
+    V6 { addr: u128, prefix: u32 },
+}
+
+impl FleetIpEntry {
+    fn matches(self, ip: std::net::IpAddr) -> bool {
+        match (self, ip) {
+            (FleetIpEntry::V4 { addr, prefix }, std::net::IpAddr::V4(v4)) => {
+                let mask = if prefix == 0 { 0 } else { u32::MAX << (32 - prefix) };
+                (u32::from(v4) & mask) == (addr & mask)
+            }
+            (FleetIpEntry::V6 { addr, prefix }, std::net::IpAddr::V6(v6)) => {
+                let mask = if prefix == 0 { 0 } else { u128::MAX << (128 - prefix) };
+                (u128::from(v6) & mask) == (addr & mask)
+            }
+            _ => false,
+        }
+    }
+}
+
+/// A single `MCPHOST_FLEET_IPS` entry (`"1.2.3.4"` or `"1.2.3.0/24"`,
+/// either IPv4 or IPv6) -- `None` for anything unparseable, the sentinel
+/// [`parse_fleet_ips`] logs a warning and skips rather than failing
+/// startup over.
+fn parse_fleet_ip_entry(entry: &str) -> Option<FleetIpEntry> {
+    let (addr_part, prefix_part) = match entry.split_once('/') {
+        Some((a, p)) => (a, Some(p)),
+        None => (entry, None),
+    };
+    let addr: std::net::IpAddr = addr_part.parse().ok()?;
+    match addr {
+        std::net::IpAddr::V4(v4) => {
+            let prefix = match prefix_part {
+                Some(p) => p.parse::<u32>().ok().filter(|p| *p <= 32)?,
+                None => 32,
+            };
+            Some(FleetIpEntry::V4 { addr: u32::from(v4), prefix })
+        }
+        std::net::IpAddr::V6(v6) => {
+            let prefix = match prefix_part {
+                Some(p) => p.parse::<u32>().ok().filter(|p| *p <= 128)?,
+                None => 128,
+            };
+            Some(FleetIpEntry::V6 { addr: u128::from(v6), prefix })
+        }
+    }
+}
+
+/// requirement 1: the parsed, startup-loaded `$MCPHOST_FLEET_IPS` list --
+/// our own fleet boxes (orch, hub) that now run synthorg against
+/// https://mcphost.dev from public IPs, no loopback and no
+/// `x-mcphost-synthetic` header. Stored on [`AppState`] rather than
+/// re-read per request (like [`AppState::signup_rate_limit_per_hour`]),
+/// `Clone` so [`Db::reclassify_fleet_ips`](crate::db::Db::reclassify_fleet_ips)
+/// can move a copy into its `spawn_blocking` closure.
+#[derive(Debug, Clone, Default)]
+pub struct FleetIps(Vec<FleetIpEntry>);
+
+impl FleetIps {
+    /// Empty and unset (`MCPHOST_FLEET_IPS` absent or blank) -- current
+    /// behavior unchanged: nothing is ever classified `Fleet` by IP.
+    pub fn empty() -> Self {
+        FleetIps(Vec::new())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// `true` iff `ip` parses and falls inside one of the configured
+    /// addresses/CIDR blocks. An unparseable `ip` (e.g. `handler::
+    /// source_ip`'s `"unknown"` fallback) never matches, same
+    /// never-silently-classify posture as [`is_loopback_source_ip`].
+    pub fn contains(&self, ip: &str) -> bool {
+        let Ok(addr) = ip.parse::<std::net::IpAddr>() else {
+            return false;
+        };
+        self.0.iter().any(|e| e.matches(addr))
+    }
+}
+
+/// Comma-separated `$MCPHOST_FLEET_IPS` -> [`FleetIps`]. Pure, separated
+/// from [`fleet_ips_from_env`]'s own env read for the same testability
+/// reason [`crate::oauth::parse_allowed_algs`] is. Invalid entries are
+/// logged and skipped -- one bad entry never blanks the whole list, same
+/// posture as [`crate::control::validate_synthetic_header`]'s
+/// invalid-header handling.
+pub fn parse_fleet_ips(raw: Option<&str>) -> FleetIps {
+    let Some(raw) = raw else {
+        return FleetIps::empty();
+    };
+    let mut entries = Vec::new();
+    for part in raw.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        match parse_fleet_ip_entry(part) {
+            Some(e) => entries.push(e),
+            None => tracing::warn!(entry = %part, "invalid MCPHOST_FLEET_IPS entry; skipping"),
+        }
+    }
+    FleetIps(entries)
+}
+
+pub fn fleet_ips_from_env() -> FleetIps {
+    let raw = std::env::var("MCPHOST_FLEET_IPS").ok();
+    parse_fleet_ips(raw.as_deref())
+}
+
 /// requirement 1's full derivation. `harness_marker_present` is the
 /// `x-mcphost-synthetic` header's presence on the request (any value,
 /// including one that later fails [`is_valid_synthetic_label`] and stores
@@ -660,17 +785,27 @@ pub fn is_known_synthorg_client(client_name: &str) -> bool {
 /// classifies `Loopback` even from a non-loopback IP -- the class name is
 /// the common case, not a literal claim about every request this branch
 /// covers.
+///
+/// loop/mcphost-fleet-ips: `fleet_ips` adds a third way into `Fleet`,
+/// alongside the known display name and synthorg client name -- our own
+/// fleet boxes running synthorg from a public IP with a real-looking
+/// `clientInfo.name` and no header. Header/loopback still wins first
+/// (unchanged precedence); a fleet-IP match never overrides an already-set
+/// harness marker or loopback verdict, it only widens what else counts as
+/// `Fleet`.
 pub fn classify_source_class(
     source_ip: &str,
     harness_marker_present: bool,
     display_name: &str,
     client_name: Option<&str>,
+    fleet_ips: &FleetIps,
 ) -> SourceClass {
     if is_loopback_source_ip(source_ip) || harness_marker_present {
         return SourceClass::Loopback;
     }
     if is_known_fleet_display_name(display_name)
         || client_name.is_some_and(is_known_synthorg_client)
+        || fleet_ips.contains(source_ip)
     {
         return SourceClass::Fleet;
     }
@@ -867,52 +1002,146 @@ mod tests {
 
     #[test]
     fn source_class_derivation() {
+        let no_fleet = FleetIps::empty();
         // AC1: loopback IP, no header -> Loopback.
         assert_eq!(
-            classify_source_class("127.0.0.1", false, "Some Agent", None),
+            classify_source_class("127.0.0.1", false, "Some Agent", None, &no_fleet),
             SourceClass::Loopback
         );
         assert_eq!(
-            classify_source_class("::1", false, "Some Agent", None),
+            classify_source_class("::1", false, "Some Agent", None, &no_fleet),
             SourceClass::Loopback
         );
         // Header presence alone -> Loopback, even from a non-loopback IP.
         assert_eq!(
-            classify_source_class("8.8.8.8", true, "Some Agent", None),
+            classify_source_class("8.8.8.8", true, "Some Agent", None, &no_fleet),
             SourceClass::Loopback
         );
         // Known fleet display name, non-loopback IP, no header -> Fleet.
         assert_eq!(
-            classify_source_class("8.8.8.8", false, "wintermute-hub", None),
+            classify_source_class("8.8.8.8", false, "wintermute-hub", None, &no_fleet),
             SourceClass::Fleet
         );
         assert_eq!(
-            classify_source_class("8.8.8.8", false, "panel_gtm_specialist_03", None),
+            classify_source_class("8.8.8.8", false, "panel_gtm_specialist_03", None, &no_fleet),
             SourceClass::Fleet
         );
         assert_eq!(
-            classify_source_class("8.8.8.8", false, "probe-smoke-test", None),
+            classify_source_class("8.8.8.8", false, "probe-smoke-test", None, &no_fleet),
             SourceClass::Fleet
         );
         // Synthorg client name, non-loopback IP, no header, unknown display
         // name -> Fleet (the open question's resolution).
         assert_eq!(
-            classify_source_class("8.8.8.8", false, "Real Sounding Name", Some("synthorg-runner")),
+            classify_source_class(
+                "8.8.8.8",
+                false,
+                "Real Sounding Name",
+                Some("synthorg-runner"),
+                &no_fleet
+            ),
             SourceClass::Fleet
         );
         assert_eq!(
-            classify_source_class("8.8.8.8", false, "Real Sounding Name", Some("SynthOrg")),
+            classify_source_class("8.8.8.8", false, "Real Sounding Name", Some("SynthOrg"), &no_fleet),
             SourceClass::Fleet
         );
         // AC4: non-loopback IP, no header, unknown client, unknown name -> External.
         assert_eq!(
-            classify_source_class("8.8.8.8", false, "Joe's Real Company", Some("claude-code")),
+            classify_source_class(
+                "8.8.8.8",
+                false,
+                "Joe's Real Company",
+                Some("claude-code"),
+                &no_fleet
+            ),
             SourceClass::External
         );
         assert_eq!(
-            classify_source_class("8.8.8.8", false, "Joe's Real Company", None),
+            classify_source_class("8.8.8.8", false, "Joe's Real Company", None, &no_fleet),
             SourceClass::External
         );
+    }
+
+    /// loop/mcphost-fleet-ips requirement 2: a source IP matching
+    /// `$MCPHOST_FLEET_IPS` is `Fleet`, same as a known display name or
+    /// synthorg client -- but header/loopback still wins first, and an
+    /// IP outside the configured list stays `External`.
+    #[test]
+    fn source_class_derivation_fleet_ip() {
+        let fleet = parse_fleet_ips(Some("46.225.110.44,178.105.64.66,10.0.0.0/8"));
+        // Exact match, real-looking display name and client -> Fleet.
+        assert_eq!(
+            classify_source_class(
+                "46.225.110.44",
+                false,
+                "Joe's Real Company",
+                Some("claude-code"),
+                &fleet
+            ),
+            SourceClass::Fleet
+        );
+        assert_eq!(
+            classify_source_class("178.105.64.66", false, "Some Name", None, &fleet),
+            SourceClass::Fleet
+        );
+        // CIDR match.
+        assert_eq!(
+            classify_source_class("10.1.2.3", false, "Some Name", None, &fleet),
+            SourceClass::Fleet
+        );
+        // Outside every configured entry -> External.
+        assert_eq!(
+            classify_source_class("8.8.8.8", false, "Some Name", None, &fleet),
+            SourceClass::External
+        );
+        // Header/loopback still wins first over a fleet IP.
+        assert_eq!(
+            classify_source_class("46.225.110.44", true, "Some Name", None, &fleet),
+            SourceClass::Loopback
+        );
+    }
+
+    /// The hand-rolled CIDR matcher itself: single addresses (implicit
+    /// /32, /128), explicit prefixes, IPv4 and IPv6, and the parser's
+    /// "skip invalid entries, keep the rest" contract.
+    #[test]
+    fn fleet_ips_parse_and_match() {
+        assert!(parse_fleet_ips(None).is_empty());
+        assert!(parse_fleet_ips(Some("")).is_empty());
+
+        let single = parse_fleet_ips(Some("46.225.110.44"));
+        assert!(single.contains("46.225.110.44"));
+        assert!(!single.contains("46.225.110.45"));
+
+        let cidr = parse_fleet_ips(Some("10.0.0.0/8"));
+        assert!(cidr.contains("10.0.0.1"));
+        assert!(cidr.contains("10.255.255.255"));
+        assert!(!cidr.contains("11.0.0.1"));
+
+        // /0 -- degenerate but must not panic (shift-by-width guard).
+        let all = parse_fleet_ips(Some("0.0.0.0/0"));
+        assert!(all.contains("1.2.3.4"));
+
+        let v6 = parse_fleet_ips(Some("2001:db8::/32"));
+        assert!(v6.contains("2001:db8::1"));
+        assert!(!v6.contains("2001:db9::1"));
+        let v6_single = parse_fleet_ips(Some("::1"));
+        assert!(v6_single.contains("::1"));
+
+        // Multiple entries, comma-separated, trimmed.
+        let multi = parse_fleet_ips(Some(" 46.225.110.44 , 178.105.64.66 "));
+        assert!(multi.contains("46.225.110.44"));
+        assert!(multi.contains("178.105.64.66"));
+        assert!(!multi.contains("1.1.1.1"));
+
+        // An unparseable source IP never matches, even against a /0.
+        assert!(!all.contains("unknown"));
+
+        // Invalid entries (bad prefix, garbage) are skipped, not fatal --
+        // the valid entry alongside them still matches.
+        let mixed = parse_fleet_ips(Some("not-an-ip,46.225.110.44,10.0.0.0/99"));
+        assert!(mixed.contains("46.225.110.44"));
     }
 
     #[test]
