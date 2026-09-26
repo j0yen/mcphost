@@ -1,87 +1,78 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-upstream-token-vault-status.md",
-  "intent_slug": "mcphost-upstream-token-vault-status",
-  "root_motivation": "Grounding (PRD: upstream-token-vault landed in 0.60.19 (run 257) with four of its own P0 requirements cut by that coder as \"no non-deferred AC\": host.vault.status, host.vault.provider_remove, admin.vault.stats, provider presets -- src/handler.rs:3022-3027 dispatched only provider_set/providers/connect_link/disconnect; www/llms.txt had zero lines naming the vault; live AC12 of that PRD failed for lack of the status tool it named, and prod had zero vault_tokens rows with no admin surface that would show one if it existed). An agent operator wiring an http-kind tool to Slack through the vault could not tell, when a call returned upstream_not_connected, whether the end user never connected, the token expired, or the refresh was rejected -- 0.60.19 exposed no per-user view of vault_tokens at all. The host operator could not count connected tokens or refresh failures on prod either: none of the 44 admin.* tools carried a vault entry.",
-  "user_persona": "Four (PRD User stories): (1) an agent operator who calls host.vault.status after a user reports a tool broke and sees connected: false with a revoked_reason; (2) an agent operator who registers GitHub with preset: \"github\" and only a client id/secret; (3) an agent operator who removes the slack provider after rotating the app; (4) the host operator (Joe), who reads admin.vault.stats from orch with the admin key.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-runs-end-user-subject.md",
+  "intent_slug": "mcphost-runs-end-user-subject",
+  "root_motivation": "Grounding (PRD): end-user-identity AC12 failed live on prod 0.60.16 (run 237, runs/237/live/verify-ac12.stream.log): two calls with distinct end_user_assertion JWTs returned two subjects, but host.runs.list rows were indistinguishable -- run_to_json had no end-user field and the runs table had none; migration 0042 added end_user_subject/issuer/method to calls only. end-user-identity requirement 4 promised host.runs.get and host.runs.list would expose them, but runs never carried the value. Until runs carry the subject, per-user audit, per-user usage, and per-user retention cannot be built on runs.",
+  "user_persona": "Three (PRD User stories): (1) a SaaS operator running one tool for many end users, who needs host.runs.list {end_user_subject: \"u_42\"} to show only that user's jobs; (2) an auditor, who needs host.runs.get {id} to name the subject, issuer, and method for a job; (3) a tool author with no end users, whose run rows must stay unchanged (end_user: null).",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 8
+    "target": 7
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given u1 connected to provider slack through the test OAuth server and provider github registered but never connected, When u1 calls host.vault.status {end_user: \"self\"}, Then providers lists slack with connected: true, a numeric expires_at, the granted scopes, revoked_at: null, and github with connected: false, and no substring of any access or refresh token appears in the response.",
-      "test": "tests/vaultst_ac01_status_lists_connected_and_unconnected_providers.rs"
+      "description": "Given a tenant with an assertion secret, When a tool is called async with an end_user_assertion for subject alice, Then host.runs.get {id} returns end_user: {subject: \"alice\", issuer: null, method: \"assertion\"}.",
+      "test": "tests/runsubject_ac01_async_assertion_end_user_on_run.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the same rows, When the tenant's agent (no end-user identity on the call) calls host.vault.status {end_user: \"<u1 subject>\"}, Then the same view returns; When end_user is omitted or \"self\" without an identity, Then invalid_params and upstream_not_connected respectively.",
-      "test": "tests/vaultst_ac02_status_end_user_resolution_matches_connect_link.rs"
+      "description": "Given calls for alice (2 runs) and bob (1 run), When host.runs.list {end_user_subject: \"alice\"} runs, Then exactly the 2 alice runs return; When {end_user_subject: \"carol\"}, Then an empty list.",
+      "test": "tests/runsubject_ac02_list_filters_by_end_user_subject.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given u1's slack token revoked by a 401 on refresh, When u1 calls host.vault.status, Then slack shows connected: false, a numeric revoked_at, and revoked_reason beginning refresh_.",
-      "test": "tests/vaultst_ac03_status_shows_revoked_after_refresh_401.rs"
+      "description": "Given an OAuth-identified call, When its run is read, Then end_user.issuer is the token issuer and method == \"oauth\".",
+      "test": "tests/runsubject_ac03_oauth_run_carries_issuer_and_method.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given tenant t1 with two slack users and one refresh failure in the last 24h, and tenant t2 with one slack and one github user, When the admin key calls admin.vault.stats, Then tenants lists t1 slack {tokens: 2, revoked: 1, refresh_failures_24h: 1} and t2 slack {tokens: 1} and github {tokens: 1}, totals.tokens == 4, and no token, secret, or client_secret substring appears.",
-      "test": "tests/vaultst_ac04_admin_vault_stats_per_tenant_per_provider.rs"
+      "description": "Given a schedule-fired run, When read, Then end_user is null.",
+      "test": "tests/runsubject_ac04_schedule_fired_run_end_user_null.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a tenant key, When it calls admin.vault.stats, Then the call is rejected the same way every other admin.* tool rejects a tenant key.",
-      "test": "tests/vaultst_ac05_admin_vault_stats_rejects_tenant_key.rs"
+      "description": "Given the existing runs fixture with no end user, When host.runs.list output is compared before and after this PRD, Then every row is identical except the added end_user: null key.",
+      "test": "tests/runsubject_ac05_list_output_unchanged_but_for_end_user.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given provider slack with three connected users, When the tenant calls host.vault.provider_remove {name: \"slack\"}, Then host.vault.providers no longer lists it, all three vault_tokens rows carry revoked_reason = \"provider_removed\", and each user's host.vault.status shows connected: false with that reason; When the name is unknown, Then not_found.",
-      "test": "tests/vaultst_ac06_provider_remove_revokes_all_tokens.rs"
+      "description": "Given a tenant with 100k runs, When migration 0048 applies in the test harness, Then it completes under 1 s and PRAGMA index_list(runs) shows the new index.",
+      "test": "tests/runsubject_ac06_migration_0048_under_1s_at_100k_rows.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given host.vault.provider_set {name: \"gh\", preset: \"github\", client_id, client_secret, scopes: [\"repo\"]} with no URLs, When it runs, Then the stored row carries GitHub's authorize and access-token URLs; Given the same call with an explicit auth_url, Then the explicit value wins; Given preset: \"gitlab\", Then invalid_params.",
-      "test": "tests/vaultst_ac07_provider_set_presets_fill_urls.rs"
+      "level": "MUST",
+      "description": "Given www/llms.txt, When the runs section is read, Then it names end_user and the end_user_subject filter.",
+      "test": "tests/runsubject_ac07_llms_txt_names_end_user_and_filter.rs"
     },
     {
       "id": "AC8",
-      "level": "SHOULD",
-      "description": "Given www/llms.txt, When read, Then an \"Upstream token vault\" section above <!-- sharing:start --> names host.vault.provider_set (with the three presets), host.vault.connect_link, host.vault.status, host.vault.disconnect, host.vault.provider_remove, the upstream: tool-spec field, and upstream_not_connected, and scripts/gen-docs-sharing.sh --check exits 0.",
-      "test": "tests/vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green.rs"
-    },
-    {
-      "id": "AC9",
       "level": "MUST",
-      "description": "Given prod after deploy with the operator tenant holding provider slack from preset: \"slack\" (placeholder creds, no handoff), When host.vault.status {end_user: \"vaultst-probe\"} runs with the operator key over https://mcphost.dev/mcp and admin.vault.stats with the admin key, Then status lists slack connected: false and stats lists the operator tenant's slack {tokens: 0} (Live; evidence: healthz version plus both transcripts under docs/receipts/<slug>.md, no key/secret text).",
-      "test": "deferred (prod leg only) -- see PRD frontmatter mock_justifications; always-on mechanism proof: tests/vaultst_ac09_live_vault_status_trailer.rs (MCPHOST_LIVE=1 for the real leg), which also checks AC9's own named evidence artifact docs/receipts/mcphost-upstream-token-vault-status.md against what the server actually serves; deferral paper trail locked by tests/vaultst_ac09_deferral_is_justified.rs"
+      "description": "Given prod after land, When the operator tenant's python tool that echoes MCPHOST_END_USER_ID is called async twice with two assertions (subjects ac8-alice, ac8-bob) through https://mcphost.dev/mcp, Then host.runs.list returns both runs with distinct end_user.subject values and host.runs.list {end_user_subject: \"ac8-alice\"} returns one.",
+      "test": "deferred: operator-provisioned -- needs a real published tool call against production mcphost.dev after deploy; no branch-local test can prove a live two-subject call transcript"
     }
   ],
   "scope": [
-    "src/vault.rs: host.vault.status (new) -- unions Db::list_vault_provider_names with Db::list_vault_token_provider_names (also new) so a just-removed provider's residual row still surfaces for the subject that has one; resolve_status_end_user (new, private) -- status's own end_user resolution, distinct from crate::enduser::resolve_end_user since AC2 pins invalid_params (omitted)/upstream_not_connected (\"self\" with no identity) rather than reusing that helper's args_invalid/end_user_required codes. host.vault.provider_remove (new) -- deletes the provider and revokes every stored token for it via Db::remove_vault_provider. preset_urls (new, private) -- the three-entry slack/github/google URL table; provider_set rewritten to accept an optional preset, with an explicit auth_url/token_url always overriding the matching preset value field by field.",
-    "src/db.rs: Db::list_vault_token_provider_names (new) -- distinct provider names a subject has any vault_tokens row for, registered or not. Db::remove_vault_provider (new) -- one BEGIN IMMEDIATE/COMMIT/ROLLBACK transaction, same shape as delete_tenant's own cascade. Db::vault_stats (new) -- one GROUP BY t.namespace, vt.provider aggregate query, joined to tenants for the caller-facing namespace, never reading access_enc/refresh_enc/client_secret_enc; VaultProviderStats/VaultTenantStats (new structs).",
-    "src/admin.rs: admin::vault_stats (new) -- calls Db::vault_stats, sums totals, never reads a token/secret column.",
-    "src/handler.rs: dispatch_tenant_tool gains host.vault.status/host.vault.provider_remove; dispatch_admin_tool gains admin.vault.stats (reachable only via the pre-existing (Auth::Admin, name) if name.starts_with(\"admin.\") arm -- a tenant key hits the pre-existing (Auth::Tenant(_, _), name) if name.starts_with(\"admin.\") => Forbidden arm with no new code, satisfying AC5); admin_tools() gains one new Tool::new(\"admin.vault.stats\", ...) schema entry, matching every other admin.* tool's own listing.",
-    "www/llms.txt: a new \"Upstream token vault\" section, placed above <!-- sharing:start --> (that marker's own block is scripts/gen-docs-sharing.sh's regenerated region and untouched), naming all five host.vault.* tools, the three presets, the upstream_provider (upstream:) tool-spec field, and upstream_not_connected.",
-    "tests/vaultst_ac0[1-8]_*.rs (new, eight files, one per non-deferred AC; AC9 is Live/operator-provisioned, no test); scripts/gen-test-suites.sh regenerated (all eight landed in the pre-existing tests/suite_core_07.rs bucket, which the generator's own filename-prefix bucketing already routed \"vaultst\" into, adjacent to the prior PRD's own \"vault\"-prefixed files).",
-    "agent/test-map.json: ac_test_map repointed to this PRD's vaultst prefix, upstream-token-vault's own map archived under ac_test_map_by_prefix.vault.",
-    "Cargo.toml/plugin/.claude-plugin/plugin.json/plugin/.mcp.json: patch version bump (see the version this card's own build actually shipped, at HEAD)."
+    "migrations/0048_runs_end_user_subject.sql (new): runs gains end_user_subject/end_user_issuer/end_user_method (nullable TEXT, additive ALTER TABLE) plus idx_runs_tenant_end_user(tenant_id, end_user_subject); renumbered twice during this PRD's rebase onto main -- from this PRD's own 0043 (claimed first by mcphost-shared-tool-caller-usage) to 0047 (claimed first by run 255's mcphost-end-user-audit-and-revoke branch, pushed 7b4ead2, which lands ahead of this one in the lane) to 0048, the next number actually free at push time; gated in src/db.rs's migrate_sync directly after the pre-existing migrate_0046_vault call, same pragma_table_info-gated idempotency shape 0042 uses.",
+    "src/db.rs: RunRow gains end_user_subject/end_user_issuer/end_user_method (Option<String>); RUN_COLUMNS/run_row_from_row read the 3 new columns; insert_queued_run (async host.tool_call('s enqueue) gains 3 trailing Option<String> params, written by every caller -- the real resolved end user for an ordinary async call, None/None/None for every trigger-fired enqueue (schedule/event/message/webhook/replay); record_call_attributed_with_end_user's own runs INSERT also writes the 3 columns (the same value its calls row already got); list_runs gains an end_user_subject filter parameter, pushed down as an indexed WHERE clause, empty result (never an error) for an unmatched subject.",
+    "src/runs.rs: run_to_json emits end_user: {subject, issuer, method} | null (end_user_to_json helper); enqueue (host.tool_call(..., async=true)'s handler) takes the caller's already-resolved Option<&EndUser> and threads subject/issuer/method into insert_queued_run; list() takes an end_user_subject argument and passes it to list_runs.",
+    "src/handler.rs: host_tool_call's crate::runs::enqueue call site passes the end_user handler.rs already resolved before dispatch; host.runs.list's Tool schema documents the end_user_subject filter argument.",
+    "src/hooks.rs, src/webhooks.rs, src/triggers.rs: every insert_queued_run call site for a trigger-fired enqueue (schedule fire/tick, event, message, webhook, replay) passes None/None/None for the 3 new parameters -- no end user resolution exists on any of these paths.",
+    "www/llms.txt: the runs-as-jobs paragraph gains one sentence naming end_user's shape and one naming the end_user_subject filter."
   ],
   "non_goals": [
-    "New OAuth flows, scopes negotiation, or token introspection against the provider -- PRD Non-goals.",
-    "Rotating or re-encrypting stored tokens -- PRD Non-goals.",
-    "The real Slack handoff itself (operator step) -- PRD Non-goals; see AC9/deferred.",
-    "A fourth OAuth preset beyond slack/github/google, or a way for a tenant to register its own preset -- not named by requirement 4/AC7.",
-    "Any change to resolve_for_call's own refresh/revoke behavior (P1 requirement 6, already shipped by PRD-mcphost-upstream-token-vault) -- host.vault.status only reads the rows that mechanism already writes."
+    "Per-end-user quotas or billing -- PRD Non-goals.",
+    "Backfilling historical runs -- PRD Non-goals; migration 0048 is additive-null for every pre-existing row.",
+    "P1 requirement 6 (admin.runs.list gaining the same field/filter) -- the coder dispatch's own AC list covers only requirements 1-5/7 plus the non-functional AC6; the dispatch's explicit stop instruction (\"do not start any work beyond this list\") rules out doing P1 work with no AC of its own in the same pass.",
+    "Whether trigger-fired runs (schedule/event/message/webhook) could ever carry an end user of their own -- out of scope; PRD Technical considerations names them null by construction, and no AC exercises otherwise."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -90,38 +81,37 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "status_end_user_codes_diverge_from_resolve_end_user": "AC2 pins host.vault.status's own two failure codes to invalid_params (end_user omitted) and upstream_not_connected (\"self\" with no verified identity on the call), neither of which is what crate::enduser::resolve_end_user itself returns for the same inputs (args_invalid via AppError::InvalidArgs, and end_user_required respectively) -- the helper every other host.vault.* tool (connect_link, disconnect) already reuses unchanged. status therefore has its own small resolve_status_end_user: it short-circuits omitted/null and self-without-identity to the AC-pinned codes directly, and falls through to the shared resolve_end_user for every other shape (self-with-identity, a literal subject with no identity on the call, a literal subject WITH an identity -> end_user_explicit_forbidden), so AC2's first scenario (the tenant's own agent reading a literal subject) still resolves identically to connect_link's own behavior.",
-      "status_provider_set_is_a_union_not_just_registered_providers": "AC6 requires that after host.vault.provider_remove deletes a provider's own vault_providers row, each previously-connected user's host.vault.status STILL names that provider (connected: false, revoked_reason: \"provider_removed\") -- so status cannot be driven by Db::list_vault_provider_names (the currently-registered set) alone. status instead unions that list with Db::list_vault_token_provider_names(tenant_id, subject) (new), which reads distinct provider names off vault_tokens itself for that one subject, registered or not. This keeps AC1's own case (every registered provider, connected or not) working identically, since a registered-but-never-connected provider (AC1's github) has no vault_tokens row and so is only found through the registered-providers half of the union.",
-      "admin_vault_stats_tenant_id_field_is_the_namespace_string": "admin.vault.stats's own requirement 2 names the field tenant_id, but this crate's own admin.mesh.stats precedent (MeshTenantStats.tenant) already established that a caller-facing per-tenant admin listing reports the tenant's namespace string, not its raw integer row id (which a caller has no way to have learned) -- Db::vault_stats's VaultTenantStats.tenant_id therefore holds the namespace, joined via `t.namespace` off `vault_tokens.tenant_id = t.id`, keeping the PRD's own field NAME while giving it the only value a real admin caller could actually match against (e.g. a namespace a prior admin.tenants/signup call already returned).",
-      "refresh_failures_24h_uses_glob_not_like": "requirement 2 defines refresh_failures_24h as a revoked_unix within the last 24h AND a revoked_reason beginning with the literal prefix refresh_. SQLite's LIKE operator treats a bare `_` as a single-character wildcard, so `LIKE 'refresh\\_%'` would need an explicit ESCAPE clause to mean the literal underscore; Db::vault_stats instead uses `revoked_reason GLOB 'refresh_*'`, where GLOB's own wildcard alphabet (`*`/`?`/`[...]`) gives `_` no special meaning at all, so the literal-prefix match is exact with no escaping needed.",
-      "provider_remove_not_found_code": "AC6's own wording (\"When the name is unknown, Then not_found\") is a generic code this crate already has one precedent for (runs.rs's own literal \"not_found\" Structured code) rather than reusing connect_link's more specific vault_provider_not_found -- host.vault.provider_remove uses the same literal \"not_found\" code AC6 names."
+      "additive_columns_stay_nullable_no_sentinel_needed": "Unlike end-user-identity's tenant_state_kv fix (which needed a '' sentinel because end_user_subject was folded into a composite PRIMARY KEY, and SQLite treats two NULLs as distinct there), runs.end_user_subject is never part of any key -- a plain nullable TEXT column is safe, and NULL cleanly means 'no end user' with no collision risk.",
+      "trigger_fired_enqueue_never_resolves_an_end_user": "insert_queued_run's 3 new trailing parameters are None/None/None at every call site outside runs::enqueue (host.tool_call(..., async=true)'s own handler) -- hooks.rs (event/message/replay), webhooks.rs (webhook replay), triggers.rs (schedule fire/tick) have no end-user concept at all, matching AC4's schedule-fired-run-is-null requirement.",
+      "unknown_end_user_subject_filter_is_empty_not_an_error": "list_runs's end_user_subject filter follows the exact same convention its pre-existing tool_name/status/trigger filters already use: a value matching zero rows is an empty list, never a structured error (AC2's carol case).",
+      "migration_0048_lands_after_0046_not_0043": "This PRD's own frontmatter and every ambiguity entry below it named 0043 as 'the exact gap already reserved between 0042 and 0044' -- true when this branch was first built, but stale by the time it rebased onto main, twice over: PRD-mcphost-shared-tool-caller-usage landed on main first and claimed 0043 for itself (0044-0046 already taken by docs-semantic-search/run-result-overflow-to-state/upstream-token-vault), so this rebase first renumbered to 0047 -- then run 255's mcphost-end-user-audit-and-revoke branch turned out to have already pushed 0047 for itself (7b4ead2) and lands ahead of this one in the lane, so this PRD's migration was renumbered again to 0048, the next number actually free, and appended to migrate_sync immediately after the pre-existing migrate_0046_vault call rather than inserted between 0042 and 0044."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does an agent operator need a per-user, per-provider READ at all, rather than just retrying the call and reading whatever error comes back?",
-      "a": "Problem statement: when a vault-injected call returns upstream_not_connected, the caller cannot tell whether the end user never connected, the token expired, or a refresh was rejected -- src/vault.rs's own pre-status resolve_for_call (P1 requirement 6, already shipped) reads and updates the vault_tokens row internally but reports nothing about it back to the caller beyond one generic refusal code, so recovering (\"send a fresh connect link\" vs \"nothing to do, wait for the human\") requires guessing."
+      "q": "Why does a run need to remember the end user it ran for, rather than leaving that to the calls row migration 0042 already added?",
+      "a": "Grounding: end-user-identity's own live AC12 failed on prod because host.runs.list rows were indistinguishable between two different end users' calls -- calls carries the value, but a async job's queued/running/done lifecycle is a runs row, and host.runs.get/list/wait are what an operator or auditor actually reads (requirement 4's own promise)."
     },
     {
       "why": 2,
-      "q": "Why does host.vault.status need to keep naming a provider after host.vault.provider_remove deletes its registration (AC6), rather than simply dropping it from the listing the moment it's gone?",
-      "a": "requirement 3 says provider_remove must mark every affected vault_tokens row provider_removed, and requirement 1 says status reports revoked_reason -- a caller who already has that user's status open, or who checks status right after being told about a rotation, needs to see WHY a previously-working connection is now dead, not just that the provider vanished from an unrelated listing (host.vault.providers) they'd have to separately think to check."
+      "q": "Why thread the value through insert_queued_run's own parameters rather than joining against calls at read time?",
+      "a": "An async job's runs row is written (queued) before any calls row exists at all -- record_call_attributed_with_end_user's calls+runs pair is the SYNC path only; the async path (insert_queued_run) has no calls row to join against, ever, so the run row itself has to be the source of truth."
     },
     {
       "why": 3,
-      "q": "Why does the operator need admin.vault.stats at all, rather than reading vault_tokens directly on the box?",
-      "a": "Problem statement: the host operator could not count connected tokens or refresh failures on prod at all before this PRD -- none of the 44 pre-existing admin.* tools carried a vault entry, and the success-metrics table names 'vault state readable on prod' as the metric this PRD exists to move from 'no tool' to '200 with the operator tenant's provider'."
+      "q": "Why null rather than a sentinel like tenant_state_kv's '' (migration 0042) for 'no end user'?",
+      "a": "end_user_subject is never part of a composite PRIMARY KEY on runs (unlike tenant_state_kv's rebuild), so SQLite's NULL-uniqueness quirk that forced the '' sentinel there doesn't apply here -- a plain nullable column is the simplest correct shape, and AC4/AC5 both phrase the no-end-user case as literally null."
     },
     {
       "why": 4,
-      "q": "Why does provider_set need OAuth presets (requirement 4) rather than always requiring the caller to paste auth_url/token_url by hand?",
-      "a": "User stories: \"an agent operator registers GitHub with preset: 'github' and only a client id and secret\" -- every OAuth provider a tenant is likely to register (Slack, GitHub, Google) publishes fixed, well-known authorize/token endpoint URLs, so requiring them to be copied correctly on every provider_set call is pure copy-paste risk with no corresponding benefit; an explicit auth_url/token_url still overrides the preset per field, so a nonstandard or self-hosted OAuth app is never blocked by the preset table existing."
+      "q": "Why does host.runs.list's end_user_subject filter return an empty list rather than a structured error for an unrecognized subject (AC2's carol case)?",
+      "a": "Requirement 4's own wording ('unknown subject returns an empty list, never an error') matches the pre-existing tool_name/status/trigger filters' behavior exactly -- an unmatched filter value already means empty result, not a validation failure, everywhere else in this function."
     },
     {
       "why": 5,
-      "q": "Why does AC9 stay deferred rather than built as a branch-local test the same way AC1-8 were?",
-      "a": "AC9's own Given is explicitly operator-provisioned (\"done by hand from orch with the operator key on mcphost-1\") and its When calls a real production endpoint (https://mcphost.dev/mcp) with the real operator/admin keys this coding sandbox does not have -- no branch-local TestServer can stand in for a real deploy, a real operator-registered placeholder-credential provider, or the admin key orch itself holds, so it is listed under deferred with reason operator-provisioned per the coder dispatch's own explicit instruction, not attempted with a mock that would prove nothing about the real prod surface."
+      "q": "Why defer AC8 rather than simulate it with a local mock standing in for production?",
+      "a": "AC8 names a real published tool call through https://mcphost.dev/mcp after deploy, with a receipt saved under docs/receipts/ -- the coder dispatch's own deferred-AC convention (operator-provisioned) applies, identical to every other PRD's live-only AC already deferred this way in this repo's history (see ac_test_map_by_prefix's own AC12/AC11/AC12 deferrals)."
     }
   ],
   "created_at": "2026-09-26T00:00:00Z",
@@ -317,6 +307,10 @@
     {
       "question": "Rebasing wm-build/mcphost-upstream-token-vault-status onto main after PRD-mcphost-plan-catalog-state-quota-defaults (#50) merged: that PRD's own intent-card-refresh regenerated agent/intent-card.json's root_motivation/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace for plan-catalog-state-quota-defaults (as this pattern always does) but its ambiguities_resolved array came out with only that PRD's own single new entry, dropping the other 47 entries this log had already accumulated -- conflicting with this branch's own agent/intent-card.json, which (per the usual per-PRD rewrite) describes upstream-token-vault-status/vaultst instead. Keep plancat's fields (this branch isn't building plancat), or vaultst's?",
       "resolution": "Kept vaultst's own root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace -- this branch continues building vaultst (AC9 commits follow), matching every prior 'Rebasing wm-build/X onto main after PRD-Y' recurrence in this log (see the shared-tool-caller-usage and upstream-token-vault entries above). ambiguities_resolved was NOT truncated to match either side alone: it now holds this branch's own full accumulated history (unaffected by the truncation, since that only happened in the plancat lineage on main) plus plancat's one dropped-elsewhere entry, ported forward here so its own build-time decision (from_toml's signature change) stays on the record. agent/test-map.json's ac_test_map stays pointed at vaultst; plancat's own AC1-AC8 map (real, already-shipped, tests/plancat_ac0[1-7]_*.rs plus AC8 deferred) was archived under ac_test_map_by_prefix.plancat, the same 'preserve rather than delete' treatment every other superseded PRD in that dict already gets."
+    },
+    {
+      "question": "Rebasing wm-build/mcphost-runs-end-user-subject onto main after PRD-mcphost-upstream-token-vault-status (#52) merged: that PRD's own intent-card-refresh regenerated agent/intent-card.json's root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace for upstream-token-vault-status, and its ambiguities_resolved array holds this log's full 48-entry accumulated history through vaultst's own rebase entry. This branch's own agent/intent-card.json (per the usual per-PRD rewrite) describes runs-end-user-subject/runsubject instead, and its own ambiguities_resolved array had drifted from an earlier, since-abandoned automated rebase attempt (duplicate 'Rebasing wm-build/mcphost-runs-end-user-subject' entries, built on this branch's pre-rebase base which had itself only 1 entry due to the fleet-ips lineage's own truncation bug) rather than main's real accumulated log. Keep vaultst's fields, or runsubject's -- and which ambiguities_resolved?",
+      "resolution": "Kept runsubject's own root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace -- this branch is landing runsubject now, matching every prior 'Rebasing wm-build/X onto main after PRD-Y' recurrence in this log (see the upstream-token-vault-status and plan-catalog-state-quota-defaults entries above). ambiguities_resolved was NOT taken from either side's drifted copy: it is main's real 48-entry accumulated log (the abandoned automated attempt's duplicated/self-referential entries were discarded as unreliable) plus this one new entry, appended. agent/test-map.json's ac_test_map stays pointed at runsubject; vaultst's own AC1-AC9 map (real, already-shipped, tests/vaultst_ac0[1-8]_*.rs plus AC9 deferred) was archived under ac_test_map_by_prefix.vaultst, the same 'preserve rather than delete' treatment every other superseded PRD in that dict already gets."
     }
   ]
 }
