@@ -1074,6 +1074,8 @@ mod vaultst_ac05_admin_vault_stats_rejects_tenant_key;
 mod vaultst_ac06_provider_remove_revokes_all_tokens;
 #[path = "vaultst_ac07_provider_set_presets_fill_urls.rs"]
 mod vaultst_ac07_provider_set_presets_fill_urls;
+#[path = "vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green.rs"]
+mod vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green;
 #[path = "wake_ac1_message_trigger_fires_run.rs"]
 mod wake_ac1_message_trigger_fires_run;
 #[path = "wake_ac2_from_filter.rs"]
