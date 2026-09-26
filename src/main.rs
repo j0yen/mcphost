@@ -551,6 +551,7 @@ async fn main() -> anyhow::Result<()> {
                 alert_quota_trips: mcphost::alerts::QuotaTripTracker::new(),
                 status_probe_override: mcphost::statusfeed::ProbeOverrides::new(),
                 fleet_ips,
+                end_user_activity: Default::default(),
             });
             // PRD-mcphost-abuse-guard-ban-list requirement 6: load the ban
             // cache once before this process ever serves a request, so the
@@ -587,6 +588,10 @@ async fn main() -> anyhow::Result<()> {
             // docs index tick, started once here alongside the other
             // background tasks.
             mcphost::docs_index::spawn_scheduler((*state).clone());
+            // PRD-mcphost-end-user-audit-and-revoke requirement 1: the 10 s
+            // end-user activity flush, started once here alongside the
+            // other background tasks.
+            mcphost::enduserctl::spawn_scheduler((*state).clone());
             // PRD-mcphost-python-dependency-policy requirement 6: the daily
             // dependency-advisory re-audit, started once here alongside the
             // other background tasks (`admin.dependency_reaudit` triggers

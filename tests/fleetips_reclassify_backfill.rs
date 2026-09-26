@@ -142,6 +142,7 @@ async fn reclassify_fleet_ips_backfills_matched_rows_only_and_is_idempotent() {
     assert_eq!(o3, "external", "non-fleet-ip signup must stay external");
 
     // The two matching tenants flipped; the third didn't.
+    #[allow(clippy::type_complexity)]
     for tenant_id in [tenant_ids[0], tenant_ids[1]] {
         let (source_class, synthetic, origin, origin_detail, classified_by): (
             Option<String>,

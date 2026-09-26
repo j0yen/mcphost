@@ -361,6 +361,7 @@ mod tests {
             alert_quota_trips: crate::alerts::QuotaTripTracker::new(),
             status_probe_override: crate::statusfeed::ProbeOverrides::new(),
             fleet_ips: crate::state::FleetIps::empty(),
+            end_user_activity: Default::default(),
         };
 
         let eu = verify_assertion(&state, &tenant, &token).await.expect("valid assertion");

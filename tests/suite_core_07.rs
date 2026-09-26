@@ -328,6 +328,26 @@ mod enduser_ac09_quota_end_users;
 mod enduser_ac10_whoami;
 #[path = "enduser_ac11_assertion_secret_rotate_invalidates_and_never_leaks.rs"]
 mod enduser_ac11_assertion_secret_rotate_invalidates_and_never_leaks;
+#[path = "enduserctl_ac01_list_flush_aggregates_calls.rs"]
+mod enduserctl_ac01_list_flush_aggregates_calls;
+#[path = "enduserctl_ac02_get_row_plus_counts.rs"]
+mod enduserctl_ac02_get_row_plus_counts;
+#[path = "enduserctl_ac03_audit_calls_newest_first_paged.rs"]
+mod enduserctl_ac03_audit_calls_newest_first_paged;
+#[path = "enduserctl_ac04_revoke_refuses_next_call_and_disconnects_vault.rs"]
+mod enduserctl_ac04_revoke_refuses_next_call_and_disconnects_vault;
+#[path = "enduserctl_ac05_purge_deletes_scoped_rows_and_deidentifies_calls.rs"]
+mod enduserctl_ac05_purge_deletes_scoped_rows_and_deidentifies_calls;
+#[path = "enduserctl_ac06_purge_without_revoke_rejected.rs"]
+mod enduserctl_ac06_purge_without_revoke_rejected;
+#[path = "enduserctl_ac07_unrevoke_restores_calls_audit_shows_both.rs"]
+mod enduserctl_ac07_unrevoke_restores_calls_audit_shows_both;
+#[path = "enduserctl_ac08_export_bundle_scoped_to_one_subject.rs"]
+mod enduserctl_ac08_export_bundle_scoped_to_one_subject;
+#[path = "enduserctl_ac09_admin_stats_per_tenant_and_audited.rs"]
+mod enduserctl_ac09_admin_stats_per_tenant_and_audited;
+#[path = "enduserctl_ac10_list_100k_pages_under_50ms_stable_cursor.rs"]
+mod enduserctl_ac10_list_100k_pages_under_50ms_stable_cursor;
 #[path = "envelope_ac1_http_declared_output_promoted.rs"]
 mod envelope_ac1_http_declared_output_promoted;
 #[path = "envelope_ac4_tool_test_reports_missing_declared_output.rs"]
