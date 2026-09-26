@@ -135,6 +135,88 @@ pub async fn providers(state: &AppState, tenant: &Tenant) -> Result<Value, AppEr
     }))
 }
 
+/// `host.vault.status`'s own `end_user` resolution (P0 requirement 1,
+/// AC1-AC2) -- deliberately not [`crate::enduser::resolve_end_user`]
+/// itself: that helper's own `"self"`-with-no-identity error is
+/// `end_user_required`, but AC2 pins this tool's own two failure codes to
+/// `invalid_params` (omitted) and `upstream_not_connected` (`"self"` with
+/// no identity on the call, since there is then no subject at all to
+/// report status for -- the same code a resolved-but-unconnected call
+/// already returns). A literal subject string (the tenant's own agent
+/// reading a named end user, no identity required) and `"self"` with a
+/// verified identity both still resolve exactly as
+/// [`crate::enduser::resolve_end_user`] already does for `connect_link`.
+fn resolve_status_end_user(args: &Value, end_user: Option<&EndUser>) -> Result<String, AppError> {
+    match args.get("end_user") {
+        None | Some(Value::Null) => Err(AppError::InvalidParams(
+            "end_user is required: pass \"self\" or an end-user subject".to_string(),
+        )),
+        Some(Value::String(s)) if s == "self" => match end_user {
+            Some(eu) => Ok(eu.subject.clone()),
+            None => Err(AppError::Structured {
+                code: "upstream_not_connected",
+                message: "end_user: \"self\" has no verified end-user identity on this call".to_string(),
+                data: json!({}),
+            }),
+        },
+        Some(Value::String(_)) => {
+            let (subject, _impersonated) = crate::enduser::resolve_end_user(args, end_user)?;
+            Ok(subject)
+        }
+        Some(_) => Err(AppError::InvalidArgs(
+            "end_user must be a string (\"self\" or a subject) or null".to_string(),
+        )),
+    }
+}
+
+/// `host.vault.status` (P0 requirement 1, AC1-AC3; AC6): the union of
+/// every provider the tenant currently registers AND every provider this
+/// specific end user has a `vault_tokens` row for -- AC6's own "each
+/// user's `host.vault.status` shows `connected: false` with [the
+/// `provider_removed`] reason" needs a just-removed provider (gone from
+/// [`providers`]) to still surface here for a subject who has a residual
+/// row, so this can't be driven by the registered-providers list alone.
+/// Never reads the encrypted `access_enc`/`refresh_enc` columns
+/// themselves, only [`crate::db::VaultTokenRow`]'s other fields.
+pub async fn status(state: &AppState, tenant: &Tenant, args: &Value, end_user: Option<&EndUser>) -> Result<Value, AppError> {
+    let subject = resolve_status_end_user(args, end_user)?;
+    let registered = state.db.list_vault_provider_names(tenant.id).await?;
+    let token_providers = state
+        .db
+        .list_vault_token_provider_names(tenant.id, subject.clone())
+        .await?;
+    let mut names: std::collections::BTreeSet<String> = registered.into_iter().collect();
+    names.extend(token_providers);
+
+    let mut out = Vec::with_capacity(names.len());
+    for name in names {
+        let row = state.db.get_vault_token(tenant.id, name.clone(), subject.clone()).await?;
+        out.push(match row {
+            Some(r) => json!({
+                "name": name,
+                "connected": r.revoked_unix.is_none(),
+                "expires_at": r.expires_unix,
+                "scopes": r.scopes,
+                "connected_at": r.connected_unix,
+                "last_refreshed_at": r.last_refreshed_unix,
+                "revoked_at": r.revoked_unix,
+                "revoked_reason": r.revoked_reason,
+            }),
+            None => json!({
+                "name": name,
+                "connected": false,
+                "expires_at": Value::Null,
+                "scopes": Value::Null,
+                "connected_at": Value::Null,
+                "last_refreshed_at": Value::Null,
+                "revoked_at": Value::Null,
+                "revoked_reason": Value::Null,
+            }),
+        });
+    }
+    Ok(json!({"providers": out}))
+}
+
 /// `host.vault.connect_link` (AC1): `end_user: "self"` is the only
 /// supported shape (requirement 3 names no other) -- resolved through the
 /// same [`crate::enduser::resolve_end_user`] every `host.state.*` op uses,

@@ -5610,6 +5610,29 @@ impl Db {
         .await
     }
 
+    /// `host.vault.status` (P0 requirement 1, AC6): every provider name
+    /// this specific end user has a `vault_tokens` row for, registered or
+    /// not -- lets [`crate::vault::status`] still surface a just-removed
+    /// provider's residual row (AC6's `provider_removed` reason) even
+    /// though [`Self::list_vault_provider_names`] no longer names it.
+    pub async fn list_vault_token_provider_names(
+        &self,
+        tenant_id: i64,
+        end_user_subject: String,
+    ) -> Result<Vec<String>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT DISTINCT provider FROM vault_tokens \
+                 WHERE tenant_id = ?1 AND end_user_subject = ?2 ORDER BY provider",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id, end_user_subject], |r| r.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
     /// `host.vault.disconnect` (AC8) and a failed refresh (P1 requirement 6
     /// / AC10) both funnel through here -- `reason` is `None` for an
     /// explicit disconnect, `Some(...)` for a refresh failure.
