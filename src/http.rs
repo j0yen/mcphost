@@ -413,6 +413,31 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
             }),
         );
     }
+    // PRD-mcphost-plan-catalog-state-quota-defaults requirement 3 / AC4:
+    // the loaded catalog's effective quotas, so the instrument can assert a
+    // quota is non-zero before scoring a stateful task without reading the
+    // box's own `plans.toml`.
+    if let Some(obj) = body.as_object_mut() {
+        obj.insert(
+            "plans".to_string(),
+            json!(
+                state
+                    .plans
+                    .plans
+                    .iter()
+                    .map(|p| json!({
+                        "name": p.name,
+                        "state_bytes_max": p.state_bytes_max,
+                        "state_rows_max": p.state_rows_max,
+                        "table_bytes_max": p.table_bytes_max,
+                        "docs_bytes_max": p.docs_bytes_max,
+                        "jobs_concurrent": p.jobs_concurrent,
+                        "end_users_max": p.end_users_max,
+                    }))
+                    .collect::<Vec<_>>()
+            ),
+        );
+    }
     Json(body).into_response()
 }
 

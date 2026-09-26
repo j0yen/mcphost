@@ -395,6 +395,7 @@ Runnable end-to-end proof, 1,000-row fixture included:
 
 - Admin runs through `admin.*` tools on the same endpoint with an admin key; there is no web UI by design.
 - Per-tenant metering (p50/p95 durations, call counts) via `host.usage` and `admin.usage`.
+- An old `plans.toml` missing a quota (e.g. one written before `state_bytes_max` existed) is filled from `default_catalog()`'s value for that plan name, never zeroed; startup logs `plans.toml: plan=<name> defaulted=[<field>, ...]` naming exactly what it filled in.
 
 ## Contract
 
