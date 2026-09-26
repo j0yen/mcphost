@@ -139,6 +139,11 @@ async fn unauthenticated_tools_list_is_signup_only() {
         "host.group.list",
         "host.catalog.search",
         "host.catalog.get",
+        // PRD-mcphost-shared-tool-caller-usage requirement 3: per-caller
+        // limits on a shared tool are discoverable unauthenticated too,
+        // same as every other host.*-style tool above.
+        "host.share.caller_limit",
+        "host.share.caller_limit_remove",
         // PRD-mcphost-runs-and-jobs requirement 7: the runs ledger's
         // tenant-facing tools are discoverable unauthenticated too, same
         // as every other host.*-style tool above.
@@ -256,7 +261,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        107,
+        109,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the three host.tool_history/host.tool_rollback/host.tool_diff \
@@ -265,8 +270,9 @@ async fn unauthenticated_tools_list_is_signup_only() {
          + the nine host.table.* tools (PRD-mcphost-tenant-tables, \
          PRD-mcphost-table-semantic-model) \
          + the eight host.tool_share/host.tool_unshare/host.group.*/host.catalog.* tools \
-         (PRD-mcphost-sharing) + the five host.runs.* tools (PRD-mcphost-runs-and-jobs) \
-         + the two host.progress/host.runs.part tools \
+         (PRD-mcphost-sharing) + the two host.share.caller_limit/caller_limit_remove tools \
+         (PRD-mcphost-shared-tool-caller-usage) + the five host.runs.* tools \
+         (PRD-mcphost-runs-and-jobs) + the two host.progress/host.runs.part tools \
          (PRD-mcphost-run-result-overflow-to-state) \
          + the nine host.trigger.* tools (PRD-mcphost-schedules, PRD-mcphost-inbound-events) \
          + the three billing.* tools + the four host.agent.* tools \
