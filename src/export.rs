@@ -246,10 +246,25 @@ async fn run_enduser_export_job(state: AppState, tenant: Tenant, run_id: String,
 
     let (status, result_ref, error_class) = match outcome {
         Ok(result_value) => {
-            let result_key = format!("runs/{run_id}");
-            let set_args = json!({"key": result_key, "value": result_value});
+            // PRD-mcphost-run-result-overflow-to-state: the same single-part
+            // `runs/<run_id>/part/0` convention `run_export_job` above uses
+            // -- an end-user export's result (a small manifest/
+            // download_url object) never overflows `MAX_TOOL_OUTPUT_BYTES`,
+            // so this is always the one-part case, and `host.runs.get`
+            // reads it through the exact same path as any other job's.
+            let value_json = serde_json::to_string(&result_value).unwrap_or_else(|_| "null".to_string());
+            let bytes = value_json.len() as i64;
+            let set_args = json!({"key": crate::runs::part_key(&run_id, 0), "value": result_value});
             match crate::tenant_state::state_set(&state, &tenant, &set_args, None).await {
-                Ok(_) => ("done".to_string(), Some(result_key), None),
+                Ok(_) => {
+                    let result_ref = json!({
+                        "parts": 1,
+                        "bytes": bytes,
+                        "content_type": "application/json",
+                    })
+                    .to_string();
+                    ("done".to_string(), Some(result_ref), None)
+                }
                 Err(e) => ("error".to_string(), None, Some(e.code().to_string())),
             }
         }

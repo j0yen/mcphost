@@ -13158,10 +13158,13 @@ impl Db {
         .await
     }
 
-    /// Test-only: inserts one `vault_tokens` row -- the token-vault PRD
-    /// hasn't landed a real connect flow yet (this control plane's own
-    /// migration 0043 doc comment explains why `vault_tokens` exists at
-    /// all), so tests seed connections directly.
+    /// Test-only: inserts one `vault_tokens` row scoped to this control
+    /// plane's own ACs (connected/revoked bookkeeping by subject) -- this
+    /// control plane doesn't own real token material, migration 0046
+    /// (PRD-mcphost-upstream-token-vault) does, so `access_enc`/
+    /// `access_nonce`/`expires_unix`/`scopes` below are placeholder,
+    /// never-decrypted values that exist only to satisfy that table's own
+    /// NOT NULL columns; enduserctl's ACs never read them.
     pub async fn insert_vault_token_for_test(
         &self,
         tenant_id: i64,
@@ -13171,9 +13174,19 @@ impl Db {
         let now = now_unix();
         self.with_conn(move |conn| {
             conn.execute(
-                "INSERT INTO vault_tokens (tenant_id, end_user_subject, provider, connected_unix) \
-                 VALUES (?1, ?2, ?3, ?4)",
-                params![tenant_id, subject, provider, now],
+                "INSERT INTO vault_tokens (tenant_id, provider, end_user_subject, access_enc, \
+                 access_nonce, expires_unix, scopes, connected_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    tenant_id,
+                    provider,
+                    subject,
+                    vec![0u8; 1],
+                    vec![0u8; 1],
+                    now + 3600,
+                    String::new(),
+                    now
+                ],
             )?;
             Ok(conn.last_insert_rowid())
         })

@@ -1,7 +1,8 @@
--- compat: previous -- every new table is additive and every altered table
--- (`calls`) only gains a nullable column, so an old release simply never
--- queries the new shapes and every existing row's meaning is unchanged
--- (PRD-mcphost-migration-safety requirement 4).
+-- compat: previous -- every new table is additive, every altered table
+-- (`calls`) only gains a nullable column, and the one table this PRD does
+-- NOT create (`vault_tokens`, see below) is only ever given a new index --
+-- so an old release simply never queries the new shapes and every existing
+-- row's meaning is unchanged (PRD-mcphost-migration-safety requirement 4).
 -- mcphost 0047_end_user_audit_and_revoke: PRD-mcphost-end-user-audit-and-revoke
 -- requirement 1.
 --
@@ -52,21 +53,24 @@ CREATE INDEX IF NOT EXISTS idx_tenant_audit_tenant_subject
     ON tenant_audit(tenant_id, subject, id DESC);
 
 -- requirement 4/5 (AC2/AC4/AC5/AC8): an end user's upstream-token
--- connections. `mcphost-upstream-token-vault`
--- (visions/mcphost-end-user-auth.md component 3) has not landed yet, so
--- this control plane owns the smallest shape its own ACs need -- which
--- provider connections exist per end user, and whether they're revoked --
--- rather than blocking this PRD on that one; the vault PRD, when it ships,
--- extends this table (ciphertext columns for the actual token material)
--- rather than replacing it.
-CREATE TABLE IF NOT EXISTS vault_tokens (
-    id               INTEGER PRIMARY KEY,
-    tenant_id        INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    end_user_subject TEXT NOT NULL,
-    provider         TEXT NOT NULL,
-    connected_unix   INTEGER NOT NULL,
-    revoked_unix     INTEGER
-);
+-- connections. This PRD was drafted expecting `mcphost-upstream-token-vault`
+-- (visions/mcphost-end-user-auth.md component 3) to land later and extend a
+-- minimal `vault_tokens` shape this control plane would own first -- but
+-- that vault PRD landed first instead (migration 0046_vault.sql,
+-- PRD-mcphost-upstream-token-vault), already owning `vault_tokens` with the
+-- full ciphertext columns (`access_enc`/`access_nonce`/`refresh_enc`/
+-- `refresh_nonce`/`expires_unix`/`scopes`) plus the same `provider`/
+-- `end_user_subject`/`connected_unix`/`revoked_unix` columns this control
+-- plane needs. So this migration does not repeat `CREATE TABLE ...
+-- vault_tokens` -- `CREATE TABLE IF NOT EXISTS` against an already-existing
+-- table is a silent no-op, so a second, narrower definition here would
+-- never actually apply, and this control plane's own test-seeded rows
+-- write real (dummy) values into 0046's NOT NULL ciphertext columns rather
+-- than assuming a table shape that was never actually created. This
+-- migration only adds the index its own subject-scoped queries
+-- (`host.enduser.get`/`revoke`/`purge`) need, which 0046's own
+-- `idx_vault_tokens_lookup (tenant_id, provider, end_user_subject)` doesn't
+-- serve as well (no provider in hand for these lookups).
 CREATE INDEX IF NOT EXISTS idx_vault_tokens_tenant_subject
     ON vault_tokens(tenant_id, end_user_subject);
 
