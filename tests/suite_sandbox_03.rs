@@ -16,6 +16,18 @@ mod runenvelope_ac2_no_declared_outputs_raw_payload;
 mod runenvelope_ac3_descriptor_and_decision_table_name_envelope;
 #[path = "runenvelope_ac4_no_calls_row_with_payload.rs"]
 mod runenvelope_ac4_no_calls_row_with_payload;
+#[path = "runoverflow_ac01_python_async_result_overflows_to_parts.rs"]
+mod runoverflow_ac01_python_async_result_overflows_to_parts;
+#[path = "runoverflow_ac02_state_quota_error_preserves_counters.rs"]
+mod runoverflow_ac02_state_quota_error_preserves_counters;
+#[path = "runoverflow_ac06_purge_drops_run_results_bytes_not_user_state.rs"]
+mod runoverflow_ac06_purge_drops_run_results_bytes_not_user_state;
+#[path = "runoverflow_ac07_llms_txt_long_running_jobs_walkthrough.rs"]
+mod runoverflow_ac07_llms_txt_long_running_jobs_walkthrough;
+#[path = "runoverflow_ac08_wait_until_counter_returns_while_running.rs"]
+mod runoverflow_ac08_wait_until_counter_returns_while_running;
+#[path = "runoverflow_ac09_sync_call_still_tool_output_too_large.rs"]
+mod runoverflow_ac09_sync_call_still_tool_output_too_large;
 #[path = "runs_ac01_async_job_runs_progress_and_result.rs"]
 mod runs_ac01_async_job_runs_progress_and_result;
 #[path = "runs_ac02_job_max_s_timeout.rs"]

@@ -64,6 +64,7 @@ const MIGRATION_0040: &str = include_str!("../migrations/0040_alerts.sql");
 const MIGRATION_0041: &str = include_str!("../migrations/0041_status_feed.sql");
 const MIGRATION_0042: &str = include_str!("../migrations/0042_end_user_identity.sql");
 const MIGRATION_0044: &str = include_str!("../migrations/0044_docs_index.sql");
+const MIGRATION_0045: &str = include_str!("../migrations/0045_run_counters_and_error_data.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -606,11 +607,26 @@ pub struct RunRow {
     /// message trigger, whose envelope is synthetic, never a real stored
     /// message).
     pub message_id: Option<String>,
+    /// PRD-mcphost-run-result-overflow-to-state requirement 3 / migration
+    /// 0045: `host.progress`'s structured counters
+    /// (`items_processed`/`items_total`/`bytes_out`/`custom`), read back by
+    /// `host.runs.get/wait/list` as `counters` (`{}` when `None`, per the
+    /// PRD's own migration/compatibility note). Independent of
+    /// `progress_json`'s free-text `pct`/`msg` (P0 requirement 5, the prior
+    /// PRD) -- this PRD adds a second, structured channel rather than
+    /// folding counters into that same blob.
+    pub counters_json: Option<String>,
+    /// requirement 2 / migration 0045: structured data alongside
+    /// `error_class` (e.g. `state_quota`'s `{needed_bytes, available_bytes}`)
+    /// -- surfaced as `error: {kind, data}` by `run_to_json`. `None` for
+    /// every run whose error carries no extra data of its own.
+    pub error_data_json: Option<String>,
 }
 
 const RUN_COLUMNS: &str = "id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, \
     status, progress_json, result_ref, error_class, started_unix, finished_unix, duration_ms, \
-    deadline_s, attempt, purged_unix, args_json, manual, test_run, message_id";
+    deadline_s, attempt, purged_unix, args_json, manual, test_run, message_id, counters_json, \
+    error_data_json";
 
 fn run_row_from_row(r: &Row) -> rusqlite::Result<RunRow> {
     Ok(RunRow {
@@ -634,6 +650,8 @@ fn run_row_from_row(r: &Row) -> rusqlite::Result<RunRow> {
         manual: r.get::<_, i64>(17)? != 0,
         test: r.get::<_, i64>(18)? != 0,
         message_id: r.get(19)?,
+        counters_json: r.get(20)?,
+        error_data_json: r.get(21)?,
     })
 }
 
@@ -1738,7 +1756,8 @@ impl Db {
         Self::migrate_0040_alerts(&conn)?;
         Self::migrate_0041_status_feed(&conn)?;
         Self::migrate_0042_end_user_identity(&conn)?;
-        Self::migrate_0044_docs_index(&conn)
+        Self::migrate_0044_docs_index(&conn)?;
+        Self::migrate_0045_run_counters_and_error_data(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -2354,6 +2373,19 @@ impl Db {
             .exists([])?;
         if !has_table {
             conn.execute_batch(MIGRATION_0044)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-run-result-overflow-to-state migration 0045: same
+    /// idempotency pattern as 0002 above, gated on `counters_json`'s
+    /// presence.
+    fn migrate_0045_run_counters_and_error_data(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('runs') WHERE name = 'counters_json'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0045)?;
         }
         Ok(())
     }
@@ -5203,6 +5235,25 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-run-result-overflow-to-state requirement 5 / AC6:
+    /// `host.usage`'s `run_results_bytes` -- the slice of
+    /// [`Self::state_bytes_used`]'s own total that's run-result parts
+    /// (`runs/<id>/part/<n>` keys) rather than a tenant's own
+    /// `host.state.*` writes, so purging a run's parts visibly drops this
+    /// number while leaving the rest of a tenant's state untouched.
+    pub async fn run_results_bytes(&self, tenant_id: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COALESCE(SUM(LENGTH(value_json)), 0) FROM tenant_state_kv \
+                 WHERE tenant_id = ?1 AND key LIKE 'runs/%'",
+                params![tenant_id],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
     /// `(schema_json, primary_key)` for a declared table, `None` if this
     /// tenant has no table by that name.
     pub async fn state_table_get(
@@ -5981,6 +6032,30 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-run-result-overflow-to-state requirement 3:
+    /// `host.progress`'s counters write -- unlike
+    /// [`Self::update_run_progress`]'s throttled sandbox-only path, this is
+    /// a direct, explicit RPC call (never throttled) and is not gated on
+    /// `status = 'running'`: counters set while a run is still `queued`/
+    /// `running` must stay readable once it finalizes `done`/`error` (AC2's
+    /// "counters reported during the run are present" after a `state_quota`
+    /// failure).
+    pub async fn update_run_counters(
+        &self,
+        run_id: String,
+        tenant_id: i64,
+        counters_json: String,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE runs SET counters_json = ?1 WHERE id = ?2 AND tenant_id = ?3",
+                params![counters_json, run_id, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
     /// Finalizes a run to a terminal status (`done`/`error`/`timeout`) --
     /// conditional on the row still being `running` OR `queued` (a queued
     /// job whose tool vanished before ever leasing is also finalized
@@ -5990,6 +6065,7 @@ impl Db {
     /// that actually finalized it (the caller uses this to decide whether
     /// to also write the state-store result -- a lost race writes nothing).
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub async fn finalize_run(
         &self,
         run_id: String,
@@ -5997,15 +6073,22 @@ impl Db {
         status: String,
         result_ref: Option<String>,
         error_class: Option<String>,
+        // PRD-mcphost-run-result-overflow-to-state requirement 2: structured
+        // data alongside `error_class` (e.g. `state_quota`'s `{needed_bytes,
+        // available_bytes}`) -- `None` for every finalize that carries none.
+        error_data_json: Option<String>,
         finished_unix: i64,
         duration_ms: i64,
     ) -> Result<bool, AppError> {
         self.with_conn(move |conn| {
             let affected = conn.execute(
                 "UPDATE runs SET status = ?1, result_ref = ?2, error_class = ?3, \
-                 finished_unix = ?4, duration_ms = ?5 \
-                 WHERE id = ?6 AND tenant_id = ?7 AND status IN ('running', 'queued')",
-                params![status, result_ref, error_class, finished_unix, duration_ms, run_id, tenant_id],
+                 error_data_json = ?4, finished_unix = ?5, duration_ms = ?6 \
+                 WHERE id = ?7 AND tenant_id = ?8 AND status IN ('running', 'queued')",
+                params![
+                    status, result_ref, error_class, error_data_json, finished_unix, duration_ms,
+                    run_id, tenant_id
+                ],
             )?;
             Ok(affected > 0)
         })
@@ -6147,22 +6230,50 @@ impl Db {
     /// `runs` row itself, not the state store (`tenant_state.rs`'s
     /// territory, same separation `state_table_drop`'s caller already
     /// keeps in `tenant_state.rs`).
-    pub async fn purge_runs(&self, tenant_id: i64, before_unix: i64) -> Result<Vec<String>, AppError> {
+    /// Returns `(runs_purged, part_keys)`: how many `runs` rows this call
+    /// cleared (`host.runs.purge`'s own `purged` count) and every
+    /// `runs/<id>/part/<n>` key the caller (`runs::purge`) must also delete
+    /// from `tenant_state_kv` -- more than one key per run once a result
+    /// has multiple parts, so the two counts can differ.
+    pub async fn purge_runs(
+        &self,
+        tenant_id: i64,
+        before_unix: i64,
+    ) -> Result<(i64, Vec<String>), AppError> {
         let now = now_unix();
         self.with_conn(move |conn| {
+            // PRD-mcphost-run-result-overflow-to-state requirement 1:
+            // `result_ref` is now `runs::run_to_json`'s structured `{parts,
+            // bytes, content_type}` JSON, not a bare state key -- expand it
+            // into every `runs/<id>/part/<n>` key (`id`/`result_ref` read
+            // together, `id` not otherwise in `RUN_COLUMNS`'s own SELECT
+            // here) so the caller deletes the whole result, not just a key
+            // literally named after the JSON text.
             let mut stmt = conn.prepare(
-                "SELECT result_ref FROM runs WHERE tenant_id = ?1 AND status = 'done' \
+                "SELECT id, result_ref FROM runs WHERE tenant_id = ?1 AND status = 'done' \
                  AND finished_unix <= ?2 AND result_ref IS NOT NULL",
             )?;
-            let refs: Vec<String> = stmt
-                .query_map(params![tenant_id, before_unix], |r| r.get(0))?
+            let rows: Vec<(String, String)> = stmt
+                .query_map(params![tenant_id, before_unix], |r| Ok((r.get(0)?, r.get(1)?)))?
                 .collect::<Result<Vec<_>, _>>()?;
+            let runs_purged = rows.len() as i64;
+            let mut keys = Vec::new();
+            for (id, result_ref) in rows {
+                let parts = serde_json::from_str::<serde_json::Value>(&result_ref)
+                    .ok()
+                    .and_then(|v| v.get("parts").and_then(serde_json::Value::as_i64))
+                    .unwrap_or(1)
+                    .max(1);
+                for n in 0..parts {
+                    keys.push(format!("runs/{id}/part/{n}"));
+                }
+            }
             conn.execute(
                 "UPDATE runs SET result_ref = NULL, purged_unix = ?1 \
                  WHERE tenant_id = ?2 AND status = 'done' AND finished_unix <= ?3 AND result_ref IS NOT NULL",
                 params![now, tenant_id, before_unix],
             )?;
-            Ok(refs)
+            Ok((runs_purged, keys))
         })
         .await
     }

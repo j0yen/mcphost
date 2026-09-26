@@ -1187,6 +1187,11 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
     // now, the same total `admin.tenants`' own `state_bytes` (requirement
     // 8, P1) will report.
     let state_bytes = state.db.state_bytes_used(tenant.id).await?;
+    // PRD-mcphost-run-result-overflow-to-state requirement 5 / AC6: the
+    // slice of `state_bytes` above that's run-result parts, reported
+    // separately so a `host.runs.purge` is visible here without also
+    // moving the rest of a tenant's own state.
+    let run_results_bytes = state.db.run_results_bytes(tenant.id).await?;
     // PRD-mcphost-sharing requirement 3 (AC5): `calls_by_others` (owner
     // side, keyed by caller namespace) and `calls_to_shared` (caller
     // side) -- windowed the same as every other figure in this response.
@@ -1218,6 +1223,7 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
         "p50_ms": stats.p50_ms,
         "p95_ms": stats.p95_ms,
         "state_bytes": state_bytes,
+        "run_results_bytes": run_results_bytes,
         // PRD-mcphost-call-limits-honest AC8: `Db::usage` already counts
         // this from `error_class = "capacity"`; this handler just wasn't
         // forwarding it into the response envelope.

@@ -1338,6 +1338,12 @@ impl Kind for HttpKind {
             .and_then(|v| v.to_str().ok())
             .and_then(|s| s.trim().parse::<u64>().ok());
 
+        // PRD-mcphost-run-result-overflow-to-state requirement 1/AC5: an
+        // async job (`ctx.run_id.is_some()` -- only true for the executor's
+        // own job dispatch) never caps the upstream read here; `run_one_job`
+        // chunks the oversized response into state afterward instead. AC9:
+        // a synchronous call keeps capping exactly as before.
+        let allow_oversized = ctx.run_id.is_some();
         let mut buf: Vec<u8> = Vec::new();
         let mut stream = response.bytes_stream();
         let mut too_large = false;
@@ -1346,7 +1352,7 @@ impl Kind for HttpKind {
                 Ok(c) => c,
                 Err(e) => return Err(classify_reqwest_error(e)),
             };
-            if buf.len() + chunk.len() > crate::state::MAX_TOOL_OUTPUT_BYTES {
+            if !allow_oversized && buf.len() + chunk.len() > crate::state::MAX_TOOL_OUTPUT_BYTES {
                 too_large = true;
                 break;
             }

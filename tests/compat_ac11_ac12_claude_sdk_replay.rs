@@ -184,8 +184,10 @@ async fn ac12_claude_agent_sdk_sequence_lists_signup_with_schema() {
     // `host.bridge_test`, PRD-mcphost-tenant-state requirement 2 added the
     // nine `host.state.*` tools, PRD-mcphost-sharing added the eight
     // host.tool_share/host.tool_unshare/host.group.*/host.catalog.* tools,
-    // and PRD-mcphost-runs-and-jobs requirement 7 added the five
-    // `host.runs.*` tools, PRD-mcphost-schedules requirement 2 added
+    // and PRD-mcphost-runs-and-jobs requirement 7 added five
+    // `host.runs.*` tools (PRD-mcphost-run-result-overflow-to-state added a
+    // sixth, `host.runs.part`, plus the standalone `host.progress`),
+    // PRD-mcphost-schedules requirement 2 added
     // the seven `host.trigger.*` tools, and PRD-mcphost-inbound-events
     // requirement 3 added two more (`host.trigger.test`/`replay`), and
     // PRD-mcphost-handoff-token requirements 2-3 added two more
@@ -194,13 +196,15 @@ async fn ac12_claude_agent_sdk_sequence_lists_signup_with_schema() {
     // Migration/compatibility section).
     assert_eq!(
         tools.len(),
-        105,
+        107,
         "signup + host.* (incl. host.quickstart, host.tool_run, host.bridge_test) + \
          host.tool_call + host.tool_history/host.tool_rollback/host.tool_diff \
          (3 tools, PRD-mcphost-tool-versions) + host.state.* (9 tools, PRD-mcphost-tenant-state) + \
          host.table.* (9 tools, PRD-mcphost-tenant-tables, PRD-mcphost-table-semantic-model) + \
          host.tool_share/host.tool_unshare/host.group.*/host.catalog.* (8 tools, \
-         PRD-mcphost-sharing) + host.runs.* (5 tools, PRD-mcphost-runs-and-jobs) + \
+         PRD-mcphost-sharing) + host.runs.* (6 tools, PRD-mcphost-runs-and-jobs, \
+         PRD-mcphost-run-result-overflow-to-state) + host.progress (1 tool, \
+         PRD-mcphost-run-result-overflow-to-state) + \
          host.trigger.* (9 tools, PRD-mcphost-schedules, PRD-mcphost-inbound-events) + \
          billing.* (3 tools) + host.agent.* (4 tools, PRD-mcphost-agent-directory) + \
          host.msg.* (8 tools, PRD-mcphost-agent-inbox, PRD-mcphost-agent-wake) + \

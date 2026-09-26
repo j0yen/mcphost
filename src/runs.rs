@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use crate::db::{RunRow, Tenant};
 use crate::errors::AppError;
@@ -29,6 +29,13 @@ use crate::state::AppState;
 /// independent of any one tenant's own `jobs_concurrent` plan cap ("host
 /// ceiling from a constant").
 pub const JOBS_HOST_CEILING: usize = 20;
+
+/// PRD-mcphost-run-result-overflow-to-state requirement 1: the size of one
+/// stored `runs/<id>/part/<n>` chunk -- drafted at 256 KiB (see the PRD's
+/// own open question) rather than tied to [`crate::state::MAX_TOOL_OUTPUT_BYTES`],
+/// since the two bound different things (one call's raw output vs. one
+/// state-store key's size).
+pub const RUN_PART_BYTES: usize = 256 * 1024;
 
 /// How often the executor's leasing loop scans for queued work. AC1's
 /// "starts within one second when a job slot is free" needs this well
@@ -105,11 +112,73 @@ fn arg_i64_opt(args: &Value, name: &str) -> Option<i64> {
     args.get(name).and_then(Value::as_i64)
 }
 
+/// PRD-mcphost-run-result-overflow-to-state requirement 1: the tenant-state
+/// key an oversized (or inline) run result's part `n` lives under -- the
+/// one read path [`part`]/[`attach_result`] and [`crate::db::Db::purge_runs`]
+/// all funnel through, so the key shape is spelled once.
+pub(crate) fn part_key(run_id: &str, n: usize) -> String {
+    format!("runs/{run_id}/part/{n}")
+}
+
+/// requirement 1: chunks `s` into pieces at most `max_bytes` long, splitting
+/// only at UTF-8 char boundaries (never mid-codepoint) -- `s` is itself
+/// `serde_json::to_string`'s own output, always valid UTF-8, and each piece
+/// is stored back as a JSON string value, which SQLite's `TEXT` column
+/// requires stay valid UTF-8 too. Empty input yields one empty piece, same
+/// "always at least one part" contract AC4's inline case needs.
+fn chunk_string(s: &str, max_bytes: usize) -> Vec<String> {
+    if s.is_empty() {
+        return vec![String::new()];
+    }
+    let bytes = s.as_bytes();
+    let mut out = Vec::new();
+    let mut start = 0usize;
+    while start < bytes.len() {
+        let mut end = (start + max_bytes).min(bytes.len());
+        while end > start && !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        out.push(s[start..end].to_string());
+        start = end;
+    }
+    out
+}
+
 fn run_to_json(run: &RunRow) -> Value {
     let progress = run
         .progress_json
         .as_deref()
         .and_then(|s| serde_json::from_str::<Value>(s).ok());
+    // requirement 1: `result_ref` is now the structured `{parts, bytes,
+    // content_type}` object `run_one_job` recorded, not a bare state key --
+    // parsed back here so `host.runs.get/list` see it shaped, not as raw
+    // text.
+    let result_ref = run
+        .result_ref
+        .as_deref()
+        .and_then(|s| serde_json::from_str::<Value>(s).ok())
+        .unwrap_or(Value::Null);
+    // requirement 3: `{}` when this run has never had a counter reported,
+    // per the PRD's own migration/compatibility note ("existing runs have
+    // counters: {}").
+    let counters = run
+        .counters_json
+        .as_deref()
+        .and_then(|s| serde_json::from_str::<Value>(s).ok())
+        .unwrap_or_else(|| json!({}));
+    // requirement 2: `error: {kind, data}` alongside the existing flat
+    // `error_class` string -- additive (Migration/compatibility: "drops no
+    // fields"), so every pre-existing error path that never set
+    // `error_data_json` still reads as `{kind, data: {}}` rather than a
+    // shape a client has to branch on.
+    let error = run.error_class.as_deref().map(|kind| {
+        let data = run
+            .error_data_json
+            .as_deref()
+            .and_then(|s| serde_json::from_str::<Value>(s).ok())
+            .unwrap_or_else(|| json!({}));
+        json!({"kind": kind, "data": data})
+    });
     json!({
         "run_id": run.id,
         "tool": run.tool_name,
@@ -117,9 +186,12 @@ fn run_to_json(run: &RunRow) -> Value {
         "trigger_ref": run.trigger_ref,
         "status": run.status,
         "progress": progress,
+        "counters": counters,
         "result": Value::Null,
+        "result_ref": result_ref,
         "purged": run.purged_unix.is_some(),
         "error_class": run.error_class,
+        "error": error,
         "started_unix": run.started_unix,
         "finished_unix": run.finished_unix,
         "duration_ms": run.duration_ms,
@@ -130,6 +202,26 @@ fn run_to_json(run: &RunRow) -> Value {
         // PRD-mcphost-inbound-events P0 requirement 3 / AC7.
         "test": run.test,
     })
+}
+
+/// `host.runs.get`/`wait`'s shared "inline the result" step: part 0 of
+/// `run.result_ref` (present iff `run_one_job` stored one -- the same value
+/// whether the whole result fit inline as a single part or overflowed into
+/// several) becomes the wire `result` field, so a client reading `result`
+/// never needs to know which case it was.
+async fn attach_result(
+    state: &AppState,
+    tenant_id: i64,
+    run: &RunRow,
+    mut value: Value,
+) -> Result<Value, AppError> {
+    if run.result_ref.is_some()
+        && let Some((value_json, _)) =
+            state.db.state_kv_get(tenant_id, part_key(&run.id, 0), String::new()).await?
+    {
+        value["result"] = serde_json::from_str(&value_json).unwrap_or(Value::Null);
+    }
+    Ok(value)
 }
 
 /// `host.runs.get(run_id)`, inlining the stored result (P0 requirement 7:
@@ -145,13 +237,47 @@ pub async fn get(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Valu
             message: format!("no run '{run_id}' for this tenant"),
             data: json!({"run_id": run_id}),
         })?;
-    let mut value = run_to_json(&run);
-    if let Some(result_ref) = &run.result_ref
-        && let Some((value_json, _)) = state.db.state_kv_get(tenant.id, result_ref.clone(), String::new()).await?
-    {
-        value["result"] = serde_json::from_str(&value_json).unwrap_or(Value::Null);
+    let value = run_to_json(&run);
+    attach_result(state, tenant.id, &run, value).await
+}
+
+/// P0 requirement 4/AC4 (`host.runs.part`): reads part `n` of a run's
+/// result -- a run whose whole result fit inline reads back `parts: 1, n:
+/// 0` with the full result (the same single-part shape [`attach_result`]
+/// reads for `result`), so a client has one read path regardless of size.
+pub async fn part(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let run_id = arg_str(args, "run_id")?;
+    let n = args.get("n").and_then(Value::as_i64).unwrap_or(0);
+    let run = state
+        .db
+        .get_run(run_id.clone(), tenant.id)
+        .await?
+        .ok_or_else(|| AppError::Structured {
+            code: "run_not_found",
+            message: format!("no run '{run_id}' for this tenant"),
+            data: json!({"run_id": run_id}),
+        })?;
+    let not_found = || AppError::Structured {
+        code: "not_found",
+        message: format!("run '{run_id}' has no part {n}"),
+        data: json!({"run_id": run_id, "n": n}),
+    };
+    let result_ref = run.result_ref.as_deref().and_then(|s| serde_json::from_str::<Value>(s).ok());
+    let Some(result_ref) = result_ref else {
+        return Err(not_found());
+    };
+    let parts = result_ref.get("parts").and_then(Value::as_i64).unwrap_or(0);
+    let bytes = result_ref.get("bytes").and_then(Value::as_i64).unwrap_or(0);
+    if n < 0 || n >= parts {
+        return Err(not_found());
     }
-    Ok(value)
+    let Some((value_json, _)) =
+        state.db.state_kv_get(tenant.id, part_key(&run_id, n as usize), String::new()).await?
+    else {
+        return Err(not_found());
+    };
+    let data: Value = serde_json::from_str(&value_json).unwrap_or(Value::Null);
+    Ok(json!({"n": n, "parts": parts, "bytes": bytes, "data": data}))
 }
 
 /// `host.runs.list(tool?, status?, trigger?, limit?)`.
@@ -213,11 +339,116 @@ pub async fn purge(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
         .get("before_unix")
         .and_then(Value::as_i64)
         .ok_or_else(|| AppError::InvalidArgs("missing required argument 'before_unix'".to_string()))?;
-    let refs = state.db.purge_runs(tenant.id, before_unix).await?;
-    for r in &refs {
-        let _ = state.db.state_kv_delete(tenant.id, r.clone(), String::new()).await;
+    let (runs_purged, keys) = state.db.purge_runs(tenant.id, before_unix).await?;
+    for key in &keys {
+        let _ = state.db.state_kv_delete(tenant.id, key.clone(), String::new()).await;
     }
-    Ok(json!({"purged": refs.len()}))
+    Ok(json!({"purged": runs_purged}))
+}
+
+/// PRD-mcphost-run-result-overflow-to-state requirement 3: `host.progress
+/// {run_id, pct?, msg?, counters?: {items_processed?, items_total?,
+/// bytes_out?, custom?: {k: number}}}`. Each named counter (and each
+/// `custom` key) is monotonic on its own -- a call that would lower one is
+/// rejected `validation` with NOTHING written (not even this call's other,
+/// valid counters), so a caller never has to guess which of several
+/// counters in one call actually landed.
+pub async fn progress(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let run_id = arg_str(args, "run_id")?;
+    let run = state
+        .db
+        .get_run(run_id.clone(), tenant.id)
+        .await?
+        .ok_or_else(|| AppError::Structured {
+            code: "run_not_found",
+            message: format!("no run '{run_id}' for this tenant"),
+            data: json!({"run_id": run_id}),
+        })?;
+
+    let mut counters: Map<String, Value> = run
+        .counters_json
+        .as_deref()
+        .and_then(|s| serde_json::from_str::<Value>(s).ok())
+        .and_then(|v| v.as_object().cloned())
+        .unwrap_or_default();
+
+    if let Some(incoming) = args.get("counters") {
+        let incoming = incoming
+            .as_object()
+            .ok_or_else(|| AppError::InvalidArgs("'counters' must be an object".to_string()))?;
+        for (key, value) in incoming {
+            if key == "custom" {
+                let incoming_custom = value.as_object().ok_or_else(|| {
+                    AppError::InvalidArgs("'counters.custom' must be an object".to_string())
+                })?;
+                let mut custom = counters
+                    .get("custom")
+                    .and_then(Value::as_object)
+                    .cloned()
+                    .unwrap_or_default();
+                for (ck, cv) in incoming_custom {
+                    check_monotonic(&custom, ck, cv, "custom.")?;
+                    custom.insert(ck.clone(), cv.clone());
+                }
+                counters.insert("custom".to_string(), Value::Object(custom));
+            } else {
+                check_monotonic(&counters, key, value, "")?;
+                counters.insert(key.clone(), value.clone());
+            }
+        }
+    }
+
+    let counters_json = serde_json::to_string(&Value::Object(counters.clone()))
+        .map_err(|e| AppError::Internal(format!("counters serialize: {e}")))?;
+    state.db.update_run_counters(run_id.clone(), tenant.id, counters_json).await?;
+
+    // requirement 3: `pct`/`msg` ride the same call, alongside `counters`
+    // -- reuses the existing (status='running'-gated) progress write rather
+    // than a second storage path, same shape the sandbox's own throttled
+    // `mcphost.progress` already writes.
+    if args.get("pct").is_some() || args.get("msg").is_some() {
+        let existing: Value = run
+            .progress_json
+            .as_deref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_else(|| json!({}));
+        let pct = args
+            .get("pct")
+            .and_then(Value::as_i64)
+            .or_else(|| existing.get("pct").and_then(Value::as_i64));
+        let msg = args
+            .get("msg")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .or_else(|| existing.get("msg").and_then(Value::as_str).map(str::to_string));
+        let progress_json = json!({"pct": pct, "msg": msg}).to_string();
+        let _ = state.db.update_run_progress(run_id.clone(), tenant.id, progress_json).await;
+    }
+
+    Ok(json!({"run_id": run_id, "counters": counters}))
+}
+
+/// [`progress`]'s per-key monotonicity check: rejects (nothing written) a
+/// `value` lower than `existing`'s current value for `key`, or a non-number
+/// `value` at all. `prefix` names the field in the error (`""` for a
+/// top-level counter, `"custom."` for a nested one) so the error message
+/// and `data.key` both point at exactly the field that failed.
+fn check_monotonic(existing: &Map<String, Value>, key: &str, value: &Value, prefix: &str) -> Result<(), AppError> {
+    let new_num = value.as_f64().ok_or_else(|| {
+        AppError::InvalidArgs(format!("'counters.{prefix}{key}' must be a number"))
+    })?;
+    if let Some(old_num) = existing.get(key).and_then(Value::as_f64)
+        && new_num < old_num
+    {
+        return Err(AppError::Structured {
+            code: "validation",
+            message: format!(
+                "counters.{prefix}{key} must be monotonic: {new_num} is less than the current {old_num}"
+            ),
+            data: json!({"key": format!("{prefix}{key}"), "current": old_num, "attempted": new_num}),
+        });
+    }
+    Ok(())
 }
 
 /// P1 requirement 9: `host.runs.wait(run_id, timeout_s <= 25)` long-polls
@@ -229,6 +460,17 @@ pub async fn wait(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     let run_id = arg_str(args, "run_id")?;
     let timeout_s = arg_i64_opt(args, "timeout_s").unwrap_or(20).clamp(1, 25);
     let deadline = Instant::now() + Duration::from_secs(timeout_s as u64);
+    // P1 requirement 7 / AC8: `until: {counter, gte}` -- returns as soon as
+    // that counter reaches `gte` OR the run finishes, whichever comes
+    // first, even while the run is still `running` (a bulk job's own
+    // "reached N items" signal, not just "the whole thing is done").
+    // `None` (either argument missing/mistyped) means this behaves exactly
+    // like `wait` did before this PRD.
+    let until = args.get("until").and_then(|u| {
+        let counter = u.get("counter")?.as_str()?.to_string();
+        let gte = u.get("gte")?.as_f64()?;
+        Some((counter, gte))
+    });
     loop {
         let run = state
             .db
@@ -240,15 +482,17 @@ pub async fn wait(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
                 data: json!({"run_id": run_id}),
             })?;
         let terminal = matches!(run.status.as_str(), "done" | "error" | "timeout" | "cancelled");
-        if terminal || Instant::now() >= deadline {
-            let mut value = run_to_json(&run);
-            if let Some(result_ref) = &run.result_ref
-                && let Some((value_json, _)) =
-                    state.db.state_kv_get(tenant.id, result_ref.clone(), String::new()).await?
-            {
-                value["result"] = serde_json::from_str(&value_json).unwrap_or(Value::Null);
-            }
-            return Ok(value);
+        let until_reached = until.as_ref().is_some_and(|(counter, gte)| {
+            let counters: Value = run
+                .counters_json
+                .as_deref()
+                .and_then(|s| serde_json::from_str(s).ok())
+                .unwrap_or_else(|| json!({}));
+            counters.get(counter).and_then(Value::as_f64).is_some_and(|v| v >= *gte)
+        });
+        if terminal || until_reached || Instant::now() >= deadline {
+            let value = run_to_json(&run);
+            return attach_result(state, tenant.id, &run, value).await;
         }
         tokio::time::sleep(Duration::from_millis(200)).await;
     }
@@ -619,38 +863,117 @@ async fn run_one_job(state: AppState, run: RunRow) {
     let finished_unix = crate::state::now_unix();
     let duration_ms = start.elapsed().as_millis() as i64;
 
-    let (status, result_ref, error_class) = match outcome {
+    let (status, result_ref, error_class, error_data) = match outcome {
         JobOutcome::Done { result_value } => {
-            // P0 requirement 6: the result lives in the tenant's state
-            // store under `runs/<run_id>`, bounded by the same quota
-            // (`state_bytes_max`) and size cap (`MAX_TOOL_OUTPUT_BYTES`)
-            // any other state write is -- `tenant_state::state_set` is the
-            // one function that already enforces both, so this reuses it
-            // rather than writing to `tenant_state_kv` directly.
-            let result_key = format!("runs/{run_id}");
+            // PRD-mcphost-run-result-overflow-to-state requirement 1: the
+            // result lives in the tenant's state store under
+            // `runs/<run_id>/part/<n>` -- one part when it fits inline
+            // (the literal `result_value`, unchanged shape/type, so an
+            // ordinary small job's `result` still round-trips exactly as
+            // before this PRD), several 256 KiB text chunks of its own
+            // JSON encoding when it doesn't (P0 requirement 1's "chunked
+            // into RUN_PART_BYTES parts").
+            let value_json = serde_json::to_string(&result_value).unwrap_or_else(|_| "null".to_string());
+            let bytes = value_json.len() as i64;
+            let part_values: Vec<Value> = if value_json.len() > crate::state::MAX_TOOL_OUTPUT_BYTES {
+                chunk_string(&value_json, RUN_PART_BYTES)
+                    .into_iter()
+                    .map(Value::String)
+                    .collect()
+            } else {
+                vec![result_value]
+            };
+            let part_jsons: Vec<String> = part_values
+                .iter()
+                .map(|v| serde_json::to_string(v).unwrap_or_else(|_| "null".to_string()))
+                .collect();
+            let needed_bytes: i64 = part_jsons.iter().map(|s| s.len() as i64).sum();
+
             match state.db.find_tenant_by_id(tenant_id).await {
                 Ok(Some(tenant)) => {
-                    let set_args = json!({"key": result_key, "value": result_value});
-                    match crate::tenant_state::state_set(&state, &tenant, &set_args, None).await {
-                        Ok(_) => ("done".to_string(), Some(result_key), None),
-                        Err(e) => ("error".to_string(), None, Some(e.code().to_string())),
+                    match store_result_parts(&state, &tenant, &run_id, &part_jsons, needed_bytes).await {
+                        Ok(()) => {
+                            let result_ref = json!({
+                                "parts": part_values.len(),
+                                "bytes": bytes,
+                                "content_type": "application/json",
+                            })
+                            .to_string();
+                            ("done".to_string(), Some(result_ref), None, None)
+                        }
+                        Err(e) => {
+                            // The raw `Structured` data as-constructed (just
+                            // `{needed_bytes, available_bytes}`), not
+                            // `into_error_data()`'s wire envelope (which adds
+                            // `error_code`/`message`) -- `error_data_json`
+                            // is `run_to_json`'s own `error.data`, a plain
+                            // payload, not a second copy of the RPC error
+                            // shape.
+                            let data = match &e {
+                                AppError::Structured { data, .. } => Some(data.to_string()),
+                                _ => None,
+                            };
+                            ("error".to_string(), None, Some(e.code().to_string()), data)
+                        }
                     }
                 }
                 _ => (
                     "error".to_string(),
                     None,
                     Some("tenant_not_found".to_string()),
+                    None,
                 ),
             }
         }
-        JobOutcome::Error { error_class } => ("error".to_string(), None, Some(error_class)),
-        JobOutcome::Timeout => ("timeout".to_string(), None, None),
+        JobOutcome::Error { error_class } => ("error".to_string(), None, Some(error_class), None),
+        JobOutcome::Timeout => ("timeout".to_string(), None, None, None),
     };
 
     let _ = state
         .db
-        .finalize_run(run_id, tenant_id, status, result_ref, error_class, finished_unix, duration_ms)
+        .finalize_run(run_id, tenant_id, status, result_ref, error_class, error_data, finished_unix, duration_ms)
         .await;
+}
+
+/// PRD-mcphost-run-result-overflow-to-state requirement 2/AC2: the atomic
+/// "write every part or none" step `run_one_job`'s `Done` arm delegates to.
+/// Pre-checks the WHOLE batch's bytes against the tenant's remaining
+/// `state_bytes_max` quota before writing anything -- unlike
+/// `tenant_state::state_set`'s own per-key check (which would let parts
+/// 0..k succeed and only part k+1 fail, leaving a partial result behind),
+/// so a quota refusal here (`state_quota`, naming `needed_bytes`/
+/// `available_bytes`) never leaves `runs/<id>/part/*` half-written.
+async fn store_result_parts(
+    state: &AppState,
+    tenant: &Tenant,
+    run_id: &str,
+    part_jsons: &[String],
+    needed_bytes: i64,
+) -> Result<(), AppError> {
+    let used = state.db.state_bytes_used(tenant.id).await?;
+    let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
+        AppError::Internal(format!(
+            "tenant's plan '{}' is not in the loaded plan catalog",
+            tenant.plan
+        ))
+    })?;
+    let available_bytes = (plan.state_bytes_max - used).max(0);
+    if needed_bytes > available_bytes {
+        return Err(AppError::Structured {
+            code: "state_quota",
+            message: format!(
+                "run result needs {needed_bytes} bytes of state, only {available_bytes} available"
+            ),
+            data: json!({"needed_bytes": needed_bytes, "available_bytes": available_bytes}),
+        });
+    }
+    for (n, part_json) in part_jsons.iter().enumerate() {
+        state
+            .db
+            .state_kv_set(tenant.id, part_key(run_id, n), String::new(), part_json.clone())
+            .await?;
+    }
+    Ok(())
 }
 
 /// One tick of the executor's leasing loop: admits at most one new job per
@@ -734,6 +1057,8 @@ mod tests {
             manual: false,
             test: false,
             message_id: None,
+            counters_json: None,
+            error_data_json: None,
         };
         let value = run_to_json(&run);
         assert_eq!(value["purged"], json!(true));
