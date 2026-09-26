@@ -62,14 +62,55 @@ fn arg_scopes(args: &Value) -> Result<String, AppError> {
 
 // ---- host.vault.* tools -----------------------------------------------
 
-/// `host.vault.provider_set` (requirement 2, AC11): a re-set of an already
-/// registered provider name never counts against `vault_providers_max`,
-/// same "existing name is free" convention `control::secret_set` already
-/// uses for `secrets_max`.
+/// `host.vault.provider_set`'s three OAuth presets (P1 requirement 4,
+/// AC7): an explicit `auth_url`/`token_url` in the call always overrides
+/// the matching preset value, field by field, not as an all-or-nothing
+/// choice. An unrecognized preset is `invalid_params` -- the wire code
+/// AC7 itself pins, distinct from [`AppError::InvalidArgs`]'s own
+/// `args_invalid`.
+fn preset_urls(preset: &str) -> Result<(&'static str, &'static str), AppError> {
+    match preset {
+        "slack" => Ok((
+            "https://slack.com/oauth/v2/authorize",
+            "https://slack.com/api/oauth.v2.access",
+        )),
+        "github" => Ok((
+            "https://github.com/login/oauth/authorize",
+            "https://github.com/login/oauth/access_token",
+        )),
+        "google" => Ok((
+            "https://accounts.google.com/o/oauth2/v2/auth",
+            "https://oauth2.googleapis.com/token",
+        )),
+        other => Err(AppError::InvalidParams(format!(
+            "unknown preset '{other}': expected 'slack', 'github', or 'google'"
+        ))),
+    }
+}
+
+/// `host.vault.provider_set` (requirement 2, AC11; P1 requirement 4, AC7): a
+/// re-set of an already registered provider name never counts against
+/// `vault_providers_max`, same "existing name is free" convention
+/// `control::secret_set` already uses for `secrets_max`.
 pub async fn provider_set(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let name = arg_str(args, "name")?;
-    let auth_url = arg_str(args, "auth_url")?;
-    let token_url = arg_str(args, "token_url")?;
+    let preset = match args.get("preset") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(s)) => Some(preset_urls(s)?),
+        Some(_) => return Err(AppError::InvalidArgs("preset must be a string".to_string())),
+    };
+    let auth_url = match args.get("auth_url").and_then(Value::as_str) {
+        Some(s) => s.to_string(),
+        None => preset
+            .map(|(a, _)| a.to_string())
+            .ok_or_else(|| AppError::InvalidArgs("missing required argument 'auth_url' (or a 'preset')".to_string()))?,
+    };
+    let token_url = match args.get("token_url").and_then(Value::as_str) {
+        Some(s) => s.to_string(),
+        None => preset
+            .map(|(_, t)| t.to_string())
+            .ok_or_else(|| AppError::InvalidArgs("missing required argument 'token_url' (or a 'preset')".to_string()))?,
+    };
     let client_id = arg_str(args, "client_id")?;
     let client_secret = arg_str(args, "client_secret")?;
     let scopes = arg_scopes(args)?;
