@@ -3117,6 +3117,7 @@ impl McpHostHandler {
             }
             "host.vault.disconnect" => crate::vault::disconnect(&self.state, tenant, &args, end_user).await,
             "host.vault.status" => crate::vault::status(&self.state, tenant, &args, end_user).await,
+            "host.vault.provider_remove" => crate::vault::provider_remove(&self.state, tenant, &args).await,
             "host.table.create" => tables::table_create(&self.state, tenant, &args).await,
             "host.table.append" => tables::table_append(&self.state, tenant, &args).await,
             "host.table.query" => tables::table_query(&self.state, tenant, &args).await,

@@ -217,6 +217,22 @@ pub async fn status(state: &AppState, tenant: &Tenant, args: &Value, end_user: O
     Ok(json!({"providers": out}))
 }
 
+/// `host.vault.provider_remove` (P0 requirement 3, AC6): the reverse of
+/// `provider_set` -- deletes the provider and revokes every end user's
+/// stored token for it in one transaction ([`crate::db::Db::remove_vault_provider`]).
+pub async fn provider_remove(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let name = arg_str(args, "name")?;
+    let existed = state.db.remove_vault_provider(tenant.id, name.clone()).await?;
+    if !existed {
+        return Err(AppError::Structured {
+            code: "not_found",
+            message: format!("no vault provider named '{name}' is registered for this tenant"),
+            data: json!({"name": name}),
+        });
+    }
+    Ok(json!({"name": name, "removed": true}))
+}
+
 /// `host.vault.connect_link` (AC1): `end_user: "self"` is the only
 /// supported shape (requirement 3 names no other) -- resolved through the
 /// same [`crate::enduser::resolve_end_user`] every `host.state.*` op uses,

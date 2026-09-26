@@ -5654,6 +5654,54 @@ impl Db {
         .await
     }
 
+    /// `host.vault.provider_remove` (P0 requirement 3, AC6): deletes the
+    /// `vault_providers` row and revokes every stored `vault_tokens` row for
+    /// that provider in one transaction -- same `BEGIN IMMEDIATE`/`COMMIT`/
+    /// `ROLLBACK` shape [`Self::delete_tenant`] already uses for its own
+    /// cascade, so a caller never observes the provider gone while its
+    /// tokens are still marked connected, or vice versa. Returns `false`
+    /// (no transaction opened) when no such provider is registered, so the
+    /// caller can report `not_found` without a wasted write.
+    pub async fn remove_vault_provider(&self, tenant_id: i64, name: String) -> Result<bool, AppError> {
+        let revoked_unix = now_unix();
+        self.with_conn(move |conn| {
+            let exists: bool = conn
+                .query_row(
+                    "SELECT 1 FROM vault_providers WHERE tenant_id = ?1 AND name = ?2",
+                    params![tenant_id, name],
+                    |_| Ok(true),
+                )
+                .optional()?
+                .unwrap_or(false);
+            if !exists {
+                return Ok(false);
+            }
+
+            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
+            let outcome: Result<(), AppError> = (|| {
+                conn.execute(
+                    "DELETE FROM vault_providers WHERE tenant_id = ?1 AND name = ?2",
+                    params![tenant_id, name],
+                )?;
+                conn.execute(
+                    "UPDATE vault_tokens SET revoked_unix = ?1, revoked_reason = 'provider_removed' \
+                     WHERE tenant_id = ?2 AND provider = ?3",
+                    params![revoked_unix, tenant_id, name],
+                )?;
+                Ok(())
+            })();
+            match outcome {
+                Ok(()) => conn.execute("COMMIT", []).map_err(AppError::from)?,
+                Err(e) => {
+                    let _ = conn.execute("ROLLBACK", []);
+                    return Err(e);
+                }
+            };
+            Ok(true)
+        })
+        .await
+    }
+
     /// `host.vault.disconnect` (AC8) and a failed refresh (P1 requirement 6
     /// / AC10) both funnel through here -- `reason` is `None` for an
     /// explicit disconnect, `Some(...)` for a refresh failure.

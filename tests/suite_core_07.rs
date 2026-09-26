@@ -1070,6 +1070,8 @@ mod vaultst_ac03_status_shows_revoked_after_refresh_401;
 mod vaultst_ac04_admin_vault_stats_per_tenant_per_provider;
 #[path = "vaultst_ac05_admin_vault_stats_rejects_tenant_key.rs"]
 mod vaultst_ac05_admin_vault_stats_rejects_tenant_key;
+#[path = "vaultst_ac06_provider_remove_revokes_all_tokens.rs"]
+mod vaultst_ac06_provider_remove_revokes_all_tokens;
 #[path = "wake_ac1_message_trigger_fires_run.rs"]
 mod wake_ac1_message_trigger_fires_run;
 #[path = "wake_ac2_from_filter.rs"]
