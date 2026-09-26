@@ -1064,6 +1064,8 @@ mod vault_ac11_quota_vault_providers;
 mod vaultst_ac01_status_lists_connected_and_unconnected_providers;
 #[path = "vaultst_ac02_status_end_user_resolution_matches_connect_link.rs"]
 mod vaultst_ac02_status_end_user_resolution_matches_connect_link;
+#[path = "vaultst_ac03_status_shows_revoked_after_refresh_401.rs"]
+mod vaultst_ac03_status_shows_revoked_after_refresh_401;
 #[path = "wake_ac1_message_trigger_fires_run.rs"]
 mod wake_ac1_message_trigger_fires_run;
 #[path = "wake_ac2_from_filter.rs"]
