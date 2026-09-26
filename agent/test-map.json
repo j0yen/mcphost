@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-first-publish-real-kind.md (test_prefix: firstpub)",
+  "ac_test_map_prd": "PRD-mcphost-upstream-token-vault.md (test_prefix: vault)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,16 +28,18 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/firstpub_ac01_quickstart_starter_tool.rs",
-    "AC2": "tests/firstpub_ac02_sandbox_unavailable_retry.rs",
-    "AC3": "tests/firstpub_ac03_dry_run_gates.rs",
-    "AC4": "tests/firstpub_ac04_real_publish_carries_gates.rs",
-    "AC5": "tests/firstpub_ac05_stub_flag_in_tools_list.rs",
-    "AC6": "tests/firstpub_ac06_get_info_no_echo_steering.rs",
-    "AC7": "tests/firstpub_ac07_llms_txt_first_run_executes.rs",
-    "AC8": "tests/firstpub_ac08_quickstart_http_starter.rs",
-    "AC9": "tests/firstpub_ac09_dry_run_spec_size_short_circuits.rs",
-    "AC10": "deferred (prod leg only) -- operator-provisioned: needs a real deploy to https://mcphost.dev and the healthz-version-plus-transcript receipt this coding sandbox cannot produce; always-on mechanism proof: tests/firstpub_ac10_live_proof_against_real_mcphost.rs (MCPHOST_LIVE=1 for the real leg)."
+    "AC1": "tests/vault_ac01_connect_link_redirects_to_auth_url.rs",
+    "AC2": "tests/vault_ac02_callback_exchanges_code_and_stores_tokens.rs",
+    "AC3": "tests/vault_ac03_injects_bearer_overriding_tool_header.rs",
+    "AC4": "tests/vault_ac04_call_log_never_contains_token.rs",
+    "AC5": "tests/vault_ac05_refresh_before_expiry_used_once.rs",
+    "AC6": "tests/vault_ac06_unconnected_end_user_gets_connect_link.rs",
+    "AC7": "tests/vault_ac07_used_handoff_token_returns_410.rs",
+    "AC8": "tests/vault_ac08_disconnect_revokes_and_blocks_calls.rs",
+    "AC9": "tests/vault_ac09_providers_hides_client_secret.rs",
+    "AC10": "tests/vault_ac10_refresh_401_revokes_no_retry_storm.rs",
+    "AC11": "tests/vault_ac11_quota_vault_providers.rs",
+    "AC12": "deferred -- operator-provisioned; AC12 is the Live/production-only requirement (a real Slack test app plus one real browser handoff on prod) and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
   },
   "ac_test_map_by_prefix": {
     "sharedcall": {
@@ -467,6 +469,19 @@
       "AC8": "tests/mcphost_signup_kill_switch_and_source_ac08_concurrent_burst_with_pause_toggle.rs",
       "AC9": "tests/mcphost_signup_kill_switch_and_source_ac09_llms_txt_documents_source.rs",
       "AC10": "tests/mcphost_signup_kill_switch_and_source_ac10_until_line_bounds_retry_after.rs"
+    },
+    "firstpub": {
+      "_prd": "PRD-mcphost-first-publish-real-kind.md -- superseded by mcphost-upstream-token-vault at HEAD; real test_prefix is firstpub",
+      "AC1": "tests/firstpub_ac01_quickstart_starter_tool.rs",
+      "AC2": "tests/firstpub_ac02_sandbox_unavailable_retry.rs",
+      "AC3": "tests/firstpub_ac03_dry_run_gates.rs",
+      "AC4": "tests/firstpub_ac04_real_publish_carries_gates.rs",
+      "AC5": "tests/firstpub_ac05_stub_flag_in_tools_list.rs",
+      "AC6": "tests/firstpub_ac06_get_info_no_echo_steering.rs",
+      "AC7": "tests/firstpub_ac07_llms_txt_first_run_executes.rs",
+      "AC8": "tests/firstpub_ac08_quickstart_http_starter.rs",
+      "AC9": "tests/firstpub_ac09_dry_run_spec_size_short_circuits.rs",
+      "AC10": "deferred (prod leg only) -- operator-provisioned: needs a real deploy to https://mcphost.dev and the healthz-version-plus-transcript receipt this coding sandbox cannot produce; always-on mechanism proof: tests/firstpub_ac10_live_proof_against_real_mcphost.rs (MCPHOST_LIVE=1 for the real leg)."
     }
   }
 }

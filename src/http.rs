@@ -692,6 +692,12 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // `/exports/{run_id}` alongside every other top-level route here.
         .route("/claim/{token}", get(crate::claim::get_claim).post(crate::claim::post_claim))
         .route("/claim/verify/{code}", get(crate::claim::get_verify))
+        // PRD-mcphost-upstream-token-vault requirement 3: the handoff
+        // route family's own two plain routes -- `/vault/connect/{token}`
+        // redeems the one-time link and redirects to the provider,
+        // `/vault/callback` completes the code exchange server-side.
+        .route("/vault/connect/{token}", get(crate::vault::get_connect))
+        .route("/vault/callback", get(crate::vault::get_callback))
         .route_service("/mcp", service)
         .layer(middleware::from_fn(protocol_version_and_log))
         .layer(middleware::from_fn_with_state(state.clone(), oauth_401_upgrade))

@@ -74,6 +74,17 @@ struct HttpSpec {
     /// `"outputs.<name>"`, never the generic serde message for the whole
     /// struct.
     outputs: Vec<OutputDecl>,
+    /// PRD-mcphost-upstream-token-vault requirement 4: the vault provider
+    /// name this spec declares (`"upstream_provider": "slack"`), if any --
+    /// distinct from [`UpstreamSpec`]'s own `upstream` object field (a
+    /// PRD-mcphost-rest-bridge concept, already using that name for an
+    /// unrelated declarative-endpoint shape). At call time, `Kind::call`
+    /// injects `Authorization: Bearer <token>` from [`CallCtx::vault_token`]
+    /// when this is `Some`, overriding any tool-supplied `Authorization`
+    /// header (AC3); `handler.rs`'s real dispatch path is what actually
+    /// resolves that token before `call` ever runs (see
+    /// [`Kind::declared_upstream_provider`]).
+    upstream_provider: Option<String>,
 }
 
 impl HttpSpec {
@@ -139,6 +150,9 @@ struct HttpSpecRaw {
     /// hand-written `{{ }}` templates. See [`compile_upstream`].
     #[serde(default)]
     upstream: Option<UpstreamSpec>,
+    /// PRD-mcphost-upstream-token-vault requirement 4: see [`HttpSpec::upstream_provider`].
+    #[serde(default)]
+    upstream_provider: Option<String>,
 }
 
 /// `#[serde(default = ...)]` needs a function, not a literal -- the wire's
@@ -322,6 +336,7 @@ fn compile_upstream(
         response: raw.response.clone(),
         description: raw.description.clone(),
         outputs,
+        upstream_provider: raw.upstream_provider.clone(),
     })
 }
 
@@ -357,6 +372,10 @@ fn http_field_hint(field: &str) -> Option<(&'static str, Value)> {
         "upstream" => (
             "an object describing the upstream endpoint",
             json!({"url": "https://api.example.com/{id}", "method": "GET"}),
+        ),
+        "upstream_provider" => (
+            "a string naming a host.vault.provider_set provider",
+            json!("slack"),
         ),
         _ => return None,
     })
@@ -394,6 +413,7 @@ fn parse_spec(spec: &Value) -> Result<HttpSpec, KindError> {
                 response: raw.response,
                 description: raw.description,
                 outputs,
+                upstream_provider: raw.upstream_provider,
             })
         }
         (None, false) => Err(KindError::InvalidSpec(
@@ -1114,6 +1134,10 @@ impl Kind for HttpKind {
             .unwrap_or_default()
     }
 
+    fn declared_upstream_provider(&self, spec: &Value) -> Option<String> {
+        parse_spec(spec).ok().and_then(|parsed| parsed.upstream_provider)
+    }
+
     fn declared_outputs(&self, spec: &Value) -> Vec<OutputDecl> {
         parse_spec(spec).map(|parsed| parsed.outputs).unwrap_or_default()
     }
@@ -1256,6 +1280,37 @@ impl Kind for HttpKind {
             header_map.insert(header_name, header_value);
         }
 
+        // PRD-mcphost-upstream-token-vault requirement 4 / AC3: injection
+        // happens right after the tool's own template headers are
+        // assembled, and unconditionally overrides (`insert`, not `append`)
+        // any `Authorization` the tool's own spec set. `handler.rs`'s real
+        // dispatch path resolves `ctx.vault_token` before `call` ever runs
+        // (see `Kind::declared_upstream_provider`), so a declared provider
+        // with no resolved token here means every other dispatch path that
+        // doesn't pre-resolve one (`host.tool_test`/`host.tool_run`/the
+        // conformance suite) -- refuse rather than send an unauthenticated
+        // request upstream.
+        if parsed.upstream_provider.is_some() {
+            match &ctx.vault_token {
+                Some(token) => {
+                    let value = reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
+                        .map_err(|e| KindError::Exec(format!("vault token is not a valid header value: {e}")))?;
+                    header_map.insert(reqwest::header::AUTHORIZATION, value);
+                    // AC4: never in a result, a log, or (via `redact_value`
+                    // below) even an upstream response body that happened
+                    // to echo it back -- same redaction list every
+                    // `secret.<name>` template value already rides on.
+                    secret_values.push(token.clone());
+                }
+                None => {
+                    return Err(KindError::structured(
+                        "upstream_not_connected",
+                        "no upstream token is available for this call",
+                    ));
+                }
+            }
+        }
+
         // PRD-mcphost-end-user-identity requirement 3: an http-kind call
         // carrying a verified end user forwards it to the upstream request
         // as `X-MCPHost-End-User` (plus `-Issuer` for an OAuth-verified
@@ -1374,17 +1429,29 @@ impl Kind for HttpKind {
             ));
         }
 
-        ctx.log.log(&format!(
-            "{method_str} {host} {} {duration_ms}ms",
-            status.as_u16()
-        ));
-
-        if status.is_client_error() || status.is_server_error() {
+        // AC4: an upstream error's persisted `host.tool_logs` line carries
+        // the same redacted excerpt as the error's own `body_excerpt` --
+        // a provider that echoes the vault token back in an error body
+        // (the PRD's own "unless the provider echoes them" case) must not
+        // leak it into the log just because the call failed.
+        let error_excerpt = if status.is_client_error() || status.is_server_error() {
             let excerpt_len = buf.len().min(512);
-            let excerpt = redact_str(
+            Some(redact_str(
                 &String::from_utf8_lossy(&buf[..excerpt_len]),
                 &secret_values,
-            );
+            ))
+        } else {
+            None
+        };
+
+        ctx.log.log(&match &error_excerpt {
+            Some(excerpt) => {
+                format!("{method_str} {host} {} {duration_ms}ms body={excerpt}", status.as_u16())
+            }
+            None => format!("{method_str} {host} {} {duration_ms}ms", status.as_u16()),
+        });
+
+        if let Some(excerpt) = error_excerpt {
             let mut data = json!({"upstream_status": status.as_u16(), "body_excerpt": excerpt});
             if let Some(retry) = retry_after_s {
                 data["retry_after_s"] = json!(retry);
