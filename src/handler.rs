@@ -2420,6 +2420,14 @@ fn admin_tools() -> Vec<Tool> {
             ),
         ),
         Tool::new(
+            "admin.reclassify_fleet_ips",
+            "Idempotent backfill: reclassify every signup_events/tenants/calls row still \
+             `external` whose source IP matches $MCPHOST_FLEET_IPS to synthetic (source_class \
+             fleet, synthetic harness:fleet-ip). No arguments. Returns row counts touched: \
+             {signup_events, tenants, calls}.",
+            schema(json!({}), &[]),
+        ),
+        Tool::new(
             "admin.audit_log",
             "Paged, newest-first view of the admin_audit log (PRD-mcphost-provenance-audit \
              requirement 4) -- every admin-bearer mutation's actor, action, target, and \
@@ -3207,6 +3215,7 @@ impl McpHostHandler {
             "admin.tenants_set_synthetic" => {
                 admin::tenants_set_synthetic(&self.state, &args).await
             }
+            "admin.reclassify_fleet_ips" => admin::reclassify_fleet_ips(&self.state).await,
             "admin.audit_log" => admin::audit_log(&self.state, &args).await,
             "admin.shared_tools" => admin::shared_tools(&self.state).await,
             "admin.tool_unshare" => admin::tool_unshare(&self.state, &args).await,
