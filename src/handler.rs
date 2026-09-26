@@ -2741,6 +2741,14 @@ fn admin_tools() -> Vec<Tool> {
                 &[],
             ),
         ),
+        // PRD-mcphost-upstream-token-vault-status P0 requirement 2 (AC4/AC5).
+        Tool::new(
+            "admin.vault.stats",
+            "Cross-tenant upstream-vault usage: tokens/revoked/refresh_failures_24h per \
+             provider per tenant, plus totals -- never a token, secret, or client_secret \
+             substring.",
+            schema(json!({}), &[]),
+        ),
     ]
 }
 
@@ -3116,6 +3124,8 @@ impl McpHostHandler {
                 crate::vault::connect_link(&self.state, tenant, &args, end_user).await
             }
             "host.vault.disconnect" => crate::vault::disconnect(&self.state, tenant, &args, end_user).await,
+            "host.vault.status" => crate::vault::status(&self.state, tenant, &args, end_user).await,
+            "host.vault.provider_remove" => crate::vault::provider_remove(&self.state, tenant, &args).await,
             "host.table.create" => tables::table_create(&self.state, tenant, &args).await,
             "host.table.append" => tables::table_append(&self.state, tenant, &args).await,
             "host.table.query" => tables::table_query(&self.state, tenant, &args).await,
@@ -3249,6 +3259,8 @@ impl McpHostHandler {
             "admin.incident.close" => admin::incident_close(&self.state, &args).await,
             "admin.status.sample" => admin::status_sample(&self.state, &args).await,
             "admin.status.rollup" => admin::status_rollup(&self.state, &args).await,
+            // PRD-mcphost-upstream-token-vault-status P0 requirement 2 (AC4/AC5).
+            "admin.vault.stats" => admin::vault_stats(&self.state).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         };
 

@@ -891,6 +891,27 @@ pub enum VaultHandoffOutcome {
     AlreadyRedeemed,
 }
 
+/// PRD-mcphost-upstream-token-vault-status P0 requirement 2 (AC4):
+/// `admin.vault.stats`'s per-`(tenant, provider)` row -- [`Db::vault_stats`]
+/// groups `vault_tokens` into these, never touching `access_enc`/
+/// `refresh_enc`/`client_secret_enc`.
+#[derive(Debug, Clone)]
+pub struct VaultProviderStats {
+    pub name: String,
+    pub tokens: i64,
+    pub revoked: i64,
+    pub refresh_failures_24h: i64,
+}
+
+/// One tenant's [`VaultProviderStats`] rows, keyed by `tenant_id` (the
+/// tenant's `namespace`, the same caller-facing identifier
+/// [`crate::admin::mesh_stats`]'s own per-tenant rows already use).
+#[derive(Debug, Clone)]
+pub struct VaultTenantStats {
+    pub tenant_id: String,
+    pub providers: Vec<VaultProviderStats>,
+}
+
 /// [`Db::verify_claim_code`]'s outcome (PRD-mcphost-human-claim-magic-link
 /// requirement 3 / AC3, AC7).
 pub enum ClaimVerifyOutcome {
@@ -5725,6 +5746,77 @@ impl Db {
         .await
     }
 
+    /// `host.vault.status` (P0 requirement 1, AC6): every provider name
+    /// this specific end user has a `vault_tokens` row for, registered or
+    /// not -- lets [`crate::vault::status`] still surface a just-removed
+    /// provider's residual row (AC6's `provider_removed` reason) even
+    /// though [`Self::list_vault_provider_names`] no longer names it.
+    pub async fn list_vault_token_provider_names(
+        &self,
+        tenant_id: i64,
+        end_user_subject: String,
+    ) -> Result<Vec<String>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT DISTINCT provider FROM vault_tokens \
+                 WHERE tenant_id = ?1 AND end_user_subject = ?2 ORDER BY provider",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id, end_user_subject], |r| r.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// `host.vault.provider_remove` (P0 requirement 3, AC6): deletes the
+    /// `vault_providers` row and revokes every stored `vault_tokens` row for
+    /// that provider in one transaction -- same `BEGIN IMMEDIATE`/`COMMIT`/
+    /// `ROLLBACK` shape [`Self::delete_tenant`] already uses for its own
+    /// cascade, so a caller never observes the provider gone while its
+    /// tokens are still marked connected, or vice versa. Returns `false`
+    /// (no transaction opened) when no such provider is registered, so the
+    /// caller can report `not_found` without a wasted write.
+    pub async fn remove_vault_provider(&self, tenant_id: i64, name: String) -> Result<bool, AppError> {
+        let revoked_unix = now_unix();
+        self.with_conn(move |conn| {
+            let exists: bool = conn
+                .query_row(
+                    "SELECT 1 FROM vault_providers WHERE tenant_id = ?1 AND name = ?2",
+                    params![tenant_id, name],
+                    |_| Ok(true),
+                )
+                .optional()?
+                .unwrap_or(false);
+            if !exists {
+                return Ok(false);
+            }
+
+            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
+            let outcome: Result<(), AppError> = (|| {
+                conn.execute(
+                    "DELETE FROM vault_providers WHERE tenant_id = ?1 AND name = ?2",
+                    params![tenant_id, name],
+                )?;
+                conn.execute(
+                    "UPDATE vault_tokens SET revoked_unix = ?1, revoked_reason = 'provider_removed' \
+                     WHERE tenant_id = ?2 AND provider = ?3",
+                    params![revoked_unix, tenant_id, name],
+                )?;
+                Ok(())
+            })();
+            match outcome {
+                Ok(()) => conn.execute("COMMIT", []).map_err(AppError::from)?,
+                Err(e) => {
+                    let _ = conn.execute("ROLLBACK", []);
+                    return Err(e);
+                }
+            };
+            Ok(true)
+        })
+        .await
+    }
+
     /// `host.vault.disconnect` (AC8) and a failed refresh (P1 requirement 6
     /// / AC10) both funnel through here -- `reason` is `None` for an
     /// explicit disconnect, `Some(...)` for a refresh failure.
@@ -5743,6 +5835,64 @@ impl Db {
                 params![revoked_unix, reason, tenant_id, provider, end_user_subject],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// `admin.vault.stats` (P0 requirement 2, AC4; AC9's Live check also
+    /// depends on this): one row per `(tenant, provider)` with
+    /// non-revoked/revoked/24h-refresh-failure counts -- no new table, just
+    /// an aggregate over the pre-existing `vault_tokens` (joined to
+    /// `tenants` for the caller-facing `namespace`, never the raw
+    /// `client_secret`-bearing provider row). The row set is driven from
+    /// `vault_providers` with a `LEFT JOIN` onto `vault_tokens`, not the
+    /// other way around: a provider a tenant registered but that has never
+    /// had a token stored for it (AC9's operator tenant, mid-deploy, before
+    /// any end user connects) must still appear as `{tokens: 0, revoked: 0,
+    /// refresh_failures_24h: 0}` rather than being silently absent -- an
+    /// `INNER JOIN` from `vault_tokens` (the pre-AC9 shape) has no row to
+    /// start from in that case and drops the provider from the output
+    /// entirely, which is indistinguishable from "never registered" to a
+    /// caller and is exactly the gap `tests/vaultst_ac09_live_vault_status_trailer.rs`
+    /// exercises. `revoked_reason GLOB 'refresh_*'` (not `LIKE`) since
+    /// SQLite `LIKE` treats `_` as a single-character wildcard, which
+    /// `refresh_http_401`/`refresh_malformed_response` would still happen
+    /// to match, but is the wrong operator for "the literal prefix
+    /// `refresh_`".
+    pub async fn vault_stats(&self) -> Result<Vec<VaultTenantStats>, AppError> {
+        let since_unix = now_unix() - 86_400;
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT t.namespace, vp.name, COUNT(vt.id), \
+                     SUM(CASE WHEN vt.revoked_unix IS NOT NULL THEN 1 ELSE 0 END), \
+                     SUM(CASE WHEN vt.revoked_unix IS NOT NULL AND vt.revoked_unix >= ?1 \
+                               AND vt.revoked_reason GLOB 'refresh_*' THEN 1 ELSE 0 END) \
+                 FROM vault_providers vp JOIN tenants t ON t.id = vp.tenant_id \
+                 LEFT JOIN vault_tokens vt ON vt.tenant_id = vp.tenant_id AND vt.provider = vp.name \
+                 GROUP BY t.namespace, vp.name ORDER BY t.namespace, vp.name",
+            )?;
+            let rows: Vec<(String, String, i64, i64, i64)> = stmt
+                .query_map(params![since_unix], |r| {
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+
+            let mut out: Vec<VaultTenantStats> = Vec::new();
+            for (namespace, provider, tokens, revoked, refresh_failures_24h) in rows {
+                if out.last().is_none_or(|t| t.tenant_id != namespace) {
+                    out.push(VaultTenantStats {
+                        tenant_id: namespace,
+                        providers: Vec::new(),
+                    });
+                }
+                out.last_mut().unwrap().providers.push(VaultProviderStats {
+                    name: provider,
+                    tokens,
+                    revoked,
+                    refresh_failures_24h,
+                });
+            }
+            Ok(out)
         })
         .await
     }

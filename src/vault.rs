@@ -62,14 +62,55 @@ fn arg_scopes(args: &Value) -> Result<String, AppError> {
 
 // ---- host.vault.* tools -----------------------------------------------
 
-/// `host.vault.provider_set` (requirement 2, AC11): a re-set of an already
-/// registered provider name never counts against `vault_providers_max`,
-/// same "existing name is free" convention `control::secret_set` already
-/// uses for `secrets_max`.
+/// `host.vault.provider_set`'s three OAuth presets (P1 requirement 4,
+/// AC7): an explicit `auth_url`/`token_url` in the call always overrides
+/// the matching preset value, field by field, not as an all-or-nothing
+/// choice. An unrecognized preset is `invalid_params` -- the wire code
+/// AC7 itself pins, distinct from [`AppError::InvalidArgs`]'s own
+/// `args_invalid`.
+fn preset_urls(preset: &str) -> Result<(&'static str, &'static str), AppError> {
+    match preset {
+        "slack" => Ok((
+            "https://slack.com/oauth/v2/authorize",
+            "https://slack.com/api/oauth.v2.access",
+        )),
+        "github" => Ok((
+            "https://github.com/login/oauth/authorize",
+            "https://github.com/login/oauth/access_token",
+        )),
+        "google" => Ok((
+            "https://accounts.google.com/o/oauth2/v2/auth",
+            "https://oauth2.googleapis.com/token",
+        )),
+        other => Err(AppError::InvalidParams(format!(
+            "unknown preset '{other}': expected 'slack', 'github', or 'google'"
+        ))),
+    }
+}
+
+/// `host.vault.provider_set` (requirement 2, AC11; P1 requirement 4, AC7): a
+/// re-set of an already registered provider name never counts against
+/// `vault_providers_max`, same "existing name is free" convention
+/// `control::secret_set` already uses for `secrets_max`.
 pub async fn provider_set(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let name = arg_str(args, "name")?;
-    let auth_url = arg_str(args, "auth_url")?;
-    let token_url = arg_str(args, "token_url")?;
+    let preset = match args.get("preset") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(s)) => Some(preset_urls(s)?),
+        Some(_) => return Err(AppError::InvalidArgs("preset must be a string".to_string())),
+    };
+    let auth_url = match args.get("auth_url").and_then(Value::as_str) {
+        Some(s) => s.to_string(),
+        None => preset
+            .map(|(a, _)| a.to_string())
+            .ok_or_else(|| AppError::InvalidArgs("missing required argument 'auth_url' (or a 'preset')".to_string()))?,
+    };
+    let token_url = match args.get("token_url").and_then(Value::as_str) {
+        Some(s) => s.to_string(),
+        None => preset
+            .map(|(_, t)| t.to_string())
+            .ok_or_else(|| AppError::InvalidArgs("missing required argument 'token_url' (or a 'preset')".to_string()))?,
+    };
     let client_id = arg_str(args, "client_id")?;
     let client_secret = arg_str(args, "client_secret")?;
     let scopes = arg_scopes(args)?;
@@ -133,6 +174,104 @@ pub async fn providers(state: &AppState, tenant: &Tenant) -> Result<Value, AppEr
             }))
             .collect::<Vec<_>>(),
     }))
+}
+
+/// `host.vault.status`'s own `end_user` resolution (P0 requirement 1,
+/// AC1-AC2) -- deliberately not [`crate::enduser::resolve_end_user`]
+/// itself: that helper's own `"self"`-with-no-identity error is
+/// `end_user_required`, but AC2 pins this tool's own two failure codes to
+/// `invalid_params` (omitted) and `upstream_not_connected` (`"self"` with
+/// no identity on the call, since there is then no subject at all to
+/// report status for -- the same code a resolved-but-unconnected call
+/// already returns). A literal subject string (the tenant's own agent
+/// reading a named end user, no identity required) and `"self"` with a
+/// verified identity both still resolve exactly as
+/// [`crate::enduser::resolve_end_user`] already does for `connect_link`.
+fn resolve_status_end_user(args: &Value, end_user: Option<&EndUser>) -> Result<String, AppError> {
+    match args.get("end_user") {
+        None | Some(Value::Null) => Err(AppError::InvalidParams(
+            "end_user is required: pass \"self\" or an end-user subject".to_string(),
+        )),
+        Some(Value::String(s)) if s == "self" => match end_user {
+            Some(eu) => Ok(eu.subject.clone()),
+            None => Err(AppError::Structured {
+                code: "upstream_not_connected",
+                message: "end_user: \"self\" has no verified end-user identity on this call".to_string(),
+                data: json!({}),
+            }),
+        },
+        Some(Value::String(_)) => {
+            let (subject, _impersonated) = crate::enduser::resolve_end_user(args, end_user)?;
+            Ok(subject)
+        }
+        Some(_) => Err(AppError::InvalidArgs(
+            "end_user must be a string (\"self\" or a subject) or null".to_string(),
+        )),
+    }
+}
+
+/// `host.vault.status` (P0 requirement 1, AC1-AC3; AC6): the union of
+/// every provider the tenant currently registers AND every provider this
+/// specific end user has a `vault_tokens` row for -- AC6's own "each
+/// user's `host.vault.status` shows `connected: false` with [the
+/// `provider_removed`] reason" needs a just-removed provider (gone from
+/// [`providers`]) to still surface here for a subject who has a residual
+/// row, so this can't be driven by the registered-providers list alone.
+/// Never reads the encrypted `access_enc`/`refresh_enc` columns
+/// themselves, only [`crate::db::VaultTokenRow`]'s other fields.
+pub async fn status(state: &AppState, tenant: &Tenant, args: &Value, end_user: Option<&EndUser>) -> Result<Value, AppError> {
+    let subject = resolve_status_end_user(args, end_user)?;
+    let registered = state.db.list_vault_provider_names(tenant.id).await?;
+    let token_providers = state
+        .db
+        .list_vault_token_provider_names(tenant.id, subject.clone())
+        .await?;
+    let mut names: std::collections::BTreeSet<String> = registered.into_iter().collect();
+    names.extend(token_providers);
+
+    let mut out = Vec::with_capacity(names.len());
+    for name in names {
+        let row = state.db.get_vault_token(tenant.id, name.clone(), subject.clone()).await?;
+        out.push(match row {
+            Some(r) => json!({
+                "name": name,
+                "connected": r.revoked_unix.is_none(),
+                "expires_at": r.expires_unix,
+                "scopes": r.scopes,
+                "connected_at": r.connected_unix,
+                "last_refreshed_at": r.last_refreshed_unix,
+                "revoked_at": r.revoked_unix,
+                "revoked_reason": r.revoked_reason,
+            }),
+            None => json!({
+                "name": name,
+                "connected": false,
+                "expires_at": Value::Null,
+                "scopes": Value::Null,
+                "connected_at": Value::Null,
+                "last_refreshed_at": Value::Null,
+                "revoked_at": Value::Null,
+                "revoked_reason": Value::Null,
+            }),
+        });
+    }
+    Ok(json!({"providers": out}))
+}
+
+/// `host.vault.provider_remove` (P0 requirement 3, AC6): the reverse of
+/// `provider_set` -- deletes the provider and revokes every end user's
+/// stored token for it in one transaction ([`crate::db::Db::remove_vault_provider`]).
+pub async fn provider_remove(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let name = arg_str(args, "name")?;
+    let existed = state.db.remove_vault_provider(tenant.id, name.clone()).await?;
+    if !existed {
+        return Err(AppError::Structured {
+            code: "not_found",
+            message: format!("no vault provider named '{name}' is registered for this tenant"),
+            data: json!({"name": name}),
+        });
+    }
+    Ok(json!({"name": name, "removed": true}))
 }
 
 /// `host.vault.connect_link` (AC1): `end_user: "self"` is the only
