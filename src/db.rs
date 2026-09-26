@@ -62,6 +62,7 @@ const MIGRATION_0038: &str = include_str!("../migrations/0038_oauth_issuers.sql"
 const MIGRATION_0039: &str = include_str!("../migrations/0039_table_models.sql");
 const MIGRATION_0040: &str = include_str!("../migrations/0040_alerts.sql");
 const MIGRATION_0041: &str = include_str!("../migrations/0041_status_feed.sql");
+const MIGRATION_0044: &str = include_str!("../migrations/0044_docs_index.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -1734,7 +1735,8 @@ impl Db {
         Self::migrate_0038_oauth_issuers(&conn)?;
         Self::migrate_0039_table_models(&conn)?;
         Self::migrate_0040_alerts(&conn)?;
-        Self::migrate_0041_status_feed(&conn)
+        Self::migrate_0041_status_feed(&conn)?;
+        Self::migrate_0044_docs_index(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -2321,6 +2323,16 @@ impl Db {
             .exists([])?;
         if !has_table {
             conn.execute_batch(MIGRATION_0041)?;
+        }
+        Ok(())
+    }
+
+    fn migrate_0044_docs_index(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'doc_chunks'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0044)?;
         }
         Ok(())
     }
@@ -9638,6 +9650,41 @@ impl Db {
         .await
     }
 
+    /// Test-only: AC11's 10k-chunk fixture in one transaction, bypassing
+    /// `docs::doc_put`/`docs_index::tick_once` entirely -- the AC is about
+    /// lexical search latency against a populated FTS5 index, not about
+    /// how fast this test can chunk and index 10k documents. Each chunk's
+    /// text carries a unique `wordmarkerN` token so a query for it matches
+    /// exactly one row.
+    pub async fn doc_chunks_bulk_insert_for_test(&self, tenant_id: i64, count: i64) -> Result<(), AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            let tx = conn.unchecked_transaction()?;
+            {
+                let mut stmt = tx.prepare(
+                    "INSERT INTO doc_chunks \
+                         (tenant_id, document_id, version, chunk_no, chunk_offset, len, text, vector, name, created_at) \
+                     VALUES (?1, ?2, 1, 0, 0, ?3, ?4, NULL, ?2, ?5)",
+                )?;
+                let mut fts_stmt = tx.prepare(
+                    "INSERT INTO doc_chunks_fts (text, tenant_id, document_id, chunk_no) VALUES (?1, ?2, ?3, 0)",
+                )?;
+                for i in 0..count {
+                    let document_id = format!("perfdoc{i}");
+                    let text = format!(
+                        "Filler passage content for load testing purposes, marker wordmarker{i} \
+                         sits here among ordinary prose words repeated for bulk padding."
+                    );
+                    stmt.execute(params![tenant_id, document_id, text.len() as i64, text, now])?;
+                    fts_stmt.execute(params![text, tenant_id, document_id])?;
+                }
+            }
+            tx.commit()?;
+            Ok(())
+        })
+        .await
+    }
+
     // ---- documents (PRD-mcphost-document-store) --------------------------
     //
     // `docs.rs` owns mime detection, size/quota checks, and text extraction;
@@ -11060,6 +11107,415 @@ impl Db {
         })
         .await
     }
+
+    // ---- docs_index (PRD-mcphost-docs-semantic-search) --------------------
+
+    /// requirement 2: up to `limit` documents (live or deleted) whose own
+    /// `seq` is past `since_watermark`, ordered by `seq` -- the indexer's
+    /// own per-tenant pending batch.
+    pub async fn documents_pending_batch(
+        &self,
+        tenant_id: i64,
+        since_watermark: i64,
+        limit: i64,
+    ) -> Result<Vec<DocumentRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(&format!(
+                "SELECT {} FROM documents WHERE tenant_id = ?1 AND seq > ?2 ORDER BY seq LIMIT ?3",
+                Self::DOCUMENT_COLUMNS
+            ))?;
+            let rows = stmt
+                .query_map(params![tenant_id, since_watermark, limit], |r| {
+                    Self::document_from_row(r)
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// requirement 4: `host.docs.status`'s own `pending_documents` counter
+    /// -- every document (live or deleted) past `since_watermark`, not just
+    /// one batch of it.
+    pub async fn documents_pending_count(
+        &self,
+        tenant_id: i64,
+        since_watermark: i64,
+    ) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM documents WHERE tenant_id = ?1 AND seq > ?2",
+                params![tenant_id, since_watermark],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `lag_seconds`' own input: the earliest `updated_at` among documents
+    /// still pending past `since_watermark`, `None` when nothing is
+    /// pending (i.e. the index is fully caught up, `lag_seconds` is 0).
+    pub async fn documents_pending_oldest_updated_at(
+        &self,
+        tenant_id: i64,
+        since_watermark: i64,
+    ) -> Result<Option<i64>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT MIN(updated_at) FROM documents WHERE tenant_id = ?1 AND seq > ?2",
+                params![tenant_id, since_watermark],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Every tenant with at least one document past its own indexed
+    /// watermark -- `docs_index::tick_once`'s own per-tick worklist. A
+    /// `LEFT JOIN` so a tenant with no `doc_index_state` row yet (never
+    /// configured, never indexed) still shows up with an implicit
+    /// watermark of 0.
+    pub async fn tenants_with_pending_docs(&self) -> Result<Vec<i64>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT d.tenant_id FROM documents d \
+                 LEFT JOIN doc_index_state s ON s.tenant_id = d.tenant_id \
+                 GROUP BY d.tenant_id \
+                 HAVING MAX(d.seq) > COALESCE(MIN(s.indexed_watermark), 0)",
+            )?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, i64>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    fn doc_index_state_from_row(r: &Row) -> rusqlite::Result<DocIndexStateRow> {
+        Ok(DocIndexStateRow {
+            tenant_id: r.get(0)?,
+            indexed_watermark: r.get(1)?,
+            provider: r.get(2)?,
+            endpoint: r.get(3)?,
+            model: r.get(4)?,
+            secret_name: r.get(5)?,
+            dims: r.get(6)?,
+            rebuilding: r.get::<_, i64>(7)? != 0,
+            quota_chunks_reached: r.get::<_, i64>(8)? != 0,
+            updated_at: r.get(9)?,
+        })
+    }
+
+    const DOC_INDEX_STATE_COLUMNS: &'static str = "tenant_id, indexed_watermark, provider, \
+         endpoint, model, secret_name, dims, rebuilding, quota_chunks_reached, updated_at";
+
+    pub async fn doc_index_state_get(
+        &self,
+        tenant_id: i64,
+    ) -> Result<Option<DocIndexStateRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                &format!(
+                    "SELECT {} FROM doc_index_state WHERE tenant_id = ?1",
+                    Self::DOC_INDEX_STATE_COLUMNS
+                ),
+                params![tenant_id],
+                Self::doc_index_state_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Ensures a `doc_index_state` row exists for `tenant_id` (default
+    /// lexical, watermark 0) -- both `docs::doc_status` and
+    /// `docs_index::tick_once` call this before reading, so a tenant that
+    /// has never configured a provider or been indexed still gets a row on
+    /// first touch rather than a special-cased `None` everywhere else.
+    pub async fn doc_index_state_ensure(&self, tenant_id: i64, now: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO doc_index_state (tenant_id, indexed_watermark, provider, updated_at) \
+                 VALUES (?1, 0, 'none', ?2) \
+                 ON CONFLICT(tenant_id) DO NOTHING",
+                params![tenant_id, now],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// requirement 4: `host.docs.index_config` -- switches provider config
+    /// and forces a full rebuild (`rebuilding: true`, watermark reset to
+    /// 0) so `docs_index::tick_once` re-chunks (and, for a provider, re-
+    /// embeds) everything from scratch on its next tick.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn doc_index_state_configure(
+        &self,
+        tenant_id: i64,
+        provider: String,
+        endpoint: Option<String>,
+        model: Option<String>,
+        secret_name: Option<String>,
+        dims: Option<i64>,
+        now: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO doc_index_state \
+                     (tenant_id, indexed_watermark, provider, endpoint, model, secret_name, dims, \
+                      rebuilding, quota_chunks_reached, updated_at) \
+                 VALUES (?1, 0, ?2, ?3, ?4, ?5, ?6, 1, 0, ?7) \
+                 ON CONFLICT(tenant_id) DO UPDATE SET \
+                     indexed_watermark = 0, provider = excluded.provider, \
+                     endpoint = excluded.endpoint, model = excluded.model, \
+                     secret_name = excluded.secret_name, dims = excluded.dims, \
+                     rebuilding = 1, updated_at = excluded.updated_at",
+                params![tenant_id, provider, endpoint, model, secret_name, dims, now],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// P1 requirement 7 (`host.docs.reindex`): rewinds this tenant's own
+    /// watermark down to (at most) `to` so the indexer's next tick treats
+    /// everything with `seq > to` as pending again -- `to = 0` is
+    /// "reindex everything" (AC10); `to = <a document's own seq - 1>` is
+    /// "reindex from this document on" for the single-document case (never
+    /// raises the watermark back up if it's already lower than `to`).
+    pub async fn doc_index_state_rewind_watermark(
+        &self,
+        tenant_id: i64,
+        to: i64,
+        now: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE doc_index_state \
+                 SET indexed_watermark = MIN(indexed_watermark, ?2), rebuilding = 1, updated_at = ?3 \
+                 WHERE tenant_id = ?1",
+                params![tenant_id, to, now],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// The indexer's own end-of-tick write: advances (or holds) this
+    /// tenant's watermark and refreshes its `quota_chunks_reached`/
+    /// `rebuilding` flags -- requirement 2's "advance `indexed_watermark`
+    /// only after the batch commits" (this is called once per tenant per
+    /// tick, after every document in that tick's batch already committed
+    /// its own chunk replace).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn doc_index_state_advance(
+        &self,
+        tenant_id: i64,
+        indexed_watermark: i64,
+        quota_chunks_reached: bool,
+        rebuilding: bool,
+        now: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE doc_index_state \
+                 SET indexed_watermark = ?2, quota_chunks_reached = ?3, rebuilding = ?4, updated_at = ?5 \
+                 WHERE tenant_id = ?1",
+                params![
+                    tenant_id,
+                    indexed_watermark,
+                    quota_chunks_reached as i64,
+                    rebuilding as i64,
+                    now
+                ],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// requirement 2: deletes every stored chunk (and its FTS row) for one
+    /// document -- the first half of "replace that document's chunks
+    /// atomically" every reindex of a changed or deleted document starts
+    /// with.
+    pub async fn doc_chunks_delete_for_document(
+        &self,
+        tenant_id: i64,
+        document_id: String,
+    ) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
+            let outcome: Result<i64, AppError> = (|| {
+                conn.execute(
+                    "DELETE FROM doc_chunks_fts WHERE tenant_id = ?1 AND document_id = ?2",
+                    params![tenant_id, document_id],
+                )?;
+                let n = conn.execute(
+                    "DELETE FROM doc_chunks WHERE tenant_id = ?1 AND document_id = ?2",
+                    params![tenant_id, document_id],
+                )?;
+                Ok(n as i64)
+            })();
+            match outcome {
+                Ok(v) => {
+                    conn.execute("COMMIT", []).map_err(AppError::from)?;
+                    Ok(v)
+                }
+                Err(e) => {
+                    let _ = conn.execute("ROLLBACK", []);
+                    Err(e)
+                }
+            }
+        })
+        .await
+    }
+
+    pub async fn doc_chunks_count(&self, tenant_id: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM doc_chunks WHERE tenant_id = ?1",
+                params![tenant_id],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 1/2: writes `chunks` for one document -- the caller has
+    /// already deleted this document's old chunks in the same reindex pass
+    /// ([`Self::doc_chunks_delete_for_document`]); `chunk_no` in each tuple
+    /// starts at 0. `chunks` is `(chunk_no, offset, len, text, vector)`.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn doc_chunks_insert_batch(
+        &self,
+        tenant_id: i64,
+        document_id: String,
+        version: i64,
+        name: String,
+        chunks: Vec<ChunkInsertRow>,
+        now: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
+            let outcome: Result<(), AppError> = (|| {
+                for (chunk_no, offset, len, text, vector) in &chunks {
+                    conn.execute(
+                        "INSERT INTO doc_chunks \
+                             (tenant_id, document_id, version, chunk_no, chunk_offset, len, text, \
+                              vector, name, created_at) \
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                        params![
+                            tenant_id, document_id, version, chunk_no, offset, len, text, vector,
+                            name, now
+                        ],
+                    )?;
+                    conn.execute(
+                        "INSERT INTO doc_chunks_fts (text, tenant_id, document_id, chunk_no) \
+                         VALUES (?1, ?2, ?3, ?4)",
+                        params![text, tenant_id, document_id, chunk_no],
+                    )?;
+                }
+                Ok(())
+            })();
+            match outcome {
+                Ok(()) => {
+                    conn.execute("COMMIT", []).map_err(AppError::from)?;
+                    Ok(())
+                }
+                Err(e) => {
+                    let _ = conn.execute("ROLLBACK", []);
+                    Err(e)
+                }
+            }
+        })
+        .await
+    }
+
+    /// requirement 3: BM25-ranked lexical search over `match_expr` (already
+    /// a sanitized, per-term `OR` expression -- see
+    /// `docs_index::sanitize_fts_query`), tenant-scoped and optionally
+    /// `name`-prefix or exact-`name` filtered. `score` is the negated raw
+    /// `bm25()` value (SQLite's own bm25 is ascending-better/negative;
+    /// negating it gives callers the more intuitive "higher is better").
+    #[allow(clippy::too_many_arguments)]
+    pub async fn doc_chunks_search_lexical(
+        &self,
+        tenant_id: i64,
+        match_expr: String,
+        prefix: Option<String>,
+        name: Option<String>,
+        k: i64,
+    ) -> Result<Vec<ChunkHit>, AppError> {
+        self.with_conn(move |conn| {
+            let pattern = prefix
+                .as_deref()
+                .map(|p| format!("{}%", p.replace('%', "\\%").replace('_', "\\_")));
+            let mut stmt = conn.prepare(
+                "SELECT dc.document_id, dc.name, dc.version, dc.chunk_no, dc.chunk_offset, dc.len, \
+                        dc.text, bm25(doc_chunks_fts) AS rank \
+                 FROM doc_chunks_fts \
+                 JOIN doc_chunks dc \
+                   ON dc.tenant_id = doc_chunks_fts.tenant_id \
+                  AND dc.document_id = doc_chunks_fts.document_id \
+                  AND dc.chunk_no = doc_chunks_fts.chunk_no \
+                 WHERE doc_chunks_fts.tenant_id = ?1 AND doc_chunks_fts MATCH ?2 \
+                   AND (?3 IS NULL OR dc.name LIKE ?3 ESCAPE '\\') \
+                   AND (?4 IS NULL OR dc.name = ?4) \
+                 ORDER BY rank LIMIT ?5",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id, match_expr, pattern, name, k], |r| {
+                    let rank: f64 = r.get(7)?;
+                    Ok(ChunkHit {
+                        document_id: r.get(0)?,
+                        name: r.get(1)?,
+                        version: r.get(2)?,
+                        chunk_no: r.get(3)?,
+                        offset: r.get(4)?,
+                        len: r.get(5)?,
+                        text: r.get(6)?,
+                        score: -rank,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// requirement 3 (embeddings mode): every chunk row this tenant has an
+    /// embedding for -- brute-force cosine happens in Rust
+    /// (`docs_index::cosine_rank`), capped by the 50k-chunk pro quota per
+    /// the PRD's own technical considerations.
+    pub async fn doc_chunks_with_vectors(&self, tenant_id: i64) -> Result<Vec<ChunkVecRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT document_id, name, version, chunk_no, chunk_offset, len, text, vector \
+                 FROM doc_chunks WHERE tenant_id = ?1 AND vector IS NOT NULL",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id], |r| {
+                    Ok(ChunkVecRow {
+                        document_id: r.get(0)?,
+                        name: r.get(1)?,
+                        version: r.get(2)?,
+                        chunk_no: r.get(3)?,
+                        offset: r.get(4)?,
+                        len: r.get(5)?,
+                        text: r.get(6)?,
+                        vector: r.get(7)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
 }
 
 /// requirement 1: one `documents` row -- `docs.rs`'s own business logic
@@ -11244,6 +11700,59 @@ fn incident_from_row(r: &Row) -> rusqlite::Result<Incident> {
         timeline_json: r.get(6)?,
         auto: r.get(7)?,
     })
+}
+
+/// PRD-mcphost-docs-semantic-search: one `doc_index_state` row --
+/// `docs.rs`'s `host.docs.status`/`index_config` and `docs_index.rs`'s
+/// indexer both read/write this through `db.rs`'s own functions, never the
+/// table directly.
+#[derive(Debug, Clone)]
+pub struct DocIndexStateRow {
+    pub tenant_id: i64,
+    pub indexed_watermark: i64,
+    pub provider: String,
+    pub endpoint: Option<String>,
+    pub model: Option<String>,
+    pub secret_name: Option<String>,
+    pub dims: Option<i64>,
+    pub rebuilding: bool,
+    pub quota_chunks_reached: bool,
+    pub updated_at: i64,
+}
+
+/// [`Db::doc_chunks_search_lexical`]'s return shape: one ranked chunk, with
+/// enough of `doc_chunks` to answer `host.docs.search`'s own response shape
+/// directly (`document_id`, `name`, `version`, `chunk_no`, `offset`,
+/// `text`) plus its ranking `score`.
+#[derive(Debug, Clone)]
+pub struct ChunkHit {
+    pub document_id: String,
+    pub name: String,
+    pub version: i64,
+    pub chunk_no: i64,
+    pub offset: i64,
+    pub len: i64,
+    pub text: String,
+    pub score: f64,
+}
+
+/// [`Db::doc_chunks_insert_batch`]'s per-chunk input: `(chunk_no, offset,
+/// len, text, vector)`.
+pub type ChunkInsertRow = (i64, i64, i64, String, Option<Vec<u8>>);
+
+/// [`Db::doc_chunks_with_vectors`]'s return shape: a chunk plus its raw
+/// little-endian f32 vector blob, for `docs_index::cosine_rank`'s brute-
+/// force cosine pass.
+#[derive(Debug, Clone)]
+pub struct ChunkVecRow {
+    pub document_id: String,
+    pub name: String,
+    pub version: i64,
+    pub chunk_no: i64,
+    pub offset: i64,
+    pub len: i64,
+    pub text: String,
+    pub vector: Vec<u8>,
 }
 
 /// [`Db::prune_once`]'s return shape: one cycle's per-physical-table

@@ -370,6 +370,15 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # caught by the same P0 assertion. 464 -> 475 is the smallest tested raise
 # that re-collapses core's normal buckets back to 1, landing the grand
 # total back at 10.
+#
+# PRD-mcphost-docs-semantic-search (2026-09-25, rebased onto
+# mcphost-alerting-webhook): this PRD's own eleven `docsearch_ac*.rs`
+# files (also `core`-classified, also no global tracing subscriber) join
+# the same normal bucket, spawning an 11th suite binary again -- caught by
+# the same P0 assertion. Re-tuned post-rebase (onto d273490, which had
+# already independently raised the cap past this PRD's original 475-based
+# arithmetic) to re-collapse core's normal buckets to 1 against the full
+# rebased file set, landing the grand total back at 10.
 MAX_PER_SUITE = {"core": 560, "sandbox": 90}
 
 

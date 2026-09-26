@@ -250,6 +250,28 @@ mod compose_ac8_tool_test_dry_run;
 mod consent_ac01_ac02_ac03_ac04_contact_lifecycle;
 #[path = "consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox.rs"]
 mod consent_ac05_ac06_ac07_ac08_ac09_ac10_mute_urgent_block_delete_inbox;
+#[path = "docsearch_ac01_status_reports_watermark_lag_and_chunks.rs"]
+mod docsearch_ac01_status_reports_watermark_lag_and_chunks;
+#[path = "docsearch_ac02_lexical_search_returns_passage_and_offset.rs"]
+mod docsearch_ac02_lexical_search_returns_passage_and_offset;
+#[path = "docsearch_ac03_version_update_drops_old_chunks.rs"]
+mod docsearch_ac03_version_update_drops_old_chunks;
+#[path = "docsearch_ac04_delete_removes_chunks.rs"]
+mod docsearch_ac04_delete_removes_chunks;
+#[path = "docsearch_ac05_embeddings_mode_ranks_by_cosine.rs"]
+mod docsearch_ac05_embeddings_mode_ranks_by_cosine;
+#[path = "docsearch_ac06_provider_503_falls_back_to_lexical.rs"]
+mod docsearch_ac06_provider_503_falls_back_to_lexical;
+#[path = "docsearch_ac07_chunk_quota_stops_indexer.rs"]
+mod docsearch_ac07_chunk_quota_stops_indexer;
+#[path = "docsearch_ac08_cross_tenant_isolation.rs"]
+mod docsearch_ac08_cross_tenant_isolation;
+#[path = "docsearch_ac09_fixture_corpus_hit_rate.rs"]
+mod docsearch_ac09_fixture_corpus_hit_rate;
+#[path = "docsearch_ac10_reindex_forces_all_documents.rs"]
+mod docsearch_ac10_reindex_forces_all_documents;
+#[path = "docsearch_ac11_lexical_search_p95_latency.rs"]
+mod docsearch_ac11_lexical_search_p95_latency;
 #[path = "docstore_ac01_first_put_returns_version1_seq1.rs"]
 mod docstore_ac01_first_put_returns_version1_seq1;
 #[path = "docstore_ac02_put_bumps_version_noop_on_identical_content.rs"]

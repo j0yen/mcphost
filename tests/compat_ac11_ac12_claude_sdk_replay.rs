@@ -194,7 +194,7 @@ async fn ac12_claude_agent_sdk_sequence_lists_signup_with_schema() {
     // Migration/compatibility section).
     assert_eq!(
         tools.len(),
-        100,
+        103,
         "signup + host.* (incl. host.quickstart, host.tool_run, host.bridge_test) + \
          host.tool_call + host.tool_history/host.tool_rollback/host.tool_diff \
          (3 tools, PRD-mcphost-tool-versions) + host.state.* (9 tools, PRD-mcphost-tenant-state) + \
@@ -208,7 +208,8 @@ async fn ac12_claude_agent_sdk_sequence_lists_signup_with_schema() {
          host.self_offboard (PRD-mcphost-tenant-self-offboard) + host.changelog (PRD-mcphost-host-tool-deprecation) + \
          host.export (PRD-mcphost-tenant-data-export) + \
          the six host.channel.* tools (PRD-mcphost-agent-mesh-ops, PRD-mcphost-agent-channels) + the six host.docs.* tools (PRD-mcphost-document-store) + \
-         the three host.oauth.* tools (PRD-mcphost-oauth-resource-server): {tools:?}"
+         the three host.oauth.* tools (PRD-mcphost-oauth-resource-server) + \
+         the three host.docs.search/index_config/reindex tools (PRD-mcphost-docs-semantic-search): {tools:?}"
     );
     let tool = tools
         .iter()

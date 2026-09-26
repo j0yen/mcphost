@@ -578,6 +578,10 @@ async fn main() -> anyhow::Result<()> {
             // retention tick, started once here alongside the other
             // background tasks.
             mcphost::channels::spawn_channel_retention((*state).clone());
+            // PRD-mcphost-docs-semantic-search P0 requirement 2: the 10 s
+            // docs index tick, started once here alongside the other
+            // background tasks.
+            mcphost::docs_index::spawn_scheduler((*state).clone());
             // PRD-mcphost-python-dependency-policy requirement 6: the daily
             // dependency-advisory re-audit, started once here alongside the
             // other background tasks (`admin.dependency_reaudit` triggers
