@@ -873,6 +873,11 @@ pub fn admin_audit_entry(
         // stay absent, same convention `admin.ban.list`'s own comment
         // above names).
         "admin.db.stats" => Some(("db_stats".into(), None, None)),
+        // PRD-mcphost-end-user-audit-and-revoke P1 requirement 7 / AC9:
+        // read-only, but this AC pins it into `admin_audit` unlike every
+        // other read-only admin.* call, same convention `admin.db.stats`'s
+        // own comment above names.
+        "admin.enduser.stats" => Some(("enduser_stats".into(), None, None)),
         // PRD-mcphost-alerting-webhook requirement 5 / AC7: `admin.alerts.ack`
         // and `admin.alerts.raise` are mutations like every other admin.*
         // write above -- `admin.alerts.list` (read-only) is absent, same
@@ -1484,4 +1489,24 @@ pub async fn status_rollup(state: &AppState, args: &Value) -> Result<Value, AppE
     let until = args.get("until").and_then(Value::as_i64).unwrap_or(now + 1);
     let recomputed = crate::statusfeed::rollup_range(state, since, until).await?;
     Ok(json!({ "recomputed_days": recomputed }))
+}
+
+/// `admin.enduser.stats` (PRD-mcphost-end-user-audit-and-revoke P1
+/// requirement 7 / AC9): per-tenant end-user active/revoked/purged
+/// totals, for the plan-knob user story ("Operator: `admin.enduser.stats`
+/// shows end users per tenant").
+pub async fn enduser_stats(state: &AppState) -> Result<Value, AppError> {
+    let rows = state.db.enduser_stats_all_tenants().await?;
+    let tenants: Vec<Value> = rows
+        .into_iter()
+        .map(|r| {
+            json!({
+                "tenant": r.tenant,
+                "active_30d": r.active_30d,
+                "revoked": r.revoked,
+                "purged": r.purged,
+            })
+        })
+        .collect();
+    Ok(json!({ "tenants": tenants }))
 }

@@ -2217,6 +2217,92 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              with any prior secret stop verifying immediately -- no overlap window.",
             host_schema(json!({}), &[]),
         ),
+        // PRD-mcphost-end-user-audit-and-revoke requirement 2 (AC1/AC10).
+        Tool::new(
+            "host.enduser.list",
+            "List this tenant's end users with last-seen and call counts, newest last-seen \
+             first. Optional since (unix seconds, filters last_seen), revoked (bool), limit \
+             (default 50, max 1000), and cursor (from a previous page's cursor field).",
+            host_schema(
+                json!({
+                    "since": {"type": "integer", "description": "Only end users last seen at or after this unix timestamp."},
+                    "revoked": {"type": "boolean", "description": "true: only revoked end users; false: only active ones; omit for both."},
+                    "limit": {"type": "integer", "description": "Max rows per page (default 50, max 1000)."},
+                    "cursor": {"type": "string", "description": "Opaque; resume after a previous response's cursor."},
+                }),
+                &[],
+            ),
+        ),
+        // PRD-mcphost-end-user-audit-and-revoke requirement 2 (AC2).
+        Tool::new(
+            "host.enduser.get",
+            "One end user's roster row (subject, issuer, first_seen, last_seen, calls_total, \
+             revoked_at, revoked_by, purged_at) plus its live state_rows, vault_connections, \
+             and runs_30d counts.",
+            host_schema(
+                json!({"subject": {"type": "string", "description": "The end user's subject."}}),
+                &["subject"],
+            ),
+        ),
+        // PRD-mcphost-end-user-audit-and-revoke requirement 3 (AC3/AC7).
+        Tool::new(
+            "host.enduser.audit",
+            "One end user's calls (tool, outcome, run_id, impersonated) merged with its \
+             revoke/unrevoke/purge control-plane events, newest first, paged by cursor.",
+            host_schema(
+                json!({
+                    "subject": {"type": "string", "description": "The end user's subject."},
+                    "since": {"type": "integer", "description": "Only entries at or after this unix timestamp."},
+                    "limit": {"type": "integer", "description": "Max entries per page (default 50, max 1000)."},
+                    "cursor": {"type": "string", "description": "Opaque; resume after a previous response's cursor."},
+                }),
+                &["subject"],
+            ),
+        ),
+        // PRD-mcphost-end-user-audit-and-revoke requirement 4 (AC4).
+        Tool::new(
+            "host.enduser.revoke",
+            "Revoke an end user: its next identified call is refused with end_user_revoked, \
+             no tool runs, and its vault-token connections are disconnected.",
+            host_schema(
+                json!({
+                    "subject": {"type": "string", "description": "The end user's subject."},
+                    "reason": {"type": "string"},
+                }),
+                &["subject"],
+            ),
+        ),
+        // PRD-mcphost-end-user-audit-and-revoke requirement 4 (AC7).
+        Tool::new(
+            "host.enduser.unrevoke",
+            "Reverse a prior host.enduser.revoke; the end user's calls succeed again.",
+            host_schema(
+                json!({"subject": {"type": "string", "description": "The end user's subject."}}),
+                &["subject"],
+            ),
+        ),
+        // PRD-mcphost-end-user-audit-and-revoke requirement 5 (AC5/AC6).
+        Tool::new(
+            "host.enduser.purge",
+            "Delete a revoked end user's scoped state and vault-token rows, de-identify its \
+             calls rows (kept, never deleted), and set purged_at. Requires the end user to be \
+             revoked first (revoke_required otherwise). Returns {state_rows, vault_tokens} \
+             counts.",
+            host_schema(
+                json!({"subject": {"type": "string", "description": "The end user's subject."}}),
+                &["subject"],
+            ),
+        ),
+        // PRD-mcphost-end-user-audit-and-revoke P1 requirement 6 (AC8).
+        Tool::new(
+            "host.enduser.export",
+            "Export one end user's state rows and call history as a bundle at /exports/<run_id>, \
+             the same envelope host.export returns (download_url, size_bytes, expires_unix).",
+            host_schema(
+                json!({"subject": {"type": "string", "description": "The end user's subject."}}),
+                &["subject"],
+            ),
+        ),
     ];
     if authenticated {
         tools.push(Tool::new(
@@ -2733,6 +2819,13 @@ fn admin_tools() -> Vec<Tool> {
                 &[],
             ),
         ),
+        // PRD-mcphost-end-user-audit-and-revoke P1 requirement 7 (AC9).
+        Tool::new(
+            "admin.enduser.stats",
+            "Per-tenant end-user totals: active_30d, revoked, purged. Only tenants with at \
+             least one end user appear.",
+            schema(json!({}), &[]),
+        ),
     ]
 }
 
@@ -3108,6 +3201,19 @@ impl McpHostHandler {
                 crate::vault::connect_link(&self.state, tenant, &args, end_user).await
             }
             "host.vault.disconnect" => crate::vault::disconnect(&self.state, tenant, &args, end_user).await,
+            // PRD-mcphost-end-user-audit-and-revoke requirement 2 (AC1/AC10).
+            "host.enduser.list" => crate::enduserctl::list(&self.state, tenant, &args).await,
+            // PRD-mcphost-end-user-audit-and-revoke requirement 2 (AC2).
+            "host.enduser.get" => crate::enduserctl::get(&self.state, tenant, &args).await,
+            // PRD-mcphost-end-user-audit-and-revoke requirement 3 (AC3/AC7).
+            "host.enduser.audit" => crate::enduserctl::audit(&self.state, tenant, &args).await,
+            // PRD-mcphost-end-user-audit-and-revoke requirement 4 (AC4/AC7).
+            "host.enduser.revoke" => crate::enduserctl::revoke(&self.state, tenant, &args).await,
+            "host.enduser.unrevoke" => crate::enduserctl::unrevoke(&self.state, tenant, &args).await,
+            // PRD-mcphost-end-user-audit-and-revoke requirement 5 (AC5/AC6).
+            "host.enduser.purge" => crate::enduserctl::purge(&self.state, tenant, &args).await,
+            // PRD-mcphost-end-user-audit-and-revoke requirement 6 (AC8).
+            "host.enduser.export" => crate::export::enduser_export(&self.state, tenant, &args).await,
             "host.table.create" => tables::table_create(&self.state, tenant, &args).await,
             "host.table.append" => tables::table_append(&self.state, tenant, &args).await,
             "host.table.query" => tables::table_query(&self.state, tenant, &args).await,
@@ -3240,6 +3346,8 @@ impl McpHostHandler {
             "admin.incident.close" => admin::incident_close(&self.state, &args).await,
             "admin.status.sample" => admin::status_sample(&self.state, &args).await,
             "admin.status.rollup" => admin::status_rollup(&self.state, &args).await,
+            // PRD-mcphost-end-user-audit-and-revoke P1 requirement 7 (AC9).
+            "admin.enduser.stats" => admin::enduser_stats(&self.state).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         };
 
@@ -3635,6 +3743,12 @@ impl McpHostHandler {
                     );
                     return Err(storage_err);
                 }
+                // PRD-mcphost-end-user-audit-and-revoke requirement 1: this
+                // identified call's activity, buffered for the next 10s
+                // flush rather than written to `end_users` here.
+                if let Some(subject) = &end_user_subject {
+                    self.state.end_user_activity.record(tenant.id, subject, end_user_issuer.clone());
+                }
                 tracing::info!(
                     tenant = %tenant.namespace, method = "tools/call", tool = %local_name,
                     duration_ms, status = "ok", outcome = call_outcome, mcp_name_mismatch,
@@ -3708,6 +3822,9 @@ impl McpHostHandler {
                         end_user_method.clone(),
                     )
                     .await;
+                if let Some(subject) = &end_user_subject {
+                    self.state.end_user_activity.record(tenant.id, subject, end_user_issuer.clone());
+                }
                 tracing::info!(
                     tenant = %tenant.namespace, method = "tools/call", tool = %local_name,
                     duration_ms, status = "error", error_class = app_err.code(), mcp_name_mismatch,
@@ -3735,6 +3852,9 @@ impl McpHostHandler {
                         end_user_method.clone(),
                     )
                     .await;
+                if let Some(subject) = &end_user_subject {
+                    self.state.end_user_activity.record(tenant.id, subject, end_user_issuer.clone());
+                }
                 tracing::info!(
                     tenant = %tenant.namespace, method = "tools/call", tool = %local_name,
                     duration_ms, status = "error", error_class = "call_timeout", mcp_name_mismatch,
@@ -4756,6 +4876,25 @@ impl ServerHandler for McpHostHandler {
             } else if let Some(assertion) = raw_args.get("end_user_assertion").and_then(Value::as_str) {
                 match crate::enduser::verify_assertion(&self.state, tenant, assertion).await {
                     Ok(eu) => end_user = Some(eu),
+                    Err(e) => end_user_err = Some(e),
+                }
+            }
+            // PRD-mcphost-end-user-audit-and-revoke requirement 4 (AC4): a
+            // revoked end user's next identified call is refused before
+            // dispatch -- no tool runs, no `calls` row. One indexed lookup
+            // on `end_users`' own primary key (technical considerations).
+            if end_user_err.is_none()
+                && let Some(eu) = &end_user
+            {
+                match self.state.db.is_end_user_revoked(tenant.id, eu.subject.clone()).await {
+                    Ok(true) => {
+                        end_user_err = Some(AppError::Structured {
+                            code: "end_user_revoked",
+                            message: format!("end user '{}' has been revoked", eu.subject),
+                            data: json!({"subject": eu.subject}),
+                        });
+                    }
+                    Ok(false) => {}
                     Err(e) => end_user_err = Some(e),
                 }
             }

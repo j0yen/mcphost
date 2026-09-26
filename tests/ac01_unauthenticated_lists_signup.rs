@@ -249,6 +249,18 @@ async fn unauthenticated_tools_list_is_signup_only() {
         // of them.
         "host.enduser.whoami",
         "host.enduser.assertion_secret_rotate",
+        // PRD-mcphost-end-user-audit-and-revoke: the end-user control
+        // plane is discoverable unauthenticated too, same as every other
+        // host.*-style tool above -- every one of these is an
+        // authenticated (tenant_key/bearer-gated) call, not the discovery
+        // of it.
+        "host.enduser.get",
+        "host.enduser.audit",
+        "host.enduser.revoke",
+        "host.enduser.unrevoke",
+        "host.enduser.purge",
+        "host.enduser.export",
+        "host.enduser.list",
     ] {
         assert!(
             tool_names.contains(&expected),
@@ -261,7 +273,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        109,
+        116,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the three host.tool_history/host.tool_rollback/host.tool_diff \
@@ -288,7 +300,9 @@ async fn unauthenticated_tools_list_is_signup_only() {
          the three host.oauth.* tools (PRD-mcphost-oauth-resource-server) + \
          the three host.docs.search/index_config/reindex tools \
          (PRD-mcphost-docs-semantic-search) + \
-         the two host.enduser.* tools (PRD-mcphost-end-user-identity): \
+         the two host.enduser.* tools (PRD-mcphost-end-user-identity) + \
+         the seven host.enduser.get/audit/revoke/unrevoke/purge/export/list tools \
+         (PRD-mcphost-end-user-audit-and-revoke): \
          {tool_names:?}"
     );
 }

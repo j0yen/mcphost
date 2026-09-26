@@ -67,6 +67,7 @@ const MIGRATION_0043: &str = include_str!("../migrations/0043_shared_tool_caller
 const MIGRATION_0044: &str = include_str!("../migrations/0044_docs_index.sql");
 const MIGRATION_0045: &str = include_str!("../migrations/0045_run_counters_and_error_data.sql");
 const MIGRATION_0046: &str = include_str!("../migrations/0046_vault.sql");
+const MIGRATION_0047: &str = include_str!("../migrations/0047_end_user_audit_and_revoke.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -589,6 +590,30 @@ pub struct AdminAuditRow {
 pub enum StartExportRun {
     Started(String),
     AlreadyRunning(String),
+}
+
+/// PRD-mcphost-end-user-audit-and-revoke requirement 1/2: one row of the
+/// `end_users` roster, read back by `host.enduser.list`/`get`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EndUserRow {
+    pub subject: String,
+    pub issuer: Option<String>,
+    pub first_seen: i64,
+    pub last_seen: i64,
+    pub calls_total: i64,
+    pub revoked_at: Option<i64>,
+    pub revoked_by: Option<String>,
+    pub purged_at: Option<i64>,
+}
+
+/// `admin.enduser.stats` (P1 requirement 7 / AC9): one tenant's end-user
+/// totals -- see [`Db::enduser_stats_all_tenants`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct EndUserStatsRow {
+    pub tenant: String,
+    pub active_30d: i64,
+    pub revoked: i64,
+    pub purged: i64,
 }
 
 /// PRD-mcphost-runs-and-jobs P0 requirement 1: one row of the `runs`
@@ -1852,7 +1877,8 @@ impl Db {
         Self::migrate_0043_shared_tool_caller_usage(&conn)?;
         Self::migrate_0044_docs_index(&conn)?;
         Self::migrate_0045_run_counters_and_error_data(&conn)?;
-        Self::migrate_0046_vault(&conn)
+        Self::migrate_0046_vault(&conn)?;
+        Self::migrate_0047_end_user_audit_and_revoke(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -2504,6 +2530,22 @@ impl Db {
             .exists([])?;
         if !has_table {
             conn.execute_batch(MIGRATION_0046)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-end-user-audit-and-revoke migration (renumbered from 0043
+    /// to 0047 during the mcphost-shared-tool-caller-usage rebase, which had
+    /// already claimed 0043): gated on `end_users`' existence, same
+    /// new-table idempotency guard as 0040/0041 above -- this batch's other
+    /// statements (`tenant_audit`, `vault_tokens`, `calls.run_id`) always
+    /// land in the same run as `end_users` itself.
+    fn migrate_0047_end_user_audit_and_revoke(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'end_users'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0047)?;
         }
         Ok(())
     }
@@ -6247,9 +6289,9 @@ impl Db {
         self.with_conn(move |conn| {
             let tx = conn.unchecked_transaction()?;
             tx.execute(
-                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
-                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method],
+                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id.clone()],
             )?;
             tx.execute(
                 "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, \
@@ -12888,6 +12930,541 @@ impl Db {
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(rows)
+        })
+        .await
+    }
+
+    // ---- end-user control plane (PRD-mcphost-end-user-audit-and-revoke) --
+
+    /// requirement 1: one flush cycle's upsert for a single `(tenant,
+    /// subject)` pending in [`crate::enduserctl::EndUserActivityBuffer`] --
+    /// `first_seen` only ever set on the row's first insert (`excluded.*`
+    /// only feeds `last_seen`/`calls_total`/`issuer`), `calls_total`
+    /// accumulated rather than overwritten since a flush cycle may cover
+    /// more than one call.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upsert_end_user_activity(
+        &self,
+        tenant_id: i64,
+        subject: String,
+        issuer: Option<String>,
+        last_seen: i64,
+        calls_delta: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO end_users (tenant_id, subject, issuer, first_seen, last_seen, calls_total) \
+                 VALUES (?1, ?2, ?3, ?4, ?4, ?5) \
+                 ON CONFLICT(tenant_id, subject) DO UPDATE SET \
+                    last_seen = excluded.last_seen, \
+                    calls_total = calls_total + excluded.calls_total, \
+                    issuer = COALESCE(excluded.issuer, issuer)",
+                params![tenant_id, subject, issuer, last_seen, calls_delta],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `host.enduser.revoke`/`auth`'s per-call check (requirement 4 /
+    /// AC4): a single indexed lookup on `end_users`' own primary key.
+    /// A subject never seen at all (no row yet) is never revoked.
+    pub async fn is_end_user_revoked(&self, tenant_id: i64, subject: String) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let revoked_at: Option<i64> = conn
+                .query_row(
+                    "SELECT revoked_at FROM end_users WHERE tenant_id = ?1 AND subject = ?2",
+                    params![tenant_id, subject],
+                    |r| r.get(0),
+                )
+                .optional()?
+                .flatten();
+            Ok(revoked_at.is_some())
+        })
+        .await
+    }
+
+    /// `host.enduser.list` (requirement 2 / AC1/AC10): newest-`last_seen`-
+    /// first keyset page over `end_users`, filtered by `since`
+    /// (`last_seen >= since`) and/or `revoked` when given. `cursor` is the
+    /// `(last_seen, subject)` of the last row the previous page returned --
+    /// AC10's <50ms/page budget at 100k rows needs this keyset form (via
+    /// `idx_end_users_tenant_last_seen`), not an `OFFSET` that would rescan
+    /// every skipped row.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn list_end_users(
+        &self,
+        tenant_id: i64,
+        since: Option<i64>,
+        revoked: Option<bool>,
+        limit: i64,
+        cursor: Option<(i64, String)>,
+    ) -> Result<Vec<EndUserRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut sql = String::from(
+                "SELECT subject, issuer, first_seen, last_seen, calls_total, revoked_at, revoked_by, purged_at \
+                 FROM end_users WHERE tenant_id = ?1",
+            );
+            let mut binds: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(tenant_id)];
+            if let Some(s) = since {
+                binds.push(Box::new(s));
+                sql.push_str(&format!(" AND last_seen >= ?{}", binds.len()));
+            }
+            if let Some(r) = revoked {
+                sql.push_str(if r { " AND revoked_at IS NOT NULL" } else { " AND revoked_at IS NULL" });
+            }
+            if let Some((last_seen, subject)) = cursor {
+                binds.push(Box::new(last_seen));
+                let ls_idx = binds.len();
+                binds.push(Box::new(subject));
+                let subj_idx = binds.len();
+                sql.push_str(&format!(
+                    " AND (last_seen < ?{ls_idx} OR (last_seen = ?{ls_idx} AND subject < ?{subj_idx}))"
+                ));
+            }
+            binds.push(Box::new(limit));
+            sql.push_str(&format!(" ORDER BY last_seen DESC, subject DESC LIMIT ?{}", binds.len()));
+            let refs: Vec<&dyn rusqlite::ToSql> = binds.iter().map(|b| b.as_ref()).collect();
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(refs.as_slice(), |r| {
+                    Ok(EndUserRow {
+                        subject: r.get(0)?,
+                        issuer: r.get(1)?,
+                        first_seen: r.get(2)?,
+                        last_seen: r.get(3)?,
+                        calls_total: r.get(4)?,
+                        revoked_at: r.get(5)?,
+                        revoked_by: r.get(6)?,
+                        purged_at: r.get(7)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// Test-only: seeds `count` `end_users` rows at once inside one
+    /// transaction (AC10's 100k-row fixture) -- upserting one row at a time
+    /// through the real flush path would make the test itself the slow
+    /// part. `last_seen` descends by one second per row (`base - i`) and
+    /// `subject` is zero-padded so `ORDER BY last_seen DESC, subject DESC`
+    /// yields a deterministic, collision-free sequence.
+    pub async fn insert_end_users_bulk_for_test(
+        &self,
+        tenant_id: i64,
+        count: i64,
+        base_last_seen: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            let tx = conn.unchecked_transaction()?;
+            {
+                let mut stmt = tx.prepare(
+                    "INSERT INTO end_users (tenant_id, subject, issuer, first_seen, last_seen, calls_total) \
+                     VALUES (?1, ?2, NULL, ?3, ?3, 1)",
+                )?;
+                for i in 0..count {
+                    let subject = format!("user{i:07}");
+                    let last_seen = base_last_seen - i;
+                    stmt.execute(params![tenant_id, subject, last_seen])?;
+                }
+            }
+            tx.commit()?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `host.enduser.get` (requirement 2 / AC2): the one roster row.
+    pub async fn get_end_user(&self, tenant_id: i64, subject: String) -> Result<Option<EndUserRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT subject, issuer, first_seen, last_seen, calls_total, revoked_at, revoked_by, purged_at \
+                 FROM end_users WHERE tenant_id = ?1 AND subject = ?2",
+                params![tenant_id, subject],
+                |r| {
+                    Ok(EndUserRow {
+                        subject: r.get(0)?,
+                        issuer: r.get(1)?,
+                        first_seen: r.get(2)?,
+                        last_seen: r.get(3)?,
+                        calls_total: r.get(4)?,
+                        revoked_at: r.get(5)?,
+                        revoked_by: r.get(6)?,
+                        purged_at: r.get(7)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `host.enduser.get`'s `state_rows` count (requirement 2 / AC2): every
+    /// row this subject owns across both scoped state stores --
+    /// `tenant_state_rows` (arbitrary rows) and `tenant_state_kv`
+    /// (key/value) -- summed, since both are "state" scoped by
+    /// `end_user_subject` (migration 0042) and `purge`'s own
+    /// `state_rows` count (requirement 5 / AC5) sums the exact same two
+    /// deletes.
+    pub async fn count_state_rows_for_subject(&self, tenant_id: i64, subject: String) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            let rows: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM tenant_state_rows WHERE tenant_id = ?1 AND end_user_subject = ?2",
+                params![tenant_id, subject],
+                |r| r.get(0),
+            )?;
+            let kv: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM tenant_state_kv WHERE tenant_id = ?1 AND end_user_subject = ?2",
+                params![tenant_id, subject],
+                |r| r.get(0),
+            )?;
+            Ok(rows + kv)
+        })
+        .await
+    }
+
+    /// `host.enduser.get`'s `vault_connections` count (requirement 2 /
+    /// AC2): live (not yet revoked) `vault_tokens` rows.
+    pub async fn count_vault_connections_for_subject(&self, tenant_id: i64, subject: String) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM vault_tokens WHERE tenant_id = ?1 AND end_user_subject = ?2 \
+                 AND revoked_unix IS NULL",
+                params![tenant_id, subject],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `host.enduser.get`'s `runs_30d` count (requirement 2 / AC2): this
+    /// subject's `calls` rows (each one also a `runs` row, written
+    /// together by `record_call_attributed_with_end_user`) in the trailing
+    /// 30 days.
+    pub async fn count_runs_30d_for_subject(&self, tenant_id: i64, subject: String) -> Result<i64, AppError> {
+        let since = now_unix() - 30 * 86_400;
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM calls WHERE tenant_id = ?1 AND end_user_subject = ?2 AND started_unix >= ?3",
+                params![tenant_id, subject, since],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Test-only: inserts one `vault_tokens` row -- the token-vault PRD
+    /// hasn't landed a real connect flow yet (this control plane's own
+    /// migration 0043 doc comment explains why `vault_tokens` exists at
+    /// all), so tests seed connections directly.
+    pub async fn insert_vault_token_for_test(
+        &self,
+        tenant_id: i64,
+        subject: String,
+        provider: String,
+    ) -> Result<i64, AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO vault_tokens (tenant_id, end_user_subject, provider, connected_unix) \
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![tenant_id, subject, provider, now],
+            )?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+    }
+
+    /// Test-only: `revoked_unix IS NOT NULL` count for a subject's
+    /// `vault_tokens` rows (AC4's "vault tokens are marked revoked").
+    pub async fn count_revoked_vault_tokens_for_test(&self, tenant_id: i64, subject: String) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM vault_tokens WHERE tenant_id = ?1 AND end_user_subject = ?2 \
+                 AND revoked_unix IS NOT NULL",
+                params![tenant_id, subject],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `host.enduser.audit`'s call-history half (requirement 3 / AC3):
+    /// newest-first, up to `cap` of this subject's `calls` rows, since
+    /// `since` (unix seconds) when given. `cap` bounds a merge-in-Rust with
+    /// [`Self::list_tenant_audit_for_subject`] -- audit has no scale AC
+    /// like `list`'s AC10, so this stays a simple two-source merge rather
+    /// than a single keyset query across two tables.
+    pub async fn list_calls_for_subject(
+        &self,
+        tenant_id: i64,
+        subject: String,
+        since: Option<i64>,
+        cap: i64,
+    ) -> Result<Vec<(i64, String, String, Option<String>)>, AppError> {
+        self.with_conn(move |conn| {
+            let mut sql = String::from(
+                "SELECT started_unix, tool_name, outcome, run_id FROM calls \
+                 WHERE tenant_id = ?1 AND end_user_subject = ?2",
+            );
+            let mut binds: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(tenant_id), Box::new(subject)];
+            if let Some(s) = since {
+                binds.push(Box::new(s));
+                sql.push_str(&format!(" AND started_unix >= ?{}", binds.len()));
+            }
+            binds.push(Box::new(cap));
+            sql.push_str(&format!(" ORDER BY started_unix DESC, id DESC LIMIT ?{}", binds.len()));
+            let refs: Vec<&dyn rusqlite::ToSql> = binds.iter().map(|b| b.as_ref()).collect();
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(refs.as_slice(), |r| {
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// `host.enduser.audit`'s control-plane-event half (requirement 3 /
+    /// AC3/AC7): newest-first, up to `cap` of this subject's `tenant_audit`
+    /// rows.
+    pub async fn list_tenant_audit_for_subject(
+        &self,
+        tenant_id: i64,
+        subject: String,
+        since: Option<i64>,
+        cap: i64,
+    ) -> Result<Vec<(i64, String, Option<String>)>, AppError> {
+        self.with_conn(move |conn| {
+            let mut sql = String::from(
+                "SELECT created_unix, action, detail FROM tenant_audit \
+                 WHERE tenant_id = ?1 AND subject = ?2",
+            );
+            let mut binds: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(tenant_id), Box::new(subject)];
+            if let Some(s) = since {
+                binds.push(Box::new(s));
+                sql.push_str(&format!(" AND created_unix >= ?{}", binds.len()));
+            }
+            binds.push(Box::new(cap));
+            sql.push_str(&format!(" ORDER BY id DESC LIMIT ?{}", binds.len()));
+            let refs: Vec<&dyn rusqlite::ToSql> = binds.iter().map(|b| b.as_ref()).collect();
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(refs.as_slice(), |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// `host.enduser.revoke` (requirement 4 / AC4): upserts `revoked_at`/
+    /// `revoked_by` -- a subject revoked before it was ever seen (no
+    /// `end_users` row yet) still gets one, so the per-call check in
+    /// `handler.rs` (`Db::is_end_user_revoked`) refuses its first call too.
+    pub async fn revoke_end_user(&self, tenant_id: i64, subject: String, revoked_by: String) -> Result<(), AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO end_users (tenant_id, subject, issuer, first_seen, last_seen, calls_total, revoked_at, revoked_by) \
+                 VALUES (?1, ?2, NULL, ?3, ?3, 0, ?3, ?4) \
+                 ON CONFLICT(tenant_id, subject) DO UPDATE SET revoked_at = excluded.revoked_at, revoked_by = excluded.revoked_by",
+                params![tenant_id, subject, now, revoked_by],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `host.enduser.unrevoke` (requirement 4 / AC7): clears `revoked_at`/
+    /// `revoked_by`. Returns `false` when no `end_users` row exists at all
+    /// (nothing to unrevoke) so the caller can refuse with
+    /// `end_user_not_found` rather than silently no-op.
+    pub async fn unrevoke_end_user(&self, tenant_id: i64, subject: String) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let affected = conn.execute(
+                "UPDATE end_users SET revoked_at = NULL, revoked_by = NULL WHERE tenant_id = ?1 AND subject = ?2",
+                params![tenant_id, subject],
+            )?;
+            Ok(affected > 0)
+        })
+        .await
+    }
+
+    /// `host.enduser.revoke` (requirement 4 / AC4): "vault tokens are
+    /// disconnected" -- marks every still-live connection revoked rather
+    /// than deleting it (a purge, not a revoke, deletes rows -- requirement
+    /// 5).
+    pub async fn revoke_vault_tokens_for_subject(&self, tenant_id: i64, subject: String) -> Result<(), AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE vault_tokens SET revoked_unix = ?1 \
+                 WHERE tenant_id = ?2 AND end_user_subject = ?3 AND revoked_unix IS NULL",
+                params![now, tenant_id, subject],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `host.enduser.purge` (requirement 5 / AC5): one transaction --
+    /// deletes this subject's scoped `tenant_state_rows`/`tenant_state_kv`/
+    /// `vault_tokens` rows, de-identifies (never deletes) its `calls` rows,
+    /// sets `purged_at`, and writes the `tenant_audit` tombstone, all or
+    /// nothing. Returns `(state_rows, vault_tokens)` -- the exact counts
+    /// `host.enduser.purge`'s own response reports. Caller (`enduserctl::purge`)
+    /// has already checked `revoked_at` is set (requirement 5: "requires
+    /// revoked_at set" -- AC6's `revoke_required`).
+    pub async fn purge_end_user(&self, tenant_id: i64, subject: String) -> Result<(i64, i64), AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            let tx = conn.unchecked_transaction()?;
+            let rows_removed = tx.execute(
+                "DELETE FROM tenant_state_rows WHERE tenant_id = ?1 AND end_user_subject = ?2",
+                params![tenant_id, subject],
+            )? as i64;
+            let kv_removed = tx.execute(
+                "DELETE FROM tenant_state_kv WHERE tenant_id = ?1 AND end_user_subject = ?2",
+                params![tenant_id, subject],
+            )? as i64;
+            let vault_removed = tx.execute(
+                "DELETE FROM vault_tokens WHERE tenant_id = ?1 AND end_user_subject = ?2",
+                params![tenant_id, subject],
+            )? as i64;
+            // requirement 5: "nulls end_user_subject on their calls rows
+            // (keeps the rows)" -- issuer/method are nulled alongside it,
+            // per the migration/compatibility section's "only
+            // de-identified": a de-identified call should carry no
+            // identifying end-user field, not just the subject.
+            tx.execute(
+                "UPDATE calls SET end_user_subject = NULL, end_user_issuer = NULL, end_user_method = NULL \
+                 WHERE tenant_id = ?1 AND end_user_subject = ?2",
+                params![tenant_id, subject],
+            )?;
+            tx.execute(
+                "UPDATE end_users SET purged_at = ?1 WHERE tenant_id = ?2 AND subject = ?3",
+                params![now, tenant_id, subject],
+            )?;
+            tx.execute(
+                "INSERT INTO tenant_audit (tenant_id, subject, action, detail, created_unix) \
+                 VALUES (?1, ?2, 'purge', ?3, ?4)",
+                params![
+                    tenant_id,
+                    subject,
+                    format!("state_rows={},vault_tokens={vault_removed}", rows_removed + kv_removed),
+                    now
+                ],
+            )?;
+            tx.commit()?;
+            Ok((rows_removed + kv_removed, vault_removed))
+        })
+        .await
+    }
+
+    /// `host.enduser.export` (requirement 6 / AC8): every `tenant_state_rows`
+    /// row this subject owns, across every table (unlike
+    /// [`Self::state_rows_for_end_user`], which is pushed down to one
+    /// `table_name` for `host.state.query`'s own scoped read) -- an export
+    /// bundle needs the lot.
+    pub async fn state_rows_all_for_end_user(
+        &self,
+        tenant_id: i64,
+        subject: String,
+    ) -> Result<Vec<(String, i64, String)>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT table_name, id, row_json FROM tenant_state_rows \
+                 WHERE tenant_id = ?1 AND end_user_subject = ?2 ORDER BY table_name, id",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id, subject], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// Test-only: inserts one `end_users` row with an arbitrary
+    /// `revoked_at`/`purged_at` (AC9's active/revoked/purged fixture) --
+    /// bypassing the real flush/revoke/purge paths so a test can set up
+    /// every state combination directly.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_end_user_for_test(
+        &self,
+        tenant_id: i64,
+        subject: String,
+        last_seen: i64,
+        revoked_at: Option<i64>,
+        purged_at: Option<i64>,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO end_users (tenant_id, subject, issuer, first_seen, last_seen, calls_total, revoked_at, purged_at) \
+                 VALUES (?1, ?2, NULL, ?3, ?3, 1, ?4, ?5)",
+                params![tenant_id, subject, last_seen, revoked_at, purged_at],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `admin.enduser.stats` (P1 requirement 7 / AC9): per-tenant end-user
+    /// totals -- `active_30d` (not revoked, not purged, seen in the
+    /// trailing 30 days), `revoked` (revoked, not yet purged), `purged`.
+    /// Only tenants with at least one `end_users` row appear (a tenant with
+    /// none has nothing to report).
+    pub async fn enduser_stats_all_tenants(&self) -> Result<Vec<EndUserStatsRow>, AppError> {
+        let since = now_unix() - 30 * 86_400;
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT t.namespace, \
+                    SUM(CASE WHEN eu.purged_at IS NULL AND eu.revoked_at IS NULL AND eu.last_seen >= ?1 THEN 1 ELSE 0 END), \
+                    SUM(CASE WHEN eu.purged_at IS NULL AND eu.revoked_at IS NOT NULL THEN 1 ELSE 0 END), \
+                    SUM(CASE WHEN eu.purged_at IS NOT NULL THEN 1 ELSE 0 END) \
+                 FROM end_users eu JOIN tenants t ON t.id = eu.tenant_id \
+                 GROUP BY eu.tenant_id, t.namespace ORDER BY t.namespace",
+            )?;
+            let rows = stmt
+                .query_map(params![since], |r| {
+                    Ok(EndUserStatsRow {
+                        tenant: r.get(0)?,
+                        active_30d: r.get(1)?,
+                        revoked: r.get(2)?,
+                        purged: r.get(3)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// requirement 3/4/5/7 (AC4/AC5/AC7): appends one `tenant_audit` row --
+    /// this control plane's own append-only control-plane-event log (see
+    /// migration 0043's doc comment for why this is a sibling table to
+    /// `admin_audit` rather than a reuse of it).
+    pub async fn record_tenant_audit(
+        &self,
+        tenant_id: i64,
+        subject: String,
+        action: String,
+        detail: Option<String>,
+    ) -> Result<(), AppError> {
+        let created_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO tenant_audit (tenant_id, subject, action, detail, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![tenant_id, subject, action, detail, created_unix],
+            )?;
+            Ok(())
         })
         .await
     }

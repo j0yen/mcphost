@@ -24,6 +24,7 @@ pub mod docs;
 pub mod docs_index;
 pub mod email;
 pub mod enduser;
+pub mod enduserctl;
 pub mod errors;
 pub mod export;
 pub mod funnel;

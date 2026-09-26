@@ -346,6 +346,12 @@ pub struct AppState {
     /// Empty (every probe runs for real) in every real `mcphost serve`
     /// start.
     pub status_probe_override: crate::statusfeed::ProbeOverrides,
+    /// PRD-mcphost-end-user-audit-and-revoke requirement 1: the in-memory
+    /// `(tenant, subject) -> pending activity` map every identified call
+    /// records into; flushed to the `end_users` table every 10s by
+    /// [`crate::enduserctl::spawn_scheduler`] rather than per call
+    /// (non-functional: "the upsert batch adds no per-call latency").
+    pub end_user_activity: crate::enduserctl::EndUserActivityBuffer,
 }
 
 pub fn now_unix() -> i64 {

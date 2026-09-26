@@ -80,7 +80,7 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
     );
     assert_eq!(
         names.len(),
-        109,
+        116,
         "there must be exactly the sixteen host.* control-plane tools \
          (incl. host.quickstart, host.tool_run, host.bridge_test, host.spec_test -- \
          PRD-mcphost-tool-test, and host.redeem/host.key_rotate -- \

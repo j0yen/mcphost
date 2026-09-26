@@ -33,6 +33,11 @@ use crate::errors::AppError;
 use crate::state::AppState;
 
 pub const EXPORT_TOOL_NAME: &str = "host.export";
+/// PRD-mcphost-end-user-audit-and-revoke requirement 6 (AC8): a distinct
+/// `runs.tool_name` from [`EXPORT_TOOL_NAME`] so a per-subject export's
+/// own "one running at a time" check ([`crate::db::Db::start_export_run`])
+/// never collides with (or rejoins) a whole-tenant export.
+pub const ENDUSER_EXPORT_TOOL_NAME: &str = "host.enduser.export";
 const EXPORT_DIR: &str = "exports";
 /// AC2: a signed download URL is valid for this long.
 pub const EXPORT_URL_TTL_SECS: i64 = 24 * 60 * 60;
@@ -185,6 +190,155 @@ async fn run_export_job(
         .db
         .finalize_run(run_id, tenant.id, status, result_ref, error_class, None, finished_unix, duration_ms)
         .await;
+}
+
+/// `host.enduser.export {subject}` (requirement 6 / AC8): same
+/// runs-ledger/background-job/signed-download shape as [`export`] above,
+/// scoped to one end user's own state rows and call history rather than
+/// the whole tenant -- "reuses export.rs's bundle writer with a filter"
+/// (technical considerations), the filter here being `end_user_subject`
+/// rather than a `tools` list.
+pub async fn enduser_export(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let subject = args
+        .get("subject")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| AppError::InvalidArgs("missing required argument 'subject'".to_string()))?;
+    let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
+        AppError::Internal(format!(
+            "tenant's plan '{}' is not in the loaded plan catalog",
+            tenant.plan
+        ))
+    })?;
+    let run_id = crate::state::new_ulid();
+    let args_json = serde_json::to_string(args)
+        .map_err(|e| AppError::Internal(format!("args serialize: {e}")))?;
+    let outcome = state
+        .db
+        .start_export_run(
+            tenant.id,
+            run_id.clone(),
+            ENDUSER_EXPORT_TOOL_NAME.to_string(),
+            plan.job_max_s,
+            args_json,
+        )
+        .await?;
+    let run_id = match outcome {
+        StartExportRun::AlreadyRunning(existing) => {
+            return Ok(json!({"run_id": existing, "status": "running"}));
+        }
+        StartExportRun::Started(new_id) => new_id,
+    };
+    let spawn_state = state.clone();
+    let spawn_tenant = tenant.clone();
+    let spawn_run_id = run_id.clone();
+    tokio::spawn(async move {
+        run_enduser_export_job(spawn_state, spawn_tenant, spawn_run_id, subject).await;
+    });
+    Ok(json!({"run_id": run_id, "status": "running"}))
+}
+
+async fn run_enduser_export_job(state: AppState, tenant: Tenant, run_id: String, subject: String) {
+    let start = std::time::Instant::now();
+    let outcome = build_enduser_archive(&state, &tenant, &run_id, &subject).await;
+    let finished_unix = crate::state::now_unix();
+    let duration_ms = start.elapsed().as_millis() as i64;
+
+    let (status, result_ref, error_class) = match outcome {
+        Ok(result_value) => {
+            let result_key = format!("runs/{run_id}");
+            let set_args = json!({"key": result_key, "value": result_value});
+            match crate::tenant_state::state_set(&state, &tenant, &set_args, None).await {
+                Ok(_) => ("done".to_string(), Some(result_key), None),
+                Err(e) => ("error".to_string(), None, Some(e.code().to_string())),
+            }
+        }
+        Err(e) => ("error".to_string(), None, Some(e.code().to_string())),
+    };
+
+    let _ = state
+        .db
+        .finalize_run(run_id, tenant.id, status, result_ref, error_class, None, finished_unix, duration_ms)
+        .await;
+}
+
+/// AC8: the bundle contains exactly this subject's `tenant_state_kv`/
+/// `tenant_state_rows` rows (`state_kv/<key>.json`, `state_rows/<table>/<id>.json`)
+/// and its call history (`calls.jsonl`) -- nothing from any other subject,
+/// since every query here is pushed down by `end_user_subject`.
+async fn build_enduser_archive(
+    state: &AppState,
+    tenant: &Tenant,
+    run_id: &str,
+    subject: &str,
+) -> Result<Value, AppError> {
+    let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
+        AppError::Internal(format!(
+            "tenant's plan '{}' is not in the loaded plan catalog",
+            tenant.plan
+        ))
+    })?;
+
+    let kv_rows = state.db.state_kv_list(tenant.id, None, 100_000, subject.to_string()).await?;
+    let state_rows = state.db.state_rows_all_for_end_user(tenant.id, subject.to_string()).await?;
+    let calls = state.db.list_calls_for_subject(tenant.id, subject.to_string(), None, 100_000).await?;
+
+    let encoder = GzEncoder::new(Vec::new(), Compression::default());
+    let mut builder = Builder::new(encoder);
+    add_entry(&mut builder, "manifest.json", &to_json_bytes(&json!({"subject": subject}))?)?;
+    for (key, value_json, _updated_unix) in &kv_rows {
+        add_entry(&mut builder, &format!("state_kv/{key}.json"), value_json.as_bytes())?;
+    }
+    for (table_name, id, row_json) in &state_rows {
+        add_entry(&mut builder, &format!("state_rows/{table_name}/{id}.json"), row_json.as_bytes())?;
+    }
+    let calls_jsonl = calls
+        .iter()
+        .map(|(ts, tool, outcome, run_id)| {
+            json!({"ts": ts, "tool": tool, "outcome": outcome, "run_id": run_id}).to_string()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    add_entry(&mut builder, "calls.jsonl", calls_jsonl.as_bytes())?;
+    let archive_bytes = builder
+        .into_inner()
+        .map_err(|e| AppError::Internal(format!("tar build: {e}")))?
+        .finish()
+        .map_err(|e| AppError::Internal(format!("gzip finish: {e}")))?;
+
+    if archive_bytes.len() as i64 > plan.export_bytes_max {
+        return Err(AppError::Structured {
+            code: "export_too_large",
+            message: format!(
+                "export archive is {} bytes, over this plan's {} byte limit",
+                archive_bytes.len(),
+                plan.export_bytes_max
+            ),
+            data: json!({
+                "size_bytes": archive_bytes.len(),
+                "limit_bytes": plan.export_bytes_max,
+            }),
+        });
+    }
+
+    let exports_dir = state.db.data_dir().join(EXPORT_DIR);
+    tokio::fs::create_dir_all(&exports_dir)
+        .await
+        .map_err(|e| AppError::Storage(format!("create exports dir: {e}")))?;
+    let archive_path = exports_dir.join(format!("{run_id}.tar.gz"));
+    tokio::fs::write(&archive_path, &archive_bytes)
+        .await
+        .map_err(|e| AppError::Storage(format!("write export archive: {e}")))?;
+
+    let expires_unix = crate::state::now_unix() + EXPORT_URL_TTL_SECS;
+    let download_url = signed_download_url(&state.public_url, &tenant.key_hash, run_id, expires_unix);
+
+    Ok(json!({
+        "download_url": download_url,
+        "size_bytes": archive_bytes.len(),
+        "expires_unix": expires_unix,
+        "subject": subject,
+    }))
 }
 
 fn to_json_bytes(value: &Value) -> Result<Vec<u8>, AppError> {
@@ -405,7 +559,8 @@ pub async fn download(
     let Ok(Some(run)) = state.db.find_run_by_id(run_id.clone()).await else {
         return (StatusCode::NOT_FOUND, "export not found").into_response();
     };
-    if run.tool_name != EXPORT_TOOL_NAME || run.status != "done" {
+    let is_export = run.tool_name == EXPORT_TOOL_NAME || run.tool_name == ENDUSER_EXPORT_TOOL_NAME;
+    if !is_export || run.status != "done" {
         return (StatusCode::NOT_FOUND, "export not found").into_response();
     }
     let Ok(Some(tenant)) = state.db.find_tenant_by_id(run.tenant_id).await else {
