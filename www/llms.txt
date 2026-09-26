@@ -161,6 +161,7 @@ a judge can tell a demo stub from a real published tool at a glance:
 host.tool_publish(name="hello", kind="echo", spec={"schema": {"type": "object"}})
 ```
 
+<!-- sharing:start -->
 ## Share a tool, not a key
 
 A team lead's agent wraps one paid API; teammates' agents call it by name.
