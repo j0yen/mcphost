@@ -180,6 +180,24 @@ mod busyaudit_ac08_healthz_db_fields;
 mod busyaudit_ac09_contention_alert;
 #[path = "busyaudit_ac10_wal_checkpoint_cron.rs"]
 mod busyaudit_ac10_wal_checkpoint_cron;
+#[path = "callerusage_ac01_caller_breakdown.rs"]
+mod callerusage_ac01_caller_breakdown;
+#[path = "callerusage_ac02_end_user_breakdown.rs"]
+mod callerusage_ac02_end_user_breakdown;
+#[path = "callerusage_ac03_caller_limit_enforced.rs"]
+mod callerusage_ac03_caller_limit_enforced;
+#[path = "callerusage_ac04_caller_requires_shared_tool.rs"]
+mod callerusage_ac04_caller_requires_shared_tool;
+#[path = "callerusage_ac05_end_user_pagination.rs"]
+mod callerusage_ac05_end_user_pagination;
+#[path = "callerusage_ac06_no_by_shape_unchanged.rs"]
+mod callerusage_ac06_no_by_shape_unchanged;
+#[path = "callerusage_ac07_rollup_speed_at_scale.rs"]
+mod callerusage_ac07_rollup_speed_at_scale;
+#[path = "callerusage_ac08_end_user_key_includes_caller.rs"]
+mod callerusage_ac08_end_user_key_includes_caller;
+#[path = "callerusage_ac09_admin_usage_top_audited.rs"]
+mod callerusage_ac09_admin_usage_top_audited;
 #[path = "channel_ac01_group_open_and_broadcast_read.rs"]
 mod channel_ac01_group_open_and_broadcast_read;
 #[path = "channel_ac02_non_member_channel_not_found.rs"]

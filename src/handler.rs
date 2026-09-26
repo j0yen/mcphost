@@ -784,12 +784,37 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         ),
         Tool::new(
             "host.usage",
-            "Calls, errors and duration percentiles for this tenant over a window.",
+            "Calls, errors and duration percentiles for this tenant over a window. Pass \
+             `by` (\"tool\", \"caller\", or \"end_user\") for a breakdown instead of the \
+             plain per-tenant summary: \"caller\" (only valid for a tool this tenant has \
+             shared) shows which tenant called in and how much; \"end_user\" shows which \
+             identified end user called, with the caller tenant folded into the key when \
+             the call crossed tenants. Breakdown rows cap at 1000 per page; pass the \
+             returned `cursor` back to page further.",
             host_schema(
                 json!({
                     "window": {
                         "type": "string",
-                        "description": "Time window to summarize, e.g. \"24h\"; default 24h.",
+                        "description": "Time window to summarize, e.g. \"24h\"/\"1d\"/\"7d\"/\"30d\"; \
+                            default 24h (\"1d\" when `by` is given).",
+                    },
+                    "tool": {
+                        "type": "string",
+                        "description": "Scope the breakdown to one local tool name. Required when \
+                            by is \"caller\".",
+                    },
+                    "by": {
+                        "type": "string",
+                        "description": "\"tool\", \"caller\", or \"end_user\" -- omit for the plain \
+                            per-tenant summary.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max breakdown rows per page (1-1000, default 1000).",
+                    },
+                    "cursor": {
+                        "type": "string",
+                        "description": "Resume a breakdown after this page's last key.",
                     },
                 }),
                 &[],
@@ -873,6 +898,43 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                     "name": {"type": "string", "description": "Local name of the tool to unshare."},
                 }),
                 &["name"],
+            ),
+        ),
+        // PRD-mcphost-shared-tool-caller-usage requirement 3 (AC3): caps on
+        // one caller's calls into one of this tenant's shared tools.
+        Tool::new(
+            "host.share.caller_limit",
+            "Cap how many successful calls a caller tenant may make per UTC day into one of \
+             this tenant's shared tools. The tool must already be shared. Exceeding the cap \
+             fails the call with quota_caller (never runs it); this tenant's own calls to the \
+             tool are unaffected.",
+            host_schema(
+                json!({
+                    "tool": {"type": "string", "description": "Local name of the shared tool."},
+                    "caller_tenant": {
+                        "type": "string",
+                        "description": "The caller's namespace to cap.",
+                    },
+                    "calls_per_day": {
+                        "type": "integer",
+                        "description": "Max successful calls per UTC day for this caller.",
+                    },
+                }),
+                &["tool", "caller_tenant", "calls_per_day"],
+            ),
+        ),
+        Tool::new(
+            "host.share.caller_limit_remove",
+            "Remove a caller_limit set by host.share.caller_limit.",
+            host_schema(
+                json!({
+                    "tool": {"type": "string", "description": "Local name of the shared tool."},
+                    "caller_tenant": {
+                        "type": "string",
+                        "description": "The caller's namespace whose limit to remove.",
+                    },
+                }),
+                &["tool", "caller_tenant"],
             ),
         ),
         Tool::new(
@@ -2237,6 +2299,21 @@ fn admin_tools() -> Vec<Tool> {
              recent retention prune (last_prune).",
             schema(json!({"window": {"type": "string"}}), &[]),
         ),
+        // PRD-mcphost-shared-tool-caller-usage requirement 4 (AC9): the
+        // operator's heaviest-tools/heaviest-tenants view, host-wide.
+        Tool::new(
+            "admin.usage.top",
+            "The heaviest tools or tenants on the whole host over a window, ranked by call \
+             count (descending). Audited to admin_audit.",
+            schema(
+                json!({
+                    "window": {"type": "string", "description": "e.g. \"1d\"; default 1d."},
+                    "by": {"type": "string", "description": "\"tool\" (default) or \"tenant\"."},
+                    "limit": {"type": "integer", "description": "Max rows; default 20."},
+                }),
+                &[],
+            ),
+        ),
         Tool::new(
             "admin.prune_now",
             "Run one retention-prune cycle immediately (the same cycle the nightly scheduler \
@@ -2985,6 +3062,12 @@ impl McpHostHandler {
             "host.export" => crate::export::export(&self.state, tenant, &args).await,
             "host.tool_share" => crate::sharing::tool_share(&self.state, tenant, &args).await,
             "host.tool_unshare" => crate::sharing::tool_unshare(&self.state, tenant, &args).await,
+            "host.share.caller_limit" => {
+                crate::sharing::caller_limit(&self.state, tenant, &args).await
+            }
+            "host.share.caller_limit_remove" => {
+                crate::sharing::caller_limit_remove(&self.state, tenant, &args).await
+            }
             "host.group.create" => crate::sharing::group_create(&self.state, tenant, &args).await,
             "host.group.add" => crate::sharing::group_add(&self.state, tenant, &args).await,
             "host.group.remove" => crate::sharing::group_remove(&self.state, tenant, &args).await,
@@ -3108,6 +3191,7 @@ impl McpHostHandler {
                 admin::tenant_delete_by_prefix(&self.state, &args).await
             }
             "admin.usage" => admin::usage(&self.state, &args).await,
+            "admin.usage.top" => admin::usage_top(&self.state, &args).await,
             "admin.prune_now" => admin::prune_now(&self.state).await,
             "admin.db.stats" => admin::db_stats(&self.state).await,
             "admin.dependency_reaudit" => admin::dependency_reaudit(&self.state).await,
@@ -3359,6 +3443,38 @@ impl McpHostHandler {
         // PRD-mcphost-sharing requirement 4 (AC5): a cross-tenant call
         // counts against the CALLER's quota, not the owner's.
         self.check_calls_quota(caller.unwrap_or(tenant)).await?;
+
+        // PRD-mcphost-shared-tool-caller-usage requirement 3 (AC3): an
+        // owner-set per-caller cap, checked only for a cross-tenant call
+        // (an owner calling its own tool has no `caller_tenant_id` to key a
+        // limit on, and the Open Questions section drafts "a caller cap
+        // also applies to the owner's own calls" as "no"). Same
+        // "rejected before any sandboxed work happens, no `calls` row at
+        // all" shape as `check_calls_quota` just above.
+        if let Some(caller) = caller
+            && let Some(limit) = self
+                .state
+                .db
+                .get_caller_limit(tenant.id, local_name.to_string(), caller.id)
+                .await?
+        {
+            let midnight = crate::state::utc_midnight_unix(crate::state::now_unix());
+            let used = self
+                .state
+                .db
+                .count_caller_calls_since(tenant.id, local_name.to_string(), caller.id, midnight)
+                .await?;
+            if used >= limit {
+                let reset_at = crate::state::rfc3339_from_unix(midnight + 86_400);
+                return Err(crate::sharing::quota_caller(
+                    &caller.namespace,
+                    local_name,
+                    limit,
+                    used,
+                    reset_at,
+                ));
+            }
+        }
 
         // PRD-mcphost-upstream-token-vault requirement 4 / AC6: resolved
         // (and, if it's within 120s of expiry, refreshed) BEFORE any of

@@ -63,6 +63,7 @@ const MIGRATION_0039: &str = include_str!("../migrations/0039_table_models.sql")
 const MIGRATION_0040: &str = include_str!("../migrations/0040_alerts.sql");
 const MIGRATION_0041: &str = include_str!("../migrations/0041_status_feed.sql");
 const MIGRATION_0042: &str = include_str!("../migrations/0042_end_user_identity.sql");
+const MIGRATION_0043: &str = include_str!("../migrations/0043_shared_tool_caller_usage.sql");
 const MIGRATION_0044: &str = include_str!("../migrations/0044_docs_index.sql");
 const MIGRATION_0045: &str = include_str!("../migrations/0045_run_counters_and_error_data.sql");
 const MIGRATION_0046: &str = include_str!("../migrations/0046_vault.sql");
@@ -511,6 +512,31 @@ pub struct ToolUsage {
     pub namespace: String,
     pub tool_name: String,
     pub stats: UsageStats,
+}
+
+/// PRD-mcphost-shared-tool-caller-usage requirement 2: one row of
+/// `host.usage {by}`'s breakdown -- `key` is the tool name (`by: "tool"`),
+/// the caller tenant's namespace (`by: "caller"`), or the end-user subject,
+/// optionally prefixed `<caller namespace>:` when the call crossed tenants
+/// (`by: "end_user"`, requirement 5/AC8). `bytes_out` is always 0 today --
+/// this crate tracks no per-call response-size column yet (out of scope
+/// for this PRD; no acceptance criterion exercises a nonzero value).
+#[derive(Debug, Clone, Serialize)]
+pub struct UsageByRow {
+    pub key: String,
+    pub calls: i64,
+    pub errors: i64,
+    pub p95_ms: f64,
+    pub bytes_out: i64,
+}
+
+/// Requirement 2: `host.usage {by}` caps at 1 000 keys per page (AC5) and
+/// carries a cursor to the next one; `next_cursor` is `None` once every key
+/// in the window has been returned.
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct UsageByResult {
+    pub rows: Vec<UsageByRow>,
+    pub next_cursor: Option<String>,
 }
 
 /// PRD-mcphost-tenant-delete requirement 1/2: what a single tenant's
@@ -1173,6 +1199,11 @@ pub struct RejectedRun {
     pub error_class: &'static str,
 }
 
+/// PRD-mcphost-shared-tool-caller-usage requirement 6 (AC7): the window
+/// size at and past which [`Db::usage_breakdown`] reads the `usage_daily`
+/// rollup instead of scanning raw `calls`.
+const ROLLUP_WINDOW_SECS: i64 = 30 * 86_400;
+
 fn percentile(sorted: &[i64], p: f64) -> f64 {
     if sorted.is_empty() {
         return 0.0;
@@ -1818,6 +1849,7 @@ impl Db {
         Self::migrate_0040_alerts(&conn)?;
         Self::migrate_0041_status_feed(&conn)?;
         Self::migrate_0042_end_user_identity(&conn)?;
+        Self::migrate_0043_shared_tool_caller_usage(&conn)?;
         Self::migrate_0044_docs_index(&conn)?;
         Self::migrate_0045_run_counters_and_error_data(&conn)?;
         Self::migrate_0046_vault(&conn)
@@ -2426,6 +2458,16 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0042)?;
+        }
+        Ok(())
+    }
+
+    fn migrate_0043_shared_tool_caller_usage(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'usage_daily'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0043)?;
         }
         Ok(())
     }
@@ -7036,6 +7078,381 @@ impl Db {
         .await
     }
 
+    /// `host.usage {tool?, by, window, limit, cursor}` (requirement 2):
+    /// `by` groups the owner's own `calls` rows (`tenant_id = owner_tenant_id`
+    /// covers every call to one of the owner's tools, whoever placed it --
+    /// same base filter `count_calls_since`'s own doc comment explains)
+    /// by tool name (`"tool"`), by the cross-tenant caller's namespace
+    /// (`"caller"` -- rows with no `caller_tenant_id` are the owner's own
+    /// direct calls, excluded, since AC1 only wants the OTHER tenants who
+    /// called in), or by end user (`"end_user"` -- only identified calls
+    /// count, AC2; requirement 5/AC8 prefixes the key with the caller's
+    /// namespace when the identified call crossed tenants, so u1 calling
+    /// through caller A is a different row than u1 calling through caller
+    /// B). Keys sort ascending (`BTreeMap`) so pagination is stable across
+    /// calls: `cursor`, when given, is the last key the previous page
+    /// returned, and this page starts strictly after it (AC5).
+    ///
+    /// Requirement 6 / AC7: a window of [`ROLLUP_WINDOW_SECS`] (30 days) or
+    /// wider reads the `usage_daily` rollup instead of scanning raw
+    /// `calls` -- the whole reason that table exists. It carries no
+    /// per-call `duration_ms`, so `p95_ms` is `0.0` on that path (no
+    /// acceptance criterion asserts a nonzero p95 for a 30d query; the
+    /// non-functional target this satisfies is latency, not percentile
+    /// precision at that horizon). A shorter window always reads raw
+    /// `calls` -- `usage_daily` only ever covers fully-elapsed days
+    /// ([`Self::rollup_usage_daily`]), so it would silently miss today's
+    /// calls for a "1d"/"7d" query.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn usage_breakdown(
+        &self,
+        owner_tenant_id: i64,
+        tool_filter: Option<String>,
+        by: String,
+        window_secs: i64,
+        limit: i64,
+        cursor: Option<String>,
+    ) -> Result<UsageByResult, AppError> {
+        let since = now_unix() - window_secs;
+        self.with_conn(move |conn| {
+            use std::collections::BTreeMap;
+            let mut grouped: BTreeMap<String, (i64, i64, Vec<i64>)> = BTreeMap::new();
+
+            if window_secs >= ROLLUP_WINDOW_SECS {
+                let mut stmt = conn.prepare(
+                    "SELECT ud.tool, ud.caller_tenant_id, t.namespace, ud.end_user_subject, \
+                            ud.calls, ud.errors \
+                     FROM usage_daily ud LEFT JOIN tenants t ON t.id = ud.caller_tenant_id \
+                     WHERE ud.tenant_id = ?1 \
+                           AND ud.day >= strftime('%Y-%m-%d', ?2, 'unixepoch') \
+                           AND (?3 IS NULL OR ud.tool = ?3)",
+                )?;
+                let rows = stmt
+                    .query_map(params![owner_tenant_id, since, tool_filter], |r| {
+                        Ok((
+                            r.get::<_, String>(0)?,
+                            r.get::<_, i64>(1)?,
+                            r.get::<_, Option<String>>(2)?,
+                            r.get::<_, String>(3)?,
+                            r.get::<_, i64>(4)?,
+                            r.get::<_, i64>(5)?,
+                        ))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                for (tool_name, caller_tenant_id, caller_ns, end_user_subject, calls, errors) in rows {
+                    let key = match by.as_str() {
+                        "tool" => tool_name,
+                        "caller" => {
+                            if caller_tenant_id == 0 {
+                                continue;
+                            }
+                            match caller_ns {
+                                Some(ns) => ns,
+                                None => continue,
+                            }
+                        }
+                        "end_user" => {
+                            if end_user_subject.is_empty() {
+                                continue;
+                            }
+                            match caller_ns {
+                                Some(ns) => format!("{ns}:{end_user_subject}"),
+                                None => end_user_subject,
+                            }
+                        }
+                        _ => continue,
+                    };
+                    let entry = grouped.entry(key).or_default();
+                    entry.0 += calls;
+                    entry.1 += errors;
+                }
+            } else {
+                let mut stmt = conn.prepare(
+                    "SELECT c.tool_name, c.caller_tenant_id, t.namespace, c.end_user_subject, \
+                            c.duration_ms, c.ok \
+                     FROM calls c LEFT JOIN tenants t ON t.id = c.caller_tenant_id \
+                     WHERE c.tenant_id = ?1 AND c.started_unix >= ?2 \
+                           AND (?3 IS NULL OR c.tool_name = ?3)",
+                )?;
+                let rows = stmt
+                    .query_map(params![owner_tenant_id, since, tool_filter], |r| {
+                        Ok((
+                            r.get::<_, String>(0)?,
+                            r.get::<_, Option<i64>>(1)?,
+                            r.get::<_, Option<String>>(2)?,
+                            r.get::<_, Option<String>>(3)?,
+                            r.get::<_, i64>(4)?,
+                            r.get::<_, i64>(5)? != 0,
+                        ))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                for (tool_name, caller_tenant_id, caller_ns, end_user_subject, duration_ms, ok) in rows {
+                    let key = match by.as_str() {
+                        "tool" => tool_name,
+                        "caller" => match caller_tenant_id.and(caller_ns) {
+                            Some(ns) => ns,
+                            None => continue,
+                        },
+                        "end_user" => {
+                            let Some(subject) = end_user_subject else { continue };
+                            match caller_ns {
+                                Some(ns) => format!("{ns}:{subject}"),
+                                None => subject,
+                            }
+                        }
+                        _ => continue,
+                    };
+                    let entry = grouped.entry(key).or_default();
+                    entry.0 += 1;
+                    if !ok {
+                        entry.1 += 1;
+                    }
+                    entry.2.push(duration_ms);
+                }
+            }
+
+            let mut keys: Vec<&String> = grouped.keys().collect();
+            if let Some(cursor) = &cursor {
+                keys.retain(|k| k.as_str() > cursor.as_str());
+            }
+            let limit = limit.max(0) as usize;
+            let has_more = keys.len() > limit;
+            keys.truncate(limit);
+            let next_cursor = if has_more {
+                keys.last().map(|k| (*k).clone())
+            } else {
+                None
+            };
+
+            let mut rows = Vec::with_capacity(keys.len());
+            for key in keys {
+                let (calls, errors, durations) = &grouped[key];
+                let mut durations = durations.clone();
+                durations.sort_unstable();
+                rows.push(UsageByRow {
+                    key: key.clone(),
+                    calls: *calls,
+                    errors: *errors,
+                    p95_ms: percentile(&durations, 0.95),
+                    bytes_out: 0,
+                });
+            }
+            Ok(UsageByResult { rows, next_cursor })
+        })
+        .await
+    }
+
+    /// `host.share.caller_limit` (AC3): upsert one `(tenant_id, tool_name,
+    /// caller_tenant_id)` cap, replacing whatever `calls_per_day` an
+    /// earlier call set.
+    pub async fn set_caller_limit(
+        &self,
+        tenant_id: i64,
+        tool_name: String,
+        caller_tenant_id: i64,
+        calls_per_day: i64,
+    ) -> Result<(), AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO tool_caller_limits \
+                 (tenant_id, tool_name, caller_tenant_id, calls_per_day, created_unix, updated_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?5) \
+                 ON CONFLICT(tenant_id, tool_name, caller_tenant_id) \
+                 DO UPDATE SET calls_per_day = excluded.calls_per_day, updated_unix = excluded.updated_unix",
+                params![tenant_id, tool_name, caller_tenant_id, calls_per_day, now],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `host.share.caller_limit_remove`: `false` when no such row existed.
+    pub async fn remove_caller_limit(
+        &self,
+        tenant_id: i64,
+        tool_name: String,
+        caller_tenant_id: i64,
+    ) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "DELETE FROM tool_caller_limits \
+                 WHERE tenant_id = ?1 AND tool_name = ?2 AND caller_tenant_id = ?3",
+                params![tenant_id, tool_name, caller_tenant_id],
+            )?;
+            Ok(n > 0)
+        })
+        .await
+    }
+
+    /// The `calls_per_day` cap in force for `caller_tenant_id` on
+    /// `tenant_id`'s `tool_name`, if any -- read by
+    /// `McpHostHandler::call_published_tool` before every cross-tenant
+    /// dispatch (AC3).
+    pub async fn get_caller_limit(
+        &self,
+        tenant_id: i64,
+        tool_name: String,
+        caller_tenant_id: i64,
+    ) -> Result<Option<i64>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT calls_per_day FROM tool_caller_limits \
+                 WHERE tenant_id = ?1 AND tool_name = ?2 AND caller_tenant_id = ?3",
+                params![tenant_id, tool_name, caller_tenant_id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// How many of `caller_tenant_id`'s calls into `tenant_id`'s
+    /// `tool_name` since `since_unix` succeeded (AC3: only a successful
+    /// call should count against the cap, same `ok = 1` convention
+    /// `count_calls_since`'s own `ok_only` uses for the plan-wide quota).
+    pub async fn count_caller_calls_since(
+        &self,
+        tenant_id: i64,
+        tool_name: String,
+        caller_tenant_id: i64,
+        since_unix: i64,
+    ) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM calls \
+                 WHERE tenant_id = ?1 AND tool_name = ?2 AND caller_tenant_id = ?3 \
+                       AND started_unix >= ?4 AND ok = 1",
+                params![tenant_id, tool_name, caller_tenant_id, since_unix],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+
+
+    /// Requirement 6 (AC7): recompute `usage_daily` from every FULLY
+    /// ELAPSED UTC day in `calls` (`started_unix < today_start` -- today's
+    /// still-accumulating rows stay off the rollup and out of a 30d query
+    /// built from it, the same "yesterday and older only" boundary
+    /// `status_daily`'s own daily tick uses), then prune rollup rows past
+    /// 90 days. Recomputes rather than accumulates (`ON CONFLICT ...
+    /// DO UPDATE SET calls = excluded.calls`, not `+=`) so a second run the
+    /// same day (the nightly scheduler, or a test calling this directly)
+    /// is idempotent instead of double-counting. Called from
+    /// [`Self::prune_once`] (requirement 6: "runs on the daily cron tick
+    /// alongside the existing prune jobs"); returns the number of
+    /// `usage_daily` rows written for the caller's own visibility (AC7's
+    /// test uses this to confirm the rollup actually ran before timing the
+    /// query it enables).
+    pub async fn rollup_usage_daily(&self, now_unix: i64) -> Result<i64, AppError> {
+        let today_start = now_unix - now_unix.rem_euclid(86_400);
+        self.with_conn(move |conn| {
+            let written = conn.execute(
+                "INSERT INTO usage_daily \
+                     (tenant_id, tool, caller_tenant_id, end_user_subject, day, calls, errors) \
+                 SELECT tenant_id, tool_name, COALESCE(caller_tenant_id, 0), \
+                        COALESCE(end_user_subject, ''), \
+                        strftime('%Y-%m-%d', started_unix, 'unixepoch'), \
+                        COUNT(*), SUM(CASE WHEN ok = 0 THEN 1 ELSE 0 END) \
+                 FROM calls \
+                 WHERE started_unix < ?1 \
+                 GROUP BY tenant_id, tool_name, COALESCE(caller_tenant_id, 0), \
+                          COALESCE(end_user_subject, ''), \
+                          strftime('%Y-%m-%d', started_unix, 'unixepoch') \
+                 ON CONFLICT(tenant_id, tool, caller_tenant_id, end_user_subject, day) \
+                 DO UPDATE SET calls = excluded.calls, errors = excluded.errors",
+                params![today_start],
+            )?;
+            conn.execute(
+                "DELETE FROM usage_daily WHERE day < strftime('%Y-%m-%d', ?1, 'unixepoch')",
+                params![today_start - 90 * 86_400],
+            )?;
+            Ok(written as i64)
+        })
+        .await
+    }
+
+
+    /// `admin.usage.top {window, by}` (requirement 4, AC9): the heaviest
+    /// tools (`by: "tool"`, key `<owner namespace>.<tool name>`) or tenants
+    /// (`by: "tenant"`, key the effective caller -- `caller_tenant_id` when
+    /// a call crossed tenants, else the owning tenant, so a shared tool's
+    /// traffic is attributed to whoever actually placed the call) on the
+    /// whole host, host-wide (no `tenant_id` filter -- this is the
+    /// operator's view, unlike `host.usage`'s own tenant-scoped
+    /// [`Self::usage_breakdown`]).
+    pub async fn admin_usage_top(
+        &self,
+        window_secs: i64,
+        by: String,
+        limit: i64,
+    ) -> Result<Vec<UsageByRow>, AppError> {
+        let since = now_unix() - window_secs;
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT c.tool_name, o.namespace, c.caller_tenant_id, ct.namespace, \
+                        c.duration_ms, c.ok \
+                 FROM calls c \
+                 JOIN tenants o ON o.id = c.tenant_id \
+                 LEFT JOIN tenants ct ON ct.id = c.caller_tenant_id \
+                 WHERE c.started_unix >= ?1",
+            )?;
+            let rows = stmt
+                .query_map(params![since], |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, Option<i64>>(2)?,
+                        r.get::<_, Option<String>>(3)?,
+                        r.get::<_, i64>(4)?,
+                        r.get::<_, i64>(5)? != 0,
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+
+            use std::collections::BTreeMap;
+            let mut grouped: BTreeMap<String, Vec<(i64, bool)>> = BTreeMap::new();
+            for (tool_name, owner_ns, caller_tenant_id, caller_ns, duration_ms, ok) in rows {
+                let key = match by.as_str() {
+                    "tool" => format!("{owner_ns}.{tool_name}"),
+                    "tenant" => match caller_tenant_id.and(caller_ns) {
+                        Some(ns) => ns,
+                        None => owner_ns,
+                    },
+                    _ => continue,
+                };
+                grouped.entry(key).or_default().push((duration_ms, ok));
+            }
+
+            let limit = limit.max(0) as usize;
+            type RankedUsageEntries = Vec<(String, Vec<(i64, bool)>)>;
+            let mut ranked: RankedUsageEntries = grouped.into_iter().collect();
+            ranked.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then_with(|| a.0.cmp(&b.0)));
+            ranked.truncate(limit);
+
+            let mut out = Vec::with_capacity(ranked.len());
+            for (key, entries) in ranked {
+                let mut durations: Vec<i64> = entries.iter().map(|(d, _)| *d).collect();
+                durations.sort_unstable();
+                let errors = entries.iter().filter(|(_, ok)| !ok).count() as i64;
+                out.push(UsageByRow {
+                    key,
+                    calls: entries.len() as i64,
+                    errors,
+                    p95_ms: percentile(&durations, 0.95),
+                    bytes_out: 0,
+                });
+            }
+            Ok(out)
+        })
+        .await
+    }
+
+
     // ---- logs ---------------------------------------------------------
 
     pub async fn append_log(
@@ -9173,6 +9590,14 @@ impl Db {
             }
         })
         .await?;
+        // PRD-mcphost-shared-tool-caller-usage requirement 6: the daily
+        // rollup runs "alongside the existing prune jobs" -- best-effort
+        // (a rollup failure must not turn an otherwise-successful nightly
+        // prune into a reported failure; `host.usage {window: "30d"}`
+        // simply stays slower until the next tick succeeds).
+        if let Err(e) = self.rollup_usage_daily(finished).await {
+            tracing::warn!(error = %e, "usage_daily rollup failed");
+        }
         match outcome.error {
             None => Ok(PruneReport {
                 deleted: outcome.deleted,
@@ -10134,6 +10559,92 @@ impl Db {
                 )?;
                 for _ in 0..count {
                     stmt.execute(params![tenant_id, started_at, started_unix])?;
+                }
+            }
+            tx.commit()?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Test-only: insert one `calls` row with full control over the
+    /// columns `Db::usage_breakdown`/`Db::admin_usage_top`
+    /// (PRD-mcphost-shared-tool-caller-usage) read -- `caller_tenant_id`/
+    /// `end_user_subject`, on top of what [`Self::insert_calls_row_for_test`]
+    /// already covers. Same "bypass real dispatch, seed rows fast"
+    /// rationale as that function's own doc comment (AC5's 1 500-distinct-
+    /// end-user fixture would be painfully slow to seed through a real
+    /// signed assertion per call).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_call_row_for_test_full(
+        &self,
+        tenant_id: i64,
+        tool_name: String,
+        caller_tenant_id: Option<i64>,
+        end_user_subject: Option<String>,
+        ok: bool,
+        duration_ms: i64,
+        started_unix: i64,
+    ) -> Result<(), AppError> {
+        let started_at = crate::state::rfc3339_from_unix(started_unix);
+        let error_class = if ok { None } else { Some("test_error".to_string()) };
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, \
+                 duration_ms, ok, error_class, caller_tenant_id, end_user_subject) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    tenant_id,
+                    tool_name,
+                    started_at,
+                    started_unix,
+                    duration_ms,
+                    ok as i64,
+                    error_class,
+                    caller_tenant_id,
+                    end_user_subject,
+                ],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Test-only: seed `count` `calls` rows for one tenant/tool in one
+    /// transaction, spread evenly across `spread_days` calendar days
+    /// starting at `base_unix` (AC7's 1M-events-over-30-days rollup/speed
+    /// fixture) -- same "one transaction, not `count` round trips" shape
+    /// as [`Self::insert_calls_rows_bulk_for_test`], except this one also
+    /// varies `started_unix` per row (precomputed once per distinct day,
+    /// not once per row, so formatting cost stays O(spread_days) rather
+    /// than O(count)) so the rollup this AC exercises actually has more
+    /// than one day's worth of rows to bucket.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_calls_bulk_spread_for_test(
+        &self,
+        tenant_id: i64,
+        tool_name: String,
+        count: i64,
+        base_unix: i64,
+        spread_days: i64,
+    ) -> Result<(), AppError> {
+        let spread_days = spread_days.max(1);
+        let days: Vec<(String, i64)> = (0..spread_days)
+            .map(|d| {
+                let unix = base_unix + d * 86_400;
+                (crate::state::rfc3339_from_unix(unix), unix)
+            })
+            .collect();
+        self.with_conn(move |conn| {
+            let tx = conn.unchecked_transaction()?;
+            {
+                let mut stmt = tx.prepare(
+                    "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, \
+                     duration_ms, ok, error_class) VALUES (?1, ?2, ?3, ?4, 25, 1, NULL)",
+                )?;
+                for i in 0..count {
+                    let (started_at, started_unix) = &days[(i % spread_days) as usize];
+                    stmt.execute(params![tenant_id, tool_name, started_at, started_unix])?;
                 }
             }
             tx.commit()?;

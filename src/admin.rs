@@ -399,6 +399,37 @@ pub async fn usage(state: &AppState, args: &Value) -> Result<Value, AppError> {
     }))
 }
 
+/// `admin.usage.top {window, by}` (PRD-mcphost-shared-tool-caller-usage
+/// requirement 4, AC9): the heaviest tools or tenants on the whole host --
+/// `handler.rs`'s central `dispatch_admin_tool` records this call to
+/// `admin_audit` the same way as every other admin.* mutation, via
+/// `admin_audit_entry` below (unlike `admin.usage`, which isn't audited --
+/// this PRD's own AC names auditing for `.top` specifically).
+pub async fn usage_top(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let window = arg_str_opt(args, "window").unwrap_or_else(|| "1d".to_string());
+    let by = arg_str_opt(args, "by").unwrap_or_else(|| "tool".to_string());
+    if !matches!(by.as_str(), "tool" | "tenant") {
+        return Err(AppError::InvalidArgs(format!(
+            "by must be 'tool' or 'tenant', got '{by}'"
+        )));
+    }
+    let secs = crate::state::parse_window_secs(&window);
+    let limit = args.get("limit").and_then(Value::as_i64).unwrap_or(20).clamp(1, 1000);
+    let rows = state.db.admin_usage_top(secs, by.clone(), limit).await?;
+    let rows: Vec<Value> = rows
+        .into_iter()
+        .map(|r| {
+            json!({
+                "key": r.key,
+                "calls": r.calls,
+                "errors": r.errors,
+                "p95_ms": r.p95_ms,
+            })
+        })
+        .collect();
+    Ok(json!({ "window": window, "by": by, "rows": rows }))
+}
+
 /// PRD-mcphost-sqlite-busy-timeout-audit requirement 4 (AC7): counters and
 /// pragmas per [`crate::db::DbRole`], WAL file size, and page count --
 /// `db::Db::db_stats` already assembled the shape, this just serializes
@@ -778,6 +809,17 @@ pub fn admin_audit_entry(
                 .zip(args.get("name").and_then(Value::as_str))
                 .map(|(t, n)| format!("{t}.{n}")),
             None,
+        )),
+        // PRD-mcphost-shared-tool-caller-usage AC9: this PRD's own
+        // acceptance criterion names auditing for `admin.usage.top`
+        // specifically, unlike the read-only `admin.usage` above (which
+        // isn't audited) -- an operator's heaviest-tools/tenants query is
+        // itself sensitive enough (host-wide, ranks other tenants against
+        // each other) to be worth a durable record of who asked.
+        "admin.usage.top" => Some((
+            "usage_top".into(),
+            args.get("by").and_then(Value::as_str).map(String::from),
+            args.get("window").and_then(Value::as_str).map(String::from),
         )),
         // PRD-mcphost-agent-mesh-ops: freeze/unfreeze/purge are mutations
         // like every other admin.* write above, alongside their own

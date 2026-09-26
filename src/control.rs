@@ -1422,7 +1422,67 @@ pub async fn tool_logs(state: &AppState, tenant: &Tenant, args: &Value) -> Resul
     Ok(json!({ "name": name, "lines": lines }))
 }
 
+/// PRD-mcphost-shared-tool-caller-usage requirement 2 (AC1/AC2/AC4/AC5/AC8):
+/// the `by` breakdown path. `window` defaults to `"1d"` here (rather than
+/// the legacy per-tenant `usage`'s `"24h"`) since every acceptance
+/// criterion names day-granular windows and this is a wholly new response
+/// shape with no pre-existing default to preserve.
+async fn usage_breakdown(state: &AppState, tenant: &Tenant, args: &Value, by: String) -> Result<Value, AppError> {
+    if !matches!(by.as_str(), "tool" | "caller" | "end_user") {
+        return Err(AppError::InvalidArgs(format!(
+            "by must be 'tool', 'caller', or 'end_user', got '{by}'"
+        )));
+    }
+    let tool = arg_str_opt(args, "tool");
+    let window = arg_str_opt(args, "window").unwrap_or_else(|| "1d".to_string());
+    let secs = crate::state::parse_window_secs(&window);
+    let limit = args.get("limit").and_then(Value::as_i64).unwrap_or(1000).clamp(1, 1000);
+    let cursor = arg_str_opt(args, "cursor");
+
+    // Requirement 2: "by: 'caller' is valid only for shared tools" (AC4) --
+    // checked here, before any aggregation runs, so a validation mistake
+    // never depends on how much data happens to already exist.
+    if by == "caller" {
+        let name = tool.clone().ok_or_else(|| {
+            AppError::InvalidArgs("by: 'caller' requires 'tool'".to_string())
+        })?;
+        let row = state
+            .db
+            .get_tool(tenant.id, name.clone())
+            .await?
+            .ok_or_else(|| AppError::ToolNotFound(name.clone()))?;
+        if row.visibility == "private" {
+            return Err(AppError::InvalidArgs(format!(
+                "by: 'caller' requires tool '{name}' to be shared (visibility is 'private'); \
+                 share it first with host.tool_share"
+            )));
+        }
+    }
+
+    let result = state
+        .db
+        .usage_breakdown(tenant.id, tool, by.clone(), secs, limit, cursor)
+        .await?;
+    Ok(json!({
+        "window": window,
+        "by": by,
+        "rows": result.rows.iter().map(|r| json!({
+            "key": r.key,
+            "calls": r.calls,
+            "errors": r.errors,
+            "p95_ms": r.p95_ms,
+            "bytes_out": r.bytes_out,
+        })).collect::<Vec<_>>(),
+        "cursor": result.next_cursor,
+    }))
+}
+
 pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    // AC6: `by` omitted keeps the pre-PRD per-tenant shape byte for byte --
+    // every field below this point is unchanged from before this PRD.
+    if let Some(by) = arg_str_opt(args, "by") {
+        return usage_breakdown(state, tenant, args, by).await;
+    }
     let window = arg_str_opt(args, "window").unwrap_or_else(|| "24h".to_string());
     let secs = crate::state::parse_window_secs(&window);
     let stats = state.db.usage(tenant.id, secs).await?;

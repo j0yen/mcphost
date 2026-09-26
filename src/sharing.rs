@@ -253,3 +253,91 @@ pub async fn catalog_document(state: &AppState) -> Result<Value, AppError> {
     let tools: Vec<Value> = rows.iter().map(|(ns, t)| tool_json(ns, t)).collect();
     Ok(json!({ "tools": tools }))
 }
+
+/// PRD-mcphost-shared-tool-caller-usage requirement 3 (AC3): `quota_caller`
+/// -- distinct from [`crate::billing::quota_exceeded`]'s `quota_exceeded`
+/// (the plan-wide `calls_per_day` knob) since this is an owner-set cap on
+/// one caller, on one shared tool, not a plan limit; `reset_at` (next UTC
+/// midnight, same boundary [`crate::handler::McpHostHandler::check_calls_quota`]'s
+/// own `resets_at` uses) tells the caller when to retry rather than
+/// leaving it to guess.
+pub fn quota_caller(caller_namespace: &str, tool: &str, limit: i64, used: i64, reset_at: String) -> AppError {
+    AppError::Structured {
+        code: "quota_caller",
+        message: format!(
+            "caller '{caller_namespace}' exceeded its calls_per_day limit ({limit}) for tool '{tool}'"
+        ),
+        data: json!({
+            "caller_tenant": caller_namespace,
+            "tool": tool,
+            "limit": limit,
+            "used": used,
+            "reset_at": reset_at,
+        }),
+    }
+}
+
+/// `host.share.caller_limit {tool, caller_tenant, calls_per_day}` (AC3):
+/// caps how many successful calls `caller_tenant` may make into this
+/// tenant's shared `tool` per UTC day, enforced by
+/// `McpHostHandler::call_published_tool` before dispatch. `tool` must
+/// already be shared (a caller-limit on a tool nobody outside this tenant
+/// can reach would be dead configuration) and `caller_tenant` must already
+/// exist. Idempotent: calling again with a different `calls_per_day`
+/// updates the existing row rather than erroring.
+pub async fn caller_limit(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let name = arg_str(args, "tool")?;
+    let caller_tenant = arg_str(args, "caller_tenant")?;
+    let calls_per_day = args
+        .get("calls_per_day")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| AppError::InvalidArgs("missing required argument 'calls_per_day'".into()))?;
+    if calls_per_day <= 0 {
+        return Err(AppError::InvalidArgs("calls_per_day must be a positive integer".into()));
+    }
+
+    let row = state
+        .db
+        .get_tool(tenant.id, name.clone())
+        .await?
+        .ok_or_else(|| AppError::ToolNotFound(name.clone()))?;
+    if row.visibility == "private" {
+        return Err(AppError::InvalidArgs(format!(
+            "tool '{name}' must be shared (host.tool_share) before setting a caller_limit"
+        )));
+    }
+    let caller = state
+        .db
+        .find_tenant_by_namespace(caller_tenant.clone())
+        .await?
+        .ok_or_else(|| AppError::TenantNotFound(caller_tenant.clone()))?;
+
+    state
+        .db
+        .set_caller_limit(tenant.id, name.clone(), caller.id, calls_per_day)
+        .await?;
+    Ok(json!({
+        "tool": name,
+        "caller_tenant": caller_tenant,
+        "calls_per_day": calls_per_day,
+    }))
+}
+
+/// `host.share.caller_limit_remove {tool, caller_tenant}`: drop a limit set
+/// by [`caller_limit`]. `removed: false` (not an error) when no such limit
+/// existed -- same "idempotent, report what happened" convention
+/// `host.tool_unshare`'s own `false` case documents.
+pub async fn caller_limit_remove(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let name = arg_str(args, "tool")?;
+    let caller_tenant = arg_str(args, "caller_tenant")?;
+    let caller = state
+        .db
+        .find_tenant_by_namespace(caller_tenant.clone())
+        .await?
+        .ok_or_else(|| AppError::TenantNotFound(caller_tenant.clone()))?;
+    let removed = state
+        .db
+        .remove_caller_limit(tenant.id, name.clone(), caller.id)
+        .await?;
+    Ok(json!({ "tool": name, "caller_tenant": caller_tenant, "removed": removed }))
+}

@@ -51,7 +51,7 @@ async fn every_host_star_descriptor_declares_an_optional_tenant_key() {
         .collect();
     assert_eq!(
         host_tools.len(),
-        103,
+        105,
         "the thirteen host.* control tools (incl. host.quickstart, host.tool_run, and \
          host.bridge_test) plus host.redeem plus host.key_rotate (PRD-mcphost-handoff-token) \
          plus host.tool_call plus the three host.tool_history/host.tool_rollback/host.tool_diff \
@@ -59,7 +59,9 @@ async fn every_host_star_descriptor_declares_an_optional_tenant_key() {
          (PRD-mcphost-tenant-state) plus the nine host.table.* tools \
          (PRD-mcphost-tenant-tables, PRD-mcphost-table-semantic-model) plus the eight \
          host.tool_share/host.tool_unshare/ \
-         host.group.*/host.catalog.* tools (PRD-mcphost-sharing) plus the six \
+         host.group.*/host.catalog.* tools (PRD-mcphost-sharing) plus the two \
+         host.share.caller_limit/caller_limit_remove tools \
+         (PRD-mcphost-shared-tool-caller-usage) plus the six \
          host.runs.* tools (PRD-mcphost-runs-and-jobs, PRD-mcphost-run-result-overflow-to-state) \
          plus host.progress (PRD-mcphost-run-result-overflow-to-state) plus the nine \
          host.trigger.* tools (PRD-mcphost-schedules, PRD-mcphost-inbound-events) plus the \

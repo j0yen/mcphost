@@ -1569,6 +1569,63 @@
       "since": "0.58.0"
     },
     {
+      "description": "Cap how many successful calls a caller tenant may make per UTC day into one of this tenant's shared tools. The tool must already be shared. Exceeding the cap fails the call with quota_caller (never runs it); this tenant's own calls to the tool are unaffected.",
+      "input_schema": {
+        "properties": {
+          "caller_tenant": {
+            "description": "The caller's namespace to cap.",
+            "type": "string"
+          },
+          "calls_per_day": {
+            "description": "Max successful calls per UTC day for this caller.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "tool": {
+            "description": "Local name of the shared tool.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool",
+          "caller_tenant",
+          "calls_per_day"
+        ],
+        "type": "object"
+      },
+      "name": "host.share.caller_limit",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Remove a caller_limit set by host.share.caller_limit.",
+      "input_schema": {
+        "properties": {
+          "caller_tenant": {
+            "description": "The caller's namespace whose limit to remove.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "tool": {
+            "description": "Local name of the shared tool.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool",
+          "caller_tenant"
+        ],
+        "type": "object"
+      },
+      "name": "host.share.caller_limit_remove",
+      "since": "0.58.0"
+    },
+    {
       "description": "Dry-run an unpublished spec of any kind with example invocations; for the other cases see host.quickstart.",
       "input_schema": {
         "properties": {
@@ -2633,15 +2690,31 @@
       "since": "0.58.0"
     },
     {
-      "description": "Calls, errors and duration percentiles for this tenant over a window.",
+      "description": "Calls, errors and duration percentiles for this tenant over a window. Pass `by` (\"tool\", \"caller\", or \"end_user\") for a breakdown instead of the plain per-tenant summary: \"caller\" (only valid for a tool this tenant has shared) shows which tenant called in and how much; \"end_user\" shows which identified end user called, with the caller tenant folded into the key when the call crossed tenants. Breakdown rows cap at 1000 per page; pass the returned `cursor` back to page further.",
       "input_schema": {
         "properties": {
+          "by": {
+            "description": "\"tool\", \"caller\", or \"end_user\" -- omit for the plain per-tenant summary.",
+            "type": "string"
+          },
+          "cursor": {
+            "description": "Resume a breakdown after this page's last key.",
+            "type": "string"
+          },
+          "limit": {
+            "description": "Max breakdown rows per page (1-1000, default 1000).",
+            "type": "integer"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
             "type": "string"
           },
+          "tool": {
+            "description": "Scope the breakdown to one local tool name. Required when by is \"caller\".",
+            "type": "string"
+          },
           "window": {
-            "description": "Time window to summarize, e.g. \"24h\"; default 24h.",
+            "description": "Time window to summarize, e.g. \"24h\"/\"1d\"/\"7d\"/\"30d\"; default 24h (\"1d\" when `by` is given).",
             "type": "string"
           }
         },
