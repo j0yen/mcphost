@@ -286,6 +286,7 @@ pub async fn bare_app_state() -> (AppState, TempDataDir) {
         contention_tracker: mcphost::alerts::ContentionTracker::new(),
         alert_config: mcphost::alerts::AlertConfig::default(),
         alert_quota_trips: mcphost::alerts::QuotaTripTracker::new(),
+        status_probe_override: mcphost::statusfeed::ProbeOverrides::new(),
     };
     (state, data_dir)
 }
@@ -690,6 +691,7 @@ impl TestServer {
             contention_tracker: mcphost::alerts::ContentionTracker::new(),
             alert_config,
             alert_quota_trips: mcphost::alerts::QuotaTripTracker::new(),
+            status_probe_override: mcphost::statusfeed::ProbeOverrides::new(),
         });
 
         // PRD-mcphost-runs-and-jobs: every test server runs the real
@@ -1236,6 +1238,7 @@ pub async fn bare_state(dir: &std::path::Path) -> AppState {
         contention_tracker: mcphost::alerts::ContentionTracker::new(),
         alert_config: mcphost::alerts::AlertConfig::default(),
         alert_quota_trips: mcphost::alerts::QuotaTripTracker::new(),
+        status_probe_override: mcphost::statusfeed::ProbeOverrides::new(),
     }
 }
 

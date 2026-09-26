@@ -341,6 +341,11 @@ pub struct AppState {
     /// requirement 2 / AC3: the in-memory sliding-window counter behind
     /// `quota.trip` -- see [`crate::alerts::QuotaTripTracker`].
     pub alert_quota_trips: crate::alerts::QuotaTripTracker,
+    /// PRD-mcphost-status-feed: per-component test overrides for the
+    /// minute self-sampler -- see [`crate::statusfeed::ProbeOverrides`].
+    /// Empty (every probe runs for real) in every real `mcphost serve`
+    /// start.
+    pub status_probe_override: crate::statusfeed::ProbeOverrides,
 }
 
 pub fn now_unix() -> i64 {

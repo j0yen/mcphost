@@ -328,6 +328,19 @@ fn host_schema(mut props: Value, required: &[&str]) -> Map<String, Value> {
     schema(props, required)
 }
 
+/// PRD-mcphost-status-feed requirement 2: the `mcp` self-probe's
+/// `tools/list` half -- builds the exact same anonymous tool listing
+/// [`McpHostHandler::list_tools`]'s `Auth::Anonymous` branch does, in
+/// process, and returns how many tools came back (always at least
+/// `signup` itself; a real regression here would return 0). Kept in this
+/// module rather than `statusfeed.rs` since `signup_tool`/`host_tools` are
+/// private to it.
+pub(crate) fn self_check_tools_list(state: &AppState) -> usize {
+    let mut tools = vec![signup_tool()];
+    tools.extend(host_tools(&state.kinds, false));
+    tools.len()
+}
+
 fn signup_tool() -> Tool {
     Tool::new(
         "signup",
@@ -2438,6 +2451,62 @@ fn admin_tools() -> Vec<Tool> {
                 &["key", "severity", "title"],
             ),
         ),
+        // PRD-mcphost-status-feed requirement 4.
+        Tool::new(
+            "admin.incident.open",
+            "Open an incident naming one or more components. impact: \"major\" drives \
+             /status.json's overall state to outage; \"partial\" to degraded; \"minor\" leaves \
+             it operational. Appears in incidents_open until admin.incident.close.",
+            schema(
+                json!({
+                    "title": {"type": "string"},
+                    "impact": {"type": "string", "enum": ["minor", "partial", "major"]},
+                    "components": {"type": "array", "items": {"type": "string"}},
+                }),
+                &["title", "impact", "components"],
+            ),
+        ),
+        Tool::new(
+            "admin.incident.update",
+            "Append one timeline entry to an open incident; the incident stays open.",
+            schema(
+                json!({"id": {"type": "integer"}, "message": {"type": "string"}}),
+                &["id", "message"],
+            ),
+        ),
+        Tool::new(
+            "admin.incident.close",
+            "Append the closing timeline entry and stamp closed_at -- the incident moves from \
+             /status.json's incidents_open to incidents_recent_30d.",
+            schema(
+                json!({"id": {"type": "integer"}, "message": {"type": "string"}}),
+                &["id", "message"],
+            ),
+        ),
+        Tool::new(
+            "admin.status.sample",
+            "Post an external probe result (e.g. mcphost-deploy's outside-in reachability check) \
+             into the status feed -- one status_samples row, source preserved verbatim.",
+            schema(
+                json!({
+                    "component": {"type": "string", "enum": ["mcp", "exec", "billing", "claim"]},
+                    "ok": {"type": "boolean"},
+                    "latency_ms": {"type": "integer"},
+                    "source": {"type": "string"},
+                }),
+                &["component", "ok", "source"],
+            ),
+        ),
+        Tool::new(
+            "admin.status.rollup",
+            "Recompute status_daily for every day with at least one raw sample in \
+             [since, until) (unix seconds); defaults to the trailing 90-day sample-retention \
+             window.",
+            schema(
+                json!({"since": {"type": "integer"}, "until": {"type": "integer"}}),
+                &[],
+            ),
+        ),
     ]
 }
 
@@ -2901,6 +2970,12 @@ impl McpHostHandler {
             "admin.alerts.list" => admin::alerts_list(&self.state, &args).await,
             "admin.alerts.ack" => admin::alerts_ack(&self.state, &args).await,
             "admin.alerts.raise" => admin::alerts_raise(&self.state, &args).await,
+            // PRD-mcphost-status-feed requirement 4/8.
+            "admin.incident.open" => admin::incident_open(&self.state, &args).await,
+            "admin.incident.update" => admin::incident_update(&self.state, &args).await,
+            "admin.incident.close" => admin::incident_close(&self.state, &args).await,
+            "admin.status.sample" => admin::status_sample(&self.state, &args).await,
+            "admin.status.rollup" => admin::status_rollup(&self.state, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         };
 

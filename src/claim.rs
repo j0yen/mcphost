@@ -409,7 +409,7 @@ async fn check_addr_ban(state: &AppState, headers: &HeaderMap, peer: SocketAddr)
 /// tenant, or the 410 page every unknown/expired token gets alike (AC4;
 /// not distinguishing "never existed" from "expired" avoids leaking which
 /// one a guess was).
-async fn resolve_claim_token(state: &AppState, token: &str) -> Result<Tenant, Box<Response>> {
+pub(crate) async fn resolve_claim_token(state: &AppState, token: &str) -> Result<Tenant, Box<Response>> {
     let token_hash = hash_key(token);
     let tenant = match state.db.find_tenant_by_claim_token_hash(token_hash).await {
         Ok(Some(tenant)) => tenant,

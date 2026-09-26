@@ -845,6 +845,30 @@ pub fn admin_audit_entry(
             args.get("key").and_then(Value::as_str).map(String::from),
             args.get("severity").and_then(Value::as_str).map(String::from),
         )),
+        // PRD-mcphost-status-feed requirement 4 / AC3, AC4, AC6: every
+        // incident/sample-posting write is a mutation like every other
+        // admin.* write above.
+        "admin.incident.open" => Some((
+            "incident_open".into(),
+            args.get("title").and_then(Value::as_str).map(String::from),
+            args.get("impact").and_then(Value::as_str).map(String::from),
+        )),
+        "admin.incident.update" => Some((
+            "incident_update".into(),
+            args.get("id").and_then(Value::as_i64).map(|n| n.to_string()),
+            args.get("message").and_then(Value::as_str).map(String::from),
+        )),
+        "admin.incident.close" => Some((
+            "incident_close".into(),
+            args.get("id").and_then(Value::as_i64).map(|n| n.to_string()),
+            args.get("message").and_then(Value::as_str).map(String::from),
+        )),
+        "admin.status.sample" => Some((
+            "status_sample".into(),
+            args.get("component").and_then(Value::as_str).map(String::from),
+            args.get("source").and_then(Value::as_str).map(String::from),
+        )),
+        "admin.status.rollup" => Some(("status_rollup".into(), None, None)),
         _ => None,
     }
 }
@@ -1298,4 +1322,124 @@ pub async fn alerts_raise(state: &AppState, args: &Value) -> Result<Value, AppEr
     )
     .await?;
     Ok(json!({ "id": id }))
+}
+
+// ---- incidents (PRD-mcphost-status-feed) ------------------------------
+
+fn arg_str_array(args: &Value, name: &str) -> Result<Vec<String>, AppError> {
+    args.get(name)
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(Value::as_str)
+                .map(String::from)
+                .collect()
+        })
+        .ok_or_else(|| AppError::InvalidArgs(format!("missing required argument '{name}'")))
+}
+
+async fn incident_or_not_found(state: &AppState, id: i64) -> Result<crate::db::Incident, AppError> {
+    state
+        .db
+        .find_incident(id)
+        .await?
+        .ok_or_else(|| AppError::ToolNotFound(format!("incident {id}")))
+}
+
+/// `admin.incident.open {title, impact, components}` (requirement 4 /
+/// AC3): `impact` must be one of `minor`/`partial`/`major` -- `major`
+/// alone drives `/status.json`'s overall `state` to `outage`, `partial` to
+/// `degraded` (requirement 3).
+pub async fn incident_open(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let title = arg_str(args, "title")?;
+    let impact = arg_str(args, "impact")?;
+    if !matches!(impact.as_str(), "minor" | "partial" | "major") {
+        return Err(AppError::InvalidParams(format!(
+            "impact must be one of \"minor\", \"partial\", \"major\"; got '{impact}'"
+        )));
+    }
+    let components = arg_str_array(args, "components")?;
+    let now = crate::state::now_unix();
+    let timeline = json!([{"ts": now, "type": "opened", "message": title}]).to_string();
+    let components_json = json!(components).to_string();
+    let id = state
+        .db
+        .insert_incident(title, impact, components_json, now, timeline, false)
+        .await?;
+    let incident = incident_or_not_found(state, id).await?;
+    Ok(crate::statusfeed::incident_json(&incident))
+}
+
+/// `admin.incident.update {id, message}` (requirement 4 / AC4): appends
+/// one timeline entry; the incident stays open.
+pub async fn incident_update(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let id = arg_i64(args, "id")?;
+    let message = arg_str(args, "message")?;
+    let now = crate::state::now_unix();
+    let entry = json!({"ts": now, "type": "updated", "message": message});
+    let updated = state.db.incident_append_timeline(id, entry).await?;
+    if !updated {
+        return Err(AppError::ToolNotFound(format!("incident {id}")));
+    }
+    let incident = incident_or_not_found(state, id).await?;
+    Ok(crate::statusfeed::incident_json(&incident))
+}
+
+/// `admin.incident.close {id, message}` (requirement 4 / AC4): appends the
+/// closing timeline entry and stamps `closed_at` -- the incident moves
+/// from `/status.json`'s `incidents_open` to `incidents_recent_30d`.
+pub async fn incident_close(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let id = arg_i64(args, "id")?;
+    let message = arg_str(args, "message")?;
+    let now = crate::state::now_unix();
+    let entry = json!({"ts": now, "type": "closed", "message": message});
+    let closed = state.db.incident_close(id, entry, now).await?;
+    if !closed {
+        return Err(AppError::ToolNotFound(format!("incident {id}")));
+    }
+    let incident = incident_or_not_found(state, id).await?;
+    Ok(crate::statusfeed::incident_json(&incident))
+}
+
+/// `admin.status.sample {component, ok, latency_ms, source}` (requirement
+/// 4 / AC6): the external-probe posting path (e.g. mcphost-deploy's
+/// outside-in reachability check) -- writes one `status_samples` row
+/// exactly like the in-process self-sampler does, `source` preserved
+/// verbatim.
+pub async fn status_sample(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let component = arg_str(args, "component")?;
+    if !crate::statusfeed::COMPONENTS.contains(&component.as_str()) {
+        return Err(AppError::InvalidParams(format!(
+            "component must be one of {:?}; got '{component}'",
+            crate::statusfeed::COMPONENTS
+        )));
+    }
+    let ok = args
+        .get("ok")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| AppError::InvalidArgs("missing required argument 'ok'".to_string()))?;
+    let latency_ms = args.get("latency_ms").and_then(Value::as_i64).unwrap_or(0);
+    let source = arg_str(args, "source")?;
+    let now = crate::state::now_unix();
+    let id = state
+        .db
+        .insert_status_sample(component, now, ok, latency_ms, source)
+        .await?;
+    Ok(json!({ "id": id }))
+}
+
+/// `admin.status.rollup {since_day?, until_day?}` (P2 requirement 8, no
+/// dedicated AC): recomputes `status_daily` for every day with at least
+/// one raw sample in the given range -- default range is the trailing 90
+/// days (the same window raw samples are ever pruned from, so a full
+/// recompute never misses a day that still has raw samples to read).
+pub async fn status_rollup(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let now = crate::state::now_unix();
+    let since = args
+        .get("since")
+        .and_then(Value::as_i64)
+        .unwrap_or(now - crate::statusfeed::SAMPLE_RETENTION_DAYS * 86_400);
+    let until = args.get("until").and_then(Value::as_i64).unwrap_or(now + 1);
+    let recomputed = crate::statusfeed::rollup_range(state, since, until).await?;
+    Ok(json!({ "recomputed_days": recomputed }))
 }

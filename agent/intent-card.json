@@ -1,113 +1,108 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-alerting-webhook.md",
-  "intent_slug": "mcphost-alerting-webhook",
-  "root_motivation": "Grounding (PRD: failure-derived guard beside the root fix -- visions/mcphost-operability-floor.md five-whys, readiness gate 'alerting absent' per wiki 2026-09-23-mcphost-market-test-plan, zero `alert` hits in src/ before this PRD): the operator of mcphost-1 cannot learn from the host that it is in trouble -- the only signals were a healthz probe someone must poll by hand and a nightly measure RED for twelve runs without a page. During the 2026-09-24 deploy of v0.60.5 the deploy-on-land unit rolled back twice on Caddy 429s and nobody knew until a carbon session read the journal hours later (memory self_deploy_on_land_false_rollback_caddy_429_measure_saturation). A Show HN wave with no alerting means the first report of an outage is a public comment, not a page.",
-  "user_persona": "Two (PRD User stories): (1) the operator, who needs one message within 30s when signups auto-pause or are paused by hand, one alert (not fifty) when a tenant hits its call quota repeatedly in five minutes, and an `admin.alerts.list` view a second session can trust shows what the first already acked; (2) the deploy tool (mcphost-deploy), which POSTs a `backup.failed` alert through the same sink via `admin.alerts.raise` -- it has no in-process hook to raise through, only the admin surface.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-status-feed.md",
+  "intent_slug": "mcphost-status-feed",
+  "root_motivation": "Grounding (PRD: wwhtbt leaf 5, weakest link -- visions/mcphost-operability-floor.md; readiness gate 6, 'Instatus status page'; scout 2026-09-25: healthz is a route in http.rs with no history table): readiness gate 6 sits on Joe's to-do list alongside the email provider and DMCA registration, and today `www/status.html` is a static file mcphost-deploy uploads that nothing ever updates -- the host records healthz results nowhere. A stranger who hits an error during a launch has no page that says whether the host knows; the operator has no history to answer 'was it down last night'. Each day the gate stays open is a day the hold cannot lift for a reason that is one table and one route away, and no third-party status-page account is needed to close it.",
+  "user_persona": "Three (PRD User stories): (1) a stranger's agent reading `/status.json`'s `state`/incident title before retrying; (2) the operator, opening/updating/closing incidents in one call each and citing one 90-day uptime number per component; (3) mcphost-deploy, posting an external probe via `admin.status.sample` so the page reflects outside-in reachability too.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 11
+    "target": 12
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given MCPHOST_ALERT_WEBHOOK_URL points at a test server, When signups are paused via the pause file, Then within 30s the server receives one POST with key: \"signup.paused\" and the alerts row has delivery_status: \"delivered\".",
-      "test": "tests/alert_ac01_signup_paused_webhook_delivered.rs"
+      "description": "Given the host has run for 3 minutes, When GET /status.json is called anonymously, Then it returns state: \"operational\", four components each with a last_sample within 90s, and Cache-Control: max-age=60.",
+      "test": "tests/statusfeed_ac01_operational_after_three_minutes.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the pause alert was raised 10s ago, When the pause toggles again inside the cooldown, Then no second POST is sent and the open row's repeat_count is 1.",
-      "test": "tests/alert_ac02_cooldown_collapses_repeat_alert.rs"
+      "description": "Given the sandbox executor is disabled in the test harness, When 5 sample ticks pass, Then components[exec].state is \"failing\" and state is \"degraded\".",
+      "test": "tests/statusfeed_ac02_exec_disabled_degrades.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a tenant whose calls_per_day trips 20 times within 5 min, When the 20th trip occurs, Then one quota.trip alert exists for that tenant and plan knob; the 21st trip raises nothing new.",
-      "test": "tests/alert_ac03_quota_trip_raises_once_per_tenant_knob.rs"
+      "description": "Given admin.incident.open {title, impact: \"major\", components: [\"mcp\"]}, When /status.json is called, Then state is \"outage\", the incident appears in incidents_open, and admin_audit holds the open entry.",
+      "test": "tests/statusfeed_ac03_major_incident_outage.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given 100 calls in 5 min of which 6 return 5xx-class errors, When the minute tick runs, Then one errors.rate alert is raised with the rate in the body; at 4 errors nothing is raised.",
-      "test": "tests/alert_ac04_errors_rate_over_five_min.rs"
+      "description": "Given an open incident, When admin.incident.update {id, message} then admin.incident.close {id, message} run, Then the timeline has three entries in order and the incident moves to incidents_recent_30d.",
+      "test": "tests/statusfeed_ac04_incident_timeline_and_close.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the webhook server returns 503 three times, When delivery runs, Then three retries occur at the documented backoff, delivery_status is \"failed\", and the host keeps serving tool calls.",
-      "test": "tests/alert_ac05_webhook_retries_then_failed.rs"
+      "description": "Given 1,440 samples for one day with 1,425 ok, When the daily rollup runs, Then status_daily shows ok_samples: 1425 and /status.json reports uptime_30d computed from the rollup.",
+      "test": "tests/statusfeed_ac05_daily_rollup_uptime.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given MCPHOST_ALERT_TENANT is set, When any alert is raised, Then that tenant's host.msg.inbox returns a message from the system sender with the alert title and id.",
-      "test": "tests/alert_ac06_tenant_inbox_delivery.rs"
+      "description": "Given admin.status.sample {component: \"mcp\", ok: false, latency_ms: 0, source: \"deploy-probe\"}, When posted 5 times, Then the component's state reflects the external samples and source is preserved per row.",
+      "test": "tests/statusfeed_ac06_external_sample_source_preserved.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given three raised alerts, When admin.alerts.list {unacked_only: true} is called, Then all three return; after admin.alerts.ack {id} on one, the list returns two and admin_audit holds the ack entry.",
-      "test": "tests/alert_ac07_admin_alerts_list_and_ack.rs"
+      "description": "Given samples older than 90 days, When the daily prune runs, Then they are deleted and the rollup rows for those days remain.",
+      "test": "tests/statusfeed_ac07_prune_keeps_rollup.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given both sink env vars unset, When an alert is raised, Then it is stored, nothing is sent, and healthz shows alerts.sink: \"store-only\".",
-      "test": "tests/alert_ac08_store_only_when_no_sink_configured.rs"
+      "description": "Given www/status.html is served, When the page loads with /status.json reachable, Then it renders the four components and incident list; when the fetch fails, the static fallback text is visible.",
+      "test": "tests/statusfeed_ac08_status_html_renders.rs"
     },
     {
       "id": "AC9",
       "level": "SHOULD",
-      "description": "Given MCPHOST_ALERT_MIN_SEVERITY=critical, When a warn alert is raised, Then it is stored and not delivered; a critical one is delivered.",
-      "test": "tests/alert_ac09_min_severity_filters_delivery.rs"
+      "description": "Given the alerting registry is present and a component fails 5 consecutive samples, When the tick runs, Then one status.component_down alert is raised and an incident with impact: partial is open; after 10 ok samples it is closed with a timeline note.",
+      "test": "tests/statusfeed_ac09_alert_and_auto_incident.rs"
     },
     {
       "id": "AC10",
       "level": "SHOULD",
-      "description": "Given the host is running, When GET /healthz is called with the operator header, Then the body includes alerts.open and alerts.last_raised_at.",
-      "test": "tests/alert_ac10_healthz_reports_open_and_last_raised_at.rs"
+      "description": "Given GET /status.json?component=mcp&days=7, When called, Then seven daily rows with ok_samples, total_samples, p95_latency_ms return.",
+      "test": "tests/statusfeed_ac10_component_days_query.rs"
     },
     {
       "id": "AC11",
       "level": "MUST",
-      "description": "Given admin.alerts.raise is called with a body of 64 KiB, When it runs, Then it is rejected with a size error at 16 KiB and stored at 15 KiB.",
-      "test": "tests/alert_ac11_raise_body_size_limit.rs"
-    },
-    {
-      "id": "AC12",
-      "level": "MUST",
-      "description": "Given prod after land, When the operator toggles the pause file on mcphost-1 and toggles it back, Then two alerts (signup.paused, signup.resumed) arrive at the configured sink and admin.alerts.list shows both (Live).",
-      "test": "deferred -- operator-provisioned: needs the pause file toggled on production mcphost-1 and live operator access this coder dispatch does not have; the PRD's own coder instructions list only AC1-11 as non-deferred."
+      "description": "Given prod after land, When https://mcphost.dev/status.json is fetched, Then it returns operational with four components and status.html renders it (Live; evidence: mcphost-1 healthz version after deploy plus the call transcript, saved under docs/receipts/<slug>.md).",
+      "test": "deferred (prod leg only) -- see PRD frontmatter mock_justifications; always-on mechanism proof: tests/statusfeed_ac11_live_status_trailer.rs (MCPHOST_LIVE=1 for the real leg); deferral paper trail locked by tests/statusfeed_ac11_deferral_is_justified.rs"
     }
   ],
   "scope": [
-    "migrations/0040_alerts.sql (new; renumbered 0038 -> 0039 during the mcphost-oauth-resource-server rebase, which had already claimed 0038 for oauth_issuers, then 0039 -> 0040 during the mcphost-table-semantic-model rebase, which had since claimed 0039 for table_models): one `alerts` table (key, severity, title, body_json, raised_at, delivered_at, delivery_status, acked_at, acked_by, repeat_count) plus idx_alerts_key/idx_alerts_key_raised_at/idx_alerts_acked_at -- requirement 1.",
-    "src/alerts.rs (new): AlertConfig (env-derived sinks/thresholds, loaded once at startup), Severity (Ord-derived info<warn<critical), raise() (cooldown-collapse-or-insert, backgrounds delivery), deliver()/deliver_webhook() (5s timeout, 3 retries at 1s/5s/25s backoff)/deliver_inbox(), QuotaTripTracker (in-memory sliding-window counter behind quota.trip, mirrors ToolRunLimiter's shape), tick_once()/spawn_error_rate_tick() (the errors.rate minute tick), spawn_pause_watch() (polls SignupPause::status every 3s and raises on the flip, not on every refused signup, per Technical considerations).",
-    "src/admin.rs: admin.alerts.list/ack/raise handlers (alerts_list/alerts_ack/alerts_raise), alert_json row-shape helper, admin_audit wiring for ack/raise, MAX_ALERT_BODY_BYTES (16 KiB) enforcement on raise.",
-    "src/db.rs: alerts table CRUD (insert_alert, most_recent_alert_for_key, increment_alert_repeat, update_alert_delivery, list_alerts, ack_alert), insert_alert_notice (the host.msg inbox write from the system sender), calls_error_stats_since (the errors.rate source's one indexed query per minute tick), migration 0040 wiring.",
-    "src/handler.rs: the quota.trip hook at the plan-knob-refused call site (alert_quota_trips.record(tenant.id, knob) then raise() once the threshold is crossed), admin.alerts.{list,ack,raise} tool registration/dispatch.",
-    "src/http.rs: /healthz gains alerts.{open, last_raised_at, sink} (requirement 6 / AC8, AC10).",
-    "src/state.rs: AppState.alert_config/alert_quota_trips fields.",
-    "src/tables.rs: bare_state's alert_config/alert_quota_trips defaults for the test-only directly-mutable AppState constructor.",
-    "src/errors.rs: alert_body_too_large wire-code-to-JSONRPC-error-code mapping (AC11).",
-    "src/main.rs: alert_config/alert_quota_trips wired into AppState construction; spawn_pause_watch/spawn_error_rate_tick started alongside the other background tasks.",
-    "src/lib.rs: `pub mod alerts;`.",
-    "scripts/gen-test-suites.sh, tests/suite_core_07.rs: regenerated to include the eleven new alert_ac0[1-9]_*.rs / alert_ac1[01]_*.rs files.",
-    "tests/common/mod.rs: test-server helpers for standing up a wiremock webhook target and reading alerts rows.",
-    "tests/alert_ac0[1-9]_*.rs, tests/alert_ac1[01]_*.rs (new, eleven files, one per non-deferred AC); tests/runs_ac11_admin_runs_reap.rs, tests/sched_ac5_overlap_skips_and_records.rs updated for the alerts table's effect on shared fixtures.",
-    "agent/test-map.json: ac_test_map repointed to this PRD's alert prefix (done in the prior build pass this card is now catching up to).",
-    "plugin/.claude-plugin/plugin.json: version bumped to match Cargo.toml's 0.60.10 patch bump -- not part of the PRD's own scope, but required so tests/mcphost_claude_code_plugin_and_snippets_ac0[1-2]_*.rs stay green after this PRD's version bump (the earlier build pass bumped Cargo.toml but missed this file)."
+    "migrations/0041_status_feed.sql (new): status_samples (component, ts, ok, latency_ms, source) with idx_status_samples_component_ts/idx_status_samples_ts, status_daily (component, day, ok_samples, total_samples, p95_latency_ms; PK component+day), incidents (id, title, impact, components_json, opened_at, closed_at, timeline_json, auto) with idx_incidents_opened_at/idx_incidents_closed_at -- requirement 1.",
+    "src/statusfeed.rs (new): COMPONENTS (mcp/exec/billing/claim), ProbeOverrides (test-only per-component force-ok/force-fail, mirrors AlertConfig's 'field, not env/network, since tests run in parallel' convention), probe_mcp/probe_exec/probe_billing/probe_claim (in-process, no calls/metering row, no real network round trip), tick_once()/spawn_tick() (the minute self-sampler), component_state()/overall_state() (last-5-samples binary ok/failing per component; outage/degraded/operational per requirement 3), status_json() (the whole GET /status.json body), daily_rows() (the ?component=&days= shape), rollup_day()/rollup_range() and prune_once()/daily_tick_once()/spawn_daily_tick() (requirement 1), check_component_alert()/open_auto_incident()/close_auto_incident() (requirement 6 / AC9).",
+    "src/admin.rs: incident_open/incident_update/incident_close/status_sample/status_rollup handlers, arg_str_array helper, admin_audit wiring for all five (requirement 4/8).",
+    "src/handler.rs: self_check_tools_list() (the mcp self-probe's in-process tools/list half, reusing signup_tool/host_tools), admin.incident.{open,update,close}/admin.status.{sample,rollup} tool registration/dispatch.",
+    "src/http.rs: GET /status.json route (anonymous, Cache-Control: max-age=60), branching to daily_rows when both component and days query params are present (AC10).",
+    "src/claim.rs: resolve_claim_token widened from private to pub(crate) so the claim self-probe can call it directly, in process, with no HTTP round trip.",
+    "src/billing.rs: hmac_sha256 already pub(crate) (no change) -- the billing self-probe reuses it to sign a synthetic no-op event the same way a real Stripe delivery would be signed.",
+    "src/db.rs: status_samples/status_daily/incidents CRUD (insert_status_sample, recent_status_samples, last_status_sample, prune_status_samples_older_than, upsert_status_daily, status_daily_recent, status_daily_sum_since, status_samples_ok_ratio_since, status_sample_days_in_range, status_samples_for_day, insert_incident, find_incident, list_open_incidents, list_recent_closed_incidents, incident_append_timeline, incident_close), migration 0041 wiring.",
+    "src/state.rs: AppState.status_probe_override field.",
+    "src/tables.rs, tests/common/mod.rs: bare_state()/bare_app_state()/start_full_with_email()'s status_probe_override default for the four AppState-construction sites this new field touches.",
+    "src/main.rs: status_probe_override wired into AppState construction; spawn_tick/spawn_daily_tick started alongside the other background tasks.",
+    "src/lib.rs: `pub mod statusfeed;`.",
+    "www/status.html: rewritten to fetch /status.json and render state/components/incidents client-side, keeping a static fallback (visible by default, re-shown on fetch failure) in place of the old 5x-/healthz-probe page.",
+    "scripts/gen-test-suites.sh, tests/suite_core_07.rs / suite_core_08.rs / suite_sandbox_03.rs / suite_sandbox_04.rs: regenerated to include the ten new tests/statusfeed_ac*.rs files (split across core/sandbox partitions by whether a file registers the python kind).",
+    "tests/statusfeed_ac0[1-9]_*.rs, tests/statusfeed_ac10_*.rs (new, ten files across eleven test functions -- AC8 has two -- one set per non-deferred AC).",
+    "agent/test-map.json: ac_test_map repointed to this PRD's statusfeed prefix, alert's own map archived under ac_test_map_by_prefix.alert.",
+    "Cargo.toml: patch version bump 0.60.13 -> 0.60.14; CHANGELOG.md: new v0.60.14 entry."
   ],
   "non_goals": [
-    "Paging schedules, escalation, or on-call rotation -- PRD Non-goals; one webhook POST and one inbox message per alert is the whole delivery story.",
-    "Alerting on conditions the host cannot see (box CPU, Caddy, DNS) -- PRD Non-goals; those belong to mcphost-deploy's doctor, a separate repository.",
-    "Email delivery -- PRD Non-goals; the claim mailer exists but email alerting waits for a provider decision (vision open question), so no MCPHOST_ALERT_EMAIL_* env var or send path exists.",
-    "Wiring ban.applied or meter.emit_failed as live alert-raising hooks -- requirement 2 names them as built-in sources, but no AC in this dispatch's own non-deferred list (AC1-11) exercises either; bans.rs's own comment ('no alerting registry today') is now stale (this PRD adds one) but wiring that hook has no test to prove it and is left for the PRD/dispatch that actually needs it.",
-    "admin.alerts.rules (P2 requirement 8, the host.changelog-style listing of built-in sources) -- no AC in the PRD's own Acceptance criteria list covers it."
+    "Email or RSS subscriptions to incidents -- PRD Non-goals.",
+    "Probing from outside the box -- PRD Non-goals; an external probe belongs to uptime-probes or mcphost-deploy, this feed only records the host's self-view plus whatever mcphost-deploy posts in via admin.status.sample.",
+    "Replacing healthz -- PRD Non-goals; /healthz is untouched, /status.json is additive.",
+    "admin.status.rollup's own dedicated test file -- requirement 8 (P2) has no entry in the PRD's own eleven-item Acceptance criteria list, so it is proven by AC5's rollup_day coverage (rollup_range is a thin loop over it) plus a manual smoke check during this build, not a tests/statusfeed_ac*.rs file of its own.",
+    "Whether /status.json also lists the registry listing state (dev.mcphost/mcphost) -- PRD Open question, owner Joe, due 'at build'; left out of the shipped response shape since no AC exercises it and the PRD frames it as still open, not a build-time decision this dispatch is authorized to settle."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -116,41 +111,42 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "cooldown_is_keyed_by_the_alert_source_own_key_string": "requirement 4's cooldown collapses 'the same key' -- quota.trip's own key is format!(\"quota.trip:{tenant_namespace}:{knob}\"), so two different tenants (or two different plan knobs for the same tenant) tripping in the same window raise independently, matching AC3's own 'per tenant and plan knob' wording, while signup.paused/signup.resumed collapse host-wide since there is only ever one signup-pause state.",
-      "delivery_status_tracks_the_webhook_when_both_sinks_are_configured": "AC5 asserts delivery_status: \"failed\" after three exhausted webhook retries; when both MCPHOST_ALERT_WEBHOOK_URL and MCPHOST_ALERT_TENANT are set, deliver() takes webhook_delivered.or(inbox_delivered) -- the webhook's own outcome is what delivery_status reports, with a parallel inbox send treated as best-effort and not reflected in that field, since no AC exercises a webhook-failed/inbox-succeeded split differently.",
-      "min_severity_filters_delivery_never_storage_and_sink_label_ignores_it": "requirement 7 / AC9: a filtered alert still gets an alerts row (delivery_status: \"skipped\") and still counts toward healthz's alerts.open -- AlertConfig::sink_label() is purely a function of which sinks are configured (AC8/AC10), independent of whether the specific alert being raised right now happens to clear MCPHOST_ALERT_MIN_SEVERITY.",
-      "raise_body_size_cap_is_16kib_enforced_before_storage_not_after": "AC11's own numbers (64 KiB rejected, 15 KiB stored) pin MAX_ALERT_BODY_BYTES at 16 KiB checked against the caller-supplied body's serialized byte length before any db write, returning alert_body_too_large naming the limit -- the same 'reject before persisting' shape MAX_SPEC_BYTES already uses for tool publish.",
-      "pause_watch_seeds_on_first_poll_never_alerts_on_an_already_paused_startup": "Technical considerations says to hook the transition, not every refused signup -- spawn_pause_watch's first loop iteration only records the current paused state into `last` and raises nothing, so a host that starts up already paused (e.g. after a restart) does not spuriously alert; only a later flip (pause->resume or resume->pause) raises."
+      "self_samples_never_touch_calls_or_metering_or_the_network": "Technical considerations: 'the self samples call the same handler functions the HTTP layer dispatches to, in process ... they must not count in calls or metering' -- probe_mcp checks db writability plus self_check_tools_list() (the same anonymous tools/list construction, called directly, no RequestContext/HTTP); probe_exec calls the python Kind's own call() through a hand-built CallCtx under a dedicated status-feed-self-check namespace; probe_billing signs and replays a synthetic event through billing::process_webhook; probe_claim calls claim::resolve_claim_token directly. None of the four opens a socket to this host's own listener or writes a calls/meter_events row.",
+      "exec_absent_python_kind_counts_as_failing_not_skipped": "AC2's own premise ('the sandbox executor is disabled in the test harness') maps directly onto this crate's existing KindRegistry::with_builtin(), which registers only echo -- probe_exec treats kinds.get(\"python\") returning None as an outright failing sample (ok: false, latency_ms: 0), not a skipped/N-A one, so AC1's test must explicitly register the python kind (python_kind_registry) to see exec read ok, exactly the same registration AC2's default TestServer omits to see it read failing.",
+      "billing_probe_is_trivially_ok_when_unconfigured": "PRD-grand-loop-billing goal 4 already treats an absent Stripe key as the supported 'billing is off' state -- probe_billing follows the same precedent: no MCPHOST_STRIPE_WEBHOOK_SECRET configured means there is no webhook route behavior to probe, so it reads ok: true rather than manufacturing a failure a host that never turned billing on can do nothing about.",
+      "component_state_and_overall_state_are_binary_not_a_three_way_degraded_component": "requirement 3's own language ('every component's last 5 samples are ok' / 'one failing component') never names a per-component degraded state, only ok/failing -- component_state() returns exactly those two strings (never-sampled counts as failing), and overall_state() layers outage (major-impact open incident or every component failing) / degraded (partial-impact open incident or any one component failing) / operational on top, matching AC1-AC3's wording precisely.",
+      "probe_overrides_is_the_ac9_test_lever_not_a_second_real_failure_injector": "AC9 needs one component to flip from failing to ok deterministically inside one running server without a real subprocess crash or a 15-real-minute wait; AppState.status_probe_override (empty in every real `mcphost serve` start) is that lever, following the exact 'field, not process environment, since tests run in parallel in one binary' rule this crate already applies to alert_config/sandbox_mechanism/deprecations -- it is read once per component per tick, before the real probe would otherwise run, and never reachable from any admin.* tool.",
+      "auto_incidents_only_auto_close_incidents_they_themselves_opened": "requirement 6 says a component-down incident auto-closes after 10 consecutive ok samples, but does not say what happens to a human-opened incident that happens to name the same component -- incidents.auto (0 for admin.incident.open, 1 for the tick's own open_auto_incident) scopes close_auto_incident to auto: true rows only, so an operator's own incident is never silently closed out from under them; only a mechanism-opened one is."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why build alerting now, rather than continuing to rely on a human polling healthz?",
-      "a": "The readiness plan lists 'alerting' as absent (wiki 2026-09-23-mcphost-market-test-plan) and the nightly measure has been RED for twelve runs without a page; the 2026-09-24 v0.60.5 deploy rolled back twice on Caddy 429s and nobody knew until a carbon session read the journal hours later. A Show HN wave with no alerting means the first report of an outage is a public comment, not an operator page."
+      "q": "Why build a self-reported status feed now, rather than signing up for a third-party status-page account?",
+      "a": "Readiness gate 6 ('Instatus status page') has sat open on Joe's to-do list since the market-test-plan wiki page (2026-09-23), alongside the email provider and DMCA registration; scout confirmed healthz has no history table at all. Each day the gate stays open is a day the launch hold cannot lift for a reason that costs one table and one route, and no vendor account is required to close it -- a machine-readable feed the host computes from its own probes satisfies the same gate at zero external dependency."
     },
     {
       "why": 2,
-      "q": "Why collapse duplicate alerts per key into a cooldown window instead of raising one row per occurrence?",
-      "a": "Goals: 'every host-visible failure class produces exactly one alert per key per cooldown' -- a tenant tripping its call quota 50 times in five minutes should page the operator once, not fifty times (User stories); repeat_count on the open row keeps the count visible without re-delivering."
+      "q": "Why sample four fixed components every minute from inside the process, rather than reusing the existing /healthz check?",
+      "a": "Requirement 2's own four probes (mcp initialize+tools/list, exec through the sandbox path, billing's webhook route, claim's invalid-token refusal) each exercise a materially different failure surface healthz's single db/disk_ok boolean never distinguishes -- AC2 specifically needs exec's own state to diverge from mcp/billing/claim's, which a single aggregate healthz bit cannot express."
     },
     {
       "why": 3,
-      "q": "Why deliver through a webhook POST and the host's own inbox rather than requiring a third-party paging account?",
-      "a": "Goals: 'delivery works with no third-party account: a webhook URL and the host's own inbox' -- mcphost-1 has no PagerDuty/Opsgenie integration today, and host.msg already exists (PRD-mcphost-webhook-inbox); reusing it costs no new infrastructure."
+      "q": "Why gate operator incidents behind admin.incident.{open,update,close} rather than writing directly to a status_daily-adjacent table by hand?",
+      "a": "User stories: 'admin.incident.open {title, components, impact} publishes an incident in one call; update adds a timeline entry; close sets resolution' -- and requirement 4 ties every one of those writes into admin_audit, the same accountable trail every other admin.* mutation in this crate already gets (AC3/AC4 both assert on it)."
     },
     {
       "why": 4,
-      "q": "Why does storage happen synchronously on the request path while delivery runs as a background task, rather than both being synchronous or both backgrounded?",
-      "a": "Non-functional requirement: 'raising an alert never blocks the request path longer than 5ms (storage is synchronous, delivery is a background task); delivery failures never crash the host' -- a slow or down webhook target must never make an unrelated tool call (e.g. the one that trips quota.trip) itself slow or fail."
+      "q": "Why let 5 consecutive self-sample failures auto-open an incident and auto-raise an alert, rather than requiring an operator to notice and open one by hand?",
+      "a": "Requirement 6's own non-functional companion metric -- 'time from component failure to public status change: never -> <=5 min' -- cannot be met by a human noticing; wiring the existing alerting registry (PRD-mcphost-alerting-webhook, this PRD's own Depends-on) to auto-open a partial-impact incident is the mechanical way to guarantee that ceiling without paging anyone to do it by hand."
     },
     {
       "why": 5,
-      "q": "Why let MCPHOST_ALERT_MIN_SEVERITY filter delivery but never storage?",
-      "a": "Requirement 7's own wording is explicit on this point, and AC9 proves it: an operator who raises the delivery bar to `critical` to cut webhook noise still wants every `warn` alert visible in `admin.alerts.list` afterward -- filtering storage too would silently lose the record of what happened, not just quiet the page."
+      "q": "Why keep status_daily rows forever while pruning raw status_samples after 90 days, rather than pruning both the same way?",
+      "a": "Goal: '90-day uptime per component is one number per day I can cite in the launch post' -- the operator's own use case (citing a 90-day, or later a lifetime, uptime number) only ever needs the rolled-up daily aggregate, never the individual per-minute sample; keeping the aggregate forever while bounding the much higher-volume raw table is the same 'aggregate survives, raw data ages out' shape this crate's own calls/meter_events retention split already established (PRD-mcphost-data-retention)."
     }
   ],
-  "created_at": "2026-09-25T19:05:00Z",
+  "created_at": "2026-09-26T00:00:00Z",
   "ambiguities_resolved": [
     {
       "question": "The findings file records the reference Python client seeing well-formed ttlMs/cacheScope on an unauthenticated tools/list, which the code says is impossible. Which is right?",
@@ -283,6 +279,10 @@
     {
       "question": "Rebasing wm-build/mcphost-alerting-webhook onto main a second time, after PRD-mcphost-table-semantic-model landed on top of oauth-resource-server, reproduced the same class of conflict this card's own immediately-prior entry already logged: (1) both PRDs' migrations now claimed number 0039 (table_models vs alerts, alerts having already been bumped once from 0038 to 0039 for the oauth collision); (2) agent/test-map.json's top-level ac_test_map again names only one 'current' PRD, and table-semantic-model's own refresh had not yet archived oauth-resource-server's predecessor, document-store, or table-semantic-model itself under ac_test_map_by_prefix; (3) src/db.rs's table_models/annotations CRUD and alerts CRUD were both inserted at the same point after list_distinct_oauth_issuer_urls, producing several small interleaved conflict hunks (not a clean two-way split) rather than one contiguous block per feature; (4) src/main.rs and agent/intent-card.json needed the same additive/full-overwrite handling as before.",
       "resolution": "(1) alerts' migration renumbered 0039 -> 0040 (src/db.rs's MIGRATION_0039 kept for table_models; a new MIGRATION_0040 added for alerts; migrate_0039_alerts renamed migrate_0040_alerts; migrations/0039_alerts.sql renamed migrations/0040_alerts.sql; migrate_sync now runs migrate_0039_table_models then migrate_0040_alerts in sequence). (2) agent/test-map.json's ac_test_map repointed to this PRD (alert) as current; table-semantic-model's own AC1-11 archived under a new ac_test_map_by_prefix.tablemodel entry, and oauth-resource-server's/document-store's existing archived entries (already present on this branch) left untouched -- again restoring the archive-the-predecessor invariant. (3) src/db.rs's table_models/annotations functions (get/list/upsert/mark-stale/list-stale/delete_table_model, upsert/list_table_model_annotation) were regrouped into one contiguous block under their own `---- PRD-mcphost-table-semantic-model ----` header, followed by every alerts function (calls_error_stats_since, insert_alert, most_recent_alert_for_key, increment_alert_repeat, update_alert_delivery, list_alerts, ack_alert, alert_healthz_counts, insert_alert_notice, set_alert_raised_at_for_test, get_alert_for_test) under the existing `---- alerts ----` header, unchanged function bodies, both sides' code kept in full. (4) src/main.rs: table-semantic-model's spawn_tick call kept alongside (not instead of) alerts' spawn_pause_watch/spawn_error_rate_tick calls, all three background tasks now started. (5) agent/intent-card.json's own scope/migration references updated 0039 -> 0040 (this entry included) rather than left pointing at a file that no longer exists under that name. Nothing was provisioned, resized, or reconfigured to resolve any of the five; all are paper-trail/build-config/mechanical-merge fixes with no AC content change."
+    },
+    {
+      "question": "This card is now regenerated for PRD-mcphost-status-feed, an entirely different feature (a self-reported /status.json feed, daily uptime rollups, operator incidents) from PRD-mcphost-alerting-webhook (webhook/inbox alert delivery) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught repeatedly in this card's own history if left byte-for-byte. Unlike several prior PRDs, this one landed cleanly with no migration-number collision (the next free slot, 0041, was still free when this dispatch started). Four build-time decisions had no single PRD-mandated answer: (1) requirement 2 says the mcp probe is 'an in-process initialize + tools/list', but rmcp's ServerHandler::list_tools takes a RequestContext<RoleServer> this crate has no way to construct outside a real transport; (2) requirement 2's exec probe needs a way to tell 'sandbox executor disabled in the test harness' (AC2) apart from 'sandbox executor healthy' (AC1) without a real bwrap-dependent flag; (3) the billing probe's 'a signed no-op' implies signing a synthetic Stripe-shaped event, but this crate's billing.rs only ever verifies Stripe's own signatures, it has no prior reason to mint one; (4) AC9 needs one component to flip from failing to ok deterministically inside a single running server (5 fails, then 10 oks) without a real subprocess crash or a 15-minute real wait.",
+      "resolution": "Fixed in place: root_motivation, user_persona, unfakeable_metric, all 11 acceptance_criteria (10 with real tests/statusfeed_ac0N_*.rs pointers, AC11 marked deferred/operator-provisioned per the PRD's own coder instructions), scope, non_goals, hard_constraints.additional, and five_whys_trace were rewritten from PRD-mcphost-status-feed's own Problem statement, Goals, User stories, Requirements, Technical considerations, and Acceptance criteria sections; agent/test-map.json's ac_test_map was updated to this PRD's own AC-to-test mapping in the same build, with the prior alert map archived under ac_test_map_by_prefix.alert so nothing already-shipped is lost. On the four build-time decisions: (1) src/handler.rs gained a small pub(crate) self_check_tools_list(state) that runs the exact same anonymous-branch tool-listing construction (signup_tool() + host_tools()) list_tools already builds, called directly with no RequestContext -- probe_mcp combines its result (non-empty) with a db.is_writable() check for the 'initialize' half. (2) leaned on an already-existing crate fact rather than inventing a new flag: KindRegistry::with_builtin() registers only echo, so every default TestServer already has no python kind; probe_exec treats kinds.get(\"python\").is_none() as an outright failing sample, which makes AC2's default-TestServer premise true for free and AC1's test responsible for registering python_kind_registry to see exec read ok -- documented in hard_constraints.additional.exec_absent_python_kind_counts_as_failing_not_skipped. (3) probe_billing reimplements the identical t=<unix>,v1=<hmac-sha256-hex> signing scheme billing::verify_stripe_signature checks, reusing billing::hmac_sha256 (already pub(crate)) rather than exposing a new public signing function billing.rs would otherwise never need outside this one probe. (4) added AppState.status_probe_override (crate::statusfeed::ProbeOverrides, empty in every real serve start) as a fourth per-component test lever, following the exact 'field, not process environment, since tests run in parallel in one binary' rule this card's own alerting-webhook entries already established for alert_config/sandbox_mechanism -- AC9's test flips one component's override from false to true mid-test to drive the fail-then-ok streak deterministically, while AC1/AC2/the rest of the suite exercise the real probes unmodified. Also: requirement 8 (P2, admin.status.rollup) has no entry in the PRD's own eleven-item Acceptance criteria list, so it was implemented and manually smoke-tested (not built a mock for) rather than given its own tests/statusfeed_ac*.rs file, per this card's own established 'the PRD's own AC list is the actual contract' precedent (see the wasm-kind entry above)."
     }
   ]
 }
