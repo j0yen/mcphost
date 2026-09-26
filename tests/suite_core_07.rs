@@ -764,6 +764,12 @@ mod publishfirsttry_ac07_signup_next;
 mod revdebt_ac1_intent_card_pointers_resolve;
 #[path = "run_metrics_handoff_glob_regression.rs"]
 mod run_metrics_handoff_glob_regression;
+#[path = "runoverflow_ac03_progress_counter_monotonic_validation.rs"]
+mod runoverflow_ac03_progress_counter_monotonic_validation;
+#[path = "runoverflow_ac04_inline_part_zero_and_out_of_range_not_found.rs"]
+mod runoverflow_ac04_inline_part_zero_and_out_of_range_not_found;
+#[path = "runoverflow_ac05_http_async_2mib_overflows_to_parts.rs"]
+mod runoverflow_ac05_http_async_2mib_overflows_to_parts;
 #[path = "runs_ac05_sync_call_writes_run_row.rs"]
 mod runs_ac05_sync_call_writes_run_row;
 #[path = "runs_ac07_purge_clears_result.rs"]

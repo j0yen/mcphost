@@ -1479,8 +1479,9 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         ),
         Tool::new(
             "host.runs.wait",
-            "Long-poll one run until it finalizes or timeout_s elapses (max 25s), returning \
-             its current status either way -- for a client with no polling loop of its own.",
+            "Long-poll one run until it finalizes, until: {counter, gte} is reached, or \
+             timeout_s elapses (max 25s), returning its current status either way -- for a \
+             client with no polling loop of its own.",
             host_schema(
                 json!({
                     "run_id": {"type": "string", "description": "The run id to wait on."},
@@ -1488,6 +1489,53 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                         "type": "integer",
                         "description": "Max seconds to wait, capped at 25; default 20.",
                     },
+                    "until": {
+                        "type": "object",
+                        "description": "{counter: <name>, gte: <n>} -- return as soon as that \
+                            counter reaches n, even while the run is still running.",
+                    },
+                }),
+                &["run_id"],
+            ),
+        ),
+        // PRD-mcphost-run-result-overflow-to-state P0 requirement 1/4: a
+        // run's result is never rejected for size -- it lives in state as
+        // one or more parts, and this reads any one of them by index, the
+        // same read path whether the whole result fit inline (parts: 1) or
+        // overflowed into several.
+        // PRD-mcphost-run-result-overflow-to-state P0 requirement 3: a
+        // structured, unthrottled counterpart to the sandbox's own
+        // free-text `mcphost.progress(pct, msg)` -- callable by id, so a
+        // caller outside the running tool's own process (an orchestrator
+        // polling a bulk job) can post/read progress too.
+        Tool::new(
+            "host.progress",
+            "Report (or merge in) counters and/or pct/msg on a run, by id. Each named counter \
+             (items_processed, items_total, bytes_out, custom.<k>) is monotonic on its own -- a \
+             lower value than what's already stored fails validation with nothing written. \
+             Read back via host.runs.get/wait/list's counters field.",
+            host_schema(
+                json!({
+                    "run_id": {"type": "string", "description": "The run id to report progress on."},
+                    "pct": {"type": "integer", "description": "0-100 percent complete, free text."},
+                    "msg": {"type": "string", "description": "A free-text progress message."},
+                    "counters": {
+                        "type": "object",
+                        "description": "items_processed?, items_total?, bytes_out?, custom?: {k: number} -- each key monotonic.",
+                    },
+                }),
+                &["run_id"],
+            ),
+        ),
+        Tool::new(
+            "host.runs.part",
+            "Read part n of a run's result (host.runs.get/wait inline only part 0). A run \
+             whose whole result fit inline reads back parts: 1, n: 0 with the full result. \
+             n past the last part fails with not_found.",
+            host_schema(
+                json!({
+                    "run_id": {"type": "string", "description": "The run id to read a part of."},
+                    "n": {"type": "integer", "description": "The 0-based part index; default 0."},
                 }),
                 &["run_id"],
             ),
@@ -2994,6 +3042,8 @@ impl McpHostHandler {
             "host.runs.cancel" => crate::runs::cancel(&self.state, tenant, &args).await,
             "host.runs.purge" => crate::runs::purge(&self.state, tenant, &args).await,
             "host.runs.wait" => crate::runs::wait(&self.state, tenant, &args).await,
+            "host.runs.part" => crate::runs::part(&self.state, tenant, &args).await,
+            "host.progress" => crate::runs::progress(&self.state, tenant, &args).await,
             "host.trigger.set" => crate::triggers::set(&self.state, tenant, &args).await,
             "host.trigger.list" => crate::triggers::list(&self.state, tenant, &args).await,
             "host.trigger.get" => crate::triggers::get(&self.state, tenant, &args).await,

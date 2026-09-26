@@ -2416,7 +2416,7 @@ fn map_envelope_error(envelope: &Value, stderr_tail: &str) -> KindError {
 /// [`map_sandbox_outcome`]'s `Exited` arm and the warm-reuse path in
 /// [`PythonKind::call`], which never produces a [`SandboxOutcome`] at all
 /// (there's no process exit to classify -- the sandbox is still running).
-fn map_envelope_line(line: &[u8]) -> Result<Value, KindError> {
+fn map_envelope_line(line: &[u8], allow_oversized: bool) -> Result<Value, KindError> {
     // Requirement 2 (AC3): checked before the JSON parse itself -- a huge
     // envelope (this includes the runner protocol's own bounded
     // `stdout_capture`/`stderr_capture` fields alongside the tool's actual
@@ -2424,7 +2424,14 @@ fn map_envelope_line(line: &[u8]) -> Result<Value, KindError> {
     // an undercount) must never be misreported as `tool_output_invalid`
     // just because it also happens to still be valid JSON, or (worse) fed
     // whole into `serde_json::from_slice` first.
-    if line.len() > crate::state::MAX_TOOL_OUTPUT_BYTES {
+    //
+    // PRD-mcphost-run-result-overflow-to-state requirement 1: an async job
+    // (`allow_oversized`, set from `ctx.run_id.is_some()` -- only true for
+    // the executor's own job dispatch, never an ordinary synchronous call)
+    // never rejects on size here; `runs::run_one_job` chunks the oversized
+    // result into state afterward instead. AC9: a synchronous call keeps
+    // rejecting exactly as before.
+    if !allow_oversized && line.len() > crate::state::MAX_TOOL_OUTPUT_BYTES {
         return Err(KindError::structured_with(
             "tool_output_too_large",
             format!(
@@ -2872,9 +2879,9 @@ fn tool_run_response(
     result_obj
 }
 
-fn map_sandbox_outcome(outcome: SandboxOutcome) -> Result<Value, KindError> {
+fn map_sandbox_outcome(outcome: SandboxOutcome, allow_oversized: bool) -> Result<Value, KindError> {
     match outcome {
-        SandboxOutcome::Exited { stdout, .. } => map_envelope_line(&stdout),
+        SandboxOutcome::Exited { stdout, .. } => map_envelope_line(&stdout, allow_oversized),
         SandboxOutcome::NonZeroExit {
             stdout_tail,
             stderr_tail,
@@ -3634,7 +3641,7 @@ impl PythonKind {
                 self.warm.record_hit();
                 ctx.resources.record(cpu_ms, peak_rss_kb);
                 self.cpu_budget.record(ctx.tenant_id, cpu_ms);
-                let result = map_envelope_line(&line);
+                let result = map_envelope_line(&line, ctx.run_id.is_some());
                 entry.last_used = Instant::now();
                 self.warm.offer(key.clone(), entry).await;
                 Some(match result {
@@ -4276,7 +4283,7 @@ impl Kind for PythonKind {
         // leaves the host" -- that includes a tool's own result (a tool may
         // legitimately be handed a secret and choose to echo it back, e.g.
         // while debugging), not just an error/traceback.
-        match map_sandbox_outcome(outcome) {
+        match map_sandbox_outcome(outcome, ctx.run_id.is_some()) {
             Ok(value) => {
                 let redacted = redact_value(&value, &secret_values);
                 // PRD-mcphost-result-envelope-contract requirement 1/3,

@@ -147,6 +147,11 @@ async fn unauthenticated_tools_list_is_signup_only() {
         "host.runs.cancel",
         "host.runs.purge",
         "host.runs.wait",
+        // PRD-mcphost-run-result-overflow-to-state requirements 3/4: an
+        // oversized async result's counters/parts are discoverable
+        // unauthenticated too, same as every other host.*-style tool above.
+        "host.progress",
+        "host.runs.part",
         // PRD-mcphost-schedules requirement 2: the schedule-trigger control
         // plane is discoverable unauthenticated too, same as every other
         // host.*-style tool above.
@@ -251,7 +256,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        105,
+        107,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the three host.tool_history/host.tool_rollback/host.tool_diff \
@@ -261,6 +266,8 @@ async fn unauthenticated_tools_list_is_signup_only() {
          PRD-mcphost-table-semantic-model) \
          + the eight host.tool_share/host.tool_unshare/host.group.*/host.catalog.* tools \
          (PRD-mcphost-sharing) + the five host.runs.* tools (PRD-mcphost-runs-and-jobs) \
+         + the two host.progress/host.runs.part tools \
+         (PRD-mcphost-run-result-overflow-to-state) \
          + the nine host.trigger.* tools (PRD-mcphost-schedules, PRD-mcphost-inbound-events) \
          + the three billing.* tools + the four host.agent.* tools \
          (PRD-mcphost-agent-directory) + the eight host.msg.* tools \
