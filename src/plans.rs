@@ -204,6 +204,12 @@ pub struct Plan {
     /// (10 000) when a hand-edited `plans.toml` predates this key, same
     /// tolerant-parse convention as every other field above.
     pub docs_chunks_max: i64,
+    /// PRD-mcphost-end-user-identity P1 requirement 6 (AC9): distinct
+    /// end-user subjects that wrote this plan's tenants' state in the
+    /// trailing 30 days -- a write from the next, over-the-limit subject
+    /// refuses with `quota_end_users` (reads are unaffected). Requirement
+    /// 6 names both defaults directly: "free 100, pro 10,000".
+    pub end_users_max: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -286,6 +292,9 @@ impl PlanCatalog {
                     // PRD-mcphost-docs-semantic-search P0 requirement 5:
                     // "docs_chunks_max (free 10 000, pro 50 000)".
                     docs_chunks_max: 10_000,
+                    // PRD-mcphost-end-user-identity P1 requirement 6:
+                    // "free 100" distinct end users.
+                    end_users_max: 100,
                 },
                 Plan {
                     name: "pro".to_string(),
@@ -363,6 +372,9 @@ impl PlanCatalog {
                     // PRD-mcphost-docs-semantic-search P0 requirement 5:
                     // "docs_chunks_max (free 10 000, pro 50 000)".
                     docs_chunks_max: 50_000,
+                    // PRD-mcphost-end-user-identity P1 requirement 6:
+                    // "pro 10,000" distinct end users.
+                    end_users_max: 10_000,
                 },
             ],
         }
@@ -468,6 +480,7 @@ impl PlanCatalog {
             out.push_str(&format!("docs_max = {}\n", p.docs_max));
             out.push_str(&format!("docs_bytes_max = {}\n", p.docs_bytes_max));
             out.push_str(&format!("docs_chunks_max = {}\n", p.docs_chunks_max));
+            out.push_str(&format!("end_users_max = {}\n", p.end_users_max));
             out.push('\n');
         }
         out
@@ -546,6 +559,7 @@ impl PlanCatalog {
                 "docs_max" => builder.docs_max = Some(int_value()),
                 "docs_bytes_max" => builder.docs_bytes_max = Some(int_value()),
                 "docs_chunks_max" => builder.docs_chunks_max = Some(int_value()),
+                "end_users_max" => builder.end_users_max = Some(int_value()),
                 _ => {}
             }
         }
@@ -598,6 +612,7 @@ struct PlanBuilder {
     docs_max: Option<i64>,
     docs_bytes_max: Option<i64>,
     docs_chunks_max: Option<i64>,
+    end_users_max: Option<i64>,
 }
 
 impl PlanBuilder {
@@ -680,6 +695,10 @@ impl PlanBuilder {
             // this key gets the `free` plan's own default (10 000), same
             // tolerant-parse rationale as every other field above.
             docs_chunks_max: self.docs_chunks_max.unwrap_or(10_000),
+            // PRD-mcphost-end-user-identity: a `plans.toml` predating this
+            // key gets the `free` plan's own default (100), same
+            // tolerant-parse rationale as every other field above.
+            end_users_max: self.end_users_max.unwrap_or(100),
         })
     }
 }

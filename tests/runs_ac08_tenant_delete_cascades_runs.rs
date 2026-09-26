@@ -81,7 +81,7 @@ async fn tenant_delete_removes_its_runs_rows_and_stored_results() {
     let stored = server
         .state
         .db
-        .state_kv_get(tenant.id, format!("runs/{run_id}"))
+        .state_kv_get(tenant.id, format!("runs/{run_id}"), String::new())
         .await
         .expect("state_kv_get after delete");
     assert!(stored.is_none(), "stored result must be gone after tenant_delete");

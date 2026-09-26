@@ -821,6 +821,36 @@
       "since": "0.58.0"
     },
     {
+      "description": "Generate and store a new per-tenant secret for signing end_user_assertion (HS256 compact JWS, claims sub/iat/exp with exp <= iat + 3600). Returns the secret once; it is never shown again and never appears in host.secret_list. Assertions signed with any prior secret stop verifying immediately -- no overlap window.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.enduser.assertion_secret_rotate",
+      "since": "0.58.0"
+    },
+    {
+      "description": "The end user (if any) this call itself carries: {subject, issuer, method, verified_at} from the OAuth bearer's sub/iss or a verified end_user_assertion; null when the call carries no verified end-user identity.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.enduser.whoami",
+      "since": "0.58.0"
+    },
+    {
       "description": "Build a downloadable .tar.gz of everything this tenant owns: tool sources, state, secret NAMES (never values), run/thread history and usage, plus a manifest.json re-publishable via host.tool_publish. Runs as a background job (poll host.runs.get with the returned run_id) -- calling this again while one is already running returns that same run_id rather than starting a second one. The finished run's result carries a download_url valid 24 hours.",
       "input_schema": {
         "properties": {
@@ -1515,6 +1545,13 @@
       "description": "Delete one key from this tenant's key-value state namespace.",
       "input_schema": {
         "properties": {
+          "end_user": {
+            "description": "\"self\" for the caller's own verified end-user identity, an explicit subject (only when this call carries no end-user identity of its own), or omit/null for the tenant-wide value.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "key": {
             "description": "Key to delete from this tenant's key-value state namespace.",
             "type": "string"
@@ -1536,6 +1573,13 @@
       "description": "Delete rows from a declared table matching an optional where filter (same grammar as host.state.query); omitting where deletes every row in the table.",
       "input_schema": {
         "properties": {
+          "end_user": {
+            "description": "\"self\" for the caller's own verified end-user identity, an explicit subject (only when this call carries no end-user identity of its own), or omit/null for the tenant-wide value.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "table": {
             "description": "Name of the declared table to delete rows from.",
             "type": "string"
@@ -1561,6 +1605,13 @@
       "description": "Read one key from this tenant's key-value state namespace. Returns found: false (not an error) if the key was never set.",
       "input_schema": {
         "properties": {
+          "end_user": {
+            "description": "\"self\" for the caller's own verified end-user identity, an explicit subject (only when this call carries no end-user identity of its own), or omit/null for the tenant-wide value.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "key": {
             "description": "Key to read from this tenant's key-value state namespace.",
             "type": "string"
@@ -1582,6 +1633,13 @@
       "description": "Insert one row (an object) or several (an array of objects) into a declared table. Each row is validated against the table's schema first -- a type mismatch fails the whole call with state_schema_violation and writes nothing.",
       "input_schema": {
         "properties": {
+          "end_user": {
+            "description": "\"self\" for the caller's own verified end-user identity, an explicit subject (only when this call carries no end-user identity of its own), or omit/null for the tenant-wide value.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "rows": {
             "description": "One row (an object) or several (an array of objects), each validated against the table's schema."
           },
@@ -1607,6 +1665,13 @@
       "description": "List keys (with their current values) in this tenant's key-value state namespace, optionally filtered by prefix.",
       "input_schema": {
         "properties": {
+          "end_user": {
+            "description": "\"self\" for the caller's own verified end-user identity, an explicit subject (only when this call carries no end-user identity of its own), or omit/null for the tenant-wide value.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "limit": {
             "description": "Max keys to return; default 100.",
             "type": "integer"
@@ -1630,6 +1695,13 @@
       "description": "Read rows from a declared table, optionally filtered (where: \"field op value\", ops = != < <= > >=, clauses joined by ' and '), ordered (order_by: \"field\" or \"field desc\") and capped (limit).",
       "input_schema": {
         "properties": {
+          "end_user": {
+            "description": "\"self\" for the caller's own verified end-user identity, an explicit subject (only when this call carries no end-user identity of its own), or omit/null for the tenant-wide value.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "limit": {
             "description": "Max rows to return; optional.",
             "type": "integer"
@@ -1663,6 +1735,13 @@
       "description": "Write one key in this tenant's key-value state namespace; value may be any JSON value. Overrun of the plan's state_bytes_max quota fails with state_quota_exceeded and writes nothing.",
       "input_schema": {
         "properties": {
+          "end_user": {
+            "description": "\"self\" for the caller's own verified end-user identity, an explicit subject (only when this call carries no end-user identity of its own), or omit/null for the tenant-wide value.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "key": {
             "description": "Key to write in this tenant's key-value state namespace.",
             "type": "string"

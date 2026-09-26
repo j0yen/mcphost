@@ -430,6 +430,7 @@ async fn accept_delivery(
         state,
         tenant,
         &json!({"table": inbox_table_name(&config.name), "rows": row.clone()}),
+        None,
     )
     .await?;
     let row_id = insert_result["ids"][0]

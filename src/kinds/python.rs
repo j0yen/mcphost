@@ -1941,7 +1941,7 @@ fn merge_env(secret_env: &[(String, String)], env: &[(String, String)]) -> Vec<(
 // other half) reads those two fields for its "full stdout and stderr"
 // response; an ordinary call simply ignores them.
 const PY_RUNNER_SCRIPT: &str = r#"
-import sys, json, importlib.util, traceback, io, errno
+import sys, json, importlib.util, traceback, io, errno, os
 
 _real_stdout = sys.stdout
 
@@ -2212,11 +2212,29 @@ sys.modules["mcphost.state"] = _mcphost_state_mod
 sys.modules["mcphost.table"] = _mcphost_table_mod
 sys.modules["mcphost.docs"] = _mcphost_docs_mod
 
+_END_USER_ENV_KEYS = ("MCPHOST_END_USER_ID", "MCPHOST_END_USER_ISSUER", "MCPHOST_END_USER_METHOD")
+
 def run_one(payload):
     site_packages = payload.get("site_packages")
     if site_packages and site_packages not in sys.path:
         sys.path.insert(0, site_packages)
     args = payload.get("args", {})
+
+    # PRD-mcphost-end-user-identity requirement 3: MCPHOST_END_USER_* is
+    # set fresh from THIS call's own payload (never spawn-time env -- see
+    # `call_payload`'s own doc comment) and always cleared/restored in the
+    # `finally` below, so a warm sandbox reused by a later call carrying a
+    # DIFFERENT end user (or none at all) never sees a prior call's
+    # identity leak through.
+    prev_end_user_env = {k: os.environ.get(k) for k in _END_USER_ENV_KEYS}
+    for k in _END_USER_ENV_KEYS:
+        os.environ.pop(k, None)
+    end_user = payload.get("end_user")
+    if end_user:
+        os.environ["MCPHOST_END_USER_ID"] = end_user.get("id") or ""
+        if end_user.get("issuer"):
+            os.environ["MCPHOST_END_USER_ISSUER"] = end_user["issuer"]
+        os.environ["MCPHOST_END_USER_METHOD"] = end_user.get("method") or ""
 
     out_buf, err_buf = io.StringIO(), io.StringIO()
     old_out, old_err = sys.stdout, sys.stderr
@@ -2260,6 +2278,11 @@ def run_one(payload):
             obj = {"ok": False, "kind": "oom"}
     finally:
         sys.stdout, sys.stderr = old_out, old_err
+        for k, v in prev_end_user_env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
     obj["stdout_capture"] = out_buf.getvalue()[-200000:]
     obj["stderr_capture"] = err_buf.getvalue()[-200000:]
     return obj
@@ -2427,11 +2450,39 @@ fn map_envelope_line(line: &[u8]) -> Result<Value, KindError> {
     }
 }
 
+/// PRD-mcphost-end-user-identity requirement 3: the per-call JSON shape
+/// `payload_end_user`'s caller embeds under `"end_user"` -- `null` when the
+/// call carries no verified identity (requirement 3: "absent identity
+/// means absent variables ... never empty strings", so `run_one` in
+/// [`PY_RUNNER_SCRIPT`] must see a clear "none" rather than empty strings
+/// to distinguish).
+fn payload_end_user(ctx: &CallCtx) -> Value {
+    match &ctx.end_user {
+        Some(eu) => json!({
+            "id": eu.subject,
+            "issuer": eu.issuer,
+            "method": eu.method.as_str(),
+        }),
+        None => Value::Null,
+    }
+}
+
 /// The JSON line a caller (cold `sandbox::run`, or a warm
 /// `PersistentSandbox::call`) writes to the runner's stdin: the call's
 /// arguments plus the venv's `site_packages` path to add to `sys.path`.
-fn call_payload(args: &Value, site_packages: &str) -> Vec<u8> {
-    serde_json::to_vec(&json!({"args": args, "site_packages": site_packages})).unwrap_or_default()
+///
+/// requirement 3: `end_user` travels in THIS per-call payload, never as a
+/// spawn-time environment variable -- a warm sandbox's process env is
+/// fixed at spawn (see `merge_env`'s own doc comment on why secrets/plain
+/// `env` are fingerprinted for exactly this reason) and is reused across
+/// calls from potentially different end users, so baking
+/// `MCPHOST_END_USER_ID` in at spawn time would leak one caller's identity
+/// into a later, different caller's call on the same reused process.
+/// [`PY_RUNNER_SCRIPT`]'s `run_one` sets/clears the `MCPHOST_END_USER_*`
+/// env vars fresh from this field on every single call instead.
+fn call_payload(args: &Value, site_packages: &str, end_user: Value) -> Vec<u8> {
+    serde_json::to_vec(&json!({"args": args, "site_packages": site_packages, "end_user": end_user}))
+        .unwrap_or_default()
 }
 
 /// PRD-mcphost-tenant-state requirement 3: bridges `sandbox::
@@ -3411,6 +3462,7 @@ impl PythonKind {
         source: &str,
         args: &Value,
         site_packages: &str,
+        end_user: Value,
     ) -> Result<PathBuf, KindError> {
         let scratch = self.scratch_root.join(format!(
             "call-{}-{}",
@@ -3426,7 +3478,7 @@ impl PythonKind {
         tokio::fs::write(scratch.join("runner.py"), PY_RUNNER_SCRIPT)
             .await
             .map_err(|e| KindError::Exec(format!("write runner: {e}")))?;
-        let payload = json!({"args": args, "site_packages": site_packages});
+        let payload = json!({"args": args, "site_packages": site_packages, "end_user": end_user});
         tokio::fs::write(
             scratch.join("stdin.json"),
             serde_json::to_vec(&payload).unwrap_or_default(),
@@ -3550,7 +3602,7 @@ impl PythonKind {
             return None;
         }
 
-        let payload = call_payload(args, &entry.site_packages);
+        let payload = call_payload(args, &entry.site_packages, payload_end_user(ctx));
         let bridge = HostSidecarBridge { ctx };
         let warm_call_started = Instant::now();
         // PRD-mcphost-runs-and-jobs requirement 4 / AC4: register this
@@ -4127,7 +4179,7 @@ impl Kind for PythonKind {
             };
 
         let scratch = self
-            .prepare_scratch(&parsed.source, &args, &site_packages)
+            .prepare_scratch(&parsed.source, &args, &site_packages, payload_end_user(ctx))
             .await?;
         let stdin_payload = tokio::fs::read(scratch.join("stdin.json"))
             .await
@@ -4331,7 +4383,7 @@ impl Kind for PythonKind {
             };
 
         let scratch = self
-            .prepare_scratch(&parsed.source, &args, &site_packages)
+            .prepare_scratch(&parsed.source, &args, &site_packages, payload_end_user(ctx))
             .await?;
         let stdin_payload = tokio::fs::read(scratch.join("stdin.json"))
             .await
@@ -4754,6 +4806,7 @@ mod tests {
             progress: Arc::new(crate::kinds::NullProgress),
             cancel_pid: Arc::new(Mutex::new(None)),
             egress_allowed: true,
+            end_user: None,
         }
     }
 
@@ -5058,6 +5111,7 @@ mod tests {
             progress: Arc::new(crate::kinds::NullProgress),
             cancel_pid: Arc::new(Mutex::new(None)),
             egress_allowed: true,
+            end_user: None,
         }
     }
 

@@ -48,10 +48,12 @@ enum Auth {
     /// takes `&Tenant`, which `Box<Tenant>` derefs to for free).
     ///
     /// PRD-mcphost-oauth-resource-server requirement 4: the second field is
-    /// the JWT `sub` claim when this tenant was resolved from an OAuth
-    /// bearer, `None` for the pre-existing key paths (header or
+    /// the resolved OAuth bearer (JWT `sub`/`iss`) when this tenant was
+    /// resolved from one, `None` for the pre-existing key paths (header or
     /// `tenant_key` argument) -- see `control::whoami`'s own doc comment.
-    Tenant(Box<Tenant>, Option<String>),
+    /// PRD-mcphost-end-user-identity requirement 1 reads the same value to
+    /// populate `Caller.end_user` for an OAuth-authenticated call.
+    Tenant(Box<Tenant>, Option<crate::oauth::OauthCaller>),
 }
 
 fn value_to_json_object(v: Value) -> Map<String, Value> {
@@ -107,7 +109,7 @@ async fn resolve_auth(state: &AppState, parts: &http::request::Parts) -> Result<
                     if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
                         tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump last_seen_unix");
                     }
-                    Ok(Auth::Tenant(Box::new(t), Some(result.subject)))
+                    Ok(Auth::Tenant(Box::new(t), Some(result)))
                 }
                 None => Ok(Auth::Invalid),
             }
@@ -339,6 +341,22 @@ pub(crate) fn self_check_tools_list(state: &AppState) -> usize {
     let mut tools = vec![signup_tool()];
     tools.extend(host_tools(&state.kinds, false));
     tools.len()
+}
+
+/// PRD-mcphost-end-user-identity requirement 5: the `end_user` argument
+/// every scoped `host.state.*` op shares -- `"self"` resolves to the
+/// call's own verified identity (errors `end_user_required` if absent);
+/// an explicit subject string is allowed only when the call carries no
+/// identity of its own (errors `end_user_explicit_forbidden` otherwise,
+/// and marks the op's own result `impersonated: true`); omitted or `null`
+/// stays tenant-wide, unchanged from before this PRD.
+fn end_user_arg_schema() -> Value {
+    json!({
+        "type": ["string", "null"],
+        "description": "\"self\" for the caller's own verified end-user identity, an \
+            explicit subject (only when this call carries no end-user identity of its \
+            own), or omit/null for the tenant-wide value.",
+    })
 }
 
 fn signup_tool() -> Tool {
@@ -960,6 +978,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                         "type": "string",
                         "description": "Key to read from this tenant's key-value state namespace.",
                     },
+                    "end_user": end_user_arg_schema(),
                 }),
                 &["key"],
             ),
@@ -976,6 +995,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                         "description": "Key to write in this tenant's key-value state namespace.",
                     },
                     "value": {"description": "Any JSON value to store under key."},
+                    "end_user": end_user_arg_schema(),
                 }),
                 &["key", "value"],
             ),
@@ -989,6 +1009,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                         "type": "string",
                         "description": "Key to delete from this tenant's key-value state namespace.",
                     },
+                    "end_user": end_user_arg_schema(),
                 }),
                 &["key"],
             ),
@@ -1007,6 +1028,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                         "type": "integer",
                         "description": "Max keys to return; default 100.",
                     },
+                    "end_user": end_user_arg_schema(),
                 }),
                 &[],
             ),
@@ -1062,6 +1084,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                         "description": "One row (an object) or several (an array of objects), each \
                             validated against the table's schema.",
                     },
+                    "end_user": end_user_arg_schema(),
                 }),
                 &["table", "rows"],
             ),
@@ -1084,6 +1107,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                         "description": "Optional \"field\" or \"field desc\" to sort by.",
                     },
                     "limit": {"type": "integer", "description": "Max rows to return; optional."},
+                    "end_user": end_user_arg_schema(),
                 }),
                 &["table"],
             ),
@@ -1103,6 +1127,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                         "description": "Optional filter, same grammar as host.state.query; \
                             omit to delete every row.",
                     },
+                    "end_user": end_user_arg_schema(),
                 }),
                 &["table"],
             ),
@@ -2064,6 +2089,24 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              JWKS fetch age.",
             host_schema(json!({}), &[]),
         ),
+        // PRD-mcphost-end-user-identity P1 requirement 7 (AC10).
+        Tool::new(
+            "host.enduser.whoami",
+            "The end user (if any) this call itself carries: {subject, issuer, method, \
+             verified_at} from the OAuth bearer's sub/iss or a verified end_user_assertion; \
+             null when the call carries no verified end-user identity.",
+            host_schema(json!({}), &[]),
+        ),
+        // requirement 2 (AC11): rotates this tenant's HS256 end_user_assertion \
+        // signing secret, returning the new value once.
+        Tool::new(
+            "host.enduser.assertion_secret_rotate",
+            "Generate and store a new per-tenant secret for signing end_user_assertion (HS256 \
+             compact JWS, claims sub/iat/exp with exp <= iat + 3600). Returns the secret once; \
+             it is never shown again and never appears in host.secret_list. Assertions signed \
+             with any prior secret stop verifying immediately -- no overlap window.",
+            host_schema(json!({}), &[]),
+        ),
     ];
     if authenticated {
         tools.push(Tool::new(
@@ -2650,24 +2693,32 @@ pub(crate) fn app_error_to_kind_error(e: AppError) -> KindError {
 pub(crate) struct TenantStateBridge {
     pub(crate) state: Arc<AppState>,
     pub(crate) tenant: Tenant,
+    /// PRD-mcphost-end-user-identity requirement 5: this call's own end
+    /// user (if any) -- threaded into every `tenant_state::state_*` op
+    /// below exactly like `dispatch_control_tool`'s direct `host.state.*`
+    /// dispatch does, so `mcphost.state`'s `end_user` argument resolves
+    /// identically whether a tool reaches it from inside a python sandbox
+    /// or a caller reaches it directly.
+    pub(crate) end_user: Option<crate::enduser::EndUser>,
 }
 
 #[async_trait::async_trait]
 impl StateBackend for TenantStateBridge {
     async fn call(&self, op: &str, args: Value) -> Result<Value, KindError> {
+        let eu = self.end_user.as_ref();
         let result = match op {
-            "get" => tenant_state::state_get(&self.state, &self.tenant, &args).await,
-            "set" => tenant_state::state_set(&self.state, &self.tenant, &args).await,
-            "delete" => tenant_state::state_delete(&self.state, &self.tenant, &args).await,
-            "list" => tenant_state::state_list(&self.state, &self.tenant, &args).await,
+            "get" => tenant_state::state_get(&self.state, &self.tenant, &args, eu).await,
+            "set" => tenant_state::state_set(&self.state, &self.tenant, &args, eu).await,
+            "delete" => tenant_state::state_delete(&self.state, &self.tenant, &args, eu).await,
+            "list" => tenant_state::state_list(&self.state, &self.tenant, &args, eu).await,
             "table_create" => {
                 tenant_state::state_table_create(&self.state, &self.tenant, &args).await
             }
             "table_drop" => tenant_state::state_table_drop(&self.state, &self.tenant, &args).await,
-            "insert" => tenant_state::state_insert(&self.state, &self.tenant, &args).await,
-            "query" => tenant_state::state_query(&self.state, &self.tenant, &args).await,
+            "insert" => tenant_state::state_insert(&self.state, &self.tenant, &args, eu).await,
+            "query" => tenant_state::state_query(&self.state, &self.tenant, &args, eu).await,
             "delete_rows" => {
-                tenant_state::state_delete_rows(&self.state, &self.tenant, &args).await
+                tenant_state::state_delete_rows(&self.state, &self.tenant, &args, eu).await
             }
             other => Err(AppError::InvalidArgs(format!("unknown state op '{other}'"))),
         };
@@ -2856,10 +2907,12 @@ impl McpHostHandler {
         Self { state }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn dispatch_tenant_tool(
         &self,
         tenant: &Tenant,
         subject: Option<&str>,
+        end_user: Option<&crate::enduser::EndUser>,
         name: &str,
         args: Value,
     ) -> Result<Value, AppError> {
@@ -2875,7 +2928,7 @@ impl McpHostHandler {
             "host.bridge_test" => self.bridge_test(tenant, args).await,
             "host.spec_test" => self.spec_test(tenant, args).await,
             "host.tool_run" => self.tool_run(tenant, args).await,
-            "host.tool_call" => self.host_tool_call(tenant, args).await,
+            "host.tool_call" => self.host_tool_call(tenant, args, end_user).await,
             "host.tool_history" => control::tool_history(&self.state, tenant, &args).await,
             "host.tool_rollback" => control::tool_rollback(&self.state, tenant, &args).await,
             "host.tool_diff" => control::tool_diff(&self.state, tenant, &args).await,
@@ -2893,20 +2946,30 @@ impl McpHostHandler {
             "host.secret_set" => control::secret_set(&self.state, tenant, &args).await,
             "host.secret_list" => control::secret_list(&self.state, tenant).await,
             "host.registry_publish" => control::registry_publish(&self.state, tenant, &args).await,
-            "host.state.get" => tenant_state::state_get(&self.state, tenant, &args).await,
-            "host.state.set" => tenant_state::state_set(&self.state, tenant, &args).await,
-            "host.state.delete" => tenant_state::state_delete(&self.state, tenant, &args).await,
-            "host.state.list" => tenant_state::state_list(&self.state, tenant, &args).await,
+            "host.state.get" => tenant_state::state_get(&self.state, tenant, &args, end_user).await,
+            "host.state.set" => tenant_state::state_set(&self.state, tenant, &args, end_user).await,
+            "host.state.delete" => {
+                tenant_state::state_delete(&self.state, tenant, &args, end_user).await
+            }
+            "host.state.list" => tenant_state::state_list(&self.state, tenant, &args, end_user).await,
             "host.state.table_create" => {
                 tenant_state::state_table_create(&self.state, tenant, &args).await
             }
             "host.state.table_drop" => {
                 tenant_state::state_table_drop(&self.state, tenant, &args).await
             }
-            "host.state.insert" => tenant_state::state_insert(&self.state, tenant, &args).await,
-            "host.state.query" => tenant_state::state_query(&self.state, tenant, &args).await,
+            "host.state.insert" => {
+                tenant_state::state_insert(&self.state, tenant, &args, end_user).await
+            }
+            "host.state.query" => {
+                tenant_state::state_query(&self.state, tenant, &args, end_user).await
+            }
             "host.state.delete_rows" => {
-                tenant_state::state_delete_rows(&self.state, tenant, &args).await
+                tenant_state::state_delete_rows(&self.state, tenant, &args, end_user).await
+            }
+            "host.enduser.whoami" => Ok(crate::enduser::whoami(end_user)),
+            "host.enduser.assertion_secret_rotate" => {
+                crate::enduser::assertion_secret_rotate(&self.state, tenant, &args).await
             }
             "host.table.create" => tables::table_create(&self.state, tenant, &args).await,
             "host.table.append" => tables::table_append(&self.state, tenant, &args).await,
@@ -3167,6 +3230,7 @@ impl McpHostHandler {
     // shape (same-tenant vs. cross-tenant); splitting it would just move
     // the same inputs into a struct with one constructor per call site.
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     async fn call_published_tool(
         &self,
         tenant: &Tenant,
@@ -3175,6 +3239,7 @@ impl McpHostHandler {
         mcp_name_mismatch: bool,
         caller: Option<&Tenant>,
         version: Option<i64>,
+        end_user: Option<&crate::enduser::EndUser>,
     ) -> Result<Value, AppError> {
         let row: ToolRow = self
             .state
@@ -3261,6 +3326,7 @@ impl McpHostHandler {
                 Arc::new(TenantStateBridge {
                     state: self.state.clone(),
                     tenant: tenant.clone(),
+                    end_user: end_user.cloned(),
                 }),
                 Some(log.clone() as Arc<dyn CallLog>),
             )),
@@ -3293,7 +3359,13 @@ impl McpHostHandler {
             run_id: None,
             progress: Arc::new(crate::kinds::NullProgress),
             cancel_pid: Arc::new(std::sync::Mutex::new(None)),
+            end_user: end_user.cloned(),
         };
+        // requirement 4 (AC1/AC2): the three `calls` columns every branch
+        // below's `record_call_attributed_with_end_user` writes.
+        let end_user_subject = end_user.map(|e| e.subject.clone());
+        let end_user_issuer = end_user.and_then(|e| e.issuer.clone());
+        let end_user_method = end_user.map(|e| e.method.as_str().to_string());
 
         let start = Instant::now();
         if mcp_name_mismatch {
@@ -3356,7 +3428,7 @@ impl McpHostHandler {
                 if let Err(storage_err) = self
                     .state
                     .db
-                    .record_call_attributed(
+                    .record_call_attributed_with_end_user(
                         tenant.id,
                         local_name.to_string(),
                         duration_ms,
@@ -3368,6 +3440,9 @@ impl McpHostHandler {
                         tenant.origin.clone(),
                         tenant.origin_detail.clone(),
                         caller.map(|c| c.id),
+                        end_user_subject.clone(),
+                        end_user_issuer.clone(),
+                        end_user_method.clone(),
                     )
                     .await
                 {
@@ -3433,7 +3508,7 @@ impl McpHostHandler {
                 let _ = self
                     .state
                     .db
-                    .record_call_attributed(
+                    .record_call_attributed_with_end_user(
                         tenant.id,
                         local_name.to_string(),
                         duration_ms,
@@ -3445,6 +3520,9 @@ impl McpHostHandler {
                         tenant.origin.clone(),
                         tenant.origin_detail.clone(),
                         caller.map(|c| c.id),
+                        end_user_subject.clone(),
+                        end_user_issuer.clone(),
+                        end_user_method.clone(),
                     )
                     .await;
                 tracing::info!(
@@ -3457,7 +3535,7 @@ impl McpHostHandler {
                 let _ = self
                     .state
                     .db
-                    .record_call_attributed(
+                    .record_call_attributed_with_end_user(
                         tenant.id,
                         local_name.to_string(),
                         duration_ms,
@@ -3469,6 +3547,9 @@ impl McpHostHandler {
                         tenant.origin.clone(),
                         tenant.origin_detail.clone(),
                         caller.map(|c| c.id),
+                        end_user_subject.clone(),
+                        end_user_issuer.clone(),
+                        end_user_method.clone(),
                     )
                     .await;
                 tracing::info!(
@@ -3545,6 +3626,7 @@ impl McpHostHandler {
             Arc::new(TenantStateBridge {
                 state: self.state.clone(),
                 tenant: tenant.clone(),
+                end_user: None,
             }),
             None,
         ));
@@ -3591,6 +3673,10 @@ impl McpHostHandler {
             run_id: None,
             progress: Arc::new(crate::kinds::NullProgress),
             cancel_pid: Arc::new(std::sync::Mutex::new(None)),
+            // PRD-mcphost-end-user-identity: `host.tool_test` is a dry run
+            // against the real upstream, not a metered call -- no end user
+            // to thread through.
+            end_user: None,
         };
 
         match tokio::time::timeout(resolved_timeout, kind.call(&row.spec, call_args, &ctx)).await {
@@ -3704,6 +3790,9 @@ impl McpHostHandler {
             run_id: None,
             progress: Arc::new(crate::kinds::NullProgress),
             cancel_pid: Arc::new(std::sync::Mutex::new(None)),
+            // PRD-mcphost-end-user-identity: `host.bridge_test` is a dry
+            // run, not a metered call -- no end user to thread through.
+            end_user: None,
         };
 
         match tokio::time::timeout(resolved_timeout, kind.call(&spec, call_args, &ctx)).await {
@@ -3825,6 +3914,7 @@ impl McpHostHandler {
         let state_backend: Arc<dyn StateBackend> = Arc::new(TenantStateBridge {
             state: self.state.clone(),
             tenant: tenant.clone(),
+            end_user: None,
         });
         let table_backend: Arc<dyn TableBackend> = Arc::new(TenantTableBridge {
             state: self.state.clone(),
@@ -3858,6 +3948,9 @@ impl McpHostHandler {
             progress: Arc::new(crate::kinds::NullProgress),
             cancel_pid: Arc::new(std::sync::Mutex::new(None)),
             egress_allowed: tenant.plan == "pro",
+            // PRD-mcphost-end-user-identity: `host.spec_test` runs a pre-
+            // publish spec, not a real caller's identity-carrying call.
+            end_user: None,
         })
         .await;
 
@@ -4018,6 +4111,7 @@ impl McpHostHandler {
             Arc::new(TenantStateBridge {
                 state: self.state.clone(),
                 tenant: tenant.clone(),
+                end_user: None,
             }),
             None,
         ));
@@ -4061,6 +4155,11 @@ impl McpHostHandler {
             run_id: None,
             progress: Arc::new(crate::kinds::NullProgress),
             cancel_pid: Arc::new(std::sync::Mutex::new(None)),
+            // PRD-mcphost-end-user-identity: `host.tool_run`'s own
+            // `record_call` (below) carries no end-user columns either --
+            // out of this PRD's tested scope (AC1/AC2 exercise the plain
+            // `tools/call` path, `call_published_tool`).
+            end_user: None,
         };
 
         let start = Instant::now();
@@ -4096,7 +4195,12 @@ impl McpHostHandler {
     /// `async: true` never touches `call_published_tool`, `calls`, or the
     /// 30s deadline at all; it inserts a `queued` run
     /// (`runs::enqueue`) and returns immediately.
-    async fn host_tool_call(&self, tenant: &Tenant, args: Value) -> Result<Value, AppError> {
+    async fn host_tool_call(
+        &self,
+        tenant: &Tenant,
+        args: Value,
+        end_user: Option<&crate::enduser::EndUser>,
+    ) -> Result<Value, AppError> {
         // PRD-mcphost-data-retention requirement 4 (AC6): refuse before
         // any write when free space on the database's filesystem is under
         // the configured floor.
@@ -4129,7 +4233,7 @@ impl McpHostHandler {
         // isn't found here -- `ToolNotFound`, with nothing in the error to
         // distinguish "never published by anyone" from "published by
         // someone else".
-        self.call_published_tool(tenant, &local_name, call_args, false, None, version)
+        self.call_published_tool(tenant, &local_name, call_args, false, None, version, end_user)
             .await
     }
 
@@ -4153,6 +4257,7 @@ impl McpHostHandler {
         args: Value,
         mcp_name_mismatch: bool,
         version: Option<i64>,
+        end_user: Option<&crate::enduser::EndUser>,
     ) -> Result<Value, AppError> {
         let not_found = || AppError::ToolNotFound(format!("{owner_ns}.{local_name}"));
         let (owner, row) = self
@@ -4179,8 +4284,16 @@ impl McpHostHandler {
             return Err(not_found());
         }
 
-        self.call_published_tool(&owner, local_name, args, mcp_name_mismatch, Some(caller), version)
-            .await
+        self.call_published_tool(
+            &owner,
+            local_name,
+            args,
+            mcp_name_mismatch,
+            Some(caller),
+            version,
+            end_user,
+        )
+        .await
     }
 }
 
@@ -4406,6 +4519,43 @@ impl ServerHandler for McpHostHandler {
             tracing::warn!(code = err.code(), tenant = %tenant.namespace, tool = %body_name, "call refused: tenant banned");
             return Err(err.into_error_data());
         }
+        // PRD-mcphost-end-user-identity requirement 1/2: resolved once,
+        // before dispatch, from either the OAuth bearer this call's `auth`
+        // already carries (requirement 1) or a verified `end_user_assertion`
+        // argument for a key-based caller (requirement 2). AC3: an
+        // assertion present but invalid refuses the WHOLE call
+        // (`end_user_assertion_invalid`) before any dispatch arm below
+        // runs, never falling back to "no end user".
+        let mut end_user: Option<crate::enduser::EndUser> = None;
+        let mut end_user_err: Option<AppError> = None;
+        if let Auth::Tenant(tenant, oauth_caller) = &auth {
+            if let Some(oauth_caller) = oauth_caller {
+                end_user = Some(crate::enduser::EndUser {
+                    subject: oauth_caller.subject.clone(),
+                    issuer: Some(oauth_caller.issuer.clone()),
+                    method: crate::enduser::EndUserMethod::Oauth,
+                    verified_at: now_unix(),
+                });
+            } else if let Some(assertion) = raw_args.get("end_user_assertion").and_then(Value::as_str) {
+                match crate::enduser::verify_assertion(&self.state, tenant, assertion).await {
+                    Ok(eu) => end_user = Some(eu),
+                    Err(e) => end_user_err = Some(e),
+                }
+            }
+        }
+        // requirement 2: `end_user_assertion` is a call-framing argument,
+        // never a tool's own -- stripped before schema validation/dispatch,
+        // same "reserved key inside the call args" shape `version` already
+        // uses (see the cross-tenant match arm below), so its value never
+        // reaches a tool's own args or a persisted log line.
+        let raw_args = match raw_args {
+            Value::Object(mut map) => {
+                map.remove("end_user_assertion");
+                Value::Object(map)
+            }
+            other => other,
+        };
+
         // Requirements 16/17: redacted by key name, recursively, exactly
         // once here, so every dispatch branch below -- a `host.*` tool, an
         // `admin.*` tool, or a direct namespaced call -- works from
@@ -4419,7 +4569,10 @@ impl ServerHandler for McpHostHandler {
         let deprecation_notices =
             crate::api_contract::deprecation_notices(&body_name, &args, &self.state.deprecations);
 
-        let outcome: Result<Value, AppError> = match (&auth, body_name.as_str()) {
+        let outcome: Result<Value, AppError> = if let Some(err) = end_user_err {
+            Err(err)
+        } else {
+            match (&auth, body_name.as_str()) {
             (_, "signup") => {
                 let (client_name, client_version) = match peer_client_info(&ctx) {
                     Some((name, version)) => (Some(name), Some(version)),
@@ -4540,11 +4693,12 @@ impl ServerHandler for McpHostHandler {
             (Auth::Tenant(tenant, subject), name)
                 if name.starts_with("host.") || name.starts_with("billing.") =>
             {
-                self.dispatch_tenant_tool(tenant, subject.as_deref(), name, args).await
+                let subject = subject.as_ref().map(|o| o.subject.as_str());
+                self.dispatch_tenant_tool(tenant, subject, end_user.as_ref(), name, args).await
             }
             (Auth::Tenant(tenant, _), name) => match name.split_once('.') {
                 Some((ns, local)) if ns == tenant.namespace => {
-                    self.call_published_tool(tenant, local, args, mismatch, None, None)
+                    self.call_published_tool(tenant, local, args, mismatch, None, None, end_user.as_ref())
                         .await
                 }
                 // PRD-mcphost-sharing P0 requirement 2: `<ns>.<name>` for
@@ -4567,11 +4721,12 @@ impl ServerHandler for McpHostHandler {
                         }
                         other => (None, other),
                     };
-                    self.call_shared_tool(tenant, ns, local, args, mismatch, version)
+                    self.call_shared_tool(tenant, ns, local, args, mismatch, version, end_user.as_ref())
                         .await
                 }
                 None => Err(AppError::ToolNotFound(name.to_string())),
             },
+            }
         };
 
         match outcome {

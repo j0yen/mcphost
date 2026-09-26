@@ -62,6 +62,7 @@ const MIGRATION_0038: &str = include_str!("../migrations/0038_oauth_issuers.sql"
 const MIGRATION_0039: &str = include_str!("../migrations/0039_table_models.sql");
 const MIGRATION_0040: &str = include_str!("../migrations/0040_alerts.sql");
 const MIGRATION_0041: &str = include_str!("../migrations/0041_status_feed.sql");
+const MIGRATION_0042: &str = include_str!("../migrations/0042_end_user_identity.sql");
 const MIGRATION_0044: &str = include_str!("../migrations/0044_docs_index.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
@@ -1736,6 +1737,7 @@ impl Db {
         Self::migrate_0039_table_models(&conn)?;
         Self::migrate_0040_alerts(&conn)?;
         Self::migrate_0041_status_feed(&conn)?;
+        Self::migrate_0042_end_user_identity(&conn)?;
         Self::migrate_0044_docs_index(&conn)
     }
 
@@ -2323,6 +2325,25 @@ impl Db {
             .exists([])?;
         if !has_table {
             conn.execute_batch(MIGRATION_0041)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-end-user-identity migration 0042 (renumbered from 0041
+    /// during the mcphost-status-feed rebase, which had already claimed
+    /// 0041 for status_feed) (requirement 4/5): gated on
+    /// `tenant_state_kv.end_user_subject` -- the rebuild's own idempotency
+    /// signal (present iff this whole batch, including the
+    /// `calls`/`tenant_state_rows` `ALTER TABLE`s, already ran), same
+    /// single-gate-for-a-mixed-batch convention 0010/0012 use.
+    fn migrate_0042_end_user_identity(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare(
+                "SELECT 1 FROM pragma_table_info('tenant_state_kv') WHERE name = 'end_user_subject'",
+            )?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0042)?;
         }
         Ok(())
     }
@@ -5015,20 +5036,26 @@ impl Db {
     // methods are the same thin "one prepared statement, one shape" layer
     // every other section of this file already is.
 
+    /// `end_user_norm`: `""` for tenant-wide, else the end-user subject
+    /// [`crate::tenant_state`]'s `resolve_end_user` already resolved
+    /// (PRD-mcphost-end-user-identity requirement 5) -- this layer never
+    /// interprets `"self"` itself, it just stores/filters by whatever
+    /// caller-facing subject string it's handed.
     pub async fn state_kv_set(
         &self,
         tenant_id: i64,
         key: String,
+        end_user_norm: String,
         value_json: String,
     ) -> Result<(), AppError> {
         let updated_unix = now_unix();
         self.with_conn(move |conn| {
             conn.execute(
-                "INSERT INTO tenant_state_kv (tenant_id, key, value_json, updated_unix) \
-                 VALUES (?1, ?2, ?3, ?4) \
-                 ON CONFLICT(tenant_id, key) DO UPDATE SET \
+                "INSERT INTO tenant_state_kv (tenant_id, key, end_user_subject, value_json, updated_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5) \
+                 ON CONFLICT(tenant_id, key, end_user_subject) DO UPDATE SET \
                      value_json = excluded.value_json, updated_unix = excluded.updated_unix",
-                params![tenant_id, key, value_json, updated_unix],
+                params![tenant_id, key, end_user_norm, value_json, updated_unix],
             )?;
             Ok(())
         })
@@ -5036,17 +5063,18 @@ impl Db {
     }
 
     /// `(value_json, updated_unix)`, `None` if the key has never been set
-    /// (or was deleted) for this tenant.
+    /// (or was deleted) for this tenant under this `end_user_norm`.
     pub async fn state_kv_get(
         &self,
         tenant_id: i64,
         key: String,
+        end_user_norm: String,
     ) -> Result<Option<(String, i64)>, AppError> {
         self.with_conn(move |conn| {
             conn.query_row(
                 "SELECT value_json, updated_unix FROM tenant_state_kv \
-                 WHERE tenant_id = ?1 AND key = ?2",
-                params![tenant_id, key],
+                 WHERE tenant_id = ?1 AND key = ?2 AND end_user_subject = ?3",
+                params![tenant_id, key, end_user_norm],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .optional()
@@ -5055,11 +5083,16 @@ impl Db {
         .await
     }
 
-    pub async fn state_kv_delete(&self, tenant_id: i64, key: String) -> Result<bool, AppError> {
+    pub async fn state_kv_delete(
+        &self,
+        tenant_id: i64,
+        key: String,
+        end_user_norm: String,
+    ) -> Result<bool, AppError> {
         self.with_conn(move |conn| {
             let n = conn.execute(
-                "DELETE FROM tenant_state_kv WHERE tenant_id = ?1 AND key = ?2",
-                params![tenant_id, key],
+                "DELETE FROM tenant_state_kv WHERE tenant_id = ?1 AND key = ?2 AND end_user_subject = ?3",
+                params![tenant_id, key, end_user_norm],
             )?;
             Ok(n > 0)
         })
@@ -5067,13 +5100,15 @@ impl Db {
     }
 
     /// `AC1`/goal 1's `host.state.list`: every `(key, value_json,
-    /// updated_unix)` for this tenant whose key starts with `prefix` (all
-    /// keys when `prefix` is `None`), ordered by key, capped at `limit`.
+    /// updated_unix)` for this tenant and `end_user_norm` whose key starts
+    /// with `prefix` (all keys when `prefix` is `None`), ordered by key,
+    /// capped at `limit`.
     pub async fn state_kv_list(
         &self,
         tenant_id: i64,
         prefix: Option<String>,
         limit: i64,
+        end_user_norm: String,
     ) -> Result<Vec<(String, String, i64)>, AppError> {
         self.with_conn(move |conn| {
             let pattern = prefix
@@ -5082,10 +5117,11 @@ impl Db {
             let mut stmt = conn.prepare(
                 "SELECT key, value_json, updated_unix FROM tenant_state_kv \
                  WHERE tenant_id = ?1 AND (?2 IS NULL OR key LIKE ?2 ESCAPE '\\') \
+                 AND end_user_subject = ?4 \
                  ORDER BY key LIMIT ?3",
             )?;
             let rows = stmt
-                .query_map(params![tenant_id, pattern, limit], |r| {
+                .query_map(params![tenant_id, pattern, limit, end_user_norm], |r| {
                     Ok((r.get(0)?, r.get(1)?, r.get(2)?))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
@@ -5236,14 +5272,69 @@ impl Db {
         tenant_id: i64,
         table_name: String,
         row_json: String,
+        end_user_norm: String,
     ) -> Result<i64, AppError> {
         self.with_conn(move |conn| {
             conn.execute(
-                "INSERT INTO tenant_state_rows (tenant_id, table_name, row_json) \
-                 VALUES (?1, ?2, ?3)",
-                params![tenant_id, table_name, row_json],
+                "INSERT INTO tenant_state_rows (tenant_id, table_name, row_json, end_user_subject) \
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![tenant_id, table_name, row_json, end_user_norm],
             )?;
             Ok(conn.last_insert_rowid())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-end-user-identity requirement 5/AC6: every `(id,
+    /// row_json)` for `table_name` scoped to exactly `end_user_norm`
+    /// (`""` for tenant-wide) -- the pushed-down, indexed counterpart of
+    /// [`Self::state_rows_all`] (which stays tenant/table-wide, unscoped,
+    /// for callers like `state_table_drop` that must account for every end
+    /// user's rows together). Backs `host.state.query`/`insert`/
+    /// `delete_rows`'s own end-user scoping.
+    pub async fn state_rows_for_end_user(
+        &self,
+        tenant_id: i64,
+        table_name: String,
+        end_user_norm: String,
+    ) -> Result<Vec<(i64, String)>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, row_json FROM tenant_state_rows \
+                 WHERE tenant_id = ?1 AND table_name = ?2 AND end_user_subject = ?3 ORDER BY id",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id, table_name, end_user_norm], |r| {
+                    Ok((r.get(0)?, r.get(1)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// Test-only: `EXPLAIN QUERY PLAN` for the exact statement
+    /// [`Self::state_rows_for_end_user`] runs, one plan-step "detail" string
+    /// per row -- AC6 asserts this mentions the composite index
+    /// (`idx_tenant_state_rows_tenant_table_enduser`, migration 0039)
+    /// rather than a full table scan.
+    pub async fn explain_state_rows_for_end_user_for_test(
+        &self,
+        tenant_id: i64,
+        table_name: String,
+        end_user_norm: String,
+    ) -> Result<Vec<String>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "EXPLAIN QUERY PLAN SELECT id, row_json FROM tenant_state_rows \
+                 WHERE tenant_id = ?1 AND table_name = ?2 AND end_user_subject = ?3",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id, table_name, end_user_norm], |r| {
+                    r.get::<_, String>(3)
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
         })
         .await
     }
@@ -5267,6 +5358,94 @@ impl Db {
                 )? as i64;
             }
             Ok(deleted)
+        })
+        .await
+    }
+
+    // ---- end-user activity / quota (PRD-mcphost-end-user-identity P1
+    // requirement 6, AC9) --------------------------------------------------
+
+    /// `true` if `end_user_subject` has already written this tenant's state
+    /// at or after `since_unix` -- a write from an already-active subject
+    /// never counts against `end_users_max` again within the same window.
+    pub async fn end_user_active_since(
+        &self,
+        tenant_id: i64,
+        end_user_subject: String,
+        since_unix: i64,
+    ) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT 1 FROM tenant_end_user_activity \
+                 WHERE tenant_id = ?1 AND end_user_subject = ?2 AND last_write_unix >= ?3",
+                params![tenant_id, end_user_subject, since_unix],
+                |_| Ok(()),
+            )
+            .optional()
+            .map(|r| r.is_some())
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// How many distinct end-user subjects have written this tenant's state
+    /// at or after `since_unix` -- `end_users_max`'s own denominator.
+    pub async fn count_distinct_end_users_since(
+        &self,
+        tenant_id: i64,
+        since_unix: i64,
+    ) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM tenant_end_user_activity \
+                 WHERE tenant_id = ?1 AND last_write_unix >= ?2",
+                params![tenant_id, since_unix],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Upserts `end_user_subject`'s most recent write timestamp for
+    /// `tenant_id` -- called once a write this subject's quota check
+    /// allowed has actually landed.
+    pub async fn touch_end_user_activity(
+        &self,
+        tenant_id: i64,
+        end_user_subject: String,
+        now_unix_val: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO tenant_end_user_activity (tenant_id, end_user_subject, last_write_unix) \
+                 VALUES (?1, ?2, ?3) \
+                 ON CONFLICT(tenant_id, end_user_subject) DO UPDATE SET \
+                     last_write_unix = excluded.last_write_unix",
+                params![tenant_id, end_user_subject, now_unix_val],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Test-only: the most recent `calls` row's end-user columns for
+    /// `(tenant_id, tool_name)` -- `(end_user_subject, end_user_issuer,
+    /// end_user_method)`, `None` if no call has landed yet.
+    pub async fn last_call_end_user_for_test(
+        &self,
+        tenant_id: i64,
+        tool_name: String,
+    ) -> Result<Option<(Option<String>, Option<String>, Option<String>)>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT end_user_subject, end_user_issuer, end_user_method FROM calls \
+                 WHERE tenant_id = ?1 AND tool_name = ?2 ORDER BY id DESC LIMIT 1",
+                params![tenant_id, tool_name],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()
+            .map_err(AppError::from)
         })
         .await
     }
@@ -5381,6 +5560,51 @@ impl Db {
         origin_detail: Option<String>,
         caller_tenant_id: Option<i64>,
     ) -> Result<(), AppError> {
+        self.record_call_attributed_with_end_user(
+            tenant_id,
+            tool_name,
+            duration_ms,
+            ok,
+            error_class,
+            cpu_ms,
+            peak_rss_kb,
+            outcome,
+            origin,
+            origin_detail,
+            caller_tenant_id,
+            None,
+            None,
+            None,
+        )
+        .await
+    }
+
+    /// PRD-mcphost-end-user-identity requirement 4 (AC1/AC2): same as
+    /// [`Self::record_call_attributed`], plus the end user (if any) this
+    /// call ran as -- `end_user_method` is `"oauth"` or `"assertion"`,
+    /// `end_user_issuer` only ever set alongside `"oauth"`. Kept as a
+    /// fourth function rather than widening `record_call_attributed`
+    /// itself, same "existing call sites don't all need trailing `None`s"
+    /// rationale `record_call_attributed`'s own doc comment already gives
+    /// for staying separate from `record_call`.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn record_call_attributed_with_end_user(
+        &self,
+        tenant_id: i64,
+        tool_name: String,
+        duration_ms: i64,
+        ok: bool,
+        error_class: Option<String>,
+        cpu_ms: Option<i64>,
+        peak_rss_kb: Option<i64>,
+        outcome: &str,
+        origin: String,
+        origin_detail: Option<String>,
+        caller_tenant_id: Option<i64>,
+        end_user_subject: Option<String>,
+        end_user_issuer: Option<String>,
+        end_user_method: Option<String>,
+    ) -> Result<(), AppError> {
         let started_at = now_rfc3339();
         let started_unix = now_unix();
         let outcome = outcome.to_string();
@@ -5401,9 +5625,9 @@ impl Db {
         self.with_conn(move |conn| {
             let tx = conn.unchecked_transaction()?;
             tx.execute(
-                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id],
+                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method],
             )?;
             tx.execute(
                 "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, \

@@ -13,6 +13,8 @@ mod egress_proxy_lock;
 #[path = "support/host.rs"]
 #[allow(dead_code)]
 mod host;
+#[path = "support/oauth.rs"]
+mod oauth;
 #[path = "support/uptime_probes.rs"]
 mod uptime_probes;
 
@@ -30,6 +32,10 @@ mod compose_ac1_python_call_child_result;
 mod compose_ac2_child_exception_propagates;
 #[path = "docstore_ac09_python_mcphost_docs_get_without_tool_call.rs"]
 mod docstore_ac09_python_mcphost_docs_get_without_tool_call;
+#[path = "enduser_ac01_oauth_python_env_and_calls_row.rs"]
+mod enduser_ac01_oauth_python_env_and_calls_row;
+#[path = "enduser_ac04_no_identity_env_unset_and_calls_row_null.rs"]
+mod enduser_ac04_no_identity_env_unset_and_calls_row_null;
 #[path = "envelope_ac2_python_object_declared_output_promoted.rs"]
 mod envelope_ac2_python_object_declared_output_promoted;
 #[path = "envelope_ac3_python_scalar_promotion_warns.rs"]
@@ -186,11 +192,3 @@ mod python_ac12_republish_atomic;
 mod python_ac13_capacity_admission;
 #[path = "python_ac14_cpu_budget_rate_limit.rs"]
 mod python_ac14_cpu_budget_rate_limit;
-#[path = "runenvelope_ac1_call_and_tool_run_parity.rs"]
-mod runenvelope_ac1_call_and_tool_run_parity;
-#[path = "runenvelope_ac2_no_declared_outputs_raw_payload.rs"]
-mod runenvelope_ac2_no_declared_outputs_raw_payload;
-#[path = "runenvelope_ac3_descriptor_and_decision_table_name_envelope.rs"]
-mod runenvelope_ac3_descriptor_and_decision_table_name_envelope;
-#[path = "runenvelope_ac4_no_calls_row_with_payload.rs"]
-mod runenvelope_ac4_no_calls_row_with_payload;

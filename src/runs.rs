@@ -147,7 +147,7 @@ pub async fn get(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Valu
         })?;
     let mut value = run_to_json(&run);
     if let Some(result_ref) = &run.result_ref
-        && let Some((value_json, _)) = state.db.state_kv_get(tenant.id, result_ref.clone()).await?
+        && let Some((value_json, _)) = state.db.state_kv_get(tenant.id, result_ref.clone(), String::new()).await?
     {
         value["result"] = serde_json::from_str(&value_json).unwrap_or(Value::Null);
     }
@@ -215,7 +215,7 @@ pub async fn purge(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
         .ok_or_else(|| AppError::InvalidArgs("missing required argument 'before_unix'".to_string()))?;
     let refs = state.db.purge_runs(tenant.id, before_unix).await?;
     for r in &refs {
-        let _ = state.db.state_kv_delete(tenant.id, r.clone()).await;
+        let _ = state.db.state_kv_delete(tenant.id, r.clone(), String::new()).await;
     }
     Ok(json!({"purged": refs.len()}))
 }
@@ -244,7 +244,7 @@ pub async fn wait(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
             let mut value = run_to_json(&run);
             if let Some(result_ref) = &run.result_ref
                 && let Some((value_json, _)) =
-                    state.db.state_kv_get(tenant.id, result_ref.clone()).await?
+                    state.db.state_kv_get(tenant.id, result_ref.clone(), String::new()).await?
             {
                 value["result"] = serde_json::from_str(&value_json).unwrap_or(Value::Null);
             }
@@ -440,6 +440,7 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
             Arc::new(TenantStateBridge {
                 state: Arc::new(state.clone()),
                 tenant: tenant.clone(),
+                end_user: None,
             }),
             Some(log.clone() as Arc<dyn CallLog>),
         )),
@@ -464,6 +465,10 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
         // resolved the same way `handler.rs`'s synchronous dispatch paths
         // do.
         egress_allowed: tenant.plan == "pro",
+        // PRD-mcphost-end-user-identity: an async/scheduled job has no live
+        // request to carry an end user from -- `None`, same as every other
+        // job-executor call.
+        end_user: None,
     };
 
     let outcome = tokio::time::timeout(
@@ -542,7 +547,7 @@ async fn run_one_job(state: AppState, run: RunRow) {
             match state.db.find_tenant_by_id(tenant_id).await {
                 Ok(Some(tenant)) => {
                     let set_args = json!({"key": result_key, "value": result_value});
-                    match crate::tenant_state::state_set(&state, &tenant, &set_args).await {
+                    match crate::tenant_state::state_set(&state, &tenant, &set_args, None).await {
                         Ok(_) => ("done".to_string(), Some(result_key), None),
                         Err(e) => ("error".to_string(), None, Some(e.code().to_string())),
                     }

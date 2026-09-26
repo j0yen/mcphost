@@ -379,7 +379,14 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # already independently raised the cap past this PRD's original 475-based
 # arithmetic) to re-collapse core's normal buckets to 1 against the full
 # rebased file set, landing the grand total back at 10.
-MAX_PER_SUITE = {"core": 560, "sandbox": 90}
+#
+# mcphost-docs-semantic-search): this PRD's own eleven `enduser_ac*.rs`
+# files (also `core`-classified) join the same normal bucket on top of
+# docs-semantic-search's own 560 cap above, spawning an 11th binary again.
+# 560 -> 576 re-collapses core's normal buckets to 1, landing the grand
+# total back at 10, with a little headroom for the rest of this PRD's own
+# remaining AC files.
+MAX_PER_SUITE = {"core": 576, "sandbox": 90}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

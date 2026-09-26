@@ -233,6 +233,12 @@ async fn unauthenticated_tools_list_is_signup_only() {
         "host.docs.search",
         "host.docs.index_config",
         "host.docs.reindex",
+        // PRD-mcphost-end-user-identity: discoverable unauthenticated too,
+        // same as every other host.*-style tool above -- both are
+        // authenticated (tenant_key/bearer-gated) calls, not the discovery
+        // of them.
+        "host.enduser.whoami",
+        "host.enduser.assertion_secret_rotate",
     ] {
         assert!(
             tool_names.contains(&expected),
@@ -245,7 +251,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        103,
+        105,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the three host.tool_history/host.tool_rollback/host.tool_diff \
@@ -268,7 +274,8 @@ async fn unauthenticated_tools_list_is_signup_only() {
          (PRD-mcphost-document-store) + \
          the three host.oauth.* tools (PRD-mcphost-oauth-resource-server) + \
          the three host.docs.search/index_config/reindex tools \
-         (PRD-mcphost-docs-semantic-search): \
+         (PRD-mcphost-docs-semantic-search) + \
+         the two host.enduser.* tools (PRD-mcphost-end-user-identity): \
          {tool_names:?}"
     );
 }

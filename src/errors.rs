@@ -415,6 +415,16 @@ impl AppError {
                 // 10: a closed/frozen channel is a caller-state gate, same
                 // INVALID_REQUEST bucket as `mesh_frozen` above.
                 "mesh_frozen" | "channel_closed" | "channel_frozen" => ErrorCode::INVALID_REQUEST,
+                // PRD-mcphost-end-user-identity: `end_user_required`/
+                // `end_user_explicit_forbidden`/`quota_end_users` are
+                // caller-input problems, same INVALID_PARAMS bucket as the
+                // `state_*` group above; `end_user_assertion_invalid` is an
+                // auth-shaped rejection, same INVALID_REQUEST bucket as
+                // `invalid_token` above.
+                "end_user_required" | "end_user_explicit_forbidden" | "quota_end_users" => {
+                    ErrorCode::INVALID_PARAMS
+                }
+                "end_user_assertion_invalid" => ErrorCode::INVALID_REQUEST,
                 _ => ErrorCode::INTERNAL_ERROR,
             },
             AppError::MultiInvalid { errors, .. } => errors
