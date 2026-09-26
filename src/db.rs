@@ -4822,6 +4822,56 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-shared-tool-call-path P1 requirement 6 (AC8): every OTHER
+    /// tenant's tool `caller_id` can currently reach through sharing --
+    /// every `public` tool (`via: "direct"`, since it needs no group
+    /// indirection) plus every `group`-shared tool whose group `caller_id`
+    /// is a member of (`via: "group:<name>"`). Returns
+    /// `(owner_namespace, tool_name, via)` triples; `host.whoami`'s
+    /// `shared_tools` field is built from this.
+    pub async fn shared_tools_for_caller(
+        &self,
+        caller_id: i64,
+        caller_namespace: String,
+    ) -> Result<Vec<(String, String, String)>, AppError> {
+        self.with_conn(move |conn| {
+            let mut out = Vec::new();
+            let mut public_stmt = conn.prepare(
+                "SELECT tenants.namespace, tools.name FROM tools \
+                 JOIN tenants ON tenants.id = tools.tenant_id \
+                 WHERE tools.visibility = 'public' AND tenants.namespace != ?1",
+            )?;
+            let public_rows = public_stmt
+                .query_map(params![caller_namespace], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, "direct".to_string()))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            out.extend(public_rows);
+
+            let mut group_stmt = conn.prepare(
+                "SELECT tenants.namespace, tools.name, groups.name FROM tools \
+                 JOIN groups ON groups.owner_tenant_id = tools.tenant_id \
+                 AND groups.name = tools.shared_group \
+                 JOIN group_members ON group_members.group_id = groups.id \
+                 AND group_members.member_tenant_id = ?1 \
+                 JOIN tenants ON tenants.id = tools.tenant_id \
+                 WHERE tools.visibility = 'group'",
+            )?;
+            let group_rows = group_stmt
+                .query_map(params![caller_id], |r| {
+                    let owner_ns: String = r.get(0)?;
+                    let tool_name: String = r.get(1)?;
+                    let group_name: String = r.get(2)?;
+                    Ok((owner_ns, tool_name, format!("group:{group_name}")))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            out.extend(group_rows);
+
+            Ok(out)
+        })
+        .await
+    }
+
     /// `admin.shared_tools`: every currently-shared (non-private) tool
     /// across every tenant, with its owner namespace and per-day caller
     /// counts -- the per-day breakdown mirrors [`Self::calls_by_others`]

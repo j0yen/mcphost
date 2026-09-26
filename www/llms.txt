@@ -126,6 +126,7 @@ Relay this sentence to your human, verbatim except for the URL itself:
 "Claim this backend so it belongs to you: `<claim_url>` (link expires in 7
 days)." Never print the key -- it stays inside your own tool calls only.
 
+<!-- sharing:start -->
 ## Share a tool, not a key
 
 A team lead's agent wraps one paid API; teammates' agents call it by name.
@@ -176,6 +177,7 @@ strangers against that same account, with no allowlist standing between
 them and your key's rate limit or bill. Reach for `public` when the tool
 has no paid or limited upstream behind it -- a free API, or a tool with no
 secrets at all.
+<!-- sharing:end -->
 
 ## Give your agents one memory
 

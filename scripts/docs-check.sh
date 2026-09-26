@@ -32,7 +32,7 @@ if not text.strip():
 PY
 }
 
-for f in docs/kinds/*.md docs/receipts/*.md; do
+for f in docs/kinds/*.md docs/receipts/*.md docs/sharing.md; do
   [ -e "$f" ] || continue
   check_utf8_nonempty "$f" || status=1
 done

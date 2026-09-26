@@ -8,7 +8,7 @@
 
 use serde_json::{Value, json};
 
-use crate::db::Tenant;
+use crate::db::{Tenant, ToolRow};
 use crate::errors::AppError;
 use crate::state::AppState;
 
@@ -175,6 +175,42 @@ pub async fn group_list(state: &AppState, tenant: &Tenant) -> Result<Value, AppE
         .map(|(name, members)| json!({ "name": name, "members": members }))
         .collect();
     Ok(json!({ "groups": groups }))
+}
+
+/// PRD-mcphost-shared-tool-call-path requirement 1/2 (AC1-3, AC9): the
+/// cross-tenant resolution primitive `handler.rs`'s raw `tools/call`
+/// dispatch and `host.tool_call`'s qualified-name branch both call --
+/// `owner_ns`'s tool `local_name`, if it exists AND is visible to `caller`
+/// (`public`, or `group` with `caller` a member). Every miss reason (no
+/// such namespace, no such tool, private, or caller not in the group)
+/// collapses to the identical [`AppError::shared_tool_not_found`], so
+/// neither the owner's existence nor the tool's is ever revealed to a
+/// caller it isn't shared with.
+pub async fn resolve_shared_tool(
+    state: &AppState,
+    caller: &Tenant,
+    owner_ns: &str,
+    local_name: &str,
+) -> Result<(Tenant, ToolRow), AppError> {
+    let not_found = || AppError::shared_tool_not_found(owner_ns, local_name);
+    let (owner, row) = state
+        .db
+        .get_tool_by_owner_namespace(owner_ns.to_string(), local_name.to_string())
+        .await?
+        .ok_or_else(not_found)?;
+
+    let visible = match row.visibility.as_str() {
+        "public" => true,
+        "group" => match &row.shared_group {
+            Some(group) => state.db.is_group_member(owner.id, group.clone(), caller.id).await?,
+            None => false,
+        },
+        _ => false,
+    };
+    if !visible {
+        return Err(not_found());
+    }
+    Ok((owner, row))
 }
 
 /// `host.catalog.search(q?, limit?)` (AC7): a `LIKE` over name/description

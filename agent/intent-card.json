@@ -1,115 +1,95 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-end-user-identity.md",
-  "intent_slug": "mcphost-end-user-identity",
-  "root_motivation": "Grounding (PRD: opportunity -- visions/mcphost-end-user-auth.md wwhtbt leaf 3; ICP rank 2 pain per-end-user auth passthrough, modelcontextprotocol/servers#2173 via wiki 2026-09-23): every call on mcphost is the tenant's -- `calls` (migration 0001) has tenant and tool, no caller; a python-kind tool receives the `MCPHOST_*` environment contract with nothing about who asked; `host.state` rows (0011) are keyed by tenant only. A tool that must answer 'show my invoices' for a thousand different humans cannot exist without the tool author building identity, storage partitioning, and a trust path from scratch. Zero multi-user tools exist on the host today.",
-  "user_persona": "Four (PRD User stories): (1) a SaaS PM (tenant) whose tool reads a logged-in user's own rows via `host.state.list {end_user: \"self\"}`, no per-user tools/keys; (2) an agent operator with OAuth, whose login token becomes the end-user identity inside every tool it calls; (3) a python-kind tool author, who adds two env vars and one argument, nothing else; (4) an auditor, who sees which end user, if any, each call served.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-shared-tool-call-path.md",
+  "intent_slug": "mcphost-shared-tool-call-path",
+  "root_motivation": "Grounding (PRD: six of six truth-tier cross-tenant sessions on 2026-09-26, mean satisfaction 0.33): host.tool_call resolves only the caller's own tenant, so an agent that reads www/llms.txt and calls host.tool_call(name=\"acme.lookup\") for a tool shared with it gets tool_not_found -- the working path (raw tools/call with the qualified name) is undocumented, so every truth-tier session retried the documented form until its turn budget ran out. The 'share a tool, not a key' recipe the killer-apps vision shipped is unusable by an agent that follows the docs rather than reads the proof script's source.",
+  "user_persona": "Three (PRD User stories): an integration agent that calls host.tool_call {name: \"acme.lookup\", args} after the owner shared it and expects the result; a tool owner whose own host.tool_call {name: \"lookup\"} must behave exactly as before; an attacker probing host.tool_call {name: \"victim.secret\"} who must see the same tool_not_found shape and timing as a probe against a nonexistent namespace.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 11
+    "target": 9
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a bearer token with sub=u1 validated by the OAuth PRD, When a python-kind tool runs, Then its environment has MCPHOST_END_USER_ID=u1, MCPHOST_END_USER_METHOD=oauth, and the calls row has end_user_subject=u1.",
-      "test": "tests/enduser_ac01_oauth_python_env_and_calls_row.rs"
+      "description": "Given owner O publishes lookup and shares it public, When tenant B calls host.tool_call {name: \"<O>.lookup\", args}, Then B receives the tool's result and a meter event is written for O's tool with B as caller.",
+      "test": "tests/sharedcall_ac01_host_tool_call_public_cross_tenant.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a key-based call with a valid end_user_assertion for sub=u2, When an http-kind tool runs, Then the upstream request carries X-MCPHost-End-User: u2 and the call row records method=assertion.",
-      "test": "tests/enduser_ac02_assertion_http_headers_and_calls_row.rs"
+      "description": "Given O shares lookup to group G and B is not in G, When B calls host.tool_call {name: \"<O>.lookup\"}, Then tool_not_found with the non-leaking sharing hint (data.hint naming host.tool_share) returns.",
+      "test": "tests/sharedcall_ac02_group_share_non_member_gets_hint.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given an assertion signed with the wrong secret or with exp in the past, When the call runs, Then it is rejected with end_user_assertion_invalid and no tool executes.",
-      "test": "tests/enduser_ac03_invalid_assertion_rejected.rs"
+      "description": "Given three qualified names (nonexistent namespace, existing namespace with nonexistent tool, existing unshared tool), When B calls each 200 times, Then the response bodies are byte-identical and the p95 latencies are within 10ms of each other.",
+      "test": "tests/sharedcall_ac03_not_found_reasons_indistinguishable.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given no identity, When a python-kind tool runs, Then MCPHOST_END_USER_ID is unset (not empty) and the call row's end-user columns are null.",
-      "test": "tests/enduser_ac04_no_identity_env_unset_and_calls_row_null.rs"
+      "description": "Given B calls host.tool_call {name: \"<O>.lookup\", async: true}, When B calls host.runs.wait {id}, Then the result is returned; When O calls host.runs.get {id}, Then not_found.",
+      "test": "tests/sharedcall_ac04_async_qualified_call_scoped_to_caller.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given u1 writes host.state.set {key: \"k\", end_user: \"self\"} and u2 writes the same key, When each reads with end_user: \"self\", Then each sees only its own value, and a read without end_user sees the tenant-wide value or null.",
-      "test": "tests/enduser_ac05_state_set_get_end_user_self_isolation.rs"
+      "description": "Given www/llms.txt after regeneration, When scripts/gen-docs-sharing.sh --check runs in CI, Then it exits 0; When a line of the sharing section is hand-edited, Then it exits non-zero naming the line.",
+      "test": "tests/sharedcall_ac05_gen_docs_sharing_check.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given host.state.query with end_user: \"self\" for u1 over 1,000 rows of which 10 are u1's, When it runs, Then exactly 10 rows return and the query plan uses the composite index (asserted via EXPLAIN QUERY PLAN in the test).",
-      "test": "tests/enduser_ac06_state_query_end_user_self_scales_via_index.rs"
+      "description": "Given examples/share-a-tool/proof.sh against the in-process test host, When it runs, Then both the raw and the host.tool_call qualified calls succeed and the receipt records both.",
+      "test": "tests/sharedcall_ac06_proof_script_qualified_host_tool_call.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given no end user on the call, When host.state.get {end_user: \"self\"} runs, Then it errors end_user_required; with an explicit subject it succeeds and the call row is marked impersonated.",
-      "test": "tests/enduser_ac07_end_user_required_and_explicit_impersonation.rs"
+      "description": "Given O's own call host.tool_call {name: \"lookup\"}, When it runs before and after this change on the existing fixture, Then the response is byte-identical.",
+      "test": "tests/sharedcall_ac07_own_unqualified_call_unchanged.rs"
     },
     {
       "id": "AC8",
-      "level": "MUST",
-      "description": "Given a call that has an end user u1, When the tool passes end_user: \"u9\" explicitly, Then it is rejected (explicit subject only allowed when the call's own identity is absent).",
-      "test": "tests/enduser_ac08_explicit_subject_forbidden_with_own_identity.rs"
+      "level": "SHOULD",
+      "description": "Given B has one direct share and one group share, When B calls host.get_info, Then shared_tools lists both with via set correctly.",
+      "test": "tests/sharedcall_ac08_get_info_lists_shared_tools_with_via.rs"
     },
     {
       "id": "AC9",
-      "level": "SHOULD",
-      "description": "Given plan end_users_max=100, When the 101st distinct subject writes state within 30 days, Then the write is rejected with quota_end_users and reads still work.",
-      "test": "tests/enduser_ac09_quota_end_users.rs"
+      "level": "MUST",
+      "description": "Given host.tool_call {name: \"<O>.lookup\"} under B's free-plan quota exhausted, When called, Then the same quota error an own-tool call returns is produced and the tool does not execute.",
+      "test": "tests/sharedcall_ac09_quota_exhausted_qualified_call_refused.rs"
     },
     {
       "id": "AC10",
-      "level": "SHOULD",
-      "description": "Given an OAuth caller, When host.enduser.whoami runs, Then it returns {subject, issuer, method, verified_at}; without identity it returns null.",
-      "test": "tests/enduser_ac10_whoami.rs"
-    },
-    {
-      "id": "AC11",
       "level": "MUST",
-      "description": "Given host.enduser.assertion_secret_rotate, When called twice, Then assertions signed with the first secret are rejected after the second call and the secret value appears in neither logs nor host.secret_list output.",
-      "test": "tests/enduser_ac11_assertion_secret_rotate_invalidates_and_never_leaks.rs"
-    },
-    {
-      "id": "AC12",
-      "level": "MUST",
-      "description": "Given prod after land, When the operator tenant publishes a python tool that echoes MCPHOST_END_USER_ID and calls it with two different assertions, Then the two calls return the two subjects and host.runs.list shows both (Live; evidence: mcphost-1 healthz version after deploy plus the call transcript, saved under docs/receipts/<slug>.md).",
-      "test": "deferred: operator-provisioned -- needs a real published tool call against production after deploy; no branch-local test can prove a live two-subject call transcript"
+      "description": "Given prod after land, When the operator's shared test tool is called from a second tenant through host.tool_call with the qualified name, Then the result returns and host.runs shows nothing for the owner (Live).",
+      "test": "deferred: operator-provisioned -- needs a real published/shared tool call against production after deploy plus the call transcript; no branch-local test can prove a live cross-tenant transcript"
     }
   ],
   "scope": [
-    "migrations/0042_end_user_identity.sql (new): calls gains end_user_subject/end_user_issuer/end_user_method (nullable) plus idx_calls_tenant_end_user (requirement 4); tenant_state_kv's primary key is rebuilt to (tenant_id, key, end_user_subject) with a '' tenant-wide sentinel (SQLite PRIMARY KEY treats two NULLs as distinct, which would defeat the one-tenant-wide-row invariant, so '' is used instead of NULL -- '' is never a real subject, every real one comes from a JWT sub or a signed assertion's sub); tenant_state_rows gains the same end_user_subject TEXT NOT NULL DEFAULT '' column plus a composite index (tenant_id, table_name, end_user_subject) for AC6's pushed-down predicate; new tenant_end_user_activity table (tenant_id, end_user_subject, last_write_unix) for the AC9 quota count.",
-    "src/enduser.rs (new): EndUser{subject, issuer, method, verified_at} and EndUserMethod{Oauth, Assertion} (requirement 1); ASSERTION_SECRET_NAME (the reserved host.secret_set-blocked tenant secret name); verify_assertion() (HS256 decode, exp <= iat + 3600, exp not in the past, every failure -> end_user_assertion_invalid, never a fallback to anonymous -- AC2/AC3); assertion_secret_rotate() (host.enduser.assertion_secret_rotate -- AC11); whoami() (host.enduser.whoami -- AC10); resolve_end_user() (the end_user: \"self\" | \"<subject>\" | null argument shared by every host.state.* op -- self resolves the call's own identity or errors end_user_required, an explicit subject is only accepted when the call carries no identity of its own or errors end_user_explicit_forbidden and marks impersonated -- AC5/AC7/AC8); check_end_user_quota() (plan.end_users_max over the trailing 30 days -- AC9).",
-    "src/oauth.rs: OauthCaller gains an issuer field (the registered issuer row's own URL, re-read from the row a registered issuer already matched) so validate_bearer's caller can populate EndUser.issuer without a second token parse.",
-    "src/kinds/mod.rs: CallCtx gains an end_user: Option<EndUser> field, threaded through every CallCtx construction site.",
-    "src/kinds/python.rs: end_user travels inside the existing per-call JSON payload (payload_end_user()/call_payload()), not spawn-time environment -- the python kind runs a persistent worker process shared across calls, so setting MCPHOST_END_USER_* once at spawn would leak one caller's identity into a later, different caller's call; the sandboxed run_one() sets/restores MCPHOST_END_USER_ID/ISSUER/METHOD around each individual call instead (requirement 3, AC1/AC4).",
-    "src/kinds/http.rs: ctx.end_user, when present, adds X-MCPHost-End-User (subject) and X-MCPHost-End-User-Issuer (when set) headers to the upstream request (requirement 3, AC2).",
-    "src/tenant_state.rs: state_get/state_set/state_delete/state_list/state_insert/state_query/state_delete_rows all gain an end_user: Option<&EndUser> parameter, resolve the end_user argument via enduser::resolve_end_user, enforce the quota on writes via enduser::check_end_user_quota, and pass the resolved subject down to db.rs's scoped queries (requirement 5, AC5-AC9).",
-    "src/db.rs: state_kv_get/state_kv_set/state_kv_delete/state_kv_list gain an end_user_subject parameter (matching the '' tenant-wide sentinel); state_rows_for_end_user/explain_state_rows_for_end_user_for_test (AC6's EXPLAIN QUERY PLAN assertion); end_user_active_since/count_distinct_end_users_since/touch_end_user_activity (AC9's quota bookkeeping); record_call_attributed_with_end_user (writes end_user_subject/end_user_issuer/end_user_method plus an impersonated flag onto the calls row); last_call_end_user_for_test.",
-    "src/handler.rs: resolves Caller.end_user before dispatch -- from the validated OAuth bearer's sub/iss (method: oauth) or a verified end_user_assertion argument (method: assertion, argument stripped from args before schema validation/dispatch so it never reaches a tool); an assertion verification failure short-circuits the whole call before any dispatch arm runs (AC3); end_user threaded through call_published_tool/call_shared_tool/dispatch_tenant_tool and into every host.state.*/host.enduser.* dispatch arm; host.enduser.whoami/host.enduser.assertion_secret_rotate tool registration; end_user_arg_schema() shared by every host.state.*/host.table.* tool schema.",
-    "src/control.rs: secret_set's existing name-collision guard extended to reject a direct host.secret_set write to enduser::ASSERTION_SECRET_NAME (only assertion_secret_rotate may set it) -- host.secret_list still reports the name exists, never its value (AC11).",
-    "src/plans.rs: Plan.end_users_max (free 100, pro 10,000 -- requirement 6).",
-    "src/errors.rs: end_user_required/end_user_explicit_forbidden/quota_end_users mapped to INVALID_PARAMS, end_user_assertion_invalid mapped to INVALID_REQUEST.",
-    "src/runs.rs, src/export.rs, src/webhooks.rs: call sites of the now end-user-scoped state_kv_get/state_kv_delete/state_kv_list/state_set updated to pass the tenant-wide '' sentinel (these paths never carry an end user of their own).",
-    "src/lib.rs: `pub mod enduser;`.",
-    "tests/enduser_ac0[1-9]_*.rs, tests/enduser_ac1[01]_*.rs (new, eleven files, one per non-deferred AC); scripts/gen-test-suites.sh / tests/suite_*.rs regenerated to include them.",
-    "agent/test-map.json: ac_test_map repointed to this PRD's enduser prefix, status-feed's own map archived under ac_test_map_by_prefix.statusfeed.",
-    "Cargo.toml/Cargo.lock: patch version bump 0.60.14 -> 0.60.15; plugin/.claude-plugin/plugin.json and plugin/.mcp.json mirrored to match (known drift class -- see the alerting-webhook ambiguities_resolved entry below); CHANGELOG.md: new v0.60.15 entry.",
-    "src/enduser.rs's own unit-test AppState literal: fixed to include status_probe_override (a rebase-leftover gap left by PRD-mcphost-status-feed landing after this branch's implementation was written -- see the new ambiguities_resolved entry below)."
+    "src/handler.rs: host_tool_call splits name on the first '.'; ns == tenant.namespace resolves locally via call_published_tool/runs::enqueue (no sharing lookup, per the PRD's own 'at build' open question); any other ns resolves through call_shared_tool/runs::enqueue_shared, the same functions raw tools/call already uses (requirement 1, AC1/AC7/AC9). call_shared_tool's owner/visibility resolution moves into sharing::resolve_shared_tool.",
+    "src/sharing.rs (new function): resolve_shared_tool(state, caller, owner_ns, local_name) -- the shared cross-tenant resolution primitive both handler.rs's raw dispatch and host.tool_call's qualified branch, plus runs.rs's async enqueue/execute path, call; every miss collapses to AppError::shared_tool_not_found (requirement 2, AC2/AC3).",
+    "src/errors.rs: AppError::shared_tool_not_found(owner_ns, local_name) -- Structured tool_not_found carrying data.hint naming host.tool_share; jsonrpc_code maps the Structured 'tool_not_found' code to RESOURCE_NOT_FOUND, matching AppError::ToolNotFound's own mapping.",
+    "src/runs.rs: enqueue_shared(state, caller, owner_ns, local_name, args) -- host.tool_call's qualified async: true path; inserts the run under caller's own tenant id with tool_name stored as the qualified '<owner_ns>.<local_name>' string. execute_job resolves a qualified tool_name against its owner via resolve_shared_tool (re-checking visibility at lease time) and runs it with the owner's secrets/table/docs, same as the synchronous cross-tenant path (requirement 3, AC4).",
+    "scripts/gen-docs-sharing.sh (new) + docs/sharing.md (new, canonical source): regenerates/checks the <!-- sharing:start/end --> marked block in www/llms.txt; --check names the first differing line (requirement 4, AC5).",
+    "examples/share-a-tool/proof.sh: gains a step calling the shared tool through host.tool_call with the qualified name (in addition to the existing raw tools/call form), asserted and recorded in the run's own checks (requirement 5, AC6).",
+    "src/handler.rs get_info: shared_tools: [{name, owner, via: \"direct\"|\"group:<g>\"}] listing the caller's accessible shared tools (requirement 6, AC8).",
+    "tests/sharedcall_ac0[1-9]_*.rs (new, nine files, one per non-deferred AC); scripts/gen-test-suites.sh / tests/suite_core_07.rs regenerated to include them.",
+    "agent/proof-lanes.toml: docs lane extended with docs/sharing.md + scripts/gen-docs-sharing.sh, gen-docs-sharing.sh --check added as a required command; scripts/docs-check.sh extended to also validate docs/sharing.md.",
+    "agent/test-map.json: ac_test_map repointed to this PRD's sharedcall prefix, end-user-identity's own map archived under ac_test_map_by_prefix.enduser.",
+    "Cargo.toml/Cargo.lock: patch version bump; CHANGELOG.md: new entry."
   ],
   "non_goals": [
-    "Storing end-user credentials for upstream services -- PRD Non-goals; that is the token vault PRD's job.",
-    "Listing, auditing, or revoking end users -- PRD Non-goals; a control-plane PRD's job.",
-    "Authorization rules between end users -- PRD Non-goals; a tool's own business, not the host's.",
-    "Whether impersonated (AC7/AC8's explicit-subject path) requires a Pro plan -- PRD Open question, owner Joe, due 'at build'; left ungated by plan since no AC exercises a plan check on it and check_end_user_quota already gates the one place a plan tier matters (distinct end-user count, requirement 6/AC9) -- adding a second, unrequested gate was judged out of scope for this slice.",
-    "host.runs.get/host.runs.list surfacing end_user_subject/end_user_issuer on their own response shape -- requirement 4 names this, but no AC in the PRD's own eleven-item list exercises it (AC1/AC2/AC4 all assert on the calls row directly, not a host.runs.* read of it), so it was left out of this build's scope per this card's own established 'the PRD's own AC list is the actual contract' precedent (see the wasm-kind/status-feed entries below)."
+    "Changing the sharing model (public|group, no accept step) -- PRD Non-goals.",
+    "Renaming existing tools or allowing '.' in local tool names -- PRD Non-goals; validate_tool_name's regex is unchanged.",
+    "Per-caller usage/rate limiting on a shared tool -- PRD Non-goals; separate PRD mcphost-shared-tool-caller-usage.",
+    "tools/list carrying shared tools with a shared_by annotation (requirement 7) and host.tool_call's did_you_mean suggestion for a near-miss unqualified name (requirement 8, P2) -- neither has an AC in this PRD's own nine-item list, so both are left out of this build's scope per the dispatch instruction to implement only the listed ACs."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -118,41 +98,39 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "unverified_claim_is_absent_never_present": "Goals: 'Identity is recorded, never fabricated: an unverified claim is absent, not present' -- EndUser is only ever constructed from a bearer sub the OAuth PRD already validated, or from verify_assertion()'s successful HS256/exp checks; a failed assertion produces an Err the caller must surface as end_user_assertion_invalid (AC3), never a None that silently degrades to 'no end user' (requirement 2's own 'never fall back to no end user').",
-      "tenant_wide_sentinel_is_empty_string_not_null": "SQLite's PRIMARY KEY uniqueness treats two NULLs as distinct rows, which would silently defeat tenant_state_kv's 'one tenant-wide row per key' invariant every existing pre-migration row depends on -- migration 0042 backfills every existing row's end_user_subject to '' and every scoped db.rs function (state_kv_get/set/delete/list, state_rows_for_end_user) takes end_user_subject as a plain (never-NULL) String, matching the sentinel enduser::resolve_end_user() itself returns for the tenant-wide branch.",
-      "python_kind_is_a_persistent_worker_so_end_user_travels_per_call_not_at_spawn": "src/kinds/python.rs runs one long-lived worker process per published tool, shared across many different callers' calls over its lifetime -- setting MCPHOST_END_USER_* once at process spawn (the way MCPHOST_TENANT_* already works) would leak one caller's identity into every later call until the worker restarts. end_user instead rides inside the existing per-call JSON payload the worker already reads, and run_one() sets/restores the three env vars around each individual call.",
-      "impersonated_is_recorded_on_the_calls_row_not_a_separate_table": "requirement 5's 'that use is recorded on the call row as impersonated' is satisfied by a boolean column record_call_attributed_with_end_user writes alongside end_user_subject/issuer/method -- host.state.* calls themselves write no calls row of their own (they are in-process bridge calls, not a separate dispatched tool), so the flag is threaded down from handler.rs's own outer call-recording path, the same one AC1/AC2/AC4 already assert end_user_subject/method on.",
-      "assertion_secret_is_a_reserved_tenant_secret_name_not_a_new_table": "requirement 2: 'stored encrypted at rest with the host's existing secret encryption in secrets.rs' -- ASSERTION_SECRET_NAME is stored through the same upsert_secret/get_secret path host.secret_set/host.secret_list already use, with control.rs's secret_set guard extended to refuse a direct tenant write to that one reserved name (only assertion_secret_rotate may set it), so host.secret_list's existing 'name exists, value never shown' contract covers AC11 for free rather than needing a parallel secret-storage mechanism."
+      "one_code_path_qualified_and_raw_share_call_shared_tool": "Requirement 1: 'one code path; the raw dispatch calls the same function' -- host.tool_call's qualified branch calls the exact same call_shared_tool (sync) / a new enqueue_shared built on the same resolve_shared_tool (async) that raw tools/call's own dispatch match arm already used before this PRD, never a reimplementation.",
+      "non_leaking_error_is_structured_not_a_new_variant": "Requirement 2's non-leaking guarantee reuses the existing tool_not_found code (AppError::Structured{code: \"tool_not_found\", ...}) rather than a new wire code, so an existing client branching on tool_not_found sees no new code to handle; only data.hint is additive.",
+      "own_qualified_name_short_circuits_no_sharing_lookup": "PRD Open question (drafted: yes, resolves to the local tool, no sharing lookup) -- host.tool_call {name: \"<own_ns>.<tool>\"} resolves via call_published_tool directly, matching raw dispatch's own ns == tenant.namespace special case, so an owner's private tool stays callable by its qualified name without needing to be shared with itself."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does per-end-user identity need to exist at all, rather than leaving multi-user tools as a problem for each tool author to solve?",
-      "a": "Problem statement: the second ICP in the 2026-09-23 synthesis, SaaS product managers, is blocked on per-end-user auth passthrough (modelcontextprotocol/servers#2173) -- today every call on mcphost is the tenant's, calls has no caller, host.state rows are keyed by tenant only, and zero multi-user tools exist on the host. A tool author who must answer 'show my invoices' for a thousand different humans cannot build that without identity, storage partitioning, and a trust path from scratch."
+      "q": "Why does host.tool_call need to accept a qualified '<owner_ns>.<tool>' name at all, rather than leaving the raw tools/call form as the only cross-tenant path?",
+      "a": "Problem statement: www/llms.txt has documented host.tool_call(name=\"acme.lookup\") since the share-a-tool recipe shipped, but handler.rs's host_tool_call only ever resolved the caller's own tenant -- six of six truth-tier cross-tenant sessions hit exactly this wall and retried the documented (broken) form until their turn budget ran out."
     },
     {
       "why": 2,
-      "q": "Why two verification methods (OAuth bearer sub, and a tenant-signed assertion) rather than just one?",
-      "a": "User stories name two distinct callers: 'an agent operator with OAuth' (whose login token already carries an authenticated sub -- requirement 1) and 'a SaaS PM (tenant)' whose web app has its own logged-in users but calls mcphost with a plain tenant key, not an OAuth token of its own -- requirement 2's tenant-signed end_user_assertion is the only way that second caller can vouch for a specific human without minting one OAuth token per end user."
+      "q": "Why must the qualified not-found response be byte-identical and equal-latency across three different underlying reasons (no such namespace, no such tool, tool not shared with caller)?",
+      "a": "Requirement 2: 'never revealing whether the tool exists' -- an attacker probing host.tool_call {name: \"victim.secret\"} must not be able to distinguish 'victim has no such tool' from 'victim's tool exists but isn't shared with me' by message, data, or response timing, the same non-leaking contract the pre-existing raw cross-tenant path already had to uphold."
     },
     {
       "why": 3,
-      "q": "Why does an invalid assertion reject the whole call rather than falling back to 'no end user', the same way an absent identity is already handled?",
-      "a": "Requirement 2's own wording: 'invalid assertions reject the call ... and never fall back to no end user' -- Goals: 'Identity is recorded, never fabricated: an unverified claim is absent, not present' cuts the other way for a claim that was ATTEMPTED and failed verification (wrong secret, expired) versus one that was never made; silently downgrading a forged/expired assertion to anonymous would let a caller probe for a working secret with no visible failure."
+      "q": "Why does an async qualified call need its own enqueue path (enqueue_shared) rather than reusing runs::enqueue as-is?",
+      "a": "runs::enqueue's get_tool lookup is scoped to the CALLING tenant's own id -- a qualified '<owner_ns>.<local>' name would never resolve there even when validly shared. enqueue_shared resolves visibility the same way call_shared_tool does and stores the qualified name so execute_job can re-resolve the OWNER's tool (and re-check visibility) at lease time, while the run row itself stays under the caller's tenant id so host.runs.get/.wait's existing tenant-scoped queries need no change to keep the owner from ever seeing it."
     },
     {
       "why": 4,
-      "q": "Why a single end_user argument shared by every host.state.*/host.table.* op, resolving \"self\"/an explicit subject/null, rather than a separate scoped tool surface (e.g. host.state.my_get)?",
-      "a": "Requirement 5 and the tool-author user story: 'two environment variables and one extra argument on state calls; nothing else changes' -- reusing the existing six host.state.* tools with one new argument keeps every already-published tool's schema and dispatch path unchanged for tools that never pass end_user at all, rather than doubling the tool surface."
+      "q": "Why regenerate www/llms.txt's sharing section from a script rather than just hand-fixing the one broken call form?",
+      "a": "Success metrics: 'docs/code call-form drift: 1 (llms.txt vs proof.sh) -> target 0, method: AC4 test, at gate' -- the root problem was never a single wrong sentence, it was that nothing enforced llms.txt and the runnable proof staying in sync; a hand-fix without a check would let the exact same drift recur on the next docs edit."
     },
     {
       "why": 5,
-      "q": "Why cap distinct end-user subjects per plan (end_users_max, requirement 6) at all, rather than letting a tenant's state grow unbounded per end user?",
-      "a": "Non-functional/Success metrics: the state index must keep list p95 within 10% of today's at 100k rows, and an unbounded number of distinct end-user subjects writing tenant_state_kv/tenant_state_rows is the one axis this PRD adds that could grow that table far past what a tenant's own key count alone ever did; end_users_max (free 100, pro 10,000) is the same plan-tiered quota shape every other unbounded-growth surface on this host (docs, tables, rows) already gets, gating writes while keeping reads unaffected (AC9's own 'reads still work')."
+      "q": "Why does proof.sh need to exercise host.tool_call's qualified form in addition to the raw tools/call form it already used, rather than switching it over entirely?",
+      "a": "AC6/AC7: the raw qualified form must keep working unchanged (migration/compatibility: 'raw tools/call is unchanged') and the new host.tool_call form must ALSO work -- proof.sh asserting both in one run is the only way its own receipt proves neither path regressed the other, matching the PRD's stated goal of 'one documented call form that works from host.tool_call and from raw tools/call'."
     }
   ],
-  "created_at": "2026-09-25T00:00:00Z",
+  "created_at": "2026-09-26T00:00:00Z",
   "ambiguities_resolved": [
     {
       "question": "The findings file records the reference Python client seeing well-formed ttlMs/cacheScope on an unauthenticated tools/list, which the code says is impossible. Which is right?",
@@ -311,6 +289,10 @@
       "resolution": "(1) root_motivation/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace/created_at/prd_source/intent_slug were kept as this branch's own docs-semantic-search versions (unchanged from the entry above); status-feed's own single-current-PRD fields were not carried forward as fields (already shipped on main under status-feed's own history) -- its 'regenerated for status-feed' entry was instead inserted into this log in chronological order, immediately after alerting-webhook's own entries and before this PRD's prior rebase entry, so nothing already-shipped is silently dropped. (2) agent/test-map.json's ac_test_map repointed to this PRD (docsearch) as current; status-feed's own AC1-11 archived under a new ac_test_map_by_prefix.statusfeed entry; alert's existing archived entry was corrected back to 'superseded by mcphost-status-feed' (status-feed, not docsearch, is what actually archived it) rather than left claiming this PRD superseded it directly; busyaudit's and tablemodel's existing archived entries were left untouched. (3) MAX_PER_SUITE was regenerated by running scripts/gen-test-suites.sh against the fully-rebased file set (busyaudit + alerting-webhook + status-feed + this PRD's own eleven docsearch_ac*.rs files all present together) rather than hand-picking a number ahead of a real generator run. (4) src/db.rs's status-feed CRUD functions and row-structs were placed alongside (not instead of) alerts' and docs_index's own sections, each under its own PRD-labeled header, all three sides' bodies kept unchanged. Nothing was provisioned, resized, or reconfigured to resolve any of the four; all are paper-trail/build-config/mechanical-merge fixes with no AC content change.",
       "question": "This card is now regenerated for PRD-mcphost-end-user-identity, an entirely different feature (a verified per-call end-user identity, tenant-signed assertions, and end-user-scoped host.state.*/host.table.* storage) from PRD-mcphost-status-feed (the self-reported /status.json feed) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught repeatedly in this card's own history if left byte-for-byte. Unlike most prior entries, this dispatch found src/enduser.rs, migration 0042_end_user_identity.sql, every kinds.rs/tenant_state.rs/handler.rs/db.rs wiring point, and all eleven tests/enduser_ac0[1-9,1-1]_*.rs files already implemented and committed (8ce9b26, 'Squash of ACs from run 233 for land', plus two small follow-up commits) before this session started -- but agent/intent-card.json itself was never refreshed for this PRD, still describing status-feed, and `cargo clippy --all-targets` failed to compile: src/enduser.rs's own unit test builds an AppState literal by hand and was missing the status_probe_override field PRD-mcphost-status-feed added after this branch's implementation was written (a rebase leftover). The PRD's own two Open Questions also needed a build-time answer: (1) whether an end-user subject is opaque or normalized email-shaped; (2) whether impersonated (the explicit-subject path) requires a Pro plan.",
       "resolution": "Verified rather than redone, with one real fix: synced the worktree to the run-237 runner box (working around the known bin-shim-hijacks-ssh PATH gotcha by dropping /home/jsy/.local/state/wm-build/bin-shim from PATH for the wm-build invocation itself) and hit the status_probe_override compile error on the first clippy run; fixed with a one-line addition to src/enduser.rs's test AppState literal, committed on its own (099016c) before re-syncing per the known 'wm-build runner sync silently reverts uncommitted edits' gotcha. Re-verified fully green: `cargo clippy --all-targets -- -D warnings` 0 warnings; `cargo test` 100% green across every binary (1121 total passed: 223+1+1+2+1+1+1+721+1+122+49, 0 failed, 6 ignored, unrelated to this PRD), including all eleven enduser_ac0[1-9,1-1]_* test functions and src/enduser.rs's own 6 unit tests. No gap in the enduser.rs/handler.rs/tenant_state.rs/db.rs implementation itself was found against the PRD's own eleven listed ACs or the eleven AC test bodies read in full. On the two open questions: (1) subject stays opaque -- no code path anywhere in the diff normalizes, lowercases, or validates email shape on a subject string, matching the PRD's own 'drafted' answer; recorded in non_goals rather than silently decided. (2) impersonated is NOT plan-gated -- check_end_user_quota (the one place a plan tier is read for end-user identity) only ever gates the distinct-subject-count quota (requirement 6/AC9), never the explicit-subject/impersonated path itself, and no AC in the PRD's own list exercises a plan check on impersonation; recorded in non_goals as the resolved-but-unrequested-so-left-alone answer. This card's own fields (this entry included), agent/test-map.json's enduser mapping, and the version bump (0.60.14 -> 0.60.15, including the plugin.json/.mcp.json mirrors the alerting-webhook entry above already flagged as a recurring drift point) are the only paper-trail/build debt this dispatch closes; no AC content changed, so there is no Stage-3 conflict."
+    },
+    {
+      "question": "This card is now regenerated for PRD-mcphost-shared-tool-call-path, an entirely different feature (host.tool_call accepting a qualified '<owner_ns>.<tool>' shared-tool name) from PRD-mcphost-end-user-identity (verified per-call end-user identity) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught repeatedly in this card's own history if left byte-for-byte. AC3's own wording ('three qualified names ... byte-identical') is internally puzzling: the not-found message interpolates the caller-supplied name, and 'nonexistent namespace' vs 'existing namespace' inherently name different owners, so three literally different name strings cannot produce byte-identical response bodies if the message echoes each one back. How should a coder dispatch resolve this before writing AC3's test?",
+      "resolution": "Read as: all three cases must probe the exact SAME literal qualified name, with the BACKING DATABASE STATE differing between phases (no tenant of that namespace yet; then the tenant with no such tool; then the tenant's tool left private) rather than the caller's input differing -- consistent with the non-leaking intent (withholding server-side state, not hiding a string the caller already typed) and with requirement 2's own message template using a single '<name>' placeholder, not three. tests/sharedcall_ac03_not_found_reasons_indistinguishable.rs implements exactly this: one literal name ('acme.lookup'), a tenant named 'acme' seeded directly via Db::create_tenant (bypassing signup's own randomly-generated namespace) partway through, 200 probes per phase, asserting the full error shape (code/error_code/message/data) is identical across all three phases and each phase's p95 latency is within 10ms of the others. Separately: requirements 7 (tools/list shared_by) and 8 (did_you_mean, P2) are named in the PRD's Requirements table but have no corresponding entry in its own nine-ACs-plus-one-deferred list handed to this build -- left unimplemented per the dispatch instruction to implement only the listed ACs and stop, recorded in non_goals rather than silently attempted or silently dropped without a trace. agent/test-map.json's ac_test_map was repointed to this PRD's own sharedcall prefix in the same build, with the prior enduser map archived under ac_test_map_by_prefix.enduser so nothing already-shipped is lost."
     }
   ]
 }
