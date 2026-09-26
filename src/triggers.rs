@@ -588,6 +588,9 @@ pub async fn fire(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
             true,
             false,
             None,
+            None,
+            None,
+            None,
         )
         .await?;
     Ok(json!({"run_id": run_id, "status": "queued", "manual": true}))
@@ -712,6 +715,9 @@ pub async fn tick_once(state: &AppState) -> Result<(), AppError> {
                 args_json,
                 false,
                 false,
+                None,
+                None,
+                None,
                 None,
             )
             .await?;

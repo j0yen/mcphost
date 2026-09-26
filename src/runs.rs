@@ -144,6 +144,21 @@ fn chunk_string(s: &str, max_bytes: usize) -> Vec<String> {
     out
 }
 
+/// PRD-mcphost-runs-end-user-subject P0 requirement 3: `null` when the run
+/// has no end user (every trigger-fired run, and any call made without one);
+/// otherwise the same `{subject, issuer, method}` shape `EndUser::whoami_json`
+/// already uses.
+fn end_user_to_json(run: &RunRow) -> Value {
+    match &run.end_user_subject {
+        Some(subject) => json!({
+            "subject": subject,
+            "issuer": run.end_user_issuer,
+            "method": run.end_user_method,
+        }),
+        None => Value::Null,
+    }
+}
+
 fn run_to_json(run: &RunRow) -> Value {
     let progress = run
         .progress_json
@@ -201,6 +216,8 @@ fn run_to_json(run: &RunRow) -> Value {
         "manual": run.manual,
         // PRD-mcphost-inbound-events P0 requirement 3 / AC7.
         "test": run.test,
+        // PRD-mcphost-runs-end-user-subject P0 requirement 3.
+        "end_user": end_user_to_json(run),
     })
 }
 
@@ -280,15 +297,19 @@ pub async fn part(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     Ok(json!({"n": n, "parts": parts, "bytes": bytes, "data": data}))
 }
 
-/// `host.runs.list(tool?, status?, trigger?, limit?)`.
+/// `host.runs.list(tool?, status?, trigger?, end_user_subject?, limit?)`.
+/// PRD-mcphost-runs-end-user-subject P0 requirement 4 (AC2): `end_user_subject`
+/// filters within this tenant; a subject with no runs (even `carol`, never
+/// heard of) returns an empty list, never an error.
 pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let tool = arg_str_opt(args, "tool");
     let status = arg_str_opt(args, "status");
     let trigger = arg_str_opt(args, "trigger");
+    let end_user_subject = arg_str_opt(args, "end_user_subject");
     let limit = arg_i64_opt(args, "limit").unwrap_or(20).clamp(1, 200);
     let rows = state
         .db
-        .list_runs(tenant.id, tool, status, trigger, limit)
+        .list_runs(tenant.id, tool, status, trigger, end_user_subject, limit)
         .await?;
     Ok(json!({"runs": rows.iter().map(run_to_json).collect::<Vec<_>>()}))
 }
@@ -534,6 +555,10 @@ pub async fn enqueue(
     tenant: &Tenant,
     local_name: &str,
     args: Value,
+    // PRD-mcphost-runs-end-user-subject P0 requirement 2 (AC1): the same
+    // end user `handler.rs` already resolved before dispatch, so the
+    // queued run's own row carries it.
+    end_user: Option<&crate::enduser::EndUser>,
 ) -> Result<Value, AppError> {
     let row = state
         .db
@@ -567,6 +592,9 @@ pub async fn enqueue(
     let run_id = crate::state::new_ulid();
     let args_json = serde_json::to_string(&args)
         .map_err(|e| AppError::Internal(format!("args serialize: {e}")))?;
+    let end_user_subject = end_user.map(|e| e.subject.clone());
+    let end_user_issuer = end_user.and_then(|e| e.issuer.clone());
+    let end_user_method = end_user.map(|e| e.method.as_str().to_string());
     state
         .db
         .insert_queued_run(
@@ -581,6 +609,9 @@ pub async fn enqueue(
             false,
             false,
             None,
+            end_user_subject,
+            end_user_issuer,
+            end_user_method,
         )
         .await?;
     Ok(json!({"run_id": run_id, "status": "queued"}))
@@ -643,6 +674,9 @@ pub async fn enqueue_shared(
             args_json,
             false,
             false,
+            None,
+            None,
+            None,
             None,
         )
         .await?;
@@ -1066,6 +1100,9 @@ mod tests {
             message_id: None,
             counters_json: None,
             error_data_json: None,
+            end_user_subject: None,
+            end_user_issuer: None,
+            end_user_method: None,
         };
         let value = run_to_json(&run);
         assert_eq!(value["purged"], json!(true));

@@ -88,6 +88,9 @@ async fn overlapping_firing_is_recorded_as_skipped_overlap() {
             false,
             false,
             None,
+            None,
+            None,
+            None,
         )
         .await
         .expect("insert still-running run");
@@ -102,7 +105,7 @@ async fn overlapping_firing_is_recorded_as_skipped_overlap() {
 
     let runs = state
         .db
-        .list_runs(tenant.id, None, Some("skipped".to_string()), Some("schedule".to_string()), 20)
+        .list_runs(tenant.id, None, Some("skipped".to_string()), Some("schedule".to_string()), None, 20)
         .await
         .expect("list_runs");
     let skipped_overlap = runs

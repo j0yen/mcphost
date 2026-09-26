@@ -121,11 +121,16 @@ fn test_map_and_intent_card_ac9_entries_agree_with_the_frontmatter_deferral() {
     // its own content and has no reason to preserve this string -- skip
     // with a printed reason rather than fail on expected drift (same fix
     // shape as tests/checkcompat_race_ac08_deferral_is_justified.rs's own
-    // test).
+    // test). The gate checks the exact intent_slug field, not a bare
+    // substring: this card's ambiguities_resolved log legitimately keeps
+    // 'PRD-mcphost-upstream-token-vault-status' in older entries' prose
+    // forever (the log is never truncated), so a bare substring scan would
+    // never skip once a later PRD lands -- exposed by mcphost-runs-end-user-
+    // subject's own rebase onto this PRD.
     let intent_card_path = repo_root().join("agent/intent-card.json");
     let intent_card = fs::read_to_string(&intent_card_path)
         .unwrap_or_else(|e| panic!("read {}: {e}", intent_card_path.display()));
-    if !intent_card.contains("PRD-mcphost-upstream-token-vault-status") {
+    if !intent_card.contains("\"intent_slug\": \"mcphost-upstream-token-vault-status\"") {
         eprintln!(
             "skip test_map_and_intent_card_ac9_entries_agree_with_the_frontmatter_deferral: \
              agent/intent-card.json no longer names PRD-mcphost-upstream-token-vault-status \

@@ -49,6 +49,9 @@ async fn admin_runs_reap_marks_expired_running_runs_interrupted() {
             false,
             false,
             None,
+            None,
+            None,
+            None,
         )
         .await
         .expect("insert_queued_run");
