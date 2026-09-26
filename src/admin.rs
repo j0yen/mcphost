@@ -1485,3 +1485,41 @@ pub async fn status_rollup(state: &AppState, args: &Value) -> Result<Value, AppE
     let recomputed = crate::statusfeed::rollup_range(state, since, until).await?;
     Ok(json!({ "recomputed_days": recomputed }))
 }
+
+fn vault_provider_stats_json(p: &crate::db::VaultProviderStats) -> Value {
+    json!({
+        "name": p.name,
+        "tokens": p.tokens,
+        "revoked": p.revoked,
+        "refresh_failures_24h": p.refresh_failures_24h,
+    })
+}
+
+/// `admin.vault.stats` (P0 requirement 2, AC4/AC5; admin key only, rejected
+/// the same way every other `admin.*` tool rejects a tenant key -- see
+/// `handler.rs`'s own `Auth::Tenant` vs `admin.` prefix arm): cross-tenant
+/// upstream-vault usage, tokens/revoked/refresh_failures_24h per provider
+/// per tenant, plus totals -- [`crate::db::Db::vault_stats`] never reads a
+/// token, secret, or `client_secret` column.
+pub async fn vault_stats(state: &AppState) -> Result<Value, AppError> {
+    let tenants = state.db.vault_stats().await?;
+    let (mut tokens, mut revoked, mut refresh_failures_24h) = (0i64, 0i64, 0i64);
+    for t in &tenants {
+        for p in &t.providers {
+            tokens += p.tokens;
+            revoked += p.revoked;
+            refresh_failures_24h += p.refresh_failures_24h;
+        }
+    }
+    Ok(json!({
+        "tenants": tenants.iter().map(|t| json!({
+            "tenant_id": t.tenant_id,
+            "providers": t.providers.iter().map(vault_provider_stats_json).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
+        "totals": {
+            "tokens": tokens,
+            "revoked": revoked,
+            "refresh_failures_24h": refresh_failures_24h,
+        },
+    }))
+}

@@ -881,6 +881,27 @@ pub enum VaultHandoffOutcome {
     AlreadyRedeemed,
 }
 
+/// PRD-mcphost-upstream-token-vault-status P0 requirement 2 (AC4):
+/// `admin.vault.stats`'s per-`(tenant, provider)` row -- [`Db::vault_stats`]
+/// groups `vault_tokens` into these, never touching `access_enc`/
+/// `refresh_enc`/`client_secret_enc`.
+#[derive(Debug, Clone)]
+pub struct VaultProviderStats {
+    pub name: String,
+    pub tokens: i64,
+    pub revoked: i64,
+    pub refresh_failures_24h: i64,
+}
+
+/// One tenant's [`VaultProviderStats`] rows, keyed by `tenant_id` (the
+/// tenant's `namespace`, the same caller-facing identifier
+/// [`crate::admin::mesh_stats`]'s own per-tenant rows already use).
+#[derive(Debug, Clone)]
+pub struct VaultTenantStats {
+    pub tenant_id: String,
+    pub providers: Vec<VaultProviderStats>,
+}
+
 /// [`Db::verify_claim_code`]'s outcome (PRD-mcphost-human-claim-magic-link
 /// requirement 3 / AC3, AC7).
 pub enum ClaimVerifyOutcome {
@@ -5651,6 +5672,52 @@ impl Db {
                 params![revoked_unix, reason, tenant_id, provider, end_user_subject],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// `admin.vault.stats` (P0 requirement 2, AC4): one row per
+    /// `(tenant, provider)` with non-revoked/revoked/24h-refresh-failure
+    /// counts -- no new table, just an aggregate over the pre-existing
+    /// `vault_tokens` (joined to `tenants` for the caller-facing
+    /// `namespace`, never the raw `client_secret`-bearing provider row).
+    /// `revoked_reason GLOB 'refresh_*'` (not `LIKE`) since SQLite `LIKE`
+    /// treats `_` as a single-character wildcard, which `refresh_http_401`/
+    /// `refresh_malformed_response` would still happen to match, but is the
+    /// wrong operator for "the literal prefix `refresh_`".
+    pub async fn vault_stats(&self) -> Result<Vec<VaultTenantStats>, AppError> {
+        let since_unix = now_unix() - 86_400;
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT t.namespace, vt.provider, COUNT(*), \
+                     SUM(CASE WHEN vt.revoked_unix IS NOT NULL THEN 1 ELSE 0 END), \
+                     SUM(CASE WHEN vt.revoked_unix IS NOT NULL AND vt.revoked_unix >= ?1 \
+                               AND vt.revoked_reason GLOB 'refresh_*' THEN 1 ELSE 0 END) \
+                 FROM vault_tokens vt JOIN tenants t ON t.id = vt.tenant_id \
+                 GROUP BY t.namespace, vt.provider ORDER BY t.namespace, vt.provider",
+            )?;
+            let rows: Vec<(String, String, i64, i64, i64)> = stmt
+                .query_map(params![since_unix], |r| {
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+
+            let mut out: Vec<VaultTenantStats> = Vec::new();
+            for (namespace, provider, tokens, revoked, refresh_failures_24h) in rows {
+                if out.last().is_none_or(|t| t.tenant_id != namespace) {
+                    out.push(VaultTenantStats {
+                        tenant_id: namespace,
+                        providers: Vec::new(),
+                    });
+                }
+                out.last_mut().unwrap().providers.push(VaultProviderStats {
+                    name: provider,
+                    tokens,
+                    revoked,
+                    refresh_failures_24h,
+                });
+            }
+            Ok(out)
         })
         .await
     }
