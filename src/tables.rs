@@ -837,6 +837,8 @@ mod tests {
             oauth: crate::oauth::JwksCache::new(),
             oauth_allowed_algs: crate::oauth::parse_allowed_algs(None),
             oauth_jwks_ttl_secs: crate::oauth::DEFAULT_JWKS_TTL_SECS,
+            authz_key: crate::authz::AuthzSigningKey::load_or_generate(dir).expect("authz signing key"),
+            cimd_cache: crate::authz::CimdCache::new(),
             alerts: crate::alerts::AlertRegistry::new(),
             contention_tracker: crate::alerts::ContentionTracker::new(),
             alert_config: crate::alerts::AlertConfig::default(),

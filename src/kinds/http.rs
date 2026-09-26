@@ -538,7 +538,7 @@ fn find_undefined_ref(template: &str, known: &BTreeSet<String>) -> Option<String
 /// full RFC 3986 correctness -- templated paths can contain raw `{{ }}`
 /// text the `url` crate would balk at, so this only needs to be right about
 /// the scheme and authority's host component.
-fn split_scheme_host(url: &str) -> Option<(&str, &str)> {
+pub(crate) fn split_scheme_host(url: &str) -> Option<(&str, &str)> {
     let (scheme, rest) = url.split_once("://")?;
     let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
     let authority = &rest[..authority_end];
@@ -572,7 +572,7 @@ fn is_ipv6_unique_local(ip: &Ipv6Addr) -> bool {
 /// `allow_loopback` is a test-only escape hatch (see [`HttpKind::for_test`])
 /// -- the production constructor never sets it, so `127.0.0.1` stays
 /// blocked for every real deployment.
-fn is_disallowed_ip(ip: IpAddr, allow_loopback: bool) -> bool {
+pub(crate) fn is_disallowed_ip(ip: IpAddr, allow_loopback: bool) -> bool {
     match ip {
         IpAddr::V4(v4) => {
             (!allow_loopback && v4.is_loopback())
@@ -594,7 +594,7 @@ fn is_disallowed_ip(ip: IpAddr, allow_loopback: bool) -> bool {
 
 /// Syntactic host checks that don't require DNS: a literal IP in a
 /// disallowed range, `.internal`, `localhost`, or the host's own domain.
-fn is_disallowed_literal_host(host: &str, own_domain: &str, allow_loopback: bool) -> bool {
+pub(crate) fn is_disallowed_literal_host(host: &str, own_domain: &str, allow_loopback: bool) -> bool {
     let host_lc = host.trim_end_matches('.').to_ascii_lowercase();
     if let Ok(ip) = host_lc.parse::<IpAddr>() {
         return is_disallowed_ip(ip, allow_loopback);

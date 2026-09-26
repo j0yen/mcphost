@@ -9,6 +9,7 @@ pub mod agents;
 pub mod alerts;
 pub mod api_contract;
 pub mod auth;
+pub mod authz;
 pub mod bans;
 pub mod billing;
 pub mod channels;

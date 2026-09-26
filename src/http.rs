@@ -526,6 +526,22 @@ async fn well_known_oauth_protected_resource(State(state): State<Arc<AppState>>)
     }
 }
 
+/// PRD-mcphost-hosted-authorization-server AC1: `GET
+/// /.well-known/oauth-authorization-server` and `GET
+/// /.well-known/openid-configuration` -- the same RFC 8414 document at
+/// both paths (Non-goals rules out id_tokens/userinfo, so this deployment
+/// needs no OIDC-only fields the RFC 8414 shape doesn't already have).
+async fn well_known_authorization_server(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    Json(crate::authz::authorization_server_metadata(&state))
+}
+
+/// AC1 / requirement 1: `GET /.well-known/jwks.json` -- this host's own
+/// authorization-server signing key, published for verifiers of hosted
+/// access tokens (`kid` matches the header every minted token carries).
+async fn well_known_authz_jwks(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    Json(state.authz_key.jwks_document())
+}
+
 /// PRD-mcphost-sharing requirement 5 (AC7): `GET /.well-known/mcp/catalog.json`,
 /// unauthenticated (same public-discovery-document rationale as
 /// `well_known_server_json` above) -- mirrors `host.catalog.search`'s
@@ -692,6 +708,22 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/.well-known/oauth-protected-resource",
             get(well_known_oauth_protected_resource),
         )
+        .route(
+            "/.well-known/oauth-authorization-server",
+            get(well_known_authorization_server),
+        )
+        .route(
+            "/.well-known/openid-configuration",
+            get(well_known_authorization_server),
+        )
+        .route("/.well-known/jwks.json", get(well_known_authz_jwks))
+        .route(
+            "/oauth/authorize",
+            get(crate::authz::get_authorize).post(crate::authz::post_authorize),
+        )
+        .route("/oauth/register", post(crate::authz::post_register))
+        .route("/oauth/token", post(crate::authz::post_token))
+        .route("/oauth/revoke", post(crate::authz::post_revoke))
         .route("/billing/webhook", post(billing_webhook))
         .route("/billing/done", get(billing_done))
         .route("/billing/cancel", get(billing_cancel))

@@ -237,6 +237,12 @@ async fn unauthenticated_tools_list_is_signup_only() {
         "host.oauth.issuer_set",
         "host.oauth.issuer_remove",
         "host.oauth.issuers",
+        // PRD-mcphost-hosted-authorization-server requirement 7 (AC8):
+        // this host's own built-in authorization server's grants --
+        // discoverable unauthenticated too, same as every other
+        // host.*-style tool above.
+        "host.oauth.grants",
+        "host.oauth.grant_revoke",
         // PRD-mcphost-docs-semantic-search: the three host.docs.search/
         // index_config/reindex tools are discoverable unauthenticated too,
         // same as every other host.*-style tool above.
@@ -273,7 +279,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        116,
+        118,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the three host.tool_history/host.tool_rollback/host.tool_diff \
@@ -297,7 +303,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
          the six host.channel.* tools (PRD-mcphost-agent-mesh-ops, \
          PRD-mcphost-agent-channels) + the six host.docs.* tools \
          (PRD-mcphost-document-store) + \
-         the three host.oauth.* tools (PRD-mcphost-oauth-resource-server) + \
+         the five host.oauth.* tools (PRD-mcphost-oauth-resource-server, PRD-mcphost-hosted-authorization-server) + \
          the three host.docs.search/index_config/reindex tools \
          (PRD-mcphost-docs-semantic-search) + \
          the two host.enduser.* tools (PRD-mcphost-end-user-identity) + \
