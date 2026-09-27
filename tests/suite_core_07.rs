@@ -450,6 +450,8 @@ mod hostedas_ac09_no_secret_leakage;
 mod hostedas_ac10_key_and_issuer_jwt_flows_unchanged;
 #[path = "hostedas_ac11_docs_and_llms_txt.rs"]
 mod hostedas_ac11_docs_and_llms_txt;
+#[path = "hostedas_offline_access_scope.rs"]
+mod hostedas_offline_access_scope;
 #[path = "http_ac01_secret_redaction.rs"]
 mod http_ac01_secret_redaction;
 #[path = "http_ac02_publish_ssrf_literal.rs"]
