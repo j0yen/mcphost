@@ -292,6 +292,7 @@ pub async fn bare_app_state() -> (AppState, TempDataDir) {
         status_probe_override: mcphost::statusfeed::ProbeOverrides::new(),
         fleet_ips: mcphost::state::FleetIps::empty(),
         end_user_activity: Default::default(),
+        oauth_healthz_cache: Default::default(),
     };
     (state, data_dir)
 }
@@ -702,6 +703,7 @@ impl TestServer {
             status_probe_override: mcphost::statusfeed::ProbeOverrides::new(),
             fleet_ips: mcphost::state::FleetIps::empty(),
             end_user_activity: Default::default(),
+            oauth_healthz_cache: Default::default(),
         });
 
         // PRD-mcphost-runs-and-jobs: every test server runs the real
@@ -1265,6 +1267,7 @@ pub async fn bare_state(dir: &std::path::Path) -> AppState {
         status_probe_override: mcphost::statusfeed::ProbeOverrides::new(),
         fleet_ips: mcphost::state::FleetIps::empty(),
         end_user_activity: Default::default(),
+        oauth_healthz_cache: Default::default(),
     }
 }
 

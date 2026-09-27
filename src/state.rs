@@ -366,6 +366,11 @@ pub struct AppState {
     /// [`crate::enduserctl::spawn_scheduler`] rather than per call
     /// (non-functional: "the upsert batch adds no per-call latency").
     pub end_user_activity: crate::enduserctl::EndUserActivityBuffer,
+    /// PRD-mcphost-oauth-demand-signal requirement 2 (AC5): `/healthz`'s
+    /// cached `oauth` aggregate -- see [`crate::oauth_stats::healthz_json`].
+    /// In-memory only, same `Arc`-sharing rationale as
+    /// [`AppState::checkout_sessions`].
+    pub oauth_healthz_cache: crate::oauth_stats::HealthzCache,
 }
 
 pub fn now_unix() -> i64 {

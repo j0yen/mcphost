@@ -60,6 +60,20 @@ fn value_to_json_object(v: Value) -> Map<String, Value> {
     v.as_object().cloned().unwrap_or_default()
 }
 
+/// PRD-mcphost-oauth-demand-signal requirement 1 (AC1): `calls.auth_method`'s
+/// own `{key, issuer_jwt, hosted_token}` domain, derived from the same
+/// `Option<OauthCaller>` `host.whoami`'s `auth_method` (`{key, oauth,
+/// hosted_token}`) already reads -- kept as a separate function rather than
+/// widening that domain, since `oauth_ac*`/`hostedas_ac10` already pin
+/// `"oauth"` as `host.whoami`'s own reported value and must not change.
+fn calls_auth_method(oauth_caller: Option<&crate::oauth::OauthCaller>) -> &'static str {
+    match oauth_caller.map(|o| o.auth_method) {
+        None => "key",
+        Some("hosted_token") => "hosted_token",
+        Some(_) => "issuer_jwt",
+    }
+}
+
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
@@ -2937,6 +2951,18 @@ fn admin_tools() -> Vec<Tool> {
              attempts each block-triggered refusal reason has cost across every tenant.",
             schema(json!({}), &[]),
         ),
+        // PRD-mcphost-oauth-demand-signal requirement 3 (AC3/AC4). Named
+        // `demand_stats`, not `stats`, to avoid colliding with
+        // PRD-mcphost-oauth-client-policy's own `admin.oauth.stats` (the
+        // block-list counters above), which landed first.
+        Tool::new(
+            "admin.oauth.demand_stats",
+            "The OAuth demand signal: calls and distinct non-synthetic tenants per credential \
+             method (key/issuer_jwt/hosted_token) over 7 and 30 days, DCR/CIMD client counts, \
+             active grants, first-ever issuer_jwt/hosted_token call timestamps, a per-tenant \
+             breakdown (non-synthetic tenants first), and the registration/consent/token funnel.",
+            schema(json!({}), &[]),
+        ),
         // PRD-mcphost-alerting-webhook requirement 5.
         Tool::new(
             "admin.alerts.list",
@@ -3348,6 +3374,13 @@ impl McpHostHandler {
         tenant: &Tenant,
         subject: Option<&str>,
         auth_method: &str,
+        // PRD-mcphost-oauth-demand-signal requirement 1 (AC1): the same
+        // credential kind as `auth_method` above, but in `calls.auth_method`'s
+        // own `{key, issuer_jwt, hosted_token}` domain rather than
+        // `host.whoami`'s pre-existing `{key, oauth, hosted_token}` one --
+        // kept as a second parameter rather than reusing `auth_method` so
+        // neither call site has to remember which domain the other reads.
+        calls_auth_method: &str,
         end_user: Option<&crate::enduser::EndUser>,
         name: &str,
         args: Value,
@@ -3364,7 +3397,7 @@ impl McpHostHandler {
             "host.bridge_test" => self.bridge_test(tenant, args).await,
             "host.spec_test" => self.spec_test(tenant, args).await,
             "host.tool_run" => self.tool_run(tenant, args).await,
-            "host.tool_call" => self.host_tool_call(tenant, args, end_user).await,
+            "host.tool_call" => self.host_tool_call(tenant, args, calls_auth_method, end_user).await,
             "host.tool_history" => control::tool_history(&self.state, tenant, &args).await,
             "host.tool_rollback" => control::tool_rollback(&self.state, tenant, &args).await,
             "host.tool_diff" => control::tool_diff(&self.state, tenant, &args).await,
@@ -3577,6 +3610,7 @@ impl McpHostHandler {
             "admin.oauth.client_unblock" => crate::oauth_policy::admin_client_unblock(&self.state, &args).await,
             "admin.oauth.blocked" => crate::oauth_policy::admin_blocked_list(&self.state).await,
             "admin.oauth.stats" => crate::oauth_policy::admin_stats(&self.state).await,
+            "admin.oauth.demand_stats" => crate::oauth_stats::admin_stats(&self.state).await,
             // PRD-mcphost-alerting-webhook requirement 5.
             "admin.alerts.list" => admin::alerts_list(&self.state, &args).await,
             "admin.alerts.ack" => admin::alerts_ack(&self.state, &args).await,
@@ -3731,6 +3765,12 @@ impl McpHostHandler {
         caller: Option<&Tenant>,
         version: Option<i64>,
         end_user: Option<&crate::enduser::EndUser>,
+        // PRD-mcphost-oauth-demand-signal requirement 1 (AC1): `"key"`,
+        // `"issuer_jwt"`, or `"hosted_token"` -- resolved once by every
+        // caller from the same `Auth`/`OauthCaller` `end_user` above was
+        // already resolved from, so this row's own `calls.auth_method`
+        // never has to re-derive it.
+        auth_method: &str,
     ) -> Result<Value, AppError> {
         let row: ToolRow = self
             .state
@@ -3983,6 +4023,7 @@ impl McpHostHandler {
                         end_user_issuer.clone(),
                         end_user_method.clone(),
                         shared_owner_namespace.clone(),
+                        auth_method.to_string(),
                     )
                     .await
                 {
@@ -4070,6 +4111,7 @@ impl McpHostHandler {
                         end_user_issuer.clone(),
                         end_user_method.clone(),
                         shared_owner_namespace.clone(),
+                        auth_method.to_string(),
                     )
                     .await;
                 if let Some(subject) = &end_user_subject {
@@ -4101,6 +4143,7 @@ impl McpHostHandler {
                         end_user_issuer.clone(),
                         end_user_method.clone(),
                         shared_owner_namespace.clone(),
+                        auth_method.to_string(),
                     )
                     .await;
                 if let Some(subject) = &end_user_subject {
@@ -4766,6 +4809,7 @@ impl McpHostHandler {
         &self,
         tenant: &Tenant,
         args: Value,
+        auth_method: &str,
         end_user: Option<&crate::enduser::EndUser>,
     ) -> Result<Value, AppError> {
         // PRD-mcphost-data-retention requirement 4 (AC6): refuse before
@@ -4815,7 +4859,7 @@ impl McpHostHandler {
                     return crate::runs::enqueue(&self.state, tenant, local, call_args, end_user)
                         .await;
                 }
-                self.call_published_tool(tenant, local, call_args, false, None, version, end_user)
+                self.call_published_tool(tenant, local, call_args, false, None, version, end_user, auth_method)
                     .await
             }
             Some((ns, local)) => {
@@ -4823,7 +4867,7 @@ impl McpHostHandler {
                     return crate::runs::enqueue_shared(&self.state, tenant, ns, local, call_args)
                         .await;
                 }
-                self.call_shared_tool(tenant, ns, local, call_args, false, version, end_user)
+                self.call_shared_tool(tenant, ns, local, call_args, false, version, end_user, auth_method)
                     .await
             }
             None => {
@@ -4831,7 +4875,7 @@ impl McpHostHandler {
                     return crate::runs::enqueue(&self.state, tenant, &name, call_args, end_user)
                         .await;
                 }
-                self.call_published_tool(tenant, &name, call_args, false, None, version, end_user)
+                self.call_published_tool(tenant, &name, call_args, false, None, version, end_user, auth_method)
                     .await
             }
         }
@@ -4858,6 +4902,7 @@ impl McpHostHandler {
         mcp_name_mismatch: bool,
         version: Option<i64>,
         end_user: Option<&crate::enduser::EndUser>,
+        auth_method: &str,
     ) -> Result<Value, AppError> {
         let (owner, _row) =
             crate::sharing::resolve_shared_tool(&self.state, caller, owner_ns, local_name).await?;
@@ -4870,6 +4915,7 @@ impl McpHostHandler {
             Some(caller),
             version,
             end_user,
+            auth_method,
         )
         .await
     }
@@ -5351,13 +5397,23 @@ impl ServerHandler for McpHostHandler {
                 // `OauthCaller` at all), else whichever this call's own
                 // bearer resolved to (`"oauth"`/`"hosted_token"`).
                 let auth_method = oauth_caller.as_ref().map_or("key", |o| o.auth_method);
-                self.dispatch_tenant_tool(tenant, subject, auth_method, end_user.as_ref(), name, args)
+                let calls_method = calls_auth_method(oauth_caller.as_ref());
+                self.dispatch_tenant_tool(tenant, subject, auth_method, calls_method, end_user.as_ref(), name, args)
                     .await
             }
-            (Auth::Tenant(tenant, _), name) => match name.split_once('.') {
+            (Auth::Tenant(tenant, oauth_caller), name) => match name.split_once('.') {
                 Some((ns, local)) if ns == tenant.namespace => {
-                    self.call_published_tool(tenant, local, args, mismatch, None, None, end_user.as_ref())
-                        .await
+                    self.call_published_tool(
+                        tenant,
+                        local,
+                        args,
+                        mismatch,
+                        None,
+                        None,
+                        end_user.as_ref(),
+                        calls_auth_method(oauth_caller.as_ref()),
+                    )
+                    .await
                 }
                 // PRD-mcphost-sharing P0 requirement 2: `<ns>.<name>` for
                 // another tenant's namespace no longer falls straight to
@@ -5379,8 +5435,17 @@ impl ServerHandler for McpHostHandler {
                         }
                         other => (None, other),
                     };
-                    self.call_shared_tool(tenant, ns, local, args, mismatch, version, end_user.as_ref())
-                        .await
+                    self.call_shared_tool(
+                        tenant,
+                        ns,
+                        local,
+                        args,
+                        mismatch,
+                        version,
+                        end_user.as_ref(),
+                        calls_auth_method(oauth_caller.as_ref()),
+                    )
+                    .await
                 }
                 None => Err(AppError::ToolNotFound(name.to_string())),
             },

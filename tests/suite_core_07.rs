@@ -850,6 +850,18 @@ mod oauthrs_ac08_conflicting_credentials;
 mod oauthrs_ac09_admin_lists_issuers_and_audits;
 #[path = "oauthrs_ac10_key_based_flow_unchanged.rs"]
 mod oauthrs_ac10_key_based_flow_unchanged;
+#[path = "oauthsig_ac01_auth_method_by_credential.rs"]
+mod oauthsig_ac01_auth_method_by_credential;
+#[path = "oauthsig_ac02_healthz_calls_and_tenants_by_method.rs"]
+mod oauthsig_ac02_healthz_calls_and_tenants_by_method;
+#[path = "oauthsig_ac03_admin_oauth_stats_tenant_rows_and_admin_only.rs"]
+mod oauthsig_ac03_admin_oauth_stats_tenant_rows_and_admin_only;
+#[path = "oauthsig_ac04_admin_oauth_stats_funnel.rs"]
+mod oauthsig_ac04_admin_oauth_stats_funnel;
+#[path = "oauthsig_ac05_healthz_cache_and_p95.rs"]
+mod oauthsig_ac05_healthz_cache_and_p95;
+#[path = "oauthsig_ac06_conformance_script_writes_receipt.rs"]
+mod oauthsig_ac06_conformance_script_writes_receipt;
 #[path = "plancat_ac01_missing_state_quotas_default_from_catalog.rs"]
 mod plancat_ac01_missing_state_quotas_default_from_catalog;
 #[path = "plancat_ac02_startup_logs_defaulted_fields.rs"]

@@ -508,6 +508,8 @@ Runnable end-to-end proof, 1,000-row fixture included:
 - Per-tenant metering (p50/p95 durations, call counts) via `host.usage` and `admin.usage`.
 - An old `plans.toml` missing a quota (e.g. one written before `state_bytes_max` existed) is filled from `default_catalog()`'s value for that plan name, never zeroed; startup logs `plans.toml: plan=<name> defaulted=[<field>, ...]` naming exactly what it filled in.
 - OAuth conformance: `mcphost oauth-probe --url <mcp-url> --json` runs the same scenario table the gate runs in-process; every scenario, its family, owning PRD and expected verdict are listed in [docs/oauth-scenarios.md](../docs/oauth-scenarios.md).
+- `oauth.tenants_7d.issuer_jwt + oauth.tenants_7d.hosted_token` on `admin healthz` (distinct non-synthetic tenants, both credential kinds) is the `oauth_tenants_7d` loop metric, documented in [docs/metrics.md](../docs/metrics.md) -- `admin.oauth.demand_stats` has the same counts plus the per-tenant breakdown and the registration/consent/token funnel.
+- `scripts/oauth-conformance.sh <mcp-url>` runs the MCP OAuth conformance suite (`npx @modelcontextprotocol/conformance`, scenarios `auth/basic-metadata-var1` and `auth/basic-dcr`, requirements `2026-07-28`) against a running host and writes `docs/receipts/oauth-conformance-<date>.md`; exits non-zero on any failed scenario, or `2` with a one-line reason when `npx` isn't installed.
 
 ## Contract
 

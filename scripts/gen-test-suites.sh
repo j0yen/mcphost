@@ -419,7 +419,16 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # same `suite_ac1_ten_binaries_and_names_preserved` P0 assertion. 620 -> 630
 # re-collapses core's normal buckets to 1, landing the grand total back
 # at 10.
-MAX_PER_SUITE = {"core": 630, "sandbox": 90}
+#
+# Rebasing mcphost-oauth-demand-signal onto federated-end-user-login
+# (2026-09-27): this PRD's own `oauthsig_ac*.rs` files (also `core`-classified)
+# independently raised 620 -> 640 on top of the same tenant-resource-metadata
+# baseline, not knowing about fedlogin's own 620 -> 630 bump above; landing
+# both together stacks fedlogin's ten files AND oauthsig's files on top of
+# the same 620 starting point. 620 -> 650 (620 + fedlogin's +10 + oauthsig's
+# +20) re-collapses core's normal buckets to 1, landing the grand total back
+# at 10.
+MAX_PER_SUITE = {"core": 650, "sandbox": 90}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

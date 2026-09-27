@@ -352,6 +352,16 @@ pub struct ClientIdentity {
 pub async fn identify_client(state: &AppState, client_id: &str) -> Option<ClientIdentity> {
     if is_cimd_client_id(client_id) {
         let doc = state.cimd_cache.resolve(client_id).await?;
+        // PRD-mcphost-oauth-demand-signal requirement 3: this CIMD
+        // client's first-ever identification -- `INSERT OR IGNORE`d, so a
+        // repeat resolution (a second authorize request, or the token
+        // exchange re-identifying the same client) never moves
+        // `created_unix` off this client's true first-seen time.
+        // Best-effort: a write failure here must never fail authorization.
+        let _ = state
+            .db
+            .record_cimd_client_seen(client_id.to_string(), crate::state::now_unix())
+            .await;
         return Some(ClientIdentity {
             client_id: client_id.to_string(),
             client_name: doc.client_name,
@@ -652,6 +662,13 @@ pub async fn get_authorize(
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
 ) -> Response {
     let ip = source_ip(&headers, peer);
+    // PRD-mcphost-oauth-demand-signal requirement 3 (AC4): every hit to
+    // this endpoint counts toward `authorize_requests_7d` -- before
+    // validation, so the funnel shows the true drop-off between "showed
+    // up" and "consented" rather than only the requests that already
+    // passed every check. Best-effort: never fails the request that
+    // carries it.
+    let _ = state.db.record_oauth_funnel_event("authorize_request").await;
     let (identity, redirect_uri, resource, target_tenant) = match validate_authorize_params(&state, &params, &ip).await {
         Ok(ok) => ok,
         Err(resp) => return *resp,
@@ -765,6 +782,10 @@ async fn mint_code_and_redirect(
     if inserted.is_err() {
         return render_inline_error("server_error", "could not mint an authorization code");
     }
+    // PRD-mcphost-oauth-demand-signal requirement 3 (AC4): a code minted
+    // here IS consent granted -- `admin.oauth.demand_stats`'s `consents_7d`.
+    // Best-effort: never fails the redirect that carries the real code.
+    let _ = state.db.record_oauth_funnel_event("consent").await;
     let Ok(mut url) = reqwest::Url::parse(redirect_uri) else {
         return render_inline_error("invalid_request", "redirect_uri is malformed");
     };
@@ -784,6 +805,10 @@ pub async fn post_authorize(
     axum::Form(form): axum::Form<ConsentForm>,
 ) -> Response {
     let ip = source_ip(&headers, peer);
+    // PRD-mcphost-oauth-demand-signal requirement 3 (AC4): same
+    // count-every-hit rationale as `get_authorize`'s own copy of this line
+    // -- the consent-page submission is its own distinct authorize request.
+    let _ = state.db.record_oauth_funnel_event("authorize_request").await;
     let params = consent_form_params(&form);
     let (identity, redirect_uri, resource, target_tenant) = match validate_authorize_params(&state, &params, &ip).await {
         Ok(ok) => ok,
@@ -1162,6 +1187,12 @@ async fn issue_tokens(
         None,
     )
     .await;
+    // PRD-mcphost-oauth-demand-signal requirement 3 (AC4): every successful
+    // exchange through this shared success path -- both the initial
+    // `authorization_code` grant and a later `refresh_token` rotation --
+    // counts toward `tokens_issued_7d`. Best-effort: never fails the
+    // response that carries the real tokens.
+    let _ = state.db.record_oauth_funnel_event("token_issued").await;
     (
         StatusCode::OK,
         Json(json!({

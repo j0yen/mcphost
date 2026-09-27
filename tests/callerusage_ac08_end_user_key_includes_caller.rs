@@ -64,6 +64,7 @@ async fn end_user_keys_carry_the_caller_tenant_when_shared() {
         // dispatch, so the runs row stays under the owner (no
         // qualified name) exactly as before this PRD.
         None,
+        "key".to_string(),
         )
         .await
         .expect("seed A/u1 call");
@@ -78,6 +79,7 @@ async fn end_user_keys_carry_the_caller_tenant_when_shared() {
         // dispatch, so the runs row stays under the owner (no
         // qualified name) exactly as before this PRD.
         None,
+        "key".to_string(),
         )
         .await
         .expect("seed B/u1 call");

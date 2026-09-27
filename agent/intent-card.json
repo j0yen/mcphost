@@ -1,92 +1,70 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-oauth-client-policy.md",
-  "intent_slug": "mcphost-oauth-client-policy",
-  "root_motivation": "Grounding (PRD): the hosted authorization server PRD registers any CIMD or DCR client and grants access to whoever proves the tenant key at consent; the only limits on the host today are per-IP signup and claim rate limits (src/state.rs:35-834) and there is no tenant-side audit tool (admin.audit_log is admin-only, src/admin.rs:878). Every hosted competitor sells client allowlists or admin approval, session policy (TTLs, revoke-all, re-consent) and exportable auth audit (WorkOS, Stytch, Scalekit, Descope, Pipedream). RFC 9700 S2.2.2 requires refresh-token rotation or sender-constraining for public clients; the 119-server study's 'blind client trust' and 'malicious DCR binding' classes are policy gaps, not bugs.",
-  "user_persona": "Four (PRD User stories): (1) a SaaS PM sets clients: allowlist naming approved ids so an unlisted DCR client is refused client_not_allowed; (2) an operator sets clients: approve so a new client waits for host.oauth.client_approve; (3) a tenant sets TTLs/re-consent and calls host.oauth.revoke_all after losing a device; (4) an operator blocks an abusive CIMD host, protecting every tenant at once.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-oauth-demand-signal.md",
+  "intent_slug": "mcphost-oauth-demand-signal",
+  "root_motivation": "Grounding (PRD): Joe (2026-09-26) decided to ship the OAuth client path as a demand probe -- a probe with no readout is a guess. Today the only credential-method trace is `calls.end_user_method` from migration 0042 (`src/migrations/0042_end_user_identity.sql:55-63`) and `admin.oauth.issuers`'s per-reason rejection counters (`src/oauth.rs:509`); healthz has `tenants.external`, `paying_tenants`, `signups.synthetic` but nothing that says which credential kind a call used, how many distinct real tenants used OAuth, or whether any client ever registered. A bearer-JWT call and a key call are indistinguishable in every aggregate the host exposes, synthetic harness tenants dominate every count (868 synthetic vs 12 real on 2026-09-26), and a client that registers and never completes consent leaves no trace. Thirty days from now 'did anyone use it' would otherwise be answered by grepping logs on the box, which the doctrine forbids as evidence.",
+  "user_persona": "Four (PRD User stories): (1) the operator (Joe), who curls admin healthz from orch and reads `oauth.tenants_7d.hosted_token`; (2) an operator who sees 40 DCR registrations and 2 grants and learns the consent page is the drop-off; (3) the loop digest, which clusters OAuth PRDs by `oauth_tenants_7d` movement; (4) a live verifier who confirms the readout exists and excludes synthetic tenants without any box access.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 9
+    "target": 6
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given tenant T with clients: allowlist naming client A's id and CIMD host cimd.test, When A, a CIMD client from cimd.test, and a DCR client B start /oauth/authorize, Then A and the CIMD client reach consent and B gets client_not_allowed rendered inline with no redirect and an audit row.",
-      "test": "tests/oauthpol_ac01_allowlist_by_client_id_and_cimd_host.rs"
+      "description": "Given calls made with a key, an issuer JWT, and a hosted token, When `calls` is read, Then each row's `auth_method` matches, and rows written before the migration read `key`.",
+      "test": "tests/oauthsig_ac01_auth_method_by_credential.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given clients: approve, When new client C authorizes, Then the page reads awaiting approval, host.oauth.pending lists C, and after host.oauth.client_approve C's next authorize reaches consent; host.oauth.client_deny removes it and later attempts read client_not_allowed.",
-      "test": "tests/oauthpol_ac02_approve_mode_pending_approve_deny.rs"
+      "description": "Given three non-synthetic tenants (two calling with issuer JWTs, one with a key) and five synthetic tenants calling with hosted tokens within 7 days, When admin healthz is read, Then `oauth.calls_7d` counts every call by method, `oauth.tenants_7d == {issuer_jwt: 2, hosted_token: 0}`, and `first_issuer_jwt_call_at` equals the earliest such call.",
+      "test": "tests/oauthsig_ac02_healthz_calls_and_tenants_by_method.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given access_ttl_s: 300, refresh_ttl_s: 3600, max_grant_age_s: 7200, When a token is minted, Then expires_in == 300, the refresh token expires after 3600 s, and a refresh after 7200 s from consent returns invalid_grant grant_expired.",
-      "test": "tests/oauthpol_ac03_session_ttls_and_max_grant_age.rs"
+      "description": "Given the same data, When `admin.oauth.demand_stats` runs, Then the non-synthetic rows come first with their per-method counts, synthetic rows carry `synthetic: true`, and a tenant key calling `admin.oauth.demand_stats` is rejected like every other `admin.*` tool.",
+      "test": "tests/oauthsig_ac03_admin_oauth_stats_tenant_rows_and_admin_only.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given reconsent_after_s: 60, When a client refreshes 61 s after consent, Then invalid_grant reconsent_required and the next authorize shows the consent page again.",
-      "test": "tests/oauthpol_ac04_reconsent_after_forces_consent_again.rs"
+      "description": "Given two DCR registrations, one CIMD client, four authorize requests, two consents and two tokens issued in 7 days, When `admin.oauth.demand_stats` runs, Then the funnel reads `{registrations_7d: {dcr: 2, cimd: 1}, authorize_requests_7d: 4, consents_7d: 2, tokens_issued_7d: 2}` and `clients == {cimd: 1, dcr: 2}`.",
+      "test": "tests/oauthsig_ac04_admin_oauth_stats_funnel.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given three grants and one pending client, When host.oauth.revoke_all runs, Then all four are gone, every access token fails within 60 s, and one audit row per revoked grant exists.",
-      "test": "tests/oauthpol_ac05_revoke_all_grants_and_pending.rs"
+      "description": "Given 10,000 calls in the window, When healthz is read twice within 60 s, Then the second read serves the cached aggregate and healthz p95 stays within 5% of the pre-PRD baseline.",
+      "test": "tests/oauthsig_ac05_healthz_cache_and_p95.rs"
     },
     {
       "id": "AC6",
-      "level": "MUST",
-      "description": "Given ACs 1-5, When host.oauth.audit is paged with limit: 2, Then every event appears once across pages with event, client_id, reason where applicable and a hashed IP; When host.oauth.audit_export covers the window, Then the JSON lines equal the paged rows; a window whose export exceeds 50 MiB returns export_too_large with a suggested window.",
-      "test": "tests/oauthpol_ac06_audit_paging_and_export.rs"
+      "level": "SHOULD",
+      "description": "Given a host started locally, When `scripts/oauth-conformance.sh http://127.0.0.1:<port>/mcp` runs with `npx` available, Then it writes `docs/receipts/oauth-conformance-<date>.md` and exits 0 on pass, non-zero on any failed scenario; When `npx` is absent, Then it exits 2 with a one-line reason.",
+      "test": "tests/oauthsig_ac06_conformance_script_writes_receipt.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given admin.oauth.client_block {cimd_host: \"evil.test\"}, When any tenant's client from that host registers, authorizes or exchanges, Then each is refused client_blocked and counted in admin.oauth.stats; a tenant key calling admin.oauth.client_block is rejected like every other admin.* tool.",
-      "test": "tests/oauthpol_ac07_operator_block_list_and_admin_rejection.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "MUST",
-      "description": "Given 101 registrations from one CIMD host in a day, When the 101st arrives, Then 429 with an audit row.",
-      "test": "tests/oauthpol_ac08_cimd_host_daily_registration_cap.rs"
-    },
-    {
-      "id": "AC9",
-      "level": "MUST",
-      "description": "Given tenants with no policy set, When the hosted AS PRD's suites and the harness run, Then they pass unchanged.",
-      "test": "tests/oauthpol_ac09_no_policy_defaults_match_hosted_as.rs"
-    },
-    {
-      "id": "AC10",
-      "level": "SHOULD",
-      "description": "Given prod after deploy and a synthetic operator-labelled tenant the verifier signs up itself, When it sets clients: allowlist with one registered client id via curl, registers a second native client and starts /oauth/authorize with it, Then the response is client_not_allowed rendered inline, host.oauth.audit lists the refusal, and host.oauth.revoke_all returns ok (Live; evidence: healthz version after deploy plus the redacted transcript saved under docs/receipts/<slug>.md).",
-      "test": "deferred -- operator-provisioned; AC10 is the Live/production-only requirement (a synthetic operator tenant driven with curl against https://mcphost.dev/mcp and prod access, plus a docs/receipts/ transcript) this coding sandbox does not have. See the coder dispatch's own deferred list."
+      "description": "Given prod after deploy, When admin healthz is read from orch with curl and the admin key from `~/.config/mcphost/admin-key`, Then `oauth.calls_7d` has the three method keys with integer values, `oauth.tenants_7d.issuer_jwt` and `oauth.tenants_7d.hosted_token` are integers not exceeding `tenants.external`, and `oauth.clients` has `cimd` and `dcr` (Live; evidence: healthz version after deploy plus the redacted response saved under docs/receipts/<slug>.md).",
+      "test": "deferred -- operator-provisioned; AC7 is the Live/production-only requirement (an admin healthz read from orch with curl and the real admin key against prod after deploy, a receipt under docs/receipts/) and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
     }
   ],
   "scope": [
-    "migrations/0051_oauth_client_policy.sql (new): oauth_policies, oauth_pending_clients, oauth_approved_clients, oauth_denied_clients, oauth_audit, oauth_client_blocks, oauth_cimd_register_events.",
-    "src/oauth_policy.rs (new): OauthPolicy get/set with defaults equal to the hosted AS PRD's fixed constants, pending/approve/deny, evaluate_client (allowlist/approve decision), revoke_all, audit/audit_export (paged, JSON-lines export, 50 MiB cap), the operator block list (admin.oauth.client_block/client_unblock/blocked/stats), cimd_host_of/is_client_blocked/admit_cimd_registration shared helpers, and record_audit/ip_hash.",
-    "src/authz.rs: validate_authorize_params (shared by GET/POST /oauth/authorize) now checks the operator block list and the CIMD daily registration cap before client/redirect_uri validation; post_authorize evaluates the tenant's clients policy once ownership is proven, rendering awaiting-approval or client_not_allowed inline instead of minting a code; issue_tokens reads access_ttl_s/refresh_ttl_s from the tenant's policy; token_authorization_code and token_refresh_token re-check the block list at exchange, and token_refresh_token checks max_grant_age_s/reconsent_after_s (against the grant's own created_unix) ahead of the refresh token's own per-token TTL.",
-    "src/handler.rs: registers host.oauth.policy_set/policy/pending/client_approve/client_deny/revoke_all/audit/audit_export and admin.oauth.client_block/client_unblock/blocked/stats, dispatching into oauth_policy.rs.",
-    "src/admin.rs: admin_audit_entry maps admin.oauth.client_block/client_unblock as audited mutations, same convention every other admin.* write already follows.",
-    "src/secrets.rs: SecretBox::salted_hash (sha256(key_bytes || value)) -- the ip_hash primitive, salted from the same passphrase-derived key already used for tenant-secret encryption.",
-    "src/db.rs: Db methods backing every table above, plus Db::set_oauth_grant_created_unix_for_test and Db::insert_oauth_audit_rows_bulk_for_test (test-only, bypass real elapsed time / a real 50 MiB seed)."
+    "src/db.rs: migration 0053 (calls.auth_method column + two indexes; new oauth_cimd_clients/oauth_funnel_events tables); record_call_attributed_with_end_user gains a trailing auth_method parameter; new query methods (oauth_calls_by_method, oauth_tenants_by_method, oauth_first_call_at, oauth_clients_counts, oauth_grants_active_count, oauth_funnel_counts, oauth_tenant_stats, record_cimd_client_seen, record_oauth_funnel_event).",
+    "src/oauth_stats.rs (new): HealthzAggregate/MethodCounts, the 60s-TTL healthz cache (modeled on billing.rs's AcceptedUsageCache), healthz_json (mounted into GET /healthz) and admin_stats (mounted as admin.oauth.demand_stats).",
+    "src/handler.rs: calls_auth_method() maps a resolved credential to the new calls.auth_method domain {key, issuer_jwt, hosted_token} -- kept distinct from OauthCaller.auth_method/host.whoami's own pre-existing {oauth, hosted_token} domain, which is unchanged; threaded through dispatch_tenant_tool/call_published_tool/call_shared_tool/host_tool_call; admin.oauth.demand_stats tool wired into dispatch_admin_tool and the tool listing.",
+    "src/authz.rs: instruments the existing DCR/CIMD/authorize/consent/token paths to record funnel events (authorize_request, consent, token_issued) and first-seen CIMD clients, with no change to their own authorization logic.",
+    "scripts/oauth-conformance.sh (new) + docs/metrics.md (new, documents oauth_tenants_7d) + a www/llms.txt operator-notes addition."
   ],
   "non_goals": [
-    "Per-user (end-user) policies inside a tenant (PRD's own Non-goals).",
-    "Anomaly detection (IP or geography changes) (PRD's own Non-goals).",
-    "Sender-constrained tokens -- DPoP is still an open SEP (PRD's own Non-goals).",
-    "P1 requirement 7 (a dedicated www/llms.txt narrative section for the policy fields/approve flow/audit export) and P1 requirement 8 (host.oauth.audit rows carrying real per-grant scopes from the not-yet-landed tool-scopes PRD) -- out of scope for this coding dispatch, which stops once every AC in its own list is committed; the generated ## Tools listing (host.oauth.* tool names/descriptions) is refreshed via `mcphost llms-txt` so the existing tool-parity test stays green.",
-    "AC10 (Live, prod-only) -- deferred, operator-provisioned."
+    "Billing changes, plan gating, alerting thresholds.",
+    "Per-end-user analytics beyond what audit-and-revoke already provides.",
+    "Acting as an identity provider, DCR/CIMD/consent semantics themselves, or anything else owned by PRD-mcphost-hosted-authorization-server -- this PRD only counts and reports what that PRD's flow already produces."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -95,36 +73,39 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "operator_block_checked_before_any_tenant_policy": "requirement 5 / Technical considerations: admin.oauth.client_block is checked in validate_authorize_params (shared by GET/POST /oauth/authorize) and again at /oauth/token, before any tenant's own clients policy is evaluated -- a blocked client never even reaches a tenant's allowlist/approve decision.",
-      "ip_hash_never_raw": "Technical considerations: every oauth_audit.ip_hash is SecretBox::salted_hash(raw_ip), salt derived from the existing $MCPHOST_SECRET_KEY-derived key -- the raw address is never stored.",
-      "defaults_reproduce_hosted_as_exactly": "requirement 1 / AC9: OauthPolicy::default() is clients: any, access_ttl_s 3600, refresh_ttl_s 2592000 (30d), max_grant_age_s/reconsent_after_s both unset -- byte-identical to the hosted AS PRD's own fixed constants before this PRD, so a tenant that never calls host.oauth.policy_set sees no behavior change."
+      "calls_auth_method_is_a_distinct_domain_from_oauth_caller_auth_method": "the new calls.auth_method column ({key, issuer_jwt, hosted_token}) is a separate mapping from the pre-existing OauthCaller.auth_method/host.whoami field ({oauth, hosted_token}); handler::calls_auth_method() is the only place that translates one into the other, preserving hostedas_ac10's pinned assertion that host.whoami still reports the literal string \"oauth\".",
+      "migration_number_0051_taken_at_build_time": "the PRD's own technical considerations flagged 0047/0048 as claimed by in-flight branches and told the coder to take the next free number at rebase time; 0049 and 0050 landed first (shared_call_run_scope, hosted_authorization_server), so at build time this PRD's own migration was 0051, not the 0051 guessed in the PRD's own prose margin; a later rebase found 0051 claimed by mcphost-oauth-client-policy, which landed first, so this PRD's migration was renumbered to 0052; a subsequent rebase found 0052 claimed by mcphost-federated-end-user-login, which landed first, so this PRD's migration was renumbered again to 0053 (migrations/0053_oauth_demand_signal.sql, migrate_0053_oauth_demand_signal).",
+      "synthetic_predicate_matches_admin_tenants_not_source_class": "non-synthetic is `tenants.synthetic IS NULL`, the exact predicate admin.tenants already uses (control::validate_synthetic_header / state::is_valid_synthetic_label) -- not the narrower, older `source_class = 'external'` concept -- per the PRD's own technical-considerations note.",
+      "healthz_cache_ttl_60s_modeled_on_billing_accepted_usage_cache": "AC5's cached-aggregate behavior reuses the exact Arc<Mutex<Option<Cached{value, fetched_at}>>> TTL-checked-then-refreshed shape billing.rs's AcceptedUsageCache already established, rather than inventing a second caching pattern.",
+      "funnel_counters_needed_new_tables_since_hosted_authorization_server_shipped_none": "the PRD's own technical considerations say the funnel counters live in the tables the hosted authorization server PRD adds, but that PRD's own oauth_clients/oauth_codes/oauth_grants/oauth_refresh_tokens tables track no discrete authorize-request/consent/token-issued events and no CIMD client at all (CIMD clients are identified purely by URL, never persisted) -- so this PRD adds oauth_funnel_events and oauth_cimd_clients rather than reusing a table that can't answer AC4.",
+      "ac6_conformance_test_is_hermetic_via_a_stubbed_npx": "tests/oauthsig_ac06_conformance_script_writes_receipt.rs copies the script into a scratch directory and stubs a fake `npx` rather than invoking the real @modelcontextprotocol/conformance package, matching this crate's existing FakeBillingClient/FakeEmailClient 'tests never reach the network' convention -- the runner box genuinely lacks npm/Node network access."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does a tenant need a client allowlist/approve mode at all, given the hosted AS PRD already authenticates by tenant key at consent?",
-      "a": "Proving the tenant key only proves who is granting access, not which client software is allowed to receive a token on that tenant's behalf -- any CIMD or DCR client that reaches the consent page today can walk away with a token, which is exactly the 'any client that finds the login page can connect' gap this PRD closes."
+      "q": "Why does 'did anyone use OAuth' currently have no answer?",
+      "a": "A bearer-JWT call and a key call are indistinguishable in every aggregate mcphost exposes today -- calls carries no auth_method column, and healthz/admin.oauth.demand_stats report neither calls nor distinct tenants by credential kind."
     },
     {
       "why": 2,
-      "q": "Why is the operator's block list checked before any tenant's own policy, rather than each tenant blocking abusive clients independently?",
-      "a": "A CIMD host or DCR client_id spinning up abuse (500 registrations in an hour) targets the whole box, not one tenant -- per-tenant blocking would require every tenant to independently notice and react to the same attacker, so one operator-level block protects all of them at once (PRD user story 4)."
+      "q": "Why not just grep the logs on the box for now?",
+      "a": "The doctrine forbids box-grepping as evidence -- any answer to 'did anyone use it' has to come from a queryable, admin-readable aggregate, not an ad hoc log search thirty days from now."
     },
     {
       "why": 3,
-      "q": "Why does a CIMD client's first sighting count against a per-host daily registration cap, when CIMD has no POST /oauth/register call at all?",
-      "a": "The existing DCR rate limit (10/min/IP) only throttles the literal /oauth/register endpoint; a CIMD client is fetched by mcphost's own outbound HTTP client, never the attacker's IP, so an attacker standing up thousands of distinct CIMD client_id URLs under one host would be invisible to that limit entirely -- requirement 6 extends the same abuse-limiting intent to the CIMD identification path, keyed by host since that's the one thing the attacker can't launder away per-URL."
+      "q": "Why does every existing count risk overstating real demand?",
+      "a": "Synthetic harness tenants dominate every count today (868 synthetic vs 12 real on 2026-09-26) -- an aggregate that doesn't exclude them would make the demand probe look far busier than any real user activity."
     },
     {
       "why": 4,
-      "q": "Why must max_grant_age_s win over a refresh token's own (shorter) per-token TTL when both are already exceeded, instead of whichever check happens to run first?",
-      "a": "max_grant_age_s is the tenant's stated outer bound on how long a grant may live at all, regardless of how many times its refresh token has since rotated with a fresh per-token TTL; if the per-token TTL check ran first, a tenant with refresh_ttl_s < max_grant_age_s (AC3's own 3600 < 7200) would see the weaker, less specific 'refresh token expired' reason instead of the policy-intended grant_expired, and a caller reading the reason string could not tell 'this token rotated stale' from 'this tenant decided grants die at N seconds.'"
+      "q": "Why add a registration/consent funnel rather than just a calls-by-method count?",
+      "a": "A client that registers via DCR/CIMD and never completes consent leaves no trace in a calls-only count -- the funnel (registrations, authorize requests, consents, tokens issued) is what tells the operator WHERE clients drop off, per the PRD's own second user story."
     },
     {
       "why": 5,
-      "q": "Why record host.oauth.audit rows with a nullable tenant_id instead of requiring one on every row?",
-      "a": "An operator block-list refusal at /oauth/authorize can happen before any tenant is even identified (client identification and the block/rate-limit checks run ahead of the consent POST that first proves tenant ownership) -- forcing a tenant_id there would mean either skipping the audit row entirely (losing requirement 4's 'every refusal' guarantee) or attributing it to the wrong tenant; every tenant-facing read (host.oauth.audit/audit_export) filters tenant_id = ? so a null row never leaks into any tenant's own log, and admin.oauth.stats counts across all of them."
+      "q": "Why require a runnable conformance script (AC6) in a PRD that's otherwise about counting, not protocol correctness?",
+      "a": "The PRD's own Success metrics table ties a committed conformance report under docs/receipts/ to this PRD's own land date -- the demand probe's readout is only trustworthy if the OAuth surface it's counting calls against is itself known-conformant, evidenced the same repeatable way every time, not asserted once by hand."
     }
   ],
   "created_at": "2026-09-27T00:00:00Z",
@@ -342,28 +323,12 @@
       "resolution": "AC1's phrase 'authorization_servers still lists the union' predates PRD-mcphost-hosted-authorization-server, which (per vision mcphost-end-user-auth.md, 'OAuth client path — 2026-09-26': both hosted AS and BYO issuers, hosted first) landed on main first and now always adds the host's own issuer URL to the root union alongside every tenant's BYO issuer. The implementation (src/oauth.rs protected_resource_metadata / protected_resource_metadata_for_tenant) is correct: the tenant-scoped document lists only that tenant's issuers (no host AS leak), and the root document's union now includes the host's own AS plus tenant issuers, deduplicated and sorted. AC1's real intent is tenant isolation (no OTHER tenant's issuer leaks into any document), not exclusion of the host-level AS from the root union. Fixed tests/tenantprm_ac01_tenant_metadata_document.rs's root-document assertion to check: (a) this tenant's issuer is present, (b) every entry is either this tenant's issuer or the host's own base_url (i.e. no other tenant's issuer leaks in), and (c) exactly those two entries exist. No implementation change; no other assertion weakened."
     },
     {
-      "question": "Requirement 6/AC7 both use the word 'registers' for a CIMD client, but CIMD identification has no POST /oauth/register call at all (that's DCR-only) -- what does 'registers' mean for a CIMD client?",
-      "resolution": "Treated as this PRD's own extension of 'registration' to CIMD: each /oauth/authorize attempt that successfully identifies a CIMD client counts one admission against that host's 100-per-day cap (Db::try_admit_cimd_registration), gated by the same operator block check DCR registration already goes through. AC7's 'registers, authorizes or exchanges' and AC8's '101 registrations... in a day' are both satisfied by this one code path (validate_authorize_params), since a CIMD client's identification and its authorize attempt are the same HTTP call."
+      "question": "This card is now regenerated for PRD-mcphost-oauth-demand-signal, an entirely different PRD from PRD-mcphost-hosted-authorization-server (hostedas, its own Depends-on predecessor) that previously occupied it, though both share the OAuth surface -- the same recurring staleness class as every entry above if left byte-for-byte. Two build-time gaps had no PRD text to settle them directly: (1) requirement 3's funnel counters (`registrations_7d`, `authorize_requests_7d`, `consents_7d`, `tokens_issued_7d`) and the PRD's own technical-considerations note say they 'live in the tables the hosted authorization server PRD adds', but that PRD's own oauth_clients/oauth_codes/oauth_grants/oauth_refresh_tokens tables record no discrete authorize-request/consent/token-issued event and never persist a CIMD client at all (CIMD clients are identified purely by URL); (2) requirement 1's new `calls.auth_method` domain ({key, issuer_jwt, hosted_token}) collides in name, but not in meaning, with the pre-existing `OauthCaller.auth_method`/`host.whoami` field, whose own domain is {oauth, hosted_token} and is pinned byte-for-byte by hostedas_ac10.",
+      "resolution": "Fixed in place: root_motivation, user_persona, unfakeable_metric, all 7 acceptance_criteria (6 with real tests/oauthsig_ac0[1-6]_*.rs pointers, AC7 marked deferred/operator-provisioned per the PRD's own Live wording), scope, non_goals, hard_constraints.additional, and five_whys_trace were rewritten from PRD-mcphost-oauth-demand-signal's own Grounding, Problem statement, Goals, Non-goals, User stories, Requirements, and Technical considerations sections; agent/test-map.json's ac_test_map was repointed to this PRD's own oauthsig prefix in the same build, with the prior hostedas map (AC1-12) archived under ac_test_map_by_prefix.hostedas so nothing already-shipped is lost. On the two build-time gaps: (1) added two new tables this build's own migration 0053 owns -- oauth_funnel_events (one row per authorize_request/consent/token_issued, instrumented at src/authz.rs's get_authorize/post_authorize, mint_code_and_redirect, and issue_tokens) and oauth_cimd_clients (a first-seen ledger written from identify_client's own CIMD branch) -- rather than waiting on or reopening hostedas's already-shipped, already-committed table set. (2) kept the two domains fully separate: handler::calls_auth_method(oauth_caller: Option<&OauthCaller>) is the one place that derives the new calls.auth_method value from the resolved credential (None -> key, Some(\"hosted_token\") -> hosted_token, Some(_) -> issuer_jwt), threaded only into record_call_attributed_with_end_user's new trailing parameter; OauthCaller.auth_method and host.whoami's own reply are untouched, so hostedas_ac10's pinned \"oauth\" literal keeps passing unchanged. Nothing was provisioned, resized, or reconfigured to resolve either gap; both are new, additive build decisions with no Stage-3 conflict against hostedas's own already-landed AC content."
     },
     {
-      "question": "AC1's example CIMD host is the illustrative 'cimd.test', but the CIMD fetch path (authz::cimd_host_allowed) does a real DNS lookup for any non-literal-IP host and this repo's test harness has no way to make a fake hostname resolve to a wiremock server (checked: the FixedLookup/NameLookup test-double the http kind uses is not wired into the CIMD fetch path at all). How can AC1's allowlist-by-CIMD-host actually be exercised in a test?",
-      "resolution": "The test's CIMD document is served from a wiremock server whose client_id URL host is the literal loopback IP (127.0.0.1) -- cimd_host_allowed already special-cases a literal IP (no DNS lookup needed), and the behavior under test is 'does a policy's cimd_host allowlist entry match the CIMD client's document host', which a literal-IP host proves identically to a real hostname would. The PRD's 'cimd.test' is illustrative, not a literal requirement on the test fixture's hostname."
-    },
-    {
-      "question": "Should a tenant's clients: allowlist/approve decision be enforced at GET /oauth/authorize (before any tenant is known) or only once tenant ownership is proven at the consent POST?",
-      "resolution": "Only at the POST, once resolve_consent_tenant identifies which tenant's policy applies -- GET /oauth/authorize is, and remains, a single shared endpoint across every tenant on the host (the tenant is only ever selected by which key/claim-code the caller submits), so there is no tenant context to evaluate a policy against until that submission succeeds. The operator's global block list and the CIMD daily cap, which need no tenant context, are checked at both GET and POST via the shared validate_authorize_params."
-    },
-    {
-      "question": "host.oauth.client_deny only removes the oauth_pending_clients row -- without a separate durable 'denied' record, wouldn't the same client just get re-queued as pending on its very next attempt (evaluate_client's approve branch re-inserts anything not already approved)?",
-      "resolution": "Added a fourth table, oauth_denied_clients, checked ahead of the pending re-queue in evaluate_client: once denied, a client reads client_not_allowed on every later attempt, matching AC2's literal wording, rather than cycling back to 'awaiting approval'."
-    },
-    {
-      "question": "AC6's 50 MiB audit_export cap needs a real over-the-limit case to test, but seeding 50+ MiB of individually-dispatched audit events (one real HTTP call each) would be impractically slow -- add a configurable cap (env var / AppState field) or seed the real cap directly?",
-      "resolution": "Kept AUDIT_EXPORT_MAX_BYTES a real, non-configurable 50 MiB constant (no test-only knob leaking into the shipped cap) and added Db::insert_oauth_audit_rows_bulk_for_test, a single-transaction bulk insert of padded rows -- same 'bypass real dispatch, seed rows fast' rationale already established for Db::insert_calls_rows_bulk_for_test."
-    },
-    {
-      "question": "Rebasing wm-build/mcphost-oauth-client-policy onto main after PRD-mcphost-oauth-conformance-harness (#59) merged: that PRD's own intent-card-refresh regenerated agent/intent-card.json's root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace for oauth-conformance-harness/oauthconf, and its ambiguities_resolved array holds this log's accumulated history through hostedas's own rebase entry plus oauthconf's own two build-time entries (AC6 secret-search scope, AC7 gen-docs-sharing.sh regression-guard reading). This branch's own agent/intent-card.json (per the usual per-PRD rewrite) describes oauth-client-policy/oauthpol instead, with its own five build-time entries accumulated since branching off hostedas. Keep oauthconf's fields, or oauthpol's -- and which ambiguities_resolved?",
-      "resolution": "Kept oauthpol's own root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace -- this branch is landing oauthpol now, matching every prior 'Rebasing wm-build/X onto main after PRD-Y' recurrence in this log (see the runs-end-user-subject and hosted-authorization-server entries above). ambiguities_resolved was NOT taken from either side's copy alone: it is main's accumulated log through oauthconf's own two entries (AC6, AC7) and tenant-resource-metadata's own AC1 root-document-isolation rebase entry (both immediately above, since this rebase landed onto main after tenant-resource-metadata merged, one PRD further than either side of this conflict anticipated) plus this branch's own five oauthpol entries, appended in the order each was written, so nothing already-shipped on either lineage is dropped. agent/test-map.json's ac_test_map stays pointed at oauthpol; oauthconf's own AC1-AC7 map (real, already-shipped, tests/oauthconf_ac0[1-7]_*.rs plus AC8 deferred) and tenant-resource-metadata's own AC1-AC9 map were both archived under ac_test_map_by_prefix (oauthconf and tenantprm), the same 'preserve rather than delete' treatment every other superseded PRD in that dict already gets. Nothing was provisioned, resized, or reconfigured to resolve this; it is a paper-trail/mechanical-merge fix with no AC content change."
+      "question": "Rebasing wm-build/mcphost-oauth-demand-signal onto main after PRD-mcphost-tenant-resource-metadata (#58) merged: that PRD's own intent-card-refresh regenerated agent/intent-card.json's root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace for tenant-resource-metadata, and its ambiguities_resolved array holds this log's shared accumulated history plus three AC6/AC7/AC1 build-time entries specific to tenantprm's own build. This branch's own agent/intent-card.json (per the usual per-PRD rewrite) describes oauth-demand-signal/oauthsig instead, and its own ambiguities_resolved array already carries this branch's prior hostedas-rebase entry and its own final oauthsig regeneration entry, neither of which tenantprm's copy has (tenantprm's own lineage never went through this branch's hostedas rebase). Keep tenantprm's fields, or oauthsig's -- and which ambiguities_resolved?",
+      "resolution": "Kept oauthsig's own root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace -- this branch is landing oauthsig now, matching every prior 'Rebasing wm-build/X onto main after PRD-Y' recurrence in this log (see the runs-end-user-subject and hosted-authorization-server entries above). ambiguities_resolved was NOT taken from either side alone: it is the shared history both copies already carry, plus this branch's own hostedas-rebase entry, plus tenantprm's own three AC6/AC7/AC1 build-time entries (preserved rather than dropped), plus this branch's own final oauthsig regeneration entry, plus this one new entry, appended. agent/test-map.json's ac_test_map stays pointed at oauthsig; tenantprm's own AC1-AC9 map (real, already-shipped, tests/tenantprm_ac0[1-9]_*.rs plus AC8 deferred) was archived under ac_test_map_by_prefix.tenantprm, the same 'preserve rather than delete' treatment every other superseded PRD in that dict already gets."
     }
   ]
 }
