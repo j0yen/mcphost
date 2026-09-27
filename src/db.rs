@@ -69,6 +69,7 @@ const MIGRATION_0045: &str = include_str!("../migrations/0045_run_counters_and_e
 const MIGRATION_0046: &str = include_str!("../migrations/0046_vault.sql");
 const MIGRATION_0047: &str = include_str!("../migrations/0047_end_user_audit_and_revoke.sql");
 const MIGRATION_0048: &str = include_str!("../migrations/0048_runs_end_user_subject.sql");
+const MIGRATION_0049: &str = include_str!("../migrations/0049_shared_call_run_scope.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -2016,7 +2017,12 @@ impl Db {
         Self::migrate_0045_run_counters_and_error_data(&conn)?;
         Self::migrate_0046_vault(&conn)?;
         Self::migrate_0047_end_user_audit_and_revoke(&conn)?;
-        Self::migrate_0048_runs_end_user_subject(&conn)
+        Self::migrate_0048_runs_end_user_subject(&conn)?;
+        // PRD-mcphost-shared-call-run-scope P1 requirement 6 (AC7): a
+        // data-only UPDATE, idempotent by its own WHERE clause (see the
+        // migration file) rather than a schema-presence guard, so it runs
+        // unconditionally like 0001 above.
+        conn.execute_batch(MIGRATION_0049).map_err(AppError::from)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -6536,6 +6542,7 @@ impl Db {
             None,
             None,
             None,
+            None,
         )
         .await
     }
@@ -6565,6 +6572,14 @@ impl Db {
         end_user_subject: Option<String>,
         end_user_issuer: Option<String>,
         end_user_method: Option<String>,
+        // PRD-mcphost-shared-call-run-scope requirement 1: the OWNER's
+        // namespace, `Some` only alongside `caller_tenant_id` also being
+        // `Some` (a cross-tenant call) -- every call site already has the
+        // owner tenant in hand, so this costs no extra lookup. Used only to
+        // scope the `runs` row (below) to the caller the same way
+        // `runs::enqueue_shared` already scopes an async shared run; the
+        // `calls` insert is untouched either way (requirement 2).
+        shared_owner_namespace: Option<String>,
     ) -> Result<(), AppError> {
         let started_at = now_rfc3339();
         let started_unix = now_unix();
@@ -6582,7 +6597,16 @@ impl Db {
             (false, _) => "error",
         };
         let run_error_class = error_class.clone();
-        let run_tool_name = tool_name.clone();
+        // requirement 1: a cross-tenant sync call's `runs` row belongs to the
+        // CALLER, `tool_name` qualified `<owner_ns>.<local>` -- same shape
+        // `enqueue_shared` already writes for the async path. The run's own
+        // `caller_tenant_id` column stays NULL in both branches, matching
+        // `enqueue_shared` (which never sets it either); the `calls` row
+        // above is the only place `caller_tenant_id` is still recorded.
+        let (run_tenant_id, run_tool_name) = match (caller_tenant_id, shared_owner_namespace) {
+            (Some(caller_id), Some(owner_ns)) => (caller_id, format!("{owner_ns}.{tool_name}")),
+            _ => (tenant_id, tool_name.clone()),
+        };
         self.with_conn(move |conn| {
             let tx = conn.unchecked_transaction()?;
             tx.execute(
@@ -6594,12 +6618,11 @@ impl Db {
                 "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, \
                  status, progress_json, result_ref, error_class, started_unix, finished_unix, \
                  duration_ms, deadline_s, attempt, end_user_subject, end_user_issuer, end_user_method) \
-                 VALUES (?1, ?2, ?3, 'call', NULL, ?4, ?5, NULL, NULL, ?6, ?7, ?8, ?9, NULL, 1, ?10, ?11, ?12)",
+                 VALUES (?1, ?2, ?3, 'call', NULL, NULL, ?4, NULL, NULL, ?5, ?6, ?7, ?8, NULL, 1, ?9, ?10, ?11)",
                 params![
                     run_id,
-                    tenant_id,
+                    run_tenant_id,
                     run_tool_name,
-                    caller_tenant_id,
                     run_status,
                     run_error_class,
                     started_unix,
@@ -10708,6 +10731,36 @@ impl Db {
             Ok(())
         })
         .await
+    }
+
+    /// PRD-mcphost-shared-call-run-scope AC7 test scaffolding: inserts a
+    /// `runs` row in the PRE-FIX shape a synchronous cross-tenant call used
+    /// to write (`tenant_id = owner`, `caller_tenant_id = caller`,
+    /// `tool_name` the bare local name) -- the exact shape migration 0049
+    /// backfills. Returns the new row's id so the test can assert on it
+    /// after re-running the migration.
+    pub async fn insert_legacy_owner_scoped_shared_run_for_test(
+        &self,
+        owner_tenant_id: i64,
+        caller_tenant_id: i64,
+        local_tool_name: String,
+    ) -> Result<String, AppError> {
+        let run_id = crate::state::new_ulid();
+        let started_unix = now_unix();
+        self.with_conn({
+            let run_id = run_id.clone();
+            move |conn| {
+                conn.execute(
+                    "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, \
+                     caller_tenant_id, status, started_unix, finished_unix, duration_ms, attempt) \
+                     VALUES (?1, ?2, ?3, 'call', NULL, ?4, 'done', ?5, ?5, 0, 1)",
+                    params![run_id, owner_tenant_id, local_tool_name, caller_tenant_id, started_unix],
+                )?;
+                Ok(())
+            }
+        })
+        .await?;
+        Ok(run_id)
     }
 
     fn mesh_count_real_synth(

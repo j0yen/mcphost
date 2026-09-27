@@ -3683,6 +3683,11 @@ impl McpHostHandler {
         let end_user_subject = end_user.map(|e| e.subject.clone());
         let end_user_issuer = end_user.and_then(|e| e.issuer.clone());
         let end_user_method = end_user.map(|e| e.method.as_str().to_string());
+        // PRD-mcphost-shared-call-run-scope requirement 1: `Some(tenant's
+        // namespace)` only for a cross-tenant call (`caller.is_some()`) --
+        // tells `record_call_attributed_with_end_user` to scope this call's
+        // `runs` row to `caller`, not `tenant` (the owner).
+        let shared_owner_namespace = caller.map(|_| tenant.namespace.clone());
 
         let start = Instant::now();
         if mcp_name_mismatch {
@@ -3760,6 +3765,7 @@ impl McpHostHandler {
                         end_user_subject.clone(),
                         end_user_issuer.clone(),
                         end_user_method.clone(),
+                        shared_owner_namespace.clone(),
                     )
                     .await
                 {
@@ -3846,6 +3852,7 @@ impl McpHostHandler {
                         end_user_subject.clone(),
                         end_user_issuer.clone(),
                         end_user_method.clone(),
+                        shared_owner_namespace.clone(),
                     )
                     .await;
                 if let Some(subject) = &end_user_subject {
@@ -3876,6 +3883,7 @@ impl McpHostHandler {
                         end_user_subject.clone(),
                         end_user_issuer.clone(),
                         end_user_method.clone(),
+                        shared_owner_namespace.clone(),
                     )
                     .await;
                 if let Some(subject) = &end_user_subject {

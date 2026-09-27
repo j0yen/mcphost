@@ -1,103 +1,84 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-end-user-audit-and-revoke.md",
-  "intent_slug": "mcphost-end-user-audit-and-revoke",
-  "root_motivation": "Grounding (PRD: enterprise pair for end-user-identity; tenant-level analogues host.export, retention 0026, admin_audit 0012): the identity and vault PRDs let a tenant's tool serve many humans, but mcphost has no control plane for the end users inside a tenant -- a tenant cannot list who connected, audit what one user did, revoke a user, or honour a deletion request. That is the first compliance question the AUP/DMCA readiness gate (2026-09-23 market-test plan) will raise for any multi-user tool; without revoke+purge, no tenant can answer it without an operator.",
-  "user_persona": "Four (PRD user stories): a SaaS PM listing end users with last-seen/call counts or getting one; a SaaS PM handling a deletion request via revoke then purge, checking audit for the tombstone; a support engineer at the tenant reading one end user's call history; an operator reading admin.enduser.stats for the plan knob.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-shared-call-run-scope.md",
+  "intent_slug": "mcphost-shared-call-run-scope",
+  "root_motivation": "Grounding: shared-tool-call-path AC10 failed live on prod 0.60.17 (run 245, runs/245/live/verify-ac10.stream.log): after tenant B's synchronous host.tool_call {name: \"<O>.tool\"}, owner O's host.runs.list shows the run and host.runs.get resolves it -- record_call_attributed_with_end_user (db.rs:5675-5701 at the cited tree) inserts the runs row with tenant_id = owner for every synchronous call, and list_runs (db.rs:6066-6106) filters on tenant_id only; the async path runs::enqueue_shared (runs.rs:354-406) already scopes the run to the caller (its own AC4 passes). Problem statement: this leaks one tenant's run into another's ledger and makes the sync and async shared-call paths disagree on whose run it is.",
+  "user_persona": "Three (PRD User stories): (1) caller (integration_specialist) -- after host.tool_call {name: \"acme.lookup\"}, host.runs.list shows one run with tool: \"acme.lookup\" and trigger: \"call\"; (2) owner -- host.runs.list shows none of the callers' runs, host.runs.get on a caller's run id returns not_found; (3) auditor -- the owner's host.usage and meter events still count the call against the owner's tool, unchanged by the run-scoping fix.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 10
+    "target": 8
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given 3 identified calls from u1 and 1 from u2, When the 10s flush runs and host.enduser.list is called, Then two rows return with calls_total 3 and 1 and correct last_seen.",
-      "test": "tests/enduserctl_ac01_list_flush_aggregates_calls.rs"
+      "description": "Given O shares lookup public and B calls host.tool_call {name: \"<O>.lookup\"} synchronously, When B calls host.runs.list, Then one run with tool == \"<O>.lookup\", trigger == \"call\", status == \"done\" (host vocabulary for the PRD's own \"ok\") returns.",
+      "test": "tests/sharedrunscope_ac01_caller_sees_sync_shared_run.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given u1, When host.enduser.get {subject: \"u1\"} runs, Then it returns the row plus state_rows, vault_connections, and runs_30d counts matching the tables.",
-      "test": "tests/enduserctl_ac02_get_row_plus_counts.rs"
+      "description": "Given the same call, When O calls host.runs.list, Then no run for it returns; When O calls host.runs.get {id} with B's run id, Then run_not_found (host wire code for the PRD's own \"not_found\").",
+      "test": "tests/sharedrunscope_ac02_owner_cannot_see_callers_run.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given u1 made calls to tools A and B, When host.enduser.audit {subject: \"u1\"} runs, Then both calls return with tool, outcome, run id, and impersonated: false, newest first, paged by cursor.",
-      "test": "tests/enduserctl_ac03_audit_calls_newest_first_paged.rs"
+      "description": "Given the same call, When O's meter events and host.usage are read, Then exactly one call is counted against O's lookup, as before this PRD.",
+      "test": "tests/sharedrunscope_ac03_owner_meter_and_usage_unchanged.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given host.enduser.revoke {subject: \"u1\", reason: \"left\"}, When u1's next identified call arrives, Then it returns end_user_revoked, no tool runs, and u1's vault tokens are marked revoked.",
-      "test": "tests/enduserctl_ac04_revoke_refuses_next_call_and_disconnects_vault.rs"
+      "description": "Given O calls its own lookup synchronously, When O calls host.runs.list, Then the run appears under O exactly as before (byte-identical on the existing fixture).",
+      "test": "tests/sharedrunscope_ac04_own_call_run_row_unchanged.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given u1 is revoked and owns 20 scoped state rows and 1 vault token, When host.enduser.purge {subject: \"u1\"} runs, Then the rows and token are deleted, u1's calls rows remain with null end_user_subject, purged_at is set, the audit tombstone exists, and the response reports {state_rows: 20, vault_tokens: 1}.",
-      "test": "tests/enduserctl_ac05_purge_deletes_scoped_rows_and_deidentifies_calls.rs"
+      "description": "Given B calls the shared tool async and sync once each, When B calls host.runs.list, Then both runs appear with the same tool string and scoping.",
+      "test": "tests/sharedrunscope_ac05_async_and_sync_share_scoping.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given u1 is not revoked, When purge runs, Then it is rejected with revoke_required.",
-      "test": "tests/enduserctl_ac06_purge_without_revoke_rejected.rs"
+      "description": "Given raw tools/call name=\"<O>.lookup\" from B, When ledgers are read, Then the outcome matches AC1 and AC2 (both entry points share the path).",
+      "test": "tests/sharedrunscope_ac06_raw_tools_call_shares_the_path.rs"
     },
     {
       "id": "AC7",
-      "level": "MUST",
-      "description": "Given unrevoke {subject: \"u1\"} after revoke (before purge), When u1 calls again, Then the call succeeds and the audit shows revoke and unrevoke entries.",
-      "test": "tests/enduserctl_ac07_unrevoke_restores_calls_audit_shows_both.rs"
+      "level": "SHOULD",
+      "description": "Given three pre-existing owner-scoped sync shared-call rows, When the migration runs, Then they belong to the callers and O's host.runs.list no longer shows them.",
+      "test": "tests/sharedrunscope_ac07_migration_backfills_legacy_rows.rs"
     },
     {
       "id": "AC8",
-      "level": "SHOULD",
-      "description": "Given u1 with 5 state rows, When host.enduser.export {subject: \"u1\"} runs, Then the bundle at /exports/<run_id> contains exactly those rows and u1's call history, and nothing from u2.",
-      "test": "tests/enduserctl_ac08_export_bundle_scoped_to_one_subject.rs"
+      "level": "MUST",
+      "description": "Given examples/share-a-tool/proof.sh against the in-process test host, When it runs, Then the new owner-ledger step passes.",
+      "test": "tests/sharedrunscope_ac08_proof_script_owner_ledger_check.rs"
     },
     {
       "id": "AC9",
-      "level": "SHOULD",
-      "description": "Given two tenants with end users, When admin.enduser.stats runs, Then per-tenant active/revoked/purged counts return and admin_audit records the call.",
-      "test": "tests/enduserctl_ac09_admin_stats_per_tenant_and_audited.rs"
-    },
-    {
-      "id": "AC10",
       "level": "MUST",
-      "description": "Given 100 000 end users, When list pages with limit: 100, Then each page returns in < 50 ms with a stable cursor.",
-      "test": "tests/enduserctl_ac10_list_100k_pages_under_50ms_stable_cursor.rs"
-    },
-    {
-      "id": "AC11",
-      "level": "MUST",
-      "description": "Given prod after land, When the operator tenant revokes and purges a test end user created through the identity Live AC, Then a call from that subject is refused and host.enduser.get shows purged_at (Live; evidence: mcphost-1 healthz version after deploy plus the call transcript, saved under docs/receipts/<slug>.md).",
-      "test": "deferred: operator-provisioned -- needs a real prod revoke+purge against a live test end user after deploy; no branch-local test can prove a live call-refusal transcript"
+      "description": "Given prod after land, When the operator's shared test tool is called synchronously from a second tenant through https://mcphost.dev/mcp, Then the caller's host.runs.list shows the run and the owner's does not (Live; evidence: mcphost-1 healthz version after deploy plus the call transcript, saved under docs/receipts/<slug>.md).",
+      "test": "deferred: operator-provisioned -- needs a real published shared-tool call against production after deploy; no branch-local test can prove a live prod call transcript. Not in this coder dispatch's own non-deferred AC list (AC1-AC8 only)."
     }
   ],
   "scope": [
-    "migrations/0047_end_user_audit_and_revoke.sql (new, renumbered from 0043 during the mcphost-shared-tool-caller-usage rebase which had already claimed 0043): end_users(tenant_id, subject, issuer, first_seen, last_seen, calls_total, revoked_at, revoked_by, purged_at) with a (tenant_id, last_seen DESC, subject DESC) keyset index (AC10); tenant_audit (tenant_id, subject, action, detail, created_unix) -- a sibling to admin_audit rather than a reuse of it (requirement 3's own 'builder chooses and cites': admin_audit has no tenant_id/subject and is reserved for admin-bearer mutations); vault_tokens (tenant_id, end_user_subject, provider, connected_unix, revoked_unix) -- the smallest shape this control plane's own ACs need since the upstream-token-vault PRD hasn't landed yet; calls.run_id (nullable) so audit can report a run id per call.",
-    "src/enduserctl.rs (new): EndUserActivityBuffer (the in-memory (tenant, subject) -> pending activity map every identified call records into -- requirement 1), flush_once()/spawn_scheduler() (the 10s batched upsert, never per call), list()/get()/audit()/revoke()/unrevoke()/purge() (host.enduser.* handlers).",
-    "src/export.rs: enduser_export()/run_enduser_export_job()/build_enduser_archive() (host.enduser.export, P1 requirement 6) -- reuses the runs-ledger/background-job/signed-download shape export() already has, filtered by end_user_subject instead of a tools list; download()'s tool_name check widened to accept both host.export and host.enduser.export.",
-    "src/db.rs: upsert_end_user_activity/is_end_user_revoked/list_end_users/get_end_user/count_state_rows_for_subject/count_vault_connections_for_subject/count_runs_30d_for_subject/list_calls_for_subject/list_tenant_audit_for_subject/record_tenant_audit/revoke_end_user/unrevoke_end_user/revoke_vault_tokens_for_subject/purge_end_user/state_rows_all_for_end_user/enduser_stats_all_tenants, plus _for_test fixtures (insert_end_users_bulk_for_test, insert_vault_token_for_test, insert_end_user_for_test, count_revoked_vault_tokens_for_test).",
-    "src/admin.rs: enduser_stats() (admin.enduser.stats, P1 requirement 7) and its admin_audit_entry mapping -- read-only but pinned into admin_audit per AC9, same convention admin.db.stats/admin.oauth.issuers already use.",
-    "src/handler.rs: dispatch_tenant_tool/dispatch_admin_tool gain host.enduser.list/get/audit/revoke/unrevoke/purge/export and admin.enduser.stats; the end-user resolution block gains a synchronous is_end_user_revoked check that refuses the whole call (end_user_revoked) before any dispatch arm runs (requirement 4/AC4); the three record_call_attributed_with_end_user call sites also feed AppState::end_user_activity; host_tools()/admin_tools() gain the new tool schemas.",
-    "src/state.rs: AppState gains end_user_activity: enduserctl::EndUserActivityBuffer.",
-    "src/main.rs: enduserctl::spawn_scheduler() started alongside the other background ticks; contract dump regenerated.",
-    "tests/enduserctl_ac0[1-9]_*.rs, tests/enduserctl_ac10_*.rs (new, ten files, one per non-deferred AC); scripts/gen-test-suites.sh / tests/suite_*.rs regenerated to include them.",
-    "agent/test-map.json: ac_test_map repointed to this PRD's enduserctl prefix, end-user-identity's own map archived under ac_test_map_by_prefix.enduser.",
-    "contracts/host-tools.v1.json: regenerated via `mcphost contract dump` to include the eight new tools.",
-    "Cargo.toml/Cargo.lock: patch version bump; CHANGELOG.md: new entry."
+    "src/db.rs (heaviest change): record_call_attributed_with_end_user gains a shared_owner_namespace: Option<String> parameter -- Some only alongside caller_tenant_id also being Some (a cross-tenant call) -- so the runs insert (not the calls insert, which is untouched per requirement 2) writes tenant_id = caller_tenant_id and a qualified <owner_ns>.<local> tool_name when set, matching runs::enqueue_shared's async convention exactly (same NULL caller_tenant_id on the run row either way). record_call_attributed's own trailing-None wrapper call updated to match the new arity. New insert_legacy_owner_scoped_shared_run_for_test test scaffolding (AC7) and migration 0049's registration/call in migrate_sync.",
+    "migrations/0049_shared_call_run_scope.sql (new): P1 requirement 6 / AC7 -- a data-only UPDATE, idempotent by its own WHERE clause (once rewritten a row's caller_tenant_id is NULL and can never match again) rather than a schema-presence guard, run unconditionally at every migrate() like migration 0001.",
+    "src/handler.rs: call_published_tool computes shared_owner_namespace = caller.map(|_| tenant.namespace.clone()) once (tenant is always the owner here, caller is Some only for a cross-tenant dispatch reached via call_shared_tool), threaded into all three record_call_attributed_with_end_user call sites (ok, kind error, timeout).",
+    "examples/share-a-tool/proof.sh: new step 8c, the owner-ledger check AC8 names -- right after the caller's two synchronous calls (step 8's raw tools/call, step 8b's host.tool_call), the owner's own host.runs.list is asserted to show exactly 1 run (its own step-4 test call, not either of the caller's), the one check that would have failed against the pre-PRD host.",
+    "tests/sharedrunscope_ac0[1-8]_*.rs (new, eight files, one per non-deferred/non-live AC); scripts/gen-test-suites.sh regenerated tests/suite_core_07.rs to register them.",
+    "agent/test-map.json: ac_test_map repointed to this PRD's sharedrunscope prefix (AC1-8); end-user-audit-and-revoke's own map archived under ac_test_map_by_prefix.enduserctl.",
+    "Cargo.toml/Cargo.lock: patch version bump 0.60.18 -> 0.60.19."
   ],
   "non_goals": [
-    "Cross-tenant end-user identity -- PRD Non-goals; a subject is meaningful within one tenant only.",
-    "Notifying the end user -- PRD Non-goals; no email path for end users.",
-    "Rate limiting per end user -- PRD Non-goals; a later PRD's job (usage PRD counts, does not limit).",
-    "Retention policy's end_user_inactive_days auto-purge knob (P2 requirement 8) -- not in this coder dispatch's own non-deferred AC list, left out of scope per this card's own 'the AC list is the actual contract' precedent.",
-    "A free-plan daily cap on host.enduser.export -- PRD Open question (owner Joe, due 'at build'); no AC exercises it, so left ungated rather than adding an unrequested quota."
+    "Showing owners who called their shared tools (that is host.usage {by: \"caller\"} in shared-tool-caller-usage) -- PRD Non-goals.",
+    "Changing the raw tools/call dispatch or the sharing model itself -- PRD Non-goals; AC6 proves both entry points already shared the same call_published_tool path and continue to.",
+    "Any change to the calls table insert or metering/quota emission -- requirement 2; AC3 proves this untouched by requirement 1's runs-row scoping change."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -106,41 +87,45 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "revoke_is_synchronous_flush_is_batched": "requirement 1's 10s flush covers only last_seen/calls_total (a crash loses at most 10s of those); revoked_at/revoked_by/purged_at are written synchronously by revoke/unrevoke/purge themselves, per technical considerations' 'a crash loses at most 10s of last-seen updates, never a revoke'.",
-      "purge_deidentifies_calls_never_deletes_them": "Migration/compatibility: 'calls rows are never deleted by purge (attribution and metering stay correct), only de-identified' -- purge_end_user nulls end_user_subject/issuer/method but keeps the row; this resolves the PRD's own open question ('whether purge should also delete calls rows') in favor of de-identify, which the PRD text already pins.",
-      "vault_tokens_is_a_minimal_placeholder_table": "mcphost-upstream-token-vault (visions/mcphost-end-user-auth.md component 3) has not landed -- migration 0043 adds the smallest vault_tokens shape (id, tenant_id, end_user_subject, provider, connected_unix, revoked_unix) this control plane's own ACs (vault_connections count, revoke-disconnects, purge-deletes) need, rather than blocking this PRD on that one; the vault PRD extends it (ciphertext columns) when it ships.",
-      "list_uses_a_keyset_cursor_audit_uses_an_offset_cursor": "AC10's 100k-row/<50ms-page budget needs a true keyset page (idx_end_users_tenant_last_seen, WHERE (last_seen, subject) < cursor) -- list()'s own cursor. audit() has no scale AC, so it merges calls+tenant_audit in Rust and pages with the same opaque-decimal-offset convention agents::search already uses for the same reason."
+      "runs_caller_tenant_id_column_stays_null_for_shared_call_rows": "runs::enqueue_shared never sets the run row's own caller_tenant_id column (it relies solely on tenant_id = caller and a qualified tool_name to encode the relationship) -- record_call_attributed_with_end_user's new branch matches that exactly rather than inventing a second convention where the sync path's run row carries caller_tenant_id and the async path's doesn't; Technical considerations says to reuse enqueue_shared's own row shape, not just its tenant_id choice.",
+      "shared_owner_namespace_passed_in_not_queried": "The owner's namespace needed to qualify the run's tool_name is passed in from handler.rs (which already holds the owner Tenant at every record_call_attributed_with_end_user call site) rather than looked up inside Db from caller_tenant_id/tenant_id -- Non-functional requirement: 'no added query on the synchronous call path beyond the existing transaction'.",
+      "migration_0049_idempotent_by_where_clause_not_schema_guard": "Every other migration in this file gates a schema-changing batch on pragma_table_info/sqlite_master presence; 0049 is data-only (an UPDATE against the pre-existing runs table, no column/index/table added), so it is naturally idempotent -- once a row is rewritten its caller_tenant_id is NULL, which is exactly what excludes it from the WHERE clause on every later run (including every serve start, since migrate() runs at every start per its own doc comment).",
+      "calls_table_and_metering_untouched": "requirement 2's own wording ('the calls insert and metering emission in the same transaction keep tenant_id = owner.id with the caller attributed exactly as today') is enforced by construction: shared_owner_namespace only changes which branch the runs INSERT takes; the calls INSERT statement immediately above it in the same transaction is not touched by this PRD at all."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does mcphost need an end-user control plane at all, rather than leaving revoke/audit/export as each tool author's own problem?",
-      "a": "Problem statement: a tenant that cannot revoke or purge a user cannot honour a deletion request, the first compliance question the AUP/DMCA readiness gate will raise for any multi-user tool (2026-09-23 market-test plan) -- mcphost already has this shape for tenants (host.export, retention 0026, host.self_offboard, admin_audit) and none of it for the end users inside a tenant."
+      "q": "Why does a synchronous cross-tenant call's runs row need to move to the caller, rather than just teaching host.runs.list to filter out rows the querying tenant didn't originate?",
+      "a": "Grounding: the async path (runs::enqueue_shared) already scopes the run to the caller at insert time, with no extra filter anywhere -- Goals says 'one scoping rule for shared-call runs, sync and async: the run is the caller's', so the fix is to make the sync path's insert agree with the async path's insert, not to add a second mechanism that papers over the sync path's own wrong tenant_id."
     },
     {
       "why": 2,
-      "q": "Why batch the last_seen/calls_total upsert on a 10s tick instead of writing it on every call?",
-      "a": "Non-functional requirement: 'the upsert batch adds no per-call latency' -- an UPDATE on every one of a tenant's calls would add write contention to the hot path a read-mostly roster table doesn't need; the technical considerations explicitly trade a 10s last-seen staleness window for that."
+      "q": "Why must the calls table and metering stay completely untouched (requirement 2) while the runs table's scoping changes?",
+      "a": "Success metrics: 'guardrail: meter events per shared call: baseline 1 (owner), target 1 (owner)' -- Goals: 'No change to metering, quota, or the calls table' -- the bug is specifically in runs.rs's ledger-of-executions concept (who ran this, visible via host.runs.*), not in billing/quota attribution (who pays for this, visible via host.usage), which was already correct before this PRD."
     },
     {
       "why": 3,
-      "q": "Why require revoke before purge (revoke_required, AC6) rather than allow a direct purge?",
-      "a": "Success metrics: 'deletion request executable by a tenant without operator ... revoke+purge <= 2 calls' -- revoking first closes the subject's ability to make new calls or write new state during the purge window, and leaves a revoke event in tenant_audit as the recorded moment consent-to-delete began, before any data actually leaves."
+      "q": "Why does the run's tool_name need to become the qualified <owner_ns>.<local> string instead of staying the bare local name once it moves to the caller's tenant?",
+      "a": "Requirement 3: 'run_to_json for a shared-call run reports tool as the qualified name <owner_ns>.<tool> for the caller (matching the async path's output)' -- a bare local name under the caller's own tenant_id would be ambiguous with (or silently collide with) a same-named tool the caller might publish itself; enqueue_shared already avoids this by storing the qualified name, so the sync path must match."
     },
     {
       "why": 4,
-      "q": "Why keep a purged subject's calls rows (de-identified) instead of deleting them?",
-      "a": "Migration/compatibility: 'calls rows are never deleted by purge (attribution and metering stay correct), only de-identified' -- billing/metering and per-tool usage counts read calls regardless of which end user made them; deleting the rows would silently corrupt a tenant's own usage history for a deletion that only concerns one subject's identity."
+      "q": "Why does the P1 migration (requirement 6/AC7) matter if it only fixes historical rows that a determined operator could otherwise just leave alone?",
+      "a": "Success metrics: 'owner runs rows created by callers' sync calls: baseline 100%, target 0%, method AC2, timeframe at gate' -- a pre-existing leaked row is the same privacy/consistency defect the PRD's Problem statement names for new rows; leaving it unfixed would mean the fix only applies going forward while an owner's host.runs.list keeps showing old cross-tenant rows indefinitely."
     },
     {
       "why": 5,
-      "q": "Why a new tenant_audit table for revoke/unrevoke/purge events instead of reusing admin_audit (already append-only, already actor-tracked)?",
-      "a": "Requirement 3's own 'builder chooses and cites': admin_audit has no tenant_id/subject columns and is written centrally from handler::dispatch_admin_tool for admin-bearer mutations only; widening its shape for a tenant-bearer caller it was never meant to log would blur that boundary, so this control plane gets its own sibling table with the same append-only shape instead."
+      "q": "Why is AC9 (the live prod re-run) deferred rather than attempted by this coder dispatch?",
+      "a": "AC9 itself says 'Live; evidence: mcphost-1 healthz version after deploy plus the call transcript ... saved under docs/receipts/<slug>.md' -- it requires an actual deploy to https://mcphost.dev/mcp and a real second-tenant call against production, which this dispatch (branch-local, no deploy authority) cannot produce; Success metrics' own 'at land' timeframe for the shared-tool-call-path AC10 rerun confirms this is a post-land operator step, not a build-time one."
     }
   ],
   "created_at": "2026-09-26T00:00:00Z",
   "ambiguities_resolved": [
+    {
+      "question": "Rebasing wm-build/mcphost-shared-call-run-scope onto origin/main (four releases: mcphost-first-publish-real-kind through mcphost-end-user-audit-and-revoke) produced conflicts in src/db.rs (the runs-insert column/value hunk this PRD's own commit touches collided with mcphost-runs-end-user-subject's own addition of end_user_subject/issuer/method columns to the same INSERT), a migration-number collision (this branch's own migration numbered 0046, which main had since claimed for mcphost-upstream-token-vault; main's newest is 0048), and the recurring agent/intent-card.json + agent/test-map.json single-current-PRD conflict this card's own prior rebase entries already log.",
+      "resolution": "(1) src/db.rs: kept main's added end_user_subject/issuer/end_user_method columns on the runs INSERT, and this branch's own run_tenant_id/run_tool_name scoping (caller tenant + qualified <owner_ns>.<local> name when shared_owner_namespace is Some, caller_tenant_id column left NULL matching runs::enqueue_shared's own convention) -- both are additive to different columns of the same statement, so the merged INSERT carries both without conflict; the params! list re-derived to match the resulting placeholder count exactly (11 values for 11 placeholders). (2) This branch's own migration renumbered 0046 -> 0049 (next free after main's newest, 0048): the migration file (migrations/0049_shared_call_run_scope.sql, including its own header comment), its MIGRATION_0049 const, its migrate_sync() call site (chained after migrate_0048_runs_end_user_subject), and every doc-comment or test name citing '0046' for this PRD's own migration were updated to '0049' (0046 stayed correctly assigned to mcphost-upstream-token-vault's own migrate_0046_vault, untouched). (3) agent/intent-card.json: root_motivation/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace/user_persona/unfakeable_metric/created_at/prd_source/intent_slug were kept as this branch's own shared-call-run-scope versions (this PRD is what's being built here); scope's and hard_constraints.additional's own '0046' migration references were renumbered to '0049' alongside the source renumbering above, and scope's own predecessor-archive line (written against this branch's prior current PRD, run-result-overflow-to-state, before this rebase) was corrected to name the true predecessor after rebasing onto the latest main: end-user-audit-and-revoke, archived under ac_test_map_by_prefix.enduserctl. end-user-audit-and-revoke's own single-current-PRD fields were not carried forward as fields (already shipped on main under its own history) -- main's full accumulated ambiguities_resolved log is kept in place, in full, immediately after this entry, and this branch's own two prior entries (the run-result-overflow-to-state rebase entry and this branch's own intent-card refresh entry, neither yet known to main) are kept at the very end, in the order they were written -- so nothing already-shipped is silently dropped. (4) agent/test-map.json: ac_test_map repointed to this PRD's sharedrunscope prefix (AC1-8) as current; end-user-audit-and-revoke's own AC1-11 map (main's current, not yet archived anywhere since main's own history had not yet rebased past it) was archived under a new ac_test_map_by_prefix.enduserctl entry; this branch's own runoverflow entry (its immediate predecessor, archived before this rebase but not yet known to main) was carried forward unchanged; every other ac_test_map_by_prefix entry (firstpub, sharedcall, vault, plancat, vaultst, and the rest main had already accumulated) was kept exactly as main had it. Nothing was provisioned, resized, or reconfigured to resolve any of these; all are paper-trail/mechanical-merge/renumbering fixes with no AC content change."
+    },
     {
       "question": "Rebasing wm-build/mcphost-end-user-audit-and-revoke onto main after PRD-mcphost-upstream-token-vault-status landed produced conflicts in agent/intent-card.json, agent/test-map.json, src/admin.rs, and src/handler.rs, the same recurring class this card's own prior rebase entries already log: (1) this card's single-current-PRD fields (root_motivation/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace/user_persona/unfakeable_metric/prd_source/intent_slug/created_at) can only describe one PRD, and vault-status's own card was HEAD's version; (2) agent/test-map.json's top-level ac_test_map likewise names only one current PRD, and vault-status's own refresh had not yet archived itself under ac_test_map_by_prefix; (3) src/admin.rs and src/handler.rs both added one new function/tool-schema/dispatch-arm (admin.vault.stats vs admin.enduser.stats, and host.vault.status/provider_remove vs the six host.enduser.* tools) at the same insertion points -- additive, not overlapping, code.",
       "resolution": "(1) root_motivation/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace/user_persona/unfakeable_metric/created_at/prd_source/intent_slug were kept as this branch's own end-user-audit-and-revoke versions (this PRD is what's being built here), with vault-status's own single-current-PRD fields not carried forward as fields (they already shipped on main under vault-status's own history) -- instead, this card's ambiguities_resolved log kept BOTH lineages' entries in full: this branch's own three build-time-decision entries (purge-vs-delete-calls-rows, no export quota, tenant_audit-vs-admin_audit) and vault-status's own full 48-entry accumulated log were kept ahead of this entry, in the order they were written, so nothing already-shipped is silently dropped. (2) agent/test-map.json's ac_test_map repointed to this PRD (enduserctl) as current; vault-status's own AC1-9 map archived under a new ac_test_map_by_prefix.vaultst entry (appended after the existing plancat entry, matching the file's own append-order convention for newly archived PRDs), same archive-the-predecessor invariant as every prior rebase entry in this log. (3) src/admin.rs: vault_stats/vault_provider_stats_json (HEAD) and enduser_stats (this branch) both kept, one after the other, both function bodies unchanged. (4) src/handler.rs: host_tools()'s admin.vault.stats and admin.enduser.stats Tool::new entries both kept; dispatch_tenant_tool's host.vault.status/provider_remove arms and this branch's six host.enduser.* arms both kept, one after the other; dispatch_admin_tool's admin.vault.stats and admin.enduser.stats arms both kept. Nothing was provisioned, resized, or reconfigured to resolve any of these four; all are paper-trail/mechanical-merge fixes with no AC content change."
@@ -348,6 +333,14 @@
     {
       "question": "Rebasing wm-build/mcphost-upstream-token-vault-status onto main after PRD-mcphost-plan-catalog-state-quota-defaults (#50) merged: that PRD's own intent-card-refresh regenerated agent/intent-card.json's root_motivation/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace for plan-catalog-state-quota-defaults (as this pattern always does) but its ambiguities_resolved array came out with only that PRD's own single new entry, dropping the other 47 entries this log had already accumulated -- conflicting with this branch's own agent/intent-card.json, which (per the usual per-PRD rewrite) describes upstream-token-vault-status/vaultst instead. Keep plancat's fields (this branch isn't building plancat), or vaultst's?",
       "resolution": "Kept vaultst's own root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace -- this branch continues building vaultst (AC9 commits follow), matching every prior 'Rebasing wm-build/X onto main after PRD-Y' recurrence in this log (see the shared-tool-caller-usage and upstream-token-vault entries above). ambiguities_resolved was NOT truncated to match either side alone: it now holds this branch's own full accumulated history (unaffected by the truncation, since that only happened in the plancat lineage on main) plus plancat's one dropped-elsewhere entry, ported forward here so its own build-time decision (from_toml's signature change) stays on the record. agent/test-map.json's ac_test_map stays pointed at vaultst; plancat's own AC1-AC8 map (real, already-shipped, tests/plancat_ac0[1-7]_*.rs plus AC8 deferred) was archived under ac_test_map_by_prefix.plancat, the same 'preserve rather than delete' treatment every other superseded PRD in that dict already gets."
+    },
+    {
+      "question": "Rebasing wm-build/mcphost-run-result-overflow-to-state onto origin/main produced conflicts in agent/intent-card.json and agent/test-map.json, the same recurring rebase-conflict class this card's own docs-semantic-search-rebase entry above already logged: PRD-mcphost-shared-tool-call-path landed on main (its own intent-card regen and ac_test_map repoint, archiving enduser under ac_test_map_by_prefix.enduser) after this branch's own base but before this branch's own commit (which independently repointed the same fields from enduser straight to runoverflow, never having seen sharedcall). Both sides' single-current-PRD fields describe a different PRD; agent/test-map.json's top-level ac_test_map likewise names only one current PRD, and sharedcall's own archival had no predecessor entry to write into (since it was itself the current PRD at HEAD, not yet superseded).",
+      "resolution": "Same 'keep the branch's own current-PRD fields, archive the intervening lineage's map' pattern as the docs-semantic-search-rebase entry above. root_motivation/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace/prd_source/intent_slug/user_persona were kept as this branch's own run-result-overflow versions (this is the PRD being built here); sharedcall's own single-current-PRD fields were not carried forward as fields (they already shipped on main under sharedcall's own history, and its ambiguities_resolved entry above is kept in place, ahead of this branch's own entry, in the order each was written, so nothing already-shipped is silently dropped). agent/test-map.json's ac_test_map stays repointed to runoverflow as current; sharedcall's own AC1-9 map (which had not yet been archived anywhere, since main's own history never rebased past it) was added under a new ac_test_map_by_prefix.sharedcall entry, and the existing ac_test_map_by_prefix.enduser entry was left exactly as HEAD had it (its own '_prd' text correctly names sharedcall, its true immediate successor, as the one that superseded it, not this branch). Nothing was provisioned, resized, or reconfigured to resolve this; it is a paper-trail/mechanical-merge fix with no AC content change."
+    },
+    {
+      "question": "This card (schema, prd_source, root_motivation, user_persona, acceptance_criteria, scope, non_goals, hard_constraints.additional, five_whys_trace) still described PRD-mcphost-run-result-overflow-to-state at the start of this dispatch -- refresh in place for PRD-mcphost-shared-call-run-scope, or leave stale and rely on git history?",
+      "resolution": "Refreshed in place, same 'partial refresh is the actual recurring debt' precedent this card's own history already documents (2026-09-12 intent-card-ac-test-field-stale-pointers, 2026-09-17 ac-test-field-pointers-semantically-wrong, 2026-09-12 d40b1a3 four-reason block): prd_source/intent_slug/root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace all now describe this PRD's own AC1-AC9 (AC1-AC8 with real sharedrunscope test pointers verified to exist by tests/revdebt_ac1_intent_card_pointers_resolve.rs, AC9 recorded deferred/operator-provisioned rather than dropped). agent/test-map.json's ac_test_map was repointed the same way, with the prior runoverflow map archived under ac_test_map_by_prefix.runoverflow rather than lost. ambiguities_resolved itself (this entry included) is additive-only -- every prior PRD's own resolved ambiguity stays on the record."
     }
   ]
 }

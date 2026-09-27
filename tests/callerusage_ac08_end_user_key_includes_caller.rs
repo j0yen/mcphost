@@ -60,6 +60,10 @@ async fn end_user_keys_carry_the_caller_tenant_when_shared() {
             owner.id, "tool_t".to_string(), 10, true, None, None, None, "ok",
             "external".to_string(), None, Some(tenant_a.id), Some("u1".to_string()), None,
             Some("assertion".to_string()),
+        // PRD-mcphost-shared-call-run-scope: not a shared-tool
+        // dispatch, so the runs row stays under the owner (no
+        // qualified name) exactly as before this PRD.
+        None,
         )
         .await
         .expect("seed A/u1 call");
@@ -70,6 +74,10 @@ async fn end_user_keys_carry_the_caller_tenant_when_shared() {
             owner.id, "tool_t".to_string(), 10, true, None, None, None, "ok",
             "external".to_string(), None, Some(tenant_b.id), Some("u1".to_string()), None,
             Some("assertion".to_string()),
+        // PRD-mcphost-shared-call-run-scope: not a shared-tool
+        // dispatch, so the runs row stays under the owner (no
+        // qualified name) exactly as before this PRD.
+        None,
         )
         .await
         .expect("seed B/u1 call");

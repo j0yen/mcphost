@@ -51,6 +51,10 @@ async fn end_user_breakdown_reports_each_subjects_count() {
                 Some("u1".to_string()),
                 None,
                 Some("assertion".to_string()),
+            // PRD-mcphost-shared-call-run-scope: not a shared-tool
+            // dispatch, so the runs row stays under the owner (no
+            // qualified name) exactly as before this PRD.
+            None,
             )
             .await
             .expect("seed u1 call");
@@ -73,6 +77,10 @@ async fn end_user_breakdown_reports_each_subjects_count() {
             Some("u2".to_string()),
             None,
             Some("assertion".to_string()),
+        // PRD-mcphost-shared-call-run-scope: not a shared-tool
+        // dispatch, so the runs row stays under the owner (no
+        // qualified name) exactly as before this PRD.
+        None,
         )
         .await
         .expect("seed u2 call");
