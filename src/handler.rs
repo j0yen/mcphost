@@ -182,6 +182,16 @@ fn source_ip(parts: &http::request::Parts) -> String {
     crate::state::resolve_source_ip(peer.as_deref(), forwarded_for)
 }
 
+/// PRD-mcphost-tenant-resource-metadata requirement 1: the `<ns>` segment
+/// of a `/t/{ns}/mcp` request, read straight off the original request's own
+/// URI (`http.rs::build_router` routes both `/mcp` and `/t/{ns}/mcp` to the
+/// same tower service, and `rmcp` forwards the exact incoming `Request`'s
+/// `http::request::Parts` unmodified) -- `None` for `/mcp` itself, which
+/// carries no tenant restriction.
+fn tenant_path_namespace(parts: &http::request::Parts) -> Option<&str> {
+    parts.uri.path().strip_prefix("/t/")?.strip_suffix("/mcp")
+}
+
 fn mcp_name_header(parts: &http::request::Parts) -> Option<String> {
     parts
         .headers
@@ -4743,6 +4753,15 @@ impl ServerHandler for McpHostHandler {
         let auth = resolve_auth(&self.state, parts)
             .await
             .map_err(AppError::into_error_data)?;
+        // PRD-mcphost-tenant-resource-metadata requirement 1 (AC3): a real
+        // tenant whose namespace doesn't match a `/t/{ns}/mcp` path's own
+        // `<ns>` never gets even a tool listing for it.
+        if let Auth::Tenant(tenant, _) = &auth
+            && let Some(ns) = tenant_path_namespace(parts)
+            && tenant.namespace != ns
+        {
+            return Err(AppError::WrongTenant.into_error_data());
+        }
 
         // PRD-mcphost-protocol-compat requirement 5: every branch resolves
         // to a (tools, ttl_ms) pair here, and the cache fields are applied
@@ -4862,6 +4881,28 @@ impl ServerHandler for McpHostHandler {
             auth = resolve_tenant_key_auth(&self.state, &raw_args)
                 .await
                 .map_err(AppError::into_error_data)?;
+        }
+        // PRD-mcphost-tenant-resource-metadata requirement 1 (AC2, AC3): a
+        // real tenant (key- or JWT-resolved alike) whose namespace doesn't
+        // match a `/t/{ns}/mcp` path's own `<ns>` is refused before any
+        // dispatch below, key and JWT credentials alike.
+        if let Auth::Tenant(tenant, _) = &auth
+            && let Some(ns) = tenant_path_namespace(parts)
+            && tenant.namespace != ns
+        {
+            return Err(AppError::WrongTenant.into_error_data());
+        }
+        // PRD-mcphost-tenant-resource-metadata requirement 4 (AC5): a
+        // bearer JWT's `scope` claim, when present, must contain `mcp` --
+        // spec 2026-07-28's own RFC 6750 §3 challenge vocabulary. A token
+        // with no `scope` claim at all (`oauth_caller.scope` is `None`) is
+        // unrestricted, same as every pre-existing OAuth test's tokens
+        // (none of which ever set one).
+        if let Auth::Tenant(_, Some(oauth_caller)) = &auth
+            && let Some(scope) = &oauth_caller.scope
+            && !scope.split_whitespace().any(|w| w == "mcp")
+        {
+            return Err(AppError::InsufficientScope.into_error_data());
         }
         // PRD-mcphost-oauth-resource-server requirement 7 / AC8: the header
         // already won (requirement 5/6's usual precedence -- `auth` above

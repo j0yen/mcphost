@@ -1130,6 +1130,22 @@ mod tenant_delete_ac07_tenant_not_found;
 mod tenant_delete_ac09_healthz_probe_split;
 #[path = "tenant_delete_ac10_tenants_prefix_filter.rs"]
 mod tenant_delete_ac10_tenants_prefix_filter;
+#[path = "tenantprm_ac01_tenant_metadata_document.rs"]
+mod tenantprm_ac01_tenant_metadata_document;
+#[path = "tenantprm_ac02_bearer_jwt_tenant_and_audience_scoping.rs"]
+mod tenantprm_ac02_bearer_jwt_tenant_and_audience_scoping;
+#[path = "tenantprm_ac03_key_based_tenant_scoping_and_unknown_ns_404.rs"]
+mod tenantprm_ac03_key_based_tenant_scoping_and_unknown_ns_404;
+#[path = "tenantprm_ac04_401_challenge_names_tenant_or_root_metadata.rs"]
+mod tenantprm_ac04_401_challenge_names_tenant_or_root_metadata;
+#[path = "tenantprm_ac05_scope_gates_tool_calls.rs"]
+mod tenantprm_ac05_scope_gates_tool_calls;
+#[path = "tenantprm_ac06_whoami_carries_resource_and_metadata_url.rs"]
+mod tenantprm_ac06_whoami_carries_resource_and_metadata_url;
+#[path = "tenantprm_ac07_key_and_oauth_suites_unchanged.rs"]
+mod tenantprm_ac07_key_and_oauth_suites_unchanged;
+#[path = "tenantprm_ac09_llms_txt_documents_tenant_oauth.rs"]
+mod tenantprm_ac09_llms_txt_documents_tenant_oauth;
 #[path = "tooltest_ac12_log_marking.rs"]
 mod tooltest_ac12_log_marking;
 #[path = "tooltest_ac3_http_dry_run.rs"]

@@ -92,6 +92,38 @@ pub fn sign(kid: &str, priv_pem: &str, iss: &str, aud: &str, sub: &str, exp_offs
     encode(&header, &claims, &key).expect("sign test JWT")
 }
 
+/// PRD-mcphost-tenant-resource-metadata AC5: same as [`sign`], plus a
+/// `scope` claim -- kept as its own function rather than widening `sign`'s
+/// signature, since every existing caller of `sign` relies on it never
+/// emitting a `scope` claim at all (AC5's "no scope claim" Given).
+#[allow(clippy::too_many_arguments)]
+pub fn sign_with_scope(
+    kid: &str,
+    priv_pem: &str,
+    iss: &str,
+    aud: &str,
+    sub: &str,
+    exp_offset_secs: i64,
+    scope: &str,
+) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let claims = json!({
+        "iss": iss,
+        "aud": aud,
+        "sub": sub,
+        "iat": now,
+        "exp": now + exp_offset_secs,
+        "scope": scope,
+    });
+    let mut header = Header::new(Algorithm::ES256);
+    header.kid = Some(kid.to_string());
+    let key = EncodingKey::from_ec_pem(priv_pem.as_bytes()).expect("valid EC PEM");
+    encode(&header, &claims, &key).expect("sign test JWT")
+}
+
 /// A `wiremock` server whose `GET /jwks` always answers `{"keys": [jwk]}`.
 /// `host.oauth.issuer_set`'s own `jwks_url` argument is
 /// `format!("{}/jwks", server.uri())`.

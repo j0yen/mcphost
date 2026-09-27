@@ -741,6 +741,10 @@ impl TestServer {
 pub struct McpClient {
     http: reqwest::Client,
     base_url: String,
+    /// PRD-mcphost-tenant-resource-metadata: the path this client posts
+    /// to -- `/mcp` by default, overridable via [`Self::with_path`] to
+    /// drive a `/t/{ns}/mcp` request instead.
+    mcp_path: String,
     pub bearer: Option<String>,
     next_id: AtomicU64,
     /// PRD-mcphost-tenant-attribution: this client's own `clientInfo`,
@@ -771,6 +775,7 @@ impl McpClient {
         Self {
             http: reqwest::Client::new(),
             base_url: base_url.to_string(),
+            mcp_path: "/mcp".to_string(),
             bearer: None,
             next_id: AtomicU64::new(1),
             client_name: "mcphost-test".to_string(),
@@ -782,6 +787,13 @@ impl McpClient {
         let mut c = Self::new(base_url);
         c.bearer = Some(key.to_string());
         c
+    }
+
+    /// PRD-mcphost-tenant-resource-metadata: point this client at
+    /// `/t/{ns}/mcp` (or any other path) instead of the default `/mcp`.
+    pub fn with_path(mut self, path: &str) -> Self {
+        self.mcp_path = path.to_string();
+        self
     }
 
     /// PRD-mcphost-tenant-attribution attrib_ac2/attrib_ac6: override the
@@ -834,7 +846,7 @@ impl McpClient {
 
         let mut req = self
             .http
-            .post(format!("{}/mcp", self.base_url))
+            .post(format!("{}{}", self.base_url, self.mcp_path))
             .header("Content-Type", "application/json")
             .header("Accept", "application/json, text/event-stream")
             .json(body);

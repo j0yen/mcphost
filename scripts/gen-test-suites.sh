@@ -394,7 +394,14 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # re-collapses core's normal buckets to 1, landing the grand total back
 # at 10.
 
-MAX_PER_SUITE = {"core": 600, "sandbox": 90}
+# PRD-mcphost-tenant-resource-metadata (2026-09-27): this PRD's own
+# `tenantprm_ac*.rs` files (also `core`-classified) join the same normal
+# bucket on top of oauth-conformance-harness's own 600 cap above, spawning
+# an 11th suite binary again -- caught by the same P0 assertion. 600 -> 620
+# re-collapses core's normal buckets to 1, landing the grand total back
+# at 10.
+
+MAX_PER_SUITE = {"core": 620, "sandbox": 90}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

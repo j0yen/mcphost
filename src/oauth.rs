@@ -39,6 +39,23 @@ fn arg_str(args: &Value, name: &str) -> Result<String, AppError> {
         .ok_or_else(|| AppError::InvalidArgs(format!("missing required argument '{name}'")))
 }
 
+fn arg_str_opt(args: &Value, name: &str) -> Option<String> {
+    args.get(name).and_then(Value::as_str).map(str::to_string)
+}
+
+/// PRD-mcphost-tenant-resource-metadata requirement 1/2: the one resource
+/// URI a tenant's namespace maps to -- computed from `public_url` and the
+/// namespace every time, never stored, so it can never drift from either.
+pub fn canonical_resource_uri(public_url: &str, namespace: &str) -> String {
+    format!("{public_url}/t/{namespace}/mcp")
+}
+
+/// requirement 2: the RFC 9728 metadata document URL for a tenant's own
+/// canonical resource URI above.
+pub fn tenant_metadata_url(public_url: &str, namespace: &str) -> String {
+    format!("{public_url}/.well-known/oauth-protected-resource/t/{namespace}/mcp")
+}
+
 /// P2 requirement 8: `$MCPHOST_OAUTH_ALLOWED_ALGS`, a comma-separated list
 /// of `RS256`/`ES256` (the only two this crate's JWK-to-`DecodingKey`
 /// mapping in [`decoding_key_for`] can ever produce); an unrecognized name
@@ -320,6 +337,12 @@ pub struct OauthCaller {
     /// `auth_method` and picks the matching `EndUserMethod`
     /// (`Oauth`/`HostedOauth`).
     pub auth_method: &'static str,
+    /// PRD-mcphost-tenant-resource-metadata requirement 4 (AC5): the JWT's
+    /// own `scope` claim, verbatim, when present -- `None` for a token that
+    /// never carries the claim at all, which spec 2026-07-28 treats as
+    /// unrestricted (never `insufficient_scope`), distinct from a present
+    /// but empty/non-`mcp` scope string.
+    pub scope: Option<String>,
 }
 
 /// The JWT's `payload` segment, decoded (base64url) but NOT signature
@@ -430,9 +453,26 @@ pub async fn validate_bearer(state: &AppState, token: &str) -> Result<OauthCalle
     };
     let claims = token_data.claims;
 
+    // PRD-mcphost-tenant-resource-metadata requirement 3 (RFC 8707 §2): an
+    // audience is acceptable when it's either this issuer's own registered
+    // `audience` (unchanged -- AC7's existing suite pins this) or this
+    // issuer's owning tenant's canonical resource URI, even when the
+    // tenant registered a distinct custom audience. A missing/unknown
+    // owner tenant is unreachable in practice (`issuer_row.tenant_id` is a
+    // foreign key into `tenants`) but falls back to the registered
+    // audience alone rather than panicking.
+    let owner_canonical = state
+        .db
+        .find_tenant_by_id(issuer_row.tenant_id)
+        .await
+        .unwrap_or(None)
+        .map(|t| canonical_resource_uri(&state.public_url, &t.namespace));
+    let aud_matches = |aud: &str| -> bool {
+        aud == issuer_row.audience || owner_canonical.as_deref() == Some(aud)
+    };
     let aud_ok = match claims.get("aud") {
-        Some(Value::String(s)) => s == &issuer_row.audience,
-        Some(Value::Array(arr)) => arr.iter().any(|v| v.as_str() == Some(issuer_row.audience.as_str())),
+        Some(Value::String(s)) => aud_matches(s),
+        Some(Value::Array(arr)) => arr.iter().any(|v| v.as_str().is_some_and(aud_matches)),
         _ => false,
     };
     if !aud_ok {
@@ -476,11 +516,13 @@ pub async fn validate_bearer(state: &AppState, token: &str) -> Result<OauthCalle
         return Err(AppError::InvalidToken("malformed"));
     };
 
+    let scope = claims.get("scope").and_then(Value::as_str).map(str::to_string);
     Ok(OauthCaller {
         tenant_id: issuer_row.tenant_id,
         subject: sub,
         issuer: issuer_row.issuer,
         auth_method: "oauth",
+        scope,
     })
 }
 
@@ -493,7 +535,11 @@ pub async fn validate_bearer(state: &AppState, token: &str) -> Result<OauthCalle
 /// refused `issuer_quota_exceeded`.
 pub async fn issuer_set(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let issuer = arg_str(args, "issuer")?;
-    let audience = arg_str(args, "audience")?;
+    // PRD-mcphost-tenant-resource-metadata requirement 3: `audience` is now
+    // optional, defaulting to this tenant's own canonical resource URI --
+    // the value AC1's "issuer registered with no audience" Given relies on.
+    let audience =
+        arg_str_opt(args, "audience").unwrap_or_else(|| canonical_resource_uri(&state.public_url, &tenant.namespace));
     let jwks_url = arg_str(args, "jwks_url")?;
 
     if let Some(existing) = state.db.find_oauth_issuer_by_issuer(issuer.clone()).await? {
@@ -612,6 +658,24 @@ pub async fn protected_resource_metadata(state: &AppState) -> Result<Value, AppE
     issuers.sort();
     Ok(json!({
         "resource": state.public_url,
+        "authorization_servers": issuers,
+        "bearer_methods_supported": ["header"],
+        "scopes_supported": ["mcp"],
+        "resource_documentation": format!("{}/docs", state.public_url),
+    }))
+}
+
+/// `GET /.well-known/oauth-protected-resource/t/{ns}/mcp` (PRD-mcphost-tenant-resource-metadata
+/// requirement 2 / AC1): same shape as [`protected_resource_metadata`], but
+/// `resource` is this one tenant's own canonical URI and
+/// `authorization_servers` lists only issuers this tenant itself
+/// registered -- never another tenant's, the whole point of a per-tenant
+/// document (Non-goals/Goals: "non-enumerable").
+pub async fn protected_resource_metadata_for_tenant(state: &AppState, tenant: &Tenant) -> Result<Value, AppError> {
+    let rows = state.db.list_oauth_issuers_by_tenant(tenant.id).await?;
+    let issuers: Vec<String> = rows.into_iter().map(|row| row.issuer).collect();
+    Ok(json!({
+        "resource": canonical_resource_uri(&state.public_url, &tenant.namespace),
         "authorization_servers": issuers,
         "bearer_methods_supported": ["header"],
         "scopes_supported": ["mcp"],

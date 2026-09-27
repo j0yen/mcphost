@@ -798,6 +798,12 @@ pub async fn whoami(
         // built-in authorization server) -- see `handler.rs`'s call site.
         "auth_method": auth_method,
         "shared_tools": shared_tools,
+        // PRD-mcphost-tenant-resource-metadata requirement 5 (AC6): this
+        // tenant's own canonical resource URI and its metadata document --
+        // a fixed function of `public_url`/`namespace`, the same whether
+        // this call arrived on `/mcp` or the tenant's own `/t/{ns}/mcp`.
+        "resource": crate::oauth::canonical_resource_uri(&state.public_url, &tenant.namespace),
+        "metadata_url": crate::oauth::tenant_metadata_url(&state.public_url, &tenant.namespace),
     }))
 }
 
