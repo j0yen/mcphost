@@ -631,10 +631,19 @@ pub async fn get_callback(State(state): State<Arc<AppState>>, Query(q): Query<Fe
     html_response(StatusCode::OK, render_federation_consent_page(&client_name, &row.resource, &upstream_state))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub struct FederationConsentForm {
     #[serde(default)]
     token: Option<String>,
+}
+
+// HLT-010: the consent token is a bearer secret; never let {:?} print it.
+impl std::fmt::Debug for FederationConsentForm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FederationConsentForm")
+            .field("token", &self.token.as_ref().map(|_| "<redacted>"))
+            .finish()
+    }
 }
 
 /// `POST /oauth/federation/callback` (requirement 2, AC2): the browser's
