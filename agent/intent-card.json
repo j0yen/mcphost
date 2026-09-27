@@ -1,78 +1,103 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-runs-end-user-subject.md",
-  "intent_slug": "mcphost-runs-end-user-subject",
-  "root_motivation": "Grounding (PRD): end-user-identity AC12 failed live on prod 0.60.16 (run 237, runs/237/live/verify-ac12.stream.log): two calls with distinct end_user_assertion JWTs returned two subjects, but host.runs.list rows were indistinguishable -- run_to_json had no end-user field and the runs table had none; migration 0042 added end_user_subject/issuer/method to calls only. end-user-identity requirement 4 promised host.runs.get and host.runs.list would expose them, but runs never carried the value. Until runs carry the subject, per-user audit, per-user usage, and per-user retention cannot be built on runs.",
-  "user_persona": "Three (PRD User stories): (1) a SaaS operator running one tool for many end users, who needs host.runs.list {end_user_subject: \"u_42\"} to show only that user's jobs; (2) an auditor, who needs host.runs.get {id} to name the subject, issuer, and method for a job; (3) a tool author with no end users, whose run rows must stay unchanged (end_user: null).",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-end-user-audit-and-revoke.md",
+  "intent_slug": "mcphost-end-user-audit-and-revoke",
+  "root_motivation": "Grounding (PRD: enterprise pair for end-user-identity; tenant-level analogues host.export, retention 0026, admin_audit 0012): the identity and vault PRDs let a tenant's tool serve many humans, but mcphost has no control plane for the end users inside a tenant -- a tenant cannot list who connected, audit what one user did, revoke a user, or honour a deletion request. That is the first compliance question the AUP/DMCA readiness gate (2026-09-23 market-test plan) will raise for any multi-user tool; without revoke+purge, no tenant can answer it without an operator.",
+  "user_persona": "Four (PRD user stories): a SaaS PM listing end users with last-seen/call counts or getting one; a SaaS PM handling a deletion request via revoke then purge, checking audit for the tombstone; a support engineer at the tenant reading one end user's call history; an operator reading admin.enduser.stats for the plan knob.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 7
+    "target": 10
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a tenant with an assertion secret, When a tool is called async with an end_user_assertion for subject alice, Then host.runs.get {id} returns end_user: {subject: \"alice\", issuer: null, method: \"assertion\"}.",
-      "test": "tests/runsubject_ac01_async_assertion_end_user_on_run.rs"
+      "description": "Given 3 identified calls from u1 and 1 from u2, When the 10s flush runs and host.enduser.list is called, Then two rows return with calls_total 3 and 1 and correct last_seen.",
+      "test": "tests/enduserctl_ac01_list_flush_aggregates_calls.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given calls for alice (2 runs) and bob (1 run), When host.runs.list {end_user_subject: \"alice\"} runs, Then exactly the 2 alice runs return; When {end_user_subject: \"carol\"}, Then an empty list.",
-      "test": "tests/runsubject_ac02_list_filters_by_end_user_subject.rs"
+      "description": "Given u1, When host.enduser.get {subject: \"u1\"} runs, Then it returns the row plus state_rows, vault_connections, and runs_30d counts matching the tables.",
+      "test": "tests/enduserctl_ac02_get_row_plus_counts.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given an OAuth-identified call, When its run is read, Then end_user.issuer is the token issuer and method == \"oauth\".",
-      "test": "tests/runsubject_ac03_oauth_run_carries_issuer_and_method.rs"
+      "description": "Given u1 made calls to tools A and B, When host.enduser.audit {subject: \"u1\"} runs, Then both calls return with tool, outcome, run id, and impersonated: false, newest first, paged by cursor.",
+      "test": "tests/enduserctl_ac03_audit_calls_newest_first_paged.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a schedule-fired run, When read, Then end_user is null.",
-      "test": "tests/runsubject_ac04_schedule_fired_run_end_user_null.rs"
+      "description": "Given host.enduser.revoke {subject: \"u1\", reason: \"left\"}, When u1's next identified call arrives, Then it returns end_user_revoked, no tool runs, and u1's vault tokens are marked revoked.",
+      "test": "tests/enduserctl_ac04_revoke_refuses_next_call_and_disconnects_vault.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the existing runs fixture with no end user, When host.runs.list output is compared before and after this PRD, Then every row is identical except the added end_user: null key.",
-      "test": "tests/runsubject_ac05_list_output_unchanged_but_for_end_user.rs"
+      "description": "Given u1 is revoked and owns 20 scoped state rows and 1 vault token, When host.enduser.purge {subject: \"u1\"} runs, Then the rows and token are deleted, u1's calls rows remain with null end_user_subject, purged_at is set, the audit tombstone exists, and the response reports {state_rows: 20, vault_tokens: 1}.",
+      "test": "tests/enduserctl_ac05_purge_deletes_scoped_rows_and_deidentifies_calls.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a tenant with 100k runs, When migration 0048 applies in the test harness, Then it completes under 1 s and PRAGMA index_list(runs) shows the new index.",
-      "test": "tests/runsubject_ac06_migration_0048_under_1s_at_100k_rows.rs"
+      "description": "Given u1 is not revoked, When purge runs, Then it is rejected with revoke_required.",
+      "test": "tests/enduserctl_ac06_purge_without_revoke_rejected.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given www/llms.txt, When the runs section is read, Then it names end_user and the end_user_subject filter.",
-      "test": "tests/runsubject_ac07_llms_txt_names_end_user_and_filter.rs"
+      "description": "Given unrevoke {subject: \"u1\"} after revoke (before purge), When u1 calls again, Then the call succeeds and the audit shows revoke and unrevoke entries.",
+      "test": "tests/enduserctl_ac07_unrevoke_restores_calls_audit_shows_both.rs"
     },
     {
       "id": "AC8",
+      "level": "SHOULD",
+      "description": "Given u1 with 5 state rows, When host.enduser.export {subject: \"u1\"} runs, Then the bundle at /exports/<run_id> contains exactly those rows and u1's call history, and nothing from u2.",
+      "test": "tests/enduserctl_ac08_export_bundle_scoped_to_one_subject.rs"
+    },
+    {
+      "id": "AC9",
+      "level": "SHOULD",
+      "description": "Given two tenants with end users, When admin.enduser.stats runs, Then per-tenant active/revoked/purged counts return and admin_audit records the call.",
+      "test": "tests/enduserctl_ac09_admin_stats_per_tenant_and_audited.rs"
+    },
+    {
+      "id": "AC10",
       "level": "MUST",
-      "description": "Given prod after land, When the operator tenant's python tool that echoes MCPHOST_END_USER_ID is called async twice with two assertions (subjects ac8-alice, ac8-bob) through https://mcphost.dev/mcp, Then host.runs.list returns both runs with distinct end_user.subject values and host.runs.list {end_user_subject: \"ac8-alice\"} returns one.",
-      "test": "deferred: operator-provisioned -- needs a real published tool call against production mcphost.dev after deploy; no branch-local test can prove a live two-subject call transcript"
+      "description": "Given 100 000 end users, When list pages with limit: 100, Then each page returns in < 50 ms with a stable cursor.",
+      "test": "tests/enduserctl_ac10_list_100k_pages_under_50ms_stable_cursor.rs"
+    },
+    {
+      "id": "AC11",
+      "level": "MUST",
+      "description": "Given prod after land, When the operator tenant revokes and purges a test end user created through the identity Live AC, Then a call from that subject is refused and host.enduser.get shows purged_at (Live; evidence: mcphost-1 healthz version after deploy plus the call transcript, saved under docs/receipts/<slug>.md).",
+      "test": "deferred: operator-provisioned -- needs a real prod revoke+purge against a live test end user after deploy; no branch-local test can prove a live call-refusal transcript"
     }
   ],
   "scope": [
-    "migrations/0048_runs_end_user_subject.sql (new): runs gains end_user_subject/end_user_issuer/end_user_method (nullable TEXT, additive ALTER TABLE) plus idx_runs_tenant_end_user(tenant_id, end_user_subject); renumbered twice during this PRD's rebase onto main -- from this PRD's own 0043 (claimed first by mcphost-shared-tool-caller-usage) to 0047 (claimed first by run 255's mcphost-end-user-audit-and-revoke branch, pushed 7b4ead2, which lands ahead of this one in the lane) to 0048, the next number actually free at push time; gated in src/db.rs's migrate_sync directly after the pre-existing migrate_0046_vault call, same pragma_table_info-gated idempotency shape 0042 uses.",
-    "src/db.rs: RunRow gains end_user_subject/end_user_issuer/end_user_method (Option<String>); RUN_COLUMNS/run_row_from_row read the 3 new columns; insert_queued_run (async host.tool_call('s enqueue) gains 3 trailing Option<String> params, written by every caller -- the real resolved end user for an ordinary async call, None/None/None for every trigger-fired enqueue (schedule/event/message/webhook/replay); record_call_attributed_with_end_user's own runs INSERT also writes the 3 columns (the same value its calls row already got); list_runs gains an end_user_subject filter parameter, pushed down as an indexed WHERE clause, empty result (never an error) for an unmatched subject.",
-    "src/runs.rs: run_to_json emits end_user: {subject, issuer, method} | null (end_user_to_json helper); enqueue (host.tool_call(..., async=true)'s handler) takes the caller's already-resolved Option<&EndUser> and threads subject/issuer/method into insert_queued_run; list() takes an end_user_subject argument and passes it to list_runs.",
-    "src/handler.rs: host_tool_call's crate::runs::enqueue call site passes the end_user handler.rs already resolved before dispatch; host.runs.list's Tool schema documents the end_user_subject filter argument.",
-    "src/hooks.rs, src/webhooks.rs, src/triggers.rs: every insert_queued_run call site for a trigger-fired enqueue (schedule fire/tick, event, message, webhook, replay) passes None/None/None for the 3 new parameters -- no end user resolution exists on any of these paths.",
-    "www/llms.txt: the runs-as-jobs paragraph gains one sentence naming end_user's shape and one naming the end_user_subject filter."
+    "migrations/0047_end_user_audit_and_revoke.sql (new, renumbered from 0043 during the mcphost-shared-tool-caller-usage rebase which had already claimed 0043): end_users(tenant_id, subject, issuer, first_seen, last_seen, calls_total, revoked_at, revoked_by, purged_at) with a (tenant_id, last_seen DESC, subject DESC) keyset index (AC10); tenant_audit (tenant_id, subject, action, detail, created_unix) -- a sibling to admin_audit rather than a reuse of it (requirement 3's own 'builder chooses and cites': admin_audit has no tenant_id/subject and is reserved for admin-bearer mutations); vault_tokens (tenant_id, end_user_subject, provider, connected_unix, revoked_unix) -- the smallest shape this control plane's own ACs need since the upstream-token-vault PRD hasn't landed yet; calls.run_id (nullable) so audit can report a run id per call.",
+    "src/enduserctl.rs (new): EndUserActivityBuffer (the in-memory (tenant, subject) -> pending activity map every identified call records into -- requirement 1), flush_once()/spawn_scheduler() (the 10s batched upsert, never per call), list()/get()/audit()/revoke()/unrevoke()/purge() (host.enduser.* handlers).",
+    "src/export.rs: enduser_export()/run_enduser_export_job()/build_enduser_archive() (host.enduser.export, P1 requirement 6) -- reuses the runs-ledger/background-job/signed-download shape export() already has, filtered by end_user_subject instead of a tools list; download()'s tool_name check widened to accept both host.export and host.enduser.export.",
+    "src/db.rs: upsert_end_user_activity/is_end_user_revoked/list_end_users/get_end_user/count_state_rows_for_subject/count_vault_connections_for_subject/count_runs_30d_for_subject/list_calls_for_subject/list_tenant_audit_for_subject/record_tenant_audit/revoke_end_user/unrevoke_end_user/revoke_vault_tokens_for_subject/purge_end_user/state_rows_all_for_end_user/enduser_stats_all_tenants, plus _for_test fixtures (insert_end_users_bulk_for_test, insert_vault_token_for_test, insert_end_user_for_test, count_revoked_vault_tokens_for_test).",
+    "src/admin.rs: enduser_stats() (admin.enduser.stats, P1 requirement 7) and its admin_audit_entry mapping -- read-only but pinned into admin_audit per AC9, same convention admin.db.stats/admin.oauth.issuers already use.",
+    "src/handler.rs: dispatch_tenant_tool/dispatch_admin_tool gain host.enduser.list/get/audit/revoke/unrevoke/purge/export and admin.enduser.stats; the end-user resolution block gains a synchronous is_end_user_revoked check that refuses the whole call (end_user_revoked) before any dispatch arm runs (requirement 4/AC4); the three record_call_attributed_with_end_user call sites also feed AppState::end_user_activity; host_tools()/admin_tools() gain the new tool schemas.",
+    "src/state.rs: AppState gains end_user_activity: enduserctl::EndUserActivityBuffer.",
+    "src/main.rs: enduserctl::spawn_scheduler() started alongside the other background ticks; contract dump regenerated.",
+    "tests/enduserctl_ac0[1-9]_*.rs, tests/enduserctl_ac10_*.rs (new, ten files, one per non-deferred AC); scripts/gen-test-suites.sh / tests/suite_*.rs regenerated to include them.",
+    "agent/test-map.json: ac_test_map repointed to this PRD's enduserctl prefix, end-user-identity's own map archived under ac_test_map_by_prefix.enduser.",
+    "contracts/host-tools.v1.json: regenerated via `mcphost contract dump` to include the eight new tools.",
+    "Cargo.toml/Cargo.lock: patch version bump; CHANGELOG.md: new entry."
   ],
   "non_goals": [
-    "Per-end-user quotas or billing -- PRD Non-goals.",
-    "Backfilling historical runs -- PRD Non-goals; migration 0048 is additive-null for every pre-existing row.",
-    "P1 requirement 6 (admin.runs.list gaining the same field/filter) -- the coder dispatch's own AC list covers only requirements 1-5/7 plus the non-functional AC6; the dispatch's explicit stop instruction (\"do not start any work beyond this list\") rules out doing P1 work with no AC of its own in the same pass.",
-    "Whether trigger-fired runs (schedule/event/message/webhook) could ever carry an end user of their own -- out of scope; PRD Technical considerations names them null by construction, and no AC exercises otherwise."
+    "Cross-tenant end-user identity -- PRD Non-goals; a subject is meaningful within one tenant only.",
+    "Notifying the end user -- PRD Non-goals; no email path for end users.",
+    "Rate limiting per end user -- PRD Non-goals; a later PRD's job (usage PRD counts, does not limit).",
+    "Retention policy's end_user_inactive_days auto-purge knob (P2 requirement 8) -- not in this coder dispatch's own non-deferred AC list, left out of scope per this card's own 'the AC list is the actual contract' precedent.",
+    "A free-plan daily cap on host.enduser.export -- PRD Open question (owner Joe, due 'at build'); no AC exercises it, so left ungated rather than adding an unrequested quota."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -81,41 +106,57 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "additive_columns_stay_nullable_no_sentinel_needed": "Unlike end-user-identity's tenant_state_kv fix (which needed a '' sentinel because end_user_subject was folded into a composite PRIMARY KEY, and SQLite treats two NULLs as distinct there), runs.end_user_subject is never part of any key -- a plain nullable TEXT column is safe, and NULL cleanly means 'no end user' with no collision risk.",
-      "trigger_fired_enqueue_never_resolves_an_end_user": "insert_queued_run's 3 new trailing parameters are None/None/None at every call site outside runs::enqueue (host.tool_call(..., async=true)'s own handler) -- hooks.rs (event/message/replay), webhooks.rs (webhook replay), triggers.rs (schedule fire/tick) have no end-user concept at all, matching AC4's schedule-fired-run-is-null requirement.",
-      "unknown_end_user_subject_filter_is_empty_not_an_error": "list_runs's end_user_subject filter follows the exact same convention its pre-existing tool_name/status/trigger filters already use: a value matching zero rows is an empty list, never a structured error (AC2's carol case).",
-      "migration_0048_lands_after_0046_not_0043": "This PRD's own frontmatter and every ambiguity entry below it named 0043 as 'the exact gap already reserved between 0042 and 0044' -- true when this branch was first built, but stale by the time it rebased onto main, twice over: PRD-mcphost-shared-tool-caller-usage landed on main first and claimed 0043 for itself (0044-0046 already taken by docs-semantic-search/run-result-overflow-to-state/upstream-token-vault), so this rebase first renumbered to 0047 -- then run 255's mcphost-end-user-audit-and-revoke branch turned out to have already pushed 0047 for itself (7b4ead2) and lands ahead of this one in the lane, so this PRD's migration was renumbered again to 0048, the next number actually free, and appended to migrate_sync immediately after the pre-existing migrate_0046_vault call rather than inserted between 0042 and 0044."
+      "revoke_is_synchronous_flush_is_batched": "requirement 1's 10s flush covers only last_seen/calls_total (a crash loses at most 10s of those); revoked_at/revoked_by/purged_at are written synchronously by revoke/unrevoke/purge themselves, per technical considerations' 'a crash loses at most 10s of last-seen updates, never a revoke'.",
+      "purge_deidentifies_calls_never_deletes_them": "Migration/compatibility: 'calls rows are never deleted by purge (attribution and metering stay correct), only de-identified' -- purge_end_user nulls end_user_subject/issuer/method but keeps the row; this resolves the PRD's own open question ('whether purge should also delete calls rows') in favor of de-identify, which the PRD text already pins.",
+      "vault_tokens_is_a_minimal_placeholder_table": "mcphost-upstream-token-vault (visions/mcphost-end-user-auth.md component 3) has not landed -- migration 0043 adds the smallest vault_tokens shape (id, tenant_id, end_user_subject, provider, connected_unix, revoked_unix) this control plane's own ACs (vault_connections count, revoke-disconnects, purge-deletes) need, rather than blocking this PRD on that one; the vault PRD extends it (ciphertext columns) when it ships.",
+      "list_uses_a_keyset_cursor_audit_uses_an_offset_cursor": "AC10's 100k-row/<50ms-page budget needs a true keyset page (idx_end_users_tenant_last_seen, WHERE (last_seen, subject) < cursor) -- list()'s own cursor. audit() has no scale AC, so it merges calls+tenant_audit in Rust and pages with the same opaque-decimal-offset convention agents::search already uses for the same reason."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does a run need to remember the end user it ran for, rather than leaving that to the calls row migration 0042 already added?",
-      "a": "Grounding: end-user-identity's own live AC12 failed on prod because host.runs.list rows were indistinguishable between two different end users' calls -- calls carries the value, but a async job's queued/running/done lifecycle is a runs row, and host.runs.get/list/wait are what an operator or auditor actually reads (requirement 4's own promise)."
+      "q": "Why does mcphost need an end-user control plane at all, rather than leaving revoke/audit/export as each tool author's own problem?",
+      "a": "Problem statement: a tenant that cannot revoke or purge a user cannot honour a deletion request, the first compliance question the AUP/DMCA readiness gate will raise for any multi-user tool (2026-09-23 market-test plan) -- mcphost already has this shape for tenants (host.export, retention 0026, host.self_offboard, admin_audit) and none of it for the end users inside a tenant."
     },
     {
       "why": 2,
-      "q": "Why thread the value through insert_queued_run's own parameters rather than joining against calls at read time?",
-      "a": "An async job's runs row is written (queued) before any calls row exists at all -- record_call_attributed_with_end_user's calls+runs pair is the SYNC path only; the async path (insert_queued_run) has no calls row to join against, ever, so the run row itself has to be the source of truth."
+      "q": "Why batch the last_seen/calls_total upsert on a 10s tick instead of writing it on every call?",
+      "a": "Non-functional requirement: 'the upsert batch adds no per-call latency' -- an UPDATE on every one of a tenant's calls would add write contention to the hot path a read-mostly roster table doesn't need; the technical considerations explicitly trade a 10s last-seen staleness window for that."
     },
     {
       "why": 3,
-      "q": "Why null rather than a sentinel like tenant_state_kv's '' (migration 0042) for 'no end user'?",
-      "a": "end_user_subject is never part of a composite PRIMARY KEY on runs (unlike tenant_state_kv's rebuild), so SQLite's NULL-uniqueness quirk that forced the '' sentinel there doesn't apply here -- a plain nullable column is the simplest correct shape, and AC4/AC5 both phrase the no-end-user case as literally null."
+      "q": "Why require revoke before purge (revoke_required, AC6) rather than allow a direct purge?",
+      "a": "Success metrics: 'deletion request executable by a tenant without operator ... revoke+purge <= 2 calls' -- revoking first closes the subject's ability to make new calls or write new state during the purge window, and leaves a revoke event in tenant_audit as the recorded moment consent-to-delete began, before any data actually leaves."
     },
     {
       "why": 4,
-      "q": "Why does host.runs.list's end_user_subject filter return an empty list rather than a structured error for an unrecognized subject (AC2's carol case)?",
-      "a": "Requirement 4's own wording ('unknown subject returns an empty list, never an error') matches the pre-existing tool_name/status/trigger filters' behavior exactly -- an unmatched filter value already means empty result, not a validation failure, everywhere else in this function."
+      "q": "Why keep a purged subject's calls rows (de-identified) instead of deleting them?",
+      "a": "Migration/compatibility: 'calls rows are never deleted by purge (attribution and metering stay correct), only de-identified' -- billing/metering and per-tool usage counts read calls regardless of which end user made them; deleting the rows would silently corrupt a tenant's own usage history for a deletion that only concerns one subject's identity."
     },
     {
       "why": 5,
-      "q": "Why defer AC8 rather than simulate it with a local mock standing in for production?",
-      "a": "AC8 names a real published tool call through https://mcphost.dev/mcp after deploy, with a receipt saved under docs/receipts/ -- the coder dispatch's own deferred-AC convention (operator-provisioned) applies, identical to every other PRD's live-only AC already deferred this way in this repo's history (see ac_test_map_by_prefix's own AC12/AC11/AC12 deferrals)."
+      "q": "Why a new tenant_audit table for revoke/unrevoke/purge events instead of reusing admin_audit (already append-only, already actor-tracked)?",
+      "a": "Requirement 3's own 'builder chooses and cites': admin_audit has no tenant_id/subject columns and is written centrally from handler::dispatch_admin_tool for admin-bearer mutations only; widening its shape for a tenant-bearer caller it was never meant to log would blur that boundary, so this control plane gets its own sibling table with the same append-only shape instead."
     }
   ],
   "created_at": "2026-09-26T00:00:00Z",
   "ambiguities_resolved": [
+    {
+      "question": "Rebasing wm-build/mcphost-end-user-audit-and-revoke onto main after PRD-mcphost-upstream-token-vault-status landed produced conflicts in agent/intent-card.json, agent/test-map.json, src/admin.rs, and src/handler.rs, the same recurring class this card's own prior rebase entries already log: (1) this card's single-current-PRD fields (root_motivation/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace/user_persona/unfakeable_metric/prd_source/intent_slug/created_at) can only describe one PRD, and vault-status's own card was HEAD's version; (2) agent/test-map.json's top-level ac_test_map likewise names only one current PRD, and vault-status's own refresh had not yet archived itself under ac_test_map_by_prefix; (3) src/admin.rs and src/handler.rs both added one new function/tool-schema/dispatch-arm (admin.vault.stats vs admin.enduser.stats, and host.vault.status/provider_remove vs the six host.enduser.* tools) at the same insertion points -- additive, not overlapping, code.",
+      "resolution": "(1) root_motivation/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace/user_persona/unfakeable_metric/created_at/prd_source/intent_slug were kept as this branch's own end-user-audit-and-revoke versions (this PRD is what's being built here), with vault-status's own single-current-PRD fields not carried forward as fields (they already shipped on main under vault-status's own history) -- instead, this card's ambiguities_resolved log kept BOTH lineages' entries in full: this branch's own three build-time-decision entries (purge-vs-delete-calls-rows, no export quota, tenant_audit-vs-admin_audit) and vault-status's own full 48-entry accumulated log were kept ahead of this entry, in the order they were written, so nothing already-shipped is silently dropped. (2) agent/test-map.json's ac_test_map repointed to this PRD (enduserctl) as current; vault-status's own AC1-9 map archived under a new ac_test_map_by_prefix.vaultst entry (appended after the existing plancat entry, matching the file's own append-order convention for newly archived PRDs), same archive-the-predecessor invariant as every prior rebase entry in this log. (3) src/admin.rs: vault_stats/vault_provider_stats_json (HEAD) and enduser_stats (this branch) both kept, one after the other, both function bodies unchanged. (4) src/handler.rs: host_tools()'s admin.vault.stats and admin.enduser.stats Tool::new entries both kept; dispatch_tenant_tool's host.vault.status/provider_remove arms and this branch's six host.enduser.* arms both kept, one after the other; dispatch_admin_tool's admin.vault.stats and admin.enduser.stats arms both kept. Nothing was provisioned, resized, or reconfigured to resolve any of these four; all are paper-trail/mechanical-merge fixes with no AC content change."
+    },
+    {
+      "question": "Open question (owner Joe, due 'at build'): should purge also delete the user's calls rows rather than de-identify them?",
+      "resolution": "De-identify, not delete -- the Migration/compatibility section already pins this ('calls rows are never deleted by purge ... only de-identified'), so purge_end_user nulls end_user_subject/issuer/method and keeps the row, matching AC5's own 'calls rows remain with null end_user_subject'."
+    },
+    {
+      "question": "Open question (owner Joe, due 'at build'): free-plan daily cap on host.enduser.export (drafted 10)?",
+      "resolution": "No cap added. No AC in the coder dispatch's own ten-item list exercises an export rate limit, and this card's own established precedent (see the end-user-identity card's own non_goals) is that the PRD's own AC list is the actual contract -- an unrequested quota was judged out of scope for this slice."
+    },
+    {
+      "question": "Requirement 3 offers two shapes for control-plane events: a new tenant_audit table, or admin_audit widened with tenant scope. Which?",
+      "resolution": "New tenant_audit table -- admin_audit's own schema and its one central writer (handler::dispatch_admin_tool) are for admin-bearer mutations; a tenant-bearer revoke/unrevoke/purge is a different caller than that table was ever meant to log, so a sibling table with the same append-only shape keeps both audit trails' meaning unambiguous."
+    },
     {
       "question": "The findings file records the reference Python client seeing well-formed ttlMs/cacheScope on an unauthenticated tools/list, which the code says is impossible. Which is right?",
       "resolution": "Almost certainly a client-side deserialization default printed where the wire had nothing (rmcp's own mirror of that shape defaults to ttl_ms 0 / cache_scope Private). Settled by a test rather than an argument: AC2 asserts on the serialized wire JSON, not a deserialized model."
@@ -307,10 +348,6 @@
     {
       "question": "Rebasing wm-build/mcphost-upstream-token-vault-status onto main after PRD-mcphost-plan-catalog-state-quota-defaults (#50) merged: that PRD's own intent-card-refresh regenerated agent/intent-card.json's root_motivation/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace for plan-catalog-state-quota-defaults (as this pattern always does) but its ambiguities_resolved array came out with only that PRD's own single new entry, dropping the other 47 entries this log had already accumulated -- conflicting with this branch's own agent/intent-card.json, which (per the usual per-PRD rewrite) describes upstream-token-vault-status/vaultst instead. Keep plancat's fields (this branch isn't building plancat), or vaultst's?",
       "resolution": "Kept vaultst's own root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace -- this branch continues building vaultst (AC9 commits follow), matching every prior 'Rebasing wm-build/X onto main after PRD-Y' recurrence in this log (see the shared-tool-caller-usage and upstream-token-vault entries above). ambiguities_resolved was NOT truncated to match either side alone: it now holds this branch's own full accumulated history (unaffected by the truncation, since that only happened in the plancat lineage on main) plus plancat's one dropped-elsewhere entry, ported forward here so its own build-time decision (from_toml's signature change) stays on the record. agent/test-map.json's ac_test_map stays pointed at vaultst; plancat's own AC1-AC8 map (real, already-shipped, tests/plancat_ac0[1-7]_*.rs plus AC8 deferred) was archived under ac_test_map_by_prefix.plancat, the same 'preserve rather than delete' treatment every other superseded PRD in that dict already gets."
-    },
-    {
-      "question": "Rebasing wm-build/mcphost-runs-end-user-subject onto main after PRD-mcphost-upstream-token-vault-status (#52) merged: that PRD's own intent-card-refresh regenerated agent/intent-card.json's root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace for upstream-token-vault-status, and its ambiguities_resolved array holds this log's full 48-entry accumulated history through vaultst's own rebase entry. This branch's own agent/intent-card.json (per the usual per-PRD rewrite) describes runs-end-user-subject/runsubject instead, and its own ambiguities_resolved array had drifted from an earlier, since-abandoned automated rebase attempt (duplicate 'Rebasing wm-build/mcphost-runs-end-user-subject' entries, built on this branch's pre-rebase base which had itself only 1 entry due to the fleet-ips lineage's own truncation bug) rather than main's real accumulated log. Keep vaultst's fields, or runsubject's -- and which ambiguities_resolved?",
-      "resolution": "Kept runsubject's own root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace -- this branch is landing runsubject now, matching every prior 'Rebasing wm-build/X onto main after PRD-Y' recurrence in this log (see the upstream-token-vault-status and plan-catalog-state-quota-defaults entries above). ambiguities_resolved was NOT taken from either side's drifted copy: it is main's real 48-entry accumulated log (the abandoned automated attempt's duplicated/self-referential entries were discarded as unreliable) plus this one new entry, appended. agent/test-map.json's ac_test_map stays pointed at runsubject; vaultst's own AC1-AC9 map (real, already-shipped, tests/vaultst_ac0[1-8]_*.rs plus AC9 deferred) was archived under ac_test_map_by_prefix.vaultst, the same 'preserve rather than delete' treatment every other superseded PRD in that dict already gets."
     }
   ]
 }

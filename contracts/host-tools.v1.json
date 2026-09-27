@@ -836,6 +836,178 @@
       "since": "0.58.0"
     },
     {
+      "description": "One end user's calls (tool, outcome, run_id, impersonated) merged with its revoke/unrevoke/purge control-plane events, newest first, paged by cursor.",
+      "input_schema": {
+        "properties": {
+          "cursor": {
+            "description": "Opaque; resume after a previous response's cursor.",
+            "type": "string"
+          },
+          "limit": {
+            "description": "Max entries per page (default 50, max 1000).",
+            "type": "integer"
+          },
+          "since": {
+            "description": "Only entries at or after this unix timestamp.",
+            "type": "integer"
+          },
+          "subject": {
+            "description": "The end user's subject.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject"
+        ],
+        "type": "object"
+      },
+      "name": "host.enduser.audit",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Export one end user's state rows and call history as a bundle at /exports/<run_id>, the same envelope host.export returns (download_url, size_bytes, expires_unix).",
+      "input_schema": {
+        "properties": {
+          "subject": {
+            "description": "The end user's subject.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject"
+        ],
+        "type": "object"
+      },
+      "name": "host.enduser.export",
+      "since": "0.58.0"
+    },
+    {
+      "description": "One end user's roster row (subject, issuer, first_seen, last_seen, calls_total, revoked_at, revoked_by, purged_at) plus its live state_rows, vault_connections, and runs_30d counts.",
+      "input_schema": {
+        "properties": {
+          "subject": {
+            "description": "The end user's subject.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject"
+        ],
+        "type": "object"
+      },
+      "name": "host.enduser.get",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List this tenant's end users with last-seen and call counts, newest last-seen first. Optional since (unix seconds, filters last_seen), revoked (bool), limit (default 50, max 1000), and cursor (from a previous page's cursor field).",
+      "input_schema": {
+        "properties": {
+          "cursor": {
+            "description": "Opaque; resume after a previous response's cursor.",
+            "type": "string"
+          },
+          "limit": {
+            "description": "Max rows per page (default 50, max 1000).",
+            "type": "integer"
+          },
+          "revoked": {
+            "description": "true: only revoked end users; false: only active ones; omit for both.",
+            "type": "boolean"
+          },
+          "since": {
+            "description": "Only end users last seen at or after this unix timestamp.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.enduser.list",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Delete a revoked end user's scoped state and vault-token rows, de-identify its calls rows (kept, never deleted), and set purged_at. Requires the end user to be revoked first (revoke_required otherwise). Returns {state_rows, vault_tokens} counts.",
+      "input_schema": {
+        "properties": {
+          "subject": {
+            "description": "The end user's subject.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject"
+        ],
+        "type": "object"
+      },
+      "name": "host.enduser.purge",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Revoke an end user: its next identified call is refused with end_user_revoked, no tool runs, and its vault-token connections are disconnected.",
+      "input_schema": {
+        "properties": {
+          "reason": {
+            "type": "string"
+          },
+          "subject": {
+            "description": "The end user's subject.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject"
+        ],
+        "type": "object"
+      },
+      "name": "host.enduser.revoke",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Reverse a prior host.enduser.revoke; the end user's calls succeed again.",
+      "input_schema": {
+        "properties": {
+          "subject": {
+            "description": "The end user's subject.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject"
+        ],
+        "type": "object"
+      },
+      "name": "host.enduser.unrevoke",
+      "since": "0.58.0"
+    },
+    {
       "description": "The end user (if any) this call itself carries: {subject, issuer, method, verified_at} from the OAuth bearer's sub/iss or a verified end_user_assertion; null when the call carries no verified end-user identity.",
       "input_schema": {
         "properties": {
