@@ -10,6 +10,8 @@ mod common;
 mod ci_sandbox_support;
 #[path = "support/busyaudit.rs"]
 mod busyaudit;
+#[path = "support/fake_as.rs"]
+mod fake_as;
 #[path = "support/host.rs"]
 #[allow(dead_code)]
 mod host;
@@ -17,6 +19,8 @@ mod host;
 mod lanecov;
 #[path = "support/oauth.rs"]
 mod oauth;
+#[path = "support/oauthclient.rs"]
+mod oauthclient;
 
 #[path = "ac01_extended_gates_prd_path_resolves_and_matches_card.rs"]
 mod ac01_extended_gates_prd_path_resolves_and_matches_card;
@@ -772,6 +776,20 @@ mod msg_ac13_unread_only;
 mod msg_ac14_thread_continuation;
 #[path = "msg_regr01_dedupe_hit_preserves_refused.rs"]
 mod msg_regr01_dedupe_hit_preserves_refused;
+#[path = "oauthconf_ac01_gate_verdict_table_matches_gold.rs"]
+mod oauthconf_ac01_gate_verdict_table_matches_gold;
+#[path = "oauthconf_ac02_cimd_preferred_over_dcr_and_unsupported_without_either.rs"]
+mod oauthconf_ac02_cimd_preferred_over_dcr_and_unsupported_without_either;
+#[path = "oauthconf_ac03_authorize_request_scope_resource_pkce_state.rs"]
+mod oauthconf_ac03_authorize_request_scope_resource_pkce_state;
+#[path = "oauthconf_ac04_attack_probes_pass_only_on_as_refusal.rs"]
+mod oauthconf_ac04_attack_probes_pass_only_on_as_refusal;
+#[path = "oauthconf_ac05_probe_cli_json_matches_gate_and_exit_codes.rs"]
+mod oauthconf_ac05_probe_cli_json_matches_gate_and_exit_codes;
+#[path = "oauthconf_ac06_records_and_receipt_never_leak_secrets.rs"]
+mod oauthconf_ac06_records_and_receipt_never_leak_secrets;
+#[path = "oauthconf_ac07_scenarios_doc_matches_gold_and_docs_sharing_check.rs"]
+mod oauthconf_ac07_scenarios_doc_matches_gold_and_docs_sharing_check;
 #[path = "oauthrs_ac01_protected_resource_metadata_empty.rs"]
 mod oauthrs_ac01_protected_resource_metadata_empty;
 #[path = "oauthrs_ac02_bearer_jwt_runs_as_tenant.rs"]

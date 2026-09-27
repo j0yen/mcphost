@@ -386,6 +386,14 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # 560 -> 576 re-collapses core's normal buckets to 1, landing the grand
 # total back at 10, with a little headroom for the rest of this PRD's own
 # remaining AC files.
+#
+# PRD-mcphost-oauth-conformance-harness (2026-09-26): this PRD's own
+# seven `oauthconf_ac*.rs` files (also `core`-classified) join the same
+# normal bucket on top of enduser's own 576 cap above, spawning an 11th
+# suite binary again -- caught by the same P0 assertion. 576 -> 600
+# re-collapses core's normal buckets to 1, landing the grand total back
+# at 10.
+
 MAX_PER_SUITE = {"core": 600, "sandbox": 90}
 
 

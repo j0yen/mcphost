@@ -1,0 +1,137 @@
+# Scenario gold for PRD-mcphost-oauth-conformance-harness.
+#
+# `name` is unique and stable (used as the join key by `docs/oauth-scenarios.md`
+# and by `mcphost oauth-probe --scenario <name>`). `family` groups scenarios
+# for AC1's per-family assertion; `owner_prd` is the feature PRD that makes
+# this scenario read `pass` -- "unassigned" until some future PRD claims it
+# (goal 3: "every OAuth PRD in this fleet names the scenarios it flips from
+# `unsupported` to `pass`"). `steps` documents the client-simulator steps
+# (`src/oauthclient.rs`) the scenario's own runner exercises, in order.
+# `expected` is the gold verdict this PRD's own tree must produce today --
+# never `fail` (a committed scenario that's expected to fail the host isn't
+# gold, it's a bug report).
+#
+# Every family other than `prm`/`iss` reads `unsupported` on this tree: the
+# shared generic runner (`src/oauthclient.rs::run_generic_probe`) has no
+# family-specific arm for register/authorize/token/attack probes yet, so it
+# always stops unsupported past `read_as_metadata` -- including once
+# `mcphost-hosted-authorization-server` landed and `read_as_metadata` itself
+# started passing (this host now has its own AS metadata document). `prm`
+# and `iss` need no authorization server at
+# all: `prm` is RFC 9728 protected-resource discovery (already implemented,
+# `src/oauth.rs::protected_resource_metadata`), and `iss` is the resource
+# server's own issuer-identity enforcement (RFC 9207's mix-up-attack
+# defense, already implemented in `validate_bearer`'s issuer lookup) --
+# neither one is gated on an authorize/token endpoint existing.
+
+[[scenario]]
+name = "prm_root_discovery"
+family = "prm"
+owner_prd = "mcphost-oauth-resource-server"
+steps = ["discover_401", "read_prm"]
+expected = "pass"
+
+[[scenario]]
+name = "iss_unknown_issuer_rejected"
+family = "iss"
+owner_prd = "mcphost-oauth-resource-server"
+steps = ["iss_check"]
+expected = "pass"
+
+[[scenario]]
+name = "dcr_registration_without_as_metadata"
+family = "dcr"
+owner_prd = "unassigned"
+steps = ["discover_401", "read_prm", "read_as_metadata", "register"]
+expected = "unsupported"
+
+[[scenario]]
+name = "cimd_registration_without_as_metadata"
+family = "cimd"
+owner_prd = "unassigned"
+steps = ["discover_401", "read_prm", "read_as_metadata", "register"]
+expected = "unsupported"
+
+[[scenario]]
+name = "pkce_full_flow_without_as_metadata"
+family = "pkce"
+owner_prd = "unassigned"
+steps = ["discover_401", "read_prm", "read_as_metadata", "register", "authorize", "consent", "token"]
+expected = "unsupported"
+
+[[scenario]]
+name = "application_type_without_as_metadata"
+family = "application_type"
+owner_prd = "unassigned"
+steps = ["discover_401", "read_prm", "read_as_metadata", "register"]
+expected = "unsupported"
+
+[[scenario]]
+name = "scopes_from_prm_without_as_metadata"
+family = "scopes"
+owner_prd = "unassigned"
+steps = ["discover_401", "read_prm", "read_as_metadata", "register", "authorize"]
+expected = "unsupported"
+
+[[scenario]]
+name = "step_up_403_without_as_metadata"
+family = "step_up"
+owner_prd = "unassigned"
+steps = ["discover_401", "read_prm", "read_as_metadata", "register", "authorize", "consent", "token", "call", "step_up"]
+expected = "unsupported"
+
+[[scenario]]
+name = "resource_slash_without_as_metadata"
+family = "resource_slash"
+owner_prd = "unassigned"
+steps = ["discover_401", "read_prm", "read_as_metadata"]
+expected = "unsupported"
+
+[[scenario]]
+name = "refresh_without_as_metadata"
+family = "refresh"
+owner_prd = "unassigned"
+steps = ["discover_401", "read_prm", "read_as_metadata", "register", "authorize", "consent", "token", "refresh"]
+expected = "unsupported"
+
+[[scenario]]
+name = "replay_without_as_metadata"
+family = "replay"
+owner_prd = "unassigned"
+steps = ["discover_401", "read_prm", "read_as_metadata", "register", "authorize", "consent", "token", "attack_replay"]
+expected = "unsupported"
+
+[[scenario]]
+name = "redirect_mismatch_without_as_metadata"
+family = "redirect"
+owner_prd = "unassigned"
+steps = ["discover_401", "read_prm", "read_as_metadata", "register", "authorize"]
+expected = "unsupported"
+
+[[scenario]]
+name = "state_tamper_without_as_metadata"
+family = "state"
+owner_prd = "unassigned"
+steps = ["discover_401", "read_prm", "read_as_metadata", "register", "authorize", "consent", "token", "attack_state_tamper"]
+expected = "unsupported"
+
+[[scenario]]
+name = "consent_bypass_without_as_metadata"
+family = "consent_bypass"
+owner_prd = "unassigned"
+steps = ["discover_401", "read_prm", "read_as_metadata", "register", "authorize", "consent"]
+expected = "unsupported"
+
+[[scenario]]
+name = "cross_client_redeem_without_as_metadata"
+family = "client_binding"
+owner_prd = "unassigned"
+steps = ["discover_401", "read_prm", "read_as_metadata", "register", "authorize", "consent", "token", "attack_cross_client_redeem"]
+expected = "unsupported"
+
+[[scenario]]
+name = "jwt_bearer_without_as_metadata"
+family = "wif"
+owner_prd = "unassigned"
+steps = ["read_as_metadata", "token"]
+expected = "unsupported"

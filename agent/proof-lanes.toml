@@ -192,3 +192,11 @@ globs = ["plugin/**", "tests/plugin_assets.sh"]
 required_commands = [
   "tests/plugin_assets.sh",
 ]
+
+[[lane]]
+id = "oauthconf-data"
+description = "PRD-mcphost-oauth-conformance-harness: the scenario gold file (tests/oauthconf/scenarios.toml), its generated doc (docs/oauth-scenarios.md) and that doc's generator (scripts/gen-oauth-scenarios-doc.sh), whose behavior is proven by the oauthconf_ac0x integration tests. Added project-locally: same gap class as the wasm-fixtures/contracts/admin-schemas lanes above -- the shipped scaffold's proof-lanes.toml has no lane for tests/oauthconf/ or these doc paths, and they gate the AC0x tests identically to a tests/**/*.rs edit, so proof is a name-filtered cargo test run over the tests that actually exercise them rather than the whole rust-tests lane."
+globs = ["tests/oauthconf/**", "docs/oauth-scenarios.md", "scripts/gen-oauth-scenarios-doc.sh"]
+required_commands = [
+  "cargo test --workspace oauthconf_ac",
+]

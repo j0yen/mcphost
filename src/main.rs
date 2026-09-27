@@ -105,6 +105,38 @@ enum Command {
         #[command(subcommand)]
         action: ContractCommand,
     },
+    /// PRD-mcphost-oauth-conformance-harness requirement 3: runs the same
+    /// OAuth scenario table the gate's `oauthconf_*` tests run in-process,
+    /// against a live MCP URL.
+    OauthProbe {
+        /// The MCP endpoint to probe, e.g. `https://mcphost.dev/mcp`.
+        #[arg(long)]
+        url: String,
+        /// Only run the named scenario(s) (repeatable); default runs every
+        /// scenario in `tests/oauthconf/scenarios.toml`.
+        #[arg(long = "scenario")]
+        scenario: Vec<String>,
+        /// requirement 7: `claude|chatgpt|cursor|vscode|claude-code`.
+        /// Validated eagerly; not yet consulted by any scenario in this
+        /// PRD's own scenario table (every family that would use it reads
+        /// `unsupported` before an authorize request is ever built) --
+        /// accepted now for the authorize-capable scenarios a future
+        /// feature PRD adds.
+        #[arg(long)]
+        client: Option<String>,
+        /// requirement 3: names an env var holding the consent form's key
+        /// or claim code. Not yet consulted for the same reason as
+        /// `--client` above -- no scenario in this PRD's own table reaches
+        /// a `consent` step against this host.
+        #[arg(long = "consent-key-env")]
+        consent_key_env: Option<String>,
+        /// Print the verdict table as JSON instead of a plain-text table.
+        #[arg(long)]
+        json: bool,
+        /// Write a markdown receipt (goal 3) to this path.
+        #[arg(long)]
+        receipt: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -363,6 +395,29 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         },
+        Command::OauthProbe { url, scenario, client, consent_key_env, json, receipt } => {
+            // Deliberately no `init_tracing()`: same rationale as
+            // `LlmsTxt`/`Contract Dump` above -- `--json` output must be
+            // clean stdout with no JSON log line ahead of it.
+            let _ = consent_key_env;
+            if let Some(name) = &client
+                && mcphost::oauthclient::ClientKind::parse(name).is_none()
+            {
+                eprintln!(
+                    "oauth-probe: --client '{name}' is not one of claude|chatgpt|cursor|vscode|claude-code"
+                );
+                std::process::exit(2);
+            }
+            let http_client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(10))
+                .build()?;
+            let args = mcphost::cli::oauth_probe::Args { url, scenarios: scenario, json, receipt };
+            let exit_code = mcphost::cli::oauth_probe::run(&http_client, &args).await?;
+            if exit_code != 0 {
+                std::process::exit(exit_code);
+            }
+            Ok(())
+        }
         Command::Serve { registry_url } => {
             init_tracing();
 

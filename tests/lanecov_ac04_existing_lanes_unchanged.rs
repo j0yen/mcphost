@@ -109,6 +109,10 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // specifically so THIS test's own required_commands-unchanged half
     // stays green) -- a ninth, intended addition since the baseline, not
     // drift.
+    // PRD-mcphost-oauth-conformance-harness added its own "oauthconf-data"
+    // lane (routes tests/oauthconf/** and docs/oauth-scenarios.md to the
+    // oauthconf_ac0x proof tests and the doc-sharing check) -- a tenth,
+    // intended addition since the baseline, not drift.
     assert_eq!(
         added,
         vec![
@@ -118,11 +122,13 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "docsearch-fixtures",
             "examples",
             "loop-config",
+            "oauthconf-data",
             "plugin",
             "sharing-docs",
             "wasm-fixtures"
         ],
         "only admin-schemas, checkcompat-race-soak, contracts, docsearch-fixtures, examples, \
-         loop-config, plugin, sharing-docs, and wasm-fixtures may have been added since {BASELINE_REV}"
+         loop-config, oauthconf-data, plugin, sharing-docs, and wasm-fixtures may have been \
+         added since {BASELINE_REV}"
     );
 }
