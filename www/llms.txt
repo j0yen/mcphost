@@ -203,6 +203,30 @@ at call time the host resolves and injects that end user's token as
 own headers set. A caller with no connected token for that provider gets
 `upstream_not_connected`, carrying a fresh `connect_link` in its error
 data instead of a partial request.
+## Connect an OAuth client to your tenant
+
+Every tenant has its own canonical resource URI:
+`<public-url>/t/<your-namespace>/mcp` (your namespace is the `namespace`
+`signup` returned, and the same value `host.whoami`'s `resource`/
+`metadata_url` fields report). Point an OAuth client at that URI, not the
+bare `<public-url>/mcp`, so it discovers only your identity provider:
+
+- `GET <public-url>/.well-known/oauth-protected-resource/t/<your-namespace>/mcp`
+  lists only the issuer(s) you registered with `host.oauth.issuer_set`,
+  under `authorization_servers` -- never another tenant's.
+- Register your identity provider with `host.oauth.issuer_set(issuer,
+  jwks_url)`. `audience` is optional and defaults to your own canonical
+  resource URI above; set it explicitly only if your identity provider
+  requires a different value in `aud`. Either way, every access token your
+  users' clients present must carry that same value in `aud` -- a token
+  audienced for the bare `/mcp` root document is rejected `wrong_audience`
+  on your tenant path.
+- Scope: request `mcp` (or omit `scope` entirely). A token whose `scope`
+  claim is present but doesn't include `mcp` is refused
+  `insufficient_scope`.
+- `/mcp` itself stays key-based -- nothing about your existing
+  `Authorization: Bearer <key>` agents changes; the tenant URI above is
+  only for OAuth end users.
 
 <!-- sharing:start -->
 ## Share a tool, not a key

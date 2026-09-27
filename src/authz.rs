@@ -1121,11 +1121,13 @@ pub async fn validate_hosted_bearer(
         .ok_or(AppError::InvalidToken("malformed"))?;
     let _ = state.db.touch_oauth_grant_last_used(jti_row.grant_id, now).await;
 
+    let scope = claims.get("scope").and_then(Value::as_str).map(str::to_string);
     Ok(crate::oauth::OauthCaller {
         tenant_id: tenant.id,
         subject: tenant.namespace,
         issuer: state.public_url.trim_end_matches('/').to_string(),
         auth_method: "hosted_token",
+        scope,
     })
 }
 

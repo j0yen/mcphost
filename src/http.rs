@@ -542,6 +542,43 @@ async fn well_known_authz_jwks(State(state): State<Arc<AppState>>) -> impl IntoR
     Json(state.authz_key.jwks_document())
 }
 
+/// PRD-mcphost-tenant-resource-metadata requirement 2 / AC1: `GET
+/// /.well-known/oauth-protected-resource/t/{ns}/mcp` -- the per-tenant
+/// twin of [`well_known_oauth_protected_resource`] above, unauthenticated
+/// (same RFC 9728 discovery contract). An unknown `<ns>` is 404 (never
+/// enumerates which namespaces exist by distinguishing "unknown" from any
+/// other error).
+async fn well_known_oauth_protected_resource_tenant(
+    State(state): State<Arc<AppState>>,
+    Path(namespace): Path<String>,
+) -> impl IntoResponse {
+    let tenant = match state.db.find_tenant_by_namespace(namespace).await {
+        Ok(Some(t)) => t,
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error_code": "tenant_not_found", "error": "no such tenant"})),
+            )
+                .into_response();
+        }
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error_code": "storage", "error": "storage error"})),
+            )
+                .into_response();
+        }
+    };
+    match crate::oauth::protected_resource_metadata_for_tenant(&state, &tenant).await {
+        Ok(doc) => (StatusCode::OK, Json(doc)).into_response(),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error_code": "storage", "error": "storage error"})),
+        )
+            .into_response(),
+    }
+}
+
 /// PRD-mcphost-sharing requirement 5 (AC7): `GET /.well-known/mcp/catalog.json`,
 /// unauthenticated (same public-discovery-document rationale as
 /// `well_known_server_json` above) -- mirrors `host.catalog.search`'s
@@ -642,14 +679,27 @@ async fn protocol_version_and_log(req: Request<Body>, next: Next) -> Response {
 /// `call_tool`'s own JSON-RPC error body is untouched -- this only
 /// upgrades the wrapping HTTP status and adds the header, so every
 /// existing test that reads the JSON-RPC body regardless of HTTP status
-/// (AC10) keeps passing unchanged. A no-op for every route but `/mcp`
+/// (AC10) keeps passing unchanged.
+///
+/// PRD-mcphost-tenant-resource-metadata requirement 1/4 (AC2-5): also
+/// covers `/t/{ns}/mcp`, naming that tenant's own metadata URL instead of
+/// the root document's, and upgrades `wrong_tenant` the same way
+/// `invalid_token` already was; `insufficient_scope` becomes a real HTTP
+/// 403 with the RFC 6750 §3 `error="insufficient_scope"` challenge. Every
+/// 401/403 challenge this middleware writes now also carries `scope="mcp"`
+/// (spec 2026-07-28 requirement 4). A no-op for every other route
 /// (`signup`/`host.quickstart`/`billing.plans`/`host.redeem` never reach
 /// `tenant_key_missing` in the first place -- see `handler::call_tool`'s
 /// own match-arm ordering -- so this never fires for them).
 async fn oauth_401_upgrade(State(state): State<Arc<AppState>>, req: Request<Body>, next: Next) -> Response {
-    if req.uri().path() != "/mcp" {
+    let path = req.uri().path();
+    let metadata_url = if path == "/mcp" {
+        format!("{}/.well-known/oauth-protected-resource", state.public_url)
+    } else if let Some(ns) = path.strip_prefix("/t/").and_then(|s| s.strip_suffix("/mcp")) {
+        crate::oauth::tenant_metadata_url(&state.public_url, ns)
+    } else {
         return next.run(req).await;
-    }
+    };
     let response = next.run(req).await;
     let (parts, body) = response.into_parts();
     let Ok(bytes) = axum::body::to_bytes(body, usize::MAX).await else {
@@ -662,16 +712,49 @@ async fn oauth_401_upgrade(State(state): State<Arc<AppState>>, req: Request<Body
         .and_then(|d| d.get("error_code").cloned())
         .and_then(|c| c.as_str().map(str::to_string));
     let mut response = Response::from_parts(parts, Body::from(bytes));
-    if matches!(error_code.as_deref(), Some("tenant_key_missing") | Some("invalid_token")) {
-        *response.status_mut() = StatusCode::UNAUTHORIZED;
-        let url = format!("{}/.well-known/oauth-protected-resource", state.public_url);
-        if let Ok(value) = HeaderValue::from_str(&format!("Bearer resource_metadata=\"{url}\"")) {
-            response
-                .headers_mut()
-                .insert(axum::http::header::WWW_AUTHENTICATE, value);
+    match error_code.as_deref() {
+        Some("tenant_key_missing") | Some("invalid_token") | Some("wrong_tenant") => {
+            *response.status_mut() = StatusCode::UNAUTHORIZED;
+            if let Ok(value) =
+                HeaderValue::from_str(&format!("Bearer resource_metadata=\"{metadata_url}\", scope=\"mcp\""))
+            {
+                response
+                    .headers_mut()
+                    .insert(axum::http::header::WWW_AUTHENTICATE, value);
+            }
         }
+        Some("insufficient_scope") => {
+            *response.status_mut() = StatusCode::FORBIDDEN;
+            if let Ok(value) = HeaderValue::from_str(&format!(
+                "Bearer error=\"insufficient_scope\", scope=\"mcp\", resource_metadata=\"{metadata_url}\""
+            )) {
+                response
+                    .headers_mut()
+                    .insert(axum::http::header::WWW_AUTHENTICATE, value);
+            }
+        }
+        _ => {}
     }
     response
+}
+
+/// PRD-mcphost-tenant-resource-metadata requirement 1 (AC3): `/t/{ns}/mcp`
+/// for an `<ns>` that names no tenant at all is 404, byte-identical to
+/// axum's own no-route-matched fallback (`StatusCode::NOT_FOUND.into_response()`
+/// -- see `axum::routing::not_found::NotFound`) for any other unmapped
+/// path, so a probe learns nothing about which namespaces exist. Runs
+/// before `resolve_auth`/dispatch (this middleware sits in front of the
+/// whole streamable-HTTP service), so it applies regardless of credential.
+async fn require_known_tenant_namespace(
+    State(state): State<Arc<AppState>>,
+    Path(namespace): Path<String>,
+    req: Request<Body>,
+    next: Next,
+) -> Response {
+    match state.db.find_tenant_by_namespace(namespace).await {
+        Ok(Some(_)) => next.run(req).await,
+        _ => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 pub fn build_router(state: Arc<AppState>) -> Router {
@@ -695,6 +778,26 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         Arc::new(LocalSessionManager::default()),
         config,
     );
+
+    // PRD-mcphost-tenant-resource-metadata requirement 1: `/t/{ns}/mcp`
+    // serves the identical streamable-HTTP service as `/mcp` -- the
+    // path-bound tenant is read straight off the request's own URI inside
+    // `handler.rs` (`resolve_auth`'s wrong-tenant check), not threaded
+    // through here. Scoped to its own sub-router (rather than `.layer`-ing
+    // the whole router below) so the unknown-namespace 404 guard applies
+    // only to this one route.
+    // `route_layer` (not `layer`): scoped to the route actually matched,
+    // never to the router's own default-NotFound fallback -- `.layer()`
+    // here would wrap that fallback too, and `Router::merge` can promote a
+    // sub-router's (now middleware-wrapped) default fallback to the merged
+    // router's own, turning every genuinely unmapped path's 404 into a
+    // `Path` extraction failure (500) instead.
+    let tenant_mcp_router = Router::new()
+        .route_service("/t/{namespace}/mcp", service.clone())
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_known_tenant_namespace,
+        ));
 
     Router::new()
         .route("/healthz", get(healthz))
@@ -724,6 +827,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/oauth/register", post(crate::authz::post_register))
         .route("/oauth/token", post(crate::authz::post_token))
         .route("/oauth/revoke", post(crate::authz::post_revoke))
+        .route(
+            "/.well-known/oauth-protected-resource/t/{namespace}/mcp",
+            get(well_known_oauth_protected_resource_tenant),
+        )
         .route("/billing/webhook", post(billing_webhook))
         .route("/billing/done", get(billing_done))
         .route("/billing/cancel", get(billing_cancel))
@@ -756,6 +863,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/vault/connect/{token}", get(crate::vault::get_connect))
         .route("/vault/callback", get(crate::vault::get_callback))
         .route_service("/mcp", service)
+        .merge(tenant_mcp_router)
         .layer(middleware::from_fn(protocol_version_and_log))
         .layer(middleware::from_fn_with_state(state.clone(), oauth_401_upgrade))
         .with_state(state)

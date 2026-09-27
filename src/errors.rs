@@ -220,6 +220,18 @@ pub enum AppError {
         "conflicting_credentials: a tenant_key argument and an Authorization bearer resolved to different tenants"
     )]
     ConflictingCredentials,
+    /// PRD-mcphost-tenant-resource-metadata requirement 1 (AC2, AC3): a
+    /// credential (key or bearer JWT) that resolves to a real tenant, but
+    /// not the one named by the `/t/{ns}/mcp` path it was presented on --
+    /// never silently served by the wrong tenant.
+    #[error("this credential does not belong to the tenant named by this path")]
+    WrongTenant,
+    /// requirement 4 (AC5): a bearer JWT whose `scope` claim is present but
+    /// does not contain `mcp` -- RFC 6750 §3's own wire vocabulary. A token
+    /// with no `scope` claim at all is unrestricted (see
+    /// `oauth::OauthCaller::scope`'s doc comment).
+    #[error("insufficient_scope: the bearer token's scope does not include 'mcp'")]
+    InsufficientScope,
 }
 
 impl AppError {
@@ -273,6 +285,8 @@ impl AppError {
             AppError::IssuerNotFound(_) => "issuer_not_found",
             AppError::InvalidToken(_) => "invalid_token",
             AppError::ConflictingCredentials => "conflicting_credentials",
+            AppError::WrongTenant => "wrong_tenant",
+            AppError::InsufficientScope => "insufficient_scope",
         }
     }
 
@@ -310,7 +324,9 @@ impl AppError {
             | AppError::HandoffTokenRedeemed
             | AppError::HandoffTokenExpired
             | AppError::InvalidToken(_)
-            | AppError::ConflictingCredentials => ErrorCode::INVALID_REQUEST,
+            | AppError::ConflictingCredentials
+            | AppError::WrongTenant
+            | AppError::InsufficientScope => ErrorCode::INVALID_REQUEST,
             // `host_not_allowed`/`args_invalid`/`template_error` are caller
             // (or spec-author) input problems; `rate_limited` mirrors
             // AppError::RateLimited above; the remaining `upstream_*` /

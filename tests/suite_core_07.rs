@@ -1130,6 +1130,22 @@ mod tenant_delete_ac07_tenant_not_found;
 mod tenant_delete_ac09_healthz_probe_split;
 #[path = "tenant_delete_ac10_tenants_prefix_filter.rs"]
 mod tenant_delete_ac10_tenants_prefix_filter;
+#[path = "tenantprm_ac01_tenant_metadata_document.rs"]
+mod tenantprm_ac01_tenant_metadata_document;
+#[path = "tenantprm_ac02_bearer_jwt_tenant_and_audience_scoping.rs"]
+mod tenantprm_ac02_bearer_jwt_tenant_and_audience_scoping;
+#[path = "tenantprm_ac03_key_based_tenant_scoping_and_unknown_ns_404.rs"]
+mod tenantprm_ac03_key_based_tenant_scoping_and_unknown_ns_404;
+#[path = "tenantprm_ac04_401_challenge_names_tenant_or_root_metadata.rs"]
+mod tenantprm_ac04_401_challenge_names_tenant_or_root_metadata;
+#[path = "tenantprm_ac05_scope_gates_tool_calls.rs"]
+mod tenantprm_ac05_scope_gates_tool_calls;
+#[path = "tenantprm_ac06_whoami_carries_resource_and_metadata_url.rs"]
+mod tenantprm_ac06_whoami_carries_resource_and_metadata_url;
+#[path = "tenantprm_ac07_key_and_oauth_suites_unchanged.rs"]
+mod tenantprm_ac07_key_and_oauth_suites_unchanged;
+#[path = "tenantprm_ac09_llms_txt_documents_tenant_oauth.rs"]
+mod tenantprm_ac09_llms_txt_documents_tenant_oauth;
 #[path = "tooltest_ac12_log_marking.rs"]
 mod tooltest_ac12_log_marking;
 #[path = "tooltest_ac3_http_dry_run.rs"]
@@ -1202,21 +1218,3 @@ mod wake_ac6_msg_wait;
 mod wake_ac7_trigger_test_synthetic_envelope;
 #[path = "wake_ac8_replay.rs"]
 mod wake_ac8_replay;
-#[path = "wasmkind_ac01_echo_component_calls_and_meters.rs"]
-mod wasmkind_ac01_echo_component_calls_and_meters;
-#[path = "wasmkind_ac02_publish_validation_errors.rs"]
-mod wasmkind_ac02_publish_validation_errors;
-#[path = "wasmkind_ac03_timeout_and_oom_recover.rs"]
-mod wasmkind_ac03_timeout_and_oom_recover;
-#[path = "wasmkind_ac05_tool_test_dry_run.rs"]
-mod wasmkind_ac05_tool_test_dry_run;
-#[path = "wasmkind_ac06_trap_is_structured_and_logged.rs"]
-mod wasmkind_ac06_trap_is_structured_and_logged;
-#[path = "wasmkind_ac07_docs_llms_and_quickstart_document_wasm.rs"]
-mod wasmkind_ac07_docs_llms_and_quickstart_document_wasm;
-#[path = "wasmkind_ac08_cache_reuses_compiled_artifact.rs"]
-mod wasmkind_ac08_cache_reuses_compiled_artifact;
-#[path = "wasmkind_ac09_healthz_reports_wasm_runtime.rs"]
-mod wasmkind_ac09_healthz_reports_wasm_runtime;
-#[path = "wasmkind_ac10_declared_output_promotion_matches_python.rs"]
-mod wasmkind_ac10_declared_output_promotion_matches_python;
