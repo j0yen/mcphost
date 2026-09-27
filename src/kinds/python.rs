@@ -2213,8 +2213,15 @@ sys.modules["mcphost.table"] = _mcphost_table_mod
 sys.modules["mcphost.docs"] = _mcphost_docs_mod
 
 _END_USER_ENV_KEYS = (
-    "MCPHOST_END_USER_ID", "MCPHOST_END_USER_ISSUER", "MCPHOST_END_USER_METHOD",
-    "MCPHOST_END_USER_EMAIL", "MCPHOST_END_USER_NAME",
+    "MCPHOST_END_USER_ID",
+    "MCPHOST_END_USER_ISSUER",
+    "MCPHOST_END_USER_METHOD",
+    # PRD-mcphost-federated-end-user-login requirement 3 / PRD-mcphost-
+    # enterprise-managed-auth requirement 5 (AC2): set only when the call's
+    # end user carries one (a federated login or identity assertion's
+    # email/name claims, when present) -- absent, not empty, otherwise.
+    "MCPHOST_END_USER_EMAIL",
+    "MCPHOST_END_USER_NAME",
 )
 
 def run_one(payload):
@@ -2476,6 +2483,11 @@ fn payload_end_user(ctx: &CallCtx) -> Value {
             "id": eu.subject,
             "issuer": eu.issuer,
             "method": eu.method.as_str(),
+            // PRD-mcphost-federated-end-user-login requirement 3 /
+            // PRD-mcphost-enterprise-managed-auth requirement 5 (AC2):
+            // `None` (never an empty string) when this end user's method
+            // carries none -- `run_one`'s own `if end_user.get("email")`
+            // check treats `None`/absent the same as falsy.
             "email": eu.email,
             "name": eu.name,
         }),

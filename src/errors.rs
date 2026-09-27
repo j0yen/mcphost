@@ -232,6 +232,13 @@ pub enum AppError {
     /// `oauth::OauthCaller::scope`'s doc comment).
     #[error("insufficient_scope: the bearer token's scope does not include 'mcp'")]
     InsufficientScope,
+    /// PRD-mcphost-enterprise-managed-auth requirement 1 (AC8): a tenant may
+    /// register at most [`crate::oauth::MAX_TRUSTED_ISSUERS_PER_TENANT`]
+    /// identity-assertion trusted issuers -- a distinct quota (and wire
+    /// code) from [`Self::IssuerQuotaExceeded`]'s bring-your-own-bearer
+    /// registry.
+    #[error("tenant already trusts {used} issuers, the maximum of {limit}")]
+    TrustedIssuerQuotaExceeded { limit: i64, used: i64 },
 }
 
 impl AppError {
@@ -287,6 +294,7 @@ impl AppError {
             AppError::ConflictingCredentials => "conflicting_credentials",
             AppError::WrongTenant => "wrong_tenant",
             AppError::InsufficientScope => "insufficient_scope",
+            AppError::TrustedIssuerQuotaExceeded { .. } => "quota_trusted_issuers",
         }
     }
 
@@ -306,6 +314,7 @@ impl AppError {
             | AppError::VersionNotFound { .. }
             | AppError::IssuerAlreadyRegistered
             | AppError::IssuerQuotaExceeded { .. }
+            | AppError::TrustedIssuerQuotaExceeded { .. }
             | AppError::SecretMissing(_) => ErrorCode::INVALID_PARAMS,
             AppError::IssuerNotFound(_) => ErrorCode::RESOURCE_NOT_FOUND,
             AppError::Storage(_)
@@ -578,6 +587,10 @@ impl AppError {
             obj.insert("error_description".to_string(), json!(reason));
         }
         if let AppError::IssuerQuotaExceeded { limit, used } = &self {
+            obj.insert("limit".to_string(), json!(limit));
+            obj.insert("used".to_string(), json!(used));
+        }
+        if let AppError::TrustedIssuerQuotaExceeded { limit, used } = &self {
             obj.insert("limit".to_string(), json!(limit));
             obj.insert("used".to_string(), json!(used));
         }

@@ -2410,6 +2410,43 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              line per check with ok|fail and a fix.",
             host_schema(json!({}), &[]),
         ),
+        // PRD-mcphost-enterprise-managed-auth requirement 1: the trusted
+        // identity-assertion issuer registry, distinct from
+        // host.oauth.issuer_set's bring-your-own bearer registry above --
+        // this is who may present the RFC 7523 JWT-bearer grant for this
+        // tenant's employees.
+        Tool::new(
+            "host.oauth.trusted_issuer_set",
+            "Register (or update) an identity-assertion issuer for this tenant's enterprise-managed \
+             auth: identity assertions with iss equal to issuer, from client_id, verified against \
+             jwks_url, mint a token for the employee they name -- no consent screen. Up to 4 \
+             trusted issuers per tenant; a 5th is refused quota_trusted_issuers; an issuer already \
+             trusted by another tenant is refused issuer_already_registered.",
+            host_schema(
+                json!({
+                    "issuer": {"type": "string", "description": "The identity assertion's `iss` claim value to match."},
+                    "jwks_url": {"type": "string", "description": "URL this host fetches the issuer's JWKS from."},
+                    "client_id": {"type": "string", "description": "The pre-registered enterprise client id allowed to use this issuer's grant."},
+                    "audience": {"type": "string", "description": "Expected assertion `aud`, when the provider signs one other than this host's own issuer URL."},
+                }),
+                &["issuer", "jwks_url", "client_id"],
+            ),
+        ),
+        Tool::new(
+            "host.oauth.trusted_issuer_remove",
+            "Remove one of this tenant's trusted identity-assertion issuers; its assertions stop \
+             authenticating immediately.",
+            host_schema(
+                json!({"issuer": {"type": "string", "description": "The issuer to remove."}}),
+                &["issuer"],
+            ),
+        ),
+        Tool::new(
+            "host.oauth.trusted_issuers",
+            "List this tenant's trusted identity-assertion issuers with their jwks_url, client_id \
+             and audience.",
+            host_schema(json!({}), &[]),
+        ),
         // PRD-mcphost-end-user-identity P1 requirement 7 (AC10).
         Tool::new(
             "host.enduser.whoami",
@@ -2995,6 +3032,17 @@ fn admin_tools() -> Vec<Tool> {
              method (key/issuer_jwt/hosted_token) over 7 and 30 days, DCR/CIMD client counts, \
              active grants, first-ever issuer_jwt/hosted_token call timestamps, a per-tenant \
              breakdown (non-synthetic tenants first), and the registration/consent/token funnel.",
+            schema(json!({}), &[]),
+        ),
+        // PRD-mcphost-enterprise-managed-auth requirement 4 (AC3): every
+        // trusted identity-assertion issuer across every tenant, with
+        // per-reason assertion-rejection counters -- the audit surface
+        // AC3 reads.
+        Tool::new(
+            "admin.oauth.trusted_issuers",
+            "List every trusted identity-assertion issuer across every tenant, with the owning \
+             tenant's namespace, client_id, audience, and per-reason assertion-rejection counters \
+             (untrusted_issuer, bad_signature, wrong_audience, expired, replay, subject_revoked).",
             schema(json!({}), &[]),
         ),
         // PRD-mcphost-alerting-webhook requirement 5.
@@ -3587,6 +3635,9 @@ impl McpHostHandler {
             "host.oauth.provider" => crate::federation::provider(&self.state, tenant).await,
             "host.oauth.provider_remove" => crate::federation::provider_remove(&self.state, tenant, &args).await,
             "host.oauth.doctor" => crate::federation::doctor(&self.state, tenant, &args).await,
+            "host.oauth.trusted_issuer_set" => crate::oauth::trusted_issuer_set(&self.state, tenant, &args).await,
+            "host.oauth.trusted_issuer_remove" => crate::oauth::trusted_issuer_remove(&self.state, tenant, &args).await,
+            "host.oauth.trusted_issuers" => crate::oauth::trusted_issuers_list(&self.state, tenant).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         }
     }
@@ -3657,6 +3708,7 @@ impl McpHostHandler {
                 Ok(stats)
             }
             "admin.oauth.demand_stats" => crate::oauth_stats::admin_stats(&self.state).await,
+            "admin.oauth.trusted_issuers" => crate::oauth::admin_trusted_issuers(&self.state).await,
             // PRD-mcphost-alerting-webhook requirement 5.
             "admin.alerts.list" => admin::alerts_list(&self.state, &args).await,
             "admin.alerts.ack" => admin::alerts_ack(&self.state, &args).await,
@@ -5288,9 +5340,15 @@ impl ServerHandler for McpHostHandler {
                 // hosted-token bearer (this host's own built-in issuer)
                 // gets `EndUserMethod::HostedOauth`, never the
                 // bring-your-own-issuer `Oauth` variant.
+                // PRD-mcphost-federated-end-user-login requirement 3: a
+                // federated end-user token gets `EndUserMethod::Federated`.
+                // PRD-mcphost-enterprise-managed-auth requirement 5: a
+                // token minted from an identity assertion gets
+                // `EndUserMethod::EnterpriseAssertion` instead.
                 let method = match oauth_caller.auth_method {
                     "hosted_token" => crate::enduser::EndUserMethod::HostedOauth,
                     "federated" => crate::enduser::EndUserMethod::Federated,
+                    "enterprise_assertion" => crate::enduser::EndUserMethod::EnterpriseAssertion,
                     _ => crate::enduser::EndUserMethod::Oauth,
                 };
                 end_user = Some(crate::enduser::EndUser {

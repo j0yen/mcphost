@@ -34,9 +34,15 @@ fn assert_authorization_server_metadata(body: &Value, base_url: &str) {
         Value::String(format!("{base_url}/.well-known/jwks.json"))
     );
     assert_eq!(body["response_types_supported"], serde_json::json!(["code"]));
+    // PRD-mcphost-enterprise-managed-auth requirement 2 (AC5): the
+    // JWT-bearer grant type joins the pre-existing two.
     assert_eq!(
         body["grant_types_supported"],
-        serde_json::json!(["authorization_code", "refresh_token"])
+        serde_json::json!([
+            "authorization_code",
+            "refresh_token",
+            "urn:ietf:params:oauth:grant-type:jwt-bearer"
+        ])
     );
     assert_eq!(body["code_challenge_methods_supported"], serde_json::json!(["S256"]));
     assert_eq!(body["client_id_metadata_document_supported"], Value::Bool(true));

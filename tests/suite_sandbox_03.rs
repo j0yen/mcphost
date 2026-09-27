@@ -7,6 +7,10 @@
 // original name, path, and test names (nextest's test list, with this
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
+#[path = "support/assertion.rs"]
+mod assertion;
+#[path = "support/oauth.rs"]
+mod oauth;
 
 #[path = "python_ac01_no_deps_cpu_memory.rs"]
 mod python_ac01_no_deps_cpu_memory;
@@ -128,3 +132,5 @@ mod tooltest_ac2_python_exception_other_still_runs;
 mod warmpool_ac06_ac07_tool_run;
 #[path = "wasmkind_ac04_independent_of_sandbox_mechanism.rs"]
 mod wasmkind_ac04_independent_of_sandbox_mechanism;
+#[path = "xaa_ac02_python_env_and_grants_method_xaa.rs"]
+mod xaa_ac02_python_env_and_grants_method_xaa;

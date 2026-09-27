@@ -541,6 +541,42 @@ async fn well_known_authorization_server(State(state): State<Arc<AppState>>) -> 
     Json(crate::authz::authorization_server_metadata(&state))
 }
 
+/// PRD-mcphost-enterprise-managed-auth requirement 2 (AC5): the per-tenant
+/// twin of `well_known_authorization_server` above, at both
+/// `/.well-known/oauth-authorization-server/t/{ns}/mcp` and
+/// `/.well-known/openid-configuration/t/{ns}/mcp` -- unknown `<ns>` is 404
+/// (never enumerates which namespaces exist).
+async fn well_known_authorization_server_tenant(
+    State(state): State<Arc<AppState>>,
+    Path(namespace): Path<String>,
+) -> impl IntoResponse {
+    let tenant = match state.db.find_tenant_by_namespace(namespace).await {
+        Ok(Some(t)) => t,
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error_code": "tenant_not_found", "error": "no such tenant"})),
+            )
+                .into_response();
+        }
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error_code": "storage", "error": "storage error"})),
+            )
+                .into_response();
+        }
+    };
+    match crate::authz::authorization_server_metadata_for_tenant(&state, &tenant).await {
+        Ok(doc) => (StatusCode::OK, Json(doc)).into_response(),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error_code": "storage", "error": "storage error"})),
+        )
+            .into_response(),
+    }
+}
+
 /// AC1 / requirement 1: `GET /.well-known/jwks.json` -- this host's own
 /// authorization-server signing key, published for verifiers of hosted
 /// access tokens (`kid` matches the header every minted token carries).
@@ -807,6 +843,12 @@ pub fn build_router(state: Arc<AppState>) -> Router {
     // sub-router's (now middleware-wrapped) default fallback to the merged
     // router's own, turning every genuinely unmapped path's 404 into a
     // `Path` extraction failure (500) instead.
+    //
+    // PRD-mcphost-enterprise-managed-auth requirement 3 (AC2): also the
+    // endpoint a per-tenant resource URI (`crate::authz::tenant_resource`)
+    // needs for a JWT-bearer-grant-minted bearer to call tools on -- tenant
+    // resolution for any bearer credential already comes from the bearer
+    // itself (`handler::resolve_auth`), never from the URL path.
     let tenant_mcp_router = Router::new()
         .route_service("/t/{namespace}/mcp", service.clone())
         .route_layer(middleware::from_fn_with_state(
@@ -835,6 +877,17 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(well_known_authorization_server),
         )
         .route("/.well-known/jwks.json", get(well_known_authz_jwks))
+        // PRD-mcphost-enterprise-managed-auth requirement 2 (AC5): per-tenant
+        // twin of the root metadata document above, registered at both
+        // well-known paths for the same reason the root pair is.
+        .route(
+            "/.well-known/oauth-authorization-server/t/{namespace}/mcp",
+            get(well_known_authorization_server_tenant),
+        )
+        .route(
+            "/.well-known/openid-configuration/t/{namespace}/mcp",
+            get(well_known_authorization_server_tenant),
+        )
         .route(
             "/oauth/authorize",
             get(crate::authz::get_authorize).post(crate::authz::post_authorize),

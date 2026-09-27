@@ -351,9 +351,11 @@ pub struct OauthCaller {
     /// before this PRD), `"hosted_token"` for this host's own built-in
     /// issuer, PRD-mcphost-federated-end-user-login requirement 3:
     /// `"federated"` for an end user who logged in through a tenant's own
-    /// OIDC provider -- `handler.rs` surfaces this as `host.whoami`'s
+    /// OIDC provider, or (PRD-mcphost-enterprise-managed-auth requirement 5)
+    /// `"enterprise_assertion"` for a token minted from an identity
+    /// assertion -- `handler.rs` surfaces this as `host.whoami`'s
     /// `auth_method` and picks the matching `EndUserMethod`
-    /// (`Oauth`/`HostedOauth`/`Federated`).
+    /// (`Oauth`/`HostedOauth`/`Federated`/`EnterpriseAssertion`).
     pub auth_method: &'static str,
     /// PRD-mcphost-tenant-resource-metadata requirement 4 (AC5): the JWT's
     /// own `scope` claim, verbatim, when present -- `None` for a token that
@@ -361,9 +363,13 @@ pub struct OauthCaller {
     /// unrestricted (never `insufficient_scope`), distinct from a present
     /// but empty/non-`mcp` scope string.
     pub scope: Option<String>,
-    /// PRD-mcphost-federated-end-user-login requirement 3: `Some` only for
-    /// `auth_method == "federated"`, when the provider supplied it --
-    /// surfaced as `MCPHOST_END_USER_EMAIL`/`host.enduser.whoami`'s `email`.
+    /// PRD-mcphost-federated-end-user-login requirement 3: `Some` for
+    /// `auth_method == "federated"` when the provider supplied it, or
+    /// (PRD-mcphost-enterprise-managed-auth requirement 3) for
+    /// `auth_method == "enterprise_assertion"` when the identity assertion
+    /// carried an `email` claim -- `None` for every other auth method
+    /// (bring-your-own issuer and hosted tokens never carry one); surfaced
+    /// as `MCPHOST_END_USER_EMAIL`/`host.enduser.whoami`'s `email`.
     pub email: Option<String>,
     /// See [`OauthCaller::email`]; surfaced as `MCPHOST_END_USER_NAME`.
     pub name: Option<String>,
@@ -375,7 +381,7 @@ pub struct OauthCaller {
 /// trusts (`aud`/`exp`/`nbf`/`sub`) is re-read from the signature-verified
 /// `jsonwebtoken::decode` output in [`validate_bearer`] below, never from
 /// this pre-verification peek.
-fn peek_claims(token: &str) -> Option<Value> {
+pub(crate) fn peek_claims(token: &str) -> Option<Value> {
     use base64::Engine as _;
     let mut parts = token.split('.');
     let _header = parts.next()?;
@@ -550,6 +556,51 @@ pub async fn validate_bearer(state: &AppState, token: &str) -> Result<OauthCalle
         email: None,
         name: None,
     })
+}
+
+/// PRD-mcphost-enterprise-managed-auth technical considerations: "cache
+/// shared with issuer JWTs" -- [`crate::assertion::token_jwt_bearer`]'s own
+/// signature-verification step, reusing [`JwksCache`]/[`decoding_key_for`]
+/// exactly as [`validate_bearer`] above does, without duplicating either.
+/// Unlike `validate_bearer`, this performs no `aud`/`exp`/`nbf`/`sub`
+/// validation and records no rejection counter itself -- an identity
+/// assertion's failure reasons are named and audited by the caller (AC3:
+/// "the audit row names the issuer and reason"), which already knows the
+/// owning tenant this signature check doesn't.
+pub enum SignatureResolution {
+    Verified(Value),
+    UnknownIssuer,
+    BadSignature,
+}
+
+pub async fn verify_signed_jwt(state: &AppState, issuer: &str, jwks_url: &str, token: &str) -> SignatureResolution {
+    let Ok(header) = jsonwebtoken::decode_header(token) else {
+        return SignatureResolution::BadSignature;
+    };
+    let resolution = state
+        .oauth
+        .resolve_key(state, issuer, jwks_url, header.kid.as_deref(), state.oauth_jwks_ttl_secs)
+        .await;
+    let jwk = match resolution {
+        KeyResolution::Found(jwk) => jwk,
+        KeyResolution::NeverCached => return SignatureResolution::UnknownIssuer,
+        KeyResolution::KidNotFound => return SignatureResolution::BadSignature,
+    };
+    let Some((decoding_key, alg)) = decoding_key_for(&jwk) else {
+        return SignatureResolution::BadSignature;
+    };
+    if !state.oauth_allowed_algs.contains(&alg) {
+        return SignatureResolution::BadSignature;
+    }
+    let mut validation = Validation::new(alg);
+    validation.validate_exp = false;
+    validation.validate_nbf = false;
+    validation.validate_aud = false;
+    validation.required_spec_claims.clear();
+    match jsonwebtoken::decode::<Value>(token, &decoding_key, &validation) {
+        Ok(data) => SignatureResolution::Verified(data.claims),
+        Err(_) => SignatureResolution::BadSignature,
+    }
 }
 
 // ---- host.oauth.* tenant tools --------------------------------------------
@@ -728,6 +779,108 @@ pub async fn scopes_list(state: &AppState, tenant: &Tenant) -> Result<Value, App
         .map(|r| json!({"name": r.name, "description": r.description}))
         .collect();
     Ok(json!({"scopes": scopes}))
+}
+
+// ---- host.oauth.trusted_issuer_* (PRD-mcphost-enterprise-managed-auth) ---
+
+/// requirement 1: "max 4 per tenant" -- the identity-assertion trusted-
+/// issuer registry, distinct from [`MAX_ISSUERS_PER_TENANT`]'s
+/// bring-your-own-bearer registry above (a different table, a different
+/// grant).
+pub const MAX_TRUSTED_ISSUERS_PER_TENANT: i64 = 4;
+
+/// `host.oauth.trusted_issuer_set {issuer, jwks_url, client_id, audience?}`
+/// (requirement 1): re-registering an issuer this same tenant already
+/// trusts updates `jwks_url`/`client_id`/`audience` in place (idempotent);
+/// an issuer another tenant trusts is refused `issuer_already_registered`;
+/// a 5th distinct issuer is refused `quota_trusted_issuers` (AC8).
+pub async fn trusted_issuer_set(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let issuer = arg_str(args, "issuer")?;
+    let jwks_url = arg_str(args, "jwks_url")?;
+    let client_id = arg_str(args, "client_id")?;
+    let audience = args.get("audience").and_then(Value::as_str).map(str::to_string);
+
+    if let Some(existing) = state.db.find_trusted_issuer_by_issuer(issuer.clone()).await? {
+        if existing.tenant_id != tenant.id {
+            return Err(AppError::IssuerAlreadyRegistered);
+        }
+        state
+            .db
+            .update_trusted_issuer(tenant.id, issuer.clone(), jwks_url.clone(), client_id.clone(), audience.clone())
+            .await?;
+        return Ok(json!({"issuer": issuer, "jwks_url": jwks_url, "client_id": client_id, "audience": audience}));
+    }
+
+    let used = state.db.count_trusted_issuers_by_tenant(tenant.id).await?;
+    if used >= MAX_TRUSTED_ISSUERS_PER_TENANT {
+        return Err(AppError::TrustedIssuerQuotaExceeded { limit: MAX_TRUSTED_ISSUERS_PER_TENANT, used });
+    }
+
+    state
+        .db
+        .insert_trusted_issuer(
+            tenant.id,
+            issuer.clone(),
+            jwks_url.clone(),
+            client_id.clone(),
+            audience.clone(),
+            crate::state::rfc3339_now(),
+        )
+        .await?;
+    Ok(json!({"issuer": issuer, "jwks_url": jwks_url, "client_id": client_id, "audience": audience}))
+}
+
+/// `host.oauth.trusted_issuer_remove {issuer}`.
+pub async fn trusted_issuer_remove(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let issuer = arg_str(args, "issuer")?;
+    let removed = state.db.remove_trusted_issuer(tenant.id, issuer.clone()).await?;
+    if !removed {
+        return Err(AppError::IssuerNotFound(issuer));
+    }
+    Ok(json!({"removed": true, "issuer": issuer}))
+}
+
+fn trusted_issuer_row_json(row: &crate::db::TrustedIssuerRow) -> Value {
+    json!({
+        "issuer": row.issuer,
+        "jwks_url": row.jwks_url,
+        "client_id": row.client_id,
+        "audience": row.audience,
+        "created_at": row.created_at,
+    })
+}
+
+/// `host.oauth.trusted_issuers`: this tenant's own trusted issuers.
+pub async fn trusted_issuers_list(state: &AppState, tenant: &Tenant) -> Result<Value, AppError> {
+    let rows = state.db.list_trusted_issuers_by_tenant(tenant.id).await?;
+    let issuers: Vec<Value> = rows.iter().map(trusted_issuer_row_json).collect();
+    Ok(json!({"issuers": issuers}))
+}
+
+/// `admin.oauth.trusted_issuers` (AC3): every trusted issuer, its owning
+/// tenant, and per-reason assertion-rejection counters -- reuses the same
+/// `oauth_rejections(issuer, reason, count)` table `admin.oauth.issuers`
+/// already reads (technical considerations: no assertion text is ever
+/// stored, only the issuer string and the reason).
+pub async fn admin_trusted_issuers(state: &AppState) -> Result<Value, AppError> {
+    let rows = state.db.list_trusted_issuers_with_tenant().await?;
+    let mut issuers = Vec::with_capacity(rows.len());
+    for (row, namespace) in rows {
+        let counts = state.db.oauth_rejection_counts(row.issuer.clone()).await?;
+        let mut rejections = Map::new();
+        for (reason, count) in counts {
+            rejections.insert(reason, json!(count));
+        }
+        issuers.push(json!({
+            "issuer": row.issuer,
+            "tenant": namespace,
+            "jwks_url": row.jwks_url,
+            "client_id": row.client_id,
+            "audience": row.audience,
+            "rejections": Value::Object(rejections),
+        }));
+    }
+    Ok(json!({"issuers": issuers}))
 }
 
 // ---- admin.oauth.* -------------------------------------------------------

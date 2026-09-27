@@ -137,6 +137,40 @@ enum Command {
         #[arg(long)]
         receipt: Option<PathBuf>,
     },
+    /// PRD-mcphost-enterprise-managed-auth AC5 / success metrics: runs the
+    /// harness's `wif` scenario family (`expired-assertion`,
+    /// `wrong-audience`, `scope-rejected`, `grant-fallback`; see
+    /// `oauthclient.rs`) against a live authorization server, printing one
+    /// JSON report line per scenario and exiting 1 if any scenario fails.
+    /// Distinct from `OauthProbe` above (PRD-mcphost-oauth-conformance-harness's
+    /// scenario table), which owns the `oauth-probe` name already.
+    WifProbe {
+        /// The authorization server's base URL, e.g. `https://mcphost.dev`.
+        #[arg(long)]
+        base_url: String,
+        /// The per-tenant resource URI under test, e.g.
+        /// `https://mcphost.dev/t/acme/mcp`.
+        #[arg(long)]
+        resource: String,
+        /// The trusted issuer already registered for this resource's
+        /// tenant via `host.oauth.trusted_issuer_set`.
+        #[arg(long)]
+        issuer: String,
+        /// That issuer's registered `client_id`.
+        #[arg(long)]
+        client_id: String,
+        /// The `kid` the issuer's JWKS publishes for the keypair below.
+        #[arg(long)]
+        kid: String,
+        /// Path to the PEM-encoded EC private key matching `kid` -- the
+        /// probe signs its own test assertions with it.
+        #[arg(long)]
+        priv_pem_file: PathBuf,
+        /// The tenant's own API key, used only for `grant-fallback`'s
+        /// consent step (never for the assertion-based scenarios).
+        #[arg(long)]
+        tenant_key: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -417,6 +451,32 @@ async fn main() -> anyhow::Result<()> {
                 std::process::exit(exit_code);
             }
             Ok(())
+        }
+        Command::WifProbe { base_url, resource, issuer, client_id, kid, priv_pem_file, tenant_key } => {
+            // Deliberately no `init_tracing()`: same rationale as
+            // `LlmsTxt`/`Funnel` above -- this subcommand's contract is one
+            // JSON line per scenario on stdout plus an exit code.
+            let priv_pem = std::fs::read_to_string(&priv_pem_file)?;
+            let cfg = mcphost::oauthclient::WifProbeConfig {
+                resource: &resource,
+                issuer: &issuer,
+                client_id: &client_id,
+                kid: &kid,
+                priv_pem: &priv_pem,
+                tenant_key: &tenant_key,
+            };
+            let http = reqwest::Client::new();
+            let reports = mcphost::oauthclient::run_wif_scenarios(&http, &base_url, &cfg).await;
+            let mut all_passed = true;
+            for report in &reports {
+                all_passed &= report.passed();
+                println!("{}", serde_json::to_string(report)?);
+            }
+            if all_passed {
+                Ok(())
+            } else {
+                std::process::exit(1);
+            }
         }
         Command::Serve { registry_url } => {
             init_tracing();

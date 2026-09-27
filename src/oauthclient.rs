@@ -1238,3 +1238,274 @@ async fn run_generic_probe(http: &reqwest::Client, mcp_url: &str) -> (Verdict, V
     }
     (verdict, records)
 }
+
+// PRD-mcphost-enterprise-managed-auth AC5's other half: the "harness `wif`
+// scenarios" clause names a conformance-probe family (grounding: the
+// Anthropic conformance repo's `auth-test-wif-*.ts` client examples --
+// expired assertion, wrong audience, scope rejected, grant fallback) and
+// the success metrics table names its method as `mcphost wif-probe`. What
+// follows is that probe's real implementation, driving a live
+// authorization server exactly the way an enterprise client would (raw
+// HTTP, no test-only shortcuts beyond the `tenant_key` consent field
+// `/oauth/authorize` already accepts for real): it mints its own identity
+// assertions against a caller-supplied keypair (the operator's own IdP
+// JWKS at prod time, a test fixture's at CI time) and reports each
+// scenario `pass`/`fail` so both `main.rs`'s `wif-probe` subcommand and
+// `xaa_ac05`'s test can drive the identical logic.
+use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
+
+/// A single `wif` scenario's outcome -- `result` is always `"pass"` or
+/// `"fail"`, matching AC5's "read `pass`" language literally.
+#[derive(Debug, Clone, Serialize)]
+pub struct WifScenarioReport {
+    pub scenario: &'static str,
+    pub result: &'static str,
+    pub detail: String,
+}
+
+impl WifScenarioReport {
+    pub fn passed(&self) -> bool {
+        self.result == "pass"
+    }
+}
+
+/// Everything the probe needs to drive one tenant's resource: a trusted
+/// issuer already registered via `host.oauth.trusted_issuer_set` (whose
+/// `client_id` is `client_id` here), a keypair the probe signs assertions
+/// with (its public half must be the one `jwks_url` serves under `kid`),
+/// and a tenant key for the grant-fallback scenario's interactive consent.
+pub struct WifProbeConfig<'a> {
+    pub resource: &'a str,
+    pub issuer: &'a str,
+    pub client_id: &'a str,
+    pub kid: &'a str,
+    pub priv_pem: &'a str,
+    pub tenant_key: &'a str,
+}
+
+fn now_unix() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).expect("clock before epoch").as_secs() as i64
+}
+
+fn fresh_jti() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    format!("oauth-probe-{}-{}", now_unix(), COUNTER.fetch_add(1, Ordering::Relaxed))
+}
+
+fn sign_assertion(kid: &str, priv_pem: &str, claims: &Value) -> String {
+    let mut header = Header::new(Algorithm::ES256);
+    header.kid = Some(kid.to_string());
+    let key = EncodingKey::from_ec_pem(priv_pem.as_bytes()).expect("valid EC PEM");
+    encode(&header, claims, &key).expect("sign probe assertion")
+}
+
+async fn post_token(http: &reqwest::Client, base_url: &str, form: &[(&str, &str)]) -> Value {
+    match http.post(format!("{base_url}/oauth/token")).form(form).send().await {
+        Ok(resp) => resp.json().await.unwrap_or_else(|e| json!({"error": "probe_error", "error_description": e.to_string()})),
+        Err(e) => json!({"error": "probe_error", "error_description": e.to_string()}),
+    }
+}
+
+fn query_param<'a>(query: &'a str, name: &str) -> Option<&'a str> {
+    query.split('&').find_map(|pair| {
+        let (k, v) = pair.split_once('=')?;
+        (k == name).then_some(v)
+    })
+}
+
+/// `expired-assertion`: a correctly signed, correctly audienced assertion
+/// whose `exp` is already past must be refused with `invalid_grant`.
+async fn expired_assertion(http: &reqwest::Client, base_url: &str, cfg: &WifProbeConfig<'_>) -> WifScenarioReport {
+    let now = now_unix();
+    let claims = json!({
+        "iss": cfg.issuer, "aud": base_url, "sub": "oauth-probe|expired",
+        "iat": now - 1000, "exp": now - 900, "jti": fresh_jti(),
+    });
+    let assertion = sign_assertion(cfg.kid, cfg.priv_pem, &claims);
+    let resp = post_token(
+        http,
+        base_url,
+        &[
+            ("grant_type", crate::assertion::JWT_BEARER_GRANT_TYPE),
+            ("assertion", &assertion),
+            ("client_id", cfg.client_id),
+            ("resource", cfg.resource),
+        ],
+    )
+    .await;
+    let pass = resp["error"] == json!("invalid_grant");
+    WifScenarioReport {
+        scenario: "expired-assertion",
+        result: if pass { "pass" } else { "fail" },
+        detail: format!("expected error=invalid_grant, got {resp}"),
+    }
+}
+
+/// `wrong-audience`: a correctly signed, unexpired assertion whose `aud`
+/// names a server other than this one must be refused with `invalid_grant`.
+async fn wrong_audience(http: &reqwest::Client, base_url: &str, cfg: &WifProbeConfig<'_>) -> WifScenarioReport {
+    let now = now_unix();
+    let claims = json!({
+        "iss": cfg.issuer, "aud": "https://not-mcphost.example.com", "sub": "oauth-probe|wrongaud",
+        "iat": now, "exp": now + 300, "jti": fresh_jti(),
+    });
+    let assertion = sign_assertion(cfg.kid, cfg.priv_pem, &claims);
+    let resp = post_token(
+        http,
+        base_url,
+        &[
+            ("grant_type", crate::assertion::JWT_BEARER_GRANT_TYPE),
+            ("assertion", &assertion),
+            ("client_id", cfg.client_id),
+            ("resource", cfg.resource),
+        ],
+    )
+    .await;
+    let pass = resp["error"] == json!("invalid_grant");
+    WifScenarioReport {
+        scenario: "wrong-audience",
+        result: if pass { "pass" } else { "fail" },
+        detail: format!("expected error=invalid_grant, got {resp}"),
+    }
+}
+
+/// `scope-rejected`: an otherwise-valid assertion requesting a scope
+/// outside `mcp`/`catalog` must be refused with `invalid_scope`.
+async fn scope_rejected(http: &reqwest::Client, base_url: &str, cfg: &WifProbeConfig<'_>) -> WifScenarioReport {
+    let now = now_unix();
+    let claims = json!({
+        "iss": cfg.issuer, "aud": base_url, "sub": "oauth-probe|scope",
+        "iat": now, "exp": now + 300, "jti": fresh_jti(),
+    });
+    let assertion = sign_assertion(cfg.kid, cfg.priv_pem, &claims);
+    let resp = post_token(
+        http,
+        base_url,
+        &[
+            ("grant_type", crate::assertion::JWT_BEARER_GRANT_TYPE),
+            ("assertion", &assertion),
+            ("client_id", cfg.client_id),
+            ("resource", cfg.resource),
+            ("scope", "admin"),
+        ],
+    )
+    .await;
+    let pass = resp["error"] == json!("invalid_scope");
+    WifScenarioReport {
+        scenario: "scope-rejected",
+        result: if pass { "pass" } else { "fail" },
+        detail: format!("expected error=invalid_scope, got {resp}"),
+    }
+}
+
+/// `grant-fallback`: a client unable (or unwilling) to use the JWT-bearer
+/// grant must still be able to complete this resource's ordinary
+/// interactive `authorization_code` + PKCE dance -- the JWT-bearer grant's
+/// presence must never crowd out the fallback path.
+async fn grant_fallback(http: &reqwest::Client, base_url: &str, cfg: &WifProbeConfig<'_>) -> WifScenarioReport {
+    const REDIRECT_URI: &str = "http://127.0.0.1/oauth-probe-cb";
+    const VERIFIER: &str = "oauth-probe-pkce-verifier-at-least-43-characters-long";
+
+    // `/oauth/authorize` only ever issues codes for the root resource
+    // (`authz.rs::validate_authorize_params`) -- the interactive grant this
+    // scenario falls back to was never resource-scoped the way the
+    // JWT-bearer grant is, so the fallback targets the root `/mcp`
+    // resource on the same authorization server, not `cfg.resource`.
+    let root_resource = format!("{base_url}/mcp");
+
+    let register: Value = match http
+        .post(format!("{base_url}/oauth/register"))
+        .json(&json!({"application_type": "native", "redirect_uris": [REDIRECT_URI]}))
+        .send()
+        .await
+    {
+        Ok(resp) => resp.json().await.unwrap_or(Value::Null),
+        Err(e) => return WifScenarioReport { scenario: "grant-fallback", result: "fail", detail: format!("register failed: {e}") },
+    };
+    let Some(client_id) = register["client_id"].as_str() else {
+        return WifScenarioReport {
+            scenario: "grant-fallback",
+            result: "fail",
+            detail: format!("dynamic client registration did not return client_id: {register}"),
+        };
+    };
+
+    use base64::Engine as _;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(VERIFIER.as_bytes());
+    let challenge = URL_SAFE_NO_PAD.encode(hasher.finalize());
+
+    // The probe's own client must not follow the consent redirect -- it
+    // targets `REDIRECT_URI`, a sink nothing is listening on (same reason
+    // `xaa_ac09`'s own interactive-dance test builds a no-redirect client).
+    let no_redirect = match reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).build() {
+        Ok(c) => c,
+        Err(e) => return WifScenarioReport { scenario: "grant-fallback", result: "fail", detail: format!("could not build no-redirect client: {e}") },
+    };
+    let consent = match no_redirect
+        .post(format!("{base_url}/oauth/authorize"))
+        .form(&[
+            ("response_type", "code"),
+            ("client_id", client_id),
+            ("redirect_uri", REDIRECT_URI),
+            ("code_challenge", challenge.as_str()),
+            ("code_challenge_method", "S256"),
+            ("state", "oauth-probe"),
+            ("scope", "mcp"),
+            ("resource", root_resource.as_str()),
+            ("tenant_key", cfg.tenant_key),
+        ])
+        .send()
+        .await
+    {
+        Ok(resp) => resp,
+        Err(e) => return WifScenarioReport { scenario: "grant-fallback", result: "fail", detail: format!("authorize failed: {e}") },
+    };
+    let Some(location) = consent.headers().get("location").and_then(|v| v.to_str().ok()).map(str::to_string) else {
+        return WifScenarioReport {
+            scenario: "grant-fallback",
+            result: "fail",
+            detail: format!("authorize did not redirect (status {})", consent.status()),
+        };
+    };
+    let Some((_, query)) = location.split_once('?') else {
+        return WifScenarioReport { scenario: "grant-fallback", result: "fail", detail: format!("redirect carried no query string: {location}") };
+    };
+    let Some(code) = query_param(query, "code") else {
+        return WifScenarioReport { scenario: "grant-fallback", result: "fail", detail: format!("redirect carried no code: {location}") };
+    };
+
+    let token = post_token(
+        http,
+        base_url,
+        &[
+            ("grant_type", "authorization_code"),
+            ("code", code),
+            ("redirect_uri", REDIRECT_URI),
+            ("client_id", client_id),
+            ("code_verifier", VERIFIER),
+        ],
+    )
+    .await;
+    let pass = token["access_token"].as_str().is_some();
+    WifScenarioReport {
+        scenario: "grant-fallback",
+        result: if pass { "pass" } else { "fail" },
+        detail: format!("expected an access_token from the authorization_code fallback, got {token}"),
+    }
+}
+
+/// Runs the full `wif` scenario family (grounding's `auth-test-wif-*`
+/// family: expired assertion, wrong audience, scope rejected, grant
+/// fallback) against `base_url` and returns one report per scenario.
+pub async fn run_wif_scenarios(http: &reqwest::Client, base_url: &str, cfg: &WifProbeConfig<'_>) -> Vec<WifScenarioReport> {
+    vec![
+        expired_assertion(http, base_url, cfg).await,
+        wrong_audience(http, base_url, cfg).await,
+        scope_rejected(http, base_url, cfg).await,
+        grant_fallback(http, base_url, cfg).await,
+    ]
+}

@@ -51,7 +51,7 @@ async fn every_host_star_descriptor_declares_an_optional_tenant_key() {
         .collect();
     assert_eq!(
         host_tools.len(),
-        128,
+        131,
         "the thirteen host.* control tools (incl. host.quickstart, host.tool_run, and \
          host.bridge_test) plus host.redeem plus host.key_rotate (PRD-mcphost-handoff-token) \
          plus host.tool_call plus the three host.tool_history/host.tool_rollback/host.tool_diff \
@@ -75,6 +75,8 @@ async fn every_host_star_descriptor_declares_an_optional_tenant_key() {
          the five host.oauth.* tools (PRD-mcphost-oauth-resource-server, PRD-mcphost-hosted-authorization-server) plus \
          the four host.oauth.provider_set/provider/provider_remove/doctor tools \
          (PRD-mcphost-federated-end-user-login) plus the three \
+         host.oauth.trusted_issuer_set/trusted_issuer_remove/trusted_issuers tools \
+         (PRD-mcphost-enterprise-managed-auth) plus the three \
          host.docs.search/index_config/reindex tools (PRD-mcphost-docs-semantic-search) plus \
          the two host.enduser.* tools (PRD-mcphost-end-user-identity) plus \
          the seven host.enduser.get/audit/revoke/unrevoke/purge/export/list tools \
