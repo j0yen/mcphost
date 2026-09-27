@@ -45,6 +45,9 @@ pub async fn tool_share(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
     let visibility = arg_str(args, "visibility")?;
     let description = arg_str_opt(args, "description");
     let group = arg_str_opt(args, "group");
+    // PRD-mcphost-shared-tool-spec-readback requirement 1: owner opt-in,
+    // default closed.
+    let expose_spec = args.get("expose_spec").and_then(Value::as_bool).unwrap_or(false);
 
     match visibility.as_str() {
         "public" => {}
@@ -97,7 +100,14 @@ pub async fn tool_share(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
 
     state
         .db
-        .set_tool_share(tenant.id, name.clone(), visibility.clone(), group.clone(), description.clone())
+        .set_tool_share(
+            tenant.id,
+            name.clone(),
+            visibility.clone(),
+            group.clone(),
+            description.clone(),
+            expose_spec,
+        )
         .await?;
 
     Ok(json!({
@@ -105,6 +115,7 @@ pub async fn tool_share(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
         "visibility": visibility,
         "group": group,
         "description": description,
+        "expose_spec": expose_spec,
     }))
 }
 

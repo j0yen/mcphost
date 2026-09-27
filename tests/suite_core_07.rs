@@ -638,6 +638,8 @@ mod mcphost_share_a_tool_not_a_key_ac07_synthorg_task_five_completions;
 mod mcphost_share_a_tool_not_a_key_ac08_live_test_skipped_without_env;
 #[path = "mcphost_share_a_tool_not_a_key_ac09_public_variant_states_default_reason.rs"]
 mod mcphost_share_a_tool_not_a_key_ac09_public_variant_states_default_reason;
+#[path = "mcphost_shared_tool_spec_readback_ac07_docs_worked_example.rs"]
+mod mcphost_shared_tool_spec_readback_ac07_docs_worked_example;
 #[path = "mcphost_signup_kill_switch_and_source_ac01_source_echoed_and_stored.rs"]
 mod mcphost_signup_kill_switch_and_source_ac01_source_echoed_and_stored;
 #[path = "mcphost_signup_kill_switch_and_source_ac02_no_source_is_null.rs"]

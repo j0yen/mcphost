@@ -4025,6 +4025,25 @@ impl Kind for PythonKind {
         parse_spec(spec).map(|p| p.env).unwrap_or_default()
     }
 
+    /// PRD-mcphost-shared-tool-spec-readback requirement 3 (AC1/AC3):
+    /// allowlist straight off the stored (raw) spec `Value` -- `env`,
+    /// `secrets`, `memory_mb`, `description`, `_dependency_lock`, and
+    /// `outputs` are never copied, so `host.tool_spec_shared`'s response
+    /// never carries them (never a denylist scrubbing them out after the
+    /// fact). Reading the raw spec rather than a parsed/normalized
+    /// `PythonSpec` means an omitted `args_schema` stays omitted here too
+    /// (`effective_args_schema`'s inference is for the call path, not for
+    /// what a sharee reads back).
+    fn redacted_spec_for_sharing(&self, spec: &Value) -> Value {
+        let mut out = serde_json::Map::new();
+        for key in ["source", "args_schema", "requirements", "timeout_s", "network"] {
+            if let Some(v) = spec.get(key) {
+                out.insert(key.to_string(), v.clone());
+            }
+        }
+        Value::Object(out)
+    }
+
     /// PRD-mcphost-call-limits-honest requirement 1 (AC1/AC2): `None` when
     /// this spec never declared `timeout_s` -- `handler.rs`'s dispatch
     /// falls back to `AppState::call_timeout`'s default in that case.

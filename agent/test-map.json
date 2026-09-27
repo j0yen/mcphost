@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-tool-scopes-and-consent.md (test_prefix: toolscope)",
+  "ac_test_map_prd": "PRD-mcphost-shared-tool-spec-readback.md (test_prefix: mcphost_shared_tool_spec_readback)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,15 +28,16 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/toolscope_ac01_scoped_consent_and_token.rs",
-    "AC2": "tests/toolscope_ac02_scoped_token_list_and_call.rs",
-    "AC3": "tests/toolscope_ac03_step_up_reauthorize_union_scope.rs",
-    "AC4": "tests/toolscope_ac04_mcp_key_and_pre_prd_token_unaffected.rs",
-    "AC5": "tests/toolscope_ac05_publish_scope_validation.rs",
-    "AC6": "tests/toolscope_ac06_scope_change_takes_effect_next_call.rs",
-    "AC7": "tests/toolscope_ac07_metadata_scopes_supported.rs",
-    "AC8": "tests/toolscope_ac08_admin_stats_consents_by_scope.rs",
-    "AC9": "deferred -- operator-provisioned; AC9 is the Live/production-only requirement and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
+    "AC1": "tests/mcphost_shared_tool_spec_readback_ac01_group_member_reads_spec.rs",
+    "AC2": "tests/mcphost_shared_tool_spec_readback_ac02_tool_list_shows_expose_spec.rs",
+    "AC3": "tests/mcphost_shared_tool_spec_readback_ac03_redacts_env_and_secrets.rs",
+    "AC4": "tests/mcphost_shared_tool_spec_readback_ac04_spec_not_exposed_refusal.rs",
+    "AC5": "tests/mcphost_shared_tool_spec_readback_ac05_not_shared_same_not_found_shape.rs",
+    "AC6": "tests/mcphost_shared_tool_spec_readback_ac06_unshare_then_reshare_without_flag.rs",
+    "AC7": "tests/mcphost_shared_tool_spec_readback_ac07_docs_worked_example.rs",
+    "AC8": "tests/mcphost_shared_tool_spec_readback_ac08_fifty_concurrent_reads_p95.rs",
+    "AC9": "tests/mcphost_shared_tool_spec_readback_ac09_spec_reads_counter.rs",
+    "AC10": "deferred (prod leg only) -- operator-provisioned: AC10's Given is \"prod mcphost after deploy\", and the only thing still blocking it is that deploy of this branch to https://mcphost.dev, an operator action (mcphost-deploy). Recorded, not merely claimed: docs/receipts/spec-readback-ac10-prod-probe.md (read-only unauthenticated snapshot of prod's public tools/list, 2026-09-27) shows prod serving every other step of AC10's sequence but not host.tool_spec_shared and with no expose_spec on host.tool_share, and tests/mcphost_shared_tool_spec_readback_ac10_live_two_tenant_spec_read_trailer.rs::only_the_deploy_separates_this_branch_from_prods_tool_surface re-derives that delta against a real server on every run. Credentials are not part of the deferral: prod's signup is unauthenticated, so MCPHOST_TENANT_A_KEY/MCPHOST_TENANT_B_KEY are optional and the MCPHOST_LIVE=1 run mints its own two tenants when they are unset. Always-on mechanism proof: tests/mcphost_shared_tool_spec_readback_ac10_live_two_tenant_spec_read_trailer.rs::tenant_b_reads_source_without_env_and_tenant_a_sees_the_read (MCPHOST_LIVE=1 re-points the identical code at prod for the operator's trailer run); see PRD frontmatter deferred_acs/mock_justifications; deferral paper trail locked by tests/mcphost_shared_tool_spec_readback_ac10_deferral_is_justified.rs"
   },
   "ac_test_map_by_prefix": {
     "ac": {
@@ -652,6 +653,18 @@
       "AC5": "tests/oauthsig_ac05_healthz_cache_and_p95.rs",
       "AC6": "tests/oauthsig_ac06_conformance_script_writes_receipt.rs",
       "AC7": "deferred -- operator-provisioned; AC7 is the Live/production-only requirement (admin healthz read from orch with curl and the real admin key against prod after deploy, a receipt under docs/receipts/) and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
+    },
+    "toolscope": {
+      "_prd": "PRD-mcphost-tool-scopes-and-consent.md -- archived by this branch's own ac_test_map_prd (mcphost-shared-tool-spec-readback) after merging origin/main; real test_prefix is toolscope",
+      "AC1": "tests/toolscope_ac01_scoped_consent_and_token.rs",
+      "AC2": "tests/toolscope_ac02_scoped_token_list_and_call.rs",
+      "AC3": "tests/toolscope_ac03_step_up_reauthorize_union_scope.rs",
+      "AC4": "tests/toolscope_ac04_mcp_key_and_pre_prd_token_unaffected.rs",
+      "AC5": "tests/toolscope_ac05_publish_scope_validation.rs",
+      "AC6": "tests/toolscope_ac06_scope_change_takes_effect_next_call.rs",
+      "AC7": "tests/toolscope_ac07_metadata_scopes_supported.rs",
+      "AC8": "tests/toolscope_ac08_admin_stats_consents_by_scope.rs",
+      "AC9": "deferred -- operator-provisioned; AC9 is the Live/production-only requirement and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
     }
   }
 }

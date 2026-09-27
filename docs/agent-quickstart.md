@@ -62,6 +62,34 @@ own tool is **42.4s**.
    separate `env` map (up to 16 entries / 4 KiB total, names matching
    `^[A-Z][A-Z0-9_]{0,63}$`) — shown verbatim in `host.tool_test`, unlike
    `secrets`, which stay redacted there.
+8. Share a tool with `host.tool_share(name, visibility, group?)` (see "Share
+   a tool, not a key" in `www/llms.txt` for the full recipe). Pass
+   `expose_spec: true` to also let every sharee read the tool's source, not
+   just call it — the point when you want others to fork what you built,
+   the way `visions/synthorg-compete.md`'s round-two builders fork
+   round-one winners. A sharee reads it with
+   `host.tool_spec_shared(tool: "<owner_namespace>.<name>")`, which returns
+   `{tool, kind, spec, exposed_at}` — `spec` never carries `env` or a secret
+   reference, only `source`/`args_schema`/`requirements`/`timeout_s`/
+   `network`. Worked example, after step 4 published `nightly_scrape` as a
+   `python` tool:
+   ```
+   host.group.create(name="arena-builders")
+   host.group.add(name="arena-builders", namespace="<their_namespace>")
+   host.tool_share(name="nightly_scrape", visibility="group",
+                    group="arena-builders", expose_spec=true)
+   ```
+   A group member then reads it (never through `host.tool_call`, which only
+   runs it) with:
+   ```
+   host.tool_spec_shared(tool="<your_namespace>.nightly_scrape")
+   # -> {"tool": "<your_namespace>.nightly_scrape", "kind": "python",
+   #     "spec": {"source": "...", "args_schema": {...}}, "exposed_at": "..."}
+   ```
+   Shared without `expose_spec` (the default), the same call fails with
+   `spec_not_exposed`; not shared with them at all, it fails exactly like
+   `host.tool_call` would — `tool_not_found`, never revealing the tool
+   exists.
 
 <!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
 

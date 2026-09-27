@@ -1458,6 +1458,14 @@ pub async fn tool_list(state: &AppState, tenant: &Tenant) -> Result<Value, AppEr
                 "unshared_by": row.unshared_by,
                 "env": env,
                 "advisories": advisories,
+                // PRD-mcphost-shared-tool-spec-readback requirement 1/9
+                // (AC2/AC9): the owner's own view of its share's spec-
+                // exposure state -- `exposed_at`/`spec_reads` are `null`/`0`
+                // until the owner's first `expose_spec: true` share,
+                // never omitted either side of that.
+                "expose_spec": row.expose_spec,
+                "exposed_at": row.spec_exposed_unix.map(crate::state::rfc3339_from_unix),
+                "spec_reads": row.spec_reads,
                 // PRD-mcphost-tool-scopes-and-consent requirement 1: empty
                 // means the tool requires only `mcp`, never omitted.
                 "scopes": row.scopes,
