@@ -73,6 +73,7 @@ const MIGRATION_0049: &str = include_str!("../migrations/0049_shared_call_run_sc
 const MIGRATION_0050: &str = include_str!("../migrations/0050_hosted_authorization_server.sql");
 const MIGRATION_0051: &str = include_str!("../migrations/0051_oauth_client_policy.sql");
 const MIGRATION_0052: &str = include_str!("../migrations/0052_federated_end_user_login.sql");
+const MIGRATION_0053: &str = include_str!("../migrations/0053_oauth_demand_signal.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -2028,7 +2029,8 @@ impl Db {
         conn.execute_batch(MIGRATION_0049).map_err(AppError::from)?;
         Self::migrate_0050_hosted_authorization_server(&conn)?;
         Self::migrate_0051_oauth_client_policy(&conn)?;
-        Self::migrate_0052_federated_end_user_login(&conn)
+        Self::migrate_0052_federated_end_user_login(&conn)?;
+        Self::migrate_0053_oauth_demand_signal(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -2750,6 +2752,21 @@ impl Db {
             .exists([])?;
         if !has_table {
             conn.execute_batch(MIGRATION_0052)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-oauth-demand-signal requirement 1: same additive-`ALTER
+    /// TABLE` + gate-on-the-new-column idempotency shape 0042/0048 use for
+    /// `calls`. (Renumbered from this PRD's own 0052 to 0053 during rebase:
+    /// mcphost-federated-end-user-login claimed 0052 first, landing on main
+    /// ahead of this branch.)
+    fn migrate_0053_oauth_demand_signal(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('calls') WHERE name = 'auth_method'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0053)?;
         }
         Ok(())
     }
@@ -6586,6 +6603,12 @@ impl Db {
             None,
             None,
             None,
+            // PRD-mcphost-oauth-demand-signal requirement 1: every call
+            // site still reaching this wrapper (never `Auth::Tenant(_,
+            // Some(oauth_caller))`) is key-authenticated by construction --
+            // same default migration 0053's `auth_method DEFAULT 'key'`
+            // backfills onto every pre-migration row.
+            "key".to_string(),
         )
         .await
     }
@@ -6623,6 +6646,12 @@ impl Db {
         // `runs::enqueue_shared` already scopes an async shared run; the
         // `calls` insert is untouched either way (requirement 2).
         shared_owner_namespace: Option<String>,
+        // PRD-mcphost-oauth-demand-signal requirement 1 (AC1): the
+        // credential kind that resolved this call -- `"key"`, `"issuer_jwt"`,
+        // or `"hosted_token"` -- resolved once in `handler.rs` from the same
+        // `Auth`/`OauthCaller` this function's `end_user_*` triple already
+        // reads, not re-derived here.
+        auth_method: String,
     ) -> Result<(), AppError> {
         let started_at = now_rfc3339();
         let started_unix = now_unix();
@@ -6653,9 +6682,9 @@ impl Db {
         self.with_conn(move |conn| {
             let tx = conn.unchecked_transaction()?;
             tx.execute(
-                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
-                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id.clone()],
+                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id, auth_method) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id.clone(), auth_method],
             )?;
             tx.execute(
                 "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, \
@@ -6677,6 +6706,195 @@ impl Db {
                 ],
             )?;
             tx.commit()?;
+            Ok(())
+        })
+        .await
+    }
+
+    // ---- oauth demand signal (PRD-mcphost-oauth-demand-signal) -----------
+
+    /// requirement 2 (AC2): every call in the window, by `auth_method` --
+    /// unlike [`Self::oauth_tenants_by_method`] below, never joined against
+    /// `tenants` or filtered by `synthetic` (a synthetic tenant's hosted-
+    /// token calls still count here; the PRD's own AC2 scenario has five of
+    /// them landing in `calls_7d.hosted_token`).
+    pub async fn oauth_calls_by_method(&self, since_unix: i64) -> Result<(i64, i64, i64), AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT \
+                    SUM(CASE WHEN auth_method = 'key' THEN 1 ELSE 0 END), \
+                    SUM(CASE WHEN auth_method = 'issuer_jwt' THEN 1 ELSE 0 END), \
+                    SUM(CASE WHEN auth_method = 'hosted_token' THEN 1 ELSE 0 END) \
+                 FROM calls WHERE started_unix >= ?1",
+                params![since_unix],
+                |r| {
+                    let key: Option<i64> = r.get(0)?;
+                    let issuer_jwt: Option<i64> = r.get(1)?;
+                    let hosted_token: Option<i64> = r.get(2)?;
+                    Ok((key.unwrap_or(0), issuer_jwt.unwrap_or(0), hosted_token.unwrap_or(0)))
+                },
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 2 (AC2): distinct tenants that called with `issuer_jwt`/
+    /// `hosted_token` in the window, excluding a tenant with a `synthetic`
+    /// label -- the same predicate `admin.tenants` uses for `synthetic`
+    /// (technical considerations), not `source_class`.
+    pub async fn oauth_tenants_by_method(&self, since_unix: i64) -> Result<(i64, i64), AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT \
+                    COUNT(DISTINCT CASE WHEN c.auth_method = 'issuer_jwt' THEN c.tenant_id END), \
+                    COUNT(DISTINCT CASE WHEN c.auth_method = 'hosted_token' THEN c.tenant_id END) \
+                 FROM calls c JOIN tenants t ON t.id = c.tenant_id \
+                 WHERE c.started_unix >= ?1 AND t.synthetic IS NULL",
+                params![since_unix],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 2: the earliest-ever call (all time, not window-scoped)
+    /// authenticated by `method` -- `first_issuer_jwt_call_at`/
+    /// `first_hosted_token_call_at`. `None` when no call has ever used it.
+    pub async fn oauth_first_call_at(&self, method: &str) -> Result<Option<i64>, AppError> {
+        let method = method.to_string();
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT MIN(started_unix) FROM calls WHERE auth_method = ?1",
+                params![method],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 2/3: distinct clients ever seen, `(cimd, dcr)` -- a DCR
+    /// client is a row in `oauth_clients`; a CIMD client has none (migration
+    /// 0050's own comment), so `oauth_cimd_clients` (this PRD's own
+    /// first-seen ledger, upserted from `authz::identify_client`) stands in.
+    pub async fn oauth_clients_counts(&self) -> Result<(i64, i64), AppError> {
+        self.with_conn(|conn| {
+            conn.query_row(
+                "SELECT (SELECT COUNT(*) FROM oauth_cimd_clients), (SELECT COUNT(*) FROM oauth_clients)",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 2: `grants_active` -- live (never-revoked) hosted grants.
+    pub async fn oauth_grants_active_count(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            conn.query_row("SELECT COUNT(*) FROM oauth_grants WHERE revoked_unix IS NULL", [], |r| r.get(0))
+                .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 3 (AC4): the registration/consent/token funnel over the
+    /// window -- `(dcr_registrations, cimd_registrations, authorize_requests,
+    /// consents, tokens_issued)`.
+    pub async fn oauth_funnel_counts(&self, since_unix: i64) -> Result<(i64, i64, i64, i64, i64), AppError> {
+        self.with_conn(move |conn| {
+            let dcr: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM oauth_clients WHERE created_unix >= ?1",
+                params![since_unix],
+                |r| r.get(0),
+            )?;
+            let cimd: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM oauth_cimd_clients WHERE created_unix >= ?1",
+                params![since_unix],
+                |r| r.get(0),
+            )?;
+            let authorize_requests: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM oauth_funnel_events WHERE event = 'authorize_request' AND created_unix >= ?1",
+                params![since_unix],
+                |r| r.get(0),
+            )?;
+            let consents: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM oauth_funnel_events WHERE event = 'consent' AND created_unix >= ?1",
+                params![since_unix],
+                |r| r.get(0),
+            )?;
+            let tokens_issued: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM oauth_funnel_events WHERE event = 'token_issued' AND created_unix >= ?1",
+                params![since_unix],
+                |r| r.get(0),
+            )?;
+            Ok((dcr, cimd, authorize_requests, consents, tokens_issued))
+        })
+        .await
+    }
+
+    /// requirement 3 (AC3): one row per tenant with at least one call in
+    /// the window -- non-synthetic tenants first (`t.synthetic IS NOT NULL`
+    /// sorts `false`/0 before `true`/1), then by `tenant_id` for a stable
+    /// order. `last_oauth_call_at` is the latest `issuer_jwt`/`hosted_token`
+    /// call only (`NULL` for a tenant that only ever used a key).
+    pub async fn oauth_tenant_stats(&self, since_unix: i64) -> Result<Vec<OauthTenantStat>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT c.tenant_id, t.synthetic IS NOT NULL, \
+                        SUM(CASE WHEN c.auth_method = 'key' THEN 1 ELSE 0 END), \
+                        SUM(CASE WHEN c.auth_method = 'issuer_jwt' THEN 1 ELSE 0 END), \
+                        SUM(CASE WHEN c.auth_method = 'hosted_token' THEN 1 ELSE 0 END), \
+                        MAX(CASE WHEN c.auth_method IN ('issuer_jwt', 'hosted_token') THEN c.started_unix END) \
+                 FROM calls c JOIN tenants t ON t.id = c.tenant_id \
+                 WHERE c.started_unix >= ?1 \
+                 GROUP BY c.tenant_id \
+                 ORDER BY (t.synthetic IS NOT NULL) ASC, c.tenant_id ASC",
+            )?;
+            let rows = stmt
+                .query_map(params![since_unix], |r| {
+                    Ok(OauthTenantStat {
+                        tenant_id: r.get(0)?,
+                        synthetic: r.get::<_, i64>(1)? != 0,
+                        calls_key: r.get(2)?,
+                        calls_issuer_jwt: r.get(3)?,
+                        calls_hosted_token: r.get(4)?,
+                        last_oauth_call_at: r.get(5)?,
+                    })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// requirement 3: upserts this CIMD client's first-seen time --
+    /// `INSERT OR IGNORE` so only the first ever `identify_client` success
+    /// for a given `client_id` counts, matching `oauth_cimd_clients.created_unix`'s
+    /// own doc comment (migration 0053).
+    pub async fn record_cimd_client_seen(&self, client_id: String, now: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT OR IGNORE INTO oauth_cimd_clients (client_id, created_unix) VALUES (?1, ?2)",
+                params![client_id, now],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// requirement 3: appends one funnel event (`authorize_request`,
+    /// `consent`, or `token_issued`) -- see migration 0053's own doc comment
+    /// on `oauth_funnel_events` for what each means.
+    pub async fn record_oauth_funnel_event(&self, event: &'static str) -> Result<(), AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO oauth_funnel_events (event, created_unix) VALUES (?1, ?2)",
+                params![event, now],
+            )?;
             Ok(())
         })
         .await
@@ -10770,6 +10988,29 @@ impl Db {
                 "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, \
                  duration_ms, ok, error_class) VALUES (?1, 'test_tool', ?2, ?3, 0, 1, NULL)",
                 params![tenant_id, crate::state::rfc3339_from_unix(started_unix), started_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Test-only: same as [`Self::insert_calls_row_for_test`], plus an
+    /// explicit `auth_method` (PRD-mcphost-oauth-demand-signal AC2/AC5
+    /// fixtures need calls stamped `key`/`issuer_jwt`/`hosted_token`
+    /// without driving a real bearer through the whole dispatch path per
+    /// row).
+    pub async fn insert_calls_row_with_auth_method_for_test(
+        &self,
+        tenant_id: i64,
+        auth_method: &str,
+        started_unix: i64,
+    ) -> Result<(), AppError> {
+        let auth_method = auth_method.to_string();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, \
+                 duration_ms, ok, error_class, auth_method) VALUES (?1, 'test_tool', ?2, ?3, 0, 1, NULL, ?4)",
+                params![tenant_id, crate::state::rfc3339_from_unix(started_unix), started_unix, auth_method],
             )?;
             Ok(())
         })
@@ -15218,6 +15459,18 @@ pub struct MeshStats {
     pub active_pairs: i64,
     pub active_channels: i64,
     pub tenants: Vec<MeshTenantStats>,
+}
+
+/// [`Db::oauth_tenant_stats`]'s per-tenant row (requirement 3, AC3):
+/// `admin.oauth.stats`'s `tenants` array.
+#[derive(Debug, Clone, Copy)]
+pub struct OauthTenantStat {
+    pub tenant_id: i64,
+    pub synthetic: bool,
+    pub calls_key: i64,
+    pub calls_issuer_jwt: i64,
+    pub calls_hosted_token: i64,
+    pub last_oauth_call_at: Option<i64>,
 }
 
 /// [`Db::mesh_purge`]'s return shape -- the same counts for a dry run

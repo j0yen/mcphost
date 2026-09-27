@@ -417,6 +417,12 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
     // the loaded catalog's effective quotas, so the instrument can assert a
     // quota is non-zero before scoring a stateful task without reading the
     // box's own `plans.toml`.
+    // PRD-mcphost-oauth-demand-signal requirement 2 (AC2/AC5): the cached
+    // per-credential-method call/tenant counts -- see
+    // `oauth_stats::healthz_json`'s own doc comment for the cache contract.
+    if let Some(obj) = body.as_object_mut() {
+        obj.insert("oauth".to_string(), crate::oauth_stats::healthz_json(state).await);
+    }
     if let Some(obj) = body.as_object_mut() {
         obj.insert(
             "plans".to_string(),

@@ -610,6 +610,7 @@ async fn main() -> anyhow::Result<()> {
                 status_probe_override: mcphost::statusfeed::ProbeOverrides::new(),
                 fleet_ips,
                 end_user_activity: Default::default(),
+                oauth_healthz_cache: Default::default(),
             });
             // PRD-mcphost-abuse-guard-ban-list requirement 6: load the ban
             // cache once before this process ever serves a request, so the
