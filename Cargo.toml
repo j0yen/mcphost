@@ -99,6 +99,13 @@ jsonwebtoken = "9"
 # this is a direct dependency on a crate already fully vetted by this
 # graph, not a new one.
 ring = "0.17"
+# PRD-mcphost-oauth-conformance-harness requirement 2: `tests/oauthconf/
+# scenarios.toml` (the scenario gold table) is embedded into the release
+# binary via `include_str!` so `mcphost oauth-probe` can read it without the
+# source tree being present on a deployed box -- moved here (was
+# dev-dependencies-only, pinned for `lanecov`'s proof-lanes.toml parser)
+# since that now needs to compile into `src/`, not just `tests/`.
+toml = "0.8"
 
 [features]
 # PRD-mcphost-classify-precision: gates PythonKind's test-only selftest
@@ -130,8 +137,10 @@ rcgen = "=0.14.9"
 # path_routes.rs parses agent/proof-lanes.toml and compiles its globs with
 # the SAME crates autobuilder's vti-plan uses (autobuilder/Cargo.toml pins
 # the same versions) -- a test-only matcher that disagreed with vti-plan's
-# own would be worse than no test at all.
-toml = "0.8"
+# own would be worse than no test at all. `toml` itself moved to
+# [dependencies] (PRD-mcphost-oauth-conformance-harness) but stays listed
+# here implicitly via that promotion -- no separate dev-dependencies entry
+# needed now that the main dependency covers `tests/*.rs` too.
 globset = "0.4"
 # AC8: www/status.html is a static file only mcphost-deploy's Caddy ever
 # serves, so no headless browser sits in this test harness -- boa_engine

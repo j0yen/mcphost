@@ -1,103 +1,77 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-hosted-authorization-server.md",
-  "intent_slug": "mcphost-hosted-authorization-server",
-  "root_motivation": "Grounding (PRD): mcphost has no /oauth/authorize, /oauth/token, /oauth/register or /.well-known/oauth-authorization-server route (src/http.rs:668-697), and prod's protected-resource metadata lists authorization_servers: [] -- so an OAuth-only client (claude.ai custom connectors: OAuth + DCR, no static-header option) that receives mcphost's 401 has no authorization server to go to. The first explore run recorded nine Dynamic Client Registration rejected (HTTP 404) events. The 119-server study (arXiv 2605.22333) found 96.6% of remote MCP servers with a DCR flaw across nine flaw classes (PKCE downgrade, code replay, open redirect, weak state, consent bypass, blind client trust); the 2026-07-28 spec deprecates DCR for Client ID Metadata Documents and requires RFC 8707 resource on every request.",
-  "user_persona": "Four (PRD User stories): (1) an agent operator connecting a claude.ai custom connector through mcphost's own consent page, whose refresh token keeps working a month later; (2) an operator who lists connected clients and revokes one from a laptop they no longer own; (3) an attacker who replays a code, downgrades PKCE, or tampers with state, refused and audited every time; (4) a live verifier driving the whole flow with curl against prod.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-oauth-conformance-harness.md",
+  "intent_slug": "mcphost-oauth-conformance-harness",
+  "root_motivation": "Grounding (PRD): every OAuth verification so far was hand-driven curl (run 216 AC11 transcript) or a per-PRD test written by the same coder who wrote the feature -- a coder's own fixture proves the code matches the coder's reading of the spec, not a client's. The official modelcontextprotocol/conformance suite covers the real scenario families (dcr, cimd, prm, pkce, iss, application-type, scopes, step-up, resource-slash, dpop, wif) but needs Node and the network, so it cannot run inside the hermetic gate. Five OAuth PRDs are about to land, each tested by a different coder; without one shared instrument, a connector that fails at claude.ai's consent step would be found by the first real user instead of the gate.",
+  "user_persona": "Four (PRD user stories): (1) a coder on a hosted-AS PRD who adds a scenario flip to their own AC list and gets a failing test before writing code; (2) the operator (Joe) who runs mcphost oauth-probe --url https://mcphost.dev/mcp --receipt after a land and reads pass/fail per scenario in one JSON; (3) a live verifier who curls the discovery documents and checks them against the harness's own published expectations; (4) the loop digest that clusters OAuth failures by scenario family.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 11
+    "target": 7
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a fresh host, When GET /.well-known/oauth-authorization-server and GET /.well-known/openid-configuration are called, Then both return the endpoints, code_challenge_methods_supported == [\"S256\"], client_id_metadata_document_supported == true, and GET /.well-known/oauth-protected-resource lists the host's own URL in authorization_servers.",
-      "test": "tests/hostedas_ac01_well_known_metadata.rs"
+      "description": "Given an in-process host on this PRD's tree, When the oauthconf gate test runs every scenario, Then the verdict table equals scenarios.toml with prm and iss families pass and every other family unsupported, and the run finishes under 20s.",
+      "test": "tests/oauthconf_ac01_gate_verdict_table_matches_gold.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a test HTTPS server hosting a CIMD document at https://client.test/cimd.json with one redirect URI, When /oauth/authorize is called with client_id equal to that URL and that redirect, Then the consent page renders naming the client; When called with a different redirect or the document's client_id mismatches the URL, Then invalid_request is rendered inline with no redirect.",
-      "test": "tests/hostedas_ac02_cimd_client_identification.rs"
+      "description": "Given a fake authorization server in the test (test support only, never the host) that advertises CIMD and \"none\", When the simulator registers, Then it chooses CIMD; When the fake advertises neither CIMD nor registration_endpoint, Then the register step reads unsupported with the reason.",
+      "test": "tests/oauthconf_ac02_cimd_preferred_over_dcr_and_unsupported_without_either.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given POST /oauth/register with application_type: native and redirect_uris: [\"http://127.0.0.1/cb\"], When it runs, Then 201 with a client_id; When /oauth/authorize uses redirect_uri=http://127.0.0.1:53211/cb, Then it is accepted; When the same registration is attempted 11 times in a minute from one IP, Then the 11th is 429.",
-      "test": "tests/hostedas_ac03_dcr_register_and_rate_limit.rs"
+      "description": "Given a host answering 401 with scope=\"mcp\", When the simulator authorizes with --client claude, Then the request carries scope=mcp offline_access, resource=<canonical url>, code_challenge_method=S256 and a state; given a 401 without scope, Then scopes come from PRM scopes_supported.",
+      "test": "tests/oauthconf_ac03_authorize_request_scope_resource_pkce_state.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given tenant T's key, When the consent POST proves it with a valid code_challenge (S256), state=abc, resource=<public>/mcp, Then the redirect carries code and state=abc; When POST /oauth/token presents the matching code_verifier, Then a JWT with iss=<public>, sub=<T public id>, aud=<public>/mcp, scope=mcp and a refresh token return; When that JWT calls host.state.get on /mcp, Then it runs as T with auth_method == hosted_token.",
-      "test": "tests/hostedas_ac04_consent_code_token_hosted_bearer.rs"
+      "description": "Given the fake AS issues a code, When the simulator replays it, downgrades PKCE, tampers state, or redeems it as another client, Then each attack probe records the AS's response and reads pass only when the response is an error with no token.",
+      "test": "tests/oauthconf_ac04_attack_probes_pass_only_on_as_refusal.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a redeemed code, When POST /oauth/token presents it again, Then invalid_grant and the previously issued access and refresh tokens are rejected within 60s.",
-      "test": "tests/hostedas_ac05_code_replay_revokes_issued_tokens.rs"
+      "description": "Given mcphost oauth-probe --url http://127.0.0.1:<port>/mcp --json against the in-process host, When it runs, Then the JSON matches the gate verdict table and the exit code is 0; given one scenario forced to fail via a test-only env, Then exit code 1.",
+      "test": "tests/oauthconf_ac05_probe_cli_json_matches_gate_and_exit_codes.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given /oauth/authorize without code_challenge, with code_challenge_method=plain, with an unregistered redirect_uri, with resource=https://evil.test/mcp, or with a tampered consent POST lacking a valid key or claim code, When each runs, Then each is refused (invalid_request / invalid_target / consent re-rendered) and no code is minted; error responses redirect only to a registered redirect_uri and otherwise render inline.",
-      "test": "tests/hostedas_ac06_authorize_hardening.rs"
+      "description": "Given the probe's records and receipt from AC5, When searched, Then no key, code, access token or refresh token substring appears.",
+      "test": "tests/oauthconf_ac06_records_and_receipt_never_leak_secrets.rs"
     },
     {
       "id": "AC7",
-      "level": "MUST",
-      "description": "Given client A's code, When client B presents it at /oauth/token, Then invalid_grant; Given a refresh token already rotated, When it is reused, Then invalid_grant and the whole grant is revoked.",
-      "test": "tests/hostedas_ac07_cross_client_code_and_refresh_reuse.rs"
+      "level": "SHOULD",
+      "description": "Given docs/oauth-scenarios.md, When compared with scenarios.toml, Then every scenario appears once with its family, owner PRD and expected verdict, and scripts/gen-docs-sharing.sh --check exits 0.",
+      "test": "tests/oauthconf_ac07_scenarios_doc_matches_gold_and_docs_sharing_check.rs"
     },
     {
       "id": "AC8",
-      "level": "MUST",
-      "description": "Given two grants for T, When host.oauth.grants runs, Then both appear with client_name, method, created_at, last_used_at; When host.oauth.grant_revoke removes one, Then its access token fails within 60s and admin_audit records the revocation; When POST /oauth/revoke receives the other's refresh token, Then that grant is gone too.",
-      "test": "tests/hostedas_ac08_grants_list_revoke_and_oauth_revoke.rs"
-    },
-    {
-      "id": "AC9",
-      "level": "MUST",
-      "description": "Given the logs, admin_audit rows and host.runs.get output produced by ACs 4-8, When searched, Then no substring of any tenant key, code, access token, refresh token or client secret appears.",
-      "test": "tests/hostedas_ac09_no_secret_leakage.rs"
-    },
-    {
-      "id": "AC10",
-      "level": "MUST",
-      "description": "Given the existing key-based and issuer-JWT suites, When run, Then they pass unchanged.",
-      "test": "tests/hostedas_ac10_key_and_issuer_jwt_flows_unchanged.rs"
-    },
-    {
-      "id": "AC11",
       "level": "SHOULD",
-      "description": "Given docs/oauth-connect.md and www/llms.txt, When read, Then both name the claude.ai connector steps, the Claude Code command, and the consent page's key-or-claim-code step, and scripts/gen-docs-sharing.sh --check exits 0.",
-      "test": "tests/hostedas_ac11_docs_and_llms_txt.rs"
-    },
-    {
-      "id": "AC12",
-      "level": "SHOULD",
-      "description": "Given prod after deploy and a synthetic operator tenant the verifier signs up itself over https://mcphost.dev/mcp, When with curl it drives discovery -> register -> authorize -> token -> tools/list -> replay, Then metadata is served, the redirect carries code and state, the token is a JWT with aud == the resource, tools/list succeeds, and the replay returns invalid_grant (Live; evidence saved under docs/receipts/<slug>.md).",
-      "test": "deferred -- operator-provisioned; AC12 is the Live/production-only requirement (a synthetic operator tenant driven with curl against https://mcphost.dev/mcp and prod access) this coding sandbox does not have. See the coder dispatch's own deferred list."
+      "description": "Given prod after deploy, When the verifier curls https://mcphost.dev/.well-known/oauth-protected-resource, the same URL with a trailing-slash resource path, and an unauthenticated POST https://mcphost.dev/mcp, Then the responses satisfy the prm and iss family expectations published in docs/oauth-scenarios.md (Live; evidence: healthz version after deploy plus the three transcripts saved under docs/receipts/<slug>.md).",
+      "test": "deferred: operator-provisioned -- needs a real deploy to https://mcphost.dev and prod curl access this coding sandbox cannot produce; AC1's gate test proves the same prm/iss expectations branch-local against an in-process host."
     }
   ],
   "scope": [
-    "src/authz.rs (new): discovery metadata (/.well-known/oauth-authorization-server, /.well-known/openid-configuration, /.well-known/jwks.json), CIMD fetch/cache, /oauth/register (DCR), /oauth/authorize (GET renders consent, POST proves tenant ownership and mints a code), /oauth/token (authorization_code and refresh_token grants), /oauth/revoke, host.oauth.grants/host.oauth.grant_revoke, and the ES256 host signing key lifecycle.",
-    "src/oauth.rs: unchanged ownership of bring-your-own-issuer bearer validation and host.oauth.issuer_*/admin.oauth.issuers; extended only where the built-in <public> issuer must be treated as always-valid for every tenant (sub selects the tenant, no oauth_issuers row) and the call marked auth_method == hosted_token.",
-    "src/http.rs: routes the new /oauth/* and /.well-known/* endpoints; the 401 upgrade middleware and protected-resource documents (root and per-tenant) now list the host's own URL in authorization_servers unconditionally.",
-    "New tables: oauth_clients, oauth_codes, oauth_grants, oauth_refresh_tokens, oauth_jti_denylist.",
-    "docs/oauth-connect.md (new) + a www/llms.txt section above <!-- sharing:start -->: claude.ai custom connector steps, the Claude Code command, Cursor, and what the consent page asks for."
+    "src/oauthclient.rs: the client simulator (discover_401, read_prm, read_as_metadata, register, authorize, consent, token, call, refresh, step_up, iss_check, and the attack probes), the shared Scenario/ScenarioResult/StepRecord types, load_scenarios, and run_all -- the one entry point both the gate and the CLI share.",
+    "tests/oauthconf/scenarios.toml: scenario gold in data (16 families), never in test code.",
+    "src/cli/oauth_probe.rs + src/main.rs's OauthProbe subcommand: mcphost oauth-probe --url [--scenario] [--client] [--consent-key-env] [--json] [--receipt], exit 0 on every scenario pass/unsupported, 1 on any fail.",
+    "docs/oauth-scenarios.md + scripts/gen-oauth-scenarios-doc.sh: the scenario table generated from scenarios.toml, linked from www/llms.txt's Operator notes.",
+    "tests/support/fake_as.rs + tests/support/oauthclient.rs: test-support fixtures (a minimal stateful fake authorization server, and a thin re-export of the simulator under the path this PRD's tests use)."
   ],
   "non_goals": [
-    "Acting as an identity provider for a tenant's end users (bring-your-own issuer is PRD mcphost-tenant-resource-metadata).",
-    "Social login, passwords, MFA.",
-    "OpenID Connect id_tokens and userinfo.",
-    "Scopes beyond mcp.",
-    "Per-tenant resource URIs (<public>/t/<ns>/mcp) -- only accepted once PRD mcphost-tenant-resource-metadata has landed; until then resource must be the root URI and the check is a single constant.",
-    "admin.oauth.clients and the plugin manifest's OAuth-is-default note (P1 requirements 9-10) -- out of scope for this coding dispatch, which stops once every AC in its own list is committed."
+    "Testing authorization servers other than mcphost's own -- bring-your-own issuers are simulated by the local fake AS, as run 216 did.",
+    "Replacing the official modelcontextprotocol/conformance suite -- a separate demand-signal PRD wraps that as an operator script.",
+    "Browser automation -- the fake AS's consent step is a plain JSON POST, not an HTML form.",
+    "A real prod deploy or live curl transcript against mcphost.dev -- AC8 is deferred operator-provisioned; only the always-on simulator and its in-process gate/CLI proof (AC1-AC7) are built branch-local."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -106,36 +80,37 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "pkce_s256_only": "code_challenge_method other than S256 (absent or plain) is invalid_request by construction -- PKCE downgrade is one of the nine flaw classes this PRD exists to close by construction, not just by test.",
-      "resource_is_a_single_constant_until_tenant_resource_metadata_lands": "resource must equal exactly <public>/mcp (root canonical URI); a per-tenant URI is rejected invalid_target until PRD mcphost-tenant-resource-metadata lands its own per-tenant metadata.",
-      "codes_and_refresh_tokens_hashed_at_rest": "oauth_codes and oauth_refresh_tokens store only a hash, never the raw value, matching handoff_tokens/Db::redeem_vault_handoff_token precedent -- AC9's no-substring-in-logs/admin_audit/runs requirement depends on this at the storage layer, not only at the logging call sites."
+      "secrets_never_in_records": "requirement 1: every StepRecord's headers_of_interest/reason fields are built only from response shape (status, header presence, fixed strings) -- never a body value that could be a code or token. AC6's test proves this by driving a real code/token exchange and grepping the serialized records/receipt for the actual secret values.",
+      "unsupported_is_first_class": "a scenario against an endpoint that answers 404 reads unsupported, never fail -- this PRD must land and stay green before any feature PRD gives it a real authorization server to test against.",
+      "one_shared_runner": "run_all is the single entry point both the gate's oauthconf_ac01 test and the oauth-probe CLI call, so the verdict table can never drift between the two callers (AC5's own test asserts this equality directly).",
+      "10s_step_timeout_20s_gate_budget": "non-functional requirement: the full in-process run finishes under 20s on the gate box; the probe honours a 10s per-step timeout and never retries a consent."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can't an OAuth-only client (claude.ai custom connectors) connect to mcphost at all?",
-      "a": "mcphost's 401 upgrade points at protected-resource metadata whose authorization_servers is empty, and the client's dynamic registration attempt gets a 404 -- there is no authorization server for it to register against or be redirected to."
+      "q": "Why can't the official modelcontextprotocol/conformance suite just run in the gate directly?",
+      "a": "It ships as example TypeScript clients (examples/clients/typescript/auth-test-*.ts) that need Node and real network access -- this repo's gate is hermetic (no network, no Node toolchain), so the suite can prove correctness in CI elsewhere but never inside this repo's own pre-merge gate."
     },
     {
       "why": 2,
-      "q": "Why does mcphost's protected-resource metadata list no authorization server?",
-      "a": "mcphost has never hosted one: bring-your-own-issuer (src/oauth.rs) only validates tokens from an issuer a tenant has already registered with its own IdP -- there was no path for a tenant with no IdP of their own to get a token in the first place."
+      "q": "Why build a NEW simulator instead of each OAuth feature PRD just writing its own fixture, as before?",
+      "a": "That is exactly the failure mode this PRD is grounded in: a coder's own fixture proves the code matches that coder's own reading of the spec, not a real client's (claude.ai, ChatGPT, Cursor, VS Code, Claude Code) -- five different OAuth PRDs from five different coders would otherwise produce five different, unverified readings of the same protocol."
     },
     {
       "why": 3,
-      "q": "Why build a full authorization server instead of, say, a static-header fallback for these clients?",
-      "a": "claude.ai custom connectors and ChatGPT connectors support OAuth + DCR only, with no static-header option (support.claude.com/en/articles/11175166) -- there is no fallback to build; mcphost must speak OAuth or these clients cannot connect."
+      "q": "Why does this PRD need to land and stay green BEFORE any of the five feature PRDs that actually implement DCR/PKCE/etc.?",
+      "a": "Technical considerations: 'it must not depend on the hosted AS existing: unsupported is the verdict when metadata or endpoints are absent' -- goal 4 ('unsupported as a first-class verdict') means the harness itself is proven correct against a host with NO authorization server yet, so every later feature PRD only ever needs to flip specific scenarios from unsupported to pass, never touch this harness's own plumbing."
     },
     {
       "why": 4,
-      "q": "Why treat every one of the 119-server study's nine flaw classes as its own test rather than trusting a correct-by-construction implementation?",
-      "a": "That same study found 96.6% of remote MCP servers with a DCR flaw -- correct-looking OAuth implementations fail this class of check constantly, so each flaw class (PKCE downgrade, code replay, open redirect, weak state, consent bypass, blind client trust, ...) gets its own AC and its own test rather than being assumed covered by the happy-path flow."
+      "q": "Why implement the fake authorization server in test support rather than in the host (src/)?",
+      "a": "AC2/AC4 state it explicitly: 'implemented in test support, not the host' -- non-goals also rule out testing authorization servers other than mcphost's own; a host-side fake AS would blur the line between 'what the simulator proves about a REAL client' and 'what one test's own scaffolding assumes', and would ship dead code into the release binary for no benefit (oauth-probe only ever talks to a live --url, never a fixture)."
     },
     {
       "why": 5,
-      "q": "Why require CIMD identification instead of DCR alone, given DCR is what claude.ai already uses today?",
-      "a": "The 2026-07-28 spec deprecates DCR in favor of Client ID Metadata Documents precisely because DCR's unauthenticated self-registration is how blind-client-trust and redirect-hijack flaws land in practice; requirement 2 builds both so the host is ready for the spec's direction while still serving today's DCR-only clients."
+      "q": "Why give consent a synchronous JSON POST instead of driving a real HTML form?",
+      "a": "Non-goals: 'Browser automation' -- this harness proves protocol-level client behavior (PKCE, state, resource, scope, attack refusal), not headless-browser mechanics; a JSON claim-code handshake exercises the exact same consent_endpoint/claim_code contract a browser flow would, without needing a browser dependency in the gate."
     }
   ],
   "created_at": "2026-09-26T00:00:00Z",
@@ -337,8 +312,12 @@
       "resolution": "Kept runsubject's own root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace -- this branch is landing runsubject now, matching every prior 'Rebasing wm-build/X onto main after PRD-Y' recurrence in this log (see the upstream-token-vault-status and plan-catalog-state-quota-defaults entries above). ambiguities_resolved was NOT taken from either side's drifted copy: it is main's real 48-entry accumulated log (the abandoned automated attempt's duplicated/self-referential entries were discarded as unreliable) plus this one new entry, appended. agent/test-map.json's ac_test_map stays pointed at runsubject; vaultst's own AC1-AC9 map (real, already-shipped, tests/vaultst_ac0[1-8]_*.rs plus AC9 deferred) was archived under ac_test_map_by_prefix.vaultst, the same 'preserve rather than delete' treatment every other superseded PRD in that dict already gets."
     },
     {
-      "question": "Rebasing wm-build/mcphost-hosted-authorization-server onto main after PRD-mcphost-runs-end-user-subject (#53) merged: that PRD's own intent-card-refresh regenerated agent/intent-card.json's root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace for runs-end-user-subject, and its ambiguities_resolved array holds this log's full 49-entry accumulated history through runsubject's own rebase entry. This branch's own agent/intent-card.json (per the usual per-PRD rewrite) describes hosted-authorization-server/hostedas instead, and its own ambiguities_resolved array was empty (this branch's AC11 commit set the card fresh with no accumulated history carried over). Keep runsubject's fields, or hostedas's -- and which ambiguities_resolved?",
-      "resolution": "Kept hostedas's own root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace -- this branch is landing hostedas now, matching every prior 'Rebasing wm-build/X onto main after PRD-Y' recurrence in this log (see the upstream-token-vault-status and runs-end-user-subject entries above). ambiguities_resolved was NOT taken from hostedas's empty copy: it is main's real 49-entry accumulated log (through runsubject's own rebase entry) plus this one new entry, appended. agent/test-map.json's ac_test_map stays pointed at hostedas; runsubject's own AC1-AC7 map (real, already-shipped, tests/runsubject_ac0[1-7]_*.rs plus AC8 deferred) was archived under ac_test_map_by_prefix.runsubject, the same 'preserve rather than delete' treatment every other superseded PRD in that dict already gets."
+      "question": "AC6 says 'the probe's records and receipt from AC5' -- does that mean searching the actual AC5 gate/CLI output (which never reaches a real token exchange on this PRD's own tree, since every family but prm/iss stays unsupported), or manufacturing real secret values to search for?",
+      "resolution": "Searching the actual AC5 output would be vacuous -- there is nothing to leak yet on this tree. AC6's test instead drives the simulator through a real authorize -> consent -> token round trip against the fake AS (same fixture AC4 uses) so real secret values exist, then serializes the exact two shapes AC5's CLI produces (--json's ScenarioResult array, --receipt's markdown) and greps for those real values -- proving the structural guarantee (StepRecord has no field that could hold a secret) rather than a vacuous absence-of-anything check."
+    },
+    {
+      "question": "AC7 names scripts/gen-docs-sharing.sh --check explicitly, but that script's SOURCE/TARGET (docs/sharing.md -> www/llms.txt's sharing:start/sharing:end block) is entirely unrelated to docs/oauth-scenarios.md -- is this PRD supposed to repurpose that script, or is the AC just asserting an unrelated regression guard?",
+      "resolution": "Treated as a regression guard: this PRD adds its own new generator (scripts/gen-oauth-scenarios-doc.sh) for docs/oauth-scenarios.md and links it from www/llms.txt's Operator notes OUTSIDE the sharing:start/sharing:end block, so the pre-existing gen-docs-sharing.sh --check keeps passing untouched. AC7's test runs both checks: the new script's own --check (the doc matches scenarios.toml), and the named gen-docs-sharing.sh --check (proving this PRD's www/llms.txt edit didn't collide with the other script's marked block)."
     }
   ]
 }

@@ -26,5 +26,6 @@ cold_build_time_max_seconds = 1500.0
 # (51 deps incl. tokio/axum/reqwest/rusqlite/wasmtime) simply outgrew a
 # threshold nobody had ever configured, same story as cold_build_time_max_seconds
 # above. Budgeted at 10% headroom over main's measured size.
+# 2026-09-27 (oauth-conformance-harness): release binary measured 80,060,864 B at 648e630 against a 79717845 B budget; raised to 84000000 (~5% headroom) — the OAuth client/conformance probe adds ~1 MB.
 [binary_size_budgets]
-mcphost = 79717845
+mcphost = 84000000
