@@ -283,6 +283,18 @@ if ! has_error "$caller_host_tool_call_resp"; then
 fi
 check "caller_host_tool_call_returns_upstream_response" "$caller_host_tool_call_ok"
 
+# 8c. PRD-mcphost-shared-call-run-scope AC8: the owner's own runs ledger
+#     never picks up either of the caller's two synchronous calls above
+#     (step 8's raw tools/call, step 8b's host.tool_call) -- before this
+#     PRD every synchronous cross-tenant call was written under the OWNER's
+#     tenant id, so this is the one check that would have failed against
+#     the pre-fix host. Exactly 1, not 0: the owner's own step-4 test call
+#     legitimately belongs to the owner and must still be there.
+owner_runs_resp=$(mcp_call "host.runs.list" '{}' "$OWNER_KEY")
+owner_runs_struct=$(structured_of "$owner_runs_resp")
+owner_runs_len=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print(len(d.get("runs") or []))' "$owner_runs_struct")
+check "owner_runs_list_excludes_callers_sync_calls" "$([[ "$owner_runs_len" == "1" ]] && echo 1 || echo 0)"
+
 # 9. The caller sees no secrets of the owner's -- AC3.
 secret_list_resp=$(mcp_call "host.secret_list" '{}' "$CALLER_KEY")
 secret_list_struct=$(structured_of "$secret_list_resp")

@@ -386,7 +386,7 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # 560 -> 576 re-collapses core's normal buckets to 1, landing the grand
 # total back at 10, with a little headroom for the rest of this PRD's own
 # remaining AC files.
-MAX_PER_SUITE = {"core": 576, "sandbox": 90}
+MAX_PER_SUITE = {"core": 600, "sandbox": 90}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"
