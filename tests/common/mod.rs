@@ -336,6 +336,40 @@ impl TestServer {
         .await
     }
 
+    /// loop/mcphost-fleet-signup-limit: a server whose signup rate limit
+    /// AND `$MCPHOST_FLEET_IPS`-equivalent fleet list are both overridden
+    /// directly on `AppState` -- same "field, not process environment,
+    /// since tests run in parallel in one binary" rationale
+    /// `start_with_signup_rate_limit`'s own doc comment already states.
+    /// `fleet_ips_raw` uses the same comma-separated address/CIDR syntax
+    /// `$MCPHOST_FLEET_IPS` parses at real startup
+    /// ([`mcphost::state::parse_fleet_ips`]).
+    pub async fn start_with_signup_rate_limit_and_fleet_ips(
+        limit: i64,
+        fleet_ips_raw: &str,
+    ) -> Self {
+        Self::start_full_with_email(
+            Some(ADMIN_KEY.to_string()),
+            KindRegistry::with_builtin(),
+            mcphost::state::CALL_TIMEOUT,
+            None,
+            limit,
+            mcphost::billing::BillingConfig::default(),
+            Arc::new(mcphost::billing::FakeBillingClient::new(
+                mcphost::state::now_unix(),
+            )),
+            Vec::new(),
+            mcphost::email::EmailConfig::default(),
+            Arc::new(mcphost::email::FakeEmailClient::new()),
+            mcphost::state::CLAIM_TOKEN_TTL_SECS_DEFAULT,
+            mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
+            mcphost::db::DbConfig::from_env(),
+            mcphost::alerts::AlertConfig::default(),
+            mcphost::state::parse_fleet_ips(Some(fleet_ips_raw)),
+        )
+        .await
+    }
+
     /// AC19: a server with the registry feature flag on, pointed at a
     /// mocked registry API base URL (typically a `wiremock::MockServer`'s
     /// `.uri()`).
@@ -516,6 +550,7 @@ impl TestServer {
             mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
             mcphost::db::DbConfig::from_env(),
             mcphost::alerts::AlertConfig::default(),
+            mcphost::state::FleetIps::empty(),
         )
         .await
     }
@@ -543,6 +578,7 @@ impl TestServer {
             mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
             db_cfg,
             mcphost::alerts::AlertConfig::default(),
+            mcphost::state::FleetIps::empty(),
         )
         .await
     }
@@ -569,6 +605,7 @@ impl TestServer {
             mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
             mcphost::db::DbConfig::from_env(),
             alert_config,
+            mcphost::state::FleetIps::empty(),
         )
         .await
     }
@@ -603,6 +640,7 @@ impl TestServer {
             mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
             mcphost::db::DbConfig::from_env(),
             mcphost::alerts::AlertConfig::default(),
+            mcphost::state::FleetIps::empty(),
         )
         .await
     }
@@ -630,6 +668,7 @@ impl TestServer {
         claim_rate_limit_per_hour: i64,
         db_cfg: mcphost::db::DbConfig,
         alert_config: mcphost::alerts::AlertConfig,
+        fleet_ips: mcphost::state::FleetIps,
     ) -> Self {
         let data_dir = TempDataDir::new();
         let db = Db::open_with_cfg(&data_dir.0, db_cfg).expect("open db");
@@ -701,7 +740,7 @@ impl TestServer {
             alert_config,
             alert_quota_trips: mcphost::alerts::QuotaTripTracker::new(),
             status_probe_override: mcphost::statusfeed::ProbeOverrides::new(),
-            fleet_ips: mcphost::state::FleetIps::empty(),
+            fleet_ips,
             end_user_activity: Default::default(),
             oauth_healthz_cache: Default::default(),
         });

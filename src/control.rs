@@ -213,20 +213,38 @@ pub async fn signup(
     // (`Db::try_admit_signup`) -- see that method's doc comment for why the
     // old check-then-insert sequence let a concurrent burst overshoot the
     // cap.
-    let since = crate::state::now_unix() - crate::state::SIGNUP_RATE_LIMIT_WINDOW_SECS;
-    let admitted = state
-        .db
-        .try_admit_signup(
-            source_ip.to_string(),
-            since,
-            state.signup_rate_limit_per_hour,
-            synthetic.clone(),
-            attribution.user_agent.map(str::to_string),
-            origin.to_string(),
-            origin_detail.clone(),
-            ip_class,
-        )
-        .await?;
+    //
+    // loop/mcphost-fleet-signup-limit: a source IP configured in
+    // `$MCPHOST_FLEET_IPS` skips the rate-limit gate entirely -- no
+    // `try_admit_signup` call, so no `signup_events` row and no counter
+    // increment for it either. Prod runs the public default (5/hour/IP);
+    // the synthetic fleet signs up hundreds of tenants per hour from a
+    // handful of fixed IPs, and would blow through that cap in minutes
+    // without this. The tenant below is still created and still
+    // classified synthetic exactly as it is today -- only the rate-limit
+    // admit check is bypassed.
+    let fleet_ip_bypass = state.fleet_ips.contains(source_ip);
+    if fleet_ip_bypass {
+        tracing::debug!("signup rate limit bypassed for fleet ip");
+    }
+    let admitted = if fleet_ip_bypass {
+        true
+    } else {
+        let since = crate::state::now_unix() - crate::state::SIGNUP_RATE_LIMIT_WINDOW_SECS;
+        state
+            .db
+            .try_admit_signup(
+                source_ip.to_string(),
+                since,
+                state.signup_rate_limit_per_hour,
+                synthetic.clone(),
+                attribution.user_agent.map(str::to_string),
+                origin.to_string(),
+                origin_detail.clone(),
+                ip_class,
+            )
+            .await?
+    };
     if !admitted {
         return Err(AppError::RateLimited);
     }

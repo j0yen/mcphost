@@ -20,7 +20,8 @@ own tool is **42.4s**.
    only tool offered is `signup`.
 2. Call `signup(name)`. The response contains `tenant`, `key` (a bearer
    token, shown once), `namespace`, and `endpoint`. Signup is rate-limited
-   to 5 per IP per hour. Pass `source` (e.g. `signup(name, source: "hn")`)
+   to 5 per IP per hour (an operator's own fleet IPs are exempt). Pass
+   `source` (e.g. `signup(name, source: "hn")`)
    to tag which channel this signup came from -- recommended values are
    `hn`, `reddit`, `discord`, `registry`, `plugin`, `docs`; it's echoed
    back in the response and broken out in admin healthz, but never
