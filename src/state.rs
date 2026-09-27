@@ -321,6 +321,14 @@ pub struct AppState {
     /// cache bearer validation resolves a `kid` through -- see
     /// [`crate::oauth::JwksCache`].
     pub oauth: crate::oauth::JwksCache,
+    /// PRD-mcphost-hosted-authorization-server requirement 5: this host's
+    /// own ES256 authorization-server signing key -- mints hosted access
+    /// tokens and publishes `/.well-known/jwks.json`. See
+    /// [`crate::authz::AuthzSigningKey`].
+    pub authz_key: crate::authz::AuthzSigningKey,
+    /// requirement 2(a): the CIMD document fetch cache (1h TTL) --
+    /// see [`crate::authz::CimdCache`].
+    pub cimd_cache: crate::authz::CimdCache,
     /// P2 requirement 8: `$MCPHOST_OAUTH_ALLOWED_ALGS`, default
     /// `RS256,ES256` -- see [`crate::oauth::allowed_algs_from_env`].
     pub oauth_allowed_algs: Vec<jsonwebtoken::Algorithm>,

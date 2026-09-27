@@ -16,6 +16,11 @@ use crate::state::{AppState, now_unix};
 pub enum EndUserMethod {
     Oauth,
     Assertion,
+    /// PRD-mcphost-hosted-authorization-server requirement 5: a bearer
+    /// minted by this host's own built-in authorization server, as
+    /// distinct from [`EndUserMethod::Oauth`]'s tenant-registered
+    /// bring-your-own issuer.
+    HostedOauth,
 }
 
 impl EndUserMethod {
@@ -23,6 +28,7 @@ impl EndUserMethod {
         match self {
             EndUserMethod::Oauth => "oauth",
             EndUserMethod::Assertion => "assertion",
+            EndUserMethod::HostedOauth => "hosted_oauth",
         }
     }
 }
@@ -355,6 +361,8 @@ mod tests {
             oauth: crate::oauth::JwksCache::new(),
             oauth_allowed_algs: crate::oauth::parse_allowed_algs(None),
             oauth_jwks_ttl_secs: crate::oauth::DEFAULT_JWKS_TTL_SECS,
+            authz_key: crate::authz::AuthzSigningKey::load_or_generate(&dir).expect("authz signing key"),
+            cimd_cache: crate::authz::CimdCache::new(),
             alerts: crate::alerts::AlertRegistry::new(),
             contention_tracker: crate::alerts::ContentionTracker::new(),
             alert_config: crate::alerts::AlertConfig::default(),

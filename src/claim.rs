@@ -91,7 +91,7 @@ pub fn is_valid_email(email: &str) -> bool {
 
 // ---- rendering -----------------------------------------------------------
 
-fn html_escape(input: &str) -> String {
+pub(crate) fn html_escape(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     for c in input.chars() {
         match c {
@@ -106,7 +106,7 @@ fn html_escape(input: &str) -> String {
     out
 }
 
-const STYLE: &str = "body{margin:0;background:#0b0d0e;color:#c9cdd1;\
+pub(crate) const STYLE: &str = "body{margin:0;background:#0b0d0e;color:#c9cdd1;\
     font-family:ui-monospace,Menlo,Consolas,monospace;font-size:15px;line-height:1.65}\
     .wrap{max-width:34rem;margin:0 auto;padding:3rem 1.4rem}\
     h1{font-size:1.1rem;color:#e6edf3;margin:0 0 1rem}\
@@ -117,7 +117,7 @@ const STYLE: &str = "body{margin:0;background:#0b0d0e;color:#c9cdd1;\
     margin-top:.8rem;font:inherit;color:#e6edf3;cursor:pointer}\
     .err{color:#f85149}ul{padding-left:1.2rem}";
 
-fn page(title: &str, body: &str) -> String {
+pub(crate) fn page(title: &str, body: &str) -> String {
     format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
@@ -126,7 +126,7 @@ fn page(title: &str, body: &str) -> String {
     )
 }
 
-fn html_response(status: StatusCode, body: String) -> Response {
+pub(crate) fn html_response(status: StatusCode, body: String) -> Response {
     (status, [("content-type", "text/html; charset=utf-8")], body).into_response()
 }
 

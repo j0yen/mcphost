@@ -282,6 +282,9 @@ pub async fn bare_app_state() -> (AppState, TempDataDir) {
         oauth: mcphost::oauth::JwksCache::new(),
         oauth_allowed_algs: mcphost::oauth::parse_allowed_algs(None),
         oauth_jwks_ttl_secs: mcphost::oauth::DEFAULT_JWKS_TTL_SECS,
+        authz_key: mcphost::authz::AuthzSigningKey::load_or_generate(&data_dir.0)
+            .expect("authz signing key"),
+        cimd_cache: mcphost::authz::CimdCache::new(),
         alerts: mcphost::alerts::AlertRegistry::new(),
         contention_tracker: mcphost::alerts::ContentionTracker::new(),
         alert_config: mcphost::alerts::AlertConfig::default(),
@@ -689,6 +692,9 @@ impl TestServer {
             oauth: mcphost::oauth::JwksCache::new(),
             oauth_allowed_algs: mcphost::oauth::parse_allowed_algs(None),
             oauth_jwks_ttl_secs: mcphost::oauth::DEFAULT_JWKS_TTL_SECS,
+            authz_key: mcphost::authz::AuthzSigningKey::load_or_generate(&data_dir.0)
+                .expect("authz signing key"),
+            cimd_cache: mcphost::authz::CimdCache::new(),
             alerts: mcphost::alerts::AlertRegistry::new(),
             contention_tracker: mcphost::alerts::ContentionTracker::new(),
             alert_config,
@@ -1238,6 +1244,8 @@ pub async fn bare_state(dir: &std::path::Path) -> AppState {
         oauth: mcphost::oauth::JwksCache::new(),
         oauth_allowed_algs: mcphost::oauth::parse_allowed_algs(None),
         oauth_jwks_ttl_secs: mcphost::oauth::DEFAULT_JWKS_TTL_SECS,
+        authz_key: mcphost::authz::AuthzSigningKey::load_or_generate(dir).expect("authz signing key"),
+        cimd_cache: mcphost::authz::CimdCache::new(),
         alerts: mcphost::alerts::AlertRegistry::new(),
         contention_tracker: mcphost::alerts::ContentionTracker::new(),
         alert_config: mcphost::alerts::AlertConfig::default(),

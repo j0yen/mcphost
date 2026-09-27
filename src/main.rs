@@ -454,6 +454,7 @@ async fn main() -> anyhow::Result<()> {
 
             let db = Db::open(&data_dir())?;
             db.migrate().await?;
+            let authz_key = mcphost::authz::AuthzSigningKey::load_or_generate(&data_dir())?;
             // PRD-mcphost-data-retention requirement 1: (re-)sync
             // `retention_policy` from env on every start, so a changed
             // `$MCPHOST_RETENTION_*_DAYS` takes effect on restart.
@@ -545,6 +546,8 @@ async fn main() -> anyhow::Result<()> {
                 oauth: mcphost::oauth::JwksCache::new(),
                 oauth_allowed_algs: mcphost::oauth::allowed_algs_from_env(),
                 oauth_jwks_ttl_secs: mcphost::oauth::jwks_ttl_secs_from_env(),
+                authz_key,
+                cimd_cache: mcphost::authz::CimdCache::new(),
                 alerts: mcphost::alerts::AlertRegistry::new(),
                 contention_tracker: mcphost::alerts::ContentionTracker::new(),
                 alert_config: mcphost::alerts::AlertConfig::from_env(),

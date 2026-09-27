@@ -13,6 +13,10 @@ use common::TempDataDir;
 use mcphost::state::parse_fleet_ips;
 use rusqlite::params;
 
+/// `tenants.{source_class, synthetic, origin, origin_detail, classified_by}`,
+/// read back after `admin.reclassify_fleet_ips`'s backfill.
+type TenantClassificationRow = (Option<String>, Option<String>, String, Option<String>, Option<String>);
+
 #[tokio::test]
 async fn reclassify_fleet_ips_backfills_matched_rows_only_and_is_idempotent() {
     let dir = TempDataDir::new();
@@ -144,13 +148,7 @@ async fn reclassify_fleet_ips_backfills_matched_rows_only_and_is_idempotent() {
     // The two matching tenants flipped; the third didn't.
     #[allow(clippy::type_complexity)]
     for tenant_id in [tenant_ids[0], tenant_ids[1]] {
-        let (source_class, synthetic, origin, origin_detail, classified_by): (
-            Option<String>,
-            Option<String>,
-            String,
-            Option<String>,
-            Option<String>,
-        ) = conn
+        let (source_class, synthetic, origin, origin_detail, classified_by): TenantClassificationRow = conn
             .query_row(
                 "SELECT source_class, synthetic, origin, origin_detail, classified_by FROM tenants WHERE id = ?1",
                 params![tenant_id],

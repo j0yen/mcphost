@@ -2204,6 +2204,23 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              JWKS fetch age.",
             host_schema(json!({}), &[]),
         ),
+        // PRD-mcphost-hosted-authorization-server requirement 7 (AC8): this
+        // host's own built-in authorization server's grants -- distinct
+        // from the bring-your-own-issuer registrations above.
+        Tool::new(
+            "host.oauth.grants",
+            "List the OAuth clients currently connected to this tenant through mcphost's own \
+             hosted authorization server (host.oauth.issuer_set is for a tenant's own \
+             bring-your-own issuer instead): each grant's client_name, method (cimd|dcr), \
+             resource, created_at and last_used_at.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "host.oauth.grant_revoke",
+            "Revoke one hosted-authorization-server grant by id (from host.oauth.grants): its \
+             access tokens fail within 60s and its refresh tokens stop rotating.",
+            host_schema(json!({"id": {"type": "integer", "description": "The grant id."}}), &["id"]),
+        ),
         // PRD-mcphost-end-user-identity P1 requirement 7 (AC10).
         Tool::new(
             "host.enduser.whoami",
@@ -3151,12 +3168,13 @@ impl McpHostHandler {
         &self,
         tenant: &Tenant,
         subject: Option<&str>,
+        auth_method: &str,
         end_user: Option<&crate::enduser::EndUser>,
         name: &str,
         args: Value,
     ) -> Result<Value, AppError> {
         match name {
-            "host.whoami" => control::whoami(&self.state, tenant, subject).await,
+            "host.whoami" => control::whoami(&self.state, tenant, subject, auth_method).await,
             "host.key_rotate" => control::key_rotate(&self.state, tenant).await,
             "host.self_offboard" => control::self_offboard(&self.state, tenant).await,
             "host.tool_publish" => control::tool_publish(&self.state, tenant, &args).await,
@@ -3306,6 +3324,8 @@ impl McpHostHandler {
             "host.oauth.issuer_set" => crate::oauth::issuer_set(&self.state, tenant, &args).await,
             "host.oauth.issuer_remove" => crate::oauth::issuer_remove(&self.state, tenant, &args).await,
             "host.oauth.issuers" => crate::oauth::issuers_list(&self.state, tenant).await,
+            "host.oauth.grants" => crate::authz::grants_list(&self.state, tenant).await,
+            "host.oauth.grant_revoke" => crate::authz::grant_revoke(&self.state, tenant, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         }
     }
@@ -4903,10 +4923,19 @@ impl ServerHandler for McpHostHandler {
         let mut end_user_err: Option<AppError> = None;
         if let Auth::Tenant(tenant, oauth_caller) = &auth {
             if let Some(oauth_caller) = oauth_caller {
+                // PRD-mcphost-hosted-authorization-server requirement 5: a
+                // hosted-token bearer (this host's own built-in issuer)
+                // gets `EndUserMethod::HostedOauth`, never the
+                // bring-your-own-issuer `Oauth` variant.
+                let method = if oauth_caller.auth_method == "hosted_token" {
+                    crate::enduser::EndUserMethod::HostedOauth
+                } else {
+                    crate::enduser::EndUserMethod::Oauth
+                };
                 end_user = Some(crate::enduser::EndUser {
                     subject: oauth_caller.subject.clone(),
                     issuer: Some(oauth_caller.issuer.clone()),
-                    method: crate::enduser::EndUserMethod::Oauth,
+                    method,
                     verified_at: now_unix(),
                 });
             } else if let Some(assertion) = raw_args.get("end_user_assertion").and_then(Value::as_str) {
@@ -5082,11 +5111,18 @@ impl ServerHandler for McpHostHandler {
                 let _ = name;
                 Err(AppError::Forbidden)
             }
-            (Auth::Tenant(tenant, subject), name)
+            (Auth::Tenant(tenant, oauth_caller), name)
                 if name.starts_with("host.") || name.starts_with("billing.") =>
             {
-                let subject = subject.as_ref().map(|o| o.subject.as_str());
-                self.dispatch_tenant_tool(tenant, subject, end_user.as_ref(), name, args).await
+                let subject = oauth_caller.as_ref().map(|o| o.subject.as_str());
+                // PRD-mcphost-hosted-authorization-server requirement 5:
+                // `host.whoami`'s `auth_method` -- `"key"` for the
+                // pre-existing header/`tenant_key`-argument paths (no
+                // `OauthCaller` at all), else whichever this call's own
+                // bearer resolved to (`"oauth"`/`"hosted_token"`).
+                let auth_method = oauth_caller.as_ref().map_or("key", |o| o.auth_method);
+                self.dispatch_tenant_tool(tenant, subject, auth_method, end_user.as_ref(), name, args)
+                    .await
             }
             (Auth::Tenant(tenant, _), name) => match name.split_once('.') {
                 Some((ns, local)) if ns == tenant.namespace => {

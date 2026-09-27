@@ -402,6 +402,28 @@ mod hooks_ac7_trigger_test_creates_marked_run;
 mod hooks_ac8_trigger_replay_new_run_trigger_ref;
 #[path = "hooks_ac9_paused_trigger_404.rs"]
 mod hooks_ac9_paused_trigger_404;
+#[path = "hostedas_ac01_well_known_metadata.rs"]
+mod hostedas_ac01_well_known_metadata;
+#[path = "hostedas_ac02_cimd_client_identification.rs"]
+mod hostedas_ac02_cimd_client_identification;
+#[path = "hostedas_ac03_dcr_register_and_rate_limit.rs"]
+mod hostedas_ac03_dcr_register_and_rate_limit;
+#[path = "hostedas_ac04_consent_code_token_hosted_bearer.rs"]
+mod hostedas_ac04_consent_code_token_hosted_bearer;
+#[path = "hostedas_ac05_code_replay_revokes_issued_tokens.rs"]
+mod hostedas_ac05_code_replay_revokes_issued_tokens;
+#[path = "hostedas_ac06_authorize_hardening.rs"]
+mod hostedas_ac06_authorize_hardening;
+#[path = "hostedas_ac07_cross_client_code_and_refresh_reuse.rs"]
+mod hostedas_ac07_cross_client_code_and_refresh_reuse;
+#[path = "hostedas_ac08_grants_list_revoke_and_oauth_revoke.rs"]
+mod hostedas_ac08_grants_list_revoke_and_oauth_revoke;
+#[path = "hostedas_ac09_no_secret_leakage.rs"]
+mod hostedas_ac09_no_secret_leakage;
+#[path = "hostedas_ac10_key_and_issuer_jwt_flows_unchanged.rs"]
+mod hostedas_ac10_key_and_issuer_jwt_flows_unchanged;
+#[path = "hostedas_ac11_docs_and_llms_txt.rs"]
+mod hostedas_ac11_docs_and_llms_txt;
 #[path = "http_ac01_secret_redaction.rs"]
 mod http_ac01_secret_redaction;
 #[path = "http_ac02_publish_ssrf_literal.rs"]

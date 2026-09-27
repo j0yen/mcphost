@@ -70,6 +70,7 @@ const MIGRATION_0046: &str = include_str!("../migrations/0046_vault.sql");
 const MIGRATION_0047: &str = include_str!("../migrations/0047_end_user_audit_and_revoke.sql");
 const MIGRATION_0048: &str = include_str!("../migrations/0048_runs_end_user_subject.sql");
 const MIGRATION_0049: &str = include_str!("../migrations/0049_shared_call_run_scope.sql");
+const MIGRATION_0050: &str = include_str!("../migrations/0050_hosted_authorization_server.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -2022,7 +2023,8 @@ impl Db {
         // data-only UPDATE, idempotent by its own WHERE clause (see the
         // migration file) rather than a schema-presence guard, so it runs
         // unconditionally like 0001 above.
-        conn.execute_batch(MIGRATION_0049).map_err(AppError::from)
+        conn.execute_batch(MIGRATION_0049).map_err(AppError::from)?;
+        Self::migrate_0050_hosted_authorization_server(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -2708,6 +2710,18 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0048)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-hosted-authorization-server requirements 2-7 (0047/0048/0049
+    /// were already claimed by in-flight branches at drafting time).
+    fn migrate_0050_hosted_authorization_server(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'oauth_clients'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0050)?;
         }
         Ok(())
     }
@@ -13854,6 +13868,368 @@ impl Db {
         })
         .await
     }
+
+    // ---- PRD-mcphost-hosted-authorization-server -----------------------
+
+    /// requirement 2(b) / AC3: `POST /oauth/register`'s 10-per-minute-per-IP
+    /// limit -- same atomic check-and-insert shape as
+    /// [`Db::try_admit_signup`]/[`Db::try_create_claim_code`].
+    pub async fn try_admit_oauth_register(&self, source_ip: String, since_unix: i64, limit: i64) -> Result<bool, AppError> {
+        let created_unix = now_unix();
+        self.with_conn(move |conn| {
+            let inserted = conn.execute(
+                "INSERT INTO oauth_register_events (source_ip, created_unix) \
+                 SELECT ?1, ?2 \
+                 WHERE (SELECT COUNT(*) FROM oauth_register_events \
+                        WHERE source_ip = ?1 AND created_unix >= ?3) < ?4",
+                params![source_ip, created_unix, since_unix, limit],
+            )?;
+            Ok(inserted > 0)
+        })
+        .await
+    }
+
+    /// requirement 2(b): registers a new DCR client; `false` (no row
+    /// written) if `client_id` already exists -- hardening requirement
+    /// "DCR registration cannot overwrite an existing client_id".
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_oauth_client(
+        &self,
+        client_id: String,
+        client_secret_hash: Option<String>,
+        client_name: Option<String>,
+        redirect_uris_json: String,
+        application_type: String,
+        token_endpoint_auth_method: String,
+    ) -> Result<bool, AppError> {
+        let created_unix = now_unix();
+        self.with_conn(move |conn| {
+            let inserted = conn.execute(
+                "INSERT OR IGNORE INTO oauth_clients \
+                 (client_id, client_secret_hash, client_name, redirect_uris, application_type, \
+                  token_endpoint_auth_method, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    client_id,
+                    client_secret_hash,
+                    client_name,
+                    redirect_uris_json,
+                    application_type,
+                    token_endpoint_auth_method,
+                    created_unix
+                ],
+            )?;
+            Ok(inserted > 0)
+        })
+        .await
+    }
+
+    pub async fn find_oauth_client_by_id(&self, client_id: String) -> Result<Option<OauthClientRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT client_id, client_secret_hash, client_name, redirect_uris, application_type, \
+                 token_endpoint_auth_method, created_unix FROM oauth_clients WHERE client_id = ?1",
+                params![client_id],
+                oauth_client_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 3/4: mints a single-use authorization code row (60s
+    /// TTL); `code_hash` is the only form ever stored.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_oauth_code(
+        &self,
+        code_hash: String,
+        tenant_id: i64,
+        client_id: String,
+        client_name: Option<String>,
+        method: String,
+        redirect_uri: String,
+        code_challenge: String,
+        resource: String,
+        scope: String,
+        expires_unix: i64,
+    ) -> Result<(), AppError> {
+        let created_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO oauth_codes \
+                 (code_hash, tenant_id, client_id, client_name, method, redirect_uri, code_challenge, \
+                  resource, scope, expires_unix, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                params![
+                    code_hash,
+                    tenant_id,
+                    client_id,
+                    client_name,
+                    method,
+                    redirect_uri,
+                    code_challenge,
+                    resource,
+                    scope,
+                    expires_unix,
+                    created_unix
+                ],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn find_oauth_code_by_hash(&self, code_hash: String) -> Result<Option<OauthCodeRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT code_hash, tenant_id, client_id, client_name, method, redirect_uri, \
+                 code_challenge, resource, scope, grant_id, expires_unix, consumed_unix, created_unix \
+                 FROM oauth_codes WHERE code_hash = ?1",
+                params![code_hash],
+                oauth_code_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 4 / AC5: the atomic single-use claim -- `true` iff this
+    /// call is the one that consumed the code (the code existed and had
+    /// not already been consumed).
+    pub async fn claim_oauth_code(&self, code_hash: String, now: i64) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let claimed = conn.execute(
+                "UPDATE oauth_codes SET consumed_unix = ?1 WHERE code_hash = ?2 AND consumed_unix IS NULL",
+                params![now, code_hash],
+            )?;
+            Ok(claimed > 0)
+        })
+        .await
+    }
+
+    /// AC5/AC7: records which grant a code's (first, legitimate) redemption
+    /// minted, so a replay of that same code can look up and revoke it.
+    pub async fn set_oauth_code_grant(&self, code_hash: String, grant_id: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE oauth_codes SET grant_id = ?1 WHERE code_hash = ?2",
+                params![grant_id, code_hash],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// requirement 4: one grant per completed authorization-code exchange
+    /// -- returns the new row's id.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_oauth_grant(
+        &self,
+        tenant_id: i64,
+        client_id: String,
+        client_name: Option<String>,
+        method: String,
+        resource: String,
+    ) -> Result<i64, AppError> {
+        let created_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO oauth_grants \
+                 (tenant_id, client_id, client_name, method, resource, created_unix, last_used_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+                params![tenant_id, client_id, client_name, method, resource, created_unix],
+            )?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+    }
+
+    pub async fn find_oauth_grant_by_id(&self, id: i64) -> Result<Option<OauthGrantRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT id, tenant_id, client_id, client_name, method, resource, created_unix, \
+                 last_used_unix, revoked_unix FROM oauth_grants WHERE id = ?1",
+                params![id],
+                oauth_grant_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 7: this tenant's live (not revoked) grants, newest first.
+    pub async fn list_oauth_grants_by_tenant(&self, tenant_id: i64) -> Result<Vec<OauthGrantRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, tenant_id, client_id, client_name, method, resource, created_unix, \
+                 last_used_unix, revoked_unix FROM oauth_grants \
+                 WHERE tenant_id = ?1 AND revoked_unix IS NULL ORDER BY created_unix DESC",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id], oauth_grant_from_row)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    pub async fn touch_oauth_grant_last_used(&self, grant_id: i64, now: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE oauth_grants SET last_used_unix = ?1 WHERE id = ?2",
+                params![now, grant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// requirement 7 / AC8: revokes a grant this tenant owns -- `false` if
+    /// it doesn't exist, isn't this tenant's, or was already revoked.
+    pub async fn revoke_oauth_grant_for_tenant(&self, grant_id: i64, tenant_id: i64, now: i64) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let revoked = conn.execute(
+                "UPDATE oauth_grants SET revoked_unix = ?1 \
+                 WHERE id = ?2 AND tenant_id = ?3 AND revoked_unix IS NULL",
+                params![now, grant_id, tenant_id],
+            )?;
+            Ok(revoked > 0)
+        })
+        .await
+    }
+
+    /// AC7/AC8: revokes a grant unconditionally (no tenant ownership check
+    /// -- `POST /oauth/revoke`'s caller authenticates by possessing the
+    /// refresh token itself, and code/refresh-token reuse detection has no
+    /// tenant context of its own to check against).
+    pub async fn revoke_oauth_grant(&self, grant_id: i64, now: i64) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let revoked = conn.execute(
+                "UPDATE oauth_grants SET revoked_unix = ?1 WHERE id = ?2 AND revoked_unix IS NULL",
+                params![now, grant_id],
+            )?;
+            Ok(revoked > 0)
+        })
+        .await
+    }
+
+    /// AC5/AC7/AC8: denies every not-yet-denied jti minted under this
+    /// grant -- the "jti denylist" AC8 names, applied in one statement
+    /// regardless of how many access tokens this grant ever minted.
+    pub async fn deny_oauth_jtis_for_grant(&self, grant_id: i64, now: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE oauth_jti_denylist SET denied_unix = ?1 WHERE grant_id = ?2 AND denied_unix IS NULL",
+                params![now, grant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// AC7: marks every not-yet-rotated refresh token under this grant as
+    /// rotated (unusable), without needing to know any of their hashes.
+    pub async fn revoke_oauth_refresh_tokens_for_grant(&self, grant_id: i64, now: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE oauth_refresh_tokens SET rotated_unix = ?1 WHERE grant_id = ?2 AND rotated_unix IS NULL",
+                params![now, grant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn insert_oauth_refresh_token(
+        &self,
+        grant_id: i64,
+        token_hash: String,
+        resource: String,
+        expires_unix: i64,
+    ) -> Result<(), AppError> {
+        let created_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO oauth_refresh_tokens (grant_id, token_hash, resource, expires_unix, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![grant_id, token_hash, resource, expires_unix, created_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn find_oauth_refresh_token_by_hash(
+        &self,
+        token_hash: String,
+    ) -> Result<Option<OauthRefreshTokenRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT id, grant_id, token_hash, resource, expires_unix, rotated_unix, created_unix \
+                 FROM oauth_refresh_tokens WHERE token_hash = ?1",
+                params![token_hash],
+                oauth_refresh_token_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 4 / AC7: the atomic single-use rotation claim -- `true`
+    /// iff this call is the one that rotated it (existed, not already
+    /// rotated).
+    pub async fn claim_oauth_refresh_token(&self, token_hash: String, now: i64) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let claimed = conn.execute(
+                "UPDATE oauth_refresh_tokens SET rotated_unix = ?1 WHERE token_hash = ?2 AND rotated_unix IS NULL",
+                params![now, token_hash],
+            )?;
+            Ok(claimed > 0)
+        })
+        .await
+    }
+
+    /// requirement 5: records a freshly-minted hosted access token's `jti`
+    /// -- see `oauth_jti_denylist`'s own migration doc comment for why this
+    /// doubles as the mint-time registry.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_oauth_jti(
+        &self,
+        jti: String,
+        grant_id: i64,
+        tenant_id: i64,
+        resource: String,
+        expires_unix: i64,
+    ) -> Result<(), AppError> {
+        let created_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO oauth_jti_denylist (jti, grant_id, tenant_id, resource, expires_unix, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![jti, grant_id, tenant_id, resource, expires_unix, created_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn find_oauth_jti(&self, jti: String) -> Result<Option<OauthJtiRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT jti, grant_id, tenant_id, resource, expires_unix, denied_unix \
+                 FROM oauth_jti_denylist WHERE jti = ?1",
+                params![jti],
+                oauth_jti_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
 }
 
 /// requirement 1: one `documents` row -- `docs.rs`'s own business logic
@@ -14387,4 +14763,145 @@ pub struct TableModelAnnotationRow {
     pub column_name: String,
     pub key: String,
     pub value: String,
+}
+
+// ---- PRD-mcphost-hosted-authorization-server row types --------------------
+
+/// One `oauth_clients` row (a DCR-registered client), as
+/// [`crate::authz::identify_client`] reads it back.
+#[derive(Debug, Clone)]
+pub struct OauthClientRow {
+    pub client_id: String,
+    pub client_secret_hash: Option<String>,
+    pub client_name: Option<String>,
+    pub redirect_uris: Vec<String>,
+    pub application_type: String,
+    pub token_endpoint_auth_method: String,
+    pub created_unix: i64,
+}
+
+fn oauth_client_from_row(r: &Row) -> rusqlite::Result<OauthClientRow> {
+    let redirect_uris_json: String = r.get(3)?;
+    let redirect_uris: Vec<String> = serde_json::from_str(&redirect_uris_json).unwrap_or_default();
+    Ok(OauthClientRow {
+        client_id: r.get(0)?,
+        client_secret_hash: r.get(1)?,
+        client_name: r.get(2)?,
+        redirect_uris,
+        application_type: r.get(4)?,
+        token_endpoint_auth_method: r.get(5)?,
+        created_unix: r.get(6)?,
+    })
+}
+
+/// One `oauth_codes` row -- a single-use authorization code, as
+/// `authz`'s `/oauth/token` handler reads it back.
+#[derive(Debug, Clone)]
+pub struct OauthCodeRow {
+    pub tenant_id: i64,
+    pub client_id: String,
+    pub client_name: Option<String>,
+    pub method: String,
+    pub redirect_uri: String,
+    pub code_challenge: String,
+    pub resource: String,
+    pub scope: String,
+    pub grant_id: Option<i64>,
+    pub expires_unix: i64,
+    pub consumed_unix: Option<i64>,
+    pub created_unix: i64,
+}
+
+fn oauth_code_from_row(r: &Row) -> rusqlite::Result<OauthCodeRow> {
+    Ok(OauthCodeRow {
+        tenant_id: r.get(1)?,
+        client_id: r.get(2)?,
+        client_name: r.get(3)?,
+        method: r.get(4)?,
+        redirect_uri: r.get(5)?,
+        code_challenge: r.get(6)?,
+        resource: r.get(7)?,
+        scope: r.get(8)?,
+        grant_id: r.get(9)?,
+        expires_unix: r.get(10)?,
+        consumed_unix: r.get(11)?,
+        created_unix: r.get(12)?,
+    })
+}
+
+/// One `oauth_grants` row, as `host.oauth.grants`/`admin.oauth.clients`
+/// read it back.
+#[derive(Debug, Clone)]
+pub struct OauthGrantRow {
+    pub id: i64,
+    pub tenant_id: i64,
+    pub client_id: String,
+    pub client_name: Option<String>,
+    pub method: String,
+    pub resource: String,
+    pub created_unix: i64,
+    pub last_used_unix: i64,
+    pub revoked_unix: Option<i64>,
+}
+
+fn oauth_grant_from_row(r: &Row) -> rusqlite::Result<OauthGrantRow> {
+    Ok(OauthGrantRow {
+        id: r.get(0)?,
+        tenant_id: r.get(1)?,
+        client_id: r.get(2)?,
+        client_name: r.get(3)?,
+        method: r.get(4)?,
+        resource: r.get(5)?,
+        created_unix: r.get(6)?,
+        last_used_unix: r.get(7)?,
+        revoked_unix: r.get(8)?,
+    })
+}
+
+/// One `oauth_refresh_tokens` row.
+#[derive(Debug, Clone)]
+pub struct OauthRefreshTokenRow {
+    pub id: i64,
+    pub grant_id: i64,
+    pub token_hash: String,
+    pub resource: String,
+    pub expires_unix: i64,
+    pub rotated_unix: Option<i64>,
+    pub created_unix: i64,
+}
+
+fn oauth_refresh_token_from_row(r: &Row) -> rusqlite::Result<OauthRefreshTokenRow> {
+    Ok(OauthRefreshTokenRow {
+        id: r.get(0)?,
+        grant_id: r.get(1)?,
+        token_hash: r.get(2)?,
+        resource: r.get(3)?,
+        expires_unix: r.get(4)?,
+        rotated_unix: r.get(5)?,
+        created_unix: r.get(6)?,
+    })
+}
+
+/// One `oauth_jti_denylist` row -- see that table's migration doc comment
+/// for why a non-denied row (`denied_unix: None`) is the normal, expected
+/// shape for a live access token's own registry entry.
+#[derive(Debug, Clone)]
+pub struct OauthJtiRow {
+    pub jti: String,
+    pub grant_id: i64,
+    pub tenant_id: i64,
+    pub resource: String,
+    pub expires_unix: i64,
+    pub denied_unix: Option<i64>,
+}
+
+fn oauth_jti_from_row(r: &Row) -> rusqlite::Result<OauthJtiRow> {
+    Ok(OauthJtiRow {
+        jti: r.get(0)?,
+        grant_id: r.get(1)?,
+        tenant_id: r.get(2)?,
+        resource: r.get(3)?,
+        expires_unix: r.get(4)?,
+        denied_unix: r.get(5)?,
+    })
 }

@@ -44,7 +44,7 @@ async fn ac1_anonymous_tools_list_has_cache_fields() {
     assert!(names.contains(&"signup"), "{names:?}");
     assert_eq!(
         names.len(),
-        116,
+        118,
         "signup + host.* (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + host.tool_history/host.tool_rollback/host.tool_diff \
          (3 tools, PRD-mcphost-tool-versions) + host.state.* (9 tools, PRD-mcphost-tenant-state) + \
@@ -60,7 +60,7 @@ async fn ac1_anonymous_tools_list_has_cache_fields() {
          host.self_offboard (PRD-mcphost-tenant-self-offboard) + host.changelog (PRD-mcphost-host-tool-deprecation) + \
          host.export (PRD-mcphost-tenant-data-export) + \
          the six host.channel.* tools (PRD-mcphost-agent-mesh-ops, PRD-mcphost-agent-channels) + the six host.docs.* tools (PRD-mcphost-document-store) + \
-         the three host.oauth.* tools (PRD-mcphost-oauth-resource-server) + \
+         the five host.oauth.* tools (PRD-mcphost-oauth-resource-server, PRD-mcphost-hosted-authorization-server) + \
          the three host.docs.search/index_config/reindex tools (PRD-mcphost-docs-semantic-search) + \
          the two host.enduser.* tools (PRD-mcphost-end-user-identity): {names:?}"
     );
@@ -142,7 +142,7 @@ async fn ac3_invalid_bearer_tools_list_has_cache_fields() {
     assert!(names.contains(&"signup"), "{names:?}");
     assert_eq!(
         names.len(),
-        116,
+        118,
         "signup + host.* (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + host.tool_history/host.tool_rollback/host.tool_diff \
          (3 tools, PRD-mcphost-tool-versions) + host.state.* (9 tools, PRD-mcphost-tenant-state) + \
@@ -158,7 +158,7 @@ async fn ac3_invalid_bearer_tools_list_has_cache_fields() {
          host.self_offboard (PRD-mcphost-tenant-self-offboard) + host.changelog (PRD-mcphost-host-tool-deprecation) + \
          host.export (PRD-mcphost-tenant-data-export) + \
          the six host.channel.* tools (PRD-mcphost-agent-mesh-ops, PRD-mcphost-agent-channels) + the six host.docs.* tools (PRD-mcphost-document-store) + \
-         the three host.oauth.* tools (PRD-mcphost-oauth-resource-server) + \
+         the five host.oauth.* tools (PRD-mcphost-oauth-resource-server, PRD-mcphost-hosted-authorization-server) + \
          the three host.docs.search/index_config/reindex tools (PRD-mcphost-docs-semantic-search) + \
          the two host.enduser.* tools (PRD-mcphost-end-user-identity): {names:?}"
     );

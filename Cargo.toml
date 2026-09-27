@@ -1,7 +1,7 @@
 [package]
 autotests = false  # gen-test-suites.sh: explicit [[test]] suites below
 name = "mcphost"
-version = "0.60.24"
+version = "0.60.25"
 edition = "2024"
 rust-version = "1.94"
 description = "One MCP endpoint an agent can join and administer without a human"
@@ -91,6 +91,14 @@ flate2 = "1"
 # verification, the same "reuse audited crypto" call `sha1`/`aes-gcm` above
 # already make.
 jsonwebtoken = "9"
+# PRD-mcphost-hosted-authorization-server requirement 5: generates this
+# host's own ES256 authorization-server signing key (PKCS8 DER, so
+# `jsonwebtoken::EncodingKey::from_ec_der` loads it directly) and derives
+# the matching public JWK's x/y coordinates -- already resolved transitively
+# via `jsonwebtoken`'s default `ring` crypto backend (see Cargo.lock), so
+# this is a direct dependency on a crate already fully vetted by this
+# graph, not a new one.
+ring = "0.17"
 
 [features]
 # PRD-mcphost-classify-precision: gates PythonKind's test-only selftest

@@ -728,7 +728,12 @@ pub fn quickstart(
 /// per the PRD's own technical considerations, except here, where
 /// surfacing it on `host.whoami` is exactly how a caller (or a test)
 /// confirms which subject a token resolved to.
-pub async fn whoami(state: &AppState, tenant: &Tenant, subject: Option<&str>) -> Result<Value, AppError> {
+pub async fn whoami(
+    state: &AppState,
+    tenant: &Tenant,
+    subject: Option<&str>,
+    auth_method: &str,
+) -> Result<Value, AppError> {
     // PRD-mcphost-handoff-token P1 requirement 7 / AC8: age is measured
     // from the last rotation when there's been one, else from the
     // tenant's own creation -- a never-rotated key is exactly as old as
@@ -787,6 +792,11 @@ pub async fn whoami(state: &AppState, tenant: &Tenant, subject: Option<&str>) ->
         // it's coding against with no extra round trip.
         "contract_version": crate::api_contract::CONTRACT_VERSION,
         "subject": subject,
+        // PRD-mcphost-hosted-authorization-server requirement 5: "key"
+        // (header or tenant_key argument), "oauth" (a tenant-registered
+        // bring-your-own issuer), or "hosted_token" (this host's own
+        // built-in authorization server) -- see `handler.rs`'s call site.
+        "auth_method": auth_method,
         "shared_tools": shared_tools,
     }))
 }

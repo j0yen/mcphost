@@ -313,6 +313,13 @@ pub struct OauthCaller {
     /// re-read from the row a registered issuer already matched, not a
     /// second parse of the token.
     pub issuer: String,
+    /// PRD-mcphost-hosted-authorization-server requirement 5: `"oauth"`
+    /// for a tenant-registered bring-your-own issuer (unchanged from
+    /// before this PRD), `"hosted_token"` for this host's own built-in
+    /// issuer -- `handler.rs` surfaces this as `host.whoami`'s
+    /// `auth_method` and picks the matching `EndUserMethod`
+    /// (`Oauth`/`HostedOauth`).
+    pub auth_method: &'static str,
 }
 
 /// The JWT's `payload` segment, decoded (base64url) but NOT signature
@@ -351,6 +358,15 @@ pub async fn validate_bearer(state: &AppState, token: &str) -> Result<OauthCalle
         .and_then(Value::as_str)
         .map(str::to_string)
         .ok_or(AppError::InvalidToken("malformed"))?;
+
+    // PRD-mcphost-hosted-authorization-server requirement 5: this host is
+    // always its own built-in issuer for every tenant (no `oauth_issuers`
+    // row) -- checked before the registered-issuer lookup below, which
+    // would otherwise never match it (a tenant cannot `host.oauth.issuer_set`
+    // this host's own URL onto itself).
+    if iss.trim_end_matches('/') == state.public_url.trim_end_matches('/') {
+        return crate::authz::validate_hosted_bearer(state, token, &header).await;
+    }
 
     let issuer_row = state
         .db
@@ -460,7 +476,12 @@ pub async fn validate_bearer(state: &AppState, token: &str) -> Result<OauthCalle
         return Err(AppError::InvalidToken("malformed"));
     };
 
-    Ok(OauthCaller { tenant_id: issuer_row.tenant_id, subject: sub, issuer: issuer_row.issuer })
+    Ok(OauthCaller {
+        tenant_id: issuer_row.tenant_id,
+        subject: sub,
+        issuer: issuer_row.issuer,
+        auth_method: "oauth",
+    })
 }
 
 // ---- host.oauth.* tenant tools --------------------------------------------
@@ -574,9 +595,21 @@ pub async fn admin_jwks_refresh(state: &AppState, args: &Value) -> Result<Value,
 /// `resource` is this host's own public URL; `authorization_servers` is
 /// the distinct issuer URLs registered across every tenant (never a
 /// tenant id or namespace -- Technical considerations: "must not
-/// enumerate tenants"), empty when none are registered yet.
+/// enumerate tenants"), plus (PRD-mcphost-hosted-authorization-server AC1)
+/// this host's own URL -- mcphost is now always an authorization server in
+/// its own right, whether or not any tenant has registered a bring-your-own
+/// issuer, so that entry is never conditional on `issuers` being non-empty.
+/// Deduplicated (a bring-your-own issuer whose `issuer` happens to equal
+/// this host's own `public_url` would otherwise double-list it) and sorted
+/// so the host's own URL sorts wherever it falls lexicographically rather
+/// than depending on insertion order.
 pub async fn protected_resource_metadata(state: &AppState) -> Result<Value, AppError> {
-    let issuers = state.db.list_distinct_oauth_issuer_urls().await?;
+    let mut issuers = state.db.list_distinct_oauth_issuer_urls().await?;
+    let own = state.public_url.trim_end_matches('/').to_string();
+    if !issuers.iter().any(|i| i == &own) {
+        issuers.push(own);
+    }
+    issuers.sort();
     Ok(json!({
         "resource": state.public_url,
         "authorization_servers": issuers,

@@ -1380,6 +1380,42 @@
       "since": "0.58.0"
     },
     {
+      "description": "Revoke one hosted-authorization-server grant by id (from host.oauth.grants): its access tokens fail within 60s and its refresh tokens stop rotating.",
+      "input_schema": {
+        "properties": {
+          "id": {
+            "description": "The grant id.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "host.oauth.grant_revoke",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List the OAuth clients currently connected to this tenant through mcphost's own hosted authorization server (host.oauth.issuer_set is for a tenant's own bring-your-own issuer instead): each grant's client_name, method (cimd|dcr), resource, created_at and last_used_at.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.oauth.grants",
+      "since": "0.58.0"
+    },
+    {
       "description": "Remove one of this tenant's registered OAuth issuers; bearer JWTs from it stop authenticating immediately.",
       "input_schema": {
         "properties": {
