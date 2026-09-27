@@ -711,12 +711,22 @@ async fn oauth_401_upgrade(State(state): State<Arc<AppState>>, req: Request<Body
     let Ok(bytes) = axum::body::to_bytes(body, usize::MAX).await else {
         return Response::from_parts(parts, Body::empty());
     };
-    let error_code = serde_json::from_slice::<Value>(&bytes)
+    let data = serde_json::from_slice::<Value>(&bytes)
         .ok()
         .and_then(|v| v.get("error").cloned())
-        .and_then(|e| e.get("data").cloned())
-        .and_then(|d| d.get("error_code").cloned())
-        .and_then(|c| c.as_str().map(str::to_string));
+        .and_then(|e| e.get("data").cloned());
+    let error_code = data.as_ref().and_then(|d| d.get("error_code")).and_then(Value::as_str).map(str::to_string);
+    // PRD-mcphost-tool-scopes-and-consent requirement 4 (AC2): a per-tool
+    // `insufficient_scope` refusal names the union scope in `data.scope`;
+    // the pre-existing blanket `AppError::InsufficientScope` carries no
+    // such field, so `mcp` (its own, unchanged, only possible value) is
+    // still the fallback.
+    let scope = data
+        .as_ref()
+        .and_then(|d| d.get("scope"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| "mcp".to_string());
     let mut response = Response::from_parts(parts, Body::from(bytes));
     match error_code.as_deref() {
         Some("tenant_key_missing") | Some("invalid_token") | Some("wrong_tenant") => {
@@ -732,7 +742,7 @@ async fn oauth_401_upgrade(State(state): State<Arc<AppState>>, req: Request<Body
         Some("insufficient_scope") => {
             *response.status_mut() = StatusCode::FORBIDDEN;
             if let Ok(value) = HeaderValue::from_str(&format!(
-                "Bearer error=\"insufficient_scope\", scope=\"mcp\", resource_metadata=\"{metadata_url}\""
+                "Bearer error=\"insufficient_scope\", scope=\"{scope}\", resource_metadata=\"{metadata_url}\""
             )) {
                 response
                     .headers_mut()

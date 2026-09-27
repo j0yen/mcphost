@@ -316,6 +316,13 @@ fn tool_publish_props() -> Value {
             "description": "The kind-specific spec object; see host.quickstart(kind) for a \
                 filled-in example.",
         },
+        "scopes": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "OAuth scopes a token must carry (directly, or via mcp) to reach \
+                this tool: catalogued names from host.oauth.scopes, or the built-ins read/write. \
+                At most 8. Omit (or [] ) to require only mcp -- unaffected by any catalog.",
+        },
     })
 }
 
@@ -2228,6 +2235,28 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              JWKS fetch age.",
             host_schema(json!({}), &[]),
         ),
+        // PRD-mcphost-tool-scopes-and-consent requirement 1: a tenant's own
+        // scope catalog -- names a published tool's `scopes` may reference
+        // (alongside the built-ins `read`/`write`) and what the consent
+        // page shows a human-readable description for.
+        Tool::new(
+            "host.oauth.scope_set",
+            "Declare (or update) one scope this tenant's tools may require: name (a catalogued \
+             name, or the built-ins read/write) and a human-readable description shown on the \
+             OAuth consent page. Up to 32 catalog entries per tenant.",
+            host_schema(
+                json!({
+                    "name": {"type": "string", "description": "^[a-z][a-z0-9_:.-]{0,40}$"},
+                    "description": {"type": "string", "description": "Human-readable text shown on the OAuth consent page."},
+                }),
+                &["name", "description"],
+            ),
+        ),
+        Tool::new(
+            "host.oauth.scopes",
+            "List this tenant's own scope catalog: name and description.",
+            host_schema(json!({}), &[]),
+        ),
         // PRD-mcphost-hosted-authorization-server requirement 7 (AC8): this
         // host's own built-in authorization server's grants -- distinct
         // from the bring-your-own-issuer registrations above.
@@ -2945,10 +2974,15 @@ fn admin_tools() -> Vec<Tool> {
             "List every entry on the operator's global OAuth client block list.",
             schema(json!({}), &[]),
         ),
+        // PRD-mcphost-tool-scopes-and-consent requirement 6 (AC8) extends
+        // this PRD-mcphost-oauth-client-policy tool with consents_by_scope_7d
+        // rather than minting a second admin.oauth.stats.
         Tool::new(
             "admin.oauth.stats",
             "Counts for the operator's global OAuth block list: total blocks, and how many \
-             attempts each block-triggered refusal reason has cost across every tenant.",
+             attempts each block-triggered refusal reason has cost across every tenant; plus \
+             consents_by_scope_7d, a count of every space-separated scope word across every \
+             grant created in the last 7 days (a read+write consent counts once toward each).",
             schema(json!({}), &[]),
         ),
         // PRD-mcphost-oauth-demand-signal requirement 3 (AC3/AC4). Named
@@ -3536,6 +3570,8 @@ impl McpHostHandler {
             "host.oauth.issuer_set" => crate::oauth::issuer_set(&self.state, tenant, &args).await,
             "host.oauth.issuer_remove" => crate::oauth::issuer_remove(&self.state, tenant, &args).await,
             "host.oauth.issuers" => crate::oauth::issuers_list(&self.state, tenant).await,
+            "host.oauth.scope_set" => crate::oauth::scope_set(&self.state, tenant, &args).await,
+            "host.oauth.scopes" => crate::oauth::scopes_list(&self.state, tenant).await,
             "host.oauth.grants" => crate::authz::grants_list(&self.state, tenant).await,
             "host.oauth.grant_revoke" => crate::authz::grant_revoke(&self.state, tenant, &args).await,
             // PRD-mcphost-oauth-client-policy requirements 1-4 (AC1-AC6).
@@ -3609,7 +3645,17 @@ impl McpHostHandler {
             "admin.oauth.client_block" => crate::oauth_policy::admin_client_block(&self.state, &args).await,
             "admin.oauth.client_unblock" => crate::oauth_policy::admin_client_unblock(&self.state, &args).await,
             "admin.oauth.blocked" => crate::oauth_policy::admin_blocked_list(&self.state).await,
-            "admin.oauth.stats" => crate::oauth_policy::admin_stats(&self.state).await,
+            // PRD-mcphost-tool-scopes-and-consent requirement 6 (AC8) adds
+            // consents_by_scope_7d onto this same tool rather than minting a
+            // second admin.oauth.stats.
+            "admin.oauth.stats" => {
+                let mut stats = crate::oauth_policy::admin_stats(&self.state).await?;
+                let consent_stats = crate::oauth::admin_stats(&self.state).await?;
+                if let (Some(merged), Some(extra)) = (stats.as_object_mut(), consent_stats.as_object()) {
+                    merged.extend(extra.clone());
+                }
+                Ok(stats)
+            }
             "admin.oauth.demand_stats" => crate::oauth_stats::admin_stats(&self.state).await,
             // PRD-mcphost-alerting-webhook requirement 5.
             "admin.alerts.list" => admin::alerts_list(&self.state, &args).await,
@@ -3771,6 +3817,7 @@ impl McpHostHandler {
         // already resolved from, so this row's own `calls.auth_method`
         // never has to re-derive it.
         auth_method: &str,
+        token_scope: Option<&str>,
     ) -> Result<Value, AppError> {
         let row: ToolRow = self
             .state
@@ -3778,6 +3825,22 @@ impl McpHostHandler {
             .get_tool(tenant.id, local_name.to_string())
             .await?
             .ok_or_else(|| AppError::ToolNotFound(local_name.to_string()))?;
+        // PRD-mcphost-tool-scopes-and-consent requirement 4/5 (AC2, AC6):
+        // read fresh off `row` on every call (never cached past this
+        // point), so a scope change on republish takes effect on the very
+        // next call with no token reissue. `token_scope` is `None` for a
+        // key-based caller, a cross-tenant/`host.tool_call`-routed call
+        // (both already gated to full `mcp` upstream), or a token with no
+        // `scope` claim at all -- `scope_satisfied` treats all three as
+        // unrestricted.
+        if !crate::oauth::scope_satisfied(token_scope, &row.scopes) {
+            let scope = crate::oauth::union_scope_challenge(&self.state, tenant.id, token_scope, &row.scopes).await;
+            return Err(AppError::Structured {
+                code: "insufficient_scope",
+                message: format!("'{local_name}' requires a scope this token does not carry"),
+                data: json!({"error_code": "insufficient_scope", "tool": local_name, "scope": scope}),
+            });
+        }
         // PRD-mcphost-tool-versions requirement 5 (AC5): a pinned call
         // dispatches against that version's own stored kind/spec instead of
         // `row`'s (which always mirrors whatever is CURRENT) -- an unpinned
@@ -4859,7 +4922,7 @@ impl McpHostHandler {
                     return crate::runs::enqueue(&self.state, tenant, local, call_args, end_user)
                         .await;
                 }
-                self.call_published_tool(tenant, local, call_args, false, None, version, end_user, auth_method)
+                self.call_published_tool(tenant, local, call_args, false, None, version, end_user, auth_method, None)
                     .await
             }
             Some((ns, local)) => {
@@ -4875,7 +4938,7 @@ impl McpHostHandler {
                     return crate::runs::enqueue(&self.state, tenant, &name, call_args, end_user)
                         .await;
                 }
-                self.call_published_tool(tenant, &name, call_args, false, None, version, end_user, auth_method)
+                self.call_published_tool(tenant, &name, call_args, false, None, version, end_user, auth_method, None)
                     .await
             }
         }
@@ -4916,6 +4979,7 @@ impl McpHostHandler {
             version,
             end_user,
             auth_method,
+            None,
         )
         .await
     }
@@ -5019,7 +5083,7 @@ impl ServerHandler for McpHostHandler {
                 (tools, TOOLS_LIST_TTL_MS_STEADY)
             }
             Auth::Admin => (admin_tools(), TOOLS_LIST_TTL_MS_STEADY),
-            Auth::Tenant(tenant, _subject) => {
+            Auth::Tenant(tenant, oauth_caller) => {
                 let mut tools = host_tools(&self.state.kinds, true);
                 let rows = self
                     .state
@@ -5027,6 +5091,18 @@ impl ServerHandler for McpHostHandler {
                     .list_tools(tenant.id)
                     .await
                     .map_err(AppError::into_error_data)?;
+                // PRD-mcphost-tool-scopes-and-consent requirement 3 (AC2):
+                // a scoped token only sees tools whose own declared
+                // `scopes` (or `["mcp"]` when unset) it satisfies --
+                // `scope_satisfied` is a no-op filter for a key (no
+                // `oauth_caller` at all), an `mcp`-scoped token, or a token
+                // with no `scope` claim (all unrestricted); host.*/billing.*
+                // control-plane tools above are never filtered.
+                let token_scope = oauth_caller.as_ref().and_then(|o| o.scope.as_deref());
+                let rows: Vec<_> = rows
+                    .into_iter()
+                    .filter(|row| crate::oauth::scope_satisfied(token_scope, &row.scopes))
+                    .collect();
                 for row in rows {
                     if let Some(kind) = self.state.kinds.get(&row.kind) {
                         let descriptor = kind.describe(&row.spec);
@@ -5131,9 +5207,20 @@ impl ServerHandler for McpHostHandler {
         // with no `scope` claim at all (`oauth_caller.scope` is `None`) is
         // unrestricted, same as every pre-existing OAuth test's tokens
         // (none of which ever set one).
-        if let Auth::Tenant(_, Some(oauth_caller)) = &auth
+        //
+        // PRD-mcphost-tool-scopes-and-consent requirement 3/4 (AC2, AC6):
+        // this blanket "must have mcp" gate is now the control-plane
+        // default only -- a call to the caller's OWN namespaced tool
+        // (`<tenant.namespace>.<local>`) is gated instead by
+        // `call_published_tool`'s own fine-grained per-tool check (that
+        // tool's declared `scopes`, not a flat `mcp` requirement), so it's
+        // skipped here rather than refusing a validly `read`-scoped call
+        // to a `read`-scoped tool before dispatch ever sees which tool it
+        // is.
+        if let Auth::Tenant(tenant, Some(oauth_caller)) = &auth
             && let Some(scope) = &oauth_caller.scope
             && !scope.split_whitespace().any(|w| w == "mcp")
+            && !body_name.starts_with(&format!("{}.", tenant.namespace))
         {
             return Err(AppError::InsufficientScope.into_error_data());
         }
@@ -5403,6 +5490,7 @@ impl ServerHandler for McpHostHandler {
             }
             (Auth::Tenant(tenant, oauth_caller), name) => match name.split_once('.') {
                 Some((ns, local)) if ns == tenant.namespace => {
+                    let token_scope = oauth_caller.as_ref().and_then(|o| o.scope.as_deref());
                     self.call_published_tool(
                         tenant,
                         local,
@@ -5412,6 +5500,7 @@ impl ServerHandler for McpHostHandler {
                         None,
                         end_user.as_ref(),
                         calls_auth_method(oauth_caller.as_ref()),
+                        token_scope,
                     )
                     .await
                 }

@@ -31,6 +31,7 @@ async fn dry_run_lists_matches_with_counts_and_changes_nothing() {
             "echo".to_string(),
             json!({"schema": {"type": "object"}}),
             5,
+            vec![],
         )
         .await
         .expect("upsert_tool");

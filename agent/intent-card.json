@@ -1,70 +1,90 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-oauth-demand-signal.md",
-  "intent_slug": "mcphost-oauth-demand-signal",
-  "root_motivation": "Grounding (PRD): Joe (2026-09-26) decided to ship the OAuth client path as a demand probe -- a probe with no readout is a guess. Today the only credential-method trace is `calls.end_user_method` from migration 0042 (`src/migrations/0042_end_user_identity.sql:55-63`) and `admin.oauth.issuers`'s per-reason rejection counters (`src/oauth.rs:509`); healthz has `tenants.external`, `paying_tenants`, `signups.synthetic` but nothing that says which credential kind a call used, how many distinct real tenants used OAuth, or whether any client ever registered. A bearer-JWT call and a key call are indistinguishable in every aggregate the host exposes, synthetic harness tenants dominate every count (868 synthetic vs 12 real on 2026-09-26), and a client that registers and never completes consent leaves no trace. Thirty days from now 'did anyone use it' would otherwise be answered by grepping logs on the box, which the doctrine forbids as evidence.",
-  "user_persona": "Four (PRD User stories): (1) the operator (Joe), who curls admin healthz from orch and reads `oauth.tenants_7d.hosted_token`; (2) an operator who sees 40 DCR registrations and 2 grants and learns the consent page is the drop-off; (3) the loop digest, which clusters OAuth PRDs by `oauth_tenants_7d` movement; (4) a live verifier who confirms the readout exists and excludes synthetic tenants without any box access.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tool-scopes-and-consent.md",
+  "intent_slug": "mcphost-tool-scopes-and-consent",
+  "root_motivation": "Grounding: a published tool is a free-form JSON spec with kind and visibility and no scope/auth/requires field (ToolRow, src/db.rs), and the hosted authorization server issues every token the single scope mcp -- so a connected client gets every tool or nothing. Consequence: an agent operator connecting claude.ai to a tenant that publishes a read-only search tool alongside a delete_records tool must grant everything, because the consent page cannot say what it is asking for; a SaaS PM cannot limit an end user's client to the tools that user's plan allows. spec 2026-07-28 requires servers to honour scope hierarchies and answer an under-scoped call with 403 insufficient_scope naming the scopes needed so the client can re-authorize with the union; SEP-1880/SEP-1881 propose per-tool authorization.scopes and scope-filtered tools/list; every hosted competitor in the checklist (WorkOS, Stytch, Scalekit, Descope, Clerk, Composio) already shows per-tool or per-scope consent.",
+  "user_persona": "Four (PRD user stories): an agent operator (tenant) who scopes search/delete_records and approves read only so the client lists search alone; that client's user, who later hits 403 on delete_records and re-authorizes for read write; a SaaS PM who gives scopes human descriptions (host.oauth.scope_set) for the consent page; the operator (Joe) who sees consent decisions broken down by scope (admin.oauth.stats).",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 6
+    "target": 8
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given calls made with a key, an issuer JWT, and a hosted token, When `calls` is read, Then each row's `auth_method` matches, and rows written before the migration read `key`.",
-      "test": "tests/oauthsig_ac01_auth_method_by_credential.rs"
+      "description": "Given tenant T with catalog {read: \"Search\", write: \"Change records\"}, tool search {scopes:[\"read\"]} and tool delete_records {scopes:[\"write\"]}, When a client authorizes with scope=read offline_access, Then the consent page lists read with \"Search\" and the tool search under it, and the issued token's scope is read offline_access.",
+      "test": "tests/toolscope_ac01_scoped_consent_and_token.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given three non-synthetic tenants (two calling with issuer JWTs, one with a key) and five synthetic tenants calling with hosted tokens within 7 days, When admin healthz is read, Then `oauth.calls_7d` counts every call by method, `oauth.tenants_7d == {issuer_jwt: 2, hosted_token: 0}`, and `first_issuer_jwt_call_at` equals the earliest such call.",
-      "test": "tests/oauthsig_ac02_healthz_calls_and_tenants_by_method.rs"
+      "description": "Given that token, When tools/list runs, Then only search (and scope-less host.*/billing.* tools) appear; When tools/call delete_records runs, Then 403 with error=\"insufficient_scope\", scope=\"read write\" and a JSON-RPC error naming delete_records.",
+      "test": "tests/toolscope_ac02_scoped_token_list_and_call.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the same data, When `admin.oauth.demand_stats` runs, Then the non-synthetic rows come first with their per-method counts, synthetic rows carry `synthetic: true`, and a tenant key calling `admin.oauth.demand_stats` is rejected like every other `admin.*` tool.",
-      "test": "tests/oauthsig_ac03_admin_oauth_stats_tenant_rows_and_admin_only.rs"
+      "description": "Given the client re-authorizes with scope=read write, When consent is approved, Then the new token lists both tools and delete_records runs; the harness step_up scenario reads pass.",
+      "test": "tests/toolscope_ac03_step_up_reauthorize_union_scope.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given two DCR registrations, one CIMD client, four authorize requests, two consents and two tokens issued in 7 days, When `admin.oauth.demand_stats` runs, Then the funnel reads `{registrations_7d: {dcr: 2, cimd: 1}, authorize_requests_7d: 4, consents_7d: 2, tokens_issued_7d: 2}` and `clients == {cimd: 1, dcr: 2}`.",
-      "test": "tests/oauthsig_ac04_admin_oauth_stats_funnel.rs"
+      "description": "Given a token with scope=mcp, a tenant key, and a token issued before this PRD (a bring-your-own-issuer JWT with no scope claim), When each calls delete_records, Then all three succeed.",
+      "test": "tests/toolscope_ac04_mcp_key_and_pre_prd_token_unaffected.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given 10,000 calls in the window, When healthz is read twice within 60 s, Then the second read serves the cached aggregate and healthz p95 stays within 5% of the pre-PRD baseline.",
-      "test": "tests/oauthsig_ac05_healthz_cache_and_p95.rs"
+      "description": "Given a publish with scopes: [\"admin\"] not in the catalog, or nine scopes, or a name \"Bad Scope\", When it runs, Then each is rejected with invalid_params naming the rule, and no partial publish occurs.",
+      "test": "tests/toolscope_ac05_publish_scope_validation.rs"
     },
     {
       "id": "AC6",
-      "level": "SHOULD",
-      "description": "Given a host started locally, When `scripts/oauth-conformance.sh http://127.0.0.1:<port>/mcp` runs with `npx` available, Then it writes `docs/receipts/oauth-conformance-<date>.md` and exits 0 on pass, non-zero on any failed scenario; When `npx` is absent, Then it exits 2 with a one-line reason.",
-      "test": "tests/oauthsig_ac06_conformance_script_writes_receipt.rs"
+      "level": "MUST",
+      "description": "Given T changes search to scopes: [\"write\"], When the read-scoped token calls search, Then 403 on the next call with no token reissue.",
+      "test": "tests/toolscope_ac06_scope_change_takes_effect_next_call.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given prod after deploy, When admin healthz is read from orch with curl and the admin key from `~/.config/mcphost/admin-key`, Then `oauth.calls_7d` has the three method keys with integer values, `oauth.tenants_7d.issuer_jwt` and `oauth.tenants_7d.hosted_token` are integers not exceeding `tenants.external`, and `oauth.clients` has `cimd` and `dcr` (Live; evidence: healthz version after deploy plus the redacted response saved under docs/receipts/<slug>.md).",
-      "test": "deferred -- operator-provisioned; AC7 is the Live/production-only requirement (an admin healthz read from orch with curl and the real admin key against prod after deploy, a receipt under docs/receipts/) and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
+      "description": "Given the per-tenant metadata document for T, When read, Then scopes_supported is [\"mcp\",\"read\",\"write\"] plus T's catalog names; the root document keeps [\"mcp\"].",
+      "test": "tests/toolscope_ac07_metadata_scopes_supported.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "SHOULD",
+      "description": "Given two consents for read and one for read write in 7 days, When admin.oauth.stats runs, Then consents_by_scope_7d == {read: 3, write: 1}; host.oauth.grants rows show the granted scope.",
+      "test": "tests/toolscope_ac08_admin_stats_consents_by_scope.rs"
+    },
+    {
+      "id": "AC9",
+      "level": "MUST",
+      "description": "Given prod after deploy and an operator tenant with a catalog and one scoped tool provisioned by hand (operator-provisioned Given), When the verifier authorizes a native client for scope=read via curl through the hosted AS, Then tools/list lists the scoped tool and tools/call on a write tool returns 403 insufficient_scope, scope=\"read write\" (Live; evidence: healthz version plus a redacted transcript under docs/receipts/<slug>.md).",
+      "test": "deferred -- operator-provisioned; AC9 is the Live/production-only requirement and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
     }
   ],
   "scope": [
-    "src/db.rs: migration 0053 (calls.auth_method column + two indexes; new oauth_cimd_clients/oauth_funnel_events tables); record_call_attributed_with_end_user gains a trailing auth_method parameter; new query methods (oauth_calls_by_method, oauth_tenants_by_method, oauth_first_call_at, oauth_clients_counts, oauth_grants_active_count, oauth_funnel_counts, oauth_tenant_stats, record_cimd_client_seen, record_oauth_funnel_event).",
-    "src/oauth_stats.rs (new): HealthzAggregate/MethodCounts, the 60s-TTL healthz cache (modeled on billing.rs's AcceptedUsageCache), healthz_json (mounted into GET /healthz) and admin_stats (mounted as admin.oauth.demand_stats).",
-    "src/handler.rs: calls_auth_method() maps a resolved credential to the new calls.auth_method domain {key, issuer_jwt, hosted_token} -- kept distinct from OauthCaller.auth_method/host.whoami's own pre-existing {oauth, hosted_token} domain, which is unchanged; threaded through dispatch_tenant_tool/call_published_tool/call_shared_tool/host_tool_call; admin.oauth.demand_stats tool wired into dispatch_admin_tool and the tool listing.",
-    "src/authz.rs: instruments the existing DCR/CIMD/authorize/consent/token paths to record funnel events (authorize_request, consent, token_issued) and first-seen CIMD clients, with no change to their own authorization logic.",
-    "scripts/oauth-conformance.sh (new) + docs/metrics.md (new, documents oauth_tenants_7d) + a www/llms.txt operator-notes addition."
+    "migrations/0054_tool_scopes_and_consent.sql: new oauth_scopes(tenant_id, name, description) table; additive tools.scopes and oauth_grants.scope columns, both defaulted so every existing row reads exactly as before (compat: previous).",
+    "src/db.rs: ToolRow.scopes, upsert_tool's new scopes param, OauthScopeRow + upsert_oauth_scope/list_oauth_scopes/count_oauth_scopes, create_oauth_grant's new scope param, OauthGrantRow.scope, list_oauth_grant_scopes_since (AC8's tally source).",
+    "src/state.rs: validate_scope_name (AC5's name-format rule).",
+    "src/oauth.rs: BUILTIN_SCOPES/MAX_SCOPES_PER_TENANT, known_scope_names, host.oauth.scope_set/scopes (catalog CRUD, AC1), scope_satisfied/union_scope_challenge (AC2/AC3's step-up union), protected_resource_metadata_for_tenant's scopes_supported (AC7), admin_stats (AC8).",
+    "src/control.rs: tool_publish's scopes parsing/validation (count cap, name format, catalog-or-built-in membership -- AC5), tool_list's scopes field.",
+    "src/handler.rs: host.oauth.scope_set/scopes tool descriptors and dispatch, admin.oauth.stats descriptor and dispatch, list_tools's scope filter (AC2), call_tool's blanket-mcp-gate carve-out for a caller's own namespaced tools, call_published_tool's fine-grained insufficient_scope check (AC2/AC6).",
+    "src/authz.rs: render_consent_page/scope_groups_html (AC1's per-scope tool listing), resolve_resource_tenant/known_request_scopes/resolve_and_validate_scope (validating scope against mcp ∪ catalog ∪ built-ins ∪ offline_access), mint_code_and_redirect/issue_tokens/token_authorization_code/token_refresh_token threading the resolved scope through to the minted token (AC1, AC3), validate_hosted_bearer accepting either the root or the tenant's own resource as aud, grants_list's scope field (AC8).",
+    "src/http.rs: oauth_401_upgrade reading data.scope (the tool's own union challenge) instead of a hardcoded mcp (AC2).",
+    "src/errors.rs: insufficient_scope mapped to ErrorCode::INVALID_REQUEST alongside the existing unit-variant mapping.",
+    "www/llms.txt: a new 'Scope your tools for OAuth clients' section (requirement 7) plus the regenerated Tools list; contracts/host-tools.v1.json regenerated for the two new host.oauth.* tools and tool_publish's scopes property.",
+    "Cargo.toml/Cargo.lock: patch version bump (0.60.26 -> 0.60.27); CHANGELOG.md entry."
   ],
   "non_goals": [
-    "Billing changes, plan gating, alerting thresholds.",
-    "Per-end-user analytics beyond what audit-and-revoke already provides.",
-    "Acting as an identity provider, DCR/CIMD/consent semantics themselves, or anything else owned by PRD-mcphost-hosted-authorization-server -- this PRD only counts and reports what that PRD's flow already produces."
+    "Scopes for key-based calls -- PRD Non-goals; a key stays full access, unchanged (AC4).",
+    "Per-end-user scope policies -- PRD Non-goals; see PRD mcphost-oauth-client-policy.",
+    "Rich Authorization Requests -- PRD Non-goals.",
+    "Whether read/write built-ins map automatically from a tool's kind: PRD's own Open question, left opt-in (unresolved by kind) until the SaaS onboarding guide ships, owner Joe.",
+    "AC9 (the Live/prod-only curl proof against a hand-provisioned operator tenant): deferred operator-provisioned, no server access from this coding sandbox."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -73,39 +93,39 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "calls_auth_method_is_a_distinct_domain_from_oauth_caller_auth_method": "the new calls.auth_method column ({key, issuer_jwt, hosted_token}) is a separate mapping from the pre-existing OauthCaller.auth_method/host.whoami field ({oauth, hosted_token}); handler::calls_auth_method() is the only place that translates one into the other, preserving hostedas_ac10's pinned assertion that host.whoami still reports the literal string \"oauth\".",
-      "migration_number_0051_taken_at_build_time": "the PRD's own technical considerations flagged 0047/0048 as claimed by in-flight branches and told the coder to take the next free number at rebase time; 0049 and 0050 landed first (shared_call_run_scope, hosted_authorization_server), so at build time this PRD's own migration was 0051, not the 0051 guessed in the PRD's own prose margin; a later rebase found 0051 claimed by mcphost-oauth-client-policy, which landed first, so this PRD's migration was renumbered to 0052; a subsequent rebase found 0052 claimed by mcphost-federated-end-user-login, which landed first, so this PRD's migration was renumbered again to 0053 (migrations/0053_oauth_demand_signal.sql, migrate_0053_oauth_demand_signal).",
-      "synthetic_predicate_matches_admin_tenants_not_source_class": "non-synthetic is `tenants.synthetic IS NULL`, the exact predicate admin.tenants already uses (control::validate_synthetic_header / state::is_valid_synthetic_label) -- not the narrower, older `source_class = 'external'` concept -- per the PRD's own technical-considerations note.",
-      "healthz_cache_ttl_60s_modeled_on_billing_accepted_usage_cache": "AC5's cached-aggregate behavior reuses the exact Arc<Mutex<Option<Cached{value, fetched_at}>>> TTL-checked-then-refreshed shape billing.rs's AcceptedUsageCache already established, rather than inventing a second caching pattern.",
-      "funnel_counters_needed_new_tables_since_hosted_authorization_server_shipped_none": "the PRD's own technical considerations say the funnel counters live in the tables the hosted authorization server PRD adds, but that PRD's own oauth_clients/oauth_codes/oauth_grants/oauth_refresh_tokens tables track no discrete authorize-request/consent/token-issued events and no CIMD client at all (CIMD clients are identified purely by URL, never persisted) -- so this PRD adds oauth_funnel_events and oauth_cimd_clients rather than reusing a table that can't answer AC4.",
-      "ac6_conformance_test_is_hermetic_via_a_stubbed_npx": "tests/oauthsig_ac06_conformance_script_writes_receipt.rs copies the script into a scratch directory and stubs a fake `npx` rather than invoking the real @modelcontextprotocol/conformance package, matching this crate's existing FakeBillingClient/FakeEmailClient 'tests never reach the network' convention -- the runner box genuinely lacks npm/Node network access."
+      "mcp_is_always_full_access": "mcp remains the hierarchy root implying every scope, for both hosted tokens and BYO-issuer tokens with no scope claim at all -- scope_satisfied treats an absent token_scope, or a token_scope containing the literal word mcp, as always-true, which is what keeps AC4's three pre-existing credential shapes (key, mcp token, pre-PRD BYOI token) working unchanged.",
+      "blanket_mcp_gate_carved_out_only_for_the_callers_own_namespace": "call_tool's pre-existing 'a scoped OAuth caller must carry mcp' gate now skips only calls to the caller's OWN namespaced tool (deferring to call_published_tool's fine-grained per-tool check instead); every host.*/billing.*/cross-tenant call keeps requiring full mcp, so scoping never widens what a cross-tenant or admin surface will accept.",
+      "scopes_supported_conditioned_on_catalog_non_emptiness": "A tenant with an empty scope catalog keeps scopes_supported == [\"mcp\"] exactly as before this PRD (protecting the pre-existing tenantprm_ac01 assertion); only a non-empty catalog adds mcp/read/write plus sorted extra names, per AC7.",
+      "union_scope_challenge_filters_to_known_words_only": "The 403 challenge's scope value is the sorted union of the tool's own required scopes and whatever words in the token's current scope claim are actually recognized (in mcp ∪ built-ins ∪ catalog) -- a foreign or BYOI-unrelated scope word (or offline_access) never leaks into the challenge, matching the pre-existing tenantprm_ac05 test's own scope=\"mcp\" expectation for a tenant with no catalog.",
+      "per_tenant_resource_now_a_valid_token_audience": "validate_hosted_bearer's aud check was extended (previously root-resource-only) to also accept a tenant's own canonical resource URI, since AC1 requires a token minted for /t/{ns}/mcp to actually validate on that same path -- this only widens which aud values pass, never which tenant a token authenticates as.",
+      "migration_number_0053_renumbered_to_0054_during_rebase": "This PRD's own migration was numbered 0051 at original build time, then renumbered to 0053 during an earlier rebase once mcphost-federated-end-user-login claimed 0051/0052 first; a later rebase (onto main after mcphost-oauth-demand-signal, #64, claimed 0053 first) renumbered it again to 0054 (migrations/0054_tool_scopes_and_consent.sql, migrate_0054_tool_scopes_and_consent), the same rename-on-collision precedent this repo's migration history already follows (see e.g. migration 0045's own doc comment)."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does 'did anyone use OAuth' currently have no answer?",
-      "a": "A bearer-JWT call and a key call are indistinguishable in every aggregate mcphost exposes today -- calls carries no auth_method column, and healthz/admin.oauth.demand_stats report neither calls nor distinct tenants by credential kind."
+      "q": "Why must an agent operator connecting claude.ai to a tenant's tools grant everything or nothing today?",
+      "a": "Grounding: a published tool is a free-form JSON spec with kind and visibility and no scope/auth/requires field (ToolRow, src/db.rs), and the hosted authorization server issues every token the single scope mcp -- there is no per-tool concept for a consent page to describe or a token to carry."
     },
     {
       "why": 2,
-      "q": "Why not just grep the logs on the box for now?",
-      "a": "The doctrine forbids box-grepping as evidence -- any answer to 'did anyone use it' has to come from a queryable, admin-readable aggregate, not an ad hoc log search thirty days from now."
+      "q": "Why does that make the first thing a security-minded operator asks (\"what can it do?\") unanswerable, rather than just coarse?",
+      "a": "Problem statement: the consent page can only ever say 'mcp -- everything', since neither the tool catalog nor the token format carries a narrower unit than the whole tenant -- there is no scope for the page to group tools under."
     },
     {
       "why": 3,
-      "q": "Why does every existing count risk overstating real demand?",
-      "a": "Synthetic harness tenants dominate every count today (868 synthetic vs 12 real on 2026-09-26) -- an aggregate that doesn't exclude them would make the demand probe look far busier than any real user activity."
+      "q": "Why per-tool scopes (host.tool_publish's own scopes field) rather than a coarser per-kind or per-visibility split?",
+      "a": "Goals/User stories: the operator's own example (search vs delete_records) is two tools of the same kind and visibility differing only in what they let a caller do -- SEP-1880's per-tool authorization.scopes and every checklist competitor (WorkOS, Stytch, Scalekit, Descope, Clerk, Composio) scope at the tool or capability level, not kind or visibility."
     },
     {
       "why": 4,
-      "q": "Why add a registration/consent funnel rather than just a calls-by-method count?",
-      "a": "A client that registers via DCR/CIMD and never completes consent leaves no trace in a calls-only count -- the funnel (registrations, authorize requests, consents, tokens issued) is what tells the operator WHERE clients drop off, per the PRD's own second user story."
+      "q": "Why must an under-scoped call return the spec's 403 insufficient_scope naming the union, rather than a bare refusal?",
+      "a": "Grounding: spec 2026-07-28 requires servers to honour scope hierarchies and answer an under-scoped call with 403 insufficient_scope naming the scopes needed, precisely so the client can automatically re-authorize with the union (research-2 Q5) instead of a human having to guess what to grant next -- AC3's step_up harness scenario is exactly this automatic recovery."
     },
     {
       "why": 5,
-      "q": "Why require a runnable conformance script (AC6) in a PRD that's otherwise about counting, not protocol correctness?",
-      "a": "The PRD's own Success metrics table ties a committed conformance report under docs/receipts/ to this PRD's own land date -- the demand probe's readout is only trustworthy if the OAuth surface it's counting calls against is itself known-conformant, evidenced the same repeatable way every time, not asserted once by hand."
+      "q": "Why must mcp keep meaning full access for keys and pre-PRD tokens, rather than requiring every credential to declare scopes going forward?",
+      "a": "Requirement 5 / Non-goals: keys are explicitly out of scope for this PRD (a key is full access, unchanged), and a token issued before this PRD shipped was minted under the old single-scope-mcp contract -- retroactively narrowing it would silently break every already-connected client with no migration path, which AC4 exists specifically to guard against."
     }
   ],
   "created_at": "2026-09-27T00:00:00Z",
@@ -307,10 +327,6 @@
       "resolution": "Kept runsubject's own root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace -- this branch is landing runsubject now, matching every prior 'Rebasing wm-build/X onto main after PRD-Y' recurrence in this log (see the upstream-token-vault-status and plan-catalog-state-quota-defaults entries above). ambiguities_resolved was NOT taken from either side's drifted copy: it is main's real 48-entry accumulated log (the abandoned automated attempt's duplicated/self-referential entries were discarded as unreliable) plus this one new entry, appended. agent/test-map.json's ac_test_map stays pointed at runsubject; vaultst's own AC1-AC9 map (real, already-shipped, tests/vaultst_ac0[1-8]_*.rs plus AC9 deferred) was archived under ac_test_map_by_prefix.vaultst, the same 'preserve rather than delete' treatment every other superseded PRD in that dict already gets."
     },
     {
-      "question": "Rebasing wm-build/mcphost-hosted-authorization-server onto main after PRD-mcphost-runs-end-user-subject (#53) merged: that PRD's own intent-card-refresh regenerated agent/intent-card.json's root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace for runs-end-user-subject, and its ambiguities_resolved array holds this log's full 49-entry accumulated history through runsubject's own rebase entry. This branch's own agent/intent-card.json (per the usual per-PRD rewrite) describes hosted-authorization-server/hostedas instead, and its own ambiguities_resolved array was empty (this branch's AC11 commit set the card fresh with no accumulated history carried over). Keep runsubject's fields, or hostedas's -- and which ambiguities_resolved?",
-      "resolution": "Kept hostedas's own root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace -- this branch is landing hostedas now, matching every prior 'Rebasing wm-build/X onto main after PRD-Y' recurrence in this log (see the upstream-token-vault-status and runs-end-user-subject entries above). ambiguities_resolved was NOT taken from hostedas's empty copy: it is main's real 49-entry accumulated log (through runsubject's own rebase entry) plus this one new entry, appended. agent/test-map.json's ac_test_map stays pointed at hostedas; runsubject's own AC1-AC7 map (real, already-shipped, tests/runsubject_ac0[1-7]_*.rs plus AC8 deferred) was archived under ac_test_map_by_prefix.runsubject, the same 'preserve rather than delete' treatment every other superseded PRD in that dict already gets."
-    },
-    {
       "question": "AC6 says 'the probe's records and receipt from AC5' -- does that mean searching the actual AC5 gate/CLI output (which never reaches a real token exchange on this PRD's own tree, since every family but prm/iss stays unsupported), or manufacturing real secret values to search for?",
       "resolution": "Searching the actual AC5 output would be vacuous -- there is nothing to leak yet on this tree. AC6's test instead drives the simulator through a real authorize -> consent -> token round trip against the fake AS (same fixture AC4 uses) so real secret values exist, then serializes the exact two shapes AC5's CLI produces (--json's ScenarioResult array, --receipt's markdown) and greps for those real values -- proving the structural guarantee (StepRecord has no field that could hold a secret) rather than a vacuous absence-of-anything check."
     },
@@ -319,7 +335,35 @@
       "resolution": "Treated as a regression guard: this PRD adds its own new generator (scripts/gen-oauth-scenarios-doc.sh) for docs/oauth-scenarios.md and links it from www/llms.txt's Operator notes OUTSIDE the sharing:start/sharing:end block, so the pre-existing gen-docs-sharing.sh --check keeps passing untouched. AC7's test runs both checks: the new script's own --check (the doc matches scenarios.toml), and the named gen-docs-sharing.sh --check (proving this PRD's www/llms.txt edit didn't collide with the other script's marked block)."
     },
     {
-      "question": "AC1 root-document isolation assertion vs hosted authorization server",
+      "question": "Rebasing wm-build/mcphost-hosted-authorization-server onto main after PRD-mcphost-runs-end-user-subject (#53) merged: that PRD's own intent-card-refresh regenerated agent/intent-card.json's root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace for runs-end-user-subject, and its ambiguities_resolved array holds this log's full 49-entry accumulated history through runsubject's own rebase entry. This branch's own agent/intent-card.json (per the usual per-PRD rewrite) describes hosted-authorization-server/hostedas instead, and its own ambiguities_resolved array was empty (this branch's AC11 commit set the card fresh with no accumulated history carried over). Keep runsubject's fields, or hostedas's -- and which ambiguities_resolved?",
+      "resolution": "Kept hostedas's own root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace -- this branch is landing hostedas now, matching every prior 'Rebasing wm-build/X onto main after PRD-Y' recurrence in this log (see the upstream-token-vault-status and runs-end-user-subject entries above). ambiguities_resolved was NOT taken from hostedas's empty copy: it is main's real 49-entry accumulated log (through runsubject's own rebase entry) plus this one new entry, appended. agent/test-map.json's ac_test_map stays pointed at hostedas; runsubject's own AC1-AC7 map (real, already-shipped, tests/runsubject_ac0[1-7]_*.rs plus AC8 deferred) was archived under ac_test_map_by_prefix.runsubject, the same 'preserve rather than delete' treatment every other superseded PRD in that dict already gets."
+    },
+    {
+      "question": "Requirement 6/AC7 both use the word 'registers' for a CIMD client, but CIMD identification has no POST /oauth/register call at all (that's DCR-only) -- what does 'registers' mean for a CIMD client?",
+      "resolution": "Treated as this PRD's own extension of 'registration' to CIMD: each /oauth/authorize attempt that successfully identifies a CIMD client counts one admission against that host's 100-per-day cap (Db::try_admit_cimd_registration), gated by the same operator block check DCR registration already goes through. AC7's 'registers, authorizes or exchanges' and AC8's '101 registrations... in a day' are both satisfied by this one code path (validate_authorize_params), since a CIMD client's identification and its authorize attempt are the same HTTP call."
+    },
+    {
+      "question": "AC1's example CIMD host is the illustrative 'cimd.test', but the CIMD fetch path (authz::cimd_host_allowed) does a real DNS lookup for any non-literal-IP host and this repo's test harness has no way to make a fake hostname resolve to a wiremock server (checked: the FixedLookup/NameLookup test-double the http kind uses is not wired into the CIMD fetch path at all). How can AC1's allowlist-by-CIMD-host actually be exercised in a test?",
+      "resolution": "The test's CIMD document is served from a wiremock server whose client_id URL host is the literal loopback IP (127.0.0.1) -- cimd_host_allowed already special-cases a literal IP (no DNS lookup needed), and the behavior under test is 'does a policy's cimd_host allowlist entry match the CIMD client's document host', which a literal-IP host proves identically to a real hostname would. The PRD's 'cimd.test' is illustrative, not a literal requirement on the test fixture's hostname."
+    },
+    {
+      "question": "Should a tenant's clients: allowlist/approve decision be enforced at GET /oauth/authorize (before any tenant is known) or only once tenant ownership is proven at the consent POST?",
+      "resolution": "Only at the POST, once resolve_consent_tenant identifies which tenant's policy applies -- GET /oauth/authorize is, and remains, a single shared endpoint across every tenant on the host (the tenant is only ever selected by which key/claim-code the caller submits), so there is no tenant context to evaluate a policy against until that submission succeeds. The operator's global block list and the CIMD daily cap, which need no tenant context, are checked at both GET and POST via the shared validate_authorize_params."
+    },
+    {
+      "question": "host.oauth.client_deny only removes the oauth_pending_clients row -- without a separate durable 'denied' record, wouldn't the same client just get re-queued as pending on its very next attempt (evaluate_client's approve branch re-inserts anything not already approved)?",
+      "resolution": "Added a fourth table, oauth_denied_clients, checked ahead of the pending re-queue in evaluate_client: once denied, a client reads client_not_allowed on every later attempt, matching AC2's literal wording, rather than cycling back to 'awaiting approval'."
+    },
+    {
+      "question": "AC6's 50 MiB audit_export cap needs a real over-the-limit case to test, but seeding 50+ MiB of individually-dispatched audit events (one real HTTP call each) would be impractically slow -- add a configurable cap (env var / AppState field) or seed the real cap directly?",
+      "resolution": "Kept AUDIT_EXPORT_MAX_BYTES a real, non-configurable 50 MiB constant (no test-only knob leaking into the shipped cap) and added Db::insert_oauth_audit_rows_bulk_for_test, a single-transaction bulk insert of padded rows -- same 'bypass real dispatch, seed rows fast' rationale already established for Db::insert_calls_rows_bulk_for_test."
+    },
+    {
+      "question": "Rebasing wm-build/mcphost-oauth-client-policy onto main after PRD-mcphost-oauth-conformance-harness (#59) merged: that PRD's own intent-card-refresh regenerated agent/intent-card.json's root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace for oauth-conformance-harness/oauthconf, and its ambiguities_resolved array holds this log's accumulated history through hostedas's own rebase entry plus oauthconf's own two build-time entries (AC6 secret-search scope, AC7 gen-docs-sharing.sh regression-guard reading). This branch's own agent/intent-card.json (per the usual per-PRD rewrite) describes oauth-client-policy/oauthpol instead, with its own five build-time entries accumulated since branching off hostedas. Keep oauthconf's fields, or oauthpol's -- and which ambiguities_resolved?",
+      "resolution": "Kept oauthpol's own root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace -- this branch is landing oauthpol now, matching every prior 'Rebasing wm-build/X onto main after PRD-Y' recurrence in this log (see the runs-end-user-subject and hosted-authorization-server entries above). ambiguities_resolved was NOT taken from either side's copy alone: it is main's accumulated log through oauthconf's own two entries (AC6, AC7) and tenant-resource-metadata's own AC1 root-document-isolation rebase entry (both immediately above, since this rebase landed onto main after tenant-resource-metadata merged, one PRD further than either side of this conflict anticipated) plus this branch's own five oauthpol entries, appended in the order each was written, so nothing already-shipped on either lineage is dropped. agent/test-map.json's ac_test_map stays pointed at oauthpol; oauthconf's own AC1-AC7 map (real, already-shipped, tests/oauthconf_ac0[1-7]_*.rs plus AC8 deferred) and tenant-resource-metadata's own AC1-AC9 map were both archived under ac_test_map_by_prefix (oauthconf and tenantprm), the same 'preserve rather than delete' treatment every other superseded PRD in that dict already gets. Nothing was provisioned, resized, or reconfigured to resolve this; it is a paper-trail/mechanical-merge fix with no AC content change."
+    },
+    {
+      "question": "AC1 root-document isolation assertion vs hosted authorization server: does 'authorization_servers still lists the union' mean the root document must exclude the host's own AS now that it always appears there?",
       "resolution": "AC1's phrase 'authorization_servers still lists the union' predates PRD-mcphost-hosted-authorization-server, which (per vision mcphost-end-user-auth.md, 'OAuth client path — 2026-09-26': both hosted AS and BYO issuers, hosted first) landed on main first and now always adds the host's own issuer URL to the root union alongside every tenant's BYO issuer. The implementation (src/oauth.rs protected_resource_metadata / protected_resource_metadata_for_tenant) is correct: the tenant-scoped document lists only that tenant's issuers (no host AS leak), and the root document's union now includes the host's own AS plus tenant issuers, deduplicated and sorted. AC1's real intent is tenant isolation (no OTHER tenant's issuer leaks into any document), not exclusion of the host-level AS from the root union. Fixed tests/tenantprm_ac01_tenant_metadata_document.rs's root-document assertion to check: (a) this tenant's issuer is present, (b) every entry is either this tenant's issuer or the host's own base_url (i.e. no other tenant's issuer leaks in), and (c) exactly those two entries exist. No implementation change; no other assertion weakened."
     },
     {
@@ -329,6 +373,14 @@
     {
       "question": "Rebasing wm-build/mcphost-oauth-demand-signal onto main after PRD-mcphost-tenant-resource-metadata (#58) merged: that PRD's own intent-card-refresh regenerated agent/intent-card.json's root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace for tenant-resource-metadata, and its ambiguities_resolved array holds this log's shared accumulated history plus three AC6/AC7/AC1 build-time entries specific to tenantprm's own build. This branch's own agent/intent-card.json (per the usual per-PRD rewrite) describes oauth-demand-signal/oauthsig instead, and its own ambiguities_resolved array already carries this branch's prior hostedas-rebase entry and its own final oauthsig regeneration entry, neither of which tenantprm's copy has (tenantprm's own lineage never went through this branch's hostedas rebase). Keep tenantprm's fields, or oauthsig's -- and which ambiguities_resolved?",
       "resolution": "Kept oauthsig's own root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace -- this branch is landing oauthsig now, matching every prior 'Rebasing wm-build/X onto main after PRD-Y' recurrence in this log (see the runs-end-user-subject and hosted-authorization-server entries above). ambiguities_resolved was NOT taken from either side alone: it is the shared history both copies already carry, plus this branch's own hostedas-rebase entry, plus tenantprm's own three AC6/AC7/AC1 build-time entries (preserved rather than dropped), plus this branch's own final oauthsig regeneration entry, plus this one new entry, appended. agent/test-map.json's ac_test_map stays pointed at oauthsig; tenantprm's own AC1-AC9 map (real, already-shipped, tests/tenantprm_ac0[1-9]_*.rs plus AC8 deferred) was archived under ac_test_map_by_prefix.tenantprm, the same 'preserve rather than delete' treatment every other superseded PRD in that dict already gets."
+    },
+    {
+      "question": "This card is now regenerated for PRD-mcphost-tool-scopes-and-consent, an entirely different feature (per-tool OAuth scopes, scope-filtered tools/list, and a step-up 403 flow) from PRD-mcphost-tenant-resource-metadata (per-tenant resource URIs/metadata) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught by reviewer-agent repeatedly in this card's own history if left byte-for-byte. One reconciliation had no PRD text to settle it directly: AC1 requires a token minted for a tenant's own /t/{ns}/mcp resource to validate on that path, but validate_hosted_bearer's pre-existing aud check (added by tenantprm) only ever accepted the root resource as a hosted token's audience.",
+      "resolution": "Fixed in place, same 'rewrite the per-PRD fields, keep the accumulated ambiguities_resolved log' pattern used for every prior recurrence. root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace were rewritten from this PRD's own Grounding, Problem statement, User stories, Requirements, Non-goals, Technical considerations, and Acceptance criteria sections; acceptance_criteria's nine entries point at the real tests/toolscope_ac0[1-8]_*.rs files (AC1-8 exist, compile, and pass; AC9 is Live/operator-provisioned, deferred, same convention as every prior PRD's own Live AC in this card's history -- not built in this coder dispatch since the dispatch's own non-deferred AC list omits it entirely). agent/test-map.json's ac_test_map was repointed to this PRD's own toolscope prefix, and the prior tenantprm mapping was archived under ac_test_map_by_prefix.tenantprm rather than deleted. On the one reconciliation: validate_hosted_bearer's aud check was widened to accept either the root resource or the tenant's own canonical resource URI (computed from the token's already-resolved tenant_id, never from the request path), recorded in hard_constraints.additional.per_tenant_resource_now_a_valid_token_audience above -- this only widens which aud values pass validation, it never changes which tenant a token authenticates as, so tenantprm's own wrong_tenant/wrong_audience guarantees (AC2/AC3 of that PRD) are unaffected."
+    },
+    {
+      "question": "Rebasing wm-build/mcphost-tool-scopes-and-consent onto main after PRD-mcphost-oauth-demand-signal (#64) merged: that PRD's own intent-card-refresh regenerated agent/intent-card.json's root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace for oauth-demand-signal/oauthsig, but its ambiguities_resolved array silently dropped six already-accumulated entries specific to mcphost-oauth-client-policy (the 'registers'-for-a-CIMD-client meaning entry, the AC1 CIMD-host-test entry, the GET/POST enforcement-point entry, the client_deny entry, the audit_export cap entry, and oauthpol's own rebase-after-oauthconf entry) -- the exact recurring truncation-on-refresh defect this log has caught and restored several times before (see the plan-catalog-state-quota-defaults and runs-end-user-subject entries above). This branch's own agent/intent-card.json (per the usual per-PRD rewrite) describes tool-scopes-and-consent/toolscope instead, with its own ambiguities_resolved array carrying the full accumulated history (oauthpol's six entries included) plus this branch's own final toolscope regeneration entry. Keep oauthsig's fields, or toolscope's -- and which ambiguities_resolved?",
+      "resolution": "Kept toolscope's own root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace -- this branch is landing toolscope now, matching every prior 'Rebasing wm-build/X onto main after PRD-Y' recurrence in this log (see the runs-end-user-subject and hosted-authorization-server entries above). ambiguities_resolved was NOT taken from oauthsig's truncated copy: it is this branch's own full accumulated log (which already carried oauthpol's six entries forward, unlike oauthsig's own refresh) with oauthsig's two genuinely new entries (its 'regenerated for oauth-demand-signal' entry and its own tenant-resource-metadata rebase entry) inserted immediately above this branch's own final toolscope regeneration entry, in the order they were written on main, plus this one new entry, appended -- restoring the six oauthpol entries oauthsig's own refresh silently dropped rather than accepting that truncation. agent/test-map.json's ac_test_map stays pointed at toolscope; oauthsig's own AC1-AC7 map (real, already-shipped, tests/oauthsig_ac0[1-6]_*.rs plus AC7 deferred) was archived under ac_test_map_by_prefix.oauthsig, the same 'preserve rather than delete' treatment every other superseded PRD in that dict already gets. Nothing was provisioned, resized, or reconfigured to resolve this; it is a paper-trail/mechanical-merge fix with no AC content change."
     }
   ]
 }

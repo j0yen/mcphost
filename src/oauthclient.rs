@@ -748,17 +748,19 @@ pub struct ScenarioResult {
 /// `mcp_url`, producing the identical verdict table whether called from
 /// the in-process gate test or the `oauth-probe` CLI (goal 1/3).
 ///
-/// Every family other than `prm`/`iss` shares one generic runner: probe
-/// through `read_as_metadata`, then stop -- unconditionally `unsupported`
-/// past that point, even when `read_as_metadata` itself passes (as it now
-/// does once `mcphost-hosted-authorization-server` is on this tree), since
-/// this generic arm has no family-specific runner for `register`/
-/// `authorize`/`token`/attack probes yet. A future feature PRD that
-/// lands that support (and, per goal 3, updates
-/// this scenario's `owner_prd` in `tests/oauthconf/scenarios.toml`) will
-/// need a family-specific runner arm here alongside `prm`/`iss` -- this
-/// generic arm alone cannot prove PKCE/DCR/CIMD/attack-probe correctness,
-/// only that the capability doesn't exist yet.
+/// `prm`, `iss`, and (PRD-mcphost-tool-scopes-and-consent AC3) `step_up`
+/// each have their own family-specific runner; every other family shares
+/// one generic runner: probe through `read_as_metadata`, then stop --
+/// unconditionally `unsupported` past that point, even when
+/// `read_as_metadata` itself passes (as it now does once
+/// `mcphost-hosted-authorization-server` is on this tree), since this
+/// generic arm has no family-specific runner for `register`/`authorize`/
+/// `token`/attack probes yet. A future feature PRD that lands that support
+/// (and, per goal 3, updates that scenario's `owner_prd` in
+/// `tests/oauthconf/scenarios.toml`) will need its own family-specific
+/// runner arm here, the way `step_up`'s did -- this generic arm alone
+/// cannot prove PKCE/DCR/CIMD/attack-probe correctness, only that the
+/// capability doesn't exist yet.
 pub async fn run_all(http: &reqwest::Client, mcp_url: &str) -> Vec<ScenarioResult> {
     let mut out = Vec::new();
     for scenario in load_scenarios() {
@@ -769,6 +771,7 @@ pub async fn run_all(http: &reqwest::Client, mcp_url: &str) -> Vec<ScenarioResul
                 let verdict = record.verdict;
                 (verdict, vec![record])
             }
+            "step_up" => run_step_up_probe(http, mcp_url).await,
             _ => run_generic_probe(http, mcp_url).await,
         };
         out.push(ScenarioResult { name: scenario.name, family: scenario.family, verdict, records });
@@ -829,6 +832,373 @@ fn mint_unregistered_issuer_probe_token() -> String {
     let claims = json!({"iss": iss, "aud": "mcphost", "sub": "oauthconf-probe", "iat": now, "exp": now + 300});
     let header = Header::new(Algorithm::HS256);
     encode(&header, &claims, &EncodingKey::from_secret(&secret)).expect("sign probe token")
+}
+
+// ---- step_up (AC3, PRD-mcphost-tool-scopes-and-consent) --------------------
+
+/// [`probe_call`], generalized to name any tool and carry arguments and a
+/// `_meta` client identity -- this family's own provisioning needs the
+/// public `signup` tool and the probe tenant's own `host.tool_publish`,
+/// not just the fixed [`PROBE_TOOL`] every other family probes.
+async fn call_tool(
+    http: &reqwest::Client,
+    mcp_url: &str,
+    tool: &str,
+    arguments: Value,
+    bearer: Option<&str>,
+) -> Result<(u16, Value), String> {
+    let body = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": tool,
+            "arguments": arguments,
+            "_meta": {
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/clientInfo": {"name": "mcphost-oauthconf-step-up-probe", "version": "0.1.0"},
+            },
+        },
+    });
+    let mut req = http
+        .post(mcp_url)
+        .timeout(STEP_TIMEOUT)
+        .header("Content-Type", "application/json")
+        .header("Accept", "application/json, text/event-stream")
+        .header("MCP-Protocol-Version", "2026-07-28")
+        .header("Mcp-Method", "tools/call")
+        .header("Mcp-Name", tool)
+        .json(&body);
+    if let Some(token) = bearer {
+        req = req.header("Authorization", format!("Bearer {token}"));
+    }
+    let resp = req.send().await.map_err(|e| e.to_string())?;
+    let status = resp.status().as_u16();
+    let body = resp.json::<Value>().await.map_err(|e| e.to_string())?;
+    Ok((status, body))
+}
+
+/// Mirrors `tests/common::extract_structured` -- structured content, or
+/// the first content block's own JSON text.
+fn extract_structured(result: &Value) -> Value {
+    if let Some(sc) = result.get("structuredContent") {
+        return sc.clone();
+    }
+    if let Some(text) =
+        result.get("content").and_then(Value::as_array).and_then(|c| c.first()).and_then(|f| f.get("text")).and_then(Value::as_str)
+    {
+        return serde_json::from_str(text).unwrap_or(Value::Null);
+    }
+    Value::Null
+}
+
+/// Registers a synthetic probe tenant via the host's own public, anonymous
+/// `signup` tool -- the same self-serve path any real client uses, so this
+/// needs no operator credential (same posture
+/// [`mint_unregistered_issuer_probe_token`] takes for the `iss` family).
+/// `unsupported` when this host has no such tool, e.g. any non-mcphost AS
+/// this probe runs against.
+async fn step_up_signup(http: &reqwest::Client, mcp_url: &str) -> (StepRecord, Option<(String, String)>) {
+    let (status, body) = match call_tool(http, mcp_url, "signup", json!({"name": "oauthconf step-up probe"}), None).await {
+        Ok(v) => v,
+        Err(e) => return (StepRecord::fail("step_up_provision", format!("signup request failed: {e}")), None),
+    };
+    if body.get("error").is_some() {
+        return (StepRecord::unsupported("step_up_provision", "signup unavailable on this host").with_status(status), None);
+    }
+    let structured = extract_structured(&body.get("result").cloned().unwrap_or(Value::Null));
+    let (Some(ns), Some(key)) = (
+        structured.get("tenant").and_then(Value::as_str).map(str::to_string),
+        structured.get("key").and_then(Value::as_str).map(str::to_string),
+    ) else {
+        return (StepRecord::fail("step_up_provision", "signup response missing tenant/key").with_status(status), None);
+    };
+    (StepRecord::pass("step_up_provision").with_status(status), Some((ns, key)))
+}
+
+/// Publishes one `write`-scoped tool under the probe tenant -- `write` is
+/// a built-in scope name (requirement 1 P0), so no scope catalog entry is
+/// needed first.
+async fn step_up_publish_scoped_tool(http: &reqwest::Client, mcp_url: &str, key: &str) -> StepRecord {
+    let (status, body) = match call_tool(
+        http,
+        mcp_url,
+        "host.tool_publish",
+        json!({"name": "probe_write", "kind": "echo", "spec": {"schema": {"type": "object"}}, "scopes": ["write"]}),
+        Some(key),
+    )
+    .await
+    {
+        Ok(v) => v,
+        Err(e) => return StepRecord::fail("step_up_provision", format!("host.tool_publish request failed: {e}")),
+    };
+    if body.get("error").is_some() {
+        return StepRecord::fail("step_up_provision", "host.tool_publish refused the scoped tool").with_status(status);
+    }
+    StepRecord::pass("step_up_provision").with_status(status)
+}
+
+/// A plain DCR registration (never CIMD -- this probe has no document of
+/// its own to serve), a `native` loopback redirect.
+async fn step_up_register(http: &reqwest::Client, registration_endpoint: &str, redirect_uri: &str) -> (StepRecord, Option<String>) {
+    let resp = match http
+        .post(registration_endpoint)
+        .timeout(STEP_TIMEOUT)
+        .json(&json!({"application_type": "native", "redirect_uris": [redirect_uri]}))
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => return (StepRecord::fail("register", format!("DCR request failed: {e}")), None),
+    };
+    let status = resp.status().as_u16();
+    if status == 404 {
+        return (StepRecord::unsupported("register", "registration endpoint absent (404)").with_status(status), None);
+    }
+    if !resp.status().is_success() {
+        return (StepRecord::fail("register", "DCR registration refused").with_status(status), None);
+    }
+    let Ok(body) = resp.json::<Value>().await else {
+        return (StepRecord::fail("register", "DCR response was not JSON").with_status(status), None);
+    };
+    let Some(client_id) = opt_str(&body, "client_id") else {
+        return (StepRecord::fail("register", "DCR response had no client_id").with_status(status), None);
+    };
+    (StepRecord::pass("register").with_status(status), Some(client_id))
+}
+
+fn step_up_query_param<'a>(query: &'a str, name: &str) -> Option<&'a str> {
+    query.split('&').find_map(|pair| {
+        let (k, v) = pair.split_once('=')?;
+        (k == name).then_some(v)
+    })
+}
+
+struct StepUpAuthorized {
+    code: String,
+    verifier: String,
+}
+
+/// The host's own single-POST consent (its own `tenant_key`
+/// proof-of-ownership field, requirement 3) -- a real client's browser
+/// step, but scriptable in one request since mcphost never separates "show
+/// the page" from "accept the click" the way [`consent`]'s `fake_as.rs`
+/// double does. A fresh, redirect-following-disabled client is used here
+/// only (never the shared probe `http`), so the 302 to `redirect_uri` is
+/// inspected rather than followed.
+#[allow(clippy::too_many_arguments)]
+async fn step_up_authorize(
+    authorization_endpoint: &str,
+    client_id: &str,
+    redirect_uri: &str,
+    resource: &str,
+    scope: &str,
+    tenant_key: &str,
+) -> (StepRecord, Option<StepUpAuthorized>) {
+    let Ok(http) = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).build() else {
+        return (StepRecord::fail("authorize", "could not build a non-redirecting HTTP client"), None);
+    };
+    let verifier = random_url_safe(64);
+    let challenge = pkce_s256_challenge(&verifier);
+    let resp = match http
+        .post(authorization_endpoint)
+        .timeout(STEP_TIMEOUT)
+        .form(&[
+            ("response_type", "code"),
+            ("client_id", client_id),
+            ("redirect_uri", redirect_uri),
+            ("code_challenge", challenge.as_str()),
+            ("code_challenge_method", "S256"),
+            ("state", "oauthconf-step-up-probe"),
+            ("scope", scope),
+            ("resource", resource),
+            ("tenant_key", tenant_key),
+        ])
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => return (StepRecord::fail("authorize", format!("request failed: {e}")), None),
+    };
+    let status = resp.status().as_u16();
+    if status == 404 {
+        return (StepRecord::unsupported("authorize", "authorization endpoint absent (404)").with_status(status), None);
+    }
+    if !resp.status().is_redirection() {
+        return (StepRecord::fail("authorize", "consent did not redirect").with_status(status), None);
+    }
+    let Some(location) = resp.headers().get(reqwest::header::LOCATION).and_then(|v| v.to_str().ok()).map(str::to_string) else {
+        return (StepRecord::fail("authorize", "redirect carried no Location header").with_status(status), None);
+    };
+    let Some((_, query)) = location.split_once('?') else {
+        return (StepRecord::fail("authorize", "redirect Location carried no query string").with_status(status), None);
+    };
+    let Some(code) = step_up_query_param(query, "code") else {
+        return (StepRecord::fail("authorize", "redirect carried no code").with_status(status), None);
+    };
+    (StepRecord::pass("authorize").with_status(status), Some(StepUpAuthorized { code: code.to_string(), verifier }))
+}
+
+/// [`step_up_authorize`] then [`token`], pushing both records and
+/// returning the access token only on a clean pass through both.
+#[allow(clippy::too_many_arguments)]
+async fn step_up_authorize_and_token(
+    http: &reqwest::Client,
+    authorization_endpoint: &str,
+    token_endpoint: &str,
+    client_id: &str,
+    redirect_uri: &str,
+    resource: &str,
+    tenant_key: &str,
+    scope: &str,
+    records: &mut Vec<StepRecord>,
+) -> (Verdict, Option<String>) {
+    let (rec, authorized) = step_up_authorize(authorization_endpoint, client_id, redirect_uri, resource, scope, tenant_key).await;
+    let verdict = rec.verdict;
+    records.push(rec);
+    let Some(authorized) = authorized else {
+        return (verdict, None);
+    };
+
+    let (rec, result) = token(
+        http,
+        TokenRequestArgs {
+            token_endpoint,
+            code: &authorized.code,
+            code_verifier: Some(&authorized.verifier),
+            redirect_uri,
+            client_id,
+            state: None,
+        },
+    )
+    .await;
+    let verdict = rec.verdict;
+    records.push(rec);
+    (verdict, result.and_then(|r| r.access_token))
+}
+
+/// This family's own runner: self-signs-up a synthetic probe tenant, gives
+/// it one `write`-scoped tool, then drives the real step-up sequence --
+/// an under-scoped (`read`) call gets 403 `insufficient_scope`, the client
+/// re-authorizes with the union (`read write`), and the same call succeeds
+/// -- against this host for real, the first family beyond `prm`/`iss` to
+/// move off `unsupported` (goal 3, `owner_prd` in `scenarios.toml`).
+async fn run_step_up_probe(http: &reqwest::Client, mcp_url: &str) -> (Verdict, Vec<StepRecord>) {
+    let (rec, discover) = discover_401(http, mcp_url).await;
+    let verdict = rec.verdict;
+    let mut records = vec![rec];
+    let Some(discover) = discover else {
+        return (verdict, records);
+    };
+    let Some(metadata_url) = discover.resource_metadata_url else {
+        records.push(StepRecord::unsupported("read_prm", "no resource_metadata url from the 401 challenge"));
+        return (Verdict::Unsupported, records);
+    };
+    let (rec, prm) = read_prm(http, &metadata_url).await;
+    let verdict = rec.verdict;
+    records.push(rec);
+    let Some(prm) = prm else {
+        return (verdict, records);
+    };
+    let as_origin = prm.authorization_servers.first().cloned().unwrap_or_else(|| prm.resource.clone());
+    let (rec, meta) = read_as_metadata(http, &as_origin).await;
+    let verdict = rec.verdict;
+    records.push(rec);
+    let Some(meta) = meta else {
+        return (verdict, records);
+    };
+    let (Some(authorization_endpoint), Some(token_endpoint), Some(registration_endpoint)) =
+        (meta.authorization_endpoint.clone(), meta.token_endpoint.clone(), meta.registration_endpoint.clone())
+    else {
+        records.push(StepRecord::unsupported("register", "AS metadata is missing an authorize/token/registration endpoint"));
+        return (Verdict::Unsupported, records);
+    };
+
+    let base_url = prm.resource.trim_end_matches("/mcp").to_string();
+
+    let (rec, tenant) = step_up_signup(http, mcp_url).await;
+    let verdict = rec.verdict;
+    records.push(rec);
+    let Some((ns, key)) = tenant else {
+        return (verdict, records);
+    };
+
+    let rec = step_up_publish_scoped_tool(http, mcp_url, &key).await;
+    let verdict = rec.verdict;
+    records.push(rec);
+    if verdict != Verdict::Pass {
+        return (verdict, records);
+    }
+
+    let redirect_uri = "http://127.0.0.1/oauthconf-step-up-probe-cb";
+    let (rec, client_id) = step_up_register(http, &registration_endpoint, redirect_uri).await;
+    let verdict = rec.verdict;
+    records.push(rec);
+    let Some(client_id) = client_id else {
+        return (verdict, records);
+    };
+
+    let resource = format!("{base_url}/t/{ns}/mcp");
+    let write_tool = format!("{ns}.probe_write");
+
+    let (verdict, read_token) =
+        step_up_authorize_and_token(http, &authorization_endpoint, &token_endpoint, &client_id, redirect_uri, &resource, &key, "read", &mut records)
+            .await;
+    let Some(read_token) = read_token else {
+        return (verdict, records);
+    };
+
+    let (status, body) = match call_tool(http, mcp_url, &write_tool, json!({}), Some(&read_token)).await {
+        Ok(v) => v,
+        Err(e) => {
+            records.push(StepRecord::fail("step_up", format!("request failed: {e}")));
+            return (Verdict::Fail, records);
+        }
+    };
+    if status != 403 {
+        records.push(
+            StepRecord::unsupported("step_up", "the under-scoped call succeeded without a 403 step-up challenge").with_status(status),
+        );
+        return (Verdict::Unsupported, records);
+    }
+    let error_code = body["error"]["data"]["error_code"].as_str().unwrap_or_default();
+    if error_code != "insufficient_scope" {
+        records.push(StepRecord::fail("step_up", "403 did not carry an insufficient_scope error").with_status(status));
+        return (Verdict::Fail, records);
+    }
+    records.push(StepRecord::pass("call").with_status(status));
+
+    let (verdict, readwrite_token) = step_up_authorize_and_token(
+        http,
+        &authorization_endpoint,
+        &token_endpoint,
+        &client_id,
+        redirect_uri,
+        &resource,
+        &key,
+        "read write",
+        &mut records,
+    )
+    .await;
+    let Some(readwrite_token) = readwrite_token else {
+        return (verdict, records);
+    };
+
+    let (status, body) = match call_tool(http, mcp_url, &write_tool, json!({}), Some(&readwrite_token)).await {
+        Ok(v) => v,
+        Err(e) => {
+            records.push(StepRecord::fail("step_up", format!("request failed: {e}")));
+            return (Verdict::Fail, records);
+        }
+    };
+    if status == 200 && body.get("error").is_none() {
+        records.push(StepRecord::pass("step_up").with_status(status));
+        (Verdict::Pass, records)
+    } else {
+        records.push(StepRecord::fail("step_up", "call was still refused after re-authorizing with the union scope").with_status(status));
+        (Verdict::Fail, records)
+    }
 }
 
 async fn run_generic_probe(http: &reqwest::Client, mcp_url: &str) -> (Verdict, Vec<StepRecord>) {

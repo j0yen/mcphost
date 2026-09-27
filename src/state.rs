@@ -527,6 +527,27 @@ pub fn validate_tool_name(name: &str) -> Result<(), AppError> {
     }
 }
 
+/// PRD-mcphost-tool-scopes-and-consent requirement 1: `^[a-z][a-z0-9_:.-]{0,40}$`
+/// -- a lowercase-leading scope name, 1-41 chars. Shared by `host.oauth.scope_set`
+/// (a tenant's own catalog entries) and `host.tool_publish`'s own `scopes`
+/// argument (a tool's declared scopes) -- the wire code is `invalid_params`
+/// either way (AC5), naming this rule.
+pub fn validate_scope_name(name: &str) -> Result<(), AppError> {
+    let bytes = name.as_bytes();
+    let len_ok = (1..=41).contains(&bytes.len());
+    let first_ok = bytes.first().is_some_and(|b| b.is_ascii_lowercase());
+    let rest_ok = bytes[1.min(bytes.len())..]
+        .iter()
+        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'_' | b':' | b'.' | b'-'));
+    if len_ok && first_ok && rest_ok {
+        Ok(())
+    } else {
+        Err(AppError::InvalidParams(format!(
+            "invalid scope name '{name}': must match ^[a-z][a-z0-9_:.-]{{0,40}}$"
+        )))
+    }
+}
+
 /// PRD-mcphost-synthetic-flag requirement 2: `^[a-z0-9][a-z0-9:_-]{0,63}$` --
 /// shared by the signup header path (`control::signup`) and both admin
 /// retro-tag tools (`admin::tenant_set_synthetic`, `admin::tenants_set_synthetic`),

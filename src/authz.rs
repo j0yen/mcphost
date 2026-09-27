@@ -146,16 +146,6 @@ pub fn per_tenant_resource(state: &AppState, namespace: &str) -> String {
     format!("{}/t/{}/mcp", state.public_url.trim_end_matches('/'), namespace)
 }
 
-/// The inverse of [`per_tenant_resource`]: `Some(namespace)` iff `resource`
-/// is exactly `<public>/t/<namespace>/mcp` for some non-empty, single-segment
-/// `namespace`.
-fn parse_resource_namespace(state: &AppState, resource: &str) -> Option<String> {
-    let prefix = format!("{}/t/", state.public_url.trim_end_matches('/'));
-    let rest = resource.strip_prefix(&prefix)?;
-    let ns = rest.strip_suffix("/mcp")?;
-    (!ns.is_empty() && !ns.contains('/')).then(|| ns.to_string())
-}
-
 /// requirement 1 (AC1): the RFC 8414 authorization-server metadata document
 /// -- also served verbatim at `/.well-known/openid-configuration` (the OIDC
 /// discovery document this deployment needs no separate fields for, since
@@ -441,7 +431,53 @@ fn opt_str(s: &Option<String>) -> &str {
     s.as_deref().unwrap_or("")
 }
 
-fn render_consent_page(client_name: &str, resource: &str, params: &AuthorizeParams, error: Option<&str>) -> String {
+/// PRD-mcphost-tool-scopes-and-consent requirement 2 (AC1): one `<div
+/// class="scope" data-scope="{name}">` block per space-separated word in
+/// `resolved_scope` (skipping `mcp`/`offline_access`, which have no catalog
+/// concept) -- each names its own catalog description (when this tenant set
+/// one via `host.oauth.scope_set`) and, in a nested `<ul>`, every one of
+/// this tenant's own tools whose `scopes` includes that word. Resolved
+/// against `resource`'s own tenant *before* consent is proven (the `resource`
+/// parameter itself already names it -- see [`resolve_resource_tenant`]);
+/// `resource_tenant: None` (the root resource) renders nothing, since `mcp`
+/// is the only scope the root resource ever carries.
+async fn scope_groups_html(state: &AppState, resource_tenant: Option<&crate::db::Tenant>, resolved_scope: &str) -> String {
+    let Some(tenant) = resource_tenant else {
+        return String::new();
+    };
+    let catalog = state.db.list_oauth_scopes(tenant.id).await.unwrap_or_default();
+    let tools = state.db.list_tools(tenant.id).await.unwrap_or_default();
+    let mut out = String::new();
+    for word in resolved_scope.split_whitespace() {
+        if word == "mcp" || word == "offline_access" {
+            continue;
+        }
+        let description = catalog.iter().find(|s| s.name == word).map(|s| s.description.as_str());
+        let desc_html = description
+            .map(|d| format!(" &mdash; {}", html_escape(d)))
+            .unwrap_or_default();
+        let items: String = tools
+            .iter()
+            .filter(|t| t.scopes.iter().any(|s| s == word))
+            .map(|t| format!("<li class=\"tool\">{}</li>", html_escape(&t.name)))
+            .collect();
+        out.push_str(&format!(
+            "<div class=\"scope\" data-scope=\"{name}\"><h3>{name}{desc_html}</h3><ul>{items}</ul></div>",
+            name = html_escape(word),
+        ));
+    }
+    out
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_consent_page(
+    client_name: &str,
+    resource: &str,
+    params: &AuthorizeParams,
+    resolved_scope: &str,
+    scope_groups: &str,
+    error: Option<&str>,
+) -> String {
     let error_html = error
         .map(|e| format!("<p class=\"err\">{}</p>", html_escape(e)))
         .unwrap_or_default();
@@ -450,6 +486,7 @@ fn render_consent_page(client_name: &str, resource: &str, params: &AuthorizePara
         &format!(
             "<h1>Authorize {client}</h1>\
              <p>{client} is requesting access to <code>{resource}</code> on your behalf.</p>\
+             {scope_groups}\
              {error_html}\
              <form method=\"post\" action=\"/oauth/authorize\">\
              <input type=\"hidden\" name=\"response_type\" value=\"{response_type}\">\
@@ -474,7 +511,7 @@ fn render_consent_page(client_name: &str, resource: &str, params: &AuthorizePara
             code_challenge = html_escape(opt_str(&params.code_challenge)),
             code_challenge_method = html_escape(opt_str(&params.code_challenge_method)),
             state = html_escape(opt_str(&params.state)),
-            scope = html_escape(opt_str(&params.scope)),
+            scope = html_escape(resolved_scope),
             resource_attr = html_escape(opt_str(&params.resource)),
         ),
     )
@@ -537,21 +574,78 @@ fn error_redirect(redirect_uri: &str, error: &str, state_param: Option<&str>) ->
     Redirect::to(url.as_str()).into_response()
 }
 
+/// PRD-mcphost-tool-scopes-and-consent requirement 2: `resource`'s own
+/// tenant, resolved before any credential is proven (the URL itself
+/// already names it, same as `/t/{ns}/mcp` does for a resource-server
+/// call) -- `Ok(None)` for the root resource (no tenant, `mcp`-only, the
+/// behaviour every pre-existing test pins), `Ok(Some(tenant))` for a
+/// recognized per-tenant resource, `Err(())` for anything else (an
+/// unrecognized `resource`, or one naming a tenant that doesn't exist).
+async fn resolve_resource_tenant(state: &AppState, resource: &str) -> Result<Option<crate::db::Tenant>, ()> {
+    if resource == root_resource(state) {
+        return Ok(None);
+    }
+    let Some(ns) = crate::oauth::resource_tenant_namespace(&state.public_url, resource) else {
+        return Err(());
+    };
+    match state.db.find_tenant_by_namespace(ns).await {
+        Ok(Some(tenant)) => Ok(Some(tenant)),
+        _ => Err(()),
+    }
+}
+
+/// requirement 2: every scope name valid to request against `resource` --
+/// `mcp` alone for the root resource (unchanged), `mcp` plus the built-ins
+/// and this tenant's own catalog for a per-tenant resource. Never includes
+/// `offline_access`, checked separately (always allowed, requirement 2).
+async fn known_request_scopes(
+    state: &AppState,
+    resource_tenant: Option<&crate::db::Tenant>,
+) -> std::collections::HashSet<String> {
+    match resource_tenant {
+        None => std::iter::once("mcp".to_string()).collect(),
+        Some(tenant) => {
+            let catalog = state.db.list_oauth_scopes(tenant.id).await.unwrap_or_default();
+            crate::oauth::known_scope_names(&catalog)
+        }
+    }
+}
+
+/// requirement 2: validates the requested `scope` string against
+/// `known`, normalizing an absent/blank request to `"mcp"` (the pre-existing
+/// behaviour every earlier test pins) -- `Ok` is the resolved,
+/// single-space-joined scope string the code/token will actually carry.
+fn resolve_and_validate_scope(raw: Option<&str>, known: &std::collections::HashSet<String>) -> Option<String> {
+    let words: Vec<&str> = raw.unwrap_or("").split_whitespace().collect();
+    if words.is_empty() {
+        return Some("mcp".to_string());
+    }
+    for w in &words {
+        if *w != "offline_access" && !known.contains(*w) {
+            return None;
+        }
+    }
+    Some(words.join(" "))
+}
+
 /// requirement 3/AC2/AC6: every validation `GET`/`POST /oauth/authorize`
 /// share -- client identification, redirect-uri registration, then (once
 /// `redirect_uri` is trusted) PKCE/state/scope/resource. `Ok` carries the
-/// identified client, the now-trusted `redirect_uri`, and the validated
-/// `resource`; `Err` is an already-built response (inline for the first
-/// two failure classes, a redirect to the now-trusted `redirect_uri` for
-/// the rest) -- requirement 6: "consent cannot be skipped by any
-/// parameter", so `POST /oauth/authorize` runs this exact same function
-/// over its own (re-submitted, not blindly trusted) fields rather than
-/// trusting whatever the hidden form fields said.
+/// identified client, the now-trusted `redirect_uri`, the validated
+/// `resource`, the resolved `scope` string, and `resource`'s own tenant (for
+/// the consent page's per-scope tool listing, `None` for the root
+/// resource); `Err` is an already-built response (inline for the first two
+/// failure classes, a redirect to the now-trusted `redirect_uri` for the
+/// rest) -- requirement 6: "consent cannot be skipped by any parameter", so
+/// `POST /oauth/authorize` runs this exact same function over its own
+/// (re-submitted, not blindly trusted) fields rather than trusting whatever
+/// the hidden form fields said.
+#[allow(clippy::type_complexity)]
 async fn validate_authorize_params(
     state: &AppState,
     params: &AuthorizeParams,
     source_ip: &str,
-) -> Result<(ClientIdentity, String, String, Option<crate::db::Tenant>), Box<Response>> {
+) -> Result<(ClientIdentity, String, String, String, Option<crate::db::Tenant>), Box<Response>> {
     let Some(client_id) = params.client_id.clone().filter(|s| !s.is_empty()) else {
         return Err(Box::new(render_inline_error("invalid_request", "client_id is required")));
     };
@@ -625,28 +719,22 @@ async fn validate_authorize_params(
     if params.state.as_deref().unwrap_or("").is_empty() {
         return Err(Box::new(error_redirect(&redirect_uri, "invalid_request", None)));
     }
-    if !matches!(params.scope.as_deref(), None | Some("") | Some("mcp")) {
-        return Err(Box::new(error_redirect(&redirect_uri, "invalid_request", params.state.as_deref())));
-    }
     let Some(resource) = params.resource.clone().filter(|s| !s.is_empty()) else {
         return Err(Box::new(error_redirect(&redirect_uri, "invalid_target", params.state.as_deref())));
     };
     // PRD-mcphost-federated-end-user-login requirement 2/AC7: the root
     // resource keeps its pre-existing "any tenant's key/claim" consent
-    // (`target_tenant: None`); a per-tenant resource resolves to exactly
+    // (`resource_tenant: None`); a per-tenant resource resolves to exactly
     // one tenant, or `invalid_target` if its namespace doesn't exist.
-    let target_tenant = if resource == root_resource(state) {
-        None
-    } else if let Some(ns) = parse_resource_namespace(state, &resource) {
-        match state.db.find_tenant_by_namespace(ns).await {
-            Ok(Some(t)) => Some(t),
-            _ => return Err(Box::new(error_redirect(&redirect_uri, "invalid_target", params.state.as_deref()))),
-        }
-    } else {
+    let Ok(resource_tenant) = resolve_resource_tenant(state, &resource).await else {
         return Err(Box::new(error_redirect(&redirect_uri, "invalid_target", params.state.as_deref())));
     };
+    let known = known_request_scopes(state, resource_tenant.as_ref()).await;
+    let Some(resolved_scope) = resolve_and_validate_scope(params.scope.as_deref(), &known) else {
+        return Err(Box::new(error_redirect(&redirect_uri, "invalid_request", params.state.as_deref())));
+    };
 
-    Ok((identity, redirect_uri, resource, target_tenant))
+    Ok((identity, redirect_uri, resource, resolved_scope, resource_tenant))
 }
 
 /// `GET /oauth/authorize` (requirement 3; AC2, AC6).
@@ -669,18 +757,23 @@ pub async fn get_authorize(
     // passed every check. Best-effort: never fails the request that
     // carries it.
     let _ = state.db.record_oauth_funnel_event("authorize_request").await;
-    let (identity, redirect_uri, resource, target_tenant) = match validate_authorize_params(&state, &params, &ip).await {
-        Ok(ok) => ok,
-        Err(resp) => return *resp,
-    };
-    if let Some(tenant) = &target_tenant
+    let (identity, redirect_uri, resource, resolved_scope, resource_tenant) =
+        match validate_authorize_params(&state, &params, &ip).await {
+            Ok(ok) => ok,
+            Err(resp) => return *resp,
+        };
+    if let Some(tenant) = &resource_tenant
         && let Ok(Some(provider)) = state.db.find_oauth_provider_by_tenant(tenant.id).await
         && !provider.owner_login
     {
         return crate::federation::start(&state, tenant, &provider, &identity, &redirect_uri, &resource, &params).await;
     }
     let client_name = identity.client_name.clone().unwrap_or_else(|| identity.client_id.clone());
-    html_response(StatusCode::OK, render_consent_page(&client_name, &resource, &params, None))
+    let scope_groups = scope_groups_html(&state, resource_tenant.as_ref(), &resolved_scope).await;
+    html_response(
+        StatusCode::OK,
+        render_consent_page(&client_name, &resource, &params, &resolved_scope, &scope_groups, None),
+    )
 }
 
 // ---- consent: POST /oauth/authorize ---------------------------------------
@@ -758,6 +851,7 @@ async fn mint_code_and_redirect(
     redirect_uri: &str,
     code_challenge: &str,
     resource: &str,
+    scope: &str,
     state_param: &str,
 ) -> Response {
     let code = crate::auth::generate_key();
@@ -774,7 +868,7 @@ async fn mint_code_and_redirect(
             redirect_uri.to_string(),
             code_challenge.to_string(),
             resource.to_string(),
-            "mcp".to_string(),
+            scope.to_string(),
             expires_unix,
             None,
         )
@@ -810,16 +904,17 @@ pub async fn post_authorize(
     // -- the consent-page submission is its own distinct authorize request.
     let _ = state.db.record_oauth_funnel_event("authorize_request").await;
     let params = consent_form_params(&form);
-    let (identity, redirect_uri, resource, target_tenant) = match validate_authorize_params(&state, &params, &ip).await {
-        Ok(ok) => ok,
-        Err(resp) => return *resp,
-    };
+    let (identity, redirect_uri, resource, resolved_scope, resource_tenant) =
+        match validate_authorize_params(&state, &params, &ip).await {
+            Ok(ok) => ok,
+            Err(resp) => return *resp,
+        };
     // PRD-mcphost-federated-end-user-login requirement 2/4: defense in
     // depth -- the key/claim form is never rendered for this resource
     // (`get_authorize` above), so a legitimate browser never submits this,
     // but a direct POST must still be refused rather than silently
     // authenticating a tenant key against a federation-only resource.
-    if let Some(tenant) = &target_tenant
+    if let Some(tenant) = &resource_tenant
         && let Ok(Some(provider)) = state.db.find_oauth_provider_by_tenant(tenant.id).await
         && !provider.owner_login
     {
@@ -828,13 +923,13 @@ pub async fn post_authorize(
             "this tenant's resource requires federated login, not a tenant key",
         );
     }
-    match resolve_consent_tenant(&state, form.tenant_key.as_deref(), form.claim_code.as_deref()).await {
-        // requirement 2/AC7: a per-tenant resource only accepts that
-        // tenant's own key/claim -- a key that resolves to some OTHER
-        // tenant re-renders the consent page exactly like a wrong key
-        // would, rather than minting a code that would misrepresent whose
-        // resource this authorization is for.
-        Some(tenant) if target_tenant.as_ref().is_none_or(|t| t.id == tenant.id) => {
+    let proven_tenant = resolve_consent_tenant(&state, form.tenant_key.as_deref(), form.claim_code.as_deref()).await;
+    // PRD-mcphost-tool-scopes-and-consent requirement 2: for a per-tenant
+    // resource, the proof of ownership must be for THAT tenant -- another
+    // tenant's own valid key proves nothing about `resource`'s catalog.
+    let proven_tenant = proven_tenant.filter(|t| resource_tenant.as_ref().is_none_or(|rt| rt.id == t.id));
+    match proven_tenant {
+        Some(tenant) => {
             // PRD-mcphost-oauth-client-policy requirement 2 (AC1/AC2): the
             // tenant is only known once ownership is proven right here, so
             // this is the one point `allowlist`/`approve` enforcement can
@@ -862,6 +957,7 @@ pub async fn post_authorize(
                         &redirect_uri,
                         &code_challenge,
                         &resource,
+                        &resolved_scope,
                         &state_param,
                     )
                     .await
@@ -904,14 +1000,17 @@ pub async fn post_authorize(
         // consent page (never a redirect, and never a minted code) -- the
         // caller gets another chance rather than a hard failure, same
         // posture `claim::post_claim`'s own invalid-email branch takes.
-        Some(_) | None => {
+        None => {
             let client_name = identity.client_name.clone().unwrap_or_else(|| identity.client_id.clone());
+            let scope_groups = scope_groups_html(&state, resource_tenant.as_ref(), &resolved_scope).await;
             html_response(
                 StatusCode::OK,
                 render_consent_page(
                     &client_name,
                     &resource,
                     &params,
+                    &resolved_scope,
+                    &scope_groups,
                     Some("that key or claim code did not verify -- try again"),
                 ),
             )
@@ -1109,6 +1208,7 @@ async fn issue_tokens(
     grant_id: i64,
     tenant_id: i64,
     resource: &str,
+    scope: &str,
     client_id: &str,
     audit_event: &str,
 ) -> Response {
@@ -1133,7 +1233,7 @@ async fn issue_tokens(
         "iss": state.public_url.trim_end_matches('/'),
         "sub": sub,
         "aud": resource,
-        "scope": "mcp",
+        "scope": scope,
         "client_id": client_id,
         "jti": jti,
         "iat": now,
@@ -1200,7 +1300,7 @@ async fn issue_tokens(
             "token_type": "Bearer",
             "expires_in": policy.access_ttl_s,
             "refresh_token": refresh_token,
-            "scope": "mcp",
+            "scope": scope,
         })),
     )
         .into_response()
@@ -1297,6 +1397,7 @@ async fn token_authorization_code(state: &AppState, req: &TokenRequest) -> Respo
             row.client_name.clone(),
             row.method.clone(),
             row.resource.clone(),
+            row.scope.clone(),
             row.end_user(),
         )
         .await
@@ -1305,7 +1406,7 @@ async fn token_authorization_code(state: &AppState, req: &TokenRequest) -> Respo
         Err(_) => return oauth_error_json(StatusCode::INTERNAL_SERVER_ERROR, "server_error", "could not create grant"),
     };
     let _ = state.db.set_oauth_code_grant(code_hash, grant_id).await;
-    issue_tokens(state, grant_id, row.tenant_id, &row.resource, client_id, "token").await
+    issue_tokens(state, grant_id, row.tenant_id, &row.resource, &row.scope, client_id, "token").await
 }
 
 /// requirement 4, AC7: `grant_type=refresh_token` -- rotates the refresh
@@ -1401,7 +1502,7 @@ async fn token_refresh_token(state: &AppState, req: &TokenRequest) -> Response {
     if !state.db.claim_oauth_refresh_token(hash, now).await.unwrap_or(false) {
         return oauth_error_json(StatusCode::BAD_REQUEST, "invalid_grant", "refresh token already rotated");
     }
-    issue_tokens(state, row.grant_id, grant.tenant_id, &row.resource, &grant.client_id, "refresh").await
+    issue_tokens(state, row.grant_id, grant.tenant_id, &row.resource, &grant.scope, &grant.client_id, "refresh").await
 }
 
 /// `POST /oauth/token` (requirement 4; AC4, AC5, AC7).
@@ -1508,7 +1609,8 @@ pub async fn validate_hosted_bearer(
         }
     };
 
-    // PRD-mcphost-federated-end-user-login requirement 2: a token minted
+    // PRD-mcphost-federated-end-user-login requirement 2, and
+    // PRD-mcphost-tool-scopes-and-consent requirement 2: a token minted
     // for this tenant's per-tenant resource carries that resource as
     // `aud`, not the root one -- checked here (once the tenant, and
     // therefore its own canonical per-tenant resource, is known) rather
@@ -1544,6 +1646,9 @@ pub async fn grants_list(state: &AppState, tenant: &crate::db::Tenant) -> Result
                 "client_name": r.client_name,
                 "method": r.method,
                 "resource": r.resource,
+                // PRD-mcphost-tool-scopes-and-consent requirement 6: the
+                // granted scopes this grant was actually issued with.
+                "scope": r.scope,
                 "created_at": r.created_unix,
                 "last_used_at": r.last_used_unix,
             })
