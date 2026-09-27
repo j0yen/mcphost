@@ -243,6 +243,16 @@ async fn unauthenticated_tools_list_is_signup_only() {
         // host.*-style tool above.
         "host.oauth.grants",
         "host.oauth.grant_revoke",
+        // PRD-mcphost-federated-end-user-login requirement 1: a tenant's
+        // own OIDC identity provider control plane is discoverable
+        // unauthenticated too, same as every other host.*-style tool
+        // above -- registering/removing/diagnosing a provider is itself
+        // an authenticated (tenant_key/bearer-gated) call, not the
+        // discovery of it.
+        "host.oauth.provider_set",
+        "host.oauth.provider",
+        "host.oauth.provider_remove",
+        "host.oauth.doctor",
         // PRD-mcphost-docs-semantic-search: the three host.docs.search/
         // index_config/reindex tools are discoverable unauthenticated too,
         // same as every other host.*-style tool above.
@@ -290,7 +300,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        126,
+        130,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the three host.tool_history/host.tool_rollback/host.tool_diff \
@@ -315,6 +325,8 @@ async fn unauthenticated_tools_list_is_signup_only() {
          PRD-mcphost-agent-channels) + the six host.docs.* tools \
          (PRD-mcphost-document-store) + \
          the five host.oauth.* tools (PRD-mcphost-oauth-resource-server, PRD-mcphost-hosted-authorization-server) + \
+         the four host.oauth.provider_set/provider/provider_remove/doctor tools \
+         (PRD-mcphost-federated-end-user-login) + \
          the three host.docs.search/index_config/reindex tools \
          (PRD-mcphost-docs-semantic-search) + \
          the two host.enduser.* tools (PRD-mcphost-end-user-identity) + \

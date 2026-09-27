@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-oauth-client-policy.md (test_prefix: oauthpol)",
+  "ac_test_map_prd": "PRD-mcphost-federated-end-user-login.md (test_prefix: fedlogin)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,16 +28,17 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/oauthpol_ac01_allowlist_by_client_id_and_cimd_host.rs",
-    "AC2": "tests/oauthpol_ac02_approve_mode_pending_approve_deny.rs",
-    "AC3": "tests/oauthpol_ac03_session_ttls_and_max_grant_age.rs",
-    "AC4": "tests/oauthpol_ac04_reconsent_after_forces_consent_again.rs",
-    "AC5": "tests/oauthpol_ac05_revoke_all_grants_and_pending.rs",
-    "AC6": "tests/oauthpol_ac06_audit_paging_and_export.rs",
-    "AC7": "tests/oauthpol_ac07_operator_block_list_and_admin_rejection.rs",
-    "AC8": "tests/oauthpol_ac08_cimd_host_daily_registration_cap.rs",
-    "AC9": "tests/oauthpol_ac09_no_policy_defaults_match_hosted_as.rs",
-    "AC10": "deferred -- operator-provisioned; AC10 is the Live/production-only requirement (a synthetic operator tenant driven over https://mcphost.dev/mcp with curl, a receipt under docs/receipts/) and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
+    "AC1": "tests/fedlogin_ac01_provider_set_discovery_no_secret.rs",
+    "AC2": "tests/fedlogin_ac02_authorize_redirects_consent_mints_code.rs",
+    "AC3": "tests/fedlogin_ac03_python_env_and_whoami.rs",
+    "AC4": "tests/fedlogin_ac04_callback_error_paths.rs",
+    "AC5": "tests/fedlogin_ac05_email_verified_gate.rs",
+    "AC6": "tests/fedlogin_ac06_revoke_and_provider_remove.rs",
+    "AC7": "tests/fedlogin_ac07_key_form_present_or_absent.rs",
+    "AC8": "tests/fedlogin_ac08_doctor_discovery_down.rs",
+    "AC9": "tests/fedlogin_ac09_docs_and_llms_txt.rs",
+    "AC10": "tests/fedlogin_ac10_hosted_as_and_key_flows_unchanged.rs",
+    "AC11": "deferred -- operator-provisioned; AC11 is the Live/production-only requirement excluded from this dispatch's non-deferred AC list."
   },
   "ac_test_map_by_prefix": {
     "ac": {
@@ -616,6 +617,19 @@
       "AC7": "tests/tenantprm_ac07_key_and_oauth_suites_unchanged.rs",
       "AC8": "deferred -- operator-provisioned; AC8 is the Live/production-only requirement (registering a probe issuer on prod via orch and reading mcphost.dev's real metadata/401 over curl) and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list.",
       "AC9": "tests/tenantprm_ac09_llms_txt_documents_tenant_oauth.rs"
+    },
+    "oauthpol": {
+      "_prd": "PRD-mcphost-oauth-client-policy.md (PR #61) -- superseded by mcphost-federated-end-user-login at HEAD (this rebase); real test_prefix is oauthpol",
+      "AC1": "tests/oauthpol_ac01_allowlist_by_client_id_and_cimd_host.rs",
+      "AC2": "tests/oauthpol_ac02_approve_mode_pending_approve_deny.rs",
+      "AC3": "tests/oauthpol_ac03_session_ttls_and_max_grant_age.rs",
+      "AC4": "tests/oauthpol_ac04_reconsent_after_forces_consent_again.rs",
+      "AC5": "tests/oauthpol_ac05_revoke_all_grants_and_pending.rs",
+      "AC6": "tests/oauthpol_ac06_audit_paging_and_export.rs",
+      "AC7": "tests/oauthpol_ac07_operator_block_list_and_admin_rejection.rs",
+      "AC8": "tests/oauthpol_ac08_cimd_host_daily_registration_cap.rs",
+      "AC9": "tests/oauthpol_ac09_no_policy_defaults_match_hosted_as.rs",
+      "AC10": "deferred -- operator-provisioned; AC10 is the Live/production-only requirement (a synthetic operator tenant driven over https://mcphost.dev/mcp with curl, a receipt under docs/receipts/) and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
     }
   }
 }

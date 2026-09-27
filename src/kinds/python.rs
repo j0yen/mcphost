@@ -2212,7 +2212,10 @@ sys.modules["mcphost.state"] = _mcphost_state_mod
 sys.modules["mcphost.table"] = _mcphost_table_mod
 sys.modules["mcphost.docs"] = _mcphost_docs_mod
 
-_END_USER_ENV_KEYS = ("MCPHOST_END_USER_ID", "MCPHOST_END_USER_ISSUER", "MCPHOST_END_USER_METHOD")
+_END_USER_ENV_KEYS = (
+    "MCPHOST_END_USER_ID", "MCPHOST_END_USER_ISSUER", "MCPHOST_END_USER_METHOD",
+    "MCPHOST_END_USER_EMAIL", "MCPHOST_END_USER_NAME",
+)
 
 def run_one(payload):
     site_packages = payload.get("site_packages")
@@ -2235,6 +2238,10 @@ def run_one(payload):
         if end_user.get("issuer"):
             os.environ["MCPHOST_END_USER_ISSUER"] = end_user["issuer"]
         os.environ["MCPHOST_END_USER_METHOD"] = end_user.get("method") or ""
+        if end_user.get("email"):
+            os.environ["MCPHOST_END_USER_EMAIL"] = end_user["email"]
+        if end_user.get("name"):
+            os.environ["MCPHOST_END_USER_NAME"] = end_user["name"]
 
     out_buf, err_buf = io.StringIO(), io.StringIO()
     old_out, old_err = sys.stdout, sys.stderr
@@ -2469,6 +2476,8 @@ fn payload_end_user(ctx: &CallCtx) -> Value {
             "id": eu.subject,
             "issuer": eu.issuer,
             "method": eu.method.as_str(),
+            "email": eu.email,
+            "name": eu.name,
         }),
         None => Value::Null,
     }

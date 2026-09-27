@@ -778,7 +778,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         Arc::new(LocalSessionManager::default()),
         config,
     );
-
     // PRD-mcphost-tenant-resource-metadata requirement 1: `/t/{ns}/mcp`
     // serves the identical streamable-HTTP service as `/mcp` -- the
     // path-bound tenant is read straight off the request's own URI inside
@@ -830,6 +829,14 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/.well-known/oauth-protected-resource/t/{namespace}/mcp",
             get(well_known_oauth_protected_resource_tenant),
+        )
+        // PRD-mcphost-federated-end-user-login requirement 2: the
+        // identity provider redirects here with the upstream code (`GET`);
+        // the browser's own consent approval posts back to the same path
+        // (`POST`).
+        .route(
+            "/oauth/federation/callback",
+            get(crate::federation::get_callback).post(crate::federation::post_callback),
         )
         .route("/billing/webhook", post(billing_webhook))
         .route("/billing/done", get(billing_done))

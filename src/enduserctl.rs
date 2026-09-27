@@ -316,6 +316,21 @@ pub async fn revoke(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
 
     state.db.revoke_end_user(tenant.id, subject.clone(), REVOKED_BY_TENANT.to_string()).await?;
     state.db.revoke_vault_tokens_for_subject(tenant.id, subject.clone()).await?;
+    // PRD-mcphost-federated-end-user-login requirement 5 (AC6): a
+    // federated end user's own grant(s) -- access tokens fail within 60s
+    // (the jti denylist, checked on every hosted-bearer call) and refresh
+    // tokens stop rotating, same mechanism `host.oauth.grant_revoke`
+    // already uses for one grant at a time.
+    let now = crate::state::now_unix();
+    for grant_id in state
+        .db
+        .list_live_federated_oauth_grant_ids_for_subject(tenant.id, subject.clone())
+        .await?
+    {
+        let _ = state.db.revoke_oauth_grant(grant_id, now).await;
+        let _ = state.db.deny_oauth_jtis_for_grant(grant_id, now).await;
+        let _ = state.db.revoke_oauth_refresh_tokens_for_grant(grant_id, now).await;
+    }
     state.db.record_tenant_audit(tenant.id, subject.clone(), "revoke".to_string(), reason).await?;
 
     Ok(json!({"subject": subject, "revoked": true}))

@@ -72,6 +72,7 @@ const MIGRATION_0048: &str = include_str!("../migrations/0048_runs_end_user_subj
 const MIGRATION_0049: &str = include_str!("../migrations/0049_shared_call_run_scope.sql");
 const MIGRATION_0050: &str = include_str!("../migrations/0050_hosted_authorization_server.sql");
 const MIGRATION_0051: &str = include_str!("../migrations/0051_oauth_client_policy.sql");
+const MIGRATION_0052: &str = include_str!("../migrations/0052_federated_end_user_login.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -2026,7 +2027,8 @@ impl Db {
         // unconditionally like 0001 above.
         conn.execute_batch(MIGRATION_0049).map_err(AppError::from)?;
         Self::migrate_0050_hosted_authorization_server(&conn)?;
-        Self::migrate_0051_oauth_client_policy(&conn)
+        Self::migrate_0051_oauth_client_policy(&conn)?;
+        Self::migrate_0052_federated_end_user_login(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -2738,6 +2740,20 @@ impl Db {
         }
         Ok(())
     }
+
+    /// PRD-mcphost-federated-end-user-login requirements 1-6. (Renumbered
+    /// from this PRD's own 0051 to 0052 during rebase: mcphost-oauth-client-
+    /// policy claimed 0051 first, landing on main ahead of this branch.)
+    fn migrate_0052_federated_end_user_login(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'oauth_providers'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0052)?;
+        }
+        Ok(())
+    }
+
 
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
@@ -13953,6 +13969,11 @@ impl Db {
 
     /// requirement 3/4: mints a single-use authorization code row (60s
     /// TTL); `code_hash` is the only form ever stored.
+    ///
+    /// PRD-mcphost-federated-end-user-login requirement 3: the four
+    /// `end_user_*` fields are `None` for the pre-existing tenant-owner
+    /// consent path and `Some` only for a code minted after a federated
+    /// login's own consent approval.
     #[allow(clippy::too_many_arguments)]
     pub async fn insert_oauth_code(
         &self,
@@ -13966,14 +13987,17 @@ impl Db {
         resource: String,
         scope: String,
         expires_unix: i64,
+        end_user: Option<FederatedEndUser>,
     ) -> Result<(), AppError> {
         let created_unix = now_unix();
+        let end_user = end_user.unwrap_or_default();
         self.with_conn(move |conn| {
             conn.execute(
                 "INSERT INTO oauth_codes \
                  (code_hash, tenant_id, client_id, client_name, method, redirect_uri, code_challenge, \
-                  resource, scope, expires_unix, created_unix) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                  resource, scope, expires_unix, created_unix, end_user_subject, end_user_email, \
+                  end_user_name, end_user_issuer) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
                 params![
                     code_hash,
                     tenant_id,
@@ -13985,7 +14009,11 @@ impl Db {
                     resource,
                     scope,
                     expires_unix,
-                    created_unix
+                    created_unix,
+                    end_user.subject,
+                    end_user.email,
+                    end_user.name,
+                    end_user.issuer,
                 ],
             )?;
             Ok(())
@@ -13997,7 +14025,8 @@ impl Db {
         self.with_conn(move |conn| {
             conn.query_row(
                 "SELECT code_hash, tenant_id, client_id, client_name, method, redirect_uri, \
-                 code_challenge, resource, scope, grant_id, expires_unix, consumed_unix, created_unix \
+                 code_challenge, resource, scope, grant_id, expires_unix, consumed_unix, created_unix, \
+                 end_user_subject, end_user_email, end_user_name, end_user_issuer \
                  FROM oauth_codes WHERE code_hash = ?1",
                 params![code_hash],
                 oauth_code_from_row,
@@ -14037,6 +14066,11 @@ impl Db {
 
     /// requirement 4: one grant per completed authorization-code exchange
     /// -- returns the new row's id.
+    ///
+    /// PRD-mcphost-federated-end-user-login requirement 3/5: `end_user`
+    /// carries the federated identity through from the [`OauthCodeRow`]
+    /// that minted this grant -- `None` for the pre-existing tenant-owner
+    /// consent path.
     #[allow(clippy::too_many_arguments)]
     pub async fn create_oauth_grant(
         &self,
@@ -14045,14 +14079,28 @@ impl Db {
         client_name: Option<String>,
         method: String,
         resource: String,
+        end_user: Option<FederatedEndUser>,
     ) -> Result<i64, AppError> {
         let created_unix = now_unix();
+        let end_user = end_user.unwrap_or_default();
         self.with_conn(move |conn| {
             conn.execute(
                 "INSERT INTO oauth_grants \
-                 (tenant_id, client_id, client_name, method, resource, created_unix, last_used_unix) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
-                params![tenant_id, client_id, client_name, method, resource, created_unix],
+                 (tenant_id, client_id, client_name, method, resource, created_unix, last_used_unix, \
+                  end_user_subject, end_user_email, end_user_name, end_user_issuer) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?7, ?8, ?9, ?10)",
+                params![
+                    tenant_id,
+                    client_id,
+                    client_name,
+                    method,
+                    resource,
+                    created_unix,
+                    end_user.subject,
+                    end_user.email,
+                    end_user.name,
+                    end_user.issuer,
+                ],
             )?;
             Ok(conn.last_insert_rowid())
         })
@@ -14063,7 +14111,8 @@ impl Db {
         self.with_conn(move |conn| {
             conn.query_row(
                 "SELECT id, tenant_id, client_id, client_name, method, resource, created_unix, \
-                 last_used_unix, revoked_unix FROM oauth_grants WHERE id = ?1",
+                 last_used_unix, revoked_unix, end_user_subject, end_user_email, end_user_name, \
+                 end_user_issuer FROM oauth_grants WHERE id = ?1",
                 params![id],
                 oauth_grant_from_row,
             )
@@ -14078,11 +14127,52 @@ impl Db {
         self.with_conn(move |conn| {
             let mut stmt = conn.prepare(
                 "SELECT id, tenant_id, client_id, client_name, method, resource, created_unix, \
-                 last_used_unix, revoked_unix FROM oauth_grants \
+                 last_used_unix, revoked_unix, end_user_subject, end_user_email, end_user_name, \
+                 end_user_issuer FROM oauth_grants \
                  WHERE tenant_id = ?1 AND revoked_unix IS NULL ORDER BY created_unix DESC",
             )?;
             let rows = stmt
                 .query_map(params![tenant_id], oauth_grant_from_row)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-federated-end-user-login requirement 5 (AC6): every live
+    /// grant id this tenant's federated end user `subject` holds -- so
+    /// `host.enduser.revoke` can deny their jtis and rotate/revoke their
+    /// refresh tokens the same way `host.oauth.grant_revoke` already does
+    /// for one grant at a time.
+    pub async fn list_live_federated_oauth_grant_ids_for_subject(
+        &self,
+        tenant_id: i64,
+        subject: String,
+    ) -> Result<Vec<i64>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id FROM oauth_grants \
+                 WHERE tenant_id = ?1 AND end_user_subject = ?2 AND revoked_unix IS NULL",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id, subject], |r| r.get::<_, i64>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-federated-end-user-login requirement 1 (AC6): every live
+    /// federated grant id this tenant has minted through any provider --
+    /// `host.oauth.provider_remove`'s "every federated grant is revoked".
+    pub async fn list_live_federated_oauth_grant_ids_for_tenant(&self, tenant_id: i64) -> Result<Vec<i64>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id FROM oauth_grants \
+                 WHERE tenant_id = ?1 AND end_user_subject IS NOT NULL AND revoked_unix IS NULL",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id], |r| r.get::<_, i64>(0))?
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(rows)
         })
@@ -15302,6 +15392,19 @@ fn oauth_client_from_row(r: &Row) -> rusqlite::Result<OauthClientRow> {
     })
 }
 
+/// PRD-mcphost-federated-end-user-login requirement 3/5: the federated
+/// identity a code/grant carries -- `Default` (all `None`) is the
+/// pre-existing tenant-owner consent path's shape, so every call site that
+/// never federates can pass `None` (`unwrap_or_default()`) without its own
+/// four-`None` literal.
+#[derive(Debug, Clone, Default)]
+pub struct FederatedEndUser {
+    pub subject: Option<String>,
+    pub email: Option<String>,
+    pub name: Option<String>,
+    pub issuer: Option<String>,
+}
+
 /// One `oauth_codes` row -- a single-use authorization code, as
 /// `authz`'s `/oauth/token` handler reads it back.
 #[derive(Debug, Clone)]
@@ -15318,6 +15421,23 @@ pub struct OauthCodeRow {
     pub expires_unix: i64,
     pub consumed_unix: Option<i64>,
     pub created_unix: i64,
+    pub end_user_subject: Option<String>,
+    pub end_user_email: Option<String>,
+    pub end_user_name: Option<String>,
+    pub end_user_issuer: Option<String>,
+}
+
+impl OauthCodeRow {
+    /// The [`FederatedEndUser`] this code carries, if any -- `None` when
+    /// `end_user_subject` is unset (the pre-existing tenant-owner path).
+    pub fn end_user(&self) -> Option<FederatedEndUser> {
+        self.end_user_subject.clone().map(|subject| FederatedEndUser {
+            subject: Some(subject),
+            email: self.end_user_email.clone(),
+            name: self.end_user_name.clone(),
+            issuer: self.end_user_issuer.clone(),
+        })
+    }
 }
 
 fn oauth_code_from_row(r: &Row) -> rusqlite::Result<OauthCodeRow> {
@@ -15334,6 +15454,10 @@ fn oauth_code_from_row(r: &Row) -> rusqlite::Result<OauthCodeRow> {
         expires_unix: r.get(10)?,
         consumed_unix: r.get(11)?,
         created_unix: r.get(12)?,
+        end_user_subject: r.get(13)?,
+        end_user_email: r.get(14)?,
+        end_user_name: r.get(15)?,
+        end_user_issuer: r.get(16)?,
     })
 }
 
@@ -15350,6 +15474,23 @@ pub struct OauthGrantRow {
     pub created_unix: i64,
     pub last_used_unix: i64,
     pub revoked_unix: Option<i64>,
+    pub end_user_subject: Option<String>,
+    pub end_user_email: Option<String>,
+    pub end_user_name: Option<String>,
+    pub end_user_issuer: Option<String>,
+}
+
+impl OauthGrantRow {
+    /// The [`FederatedEndUser`] this grant carries, if any -- see
+    /// [`OauthCodeRow::end_user`].
+    pub fn end_user(&self) -> Option<FederatedEndUser> {
+        self.end_user_subject.clone().map(|subject| FederatedEndUser {
+            subject: Some(subject),
+            email: self.end_user_email.clone(),
+            name: self.end_user_name.clone(),
+            issuer: self.end_user_issuer.clone(),
+        })
+    }
 }
 
 fn oauth_grant_from_row(r: &Row) -> rusqlite::Result<OauthGrantRow> {
@@ -15363,6 +15504,10 @@ fn oauth_grant_from_row(r: &Row) -> rusqlite::Result<OauthGrantRow> {
         created_unix: r.get(6)?,
         last_used_unix: r.get(7)?,
         revoked_unix: r.get(8)?,
+        end_user_subject: r.get(9)?,
+        end_user_email: r.get(10)?,
+        end_user_name: r.get(11)?,
+        end_user_issuer: r.get(12)?,
     })
 }
 
@@ -15510,4 +15655,348 @@ fn oauth_audit_from_row(r: &Row) -> rusqlite::Result<OauthAuditRow> {
         ip_hash: r.get(8)?,
         scopes: r.get(9)?,
     })
+}
+
+// ---- PRD-mcphost-federated-end-user-login row types ------------------------
+
+/// requirement 2/6, non-functional: pending federation state's own 10-minute
+/// expiry and 1,000-rows-per-tenant cap.
+const FEDERATION_PENDING_TTL_SECS: i64 = 600;
+const FEDERATION_PENDING_MAX_PER_TENANT: i64 = 1000;
+
+/// One `oauth_providers` row: a tenant's own OIDC identity provider (the
+/// browser-login sibling of `oauth_issuers`' bearer-only bring-your-own
+/// issuer) -- at most one per tenant.
+#[derive(Debug, Clone)]
+pub struct OauthProviderRow {
+    pub tenant_id: i64,
+    pub issuer: String,
+    pub client_id: String,
+    pub client_secret_enc: Vec<u8>,
+    pub client_secret_nonce: Vec<u8>,
+    pub scopes: String,
+    pub claims_map_json: Option<String>,
+    pub authorization_endpoint: String,
+    pub token_endpoint: String,
+    pub jwks_uri: String,
+    pub require_verified_email: bool,
+    pub owner_login: bool,
+    pub created_unix: i64,
+}
+
+fn oauth_provider_from_row(r: &Row) -> rusqlite::Result<OauthProviderRow> {
+    Ok(OauthProviderRow {
+        tenant_id: r.get(0)?,
+        issuer: r.get(1)?,
+        client_id: r.get(2)?,
+        client_secret_enc: r.get(3)?,
+        client_secret_nonce: r.get(4)?,
+        scopes: r.get(5)?,
+        claims_map_json: r.get(6)?,
+        authorization_endpoint: r.get(7)?,
+        token_endpoint: r.get(8)?,
+        jwks_uri: r.get(9)?,
+        require_verified_email: r.get::<_, i64>(10)? != 0,
+        owner_login: r.get::<_, i64>(11)? != 0,
+        created_unix: r.get(12)?,
+    })
+}
+
+/// requirement 2: everything [`crate::federation::start`] needs to persist
+/// before redirecting the browser to the provider -- one field per
+/// `oauth_federation_pending` column this crate doesn't already compute at
+/// insert time (`status`/`created_unix`/`expires_unix` are fixed by
+/// [`Db::insert_oauth_federation_pending`] itself).
+#[derive(Debug, Clone)]
+pub struct NewFederationPending {
+    pub upstream_state: String,
+    pub tenant_id: i64,
+    pub client_id: String,
+    pub client_name: Option<String>,
+    pub method: String,
+    pub redirect_uri: String,
+    pub code_challenge: String,
+    pub resource: String,
+    pub scope: String,
+    pub original_state: String,
+    pub nonce: String,
+    pub pkce_verifier: String,
+}
+
+/// One `oauth_federation_pending` row -- one in-flight upstream round trip,
+/// from `GET /oauth/authorize` through the provider and back to mcphost's
+/// own consent approval.
+#[derive(Debug, Clone)]
+pub struct OauthFederationPendingRow {
+    pub id: i64,
+    pub upstream_state: String,
+    pub tenant_id: i64,
+    pub client_id: String,
+    pub client_name: Option<String>,
+    pub method: String,
+    pub redirect_uri: String,
+    pub code_challenge: String,
+    pub resource: String,
+    pub scope: String,
+    pub original_state: String,
+    pub nonce: String,
+    pub pkce_verifier: String,
+    pub status: String,
+    pub end_user_subject: Option<String>,
+    pub end_user_email: Option<String>,
+    pub end_user_name: Option<String>,
+    pub end_user_issuer: Option<String>,
+    pub created_unix: i64,
+    pub expires_unix: i64,
+}
+
+impl OauthFederationPendingRow {
+    /// The [`FederatedEndUser`] this pending row carries once `verified`
+    /// (see [`OauthCodeRow::end_user`]).
+    pub fn end_user(&self) -> Option<FederatedEndUser> {
+        self.end_user_subject.clone().map(|subject| FederatedEndUser {
+            subject: Some(subject),
+            email: self.end_user_email.clone(),
+            name: self.end_user_name.clone(),
+            issuer: self.end_user_issuer.clone(),
+        })
+    }
+}
+
+fn oauth_federation_pending_from_row(r: &Row) -> rusqlite::Result<OauthFederationPendingRow> {
+    Ok(OauthFederationPendingRow {
+        id: r.get(0)?,
+        upstream_state: r.get(1)?,
+        tenant_id: r.get(2)?,
+        client_id: r.get(3)?,
+        client_name: r.get(4)?,
+        method: r.get(5)?,
+        redirect_uri: r.get(6)?,
+        code_challenge: r.get(7)?,
+        resource: r.get(8)?,
+        scope: r.get(9)?,
+        original_state: r.get(10)?,
+        nonce: r.get(11)?,
+        pkce_verifier: r.get(12)?,
+        status: r.get(13)?,
+        end_user_subject: r.get(14)?,
+        end_user_email: r.get(15)?,
+        end_user_name: r.get(16)?,
+        end_user_issuer: r.get(17)?,
+        created_unix: r.get(18)?,
+        expires_unix: r.get(19)?,
+    })
+}
+
+impl Db {
+    /// `host.oauth.provider_set` (requirement 1): one row per tenant,
+    /// replacing any prior provider entirely on conflict (secret rotation
+    /// included -- requirement 5's "keeps existing grants" is true simply
+    /// because this never touches `oauth_grants`).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upsert_oauth_provider(
+        &self,
+        tenant_id: i64,
+        issuer: String,
+        client_id: String,
+        client_secret_enc: Vec<u8>,
+        client_secret_nonce: Vec<u8>,
+        scopes: String,
+        claims_map_json: Option<String>,
+        authorization_endpoint: String,
+        token_endpoint: String,
+        jwks_uri: String,
+        require_verified_email: bool,
+        owner_login: bool,
+    ) -> Result<(), AppError> {
+        let created_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO oauth_providers (tenant_id, issuer, client_id, client_secret_enc, \
+                 client_secret_nonce, scopes, claims_map_json, authorization_endpoint, token_endpoint, \
+                 jwks_uri, require_verified_email, owner_login, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13) \
+                 ON CONFLICT(tenant_id) DO UPDATE SET \
+                     issuer = excluded.issuer, client_id = excluded.client_id, \
+                     client_secret_enc = excluded.client_secret_enc, \
+                     client_secret_nonce = excluded.client_secret_nonce, scopes = excluded.scopes, \
+                     claims_map_json = excluded.claims_map_json, \
+                     authorization_endpoint = excluded.authorization_endpoint, \
+                     token_endpoint = excluded.token_endpoint, jwks_uri = excluded.jwks_uri, \
+                     require_verified_email = excluded.require_verified_email, \
+                     owner_login = excluded.owner_login",
+                params![
+                    tenant_id,
+                    issuer,
+                    client_id,
+                    client_secret_enc,
+                    client_secret_nonce,
+                    scopes,
+                    claims_map_json,
+                    authorization_endpoint,
+                    token_endpoint,
+                    jwks_uri,
+                    require_verified_email as i64,
+                    owner_login as i64,
+                    created_unix,
+                ],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn find_oauth_provider_by_tenant(&self, tenant_id: i64) -> Result<Option<OauthProviderRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT tenant_id, issuer, client_id, client_secret_enc, client_secret_nonce, scopes, \
+                 claims_map_json, authorization_endpoint, token_endpoint, jwks_uri, \
+                 require_verified_email, owner_login, created_unix \
+                 FROM oauth_providers WHERE tenant_id = ?1",
+                params![tenant_id],
+                oauth_provider_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `host.oauth.provider_remove` (requirement 1): `true` iff a row
+    /// existed.
+    pub async fn remove_oauth_provider(&self, tenant_id: i64) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let removed = conn.execute("DELETE FROM oauth_providers WHERE tenant_id = ?1", params![tenant_id])?;
+            Ok(removed > 0)
+        })
+        .await
+    }
+
+    /// requirement 2/6, non-functional (1,000-row cap, 10-minute expiry):
+    /// prunes this tenant's already-expired pending rows, then admits the
+    /// new one only if still under the cap -- `false` is the caller's cue
+    /// to refuse starting another federated login for this tenant right
+    /// now rather than insert regardless.
+    pub async fn insert_oauth_federation_pending(
+        &self,
+        new: NewFederationPending,
+        now: i64,
+    ) -> Result<bool, AppError> {
+        let expires_unix = now + FEDERATION_PENDING_TTL_SECS;
+        self.with_conn(move |conn| {
+            conn.execute(
+                "DELETE FROM oauth_federation_pending WHERE tenant_id = ?1 AND expires_unix < ?2",
+                params![new.tenant_id, now],
+            )?;
+            let count: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM oauth_federation_pending WHERE tenant_id = ?1",
+                params![new.tenant_id],
+                |r| r.get(0),
+            )?;
+            if count >= FEDERATION_PENDING_MAX_PER_TENANT {
+                return Ok(false);
+            }
+            conn.execute(
+                "INSERT INTO oauth_federation_pending \
+                 (upstream_state, tenant_id, client_id, client_name, method, redirect_uri, code_challenge, \
+                  resource, scope, original_state, nonce, pkce_verifier, status, created_unix, expires_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'pending', ?13, ?14)",
+                params![
+                    new.upstream_state,
+                    new.tenant_id,
+                    new.client_id,
+                    new.client_name,
+                    new.method,
+                    new.redirect_uri,
+                    new.code_challenge,
+                    new.resource,
+                    new.scope,
+                    new.original_state,
+                    new.nonce,
+                    new.pkce_verifier,
+                    now,
+                    expires_unix,
+                ],
+            )?;
+            Ok(true)
+        })
+        .await
+    }
+
+    pub async fn find_oauth_federation_pending_by_state(
+        &self,
+        upstream_state: String,
+    ) -> Result<Option<OauthFederationPendingRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT id, upstream_state, tenant_id, client_id, client_name, method, redirect_uri, \
+                 code_challenge, resource, scope, original_state, nonce, pkce_verifier, status, \
+                 end_user_subject, end_user_email, end_user_name, end_user_issuer, created_unix, \
+                 expires_unix FROM oauth_federation_pending WHERE upstream_state = ?1",
+                params![upstream_state],
+                oauth_federation_pending_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 2/6: marks a `pending` row `verified` once the
+    /// callback's `id_token` validates -- `false` if the row wasn't (still)
+    /// `pending` (a replayed provider callback).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn mark_oauth_federation_verified(
+        &self,
+        upstream_state: String,
+        subject: String,
+        email: Option<String>,
+        name: Option<String>,
+        issuer: String,
+    ) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let updated = conn.execute(
+                "UPDATE oauth_federation_pending SET status = 'verified', end_user_subject = ?1, \
+                 end_user_email = ?2, end_user_name = ?3, end_user_issuer = ?4 \
+                 WHERE upstream_state = ?5 AND status = 'pending'",
+                params![subject, email, name, issuer, upstream_state],
+            )?;
+            Ok(updated > 0)
+        })
+        .await
+    }
+
+    /// The consent-approval `POST`'s single-use claim (mirrors
+    /// [`Db::claim_oauth_code`]'s atomic-`UPDATE`-with-a-`WHERE`-guard
+    /// shape): `true` iff this call is the one that moved the row from
+    /// `verified` to `consumed`, so a second submission of the same hidden
+    /// field can never mint a second code.
+    pub async fn claim_oauth_federation_pending(&self, upstream_state: String) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let claimed = conn.execute(
+                "UPDATE oauth_federation_pending SET status = 'consumed' \
+                 WHERE upstream_state = ?1 AND status = 'verified'",
+                params![upstream_state],
+            )?;
+            Ok(claimed > 0)
+        })
+        .await
+    }
+
+    /// AC4's "a `state` older than 10 min" -- same `test_backdate_*`
+    /// convention as `test_backdate_channel_post`/`test_backdate_contact_request`.
+    pub async fn test_backdate_oauth_federation_pending(
+        &self,
+        upstream_state: String,
+        expires_unix: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE oauth_federation_pending SET expires_unix = ?1 WHERE upstream_state = ?2",
+                params![expires_unix, upstream_state],
+            )?;
+            Ok(())
+        })
+        .await
+    }
 }

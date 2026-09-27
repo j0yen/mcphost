@@ -21,6 +21,12 @@ pub enum EndUserMethod {
     /// distinct from [`EndUserMethod::Oauth`]'s tenant-registered
     /// bring-your-own issuer.
     HostedOauth,
+    /// PRD-mcphost-federated-end-user-login requirement 3: an end user who
+    /// logged in through a tenant's own OIDC provider (AC3's
+    /// `MCPHOST_END_USER_METHOD=federated`) -- distinct from
+    /// [`EndUserMethod::HostedOauth`]'s tenant-owner hosted token, though
+    /// both are minted by this host's own built-in authorization server.
+    Federated,
 }
 
 impl EndUserMethod {
@@ -29,6 +35,7 @@ impl EndUserMethod {
             EndUserMethod::Oauth => "oauth",
             EndUserMethod::Assertion => "assertion",
             EndUserMethod::HostedOauth => "hosted_oauth",
+            EndUserMethod::Federated => "federated",
         }
     }
 }
@@ -46,6 +53,12 @@ pub struct EndUser {
     pub issuer: Option<String>,
     pub method: EndUserMethod,
     pub verified_at: i64,
+    /// PRD-mcphost-federated-end-user-login requirement 3: `Some` only for
+    /// [`EndUserMethod::Federated`], and only when the provider supplied
+    /// it -- `MCPHOST_END_USER_EMAIL`/`host.enduser.whoami`'s `email`.
+    pub email: Option<String>,
+    /// Same shape as `email` above; `MCPHOST_END_USER_NAME`.
+    pub name: Option<String>,
 }
 
 impl EndUser {
@@ -55,6 +68,8 @@ impl EndUser {
             "issuer": self.issuer,
             "method": self.method.as_str(),
             "verified_at": self.verified_at,
+            "email": self.email,
+            "name": self.name,
         })
     }
 }
@@ -129,6 +144,8 @@ pub async fn verify_assertion(
         issuer: None,
         method: EndUserMethod::Assertion,
         verified_at: now,
+        email: None,
+        name: None,
     })
 }
 
@@ -265,6 +282,8 @@ mod tests {
             issuer: None,
             method: EndUserMethod::Oauth,
             verified_at: 1,
+            email: None,
+            name: None,
         };
         let (norm, impersonated) = resolve_end_user(&json!({"end_user": "self"}), Some(&eu)).unwrap();
         assert_eq!(norm, "u1");
@@ -278,6 +297,8 @@ mod tests {
             issuer: None,
             method: EndUserMethod::Oauth,
             verified_at: 1,
+            email: None,
+            name: None,
         };
         let err = resolve_end_user(&json!({"end_user": "u9"}), Some(&eu)).unwrap_err();
         assert_eq!(err.code(), "end_user_explicit_forbidden");

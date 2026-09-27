@@ -12,6 +12,8 @@ mod ci_sandbox_support;
 mod busyaudit;
 #[path = "support/fake_as.rs"]
 mod fake_as;
+#[path = "support/federation.rs"]
+mod federation;
 #[path = "support/host.rs"]
 #[allow(dead_code)]
 mod host;
@@ -356,6 +358,24 @@ mod enduserctl_ac10_list_100k_pages_under_50ms_stable_cursor;
 mod envelope_ac1_http_declared_output_promoted;
 #[path = "envelope_ac4_tool_test_reports_missing_declared_output.rs"]
 mod envelope_ac4_tool_test_reports_missing_declared_output;
+#[path = "fedlogin_ac01_provider_set_discovery_no_secret.rs"]
+mod fedlogin_ac01_provider_set_discovery_no_secret;
+#[path = "fedlogin_ac02_authorize_redirects_consent_mints_code.rs"]
+mod fedlogin_ac02_authorize_redirects_consent_mints_code;
+#[path = "fedlogin_ac04_callback_error_paths.rs"]
+mod fedlogin_ac04_callback_error_paths;
+#[path = "fedlogin_ac05_email_verified_gate.rs"]
+mod fedlogin_ac05_email_verified_gate;
+#[path = "fedlogin_ac06_revoke_and_provider_remove.rs"]
+mod fedlogin_ac06_revoke_and_provider_remove;
+#[path = "fedlogin_ac07_key_form_present_or_absent.rs"]
+mod fedlogin_ac07_key_form_present_or_absent;
+#[path = "fedlogin_ac08_doctor_discovery_down.rs"]
+mod fedlogin_ac08_doctor_discovery_down;
+#[path = "fedlogin_ac09_docs_and_llms_txt.rs"]
+mod fedlogin_ac09_docs_and_llms_txt;
+#[path = "fedlogin_ac10_hosted_as_and_key_flows_unchanged.rs"]
+mod fedlogin_ac10_hosted_as_and_key_flows_unchanged;
 #[path = "firstcall_ac6_outcome_metering.rs"]
 mod firstcall_ac6_outcome_metering;
 #[path = "firstpub_ac09_dry_run_spec_size_short_circuits.rs"]

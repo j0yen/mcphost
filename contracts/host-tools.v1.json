@@ -1478,6 +1478,21 @@
       "since": "0.58.0"
     },
     {
+      "description": "Diagnose this tenant's OIDC provider setup: discovery reachable, jwks_uri reachable, per-tenant resource metadata, whether the callback URL is listed in the provider's discovery document (when exposed), and a dry-run authorize URL. One line per check with ok|fail and a fix.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.oauth.doctor",
+      "since": "0.58.0"
+    },
+    {
       "description": "Revoke one hosted-authorization-server grant by id (from host.oauth.grants): its access tokens fail within 60s and its refresh tokens stop rotating.",
       "input_schema": {
         "properties": {
@@ -1649,6 +1664,86 @@
         "type": "object"
       },
       "name": "host.oauth.policy_set",
+      "since": "0.58.0"
+    },
+    {
+      "description": "This tenant's registered OIDC identity provider (issuer, client_id, endpoints, scopes, flags) -- null if none is set. Never carries the client secret.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.oauth.provider",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Remove this tenant's OIDC identity provider: every federated grant it produced is revoked immediately, and the per-tenant resource falls back to key/claim (owner) login.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.oauth.provider_remove",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Register (or update) this tenant's own OIDC identity provider: end users who connect to this tenant's per-tenant resource log in through it. Fetches the issuer's discovery document once (https only) and stores authorization_endpoint, token_endpoint, and jwks_uri. client_secret is encrypted at rest and never shown again.",
+      "input_schema": {
+        "properties": {
+          "claims_map": {
+            "description": "Optional {\"email\": \"<claim name>\", \"name\": \"<claim name>\"} override; defaults to the claim names themselves.",
+            "type": "object"
+          },
+          "client_id": {
+            "description": "The client id your provider issued for mcphost.",
+            "type": "string"
+          },
+          "client_secret": {
+            "description": "The client secret your provider issued for mcphost; encrypted at rest and never shown again.",
+            "type": "string"
+          },
+          "issuer": {
+            "description": "The provider's issuer URL, e.g. https://your-idp.example.com.",
+            "type": "string"
+          },
+          "owner_login": {
+            "description": "Default false: also allow this tenant's own key/claim login on its per-tenant resource.",
+            "type": "boolean"
+          },
+          "require_verified_email": {
+            "description": "Default true: refuse login when the provider reports email_verified: false.",
+            "type": "boolean"
+          },
+          "scopes": {
+            "description": "Default [\"openid\", \"email\", \"profile\"].",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "issuer",
+          "client_id",
+          "client_secret"
+        ],
+        "type": "object"
+      },
+      "name": "host.oauth.provider_set",
       "since": "0.58.0"
     },
     {

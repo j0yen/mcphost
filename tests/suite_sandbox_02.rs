@@ -10,6 +10,8 @@ mod common;
 mod ci_sandbox_support;
 #[path = "support/egress_proxy_lock.rs"]
 mod egress_proxy_lock;
+#[path = "support/federation.rs"]
+mod federation;
 #[path = "support/host.rs"]
 #[allow(dead_code)]
 mod host;
@@ -42,6 +44,8 @@ mod envelope_ac2_python_object_declared_output_promoted;
 mod envelope_ac3_python_scalar_promotion_warns;
 #[path = "envelope_ac5_replay_recorded_sessions.rs"]
 mod envelope_ac5_replay_recorded_sessions;
+#[path = "fedlogin_ac03_python_env_and_whoami.rs"]
+mod fedlogin_ac03_python_env_and_whoami;
 #[path = "firstpub_ac01_quickstart_starter_tool.rs"]
 mod firstpub_ac01_quickstart_starter_tool;
 #[path = "firstpub_ac02_sandbox_unavailable_retry.rs"]
