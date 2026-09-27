@@ -1054,6 +1054,8 @@ mod sharedrunscope_ac06_raw_tools_call_shares_the_path;
 mod sharedrunscope_ac07_migration_backfills_legacy_rows;
 #[path = "sharedrunscope_ac08_proof_script_owner_ledger_check.rs"]
 mod sharedrunscope_ac08_proof_script_owner_ledger_check;
+#[path = "signupfleet_ac01_fleet_ips_bypass_signup_rate_limit.rs"]
+mod signupfleet_ac01_fleet_ips_bypass_signup_rate_limit;
 #[path = "specpath_ac01_map_form_normalizes_and_publishes.rs"]
 mod specpath_ac01_map_form_normalizes_and_publishes;
 #[path = "specpath_ac02_outputs_map_value_type_error.rs"]
