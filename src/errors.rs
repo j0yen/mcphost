@@ -342,7 +342,11 @@ impl AppError {
                 // subject is the same "come back later/never" caller-state
                 // gate as a paused signup or a rate limit, not a bad
                 // argument and not an internal failure.
-                "rate_limited" | "signup_paused" | "banned" => ErrorCode::INVALID_REQUEST,
+                // PRD-mcphost-tool-scopes-and-consent requirement 4 (AC2):
+                // a per-tool `insufficient_scope` refusal is the same
+                // caller-credential problem `AppError::InsufficientScope`
+                // already maps here.
+                "rate_limited" | "signup_paused" | "banned" | "insufficient_scope" => ErrorCode::INVALID_REQUEST,
                 // PRD-mcphost-spec-output-paths requirement 1: a structured
                 // `invalid_spec` (kinds::http/python's own `parse_spec` and
                 // `normalize_outputs`) is exactly the same caller-input

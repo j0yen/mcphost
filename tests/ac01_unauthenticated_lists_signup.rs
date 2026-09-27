@@ -288,6 +288,13 @@ async fn unauthenticated_tools_list_is_signup_only() {
         "host.oauth.revoke_all",
         "host.oauth.audit",
         "host.oauth.audit_export",
+        // PRD-mcphost-tool-scopes-and-consent requirement 1: discoverable
+        // unauthenticated too, same as every other host.*-style tool
+        // above -- declaring a tenant's own scope catalog is itself an
+        // authenticated (tenant_key/bearer-gated) call, not the discovery
+        // of it.
+        "host.oauth.scope_set",
+        "host.oauth.scopes",
     ] {
         assert!(
             tool_names.contains(&expected),
@@ -300,7 +307,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        130,
+        132,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the three host.tool_history/host.tool_rollback/host.tool_diff \
@@ -333,7 +340,9 @@ async fn unauthenticated_tools_list_is_signup_only() {
          the seven host.enduser.get/audit/revoke/unrevoke/purge/export/list tools \
          (PRD-mcphost-end-user-audit-and-revoke) + \
          the eight host.oauth.policy_set/policy/pending/client_approve/client_deny/revoke_all/ \
-         audit/audit_export tools (PRD-mcphost-oauth-client-policy): \
+         audit/audit_export tools (PRD-mcphost-oauth-client-policy) + \
+         the two host.oauth.scope_set/scopes tools \
+         (PRD-mcphost-tool-scopes-and-consent): \
          {tool_names:?}"
     );
 }

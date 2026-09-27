@@ -428,6 +428,13 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # the same 620 starting point. 620 -> 650 (620 + fedlogin's +10 + oauthsig's
 # +20) re-collapses core's normal buckets to 1, landing the grand total back
 # at 10.
+#
+# Rebasing mcphost-tool-scopes-and-consent onto main after
+# mcphost-oauth-demand-signal (#64) merged (2026-09-27): this PRD's own
+# `toolscope_ac*.rs` files (also `core`-classified) join the same normal
+# bucket on top of oauth-demand-signal's own 650 cap above, spawning an 11th
+# suite binary again -- caught by the same P0 assertion. See below for
+# whatever cap this rebase's own P0 assertion run required.
 MAX_PER_SUITE = {"core": 650, "sandbox": 90}
 
 

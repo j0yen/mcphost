@@ -43,10 +43,16 @@ async fn gate_verdict_table_matches_gold_within_20s() {
             scenario.name, scenario.family, result.verdict, expected, result.records
         );
 
-        if scenario.family == "prm" || scenario.family == "iss" {
-            assert_eq!(expected, Verdict::Pass, "AC1: family {} must be gold-pass", scenario.family);
+        // requirement 2 goal 3: "every OAuth PRD in this fleet names the
+        // scenarios it flips from unsupported to pass" via `owner_prd` --
+        // an unclaimed scenario must read gold-unsupported, a claimed one
+        // must read gold-pass, regardless of which family it belongs to
+        // (PRD-mcphost-tool-scopes-and-consent AC3 is the first claim
+        // beyond this PRD's own prm/iss).
+        if scenario.owner_prd == "unassigned" {
+            assert_eq!(expected, Verdict::Unsupported, "AC1: unclaimed scenario {} must be gold-unsupported", scenario.name);
         } else {
-            assert_eq!(expected, Verdict::Unsupported, "AC1: family {} must be gold-unsupported", scenario.family);
+            assert_eq!(expected, Verdict::Pass, "AC1: scenario {} claimed by {} must be gold-pass", scenario.name, scenario.owner_prd);
         }
         families_checked.insert(scenario.family.clone());
     }

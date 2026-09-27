@@ -74,6 +74,11 @@ const MIGRATION_0050: &str = include_str!("../migrations/0050_hosted_authorizati
 const MIGRATION_0051: &str = include_str!("../migrations/0051_oauth_client_policy.sql");
 const MIGRATION_0052: &str = include_str!("../migrations/0052_federated_end_user_login.sql");
 const MIGRATION_0053: &str = include_str!("../migrations/0053_oauth_demand_signal.sql");
+// Renumbered from this PRD's own 0052, then 0053, to 0054 during rebase:
+// mcphost-federated-end-user-login claimed 0052 first, then
+// mcphost-oauth-demand-signal claimed 0053 first, both landing on main ahead
+// of this branch.
+const MIGRATION_0054: &str = include_str!("../migrations/0054_tool_scopes_and_consent.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -130,10 +135,11 @@ fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
 /// convention as [`TENANT_COLUMNS`]/[`tenant_from_row`] above
 /// (PRD-mcphost-sharing migration 0013).
 const TOOL_COLUMNS: &str = "id, tenant_id, name, kind, spec, created_at, visibility, \
-    share_description, shared_unix, shared_group, unshared_by, current_version";
+    share_description, shared_unix, shared_group, unshared_by, current_version, scopes";
 
 fn tool_from_row(r: &Row) -> rusqlite::Result<ToolRow> {
     let spec_text: String = r.get(4)?;
+    let scopes_text: String = r.get(12)?;
     Ok(ToolRow {
         id: r.get(0)?,
         tenant_id: r.get(1)?,
@@ -147,6 +153,7 @@ fn tool_from_row(r: &Row) -> rusqlite::Result<ToolRow> {
         shared_group: r.get(9)?,
         unshared_by: r.get(10)?,
         current_version: r.get(11)?,
+        scopes: serde_json::from_str(&scopes_text).unwrap_or_default(),
     })
 }
 
@@ -474,6 +481,12 @@ pub struct ToolRow {
     /// [`Db::upsert_tool`]/[`Db::rollback_tool_version`], so an unpinned
     /// call path (`Kind::call(&row.spec, ...)`) needs no change at all.
     pub current_version: i64,
+    /// PRD-mcphost-tool-scopes-and-consent requirement 1 (migration 0051):
+    /// the scope names a token must carry (directly, or via `mcp`'s
+    /// hierarchy) to reach this tool through `tools/list`/`tools/call`;
+    /// empty means "requires only `mcp`" -- set fresh at every
+    /// `host.tool_publish`, never carried over from a prior version.
+    pub scopes: Vec<String>,
 }
 
 /// A single immutable published version of a tool (PRD-mcphost-tool-versions
@@ -2030,7 +2043,8 @@ impl Db {
         Self::migrate_0050_hosted_authorization_server(&conn)?;
         Self::migrate_0051_oauth_client_policy(&conn)?;
         Self::migrate_0052_federated_end_user_login(&conn)?;
-        Self::migrate_0053_oauth_demand_signal(&conn)
+        Self::migrate_0053_oauth_demand_signal(&conn)?;
+        Self::migrate_0054_tool_scopes_and_consent(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -2771,6 +2785,23 @@ impl Db {
         Ok(())
     }
 
+    /// PRD-mcphost-tool-scopes-and-consent requirements 1-6: gated on the
+    /// new `oauth_scopes` table's existence, same shape as 0050 above --
+    /// this batch's other statements (`tools.scopes`, `oauth_grants.scope`)
+    /// always land in the same run as `oauth_scopes` itself. (Renumbered
+    /// from this PRD's own 0052, then 0053, to 0054 during rebase:
+    /// mcphost-federated-end-user-login claimed 0052 first, then
+    /// mcphost-oauth-demand-signal claimed 0053 first, both landing on main
+    /// ahead of this branch.)
+    fn migrate_0054_tool_scopes_and_consent(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'oauth_scopes'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0054)?;
+        }
+        Ok(())
+    }
 
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
@@ -4550,12 +4581,15 @@ impl Db {
         kind: String,
         spec: Value,
         versions_max: i64,
+        scopes: Vec<String>,
     ) -> Result<i64, AppError> {
         let created_at = now_rfc3339();
         let created_unix = now_unix();
         let spec_text = serde_json::to_string(&spec)
             .map_err(|e| AppError::Internal(format!("spec serialize: {e}")))?;
         let source_sha256 = sha256_hex(spec_text.as_bytes());
+        let scopes_text = serde_json::to_string(&scopes)
+            .map_err(|e| AppError::Internal(format!("scopes serialize: {e}")))?;
         self.with_conn(move |conn| {
             let next_version: i64 = conn.query_row(
                 "SELECT COALESCE(MAX(version), 0) + 1 FROM tool_versions WHERE tenant_id = ?1 AND name = ?2",
@@ -4578,11 +4612,12 @@ impl Db {
                 ],
             )?;
             conn.execute(
-                "INSERT INTO tools (tenant_id, name, kind, spec, created_at, current_version) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
+                "INSERT INTO tools (tenant_id, name, kind, spec, created_at, current_version, scopes) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) \
                  ON CONFLICT(tenant_id, name) DO UPDATE SET \
-                 kind = excluded.kind, spec = excluded.spec, current_version = excluded.current_version",
-                params![tenant_id, name, kind, spec_text, created_at, next_version],
+                 kind = excluded.kind, spec = excluded.spec, current_version = excluded.current_version, \
+                 scopes = excluded.scopes",
+                params![tenant_id, name, kind, spec_text, created_at, next_version, scopes_text],
             )?;
             // requirement 2 / AC3: oldest versions beyond `versions_max` are
             // deleted oldest-first -- the KEEP set is the newest
@@ -5091,6 +5126,10 @@ impl Db {
                             shared_group: r.get(10)?,
                             unshared_by: r.get(11)?,
                             current_version: r.get(12)?,
+                            scopes: {
+                                let scopes_text: String = r.get(13)?;
+                                serde_json::from_str(&scopes_text).unwrap_or_default()
+                            },
                         },
                     ))
                 })?
@@ -5332,6 +5371,10 @@ impl Db {
                         shared_group: r.get(10)?,
                         unshared_by: r.get(11)?,
                         current_version: r.get(12)?,
+                        scopes: {
+                            let scopes_text: String = r.get(13)?;
+                            serde_json::from_str(&scopes_text).unwrap_or_default()
+                        },
                     };
                     Ok((namespace, tool))
                 })?
@@ -12369,6 +12412,63 @@ impl Db {
         .await
     }
 
+    // ---- oauth_scopes (PRD-mcphost-tool-scopes-and-consent requirement 1) --
+
+    /// `host.oauth.scope_set {name, description}`: upserts one catalog
+    /// entry -- re-setting a name this tenant already owns updates its
+    /// `description` in place (never counts a second time against the
+    /// 32-entry cap, requirement 1).
+    pub async fn upsert_oauth_scope(
+        &self,
+        tenant_id: i64,
+        name: String,
+        description: String,
+    ) -> Result<(), AppError> {
+        let created_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO oauth_scopes (tenant_id, name, description, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4) \
+                 ON CONFLICT(tenant_id, name) DO UPDATE SET description = excluded.description",
+                params![tenant_id, name, description, created_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `host.oauth.scopes`/AC1/AC7: this tenant's own scope catalog, oldest
+    /// first -- what the consent page's per-scope descriptions and the
+    /// per-tenant metadata document's `scopes_supported` both read.
+    pub async fn list_oauth_scopes(&self, tenant_id: i64) -> Result<Vec<OauthScopeRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT name, description FROM oauth_scopes WHERE tenant_id = ?1 ORDER BY id",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id], |r| {
+                    Ok(OauthScopeRow { name: r.get(0)?, description: r.get(1)? })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// requirement 1's 32-entry cap: counted before a new (never a
+    /// re-set-in-place) catalog entry is inserted.
+    pub async fn count_oauth_scopes(&self, tenant_id: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM oauth_scopes WHERE tenant_id = ?1",
+                params![tenant_id],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
     /// [`crate::oauth::JwksCache`]'s durable mirror: written on every
     /// successful JWKS fetch (proactive TTL refresh, reactive unknown-kid
     /// refetch, or an operator's `admin.oauth.jwks_refresh`) so
@@ -14308,6 +14408,9 @@ impl Db {
     /// requirement 4: one grant per completed authorization-code exchange
     /// -- returns the new row's id.
     ///
+    /// PRD-mcphost-tool-scopes-and-consent requirement 6: `scope` is the
+    /// space-separated scope string this grant was actually issued with.
+    ///
     /// PRD-mcphost-federated-end-user-login requirement 3/5: `end_user`
     /// carries the federated identity through from the [`OauthCodeRow`]
     /// that minted this grant -- `None` for the pre-existing tenant-owner
@@ -14320,6 +14423,7 @@ impl Db {
         client_name: Option<String>,
         method: String,
         resource: String,
+        scope: String,
         end_user: Option<FederatedEndUser>,
     ) -> Result<i64, AppError> {
         let created_unix = now_unix();
@@ -14327,15 +14431,16 @@ impl Db {
         self.with_conn(move |conn| {
             conn.execute(
                 "INSERT INTO oauth_grants \
-                 (tenant_id, client_id, client_name, method, resource, created_unix, last_used_unix, \
+                 (tenant_id, client_id, client_name, method, resource, scope, created_unix, last_used_unix, \
                   end_user_subject, end_user_email, end_user_name, end_user_issuer) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?7, ?8, ?9, ?10)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?8, ?9, ?10, ?11)",
                 params![
                     tenant_id,
                     client_id,
                     client_name,
                     method,
                     resource,
+                    scope,
                     created_unix,
                     end_user.subject,
                     end_user.email,
@@ -14352,7 +14457,7 @@ impl Db {
         self.with_conn(move |conn| {
             conn.query_row(
                 "SELECT id, tenant_id, client_id, client_name, method, resource, created_unix, \
-                 last_used_unix, revoked_unix, end_user_subject, end_user_email, end_user_name, \
+                 last_used_unix, revoked_unix, scope, end_user_subject, end_user_email, end_user_name, \
                  end_user_issuer FROM oauth_grants WHERE id = ?1",
                 params![id],
                 oauth_grant_from_row,
@@ -14368,7 +14473,7 @@ impl Db {
         self.with_conn(move |conn| {
             let mut stmt = conn.prepare(
                 "SELECT id, tenant_id, client_id, client_name, method, resource, created_unix, \
-                 last_used_unix, revoked_unix, end_user_subject, end_user_email, end_user_name, \
+                 last_used_unix, revoked_unix, scope, end_user_subject, end_user_email, end_user_name, \
                  end_user_issuer FROM oauth_grants \
                  WHERE tenant_id = ?1 AND revoked_unix IS NULL ORDER BY created_unix DESC",
             )?;
@@ -14415,6 +14520,21 @@ impl Db {
             let rows = stmt
                 .query_map(params![tenant_id], |r| r.get::<_, i64>(0))?
                 .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-tool-scopes-and-consent AC8: every grant created since
+    /// `since_unix`, its own `scope` string -- `admin.oauth.stats`'
+    /// `consents_by_scope_7d` tallies these by space-separated word.
+    pub async fn list_oauth_grant_scopes_since(&self, since_unix: i64) -> Result<Vec<String>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt =
+                conn.prepare("SELECT scope FROM oauth_grants WHERE created_unix >= ?1")?;
+            let rows = stmt
+                .query_map(params![since_unix], |r| r.get(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
             Ok(rows)
         })
         .await
@@ -15540,6 +15660,15 @@ fn ban_from_row(r: &Row) -> rusqlite::Result<Ban> {
     })
 }
 
+/// PRD-mcphost-tool-scopes-and-consent requirement 1: one `oauth_scopes`
+/// row -- a tenant's own catalog entry, as `host.oauth.scopes`/the consent
+/// page/the per-tenant metadata document all read it back.
+#[derive(Debug, Clone, Serialize)]
+pub struct OauthScopeRow {
+    pub name: String,
+    pub description: String,
+}
+
 /// PRD-mcphost-oauth-resource-server requirement 3: one `oauth_issuers`
 /// row, as `host.oauth.issuers`/`admin.oauth.issuers` and
 /// [`crate::oauth::validate_bearer`] all read it back.
@@ -15727,6 +15856,10 @@ pub struct OauthGrantRow {
     pub created_unix: i64,
     pub last_used_unix: i64,
     pub revoked_unix: Option<i64>,
+    /// PRD-mcphost-tool-scopes-and-consent requirement 6 (migration 0054):
+    /// the space-separated scope string this grant was actually issued
+    /// with -- `"mcp"` for every grant created before this PRD.
+    pub scope: String,
     pub end_user_subject: Option<String>,
     pub end_user_email: Option<String>,
     pub end_user_name: Option<String>,
@@ -15757,10 +15890,11 @@ fn oauth_grant_from_row(r: &Row) -> rusqlite::Result<OauthGrantRow> {
         created_unix: r.get(6)?,
         last_used_unix: r.get(7)?,
         revoked_unix: r.get(8)?,
-        end_user_subject: r.get(9)?,
-        end_user_email: r.get(10)?,
-        end_user_name: r.get(11)?,
-        end_user_issuer: r.get(12)?,
+        scope: r.get(9)?,
+        end_user_subject: r.get(10)?,
+        end_user_email: r.get(11)?,
+        end_user_name: r.get(12)?,
+        end_user_issuer: r.get(13)?,
     })
 }
 

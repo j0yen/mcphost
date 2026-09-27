@@ -56,6 +56,22 @@ pub fn tenant_metadata_url(public_url: &str, namespace: &str) -> String {
     format!("{public_url}/.well-known/oauth-protected-resource/t/{namespace}/mcp")
 }
 
+/// PRD-mcphost-tool-scopes-and-consent requirement 2: the inverse of
+/// [`canonical_resource_uri`] -- `/oauth/authorize`'s own `resource`
+/// parameter names which tenant's scope catalog governs consent, before
+/// that tenant is even authenticated (the URL itself already names it, the
+/// same information a `/t/{ns}/mcp` path segment already exposes). `None`
+/// for anything that isn't shaped like a per-tenant resource URI at all
+/// (the root resource, or garbage).
+pub fn resource_tenant_namespace(public_url: &str, resource: &str) -> Option<String> {
+    let prefix = format!("{}/t/", public_url.trim_end_matches('/'));
+    resource
+        .strip_prefix(&prefix)
+        .and_then(|rest| rest.strip_suffix("/mcp"))
+        .filter(|ns| !ns.is_empty())
+        .map(str::to_string)
+}
+
 /// P2 requirement 8: `$MCPHOST_OAUTH_ALLOWED_ALGS`, a comma-separated list
 /// of `RS256`/`ES256` (the only two this crate's JWK-to-`DecodingKey`
 /// mapping in [`decoding_key_for`] can ever produce); an unrecognized name
@@ -608,7 +624,133 @@ pub async fn issuers_list(state: &AppState, tenant: &Tenant) -> Result<Value, Ap
     Ok(json!({"issuers": issuers}))
 }
 
+// ---- oauth_scopes: a tenant's own scope catalog (PRD-mcphost-tool-scopes-
+// and-consent requirement 1) ------------------------------------------------
+
+/// requirement 1: "a tool may reference only catalogued scopes or the
+/// built-ins `read`, `write`" -- these two need no `oauth_scopes` row to be
+/// valid on a tool's own `scopes`; a catalog entry only ever adds a
+/// consent-page description for them (or names an entirely custom scope).
+pub const BUILTIN_SCOPES: [&str; 2] = ["read", "write"];
+
+/// requirement 1: 32 catalog entries per tenant.
+pub const MAX_SCOPES_PER_TENANT: i64 = 32;
+
+/// Every scope name valid for this tenant to use anywhere -- on a
+/// `/oauth/authorize` request, on a tool's own `scopes`, or listed in a
+/// metadata document's `scopes_supported` (AC7): `mcp` (the hierarchy root),
+/// the two built-ins, and this tenant's own catalog names.
+pub fn known_scope_names(catalog: &[crate::db::OauthScopeRow]) -> std::collections::HashSet<String> {
+    let mut set: std::collections::HashSet<String> =
+        std::iter::once("mcp".to_string()).chain(BUILTIN_SCOPES.iter().map(|s| s.to_string())).collect();
+    set.extend(catalog.iter().map(|s| s.name.clone()));
+    set
+}
+
+/// requirement 1: a tool's own declared `scopes`, defaulted -- empty means
+/// "requires only `mcp`" (never an unsatisfiable empty requirement).
+fn required_or_mcp(scopes: &[String]) -> Vec<String> {
+    if scopes.is_empty() { vec!["mcp".to_string()] } else { scopes.to_vec() }
+}
+
+/// requirements 3/4 (AC2, AC6): whether `token_scope` (an `OauthCaller`'s
+/// own `scope` claim -- `None` for a key-based caller, or a token that
+/// never carries the claim at all, both unrestricted) satisfies `required`
+/// (a tool's own `scopes`) -- `mcp`'s hierarchy always satisfies every
+/// scope, so a token carrying it needs no further check. The one gate both
+/// `tools/list`'s per-row filter and `tools/call`'s dispatch-time refusal
+/// share, so a scope change on republish (AC6) is read fresh by whichever
+/// runs next, no cache to invalidate.
+pub fn scope_satisfied(token_scope: Option<&str>, required: &[String]) -> bool {
+    let Some(scope) = token_scope else {
+        return true;
+    };
+    let words: std::collections::HashSet<&str> = scope.split_whitespace().collect();
+    if words.contains("mcp") {
+        return true;
+    }
+    required_or_mcp(required).iter().all(|r| words.contains(r.as_str()))
+}
+
+/// requirement 4 (AC2): the `insufficient_scope` challenge's own `scope`
+/// value -- the union of `token_scope`'s recognized words (intersected
+/// against `mcp` ∪ the built-ins ∪ this tenant's own catalog, so a foreign
+/// word like `offline_access` or an unrelated scope never leaks in) and the
+/// tool's own required scopes, sorted. A token with no `scope` claim at all
+/// never reaches this (requirement 4/[`scope_satisfied`] never refuses it),
+/// so `token_scope` here is always genuinely restrictive.
+pub async fn union_scope_challenge(
+    state: &AppState,
+    tenant_id: i64,
+    token_scope: Option<&str>,
+    required: &[String],
+) -> String {
+    let catalog = state.db.list_oauth_scopes(tenant_id).await.unwrap_or_default();
+    let known = known_scope_names(&catalog);
+    let mut set: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    if let Some(scope) = token_scope {
+        for w in scope.split_whitespace() {
+            if known.contains(w) {
+                set.insert(w.to_string());
+            }
+        }
+    }
+    set.extend(required_or_mcp(required));
+    set.into_iter().collect::<Vec<_>>().join(" ")
+}
+
+/// `host.oauth.scope_set {name, description}` (requirement 1): upserts one
+/// catalog entry -- re-setting an already-owned `name` updates its
+/// `description` in place and never counts a second time against the
+/// 32-entry cap.
+pub async fn scope_set(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let name = arg_str(args, "name")?;
+    let description = arg_str(args, "description")?;
+    crate::state::validate_scope_name(&name)?;
+    let existing = state.db.list_oauth_scopes(tenant.id).await?;
+    if !existing.iter().any(|s| s.name == name) {
+        let used = state.db.count_oauth_scopes(tenant.id).await?;
+        if used >= MAX_SCOPES_PER_TENANT {
+            return Err(AppError::InvalidParams(format!(
+                "scope catalog already holds {used} entries, the maximum {MAX_SCOPES_PER_TENANT}"
+            )));
+        }
+    }
+    state.db.upsert_oauth_scope(tenant.id, name.clone(), description.clone()).await?;
+    Ok(json!({"name": name, "description": description}))
+}
+
+/// `host.oauth.scopes`: this tenant's own scope catalog.
+pub async fn scopes_list(state: &AppState, tenant: &Tenant) -> Result<Value, AppError> {
+    let rows = state.db.list_oauth_scopes(tenant.id).await?;
+    let scopes: Vec<Value> = rows
+        .iter()
+        .map(|r| json!({"name": r.name, "description": r.description}))
+        .collect();
+    Ok(json!({"scopes": scopes}))
+}
+
 // ---- admin.oauth.* -------------------------------------------------------
+
+/// requirement 6 (AC8): 7 days, matching `consents_by_scope_7d`'s own name.
+const CONSENTS_BY_SCOPE_WINDOW_SECS: i64 = 7 * 86_400;
+
+/// `admin.oauth.stats` (requirement 6, AC8): `consents_by_scope_7d` tallies
+/// every space-separated word across every grant (one per completed
+/// consent -- `host.oauth.grants`' own unit) created in the last 7 days,
+/// e.g. two `read`-only consents and one `read write` consent tally to
+/// `{read: 3, write: 1}`.
+pub async fn admin_stats(state: &AppState) -> Result<Value, AppError> {
+    let since = now_unix() - CONSENTS_BY_SCOPE_WINDOW_SECS;
+    let scopes = state.db.list_oauth_grant_scopes_since(since).await?;
+    let mut tally: std::collections::BTreeMap<String, i64> = std::collections::BTreeMap::new();
+    for scope in &scopes {
+        for word in scope.split_whitespace() {
+            *tally.entry(word.to_string()).or_insert(0) += 1;
+        }
+    }
+    Ok(json!({"consents_by_scope_7d": tally}))
+}
 
 /// `admin.oauth.issuers` (AC9): every registered issuer, its owning
 /// tenant, JWKS age, and per-reason rejection counters.
@@ -699,11 +841,35 @@ pub async fn protected_resource_metadata_for_tenant(state: &AppState, tenant: &T
             issuers.insert(0, own);
         }
     }
+    // PRD-mcphost-tool-scopes-and-consent requirement 3 (AC7): `mcp`
+    // alone for a tenant that has never called `host.oauth.scope_set`
+    // (`tenantprm_ac01`'s own pre-existing "empty catalog" pin, unchanged
+    // by this PRD) -- once a catalog exists, `mcp`, `read`, `write` lead
+    // (in that fixed order -- the built-ins are always valid on a tool's
+    // own `scopes` once a tenant has opted into scoping at all,
+    // requirement 1), then this tenant's own catalog names beyond those
+    // three, sorted.
+    let catalog = state.db.list_oauth_scopes(tenant.id).await?;
+    let scopes_supported: Vec<String> = if catalog.is_empty() {
+        vec!["mcp".to_string()]
+    } else {
+        let mut scopes: Vec<String> =
+            std::iter::once("mcp".to_string()).chain(BUILTIN_SCOPES.iter().map(|s| s.to_string())).collect();
+        let mut extra: Vec<String> = catalog
+            .into_iter()
+            .map(|s| s.name)
+            .filter(|name| !scopes.contains(name))
+            .collect();
+        extra.sort();
+        extra.dedup();
+        scopes.extend(extra);
+        scopes
+    };
     Ok(json!({
         "resource": canonical_resource_uri(&state.public_url, &tenant.namespace),
         "authorization_servers": issuers,
         "bearer_methods_supported": ["header"],
-        "scopes_supported": ["mcp"],
+        "scopes_supported": scopes_supported,
         "resource_documentation": format!("{}/docs", state.public_url),
     }))
 }

@@ -59,6 +59,28 @@ fn arg_bool(args: &Value, name: &str) -> bool {
     args.get(name).and_then(Value::as_bool).unwrap_or(false)
 }
 
+/// PRD-mcphost-tool-scopes-and-consent requirement 1: at most 8 scopes per
+/// tool.
+const MAX_SCOPES_PER_TOOL: usize = 8;
+
+/// requirement 1: `host.tool_publish`'s optional `scopes` argument -- absent
+/// or JSON `null` means "requires only `mcp`" (empty `Vec`); anything else
+/// must be an array of strings (each validated by the caller).
+fn parse_tool_scopes(args: &Value) -> Result<Vec<String>, AppError> {
+    match args.get("scopes") {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(|item| {
+                item.as_str()
+                    .map(str::to_string)
+                    .ok_or_else(|| AppError::InvalidParams("scopes: every element must be a string".to_string()))
+            })
+            .collect(),
+        Some(_) => Err(AppError::InvalidParams("scopes: must be an array of strings".to_string())),
+    }
+}
+
 /// PRD-mcphost-tool-versions requirement 4/8: `host.tool_rollback`'s
 /// `version` and `host.tool_diff`'s `from`/`to` -- required integer
 /// arguments, same `args_invalid` shape as [`arg_str`] for a missing one.
@@ -888,6 +910,31 @@ pub async fn tool_publish(
     let mut spec = args.get("spec").cloned().unwrap_or(Value::Null);
 
     validate_tool_name(&name)?;
+    // PRD-mcphost-tool-scopes-and-consent requirement 1 (AC5): validated
+    // unconditionally, `dry_run` or not -- an invalid `scopes` argument is
+    // never one of the "collectible" gates below, it's a malformed request.
+    let scopes = parse_tool_scopes(args)?;
+    if scopes.len() > MAX_SCOPES_PER_TOOL {
+        return Err(AppError::InvalidParams(format!(
+            "scopes: at most {MAX_SCOPES_PER_TOOL} scopes per tool, got {}",
+            scopes.len()
+        )));
+    }
+    for s in &scopes {
+        crate::state::validate_scope_name(s)?;
+    }
+    if !scopes.is_empty() {
+        let catalog = state.db.list_oauth_scopes(tenant.id).await?;
+        let catalog_names: std::collections::HashSet<&str> =
+            catalog.iter().map(|s| s.name.as_str()).collect();
+        for s in &scopes {
+            if !(crate::oauth::BUILTIN_SCOPES.contains(&s.as_str()) || catalog_names.contains(s.as_str())) {
+                return Err(AppError::InvalidParams(format!(
+                    "scopes: '{s}' is not in this tenant's scope catalog (host.oauth.scopes) and is not a built-in (read, write)"
+                )));
+            }
+        }
+    }
 
     let spec_bytes = serde_json::to_vec(&spec)
         .map_err(|e| AppError::Internal(format!("spec serialize: {e}")))?
@@ -1182,6 +1229,7 @@ pub async fn tool_publish(
             kind_name.clone(),
             spec.clone(),
             plan.versions_max,
+            scopes.clone(),
         )
         .await?;
 
@@ -1392,6 +1440,9 @@ pub async fn tool_list(state: &AppState, tenant: &Tenant) -> Result<Value, AppEr
                 "unshared_by": row.unshared_by,
                 "env": env,
                 "advisories": advisories,
+                // PRD-mcphost-tool-scopes-and-consent requirement 1: empty
+                // means the tool requires only `mcp`, never omitted.
+                "scopes": row.scopes,
             });
             // PRD-mcphost-first-publish-real-kind requirement 5 (AC5):
             // `stub: true` on an echo-kind tool, absent (not `false`) for

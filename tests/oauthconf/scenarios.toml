@@ -76,9 +76,14 @@ expected = "unsupported"
 [[scenario]]
 name = "step_up_403_without_as_metadata"
 family = "step_up"
-owner_prd = "unassigned"
+# PRD-mcphost-tool-scopes-and-consent AC3: this family's own runner
+# (`oauthclient::run_step_up_probe`) self-signs-up a synthetic probe
+# tenant, publishes a `write`-scoped tool, and drives the full step-up
+# sequence -- a 403 `insufficient_scope` on the under-scoped call, then a
+# re-authorization with the union scope, then success -- for real.
+owner_prd = "mcphost-tool-scopes-and-consent"
 steps = ["discover_401", "read_prm", "read_as_metadata", "register", "authorize", "consent", "token", "call", "step_up"]
-expected = "unsupported"
+expected = "pass"
 
 [[scenario]]
 name = "resource_slash_without_as_metadata"

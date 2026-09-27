@@ -1762,6 +1762,47 @@
       "since": "0.58.0"
     },
     {
+      "description": "Declare (or update) one scope this tenant's tools may require: name (a catalogued name, or the built-ins read/write) and a human-readable description shown on the OAuth consent page. Up to 32 catalog entries per tenant.",
+      "input_schema": {
+        "properties": {
+          "description": {
+            "description": "Human-readable text shown on the OAuth consent page.",
+            "type": "string"
+          },
+          "name": {
+            "description": "^[a-z][a-z0-9_:.-]{0,40}$",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description"
+        ],
+        "type": "object"
+      },
+      "name": "host.oauth.scope_set",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List this tenant's own scope catalog: name and description.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.oauth.scopes",
+      "since": "0.58.0"
+    },
+    {
       "description": "Report (or merge in) counters and/or pct/msg on a run, by id. Each named counter (items_processed, items_total, bytes_out, custom.<k>) is monotonic on its own -- a lower value than what's already stored fails validation with nothing written. Read back via host.runs.get/wait/list's counters field.",
       "input_schema": {
         "properties": {
@@ -2764,6 +2805,13 @@
           "name": {
             "description": "Local name for the new tool; must match ^[a-z][a-z0-9_]{1,40}$.",
             "type": "string"
+          },
+          "scopes": {
+            "description": "OAuth scopes a token must carry (directly, or via mcp) to reach this tool: catalogued names from host.oauth.scopes, or the built-ins read/write. At most 8. Omit (or [] ) to require only mcp -- unaffected by any catalog.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "spec": {
             "description": "The kind-specific spec object; see host.quickstart(kind) for a filled-in example.",
