@@ -678,12 +678,27 @@ pub async fn protected_resource_metadata(state: &AppState) -> Result<Value, AppE
 /// `GET /.well-known/oauth-protected-resource/t/{ns}/mcp` (PRD-mcphost-tenant-resource-metadata
 /// requirement 2 / AC1): same shape as [`protected_resource_metadata`], but
 /// `resource` is this one tenant's own canonical URI and
-/// `authorization_servers` lists only issuers this tenant itself
-/// registered -- never another tenant's, the whole point of a per-tenant
-/// document (Non-goals/Goals: "non-enumerable").
+/// `authorization_servers` lists issuers this tenant itself registered --
+/// never another tenant's, the whole point of a per-tenant document
+/// (Non-goals/Goals: "non-enumerable") -- PLUS, when this tenant has an
+/// OIDC federation provider registered (`host.oauth.provider_set`,
+/// PRD-mcphost-federated-end-user-login), this host's own hosted-AS issuer
+/// (AC11: a federated tenant's end users authenticate through mcphost's own
+/// authorization-code round trip, not the upstream OIDC provider directly,
+/// so a client needs to discover mcphost itself as an authorization server
+/// here -- the same value [`protected_resource_metadata`] always lists for
+/// the root document). Hosted AS listed first, deduplicated against an own
+/// issuer that happens to equal it. A tenant with no provider registered
+/// keeps exactly today's behaviour: only its own issuers.
 pub async fn protected_resource_metadata_for_tenant(state: &AppState, tenant: &Tenant) -> Result<Value, AppError> {
     let rows = state.db.list_oauth_issuers_by_tenant(tenant.id).await?;
-    let issuers: Vec<String> = rows.into_iter().map(|row| row.issuer).collect();
+    let mut issuers: Vec<String> = rows.into_iter().map(|row| row.issuer).collect();
+    if state.db.find_oauth_provider_by_tenant(tenant.id).await?.is_some() {
+        let own = state.public_url.trim_end_matches('/').to_string();
+        if !issuers.iter().any(|i| i == &own) {
+            issuers.insert(0, own);
+        }
+    }
     Ok(json!({
         "resource": canonical_resource_uri(&state.public_url, &tenant.namespace),
         "authorization_servers": issuers,

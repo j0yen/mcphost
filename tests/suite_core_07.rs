@@ -358,6 +358,8 @@ mod enduserctl_ac10_list_100k_pages_under_50ms_stable_cursor;
 mod envelope_ac1_http_declared_output_promoted;
 #[path = "envelope_ac4_tool_test_reports_missing_declared_output.rs"]
 mod envelope_ac4_tool_test_reports_missing_declared_output;
+#[path = "federation_ac11_tenant_prm_lists_hosted_as.rs"]
+mod federation_ac11_tenant_prm_lists_hosted_as;
 #[path = "fedlogin_ac01_provider_set_discovery_no_secret.rs"]
 mod fedlogin_ac01_provider_set_discovery_no_secret;
 #[path = "fedlogin_ac02_authorize_redirects_consent_mints_code.rs"]
