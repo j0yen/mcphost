@@ -450,14 +450,37 @@ fn render_consent_page(client_name: &str, resource: &str, params: &AuthorizePara
     )
 }
 
+/// PRD-mcphost-oauth-client-policy requirement 2 (AC2): `clients: approve`
+/// holds consent for a not-yet-decided client -- rendered instead of
+/// minting a code, same "inline, no redirect" posture
+/// [`render_inline_error`] takes (the caller has no token to receive yet
+/// either way).
+fn render_pending_page(client_name: &str) -> String {
+    page(
+        "mcphost — authorize",
+        &format!(
+            "<h1>Awaiting approval</h1><p>{} is awaiting approval by this tenant. \
+             An admin must call host.oauth.client_approve before this client can connect.</p>",
+            html_escape(client_name),
+        ),
+    )
+}
+
 /// requirement 3/AC2/AC6: every failure that has no trusted `redirect_uri`
 /// to send the caller back to yet (client identification itself failed, or
 /// `redirect_uri` isn't a registered one) renders inline -- never a
 /// redirect, since redirecting to an unvalidated URI is exactly the
 /// open-redirect flaw class this PRD's grounding names.
 fn render_inline_error(code: &str, message: &str) -> Response {
+    render_inline_error_status(StatusCode::BAD_REQUEST, code, message)
+}
+
+/// Same shape as [`render_inline_error`], with the status code callable --
+/// requirement 6 / AC8's rate-limit refusal is a `429`, not this module's
+/// usual `400`.
+fn render_inline_error_status(status: StatusCode, code: &str, message: &str) -> Response {
     html_response(
-        StatusCode::BAD_REQUEST,
+        status,
         page(
             "mcphost — authorize",
             &format!("<h1>{}</h1><p>{}</p>", html_escape(code), html_escape(message)),
@@ -497,6 +520,7 @@ fn error_redirect(redirect_uri: &str, error: &str, state_param: Option<&str>) ->
 async fn validate_authorize_params(
     state: &AppState,
     params: &AuthorizeParams,
+    source_ip: &str,
 ) -> Result<(ClientIdentity, String, String), Box<Response>> {
     let Some(client_id) = params.client_id.clone().filter(|s| !s.is_empty()) else {
         return Err(Box::new(render_inline_error("invalid_request", "client_id is required")));
@@ -507,6 +531,46 @@ async fn validate_authorize_params(
             "client_id could not be identified (unknown, or its CIMD document did not validate)",
         )));
     };
+    // PRD-mcphost-oauth-client-policy requirement 5 (AC7): the operator's
+    // global block list is checked before any tenant policy, and before
+    // this client can even be identified as belonging to one -- no tenant
+    // is known yet at this point, so the audit row this writes carries no
+    // `tenant_id`.
+    if crate::oauth_policy::is_client_blocked(state, &identity).await.unwrap_or(false) {
+        let _ = crate::oauth_policy::record_audit(
+            state,
+            None,
+            "authorize_refused",
+            Some(identity.client_id.as_str()),
+            Some(identity.method),
+            None,
+            Some("client_blocked"),
+            Some(source_ip),
+        )
+        .await;
+        return Err(Box::new(render_inline_error("client_blocked", "this client is blocked by the operator")));
+    }
+    // requirement 6 (AC8): a CIMD client's first sighting each day counts
+    // against its host's 100-per-day cap -- checked here, the one place
+    // every CIMD authorize attempt (GET and POST alike) passes through.
+    if !crate::oauth_policy::admit_cimd_registration(state, &identity).await.unwrap_or(true) {
+        let _ = crate::oauth_policy::record_audit(
+            state,
+            None,
+            "authorize_refused",
+            Some(identity.client_id.as_str()),
+            Some(identity.method),
+            None,
+            Some("cimd_registration_rate_limited"),
+            Some(source_ip),
+        )
+        .await;
+        return Err(Box::new(render_inline_error_status(
+            StatusCode::TOO_MANY_REQUESTS,
+            "too_many_requests",
+            "this CIMD host has exceeded its daily registration limit",
+        )));
+    }
     let Some(redirect_uri) = params.redirect_uri.clone().filter(|s| !s.is_empty()) else {
         return Err(Box::new(render_inline_error("invalid_request", "redirect_uri is required")));
     };
@@ -545,8 +609,14 @@ async fn validate_authorize_params(
 }
 
 /// `GET /oauth/authorize` (requirement 3; AC2, AC6).
-pub async fn get_authorize(State(state): State<Arc<AppState>>, Query(params): Query<AuthorizeParams>) -> Response {
-    let (identity, _redirect_uri, resource) = match validate_authorize_params(&state, &params).await {
+pub async fn get_authorize(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<AuthorizeParams>,
+    headers: HeaderMap,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+) -> Response {
+    let ip = source_ip(&headers, peer);
+    let (identity, _redirect_uri, resource) = match validate_authorize_params(&state, &params, &ip).await {
         Ok(ok) => ok,
         Err(resp) => return *resp,
     };
@@ -664,18 +734,82 @@ async fn mint_code_and_redirect(
 }
 
 /// `POST /oauth/authorize` (requirement 3; AC4, AC6).
-pub async fn post_authorize(State(state): State<Arc<AppState>>, axum::Form(form): axum::Form<ConsentForm>) -> Response {
+pub async fn post_authorize(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    axum::Form(form): axum::Form<ConsentForm>,
+) -> Response {
+    let ip = source_ip(&headers, peer);
     let params = consent_form_params(&form);
-    let (identity, redirect_uri, resource) = match validate_authorize_params(&state, &params).await {
+    let (identity, redirect_uri, resource) = match validate_authorize_params(&state, &params, &ip).await {
         Ok(ok) => ok,
         Err(resp) => return *resp,
     };
     match resolve_consent_tenant(&state, form.tenant_key.as_deref(), form.claim_code.as_deref()).await {
         Some(tenant) => {
-            let code_challenge = params.code_challenge.clone().unwrap_or_default();
-            let state_param = params.state.clone().unwrap_or_default();
-            mint_code_and_redirect(&state, &tenant, &identity, &redirect_uri, &code_challenge, &resource, &state_param)
-                .await
+            // PRD-mcphost-oauth-client-policy requirement 2 (AC1/AC2): the
+            // tenant is only known once ownership is proven right here, so
+            // this is the one point `allowlist`/`approve` enforcement can
+            // actually run.
+            let decision = crate::oauth_policy::evaluate_client(&state, &tenant, &identity).await;
+            match decision {
+                Ok(crate::oauth_policy::ClientDecision::Allowed) => {
+                    let code_challenge = params.code_challenge.clone().unwrap_or_default();
+                    let state_param = params.state.clone().unwrap_or_default();
+                    let _ = crate::oauth_policy::record_audit(
+                        &state,
+                        Some(tenant.id),
+                        "consent",
+                        Some(identity.client_id.as_str()),
+                        Some(identity.method),
+                        None,
+                        None,
+                        Some(&ip),
+                    )
+                    .await;
+                    mint_code_and_redirect(
+                        &state,
+                        &tenant,
+                        &identity,
+                        &redirect_uri,
+                        &code_challenge,
+                        &resource,
+                        &state_param,
+                    )
+                    .await
+                }
+                Ok(crate::oauth_policy::ClientDecision::Pending) => {
+                    let _ = crate::oauth_policy::record_audit(
+                        &state,
+                        Some(tenant.id),
+                        "authorize_refused",
+                        Some(identity.client_id.as_str()),
+                        Some(identity.method),
+                        None,
+                        Some("pending_approval"),
+                        Some(&ip),
+                    )
+                    .await;
+                    let client_name = identity.client_name.clone().unwrap_or_else(|| identity.client_id.clone());
+                    html_response(StatusCode::OK, render_pending_page(&client_name))
+                }
+                Ok(crate::oauth_policy::ClientDecision::Refused(reason)) => {
+                    let _ = crate::oauth_policy::record_audit(
+                        &state,
+                        Some(tenant.id),
+                        "authorize_refused",
+                        Some(identity.client_id.as_str()),
+                        Some(identity.method),
+                        None,
+                        Some(reason),
+                        Some(&ip),
+                    )
+                    .await;
+                    render_inline_error(reason, "this client is not allowed to authorize for this tenant")
+                }
+                Err(_) => render_inline_error("server_error", "could not evaluate this tenant's client policy"),
+            }
         }
         // requirement 6 / AC6: a tampered consent POST lacking a valid key
         // or claim code re-renders the consent page (never a redirect, and
@@ -842,11 +976,6 @@ pub async fn post_register(
 
 // ---- POST /oauth/token -----------------------------------------------------
 
-/// requirement 5: hosted access-token TTL.
-const ACCESS_TOKEN_TTL_SECS: i64 = 3600;
-/// requirement 4: refresh-token TTL, 30 days.
-const REFRESH_TOKEN_TTL_SECS: i64 = 30 * 86_400;
-
 #[derive(Debug, Default, Deserialize)]
 pub struct TokenRequest {
     pub grant_type: Option<String>,
@@ -876,14 +1005,29 @@ fn pkce_matches(verifier: &str, challenge: &str) -> bool {
 /// requirement 4: mints and stores a fresh access/refresh token pair for
 /// an already-created-or-rotated grant -- the one success path both
 /// `authorization_code` and `refresh_token` grants converge on.
-async fn issue_tokens(state: &AppState, grant_id: i64, tenant_id: i64, resource: &str, client_id: &str) -> Response {
+/// `audit_event` is `"token"` or `"refresh"` (requirement 4) -- the only
+/// thing that differs between the two call sites.
+#[allow(clippy::too_many_arguments)]
+async fn issue_tokens(
+    state: &AppState,
+    grant_id: i64,
+    tenant_id: i64,
+    resource: &str,
+    client_id: &str,
+    audit_event: &str,
+) -> Response {
     let tenant = match state.db.find_tenant_by_id(tenant_id).await {
         Ok(Some(t)) => t,
         _ => return oauth_error_json(StatusCode::INTERNAL_SERVER_ERROR, "server_error", "tenant not found"),
     };
+    // PRD-mcphost-oauth-client-policy requirement 1: a tenant's own
+    // `access_ttl_s`/`refresh_ttl_s`, falling back to this PRD's defaults
+    // (equal to the hosted AS PRD's own fixed constants) for a tenant with
+    // no policy row (AC9).
+    let policy = crate::oauth_policy::OauthPolicy::load(state, tenant_id).await.unwrap_or_default();
     let now = crate::state::now_unix();
     let jti = crate::state::new_ulid();
-    let exp = now + ACCESS_TOKEN_TTL_SECS;
+    let exp = now + policy.access_ttl_s;
     let claims = json!({
         "iss": state.public_url.trim_end_matches('/'),
         "sub": tenant.namespace,
@@ -910,19 +1054,30 @@ async fn issue_tokens(state: &AppState, grant_id: i64, tenant_id: i64, resource:
     let refresh_hash = crate::auth::hash_key(&refresh_token);
     if state
         .db
-        .insert_oauth_refresh_token(grant_id, refresh_hash, resource.to_string(), now + REFRESH_TOKEN_TTL_SECS)
+        .insert_oauth_refresh_token(grant_id, refresh_hash, resource.to_string(), now + policy.refresh_ttl_s)
         .await
         .is_err()
     {
         return oauth_error_json(StatusCode::INTERNAL_SERVER_ERROR, "server_error", "could not record refresh token");
     }
     let _ = state.db.touch_oauth_grant_last_used(grant_id, now).await;
+    let _ = crate::oauth_policy::record_audit(
+        state,
+        Some(tenant_id),
+        audit_event,
+        Some(client_id),
+        None,
+        None,
+        None,
+        None,
+    )
+    .await;
     (
         StatusCode::OK,
         Json(json!({
             "access_token": access_token,
             "token_type": "Bearer",
-            "expires_in": ACCESS_TOKEN_TTL_SECS,
+            "expires_in": policy.access_ttl_s,
             "refresh_token": refresh_token,
             "scope": "mcp",
         })),
@@ -981,6 +1136,22 @@ async fn token_authorization_code(state: &AppState, req: &TokenRequest) -> Respo
     let Some(identity) = identify_client(state, client_id).await else {
         return oauth_error_json(StatusCode::BAD_REQUEST, "invalid_client", "unknown client");
     };
+    // PRD-mcphost-oauth-client-policy requirement 5 (AC7): "exchanges" is
+    // one of the three actions a blocked client is refused at.
+    if crate::oauth_policy::is_client_blocked(state, &identity).await.unwrap_or(false) {
+        let _ = crate::oauth_policy::record_audit(
+            state,
+            Some(row.tenant_id),
+            "token_refused",
+            Some(client_id),
+            Some(identity.method),
+            None,
+            Some("client_blocked"),
+            None,
+        )
+        .await;
+        return oauth_error_json(StatusCode::FORBIDDEN, "invalid_client", "client_blocked");
+    }
     if let Some(secret_hash) = &identity.client_secret_hash {
         let Some(secret) = req.client_secret.as_deref().filter(|s| !s.is_empty()) else {
             return oauth_error_json(StatusCode::UNAUTHORIZED, "invalid_client", "client_secret is required");
@@ -1006,7 +1177,7 @@ async fn token_authorization_code(state: &AppState, req: &TokenRequest) -> Respo
         Err(_) => return oauth_error_json(StatusCode::INTERNAL_SERVER_ERROR, "server_error", "could not create grant"),
     };
     let _ = state.db.set_oauth_code_grant(code_hash, grant_id).await;
-    issue_tokens(state, grant_id, row.tenant_id, &row.resource, client_id).await
+    issue_tokens(state, grant_id, row.tenant_id, &row.resource, client_id, "token").await
 }
 
 /// requirement 4, AC7: `grant_type=refresh_token` -- rotates the refresh
@@ -1026,19 +1197,83 @@ async fn token_refresh_token(state: &AppState, req: &TokenRequest) -> Response {
         let _ = state.db.revoke_oauth_refresh_tokens_for_grant(row.grant_id, now).await;
         return oauth_error_json(StatusCode::BAD_REQUEST, "invalid_grant", "refresh token already rotated");
     }
-    if now > row.expires_unix {
-        return oauth_error_json(StatusCode::BAD_REQUEST, "invalid_grant", "refresh token expired");
-    }
     let Ok(Some(grant)) = state.db.find_oauth_grant_by_id(row.grant_id).await else {
         return oauth_error_json(StatusCode::BAD_REQUEST, "invalid_grant", "grant not found");
     };
     if grant.revoked_unix.is_some() {
         return oauth_error_json(StatusCode::BAD_REQUEST, "invalid_grant", "grant has been revoked");
     }
+    // PRD-mcphost-oauth-client-policy requirement 5 (AC7): "exchanges"
+    // covers a refresh too.
+    if crate::oauth_policy::is_client_id_or_method_blocked(state, &grant.client_id, &grant.method)
+        .await
+        .unwrap_or(false)
+    {
+        let _ = crate::oauth_policy::record_audit(
+            state,
+            Some(grant.tenant_id),
+            "refresh_refused",
+            Some(grant.client_id.as_str()),
+            Some(grant.method.as_str()),
+            None,
+            Some("client_blocked"),
+            None,
+        )
+        .await;
+        return oauth_error_json(StatusCode::FORBIDDEN, "invalid_client", "client_blocked");
+    }
+    // requirement 1/2 (AC3/AC4): `max_grant_age_s` is this grant's hard
+    // outer bound (checked first: once past it, `grant_expired` always
+    // wins over `reconsent_required` even if both thresholds are already
+    // crossed); `reconsent_after_s` forces the consent page again well
+    // before that, on a still-otherwise-live grant.
+    let policy = crate::oauth_policy::OauthPolicy::load(state, grant.tenant_id).await.unwrap_or_default();
+    let grant_age = now - grant.created_unix;
+    if let Some(max_age) = policy.max_grant_age_s
+        && grant_age > max_age
+    {
+        let _ = crate::oauth_policy::record_audit(
+            state,
+            Some(grant.tenant_id),
+            "refresh_refused",
+            Some(grant.client_id.as_str()),
+            Some(grant.method.as_str()),
+            None,
+            Some("grant_expired"),
+            None,
+        )
+        .await;
+        return oauth_error_json(StatusCode::BAD_REQUEST, "invalid_grant", "grant_expired");
+    }
+    if let Some(reconsent_after) = policy.reconsent_after_s
+        && grant_age > reconsent_after
+    {
+        let _ = crate::oauth_policy::record_audit(
+            state,
+            Some(grant.tenant_id),
+            "refresh_refused",
+            Some(grant.client_id.as_str()),
+            Some(grant.method.as_str()),
+            None,
+            Some("reconsent_required"),
+            None,
+        )
+        .await;
+        return oauth_error_json(StatusCode::BAD_REQUEST, "invalid_grant", "reconsent_required");
+    }
+    // This specific refresh token's own TTL (`policy.refresh_ttl_s` at the
+    // time it was minted) -- checked last among the "why is this refusal
+    // an expiry" reasons, so a grant already past `max_grant_age_s`/
+    // `reconsent_after_s` always reports that instead, even when this
+    // token's own TTL happens to be shorter and would otherwise fire
+    // first.
+    if now > row.expires_unix {
+        return oauth_error_json(StatusCode::BAD_REQUEST, "invalid_grant", "refresh token expired");
+    }
     if !state.db.claim_oauth_refresh_token(hash, now).await.unwrap_or(false) {
         return oauth_error_json(StatusCode::BAD_REQUEST, "invalid_grant", "refresh token already rotated");
     }
-    issue_tokens(state, row.grant_id, grant.tenant_id, &row.resource, &grant.client_id).await
+    issue_tokens(state, row.grant_id, grant.tenant_id, &row.resource, &grant.client_id, "refresh").await
 }
 
 /// `POST /oauth/token` (requirement 4; AC4, AC5, AC7).

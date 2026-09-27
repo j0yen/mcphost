@@ -71,6 +71,7 @@ const MIGRATION_0047: &str = include_str!("../migrations/0047_end_user_audit_and
 const MIGRATION_0048: &str = include_str!("../migrations/0048_runs_end_user_subject.sql");
 const MIGRATION_0049: &str = include_str!("../migrations/0049_shared_call_run_scope.sql");
 const MIGRATION_0050: &str = include_str!("../migrations/0050_hosted_authorization_server.sql");
+const MIGRATION_0051: &str = include_str!("../migrations/0051_oauth_client_policy.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -2024,7 +2025,8 @@ impl Db {
         // migration file) rather than a schema-presence guard, so it runs
         // unconditionally like 0001 above.
         conn.execute_batch(MIGRATION_0049).map_err(AppError::from)?;
-        Self::migrate_0050_hosted_authorization_server(&conn)
+        Self::migrate_0050_hosted_authorization_server(&conn)?;
+        Self::migrate_0051_oauth_client_policy(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -2722,6 +2724,17 @@ impl Db {
             .exists([])?;
         if !has_table {
             conn.execute_batch(MIGRATION_0050)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-oauth-client-policy requirements 1-6.
+    fn migrate_0051_oauth_client_policy(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'oauth_policies'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0051)?;
         }
         Ok(())
     }
@@ -14087,6 +14100,22 @@ impl Db {
         .await
     }
 
+    /// Test-only: backdates a grant's `created_unix` so
+    /// `max_grant_age_s`/`reconsent_after_s` (PRD-mcphost-oauth-client-policy
+    /// AC3/AC4) can be proven without a real multi-hour wait -- same
+    /// "mutate a timestamp directly, bypass real elapsed time" rationale as
+    /// [`Self::expire_handoff_token_for_test`].
+    pub async fn set_oauth_grant_created_unix_for_test(&self, grant_id: i64, created_unix: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE oauth_grants SET created_unix = ?1 WHERE id = ?2",
+                params![created_unix, grant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
     /// requirement 7 / AC8: revokes a grant this tenant owns -- `false` if
     /// it doesn't exist, isn't this tenant's, or was already revoked.
     pub async fn revoke_oauth_grant_for_tenant(&self, grant_id: i64, tenant_id: i64, now: i64) -> Result<bool, AppError> {
@@ -14227,6 +14256,485 @@ impl Db {
             )
             .optional()
             .map_err(AppError::from)
+        })
+        .await
+    }
+
+    // ---- PRD-mcphost-oauth-client-policy: oauth_policies ------------------
+
+    /// requirement 1: `host.oauth.policy_set` -- upserts this tenant's one
+    /// policy row.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upsert_oauth_policy(
+        &self,
+        tenant_id: i64,
+        clients_mode: String,
+        allowlist_json: String,
+        access_ttl_s: i64,
+        refresh_ttl_s: i64,
+        max_grant_age_s: Option<i64>,
+        reconsent_after_s: Option<i64>,
+    ) -> Result<(), AppError> {
+        let updated_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO oauth_policies \
+                 (tenant_id, clients_mode, allowlist_json, access_ttl_s, refresh_ttl_s, \
+                  max_grant_age_s, reconsent_after_s, updated_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) \
+                 ON CONFLICT(tenant_id) DO UPDATE SET \
+                 clients_mode = excluded.clients_mode, allowlist_json = excluded.allowlist_json, \
+                 access_ttl_s = excluded.access_ttl_s, refresh_ttl_s = excluded.refresh_ttl_s, \
+                 max_grant_age_s = excluded.max_grant_age_s, reconsent_after_s = excluded.reconsent_after_s, \
+                 updated_unix = excluded.updated_unix",
+                params![
+                    tenant_id,
+                    clients_mode,
+                    allowlist_json,
+                    access_ttl_s,
+                    refresh_ttl_s,
+                    max_grant_age_s,
+                    reconsent_after_s,
+                    updated_unix
+                ],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn find_oauth_policy(&self, tenant_id: i64) -> Result<Option<OauthPolicyRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT tenant_id, clients_mode, allowlist_json, access_ttl_s, refresh_ttl_s, \
+                 max_grant_age_s, reconsent_after_s, updated_unix FROM oauth_policies WHERE tenant_id = ?1",
+                params![tenant_id],
+                oauth_policy_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    // ---- oauth_pending_clients / oauth_approved_clients --------------------
+
+    /// requirement 2: records a new pending client the first time `approve`
+    /// mode sees it -- `INSERT OR IGNORE` so a repeat sighting before
+    /// resolution doesn't reset `created_unix`.
+    pub async fn upsert_oauth_pending_client(
+        &self,
+        tenant_id: i64,
+        client_id: String,
+        client_name: Option<String>,
+        method: String,
+    ) -> Result<(), AppError> {
+        let created_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT OR IGNORE INTO oauth_pending_clients \
+                 (tenant_id, client_id, client_name, method, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![tenant_id, client_id, client_name, method, created_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn find_oauth_pending_client(
+        &self,
+        tenant_id: i64,
+        client_id: String,
+    ) -> Result<Option<OauthPendingClientRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT id, tenant_id, client_id, client_name, method, created_unix \
+                 FROM oauth_pending_clients WHERE tenant_id = ?1 AND client_id = ?2",
+                params![tenant_id, client_id],
+                oauth_pending_client_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `host.oauth.pending`: this tenant's queue, oldest first.
+    pub async fn list_oauth_pending_clients(&self, tenant_id: i64) -> Result<Vec<OauthPendingClientRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, tenant_id, client_id, client_name, method, created_unix \
+                 FROM oauth_pending_clients WHERE tenant_id = ?1 ORDER BY created_unix ASC",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id], oauth_pending_client_from_row)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// `host.oauth.client_approve`/`host.oauth.client_deny`: `true` iff a
+    /// pending row existed and was removed.
+    pub async fn remove_oauth_pending_client(&self, tenant_id: i64, client_id: String) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let removed = conn.execute(
+                "DELETE FROM oauth_pending_clients WHERE tenant_id = ?1 AND client_id = ?2",
+                params![tenant_id, client_id],
+            )?;
+            Ok(removed > 0)
+        })
+        .await
+    }
+
+    /// requirement 3: `host.oauth.revoke_all` clears the whole pending
+    /// queue too.
+    pub async fn clear_oauth_pending_clients_for_tenant(&self, tenant_id: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute("DELETE FROM oauth_pending_clients WHERE tenant_id = ?1", params![tenant_id])?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `host.oauth.client_approve`: records a standing approval, so this
+    /// client's next authorize reaches consent directly.
+    pub async fn insert_oauth_approved_client(&self, tenant_id: i64, client_id: String) -> Result<(), AppError> {
+        let approved_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT OR IGNORE INTO oauth_approved_clients (tenant_id, client_id, approved_unix) \
+                 VALUES (?1, ?2, ?3)",
+                params![tenant_id, client_id, approved_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn is_oauth_client_approved(&self, tenant_id: i64, client_id: String) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let found: Option<i64> = conn
+                .query_row(
+                    "SELECT 1 FROM oauth_approved_clients WHERE tenant_id = ?1 AND client_id = ?2",
+                    params![tenant_id, client_id],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            Ok(found.is_some())
+        })
+        .await
+    }
+
+    /// requirement 2: `host.oauth.client_deny` also revokes a standing
+    /// approval, if this client somehow already had one -- a denied client
+    /// must read `client_not_allowed` on its next attempt, never fall back
+    /// to a stale approval.
+    pub async fn remove_oauth_approved_client(&self, tenant_id: i64, client_id: String) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "DELETE FROM oauth_approved_clients WHERE tenant_id = ?1 AND client_id = ?2",
+                params![tenant_id, client_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// requirement 2: `host.oauth.client_deny` -- a durable refusal,
+    /// checked ahead of `approve` mode's pending-queue re-add so a denied
+    /// client never comes back as merely pending (see the
+    /// `oauth_denied_clients` migration doc comment).
+    pub async fn insert_oauth_denied_client(&self, tenant_id: i64, client_id: String) -> Result<(), AppError> {
+        let denied_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT OR IGNORE INTO oauth_denied_clients (tenant_id, client_id, denied_unix) \
+                 VALUES (?1, ?2, ?3)",
+                params![tenant_id, client_id, denied_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn is_oauth_client_denied(&self, tenant_id: i64, client_id: String) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let found: Option<i64> = conn
+                .query_row(
+                    "SELECT 1 FROM oauth_denied_clients WHERE tenant_id = ?1 AND client_id = ?2",
+                    params![tenant_id, client_id],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            Ok(found.is_some())
+        })
+        .await
+    }
+
+    // ---- revoke_all ---------------------------------------------------------
+
+    /// requirement 3: `host.oauth.revoke_all` -- revokes every live grant
+    /// for this tenant in one transaction, returning each revoked grant's
+    /// `(id, client_id)` so the caller can deny their jtis/refresh tokens
+    /// and write one audit row per grant (AC5).
+    pub async fn revoke_all_oauth_grants_for_tenant(
+        &self,
+        tenant_id: i64,
+        now: i64,
+    ) -> Result<Vec<(i64, String)>, AppError> {
+        self.with_conn(move |conn| {
+            let tx = conn.unchecked_transaction()?;
+            let ids: Vec<(i64, String)> = {
+                let mut stmt = tx.prepare(
+                    "SELECT id, client_id FROM oauth_grants WHERE tenant_id = ?1 AND revoked_unix IS NULL",
+                )?;
+                stmt.query_map(params![tenant_id], |r| Ok((r.get(0)?, r.get(1)?)))?
+                    .collect::<Result<Vec<_>, _>>()?
+            };
+            tx.execute(
+                "UPDATE oauth_grants SET revoked_unix = ?1 WHERE tenant_id = ?2 AND revoked_unix IS NULL",
+                params![now, tenant_id],
+            )?;
+            for (id, _client_id) in &ids {
+                tx.execute(
+                    "UPDATE oauth_jti_denylist SET denied_unix = ?1 WHERE grant_id = ?2 AND denied_unix IS NULL",
+                    params![now, id],
+                )?;
+                tx.execute(
+                    "UPDATE oauth_refresh_tokens SET rotated_unix = ?1 WHERE grant_id = ?2 AND rotated_unix IS NULL",
+                    params![now, id],
+                )?;
+            }
+            tx.commit()?;
+            Ok(ids)
+        })
+        .await
+    }
+
+    // ---- oauth_client_blocks (admin.oauth.*) -------------------------------
+
+    /// `admin.oauth.client_block`: idempotent -- re-blocking the same
+    /// `(kind, value)` updates `reason` in place.
+    pub async fn upsert_oauth_client_block(
+        &self,
+        kind: String,
+        value: String,
+        reason: Option<String>,
+    ) -> Result<(), AppError> {
+        let created_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO oauth_client_blocks (kind, value, reason, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4) \
+                 ON CONFLICT(kind, value) DO UPDATE SET reason = excluded.reason",
+                params![kind, value, reason, created_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    pub async fn remove_oauth_client_block(&self, kind: String, value: String) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let removed = conn.execute(
+                "DELETE FROM oauth_client_blocks WHERE kind = ?1 AND value = ?2",
+                params![kind, value],
+            )?;
+            Ok(removed > 0)
+        })
+        .await
+    }
+
+    pub async fn list_oauth_client_blocks(&self) -> Result<Vec<OauthClientBlockRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT kind, value, reason, created_unix FROM oauth_client_blocks ORDER BY created_unix ASC",
+            )?;
+            let rows = stmt
+                .query_map([], oauth_client_block_from_row)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// requirement 5: checked ahead of any tenant policy -- `true` iff
+    /// either this exact `client_id`, or (for a CIMD client) its host, is
+    /// on the operator's block list.
+    pub async fn oauth_client_is_blocked(&self, client_id: String, cimd_host: Option<String>) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let blocked_by_id: Option<i64> = conn
+                .query_row(
+                    "SELECT 1 FROM oauth_client_blocks WHERE kind = 'client_id' AND value = ?1",
+                    params![client_id],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if blocked_by_id.is_some() {
+                return Ok(true);
+            }
+            if let Some(host) = cimd_host {
+                let blocked_by_host: Option<i64> = conn
+                    .query_row(
+                        "SELECT 1 FROM oauth_client_blocks WHERE kind = 'cimd_host' AND value = ?1",
+                        params![host],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                return Ok(blocked_by_host.is_some());
+            }
+            Ok(false)
+        })
+        .await
+    }
+
+    // ---- oauth_cimd_register_events -----------------------------------------
+
+    /// requirement 6: the atomic check-and-insert for the 100-per-day
+    /// per-CIMD-host cap, same shape as [`Self::try_admit_oauth_register`].
+    pub async fn try_admit_cimd_registration(&self, cimd_host: String, since_unix: i64, limit: i64) -> Result<bool, AppError> {
+        let created_unix = now_unix();
+        self.with_conn(move |conn| {
+            let inserted = conn.execute(
+                "INSERT INTO oauth_cimd_register_events (cimd_host, created_unix) \
+                 SELECT ?1, ?2 \
+                 WHERE (SELECT COUNT(*) FROM oauth_cimd_register_events \
+                        WHERE cimd_host = ?1 AND created_unix >= ?3) < ?4",
+                params![cimd_host, created_unix, since_unix, limit],
+            )?;
+            Ok(inserted > 0)
+        })
+        .await
+    }
+
+    // ---- oauth_audit ----------------------------------------------------------
+
+    /// requirement 4: appends one audit row -- every authorize, consent,
+    /// token, refresh, revoke, policy change, approval and refusal.
+    /// `tenant_id: None` only for an operator-block refusal before any
+    /// tenant is identified (AC7).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_oauth_audit(
+        &self,
+        tenant_id: Option<i64>,
+        event: String,
+        client_id: Option<String>,
+        method: Option<String>,
+        end_user_subject: Option<String>,
+        reason: Option<String>,
+        ip_hash: Option<String>,
+        scopes: Option<String>,
+    ) -> Result<i64, AppError> {
+        let ts = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO oauth_audit \
+                 (tenant_id, ts, event, client_id, method, end_user_subject, reason, ip_hash, scopes) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![tenant_id, ts, event, client_id, method, end_user_subject, reason, ip_hash, scopes],
+            )?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+    }
+
+    /// `host.oauth.audit {since?, until?, event?, limit, cursor}` (AC6):
+    /// fetches `limit + 1` rows (same "fetch one extra to detect has_more"
+    /// convention `list_end_users` uses) so the caller can tell whether a
+    /// next page exists without a separate `COUNT(*)`.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn list_oauth_audit(
+        &self,
+        tenant_id: i64,
+        since: Option<i64>,
+        until: Option<i64>,
+        event: Option<String>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<OauthAuditRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut sql = String::from(
+                "SELECT id, tenant_id, ts, event, client_id, method, end_user_subject, reason, ip_hash, scopes \
+                 FROM oauth_audit WHERE tenant_id = ?1",
+            );
+            let mut binds: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(tenant_id)];
+            if let Some(s) = since {
+                binds.push(Box::new(s));
+                sql.push_str(&format!(" AND ts >= ?{}", binds.len()));
+            }
+            if let Some(u) = until {
+                binds.push(Box::new(u));
+                sql.push_str(&format!(" AND ts <= ?{}", binds.len()));
+            }
+            if let Some(e) = event {
+                binds.push(Box::new(e));
+                sql.push_str(&format!(" AND event = ?{}", binds.len()));
+            }
+            binds.push(Box::new(limit));
+            let limit_idx = binds.len();
+            binds.push(Box::new(offset));
+            let offset_idx = binds.len();
+            sql.push_str(&format!(" ORDER BY id ASC LIMIT ?{limit_idx} OFFSET ?{offset_idx}"));
+            let refs: Vec<&dyn rusqlite::ToSql> = binds.iter().map(|b| b.as_ref()).collect();
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map(refs.as_slice(), oauth_audit_from_row)?.collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// `admin.oauth.stats` (AC7/AC8): a global count of `oauth_audit` rows
+    /// with this exact `reason`, across every tenant (and the `tenant_id
+    /// IS NULL` block-before-any-tenant-known rows) -- never scoped to one
+    /// tenant, unlike [`Self::list_oauth_audit`].
+    pub async fn count_oauth_audit_by_reason(&self, reason: String) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM oauth_audit WHERE reason = ?1",
+                params![reason],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    pub async fn count_oauth_client_blocks(&self) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row("SELECT COUNT(*) FROM oauth_client_blocks", [], |r| r.get(0))
+                .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Test-only: seeds `count` `oauth_audit` rows in one transaction with
+    /// a `reason` padded to `pad_bytes`, so AC6's "a window whose export
+    /// exceeds 50 MiB" can be reached without a real multi-minute seed of
+    /// individually-dispatched audit events -- same "bulk-insert, bypass
+    /// real dispatch" rationale as [`Self::insert_calls_rows_bulk_for_test`].
+    pub async fn insert_oauth_audit_rows_bulk_for_test(
+        &self,
+        tenant_id: i64,
+        count: i64,
+        pad_bytes: usize,
+    ) -> Result<(), AppError> {
+        let ts = now_unix();
+        let padding = "x".repeat(pad_bytes);
+        self.with_conn(move |conn| {
+            let tx = conn.unchecked_transaction()?;
+            {
+                let mut stmt = tx.prepare(
+                    "INSERT INTO oauth_audit (tenant_id, ts, event, client_id, method, reason) \
+                     VALUES (?1, ?2, 'token', 'bulk_test_client', 'dcr', ?3)",
+                )?;
+                for _ in 0..count {
+                    stmt.execute(params![tenant_id, ts, padding])?;
+                }
+            }
+            tx.commit()?;
+            Ok(())
         })
         .await
     }
@@ -14903,5 +15411,103 @@ fn oauth_jti_from_row(r: &Row) -> rusqlite::Result<OauthJtiRow> {
         resource: r.get(3)?,
         expires_unix: r.get(4)?,
         denied_unix: r.get(5)?,
+    })
+}
+
+/// PRD-mcphost-oauth-client-policy: one `oauth_policies` row --
+/// `oauth_policy::OauthPolicy` is the Rust-side type `authz.rs`/`oauth_policy.rs`
+/// actually reason about; this is only its DB-column shape.
+#[derive(Debug, Clone)]
+pub struct OauthPolicyRow {
+    pub tenant_id: i64,
+    pub clients_mode: String,
+    pub allowlist_json: String,
+    pub access_ttl_s: i64,
+    pub refresh_ttl_s: i64,
+    pub max_grant_age_s: Option<i64>,
+    pub reconsent_after_s: Option<i64>,
+    pub updated_unix: i64,
+}
+
+fn oauth_policy_from_row(r: &Row) -> rusqlite::Result<OauthPolicyRow> {
+    Ok(OauthPolicyRow {
+        tenant_id: r.get(0)?,
+        clients_mode: r.get(1)?,
+        allowlist_json: r.get(2)?,
+        access_ttl_s: r.get(3)?,
+        refresh_ttl_s: r.get(4)?,
+        max_grant_age_s: r.get(5)?,
+        reconsent_after_s: r.get(6)?,
+        updated_unix: r.get(7)?,
+    })
+}
+
+/// One `oauth_pending_clients` row (`host.oauth.pending`).
+#[derive(Debug, Clone)]
+pub struct OauthPendingClientRow {
+    pub id: i64,
+    pub tenant_id: i64,
+    pub client_id: String,
+    pub client_name: Option<String>,
+    pub method: String,
+    pub created_unix: i64,
+}
+
+fn oauth_pending_client_from_row(r: &Row) -> rusqlite::Result<OauthPendingClientRow> {
+    Ok(OauthPendingClientRow {
+        id: r.get(0)?,
+        tenant_id: r.get(1)?,
+        client_id: r.get(2)?,
+        client_name: r.get(3)?,
+        method: r.get(4)?,
+        created_unix: r.get(5)?,
+    })
+}
+
+/// One `oauth_client_blocks` row (`admin.oauth.blocked`).
+#[derive(Debug, Clone)]
+pub struct OauthClientBlockRow {
+    pub kind: String,
+    pub value: String,
+    pub reason: Option<String>,
+    pub created_unix: i64,
+}
+
+fn oauth_client_block_from_row(r: &Row) -> rusqlite::Result<OauthClientBlockRow> {
+    Ok(OauthClientBlockRow {
+        kind: r.get(0)?,
+        value: r.get(1)?,
+        reason: r.get(2)?,
+        created_unix: r.get(3)?,
+    })
+}
+
+/// One `oauth_audit` row (`host.oauth.audit`/`host.oauth.audit_export`).
+#[derive(Debug, Clone)]
+pub struct OauthAuditRow {
+    pub id: i64,
+    pub tenant_id: Option<i64>,
+    pub ts: i64,
+    pub event: String,
+    pub client_id: Option<String>,
+    pub method: Option<String>,
+    pub end_user_subject: Option<String>,
+    pub reason: Option<String>,
+    pub ip_hash: Option<String>,
+    pub scopes: Option<String>,
+}
+
+fn oauth_audit_from_row(r: &Row) -> rusqlite::Result<OauthAuditRow> {
+    Ok(OauthAuditRow {
+        id: r.get(0)?,
+        tenant_id: r.get(1)?,
+        ts: r.get(2)?,
+        event: r.get(3)?,
+        client_id: r.get(4)?,
+        method: r.get(5)?,
+        end_user_subject: r.get(6)?,
+        reason: r.get(7)?,
+        ip_hash: r.get(8)?,
+        scopes: r.get(9)?,
     })
 }
