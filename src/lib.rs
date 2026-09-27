@@ -29,6 +29,7 @@ pub mod enduser;
 pub mod enduserctl;
 pub mod errors;
 pub mod export;
+pub mod federation;
 pub mod funnel;
 pub mod handler;
 pub mod hooks;

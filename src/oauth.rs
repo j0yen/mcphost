@@ -333,9 +333,11 @@ pub struct OauthCaller {
     /// PRD-mcphost-hosted-authorization-server requirement 5: `"oauth"`
     /// for a tenant-registered bring-your-own issuer (unchanged from
     /// before this PRD), `"hosted_token"` for this host's own built-in
-    /// issuer -- `handler.rs` surfaces this as `host.whoami`'s
+    /// issuer, PRD-mcphost-federated-end-user-login requirement 3:
+    /// `"federated"` for an end user who logged in through a tenant's own
+    /// OIDC provider -- `handler.rs` surfaces this as `host.whoami`'s
     /// `auth_method` and picks the matching `EndUserMethod`
-    /// (`Oauth`/`HostedOauth`).
+    /// (`Oauth`/`HostedOauth`/`Federated`).
     pub auth_method: &'static str,
     /// PRD-mcphost-tenant-resource-metadata requirement 4 (AC5): the JWT's
     /// own `scope` claim, verbatim, when present -- `None` for a token that
@@ -343,6 +345,12 @@ pub struct OauthCaller {
     /// unrestricted (never `insufficient_scope`), distinct from a present
     /// but empty/non-`mcp` scope string.
     pub scope: Option<String>,
+    /// PRD-mcphost-federated-end-user-login requirement 3: `Some` only for
+    /// `auth_method == "federated"`, when the provider supplied it --
+    /// surfaced as `MCPHOST_END_USER_EMAIL`/`host.enduser.whoami`'s `email`.
+    pub email: Option<String>,
+    /// See [`OauthCaller::email`]; surfaced as `MCPHOST_END_USER_NAME`.
+    pub name: Option<String>,
 }
 
 /// The JWT's `payload` segment, decoded (base64url) but NOT signature
@@ -523,6 +531,8 @@ pub async fn validate_bearer(state: &AppState, token: &str) -> Result<OauthCalle
         issuer: issuer_row.issuer,
         auth_method: "oauth",
         scope,
+        email: None,
+        name: None,
     })
 }
 

@@ -2323,6 +2323,50 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &["since", "until"],
             ),
         ),
+        // PRD-mcphost-federated-end-user-login requirement 1 (AC1): a
+        // tenant's own OIDC identity provider -- end users of the per-tenant
+        // resource log in through it instead of a tenant key.
+        Tool::new(
+            "host.oauth.provider_set",
+            "Register (or update) this tenant's own OIDC identity provider: end users who \
+             connect to this tenant's per-tenant resource log in through it. Fetches the \
+             issuer's discovery document once (https only) and stores authorization_endpoint, \
+             token_endpoint, and jwks_uri. client_secret is encrypted at rest and never shown \
+             again.",
+            host_schema(
+                json!({
+                    "issuer": {"type": "string", "description": "The provider's issuer URL, e.g. https://your-idp.example.com."},
+                    "client_id": {"type": "string", "description": "The client id your provider issued for mcphost."},
+                    "client_secret": {"type": "string", "description": "The client secret your provider issued for mcphost; encrypted at rest and never shown again."},
+                    "scopes": {"type": "array", "items": {"type": "string"}, "description": "Default [\"openid\", \"email\", \"profile\"]."},
+                    "claims_map": {"type": "object", "description": "Optional {\"email\": \"<claim name>\", \"name\": \"<claim name>\"} override; defaults to the claim names themselves."},
+                    "require_verified_email": {"type": "boolean", "description": "Default true: refuse login when the provider reports email_verified: false."},
+                    "owner_login": {"type": "boolean", "description": "Default false: also allow this tenant's own key/claim login on its per-tenant resource."},
+                }),
+                &["issuer", "client_id", "client_secret"],
+            ),
+        ),
+        Tool::new(
+            "host.oauth.provider",
+            "This tenant's registered OIDC identity provider (issuer, client_id, endpoints, \
+             scopes, flags) -- null if none is set. Never carries the client secret.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "host.oauth.provider_remove",
+            "Remove this tenant's OIDC identity provider: every federated grant it produced is \
+             revoked immediately, and the per-tenant resource falls back to key/claim (owner) \
+             login.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "host.oauth.doctor",
+            "Diagnose this tenant's OIDC provider setup: discovery reachable, jwks_uri \
+             reachable, per-tenant resource metadata, whether the callback URL is listed in the \
+             provider's discovery document (when exposed), and a dry-run authorize URL. One \
+             line per check with ok|fail and a fix.",
+            host_schema(json!({}), &[]),
+        ),
         // PRD-mcphost-end-user-identity P1 requirement 7 (AC10).
         Tool::new(
             "host.enduser.whoami",
@@ -3470,6 +3514,10 @@ impl McpHostHandler {
             "host.oauth.revoke_all" => crate::oauth_policy::revoke_all(&self.state, tenant).await,
             "host.oauth.audit" => crate::oauth_policy::audit(&self.state, tenant, &args).await,
             "host.oauth.audit_export" => crate::oauth_policy::audit_export(&self.state, tenant, &args).await,
+            "host.oauth.provider_set" => crate::federation::provider_set(&self.state, tenant, &args).await,
+            "host.oauth.provider" => crate::federation::provider(&self.state, tenant).await,
+            "host.oauth.provider_remove" => crate::federation::provider_remove(&self.state, tenant, &args).await,
+            "host.oauth.doctor" => crate::federation::doctor(&self.state, tenant, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         }
     }
@@ -5107,16 +5155,18 @@ impl ServerHandler for McpHostHandler {
                 // hosted-token bearer (this host's own built-in issuer)
                 // gets `EndUserMethod::HostedOauth`, never the
                 // bring-your-own-issuer `Oauth` variant.
-                let method = if oauth_caller.auth_method == "hosted_token" {
-                    crate::enduser::EndUserMethod::HostedOauth
-                } else {
-                    crate::enduser::EndUserMethod::Oauth
+                let method = match oauth_caller.auth_method {
+                    "hosted_token" => crate::enduser::EndUserMethod::HostedOauth,
+                    "federated" => crate::enduser::EndUserMethod::Federated,
+                    _ => crate::enduser::EndUserMethod::Oauth,
                 };
                 end_user = Some(crate::enduser::EndUser {
                     subject: oauth_caller.subject.clone(),
                     issuer: Some(oauth_caller.issuer.clone()),
                     method,
                     verified_at: now_unix(),
+                    email: oauth_caller.email.clone(),
+                    name: oauth_caller.name.clone(),
                 });
             } else if let Some(assertion) = raw_args.get("end_user_assertion").and_then(Value::as_str) {
                 match crate::enduser::verify_assertion(&self.state, tenant, assertion).await {

@@ -136,6 +136,26 @@ pub fn root_resource(state: &AppState) -> String {
     format!("{}/mcp", state.public_url.trim_end_matches('/'))
 }
 
+/// PRD-mcphost-federated-end-user-login requirement 2: a tenant's own
+/// canonical per-tenant resource URI -- minimal, additive support for the
+/// one shape this PRD needs (`/t/<ns>/mcp`, served identically to `/mcp`
+/// by `http.rs`'s own second route registration); full per-tenant
+/// metadata/audience enforcement is PRD-mcphost-tenant-resource-metadata's
+/// job, not this one's.
+pub fn per_tenant_resource(state: &AppState, namespace: &str) -> String {
+    format!("{}/t/{}/mcp", state.public_url.trim_end_matches('/'), namespace)
+}
+
+/// The inverse of [`per_tenant_resource`]: `Some(namespace)` iff `resource`
+/// is exactly `<public>/t/<namespace>/mcp` for some non-empty, single-segment
+/// `namespace`.
+fn parse_resource_namespace(state: &AppState, resource: &str) -> Option<String> {
+    let prefix = format!("{}/t/", state.public_url.trim_end_matches('/'));
+    let rest = resource.strip_prefix(&prefix)?;
+    let ns = rest.strip_suffix("/mcp")?;
+    (!ns.is_empty() && !ns.contains('/')).then(|| ns.to_string())
+}
+
 /// requirement 1 (AC1): the RFC 8414 authorization-server metadata document
 /// -- also served verbatim at `/.well-known/openid-configuration` (the OIDC
 /// discovery document this deployment needs no separate fields for, since
@@ -521,7 +541,7 @@ async fn validate_authorize_params(
     state: &AppState,
     params: &AuthorizeParams,
     source_ip: &str,
-) -> Result<(ClientIdentity, String, String), Box<Response>> {
+) -> Result<(ClientIdentity, String, String, Option<crate::db::Tenant>), Box<Response>> {
     let Some(client_id) = params.client_id.clone().filter(|s| !s.is_empty()) else {
         return Err(Box::new(render_inline_error("invalid_request", "client_id is required")));
     };
@@ -601,14 +621,30 @@ async fn validate_authorize_params(
     let Some(resource) = params.resource.clone().filter(|s| !s.is_empty()) else {
         return Err(Box::new(error_redirect(&redirect_uri, "invalid_target", params.state.as_deref())));
     };
-    if resource != root_resource(state) {
+    // PRD-mcphost-federated-end-user-login requirement 2/AC7: the root
+    // resource keeps its pre-existing "any tenant's key/claim" consent
+    // (`target_tenant: None`); a per-tenant resource resolves to exactly
+    // one tenant, or `invalid_target` if its namespace doesn't exist.
+    let target_tenant = if resource == root_resource(state) {
+        None
+    } else if let Some(ns) = parse_resource_namespace(state, &resource) {
+        match state.db.find_tenant_by_namespace(ns).await {
+            Ok(Some(t)) => Some(t),
+            _ => return Err(Box::new(error_redirect(&redirect_uri, "invalid_target", params.state.as_deref()))),
+        }
+    } else {
         return Err(Box::new(error_redirect(&redirect_uri, "invalid_target", params.state.as_deref())));
-    }
+    };
 
-    Ok((identity, redirect_uri, resource))
+    Ok((identity, redirect_uri, resource, target_tenant))
 }
 
 /// `GET /oauth/authorize` (requirement 3; AC2, AC6).
+///
+/// PRD-mcphost-federated-end-user-login requirement 2/4 (AC2, AC7): a
+/// per-tenant resource whose tenant has a provider with `owner_login:
+/// false` (the default) redirects straight upstream -- no local page is
+/// ever rendered, so the key/claim form is entirely absent (AC7).
 pub async fn get_authorize(
     State(state): State<Arc<AppState>>,
     Query(params): Query<AuthorizeParams>,
@@ -616,10 +652,16 @@ pub async fn get_authorize(
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
 ) -> Response {
     let ip = source_ip(&headers, peer);
-    let (identity, _redirect_uri, resource) = match validate_authorize_params(&state, &params, &ip).await {
+    let (identity, redirect_uri, resource, target_tenant) = match validate_authorize_params(&state, &params, &ip).await {
         Ok(ok) => ok,
         Err(resp) => return *resp,
     };
+    if let Some(tenant) = &target_tenant
+        && let Ok(Some(provider)) = state.db.find_oauth_provider_by_tenant(tenant.id).await
+        && !provider.owner_login
+    {
+        return crate::federation::start(&state, tenant, &provider, &identity, &redirect_uri, &resource, &params).await;
+    }
     let client_name = identity.client_name.clone().unwrap_or_else(|| identity.client_id.clone());
     html_response(StatusCode::OK, render_consent_page(&client_name, &resource, &params, None))
 }
@@ -627,7 +669,7 @@ pub async fn get_authorize(
 // ---- consent: POST /oauth/authorize ---------------------------------------
 
 /// requirement 3: 60s TTL for a minted authorization code.
-const AUTHORIZATION_CODE_TTL_SECS: i64 = 60;
+pub(crate) const AUTHORIZATION_CODE_TTL_SECS: i64 = 60;
 
 /// `GET`/`POST /oauth/authorize`'s form fields, all of [`AuthorizeParams`]
 /// plus the consent page's own proof-of-ownership fields.
@@ -717,6 +759,7 @@ async fn mint_code_and_redirect(
             resource.to_string(),
             "mcp".to_string(),
             expires_unix,
+            None,
         )
         .await;
     if inserted.is_err() {
@@ -742,12 +785,31 @@ pub async fn post_authorize(
 ) -> Response {
     let ip = source_ip(&headers, peer);
     let params = consent_form_params(&form);
-    let (identity, redirect_uri, resource) = match validate_authorize_params(&state, &params, &ip).await {
+    let (identity, redirect_uri, resource, target_tenant) = match validate_authorize_params(&state, &params, &ip).await {
         Ok(ok) => ok,
         Err(resp) => return *resp,
     };
+    // PRD-mcphost-federated-end-user-login requirement 2/4: defense in
+    // depth -- the key/claim form is never rendered for this resource
+    // (`get_authorize` above), so a legitimate browser never submits this,
+    // but a direct POST must still be refused rather than silently
+    // authenticating a tenant key against a federation-only resource.
+    if let Some(tenant) = &target_tenant
+        && let Ok(Some(provider)) = state.db.find_oauth_provider_by_tenant(tenant.id).await
+        && !provider.owner_login
+    {
+        return render_inline_error(
+            "invalid_request",
+            "this tenant's resource requires federated login, not a tenant key",
+        );
+    }
     match resolve_consent_tenant(&state, form.tenant_key.as_deref(), form.claim_code.as_deref()).await {
-        Some(tenant) => {
+        // requirement 2/AC7: a per-tenant resource only accepts that
+        // tenant's own key/claim -- a key that resolves to some OTHER
+        // tenant re-renders the consent page exactly like a wrong key
+        // would, rather than minting a code that would misrepresent whose
+        // resource this authorization is for.
+        Some(tenant) if target_tenant.as_ref().is_none_or(|t| t.id == tenant.id) => {
             // PRD-mcphost-oauth-client-policy requirement 2 (AC1/AC2): the
             // tenant is only known once ownership is proven right here, so
             // this is the one point `allowlist`/`approve` enforcement can
@@ -812,11 +874,12 @@ pub async fn post_authorize(
             }
         }
         // requirement 6 / AC6: a tampered consent POST lacking a valid key
-        // or claim code re-renders the consent page (never a redirect, and
-        // never a minted code) -- the caller gets another chance rather
-        // than a hard failure, same posture `claim::post_claim`'s own
-        // invalid-email branch takes.
-        None => {
+        // or claim code (or, requirement 2/AC7, one that names some OTHER
+        // tenant than this per-tenant resource's own) re-renders the
+        // consent page (never a redirect, and never a minted code) -- the
+        // caller gets another chance rather than a hard failure, same
+        // posture `claim::post_claim`'s own invalid-email branch takes.
+        Some(_) | None => {
             let client_name = identity.client_name.clone().unwrap_or_else(|| identity.client_id.clone());
             html_response(
                 StatusCode::OK,
@@ -1007,6 +1070,14 @@ fn pkce_matches(verifier: &str, challenge: &str) -> bool {
 /// `authorization_code` and `refresh_token` grants converge on.
 /// `audit_event` is `"token"` or `"refresh"` (requirement 4) -- the only
 /// thing that differs between the two call sites.
+///
+/// PRD-mcphost-federated-end-user-login requirement 3: when `grant_id`
+/// carries a federated end user (looked up here rather than threaded
+/// through both call sites, since the refresh-token path already has the
+/// grant row in scope and the authorization-code path doesn't need a
+/// second one), `sub` is that user's own namespaced subject and
+/// `mcphost_tenant`/`email`/`name`/`end_user_issuer` ride along; otherwise
+/// `sub` stays the tenant's own `namespace`, unchanged from before this PRD.
 #[allow(clippy::too_many_arguments)]
 async fn issue_tokens(
     state: &AppState,
@@ -1025,12 +1096,17 @@ async fn issue_tokens(
     // (equal to the hosted AS PRD's own fixed constants) for a tenant with
     // no policy row (AC9).
     let policy = crate::oauth_policy::OauthPolicy::load(state, tenant_id).await.unwrap_or_default();
+    let end_user = match state.db.find_oauth_grant_by_id(grant_id).await {
+        Ok(Some(g)) => g.end_user(),
+        _ => None,
+    };
     let now = crate::state::now_unix();
     let jti = crate::state::new_ulid();
     let exp = now + policy.access_ttl_s;
-    let claims = json!({
+    let sub = end_user.as_ref().and_then(|e| e.subject.clone()).unwrap_or_else(|| tenant.namespace.clone());
+    let mut claims = json!({
         "iss": state.public_url.trim_end_matches('/'),
-        "sub": tenant.namespace,
+        "sub": sub,
         "aud": resource,
         "scope": "mcp",
         "client_id": client_id,
@@ -1038,6 +1114,20 @@ async fn issue_tokens(
         "iat": now,
         "exp": exp,
     });
+    if let Some(eu) = &end_user
+        && let Some(obj) = claims.as_object_mut()
+    {
+        obj.insert("mcphost_tenant".to_string(), json!(tenant.namespace));
+        if let Some(email) = &eu.email {
+            obj.insert("email".to_string(), json!(email));
+        }
+        if let Some(name) = &eu.name {
+            obj.insert("name".to_string(), json!(name));
+        }
+        if let Some(issuer) = &eu.issuer {
+            obj.insert("end_user_issuer".to_string(), json!(issuer));
+        }
+    }
     let access_token = match state.authz_key.sign(&claims) {
         Ok(t) => t,
         Err(_) => return oauth_error_json(StatusCode::INTERNAL_SERVER_ERROR, "server_error", "could not sign access token"),
@@ -1170,7 +1260,14 @@ async fn token_authorization_code(state: &AppState, req: &TokenRequest) -> Respo
     }
     let grant_id = match state
         .db
-        .create_oauth_grant(row.tenant_id, row.client_id.clone(), row.client_name.clone(), row.method.clone(), row.resource.clone())
+        .create_oauth_grant(
+            row.tenant_id,
+            row.client_id.clone(),
+            row.client_name.clone(),
+            row.method.clone(),
+            row.resource.clone(),
+            row.end_user(),
+        )
         .await
     {
         Ok(id) => id,
@@ -1298,11 +1395,13 @@ const CLOCK_SKEW_SECS: i64 = 60;
 /// requirement 5: validates a bearer JWT whose `iss` is this host's own
 /// `public_url` -- called from [`crate::oauth::validate_bearer`], which
 /// peeks `iss` first and routes here instead of the tenant-registered-issuer
-/// path. `sub` is the tenant's own `namespace` (this host's only concept of
-/// a "tenant public id"); `aud` must be the root resource URI (per-tenant
-/// resources aren't live yet); a `jti` absent from `oauth_jti_denylist`
-/// (this crate never mints one without recording it) or found `denied_unix`
-/// both refuse as `"revoked"`.
+/// path. `sub` is the tenant's own `namespace` for a non-federated token,
+/// or a federated end user's own namespaced subject when `mcphost_tenant`
+/// is present (PRD-mcphost-federated-end-user-login requirement 3); `aud`
+/// must be either the root resource URI or that tenant's own per-tenant
+/// resource URI; a `jti` absent from `oauth_jti_denylist` (this crate never
+/// mints one without recording it) or found `denied_unix` both refuse as
+/// `"revoked"`.
 pub async fn validate_hosted_bearer(
     state: &AppState,
     token: &str,
@@ -1326,10 +1425,7 @@ pub async fn validate_hosted_bearer(
     if now > exp + CLOCK_SKEW_SECS {
         return Err(AppError::InvalidToken("expired"));
     }
-    let aud = claims.get("aud").and_then(Value::as_str).ok_or(AppError::InvalidToken("malformed"))?;
-    if aud != root_resource(state) {
-        return Err(AppError::InvalidToken("wrong_audience"));
-    }
+    let aud = claims.get("aud").and_then(Value::as_str).ok_or(AppError::InvalidToken("malformed"))?.to_string();
     let sub = claims
         .get("sub")
         .and_then(Value::as_str)
@@ -1349,20 +1445,57 @@ pub async fn validate_hosted_bearer(
     if jti_row.denied_unix.is_some() {
         return Err(AppError::InvalidToken("revoked"));
     }
-    let tenant = state
-        .db
-        .find_tenant_by_namespace(sub)
-        .await?
-        .ok_or(AppError::InvalidToken("malformed"))?;
+
+    // PRD-mcphost-federated-end-user-login requirement 3: a federated
+    // token's `sub` is the end user's own namespaced subject, not the
+    // tenant's `namespace` -- the tenant is instead named by
+    // `mcphost_tenant`, and `EndUser.issuer` is the provider's own issuer
+    // (`end_user_issuer`), never this host's own `public_url`.
+    let mcphost_tenant = claims.get("mcphost_tenant").and_then(Value::as_str).map(str::to_string);
+    let (tenant, issuer, auth_method) = match mcphost_tenant {
+        Some(namespace) => {
+            let tenant = state
+                .db
+                .find_tenant_by_namespace(namespace)
+                .await?
+                .ok_or(AppError::InvalidToken("malformed"))?;
+            let issuer = claims
+                .get("end_user_issuer")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .ok_or(AppError::InvalidToken("malformed"))?;
+            (tenant, issuer, "federated")
+        }
+        None => {
+            let tenant = state
+                .db
+                .find_tenant_by_namespace(sub.clone())
+                .await?
+                .ok_or(AppError::InvalidToken("malformed"))?;
+            let issuer = state.public_url.trim_end_matches('/').to_string();
+            (tenant, issuer, "hosted_token")
+        }
+    };
+
+    // PRD-mcphost-federated-end-user-login requirement 2: a token minted
+    // for this tenant's per-tenant resource carries that resource as
+    // `aud`, not the root one -- checked here (once the tenant, and
+    // therefore its own canonical per-tenant resource, is known) rather
+    // than against a single fixed value.
+    if aud != root_resource(state) && aud != per_tenant_resource(state, &tenant.namespace) {
+        return Err(AppError::InvalidToken("wrong_audience"));
+    }
     let _ = state.db.touch_oauth_grant_last_used(jti_row.grant_id, now).await;
 
     let scope = claims.get("scope").and_then(Value::as_str).map(str::to_string);
     Ok(crate::oauth::OauthCaller {
         tenant_id: tenant.id,
-        subject: tenant.namespace,
-        issuer: state.public_url.trim_end_matches('/').to_string(),
-        auth_method: "hosted_token",
+        subject: sub,
+        issuer,
+        auth_method,
         scope,
+        email: claims.get("email").and_then(Value::as_str).map(str::to_string),
+        name: claims.get("name").and_then(Value::as_str).map(str::to_string),
     })
 }
 
