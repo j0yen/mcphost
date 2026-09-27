@@ -26,7 +26,7 @@ use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header};
 use ring::rand::SystemRandom;
 use ring::signature::{ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair, KeyPair};
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::claim::{html_escape, html_response, page};
@@ -146,6 +146,22 @@ pub fn per_tenant_resource(state: &AppState, namespace: &str) -> String {
     format!("{}/t/{}/mcp", state.public_url.trim_end_matches('/'), namespace)
 }
 
+/// The inverse of [`per_tenant_resource`]: `<ns>` from a `.../t/<ns>/mcp`
+/// resource URI, or `None` for anything else (including the root resource).
+/// `main`'s own resource resolution (`resolve_resource_tenant`, below) uses
+/// `crate::oauth::resource_tenant_namespace` instead (parses against
+/// `public_url` directly, no `AppState` needed there); this `AppState`-taking
+/// twin is PRD-mcphost-enterprise-managed-auth requirement 3's own: the
+/// JWT-bearer grant handler in `assertion.rs` resolves an assertion's
+/// `resource` target the same way (AC4's `resource = <public>/t/nope/mcp`
+/// for an unknown `<ns>` is `invalid_target` the same way a malformed
+/// resource string is, both resolved by the caller finding no tenant for
+/// whatever this returns).
+pub fn resource_tenant_namespace<'a>(state: &AppState, resource: &'a str) -> Option<&'a str> {
+    let prefix = format!("{}/t/", state.public_url.trim_end_matches('/'));
+    resource.strip_prefix(&prefix)?.strip_suffix("/mcp").filter(|ns| !ns.is_empty())
+}
+
 /// requirement 1 (AC1): the RFC 8414 authorization-server metadata document
 /// -- also served verbatim at `/.well-known/openid-configuration` (the OIDC
 /// discovery document this deployment needs no separate fields for, since
@@ -160,12 +176,40 @@ pub fn authorization_server_metadata(state: &AppState) -> Value {
         "revocation_endpoint": format!("{issuer}/oauth/revoke"),
         "jwks_uri": format!("{issuer}/.well-known/jwks.json"),
         "response_types_supported": ["code"],
-        "grant_types_supported": ["authorization_code", "refresh_token"],
+        // PRD-mcphost-enterprise-managed-auth requirement 2 (AC5): the
+        // JWT-bearer grant is advertised on both the root and per-tenant
+        // metadata documents (see [`authorization_server_metadata_for_tenant`]).
+        "grant_types_supported": [
+            "authorization_code",
+            "refresh_token",
+            crate::assertion::JWT_BEARER_GRANT_TYPE,
+        ],
         "code_challenge_methods_supported": ["S256"],
         "token_endpoint_auth_methods_supported": ["none", "client_secret_post"],
         "scopes_supported": ["mcp"],
         "client_id_metadata_document_supported": true,
     })
+}
+
+/// PRD-mcphost-enterprise-managed-auth requirement 2 (AC5): the per-tenant
+/// twin of [`authorization_server_metadata`] above -- identical fields,
+/// plus `identity_assertion_issuers_supported` naming this one tenant's
+/// own trusted identity-assertion issuers (never another tenant's). The
+/// draft (draft-ietf-oauth-identity-assertion-authz-grant-04) does not
+/// actually define a metadata field name for this at all (verified at
+/// build time; see the intent card's `ambiguities_resolved`) -- this uses
+/// the name this PRD's own requirement 2 specifies.
+pub async fn authorization_server_metadata_for_tenant(
+    state: &AppState,
+    tenant: &crate::db::Tenant,
+) -> Result<Value, AppError> {
+    let mut doc = authorization_server_metadata(state);
+    let issuers: Vec<String> =
+        state.db.list_trusted_issuers_by_tenant(tenant.id).await?.into_iter().map(|row| row.issuer).collect();
+    if let Some(obj) = doc.as_object_mut() {
+        obj.insert("identity_assertion_issuers_supported".to_string(), json!(issuers));
+    }
+    Ok(doc)
 }
 
 // ---- client identification (CIMD + DCR) -----------------------------------
@@ -1030,7 +1074,7 @@ fn source_ip(headers: &HeaderMap, peer: SocketAddr) -> String {
     crate::state::resolve_source_ip(Some(&peer.ip().to_string()), forwarded_for)
 }
 
-fn oauth_error_json(status: StatusCode, error: &str, description: &str) -> Response {
+pub(crate) fn oauth_error_json(status: StatusCode, error: &str, description: &str) -> Response {
     (status, Json(json!({"error": error, "error_description": description}))).into_response()
 }
 
@@ -1180,6 +1224,15 @@ pub struct TokenRequest {
     pub resource: Option<String>,
     #[serde(default)]
     pub refresh_token: Option<String>,
+    /// PRD-mcphost-enterprise-managed-auth requirement 3: the identity
+    /// assertion JWT, for `grant_type=urn:ietf:params:oauth:grant-type:
+    /// jwt-bearer`.
+    #[serde(default)]
+    pub assertion: Option<String>,
+    /// requirement 3/4 (AC4): the requested scope for the JWT-bearer
+    /// grant -- must be a subset of `mcp`/`catalog`, else `invalid_scope`.
+    #[serde(default)]
+    pub scope: Option<String>,
 }
 
 /// RFC 7636 S256: `BASE64URL-ENCODE(SHA256(code_verifier)) == code_challenge`.
@@ -1189,70 +1242,57 @@ fn pkce_matches(verifier: &str, challenge: &str) -> bool {
     URL_SAFE_NO_PAD.encode(hasher.finalize()) == challenge
 }
 
-/// requirement 4: mints and stores a fresh access/refresh token pair for
-/// an already-created-or-rotated grant -- the one success path both
-/// `authorization_code` and `refresh_token` grants converge on.
-/// `audit_event` is `"token"` or `"refresh"` (requirement 4) -- the only
-/// thing that differs between the two call sites.
-///
-/// PRD-mcphost-federated-end-user-login requirement 3: when `grant_id`
-/// carries a federated end user (looked up here rather than threaded
-/// through both call sites, since the refresh-token path already has the
-/// grant row in scope and the authorization-code path doesn't need a
-/// second one), `sub` is that user's own namespaced subject and
-/// `mcphost_tenant`/`email`/`name`/`end_user_issuer` ride along; otherwise
-/// `sub` stays the tenant's own `namespace`, unchanged from before this PRD.
+/// requirement 4/PRD-mcphost-enterprise-managed-auth requirement 3: mints
+/// and stores a fresh access token (and, when `mint_refresh`, a refresh
+/// token too) for an already-created-or-rotated grant -- the one success
+/// path `authorization_code`/`refresh_token` (via the [`issue_tokens`]
+/// wrapper below, always `mint_refresh: true`) and the JWT-bearer grant
+/// (`crate::assertion::token_jwt_bearer`, a namespaced `subject`,
+/// `extra_claims` carrying `mcphost_tenant`/`email`/`name`, and
+/// `mint_refresh` gated on the assertion's own refresh permission, AC6) all
+/// converge on. `audit_event` is `"token"`/`"refresh"`/`"xaa"` (requirement
+/// 4) -- the only thing that differs between the authorization_code/
+/// refresh_token/JWT-bearer call sites.
 #[allow(clippy::too_many_arguments)]
-async fn issue_tokens(
+pub(crate) async fn issue_tokens_for_subject(
     state: &AppState,
     grant_id: i64,
     tenant_id: i64,
     resource: &str,
     scope: &str,
     client_id: &str,
+    subject: &str,
+    extra_claims: Map<String, Value>,
+    mint_refresh: bool,
     audit_event: &str,
 ) -> Response {
-    let tenant = match state.db.find_tenant_by_id(tenant_id).await {
-        Ok(Some(t)) => t,
-        _ => return oauth_error_json(StatusCode::INTERNAL_SERVER_ERROR, "server_error", "tenant not found"),
-    };
     // PRD-mcphost-oauth-client-policy requirement 1: a tenant's own
     // `access_ttl_s`/`refresh_ttl_s`, falling back to this PRD's defaults
     // (equal to the hosted AS PRD's own fixed constants) for a tenant with
     // no policy row (AC9).
     let policy = crate::oauth_policy::OauthPolicy::load(state, tenant_id).await.unwrap_or_default();
-    let end_user = match state.db.find_oauth_grant_by_id(grant_id).await {
-        Ok(Some(g)) => g.end_user(),
-        _ => None,
-    };
     let now = crate::state::now_unix();
     let jti = crate::state::new_ulid();
     let exp = now + policy.access_ttl_s;
-    let sub = end_user.as_ref().and_then(|e| e.subject.clone()).unwrap_or_else(|| tenant.namespace.clone());
-    let mut claims = json!({
-        "iss": state.public_url.trim_end_matches('/'),
-        "sub": sub,
-        "aud": resource,
-        "scope": scope,
-        "client_id": client_id,
-        "jti": jti,
-        "iat": now,
-        "exp": exp,
-    });
-    if let Some(eu) = &end_user
-        && let Some(obj) = claims.as_object_mut()
-    {
-        obj.insert("mcphost_tenant".to_string(), json!(tenant.namespace));
-        if let Some(email) = &eu.email {
-            obj.insert("email".to_string(), json!(email));
-        }
-        if let Some(name) = &eu.name {
-            obj.insert("name".to_string(), json!(name));
-        }
-        if let Some(issuer) = &eu.issuer {
-            obj.insert("end_user_issuer".to_string(), json!(issuer));
-        }
+    // PRD-mcphost-tool-scopes-and-consent requirement 2: `scope` is the
+    // real granted scope string (not a fixed "mcp"), threaded through by
+    // every caller -- `issue_tokens`'s own authorization_code/refresh_token
+    // callers pass the grant's own recorded scope; the JWT-bearer (`xaa`)
+    // caller (PRD-mcphost-enterprise-managed-auth requirement 4) passes its
+    // own resolved scope the same way.
+    let mut claims_map = Map::new();
+    claims_map.insert("iss".to_string(), json!(state.public_url.trim_end_matches('/')));
+    claims_map.insert("sub".to_string(), json!(subject));
+    claims_map.insert("aud".to_string(), json!(resource));
+    claims_map.insert("scope".to_string(), json!(scope));
+    claims_map.insert("client_id".to_string(), json!(client_id));
+    claims_map.insert("jti".to_string(), json!(jti));
+    claims_map.insert("iat".to_string(), json!(now));
+    claims_map.insert("exp".to_string(), json!(exp));
+    for (k, v) in extra_claims {
+        claims_map.insert(k, v);
     }
+    let claims = Value::Object(claims_map);
     let access_token = match state.authz_key.sign(&claims) {
         Ok(t) => t,
         Err(_) => return oauth_error_json(StatusCode::INTERNAL_SERVER_ERROR, "server_error", "could not sign access token"),
@@ -1265,15 +1305,26 @@ async fn issue_tokens(
     {
         return oauth_error_json(StatusCode::INTERNAL_SERVER_ERROR, "server_error", "could not record access token");
     }
-    let refresh_token = crate::auth::generate_key();
-    let refresh_hash = crate::auth::hash_key(&refresh_token);
-    if state
-        .db
-        .insert_oauth_refresh_token(grant_id, refresh_hash, resource.to_string(), now + policy.refresh_ttl_s)
-        .await
-        .is_err()
-    {
-        return oauth_error_json(StatusCode::INTERNAL_SERVER_ERROR, "server_error", "could not record refresh token");
+    let mut body = json!({
+        "access_token": access_token,
+        "token_type": "Bearer",
+        "expires_in": policy.access_ttl_s,
+        "scope": scope,
+    });
+    if mint_refresh {
+        let refresh_token = crate::auth::generate_key();
+        let refresh_hash = crate::auth::hash_key(&refresh_token);
+        if state
+            .db
+            .insert_oauth_refresh_token(grant_id, refresh_hash, resource.to_string(), now + policy.refresh_ttl_s)
+            .await
+            .is_err()
+        {
+            return oauth_error_json(StatusCode::INTERNAL_SERVER_ERROR, "server_error", "could not record refresh token");
+        }
+        if let Some(obj) = body.as_object_mut() {
+            obj.insert("refresh_token".to_string(), json!(refresh_token));
+        }
     }
     let _ = state.db.touch_oauth_grant_last_used(grant_id, now).await;
     let _ = crate::oauth_policy::record_audit(
@@ -1293,17 +1344,44 @@ async fn issue_tokens(
     // counts toward `tokens_issued_7d`. Best-effort: never fails the
     // response that carries the real tokens.
     let _ = state.db.record_oauth_funnel_event("token_issued").await;
-    (
-        StatusCode::OK,
-        Json(json!({
-            "access_token": access_token,
-            "token_type": "Bearer",
-            "expires_in": policy.access_ttl_s,
-            "refresh_token": refresh_token,
-            "scope": scope,
-        })),
-    )
-        .into_response()
+    (StatusCode::OK, Json(body)).into_response()
+}
+
+/// requirement 4: mints and stores a fresh access/refresh token pair for
+/// an already-created-or-rotated grant -- the one success path
+/// `authorization_code`/`refresh_token`/JWT-bearer grants all converge on.
+///
+/// PRD-mcphost-federated-end-user-login requirement 3: when `grant_id`
+/// carries a federated end user (looked up here rather than threaded
+/// through both call sites, since the refresh-token path already has the
+/// grant row in scope and the authorization-code path doesn't need a
+/// second one), `sub` is that user's own namespaced subject and
+/// `mcphost_tenant`/`email`/`name`/`end_user_issuer` ride along; otherwise
+/// `sub` stays the tenant's own `namespace`, unchanged from before this PRD.
+async fn issue_tokens(state: &AppState, grant_id: i64, tenant_id: i64, resource: &str, scope: &str, client_id: &str, audit_event: &str) -> Response {
+    let tenant = match state.db.find_tenant_by_id(tenant_id).await {
+        Ok(Some(t)) => t,
+        _ => return oauth_error_json(StatusCode::INTERNAL_SERVER_ERROR, "server_error", "tenant not found"),
+    };
+    let end_user = match state.db.find_oauth_grant_by_id(grant_id).await {
+        Ok(Some(g)) => g.end_user(),
+        _ => None,
+    };
+    let subject = end_user.as_ref().and_then(|e| e.subject.clone()).unwrap_or_else(|| tenant.namespace.clone());
+    let mut extra_claims = Map::new();
+    if let Some(eu) = &end_user {
+        extra_claims.insert("mcphost_tenant".to_string(), json!(tenant.namespace));
+        if let Some(email) = &eu.email {
+            extra_claims.insert("email".to_string(), json!(email));
+        }
+        if let Some(name) = &eu.name {
+            extra_claims.insert("name".to_string(), json!(name));
+        }
+        if let Some(issuer) = &eu.issuer {
+            extra_claims.insert("end_user_issuer".to_string(), json!(issuer));
+        }
+    }
+    issue_tokens_for_subject(state, grant_id, tenant_id, resource, scope, client_id, &subject, extra_claims, true, audit_event).await
 }
 
 /// requirement 4/5, AC4/AC5/AC7: `grant_type=authorization_code`.
@@ -1510,10 +1588,15 @@ pub async fn post_token(State(state): State<Arc<AppState>>, axum::Form(req): axu
     match req.grant_type.as_deref() {
         Some("authorization_code") => token_authorization_code(&state, &req).await,
         Some("refresh_token") => token_refresh_token(&state, &req).await,
+        // PRD-mcphost-enterprise-managed-auth requirement 3: the RFC 7523
+        // JWT-bearer grant.
+        Some(g) if g == crate::assertion::JWT_BEARER_GRANT_TYPE => {
+            crate::assertion::token_jwt_bearer(&state, &req).await
+        }
         _ => oauth_error_json(
             StatusCode::BAD_REQUEST,
             "unsupported_grant_type",
-            "grant_type must be \"authorization_code\" or \"refresh_token\"",
+            "grant_type must be \"authorization_code\", \"refresh_token\", or the JWT-bearer URN",
         ),
     }
 }
@@ -1527,13 +1610,26 @@ const CLOCK_SKEW_SECS: i64 = 60;
 /// requirement 5: validates a bearer JWT whose `iss` is this host's own
 /// `public_url` -- called from [`crate::oauth::validate_bearer`], which
 /// peeks `iss` first and routes here instead of the tenant-registered-issuer
-/// path. `sub` is the tenant's own `namespace` for a non-federated token,
-/// or a federated end user's own namespaced subject when `mcphost_tenant`
-/// is present (PRD-mcphost-federated-end-user-login requirement 3); `aud`
-/// must be either the root resource URI or that tenant's own per-tenant
-/// resource URI; a `jti` absent from `oauth_jti_denylist` (this crate never
-/// mints one without recording it) or found `denied_unix` both refuse as
-/// `"revoked"`.
+/// path. The tenant and the token's resource are both resolved from the
+/// `jti`'s own `oauth_jti_denylist` row (never from `sub`/`aud` directly):
+/// PRD-mcphost-enterprise-managed-auth's JWT-bearer grant mints `sub` as
+/// `<issuer>#<subject>` (namespaced, requirement 3) rather than a tenant
+/// namespace, and PRD-mcphost-federated-end-user-login's federated grant
+/// mints `sub` as the end user's own namespaced subject; both PRDs' `aud`
+/// is a per-tenant resource (`crate::authz::per_tenant_resource`/
+/// `tenant_resource`) rather than the fixed root one -- all already
+/// recorded on the jti row at mint time (`issue_tokens_for_subject`), so
+/// re-deriving tenant/resource from the row is correct for every grant
+/// this host has ever minted, old or new. A `jti` absent from
+/// `oauth_jti_denylist` (this crate never mints one without recording it)
+/// or found `denied_unix` both refuse as `"revoked"`. `oauth_grants.method
+/// == "xaa"` is what tells an enterprise-assertion-derived token apart
+/// from every other hosted token (requirement 5): its `auth_method`
+/// becomes `"enterprise_assertion"` rather than `"hosted_token"`; a grant
+/// with a federated end user attached (PRD-mcphost-federated-end-user-login
+/// requirement 3) instead becomes `"federated"`. Either way, the `email`/
+/// `name` claims (present only on those grants' tokens) are copied onto
+/// the returned [`crate::oauth::OauthCaller`].
 pub async fn validate_hosted_bearer(
     state: &AppState,
     token: &str,
@@ -1557,7 +1653,7 @@ pub async fn validate_hosted_bearer(
     if now > exp + CLOCK_SKEW_SECS {
         return Err(AppError::InvalidToken("expired"));
     }
-    let aud = claims.get("aud").and_then(Value::as_str).ok_or(AppError::InvalidToken("malformed"))?.to_string();
+    let aud = claims.get("aud").and_then(Value::as_str).ok_or(AppError::InvalidToken("malformed"))?;
     let sub = claims
         .get("sub")
         .and_then(Value::as_str)
@@ -1577,47 +1673,44 @@ pub async fn validate_hosted_bearer(
     if jti_row.denied_unix.is_some() {
         return Err(AppError::InvalidToken("revoked"));
     }
-
-    // PRD-mcphost-federated-end-user-login requirement 3: a federated
-    // token's `sub` is the end user's own namespaced subject, not the
-    // tenant's `namespace` -- the tenant is instead named by
-    // `mcphost_tenant`, and `EndUser.issuer` is the provider's own issuer
-    // (`end_user_issuer`), never this host's own `public_url`.
-    let mcphost_tenant = claims.get("mcphost_tenant").and_then(Value::as_str).map(str::to_string);
-    let (tenant, issuer, auth_method) = match mcphost_tenant {
-        Some(namespace) => {
-            let tenant = state
-                .db
-                .find_tenant_by_namespace(namespace)
-                .await?
-                .ok_or(AppError::InvalidToken("malformed"))?;
-            let issuer = claims
-                .get("end_user_issuer")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-                .ok_or(AppError::InvalidToken("malformed"))?;
-            (tenant, issuer, "federated")
-        }
-        None => {
-            let tenant = state
-                .db
-                .find_tenant_by_namespace(sub.clone())
-                .await?
-                .ok_or(AppError::InvalidToken("malformed"))?;
-            let issuer = state.public_url.trim_end_matches('/').to_string();
-            (tenant, issuer, "hosted_token")
-        }
-    };
-
+    // PRD-mcphost-enterprise-managed-auth requirement 5,
     // PRD-mcphost-federated-end-user-login requirement 2, and
-    // PRD-mcphost-tool-scopes-and-consent requirement 2: a token minted
-    // for this tenant's per-tenant resource carries that resource as
-    // `aud`, not the root one -- checked here (once the tenant, and
-    // therefore its own canonical per-tenant resource, is known) rather
-    // than against a single fixed value.
-    if aud != root_resource(state) && aud != per_tenant_resource(state, &tenant.namespace) {
+    // PRD-mcphost-tool-scopes-and-consent requirement 2: all three PRDs'
+    // grants mint `aud` as a per-tenant resource rather than the fixed root
+    // one, so the check is against the jti row's own recorded resource (set
+    // at mint time by `issue_tokens_for_subject`) rather than recomputing a
+    // per-tenant resource from a tenant looked up off the claims -- the
+    // tenant/issuer/auth_method every PRD needs (including this one's own
+    // `enterprise_assertion` method) are derived once, below, from
+    // `jti_row`/`grant` instead.
+    if aud != jti_row.resource {
         return Err(AppError::InvalidToken("wrong_audience"));
     }
+    let tenant = state
+        .db
+        .find_tenant_by_id(jti_row.tenant_id)
+        .await?
+        .ok_or(AppError::InvalidToken("malformed"))?;
+    let grant = state.db.find_oauth_grant_by_id(jti_row.grant_id).await?;
+    let is_assertion_grant = grant.as_ref().is_some_and(|g| g.method == "xaa");
+    // PRD-mcphost-federated-end-user-login requirement 3: a federated
+    // token's `sub` is the end user's own namespaced subject, not the
+    // tenant's `namespace`, and `issuer` is the provider's own issuer
+    // (`end_user_issuer`), never this host's own `public_url`.
+    let end_user = grant.as_ref().and_then(|g| g.end_user());
+    let (issuer, auth_method) = if is_assertion_grant {
+        (state.public_url.trim_end_matches('/').to_string(), "enterprise_assertion")
+    } else if end_user.is_some() {
+        let issuer = claims
+            .get("end_user_issuer")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .ok_or(AppError::InvalidToken("malformed"))?;
+        (issuer, "federated")
+    } else {
+        (state.public_url.trim_end_matches('/').to_string(), "hosted_token")
+    };
+    let is_federated = end_user.is_some();
     let _ = state.db.touch_oauth_grant_last_used(jti_row.grant_id, now).await;
 
     let scope = claims.get("scope").and_then(Value::as_str).map(str::to_string);
@@ -1627,8 +1720,12 @@ pub async fn validate_hosted_bearer(
         issuer,
         auth_method,
         scope,
-        email: claims.get("email").and_then(Value::as_str).map(str::to_string),
-        name: claims.get("name").and_then(Value::as_str).map(str::to_string),
+        email: (is_assertion_grant || is_federated)
+            .then(|| claims.get("email").and_then(Value::as_str).map(str::to_string))
+            .flatten(),
+        name: (is_assertion_grant || is_federated)
+            .then(|| claims.get("name").and_then(Value::as_str).map(str::to_string))
+            .flatten(),
     })
 }
 

@@ -435,7 +435,14 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # bucket on top of oauth-demand-signal's own 650 cap above, spawning an 11th
 # suite binary again -- caught by the same P0 assertion. See below for
 # whatever cap this rebase's own P0 assertion run required.
-MAX_PER_SUITE = {"core": 650, "sandbox": 90}
+#
+# 2026-09-27: rebasing mcphost-enterprise-managed-auth onto
+# mcphost-tool-scopes-and-consent (#66) stacks this PRD's own `xaa_ac*.rs`
+# core-classified files on top of tool-scopes-and-consent's 650 cap above,
+# spawning an 11th suite binary again -- caught by the same P0 assertion.
+# 650 -> 670 re-collapses core's normal buckets to 1, landing the grand total
+# back at 10.
+MAX_PER_SUITE = {"core": 670, "sandbox": 90}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

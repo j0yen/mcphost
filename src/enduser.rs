@@ -27,6 +27,12 @@ pub enum EndUserMethod {
     /// [`EndUserMethod::HostedOauth`]'s tenant-owner hosted token, though
     /// both are minted by this host's own built-in authorization server.
     Federated,
+    /// PRD-mcphost-enterprise-managed-auth requirement 5: a bearer minted
+    /// from an admin-trusted identity provider's identity assertion (the
+    /// RFC 7523 JWT-bearer grant) -- distinct from [`EndUserMethod::HostedOauth`]
+    /// even though both are signed by this host's own key, since this one
+    /// carries a real employee subject, not the tenant's own namespace.
+    EnterpriseAssertion,
 }
 
 impl EndUserMethod {
@@ -36,6 +42,7 @@ impl EndUserMethod {
             EndUserMethod::Assertion => "assertion",
             EndUserMethod::HostedOauth => "hosted_oauth",
             EndUserMethod::Federated => "federated",
+            EndUserMethod::EnterpriseAssertion => "enterprise_assertion",
         }
     }
 }
@@ -53,9 +60,11 @@ pub struct EndUser {
     pub issuer: Option<String>,
     pub method: EndUserMethod,
     pub verified_at: i64,
-    /// PRD-mcphost-federated-end-user-login requirement 3: `Some` only for
-    /// [`EndUserMethod::Federated`], and only when the provider supplied
-    /// it -- `MCPHOST_END_USER_EMAIL`/`host.enduser.whoami`'s `email`.
+    /// PRD-mcphost-federated-end-user-login requirement 3: `Some` for
+    /// [`EndUserMethod::Federated`], or (PRD-mcphost-enterprise-managed-auth
+    /// requirement 3/5) [`EndUserMethod::EnterpriseAssertion`], and only
+    /// when the provider/assertion supplied it -- `None` for every other
+    /// method; `MCPHOST_END_USER_EMAIL`/`host.enduser.whoami`'s `email`.
     pub email: Option<String>,
     /// Same shape as `email` above; `MCPHOST_END_USER_NAME`.
     pub name: Option<String>,

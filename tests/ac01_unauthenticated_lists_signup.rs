@@ -253,6 +253,12 @@ async fn unauthenticated_tools_list_is_signup_only() {
         "host.oauth.provider",
         "host.oauth.provider_remove",
         "host.oauth.doctor",
+        // PRD-mcphost-enterprise-managed-auth requirement 1: the trusted
+        // identity-assertion issuer registry -- discoverable unauthenticated
+        // too, same as every other host.*-style tool above.
+        "host.oauth.trusted_issuer_set",
+        "host.oauth.trusted_issuer_remove",
+        "host.oauth.trusted_issuers",
         // PRD-mcphost-docs-semantic-search: the three host.docs.search/
         // index_config/reindex tools are discoverable unauthenticated too,
         // same as every other host.*-style tool above.
@@ -307,7 +313,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        132,
+        135,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the three host.tool_history/host.tool_rollback/host.tool_diff \
@@ -334,6 +340,8 @@ async fn unauthenticated_tools_list_is_signup_only() {
          the five host.oauth.* tools (PRD-mcphost-oauth-resource-server, PRD-mcphost-hosted-authorization-server) + \
          the four host.oauth.provider_set/provider/provider_remove/doctor tools \
          (PRD-mcphost-federated-end-user-login) + \
+         the three host.oauth.trusted_issuer_set/trusted_issuer_remove/trusted_issuers tools \
+         (PRD-mcphost-enterprise-managed-auth) + \
          the three host.docs.search/index_config/reindex tools \
          (PRD-mcphost-docs-semantic-search) + \
          the two host.enduser.* tools (PRD-mcphost-end-user-identity) + \

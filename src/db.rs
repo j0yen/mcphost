@@ -79,6 +79,13 @@ const MIGRATION_0053: &str = include_str!("../migrations/0053_oauth_demand_signa
 // mcphost-oauth-demand-signal claimed 0053 first, both landing on main ahead
 // of this branch.
 const MIGRATION_0054: &str = include_str!("../migrations/0054_tool_scopes_and_consent.sql");
+// PRD-mcphost-enterprise-managed-auth's own migration collided with 0052
+// (mcphost-federated-end-user-login claimed it first, landing on main
+// ahead of this branch), then with 0053 (mcphost-oauth-demand-signal claimed
+// it first during this rebase), then with 0054 (mcphost-tool-scopes-and-
+// consent claimed it first, also landing on main ahead of this branch);
+// renumbered to 0055.
+const MIGRATION_0055: &str = include_str!("../migrations/0055_enterprise_managed_auth.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -2044,7 +2051,8 @@ impl Db {
         Self::migrate_0051_oauth_client_policy(&conn)?;
         Self::migrate_0052_federated_end_user_login(&conn)?;
         Self::migrate_0053_oauth_demand_signal(&conn)?;
-        Self::migrate_0054_tool_scopes_and_consent(&conn)
+        Self::migrate_0054_tool_scopes_and_consent(&conn)?;
+        Self::migrate_0055_enterprise_managed_auth(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -2802,6 +2810,25 @@ impl Db {
         }
         Ok(())
     }
+
+    /// PRD-mcphost-enterprise-managed-auth requirements 1, 3, 4: the
+    /// trusted-identity-assertion-issuer registry and the assertion `jti`
+    /// replay table. (Renumbered from this PRD's own 0051, then 0052, then
+    /// 0053, then 0054, during rebase -- mcphost-oauth-client-policy
+    /// claimed 0051 first, then mcphost-federated-end-user-login claimed
+    /// 0052 first, then mcphost-oauth-demand-signal claimed 0053 first,
+    /// then mcphost-tool-scopes-and-consent claimed 0054 first; see the
+    /// 0048 doc comment above for this rebase-renumbering convention.)
+    fn migrate_0055_enterprise_managed_auth(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'oauth_trusted_issuers'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0055)?;
+        }
+        Ok(())
+    }
+
 
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
@@ -15189,6 +15216,169 @@ impl Db {
         })
         .await
     }
+
+    // ---- PRD-mcphost-enterprise-managed-auth: oauth_trusted_issuers -------
+
+    /// `host.oauth.trusted_issuer_set` (requirement 1): `issuer` is globally
+    /// unique (migration 0052's UNIQUE constraint), so this is only ever
+    /// called after [`Self::find_trusted_issuer_by_issuer`] has already
+    /// confirmed no row (of any tenant's) exists for it -- same count-then-
+    /// insert convention [`Self::insert_oauth_issuer`] already uses.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_trusted_issuer(
+        &self,
+        tenant_id: i64,
+        issuer: String,
+        jwks_url: String,
+        client_id: String,
+        audience: Option<String>,
+        created_at: String,
+    ) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO oauth_trusted_issuers (tenant_id, issuer, jwks_url, client_id, audience, created_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![tenant_id, issuer, jwks_url, client_id, audience, created_at],
+            )?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+    }
+
+    /// `host.oauth.trusted_issuer_set` re-registering the same issuer it
+    /// already owns: updates `jwks_url`/`client_id`/`audience` in place
+    /// (idempotent), same posture [`Self::update_oauth_issuer`] takes.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn update_trusted_issuer(
+        &self,
+        tenant_id: i64,
+        issuer: String,
+        jwks_url: String,
+        client_id: String,
+        audience: Option<String>,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE oauth_trusted_issuers SET jwks_url = ?1, client_id = ?2, audience = ?3 \
+                 WHERE tenant_id = ?4 AND issuer = ?5",
+                params![jwks_url, client_id, audience, tenant_id, issuer],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// The one lookup [`crate::assertion::token_jwt_bearer`] (by an
+    /// assertion's unverified `iss` peek) and `host.oauth.trusted_issuer_set`'s
+    /// own already-registered-elsewhere check both funnel through.
+    pub async fn find_trusted_issuer_by_issuer(
+        &self,
+        issuer: String,
+    ) -> Result<Option<TrustedIssuerRow>, AppError> {
+        self.with_conn(move |conn| {
+            let sql = format!("SELECT {TRUSTED_ISSUER_COLUMNS} FROM oauth_trusted_issuers WHERE issuer = ?1");
+            conn.query_row(&sql, params![issuer], trusted_issuer_from_row)
+                .optional()
+                .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 1: "max 4 per tenant" -- checked by
+    /// `oauth::trusted_issuer_set` before [`Self::insert_trusted_issuer`].
+    pub async fn count_trusted_issuers_by_tenant(&self, tenant_id: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM oauth_trusted_issuers WHERE tenant_id = ?1",
+                params![tenant_id],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `host.oauth.trusted_issuers`: this tenant's own registered trusted
+    /// issuers, oldest first.
+    pub async fn list_trusted_issuers_by_tenant(
+        &self,
+        tenant_id: i64,
+    ) -> Result<Vec<TrustedIssuerRow>, AppError> {
+        self.with_conn(move |conn| {
+            let sql = format!(
+                "SELECT {TRUSTED_ISSUER_COLUMNS} FROM oauth_trusted_issuers WHERE tenant_id = ?1 ORDER BY id"
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(params![tenant_id], trusted_issuer_from_row)?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// `admin.oauth.trusted_issuers`: every registered trusted issuer
+    /// across every tenant, paired with that tenant's own `namespace` --
+    /// same shape [`Self::list_oauth_issuers_with_tenant`] already uses.
+    pub async fn list_trusted_issuers_with_tenant(&self) -> Result<Vec<(TrustedIssuerRow, String)>, AppError> {
+        self.with_conn(move |conn| {
+            let sql = format!(
+                "SELECT {cols}, t.namespace FROM oauth_trusted_issuers o JOIN tenants t ON t.id = o.tenant_id ORDER BY o.id",
+                cols = TRUSTED_ISSUER_COLUMNS
+                    .split(", ")
+                    .map(|c| format!("o.{c}"))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map([], |r| {
+                    let row = trusted_issuer_from_row(r)?;
+                    let namespace: String = r.get(7)?;
+                    Ok((row, namespace))
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// `host.oauth.trusted_issuer_remove`: `false` when `issuer` names no
+    /// row this tenant owns.
+    pub async fn remove_trusted_issuer(&self, tenant_id: i64, issuer: String) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "DELETE FROM oauth_trusted_issuers WHERE tenant_id = ?1 AND issuer = ?2",
+                params![tenant_id, issuer],
+            )?;
+            Ok(n > 0)
+        })
+        .await
+    }
+
+    /// requirement 3/4: the atomic replay claim for an identity assertion's
+    /// `jti` -- `true` iff this call is the one that claimed it (never seen
+    /// for this issuer before); `false` for a reused `jti` (AC3). Same
+    /// insert-is-the-claim shape [`Self::claim_oauth_code`] uses, but via
+    /// `INSERT ... ON CONFLICT DO NOTHING` (this table's key is set at
+    /// insert time, not claimed later) rather than an `UPDATE`.
+    pub async fn claim_assertion_jti(
+        &self,
+        issuer: String,
+        jti: String,
+        expires_unix: i64,
+    ) -> Result<bool, AppError> {
+        let created_unix = now_unix();
+        self.with_conn(move |conn| {
+            let n = conn.execute(
+                "INSERT INTO oauth_assertion_jti (issuer, jti, expires_unix, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4) ON CONFLICT(issuer, jti) DO NOTHING",
+                params![issuer, jti, expires_unix, created_unix],
+            )?;
+            Ok(n > 0)
+        })
+        .await
+    }
 }
 
 /// requirement 1: one `documents` row -- `docs.rs`'s own business logic
@@ -15705,6 +15895,36 @@ fn oauth_issuer_from_row(r: &Row) -> rusqlite::Result<OauthIssuerRow> {
         created_at: r.get(5)?,
         last_jwks_at: r.get(6)?,
         jwks_json: r.get(7)?,
+    })
+}
+
+/// PRD-mcphost-enterprise-managed-auth requirement 1: one
+/// `oauth_trusted_issuers` row -- the identity-assertion issuer registry
+/// `host.oauth.trusted_issuer_*`/`admin.oauth.trusted_issuers` and
+/// [`crate::assertion::token_jwt_bearer`] read back.
+#[derive(Debug, Clone, Serialize)]
+pub struct TrustedIssuerRow {
+    pub id: i64,
+    pub tenant_id: i64,
+    pub issuer: String,
+    pub jwks_url: String,
+    pub client_id: String,
+    pub audience: Option<String>,
+    pub created_at: String,
+}
+
+const TRUSTED_ISSUER_COLUMNS: &str =
+    "id, tenant_id, issuer, jwks_url, client_id, audience, created_at";
+
+fn trusted_issuer_from_row(r: &Row) -> rusqlite::Result<TrustedIssuerRow> {
+    Ok(TrustedIssuerRow {
+        id: r.get(0)?,
+        tenant_id: r.get(1)?,
+        issuer: r.get(2)?,
+        jwks_url: r.get(3)?,
+        client_id: r.get(4)?,
+        audience: r.get(5)?,
+        created_at: r.get(6)?,
     })
 }
 
