@@ -1358,6 +1358,7 @@ pub(crate) async fn issue_tokens_for_subject(
 /// second one), `sub` is that user's own namespaced subject and
 /// `mcphost_tenant`/`email`/`name`/`end_user_issuer` ride along; otherwise
 /// `sub` stays the tenant's own `namespace`, unchanged from before this PRD.
+#[allow(clippy::too_many_arguments)]
 async fn issue_tokens(state: &AppState, grant_id: i64, tenant_id: i64, resource: &str, scope: &str, client_id: &str, audit_event: &str) -> Response {
     let tenant = match state.db.find_tenant_by_id(tenant_id).await {
         Ok(Some(t)) => t,
