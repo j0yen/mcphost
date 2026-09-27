@@ -39,6 +39,7 @@ pub mod messaging;
 pub mod metering;
 pub mod network_policy;
 pub mod oauth;
+pub mod oauth_policy;
 pub mod oauthclient;
 pub mod plans;
 pub mod registry;

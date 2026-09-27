@@ -393,13 +393,24 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # suite binary again -- caught by the same P0 assertion. 576 -> 600
 # re-collapses core's normal buckets to 1, landing the grand total back
 # at 10.
-
+#
+# PRD-mcphost-oauth-client-policy: this PRD's own nine `oauthpol_ac*.rs`
+# files spilled core's last bucket into an 11th binary again. 600 -> 620
+# re-collapses it to 1, landing the grand total back at 10.
+#
 # PRD-mcphost-tenant-resource-metadata (2026-09-27): this PRD's own
 # `tenantprm_ac*.rs` files (also `core`-classified) join the same normal
 # bucket on top of oauth-conformance-harness's own 600 cap above, spawning
 # an 11th suite binary again -- caught by the same P0 assertion. 600 -> 620
 # re-collapses core's normal buckets to 1, landing the grand total back
 # at 10.
+#
+# Rebasing mcphost-oauth-client-policy onto tenant-resource-metadata
+# (2026-09-27): both PRDs above independently raised 600 -> 620 on top of
+# the same oauth-conformance-harness baseline, not knowing about each
+# other; landing both together stacks oauthpol's nine files AND
+# tenantprm's files on top of the same 600 starting point. See below for
+# whatever cap this rebase's own P0 assertion run required.
 
 MAX_PER_SUITE = {"core": 620, "sandbox": 90}
 

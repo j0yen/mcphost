@@ -1380,6 +1380,104 @@
       "since": "0.58.0"
     },
     {
+      "description": "Page this tenant's OAuth auth audit log (authorize/consent/token/refresh/revoke/ policy_change/approved/denied/refused events), newest additions last. Optional since/until (unix seconds) and event filters; limit defaults to 50, max 500; cursor resumes from a previous page's cursor field.",
+      "input_schema": {
+        "properties": {
+          "cursor": {
+            "type": "string"
+          },
+          "event": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "since": {
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "until": {
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.oauth.audit",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Export this tenant's OAuth auth audit log for since..until as JSON lines (one object per line, same fields host.oauth.audit pages). Refuses export_too_large (with a suggested narrower window) past 50 MiB.",
+      "input_schema": {
+        "properties": {
+          "since": {
+            "description": "Start of the export window, unix seconds (inclusive).",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "until": {
+            "description": "End of the export window, unix seconds (exclusive).",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "since",
+          "until"
+        ],
+        "type": "object"
+      },
+      "name": "host.oauth.audit_export",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Approve a pending client (from host.oauth.pending): its next /oauth/authorize reaches consent directly.",
+      "input_schema": {
+        "properties": {
+          "client_id": {
+            "description": "The client_id to approve, as listed by host.oauth.pending.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.oauth.client_approve",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Deny a pending client (from host.oauth.pending): every later authorize attempt reads client_not_allowed.",
+      "input_schema": {
+        "properties": {
+          "client_id": {
+            "description": "The client_id to deny, as listed by host.oauth.pending.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.oauth.client_deny",
+      "since": "0.58.0"
+    },
+    {
       "description": "Revoke one hosted-authorization-server grant by id (from host.oauth.grants): its access tokens fail within 60s and its refresh tokens stop rotating.",
       "input_schema": {
         "properties": {
@@ -1480,6 +1578,92 @@
         "type": "object"
       },
       "name": "host.oauth.issuers",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List clients awaiting approval under this tenant's clients: approve policy.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.oauth.pending",
+      "since": "0.58.0"
+    },
+    {
+      "description": "This tenant's current hosted-authorization-server client and session policy (host.oauth.policy_set's own field shape); the documented defaults for a tenant that has never called host.oauth.policy_set.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.oauth.policy",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Set this tenant's hosted-authorization-server client and session policy. Every field is optional and, when omitted, keeps its current (or default) value: clients (any|allowlist|approve, default any), allowlist (client_id or CIMD-host strings, for allowlist mode), access_ttl_s (300..3600, default 3600), refresh_ttl_s (3600..2592000, default 2592000), max_grant_age_s (a refresh past this many seconds since consent fails invalid_grant/grant_expired; null clears it), reconsent_after_s (a refresh past this many seconds since consent fails invalid_grant/reconsent_required and the next authorize shows consent again; null clears it).",
+      "input_schema": {
+        "properties": {
+          "access_ttl_s": {
+            "type": "integer"
+          },
+          "allowlist": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "clients": {
+            "enum": [
+              "any",
+              "allowlist",
+              "approve"
+            ],
+            "type": "string"
+          },
+          "max_grant_age_s": {
+            "type": "integer"
+          },
+          "reconsent_after_s": {
+            "type": "integer"
+          },
+          "refresh_ttl_s": {
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.oauth.policy_set",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Revoke every one of this tenant's live grants, refresh tokens and pending clients at once: access tokens fail within 60s.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.oauth.revoke_all",
       "since": "0.58.0"
     },
     {

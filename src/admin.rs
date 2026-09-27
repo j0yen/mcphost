@@ -899,6 +899,26 @@ pub fn admin_audit_entry(
             args.get("issuer").and_then(Value::as_str).map(String::from),
             None,
         )),
+        // PRD-mcphost-oauth-client-policy requirement 5: both are mutations
+        // like every other admin.* write above; `admin.oauth.blocked`/
+        // `admin.oauth.stats` (read-only) are absent, same convention
+        // `admin.ban.list`'s own comment above names.
+        "admin.oauth.client_block" => Some((
+            "oauth_client_block".into(),
+            args.get("client_id")
+                .and_then(Value::as_str)
+                .or_else(|| args.get("cimd_host").and_then(Value::as_str))
+                .map(String::from),
+            args.get("reason").and_then(Value::as_str).map(String::from),
+        )),
+        "admin.oauth.client_unblock" => Some((
+            "oauth_client_unblock".into(),
+            args.get("client_id")
+                .and_then(Value::as_str)
+                .or_else(|| args.get("cimd_host").and_then(Value::as_str))
+                .map(String::from),
+            None,
+        )),
         // PRD-mcphost-oauth-resource-server AC9: unlike every other
         // read-only admin.* listing (admin.tenants, admin.ban.list), this
         // one is required to record admin_audit on every call, mutation or

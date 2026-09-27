@@ -46,17 +46,40 @@ pub fn redact_keys(value: &Value, keys: &[&str]) -> Value {
 #[derive(Clone)]
 pub struct SecretBox {
     cipher: Aes256Gcm,
+    /// The same 32-byte key `cipher` was built from -- kept alongside it so
+    /// [`Self::salted_hash`] has a per-deployment salt to hash with,
+    /// without a second `$MCPHOST_*` passphrase to configure.
+    key_bytes: [u8; 32],
 }
 
 impl SecretBox {
     pub fn from_passphrase(passphrase: &str) -> Self {
         let mut hasher = Sha256::new();
         hasher.update(passphrase.as_bytes());
-        let key_bytes = hasher.finalize();
+        let key_bytes: [u8; 32] = hasher.finalize().into();
         let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
         Self {
             cipher: Aes256Gcm::new(key),
+            key_bytes,
         }
+    }
+
+    /// PRD-mcphost-oauth-client-policy Technical considerations: "`ip_hash`
+    /// is a salted hash, salt from the existing secrets key, never the raw
+    /// address" -- `sha256(key_bytes || value)`, hex-encoded. Deterministic
+    /// (same input always hashes the same within one deployment) but not
+    /// reversible without the passphrase, and never collides across
+    /// deployments with different `$MCPHOST_SECRET_KEY` values.
+    pub fn salted_hash(&self, value: &str) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(self.key_bytes);
+        hasher.update(value.as_bytes());
+        let digest = hasher.finalize();
+        let mut s = String::with_capacity(digest.len() * 2);
+        for b in digest {
+            s.push_str(&format!("{b:02x}"));
+        }
+        s
     }
 
     /// Encrypt `plaintext`, returning `(ciphertext, nonce)`. A fresh random

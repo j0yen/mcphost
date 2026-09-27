@@ -267,6 +267,17 @@ async fn unauthenticated_tools_list_is_signup_only() {
         "host.enduser.purge",
         "host.enduser.export",
         "host.enduser.list",
+        // PRD-mcphost-oauth-client-policy: the per-tenant OAuth client/
+        // session policy control plane is discoverable unauthenticated too,
+        // same as every other host.*-style tool above.
+        "host.oauth.policy_set",
+        "host.oauth.policy",
+        "host.oauth.pending",
+        "host.oauth.client_approve",
+        "host.oauth.client_deny",
+        "host.oauth.revoke_all",
+        "host.oauth.audit",
+        "host.oauth.audit_export",
     ] {
         assert!(
             tool_names.contains(&expected),
@@ -279,7 +290,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        118,
+        126,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the three host.tool_history/host.tool_rollback/host.tool_diff \
@@ -308,7 +319,9 @@ async fn unauthenticated_tools_list_is_signup_only() {
          (PRD-mcphost-docs-semantic-search) + \
          the two host.enduser.* tools (PRD-mcphost-end-user-identity) + \
          the seven host.enduser.get/audit/revoke/unrevoke/purge/export/list tools \
-         (PRD-mcphost-end-user-audit-and-revoke): \
+         (PRD-mcphost-end-user-audit-and-revoke) + \
+         the eight host.oauth.policy_set/policy/pending/client_approve/client_deny/revoke_all/ \
+         audit/audit_export tools (PRD-mcphost-oauth-client-policy): \
          {tool_names:?}"
     );
 }

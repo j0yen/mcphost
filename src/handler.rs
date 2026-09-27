@@ -2231,6 +2231,98 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              access tokens fail within 60s and its refresh tokens stop rotating.",
             host_schema(json!({"id": {"type": "integer", "description": "The grant id."}}), &["id"]),
         ),
+        // PRD-mcphost-oauth-client-policy requirements 1-4 (AC1-AC6): which
+        // clients may connect through the hosted authorization server, how
+        // long their tokens live, and this tenant's own readable/exportable
+        // auth audit.
+        Tool::new(
+            "host.oauth.policy_set",
+            "Set this tenant's hosted-authorization-server client and session policy. Every \
+             field is optional and, when omitted, keeps its current (or default) value: \
+             clients (any|allowlist|approve, default any), allowlist (client_id or CIMD-host \
+             strings, for allowlist mode), access_ttl_s (300..3600, default 3600), refresh_ttl_s \
+             (3600..2592000, default 2592000), max_grant_age_s (a refresh past this many seconds \
+             since consent fails invalid_grant/grant_expired; null clears it), reconsent_after_s \
+             (a refresh past this many seconds since consent fails invalid_grant/reconsent_required \
+             and the next authorize shows consent again; null clears it).",
+            host_schema(
+                json!({
+                    "clients": {"type": "string", "enum": ["any", "allowlist", "approve"]},
+                    "allowlist": {"type": "array", "items": {"type": "string"}},
+                    "access_ttl_s": {"type": "integer"},
+                    "refresh_ttl_s": {"type": "integer"},
+                    "max_grant_age_s": {"type": "integer"},
+                    "reconsent_after_s": {"type": "integer"},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.oauth.policy",
+            "This tenant's current hosted-authorization-server client and session policy \
+             (host.oauth.policy_set's own field shape); the documented defaults for a tenant \
+             that has never called host.oauth.policy_set.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "host.oauth.pending",
+            "List clients awaiting approval under this tenant's clients: approve policy.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "host.oauth.client_approve",
+            "Approve a pending client (from host.oauth.pending): its next /oauth/authorize \
+             reaches consent directly.",
+            host_schema(
+                json!({"client_id": {"type": "string", "description": "The client_id to approve, as listed by host.oauth.pending."}}),
+                &["client_id"],
+            ),
+        ),
+        Tool::new(
+            "host.oauth.client_deny",
+            "Deny a pending client (from host.oauth.pending): every later authorize attempt \
+             reads client_not_allowed.",
+            host_schema(
+                json!({"client_id": {"type": "string", "description": "The client_id to deny, as listed by host.oauth.pending."}}),
+                &["client_id"],
+            ),
+        ),
+        Tool::new(
+            "host.oauth.revoke_all",
+            "Revoke every one of this tenant's live grants, refresh tokens and pending clients \
+             at once: access tokens fail within 60s.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "host.oauth.audit",
+            "Page this tenant's OAuth auth audit log (authorize/consent/token/refresh/revoke/ \
+             policy_change/approved/denied/refused events), newest additions last. Optional \
+             since/until (unix seconds) and event filters; limit defaults to 50, max 500; cursor \
+             resumes from a previous page's cursor field.",
+            host_schema(
+                json!({
+                    "since": {"type": "integer"},
+                    "until": {"type": "integer"},
+                    "event": {"type": "string"},
+                    "limit": {"type": "integer"},
+                    "cursor": {"type": "string"},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.oauth.audit_export",
+            "Export this tenant's OAuth auth audit log for since..until as JSON lines (one \
+             object per line, same fields host.oauth.audit pages). Refuses export_too_large \
+             (with a suggested narrower window) past 50 MiB.",
+            host_schema(
+                json!({
+                    "since": {"type": "integer", "description": "Start of the export window, unix seconds (inclusive)."},
+                    "until": {"type": "integer", "description": "End of the export window, unix seconds (exclusive)."},
+                }),
+                &["since", "until"],
+            ),
+        ),
         // PRD-mcphost-end-user-identity P1 requirement 7 (AC10).
         Tool::new(
             "host.enduser.whoami",
@@ -2767,6 +2859,39 @@ fn admin_tools() -> Vec<Tool> {
             "Force an immediate JWKS refetch for one issuer, bypassing the normal TTL and \
              unknown-kid throttle.",
             schema(json!({"issuer": {"type": "string"}}), &["issuer"]),
+        ),
+        // PRD-mcphost-oauth-client-policy requirement 5 (AC7/AC8): the
+        // operator's global block list, checked ahead of any tenant's own
+        // policy at every tenant's /oauth/register, /oauth/authorize and
+        // /oauth/token.
+        Tool::new(
+            "admin.oauth.client_block",
+            "Block a client (by exact client_id) or every client from a CIMD host, across every \
+             tenant: register/authorize/exchange all refuse client_blocked from then on.",
+            schema(
+                json!({
+                    "client_id": {"type": "string"},
+                    "cimd_host": {"type": "string"},
+                    "reason": {"type": "string"},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "admin.oauth.client_unblock",
+            "Remove a prior admin.oauth.client_block entry (exact client_id or cimd_host match).",
+            schema(json!({"client_id": {"type": "string"}, "cimd_host": {"type": "string"}}), &[]),
+        ),
+        Tool::new(
+            "admin.oauth.blocked",
+            "List every entry on the operator's global OAuth client block list.",
+            schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "admin.oauth.stats",
+            "Counts for the operator's global OAuth block list: total blocks, and how many \
+             attempts each block-triggered refusal reason has cost across every tenant.",
+            schema(json!({}), &[]),
         ),
         // PRD-mcphost-alerting-webhook requirement 5.
         Tool::new(
@@ -3336,6 +3461,15 @@ impl McpHostHandler {
             "host.oauth.issuers" => crate::oauth::issuers_list(&self.state, tenant).await,
             "host.oauth.grants" => crate::authz::grants_list(&self.state, tenant).await,
             "host.oauth.grant_revoke" => crate::authz::grant_revoke(&self.state, tenant, &args).await,
+            // PRD-mcphost-oauth-client-policy requirements 1-4 (AC1-AC6).
+            "host.oauth.policy_set" => crate::oauth_policy::policy_set(&self.state, tenant, &args).await,
+            "host.oauth.policy" => crate::oauth_policy::policy_get(&self.state, tenant).await,
+            "host.oauth.pending" => crate::oauth_policy::pending_list(&self.state, tenant).await,
+            "host.oauth.client_approve" => crate::oauth_policy::client_approve(&self.state, tenant, &args).await,
+            "host.oauth.client_deny" => crate::oauth_policy::client_deny(&self.state, tenant, &args).await,
+            "host.oauth.revoke_all" => crate::oauth_policy::revoke_all(&self.state, tenant).await,
+            "host.oauth.audit" => crate::oauth_policy::audit(&self.state, tenant, &args).await,
+            "host.oauth.audit_export" => crate::oauth_policy::audit_export(&self.state, tenant, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         }
     }
@@ -3390,6 +3524,11 @@ impl McpHostHandler {
             // PRD-mcphost-oauth-resource-server P1 requirement 6, AC9.
             "admin.oauth.issuers" => crate::oauth::admin_issuers(&self.state).await,
             "admin.oauth.jwks_refresh" => crate::oauth::admin_jwks_refresh(&self.state, &args).await,
+            // PRD-mcphost-oauth-client-policy requirement 5 (AC7).
+            "admin.oauth.client_block" => crate::oauth_policy::admin_client_block(&self.state, &args).await,
+            "admin.oauth.client_unblock" => crate::oauth_policy::admin_client_unblock(&self.state, &args).await,
+            "admin.oauth.blocked" => crate::oauth_policy::admin_blocked_list(&self.state).await,
+            "admin.oauth.stats" => crate::oauth_policy::admin_stats(&self.state).await,
             // PRD-mcphost-alerting-webhook requirement 5.
             "admin.alerts.list" => admin::alerts_list(&self.state, &args).await,
             "admin.alerts.ack" => admin::alerts_ack(&self.state, &args).await,
