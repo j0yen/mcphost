@@ -12,6 +12,8 @@ mod ci_sandbox_support;
 mod assertion;
 #[path = "support/busyaudit.rs"]
 mod busyaudit;
+#[path = "support/docs_qa.rs"]
+mod docs_qa;
 #[path = "support/fake_as.rs"]
 mod fake_as;
 #[path = "support/federation.rs"]
@@ -298,6 +300,12 @@ mod docsearch_ac09_fixture_corpus_hit_rate;
 mod docsearch_ac10_reindex_forces_all_documents;
 #[path = "docsearch_ac11_lexical_search_p95_latency.rs"]
 mod docsearch_ac11_lexical_search_p95_latency;
+#[path = "docsqa_ac06_synthorg_task_matches_gold_question_3.rs"]
+mod docsqa_ac06_synthorg_task_matches_gold_question_3;
+#[path = "docsqa_ac10_deferral_is_justified.rs"]
+mod docsqa_ac10_deferral_is_justified;
+#[path = "docsqa_ac10_truth_tier_panel_satisfaction_recorded.rs"]
+mod docsqa_ac10_truth_tier_panel_satisfaction_recorded;
 #[path = "docstore_ac01_first_put_returns_version1_seq1.rs"]
 mod docstore_ac01_first_put_returns_version1_seq1;
 #[path = "docstore_ac02_put_bumps_version_noop_on_identical_content.rs"]

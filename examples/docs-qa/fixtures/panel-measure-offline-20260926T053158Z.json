@@ -1,0 +1,86 @@
+{
+  "client": "claude-sdk",
+  "client_version": "fake",
+  "composition": {
+    "all_segments_cited": true,
+    "fingerprint": "84827e4d117deacaa3ecfb1c56ab0e217b879c4f6c40241d5ffaba1b7442589f",
+    "segments": [
+      "admin_agent",
+      "cost_optimizer",
+      "data_pipeline_builder",
+      "integration_specialist",
+      "rag_indexer",
+      "rapid_prototyper",
+      "workflow_orchestrator"
+    ],
+    "source": "/home/jsy/repos/synthorg/corpora/mcphost/panel-composition.yaml"
+  },
+  "corpus": {
+    "fingerprint": "609b58d058cc554f6d11993e7912cf2bd15aba2040d2e76208b6ce72975cef73",
+    "path": "/home/jsy/repos/synthorg/corpora/mcphost/consumer-tasks.yaml",
+    "task_ids": [
+      "admin-agent-nightly-index-freshness-answer",
+      "admin-agent-schedule-metric-diff-check",
+      "admin-agent-terraform-state-sync",
+      "cost-optimizer-budget-alert-dedupe",
+      "cost-optimizer-credential-rotation-answer",
+      "data-pipeline-builder-daily-pipeline-chain",
+      "data-pipeline-builder-fast-onboarding-check",
+      "data-pipeline-builder-metric-definition-helper",
+      "data-pipeline-builder-warehouse-migration-ask",
+      "docs_qa_recipe",
+      "integration-specialist-credential-rotation-ask",
+      "integration-specialist-github-push-webhook-handler",
+      "integration-specialist-node-isolation-test",
+      "rag-indexer-bulk-reembed-job",
+      "rag-indexer-defaults-not-config-dialogs",
+      "rag-indexer-ingestion-source-status",
+      "rag-indexer-reindex-webhook-trigger-enabled",
+      "rag-indexer-warehouse-migration-answer",
+      "rapid-prototyper-cold-start-scaffold",
+      "rapid-prototyper-five-minute-wow",
+      "rapid-prototyper-nightly-index-freshness-ask",
+      "rapid-prototyper-share-tool-cross-tenant",
+      "rapid-prototyper-skip-boilerplate-glue",
+      "workflow-orchestrator-observability-retrofit"
+    ]
+  },
+  "cost_usd": 0.0510376,
+  "endpoint_version": "fake-mcp-0.0.0-fake",
+  "judge_version": 4,
+  "role": "candidate",
+  "satisfaction": {
+    "by_segment": {
+      "admin_agent": 1.0,
+      "cost_optimizer": 1.0,
+      "data_pipeline_builder": 0.75,
+      "integration_specialist": 1.0,
+      "rag_indexer": 0.9,
+      "rapid_prototyper": 0.8,
+      "workflow_orchestrator": 0.8333333333333334
+    },
+    "overall": 0.8888888888888888
+  },
+  "scored_by_segment": {
+    "admin_agent": 3,
+    "cost_optimizer": 3,
+    "data_pipeline_builder": 4,
+    "integration_specialist": 4,
+    "rag_indexer": 5,
+    "rapid_prototyper": 5,
+    "workflow_orchestrator": 3
+  },
+  "scorer_version": 2,
+  "seed": 0,
+  "sessions": 27,
+  "sessions_by_segment": {
+    "admin_agent": 3,
+    "cost_optimizer": 3,
+    "data_pipeline_builder": 4,
+    "integration_specialist": 4,
+    "rag_indexer": 5,
+    "rapid_prototyper": 5,
+    "workflow_orchestrator": 3
+  },
+  "tier": "truth"
+}

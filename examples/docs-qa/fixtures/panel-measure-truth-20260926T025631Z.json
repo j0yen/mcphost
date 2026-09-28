@@ -1,0 +1,90 @@
+{
+  "client": "claude-sdk",
+  "client_version": "2.1.251",
+  "composition": {
+    "all_segments_cited": true,
+    "fingerprint": "84827e4d117deacaa3ecfb1c56ab0e217b879c4f6c40241d5ffaba1b7442589f",
+    "segments": [
+      "admin_agent",
+      "cost_optimizer",
+      "data_pipeline_builder",
+      "integration_specialist",
+      "rag_indexer",
+      "rapid_prototyper",
+      "workflow_orchestrator"
+    ],
+    "source": "corpora/mcphost/panel-composition.yaml"
+  },
+  "corpus": {
+    "fingerprint": "13f0417c8ffc7468ed2ec647c3686987c6a0c2c32f8c6fcb3dc70779b5a6a7ff",
+    "path": "corpora/mcphost/consumer-tasks.yaml",
+    "task_ids": [
+      "admin-agent-audit-log-tail",
+      "admin-agent-rollback-plan-preview",
+      "admin-agent-shared-audit-tool-cross-tenant-call",
+      "cost-optimizer-budget-alert-dedupe",
+      "cost-optimizer-cold-start-benchmark",
+      "data-pipeline-builder-daily-pipeline-chain",
+      "data-pipeline-builder-fast-onboarding-check",
+      "data-pipeline-builder-long-transform-job",
+      "data-pipeline-builder-metric-definition-helper",
+      "data-pipeline-builder-warehouse-table-status",
+      "integration-specialist-github-push-webhook-handler",
+      "integration-specialist-node-isolation-test",
+      "integration-specialist-rest-to-tool-bridge",
+      "rag-indexer-bulk-reembed-job",
+      "rag-indexer-defaults-not-config-dialogs",
+      "rag-indexer-ingestion-source-status",
+      "rag-indexer-reindex-chain-three-steps",
+      "rag-indexer-reindex-webhook-trigger-enabled",
+      "rag-indexer-retrieval-latency-check",
+      "rapid-prototyper-cold-start-scaffold",
+      "rapid-prototyper-five-minute-wow",
+      "rapid-prototyper-share-tool-cross-tenant",
+      "rapid-prototyper-skip-boilerplate-glue",
+      "workflow-orchestrator-error-trace-digest",
+      "workflow-orchestrator-idempotent-order-notify",
+      "workflow-orchestrator-observability-retrofit",
+      "workflow-orchestrator-recurring-health-probe",
+      "workflow-orchestrator-scheduling-visibility"
+    ]
+  },
+  "cost_usd": 4.6185946,
+  "endpoint_version": "2025-11-25",
+  "judge_version": 4,
+  "role": "candidate",
+  "satisfaction": {
+    "by_segment": {
+      "admin_agent": 0.6666666666666666,
+      "cost_optimizer": 0.4166666666666667,
+      "data_pipeline_builder": 0.6851609551399693,
+      "integration_specialist": 0.5322765556791517,
+      "rag_indexer": 0.625,
+      "rapid_prototyper": 0.5,
+      "workflow_orchestrator": 0.612521871229789
+    },
+    "overall": 0.5757084831498442
+  },
+  "scored_by_segment": {
+    "admin_agent": 3,
+    "cost_optimizer": 3,
+    "data_pipeline_builder": 5,
+    "integration_specialist": 5,
+    "rag_indexer": 6,
+    "rapid_prototyper": 8,
+    "workflow_orchestrator": 5
+  },
+  "scorer_version": 2,
+  "seed": 0,
+  "sessions": 35,
+  "sessions_by_segment": {
+    "admin_agent": 3,
+    "cost_optimizer": 3,
+    "data_pipeline_builder": 5,
+    "integration_specialist": 5,
+    "rag_indexer": 6,
+    "rapid_prototyper": 8,
+    "workflow_orchestrator": 5
+  },
+  "tier": "truth"
+}

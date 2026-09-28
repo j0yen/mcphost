@@ -86,6 +86,40 @@ proves a change under that path, not necessarily the full test suite. The
 `loop-config` lane (routing `.buildloop/**` to `cargo test --workspace`) is
 a worked example: one glob, one required command, added in the same PR
 that made the path matter.
+
+## Docs Q&A in a minute
+
+Turn a folder of markdown into a checkable Q&A tool, end to end, in one
+script:
+
+1. `signup(name)` — one fresh tenant.
+2. `host.docs.put(name, content)` — once per document (this recipe's own
+   corpus: 8 documents, ~22 KiB total, well under the 2 MiB per-document
+   cap).
+3. `host.docs.status()` — poll until `index.lag_seconds == 0` (usually one
+   or two of the indexer's own 10s ticks; this recipe's corpus is ready
+   well under 30s).
+4. `host.tool_publish(name="ask_docs", kind="python", spec={"source": ...})`
+   — the one published tool. Its `main` calls `mcphost.docs.search(query,
+   k)` over the same zero-network sandbox loopback `mcphost.docs.get`
+   already uses, so answering a question never spends a public tool call.
+5. `<namespace>.ask_docs(query="...")` — ask it. Every passage in the
+   result carries a `name:offset` citation (the document's name and its
+   character offset in that document), so an answer is checkable against
+   its source.
+
+Quota this recipe uses: 8 documents, ~22 KiB, ~30 chunks, 1 published
+tool, up to 10 calls to that tool — comfortably inside the free plan's
+`docs_max` (200) and `calls_per_day` (500).
+
+`examples/docs-qa/docs-qa.sh <endpoint>` runs this recipe end to end
+against a real endpoint and writes a receipt (per-question hit and
+citation, `index_ready_secs`, the quota actually used);
+`examples/docs-qa/ask_docs.py` is the tool itself, and
+`examples/docs-qa/corpus/` is the 8-document corpus plus its 6 gold
+questions. `docs-qa.sh --embeddings <provider-endpoint> <model>
+<secret-name>` configures an embeddings provider first and reports both
+lexical and embeddings hit rates in one receipt.
 <!-- agent-quickstart:end -->
 
 `mcphost serve` is a streamable-HTTP MCP server, stateless per the 2026-07-28
@@ -192,7 +226,7 @@ cargo build --release
 | `MCPHOST_SECRET_KEY` | Passphrase, SHA-256-derived into an AES-256 key for tenant secrets | dev default (set a real one in production) |
 | `MCPHOST_LOG_LEVEL` | `tracing` filter, e.g. `info` | `info` |
 | `MCPHOST_REGISTRY_URL` | Enables `host.registry_publish` (P1) and names the registry API's base URL; `mcphost serve --registry-url <url>` takes precedence | unset (registry-publish disabled) |
-| `MCPHOST_SIGNUP_RATE_LIMIT_PER_HOUR` | Overrides the per-source-IP `signup` rate limit (PRD-mcphost-signup-rate-configurable) — raise it for a many-session measure run from one IP; absent or non-integer falls back to the default. Effective value is logged once at startup | `5` |
+| `MCPHOST_SIGNUP_RATE_LIMIT_PER_HOUR` | Overrides the per-source-IP `signup` rate limit (PRD-mcphost-signup-rate-configurable) — raise it for a many-session measure run from one IP; absent or non-integer falls back to the default. Effective value is logged once at startup. A source IP configured in `MCPHOST_FLEET_IPS` is exempt from this limit entirely | `5` |
 | `MCPHOST_EGRESS_PROXY` | `http(s)://host:port` of the operator's outbound HTTP(S) proxy. Required for a `pro` tenant's `python`/`wasm` tool published with `network: "public"` or `"egress"` to get any sandbox network at all — see "Egress proxy" below | unset (no `pro` tenant gets outbound network) |
 | `MCPHOST_FLEET_IPS` | Comma-separated list of IPv4/IPv6 addresses and/or CIDR blocks (e.g. `46.225.110.44,178.105.64.66,10.0.0.0/8`) this operator's own fleet signs up from. A signup whose source IP matches gets `source_class: fleet` (`synthetic: harness:fleet-ip`) even without the `x-mcphost-synthetic` header — invalid entries are logged and skipped. See `admin.reclassify_fleet_ips` to backfill signups that predate this var | unset (no IP is ever classified `fleet` by address alone) |
 
@@ -795,6 +829,93 @@ future PRD updating the README also updates this file — `copy-claims.sh`
 fails the build if the two drift apart from the citation without a
 matching numeric mirror.
 
+## Receipt: docs-qa-panel-satisfaction.md
+
+# satisfaction[rag_indexer] panel record — PRD-mcphost-docs-qa-recipe
+
+AC10: *Given the truth-tier panel run after land, When `synthorg consume`
+runs with the pinned panel, Then `rag_indexer` satisfaction is reported with
+the new task included (number recorded in the vision, target ≥ 75%).*
+
+This file is this repo's own copy of that record; the record of account is
+the vision doc's own `## Satisfaction record` section
+(`~/Documents/PRDs/visions/mcphost-data-layer-first-slice.md`, the PRD's
+`Vision:`). Both are written by the same recorder,
+`examples/docs-qa/record-panel-satisfaction.sh`, which refuses any run whose
+corpus did not include this recipe's `docs_qa_recipe` task — a panel number
+measured without the task cannot answer this AC.
+
+| item | value |
+|---|---|
+| segment | `rag_indexer` |
+| baseline | 61.8% (2026-09-23 quality baseline, wiki `2026-09-23-mcphost-market-test-plan`) |
+| target | ≥ 75% (this PRD's success metric, first truth-tier run after land) |
+| corpus task | `docs_qa_recipe` (`~/repos/synthorg/corpora/mcphost/consumer-tasks.yaml`, synthorg commit `eb33096`) |
+| pinned panel | `corpora/mcphost/panel-composition.yaml` |
+| vision record | `~/Documents/PRDs` commit `05e9541` (the `## Satisfaction record` section this file mirrors) |
+
+## The truth-tier run (deferred — operator-authorized, after land)
+
+The number itself comes from a live, paid, operator-authorized run against
+prod, which this build deliberately does not perform. After this branch
+lands and `mcphost.dev` serves it, the operator runs:
+
+```
+cd ~/repos/synthorg
+SYNTHORG_PROD_ENDPOINT=https://mcphost.dev/mcp \
+SYNTHORG_TRUTH_BRIEF=<market brief.md> \
+  scripts/truth-tier-nightly.sh          # or, directly:
+uv run synthorg consume --tier truth --population 21 \
+  --composition corpora/mcphost/panel-composition.yaml \
+  --endpoint https://mcphost.dev/mcp <brief.md> --out runs/truth-tier-<ts>
+```
+
+then records that run's number into both files:
+
+```
+cd ~/wintermute/mcphost
+examples/docs-qa/record-panel-satisfaction.sh \
+  --measure ~/repos/synthorg/runs/truth-tier-<ts>/measure.json \
+  --vision ~/Documents/PRDs/visions/mcphost-data-layer-first-slice.md \
+  --receipt docs/receipts/docs-qa-panel-satisfaction.md
+```
+
+The recorder exits 0 only for a live truth-tier run that met the target; an
+under-target number is still recorded (exit 1), because AC10 asks for the
+number, and a miss is a number too. The same command with
+`MCPHOST_LIVE=1 MCPHOST_PANEL_MEASURE=<that measure.json>` is what
+`tests/docsqa_ac10_truth_tier_panel_satisfaction_recorded.rs`'s live half
+runs, so the post-land run has a test that fails until it happens.
+
+## What was measured before land (offline, not the market number)
+
+An offline full-corpus panel run over the same pinned composition and the
+same corpus — `SYNTHORG_LLM_MODE=fake` (stub personas, stub judge, the
+in-process fake MCP endpoint), so it is *not* a market number and the
+recorder labels it `offline` and refuses to call it green. What it does
+prove, on real run output rather than a hand-written fixture, is that
+`docs_qa_recipe` is genuinely wired into the pinned panel and that
+`rag_indexer`'s number is computed with it included:
+
+## Satisfaction record — satisfaction[rag_indexer]
+
+- 2026-09-26 offline run runs/offline-docsqa-20260926T053158Z: satisfaction[rag_indexer]=90.0% (target >= 75%, scored 5/5 sessions, docs_qa_recipe included, corpus fingerprint 609b58d058cc)
+
+## Fixtures the test drives
+
+`tests/docsqa_ac10_truth_tier_panel_satisfaction_recorded.rs` runs the
+recorder against two trimmed copies of real `measure.json` files (same keys
+the recorder reads, nothing invented):
+
+| fixture | run | why |
+|---|---|---|
+| `examples/docs-qa/fixtures/panel-measure-offline-20260926T053158Z.json` | the offline run recorded above (`docs_qa_recipe` included, 90.0%) | the recorder's `offline` classification and the record line, on real output |
+| `examples/docs-qa/fixtures/panel-measure-truth-20260926T025631Z.json` | a real pre-land truth-tier nightly (`rag_indexer` 62.5%, corpus of 28 tasks, **no** `docs_qa_recipe`) | the refusal: a real, live, expensive truth-tier number is still not an answer to AC10 if the task was not in the corpus |
+
+The post-land truth-tier case (task included, live client, ≥ 75%) is derived
+in the test from the second fixture, since no such run exists yet — that is
+exactly what the live half waits for.
+
 ## Receipt: mcphost-upstream-token-vault-status.md
 
 # Upstream token vault status — AC9 evidence receipt
@@ -1003,4 +1124,264 @@ catch a regression toward the baseline's numbers on any box, and the
 evidence a follow-on PRD would need to pre-warm `uv`'s managed-interpreter
 cache on `mcphost-1` specifically, if a live measurement there still shows
 the 88–95s figure.
+
+## Receipt: spec-readback-ac10-prod-probe.md
+
+# Receipt — mcphost-shared-tool-spec-readback AC10: what prod is still missing
+
+AC10's Given is "prod mcphost after deploy". This receipt records the one
+thing that clause is still waiting on, as a fact a reader can re-derive
+rather than a claim they have to take on trust.
+
+## What was done
+
+One read-only call against production, with **no `Authorization` header at
+all** — `tools/list` is a listing call, and nothing on prod was created,
+changed or deleted:
+
+```
+curl -s -X POST https://mcphost.dev/mcp \
+  -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+```
+
+## What it shows
+
+1. **The deploy is the blocker.** Prod serves every step of AC10's
+   sequence today — `signup`, `host.whoami`, `host.tool_publish`,
+   `host.group.create`, `host.group.add`, `host.tool_share`, `host.usage` —
+   but not `host.tool_spec_shared`, and its `host.tool_share` has no
+   `expose_spec` property. The gap is exactly this branch's surface, and
+   closing it is a deploy: an operator action (mcphost-deploy), not a
+   build-agent one.
+2. **Credentials are not a blocker.** Prod's `signup` is unauthenticated,
+   so the live leg needs no operator-held tenant key:
+   `MCPHOST_TENANT_A_KEY` / `MCPHOST_TENANT_B_KEY` are optional, and with
+   them unset the `MCPHOST_LIVE=1` run signs its own two tenants up on the
+   live endpoint.
+
+`tests/mcphost_shared_tool_spec_readback_ac10_live_two_tenant_spec_read_trailer.rs`
+reads the JSON below back on every run
+(`only_the_deploy_separates_this_branch_from_prods_tool_surface`) and
+compares it with the identical unauthenticated `tools/list` against a real
+server built from this branch. When the deploy lands, that test and
+`the_prod_probe_the_justification_cites_exists_and_shows_the_blocker` both
+go red — which is precisely when AC10's prod leg stops being deferred and
+has to be run for real.
+
+## The probe
+
+```json
+{
+  "_what": "A read-only probe of production mcphost's public, unauthenticated tools/list, captured to pin exactly what PRD-mcphost-shared-tool-spec-readback AC10's prod leg is still waiting on. Nothing was created, changed or deleted on prod: tools/list is a listing call and was made with no Authorization header at all.",
+  "_why": "AC10's deferral has to name a blocker a reader can check, not a claim. This snapshot shows (a) prod does not yet serve host.tool_spec_shared and host.tool_share has no expose_spec property -- i.e. this branch is not deployed, the one operator action the live leg waits on -- and (b) prod's signup is unauthenticated, so the live leg needs no operator-held tenant credential.",
+  "_reproduce": "curl -s -X POST https://mcphost.dev/mcp -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' -d '{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}'",
+  "probed_at": "2026-09-27T20:46:18Z",
+  "endpoint": "https://mcphost.dev/mcp",
+  "method": "tools/list",
+  "authorization_header_sent": false,
+  "raw_response_sha256": "48e998c7668d1c6d861811210a9386de6479461bedcc66acd7d356eec8e2a419",
+  "raw_response_bytes": 95590,
+  "tool_count": 135,
+  "serves_host_tool_spec_shared": false,
+  "host_tool_share_input_properties": [
+    "description",
+    "group",
+    "name",
+    "tenant_key",
+    "visibility"
+  ],
+  "signup_entry": {
+    "name": "signup",
+    "description": "Create a tenant and receive a bearer key and namespace. Unauthenticated. Recommended: pass handoff: true to receive a short-lived, single-use handoff_token instead of the raw key -- redeem it once with host.redeem to get the key, so a transcript of this call and the redeem call, if it leaks, carries a dead credential. The raw-key path (handoff omitted) stays fully supported.",
+    "inputSchema": {
+      "properties": {
+        "handoff": {
+          "description": "Recommended: true to receive a handoff_token (redeem via host.redeem) instead of the raw key. Default false (raw key, unchanged).",
+          "type": "boolean"
+        },
+        "name": {
+          "description": "display name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    }
+  },
+  "host_tool_share_entry": {
+    "name": "host.tool_share",
+    "description": "Share one of this tenant's published tools with everyone (visibility: \"public\") or with a named group this tenant owns (visibility: \"group\", group: <name>). The tool keeps running in this tenant's own sandbox with this tenant's own secrets; a caller reaches it as <this tenant's namespace>.<name>.",
+    "inputSchema": {
+      "properties": {
+        "description": {
+          "description": "Catalog-facing blurb; shown by host.catalog.search/get.",
+          "type": "string"
+        },
+        "group": {
+          "description": "Required when visibility is \"group\"; must already exist (host.group.create).",
+          "type": "string"
+        },
+        "name": {
+          "description": "Local name of the tool to share.",
+          "type": "string"
+        },
+        "tenant_key": {
+          "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+          "type": "string"
+        },
+        "visibility": {
+          "description": "\"public\" or \"group\".",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "visibility"
+      ],
+      "type": "object"
+    }
+  },
+  "tool_names": [
+    "billing.checkout",
+    "billing.plans",
+    "billing.status",
+    "host.agent.contact_accept",
+    "host.agent.contact_deny",
+    "host.agent.contact_request",
+    "host.agent.contacts",
+    "host.agent.contacts_import",
+    "host.agent.lookup",
+    "host.agent.mute",
+    "host.agent.profile_set",
+    "host.agent.search",
+    "host.agent.unmute",
+    "host.agent.whoami",
+    "host.bridge_test",
+    "host.catalog.get",
+    "host.catalog.search",
+    "host.changelog",
+    "host.channel.close",
+    "host.channel.freeze",
+    "host.channel.open",
+    "host.channel.post",
+    "host.channel.read",
+    "host.channel.unfreeze",
+    "host.docs.delete",
+    "host.docs.get",
+    "host.docs.index_config",
+    "host.docs.list",
+    "host.docs.purge",
+    "host.docs.put",
+    "host.docs.reindex",
+    "host.docs.search",
+    "host.docs.status",
+    "host.enduser.assertion_secret_rotate",
+    "host.enduser.audit",
+    "host.enduser.export",
+    "host.enduser.get",
+    "host.enduser.list",
+    "host.enduser.purge",
+    "host.enduser.revoke",
+    "host.enduser.unrevoke",
+    "host.enduser.whoami",
+    "host.export",
+    "host.group.add",
+    "host.group.create",
+    "host.group.list",
+    "host.group.remove",
+    "host.key_rotate",
+    "host.msg.ack",
+    "host.msg.block",
+    "host.msg.inbox",
+    "host.msg.reply",
+    "host.msg.send",
+    "host.msg.thread",
+    "host.msg.unblock",
+    "host.msg.wait",
+    "host.oauth.audit",
+    "host.oauth.audit_export",
+    "host.oauth.client_approve",
+    "host.oauth.client_deny",
+    "host.oauth.doctor",
+    "host.oauth.grant_revoke",
+    "host.oauth.grants",
+    "host.oauth.issuer_remove",
+    "host.oauth.issuer_set",
+    "host.oauth.issuers",
+    "host.oauth.pending",
+    "host.oauth.policy",
+    "host.oauth.policy_set",
+    "host.oauth.provider",
+    "host.oauth.provider_remove",
+    "host.oauth.provider_set",
+    "host.oauth.revoke_all",
+    "host.oauth.scope_set",
+    "host.oauth.scopes",
+    "host.oauth.trusted_issuer_remove",
+    "host.oauth.trusted_issuer_set",
+    "host.oauth.trusted_issuers",
+    "host.progress",
+    "host.quickstart",
+    "host.redeem",
+    "host.registry_publish",
+    "host.runs.cancel",
+    "host.runs.get",
+    "host.runs.list",
+    "host.runs.part",
+    "host.runs.purge",
+    "host.runs.wait",
+    "host.secret_list",
+    "host.secret_set",
+    "host.self_offboard",
+    "host.share.caller_limit",
+    "host.share.caller_limit_remove",
+    "host.state.delete",
+    "host.state.delete_rows",
+    "host.state.get",
+    "host.state.insert",
+    "host.state.list",
+    "host.state.query",
+    "host.state.set",
+    "host.state.table_create",
+    "host.state.table_drop",
+    "host.table.append",
+    "host.table.create",
+    "host.table.describe",
+    "host.table.drop",
+    "host.table.list",
+    "host.table.model_set",
+    "host.table.models",
+    "host.table.query",
+    "host.table.schema",
+    "host.tool_call",
+    "host.tool_diff",
+    "host.tool_history",
+    "host.tool_list",
+    "host.tool_logs",
+    "host.tool_publish",
+    "host.tool_remove",
+    "host.tool_rollback",
+    "host.tool_run",
+    "host.tool_share",
+    "host.tool_test",
+    "host.tool_unshare",
+    "host.trigger.fire",
+    "host.trigger.get",
+    "host.trigger.list",
+    "host.trigger.pause",
+    "host.trigger.remove",
+    "host.trigger.replay",
+    "host.trigger.resume",
+    "host.trigger.set",
+    "host.trigger.test",
+    "host.usage",
+    "host.whoami",
+    "signup"
+  ]
+}
+```
 
