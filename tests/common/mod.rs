@@ -759,6 +759,13 @@ impl TestServer {
         // real background task too" rationale as the two spawns above --
         // AC1/AC2's pause-file tests rely on this watcher actually running.
         mcphost::alerts::spawn_pause_watch((*state).clone());
+        // PRD-mcphost-docs-qa-recipe: same rationale again -- a test that
+        // drives the docs-qa recipe over real HTTP against a `TestServer`
+        // (rather than calling `docs_index::tick_once` directly the way
+        // the docsearch_ac* unit tests do against `common::bare_state`)
+        // needs the indexer's own 10s cadence actually running so its
+        // `host.docs.status` poll for `lag_seconds == 0` ever completes.
+        mcphost::docs_index::spawn_scheduler((*state).clone());
 
         let serve_state = state.clone();
         tokio::spawn(async move {

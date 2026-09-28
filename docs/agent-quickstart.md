@@ -109,3 +109,37 @@ proves a change under that path, not necessarily the full test suite. The
 `loop-config` lane (routing `.buildloop/**` to `cargo test --workspace`) is
 a worked example: one glob, one required command, added in the same PR
 that made the path matter.
+
+## Docs Q&A in a minute
+
+Turn a folder of markdown into a checkable Q&A tool, end to end, in one
+script:
+
+1. `signup(name)` — one fresh tenant.
+2. `host.docs.put(name, content)` — once per document (this recipe's own
+   corpus: 8 documents, ~22 KiB total, well under the 2 MiB per-document
+   cap).
+3. `host.docs.status()` — poll until `index.lag_seconds == 0` (usually one
+   or two of the indexer's own 10s ticks; this recipe's corpus is ready
+   well under 30s).
+4. `host.tool_publish(name="ask_docs", kind="python", spec={"source": ...})`
+   — the one published tool. Its `main` calls `mcphost.docs.search(query,
+   k)` over the same zero-network sandbox loopback `mcphost.docs.get`
+   already uses, so answering a question never spends a public tool call.
+5. `<namespace>.ask_docs(query="...")` — ask it. Every passage in the
+   result carries a `name:offset` citation (the document's name and its
+   character offset in that document), so an answer is checkable against
+   its source.
+
+Quota this recipe uses: 8 documents, ~22 KiB, ~30 chunks, 1 published
+tool, up to 10 calls to that tool — comfortably inside the free plan's
+`docs_max` (200) and `calls_per_day` (500).
+
+`examples/docs-qa/docs-qa.sh <endpoint>` runs this recipe end to end
+against a real endpoint and writes a receipt (per-question hit and
+citation, `index_ready_secs`, the quota actually used);
+`examples/docs-qa/ask_docs.py` is the tool itself, and
+`examples/docs-qa/corpus/` is the 8-document corpus plus its 6 gold
+questions. `docs-qa.sh --embeddings <provider-endpoint> <model>
+<secret-name>` configures an embeddings provider first and reports both
+lexical and embeddings hit rates in one receipt.

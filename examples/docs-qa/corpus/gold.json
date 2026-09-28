@@ -1,0 +1,38 @@
+[
+  {
+    "id": 1,
+    "question": "How many business days does a new hire have to complete onboarding paperwork?",
+    "expected_document": "onboarding.md",
+    "expected_fact": "five business days"
+  },
+  {
+    "id": 2,
+    "question": "What is the meal reimbursement limit that requires an itemized receipt?",
+    "expected_document": "expense-policy.md",
+    "expected_fact": "twenty-five dollars"
+  },
+  {
+    "id": 3,
+    "question": "What port does the VPN client connect on?",
+    "expected_document": "vpn-setup.md",
+    "expected_fact": "port 51820"
+  },
+  {
+    "id": 4,
+    "question": "Who gets paged first for a Sev1 incident?",
+    "expected_document": "incident-response.md",
+    "expected_fact": "on-call engineer"
+  },
+  {
+    "id": 5,
+    "question": "How many PTO days do employees accrue per year?",
+    "expected_document": "pto-policy.md",
+    "expected_fact": "twenty days"
+  },
+  {
+    "id": 6,
+    "question": "How often must employees rotate their password?",
+    "expected_document": "security-basics.md",
+    "expected_fact": "ninety days"
+  }
+]

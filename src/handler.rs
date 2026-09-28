@@ -3326,7 +3326,10 @@ impl TableBackend for TenantTableBridge {
 /// counterpart for `CallCtx.docs` -- bridges `Kind::call`'s sandboxed
 /// `mcphost.docs` requests to `docs.rs`'s real business logic for this
 /// call's own tenant. `op` is one of the bare verb names `kinds::python`'s
-/// `mcphost.docs` sandbox module sends (today just `"get"`).
+/// `mcphost.docs` sandbox module sends -- `"get"`, plus `"search"`
+/// (PRD-mcphost-docs-qa-recipe: `ask_docs.py`'s own zero-network,
+/// zero-metered-call answer to `host.docs.search`, same loopback channel
+/// `"get"` already uses).
 pub(crate) struct TenantDocsBridge {
     pub(crate) state: Arc<AppState>,
     pub(crate) tenant: Tenant,
@@ -3337,6 +3340,7 @@ impl DocsBackend for TenantDocsBridge {
     async fn call(&self, op: &str, args: Value) -> Result<Value, KindError> {
         let result = match op {
             "get" => docs::doc_get(&self.state, &self.tenant, &args).await,
+            "search" => docs::doc_search(&self.state, &self.tenant, &args).await,
             other => Err(AppError::InvalidArgs(format!("unknown docs op '{other}'"))),
         };
         result.map_err(app_error_to_kind_error)

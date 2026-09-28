@@ -2172,8 +2172,26 @@ def _docs_get(id=None, name=None):
     r = _docs_call("get", **kwargs)
     return r["text"]
 
+# PRD-mcphost-docs-qa-recipe: `search(query, k=None, filter=None)` --
+# `ask_docs.py`'s own zero-network, zero-metered-call answer to
+# `docs.rs::doc_search` over this same loopback channel `get` above already
+# uses, instead of a `network: public` HTTP round trip back to this
+# tenant's own endpoint (which would spend a real tool call per query
+# against `calls_per_day`, the thing this recipe's quota section is built
+# to stay small against). Returns the full `{results, index}` envelope
+# `host.docs.search` itself returns, unlike `get`'s text-only shortcut,
+# since a caller needs each result's own `name`/`offset` for its citation.
+def _docs_search(query, k=None, filter=None):
+    kwargs = {"query": query}
+    if k is not None:
+        kwargs["k"] = k
+    if filter is not None:
+        kwargs["filter"] = filter
+    return _docs_call("search", **kwargs)
+
 _mcphost_docs_mod = _mcphost_types.ModuleType("mcphost.docs")
 _mcphost_docs_mod.get = _docs_get
+_mcphost_docs_mod.search = _docs_search
 _mcphost_docs_mod.DocsError = McphostDocsError
 
 _mcphost_mod = _mcphost_types.ModuleType("mcphost")

@@ -963,8 +963,9 @@ impl TableBackend for NoTable {
 /// PRD-mcphost-document-store P1 requirement 6: `mcphost.docs` inside the
 /// python kind's sandbox -- the same shape [`StateBackend`]/[`TableBackend`]
 /// give their own stores, for the document store instead. `op` names one of
-/// `docs.rs`'s own verbs (today just `"get"`) and `args` is that verb's own
-/// JSON argument object.
+/// `docs.rs`'s own verbs (`"get"`, plus `"search"` since
+/// PRD-mcphost-docs-qa-recipe) and `args` is that verb's own JSON argument
+/// object.
 #[async_trait::async_trait]
 pub trait DocsBackend: Send + Sync {
     async fn call(&self, op: &str, args: Value) -> Result<Value, KindError>;

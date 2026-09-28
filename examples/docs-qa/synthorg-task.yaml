@@ -1,0 +1,37 @@
+# Consumer task for the synthorg mcphost corpus
+# (~/repos/synthorg/corpora/mcphost/consumer-tasks.yaml, see its own header
+# comment for the id/segments/task/gold schema and the call_check
+# mini-grammar). Unlike the other examples/*/synthorg-task.yaml files in
+# this repo (each a *proposed*, not-merged block, since their PRDs predate
+# this one), this task was actually merged into that corpus by
+# PRD-mcphost-docs-qa-recipe requirement 5 -- this copy is kept here too,
+# byte-identical in its `task`/`gold` shape, so a future edit to one side
+# doesn't silently drift from the other unnoticed
+# (tests/docsqa_ac06_synthorg_task_matches_gold_question_3.rs checks this
+# copy's own shape against examples/docs-qa/corpus/gold.json's question 3).
+#
+# Segment: rag_indexer (incumbent: LlamaIndex). This segment's other tasks
+# in the real corpus check that document-store primitives exist (ingestion
+# status, retrieval latency); this one instead proves the persona can
+# finish mcphost's "Docs Q&A in a minute" recipe end to end -- publish a
+# search tool, ask a real question, get the right document back. Scored via
+# a dedicated synthorg.fixtures route (`/docs/search/{question_id}`,
+# `_build_docs_search`) seeded so `question-3` always ranks `vpn-setup.md`
+# first, the same question/document pairing this repo's own
+# examples/docs-qa/corpus/gold.json question 3 uses.
+tasks:
+  - id: docs_qa_recipe
+    segments: [rag_indexer]
+    task: >
+      You do not trust a document store until it actually answers a
+      question correctly. Sign up, publish an http-kind tool named
+      `ask_docs` that wraps `{{fixture_base}}/docs/search/question-3` to
+      search a small seeded corpus, and call it with the corpus's own third
+      gold question ("What port does the VPN client connect on?") — the
+      result's top 5 hits should include the document that actually answers
+      it, `vpn-setup.md`.
+    gold:
+      tool_name: ask_docs
+      call_check: "result.payload contains vpn-setup.md"
+      kind: http
+    fixture_route: /docs/search/question-3

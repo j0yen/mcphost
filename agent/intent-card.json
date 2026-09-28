@@ -1,99 +1,94 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-shared-tool-spec-readback.md",
-  "intent_slug": "mcphost-shared-tool-spec-readback",
-  "root_motivation": "Grounding (PRD: wwhtbt leaf 4 + open question 'fork visibility' DECIDED source-visible, Joe 2026-09-26 -- visions/synthorg-compete.md; origin/main control.rs:1067 tool_list returns name/kind/visibility/env/share_description and never spec; db.rs:437 ToolRow.spec holds the python source; no sharee-side read path exists): the compete tournament's round-two builders are told to fork round-one winners, but a 'fork' on mcphost today is a rewrite from a one-line share_description -- a sharee has host.tool_call on a shared tool and nothing else, so the host's agent-to-agent story stops at calling, never at building on. host.tool_share gains an expose_spec opt-in (default closed) and a new host.tool_spec_shared read path so an agent can build on another agent's published tool the way a developer builds on open source: by reading it.",
-  "user_persona": "Five (PRD User stories): (1) an owner sharing a tool with expose_spec: true to invite forks; (2) an owner trusting env values/secret refs stay hidden even with exposure on; (3) a sharee refused spec_not_exposed, not a bare not-found, on an unexposed share; (4) a sharee seeing readability before it tries; (5) the compete runner recording which builders read a shared winner.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-docs-qa-recipe.md",
+  "intent_slug": "mcphost-docs-qa-recipe",
+  "root_motivation": "Grounding (PRD; visions/mcphost-data-layer-first-slice.md wwhtbt leaf 5; killer-apps recipe method, 5/5 shipped; rag_indexer's own 61.8% satisfaction is the lowest of the panel, wiki 2026-09-23-mcphost-market-test-plan; the consume corpus has 33 tasks and none of them needs documents before this PRD). PRD-mcphost-document-store and PRD-mcphost-docs-semantic-search gave every tenant a document store and ranked search, but nothing proves a stranger's agent can actually finish the job those primitives were built for: sign up, put a folder of markdown, wait for the index, publish one search tool, and get a checkable answer -- all inside free-plan quotas and under a minute. Without a script, a doc section, a plugin command, and a synthorg task that all agree on the same recipe, the fleet lands two primitives and moves no metric.",
+  "user_persona": "Four (PRD User stories): (1) the stranger's agent, reading llms.txt's 'Docs Q&A in a minute' section and finishing it without any other page; (2) the rag_indexer panel persona, running the synthorg task and scored on a top-5 hit; (3) the operator, whose receipt records signup/put/index-ready/publish/call timings for the Live AC; (4) the tool author, copying the 30-line ask_docs.py as a template for their own search-backed tool.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 9
+    "target": 8
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given an owner publishes a python tool and shares it to a group with expose_spec: true, When a group member calls host.tool_spec_shared, Then the response has kind: \"python\" and a spec containing source and args_schema.",
-      "test": "tests/mcphost_shared_tool_spec_readback_ac01_group_member_reads_spec.rs"
+      "description": "Given the in-process test host, When examples/docs-qa/docs-qa.sh <url> runs, Then it exits 0, the receipt shows index_ready_secs < 30, hits >= 5, and every answer carries a name:offset citation.",
+      "test": "tests/docsqa_ac01_recipe_end_to_end.rs -- runs the real script as a child process against a TestServer; TestServer now also runs docs_index::spawn_scheduler so the indexer's own 10s cadence is observable."
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the same share, When the owner calls host.tool_list, Then the tool row shows expose_spec: true.",
-      "test": "tests/mcphost_shared_tool_spec_readback_ac02_tool_list_shows_expose_spec.rs"
+      "description": "Given the receipt, When its quota section is read, Then documents <= 8, chunks <= 100, tool calls <= 10 -- inside free-plan knobs.",
+      "test": "tests/docsqa_ac02_quota_inside_free_plan_knobs.rs -- quota.tool_calls counts only calls to the recipe's own published ask_docs tool, not the host.* control-plane setup calls around it (see hard_constraints)."
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a tool whose spec has env: {\"API_KEY\": ...} and a secret reference in its config, When a sharee reads it, Then the response contains no env key and no secret reference string.",
-      "test": "tests/mcphost_shared_tool_spec_readback_ac03_redacts_env_and_secrets.rs"
+      "description": "Given www/llms.txt, When the 'Docs Q&A in a minute' section is followed literally by the test (each call parsed from the doc and executed), Then the sequence succeeds -- the doc and the script agree.",
+      "test": "tests/docsqa_ac03_llms_txt_section_matches_script.rs -- parses the section's five numbered-step calls and asserts they match, in order, a real docs-qa.sh run's own deduplicated call log."
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a tool shared without expose_spec, When a sharee calls host.tool_spec_shared, Then the response is spec_not_exposed naming <owner_ns>.<name>.",
-      "test": "tests/mcphost_shared_tool_spec_readback_ac04_spec_not_exposed_refusal.rs"
+      "description": "Given a corpus document is updated to change the answer to question 3, When the script re-asks after lag_seconds == 0, Then the new passage is returned.",
+      "test": "tests/docsqa_ac04_updated_document_changes_the_answer.rs -- runs the script twice against the same tenant (--reuse-state) over a scratch copy of the corpus (--corpus-dir), editing vpn-setup.md's port number between runs."
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a tool not shared with the caller, When it calls host.tool_spec_shared, Then the response is the same not-found shape host.tool_call returns for an unshared tool.",
-      "test": "tests/mcphost_shared_tool_spec_readback_ac05_not_shared_same_not_found_shape.rs"
+      "description": "Given the plugin docs-qa command, When invoked against the test host, Then it runs the same script and prints the receipt path.",
+      "test": "tests/docsqa_ac05_plugin_command_runs_the_script.rs -- parses plugin/commands/docs-qa.md's own bash block, confirms it names docs-qa.sh, and runs it against the in-process test host."
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a share with expose_spec: true that the owner then unshares, When the former sharee calls host.tool_spec_shared, Then not-found; and after re-sharing without the flag, spec_not_exposed.",
-      "test": "tests/mcphost_shared_tool_spec_readback_ac06_unshare_then_reshare_without_flag.rs"
+      "description": "Given ~/repos/synthorg with the new task, When synthorg consume --preflight and the proxy-tier fixture run execute, Then the docs_qa_recipe task is listed for rag_indexer and the fake endpoint fixture passes its gold predicate.",
+      "test": "tests/docsqa_ac06_synthorg_task_matches_gold_question_3.rs (this repo's own provable half) plus a real synthorg-repo commit (see notes/commits) adding docs_qa_recipe, a new synthorg.fixtures /docs/search/{question_id} route, and fixing three pre-existing corpus-shape tests' hardcoded totals -- uv run pytest/synthorg consume --preflight run green by hand in that repo."
     },
     {
       "id": "AC7",
-      "level": "MUST",
-      "description": "Given docs/agent-quickstart.md and www/llms.txt after this PRD, When they are grepped, Then both contain expose_spec and host.tool_spec_shared with a worked example.",
-      "test": "tests/mcphost_shared_tool_spec_readback_ac07_docs_worked_example.rs"
+      "level": "SHOULD",
+      "description": "Given --embeddings with a test provider, When the script runs, Then the receipt reports hit rates for both lexical and embeddings modes.",
+      "test": "tests/docsqa_ac07_embeddings_reports_both_hit_rates.rs -- a wiremock fake openai-compatible provider (a deterministic per-document keyword-signature embedder) proves both modes/lexical and modes/embeddings score >= 5/6."
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given a 64 KiB spec, When 50 sharees read it concurrently, Then p95 < 100 ms and every response is identical.",
-      "test": "tests/mcphost_shared_tool_spec_readback_ac08_fifty_concurrent_reads_p95.rs"
+      "description": "Given a search returning zero passages, When ask_docs runs, Then it returns a structured 'no passages found' result, not an error.",
+      "test": "tests/docsqa_ac08_zero_passages_is_structured_not_an_error.rs -- publishes ask_docs against a tenant with no documents put at all."
     },
     {
       "id": "AC9",
-      "level": "SHOULD",
-      "description": "Given three reads by sharees, When the owner lists tools, Then the row shows spec_reads: 3 and an exposed_at timestamp.",
-      "test": "tests/mcphost_shared_tool_spec_readback_ac09_spec_reads_counter.rs"
+      "level": "MUST",
+      "description": "Given prod after land, When docs-qa.sh https://mcphost.dev runs from carbon with a fresh signup, Then it exits 0 in under 60s and the receipt is committed under docs/receipts/.",
+      "test": "deferred (Live) -- operator-provisioned: needs a real signup from carbon against production after deploy; this coder dispatch has no live operator access."
     },
     {
       "id": "AC10",
       "level": "MUST",
-      "description": "Given prod mcphost after deploy, When tenant A publishes a python tool with one env entry and shares it to a group containing tenant B with expose_spec: true, and tenant B calls host.tool_spec_shared, Then B receives the source and no env, and A's host.calls.list shows B's read (Live).",
-      "test": "deferred (prod leg only) -- operator-provisioned: AC10's Given is \"prod mcphost after deploy\", and the only thing still blocking it is that deploy of this branch to https://mcphost.dev, an operator action (mcphost-deploy). Recorded, not merely claimed: docs/receipts/spec-readback-ac10-prod-probe.md (read-only unauthenticated snapshot of prod's public tools/list, 2026-09-27) shows prod serving every other step of AC10's sequence but not host.tool_spec_shared and with no expose_spec on host.tool_share, and tests/mcphost_shared_tool_spec_readback_ac10_live_two_tenant_spec_read_trailer.rs::only_the_deploy_separates_this_branch_from_prods_tool_surface re-derives that delta against a real server on every run. Credentials are not part of the deferral: prod's signup is unauthenticated, so MCPHOST_TENANT_A_KEY/MCPHOST_TENANT_B_KEY are optional and the MCPHOST_LIVE=1 run mints its own two tenants when they are unset. Always-on mechanism proof: tests/mcphost_shared_tool_spec_readback_ac10_live_two_tenant_spec_read_trailer.rs::tenant_b_reads_source_without_env_and_tenant_a_sees_the_read (MCPHOST_LIVE=1 re-points the identical code at prod for the operator's trailer run); see PRD frontmatter deferred_acs/mock_justifications; deferral paper trail locked by tests/mcphost_shared_tool_spec_readback_ac10_deferral_is_justified.rs"
+      "description": "Given the truth-tier panel run after land, When synthorg consume runs with the pinned panel, Then rag_indexer satisfaction is reported with the new task included (number recorded in the vision, target >= 75%).",
+      "test": "deferred -- operator-provisioned: AC10's Then is a truth-tier `synthorg consume --tier truth --endpoint https://mcphost.dev/mcp` run against prod after this PRD lands (~$5 and ~40 min of billed frontier calls, driven from ~/repos/synthorg, needing the operator's ANTHROPIC_API_KEY / SYNTHORG_PROD_ENDPOINT / SYNTHORG_TRUTH_BRIEF that this sandbox does not hold). Declared in PRD-mcphost-docs-qa-recipe.md's frontmatter: 'deferred_acs: [9, 10]' plus its mock_justifications entry for AC10. The live check that fails until the operator's run has happened: tests/docsqa_ac10_truth_tier_panel_satisfaction_recorded.rs::live_truth_tier_panel_run_meets_the_target (MCPHOST_LIVE=1, MCPHOST_PANEL_MEASURE=<run>/measure.json). That file's always-on tests prove the recorder's mechanism on measures assembled only from two real synthorg runs' own numbers -- the branch's mechanism, not AC10, and not counted as AC10's proof. tests/docsqa_ac10_deferral_is_justified.rs locks this paper trail (frontmatter vs test-map vs intent-card). AC6 proves the pre-land cross-repo wiring this worktree can test now."
     }
   ],
   "scope": [
-    "migrations/0045_tool_spec_exposure.sql (new): tools gains expose_spec (INTEGER NOT NULL DEFAULT 0), spec_exposed_unix (nullable unix seconds, set only while expose_spec is true), and spec_reads (INTEGER NOT NULL DEFAULT 0, reset by every host.tool_share/host.tool_unshare/admin.tool_unshare call).",
-    "src/db.rs: ToolRow gains expose_spec/spec_exposed_unix/spec_reads (TOOL_COLUMNS/tool_from_row and every hand-shifted row mapper -- search_catalog, admin_shared_tools -- updated in lockstep); set_tool_share takes a new expose_spec: bool parameter; unshare_tool/admin_unshare_tool clear all three new columns; record_spec_read bumps the counter on a successful host.tool_spec_shared read; get_tool_owner_id_by_namespace is a new single-JOIN-query sibling of get_tool_by_owner_namespace returning just the owner's id (all host.tool_spec_shared's critical path needs) instead of the full Tenant, added to keep AC8's 50-concurrent-readers p95 budget from paying for a second round trip through the crate's one Mutex<Connection> that it doesn't need.",
-    "src/kinds/mod.rs: Kind gains redacted_spec_for_sharing(&self, spec: &Value) -> Value, default json!({}) -- an allowlist a kind opts into, never a denylist scrubbing the stored spec (requirement 3's own design note).",
-    "src/kinds/python.rs: redacted_spec_for_sharing copies only source/args_schema/requirements/timeout_s/network straight off the raw stored spec Value -- env, secrets, memory_mb, description, _dependency_lock, and outputs are never copied, so nothing scrubs them out after the fact, they simply never make it into the response.",
-    "src/sharing.rs: tool_share parses a new expose_spec argument (default false) and passes it to db::set_tool_share.",
-    "src/handler.rs: host.tool_share's input schema gains expose_spec; new host.tool_spec_shared tool and dispatch arm; McpHostHandler::tool_visible_to is call_shared_tool's visibility check pulled out (now taking owner_id: i64 rather than &Tenant) so tool_spec_shared reuses the exact same public/group-membership rule instead of a second resolver; tool_spec_shared resolves via get_tool_owner_id_by_namespace, checks visibility then expose_spec, builds the redacted response, awaits record_spec_read (AC9 needs this synchronous), and detaches the calls-log write (requirement 7's quota bookkeeping, not read by any AC's own assertion) via tokio::spawn so it never blocks the response.",
-    "src/control.rs: tool_list's per-tool row gains expose_spec/exposed_at/spec_reads (AC2/AC9), read straight off the same ToolRow columns.",
-    "src/errors.rs: AppError::spec_not_exposed(owner_ns, name) (code spec_not_exposed, INVALID_PARAMS) -- distinct from ToolNotFound, since the caller already knows the tool exists (it was shared with them).",
-    "docs/agent-quickstart.md: a new numbered step showing host.tool_share's expose_spec flag and a host.tool_spec_shared(tool=...) worked example, after the existing publish/share/manage steps (AC7).",
-    "www/llms.txt: a new 'Share a tool, and let them read it' subsection beside the existing 'Share a tool, not a key' recipe, plus host.tool_spec_shared added to the generated ## Tools list at its alphabetically-sorted slot (AC7).",
-    "tests/mcphost_shared_tool_spec_readback_ac0[1-9]_*.rs (new, nine files, one per non-deferred AC); scripts/gen-test-suites.sh / tests/suite_*.rs regenerated to include them.",
-    "agent/test-map.json: ac_test_map repointed to this PRD's mcphost_shared_tool_spec_readback prefix, end-user-identity's own map archived under ac_test_map_by_prefix.",
-    "Cargo.toml/Cargo.lock: patch version bump; CHANGELOG.md: new entry."
+    "examples/docs-qa/ (new): corpus/ (8 markdown documents, ~21 KiB, plus gold.json's 6 gold questions), ask_docs.py (a python-kind tool calling the new mcphost.docs.search loopback binding), docs-qa.sh (signup, put, poll host.docs.status for lag_seconds == 0, publish, ask the 6 gold questions, write a receipt JSON; --embeddings/--corpus-dir/--reuse-state/--receipt-dir flags), synthorg-task.yaml (a byte-identical local mirror of the task actually merged into ~/repos/synthorg).",
+    "src/kinds/python.rs, src/kinds/mod.rs, src/handler.rs: a new mcphost.docs.search op on the existing DocsSidecarBridge/TenantDocsBridge (mirroring the pre-existing get op exactly) -- ask_docs.py's own zero-network, zero-metered-call answer to host.docs.search, so a query never spends a public tool call (see hard_constraints for why this isn't 'no host code change').",
+    "tests/common/mod.rs: TestServer now also runs docs_index::spawn_scheduler (same 'every test server runs the real background task too' precedent as runs::spawn_executor/triggers::spawn_scheduler/alerts::spawn_pause_watch) so a docs-qa.sh run against it can observe the indexer actually catch up.",
+    "docs/agent-quickstart.md gains the 'Docs Q&A in a minute' section, propagated into README.md and www/llms.txt's marked block by scripts/gen-agent-docs.sh (the existing sync mechanism, not a manual duplicate append).",
+    "plugin/commands/docs-qa.md (new): a Claude Code slash command running the same script against a configured (or default prod) endpoint.",
+    "~/repos/synthorg (separate repository, own git history/commit): corpora/mcphost/consumer-tasks.yaml gains docs_qa_recipe (rag_indexer); src/synthorg/fixtures.py gains /docs/search/{question_id} (_build_docs_search); three pre-existing corpus-shape tests' hardcoded totals bumped by one (capability_tasks_ac1_corpus_shape_test.py, pairtasks_ac7_full_corpus_no_regression_test.py, live_gold_ac4_corpus_live_shape_check_test.py) and fixture_upstream_ac5's own panel size raised from PANEL_MIN_PER_SEGMENT's floor (3) to 4 so the new task actually draws a session; corpora/mcphost/FINGERPRINT-CHANGES.md gains a dated entry.",
+    "agent/proof-lanes.toml: the pre-existing 'examples' lane's globs/required_commands extended for examples/docs-qa/** and docsqa_ac* (same precedent as every prior recipe PRD folding into this lane).",
+    "tests/docsqa_ac0[1-8]_*.rs (new); tests/suite_sandbox_0[2-3].rs, tests/suite_core_07.rs regenerated by scripts/gen-test-suites.sh to include the new files.",
+    "CHANGELOG.md: new patch version entry."
   ],
   "non_goals": [
-    "Exposing spec on public (visibility: public) tools to tenants they are not shared with -- PRD Non-goals; public visibility and spec exposure stay separate flags.",
-    "Versioning or diffing specs -- PRD Non-goals.",
-    "Any change to host.tool_call routing -- PRD Non-goals; owned by the queued PRD-mcphost-shared-tool-call-path.",
-    "A control plane beyond the share flag itself -- PRD Non-goals; the single expose_spec flag per share is the whole control plane.",
-    "expose_spec on public tools for any tenant (P2 requirement 10, a separate off-by-default decision) -- left for a follow-on slice; no AC in the PRD's own ten-item list exercises it.",
-    "The sharee's listing of tools shared with it carrying spec_readable outside the not-found/spec_not_exposed refusal shapes (P1 requirement 8) -- no AC in the PRD's own list exercises a dedicated sharee-side listing surface separate from the refusal shapes AC4-AC6 already prove."
+    "An LLM answer synthesis step inside the host -- PRD's own Non-goals; the tool returns passages, the calling agent composes the answer.",
+    "PDF corpora -- PRD's own Non-goals.",
+    "Promotion of the recipe -- PRD's own Non-goals (the 09-09 hold stands; docs only).",
+    "host.quickstart mentioning the recipe when a tenant has zero documents -- P2 requirement 7, not in this dispatch's non-deferred AC list.",
+    "Re-litigating PRD-mcphost-docs-semantic-search's own design (chunking, BM25 vs cosine, provider fallback) -- this PRD only adds one new loopback op (search) reusing that PRD's existing doc_search business logic unchanged."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -102,41 +97,41 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "redaction_is_allowlist_not_denylist": "Technical considerations: 'so a new key added to the kind is redacted by allowlist, not by denylist' -- Kind::redacted_spec_for_sharing defaults to json!({}) (nothing exposed) and PythonKind's override copies exactly five named fields off the raw spec; a future field a kind's spec gains is excluded by construction until a maintainer explicitly adds it to the allowlist, never leaked by omission from a denylist.",
-      "redaction_never_mutates_stored_spec": "Non-functional: 'redaction is applied on read, never by mutating the stored spec' -- redacted_spec_for_sharing takes &Value and returns a new Value; ToolRow.spec on disk is untouched, so host.tool_call/host.tool_test/host.tool_run keep reading the real, unredacted spec exactly as before this PRD.",
-      "share_membership_check_reused_not_reimplemented": "Technical considerations: 'reuse the share membership check that host.tool_call...uses...do not write a second membership resolver' -- McpHostHandler::tool_visible_to is call_shared_tool's own public/group-membership rule, pulled out into its own method and reused verbatim by host.tool_spec_shared rather than a parallel implementation.",
-      "not_found_before_expose_spec_check_never_leaks_existence": "Requirement 4/AC5: a tool not shared with the caller at all must be ToolNotFound, byte-identical to what a cross-tenant tool_call already returns -- tool_spec_shared checks visibility (tool_visible_to) strictly before checking expose_spec, so a probe against a private or wrongly-grouped tool never learns whether expose_spec is set on it, or that the tool exists at all.",
-      "ac8_p95_budget_shaped_the_critical_path": "AC8's 50-concurrent-readers/p95<100ms non-functional requirement, combined with every DB operation in this crate serializing through one Mutex<Connection>, is why the calls-log write for quota bookkeeping (requirement 7) is detached via tokio::spawn rather than awaited, and why get_tool_owner_id_by_namespace exists as a single-JOIN alternative to get_tool_by_owner_namespace -- record_spec_read (AC9's counter) is the one write that stays synchronous, since AC9's test reads three sharee responses sequentially then immediately checks host.tool_list."
+      "mcphost_docs_search_loopback_op_despite_no_host_code_change": "Migration/compatibility says 'No host code change', but requirement 1's ask_docs.py must search without spending a public tool call per query (Technical considerations: 'uses the state helper's loopback endpoint for search'). The only existing mcphost.docs sandbox binding is get (a single document's text); compose_call (mcphost.call) cannot reach host.* control-plane tools (only a tenant's own published tools, db.get_tool lookup). Resolved by adding a search op to the existing DocsSidecarBridge/TenantDocsBridge, mirroring get exactly (same struct, same dispatch pattern, zero new tools/schemas/migrations) -- the smallest possible reading of 'no host code change' that still satisfies the stated non-functional requirement, not a new product surface.",
+      "quota_tool_calls_counts_only_the_published_tool": "AC2's 'tool calls <= 10' cannot mean literal MCP request count (signup + 8 puts + status polls + publish + 6 asks already exceeds 10). Resolved the same way examples/uptime-probes/proof.sh's own '288 of 500 calls/day' narrative already does: only calls to the recipe's own published tool (ask_docs) count against the quota; host.* control-plane setup calls (signup/put/status/publish) don't.",
+      "embeddings_flag_configures_provider_literally_first": "Requirement 6 says '--embeddings ... configures the provider first'. Read literally (before ANY document is put, not merely before searching): --embeddings runs the embeddings phase first (secret_set, index_config, put, wait, ask), then switches back to provider: none and reruns lexical, so both phases' hit rates land in one receipt's modes section.",
+      "docs_qa_recipe_call_check_is_single_segment": "'top5 hit on question 3' (requirement 5) most naturally reads as a nested result.payload.results contains <doc> check, but synthorg's own consume.check_live_shape --live-shape prober only supports a single-segment result.payload/result.status path (consume.py's own _live_shape_probe raises on a dotted payload.<field> path). Resolved by flattening each of the fixture's top-5 document names onto payload as its own boolean key (alongside the nested results list a real caller would read), so the single-segment check (result.payload contains vpn-setup.md) still tests genuine top-5 membership.",
+      "docs_agent_quickstart_section_via_the_sync_mechanism_not_a_manual_duplicate": "Requirement 2 says both www/llms.txt and docs/agent-quickstart.md gain the section, but every prior recipe PRD only ever touched www/llms.txt directly (docs/agent-quickstart.md is the whole byte-for-byte SOURCE scripts/gen-agent-docs.sh copies into both README.md's and llms.txt's marked block -- appending to both files independently would either duplicate the section in llms.txt or desync gen-agent-docs.sh --check). Resolved by appending the section to docs/agent-quickstart.md only, then running scripts/gen-agent-docs.sh to propagate it into README.md and llms.txt's marked block -- the intended use of that existing mechanism, not a new one."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does a sharee need to read a shared tool's spec at all, rather than just calling it?",
-      "a": "Problem statement: the compete tournament's round-two builders are told to fork round-one winners, but 'fork' has no mechanism today -- tool_list never returns spec, and a sharee's only surface is host.tool_call. Without a read path, the tournament cannot measure recombination and the product's agent-to-agent story stops at calling, never at building on."
+      "q": "Why does this PRD need a script AND a doc section AND a plugin command AND a synthorg task, rather than just documenting the recipe?",
+      "a": "Grounding: 'the killer-apps vision's method (a recipe a stranger finishes in a minute, with a Live AC and a panel task) is what made five recipes shippable' -- a doc with no runnable proof drifts from the real API silently (AC3 exists precisely to catch that), and a panel task is the only thing that turns 'the primitive exists' into a measured persona-satisfaction number."
     },
     {
       "why": 2,
-      "q": "Why an owner opt-in flag (expose_spec, default closed) rather than exposing spec automatically to every sharee?",
-      "a": "Goals: 'Owner opt-in per share, default closed.' A share today only grants call access; automatically also granting read access would be a silent behavior change for every tool an owner has already shared, and a tool wrapping a paid/rate-limited upstream (the share-a-tool-not-a-key pattern) is exactly the kind of tool an owner would NOT want forked sight-unseen by every group member."
+      "q": "Why does ask_docs need a loopback search binding instead of just calling host.docs.search like any other tool would from outside the sandbox?",
+      "a": "ask_docs runs INSIDE the sandbox as the published tool's own code, not as an external MCP client -- Technical considerations: 'so it does not spend a public tool call per query', keeping the recipe's own tool-call quota (AC2, <=10) from scaling with corpus size or query volume the way a real HTTP round trip per query would."
     },
     {
       "why": 3,
-      "q": "Why redact env and secret references even when the owner has explicitly opted into exposure, rather than trusting expose_spec: true to mean 'show everything'?",
-      "a": "Goals: 'env and secret references never leave the owner's tenant' -- User story 2: even with expose_spec: true, a sharee sees the source and env variable NAMES but never values or secret refs. Exposing the spec's shape (so a sharee can fork the logic) and exposing the owner's credentials are two different decisions; this PRD only ever makes the first one available, never the second, regardless of the flag."
+      "q": "Why 8 documents / 6 gold questions specifically, rather than a larger corpus like docsearch's own 20-document/30-question fixture?",
+      "a": "Requirement 1 names this exact shape, and the non-functional requirement caps the corpus at 'under 100 KiB in the repo' alongside the script -- a stranger finishing this 'in a minute' needs a small enough corpus that indexing (the 10s tick) and 6 sequential questions both complete well inside the 60s wall-clock budget AC9 measures on prod."
     },
     {
       "why": 4,
-      "q": "Why must a not-shared tool and a shared-but-unexposed tool return two different refusal shapes (ToolNotFound vs spec_not_exposed) rather than one generic refusal?",
-      "a": "Requirement 4/User story 3: a sharee shared without exposure should get a refusal that SAYS the owner has not exposed it, not a not-found -- useful signal to ask the owner to flip the flag. A tool never shared with the caller must stay indistinguishable from one that doesn't exist at all (the same 'never leak that the tool exists' invariant call_shared_tool already enforces), so collapsing both into one shape would either leak existence or hide the useful spec_not_exposed signal."
+      "q": "Why does AC4 need --reuse-state/--corpus-dir flags on docs-qa.sh at all, rather than a test driving host.docs.put/search directly the way docsearch's own AC3 (version update drops old chunks) does?",
+      "a": "AC4's own wording is 'the script re-asks' -- proving the SCRIPT's own re-run behavior (not just the underlying doc_put/doc_search functions, already proven by PRD-mcphost-docs-semantic-search's own AC3) needs the script to be re-invokable against the same tenant with a mutated corpus, which the base recipe (always a fresh signup) doesn't support without an explicit, opt-in flag."
     },
     {
       "why": 5,
-      "q": "Why does host.tool_spec_shared need its own p95<100ms budget under 50 concurrent readers (AC8) rather than inheriting whatever host.tool_call's cross-tenant path already tolerates?",
-      "a": "Non-functional: 'p95 for host.tool_spec_shared under 100 ms for a 64 KiB spec' -- User story 5/PRD Success metrics: the compete round's builders are expected to read a winner's spec in bulk right after a round closes, a genuinely concurrent read pattern host.tool_call's per-call sandbox dispatch was never measured against; a slow read path here would bottleneck the tournament's own round-two kickoff, not just one caller's own latency."
+      "q": "Why defer AC9/AC10 instead of writing a test for them?",
+      "a": "Both are explicitly Live/post-land: AC9 needs a real signup from carbon against production after a deploy this dispatch never performs; AC10 needs a truth-tier panel run against production after this PRD lands, recorded in a vision doc. Neither is reachable from a worktree gate that never deploys or runs a real LLM judge panel -- AC6's proxy-tier/fake-mode proof is the pre-land half of the same claim this dispatch CAN prove."
     }
   ],
-  "created_at": "2026-09-26T00:00:00Z",
+  "created_at": "2026-09-25T00:00:00Z",
   "ambiguities_resolved": [
     {
       "question": "The findings file records the reference Python client seeing well-formed ttlMs/cacheScope on an unauthenticated tools/list, which the code says is impossible. Which is right?",
@@ -397,6 +392,22 @@
     {
       "question": "Merging origin/main into wm-build/mcphost-shared-tool-spec-readback (a `git merge --no-edit origin/main`, not a rebase) after PRD-mcphost-tool-scopes-and-consent (#67) landed: that PRD's own intent-card-refresh regenerated agent/intent-card.json's root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace for tool-scopes-and-consent/toolscope, with its own ambiguities_resolved array carrying the full accumulated history through its own final toolscope regeneration entry. This branch's own agent/intent-card.json (per the usual per-PRD rewrite) describes shared-tool-spec-readback instead, with its own ambiguities_resolved array carrying its own single new entry on top of a shorter, pre-toolscope accumulated history (this branch forked before hostedas/oauthconf/oauthpol/oauthsig/toolscope existed). Keep toolscope's fields, or shared-tool-spec-readback's -- and which ambiguities_resolved, given a three-way merge (not a rebase) can't just replay one side's commits on top of the other?",
       "resolution": "Kept this branch's own root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace/created_at/prd_source/intent_slug (mcphost-shared-tool-spec-readback) -- this branch is landing shared-tool-spec-readback now, matching every prior 'Rebasing/Merging wm-build/X onto main after PRD-Y' recurrence in this log; toolscope's own single-current-PRD fields were not carried forward as fields (already shipped on main under toolscope's own history). ambiguities_resolved kept BOTH lineages' entries in full rather than picking a side: this branch's own pre-existing history through its 'regenerated for shared-tool-spec-readback' entry (immediately above), followed by every entry toolscope's own copy had accumulated past that point (shared-tool-call-path, first-publish-real-kind and its two rebase entries, upstream-token-vault and its two rebase entries, upstream-token-vault-status, plan-catalog-state-quota-defaults's from_toml entry, its own rebase-after-plancat entry, runs-end-user-subject and its rebase-after-vaultst entry, oauth-conformance-harness's AC6/AC7 entries, hosted-authorization-server's rebase-after-runsubject entry, tenant-resource-metadata's CIMD/GET-POST/client-deny/audit-export/rebase entries and its own AC1 root-document-isolation fix, oauth-demand-signal and its rebase-after-tenantprm entry, and tool-scopes-and-consent's own regeneration and rebase-after-oauthsig entries), in the order they were written on main, plus this one new entry, appended -- the same 'nothing already-shipped is silently dropped' invariant this log has followed for every prior three-way reconciliation (see the docs-semantic-search-rebase and upstream-token-vault-rebase entries above, the only two other true `git merge`, not rebase, recurrences in this log). agent/test-map.json's ac_test_map stays pointed at mcphost_shared_tool_spec_readback; toolscope's own AC1-AC8 map (real, already-shipped, tests/toolscope_ac0[1-8]_*.rs plus AC9 deferred) was archived under ac_test_map_by_prefix.toolscope, the same 'preserve rather than delete' treatment every other superseded PRD in that dict already gets. Nothing was provisioned, resized, or reconfigured to resolve this; it is a paper-trail/mechanical-merge fix with no AC content change."
+    },
+    {
+      "question": "Migration/compatibility says 'No host code change', but ask_docs.py must search via a loopback (no public tool call per query) -- the only way to do that today is a new op on the docs sidecar bridge. Add it anyway, or fall back to a public host.docs.search call that would blow the tool-call framing?",
+      "resolution": "Added mcphost.docs.search as a new op mirroring the existing get op exactly (same bridge, same dispatch pattern, zero new tools/schemas/migrations) -- the smallest possible reading of 'no host code change' that still satisfies the stated non-functional requirement."
+    },
+    {
+      "question": "docs_qa_recipe's synthorg gold check reads most naturally as a nested result.payload.results contains <doc> path, but consume.check_live_shape's --live-shape prober only supports a single-segment result.payload/result.status path. Extend that prober's grammar, or redesign the fixture?",
+      "resolution": "Redesigned the fixture: _build_docs_search flattens each of its top-5 document names onto payload as its own boolean key, so a single-segment result.payload contains <doc> check still tests genuine top-5 membership, without touching consume.py's own grammar (out of this PRD's scope)."
+    },
+    {
+      "question": "rag_indexer's synthorg task pool grew from 3 to 4 by adding docs_qa_recipe, which broke fixture_upstream_ac5_fake_run_dispatches_to_fixture_test.py's fixed 3-sessions-per-segment panel (the new task never drew a session) plus three other tests' hardcoded corpus-shape totals. Shrink the new task's scope to avoid touching those tests, or fix them?",
+      "resolution": "Fixed them: raised that one test's own panel size from PANEL_MIN_PER_SEGMENT's floor (3) to 4 sessions/segment (covers every segment's pool, not just rag_indexer's), and bumped the three hardcoded totals (33->34, 21->22, 21/21->22/22) by exactly one with a comment explaining why -- the alternative (shrinking scope) would have meant a task that doesn't actually prove what AC6 asks for."
+    },
+    {
+      "question": "AC2's quota.tool_calls <= 10 cannot mean literal MCP request count (signup + 8 puts + status polls + publish + 6 asks already exceeds 10 for the base recipe alone). What should the receipt's own tool_calls field actually count?",
+      "resolution": "Only calls to the recipe's own published tool (ask_docs) -- the same 'only the published tool's own calls count toward the quota' accounting examples/uptime-probes/proof.sh's own calls/day narrative already uses for schedule firings vs. setup calls."
     }
   ]
 }
