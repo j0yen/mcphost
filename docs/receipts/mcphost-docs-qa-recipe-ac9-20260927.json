@@ -1,0 +1,77 @@
+{
+  "endpoint": "https://mcphost.dev/mcp",
+  "tenant": "t_880aa34a",
+  "started_at": 1790565210.0316455,
+  "index_ready_secs": 9.215463041968178,
+  "hits": 6,
+  "total_questions": 6,
+  "answers": [
+    {
+      "id": 1,
+      "question": "How many business days does a new hire have to complete onboarding paperwork?",
+      "expected_document": "onboarding.md",
+      "hit": true,
+      "citation": "onboarding.md:617",
+      "passage_text": "it (usually within\none hour of your badge being activated at the front desk).\n\n## Paperwork deadlineNew hires have five business days from their start date to complete\nonboarding paperwork: the W-4 or local tax equivalent, direct deposit\ndetails, the equipment agreement, and the code of conduct acknowledgement.\nPayroll will not run your first paycheck until every document in that list\nis signed. HR sends two reminder emails, on day three and day four, before\nescalating an incomplete packet to your manager on day six.\n\n## The buddy program",
+      "index_mode": "lexical"
+    },
+    {
+      "id": 2,
+      "question": "What is the meal reimbursement limit that requires an itemized receipt?",
+      "expected_document": "expense-policy.md",
+      "hit": true,
+      "citation": "expense-policy.md:557",
+      "passage_text": "ol is reimbursable only as part of a client meal, capped at two drinks\nper attendee.\n\n## Meal limitsMeals while traveling are reimbursed up to fifty dollars per day, itemized\nby breakfast, lunch, and dinner. A meal under twenty-five dollars does not\nrequire an itemized receipt; a credit card statement line is enough. A meal\nof twenty-five dollars or more requires the itemized receipt showing what\nwas ordered, not just the total, because tax auditors ask for it during the\nannual review.\n\n## Submitting a claim\n\nClaims go through the expenses tool, not email or Slack. Attach a receipt\nimage for every line over twenty-five dollars, choose a cost center, and\nadd a one-sentence business purpose. Claims older than ninety days from the\nexpense date are not reimbursed except by an explicit finance exception,\nwhich requires a director's approval.\n\n## Approval and payment",
+      "index_mode": "lexical"
+    },
+    {
+      "id": 3,
+      "question": "What port does the VPN client connect on?",
+      "expected_document": "vpn-setup.md",
+      "hit": true,
+      "citation": "vpn-setup.md:2083",
+      "passage_text": "automatically ninety days after\nissue and silently fail rather than erroring clearly.\n\n## RevocationVPN access is revoked automatically when your account is disabled, and\nmanually when a laptop is reported lost or stolen. Report a lost device to\n#it-requests immediately; revocation is usually completed within fifteen\nminutes of the report during business hours.\n\n## Common questions\n\n**What port does the VPN client connect on?** Port 51820, over UDP, which\nis the standard WireGuard port.\n\n**Can I use one configuration file on two devices?** No, each device\nneeds its own configuration; sharing a key between devices causes random\ndisconnects as the two devices fight over the same handshake state.\n\n**Does the VPN slow down my personal browsing?** No, split tunneling means\nonly internal-range traffic uses the tunnel by default.\n",
+      "index_mode": "lexical"
+    },
+    {
+      "id": 4,
+      "question": "Who gets paged first for a Sev1 incident?",
+      "expected_document": "incident-response.md",
+      "hit": true,
+      "citation": "incident-response.md:0",
+      "passage_text": "# Incident response runbook\n\nThis page covers how Acorn Robotics classifies and responds to production\nincidents, from detection to postmortem.\n\n## Severity levels\n\nSev1 is a full outage or a safety-relevant failure in shipped hardware;\nSev2 is a major feature degraded for many customers; Sev3 is a minor,\nworkaround-available issue. Severity is set by whoever declares the\nincident and can be raised or lowered as more information comes in, but\nnever lowered without the incident commander's sign-off.\n\n## Who gets paged first",
+      "index_mode": "lexical"
+    },
+    {
+      "id": 5,
+      "question": "How many PTO days do employees accrue per year?",
+      "expected_document": "pto-policy.md",
+      "hit": true,
+      "citation": "pto-policy.md:1725",
+      "passage_text": "cutive days routes through the leave-of-\nabsence process instead of ordinary sick time.\n\n## HolidaysCompany holidays are published at the start of each calendar year on the\nHR calendar and do not count against PTO balance. If a holiday falls on a\nweekend, the nearest working day is observed instead, announced at least\none month in advance.\n\n## Common questions\n\n**How many PTO days do employees accrue per year?** Twenty days per year,\naccrued monthly.\n\n**How much PTO can I carry into next year?** Up to five days; the rest is\nforfeited unless local law says otherwise.\n\n**Do I need to request sick time in advance?** No, just notify your\nmanager as soon as you know you will be out.\n",
+      "index_mode": "lexical"
+    },
+    {
+      "id": 6,
+      "question": "How often must employees rotate their password?",
+      "expected_document": "security-basics.md",
+      "hit": true,
+      "citation": "security-basics.md:0",
+      "passage_text": "# Security basics\n\nBaseline security practices every employee at Acorn Robotics is expected\nto follow, independent of role or team.\n\n## Passwords\n\nPasswords must be at least fourteen characters and must not reuse any of\nyour last ten passwords. Employees must rotate their password every\nninety days; the identity provider sends a reminder seven days before\nexpiry and locks the account if the deadline passes without a rotation.\nA password manager is provided to every employee and is the recommended\nway to generate and store passwords -- writing passwords in a notes app is\nagainst policy.\n\n## Two-factor authentication",
+      "index_mode": "lexical"
+    }
+  ],
+  "quota": {
+    "documents": 8,
+    "chunks": 35,
+    "tool_calls": 6
+  },
+  "wall_time_ms": 21232,
+  "calls": [
+    "signup",
+    "host.docs.put",
+    "host.docs.status",
+    "host.tool_publish",
+    "t_880aa34a.ask_docs"
+  ]
+}
