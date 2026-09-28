@@ -138,6 +138,24 @@ mod mcphost_sandbox_egress_allowlist_ac07_healthz_network_denied_counters;
 mod mcphost_sandbox_egress_allowlist_ac08_concurrent_free_publishes_refused;
 #[path = "mcphost_sandbox_egress_allowlist_ac10_uptime_probes_fixture_no_longer_free.rs"]
 mod mcphost_sandbox_egress_allowlist_ac10_uptime_probes_fixture_no_longer_free;
+#[path = "mcphost_shared_tool_spec_readback_ac01_group_member_reads_spec.rs"]
+mod mcphost_shared_tool_spec_readback_ac01_group_member_reads_spec;
+#[path = "mcphost_shared_tool_spec_readback_ac02_tool_list_shows_expose_spec.rs"]
+mod mcphost_shared_tool_spec_readback_ac02_tool_list_shows_expose_spec;
+#[path = "mcphost_shared_tool_spec_readback_ac03_redacts_env_and_secrets.rs"]
+mod mcphost_shared_tool_spec_readback_ac03_redacts_env_and_secrets;
+#[path = "mcphost_shared_tool_spec_readback_ac04_spec_not_exposed_refusal.rs"]
+mod mcphost_shared_tool_spec_readback_ac04_spec_not_exposed_refusal;
+#[path = "mcphost_shared_tool_spec_readback_ac05_not_shared_same_not_found_shape.rs"]
+mod mcphost_shared_tool_spec_readback_ac05_not_shared_same_not_found_shape;
+#[path = "mcphost_shared_tool_spec_readback_ac06_unshare_then_reshare_without_flag.rs"]
+mod mcphost_shared_tool_spec_readback_ac06_unshare_then_reshare_without_flag;
+#[path = "mcphost_shared_tool_spec_readback_ac08_fifty_concurrent_reads_p95.rs"]
+mod mcphost_shared_tool_spec_readback_ac08_fifty_concurrent_reads_p95;
+#[path = "mcphost_shared_tool_spec_readback_ac09_spec_reads_counter.rs"]
+mod mcphost_shared_tool_spec_readback_ac09_spec_reads_counter;
+#[path = "mcphost_shared_tool_spec_readback_ac10_two_tenant_spec_read_and_calls_listing.rs"]
+mod mcphost_shared_tool_spec_readback_ac10_two_tenant_spec_read_and_calls_listing;
 #[path = "mcphost_team_memory_ac02_b_remember_writer.rs"]
 mod mcphost_team_memory_ac02_b_remember_writer;
 #[path = "mcphost_team_memory_ac03_c_recall_shows_writer.rs"]
@@ -180,7 +198,3 @@ mod plainenv_ac07_docs_and_tool_list;
 mod plainenv_ac08_warm_pool_invalidates_on_env_change;
 #[path = "plainenv_ac10_admin_reports_env_names_and_size.rs"]
 mod plainenv_ac10_admin_reports_env_names_and_size;
-#[path = "publishfirsttry_ac03_ac04_quickstart.rs"]
-mod publishfirsttry_ac03_ac04_quickstart;
-#[path = "publishfirsttry_ac06_docs_shared_source.rs"]
-mod publishfirsttry_ac06_docs_shared_source;

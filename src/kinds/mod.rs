@@ -1445,6 +1445,16 @@ pub trait Kind: Send + Sync {
         None
     }
 
+    /// PRD-mcphost-shared-tool-spec-readback requirement 3: the redacted
+    /// view of `spec` `host.tool_spec_shared` returns to a sharee -- an
+    /// allowlist of fields (never a denylist over the stored spec), so a
+    /// new field a kind's spec later gains is excluded by default instead
+    /// of leaked. `json!({})` (the default) for a kind with no exposable
+    /// fields defined yet; `python` is this PRD's only override.
+    fn redacted_spec_for_sharing(&self, _spec: &Value) -> Value {
+        json!({})
+    }
+
     /// PRD-mcphost-tool-test AC1: the pip requirements a publish of this
     /// `spec` would build its environment with -- reported by
     /// `host.spec_test` alongside `describe`'s `input_schema` so a

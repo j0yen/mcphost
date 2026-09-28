@@ -917,8 +917,31 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                         "type": "string",
                         "description": "Catalog-facing blurb; shown by host.catalog.search/get.",
                     },
+                    "expose_spec": {
+                        "type": "boolean",
+                        "description": "Default false. When true, any tenant this tool is shared \
+                            with may call host.tool_spec_shared to read its (redacted) spec.",
+                    },
                 }),
                 &["name", "visibility"],
+            ),
+        ),
+        // PRD-mcphost-shared-tool-spec-readback P0 requirement 2: the
+        // sharee-side counterpart to expose_spec.
+        Tool::new(
+            "host.tool_spec_shared",
+            "Read a shared tool's kind and redacted spec -- only works when the owner shared it \
+             with expose_spec: true. The spec never carries env values or secret references \
+             (see host.tool_share's expose_spec).",
+            host_schema(
+                json!({
+                    "tool": {
+                        "type": "string",
+                        "description": "\"<owner_namespace>.<name>\", the same qualified name \
+                            host.tool_call uses for a shared tool.",
+                    },
+                }),
+                &["tool"],
             ),
         ),
         Tool::new(
@@ -3487,6 +3510,7 @@ impl McpHostHandler {
             "host.changelog" => control::changelog(&self.state, &args),
             "host.export" => crate::export::export(&self.state, tenant, &args).await,
             "host.tool_share" => crate::sharing::tool_share(&self.state, tenant, &args).await,
+            "host.tool_spec_shared" => self.tool_spec_shared(tenant, args).await,
             "host.tool_unshare" => crate::sharing::tool_unshare(&self.state, tenant, &args).await,
             "host.share.caller_limit" => {
                 crate::sharing::caller_limit(&self.state, tenant, &args).await
@@ -5034,6 +5058,142 @@ impl McpHostHandler {
             None,
         )
         .await
+    }
+
+    /// The visibility half of [`Self::call_shared_tool`]'s resolution,
+    /// pulled out so PRD-mcphost-shared-tool-spec-readback's `host.
+    /// tool_spec_shared` (below) can reuse the exact same "public, or
+    /// group with `caller_id` a member" rule instead of a second resolver
+    /// (technical considerations: "reuse the share membership check").
+    async fn tool_visible_to(
+        &self,
+        owner_id: i64,
+        row: &crate::db::ToolRow,
+        caller_id: i64,
+    ) -> Result<bool, AppError> {
+        Ok(match row.visibility.as_str() {
+            "public" => true,
+            "group" => match &row.shared_group {
+                Some(group) => {
+                    self.state
+                        .db
+                        .is_group_member(owner_id, group.clone(), caller_id)
+                        .await?
+                }
+                None => false,
+            },
+            _ => false,
+        })
+    }
+
+    /// PRD-mcphost-shared-tool-spec-readback P0 requirement 2/4 (AC1-AC6):
+    /// `host.tool_spec_shared(tool: "<owner_ns>.<name>")` -- resolves and
+    /// checks visibility exactly like `call_shared_tool` above, then a
+    /// second gate unique to this tool: `row.expose_spec`. A tool that
+    /// exists but isn't shared with `caller` at all is `ToolNotFound`,
+    /// byte-identical to `call_shared_tool`'s own refusal (requirement 4/
+    /// AC5: "never leak that the tool exists"); shared but not exposed is
+    /// the distinct `spec_not_exposed` (AC4), which does name the tool --
+    /// the caller already knows it exists, since it was shared with them.
+    async fn tool_spec_shared(&self, caller: &Tenant, args: Value) -> Result<Value, AppError> {
+        let tool = args
+            .get("tool")
+            .and_then(Value::as_str)
+            .ok_or_else(|| AppError::InvalidArgs("missing required argument 'tool'".into()))?;
+        let (owner_ns, local_name) = tool.split_once('.').ok_or_else(|| {
+            AppError::InvalidArgs("'tool' must be '<owner_namespace>.<name>'".into())
+        })?;
+        let owner_ns = owner_ns.to_string();
+        let local_name = local_name.to_string();
+
+        // Requirement 7: no new quota -- the same per-tenant daily call
+        // quota `host.tool_call`'s cross-tenant path checks, against the
+        // caller (not the owner).
+        self.check_calls_quota(caller).await?;
+
+        // AC5: byte-identical to `call_shared_tool`'s own not-found shape
+        // (now `crate::sharing::resolve_shared_tool`'s `shared_tool_not_found`),
+        // not a bare `ToolNotFound`.
+        let not_found = || AppError::shared_tool_not_found(&owner_ns, &local_name);
+        // Requirement 3's technical considerations: reuse the share
+        // membership check `call_shared_tool` uses (`tool_visible_to`), but
+        // via `get_tool_owner_id_by_namespace`'s single-query resolution
+        // rather than `call_shared_tool`'s own `get_tool_by_owner_namespace`
+        // -- this path never needs the owner's full `Tenant` (only its id),
+        // and AC8's 50-concurrent-readers p95 budget makes every serialized
+        // round trip through the one `Mutex<Connection>` count.
+        let (owner_id, row) = self
+            .state
+            .db
+            .get_tool_owner_id_by_namespace(owner_ns.clone(), local_name.clone())
+            .await?
+            .ok_or_else(not_found)?;
+
+        if !self.tool_visible_to(owner_id, &row, caller.id).await? {
+            return Err(not_found());
+        }
+        if !row.expose_spec {
+            return Err(AppError::spec_not_exposed(&owner_ns, &local_name));
+        }
+
+        let started = Instant::now();
+        let spec = self
+            .state
+            .kinds
+            .get(&row.kind)
+            .map(|kind| kind.redacted_spec_for_sharing(&row.spec))
+            .unwrap_or_else(|| json!({}));
+
+        // AC9: only a successful read (both gates passed) bumps the
+        // owner-visible counter. This one *is* awaited: AC9's test reads
+        // three sharee responses fully sequentially, then immediately
+        // checks `host.tool_list` -- a fire-and-forget write here could
+        // still be in flight when that check runs.
+        self.state.db.record_spec_read(owner_id, local_name.clone()).await?;
+        let duration_ms = started.elapsed().as_millis() as i64;
+        // Requirement 7 continued: this row is what makes the read count
+        // against `caller`'s quota on its next check (`count_calls_since`
+        // matches on `caller_tenant_id`, only for `ok = 1` rows). Detached
+        // (AC8: 50 concurrent readers must not each wait on a second
+        // serialized write through the single `Mutex<Connection>` --
+        // requirement 7's quota bookkeeping only has to land before the
+        // caller's *next* call, not before this response). The owner's
+        // `origin`/`origin_detail` (for the calls-log row, admin-reporting
+        // metadata only) are looked up here rather than kept from a
+        // critical-path `Tenant` fetch, since this whole block already
+        // isn't on that path.
+        let state = self.state.clone();
+        let owner_ns_bg = owner_ns.clone();
+        let owner_tool_name = local_name.clone();
+        let caller_id = caller.id;
+        tokio::spawn(async move {
+            let Ok(Some(owner)) = state.db.find_tenant_by_namespace(owner_ns_bg).await else {
+                return;
+            };
+            let _ = state
+                .db
+                .record_call_attributed(
+                    owner_id,
+                    owner_tool_name,
+                    duration_ms,
+                    true,
+                    None,
+                    None,
+                    None,
+                    "ok",
+                    owner.origin,
+                    owner.origin_detail,
+                    Some(caller_id),
+                )
+                .await;
+        });
+
+        Ok(json!({
+            "tool": format!("{owner_ns}.{local_name}"),
+            "kind": row.kind,
+            "spec": spec,
+            "exposed_at": row.spec_exposed_unix.map(crate::state::rfc3339_from_unix),
+        }))
     }
 }
 

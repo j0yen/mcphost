@@ -1,90 +1,99 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tool-scopes-and-consent.md",
-  "intent_slug": "mcphost-tool-scopes-and-consent",
-  "root_motivation": "Grounding: a published tool is a free-form JSON spec with kind and visibility and no scope/auth/requires field (ToolRow, src/db.rs), and the hosted authorization server issues every token the single scope mcp -- so a connected client gets every tool or nothing. Consequence: an agent operator connecting claude.ai to a tenant that publishes a read-only search tool alongside a delete_records tool must grant everything, because the consent page cannot say what it is asking for; a SaaS PM cannot limit an end user's client to the tools that user's plan allows. spec 2026-07-28 requires servers to honour scope hierarchies and answer an under-scoped call with 403 insufficient_scope naming the scopes needed so the client can re-authorize with the union; SEP-1880/SEP-1881 propose per-tool authorization.scopes and scope-filtered tools/list; every hosted competitor in the checklist (WorkOS, Stytch, Scalekit, Descope, Clerk, Composio) already shows per-tool or per-scope consent.",
-  "user_persona": "Four (PRD user stories): an agent operator (tenant) who scopes search/delete_records and approves read only so the client lists search alone; that client's user, who later hits 403 on delete_records and re-authorizes for read write; a SaaS PM who gives scopes human descriptions (host.oauth.scope_set) for the consent page; the operator (Joe) who sees consent decisions broken down by scope (admin.oauth.stats).",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-shared-tool-spec-readback.md",
+  "intent_slug": "mcphost-shared-tool-spec-readback",
+  "root_motivation": "Grounding (PRD: wwhtbt leaf 4 + open question 'fork visibility' DECIDED source-visible, Joe 2026-09-26 -- visions/synthorg-compete.md; origin/main control.rs:1067 tool_list returns name/kind/visibility/env/share_description and never spec; db.rs:437 ToolRow.spec holds the python source; no sharee-side read path exists): the compete tournament's round-two builders are told to fork round-one winners, but a 'fork' on mcphost today is a rewrite from a one-line share_description -- a sharee has host.tool_call on a shared tool and nothing else, so the host's agent-to-agent story stops at calling, never at building on. host.tool_share gains an expose_spec opt-in (default closed) and a new host.tool_spec_shared read path so an agent can build on another agent's published tool the way a developer builds on open source: by reading it.",
+  "user_persona": "Five (PRD User stories): (1) an owner sharing a tool with expose_spec: true to invite forks; (2) an owner trusting env values/secret refs stay hidden even with exposure on; (3) a sharee refused spec_not_exposed, not a bare not-found, on an unexposed share; (4) a sharee seeing readability before it tries; (5) the compete runner recording which builders read a shared winner.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 8
+    "target": 9
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given tenant T with catalog {read: \"Search\", write: \"Change records\"}, tool search {scopes:[\"read\"]} and tool delete_records {scopes:[\"write\"]}, When a client authorizes with scope=read offline_access, Then the consent page lists read with \"Search\" and the tool search under it, and the issued token's scope is read offline_access.",
-      "test": "tests/toolscope_ac01_scoped_consent_and_token.rs"
+      "description": "Given an owner publishes a python tool and shares it to a group with expose_spec: true, When a group member calls host.tool_spec_shared, Then the response has kind: \"python\" and a spec containing source and args_schema.",
+      "test": "tests/mcphost_shared_tool_spec_readback_ac01_group_member_reads_spec.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given that token, When tools/list runs, Then only search (and scope-less host.*/billing.* tools) appear; When tools/call delete_records runs, Then 403 with error=\"insufficient_scope\", scope=\"read write\" and a JSON-RPC error naming delete_records.",
-      "test": "tests/toolscope_ac02_scoped_token_list_and_call.rs"
+      "description": "Given the same share, When the owner calls host.tool_list, Then the tool row shows expose_spec: true.",
+      "test": "tests/mcphost_shared_tool_spec_readback_ac02_tool_list_shows_expose_spec.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the client re-authorizes with scope=read write, When consent is approved, Then the new token lists both tools and delete_records runs; the harness step_up scenario reads pass.",
-      "test": "tests/toolscope_ac03_step_up_reauthorize_union_scope.rs"
+      "description": "Given a tool whose spec has env: {\"API_KEY\": ...} and a secret reference in its config, When a sharee reads it, Then the response contains no env key and no secret reference string.",
+      "test": "tests/mcphost_shared_tool_spec_readback_ac03_redacts_env_and_secrets.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a token with scope=mcp, a tenant key, and a token issued before this PRD (a bring-your-own-issuer JWT with no scope claim), When each calls delete_records, Then all three succeed.",
-      "test": "tests/toolscope_ac04_mcp_key_and_pre_prd_token_unaffected.rs"
+      "description": "Given a tool shared without expose_spec, When a sharee calls host.tool_spec_shared, Then the response is spec_not_exposed naming <owner_ns>.<name>.",
+      "test": "tests/mcphost_shared_tool_spec_readback_ac04_spec_not_exposed_refusal.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a publish with scopes: [\"admin\"] not in the catalog, or nine scopes, or a name \"Bad Scope\", When it runs, Then each is rejected with invalid_params naming the rule, and no partial publish occurs.",
-      "test": "tests/toolscope_ac05_publish_scope_validation.rs"
+      "description": "Given a tool not shared with the caller, When it calls host.tool_spec_shared, Then the response is the same not-found shape host.tool_call returns for an unshared tool.",
+      "test": "tests/mcphost_shared_tool_spec_readback_ac05_not_shared_same_not_found_shape.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given T changes search to scopes: [\"write\"], When the read-scoped token calls search, Then 403 on the next call with no token reissue.",
-      "test": "tests/toolscope_ac06_scope_change_takes_effect_next_call.rs"
+      "description": "Given a share with expose_spec: true that the owner then unshares, When the former sharee calls host.tool_spec_shared, Then not-found; and after re-sharing without the flag, spec_not_exposed.",
+      "test": "tests/mcphost_shared_tool_spec_readback_ac06_unshare_then_reshare_without_flag.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given the per-tenant metadata document for T, When read, Then scopes_supported is [\"mcp\",\"read\",\"write\"] plus T's catalog names; the root document keeps [\"mcp\"].",
-      "test": "tests/toolscope_ac07_metadata_scopes_supported.rs"
+      "description": "Given docs/agent-quickstart.md and www/llms.txt after this PRD, When they are grepped, Then both contain expose_spec and host.tool_spec_shared with a worked example.",
+      "test": "tests/mcphost_shared_tool_spec_readback_ac07_docs_worked_example.rs"
     },
     {
       "id": "AC8",
-      "level": "SHOULD",
-      "description": "Given two consents for read and one for read write in 7 days, When admin.oauth.stats runs, Then consents_by_scope_7d == {read: 3, write: 1}; host.oauth.grants rows show the granted scope.",
-      "test": "tests/toolscope_ac08_admin_stats_consents_by_scope.rs"
+      "level": "MUST",
+      "description": "Given a 64 KiB spec, When 50 sharees read it concurrently, Then p95 < 100 ms and every response is identical.",
+      "test": "tests/mcphost_shared_tool_spec_readback_ac08_fifty_concurrent_reads_p95.rs"
     },
     {
       "id": "AC9",
+      "level": "SHOULD",
+      "description": "Given three reads by sharees, When the owner lists tools, Then the row shows spec_reads: 3 and an exposed_at timestamp.",
+      "test": "tests/mcphost_shared_tool_spec_readback_ac09_spec_reads_counter.rs"
+    },
+    {
+      "id": "AC10",
       "level": "MUST",
-      "description": "Given prod after deploy and an operator tenant with a catalog and one scoped tool provisioned by hand (operator-provisioned Given), When the verifier authorizes a native client for scope=read via curl through the hosted AS, Then tools/list lists the scoped tool and tools/call on a write tool returns 403 insufficient_scope, scope=\"read write\" (Live; evidence: healthz version plus a redacted transcript under docs/receipts/<slug>.md).",
-      "test": "deferred -- operator-provisioned; AC9 is the Live/production-only requirement and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
+      "description": "Given prod mcphost after deploy, When tenant A publishes a python tool with one env entry and shares it to a group containing tenant B with expose_spec: true, and tenant B calls host.tool_spec_shared, Then B receives the source and no env, and A's host.calls.list shows B's read (Live).",
+      "test": "deferred (prod leg only) -- operator-provisioned: AC10's Given is \"prod mcphost after deploy\", and the only thing still blocking it is that deploy of this branch to https://mcphost.dev, an operator action (mcphost-deploy). Recorded, not merely claimed: docs/receipts/spec-readback-ac10-prod-probe.md (read-only unauthenticated snapshot of prod's public tools/list, 2026-09-27) shows prod serving every other step of AC10's sequence but not host.tool_spec_shared and with no expose_spec on host.tool_share, and tests/mcphost_shared_tool_spec_readback_ac10_live_two_tenant_spec_read_trailer.rs::only_the_deploy_separates_this_branch_from_prods_tool_surface re-derives that delta against a real server on every run. Credentials are not part of the deferral: prod's signup is unauthenticated, so MCPHOST_TENANT_A_KEY/MCPHOST_TENANT_B_KEY are optional and the MCPHOST_LIVE=1 run mints its own two tenants when they are unset. Always-on mechanism proof: tests/mcphost_shared_tool_spec_readback_ac10_live_two_tenant_spec_read_trailer.rs::tenant_b_reads_source_without_env_and_tenant_a_sees_the_read (MCPHOST_LIVE=1 re-points the identical code at prod for the operator's trailer run); see PRD frontmatter deferred_acs/mock_justifications; deferral paper trail locked by tests/mcphost_shared_tool_spec_readback_ac10_deferral_is_justified.rs"
     }
   ],
   "scope": [
-    "migrations/0054_tool_scopes_and_consent.sql: new oauth_scopes(tenant_id, name, description) table; additive tools.scopes and oauth_grants.scope columns, both defaulted so every existing row reads exactly as before (compat: previous).",
-    "src/db.rs: ToolRow.scopes, upsert_tool's new scopes param, OauthScopeRow + upsert_oauth_scope/list_oauth_scopes/count_oauth_scopes, create_oauth_grant's new scope param, OauthGrantRow.scope, list_oauth_grant_scopes_since (AC8's tally source).",
-    "src/state.rs: validate_scope_name (AC5's name-format rule).",
-    "src/oauth.rs: BUILTIN_SCOPES/MAX_SCOPES_PER_TENANT, known_scope_names, host.oauth.scope_set/scopes (catalog CRUD, AC1), scope_satisfied/union_scope_challenge (AC2/AC3's step-up union), protected_resource_metadata_for_tenant's scopes_supported (AC7), admin_stats (AC8).",
-    "src/control.rs: tool_publish's scopes parsing/validation (count cap, name format, catalog-or-built-in membership -- AC5), tool_list's scopes field.",
-    "src/handler.rs: host.oauth.scope_set/scopes tool descriptors and dispatch, admin.oauth.stats descriptor and dispatch, list_tools's scope filter (AC2), call_tool's blanket-mcp-gate carve-out for a caller's own namespaced tools, call_published_tool's fine-grained insufficient_scope check (AC2/AC6).",
-    "src/authz.rs: render_consent_page/scope_groups_html (AC1's per-scope tool listing), resolve_resource_tenant/known_request_scopes/resolve_and_validate_scope (validating scope against mcp ∪ catalog ∪ built-ins ∪ offline_access), mint_code_and_redirect/issue_tokens/token_authorization_code/token_refresh_token threading the resolved scope through to the minted token (AC1, AC3), validate_hosted_bearer accepting either the root or the tenant's own resource as aud, grants_list's scope field (AC8).",
-    "src/http.rs: oauth_401_upgrade reading data.scope (the tool's own union challenge) instead of a hardcoded mcp (AC2).",
-    "src/errors.rs: insufficient_scope mapped to ErrorCode::INVALID_REQUEST alongside the existing unit-variant mapping.",
-    "www/llms.txt: a new 'Scope your tools for OAuth clients' section (requirement 7) plus the regenerated Tools list; contracts/host-tools.v1.json regenerated for the two new host.oauth.* tools and tool_publish's scopes property.",
-    "Cargo.toml/Cargo.lock: patch version bump (0.60.26 -> 0.60.27); CHANGELOG.md entry."
+    "migrations/0045_tool_spec_exposure.sql (new): tools gains expose_spec (INTEGER NOT NULL DEFAULT 0), spec_exposed_unix (nullable unix seconds, set only while expose_spec is true), and spec_reads (INTEGER NOT NULL DEFAULT 0, reset by every host.tool_share/host.tool_unshare/admin.tool_unshare call).",
+    "src/db.rs: ToolRow gains expose_spec/spec_exposed_unix/spec_reads (TOOL_COLUMNS/tool_from_row and every hand-shifted row mapper -- search_catalog, admin_shared_tools -- updated in lockstep); set_tool_share takes a new expose_spec: bool parameter; unshare_tool/admin_unshare_tool clear all three new columns; record_spec_read bumps the counter on a successful host.tool_spec_shared read; get_tool_owner_id_by_namespace is a new single-JOIN-query sibling of get_tool_by_owner_namespace returning just the owner's id (all host.tool_spec_shared's critical path needs) instead of the full Tenant, added to keep AC8's 50-concurrent-readers p95 budget from paying for a second round trip through the crate's one Mutex<Connection> that it doesn't need.",
+    "src/kinds/mod.rs: Kind gains redacted_spec_for_sharing(&self, spec: &Value) -> Value, default json!({}) -- an allowlist a kind opts into, never a denylist scrubbing the stored spec (requirement 3's own design note).",
+    "src/kinds/python.rs: redacted_spec_for_sharing copies only source/args_schema/requirements/timeout_s/network straight off the raw stored spec Value -- env, secrets, memory_mb, description, _dependency_lock, and outputs are never copied, so nothing scrubs them out after the fact, they simply never make it into the response.",
+    "src/sharing.rs: tool_share parses a new expose_spec argument (default false) and passes it to db::set_tool_share.",
+    "src/handler.rs: host.tool_share's input schema gains expose_spec; new host.tool_spec_shared tool and dispatch arm; McpHostHandler::tool_visible_to is call_shared_tool's visibility check pulled out (now taking owner_id: i64 rather than &Tenant) so tool_spec_shared reuses the exact same public/group-membership rule instead of a second resolver; tool_spec_shared resolves via get_tool_owner_id_by_namespace, checks visibility then expose_spec, builds the redacted response, awaits record_spec_read (AC9 needs this synchronous), and detaches the calls-log write (requirement 7's quota bookkeeping, not read by any AC's own assertion) via tokio::spawn so it never blocks the response.",
+    "src/control.rs: tool_list's per-tool row gains expose_spec/exposed_at/spec_reads (AC2/AC9), read straight off the same ToolRow columns.",
+    "src/errors.rs: AppError::spec_not_exposed(owner_ns, name) (code spec_not_exposed, INVALID_PARAMS) -- distinct from ToolNotFound, since the caller already knows the tool exists (it was shared with them).",
+    "docs/agent-quickstart.md: a new numbered step showing host.tool_share's expose_spec flag and a host.tool_spec_shared(tool=...) worked example, after the existing publish/share/manage steps (AC7).",
+    "www/llms.txt: a new 'Share a tool, and let them read it' subsection beside the existing 'Share a tool, not a key' recipe, plus host.tool_spec_shared added to the generated ## Tools list at its alphabetically-sorted slot (AC7).",
+    "tests/mcphost_shared_tool_spec_readback_ac0[1-9]_*.rs (new, nine files, one per non-deferred AC); scripts/gen-test-suites.sh / tests/suite_*.rs regenerated to include them.",
+    "agent/test-map.json: ac_test_map repointed to this PRD's mcphost_shared_tool_spec_readback prefix, end-user-identity's own map archived under ac_test_map_by_prefix.",
+    "Cargo.toml/Cargo.lock: patch version bump; CHANGELOG.md: new entry."
   ],
   "non_goals": [
-    "Scopes for key-based calls -- PRD Non-goals; a key stays full access, unchanged (AC4).",
-    "Per-end-user scope policies -- PRD Non-goals; see PRD mcphost-oauth-client-policy.",
-    "Rich Authorization Requests -- PRD Non-goals.",
-    "Whether read/write built-ins map automatically from a tool's kind: PRD's own Open question, left opt-in (unresolved by kind) until the SaaS onboarding guide ships, owner Joe.",
-    "AC9 (the Live/prod-only curl proof against a hand-provisioned operator tenant): deferred operator-provisioned, no server access from this coding sandbox."
+    "Exposing spec on public (visibility: public) tools to tenants they are not shared with -- PRD Non-goals; public visibility and spec exposure stay separate flags.",
+    "Versioning or diffing specs -- PRD Non-goals.",
+    "Any change to host.tool_call routing -- PRD Non-goals; owned by the queued PRD-mcphost-shared-tool-call-path.",
+    "A control plane beyond the share flag itself -- PRD Non-goals; the single expose_spec flag per share is the whole control plane.",
+    "expose_spec on public tools for any tenant (P2 requirement 10, a separate off-by-default decision) -- left for a follow-on slice; no AC in the PRD's own ten-item list exercises it.",
+    "The sharee's listing of tools shared with it carrying spec_readable outside the not-found/spec_not_exposed refusal shapes (P1 requirement 8) -- no AC in the PRD's own list exercises a dedicated sharee-side listing surface separate from the refusal shapes AC4-AC6 already prove."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -93,42 +102,41 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "mcp_is_always_full_access": "mcp remains the hierarchy root implying every scope, for both hosted tokens and BYO-issuer tokens with no scope claim at all -- scope_satisfied treats an absent token_scope, or a token_scope containing the literal word mcp, as always-true, which is what keeps AC4's three pre-existing credential shapes (key, mcp token, pre-PRD BYOI token) working unchanged.",
-      "blanket_mcp_gate_carved_out_only_for_the_callers_own_namespace": "call_tool's pre-existing 'a scoped OAuth caller must carry mcp' gate now skips only calls to the caller's OWN namespaced tool (deferring to call_published_tool's fine-grained per-tool check instead); every host.*/billing.*/cross-tenant call keeps requiring full mcp, so scoping never widens what a cross-tenant or admin surface will accept.",
-      "scopes_supported_conditioned_on_catalog_non_emptiness": "A tenant with an empty scope catalog keeps scopes_supported == [\"mcp\"] exactly as before this PRD (protecting the pre-existing tenantprm_ac01 assertion); only a non-empty catalog adds mcp/read/write plus sorted extra names, per AC7.",
-      "union_scope_challenge_filters_to_known_words_only": "The 403 challenge's scope value is the sorted union of the tool's own required scopes and whatever words in the token's current scope claim are actually recognized (in mcp ∪ built-ins ∪ catalog) -- a foreign or BYOI-unrelated scope word (or offline_access) never leaks into the challenge, matching the pre-existing tenantprm_ac05 test's own scope=\"mcp\" expectation for a tenant with no catalog.",
-      "per_tenant_resource_now_a_valid_token_audience": "validate_hosted_bearer's aud check was extended (previously root-resource-only) to also accept a tenant's own canonical resource URI, since AC1 requires a token minted for /t/{ns}/mcp to actually validate on that same path -- this only widens which aud values pass, never which tenant a token authenticates as.",
-      "migration_number_0053_renumbered_to_0054_during_rebase": "This PRD's own migration was numbered 0051 at original build time, then renumbered to 0053 during an earlier rebase once mcphost-federated-end-user-login claimed 0051/0052 first; a later rebase (onto main after mcphost-oauth-demand-signal, #64, claimed 0053 first) renumbered it again to 0054 (migrations/0054_tool_scopes_and_consent.sql, migrate_0054_tool_scopes_and_consent), the same rename-on-collision precedent this repo's migration history already follows (see e.g. migration 0045's own doc comment)."
+      "redaction_is_allowlist_not_denylist": "Technical considerations: 'so a new key added to the kind is redacted by allowlist, not by denylist' -- Kind::redacted_spec_for_sharing defaults to json!({}) (nothing exposed) and PythonKind's override copies exactly five named fields off the raw spec; a future field a kind's spec gains is excluded by construction until a maintainer explicitly adds it to the allowlist, never leaked by omission from a denylist.",
+      "redaction_never_mutates_stored_spec": "Non-functional: 'redaction is applied on read, never by mutating the stored spec' -- redacted_spec_for_sharing takes &Value and returns a new Value; ToolRow.spec on disk is untouched, so host.tool_call/host.tool_test/host.tool_run keep reading the real, unredacted spec exactly as before this PRD.",
+      "share_membership_check_reused_not_reimplemented": "Technical considerations: 'reuse the share membership check that host.tool_call...uses...do not write a second membership resolver' -- McpHostHandler::tool_visible_to is call_shared_tool's own public/group-membership rule, pulled out into its own method and reused verbatim by host.tool_spec_shared rather than a parallel implementation.",
+      "not_found_before_expose_spec_check_never_leaks_existence": "Requirement 4/AC5: a tool not shared with the caller at all must be ToolNotFound, byte-identical to what a cross-tenant tool_call already returns -- tool_spec_shared checks visibility (tool_visible_to) strictly before checking expose_spec, so a probe against a private or wrongly-grouped tool never learns whether expose_spec is set on it, or that the tool exists at all.",
+      "ac8_p95_budget_shaped_the_critical_path": "AC8's 50-concurrent-readers/p95<100ms non-functional requirement, combined with every DB operation in this crate serializing through one Mutex<Connection>, is why the calls-log write for quota bookkeeping (requirement 7) is detached via tokio::spawn rather than awaited, and why get_tool_owner_id_by_namespace exists as a single-JOIN alternative to get_tool_by_owner_namespace -- record_spec_read (AC9's counter) is the one write that stays synchronous, since AC9's test reads three sharee responses sequentially then immediately checks host.tool_list."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why must an agent operator connecting claude.ai to a tenant's tools grant everything or nothing today?",
-      "a": "Grounding: a published tool is a free-form JSON spec with kind and visibility and no scope/auth/requires field (ToolRow, src/db.rs), and the hosted authorization server issues every token the single scope mcp -- there is no per-tool concept for a consent page to describe or a token to carry."
+      "q": "Why does a sharee need to read a shared tool's spec at all, rather than just calling it?",
+      "a": "Problem statement: the compete tournament's round-two builders are told to fork round-one winners, but 'fork' has no mechanism today -- tool_list never returns spec, and a sharee's only surface is host.tool_call. Without a read path, the tournament cannot measure recombination and the product's agent-to-agent story stops at calling, never at building on."
     },
     {
       "why": 2,
-      "q": "Why does that make the first thing a security-minded operator asks (\"what can it do?\") unanswerable, rather than just coarse?",
-      "a": "Problem statement: the consent page can only ever say 'mcp -- everything', since neither the tool catalog nor the token format carries a narrower unit than the whole tenant -- there is no scope for the page to group tools under."
+      "q": "Why an owner opt-in flag (expose_spec, default closed) rather than exposing spec automatically to every sharee?",
+      "a": "Goals: 'Owner opt-in per share, default closed.' A share today only grants call access; automatically also granting read access would be a silent behavior change for every tool an owner has already shared, and a tool wrapping a paid/rate-limited upstream (the share-a-tool-not-a-key pattern) is exactly the kind of tool an owner would NOT want forked sight-unseen by every group member."
     },
     {
       "why": 3,
-      "q": "Why per-tool scopes (host.tool_publish's own scopes field) rather than a coarser per-kind or per-visibility split?",
-      "a": "Goals/User stories: the operator's own example (search vs delete_records) is two tools of the same kind and visibility differing only in what they let a caller do -- SEP-1880's per-tool authorization.scopes and every checklist competitor (WorkOS, Stytch, Scalekit, Descope, Clerk, Composio) scope at the tool or capability level, not kind or visibility."
+      "q": "Why redact env and secret references even when the owner has explicitly opted into exposure, rather than trusting expose_spec: true to mean 'show everything'?",
+      "a": "Goals: 'env and secret references never leave the owner's tenant' -- User story 2: even with expose_spec: true, a sharee sees the source and env variable NAMES but never values or secret refs. Exposing the spec's shape (so a sharee can fork the logic) and exposing the owner's credentials are two different decisions; this PRD only ever makes the first one available, never the second, regardless of the flag."
     },
     {
       "why": 4,
-      "q": "Why must an under-scoped call return the spec's 403 insufficient_scope naming the union, rather than a bare refusal?",
-      "a": "Grounding: spec 2026-07-28 requires servers to honour scope hierarchies and answer an under-scoped call with 403 insufficient_scope naming the scopes needed, precisely so the client can automatically re-authorize with the union (research-2 Q5) instead of a human having to guess what to grant next -- AC3's step_up harness scenario is exactly this automatic recovery."
+      "q": "Why must a not-shared tool and a shared-but-unexposed tool return two different refusal shapes (ToolNotFound vs spec_not_exposed) rather than one generic refusal?",
+      "a": "Requirement 4/User story 3: a sharee shared without exposure should get a refusal that SAYS the owner has not exposed it, not a not-found -- useful signal to ask the owner to flip the flag. A tool never shared with the caller must stay indistinguishable from one that doesn't exist at all (the same 'never leak that the tool exists' invariant call_shared_tool already enforces), so collapsing both into one shape would either leak existence or hide the useful spec_not_exposed signal."
     },
     {
       "why": 5,
-      "q": "Why must mcp keep meaning full access for keys and pre-PRD tokens, rather than requiring every credential to declare scopes going forward?",
-      "a": "Requirement 5 / Non-goals: keys are explicitly out of scope for this PRD (a key is full access, unchanged), and a token issued before this PRD shipped was minted under the old single-scope-mcp contract -- retroactively narrowing it would silently break every already-connected client with no migration path, which AC4 exists specifically to guard against."
+      "q": "Why does host.tool_spec_shared need its own p95<100ms budget under 50 concurrent readers (AC8) rather than inheriting whatever host.tool_call's cross-tenant path already tolerates?",
+      "a": "Non-functional: 'p95 for host.tool_spec_shared under 100 ms for a 64 KiB spec' -- User story 5/PRD Success metrics: the compete round's builders are expected to read a winner's spec in bulk right after a round closes, a genuinely concurrent read pattern host.tool_call's per-call sandbox dispatch was never measured against; a slow read path here would bottleneck the tournament's own round-two kickoff, not just one caller's own latency."
     }
   ],
-  "created_at": "2026-09-27T00:00:00Z",
+  "created_at": "2026-09-26T00:00:00Z",
   "ambiguities_resolved": [
     {
       "question": "The findings file records the reference Python client seeing well-formed ttlMs/cacheScope on an unauthenticated tools/list, which the code says is impossible. Which is right?",
@@ -287,6 +295,10 @@
       "resolution": "Verified rather than redone, with one real fix: synced the worktree to the run-237 runner box (working around the known bin-shim-hijacks-ssh PATH gotcha by dropping /home/jsy/.local/state/wm-build/bin-shim from PATH for the wm-build invocation itself) and hit the status_probe_override compile error on the first clippy run; fixed with a one-line addition to src/enduser.rs's test AppState literal, committed on its own (099016c) before re-syncing per the known 'wm-build runner sync silently reverts uncommitted edits' gotcha. Re-verified fully green: `cargo clippy --all-targets -- -D warnings` 0 warnings; `cargo test` 100% green across every binary (1121 total passed: 223+1+1+2+1+1+1+721+1+122+49, 0 failed, 6 ignored, unrelated to this PRD), including all eleven enduser_ac0[1-9,1-1]_* test functions and src/enduser.rs's own 6 unit tests. No gap in the enduser.rs/handler.rs/tenant_state.rs/db.rs implementation itself was found against the PRD's own eleven listed ACs or the eleven AC test bodies read in full. On the two open questions: (1) subject stays opaque -- no code path anywhere in the diff normalizes, lowercases, or validates email shape on a subject string, matching the PRD's own 'drafted' answer; recorded in non_goals rather than silently decided. (2) impersonated is NOT plan-gated -- check_end_user_quota (the one place a plan tier is read for end-user identity) only ever gates the distinct-subject-count quota (requirement 6/AC9), never the explicit-subject/impersonated path itself, and no AC in the PRD's own list exercises a plan check on impersonation; recorded in non_goals as the resolved-but-unrequested-so-left-alone answer. This card's own fields (this entry included), agent/test-map.json's enduser mapping, and the version bump (0.60.14 -> 0.60.15, including the plugin.json/.mcp.json mirrors the alerting-webhook entry above already flagged as a recurring drift point) are the only paper-trail/build debt this dispatch closes; no AC content changed, so there is no Stage-3 conflict."
     },
     {
+      "question": "This card is now regenerated for PRD-mcphost-shared-tool-spec-readback, an entirely different feature (a sharee-side spec read path for shared tools) from PRD-mcphost-end-user-identity (per-call end-user identity) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught by reviewer-agent repeatedly in this card's own history if left byte-for-byte. One build-time note: AC8's non-functional p95 budget (50 concurrent readers, <100ms) is proven by a branch-local integration test that spins up its own TestServer, so its actual pass/fail depends on how contended the coder dispatch's own shared runner box is at the moment cargo test runs -- not something the PRD itself anticipates as an infrastructure variable.",
+      "resolution": "Fixed in place, same 'amend the paper trail without reopening the contract' pattern used for every prior recurrence: no reviewer block yet, but the same staleness would recur if left byte-for-byte. root_motivation/user_persona/scope/non_goals/hard_constraints.additional/five_whys_trace were rewritten from this PRD's own Problem statement, Goals, Requirements, Non-Goals, and Technical considerations sections; acceptance_criteria's ten entries point at the real tests/mcphost_shared_tool_spec_readback_ac0[1-9]_*.rs files (AC1-9 exist, compile, and pass; AC10 is 'deferred: operator-provisioned' matching the PRD's own Live/AC10 wording); agent/test-map.json's ac_test_map was repointed to a new mcphost_shared_tool_spec_readback prefix and the prior enduser mapping preserved under ac_test_map_by_prefix rather than deleted. On AC8's own dependency on the coder dispatch's shared runner box: two round-trip reductions (get_tool_owner_id_by_namespace's single JOIN, and detaching the calls-log write via tokio::spawn) were made regardless, since they reduce real contention on the crate's one Mutex<Connection> under load and are correct improvements independent of any one box's state at any one moment; whether the test is green in a given gate run downstream of this card depends on that box's load at that moment, which this card cannot itself pin down."
+    },
+    {
       "question": "This card is now regenerated for PRD-mcphost-shared-tool-call-path, an entirely different feature (host.tool_call accepting a qualified '<owner_ns>.<tool>' shared-tool name) from PRD-mcphost-end-user-identity (verified per-call end-user identity) that previously occupied it -- root_motivation, acceptance_criteria, scope, non_goals, user_persona, five_whys_trace, and hard_constraints.additional all needed a full rewrite, the same recurring staleness class caught repeatedly in this card's own history if left byte-for-byte. AC3's own wording ('three qualified names ... byte-identical') is internally puzzling: the not-found message interpolates the caller-supplied name, and 'nonexistent namespace' vs 'existing namespace' inherently name different owners, so three literally different name strings cannot produce byte-identical response bodies if the message echoes each one back. How should a coder dispatch resolve this before writing AC3's test?",
       "resolution": "Read as: all three cases must probe the exact SAME literal qualified name, with the BACKING DATABASE STATE differing between phases (no tenant of that namespace yet; then the tenant with no such tool; then the tenant's tool left private) rather than the caller's input differing -- consistent with the non-leaking intent (withholding server-side state, not hiding a string the caller already typed) and with requirement 2's own message template using a single '<name>' placeholder, not three. tests/sharedcall_ac03_not_found_reasons_indistinguishable.rs implements exactly this: one literal name ('acme.lookup'), a tenant named 'acme' seeded directly via Db::create_tenant (bypassing signup's own randomly-generated namespace) partway through, 200 probes per phase, asserting the full error shape (code/error_code/message/data) is identical across all three phases and each phase's p95 latency is within 10ms of the others. Separately: requirements 7 (tools/list shared_by) and 8 (did_you_mean, P2) are named in the PRD's Requirements table but have no corresponding entry in its own nine-ACs-plus-one-deferred list handed to this build -- left unimplemented per the dispatch instruction to implement only the listed ACs and stop, recorded in non_goals rather than silently attempted or silently dropped without a trace. agent/test-map.json's ac_test_map was repointed to this PRD's own sharedcall prefix in the same build, with the prior enduser map archived under ac_test_map_by_prefix.enduser so nothing already-shipped is lost."
     },
@@ -381,6 +393,10 @@
     {
       "question": "Rebasing wm-build/mcphost-tool-scopes-and-consent onto main after PRD-mcphost-oauth-demand-signal (#64) merged: that PRD's own intent-card-refresh regenerated agent/intent-card.json's root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace for oauth-demand-signal/oauthsig, but its ambiguities_resolved array silently dropped six already-accumulated entries specific to mcphost-oauth-client-policy (the 'registers'-for-a-CIMD-client meaning entry, the AC1 CIMD-host-test entry, the GET/POST enforcement-point entry, the client_deny entry, the audit_export cap entry, and oauthpol's own rebase-after-oauthconf entry) -- the exact recurring truncation-on-refresh defect this log has caught and restored several times before (see the plan-catalog-state-quota-defaults and runs-end-user-subject entries above). This branch's own agent/intent-card.json (per the usual per-PRD rewrite) describes tool-scopes-and-consent/toolscope instead, with its own ambiguities_resolved array carrying the full accumulated history (oauthpol's six entries included) plus this branch's own final toolscope regeneration entry. Keep oauthsig's fields, or toolscope's -- and which ambiguities_resolved?",
       "resolution": "Kept toolscope's own root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace -- this branch is landing toolscope now, matching every prior 'Rebasing wm-build/X onto main after PRD-Y' recurrence in this log (see the runs-end-user-subject and hosted-authorization-server entries above). ambiguities_resolved was NOT taken from oauthsig's truncated copy: it is this branch's own full accumulated log (which already carried oauthpol's six entries forward, unlike oauthsig's own refresh) with oauthsig's two genuinely new entries (its 'regenerated for oauth-demand-signal' entry and its own tenant-resource-metadata rebase entry) inserted immediately above this branch's own final toolscope regeneration entry, in the order they were written on main, plus this one new entry, appended -- restoring the six oauthpol entries oauthsig's own refresh silently dropped rather than accepting that truncation. agent/test-map.json's ac_test_map stays pointed at toolscope; oauthsig's own AC1-AC7 map (real, already-shipped, tests/oauthsig_ac0[1-6]_*.rs plus AC7 deferred) was archived under ac_test_map_by_prefix.oauthsig, the same 'preserve rather than delete' treatment every other superseded PRD in that dict already gets. Nothing was provisioned, resized, or reconfigured to resolve this; it is a paper-trail/mechanical-merge fix with no AC content change."
+    },
+    {
+      "question": "Merging origin/main into wm-build/mcphost-shared-tool-spec-readback (a `git merge --no-edit origin/main`, not a rebase) after PRD-mcphost-tool-scopes-and-consent (#67) landed: that PRD's own intent-card-refresh regenerated agent/intent-card.json's root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace for tool-scopes-and-consent/toolscope, with its own ambiguities_resolved array carrying the full accumulated history through its own final toolscope regeneration entry. This branch's own agent/intent-card.json (per the usual per-PRD rewrite) describes shared-tool-spec-readback instead, with its own ambiguities_resolved array carrying its own single new entry on top of a shorter, pre-toolscope accumulated history (this branch forked before hostedas/oauthconf/oauthpol/oauthsig/toolscope existed). Keep toolscope's fields, or shared-tool-spec-readback's -- and which ambiguities_resolved, given a three-way merge (not a rebase) can't just replay one side's commits on top of the other?",
+      "resolution": "Kept this branch's own root_motivation/user_persona/unfakeable_metric/acceptance_criteria/scope/non_goals/hard_constraints.additional/five_whys_trace/created_at/prd_source/intent_slug (mcphost-shared-tool-spec-readback) -- this branch is landing shared-tool-spec-readback now, matching every prior 'Rebasing/Merging wm-build/X onto main after PRD-Y' recurrence in this log; toolscope's own single-current-PRD fields were not carried forward as fields (already shipped on main under toolscope's own history). ambiguities_resolved kept BOTH lineages' entries in full rather than picking a side: this branch's own pre-existing history through its 'regenerated for shared-tool-spec-readback' entry (immediately above), followed by every entry toolscope's own copy had accumulated past that point (shared-tool-call-path, first-publish-real-kind and its two rebase entries, upstream-token-vault and its two rebase entries, upstream-token-vault-status, plan-catalog-state-quota-defaults's from_toml entry, its own rebase-after-plancat entry, runs-end-user-subject and its rebase-after-vaultst entry, oauth-conformance-harness's AC6/AC7 entries, hosted-authorization-server's rebase-after-runsubject entry, tenant-resource-metadata's CIMD/GET-POST/client-deny/audit-export/rebase entries and its own AC1 root-document-isolation fix, oauth-demand-signal and its rebase-after-tenantprm entry, and tool-scopes-and-consent's own regeneration and rebase-after-oauthsig entries), in the order they were written on main, plus this one new entry, appended -- the same 'nothing already-shipped is silently dropped' invariant this log has followed for every prior three-way reconciliation (see the docs-semantic-search-rebase and upstream-token-vault-rebase entries above, the only two other true `git merge`, not rebase, recurrences in this log). agent/test-map.json's ac_test_map stays pointed at mcphost_shared_tool_spec_readback; toolscope's own AC1-AC8 map (real, already-shipped, tests/toolscope_ac0[1-8]_*.rs plus AC9 deferred) was archived under ac_test_map_by_prefix.toolscope, the same 'preserve rather than delete' treatment every other superseded PRD in that dict already gets. Nothing was provisioned, resized, or reconfigured to resolve this; it is a paper-trail/mechanical-merge fix with no AC content change."
     }
   ]
 }

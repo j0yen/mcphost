@@ -426,6 +426,14 @@ impl AppError {
                 // the same caller-input problem as the `table_*`/`state_*`
                 // groups above.
                 "handle_taken" | "handle_reserved" => ErrorCode::INVALID_PARAMS,
+                // PRD-mcphost-shared-tool-spec-readback requirement 4: a
+                // tool shared with the caller but not `expose_spec: true`
+                // is a caller-input problem naming the tool, same
+                // INVALID_PARAMS bucket as `handle_taken`/`handle_reserved`
+                // above (never `tool_not_found`'s RESOURCE_NOT_FOUND -- the
+                // caller already knows the tool exists, since it was shared
+                // with them).
+                "spec_not_exposed" => ErrorCode::INVALID_PARAMS,
                 // Requirement 4 (AC4): `agent_not_found` mirrors
                 // `tool_not_found`/`tenant_not_found`/`trigger_not_found`'s
                 // own RESOURCE_NOT_FOUND. PRD-mcphost-agent-inbox
@@ -734,6 +742,20 @@ impl AppError {
             code: "handle_taken",
             message: "that handle is already claimed".to_string(),
             data: json!({}),
+        }
+    }
+
+    /// PRD-mcphost-shared-tool-spec-readback requirement 4 (AC4): `host.
+    /// tool_spec_shared` on a tool shared with the caller, but not with
+    /// `expose_spec: true` -- distinct from [`AppError::ToolNotFound`]
+    /// (requirement 4's other refusal, for a tool not shared with the
+    /// caller at all), naming the owner namespace and tool name since the
+    /// caller already knows this tool exists.
+    pub fn spec_not_exposed(owner_ns: &str, name: &str) -> Self {
+        AppError::Structured {
+            code: "spec_not_exposed",
+            message: format!("{owner_ns}.{name} has not exposed its spec"),
+            data: json!({"tool": format!("{owner_ns}.{name}")}),
         }
     }
 

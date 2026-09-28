@@ -86,6 +86,10 @@ const MIGRATION_0054: &str = include_str!("../migrations/0054_tool_scopes_and_co
 // consent claimed it first, also landing on main ahead of this branch);
 // renumbered to 0055.
 const MIGRATION_0055: &str = include_str!("../migrations/0055_enterprise_managed_auth.sql");
+// PRD-mcphost-shared-tool-spec-readback migration (requirement 1/2/5):
+// renumbered from this PRD's own 0045 during the merge of origin/main, which
+// had already claimed 0045 through 0055 for other PRDs.
+const MIGRATION_0056: &str = include_str!("../migrations/0056_tool_spec_exposure.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -142,7 +146,8 @@ fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
 /// convention as [`TENANT_COLUMNS`]/[`tenant_from_row`] above
 /// (PRD-mcphost-sharing migration 0013).
 const TOOL_COLUMNS: &str = "id, tenant_id, name, kind, spec, created_at, visibility, \
-    share_description, shared_unix, shared_group, unshared_by, current_version, scopes";
+    share_description, shared_unix, shared_group, unshared_by, current_version, scopes, \
+    expose_spec, spec_exposed_unix, spec_reads";
 
 fn tool_from_row(r: &Row) -> rusqlite::Result<ToolRow> {
     let spec_text: String = r.get(4)?;
@@ -161,6 +166,9 @@ fn tool_from_row(r: &Row) -> rusqlite::Result<ToolRow> {
         unshared_by: r.get(10)?,
         current_version: r.get(11)?,
         scopes: serde_json::from_str(&scopes_text).unwrap_or_default(),
+        expose_spec: r.get::<_, i64>(13)? != 0,
+        spec_exposed_unix: r.get(14)?,
+        spec_reads: r.get(15)?,
     })
 }
 
@@ -494,6 +502,18 @@ pub struct ToolRow {
     /// empty means "requires only `mcp`" -- set fresh at every
     /// `host.tool_publish`, never carried over from a prior version.
     pub scopes: Vec<String>,
+    /// PRD-mcphost-shared-tool-spec-readback requirement 1: whether a
+    /// sharee may call `host.tool_spec_shared` for this tool -- default
+    /// `false`, set only by `host.tool_share`'s own `expose_spec` argument.
+    pub expose_spec: bool,
+    /// The unix-seconds timestamp of the `host.tool_share` call that most
+    /// recently set `expose_spec = true`; `None` whenever `expose_spec` is
+    /// `false` (requirement 2/5).
+    pub spec_exposed_unix: Option<i64>,
+    /// Successful `host.tool_spec_shared` reads since the most recent
+    /// `host.tool_share` call (requirement 9/AC9) -- reset to 0 by the same
+    /// share/unshare calls that reset `spec_exposed_unix`.
+    pub spec_reads: i64,
 }
 
 /// A single immutable published version of a tool (PRD-mcphost-tool-versions
@@ -2052,7 +2072,8 @@ impl Db {
         Self::migrate_0052_federated_end_user_login(&conn)?;
         Self::migrate_0053_oauth_demand_signal(&conn)?;
         Self::migrate_0054_tool_scopes_and_consent(&conn)?;
-        Self::migrate_0055_enterprise_managed_auth(&conn)
+        Self::migrate_0055_enterprise_managed_auth(&conn)?;
+        Self::migrate_0056_tool_spec_exposure(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -2825,6 +2846,21 @@ impl Db {
             .exists([])?;
         if !has_table {
             conn.execute_batch(MIGRATION_0055)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-shared-tool-spec-readback migration 0056 (requirement
+    /// 1/2/5): gated on `tools.expose_spec`, same "one column from this
+    /// batch is the idempotency signal" convention as 0002 above.
+    /// (Renumbered from this PRD's own 0045 during the merge of origin/main,
+    /// which had already claimed 0045 through 0055 for other PRDs.)
+    fn migrate_0056_tool_spec_exposure(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tools') WHERE name = 'expose_spec'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0056)?;
         }
         Ok(())
     }
@@ -5022,10 +5058,12 @@ impl Db {
     /// `host.tool_share`: set `name`'s visibility to `'public'` or
     /// `'group'` (with `group` naming the group for the latter),
     /// `share_description`, and `shared_unix = now`; clears any earlier
-    /// `unshared_by` marker (a re-share is not an unshare). Returns `false`
-    /// if `name` isn't one of `tenant_id`'s tools.
-    // Six parameters: one atomic `UPDATE` with a single caller
-    // (`sharing::tool_share`) -- same shape as `try_admit_signup` above.
+    /// `unshared_by` marker (a re-share is not an unshare). PRD-mcphost-
+    /// shared-tool-spec-readback requirement 1/5: `expose_spec` sets
+    /// `spec_exposed_unix = now` when `true`, else clears it -- either way
+    /// `spec_reads` resets to 0, since a re-share (with or without the
+    /// flag) starts a fresh exposure period (requirement 9). Returns
+    /// `false` if `name` isn't one of `tenant_id`'s tools.
     #[allow(clippy::too_many_arguments)]
     pub async fn set_tool_share(
         &self,
@@ -5034,14 +5072,26 @@ impl Db {
         visibility: String,
         group: Option<String>,
         description: Option<String>,
+        expose_spec: bool,
     ) -> Result<bool, AppError> {
         let shared_unix = now_unix();
+        let spec_exposed_unix = expose_spec.then_some(shared_unix);
         self.with_conn(move |conn| {
             let n = conn.execute(
                 "UPDATE tools SET visibility = ?1, shared_group = ?2, share_description = ?3, \
-                 shared_unix = ?4, unshared_by = NULL \
-                 WHERE tenant_id = ?5 AND name = ?6",
-                params![visibility, group, description, shared_unix, tenant_id, name],
+                 shared_unix = ?4, unshared_by = NULL, expose_spec = ?5, spec_exposed_unix = ?6, \
+                 spec_reads = 0 \
+                 WHERE tenant_id = ?7 AND name = ?8",
+                params![
+                    visibility,
+                    group,
+                    description,
+                    shared_unix,
+                    expose_spec as i64,
+                    spec_exposed_unix,
+                    tenant_id,
+                    name
+                ],
             )?;
             Ok(n > 0)
         })
@@ -5049,15 +5099,17 @@ impl Db {
     }
 
     /// `host.tool_unshare`: back to `'private'`, clearing the group/
-    /// description/shared_unix. `unshared_by` is left untouched here (the
-    /// owner unsharing its own tool is not the AC9 admin-override case);
-    /// [`Self::admin_unshare_tool`] is the one that stamps it. Returns
-    /// `false` if `name` isn't one of `tenant_id`'s tools.
+    /// description/shared_unix and (requirement 5) `expose_spec`/
+    /// `spec_exposed_unix`/`spec_reads`. `unshared_by` is left untouched
+    /// here (the owner unsharing its own tool is not the AC9 admin-override
+    /// case); [`Self::admin_unshare_tool`] is the one that stamps it.
+    /// Returns `false` if `name` isn't one of `tenant_id`'s tools.
     pub async fn unshare_tool(&self, tenant_id: i64, name: String) -> Result<bool, AppError> {
         self.with_conn(move |conn| {
             let n = conn.execute(
                 "UPDATE tools SET visibility = 'private', shared_group = NULL, \
-                 share_description = NULL, shared_unix = NULL \
+                 share_description = NULL, shared_unix = NULL, expose_spec = 0, \
+                 spec_exposed_unix = NULL, spec_reads = 0 \
                  WHERE tenant_id = ?1 AND name = ?2",
                 params![tenant_id, name],
             )?;
@@ -5079,11 +5131,28 @@ impl Db {
         self.with_conn(move |conn| {
             let n = conn.execute(
                 "UPDATE tools SET visibility = 'private', shared_group = NULL, \
-                 share_description = NULL, shared_unix = NULL, unshared_by = 'admin' \
+                 share_description = NULL, shared_unix = NULL, unshared_by = 'admin', \
+                 expose_spec = 0, spec_exposed_unix = NULL, spec_reads = 0 \
                  WHERE name = ?2 AND tenant_id = (SELECT id FROM tenants WHERE namespace = ?1)",
                 params![owner_namespace, name],
             )?;
             Ok(n > 0)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-shared-tool-spec-readback requirement 9 (AC9): bumps
+    /// `spec_reads` for a successful `host.tool_spec_shared` call --
+    /// `handler.rs`'s `tool_spec_shared` calls this only after the
+    /// visibility and `expose_spec` checks both pass, so a refused read
+    /// never counts.
+    pub async fn record_spec_read(&self, tenant_id: i64, name: String) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tools SET spec_reads = spec_reads + 1 WHERE tenant_id = ?1 AND name = ?2",
+                params![tenant_id, name],
+            )?;
+            Ok(())
         })
         .await
     }
@@ -5102,6 +5171,39 @@ impl Db {
         };
         let tool = self.get_tool(owner.id, local_name).await?;
         Ok(tool.map(|t| (owner, t)))
+    }
+
+    /// PRD-mcphost-shared-tool-spec-readback: the same lookup as
+    /// [`Self::get_tool_by_owner_namespace`], but a single `JOIN` query
+    /// instead of two round trips -- `host.tool_spec_shared` needs only the
+    /// owner's id (not the ~30-column [`Tenant`] `call_shared_tool` builds
+    /// its own resolution around), and AC8's 50-concurrent-readers p95
+    /// budget makes every serialized round trip through the one
+    /// `Mutex<Connection>` count.
+    pub async fn get_tool_owner_id_by_namespace(
+        &self,
+        owner_namespace: String,
+        local_name: String,
+    ) -> Result<Option<(i64, ToolRow)>, AppError> {
+        self.with_conn(move |conn| {
+            let sql = format!(
+                "SELECT {}, tenants.id FROM tools JOIN tenants ON tenants.id = tools.tenant_id \
+                 WHERE tenants.namespace = ?1 AND tools.name = ?2",
+                TOOL_COLUMNS
+                    .split(", ")
+                    .map(|c| format!("tools.{c}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            stmt.query_row(params![owner_namespace, local_name], |r| {
+                let owner_id: i64 = r.get(16)?;
+                Ok((owner_id, tool_from_row(r)?))
+            })
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
     }
 
     /// `host.catalog.search(q, limit)` (AC7): a `LIKE` over name and
@@ -5157,6 +5259,9 @@ impl Db {
                                 let scopes_text: String = r.get(13)?;
                                 serde_json::from_str(&scopes_text).unwrap_or_default()
                             },
+                            expose_spec: r.get::<_, i64>(14)? != 0,
+                            spec_exposed_unix: r.get(15)?,
+                            spec_reads: r.get(16)?,
                         },
                     ))
                 })?
@@ -5402,6 +5507,9 @@ impl Db {
                             let scopes_text: String = r.get(13)?;
                             serde_json::from_str(&scopes_text).unwrap_or_default()
                         },
+                        expose_spec: r.get::<_, i64>(14)? != 0,
+                        spec_exposed_unix: r.get(15)?,
+                        spec_reads: r.get(16)?,
                     };
                     Ok((namespace, tool))
                 })?

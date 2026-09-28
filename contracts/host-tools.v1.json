@@ -2984,6 +2984,10 @@
             "description": "Catalog-facing blurb; shown by host.catalog.search/get.",
             "type": "string"
           },
+          "expose_spec": {
+            "description": "Default false. When true, any tenant this tool is shared with may call host.tool_spec_shared to read its (redacted) spec.",
+            "type": "boolean"
+          },
           "group": {
             "description": "Required when visibility is \"group\"; must already exist (host.group.create).",
             "type": "string"
@@ -3008,6 +3012,27 @@
         "type": "object"
       },
       "name": "host.tool_share",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Read a shared tool's kind and redacted spec -- only works when the owner shared it with expose_spec: true. The spec never carries env values or secret references (see host.tool_share's expose_spec).",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "type": "string"
+          },
+          "tool": {
+            "description": "\"<owner_namespace>.<name>\", the same qualified name host.tool_call uses for a shared tool.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool"
+        ],
+        "type": "object"
+      },
+      "name": "host.tool_spec_shared",
       "since": "0.58.0"
     },
     {
