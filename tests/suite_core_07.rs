@@ -1298,6 +1298,8 @@ mod tenantprm_ac07_key_and_oauth_suites_unchanged;
 mod tenantprm_ac09_llms_txt_documents_tenant_oauth;
 #[path = "tgraph_ac01_foreign_key_edge_and_graph_includes_both_tables.rs"]
 mod tgraph_ac01_foreign_key_edge_and_graph_includes_both_tables;
+#[path = "tgraph_ac02_join_paths_one_step_foreign_key.rs"]
+mod tgraph_ac02_join_paths_one_step_foreign_key;
 #[path = "tkparam_ac01_tenant_key_missing_is_invalid_params.rs"]
 mod tkparam_ac01_tenant_key_missing_is_invalid_params;
 #[path = "tkparam_ac02_non_string_tenant_key_is_invalid_params.rs"]
