@@ -223,11 +223,15 @@ pub fn build_graph_from_models(entries: &[(String, Value)]) -> ConceptGraph {
 /// both funnel through this.
 async fn build_graph_for_tenant(state: &AppState, tenant_id: i64) -> Result<ConceptGraph, AppError> {
     let models = state.db.list_table_models(tenant_id).await?;
+    // One query for every table's annotations rather than one per table
+    // (AC10): with up to 200 tables in play (P2 requirement 9's bound),
+    // a per-table round trip was the rebuild's actual bottleneck.
+    let mut annotations_by_table = state.db.list_table_model_annotations_for_tenant(tenant_id).await?;
     let mut entries = Vec::with_capacity(models.len());
     for row in models {
         let model: Value = serde_json::from_str(&row.model_json)
             .map_err(|e| AppError::Internal(format!("stored table model_json is corrupt: {e}")))?;
-        let annotations = state.db.list_table_model_annotations(tenant_id, row.table_name.clone()).await?;
+        let annotations = annotations_by_table.remove(&row.table_name).unwrap_or_default();
         let merged = crate::tables_model::merge_annotations(model, &annotations);
         entries.push((row.table_name, merged));
     }

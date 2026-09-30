@@ -12930,6 +12930,46 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-table-concept-graph requirement 2/AC10: every
+    /// annotation for every table of a tenant, grouped by table name, in
+    /// one query -- [`crate::tables_graph::build_graph_for_tenant`]'s own
+    /// annotation source. A per-table [`Db::list_table_model_annotations`]
+    /// call in a loop over up to 200 tables (P2 requirement 9's own bound)
+    /// was the graph rebuild's actual bottleneck (each `with_conn` call is
+    /// its own `spawn_blocking` + mutex-guarded round trip): AC10's
+    /// 50-table fixture alone took over a second that way, well past its
+    /// own 500ms bound, for a query whose SQL cost barely changes whether
+    /// it's scoped to one table or all of them.
+    pub async fn list_table_model_annotations_for_tenant(
+        &self,
+        tenant_id: i64,
+    ) -> Result<HashMap<String, Vec<TableModelAnnotationRow>>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT table_name, column_name, key, value FROM table_model_annotations \
+                 WHERE tenant_id = ?1",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id], |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        TableModelAnnotationRow {
+                            column_name: r.get(1)?,
+                            key: r.get(2)?,
+                            value: r.get(3)?,
+                        },
+                    ))
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            let mut by_table: HashMap<String, Vec<TableModelAnnotationRow>> = HashMap::new();
+            for (table, annotation) in rows {
+                by_table.entry(table).or_default().push(annotation);
+            }
+            Ok(by_table)
+        })
+        .await
+    }
+
     // ---- PRD-mcphost-table-concept-graph: table_graphs ----------------
 
     /// requirement 3: the latest built graph for a tenant, or `None` when
