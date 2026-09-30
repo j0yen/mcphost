@@ -58,7 +58,7 @@ async fn indexer_stops_at_the_chunk_quota_and_search_still_answers() {
     assert_eq!(status["index"]["quota_chunks_reached"], json!(true));
     assert_eq!(status["index"]["pending_documents"], json!(1), "the truncated document stays pending");
 
-    let result = docs::doc_search(&state, &tenant, &json!({"query": "findme marker", "k": 3}))
+    let result = docs::doc_search(&state, &tenant, &json!({"query": "findme marker", "k": 3}), None)
         .await
         .expect("search ok");
     let results = result["results"].as_array().expect("results array");

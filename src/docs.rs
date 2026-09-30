@@ -17,8 +17,10 @@
 use serde_json::{Map, Value, json};
 
 use crate::db::{DocumentRow, Tenant};
+use crate::enduser::EndUser;
 use crate::errors::AppError;
 use crate::plans::Plan;
+use crate::rowpolicy;
 use crate::state::AppState;
 
 /// requirement 2: content ≤ this many bytes, default 2 MiB -- overridable
@@ -546,11 +548,29 @@ fn search_filter_name(args: &Value) -> Option<String> {
 /// moment that provider call fails for any reason -- AC6's own
 /// non-functional requirement ("a provider outage degrades to lexical
 /// answers ... never to an error").
-pub async fn doc_search(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+pub async fn doc_search(
+    state: &AppState,
+    tenant: &Tenant,
+    args: &Value,
+    end_user: Option<&EndUser>,
+) -> Result<Value, AppError> {
     let query = arg_str(args, "query")?;
     let k = args.get("k").and_then(Value::as_i64).unwrap_or(5).clamp(1, 20);
     let prefix = search_filter_prefix(args);
     let name = search_filter_name(args);
+
+    // requirement 5 (AC5): a docs policy filter, resolved once per call --
+    // `None` for a tenant-key call (goal 3: policies bind end users only),
+    // `Some` otherwise, checked against every candidate chunk before
+    // ranking/truncation in both branches below.
+    let access = rowpolicy::resolve_access(state, tenant, end_user).await?;
+    let docs_filter: Option<(Vec<rowpolicy::RowPolicy>, rowpolicy::SecurityContext)> = match access {
+        rowpolicy::Access::Unrestricted => None,
+        rowpolicy::Access::Restricted(ctx) => {
+            Some((rowpolicy::load_doc_prefix_policies(state, tenant.id).await?, ctx))
+        }
+    };
+    let docs_filter_ref = docs_filter.as_ref().map(|(policies, ctx)| (policies.as_slice(), ctx));
 
     let now = crate::state::now_unix();
     state.db.doc_index_state_ensure(tenant.id, now).await?;
@@ -583,6 +603,10 @@ pub async fn doc_search(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
                 let mut scored: Vec<(f64, crate::db::ChunkVecRow)> = rows
                     .into_iter()
                     .filter(|r| crate::docs_index::matches_filter(r, &prefix, &name))
+                    .filter(|r| match docs_filter_ref {
+                        Some((policies, ctx)) => rowpolicy::doc_allowed(policies, &r.name, ctx),
+                        None => true,
+                    })
                     .map(|r| {
                         let v = crate::docs_index::decode_vector(&r.vector);
                         (crate::docs_index::cosine(qvec, &v), r)
@@ -602,11 +626,11 @@ pub async fn doc_search(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
             }
             _ => {
                 mode = "lexical-fallback".to_string();
-                lexical_search_results(state, tenant.id, &query, k, &prefix, &name).await?
+                lexical_search_results(state, tenant.id, &query, k, &prefix, &name, docs_filter_ref).await?
             }
         }
     } else {
-        lexical_search_results(state, tenant.id, &query, k, &prefix, &name).await?
+        lexical_search_results(state, tenant.id, &query, k, &prefix, &name, docs_filter_ref).await?
     };
 
     let _ = state.db.document_usage_event_insert(tenant.id, "docs.search".to_string(), 1, now).await;
@@ -617,6 +641,11 @@ pub async fn doc_search(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
     }))
 }
 
+/// requirement 5: `docs_filter`, when `Some`, is checked against every
+/// lexical candidate *before* the `k` truncation a caller sees --
+/// `fetch_k` over-fetches from the DB so filtering out disallowed chunks
+/// doesn't silently starve the final result below `k` when enough allowed
+/// candidates exist beyond the unfiltered top-`k` window.
 #[allow(clippy::too_many_arguments)]
 async fn lexical_search_results(
     state: &AppState,
@@ -625,23 +654,31 @@ async fn lexical_search_results(
     k: i64,
     prefix: &Option<String>,
     name: &Option<String>,
+    docs_filter: Option<(&[rowpolicy::RowPolicy], &rowpolicy::SecurityContext)>,
 ) -> Result<Vec<Value>, AppError> {
     let Some(match_expr) = crate::docs_index::sanitize_fts_query(query) else {
         return Ok(Vec::new());
     };
+    let fetch_k = if docs_filter.is_some() { (k * 20).min(500) } else { k };
     let hits = state
         .db
-        .doc_chunks_search_lexical(tenant_id, match_expr, prefix.clone(), name.clone(), k)
+        .doc_chunks_search_lexical(tenant_id, match_expr, prefix.clone(), name.clone(), fetch_k)
         .await?;
-    Ok(hits
+    let mut results: Vec<Value> = hits
         .into_iter()
+        .filter(|h| match docs_filter {
+            Some((policies, ctx)) => rowpolicy::doc_allowed(policies, &h.name, ctx),
+            None => true,
+        })
         .map(|h| {
             json!({
                 "document_id": h.document_id, "name": h.name, "version": h.version,
                 "chunk_no": h.chunk_no, "offset": h.offset, "text": h.text, "score": h.score,
             })
         })
-        .collect())
+        .collect();
+    results.truncate(k as usize);
+    Ok(results)
 }
 
 // ---- host.docs.index_config (P0 requirement 4) -------------------------

@@ -62,7 +62,7 @@ async fn lexical_top5_hit_rate_is_at_least_90_percent() {
     let mut hits = 0usize;
     let mut misses = Vec::new();
     for q in &gold {
-        let result = docs::doc_search(&state, &tenant, &json!({"query": q.query, "k": 5}))
+        let result = docs::doc_search(&state, &tenant, &json!({"query": q.query, "k": 5}), None)
             .await
             .expect("search ok");
         let names: Vec<String> = result["results"]

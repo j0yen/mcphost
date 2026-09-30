@@ -18,7 +18,7 @@ fn scratch_dir(label: &str) -> std::path::PathBuf {
 }
 
 async fn search_names(state: &mcphost::state::AppState, tenant: &mcphost::db::Tenant, query: &str) -> Vec<String> {
-    let result = docs::doc_search(state, tenant, &json!({"query": query, "k": 5})).await.expect("search ok");
+    let result = docs::doc_search(state, tenant, &json!({"query": query, "k": 5}), None).await.expect("search ok");
     result["results"]
         .as_array()
         .expect("results array")

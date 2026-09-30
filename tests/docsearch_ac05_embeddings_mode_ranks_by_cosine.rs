@@ -83,7 +83,7 @@ async fn rebuild_switches_to_embeddings_mode_and_search_ranks_by_cosine() {
     assert_eq!(status["index"]["rebuilding"], json!(false), "rebuild must be complete: {status:?}");
     assert_eq!(status["index"]["pending_documents"], json!(0));
 
-    let result = docs::doc_search(&state, &tenant, &json!({"query": "apple", "k": 5}))
+    let result = docs::doc_search(&state, &tenant, &json!({"query": "apple", "k": 5}), None)
         .await
         .expect("search ok");
     assert_eq!(result["index"]["mode"], json!("embeddings"));

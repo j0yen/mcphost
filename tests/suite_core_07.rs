@@ -990,6 +990,8 @@ mod rowpol_ac02_missing_attribute_fails_closed_to_1_equals_0;
 mod rowpol_ac03_unpolicied_table_zero_rows_for_end_user_all_for_tenant_key;
 #[path = "rowpol_ac04_cte_and_subquery_both_rewritten_via_ast.rs"]
 mod rowpol_ac04_cte_and_subquery_both_rewritten_via_ast;
+#[path = "rowpol_ac05_docs_prefix_policy_zero_hits_lexical_and_embeddings.rs"]
+mod rowpol_ac05_docs_prefix_policy_zero_hits_lexical_and_embeddings;
 #[path = "run_metrics_handoff_glob_regression.rs"]
 mod run_metrics_handoff_glob_regression;
 #[path = "runoverflow_ac03_progress_counter_monotonic_validation.rs"]

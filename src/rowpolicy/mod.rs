@@ -76,29 +76,35 @@ pub async fn load_table_policy(state: &AppState, tenant_id: i64, table_name: &st
     }
 }
 
-/// requirement 5 (AC5, goal 3): the longest configured `doc_prefix` policy
-/// whose value is a prefix of `doc_name`, or the synthesized empty policy
-/// (admits nothing) when no configured prefix matches -- "a prefix with no
-/// policy is invisible to end users".
-pub async fn load_doc_prefix_policy(state: &AppState, tenant_id: i64, doc_name: &str) -> Result<RowPolicy, AppError> {
+/// requirement 5: every `doc_prefix` policy this tenant has, fetched once
+/// per `host.docs.search` call so [`doc_allowed`] below can check each
+/// candidate chunk against it purely in-memory rather than one DB round
+/// trip per chunk.
+pub async fn load_doc_prefix_policies(state: &AppState, tenant_id: i64) -> Result<Vec<RowPolicy>, AppError> {
     let records = state.db.list_row_policies(tenant_id).await?;
-    let best = records
+    records
         .into_iter()
-        .filter(|r| r.target_kind == "doc_prefix" && doc_name.starts_with(&r.target_value))
-        .max_by_key(|r| r.target_value.len());
+        .filter(|r| r.target_kind == "doc_prefix")
+        .map(|r| {
+            let target = PolicyTarget::DocPrefix(r.target_value.clone());
+            row_policy_from_record(r, target)
+        })
+        .collect()
+}
+
+/// requirement 5 (AC5, goal 3): is `ctx`'s subject admitted to `doc_name`
+/// under the longest matching prefix policy in `policies`? A prefix with
+/// no configured policy admits nothing -- "a prefix with no policy is
+/// invisible to end users" -- rather than falling back to some broader
+/// policy or to unrestricted.
+pub fn doc_allowed(policies: &[RowPolicy], doc_name: &str, ctx: &SecurityContext) -> bool {
+    let best = policies
+        .iter()
+        .filter(|p| doc_name.starts_with(p.target.value()))
+        .max_by_key(|p| p.target.value().len());
     match best {
-        Some(record) => {
-            let target = PolicyTarget::DocPrefix(record.target_value.clone());
-            row_policy_from_record(record, target)
-        }
-        None => Ok(RowPolicy {
-            id: 0,
-            tenant_id,
-            version: 0,
-            target: PolicyTarget::DocPrefix(String::new()),
-            rule: Vec::new(),
-            created_unix: 0,
-        }),
+        Some(policy) => policy::compile(policy, ctx).docs_subject_allowed,
+        None => false,
     }
 }
 

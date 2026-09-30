@@ -3557,7 +3557,10 @@ impl DocsBackend for TenantDocsBridge {
     async fn call(&self, op: &str, args: Value) -> Result<Value, KindError> {
         let result = match op {
             "get" => docs::doc_get(&self.state, &self.tenant, &args).await,
-            "search" => docs::doc_search(&self.state, &self.tenant, &args).await,
+            // PRD-mcphost-row-policy requirement 10/AC12 threads the real
+            // end user through here; until then this bridge (unlike
+            // `TenantStateBridge`) carries none.
+            "search" => docs::doc_search(&self.state, &self.tenant, &args, None).await,
             other => Err(AppError::InvalidArgs(format!("unknown docs op '{other}'"))),
         };
         result.map_err(app_error_to_kind_error)
@@ -3817,7 +3820,7 @@ impl McpHostHandler {
             "host.table.describe" => crate::tables_model::table_describe(&self.state, tenant, &args).await,
             "host.table.model_set" => crate::tables_model::model_set(&self.state, tenant, &args).await,
             "host.table.models" => crate::tables_model::table_models_list(&self.state, tenant, &args).await,
-            "host.docs.search" => docs::doc_search(&self.state, tenant, &args).await,
+            "host.docs.search" => docs::doc_search(&self.state, tenant, &args, end_user).await,
             "host.docs.index_config" => docs::doc_index_config(&self.state, tenant, &args).await,
             "host.docs.reindex" => docs::doc_reindex(&self.state, tenant, &args).await,
             "host.runs.get" => crate::runs::get(&self.state, tenant, &args).await,
