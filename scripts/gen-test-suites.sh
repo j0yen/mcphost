@@ -467,7 +467,14 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # spawning an 11th suite binary again -- caught by the same P0 assertion.
 # 700 -> 715 re-collapses core's normal buckets to 1, landing the grand
 # total back at 10.
-MAX_PER_SUITE = {"core": 715, "sandbox": 90}
+#
+# PRD-mcphost-table-concept-graph (2026-09-30): this PRD's own nine
+# `tgraph_ac*.rs` core-classified files (AC9's own sandboxed-tool test is
+# `sandbox`-classified, unaffected) join the same normal bucket on top of
+# chart-in-a-minute's own 715 cap above, spawning an 11th suite binary
+# again -- caught by the same P0 assertion. 715 -> 724 re-collapses core's
+# normal buckets to 1, landing the grand total back at 10.
+MAX_PER_SUITE = {"core": 724, "sandbox": 90}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"
