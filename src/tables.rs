@@ -476,6 +476,13 @@ pub async fn table_drop(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
     // never declared, in which case there is nothing to clean up either.
     state.db.delete_table_model_and_annotations(tenant.id, name.clone()).await?;
 
+    // PRD-mcphost-table-concept-graph requirement 2: a dropped table's
+    // nodes/edges must not survive it in the graph either -- best-effort,
+    // same stance as `table_append`'s own mark above.
+    if let Err(e) = state.db.mark_table_graph_stale(tenant.id).await {
+        tracing::warn!(error = %e, table = %name, "failed to mark table graph stale after drop");
+    }
+
     Ok(json!({"name": name, "dropped": dropped}))
 }
 
@@ -641,6 +648,13 @@ pub async fn table_append(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     if let Err(e) = state.db.mark_table_model_stale(tenant.id, table.clone()).await {
         tracing::warn!(error = %e, table = %table, "failed to mark table model stale after append");
     }
+    // PRD-mcphost-table-concept-graph requirement 2/AC6: an append also
+    // marks this tenant's graph stale -- it was built from the model this
+    // append just staled, so it's stale too until the same tick rebuilds
+    // both. Best-effort, same stance as the model-stale mark above.
+    if let Err(e) = state.db.mark_table_graph_stale(tenant.id).await {
+        tracing::warn!(error = %e, table = %table, "failed to mark table graph stale after append");
+    }
 
     Ok(json!({"table": table, "appended": ids.len(), "ids": ids}))
 }
@@ -649,7 +663,7 @@ pub async fn table_append(state: &AppState, tenant: &Tenant, args: &Value) -> Re
 
 /// requirement 2/AC3: parses `sql` and refuses (structurally, not by string
 /// matching) anything but exactly one `SELECT`/CTE statement.
-fn validate_query_structure(sql: &str) -> Result<(), AppError> {
+pub(crate) fn validate_query_structure(sql: &str) -> Result<(), AppError> {
     let statements = sqlparser::parser::Parser::parse_sql(&sqlparser::dialect::GenericDialect {}, sql)
         .map_err(|e| query_rejected(format!("sql parse error: {e}")))?;
     match statements.as_slice() {

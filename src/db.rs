@@ -91,6 +91,11 @@ const MIGRATION_0055: &str = include_str!("../migrations/0055_enterprise_managed
 // had already claimed 0045 through 0055 for other PRDs.
 const MIGRATION_0056: &str = include_str!("../migrations/0056_tool_spec_exposure.sql");
 const MIGRATION_0057: &str = include_str!("../migrations/0057_chart_index.sql");
+// PRD-mcphost-table-concept-graph requirement 2: the tenant's graph, one
+// row per tenant, alongside `table_models`' own per-(tenant, table) rows.
+// Renumbered from this PRD's own 0057 during rebase: mcphost-chart-in-a-minute
+// claimed 0057 first, landing on main ahead of this branch.
+const MIGRATION_0058: &str = include_str!("../migrations/0058_table_graphs.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -2075,7 +2080,8 @@ impl Db {
         Self::migrate_0054_tool_scopes_and_consent(&conn)?;
         Self::migrate_0055_enterprise_managed_auth(&conn)?;
         Self::migrate_0056_tool_spec_exposure(&conn)?;
-        Self::migrate_0057_chart_index(&conn)
+        Self::migrate_0057_chart_index(&conn)?;
+        Self::migrate_0058_table_graphs(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -2880,6 +2886,21 @@ impl Db {
         }
         Ok(())
     }
+
+    /// PRD-mcphost-table-concept-graph migration (requirement 2):
+    /// `table_graphs`, one row per tenant. Renumbered from this PRD's own
+    /// 0057 during rebase: mcphost-chart-in-a-minute claimed 0057 first,
+    /// landing on main ahead of this branch.
+    fn migrate_0058_table_graphs(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'table_graphs'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0058)?;
+        }
+        Ok(())
+    }
+
 
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
@@ -12909,6 +12930,78 @@ impl Db {
         .await
     }
 
+    // ---- PRD-mcphost-table-concept-graph: table_graphs ----------------
+
+    /// requirement 3: the latest built graph for a tenant, or `None` when
+    /// none of its tables have ever had `host.table.graph`/`.join_paths`/
+    /// `.next_questions` called or a tick run -- the caller
+    /// (`tables_graph::get_or_build_graph`) bootstraps a fresh build in
+    /// that case rather than blocking on the tick, the same convention
+    /// `tables_model::table_describe` uses for `table_models`.
+    pub async fn get_table_graph(&self, tenant_id: i64) -> Result<Option<TableGraphRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT tenant_id, version, graph_json, computed_at, stale \
+                 FROM table_graphs WHERE tenant_id = ?1",
+                params![tenant_id],
+                table_graph_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Writes a freshly built graph as the next version, `stale: false` --
+    /// both the bootstrap build (first `host.table.graph`/`.join_paths`/
+    /// `.next_questions` call for a tenant) and
+    /// [`crate::tables_graph::tick_once`]'s rebuild (next version,
+    /// replacing the stale row) call this.
+    pub async fn upsert_table_graph(
+        &self,
+        tenant_id: i64,
+        version: i64,
+        graph_json: String,
+    ) -> Result<(), AppError> {
+        let computed_at = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO table_graphs (tenant_id, version, graph_json, computed_at, stale) \
+                 VALUES (?1, ?2, ?3, ?4, 0) \
+                 ON CONFLICT(tenant_id) DO UPDATE SET \
+                 version = excluded.version, graph_json = excluded.graph_json, \
+                 computed_at = excluded.computed_at, stale = 0",
+                params![tenant_id, version, graph_json, computed_at],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// requirement 2/7: `append`/`create`/`drop` and a `role`/`description`
+    /// `host.table.model_set` call mark an existing graph stale (a tenant
+    /// with no graph built yet has nothing to mark -- its first tool call
+    /// bootstraps a fresh, non-stale build anyway).
+    pub async fn mark_table_graph_stale(&self, tenant_id: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute("UPDATE table_graphs SET stale = 1 WHERE tenant_id = ?1", params![tenant_id])?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// requirement 2: every tenant whose graph is stale -- [`crate::
+    /// tables_graph::tick_once`]'s own worklist, run at the end of
+    /// [`crate::tables_model::tick_once`] within the same 30s window.
+    pub async fn list_tenants_with_stale_table_graph(&self) -> Result<Vec<i64>, AppError> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare("SELECT tenant_id FROM table_graphs WHERE stale = 1")?;
+            let rows = stmt.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
     /// PRD-mcphost-alerting-webhook requirement 2 / AC4: host-wide `(total,
     /// errors)` call counts since `since_unix`, for
     /// [`crate::alerts::tick_once`]'s minute tick -- `total` is every row
@@ -16148,6 +16241,29 @@ pub struct TableModelAnnotationRow {
     pub column_name: String,
     pub key: String,
     pub value: String,
+}
+
+/// PRD-mcphost-table-concept-graph requirement 2: one `table_graphs` row --
+/// the tenant's whole `tables_graph::ConceptGraph`, serialized. Kept as
+/// opaque text here for the same reason [`TableModelRow::model_json`] is:
+/// this module doesn't need to know the graph's shape.
+#[derive(Debug, Clone)]
+pub struct TableGraphRow {
+    pub tenant_id: i64,
+    pub version: i64,
+    pub graph_json: String,
+    pub computed_at: i64,
+    pub stale: bool,
+}
+
+fn table_graph_from_row(r: &Row) -> rusqlite::Result<TableGraphRow> {
+    Ok(TableGraphRow {
+        tenant_id: r.get(0)?,
+        version: r.get(1)?,
+        graph_json: r.get(2)?,
+        computed_at: r.get(3)?,
+        stale: r.get(4)?,
+    })
 }
 
 // ---- PRD-mcphost-hosted-authorization-server row types --------------------
