@@ -401,6 +401,7 @@ mod tests {
             fleet_ips: crate::state::FleetIps::empty(),
             end_user_activity: Default::default(),
             oauth_healthz_cache: Default::default(),
+            verified_client_ids: crate::state::VerifiedClientIds::empty(),
         };
 
         let eu = verify_assertion(&state, &tenant, &token).await.expect("valid assertion");

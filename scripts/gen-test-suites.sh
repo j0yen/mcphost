@@ -442,7 +442,16 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # spawning an 11th suite binary again -- caught by the same P0 assertion.
 # 650 -> 670 re-collapses core's normal buckets to 1, landing the grand total
 # back at 10.
-MAX_PER_SUITE = {"core": 670, "sandbox": 90}
+
+# PRD-mcphost-oauth-unverified-client-consent-warning (rebased onto
+# mcphost-tenant-key-missing-is-invalid-params, 2026-09-29 land): this
+# PRD's own nine `mcphost_oauth_unverified_client_consent_warning_ac*.rs`
+# files (also `core`-classified) join the same normal bucket on top of
+# enterprise-managed-auth's own 670 cap above, spawning an 11th suite
+# binary again -- caught by the same P0 assertion. 670 -> 680
+# re-collapses core's normal buckets to 1, landing the grand total back
+# at 10.
+MAX_PER_SUITE = {"core": 680, "sandbox": 90}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

@@ -513,9 +513,63 @@ async fn scope_groups_html(state: &AppState, resource_tenant: Option<&crate::db:
     out
 }
 
+/// requirement (P1)/AC7: the unverified-application caution links here --
+/// a short, static explainer served by [`get_unverified_app_explainer`],
+/// no tenant/client context needed.
+const UNVERIFIED_APP_EXPLAINER_PATH: &str = "/oauth/unverified-app";
+
+/// AC5: `identity.client_name`, trimmed and treated as absent when blank --
+/// an empty-but-present `client_name` (a DCR client can register one) must
+/// never render as an empty `<h1>`.
+fn display_client_name(identity: &ClientIdentity) -> &str {
+    identity
+        .client_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("(unnamed application)")
+}
+
+/// requirement (P0)/AC3: the host component of the `redirect_uri` the
+/// authorization code would be delivered to -- `redirect_uri` is already
+/// `redirect_uri_allowed`-validated by the time either consent-page call
+/// site renders, so this only ever fails to parse on a malformed value that
+/// validation would already have refused; the fallback string is display
+/// text only; it grants nothing.
+fn destination_host(redirect_uri: &str) -> String {
+    reqwest::Url::parse(redirect_uri)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_string))
+        .unwrap_or_else(|| "(unknown destination)".to_string())
+}
+
+/// requirement (P0)/AC1/AC4/AC6: `true` iff this client's consent page must
+/// carry the unverified-application caution -- a DCR client not on the
+/// operator's [`crate::state::VerifiedClientIds`] allowlist. A CIMD client
+/// (its identity is anchored to a fetched, validated metadata document) is
+/// never unverified (AC2).
+fn is_unverified(identity: &ClientIdentity, verified_client_ids: &crate::state::VerifiedClientIds) -> bool {
+    identity.method == "dcr" && !verified_client_ids.contains(&identity.client_id)
+}
+
+/// AC1/AC7: the caution block itself -- states plainly that the app
+/// self-registered and is not operator-verified, and links to
+/// [`UNVERIFIED_APP_EXPLAINER_PATH`].
+fn unverified_caution_html() -> String {
+    format!(
+        "<div class=\"caution\"><p><strong>Unverified application.</strong> \
+         This app registered itself with mcphost through open client \
+         registration and has not been verified by mcphost's operator -- \
+         the name below is only what the app calls itself. \
+         <a href=\"{path}\">What does this mean?</a></p></div>",
+        path = UNVERIFIED_APP_EXPLAINER_PATH,
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 fn render_consent_page(
-    client_name: &str,
+    identity: &ClientIdentity,
+    verified_client_ids: &crate::state::VerifiedClientIds,
     resource: &str,
     params: &AuthorizeParams,
     resolved_scope: &str,
@@ -525,11 +579,31 @@ fn render_consent_page(
     let error_html = error
         .map(|e| format!("<p class=\"err\">{}</p>", html_escape(e)))
         .unwrap_or_default();
+    // AC4: a DCR client's `client_name` is self-asserted -- escaped like
+    // any other, but never rendered as if it were verified/first-party.
+    let is_dcr = identity.method == "dcr";
+    let client = if is_dcr {
+        format!(
+            "{} <span class=\"self-asserted\">(self-reported name)</span>",
+            html_escape(display_client_name(identity))
+        )
+    } else {
+        html_escape(display_client_name(identity))
+    };
+    let caution_html = if is_unverified(identity, verified_client_ids) {
+        unverified_caution_html()
+    } else {
+        String::new()
+    };
+    // AC3: shown for every client, DCR or CIMD alike.
+    let destination = html_escape(&destination_host(opt_str(&params.redirect_uri)));
     page(
         "mcphost — authorize",
         &format!(
             "<h1>Authorize {client}</h1>\
+             {caution_html}\
              <p>{client} is requesting access to <code>{resource}</code> on your behalf.</p>\
+             <p>Your authorization will be sent to <strong>{destination}</strong>.</p>\
              {scope_groups}\
              {error_html}\
              <form method=\"post\" action=\"/oauth/authorize\">\
@@ -547,7 +621,6 @@ fn render_consent_page(
              <input type=\"text\" name=\"claim_code\" placeholder=\"claim code\">\
              <button type=\"submit\">Approve</button>\
              </form>",
-            client = html_escape(client_name),
             resource = html_escape(resource),
             response_type = html_escape(opt_str(&params.response_type)),
             client_id = html_escape(opt_str(&params.client_id)),
@@ -557,6 +630,27 @@ fn render_consent_page(
             state = html_escape(opt_str(&params.state)),
             scope = html_escape(resolved_scope),
             resource_attr = html_escape(opt_str(&params.resource)),
+        ),
+    )
+}
+
+/// AC7: a short, static explainer of what an "unverified application"
+/// caution means -- no tenant/client context, so no auth or lookup needed.
+pub async fn get_unverified_app_explainer() -> Response {
+    html_response(
+        StatusCode::OK,
+        page(
+            "mcphost — unverified application",
+            "<h1>What does \"unverified application\" mean?</h1>\
+             <p>mcphost lets any application register itself as an OAuth \
+             client with no operator involvement (open dynamic client \
+             registration). A self-registered application chooses its own \
+             display name and picks its own redirect destination -- mcphost \
+             has not confirmed who operates it or that its name is accurate.</p>\
+             <p>Before approving, check that the application's name and the \
+             destination host shown on the consent page are ones you \
+             recognize and trust. Approving sends your authorization to that \
+             destination, whatever the application called itself.</p>",
         ),
     )
 }
@@ -812,11 +906,18 @@ pub async fn get_authorize(
     {
         return crate::federation::start(&state, tenant, &provider, &identity, &redirect_uri, &resource, &params).await;
     }
-    let client_name = identity.client_name.clone().unwrap_or_else(|| identity.client_id.clone());
     let scope_groups = scope_groups_html(&state, resource_tenant.as_ref(), &resolved_scope).await;
     html_response(
         StatusCode::OK,
-        render_consent_page(&client_name, &resource, &params, &resolved_scope, &scope_groups, None),
+        render_consent_page(
+            &identity,
+            &state.verified_client_ids,
+            &resource,
+            &params,
+            &resolved_scope,
+            &scope_groups,
+            None,
+        ),
     )
 }
 
@@ -983,6 +1084,13 @@ pub async fn post_authorize(
                 Ok(crate::oauth_policy::ClientDecision::Allowed) => {
                     let code_challenge = params.code_challenge.clone().unwrap_or_default();
                     let state_param = params.state.clone().unwrap_or_default();
+                    // requirement (P2)/AC8: note the client's unverified
+                    // status on the audit row at the moment consent is
+                    // actually granted, so an operator's auth audit can
+                    // later see it was unverified when approved -- `None`
+                    // (unchanged) for a CIMD or allowlisted client (AC9).
+                    let consent_reason = is_unverified(&identity, &state.verified_client_ids)
+                        .then_some("unverified_client_at_approval");
                     let _ = crate::oauth_policy::record_audit(
                         &state,
                         Some(tenant.id),
@@ -990,7 +1098,7 @@ pub async fn post_authorize(
                         Some(identity.client_id.as_str()),
                         Some(identity.method),
                         None,
-                        None,
+                        consent_reason,
                         Some(&ip),
                     )
                     .await;
@@ -1045,12 +1153,12 @@ pub async fn post_authorize(
         // caller gets another chance rather than a hard failure, same
         // posture `claim::post_claim`'s own invalid-email branch takes.
         None => {
-            let client_name = identity.client_name.clone().unwrap_or_else(|| identity.client_id.clone());
             let scope_groups = scope_groups_html(&state, resource_tenant.as_ref(), &resolved_scope).await;
             html_response(
                 StatusCode::OK,
                 render_consent_page(
-                    &client_name,
+                    &identity,
+                    &state.verified_client_ids,
                     &resource,
                     &params,
                     &resolved_scope,

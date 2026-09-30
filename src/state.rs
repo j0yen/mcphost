@@ -371,6 +371,12 @@ pub struct AppState {
     /// In-memory only, same `Arc`-sharing rationale as
     /// [`AppState::checkout_sessions`].
     pub oauth_healthz_cache: crate::oauth_stats::HealthzCache,
+    /// PRD-mcphost-oauth-unverified-client-consent-warning requirement (P1):
+    /// `$MCPHOST_VERIFIED_CLIENT_IDS`, parsed once at startup -- see
+    /// [`VerifiedClientIds`]. A DCR client's `client_id` on this list
+    /// renders its consent page with no unverified caution, same as a
+    /// CIMD client, even though `method == "dcr"`.
+    pub verified_client_ids: VerifiedClientIds,
 }
 
 pub fn now_unix() -> i64 {
@@ -807,6 +813,49 @@ pub fn parse_fleet_ips(raw: Option<&str>) -> FleetIps {
         }
     }
     FleetIps(entries)
+}
+
+/// PRD-mcphost-oauth-unverified-client-consent-warning requirement (P1):
+/// the operator's `$MCPHOST_VERIFIED_CLIENT_IDS` allowlist -- DCR
+/// `client_id`s an operator has vetted out-of-band (e.g. mcphost's own
+/// first-party clients that happen to register through open DCR). A static,
+/// startup-parsed env list is sufficient per the PRD's own open-question
+/// default: no existing operator config surface fits a *global*
+/// verified-client list (the per-tenant `oauth_policy` allowlist this crate
+/// already has is a connect/deny decision for one tenant, not an operator-
+/// wide verification signal).
+#[derive(Debug, Clone, Default)]
+pub struct VerifiedClientIds(std::collections::HashSet<String>);
+
+impl VerifiedClientIds {
+    pub fn empty() -> Self {
+        VerifiedClientIds(std::collections::HashSet::new())
+    }
+
+    pub fn contains(&self, client_id: &str) -> bool {
+        self.0.contains(client_id)
+    }
+}
+
+/// Comma-separated `$MCPHOST_VERIFIED_CLIENT_IDS` -> [`VerifiedClientIds`].
+/// Pure, separated from [`verified_client_ids_from_env`]'s own env read for
+/// the same testability reason [`parse_fleet_ips`] is.
+pub fn parse_verified_client_ids(raw: Option<&str>) -> VerifiedClientIds {
+    let Some(raw) = raw else {
+        return VerifiedClientIds::empty();
+    };
+    VerifiedClientIds(
+        raw.split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect(),
+    )
+}
+
+pub fn verified_client_ids_from_env() -> VerifiedClientIds {
+    let raw = std::env::var("MCPHOST_VERIFIED_CLIENT_IDS").ok();
+    parse_verified_client_ids(raw.as_deref())
 }
 
 pub fn fleet_ips_from_env() -> FleetIps {

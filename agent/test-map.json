@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-tenant-key-missing-is-invalid-params.md (test_prefix: tkparam)",
+  "ac_test_map_prd": "PRD-mcphost-oauth-unverified-client-consent-warning.md (test_prefix: mcphost_oauth_unverified_client_consent_warning)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,17 +28,15 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/tkparam_ac01_tenant_key_missing_is_invalid_params.rs",
-    "AC2": "tests/tkparam_ac02_non_string_tenant_key_is_invalid_params.rs",
-    "AC3": "tests/tkparam_ac03_five_tools_missing_tenant_key.rs",
-    "AC4": "tests/tkparam_ac04_header_auth_unaffected.rs",
-    "AC5": "tests/tkparam_ac05_tenant_key_invalid_unchanged.rs",
-    "AC6": "tests/tkparam_ac06_tenant_key_missing_payload_fields.rs",
-    "AC7": "tests/tkparam_ac07_example_is_placeholder_not_live.rs",
-    "AC8": "tests/tkparam_ac08_secretmissing_and_invalidparams_shape_unchanged.rs",
-    "AC9": "tests/tkparam_ac09_schema_tenant_key_not_required_and_discoverable.rs",
-    "AC10": "deferred (Live) -- operator-provisioned: AC10's Then is a one-shot mcp-probe run against https://mcphost.dev after deploy-on-land, needing operator access this coder dispatch does not hold. Declared deferred per the coder dispatch's own list (operator-provisioned).",
-    "AC11": "tests/tkparam_ac11_full_suite_green_at_landing.rs -- pins the docs/benchmarks/tkparam-suite-gate.txt receipt (cargo test --workspace / cargo clippy at this PRD's landing commit); the receipt itself is the proof of 'every v0.60.34 test still passes', not re-run inside this file."
+    "AC1": "tests/mcphost_oauth_unverified_client_consent_warning_ac01_dcr_unverified_caution_renders.rs",
+    "AC2": "tests/mcphost_oauth_unverified_client_consent_warning_ac02_cimd_no_unverified_caution.rs",
+    "AC3": "tests/mcphost_oauth_unverified_client_consent_warning_ac03_destination_host_shown.rs",
+    "AC4": "tests/mcphost_oauth_unverified_client_consent_warning_ac04_dcr_name_escaped_self_asserted.rs",
+    "AC5": "tests/mcphost_oauth_unverified_client_consent_warning_ac05_dcr_no_name_neutral_placeholder.rs",
+    "AC6": "tests/mcphost_oauth_unverified_client_consent_warning_ac06_operator_allowlist_suppresses_caution.rs",
+    "AC7": "tests/mcphost_oauth_unverified_client_consent_warning_ac07_caution_links_to_explainer.rs",
+    "AC8": "tests/mcphost_oauth_unverified_client_consent_warning_ac08_consent_record_notes_unverified.rs",
+    "AC9": "tests/mcphost_oauth_unverified_client_consent_warning_ac09_verified_flow_unchanged.rs"
   },
   "ac_test_map_by_prefix": {
     "ac": {
@@ -54,14 +52,14 @@
       "AC9": "tests/ac09_signup_rate_limit.rs",
       "AC10": "tests/ac10_publish_validation_errors.rs",
       "AC11": "tests/ac11_load_smoke.rs (#[ignore]d hardware-relative load test)",
-      "AC12": "no unit test file; live smoke — mcphost serve + synthorg consume --preflight <url>, recorded as target/autobuilder/ac12-preflight-smoke.json",
+      "AC12": "no unit test file; live smoke \u2014 mcphost serve + synthorg consume --preflight <url>, recorded as target/autobuilder/ac12-preflight-smoke.json",
       "AC13": "tests/ac13_mcp_name_mismatch_metering.rs",
       "AC14": "tests/ac14_storage_unwritable.rs",
       "AC15": "tests/ac15_call_timeout.rs",
       "AC16": "tests/ac16_request_body_too_large.rs",
       "AC17": "tests/ac17_kind_conformance.rs",
       "AC18": "tests/ac18_tools_list_ttl.rs",
-      "AC19": "deferred — no test; see agent/intent-card.json acceptance_criteria AC19.test and PRD Open Questions (registry namespace verification not yet resolved)"
+      "AC19": "deferred \u2014 no test; see agent/intent-card.json acceptance_criteria AC19.test and PRD Open Questions (registry namespace verification not yet resolved)"
     },
     "adminschemacontract": {
       "_prd": "PRD-mcphost-admin-schema-contract.md -- superseded by mcphost-abuse-guard-ban-list at HEAD; real test_prefix is mcphost_admin_schema_contract (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind/tenantdataexport/checkcompatrace/teammemory/databaseinaminute/uptimeprobes/toolversions/agentchannels/webhookinbox/signupkillswitchandsource/sandboxegressallowlist/humanclaimmagiclink/claudecodepluginandsnippets above)",
@@ -255,7 +253,7 @@
       "AC13": "tests/mcphost_human_claim_magic_link_ac13_bearer_key_never_in_claim_pages.rs"
     },
     "lanecov": {
-      "_prd": "PRD-mcphost-proof-lane-loop-config.md — same as ac_test_map above while this PRD is the one at HEAD",
+      "_prd": "PRD-mcphost-proof-lane-loop-config.md \u2014 same as ac_test_map above while this PRD is the one at HEAD",
       "AC1": "tests/lanecov_ac01_every_tracked_path_routes.rs",
       "AC2": "tests/lanecov_ac02_coverage_test_is_actually_run.rs",
       "AC3": "tests/lanecov_ac03_unrouted_path_is_named.rs",
@@ -273,7 +271,7 @@
       "AC6": "tests/mcphost_host_tool_deprecation_ac06_changelog_lists_additions.rs",
       "AC7": "tests/mcphost_host_tool_deprecation_ac07_whoami_contract_version.rs",
       "AC8": "tests/mcphost_host_tool_deprecation_ac08_llms_txt_links_contract.rs",
-      "_prd": "PRD-mcphost-host-tool-deprecation.md — superseded by mcphost-data-retention at HEAD"
+      "_prd": "PRD-mcphost-host-tool-deprecation.md \u2014 superseded by mcphost-data-retention at HEAD"
     },
     "oauthrs": {
       "_prd": "PRD-mcphost-oauth-resource-server.md -- superseded by mcphost-end-user-identity at HEAD; real test_prefix is oauthrs (this dict key is a short alias, matching the convention of banlist, ac, adminschemacontract, agentchannels, checkcompatrace, claudecodepluginandsnippets, databaseinaminute, humanclaimmagiclink, lanecov, mcphost_host_tool_deprecation, retention, runenvelope, sandboxegressallowlist, sharetool, signupkillswitch, signupkillswitchandsource, stdlibpseudo, suite, teammemory, tenantdataexport, toolversions, uptimeprobes, wasmkind, webhookinbox above)",
@@ -300,7 +298,7 @@
       "AC8": "tests/mcphost_data_retention_ac08_host_usage_lists_retention_windows.rs",
       "AC9": "tests/mcphost_data_retention_ac09_prune_error_sets_last_prune_ok_false.rs",
       "AC10": "tests/mcphost_data_retention_ac10_admin_prune_now_runs_one_cycle.rs",
-      "_prd": "PRD-mcphost-data-retention.md — superseded by mcphost-tenant-data-export at HEAD; real test_prefix is mcphost_data_retention (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool above)"
+      "_prd": "PRD-mcphost-data-retention.md \u2014 superseded by mcphost-tenant-data-export at HEAD; real test_prefix is mcphost_data_retention (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool above)"
     },
     "runenvelope": {
       "_prd": "PRD-mcphost-tool-run-envelope.md -- same as ac_test_map above while this PRD is the one at HEAD",
@@ -357,7 +355,7 @@
       "AC7": "tests/mcphost_share_a_tool_not_a_key_ac07_synthorg_task_five_completions.rs",
       "AC8": "tests/mcphost_share_a_tool_not_a_key_ac08_live_test_skipped_without_env.rs",
       "AC9": "tests/mcphost_share_a_tool_not_a_key_ac09_public_variant_states_default_reason.rs",
-      "_prd": "PRD-mcphost-share-a-tool-not-a-key.md — same as ac_test_map above while this PRD is the one at HEAD; real test_prefix is mcphost_share_a_tool_not_a_key (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo above)"
+      "_prd": "PRD-mcphost-share-a-tool-not-a-key.md \u2014 same as ac_test_map above while this PRD is the one at HEAD; real test_prefix is mcphost_share_a_tool_not_a_key (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo above)"
     },
     "signupkillswitch": {
       "_prd": "PRD-mcphost-signup-kill-switch-and-source.md -- superseded by mcphost-human-claim-magic-link at HEAD; real test_prefix is mcphost_signup_kill_switch_and_source (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind/tenantdataexport/checkcompatrace/teammemory/databaseinaminute/uptimeprobes/toolversions/agentchannels/webhookinbox above)",
@@ -416,7 +414,7 @@
       "AC7": "tests/suite_ac7_junit_per_test_timing.rs",
       "AC8": "deferred -- see PRD deferred_acs/mock_justifications (cross-host parity script needs a second box; casper deleted); AC1's nextest list diff proves the name-matching change single-host",
       "AC9": "tests/suite_ac9_selftest_named_and_green.rs",
-      "_prd": "PRD-mcphost-test-suite-consolidation.md — superseded by mcphost-share-a-tool-not-a-key at HEAD"
+      "_prd": "PRD-mcphost-test-suite-consolidation.md \u2014 superseded by mcphost-share-a-tool-not-a-key at HEAD"
     },
     "tablemodel": {
       "_prd": "PRD-mcphost-table-semantic-model.md -- superseded by mcphost-end-user-identity at HEAD; real test_prefix is tablemodel (this dict key matches it directly, same convention as every other archived entry below)",
@@ -452,7 +450,7 @@
       "AC5": "tests/mcphost_tenant_data_export_ac05_manifest_validates_publish_schema.rs",
       "AC6": "tests/mcphost_tenant_data_export_ac06_tools_subset.rs",
       "AC7": "tests/mcphost_tenant_data_export_ac07_admin_usage_exports_today.rs",
-      "_prd": "PRD-mcphost-tenant-data-export.md — superseded by mcphost-checkcompat-port-race at HEAD; real test_prefix is mcphost_tenant_data_export (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind above)"
+      "_prd": "PRD-mcphost-tenant-data-export.md \u2014 superseded by mcphost-checkcompat-port-race at HEAD; real test_prefix is mcphost_tenant_data_export (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind above)"
     },
     "toolversions": {
       "_prd": "PRD-mcphost-tool-versions.md -- superseded by mcphost-agent-channels at HEAD; real test_prefix is mcphost_tool_versions (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind/tenantdataexport/checkcompatrace/teammemory/databaseinaminute above)",
@@ -504,7 +502,7 @@
       "AC8": "tests/wasmkind_ac08_cache_reuses_compiled_artifact.rs",
       "AC9": "tests/wasmkind_ac09_healthz_reports_wasm_runtime.rs",
       "AC10": "tests/wasmkind_ac10_declared_output_promotion_matches_python.rs",
-      "_prd": "PRD-mcphost-wasm-kind.md — superseded by mcphost-host-tool-deprecation at HEAD"
+      "_prd": "PRD-mcphost-wasm-kind.md \u2014 superseded by mcphost-host-tool-deprecation at HEAD"
     },
     "webhookinbox": {
       "_prd": "PRD-mcphost-webhook-inbox.md -- superseded by mcphost-signup-kill-switch-and-source at HEAD; real test_prefix is mcphost_webhook_inbox (this dict key is a short alias, matching the convention of runenvelope/lanecov/stdlibpseudo/sharetool/wasmkind/tenantdataexport/checkcompatrace/teammemory/databaseinaminute/uptimeprobes/toolversions/agentchannels above)",
@@ -679,6 +677,20 @@
       "AC9": "tests/mcphost_shared_tool_spec_readback_ac09_spec_reads_counter.rs",
       "AC10": "deferred (prod leg only) -- operator-provisioned: AC10's Given is \"prod mcphost after deploy\", and the only thing still blocking it is that deploy of this branch to https://mcphost.dev, an operator action (mcphost-deploy). Recorded, not merely claimed: docs/receipts/spec-readback-ac10-prod-probe.md (read-only unauthenticated snapshot of prod's public tools/list, 2026-09-27) shows prod serving every other step of AC10's sequence but not host.tool_spec_shared and with no expose_spec on host.tool_share, and tests/mcphost_shared_tool_spec_readback_ac10_live_two_tenant_spec_read_trailer.rs::only_the_deploy_separates_this_branch_from_prods_tool_surface re-derives that delta against a real server on every run. Credentials are not part of the deferral: prod's signup is unauthenticated, so MCPHOST_TENANT_A_KEY/MCPHOST_TENANT_B_KEY are optional and the MCPHOST_LIVE=1 run mints its own two tenants when they are unset. Always-on mechanism proof: tests/mcphost_shared_tool_spec_readback_ac10_live_two_tenant_spec_read_trailer.rs::tenant_b_reads_source_without_env_and_tenant_a_sees_the_read (MCPHOST_LIVE=1 re-points the identical code at prod for the operator's trailer run); see PRD frontmatter deferred_acs/mock_justifications; deferral paper trail locked by tests/mcphost_shared_tool_spec_readback_ac10_deferral_is_justified.rs",
       "_prd": "PRD-mcphost-shared-tool-spec-readback.md -- superseded by mcphost-docs-qa-recipe at HEAD; real test_prefix is mcphost_shared_tool_spec_readback"
+    },
+    "tkparam": {
+    "AC1": "tests/tkparam_ac01_tenant_key_missing_is_invalid_params.rs",
+    "AC2": "tests/tkparam_ac02_non_string_tenant_key_is_invalid_params.rs",
+    "AC3": "tests/tkparam_ac03_five_tools_missing_tenant_key.rs",
+    "AC4": "tests/tkparam_ac04_header_auth_unaffected.rs",
+    "AC5": "tests/tkparam_ac05_tenant_key_invalid_unchanged.rs",
+    "AC6": "tests/tkparam_ac06_tenant_key_missing_payload_fields.rs",
+    "AC7": "tests/tkparam_ac07_example_is_placeholder_not_live.rs",
+    "AC8": "tests/tkparam_ac08_secretmissing_and_invalidparams_shape_unchanged.rs",
+    "AC9": "tests/tkparam_ac09_schema_tenant_key_not_required_and_discoverable.rs",
+    "AC10": "deferred (Live) -- operator-provisioned: AC10's Then is a one-shot mcp-probe run against https://mcphost.dev after deploy-on-land, needing operator access this coder dispatch does not hold. Declared deferred per the coder dispatch's own list (operator-provisioned).",
+    "AC11": "tests/tkparam_ac11_full_suite_green_at_landing.rs -- pins the docs/benchmarks/tkparam-suite-gate.txt receipt (cargo test --workspace / cargo clippy at this PRD's landing commit); the receipt itself is the proof of 'every v0.60.34 test still passes', not re-run inside this file.",
+      "_prd": "PRD-mcphost-tenant-key-missing-is-invalid-params.md -- superseded by mcphost-oauth-unverified-client-consent-warning at HEAD; test_prefix: tkparam"
     },
     "docsqa": {
       "AC1": "tests/docsqa_ac01_recipe_end_to_end.rs",
