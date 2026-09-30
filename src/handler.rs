@@ -354,7 +354,8 @@ fn host_schema(mut props: Value, required: &[&str]) -> Map<String, Value> {
                 "type": "string",
                 "description": "The key `signup` returned. Required only when this \
                     connection carries no Authorization: Bearer header -- when both \
-                    are present, the header wins.",
+                    are present, the header wins. Omitting it on a connection with no \
+                    header returns tenant_key_missing (-32602).",
             }),
         );
     }

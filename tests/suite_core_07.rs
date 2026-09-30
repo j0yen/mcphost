@@ -1214,6 +1214,26 @@ mod tenantprm_ac06_whoami_carries_resource_and_metadata_url;
 mod tenantprm_ac07_key_and_oauth_suites_unchanged;
 #[path = "tenantprm_ac09_llms_txt_documents_tenant_oauth.rs"]
 mod tenantprm_ac09_llms_txt_documents_tenant_oauth;
+#[path = "tkparam_ac01_tenant_key_missing_is_invalid_params.rs"]
+mod tkparam_ac01_tenant_key_missing_is_invalid_params;
+#[path = "tkparam_ac02_non_string_tenant_key_is_invalid_params.rs"]
+mod tkparam_ac02_non_string_tenant_key_is_invalid_params;
+#[path = "tkparam_ac03_five_tools_missing_tenant_key.rs"]
+mod tkparam_ac03_five_tools_missing_tenant_key;
+#[path = "tkparam_ac04_header_auth_unaffected.rs"]
+mod tkparam_ac04_header_auth_unaffected;
+#[path = "tkparam_ac05_tenant_key_invalid_unchanged.rs"]
+mod tkparam_ac05_tenant_key_invalid_unchanged;
+#[path = "tkparam_ac06_tenant_key_missing_payload_fields.rs"]
+mod tkparam_ac06_tenant_key_missing_payload_fields;
+#[path = "tkparam_ac07_example_is_placeholder_not_live.rs"]
+mod tkparam_ac07_example_is_placeholder_not_live;
+#[path = "tkparam_ac08_secretmissing_and_invalidparams_shape_unchanged.rs"]
+mod tkparam_ac08_secretmissing_and_invalidparams_shape_unchanged;
+#[path = "tkparam_ac09_schema_tenant_key_not_required_and_discoverable.rs"]
+mod tkparam_ac09_schema_tenant_key_not_required_and_discoverable;
+#[path = "tkparam_ac11_full_suite_green_at_landing.rs"]
+mod tkparam_ac11_full_suite_green_at_landing;
 #[path = "toolscope_ac01_scoped_consent_and_token.rs"]
 mod toolscope_ac01_scoped_consent_and_token;
 #[path = "toolscope_ac02_scoped_token_list_and_call.rs"]

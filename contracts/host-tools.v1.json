@@ -13,7 +13,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -28,7 +28,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -43,7 +43,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -62,7 +62,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -83,7 +83,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -108,7 +108,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -135,7 +135,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -157,7 +157,7 @@
             "type": "array"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -178,7 +178,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -199,7 +199,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -246,7 +246,7 @@
             "type": "array"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -277,7 +277,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -296,7 +296,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -313,7 +313,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -336,7 +336,7 @@
             "type": "object"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -358,7 +358,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -383,7 +383,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -402,7 +402,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -421,7 +421,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -442,7 +442,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -467,7 +467,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -494,7 +494,7 @@
             "type": "object"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -528,7 +528,7 @@
             "type": "integer"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -549,7 +549,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -574,7 +574,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -597,7 +597,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "text": {
@@ -640,7 +640,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -672,7 +672,7 @@
             "type": "integer"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -699,7 +699,7 @@
             "type": "integer"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -735,7 +735,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -756,7 +756,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -793,7 +793,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -810,7 +810,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -825,7 +825,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -856,7 +856,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -877,7 +877,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -898,7 +898,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -931,7 +931,7 @@
             "type": "integer"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -950,7 +950,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -974,7 +974,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -995,7 +995,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1012,7 +1012,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1027,7 +1027,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "tools": {
@@ -1057,7 +1057,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1079,7 +1079,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1096,7 +1096,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1119,7 +1119,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1137,7 +1137,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1159,7 +1159,7 @@
             "type": "array"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1180,7 +1180,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1205,7 +1205,7 @@
             "type": "integer"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "unread_only": {
@@ -1240,7 +1240,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "thread_id": {
@@ -1274,7 +1274,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "thread_id": {
@@ -1315,7 +1315,7 @@
             "type": "integer"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "thread_id": {
@@ -1340,7 +1340,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1361,7 +1361,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "timeout_s": {
@@ -1396,7 +1396,7 @@
             "type": "integer"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "until": {
@@ -1418,7 +1418,7 @@
             "type": "integer"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "until": {
@@ -1444,7 +1444,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1465,7 +1465,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1482,7 +1482,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1501,7 +1501,7 @@
             "type": "integer"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1518,7 +1518,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1537,7 +1537,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1566,7 +1566,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1585,7 +1585,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1600,7 +1600,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1615,7 +1615,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1656,7 +1656,7 @@
             "type": "integer"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1671,7 +1671,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1686,7 +1686,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1732,7 +1732,7 @@
             "type": "array"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1751,7 +1751,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1774,7 +1774,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1792,7 +1792,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1811,7 +1811,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1844,7 +1844,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1863,7 +1863,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1894,7 +1894,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1915,7 +1915,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1936,7 +1936,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1953,7 +1953,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1972,7 +1972,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -1993,7 +1993,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2022,7 +2022,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "tool": {
@@ -2053,7 +2053,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2074,7 +2074,7 @@
             "type": "integer"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2095,7 +2095,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "timeout_s": {
@@ -2120,7 +2120,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2139,7 +2139,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "value": {
@@ -2161,7 +2161,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2184,7 +2184,7 @@
             "type": "integer"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "tool": {
@@ -2211,7 +2211,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "tool": {
@@ -2249,7 +2249,7 @@
             "type": "object"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2279,7 +2279,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2307,7 +2307,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "where": {
@@ -2339,7 +2339,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2370,7 +2370,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2403,7 +2403,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2437,7 +2437,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "where": {
@@ -2469,7 +2469,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "value": {
@@ -2502,7 +2502,7 @@
             "type": "object"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2524,7 +2524,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2548,7 +2548,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2578,7 +2578,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2600,7 +2600,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2621,7 +2621,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2638,7 +2638,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2665,7 +2665,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "value": {
@@ -2687,7 +2687,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2706,7 +2706,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2727,7 +2727,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2756,7 +2756,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "version": {
@@ -2786,7 +2786,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "to": {
@@ -2813,7 +2813,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2830,7 +2830,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2853,7 +2853,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2889,7 +2889,7 @@
             "type": "object"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2912,7 +2912,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2933,7 +2933,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "version": {
@@ -2963,7 +2963,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -2997,7 +2997,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "visibility": {
@@ -3019,7 +3019,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "tool": {
@@ -3048,7 +3048,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -3070,7 +3070,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -3091,7 +3091,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -3112,7 +3112,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -3129,7 +3129,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "tool": {
@@ -3152,7 +3152,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -3173,7 +3173,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -3202,7 +3202,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -3221,7 +3221,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -3266,7 +3266,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "tool": {
@@ -3312,7 +3312,7 @@
             "type": "string"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },
@@ -3341,7 +3341,7 @@
             "type": "integer"
           },
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           },
           "tool": {
@@ -3364,7 +3364,7 @@
       "input_schema": {
         "properties": {
           "tenant_key": {
-            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins.",
+            "description": "The key `signup` returned. Required only when this connection carries no Authorization: Bearer header -- when both are present, the header wins. Omitting it on a connection with no header returns tenant_key_missing (-32602).",
             "type": "string"
           }
         },

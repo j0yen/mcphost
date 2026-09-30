@@ -1,0 +1,37 @@
+PRD-mcphost-tenant-key-missing-is-invalid-params AC11 (P0) — Given cargo
+test at the landing commit, When it runs, Then every test that passed at
+v0.60.34 still passes and the tests added for AC 1-9 pass, with the gate
+receipt showing block=0.
+
+Methodology: same "regression lock on a checked-in receipt, not a live
+re-run inside `cargo test`" pattern as
+docs/benchmarks/checkcompat-race-suite-gate.txt (running the whole
+workspace suite recursively from inside one of its own tests would be
+both circular and multi-minute cost paid on every `cargo test`). This
+receipt is the literal `wm-build runner exec --run 300 -- cargo ...`
+output on the remote build runner, never run locally per this repo's own
+build contract.
+
+cargo test --workspace:
+  1403 passed, 0 failed, 8 ignored (hardware/cache-dependent, pre-existing
+  -- suite_ac5_disk_size_budget, suite_ac6_wall_time_budget's own sibling
+  ignores, ac11_load_smoke's two-hundred-concurrent load test, etc.)
+  exit: 0
+
+  Note: tests/statusfeed_ac07_prune_keeps_rollup.rs (pre-existing, not
+  touched by this PRD) inserts 10 samples one minute apart starting at
+  "120 days before real now()" -- within ~9 minutes of a UTC midnight,
+  the last few samples land on the next calendar day and the rollup it
+  asserts on has fewer than 10 samples. Observed failing at 23:58 UTC and
+  passing again at 00:01 UTC on the same otherwise-unchanged tree; not a
+  regression from this PRD's diff.
+
+cargo clippy --all-targets -- -D warnings:
+  0 warnings
+  exit: 0
+
+clippy_warning_count: 0
+
+Regenerating: re-run both via `wm-build runner exec -- cargo`, then update
+this file's counts to match, the next time a diff touches src/ or tests/
+materially.
