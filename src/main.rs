@@ -566,6 +566,9 @@ async fn main() -> anyhow::Result<()> {
             // run synthorg against this host from public IPs -- read once
             // at startup alongside every other MCPHOST_* env var here.
             let fleet_ips = mcphost::state::fleet_ips_from_env();
+            // PRD-mcphost-oauth-unverified-client-consent-warning P1:
+            // read once at startup, same convention as `fleet_ips` above.
+            let verified_client_ids = mcphost::state::verified_client_ids_from_env();
 
             let db = Db::open(&data_dir())?;
             db.migrate().await?;
@@ -671,6 +674,7 @@ async fn main() -> anyhow::Result<()> {
                 fleet_ips,
                 end_user_activity: Default::default(),
                 oauth_healthz_cache: Default::default(),
+                verified_client_ids,
             });
             // PRD-mcphost-abuse-guard-ban-list requirement 6: load the ban
             // cache once before this process ever serves a request, so the

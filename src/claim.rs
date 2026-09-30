@@ -115,7 +115,9 @@ pub(crate) const STYLE: &str = "body{margin:0;background:#0b0d0e;color:#c9cdd1;\
     font:inherit;border-radius:4px;box-sizing:border-box}\
     button{background:none;border:1px solid #21262d;border-radius:6px;padding:.5rem 1rem;\
     margin-top:.8rem;font:inherit;color:#e6edf3;cursor:pointer}\
-    .err{color:#f85149}ul{padding-left:1.2rem}";
+    .err{color:#f85149}ul{padding-left:1.2rem}\
+    .caution{border:1px solid #9e6a03;background:#2b2111;border-radius:6px;padding:.1rem 1rem;margin-bottom:1rem}\
+    .caution a{color:#e3b341}.self-asserted{color:#8b949e;font-size:.85em}";
 
 pub(crate) fn page(title: &str, body: &str) -> String {
     format!(

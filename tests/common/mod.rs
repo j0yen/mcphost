@@ -293,6 +293,7 @@ pub async fn bare_app_state() -> (AppState, TempDataDir) {
         fleet_ips: mcphost::state::FleetIps::empty(),
         end_user_activity: Default::default(),
         oauth_healthz_cache: Default::default(),
+        verified_client_ids: mcphost::state::VerifiedClientIds::empty(),
     };
     (state, data_dir)
 }
@@ -366,6 +367,38 @@ impl TestServer {
             mcphost::db::DbConfig::from_env(),
             mcphost::alerts::AlertConfig::default(),
             mcphost::state::parse_fleet_ips(Some(fleet_ips_raw)),
+            mcphost::state::VerifiedClientIds::empty(),
+        )
+        .await
+    }
+
+    /// PRD-mcphost-oauth-unverified-client-consent-warning AC6: a server
+    /// whose operator verified-client allowlist is overridden directly on
+    /// `AppState` -- same "field, not process environment, since tests run
+    /// in parallel in one binary" rationale `start_with_signup_rate_limit`'s
+    /// own doc comment already states. `client_ids` uses the same
+    /// comma-separated syntax `$MCPHOST_VERIFIED_CLIENT_IDS` parses at real
+    /// startup ([`mcphost::state::parse_verified_client_ids`]).
+    pub async fn start_with_verified_client_ids(client_ids: &[&str]) -> Self {
+        Self::start_full_with_email(
+            Some(ADMIN_KEY.to_string()),
+            KindRegistry::with_builtin(),
+            mcphost::state::CALL_TIMEOUT,
+            None,
+            mcphost::state::SIGNUP_RATE_LIMIT_PER_HOUR,
+            mcphost::billing::BillingConfig::default(),
+            Arc::new(mcphost::billing::FakeBillingClient::new(
+                mcphost::state::now_unix(),
+            )),
+            Vec::new(),
+            mcphost::email::EmailConfig::default(),
+            Arc::new(mcphost::email::FakeEmailClient::new()),
+            mcphost::state::CLAIM_TOKEN_TTL_SECS_DEFAULT,
+            mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
+            mcphost::db::DbConfig::from_env(),
+            mcphost::alerts::AlertConfig::default(),
+            mcphost::state::FleetIps::empty(),
+            mcphost::state::parse_verified_client_ids(Some(&client_ids.join(","))),
         )
         .await
     }
@@ -551,6 +584,7 @@ impl TestServer {
             mcphost::db::DbConfig::from_env(),
             mcphost::alerts::AlertConfig::default(),
             mcphost::state::FleetIps::empty(),
+            mcphost::state::VerifiedClientIds::empty(),
         )
         .await
     }
@@ -579,6 +613,7 @@ impl TestServer {
             db_cfg,
             mcphost::alerts::AlertConfig::default(),
             mcphost::state::FleetIps::empty(),
+            mcphost::state::VerifiedClientIds::empty(),
         )
         .await
     }
@@ -606,6 +641,7 @@ impl TestServer {
             mcphost::db::DbConfig::from_env(),
             alert_config,
             mcphost::state::FleetIps::empty(),
+            mcphost::state::VerifiedClientIds::empty(),
         )
         .await
     }
@@ -641,6 +677,7 @@ impl TestServer {
             mcphost::db::DbConfig::from_env(),
             mcphost::alerts::AlertConfig::default(),
             mcphost::state::FleetIps::empty(),
+            mcphost::state::VerifiedClientIds::empty(),
         )
         .await
     }
@@ -669,6 +706,7 @@ impl TestServer {
         db_cfg: mcphost::db::DbConfig,
         alert_config: mcphost::alerts::AlertConfig,
         fleet_ips: mcphost::state::FleetIps,
+        verified_client_ids: mcphost::state::VerifiedClientIds,
     ) -> Self {
         let data_dir = TempDataDir::new();
         let db = Db::open_with_cfg(&data_dir.0, db_cfg).expect("open db");
@@ -743,6 +781,7 @@ impl TestServer {
             fleet_ips,
             end_user_activity: Default::default(),
             oauth_healthz_cache: Default::default(),
+            verified_client_ids,
         });
 
         // PRD-mcphost-runs-and-jobs: every test server runs the real
@@ -1314,6 +1353,7 @@ pub async fn bare_state(dir: &std::path::Path) -> AppState {
         fleet_ips: mcphost::state::FleetIps::empty(),
         end_user_activity: Default::default(),
         oauth_healthz_cache: Default::default(),
+        verified_client_ids: mcphost::state::VerifiedClientIds::empty(),
     }
 }
 

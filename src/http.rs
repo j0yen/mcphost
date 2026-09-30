@@ -892,6 +892,14 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/oauth/authorize",
             get(crate::authz::get_authorize).post(crate::authz::post_authorize),
         )
+        // PRD-mcphost-oauth-unverified-client-consent-warning AC7: the
+        // unverified-caution's own explainer link -- static, no tenant/
+        // client context, so registered alongside every other `/oauth/*`
+        // route rather than needing `AppState` at all.
+        .route(
+            "/oauth/unverified-app",
+            get(crate::authz::get_unverified_app_explainer),
+        )
         .route("/oauth/register", post(crate::authz::post_register))
         .route("/oauth/token", post(crate::authz::post_token))
         .route("/oauth/revoke", post(crate::authz::post_revoke))
