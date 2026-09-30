@@ -96,6 +96,10 @@ mod infer_ac15_tool_test_uses_inferred_schema;
 mod infer_ac16_syntax_error_precedence;
 #[path = "kindhonor_ac2_kind_mismatch_refused.rs"]
 mod kindhonor_ac2_kind_mismatch_refused;
+#[path = "kindroute_ac04_unknown_kind_carries_recipe_hints.rs"]
+mod kindroute_ac04_unknown_kind_carries_recipe_hints;
+#[path = "kindroute_ac05_startup_aliases_and_recipe_tools_are_registered.rs"]
+mod kindroute_ac05_startup_aliases_and_recipe_tools_are_registered;
 #[path = "limits_ac01_declared_timeout_honored.rs"]
 mod limits_ac01_declared_timeout_honored;
 #[path = "limits_ac02_default_timeout_when_undeclared.rs"]

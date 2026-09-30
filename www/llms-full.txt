@@ -829,6 +829,81 @@ future PRD updating the README also updates this file — `copy-claims.sh`
 fails the build if the two drift apart from the citation without a
 matching numeric mirror.
 
+## Receipt: docsqa-ac06-synthorg-preflight.md
+
+# AC6 cross-repo evidence — `docs_qa_recipe` in `~/repos/synthorg`
+
+AC6: *Given `~/repos/synthorg` with the new task, When `synthorg consume
+--preflight` and the proxy-tier fixture run execute, Then the
+`docs_qa_recipe` task is listed for `rag_indexer` and the fake endpoint
+fixture passes its gold predicate.*
+
+`~/repos/synthorg` is a separate repository outside this worktree's own
+`cargo test` gate (no `uv`/python toolchain on the runner box), so the
+commands below were run by hand in that repo, against its own committed
+corpus. This file is the recorded proof `tests/docsqa_ac06_synthorg_task_
+matches_gold_question_3.rs` points to for the half it cannot execute itself.
+
+| item | value |
+|---|---|
+| task id | `docs_qa_recipe` |
+| segment | `rag_indexer` |
+| synthorg commit that added the task | `eb33096` (`corpus: add docs_qa_recipe task for rag_indexer (PRD-mcphost-docs-qa-recipe)`) |
+| synthorg HEAD verified against | `20d01fe` (`eb33096` confirmed an ancestor via `git merge-base --is-ancestor eb33096 HEAD`) |
+| corpus file | `~/repos/synthorg/corpora/mcphost/consumer-tasks.yaml` |
+
+## `synthorg consume --preflight` (lists the task for `rag_indexer`)
+
+```
+$ cd ~/repos/synthorg && synthorg consume --preflight --corpus corpora/mcphost/consumer-tasks.yaml
+...
+docs_qa_recipe: turn_budget: 40
+...
+ok — every gold tool is served
+$ echo $?
+0
+```
+
+## `synthorg corpus check --live-shape` (the fake endpoint fixture satisfies the gold predicate, not vacuously)
+
+```
+$ cd ~/repos/synthorg && synthorg corpus check --live-shape --corpus corpora/mcphost/consumer-tasks.yaml
+task_id | kind | observable | correct | wrong-fails | prose-names | verdict
+...
+docs_qa_recipe | http | vpn-setup.md | True | True | True | ok
+...
+$ echo $?
+0
+```
+
+`vpn-setup.md` is the same `expected_document` this repo's own
+`examples/docs-qa/corpus/gold.json` records for question 3 — `synthorg
+corpus check --live-shape` independently confirms the synthorg-side task's
+`call_check` is satisfied by a correct tool result and fails against a
+wrong one (`correct`/`wrong-fails` both `True`), i.e. the check is not
+vacuous.
+
+## Proxy-tier fixture run (fake in-process endpoint, no cost)
+
+The "proxy-tier fixture run" is the fake-mode pytest suite that actually
+dispatches the `docs_qa_recipe` http-kind task to the in-process fixture at
+`/docs/search/question-3` and scores a known-good transcript as a pass and
+known-bad transcripts as failures:
+
+```
+$ cd ~/repos/synthorg && python -m pytest \
+    tests/ragtasks_ac3_known_good_bad_transcripts_test.py \
+    tests/fixture_upstream_ac5_fake_run_dispatches_to_fixture_test.py
+tests/ragtasks_ac3_known_good_bad_transcripts_test.py ....            [ 80%]
+tests/fixture_upstream_ac5_fake_run_dispatches_to_fixture_test.py .    [100%]
+5 passed in 8.49s
+```
+
+Together these three runs are the actual execution AC6's When-clause names
+(`synthorg consume --preflight`, and the proxy-tier/fake-endpoint fixture
+proving the gold predicate) — not a hand-written assertion about what the
+task file says, and not invented output.
+
 ## Receipt: docs-qa-panel-satisfaction.md
 
 # satisfaction[rag_indexer] panel record — PRD-mcphost-docs-qa-recipe
@@ -853,6 +928,7 @@ measured without the task cannot answer this AC.
 | corpus task | `docs_qa_recipe` (`~/repos/synthorg/corpora/mcphost/consumer-tasks.yaml`, synthorg commit `eb33096`) |
 | pinned panel | `corpora/mcphost/panel-composition.yaml` |
 | vision record | `~/Documents/PRDs` commit `05e9541` (the `## Satisfaction record` section this file mirrors) |
+| PRD deferral record | `~/Documents/PRDs` commit `7c383c3` (`build-queue/PRD-mcphost-docs-qa-recipe.md` frontmatter: `deferred_acs: [9, 10]` + `mock_justifications`; the repo's own copy at `PRD-mcphost-docs-qa-recipe.md` is what `tests/docsqa_ac10_deferral_is_justified.rs` parses on the runner box) |
 
 ## The truth-tier run (deferred — operator-authorized, after land)
 
@@ -901,20 +977,90 @@ prove, on real run output rather than a hand-written fixture, is that
 
 - 2026-09-26 offline run runs/offline-docsqa-20260926T053158Z: satisfaction[rag_indexer]=90.0% (target >= 75%, scored 5/5 sessions, docs_qa_recipe included, corpus fingerprint 609b58d058cc)
 
-## Fixtures the test drives
+## Fixtures the test drives, pinned to the runs they came from
 
-`tests/docsqa_ac10_truth_tier_panel_satisfaction_recorded.rs` runs the
-recorder against two trimmed copies of real `measure.json` files (same keys
-the recorder reads, nothing invented):
+`tests/docsqa_ac10_truth_tier_panel_satisfaction_recorded.rs` drives the
+recorder with two trimmed copies of real `measure.json` files — same keys the
+recorder reads, every value copied unchanged from the run (verified key by key
+against the source measures on the build host, 2026-09-27). Synthorg is a
+different repository and is not present on this gate's runner box, so the
+fixtures cannot be re-derived there; instead each one's byte digest is pinned
+here and
+`the_receipt_pins_each_fixture_to_the_real_run_it_was_trimmed_from` fails if a
+fixture changes without this table changing with it. Editing a *number* in a
+fixture is the one way this AC's mechanism proof could quietly become an
+invented one, and that is what these digests close.
 
-| fixture | run | why |
-|---|---|---|
-| `examples/docs-qa/fixtures/panel-measure-offline-20260926T053158Z.json` | the offline run recorded above (`docs_qa_recipe` included, 90.0%) | the recorder's `offline` classification and the record line, on real output |
-| `examples/docs-qa/fixtures/panel-measure-truth-20260926T025631Z.json` | a real pre-land truth-tier nightly (`rag_indexer` 62.5%, corpus of 28 tasks, **no** `docs_qa_recipe`) | the refusal: a real, live, expensive truth-tier number is still not an answer to AC10 if the task was not in the corpus |
+| fixture | source run (`~/repos/synthorg`) | sha256 (fixture / source measure.json) | why |
+|---|---|---|---|
+| `examples/docs-qa/fixtures/panel-measure-offline-20260926T053158Z.json` | `runs/offline-docsqa-20260926T053158Z` (`docs_qa_recipe` included, `rag_indexer` 90.0%, `client_version: fake`) | `4b0a66c91b1f07056c0c4062294891726d02fb1512608cfddba00623e0c69999` / `1bef3f26e67304f88caf2b029f55adc39b488380190742f9227d6f84a432aff1` | the recorder's `offline` classification and the record line, on real output |
+| `examples/docs-qa/fixtures/panel-measure-truth-20260926T025631Z.json` | `runs/truth-tier-20260926T025631Z` (a real pre-land truth-tier nightly, `rag_indexer` 62.5%, 28 tasks, **no** `docs_qa_recipe`, $4.62) | `97f1c0dc8321ac1fec9511e507389ee4fd5a8d7f28371779dbe47eb670e75f2b` / `8103f1ea5e4920ee6c0ba17cb2e93c1e9bd9f18a825c6dc6035ce54fc34e73f6` | the refusal: a real, live, expensive truth-tier number is still not an answer to AC10 if the task was not in the corpus |
 
-The post-land truth-tier case (task included, live client, ≥ 75%) is derived
-in the test from the second fixture, since no such run exists yet — that is
-exactly what the live half waits for.
+No post-land truth-tier run exists yet, so the measures the target comparison
+runs on are **assembled from those two real runs' own values** and nothing
+else: the truth nightly's `tier`/`client`/`client_version`/`endpoint_version`/
+judge and scorer versions and pinned composition, carrying the offline run's
+whole `corpus` object (the only real corpus that contains `docs_qa_recipe`,
+fingerprint and all) plus one run's own `satisfaction` and session counts —
+the offline run's 90.0% for the green case, the truth nightly's own 62.5% for
+the under-target case. Nothing is hand-set, spliced or rounded;
+`the_measures_under_test_invent_no_number` fails if a later edit tries to.
+
+## The deferral, as declared
+
+AC10's Then is deferred — **operator-provisioned**. The PRD's own frontmatter
+carries `deferred_acs: [9, 10]` and a `mock_justifications` entry for AC10
+naming the paid prod run, the credentials this sandbox does not hold
+(`ANTHROPIC_API_KEY` / `WM_ANTHROPIC_API_KEY`, `SYNTHORG_PROD_ENDPOINT`,
+`SYNTHORG_TRUTH_BRIEF`), the live test file and fn
+(`tests/docsqa_ac10_truth_tier_panel_satisfaction_recorded.rs::live_truth_tier_panel_run_meets_the_target`),
+and the sentence that the always-on tests prove the branch's mechanism, not
+AC10, and are not counted as AC10's proof.
+`tests/docsqa_ac10_deferral_is_justified.rs` parses that frontmatter,
+`agent/test-map.json` and `agent/intent-card.json` and fails if the three ever
+stop agreeing.
+
+## Receipt: mcphost-docs-qa-recipe.md
+
+# Receipt — mcphost-docs-qa-recipe AC9: docs-qa.sh against prod after the v0.60.34 deploy
+
+AC9: Given prod after land, When `docs-qa.sh https://mcphost.dev` runs from carbon with a fresh signup, Then it exits 0 in under 60 s and the receipt is committed under `docs/receipts/`.
+
+## Prod state at the run
+
+- Landed: PR #71 (squash aedb4e5), tag v0.60.34, deploy-on-land.
+- `/opt/mcphost/bin/mcphost --version` on mcphost-1: `mcphost 0.60.34`; service ActiveEnterTimestamp 2026-09-28 03:06:45 UTC (8:06 pm PDT).
+
+## What was run (carbon, 2026-09-27 8:13:29 pm PDT)
+
+```
+examples/docs-qa/docs-qa.sh https://mcphost.dev/mcp --receipt-dir <tmp>
+```
+
+Fresh signup (tenant `t_880aa34a`), the 8-document corpus put and indexed, `ask_docs` published, the 6 gold questions asked. Calls, in order: signup, host.docs.put, host.docs.status, host.tool_publish, t_880aa34a.ask_docs.
+
+## Result
+
+| field | value |
+|---|---|
+| exit code | 0 |
+| wall time | 21232 ms |
+| index ready | 9.215463041968178 s |
+| hits | 6/6 |
+| quota | {"documents": 8, "chunks": 35, "tool_calls": 6} |
+
+Per question:
+
+| # | question | result | citation |
+|---|---|---|---|
+| 1 | How many business days does a new hire have to complete onboarding paperwork? | hit | onboarding.md:617 |
+| 2 | What is the meal reimbursement limit that requires an itemized receipt? | hit | expense-policy.md:557 |
+| 3 | What port does the VPN client connect on? | hit | vpn-setup.md:2083 |
+| 4 | Who gets paged first for a Sev1 incident? | hit | incident-response.md:0 |
+| 5 | How many PTO days do employees accrue per year? | hit | pto-policy.md:1725 |
+| 6 | How often must employees rotate their password? | hit | security-basics.md:0 |
+
+Full receipt JSON (per-step timings, answers with cited passages): `docs/receipts/mcphost-docs-qa-recipe-ac9-20260927.json`.
 
 ## Receipt: mcphost-upstream-token-vault-status.md
 

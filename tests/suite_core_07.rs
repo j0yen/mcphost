@@ -514,6 +514,18 @@ mod kindhonor_ac4_initialize_instructions_mention_kind;
 mod kindhonor_ac5_replay_cost_optimizer_shape;
 #[path = "kindhonor_ac6_tools_list_meta_kind.rs"]
 mod kindhonor_ac6_tools_list_meta_kind;
+#[path = "kindroute_ac01_webhook_alias_returns_http_recipe.rs"]
+mod kindroute_ac01_webhook_alias_returns_http_recipe;
+#[path = "kindroute_ac02_case_insensitive_alias.rs"]
+mod kindroute_ac02_case_insensitive_alias;
+#[path = "kindroute_ac03_tool_publish_event_alias_resolves_to_http.rs"]
+mod kindroute_ac03_tool_publish_event_alias_resolves_to_http;
+#[path = "kindroute_ac06_contract_and_llms_txt_document_aliases.rs"]
+mod kindroute_ac06_contract_and_llms_txt_document_aliases;
+#[path = "kindroute_ac07_quickstart_no_kind_lists_kinds_aliases_recipes.rs"]
+mod kindroute_ac07_quickstart_no_kind_lists_kinds_aliases_recipes;
+#[path = "kindroute_ac08_full_suite_green_at_landing.rs"]
+mod kindroute_ac08_full_suite_green_at_landing;
 #[path = "lanecov_ac01_every_tracked_path_routes.rs"]
 mod lanecov_ac01_every_tracked_path_routes;
 #[path = "lanecov_ac02_coverage_test_is_actually_run.rs"]

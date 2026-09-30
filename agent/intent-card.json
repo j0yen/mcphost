@@ -1,83 +1,84 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-oauth-unverified-client-consent-warning.md",
-  "intent_slug": "mcphost-oauth-unverified-client-consent-warning",
-  "root_motivation": "Grounding: a 2026-09-28 external security report registered arbitrary client_name/redirect_uris via mcphost's open DCR endpoint unauthenticated and confirmed the server persists and renders them verbatim -- the consent page today shows only client_name, so a self-registered app named \"mcphost Official\" renders indistinguishably from a verified one and the redirect destination is never shown. Real-world exploitability is low only because mcphost has ~0 real tenants (memory: self_mcphost_tenants_real_is_synthetic); the gap is structural and grows with every real user added. This PRD closes it with informed consent (a caution + destination host), not by gating DCR (a friction analysis showed gating adds real onboarding cost for little added security given redirect_uri is already per-client-bound).",
-  "user_persona": "The mcphost end user approving a consent screen for an app they may not recognize, who wants to know whether it is self-registered and where their access is going before approving; the mcphost operator, who can mark a known client_id verified so first-party/vetted DCR clients aren't warned against; and the security reviewer responding to the 2026-09-28 report, who needs a consent screen that surfaces provenance and destination as the mitigation.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-unknown-kind-routes-to-recipe.md",
+  "intent_slug": "mcphost-unknown-kind-routes-to-recipe",
+  "root_motivation": "Grounding: a 2026-09-29 explore run (dream-seeds-0929.txt §A) found 5 of 168 synthetic sessions calling host.quickstart with kind \"event\" or \"webhook\" and being refused UnknownKind (registered kinds: chain, echo, http, python, wasm; no data.docs/hint field) even though the capability they wanted -- the webhook-inbox recipe (http kind + host.trigger.*) -- has been live since PRD-mcphost-inbound-events/PRD-mcphost-webhook-inbox. An agent builder names the job (\"webhook\"), not mcphost's runtime taxonomy, so every such refusal is a lost first minute against a capability that already ships. This PRD adds a kind-alias table that routes those job-words to the existing recipe instead of refusing them, and gives a genuinely unknown kind the same data.docs/registered/did_you_mean shape PRD-mcphost-auth-error-names-argument already gave auth errors.",
+  "user_persona": "The agent builder (persona or human) who knows \"webhook\"/\"event\"/\"cron\" but not mcphost's runtime kind names, and wants host.quickstart/host.tool_publish to route them to the working recipe instead of refusing; the explore/synthorg operator whose dx-findings should stop recording UnknownKind for these job-words; and the PM (Joe), for whom the webhook-inbox killer-app recipe should be reachable by its own name.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 9
+    "target": 8
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a DCR client (method=\"dcr\") not operator-verified, When its /oauth/authorize consent page renders, Then it carries an unverified-application caution stating the app self-registered and is not verified by mcphost.",
-      "test": "tests/mcphost_oauth_unverified_client_consent_warning_ac01_dcr_unverified_caution_renders.rs"
+      "description": "Given host.quickstart called with kind: \"webhook\", When the server responds, Then the spec's kind is http, resolved_from is webhook, and recipe.steps lists host.tool_publish, host.trigger.set, host.trigger.test in order with args_example on each.",
+      "test": "tests/kindroute_ac01_webhook_alias_returns_http_recipe.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a CIMD client (method=\"cimd\"), When its consent page renders, Then no unverified-application caution is rendered.",
-      "test": "tests/mcphost_oauth_unverified_client_consent_warning_ac02_cimd_no_unverified_caution.rs"
+      "description": "Given the same call with kind: \"EVENT\", When the server responds, Then it resolves identically (case-insensitive).",
+      "test": "tests/kindroute_ac02_case_insensitive_alias.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a consent page for any third-party client, When it renders, Then it displays the destination host of the redirect_uri the code would be delivered to.",
-      "test": "tests/mcphost_oauth_unverified_client_consent_warning_ac03_destination_host_shown.rs"
+      "description": "Given host.tool_publish with a valid http spec body but kind: \"event\", When the server responds, Then the tool is created with runtime kind http, the descriptor carries resolved_from: \"event\", and host.tool_call on it succeeds.",
+      "test": "tests/kindroute_ac03_tool_publish_event_alias_resolves_to_http.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a DCR client whose client_name is attacker-supplied (e.g. \"mcphost Official\" or HTML), When the consent page renders, Then the name is HTML-escaped and presented as self-asserted, never verified/first-party styled.",
-      "test": "tests/mcphost_oauth_unverified_client_consent_warning_ac04_dcr_name_escaped_self_asserted.rs"
+      "description": "Given host.tool_publish with kind: \"lambda\", When the server responds, Then the JSON-RPC code is -32602, data.error_code is unknown_kind, data.registered lists the five kinds, data.aliases lists the aliases, data.did_you_mean contains python, and data.docs is host.quickstart.",
+      "test": "tests/kindroute_ac04_unknown_kind_carries_recipe_hints.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a DCR client registered with no client_name, When the consent page renders, Then it shows a neutral placeholder and still renders the caution and destination host, with no crash or empty-name injection.",
-      "test": "tests/mcphost_oauth_unverified_client_consent_warning_ac05_dcr_no_name_neutral_placeholder.rs"
+      "description": "Given the alias table, When the kindroute startup test runs, Then every alias resolves to a kind in the registered list and every recipe.steps[].tool is a registered tool.",
+      "test": "tests/kindroute_ac05_startup_aliases_and_recipe_tools_are_registered.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a client_id on the operator verified-client allowlist, When its consent page renders, Then the unverified caution is suppressed even though method=\"dcr\".",
-      "test": "tests/mcphost_oauth_unverified_client_consent_warning_ac06_operator_allowlist_suppresses_caution.rs"
+      "description": "Given contracts/host-tools.v1.json and www/llms.txt at the landing commit, When grepped, Then the kind description and the kinds paragraph both contain webhook and alias.",
+      "test": "tests/kindroute_ac06_contract_and_llms_txt_document_aliases.rs"
     },
     {
       "id": "AC7",
-      "level": "MUST",
-      "description": "Given the unverified caution renders, When the user reads it, Then it links to a short explainer of what an unverified app means.",
-      "test": "tests/mcphost_oauth_unverified_client_consent_warning_ac07_caution_links_to_explainer.rs"
+      "level": "SHOULD",
+      "description": "Given host.quickstart with no kind, When the server responds, Then the response lists kinds, aliases and recipes arrays.",
+      "test": "tests/kindroute_ac07_quickstart_no_kind_lists_kinds_aliases_recipes.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given a user approves consent for an unverified (DCR, non-allowlisted) client, When the consent is recorded, Then the audit record notes the client was unverified at approval time.",
-      "test": "tests/mcphost_oauth_unverified_client_consent_warning_ac08_consent_record_notes_unverified.rs"
+      "description": "Given cargo test at the landing commit, When it runs, Then every test that passed at v0.61.0 still passes and the kindroute_* tests for AC 1-7 pass, with the gate receipt showing block=0.",
+      "test": "tests/kindroute_ac08_full_suite_green_at_landing.rs -- pins docs/benchmarks/kindroute-suite-gate.txt (1426 passed, 0 failed, 8 pre-existing ignored; cargo clippy --all-targets -- -D warnings: 0 warnings)."
     },
     {
       "id": "AC9",
       "level": "MUST",
-      "description": "Given an existing CIMD or first-party (allowlisted) consent flow, When a user completes it, Then behavior is unchanged -- consent still cannot be skipped, scopes still render -- and the caution is purely additive.",
-      "test": "tests/mcphost_oauth_unverified_client_consent_warning_ac09_verified_flow_unchanged.rs"
+      "description": "Given prod after deploy-on-land, When a one-shot client sends host.quickstart with kind: \"webhook\" to https://mcphost.dev as a fresh synthetic tenant, Then the response has resolved_from: \"webhook\" and three recipe steps, and the following nightly explore's dx-findings.jsonl has zero unknown_kind rows for event/webhook (Live; evidence: the probe response and the dx-findings grep count, pasted into the receipt by the operator).",
+      "test": "deferred (Live) -- operator-provisioned; no branch-local test possible before deploy."
     }
   ],
   "scope": [
-    "src/authz.rs: render_consent_page now takes the resolving ClientIdentity plus the operator's VerifiedClientIds allowlist (state.verified_client_ids) instead of a bare client_name -- a DCR client not on the allowlist renders an unverified-application caution linking to a new short explainer, and every consent page (DCR or CIMD) shows the redirect_uri's destination host. display_client_name falls back to a neutral placeholder for a nameless client. post_authorize's existing 'consent' audit row now carries reason \"unverified_client_at_approval\" for an unverified approval, None unchanged otherwise.",
-    "src/state.rs: VerifiedClientIds -- a startup-parsed $MCPHOST_VERIFIED_CLIENT_IDS comma-separated list, same convention as the existing FleetIps/$MCPHOST_FLEET_IPS -- the PRD's own open-question default since no existing operator config surface is a global (not per-tenant) verified-client signal.",
-    "src/http.rs: new GET /oauth/unverified-app static explainer route.",
-    "src/claim.rs: a .caution/.self-asserted CSS addition to the shared consent-page STYLE constant.",
-    "tests/common/mod.rs: AppState gains verified_client_ids everywhere it's constructed; TestServer::start_with_verified_client_ids lets a test set the allowlist directly, same pattern as start_with_signup_rate_limit_and_fleet_ips."
+    "src/kinds/aliases.rs (new): the KIND_ALIASES const table (alias/kind/recipe rows), find_alias (case-insensitive lookup), alias_names, recipe_names, recipe_steps -- the one data-driven place requirement 1 asks for.",
+    "src/control.rs: resolve_kind (shared by quickstart and tool_publish) resolves an exact registered kind name first, then the alias table; quickstart's response gains resolved_from/recipe when an alias fired, plus unconditional kinds/aliases/recipes arrays (AC7); tool_publish resolves before every downstream check (kind_mismatch, network/deps gates, storage) and its response gains resolved_from.",
+    "src/errors.rs: AppError::UnknownKind gains an aliases field; into_error_data adds data.registered/data.aliases/data.did_you_mean (curated FaaS-vocabulary hints plus a Levenshtein edit-distance pass over registered kinds + aliases, capped at 3); data.docs (host.quickstart) was already unconditional.",
+    "src/handler.rs: host.tool_publish's and host.quickstart's kind property descriptions now name the aliases; host.spec_test's UnknownKind construction updated for the new field (no alias resolution added there -- out of this PRD's requirement 2/3 scope).",
+    "contracts/host-tools.v1.json: regenerated via `mcphost contract dump` after the description-text edit above.",
+    "www/llms.txt: the \"Publish a tool\" paragraph (step 4) gains one sentence naming the aliases and the two recipes."
   ],
   "non_goals": [
-    "Gating or blocking DCR registration (no Initial Access Token, no CIMD-required mode, no global redirect allowlist) -- PRD's own Non-goals; open DCR stays open.",
-    "Changing rate-limiting or per-client redirect binding -- both already exist and are unchanged.",
-    "A client-approval/allowlist-to-connect workflow -- that's the separate mcphost-oauth-client-policy component; this PRD only suppresses the warning for an allowlisted client_id, it does not decide who may connect.",
-    "Measuring user behavior change (efficacy of the warning) -- the AC scope is that the correct UI renders for the correct client class."
+    "New runtime kinds -- PRD's own non-goal; every alias resolves to the existing http kind, never a new Kind impl.",
+    "Changing trigger signature semantics -- PRD-mcphost-event-trigger-self-test's territory, untouched here.",
+    "Rewriting llms.txt beyond the kinds paragraph.",
+    "Requirement 7 (unknown_kind_total{requested} metrics counter) and requirement 8 (registry listing advertises \"receive webhooks\") -- P1/P2 requirements with no corresponding AC in the coder dispatch's list; not attempted this tick."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -86,45 +87,44 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "test_file_names_use_underscores_not_the_prd_slugs_hyphens": "The coder dispatch's own naming convention names test files after the literal (hyphenated) PRD slug, but scripts/gen-test-suites.sh's per-file consolidation declares `#[path = \"<stem>.rs\"] mod <stem>;` using the bare filename stem as a Rust identifier -- a hyphen there is a syntax error. Resolved by using the PRD slug with hyphens replaced by underscores (mcphost_oauth_unverified_client_consent_warning) as the test_prefix, the same shape every other test file in this repo already uses (docsqa, oauthpol, hostedas, ...).",
-      "verified_client_allowlist_is_a_new_env_list_not_the_existing_oauth_policy_allowlist": "oauth_policy::OauthPolicy.allowlist (host.oauth.policy_set) already exists but is a per-TENANT connect/deny decision (\"which clients may reach my consent screen at all\"), not an operator-wide verification signal -- reusing it would mean every tenant has to independently allowlist mcphost's own first-party client_ids, and a client absent from one tenant's list would wrongly render as unverified even if the operator vouches for it globally. Resolved per the PRD's own open-question default: a new static, startup-parsed $MCPHOST_VERIFIED_CLIENT_IDS list, operator-wide."
+      "did_you_mean_is_not_pure_edit_distance": "Requirement 4 describes did_you_mean as 'edit distance ≤ 2 against kinds and aliases, max 3', but AC4's own example (kind: \"lambda\" must suggest python) has a Levenshtein distance of 6 from every registered kind/alias -- no threshold-≤2 pass produces it. Resolved by adding a small curated synonym table (DID_YOU_MEAN_HINTS in errors.rs: lambda/function/functions/serverless/faas → python) checked before the edit-distance pass, which stays the mechanism for an actual typo (\"pythom\", \"htpp\"). The AC (what tests must prove) wins over the requirement prose's algorithm description where the two conflict."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why warn instead of gating DCR registration outright?",
-      "a": "PRD's own Non-goals: a 2026-09-28 friction analysis showed gating adds real friction to zero-touch MCP client onboarding for little added security, since redirect_uri is already per-client-bound (redirect_uri_allowed) -- this PRD is the friction-free alternative: informed consent, zero new steps."
+      "q": "Why route job-words to a recipe instead of just improving the UnknownKind error message?",
+      "a": "Goal 1 (PRD TL;DR): the capability the agent wants (webhook-inbox) already exists and is measured nightly -- a better error message still ends in a refusal; routing kind=\"webhook\" straight to a working http spec plus the host.trigger.set/test steps turns the first call into a success instead of a well-explained failure."
     },
     {
       "why": 2,
-      "q": "Why is a CIMD client exempt from the caution but a DCR client is not?",
-      "a": "Technical considerations: a CIMD client_id is a URL whose metadata document must fetch and validate (identify_client's is_cimd_client_id + cimd_cache.resolve) -- the client demonstrably controls a domain, a materially stronger provenance signal than an anonymous dcr_<random> id with no such proof."
+      "q": "Why resolve aliases in one shared function (control::resolve_kind) rather than duplicating the lookup in quickstart and tool_publish?",
+      "a": "Both call sites need the identical registered-name-wins-then-alias-table behavior and must fail with the identical UnknownKind data payload -- a second, hand-copied version of that logic is exactly the kind of drift PRD-mcphost-tenant-key-missing-is-invalid-params's field_and_expected/docs helpers were already built to avoid for error shaping."
     },
     {
       "why": 3,
-      "q": "Why does the allowlist suppress the caution rather than reclassify the client as CIMD-equivalent?",
-      "a": "Non-goals: this PRD only suppresses the warning for an allowlisted client_id, it does not decide who may connect -- that gating capability is the separate mcphost-oauth-client-policy component, so the allowlist stays a display-only exemption, not a trust upgrade with other side effects."
+      "q": "Why does host.tool_publish resolve kind_name to the runtime kind BEFORE the kind_mismatch/network/deps checks, rather than leaving kind_name as the alias string and only translating it at storage time?",
+      "a": "Those checks (infer_kind_signal's http/python mismatch check, the python-only network/deps gates) match on kind_name.as_str() directly -- leaving it as \"event\" would silently skip kind_mismatch detection for an alias'd http publish and misclassify it against the python-only gates; resolving first means every downstream check runs against the kind that will actually be stored."
     },
     {
       "why": 4,
-      "q": "Why record 'unverified at approval time' on the audit row instead of deriving it later from the client's current method/allowlist state?",
-      "a": "Open questions (default: record it, surfacing waits): the client's verification state can change after approval (added to or removed from the allowlist later) -- recording it at the moment of approval preserves what the user actually saw when they consented, which a later re-derivation from current state could no longer reconstruct."
+      "q": "Why does AC7's kinds/aliases/recipes addition apply unconditionally rather than only when kind is omitted?",
+      "a": "The AC's Given is 'host.quickstart with no kind', but gating the fields on that condition would mean a caller who already knows one kind can't discover the others without a second, kind-less call -- additive fields cost nothing for the existing tests (verified: no test asserts an exact/closed key set on quickstart's response) and are strictly more useful shipped on every response."
     }
   ],
-  "created_at": "2026-09-29T00:00:00Z",
+  "created_at": "2026-09-30T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Does an operator config surface for a verified-client allowlist already exist to reuse, or is a new static list acceptable for P1?",
-      "resolution": "No existing surface fits a global (not per-tenant) verified-client signal -- oauth_policy's own allowlist is per-tenant connect/deny. Per the PRD's own default: a new $MCPHOST_VERIFIED_CLIENT_IDS static list, read once at startup, same convention as the existing $MCPHOST_FLEET_IPS."
+      "question": "did_you_mean's algorithm: strict edit-distance-≤2 threshold (as requirement 4's prose reads literally) or something looser?",
+      "resolution": "AC4 is the hard contract and cannot be satisfied by a strict ≤2 threshold (lambda→python is edit distance 6). Resolved with a curated synonym hint table checked first (lambda/function/functions/serverless/faas → python), falling back to the edit-distance-≤2 pass requirement 4 describes for genuine typos. See hard_constraints.additional.did_you_mean_is_not_pure_edit_distance."
     },
     {
-      "question": "Should the destination host show the full redirect_uri on hover/expand, or host-only always?",
-      "resolution": "Per the PRD's own default: host-only. The PRD's own open question flagged 'full on expand' as a possible future enhancement but did not make it an AC, so this dispatch renders host-only with no expand affordance -- adding one would be scope beyond the listed ACs."
+      "question": "Does the \"schedules\" recipe (cron/schedule/scheduled aliases) need its own host.trigger.test-shaped third step, given host.trigger.test only supports message/webhook/event trigger kinds, not schedule?",
+      "resolution": "kinds::aliases::recipe_steps's \"schedules\" recipe uses host.trigger.fire (which fires any trigger by id regardless of kind) as its third step instead of host.trigger.test, so every recipe step names a call that actually works for that recipe's trigger kind, not just a registered tool name in the abstract (AC5 only requires the latter, but a recipe an agent can't actually run would defeat the PRD's own point)."
     },
     {
-      "question": "Should P2's unverified-at-approval flag surface in the existing auth audit export now, or wait for mcphost-oauth-client-policy?",
-      "resolution": "Per the PRD's own default: record it now (the existing host.oauth.audit/audit_export tools already surface every audit row's reason field verbatim, so no new surfacing code was needed), but no new dedicated summary/report for it -- that waits for mcphost-oauth-client-policy."
+      "question": "Should host.spec_test (handler.rs) gain alias resolution too, since it also looks up kind via KindRegistry::get?",
+      "resolution": "No -- PRD requirements 2/3 name only host.quickstart and host.tool_publish; host.spec_test's own UnknownKind construction was updated only for the new `aliases` field (to keep the enum change compiling), not given resolve_kind's alias-lookup behavior. Out of scope per the coder dispatch's AC list."
     }
   ]
 }

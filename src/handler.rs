@@ -309,7 +309,11 @@ fn tool_publish_props() -> Value {
         },
         "kind": {
             "type": "string",
-            "description": "Which registered kind to publish under, e.g. echo, http, python.",
+            "description": "Which registered kind to publish under: chain, echo, http, python, \
+                wasm. A job-word alias also resolves here -- event, events, webhook, webhooks, \
+                inbound or trigger for an inbound webhook, cron, schedule or scheduled for a \
+                timed run -- both resolve to kind http and the descriptor comes back with \
+                resolved_from naming the alias you asked for.",
         },
         "spec": {
             "type": "object",
@@ -649,7 +653,9 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                     "kind": {
                         "type": "string",
                         "description": "Which registered kind to return a worked example for, \
-                            e.g. echo, http, python.",
+                            e.g. echo, http, python -- or a job-word alias (webhook, event, \
+                            cron, ...) for its recipe. Omit to see every kind, alias and \
+                            recipe name.",
                     },
                 }),
                 &["kind"],
@@ -4619,6 +4625,7 @@ impl McpHostHandler {
                 .ok_or_else(|| AppError::UnknownKind {
                     requested: kind_name.clone(),
                     registered: self.state.kinds.names(),
+                    aliases: crate::kinds::aliases::alias_names(),
                 })?;
 
         if let Some(status) = kind.sandbox_status()

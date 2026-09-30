@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.61.1 — 2026-09-30
+
+`host.quickstart` and `host.tool_publish` now accept the job-word an agent
+actually uses for an inbound webhook or a timed run instead of only
+mcphost's runtime kind names: `event`/`events`/`webhook`/`webhooks`/
+`inbound`/`trigger` and `cron`/`schedule`/`scheduled` all resolve
+case-insensitively to kind `http` (`src/kinds/aliases.rs`'s alias table).
+`host.quickstart(kind="webhook")` returns `resolved_from: "webhook"` plus a
+filled-in `recipe` object (`name`, `steps: [{tool, args_example}]`, `docs`)
+walking `host.tool_publish` → `host.trigger.set` → `host.trigger.test` (or,
+for a cron alias, → `host.trigger.fire`); `host.tool_publish` with an
+alias stores the tool under its resolved runtime kind and echoes
+`resolved_from` on the descriptor. `host.quickstart()` with no `kind` now
+also lists every `kinds`/`aliases`/`recipes` name so an agent can pick
+without guessing. A genuinely unknown `kind` (`UnknownKind`, JSON-RPC
+`-32602`) now carries `data.registered`, `data.aliases`, and a
+`data.did_you_mean` (curated synonyms plus edit-distance matches, capped at
+3) alongside the existing `data.docs: "host.quickstart"`.
+
+PRD-mcphost-unknown-kind-routes-to-recipe AC1-AC8. AC9 (Live: a one-shot
+`host.quickstart(kind="webhook")` probe against `https://mcphost.dev` after
+deploy, plus the next nightly explore's `dx-findings.jsonl` zero-`unknown_kind`
+count for event/webhook) is deferred -- operator-provisioned.
+
 ## v0.60.17 — 2026-09-26
 
 `host.tool_share` gains an `expose_spec` opt-in (default false, migration `0045_tool_spec_exposure.sql`): once set, any tenant the tool is shared with can call the new `host.tool_spec_shared {tool: "<owner_namespace>.<name>"}` to read that tool's kind and a redacted spec -- for a python-kind tool, `source`/`args_schema`/`requirements`/`timeout_s`/`network` only, never `env` or a `{{ secret.<name> }}` reference. Sharing (or re-sharing) without the flag clears any prior exposure and resets the read counter; reading counts against the reader's own call quota and is logged the same as `host.tool_call`. Unshared or unexposed reads fail the same way `host.tool_call` already does on an unshared tool -- `tool_not_found` when the tool isn't visible to the caller at all, `spec_not_exposed` when it is shared but `expose_spec` is off -- never revealing which case it is to a caller who shouldn't know the tool exists. `host.tool_list`/the owner's own listing gain `expose_spec`, `exposed_at`, and `spec_reads`.

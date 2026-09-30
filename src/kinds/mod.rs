@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 use jsonschema::error::{TypeKind, ValidationErrorKind};
 use serde_json::{Map, Value, json};
 
+pub mod aliases;
 pub mod chain;
 pub mod conformance;
 pub mod docs;
