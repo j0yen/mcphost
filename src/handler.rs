@@ -2698,6 +2698,18 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &["subject", "attrs"],
             ),
         ),
+        Tool::new(
+            "host.audit.verify",
+            "Recompute the hash-chained audit log over [from_id, to_id] and report whether it's \
+             intact, naming the first broken id if not.",
+            host_schema(
+                json!({
+                    "from_id": {"type": "integer", "description": "First audit record id to verify, inclusive."},
+                    "to_id": {"type": "integer", "description": "Last audit record id to verify, inclusive."},
+                }),
+                &["from_id", "to_id"],
+            ),
+        ),
         // PRD-mcphost-end-user-audit-and-revoke requirement 2 (AC1/AC10).
         Tool::new(
             "host.enduser.list",
@@ -3772,12 +3784,13 @@ impl McpHostHandler {
             "host.state.delete_rows" => {
                 tenant_state::state_delete_rows(&self.state, tenant, &args, end_user).await
             }
-            // PRD-mcphost-row-policy requirement 7: all three tenant-key only.
+            // PRD-mcphost-row-policy requirement 7: tenant-key only.
             "host.policy.set" => crate::rowpolicy::policy_set(&self.state, tenant, &args, end_user).await,
             "host.policy.list" => crate::rowpolicy::policy_list(&self.state, tenant, end_user).await,
             "host.policy.attrs_set" => {
                 crate::rowpolicy::policy_attrs_set(&self.state, tenant, &args, end_user).await
             }
+            "host.audit.verify" => crate::rowpolicy::audit_verify(&self.state, tenant, &args, end_user).await,
             "host.enduser.whoami" => Ok(crate::enduser::whoami(end_user)),
             "host.enduser.assertion_secret_rotate" => {
                 crate::enduser::assertion_secret_rotate(&self.state, tenant, &args).await

@@ -324,6 +324,32 @@
       "since": "0.58.0"
     },
     {
+      "description": "Recompute the hash-chained audit log over [from_id, to_id] and report whether it's intact, naming the first broken id if not.",
+      "input_schema": {
+        "properties": {
+          "from_id": {
+            "description": "First audit record id to verify, inclusive.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          },
+          "to_id": {
+            "description": "Last audit record id to verify, inclusive.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "from_id",
+          "to_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.audit.verify",
+      "since": "0.58.0"
+    },
+    {
       "description": "Dry-run an unpublished http spec against its real upstream; for the other cases see host.quickstart.",
       "input_schema": {
         "properties": {

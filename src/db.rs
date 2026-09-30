@@ -17181,4 +17181,18 @@ impl Db {
         })
         .await
     }
+
+    /// Test-only, AC7's tamper case: overwrites one audit record's
+    /// `applied` field directly (bypassing `audit_chain_append`'s own hash
+    /// computation entirely), same `test_backdate_*` convention as
+    /// [`Self::test_backdate_oauth_federation_pending`] -- simulates a
+    /// row altered after the fact, not a codepath any real write ever
+    /// takes.
+    pub async fn test_tamper_audit_applied(&self, id: i64, applied: String) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute("UPDATE audit_chain SET applied = ?1 WHERE id = ?2", params![applied, id])?;
+            Ok(())
+        })
+        .await
+    }
 }

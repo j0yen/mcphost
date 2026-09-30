@@ -252,3 +252,27 @@ pub async fn policy_attrs_set(
     state.db.end_user_attrs_set(tenant.id, subject.clone(), attrs.clone()).await?;
     Ok(json!({"subject": subject, "attrs": attrs}))
 }
+
+fn arg_i64(args: &Value, name: &str) -> Result<i64, AppError> {
+    args.get(name)
+        .and_then(Value::as_i64)
+        .ok_or_else(|| AppError::InvalidArgs(format!("missing required argument '{name}'")))
+}
+
+/// requirement 7: `host.audit.verify(from_id, to_id)` -- recomputes the
+/// chain over `[from_id, to_id]` and reports whether it's intact, naming
+/// the first broken id if not (AC7).
+pub async fn audit_verify(
+    state: &AppState,
+    tenant: &Tenant,
+    args: &Value,
+    end_user: Option<&EndUser>,
+) -> Result<Value, AppError> {
+    require_tenant_key(end_user)?;
+    let from_id = arg_i64(args, "from_id")?;
+    let to_id = arg_i64(args, "to_id")?;
+    let rows = state.db.audit_chain_range(tenant.id, from_id, to_id).await?;
+    let records: Vec<audit::RetrievalAuditRecord> = rows.into_iter().map(Into::into).collect();
+    let result = audit::verify_chain(&records);
+    Ok(json!({"intact": result.intact, "first_broken_id": result.first_broken_id}))
+}
