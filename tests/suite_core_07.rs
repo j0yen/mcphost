@@ -1310,6 +1310,8 @@ mod tgraph_ac05_next_questions_five_entries_all_runnable;
 mod tgraph_ac06_stale_after_append_tick_clears;
 #[path = "tgraph_ac07_tenant_isolation_identically_named_tables.rs"]
 mod tgraph_ac07_tenant_isolation_identically_named_tables;
+#[path = "tgraph_ac08_description_annotation_node_attribute_and_question_text.rs"]
+mod tgraph_ac08_description_annotation_node_attribute_and_question_text;
 #[path = "tkparam_ac01_tenant_key_missing_is_invalid_params.rs"]
 mod tkparam_ac01_tenant_key_missing_is_invalid_params;
 #[path = "tkparam_ac02_non_string_tenant_key_is_invalid_params.rs"]
