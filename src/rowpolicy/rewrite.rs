@@ -25,13 +25,30 @@ fn object_name_last(name: &sqlparser::ast::ObjectName) -> Option<String> {
 
 /// requirement 4: every distinct table name this query's AST references --
 /// a read-only pass so a policy lookup (async, needs the DB) never has to
-/// run inside the synchronous mutation pass below.
+/// run inside the synchronous mutation pass below. Excludes CTE alias
+/// names (collected the same way, from every `WITH` clause anywhere in the
+/// tree via `pre_visit_query`, run for every nested query): a
+/// `TableFactor::Table` naming a CTE is structurally identical to one
+/// naming a real table, but must never be looked up as a policied target
+/// or row-wrapped itself -- AC4's `WITH recent AS (...) SELECT ... FROM
+/// recent` must filter `recent`'s own `FROM orders`, not additionally
+/// wrap the outer `FROM recent` reference in a second, policy-less
+/// `1 = 0`.
 pub fn referenced_table_names(query: &Query) -> Vec<String> {
     struct Collector {
         names: Vec<String>,
+        cte_names: std::collections::HashSet<String>,
     }
     impl sqlparser::ast::Visitor for Collector {
         type Break = ();
+        fn pre_visit_query(&mut self, query: &Query) -> ControlFlow<Self::Break> {
+            if let Some(with) = &query.with {
+                for cte in &with.cte_tables {
+                    self.cte_names.insert(cte.alias.name.value.to_lowercase());
+                }
+            }
+            ControlFlow::Continue(())
+        }
         fn pre_visit_table_factor(
             &mut self,
             table_factor: &TableFactor,
@@ -47,9 +64,10 @@ pub fn referenced_table_names(query: &Query) -> Vec<String> {
             ControlFlow::Continue(())
         }
     }
-    let mut collector = Collector { names: Vec::new() };
+    let mut collector = Collector { names: Vec::new(), cte_names: std::collections::HashSet::new() };
     let _ = Visit::visit(query, &mut collector);
-    collector.names
+    let Collector { names, cte_names } = collector;
+    names.into_iter().filter(|n| !cte_names.contains(n)).collect()
 }
 
 pub struct Rewritten {
@@ -159,4 +177,32 @@ pub fn apply(query: &mut Query, compiled: &HashMap<String, CompiledPolicy>) -> R
         return Err(err);
     }
     Ok(Rewritten { sql: query.to_string(), bindings: rewriter.bindings, rewrote_any: rewriter.rewrote_any })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse_query(sql: &str) -> Box<Query> {
+        let mut statements = Parser::parse_sql(&GenericDialect {}, sql).expect("parses");
+        match statements.remove(0) {
+            Statement::Query(q) => q,
+            _ => panic!("expected a query"),
+        }
+    }
+
+    /// AC4 regression: a CTE alias (`recent`) is structurally a
+    /// `TableFactor::Table` node identical in shape to a real table
+    /// reference -- `referenced_table_names` must not report it as a
+    /// policied-table candidate, or the outer `FROM recent` gets
+    /// needlessly (and incorrectly) wrapped in its own policy-less
+    /// `1 = 0` on top of `recent`'s own already-filtered body.
+    #[test]
+    fn referenced_table_names_excludes_the_ctes_own_alias() {
+        let query = parse_query(
+            "WITH recent AS (SELECT * FROM orders) SELECT COUNT(*) FROM recent WHERE id IN (SELECT id FROM orders)",
+        );
+        let names = referenced_table_names(&query);
+        assert_eq!(names, vec!["orders".to_string()]);
+    }
 }
