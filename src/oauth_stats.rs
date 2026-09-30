@@ -12,6 +12,10 @@ use crate::state::AppState;
 
 /// requirement 2: the two windows every count here is reported over.
 pub const WINDOW_7D_SECS: i64 = 7 * 86_400;
+/// PRD-mcphost-session-bound-tenant-after-signup requirement 8 (AC11):
+/// `session_bound_calls_24h`'s own window -- the PRD names 24 h explicitly,
+/// not this module's pre-existing 7d/30d pair.
+pub const WINDOW_24H_SECS: i64 = 86_400;
 pub const WINDOW_30D_SECS: i64 = 30 * 86_400;
 
 /// requirement 2: `{key, issuer_jwt, hosted_token}` -- `calls.auth_method`'s
@@ -43,6 +47,10 @@ pub struct HealthzAggregate {
     pub grants_active: i64,
     pub first_issuer_jwt_call_at: Option<i64>,
     pub first_hosted_token_call_at: Option<i64>,
+    /// PRD-mcphost-session-bound-tenant-after-signup requirement 8 (AC11):
+    /// calls served by a post-`signup` session binding in the last 24 h, so
+    /// an operator can see the feature is actually used.
+    pub session_bound_calls_24h: i64,
 }
 
 impl HealthzAggregate {
@@ -56,6 +64,7 @@ impl HealthzAggregate {
             "grants_active": self.grants_active,
             "first_issuer_jwt_call_at": self.first_issuer_jwt_call_at,
             "first_hosted_token_call_at": self.first_hosted_token_call_at,
+            "session_bound_calls_24h": self.session_bound_calls_24h,
         })
     }
 }
@@ -74,6 +83,7 @@ pub async fn compute(state: &AppState) -> Result<HealthzAggregate, AppError> {
     let grants_active = state.db.oauth_grants_active_count().await?;
     let first_issuer_jwt_call_at = state.db.oauth_first_call_at("issuer_jwt").await?;
     let first_hosted_token_call_at = state.db.oauth_first_call_at("hosted_token").await?;
+    let session_bound_calls_24h = state.db.session_bound_calls_since(now - WINDOW_24H_SECS).await?;
     Ok(HealthzAggregate {
         calls_7d: MethodCounts { key: k7, issuer_jwt: j7, hosted_token: h7 },
         calls_30d: MethodCounts { key: k30, issuer_jwt: j30, hosted_token: h30 },
@@ -84,6 +94,7 @@ pub async fn compute(state: &AppState) -> Result<HealthzAggregate, AppError> {
         grants_active,
         first_issuer_jwt_call_at,
         first_hosted_token_call_at,
+        session_bound_calls_24h,
     })
 }
 

@@ -44,6 +44,22 @@ pub fn hash_key(key: &str) -> String {
     to_hex(&hasher.finalize())
 }
 
+/// Constant-time byte comparison, so a caller cannot learn a secret's
+/// prefix from how long a comparison took. Lives here (rather than in one
+/// of its callers) because both `handler::resolve_auth`'s admin-key check
+/// and PRD-mcphost-session-bound-tenant-after-signup's session-id tag check
+/// (`session_bind::SessionBindings::is_server_issued`) need exactly this.
+pub(crate) fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 /// Pull the bearer token out of an `Authorization: Bearer <key>` header.
 pub fn extract_bearer(headers: &http::HeaderMap) -> Option<String> {
     let value = headers.get(http::header::AUTHORIZATION)?.to_str().ok()?;

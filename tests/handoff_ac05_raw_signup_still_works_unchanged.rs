@@ -26,9 +26,16 @@ async fn signup_without_handoff_argument_is_unchanged() {
         .cloned()
         .collect();
     // PRD-mcphost-human-claim-magic-link requirement 1 / AC1: `claim_url`
-    // is the one additive field every signup response now carries
+    // is one additive field every signup response now carries
     // (Migration/compatibility: "Signup response is additive; existing
     // clients ignore claim_url") -- every other field stays byte-identical.
+    //
+    // PRD-mcphost-session-bound-tenant-after-signup requirement 6 (AC6):
+    // `session_bound` is the second, on the same additive terms (that PRD's
+    // own Migration/compatibility section: "Additive. Clients that pass
+    // `tenant_key` on every call see no change"). It is `true` exactly when
+    // this signup bound its connection to the new tenant, which every
+    // `/mcp` signup does -- see `sessbind_ac06_*`.
     let expected: BTreeSet<String> = [
         "tenant",
         "key",
@@ -37,6 +44,7 @@ async fn signup_without_handoff_argument_is_unchanged() {
         "usage",
         "next",
         "claim_url",
+        "session_bound",
     ]
     .into_iter()
     .map(str::to_string)

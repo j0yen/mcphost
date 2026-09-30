@@ -585,8 +585,12 @@ pub fn quickstart(
                     above) and call host.redeem once with the returned handoff_token to get \
                     the key, so the signup/redeem transcript carries a dead credential; \
                     omitting handoff returns the raw key directly instead, unchanged from \
-                    before. A host.* call with no tenant_key fails with tenant_key_missing; \
-                    one that doesn't match any tenant fails with tenant_key_invalid.",
+                    before. On the very connection that ran signup (or host.redeem) the \
+                    tenant_key argument is optional -- that connection is bound to the \
+                    tenant it just created, so later host.* calls on it need no key. A \
+                    host.* call with no tenant_key on any OTHER connection fails with \
+                    tenant_key_missing; one that doesn't match any tenant fails with \
+                    tenant_key_invalid.",
             }],
         }));
     };

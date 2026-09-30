@@ -377,6 +377,12 @@ pub struct AppState {
     /// renders its consent page with no unverified caution, same as a
     /// CIMD client, even though `method == "dcr"`.
     pub verified_client_ids: VerifiedClientIds,
+    /// PRD-mcphost-session-bound-tenant-after-signup requirement 1/4: the
+    /// bounded, in-memory "this streamable-HTTP session created that
+    /// tenant" map -- see [`crate::session_bind::SessionBindings`]. Never
+    /// persisted, never visible to `admin.tenants`; same `Arc`-shared-
+    /// across-clones rationale as [`AppState::checkout_sessions`].
+    pub session_bindings: crate::session_bind::SessionBindings,
 }
 
 pub fn now_unix() -> i64 {

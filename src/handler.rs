@@ -17,7 +17,7 @@ use rmcp::service::{NotificationContext, RequestContext};
 use rmcp::{RoleServer, ServerHandler};
 use serde_json::{Map, Value, json};
 
-use crate::auth::{extract_bearer, hash_key};
+use crate::auth::{constant_time_eq, extract_bearer, hash_key};
 use crate::db::{Tenant, ToolRow};
 use crate::errors::AppError;
 use crate::kinds::{
@@ -66,23 +66,25 @@ fn value_to_json_object(v: Value) -> Map<String, Value> {
 /// hosted_token}`) already reads -- kept as a separate function rather than
 /// widening that domain, since `oauth_ac*`/`hostedas_ac10` already pin
 /// `"oauth"` as `host.whoami`'s own reported value and must not change.
-fn calls_auth_method(oauth_caller: Option<&crate::oauth::OauthCaller>) -> &'static str {
+///
+/// PRD-mcphost-session-bound-tenant-after-signup requirement 8 (AC11): the
+/// domain gains `session` -- a call that presented no credential at all and
+/// resolved through this connection's own post-`signup` binding, so demand
+/// and audit views can tell it apart from a call that presented a key. Never
+/// set alongside an `OauthCaller`: the binding is only ever consulted when
+/// neither an `Authorization` header nor a `tenant_key` argument resolved
+/// (see `call_tool`), so `via_session_binding` implies `oauth_caller ==
+/// None`.
+fn calls_auth_method(
+    oauth_caller: Option<&crate::oauth::OauthCaller>,
+    via_session_binding: bool,
+) -> &'static str {
     match oauth_caller.map(|o| o.auth_method) {
+        None if via_session_binding => "session",
         None => "key",
         Some("hosted_token") => "hosted_token",
         Some(_) => "issuer_jwt",
     }
-}
-
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    let mut diff = 0u8;
-    for (x, y) in a.iter().zip(b.iter()) {
-        diff |= x ^ y;
-    }
-    diff == 0
 }
 
 async fn resolve_auth(state: &AppState, parts: &http::request::Parts) -> Result<Auth, AppError> {
@@ -168,6 +170,99 @@ async fn resolve_tenant_key_auth(state: &AppState, args: &Value) -> Result<Auth,
     }
 }
 
+/// PRD-mcphost-session-bound-tenant-after-signup requirement 1: every tool
+/// that hands the caller a freshly-created tenant's own key binds that
+/// tenant to the session the call arrived on. Those are exactly `signup`
+/// (`control::signup`) and `host.redeem` (`control::redeem`) -- the two
+/// results in this crate that carry a `key` field the caller did not
+/// already hold; `host.key_rotate` returns a key too, but to a caller that
+/// is *already* authenticated as that tenant, so it never reaches here.
+///
+/// Requirement 5, "a binding is only ever created from a tenant this session
+/// created or redeemed itself": the tenant is resolved from the key inside
+/// the result this very call just produced, never from anything the caller
+/// named. `signup(handoff: true)` returns a handoff token and no key, so it
+/// binds nothing -- the connection that later redeems that token is the one
+/// that gets the binding.
+///
+/// Requirement 6 (AC6): a bound response says so, in a machine-readable
+/// field and in the `usage` sentence the agent is already reading.
+async fn bind_session_to_created_tenant(
+    state: &AppState,
+    session_id: Option<&str>,
+    result: Result<Value, AppError>,
+) -> Result<Value, AppError> {
+    let mut value = result?;
+    let Some(session_id) = session_id else {
+        return Ok(value);
+    };
+    let Some(key) = value.get("key").and_then(Value::as_str) else {
+        return Ok(value);
+    };
+    let Some(tenant) = state.db.find_tenant_by_key_hash(hash_key(key)).await? else {
+        return Ok(value);
+    };
+    if !state.session_bindings.bind(session_id, tenant.id, now_unix()) {
+        return Ok(value);
+    }
+    tracing::info!(tenant = %tenant.namespace, "session bound to tenant after signup");
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert("session_bound".to_string(), json!(true));
+        if let Some(usage) = obj.get("usage").and_then(Value::as_str) {
+            obj.insert(
+                "usage".to_string(),
+                json!(format!(
+                    "{usage} Later calls on this connection need no tenant_key at all; a new \
+                     connection must pass the returned key (as the tenant_key argument or an \
+                     Authorization: Bearer header)."
+                )),
+            );
+        }
+    }
+    Ok(value)
+}
+
+/// PRD-mcphost-session-bound-tenant-after-signup requirement 1: the third
+/// and last step of the precedence rule (requirement 2 -- header, then
+/// explicit `tenant_key`, then the session's bound tenant). `call_tool`
+/// consults this only when the two steps above it both came back
+/// `Auth::Anonymous`, i.e. the call carried no `Authorization` header AND no
+/// `tenant_key` argument at all -- an *invalid* explicit key resolves to
+/// `Auth::Invalid` and never reaches here, so a binding can never silently
+/// replace a key the caller actually sent (AC4).
+///
+/// Requirement 5: a binding only ever names a tenant the session itself
+/// created, so the only way it can go stale is the tenant being disabled or
+/// deleted afterwards. Both drop it: a disabled tenant surfaces the existing
+/// `TenantDisabled` error for this call, a deleted one falls through to the
+/// unchanged `tenant_key_missing` refusal, and in either case the next
+/// key-less call on the session is refused like any anonymous one (AC9).
+async fn resolve_session_binding(
+    state: &AppState,
+    session_id: &str,
+) -> Result<Option<Auth>, AppError> {
+    let Some(tenant_id) = state.session_bindings.lookup(session_id, now_unix()) else {
+        return Ok(None);
+    };
+    match state.db.find_tenant_by_id(tenant_id).await? {
+        Some(t) if t.disabled => {
+            state.session_bindings.drop_binding(session_id);
+            Err(AppError::TenantDisabled)
+        }
+        Some(t) => {
+            // See the mirrored comment in `resolve_auth` above.
+            if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
+                tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump last_seen_unix");
+            }
+            Ok(Some(Auth::Tenant(Box::new(t), None)))
+        }
+        None => {
+            state.session_bindings.drop_binding(session_id);
+            Ok(None)
+        }
+    }
+}
+
 fn get_parts(ctx: &RequestContext<RoleServer>) -> Result<&http::request::Parts, McpError> {
     ctx.extensions.get::<http::request::Parts>().ok_or_else(|| {
         AppError::Internal("no HTTP request parts on this call".into()).into_error_data()
@@ -204,6 +299,21 @@ fn source_ip(parts: &http::request::Parts) -> String {
 /// carries no tenant restriction.
 fn tenant_path_namespace(parts: &http::request::Parts) -> Option<&str> {
     parts.uri.path().strip_prefix("/t/")?.strip_suffix("/mcp")
+}
+
+/// PRD-mcphost-session-bound-tenant-after-signup requirement 1: this
+/// request's streamable-HTTP session identifier. Always present on a `/mcp`
+/// or `/t/{ns}/mcp` request -- `http::issue_session_id` mints one when the
+/// caller presented none (or presented a value this process never minted),
+/// so what lands here is always server-generated, never client input. Read
+/// from the request's extensions rather than its headers: see
+/// [`crate::session_bind::RequestSessionId`] for why the header itself is
+/// left exactly as the client sent it.
+fn session_id(parts: &http::request::Parts) -> Option<String> {
+    parts
+        .extensions
+        .get::<crate::session_bind::RequestSessionId>()
+        .map(|s| s.0.clone())
 }
 
 fn mcp_name_header(parts: &http::request::Parts) -> Option<String> {
@@ -350,16 +460,26 @@ pub fn tool_publish_input_schema() -> Value {
 /// Generated once here and applied to each `host_tools()` entry below
 /// rather than hand-edited into ten separate `json!` blocks, which would
 /// drift.
+///
+/// PRD-mcphost-session-bound-tenant-after-signup requirement 9 (AC12): the
+/// description now also states the third precedence step -- on the
+/// connection that ran `signup`/`host.redeem` the key is optional, because
+/// that connection is already bound to the tenant it created. Reading this
+/// is how an agent that just signed up learns it does not have to repeat
+/// the key, which is the whole failure this PRD exists to remove.
 fn host_schema(mut props: Value, required: &[&str]) -> Map<String, Value> {
     if let Some(obj) = props.as_object_mut() {
         obj.insert(
             "tenant_key".to_string(),
             json!({
                 "type": "string",
-                "description": "The key `signup` returned. Required only when this \
-                    connection carries no Authorization: Bearer header -- when both \
-                    are present, the header wins. Omitting it on a connection with no \
-                    header returns tenant_key_missing (-32602).",
+                "description": "The key `signup` returned. Optional on the connection that \
+                    ran signup (or host.redeem): that connection is already bound to the \
+                    tenant it created, so later calls on it need no tenant_key. Required \
+                    only when this connection carries no Authorization: Bearer header and \
+                    never ran signup -- when both a header and this argument are present, \
+                    the header wins. Omitting it on such a connection returns \
+                    tenant_key_missing (-32602).",
             }),
         );
     }
@@ -5415,6 +5535,26 @@ impl ServerHandler for McpHostHandler {
                 .await
                 .map_err(AppError::into_error_data)?;
         }
+        // PRD-mcphost-session-bound-tenant-after-signup requirements 1-2
+        // (AC1, AC2, AC4, AC5): the last step of the precedence rule. Gated
+        // on BOTH resolvers above having come back `Anonymous` -- a valid
+        // header or a valid `tenant_key` has already won (AC5's "header
+        // wins", AC4's "the explicit key's tenant"), and an *invalid*
+        // explicit key is `Auth::Invalid`, so it keeps its own
+        // `tenant_key_invalid` refusal instead of being quietly rescued by
+        // the binding (AC4's second half).
+        let session_id = session_id(parts);
+        let mut via_session_binding = false;
+        if via_tenant_key_arg
+            && matches!(auth, Auth::Anonymous)
+            && let Some(session_id) = session_id.as_deref()
+            && let Some(bound) = resolve_session_binding(&self.state, session_id)
+                .await
+                .map_err(AppError::into_error_data)?
+        {
+            auth = bound;
+            via_session_binding = true;
+        }
         // PRD-mcphost-tenant-resource-metadata requirement 1 (AC2, AC3): a
         // real tenant (key- or JWT-resolved alike) whose namespace doesn't
         // match a `/t/{ns}/mcp` path's own `<ns>` is refused before any
@@ -5592,7 +5732,7 @@ impl ServerHandler for McpHostHandler {
                     Some((name, version)) => (Some(name), Some(version)),
                     None => (None, None),
                 };
-                control::signup(
+                let created = control::signup(
                     &self.state,
                     &args,
                     &source,
@@ -5603,7 +5743,11 @@ impl ServerHandler for McpHostHandler {
                         user_agent: user_agent_header(parts).as_deref(),
                     },
                 )
-                .await
+                .await;
+                // PRD-mcphost-session-bound-tenant-after-signup
+                // requirements 1/6 (AC1, AC6): this session now IS that
+                // tenant, and the response says so.
+                bind_session_to_created_tenant(&self.state, session_id.as_deref(), created).await
             }
             // Requirement 4 / AC3-4: `host.quickstart` is readable before
             // signup, same as the rest of the `host.*` control plane in
@@ -5662,7 +5806,13 @@ impl ServerHandler for McpHostHandler {
             // the argument being authenticated by, so it can't be scrubbed
             // before `control::redeem` ever sees it (unlike `tenant_key`,
             // which this call never carries).
-            (_, "host.redeem") => control::redeem(&self.state, &raw_args).await,
+            (_, "host.redeem") => {
+                // Requirement 1's "and on every tool that returns a fresh
+                // `tenant_key` to the caller -- the handoff redeem path
+                // included".
+                let redeemed = control::redeem(&self.state, &raw_args).await;
+                bind_session_to_created_tenant(&self.state, session_id.as_deref(), redeemed).await
+            }
             // PRD-mcphost-auth-error-names-argument requirement 1-3 /
             // AC1-4: three distinct auth failures now, not one. A header
             // was sent and didn't resolve (`!via_tenant_key_arg`) keeps the
@@ -5714,7 +5864,7 @@ impl ServerHandler for McpHostHandler {
                 // `OauthCaller` at all), else whichever this call's own
                 // bearer resolved to (`"oauth"`/`"hosted_token"`).
                 let auth_method = oauth_caller.as_ref().map_or("key", |o| o.auth_method);
-                let calls_method = calls_auth_method(oauth_caller.as_ref());
+                let calls_method = calls_auth_method(oauth_caller.as_ref(), via_session_binding);
                 self.dispatch_tenant_tool(tenant, subject, auth_method, calls_method, end_user.as_ref(), name, args)
                     .await
             }
@@ -5729,7 +5879,7 @@ impl ServerHandler for McpHostHandler {
                         None,
                         None,
                         end_user.as_ref(),
-                        calls_auth_method(oauth_caller.as_ref()),
+                        calls_auth_method(oauth_caller.as_ref(), via_session_binding),
                         token_scope,
                     )
                     .await
@@ -5762,7 +5912,7 @@ impl ServerHandler for McpHostHandler {
                         mismatch,
                         version,
                         end_user.as_ref(),
-                        calls_auth_method(oauth_caller.as_ref()),
+                        calls_auth_method(oauth_caller.as_ref(), via_session_binding),
                     )
                     .await
                 }

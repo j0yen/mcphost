@@ -6917,6 +6917,25 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-session-bound-tenant-after-signup requirement 8 (AC11):
+    /// how many calls in the window resolved through a session binding --
+    /// `calls.auth_method = 'session'`, the value this PRD adds to migration
+    /// 0053's domain. Its own query (rather than a fourth column on
+    /// [`Self::oauth_calls_by_method`]) because that tuple is the
+    /// `{key, issuer_jwt, hosted_token}` OAuth-demand triple two callers
+    /// already destructure positionally.
+    pub async fn session_bound_calls_since(&self, since_unix: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM calls WHERE auth_method = 'session' AND started_unix >= ?1",
+                params![since_unix],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
     /// requirement 2 (AC2): distinct tenants that called with `issuer_jwt`/
     /// `hosted_token` in the window, excluding a tenant with a `synthetic`
     /// label -- the same predicate `admin.tenants` uses for `synthetic`

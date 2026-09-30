@@ -1,84 +1,104 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-unknown-kind-routes-to-recipe.md",
-  "intent_slug": "mcphost-unknown-kind-routes-to-recipe",
-  "root_motivation": "Grounding: a 2026-09-29 explore run (dream-seeds-0929.txt §A) found 5 of 168 synthetic sessions calling host.quickstart with kind \"event\" or \"webhook\" and being refused UnknownKind (registered kinds: chain, echo, http, python, wasm; no data.docs/hint field) even though the capability they wanted -- the webhook-inbox recipe (http kind + host.trigger.*) -- has been live since PRD-mcphost-inbound-events/PRD-mcphost-webhook-inbox. An agent builder names the job (\"webhook\"), not mcphost's runtime taxonomy, so every such refusal is a lost first minute against a capability that already ships. This PRD adds a kind-alias table that routes those job-words to the existing recipe instead of refusing them, and gives a genuinely unknown kind the same data.docs/registered/did_you_mean shape PRD-mcphost-auth-error-names-argument already gave auth errors.",
-  "user_persona": "The agent builder (persona or human) who knows \"webhook\"/\"event\"/\"cron\" but not mcphost's runtime kind names, and wants host.quickstart/host.tool_publish to route them to the working recipe instead of refusing; the explore/synthorg operator whose dx-findings should stop recording UnknownKind for these job-words; and the PM (Joe), for whom the webhook-inbox killer-app recipe should be reachable by its own name.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-session-bound-tenant-after-signup.md",
+  "intent_slug": "mcphost-session-bound-tenant-after-signup",
+  "root_motivation": "Grounding: explore run explore-20260929T083053Z shows 15 of 168 sessions hitting tenant_key_missing 0.3-5s after signup; the actionable -32602 body is sent as HTTP 401, which the Claude Agent SDK drops, showing only a generic sign-in message. This build confirmed via tests/compat_ac11_ac12_claude_sdk_replay.rs and a full-suite run with legacy session mode enabled that mcphost's transport is fully stateless for the target client: rmcp classifies any initialize as session-based regardless of declared version, and the SDK's own recorded wire shape is indistinguishable from a session-wanting client. Matches the PRD's own exit condition: transport stateless -> blocked; do not substitute a client-supplied identifier.",
+  "user_persona": "The mcphost end user's agent (Claude Code / Agent SDK) that signs up and calls a host.* tool without repeating tenant_key -- blocked at the transport layer this build. The operator still gets two independent fixes: the journal recording the status a client actually received (AC10), and a regression pin that an anonymous session's refusal shape is unchanged (AC3).",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 8
+    "target": 3
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given host.quickstart called with kind: \"webhook\", When the server responds, Then the spec's kind is http, resolved_from is webhook, and recipe.steps lists host.tool_publish, host.trigger.set, host.trigger.test in order with args_example on each.",
-      "test": "tests/kindroute_ac01_webhook_alias_returns_http_recipe.rs"
+      "description": "Given a streamable-HTTP session that ran signup successfully, When it calls host.catalog.search with no tenant_key and no Authorization header, Then the call succeeds as the new tenant.",
+      "test": "tests/sessbind_ac01_keyless_call_after_signup_runs_as_the_bound_tenant.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the same call with kind: \"EVENT\", When the server responds, Then it resolves identically (case-insensitive).",
-      "test": "tests/kindroute_ac02_case_insensitive_alias.rs"
+      "description": "Given the session in AC1, When it calls five more host.* tools with no tenant_key, Then every call runs as the bound tenant.",
+      "test": "tests/sessbind_ac02_five_tools_run_as_the_bound_tenant.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given host.tool_publish with a valid http spec body but kind: \"event\", When the server responds, Then the tool is created with runtime kind http, the descriptor carries resolved_from: \"event\", and host.tool_call on it succeeds.",
-      "test": "tests/kindroute_ac03_tool_publish_event_alias_resolves_to_http.rs"
+      "description": "Given a fresh session with no signup, no tenant_key and no header, When it calls host.catalog.search, Then the response is HTTP 401 with WWW-Authenticate, JSON-RPC -32602, data.error_code tenant_key_missing, byte-for-byte the v0.60.35 body shape.",
+      "test": "tests/sessbind_ac03_anonymous_session_unchanged.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given host.tool_publish with kind: \"lambda\", When the server responds, Then the JSON-RPC code is -32602, data.error_code is unknown_kind, data.registered lists the five kinds, data.aliases lists the aliases, data.did_you_mean contains python, and data.docs is host.quickstart.",
-      "test": "tests/kindroute_ac04_unknown_kind_carries_recipe_hints.rs"
+      "description": "Given a bound session, an explicit tenant_key of a different tenant wins; an invalid one is refused tenant_key_invalid, not the bound tenant.",
+      "test": "tests/sessbind_ac04_explicit_key_wins_over_the_binding.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the alias table, When the kindroute startup test runs, Then every alias resolves to a kind in the registered list and every recipe.steps[].tool is a registered tool.",
-      "test": "tests/kindroute_ac05_startup_aliases_and_recipe_tools_are_registered.rs"
+      "description": "Given a bound session, a valid bearer for tenant T2 wins (header wins), and the binding is unchanged for later header-less calls.",
+      "test": "tests/sessbind_ac05_bearer_wins_and_the_binding_survives.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given contracts/host-tools.v1.json and www/llms.txt at the landing commit, When grepped, Then the kind description and the kinds paragraph both contain webhook and alias.",
-      "test": "tests/kindroute_ac06_contract_and_llms_txt_document_aliases.rs"
+      "description": "Given a session that ran signup twice, a key-less call runs as the second tenant, and the second signup response's session_bound is true.",
+      "test": "tests/sessbind_ac06_second_signup_rebinds_and_reports_session_bound.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given host.quickstart with no kind, When the server responds, Then the response lists kinds, aliases and recipes arrays.",
-      "test": "tests/kindroute_ac07_quickstart_no_kind_lists_kinds_aliases_recipes.rs"
+      "level": "MUST",
+      "description": "Given two concurrent sessions, A's calls succeed and B (never signed up) is refused tenant_key_missing; no binding leaks across sessions.",
+      "test": "tests/sessbind_ac07_concurrent_sessions_no_cross_session_leak.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given cargo test at the landing commit, When it runs, Then every test that passed at v0.61.0 still passes and the kindroute_* tests for AC 1-7 pass, with the gate receipt showing block=0.",
-      "test": "tests/kindroute_ac08_full_suite_green_at_landing.rs -- pins docs/benchmarks/kindroute-suite-gate.txt (1426 passed, 0 failed, 8 pre-existing ignored; cargo clippy --all-targets -- -D warnings: 0 warnings)."
+      "description": "Given 50,000 sessions each running signup, the binding map holds at most 10,000 entries and RSS growth is under 20 MB.",
+      "test": "tests/sessbind_ac08_binding_map_is_bounded_under_a_session_flood.rs"
     },
     {
       "id": "AC9",
       "level": "MUST",
-      "description": "Given prod after deploy-on-land, When a one-shot client sends host.quickstart with kind: \"webhook\" to https://mcphost.dev as a fresh synthetic tenant, Then the response has resolved_from: \"webhook\" and three recipe steps, and the following nightly explore's dx-findings.jsonl has zero unknown_kind rows for event/webhook (Live; evidence: the probe response and the dx-findings grep count, pasted into the receipt by the operator).",
-      "test": "deferred (Live) -- operator-provisioned; no branch-local test possible before deploy."
+      "description": "Given a bound session whose tenant is disabled, a key-less call gets TenantDisabled, and the following call gets tenant_key_missing (binding dropped).",
+      "test": "tests/sessbind_ac09_disabled_bound_tenant_drops_the_binding.rs"
+    },
+    {
+      "id": "AC10",
+      "level": "SHOULD",
+      "description": "Given any tools/call that oauth_401_upgrade rewrites to 401, the request-log line's status field is 401, and for an unmodified 200 response it is 200.",
+      "test": "tests/sessbind_ac10_request_log_records_the_upgraded_status.rs"
+    },
+    {
+      "id": "AC11",
+      "level": "SHOULD",
+      "description": "auth_method is session for AC1's call and key for AC4's; healthz's auth block reports session_bound_calls_24h >= 1.",
+      "test": "tests/sessbind_ac11_session_bound_calls_are_metered_and_counted.rs"
+    },
+    {
+      "id": "AC12",
+      "level": "MAY",
+      "description": "tools/list's tenant_key description states the key is optional on the connection that ran signup; contracts/host-tools.v1.json matches mcphost contract dump.",
+      "test": "tests/sessbind_ac12_tenant_key_description_states_signup_optionality.rs"
+    },
+    {
+      "id": "AC13",
+      "level": "MUST",
+      "description": "Given cargo test at the landing commit, every test that passed at v0.60.35 still passes (tkparam/oauthrs suites unchanged) and the sessbind_* tests for the non-deferred ACs pass, gate receipt block=0.",
+      "test": "tests/sessbind_ac13_regression_gate.rs"
     }
   ],
   "scope": [
-    "src/kinds/aliases.rs (new): the KIND_ALIASES const table (alias/kind/recipe rows), find_alias (case-insensitive lookup), alias_names, recipe_names, recipe_steps -- the one data-driven place requirement 1 asks for.",
-    "src/control.rs: resolve_kind (shared by quickstart and tool_publish) resolves an exact registered kind name first, then the alias table; quickstart's response gains resolved_from/recipe when an alias fired, plus unconditional kinds/aliases/recipes arrays (AC7); tool_publish resolves before every downstream check (kind_mismatch, network/deps gates, storage) and its response gains resolved_from.",
-    "src/errors.rs: AppError::UnknownKind gains an aliases field; into_error_data adds data.registered/data.aliases/data.did_you_mean (curated FaaS-vocabulary hints plus a Levenshtein edit-distance pass over registered kinds + aliases, capped at 3); data.docs (host.quickstart) was already unconditional.",
-    "src/handler.rs: host.tool_publish's and host.quickstart's kind property descriptions now name the aliases; host.spec_test's UnknownKind construction updated for the new field (no alias resolution added there -- out of this PRD's requirement 2/3 scope).",
-    "contracts/host-tools.v1.json: regenerated via `mcphost contract dump` after the description-text edit above.",
-    "www/llms.txt: the \"Publish a tool\" paragraph (step 4) gains one sentence naming the aliases and the two recipes."
+    "src/http.rs: build_router's two /mcp middleware .layer() calls reordered so oauth_401_upgrade (status rewrite) runs before protocol_version_and_log (the request logger) sees the response -- the only production code change this build makes. legacy_session_mode was tried at true and reverted; the module doc comment still describes today's fully-stateless config.",
+    "tests/sessbind_ac03_anonymous_session_unchanged.rs, tests/sessbind_ac10_request_log_records_the_upgraded_status.rs, tests/sessbind_ac13_regression_gate.rs: the three delivered tests.",
+    "Cargo.toml/CHANGELOG.md: version bump 0.60.35 -> 0.61.0 (PRD's own version_bump: minor rule) and the CHANGELOG entry recording both the AC10 fix and the AC1/AC2/AC4-AC9/AC11/AC12 deferral with its technical reason."
   ],
   "non_goals": [
-    "New runtime kinds -- PRD's own non-goal; every alias resolves to the existing http kind, never a new Kind impl.",
-    "Changing trigger signature semantics -- PRD-mcphost-event-trigger-self-test's territory, untouched here.",
-    "Rewriting llms.txt beyond the kinds paragraph.",
-    "Requirement 7 (unknown_kind_total{requested} metrics counter) and requirement 8 (registry listing advertises \"receive webhooks\") -- P1/P2 requirements with no corresponding AC in the coder dispatch's list; not attempted this tick."
+    "Substituting a client-supplied or TCP-connection-derived identifier for a real transport session id -- the PRD's own technical considerations explicitly forbid this, and mcphost's Caddy reverse-proxy topology (connection pooling to the backend) would make a TCP-connection-identity substitute a cross-tenant binding-leak risk, not just an inferior approximation.",
+    "Bumping the rmcp dependency version or patching its session-classification behavior -- SEP-2567's removal of sessions from protocol version 2026-07-28 is a spec-level decision upstream, not a bug a dependency bump would change.",
+    "Any change to OAuth, bearer validation, or wrong_tenant semantics for bearer-vs-key conflicts -- PRD's own non-goal, untouched regardless of the deferral."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -87,44 +107,41 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "did_you_mean_is_not_pure_edit_distance": "Requirement 4 describes did_you_mean as 'edit distance ≤ 2 against kinds and aliases, max 3', but AC4's own example (kind: \"lambda\" must suggest python) has a Levenshtein distance of 6 from every registered kind/alias -- no threshold-≤2 pass produces it. Resolved by adding a small curated synonym table (DID_YOU_MEAN_HINTS in errors.rs: lambda/function/functions/serverless/faas → python) checked before the edit-distance pass, which stays the mechanism for an actual typo (\"pythom\", \"htpp\"). The AC (what tests must prove) wins over the requirement prose's algorithm description where the two conflict."
+      "test_file_names_use_underscores_not_the_prd_slugs_hyphens": "test_prefix sessbind (the PRD's own frontmatter field), same convention as every other test file in this repo.",
+      "transport_session_blocker_is_load_bearing_not_a_convenience_finding": "This isn't 'harder than expected' -- it's the PRD's own written exit condition (Technical considerations: 'If mcphost runs the transport stateless (no session id), this PRD is blocked -- record it as blocked with the observation; do not substitute a client-supplied identifier'), confirmed true of this build before any code was written (src/http.rs's shipped with_legacy_session_mode(false)), and confirmed UNFIXABLE within this rmcp integration by the compat_ac11_ac12 regression test's own evidence (see root_motivation) rather than assumed."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why route job-words to a recipe instead of just improving the UnknownKind error message?",
-      "a": "Goal 1 (PRD TL;DR): the capability the agent wants (webhook-inbox) already exists and is measured nightly -- a better error message still ends in a refusal; routing kind=\"webhook\" straight to a working http spec plus the host.trigger.set/test steps turns the first call into a success instead of a well-explained failure."
+      "q": "Why can't legacy_session_mode(true) just be enabled to get a real Mcp-Session-Id?",
+      "a": "Tried it: a full cargo test run showed 33 pre-existing test failures, all with the same shape -- a request lacking full per-request protocol metadata (which rmcp defaults to protocol version 2025-03-26, itself a legacy/session-eligible version) gets classified as legacy, and lacking an Mcp-Session-Id header, is refused 422 'Unexpected message, expect initialize request' instead of being served statelessly as it is today."
     },
     {
       "why": 2,
-      "q": "Why resolve aliases in one shared function (control::resolve_kind) rather than duplicating the lookup in quickstart and tool_publish?",
-      "a": "Both call sites need the identical registered-name-wins-then-alias-table behavior and must fail with the identical UnknownKind data payload -- a second, hand-copied version of that logic is exactly the kind of drift PRD-mcphost-tenant-key-missing-is-invalid-params's field_and_expected/docs helpers were already built to avoid for error shaping."
+      "q": "Why not route only genuinely session-wanting initialize calls to the legacy-mode service and everything else to the existing stateless one?",
+      "a": "rmcp classifies ANY initialize request as legacy-eligible regardless of its declared protocolVersion, and tests/compat_ac11_ac12_claude_sdk_replay.rs proves the real Claude Agent SDK's own initialize call (protocolVersion 2025-11-25) is byte-for-byte the same shape as a client that DOES want a session and never sends Mcp-Session-Id on any later call -- there is no signal in the initialize request itself to route on."
     },
     {
       "why": 3,
-      "q": "Why does host.tool_publish resolve kind_name to the runtime kind BEFORE the kind_mismatch/network/deps checks, rather than leaving kind_name as the alias string and only translating it at storage time?",
-      "a": "Those checks (infer_kind_signal's http/python mismatch check, the python-only network/deps gates) match on kind_name.as_str() directly -- leaving it as \"event\" would silently skip kind_mismatch detection for an alias'd http publish and misclassify it against the python-only gates; resolving first means every downstream check runs against the kind that will actually be stored."
+      "q": "Why not mint mcphost's own per-connection identifier instead of rmcp's session id?",
+      "a": "The PRD's own non-functional section requires a transport-level, never-client-derived identifier; the only mcphost-visible transport signal weaker than rmcp's own session (e.g. the underlying TCP connection) is already documented elsewhere in this codebase (resolve_source_ip's doc comment) as unreliable in prod, since mcphost runs behind Caddy, which connection-pools to the backend -- two unrelated tenants' calls could share a backend connection, so a connection-identity binding would leak across tenants, violating AC7's own isolation guarantee outright."
     },
     {
       "why": 4,
-      "q": "Why does AC7's kinds/aliases/recipes addition apply unconditionally rather than only when kind is omitted?",
-      "a": "The AC's Given is 'host.quickstart with no kind', but gating the fields on that condition would mean a caller who already knows one kind can't discover the others without a second, kind-less call -- additive fields cost nothing for the existing tests (verified: no test asserts an exact/closed key set on quickstart's response) and are strictly more useful shipped on every response."
+      "q": "Why defer AC10 and AC3's own delivery works given the same transport is otherwise untouched?",
+      "a": "AC10 (request-log status) and AC3 (anonymous refusal shape) don't depend on any session mechanism existing at all -- AC10 is a pure middleware-ordering fix, and AC3 is already true of today's code with zero changes, so both were safely delivered and tested independently of the blocked mechanism."
     }
   ],
   "created_at": "2026-09-30T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "did_you_mean's algorithm: strict edit-distance-≤2 threshold (as requirement 4's prose reads literally) or something looser?",
-      "resolution": "AC4 is the hard contract and cannot be satisfied by a strict ≤2 threshold (lambda→python is edit distance 6). Resolved with a curated synonym hint table checked first (lambda/function/functions/serverless/faas → python), falling back to the edit-distance-≤2 pass requirement 4 describes for genuine typos. See hard_constraints.additional.did_you_mean_is_not_pure_edit_distance."
+      "question": "Does prod issue Mcp-Session-Id today (the PRD's own open question)?",
+      "resolution": "No -- src/http.rs's shipped StreamableHttpServerConfig sets with_legacy_session_mode(false), which per rmcp's own doc comment means every request is served statelessly regardless of negotiated protocol version. Per the PRD's own technical-considerations sentence, this alone triggers the blocked outcome."
     },
     {
-      "question": "Does the \"schedules\" recipe (cron/schedule/scheduled aliases) need its own host.trigger.test-shaped third step, given host.trigger.test only supports message/webhook/event trigger kinds, not schedule?",
-      "resolution": "kinds::aliases::recipe_steps's \"schedules\" recipe uses host.trigger.fire (which fires any trigger by id regardless of kind) as its third step instead of host.trigger.test, so every recipe step names a call that actually works for that recipe's trigger kind, not just a registered tool name in the abstract (AC5 only requires the latter, but a recipe an agent can't actually run would defeat the PRD's own point)."
-    },
-    {
-      "question": "Should host.spec_test (handler.rs) gain alias resolution too, since it also looks up kind via KindRegistry::get?",
-      "resolution": "No -- PRD requirements 2/3 name only host.quickstart and host.tool_publish; host.spec_test's own UnknownKind construction was updated only for the new `aliases` field (to keep the enum change compiling), not given resolve_kind's alias-lookup behavior. Out of scope per the coder dispatch's AC list."
+      "question": "Is enabling legacy session mode acceptable, given the open question defers that judgment to Joe if disabled?",
+      "resolution": "Empirically no, independent of a product judgment call: enabling it regresses 33 already-shipped, must-stay-green tests (AC13's own hard requirement) because rmcp's is_legacy_request classification cannot distinguish the real target client's own wire shape from a client that wants session semantics -- there is no configuration of this build's rmcp integration that adds session support without that regression, so this was not a preference to defer but a build-time fact to report."
     }
   ]
 }

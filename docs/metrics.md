@@ -21,6 +21,20 @@ credential kind in the trailing 7 days -- `calls.auth_method`
 against `tenants.synthetic IS NULL`. A tenant counted once per method it
 used, not once per call.
 
+`calls.auth_method`'s full domain also carries `key` (a tenant key, as a
+header or a `tenant_key` argument) and, since v0.61.0, `session` -- a call
+that presented no credential at all and resolved through the binding its
+own connection's `signup`/`host.redeem` created
+(PRD-mcphost-session-bound-tenant-after-signup). Admin `/healthz`'s `oauth`
+block reports those as `session_bound_calls_24h`, a 24-hour window rather
+than this section's 7/30-day pair, so an operator can see whether agents are
+actually using the session binding:
+
+    session_bound_calls_24h = admin healthz's oauth.session_bound_calls_24h
+
+Unlike `oauth_tenants_7d` above it counts calls, not tenants, and does not
+exclude synthetic tenants.
+
 Read it with one curl from orch:
 
     curl -s -H "Authorization: Bearer $(cat ~/.config/mcphost/admin-key)" \

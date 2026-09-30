@@ -50,6 +50,7 @@ pub mod retention;
 pub mod runs;
 pub mod sandbox;
 pub mod secrets;
+pub mod session_bind;
 pub mod sharing;
 pub mod state;
 pub mod statusfeed;
