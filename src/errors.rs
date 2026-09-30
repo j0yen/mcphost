@@ -37,6 +37,13 @@ fn field_example(field: &str) -> Option<Value> {
         "requirements" => json!(["requests"]),
         "memory_mb" => json!(256),
         "network" => json!("none"),
+        // PRD-mcphost-tenant-key-missing-is-invalid-params requirement 5
+        // (AC6-7): a real tenant_key is a 64-char lowercase-hex string
+        // (auth::generate_key) with no prefix -- this placeholder is
+        // deliberately shaped so it can never be mistaken for (or collide
+        // with) a real one, and never resolves to a tenant (AC7 proves it
+        // by using it, not by string-matching it).
+        "tenant_key" => json!("tk_example_REPLACE_WITH_THE_KEY_SIGNUP_RETURNED"),
         _ => return None,
     })
 }
@@ -51,6 +58,16 @@ pub enum AppError {
     /// (mcphost-session-key) has no header to be "missing or invalid", so
     /// this names the argument the caller can actually pass instead of
     /// reusing [`AppError::Unauthorized`]'s header-shaped text.
+    ///
+    /// PRD-mcphost-tenant-key-missing-is-invalid-params requirement 1 / 8:
+    /// lives in the `INVALID_PARAMS` jsonrpc arm ([`Self::jsonrpc_code`]),
+    /// not `INVALID_REQUEST` alongside [`Self::TenantKeyInvalid`] and the
+    /// other auth-failure variants -- this is a missing *argument*, not a
+    /// rejected credential, and a client (Claude Code among them) that
+    /// branches on the JSON-RPC class rather than `data.error_code` renders
+    /// `INVALID_REQUEST` here as "token expired", sending the caller to fix
+    /// a token it never had instead of the one string argument it forgot.
+    /// The next split of the auth variants should keep it here.
     #[error("tenant_key is required: pass the key that signup returned as the tenant_key argument")]
     TenantKeyMissing,
     /// PRD-mcphost-auth-error-names-argument requirement 2 / AC2-3: a
@@ -315,14 +332,19 @@ impl AppError {
             | AppError::IssuerAlreadyRegistered
             | AppError::IssuerQuotaExceeded { .. }
             | AppError::TrustedIssuerQuotaExceeded { .. }
-            | AppError::SecretMissing(_) => ErrorCode::INVALID_PARAMS,
+            | AppError::SecretMissing(_)
+            // PRD-mcphost-tenant-key-missing-is-invalid-params requirement 1
+            // (AC1-5): moved out of the INVALID_REQUEST arm below -- a
+            // missing/non-string tenant_key argument is a bad parameter,
+            // the same class as every other "you forgot an argument" error
+            // here, not a rejected credential.
+            | AppError::TenantKeyMissing => ErrorCode::INVALID_PARAMS,
             AppError::IssuerNotFound(_) => ErrorCode::RESOURCE_NOT_FOUND,
             AppError::Storage(_)
             | AppError::Internal(_)
             | AppError::CallTimeout(_)
             | AppError::RegistryRejected(_) => ErrorCode::INTERNAL_ERROR,
             AppError::Unauthorized
-            | AppError::TenantKeyMissing
             | AppError::TenantKeyInvalid
             | AppError::Forbidden
             | AppError::TenantDisabled
@@ -504,6 +526,18 @@ impl AppError {
     /// does, no enum change or call-site rewrite required.
     fn field_and_expected(&self) -> (Option<String>, Option<String>) {
         match self {
+            // PRD-mcphost-tenant-key-missing-is-invalid-params requirement
+            // 4 (AC6): names the argument and both ways to satisfy it, so a
+            // caller (or its agent) reading `data` can fix its next call
+            // without parsing the message.
+            AppError::TenantKeyMissing => (
+                Some("tenant_key".to_string()),
+                Some(
+                    "the string signup returned; required only when this connection \
+                     carries no Authorization: Bearer header"
+                        .to_string(),
+                ),
+            ),
             AppError::InvalidToolName(name) => (
                 Some("name".to_string()),
                 Some(format!("must match ^[a-z][a-z0-9_]{{1,40}}$; got '{name}'")),

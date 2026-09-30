@@ -8,7 +8,10 @@ targets = []
 version = 2
 yanked = "deny"
 unmaintained = "workspace"
-ignore = []
+ignore = [
+  { id = "RUSTSEC-2026-0316", reason = "inherited: wasmtime 46.0.3 pinned on main since e1dfd22, not touched by this branch; delta-pass c1854a27 (run 300); fix = bump wasmtime >=48.0.3, tracked as main gate-debt" },
+  { id = "RUSTSEC-2026-0314", reason = "inherited: wasmtime-wasi 46.0.3 pinned on main since e1dfd22, not touched by this branch; delta-pass c1854a27 (run 300); fix = bump wasmtime-wasi >=48.0.3, tracked as main gate-debt" },
+]
 
 [licenses]
 version = 2

@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-docs-qa-recipe.md (test_prefix: docsqa)",
+  "ac_test_map_prd": "PRD-mcphost-tenant-key-missing-is-invalid-params.md (test_prefix: tkparam)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,16 +28,17 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/docsqa_ac01_recipe_end_to_end.rs",
-    "AC2": "tests/docsqa_ac02_quota_inside_free_plan_knobs.rs",
-    "AC3": "tests/docsqa_ac03_llms_txt_section_matches_script.rs",
-    "AC4": "tests/docsqa_ac04_updated_document_changes_the_answer.rs",
-    "AC5": "tests/docsqa_ac05_plugin_command_runs_the_script.rs",
-    "AC6": "tests/docsqa_ac06_synthorg_task_matches_gold_question_3.rs",
-    "AC7": "tests/docsqa_ac07_embeddings_reports_both_hit_rates.rs",
-    "AC8": "tests/docsqa_ac08_zero_passages_is_structured_not_an_error.rs",
-    "AC9": "deferred (Live) -- operator-provisioned: needs a real signup from carbon against https://mcphost.dev after deploy, under 60s, with the receipt committed under docs/receipts/; this coder dispatch has no live operator access.",
-    "AC10": "deferred -- operator-provisioned: AC10's Then is a truth-tier `synthorg consume --tier truth --endpoint https://mcphost.dev/mcp` run against prod after this PRD lands (~$5 and ~40 min of billed frontier calls, driven from ~/repos/synthorg, needing the operator's ANTHROPIC_API_KEY / SYNTHORG_PROD_ENDPOINT / SYNTHORG_TRUTH_BRIEF that this sandbox does not hold). Declared in PRD-mcphost-docs-qa-recipe.md's frontmatter: 'deferred_acs: [9, 10]' plus its mock_justifications entry for AC10. The live check that fails until the operator's run has happened: tests/docsqa_ac10_truth_tier_panel_satisfaction_recorded.rs::live_truth_tier_panel_run_meets_the_target (MCPHOST_LIVE=1, MCPHOST_PANEL_MEASURE=<run>/measure.json). That file's always-on tests prove the recorder's mechanism on measures assembled only from two real synthorg runs' own numbers -- the branch's mechanism, not AC10, and not counted as AC10's proof. tests/docsqa_ac10_deferral_is_justified.rs locks this paper trail (frontmatter vs test-map vs intent-card). AC6 proves the pre-land cross-repo wiring this worktree can test now."
+    "AC1": "tests/tkparam_ac01_tenant_key_missing_is_invalid_params.rs",
+    "AC2": "tests/tkparam_ac02_non_string_tenant_key_is_invalid_params.rs",
+    "AC3": "tests/tkparam_ac03_five_tools_missing_tenant_key.rs",
+    "AC4": "tests/tkparam_ac04_header_auth_unaffected.rs",
+    "AC5": "tests/tkparam_ac05_tenant_key_invalid_unchanged.rs",
+    "AC6": "tests/tkparam_ac06_tenant_key_missing_payload_fields.rs",
+    "AC7": "tests/tkparam_ac07_example_is_placeholder_not_live.rs",
+    "AC8": "tests/tkparam_ac08_secretmissing_and_invalidparams_shape_unchanged.rs",
+    "AC9": "tests/tkparam_ac09_schema_tenant_key_not_required_and_discoverable.rs",
+    "AC10": "deferred (Live) -- operator-provisioned: AC10's Then is a one-shot mcp-probe run against https://mcphost.dev after deploy-on-land, needing operator access this coder dispatch does not hold. Declared deferred per the coder dispatch's own list (operator-provisioned).",
+    "AC11": "tests/tkparam_ac11_full_suite_green_at_landing.rs -- pins the docs/benchmarks/tkparam-suite-gate.txt receipt (cargo test --workspace / cargo clippy at this PRD's landing commit); the receipt itself is the proof of 'every v0.60.34 test still passes', not re-run inside this file."
   },
   "ac_test_map_by_prefix": {
     "ac": {
@@ -678,6 +679,18 @@
       "AC9": "tests/mcphost_shared_tool_spec_readback_ac09_spec_reads_counter.rs",
       "AC10": "deferred (prod leg only) -- operator-provisioned: AC10's Given is \"prod mcphost after deploy\", and the only thing still blocking it is that deploy of this branch to https://mcphost.dev, an operator action (mcphost-deploy). Recorded, not merely claimed: docs/receipts/spec-readback-ac10-prod-probe.md (read-only unauthenticated snapshot of prod's public tools/list, 2026-09-27) shows prod serving every other step of AC10's sequence but not host.tool_spec_shared and with no expose_spec on host.tool_share, and tests/mcphost_shared_tool_spec_readback_ac10_live_two_tenant_spec_read_trailer.rs::only_the_deploy_separates_this_branch_from_prods_tool_surface re-derives that delta against a real server on every run. Credentials are not part of the deferral: prod's signup is unauthenticated, so MCPHOST_TENANT_A_KEY/MCPHOST_TENANT_B_KEY are optional and the MCPHOST_LIVE=1 run mints its own two tenants when they are unset. Always-on mechanism proof: tests/mcphost_shared_tool_spec_readback_ac10_live_two_tenant_spec_read_trailer.rs::tenant_b_reads_source_without_env_and_tenant_a_sees_the_read (MCPHOST_LIVE=1 re-points the identical code at prod for the operator's trailer run); see PRD frontmatter deferred_acs/mock_justifications; deferral paper trail locked by tests/mcphost_shared_tool_spec_readback_ac10_deferral_is_justified.rs",
       "_prd": "PRD-mcphost-shared-tool-spec-readback.md -- superseded by mcphost-docs-qa-recipe at HEAD; real test_prefix is mcphost_shared_tool_spec_readback"
+    },
+    "docsqa": {
+      "AC1": "tests/docsqa_ac01_recipe_end_to_end.rs",
+      "AC2": "tests/docsqa_ac02_quota_inside_free_plan_knobs.rs",
+      "AC3": "tests/docsqa_ac03_llms_txt_section_matches_script.rs",
+      "AC4": "tests/docsqa_ac04_updated_document_changes_the_answer.rs",
+      "AC5": "tests/docsqa_ac05_plugin_command_runs_the_script.rs",
+      "AC6": "tests/docsqa_ac06_synthorg_task_matches_gold_question_3.rs",
+      "AC7": "tests/docsqa_ac07_embeddings_reports_both_hit_rates.rs",
+      "AC8": "tests/docsqa_ac08_zero_passages_is_structured_not_an_error.rs",
+      "AC9": "deferred (Live) -- operator-provisioned: needs a real signup from carbon against https://mcphost.dev after deploy, under 60s, with the receipt committed under docs/receipts/; this coder dispatch has no live operator access.",
+      "AC10": "deferred -- operator-provisioned: AC10's Then is a truth-tier `synthorg consume --tier truth --endpoint https://mcphost.dev/mcp` run against prod after this PRD lands (~$5 and ~40 min of billed frontier calls, driven from ~/repos/synthorg, needing the operator's ANTHROPIC_API_KEY / SYNTHORG_PROD_ENDPOINT / SYNTHORG_TRUTH_BRIEF that this sandbox does not hold). Declared in PRD-mcphost-docs-qa-recipe.md's frontmatter: 'deferred_acs: [9, 10]' plus its mock_justifications entry for AC10. The live check that fails until the operator's run has happened: tests/docsqa_ac10_truth_tier_panel_satisfaction_recorded.rs::live_truth_tier_panel_run_meets_the_target (MCPHOST_LIVE=1, MCPHOST_PANEL_MEASURE=<run>/measure.json). That file's always-on tests prove the recorder's mechanism on measures assembled only from two real synthorg runs' own numbers -- the branch's mechanism, not AC10, and not counted as AC10's proof. tests/docsqa_ac10_deferral_is_justified.rs locks this paper trail (frontmatter vs test-map vs intent-card). AC6 proves the pre-land cross-repo wiring this worktree can test now."
     }
   }
 }

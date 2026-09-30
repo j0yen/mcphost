@@ -138,9 +138,29 @@ fn mock_justifications_names_ac10_with_a_concrete_reason() {
 #[test]
 fn test_map_ac10_entry_agrees_with_the_frontmatter_deferral() {
     let map = read_json("agent/test-map.json");
-    let entry = map["ac_test_map"]["AC10"]
+
+    // agent/test-map.json's own ac_test_map_contract documents the pattern:
+    // ac_test_map is the map for whichever PRD is CURRENTLY building at
+    // HEAD, not a repo-lifetime constant, and a later PRD's legitimate
+    // refresh archives this PRD's map under ac_test_map_by_prefix instead of
+    // leaving it at the top level -- expected drift, not a paper-trail
+    // defect (same guard intent_card_ac10_entry_agrees_with_the_frontmatter_
+    // deferral below already applies to agent/intent-card.json).
+    let current_prd = map["ac_test_map_prd"].as_str().unwrap_or_default();
+    let entry = if current_prd.split_whitespace().next() == Some(PRD) {
+        map["ac_test_map"]["AC10"].clone()
+    } else {
+        eprintln!(
+            "test_map_ac10_entry_agrees_with_the_frontmatter_deferral: agent/test-map.json's \
+             ac_test_map_prd is {current_prd:?} -- a later PRD has refreshed the top-level map \
+             since; checking the archived ac_test_map_by_prefix.docsqa entry instead (expected \
+             drift)"
+        );
+        map["ac_test_map_by_prefix"]["docsqa"]["AC10"].clone()
+    };
+    let entry = entry
         .as_str()
-        .expect("agent/test-map.json ac_test_map.AC10 must be a string");
+        .expect("agent/test-map.json's docsqa AC10 entry (current or archived) must be a string");
 
     assert!(
         entry.starts_with("deferred"),
@@ -153,11 +173,6 @@ fn test_map_ac10_entry_agrees_with_the_frontmatter_deferral() {
              trail instead of dangling: {entry:?}"
         );
     }
-    assert_eq!(
-        map["ac_test_map_prd"].as_str().unwrap_or_default().split_whitespace().next(),
-        Some(PRD),
-        "agent/test-map.json's ac_test_map must be the map for this PRD"
-    );
 }
 
 #[test]

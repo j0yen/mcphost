@@ -1,94 +1,98 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-docs-qa-recipe.md",
-  "intent_slug": "mcphost-docs-qa-recipe",
-  "root_motivation": "Grounding (PRD; visions/mcphost-data-layer-first-slice.md wwhtbt leaf 5; killer-apps recipe method, 5/5 shipped; rag_indexer's own 61.8% satisfaction is the lowest of the panel, wiki 2026-09-23-mcphost-market-test-plan; the consume corpus has 33 tasks and none of them needs documents before this PRD). PRD-mcphost-document-store and PRD-mcphost-docs-semantic-search gave every tenant a document store and ranked search, but nothing proves a stranger's agent can actually finish the job those primitives were built for: sign up, put a folder of markdown, wait for the index, publish one search tool, and get a checkable answer -- all inside free-plan quotas and under a minute. Without a script, a doc section, a plugin command, and a synthorg task that all agree on the same recipe, the fleet lands two primitives and moves no metric.",
-  "user_persona": "Four (PRD User stories): (1) the stranger's agent, reading llms.txt's 'Docs Q&A in a minute' section and finishing it without any other page; (2) the rag_indexer panel persona, running the synthorg task and scored on a top-5 hit; (3) the operator, whose receipt records signup/put/index-ready/publish/call timings for the Live AC; (4) the tool author, copying the 30-line ask_docs.py as a template for their own search-backed tool.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tenant-key-missing-is-invalid-params.md",
+  "intent_slug": "mcphost-tenant-key-missing-is-invalid-params",
+  "root_motivation": "Grounding (PRD; explore-20260929T083053Z: 24 of 98 refused calls in one nightly run had no tenant_key and rendered as \"MCP server 'host' requires re-authorization (token expired)\" in Claude Code, because AppError::TenantKeyMissing shared errors.rs's INVALID_REQUEST arm with Unauthorized/TenantKeyInvalid/Forbidden/TenantDisabled; 16 of those 24 sessions self-recovered only after guessing to pass tenant_key; compete 2026-09-27 saw 0 of 12 builders publish with the same symptom on host.tool_publish). A missing-argument error classed as an auth-class error sends the agent to fix a token it never had instead of the one string argument it forgot -- this PRD moves the one match arm (P0) and fills in data.field/expected/example (P1) so the error is legible without touching provisioning, schema required-ness, or any other error variant's class.",
+  "user_persona": "Three (PRD User stories): (1) an agent on Claude Code that forgot tenant_key, wanting the error to name the missing argument so its next call succeeds instead of the session ending on 'token expired'; (2) an agent operator reading a friction ledger, wanting a missing-argument error classed as a missing argument so they fix the prompt/client instead of investigating token refresh; (3) a Bearer-header client, wanting no change at all -- it never sends tenant_key and never sees this error.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 8
+    "target": 10
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the in-process test host, When examples/docs-qa/docs-qa.sh <url> runs, Then it exits 0, the receipt shows index_ready_secs < 30, hits >= 5, and every answer carries a name:offset citation.",
-      "test": "tests/docsqa_ac01_recipe_end_to_end.rs -- runs the real script as a child process against a TestServer; TestServer now also runs docs_index::spawn_scheduler so the indexer's own 10s cadence is observable."
+      "description": "Given an argument-only tools/call to host.tool_publish with no Authorization header and no tenant_key, When the server responds, Then the JSON-RPC error code is -32602 (INVALID_PARAMS) and not -32600, data.error_code is tenant_key_missing, and data.docs is host.quickstart.",
+      "test": "tests/tkparam_ac01_tenant_key_missing_is_invalid_params.rs -- moves AppError::TenantKeyMissing from jsonrpc_code's INVALID_REQUEST arm to its INVALID_PARAMS arm; error_code/message/docs are built independently in into_error_data and are unchanged."
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the receipt, When its quota section is read, Then documents <= 8, chunks <= 100, tool calls <= 10 -- inside free-plan knobs.",
-      "test": "tests/docsqa_ac02_quota_inside_free_plan_knobs.rs -- quota.tool_calls counts only calls to the recipe's own published ask_docs tool, not the host.* control-plane setup calls around it (see hard_constraints)."
+      "description": "Given the same call with tenant_key: 12345 (non-string), When the server responds, Then the numeric code is -32602 and data.error_code is tenant_key_missing.",
+      "test": "tests/tkparam_ac02_non_string_tenant_key_is_invalid_params.rs -- resolve_tenant_key_auth's existing as_str() guard already treats a non-string value as absent; AC1's class move covers this case for free."
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given www/llms.txt, When the 'Docs Q&A in a minute' section is followed literally by the test (each call parsed from the doc and executed), Then the sequence succeeds -- the doc and the script agree.",
-      "test": "tests/docsqa_ac03_llms_txt_section_matches_script.rs -- parses the section's five numbered-step calls and asserts they match, in order, a real docs-qa.sh run's own deduplicated call log."
+      "description": "Given an argument-only call to each of host.catalog.search, host.catalog.get, host.state.table_create, host.state.insert and host.agent.profile_set with no tenant_key, When the server responds, Then every one returns numeric code -32602 with data.error_code tenant_key_missing (one parameterized test, 5 cases).",
+      "test": "tests/tkparam_ac03_five_tools_missing_tenant_key.rs -- one #[tokio::test] looping over the 5 tools; auth resolves (and this refusal raises) before any tool-specific dispatch, so a minimal per-tool body suffices."
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a corpus document is updated to change the answer to question 3, When the script re-asks after lag_seconds == 0, Then the new passage is returned.",
-      "test": "tests/docsqa_ac04_updated_document_changes_the_answer.rs -- runs the script twice against the same tenant (--reuse-state) over a scratch copy of the corpus (--corpus-dir), editing vpn-setup.md's port number between runs."
+      "description": "Given a call to host.tool_publish with a valid Authorization: Bearer header and no tenant_key argument, When the server responds, Then the call succeeds (or fails only on the spec body) and no response anywhere carries error_code tenant_key_missing; and the same holds for the other five tools with a body that is valid for each.",
+      "test": "tests/tkparam_ac04_header_auth_unaffected.rs -- signs up one fresh tenant per tool (TestServer::start_with_signup_rate_limit(20), the default 5/hour limit is too low for 6 signups in one test) and asserts every Ok(_) or non-tenant_key_missing Err(_)."
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the plugin docs-qa command, When invoked against the test host, Then it runs the same script and prints the receipt path.",
-      "test": "tests/docsqa_ac05_plugin_command_runs_the_script.rs -- parses plugin/commands/docs-qa.md's own bash block, confirms it names docs-qa.sh, and runs it against the in-process test host."
+      "description": "Given an argument-only call with a tenant_key that matches no tenant, When the server responds, Then the numeric code is still -32600 and data.error_code is tenant_key_invalid (only one variant moved).",
+      "test": "tests/tkparam_ac05_tenant_key_invalid_unchanged.rs -- guardrail proving jsonrpc_code's move touched TenantKeyMissing only, not its INVALID_REQUEST sibling TenantKeyInvalid."
     },
     {
       "id": "AC6",
-      "level": "MUST",
-      "description": "Given ~/repos/synthorg with the new task, When synthorg consume --preflight and the proxy-tier fixture run execute, Then the docs_qa_recipe task is listed for rag_indexer and the fake endpoint fixture passes its gold predicate.",
-      "test": "tests/docsqa_ac06_synthorg_task_matches_gold_question_3.rs (this repo's own provable half) plus a real synthorg-repo commit (see notes/commits) adding docs_qa_recipe, a new synthorg.fixtures /docs/search/{question_id} route, and fixing three pre-existing corpus-shape tests' hardcoded totals -- uv run pytest/synthorg consume --preflight run green by hand in that repo."
+      "level": "SHOULD",
+      "description": "Given the refusal in AC1, When data is inspected, Then it contains field equal to \"tenant_key\", expected containing both the substring signup and the substring Authorization: Bearer, and example a string.",
+      "test": "tests/tkparam_ac06_tenant_key_missing_payload_fields.rs -- field_and_expected gains a TenantKeyMissing arm; field_example gains a tenant_key placeholder entry that into_error_data already lifts into data.example for every variant with a field."
     },
     {
       "id": "AC7",
       "level": "SHOULD",
-      "description": "Given --embeddings with a test provider, When the script runs, Then the receipt reports hit rates for both lexical and embeddings modes.",
-      "test": "tests/docsqa_ac07_embeddings_reports_both_hit_rates.rs -- a wiremock fake openai-compatible provider (a deterministic per-document keyword-signature embedder) proves both modes/lexical and modes/embeddings score >= 5/6."
+      "description": "Given the example string from AC6, When it is passed as tenant_key on a fresh argument-only call, Then the server returns tenant_key_invalid, not success (the example is a placeholder, never a live key).",
+      "test": "tests/tkparam_ac07_example_is_placeholder_not_live.rs -- proves inertness by using the example, not by string-matching its shape."
     },
     {
       "id": "AC8",
-      "level": "MUST",
-      "description": "Given a search returning zero passages, When ask_docs runs, Then it returns a structured 'no passages found' result, not an error.",
-      "test": "tests/docsqa_ac08_zero_passages_is_structured_not_an_error.rs -- publishes ask_docs against a tenant with no documents put at all."
+      "level": "SHOULD",
+      "description": "Given a SecretMissing or InvalidParams rejection, When data is inspected, Then its key set is unchanged from v0.60.34 (the payload shape added for TenantKeyMissing is additive to that variant only).",
+      "test": "tests/tkparam_ac08_secretmissing_and_invalidparams_shape_unchanged.rs -- calls AppError::into_error_data directly (host.tool_publish's own SecretMissing raise site is wrapped through control::attach_gates, which already adds an unrelated 'gates' key predating this PRD, so the HTTP path isn't the right probe for this narrower claim)."
     },
     {
       "id": "AC9",
-      "level": "MUST",
-      "description": "Given prod after land, When docs-qa.sh https://mcphost.dev runs from carbon with a fresh signup, Then it exits 0 in under 60s and the receipt is committed under docs/receipts/.",
-      "test": "deferred (Live) -- operator-provisioned: needs a real signup from carbon against production after deploy; this coder dispatch has no live operator access."
+      "level": "SHOULD",
+      "description": "Given tools/list from an anonymous connection, When the tenant_key property of each of the six tools' inputSchema is read, Then tenant_key is absent from every required array, and its description contains both Authorization: Bearer and tenant_key_missing.",
+      "test": "tests/tkparam_ac09_schema_tenant_key_not_required_and_discoverable.rs -- host_schema's tenant_key description gains one sentence; required is untouched. contracts/host-tools.v1.json regenerated via `cargo run -- contract dump` since mcphost_host_tool_deprecation_ac01's byte-identical snapshot test pins that file."
     },
     {
       "id": "AC10",
       "level": "MUST",
-      "description": "Given the truth-tier panel run after land, When synthorg consume runs with the pinned panel, Then rag_indexer satisfaction is reported with the new task included (number recorded in the vision, target >= 75%).",
-      "test": "deferred -- operator-provisioned: AC10's Then is a truth-tier `synthorg consume --tier truth --endpoint https://mcphost.dev/mcp` run against prod after this PRD lands (~$5 and ~40 min of billed frontier calls, driven from ~/repos/synthorg, needing the operator's ANTHROPIC_API_KEY / SYNTHORG_PROD_ENDPOINT / SYNTHORG_TRUTH_BRIEF that this sandbox does not hold). Declared in PRD-mcphost-docs-qa-recipe.md's frontmatter: 'deferred_acs: [9, 10]' plus its mock_justifications entry for AC10. The live check that fails until the operator's run has happened: tests/docsqa_ac10_truth_tier_panel_satisfaction_recorded.rs::live_truth_tier_panel_run_meets_the_target (MCPHOST_LIVE=1, MCPHOST_PANEL_MEASURE=<run>/measure.json). That file's always-on tests prove the recorder's mechanism on measures assembled only from two real synthorg runs' own numbers -- the branch's mechanism, not AC10, and not counted as AC10's proof. tests/docsqa_ac10_deferral_is_justified.rs locks this paper trail (frontmatter vs test-map vs intent-card). AC6 proves the pre-land cross-repo wiring this worktree can test now."
+      "description": "Given prod after deploy-on-land, When mcp-probe (or an equivalent one-shot client) sends an argument-only host.catalog.search with no tenant_key to https://mcphost.dev, Then the JSON-RPC error code is -32602 and data.field is tenant_key (Live: operator-run against prod; result pasted into the receipt).",
+      "test": "deferred (Live) -- operator-provisioned: needs an operator-run one-shot client against production after deploy; this coder dispatch has no live operator access."
+    },
+    {
+      "id": "AC11",
+      "level": "MUST",
+      "description": "Given cargo test at the landing commit, When it runs, Then every test that passed at v0.60.34 still passes and the tests added for AC1-9 pass, with the gate receipt showing block=0.",
+      "test": "tests/tkparam_ac11_full_suite_green_at_landing.rs -- pins docs/benchmarks/tkparam-suite-gate.txt (the literal `wm-build runner exec -- cargo test --workspace` / `cargo clippy --all-targets -- -D warnings` output at this PRD's HEAD: 1402 passed, 0 failed, 8 pre-existing ignored; 0 clippy warnings), same 'checked-in receipt, not a live re-run inside cargo test' pattern as checkcompat_race_ac07 -- deliberately no head-sha/'no changes since' check (self-invalidates on every rebase/release-bump/PR-squash)."
     }
   ],
   "scope": [
-    "examples/docs-qa/ (new): corpus/ (8 markdown documents, ~21 KiB, plus gold.json's 6 gold questions), ask_docs.py (a python-kind tool calling the new mcphost.docs.search loopback binding), docs-qa.sh (signup, put, poll host.docs.status for lag_seconds == 0, publish, ask the 6 gold questions, write a receipt JSON; --embeddings/--corpus-dir/--reuse-state/--receipt-dir flags), synthorg-task.yaml (a byte-identical local mirror of the task actually merged into ~/repos/synthorg).",
-    "src/kinds/python.rs, src/kinds/mod.rs, src/handler.rs: a new mcphost.docs.search op on the existing DocsSidecarBridge/TenantDocsBridge (mirroring the pre-existing get op exactly) -- ask_docs.py's own zero-network, zero-metered-call answer to host.docs.search, so a query never spends a public tool call (see hard_constraints for why this isn't 'no host code change').",
-    "tests/common/mod.rs: TestServer now also runs docs_index::spawn_scheduler (same 'every test server runs the real background task too' precedent as runs::spawn_executor/triggers::spawn_scheduler/alerts::spawn_pause_watch) so a docs-qa.sh run against it can observe the indexer actually catch up.",
-    "docs/agent-quickstart.md gains the 'Docs Q&A in a minute' section, propagated into README.md and www/llms.txt's marked block by scripts/gen-agent-docs.sh (the existing sync mechanism, not a manual duplicate append).",
-    "plugin/commands/docs-qa.md (new): a Claude Code slash command running the same script against a configured (or default prod) endpoint.",
-    "~/repos/synthorg (separate repository, own git history/commit): corpora/mcphost/consumer-tasks.yaml gains docs_qa_recipe (rag_indexer); src/synthorg/fixtures.py gains /docs/search/{question_id} (_build_docs_search); three pre-existing corpus-shape tests' hardcoded totals bumped by one (capability_tasks_ac1_corpus_shape_test.py, pairtasks_ac7_full_corpus_no_regression_test.py, live_gold_ac4_corpus_live_shape_check_test.py) and fixture_upstream_ac5's own panel size raised from PANEL_MIN_PER_SEGMENT's floor (3) to 4 so the new task actually draws a session; corpora/mcphost/FINGERPRINT-CHANGES.md gains a dated entry.",
-    "agent/proof-lanes.toml: the pre-existing 'examples' lane's globs/required_commands extended for examples/docs-qa/** and docsqa_ac* (same precedent as every prior recipe PRD folding into this lane).",
-    "tests/docsqa_ac0[1-8]_*.rs (new); tests/suite_sandbox_0[2-3].rs, tests/suite_core_07.rs regenerated by scripts/gen-test-suites.sh to include the new files.",
-    "CHANGELOG.md: new patch version entry."
+    "src/errors.rs: AppError::TenantKeyMissing moves from jsonrpc_code's INVALID_REQUEST arm to its INVALID_PARAMS arm; its doc comment explains why and cites this PRD (so the next auth-variant split doesn't move it back); field_and_expected gains a TenantKeyMissing arm (field: tenant_key, expected naming signup and Authorization: Bearer); field_example gains a tenant_key placeholder entry.",
+    "src/handler.rs: host_schema's tenant_key property description gains one sentence naming the tenant_key_missing/-32602 outcome; no change to any tool's required array.",
+    "contracts/host-tools.v1.json: regenerated via `cargo run -- contract dump` (the AC9 schema-description edit changes every host.* tool's tenant_key description, which mcphost_host_tool_deprecation_ac01's byte-identical snapshot test pins).",
+    "tests/tkparam_ac0[1-9]_*.rs, tests/tkparam_ac11_*.rs (new, AC10 deferred); tests/suite_core_07.rs regenerated by scripts/gen-test-suites.sh to include them.",
+    "docs/benchmarks/tkparam-suite-gate.txt (new): the AC11 receipt.",
+    "Cargo.toml (patch version bump per PRD's build_version_bump: patch); Cargo.lock regenerated by cargo."
   ],
   "non_goals": [
-    "An LLM answer synthesis step inside the host -- PRD's own Non-goals; the tool returns passages, the calling agent composes the answer.",
-    "PDF corpora -- PRD's own Non-goals.",
-    "Promotion of the recipe -- PRD's own Non-goals (the 09-09 hold stands; docs only).",
-    "host.quickstart mentioning the recipe when a tenant has zero documents -- P2 requirement 7, not in this dispatch's non-deferred AC list.",
-    "Re-litigating PRD-mcphost-docs-semantic-search's own design (chunking, BM25 vs cosine, provider fallback) -- this PRD only adds one new loopback op (search) reusing that PRD's existing doc_search business logic unchanged."
+    "Not changing how tenant_key is provisioned -- PRD's own Non-goals; transport injection vs pre-gate path vs prompt is a separate open design fork.",
+    "Not marking tenant_key required in any tool's JSON schema -- PRD's own Non-goals; the requirement is conditional on no Authorization header (handler.rs resolve_tenant_key_auth/via_tenant_key_arg), which a required entry would misrepresent.",
+    "Not changing auth semantics, rate limiting, or the anonymous fallback in resolve_tenant_key_auth -- PRD's own Non-goals.",
+    "Not reclassifying TenantKeyInvalid, TenantDisabled, Unauthorized, or any other INVALID_REQUEST variant -- PRD's own Non-goals; AC5 pins that only TenantKeyMissing moved.",
+    "Not changing synthorg's harness -- PRD's own Non-goals; that is a separate PRD's half of this fix.",
+    "AC10 (live prod probe) and the two outcome-only success metrics (explore-run re-render rate, self-recovery rate) -- operator-provisioned/post-deploy, out of this coder dispatch's reach."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -97,41 +101,38 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "mcphost_docs_search_loopback_op_despite_no_host_code_change": "Migration/compatibility says 'No host code change', but requirement 1's ask_docs.py must search without spending a public tool call per query (Technical considerations: 'uses the state helper's loopback endpoint for search'). The only existing mcphost.docs sandbox binding is get (a single document's text); compose_call (mcphost.call) cannot reach host.* control-plane tools (only a tenant's own published tools, db.get_tool lookup). Resolved by adding a search op to the existing DocsSidecarBridge/TenantDocsBridge, mirroring get exactly (same struct, same dispatch pattern, zero new tools/schemas/migrations) -- the smallest possible reading of 'no host code change' that still satisfies the stated non-functional requirement, not a new product surface.",
-      "quota_tool_calls_counts_only_the_published_tool": "AC2's 'tool calls <= 10' cannot mean literal MCP request count (signup + 8 puts + status polls + publish + 6 asks already exceeds 10). Resolved the same way examples/uptime-probes/proof.sh's own '288 of 500 calls/day' narrative already does: only calls to the recipe's own published tool (ask_docs) count against the quota; host.* control-plane setup calls (signup/put/status/publish) don't.",
-      "embeddings_flag_configures_provider_literally_first": "Requirement 6 says '--embeddings ... configures the provider first'. Read literally (before ANY document is put, not merely before searching): --embeddings runs the embeddings phase first (secret_set, index_config, put, wait, ask), then switches back to provider: none and reruns lexical, so both phases' hit rates land in one receipt's modes section.",
-      "docs_qa_recipe_call_check_is_single_segment": "'top5 hit on question 3' (requirement 5) most naturally reads as a nested result.payload.results contains <doc> check, but synthorg's own consume.check_live_shape --live-shape prober only supports a single-segment result.payload/result.status path (consume.py's own _live_shape_probe raises on a dotted payload.<field> path). Resolved by flattening each of the fixture's top-5 document names onto payload as its own boolean key (alongside the nested results list a real caller would read), so the single-segment check (result.payload contains vpn-setup.md) still tests genuine top-5 membership.",
-      "docs_agent_quickstart_section_via_the_sync_mechanism_not_a_manual_duplicate": "Requirement 2 says both www/llms.txt and docs/agent-quickstart.md gain the section, but every prior recipe PRD only ever touched www/llms.txt directly (docs/agent-quickstart.md is the whole byte-for-byte SOURCE scripts/gen-agent-docs.sh copies into both README.md's and llms.txt's marked block -- appending to both files independently would either duplicate the section in llms.txt or desync gen-agent-docs.sh --check). Resolved by appending the section to docs/agent-quickstart.md only, then running scripts/gen-agent-docs.sh to propagate it into README.md and llms.txt's marked block -- the intended use of that existing mechanism, not a new one."
+      "tenant_key_example_placeholder_shape": "field_example needs a tenant_key entry (AC6/AC7) but there is no documented tenant_key prefix convention in this repo -- auth::generate_key produces a bare 64-char lowercase-hex string with no prefix (unlike auth::generate_handoff_token's ho_ prefix). Resolved by using a deliberately prefixed, human-legible placeholder ('tk_example_REPLACE_WITH_THE_KEY_SIGNUP_RETURNED') that can never collide with (or be mistaken for) a real key, rather than a hex-shaped fake that might read as a real one; AC7 proves it is inert by using it, not by asserting its shape.",
+      "secret_missing_probed_directly_not_over_http": "AC8 asks for SecretMissing's data key set, but host.tool_publish's own SecretMissing raise site (control::tool_publish's spec precheck) is wrapped through attach_gates, which already adds a 'gates' key unrelated to this PRD (a pre-existing mechanism from an earlier PRD) -- asserting an exact key set over that HTTP path would fail on an unrelated field and prove the wrong thing. Resolved by testing AppError::SecretMissing(...).into_error_data() directly (mcphost::errors is a public module), which is the actual surface this PRD's field_and_expected/field_example additions touch."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does this PRD need a script AND a doc section AND a plugin command AND a synthorg task, rather than just documenting the recipe?",
-      "a": "Grounding: 'the killer-apps vision's method (a recipe a stranger finishes in a minute, with a Live AC and a panel task) is what made five recipes shippable' -- a doc with no runnable proof drifts from the real API silently (AC3 exists precisely to catch that), and a panel task is the only thing that turns 'the primitive exists' into a measured persona-satisfaction number."
+      "q": "Why did 24 explore sessions on 2026-09-29 read a missing tenant_key as \"token expired\"?",
+      "a": "Claude Code renders a -32600 (INVALID_REQUEST) JSON-RPC error with that sentence and fires tengu_mcp_tool_call_auth_error for that class, regardless of data.error_code."
     },
     {
       "why": 2,
-      "q": "Why does ask_docs need a loopback search binding instead of just calling host.docs.search like any other tool would from outside the sandbox?",
-      "a": "ask_docs runs INSIDE the sandbox as the published tool's own code, not as an external MCP client -- Technical considerations: 'so it does not spend a public tool call per query', keeping the recipe's own tool-call quota (AC2, <=10) from scaling with corpus size or query volume the way a real HTTP round trip per query would."
+      "q": "Why -32600 for a missing argument?",
+      "a": "AppError::TenantKeyMissing sat in jsonrpc_code's INVALID_REQUEST arm (errors.rs) alongside Unauthorized/TenantKeyInvalid/Forbidden/TenantDisabled -- every other missing-argument error (InvalidArgs, InvalidParams, SecretMissing) is in the INVALID_PARAMS arm instead."
     },
     {
       "why": 3,
-      "q": "Why 8 documents / 6 gold questions specifically, rather than a larger corpus like docsearch's own 20-document/30-question fixture?",
-      "a": "Requirement 1 names this exact shape, and the non-functional requirement caps the corpus at 'under 100 KiB in the repo' alongside the script -- a stranger finishing this 'in a minute' needs a small enough corpus that indexing (the 10s tick) and 6 sequential questions both complete well inside the 60s wall-clock budget AC9 measures on prod."
+      "q": "Why was it in the auth-class arm to begin with?",
+      "a": "PRD-mcphost-auth-error-names-argument split Unauthorized into three variants and kept all three in the arm Unauthorized already occupied; it fixed the message and error_code but had no acceptance criterion on the numeric class."
     },
     {
       "why": 4,
-      "q": "Why does AC4 need --reuse-state/--corpus-dir flags on docs-qa.sh at all, rather than a test driving host.docs.put/search directly the way docsearch's own AC3 (version update drops old chunks) does?",
-      "a": "AC4's own wording is 'the script re-asks' -- proving the SCRIPT's own re-run behavior (not just the underlying doc_put/doc_search functions, already proven by PRD-mcphost-docs-semantic-search's own AC3) needs the script to be re-invokable against the same tenant with a mutated corpus, which the base recipe (always a fresh signup) doesn't support without an explicit, opt-in flag."
+      "q": "Why no AC on the numeric class at the time?",
+      "a": "That PRD's own test (tests/autherr_ac1_tenant_key_missing.rs) asserted error_code and message words only; nobody had yet observed a client that ignores data and branches on the JSON-RPC class instead."
     },
     {
       "why": 5,
-      "q": "Why defer AC9/AC10 instead of writing a test for them?",
-      "a": "Both are explicitly Live/post-land: AC9 needs a real signup from carbon against production after a deploy this dispatch never performs; AC10 needs a truth-tier panel run against production after this PRD lands, recorded in a vision doc. Neither is reachable from a worktree gate that never deploys or runs a real LLM judge panel -- AC6's proxy-tier/fake-mode proof is the pre-land half of the same claim this dispatch CAN prove."
+      "q": "Why wasn't that observed sooner?",
+      "a": "synthorg's explore harness stored only the client's rendered text and coded every failure live_call_error, so the mislabel was invisible until the 2026-09-29 read-through; the harness half of this fix is a separate PRD, this one is the mcphost half."
     }
   ],
-  "created_at": "2026-09-25T00:00:00Z",
+  "created_at": "2026-09-29T23:02:26Z",
   "ambiguities_resolved": [
     {
       "question": "The findings file records the reference Python client seeing well-formed ttlMs/cacheScope on an unauthenticated tools/list, which the code says is impossible. Which is right?",
@@ -408,6 +409,10 @@
     {
       "question": "AC2's quota.tool_calls <= 10 cannot mean literal MCP request count (signup + 8 puts + status polls + publish + 6 asks already exceeds 10 for the base recipe alone). What should the receipt's own tool_calls field actually count?",
       "resolution": "Only calls to the recipe's own published tool (ask_docs) -- the same 'only the published tool's own calls count toward the quota' accounting examples/uptime-probes/proof.sh's own calls/day narrative already uses for schedule firings vs. setup calls."
+    },
+    {
+      "question": "field_example needs a tenant_key entry for AC6/AC7's example, but the PRD's own suggestion ('mk_...' with 'the host's documented prefix') names a prefix convention this repo does not actually have (real tenant keys are bare 64-char hex; only handoff tokens carry a prefix, ho_). Invent a prefix, mimic the real hex shape, or something else?",
+      "resolution": "Used a deliberately non-hex, self-describing placeholder (tk_example_REPLACE_WITH_THE_KEY_SIGNUP_RETURNED) instead of either option -- it can never collide with a real key by construction (wrong shape entirely) and reads as a placeholder to a human or agent copying it verbatim, which a hex-shaped fake would not. AC7 proves it is inert by using it as tenant_key and asserting tenant_key_invalid, not by asserting anything about its format."
     }
   ]
 }
