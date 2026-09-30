@@ -2657,6 +2657,47 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              with any prior secret stop verifying immediately -- no overlap window.",
             host_schema(json!({}), &[]),
         ),
+        // PRD-mcphost-row-policy requirement 7. Tenant-key only.
+        Tool::new(
+            "host.policy.set",
+            "Set (or replace) the row/docs policy for one target: a declared table (target: \
+             {\"table\": name}) or a docs prefix (target: {\"doc_prefix\": prefix}). `rule` is a \
+             list of {column_or_attr, op: \"eq\"|\"in\", value: {\"literal\": <json>} | \
+             {\"attr\": \"<end_user_attr>\"}}. Refused as policy_widening if it would widen an \
+             existing literal-valued rule on the same column without replace: true.",
+            host_schema(
+                json!({
+                    "target": {
+                        "description": "{\"table\": \"<name>\"} or {\"doc_prefix\": \"<prefix>\"}.",
+                    },
+                    "rule": {
+                        "description": "A list of {column_or_attr, op, value} rules, ANDed together.",
+                    },
+                    "replace": {
+                        "type": "boolean",
+                        "description": "Confirms a rule change that would otherwise be refused as widening.",
+                    },
+                }),
+                &["target", "rule"],
+            ),
+        ),
+        Tool::new(
+            "host.policy.list",
+            "List this tenant's row/docs policies.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "host.policy.attrs_set",
+            "Set (merge) attributes on an end-user subject -- the values a policy's Attr(name) \
+             rule compiles against for that subject.",
+            host_schema(
+                json!({
+                    "subject": {"type": "string", "description": "The end-user subject to set attributes on."},
+                    "attrs": {"description": "An object of attribute name -> value to merge in."},
+                }),
+                &["subject", "attrs"],
+            ),
+        ),
         // PRD-mcphost-end-user-audit-and-revoke requirement 2 (AC1/AC10).
         Tool::new(
             "host.enduser.list",
@@ -3481,7 +3522,10 @@ impl TableBackend for TenantTableBridge {
         let result = match op {
             "create" => tables::table_create(&self.state, &self.tenant, &args).await,
             "append" => tables::table_append(&self.state, &self.tenant, &args).await,
-            "query" => tables::table_query(&self.state, &self.tenant, &args).await,
+            // PRD-mcphost-row-policy requirement 10/AC12 threads the real
+            // end user through here; until then this bridge (unlike
+            // `TenantStateBridge`) carries none.
+            "query" => tables::table_query(&self.state, &self.tenant, &args, None).await,
             "list" => tables::table_list(&self.state, &self.tenant, &args).await,
             "drop" => tables::table_drop(&self.state, &self.tenant, &args).await,
             "schema" => tables::table_schema(&self.state, &self.tenant, &args).await,
@@ -3725,6 +3769,12 @@ impl McpHostHandler {
             "host.state.delete_rows" => {
                 tenant_state::state_delete_rows(&self.state, tenant, &args, end_user).await
             }
+            // PRD-mcphost-row-policy requirement 7: all three tenant-key only.
+            "host.policy.set" => crate::rowpolicy::policy_set(&self.state, tenant, &args, end_user).await,
+            "host.policy.list" => crate::rowpolicy::policy_list(&self.state, tenant, end_user).await,
+            "host.policy.attrs_set" => {
+                crate::rowpolicy::policy_attrs_set(&self.state, tenant, &args, end_user).await
+            }
             "host.enduser.whoami" => Ok(crate::enduser::whoami(end_user)),
             "host.enduser.assertion_secret_rotate" => {
                 crate::enduser::assertion_secret_rotate(&self.state, tenant, &args).await
@@ -3752,7 +3802,7 @@ impl McpHostHandler {
             "host.enduser.export" => crate::export::enduser_export(&self.state, tenant, &args).await,
             "host.table.create" => tables::table_create(&self.state, tenant, &args).await,
             "host.table.append" => tables::table_append(&self.state, tenant, &args).await,
-            "host.table.query" => tables::table_query(&self.state, tenant, &args).await,
+            "host.table.query" => tables::table_query(&self.state, tenant, &args, end_user).await,
             "host.table.list" => tables::table_list(&self.state, tenant, &args).await,
             "host.table.drop" => tables::table_drop(&self.state, tenant, &args).await,
             "host.table.schema" => tables::table_schema(&self.state, tenant, &args).await,

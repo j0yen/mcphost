@@ -982,6 +982,8 @@ mod publishfirsttry_ac02_structured_error_fields;
 mod publishfirsttry_ac07_signup_next;
 #[path = "revdebt_ac1_intent_card_pointers_resolve.rs"]
 mod revdebt_ac1_intent_card_pointers_resolve;
+#[path = "rowpol_ac01_sql_predicate_scopes_to_end_user_attribute.rs"]
+mod rowpol_ac01_sql_predicate_scopes_to_end_user_attribute;
 #[path = "run_metrics_handoff_glob_regression.rs"]
 mod run_metrics_handoff_glob_regression;
 #[path = "runoverflow_ac03_progress_counter_monotonic_validation.rs"]

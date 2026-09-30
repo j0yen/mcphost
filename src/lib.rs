@@ -48,6 +48,7 @@ pub mod oauthclient;
 pub mod plans;
 pub mod registry;
 pub mod retention;
+pub mod rowpolicy;
 pub mod runs;
 pub mod sandbox;
 pub mod secrets;

@@ -74,7 +74,12 @@ serde_path_to_error = "0.1.20"
 # multi-statement SQL -- a real AST parser rather than a hand-rolled
 # prefix/keyword check, the same "don't hand-roll what a crate already gets
 # right" call `sha1` above makes for HMAC-SHA1.
-sqlparser = "0.62"
+# PRD-mcphost-row-policy requirement 4: the `visitor` feature turns on
+# sqlparser's own `VisitMut`/`TableFactor` walk (derived on every AST node,
+# recursing into CTEs, set operations and expression-level subqueries for
+# free) -- the AST rewrite rides that rather than hand-rolling a second,
+# partial recursive walker alongside the crate's own.
+sqlparser = { version = "0.62", features = ["visitor"] }
 # PRD-mcphost-wasm-kind requirement 2: the `wasm` kind's execution engine --
 # a library, not a subprocess, so isolation travels with the compiled
 # component instead of depending on the host's userns/bwrap/AppArmor policy

@@ -272,6 +272,13 @@ async fn unauthenticated_tools_list_is_signup_only() {
         // of them.
         "host.enduser.whoami",
         "host.enduser.assertion_secret_rotate",
+        // PRD-mcphost-row-policy: the policy/attrs control plane is
+        // discoverable unauthenticated too, same as every other
+        // host.*-style tool above -- tenant-key only is enforced at
+        // dispatch, not at discovery.
+        "host.policy.set",
+        "host.policy.list",
+        "host.policy.attrs_set",
         // PRD-mcphost-end-user-audit-and-revoke: the end-user control
         // plane is discoverable unauthenticated too, same as every other
         // host.*-style tool above -- every one of these is an
@@ -314,7 +321,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        138,
+        141,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the three host.tool_history/host.tool_rollback/host.tool_diff \
@@ -352,7 +359,8 @@ async fn unauthenticated_tools_list_is_signup_only() {
          the eight host.oauth.policy_set/policy/pending/client_approve/client_deny/revoke_all/ \
          audit/audit_export tools (PRD-mcphost-oauth-client-policy) + \
          the two host.oauth.scope_set/scopes tools \
-         (PRD-mcphost-tool-scopes-and-consent): \
+         (PRD-mcphost-tool-scopes-and-consent) + \
+         the three host.policy.* tools (PRD-mcphost-row-policy): \
          {tool_names:?}"
     );
 }

@@ -1874,6 +1874,74 @@
       "since": "0.58.0"
     },
     {
+      "description": "Set (merge) attributes on an end-user subject -- the values a policy's Attr(name) rule compiles against for that subject.",
+      "input_schema": {
+        "properties": {
+          "attrs": {
+            "description": "An object of attribute name -> value to merge in."
+          },
+          "subject": {
+            "description": "The end-user subject to set attributes on.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "attrs"
+        ],
+        "type": "object"
+      },
+      "name": "host.policy.attrs_set",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List this tenant's row/docs policies.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.policy.list",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Set (or replace) the row/docs policy for one target: a declared table (target: {\"table\": name}) or a docs prefix (target: {\"doc_prefix\": prefix}). `rule` is a list of {column_or_attr, op: \"eq\"|\"in\", value: {\"literal\": <json>} | {\"attr\": \"<end_user_attr>\"}}. Refused as policy_widening if it would widen an existing literal-valued rule on the same column without replace: true.",
+      "input_schema": {
+        "properties": {
+          "replace": {
+            "description": "Confirms a rule change that would otherwise be refused as widening.",
+            "type": "boolean"
+          },
+          "rule": {
+            "description": "A list of {column_or_attr, op, value} rules, ANDed together."
+          },
+          "target": {
+            "description": "{\"table\": \"<name>\"} or {\"doc_prefix\": \"<prefix>\"}."
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target",
+          "rule"
+        ],
+        "type": "object"
+      },
+      "name": "host.policy.set",
+      "since": "0.58.0"
+    },
+    {
       "description": "Report (or merge in) counters and/or pct/msg on a run, by id. Each named counter (items_processed, items_total, bytes_out, custom.<k>) is monotonic on its own -- a lower value than what's already stored fails validation with nothing written. Read back via host.runs.get/wait/list's counters field.",
       "input_schema": {
         "properties": {

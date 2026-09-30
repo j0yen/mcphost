@@ -52,8 +52,10 @@ use rusqlite::{Connection, OptionalExtension, params, types::ValueRef};
 use serde_json::{Map, Value, json};
 
 use crate::db::Tenant;
+use crate::enduser::EndUser;
 use crate::errors::AppError;
 use crate::plans::Plan;
+use crate::rowpolicy;
 use crate::state::AppState;
 
 /// requirement 6/AC6: `host.table.query`'s row bound -- a query matching
@@ -648,17 +650,21 @@ pub async fn table_append(state: &AppState, tenant: &Tenant, args: &Value) -> Re
 // ---- host.table.query ---------------------------------------------------
 
 /// requirement 2/AC3: parses `sql` and refuses (structurally, not by string
-/// matching) anything but exactly one `SELECT`/CTE statement.
-fn validate_query_structure(sql: &str) -> Result<(), AppError> {
-    let statements = sqlparser::parser::Parser::parse_sql(&sqlparser::dialect::GenericDialect {}, sql)
+/// matching) anything but exactly one `SELECT`/CTE statement -- returning
+/// the parsed [`sqlparser::ast::Query`] so PRD-mcphost-row-policy's AST
+/// rewrite (below) can reuse this same parse rather than parsing twice.
+fn validate_query_structure(sql: &str) -> Result<Box<sqlparser::ast::Query>, AppError> {
+    let mut statements = sqlparser::parser::Parser::parse_sql(&sqlparser::dialect::GenericDialect {}, sql)
         .map_err(|e| query_rejected(format!("sql parse error: {e}")))?;
-    match statements.as_slice() {
-        [] => Err(query_rejected("empty statement")),
-        [sqlparser::ast::Statement::Query(_)] => Ok(()),
-        [_single_non_query] => Err(query_rejected(
-            "must be a single read-only SELECT statement, not a write or DDL statement",
-        )),
-        _multiple => Err(query_rejected(
+    match statements.len() {
+        0 => Err(query_rejected("empty statement")),
+        1 => match statements.remove(0) {
+            sqlparser::ast::Statement::Query(q) => Ok(q),
+            _ => Err(query_rejected(
+                "must be a single read-only SELECT statement, not a write or DDL statement",
+            )),
+        },
+        _ => Err(query_rejected(
             "multiple statements are not allowed; submit exactly one SELECT",
         )),
     }
@@ -685,6 +691,18 @@ pub(crate) fn value_ref_to_json(v: ValueRef<'_>) -> Value {
 /// connection it was drawn from is done with (or has dropped) its work, so
 /// there is nothing to cancel/join when the query returns first.
 fn run_query_sync(conn: &Connection, sql: &str) -> Result<Vec<Value>, AppError> {
+    run_query_sync_with_bindings(conn, sql, &[])
+}
+
+/// PRD-mcphost-row-policy requirement 4: same enforcement as
+/// [`run_query_sync`], but binds `bindings` (`":name"` -> value) on the
+/// prepared statement -- the row-policy AST rewrite's predicate values
+/// never appear as literals in `sql` itself, only as bound parameters.
+fn run_query_sync_with_bindings(
+    conn: &Connection,
+    sql: &str,
+    bindings: &[(String, Value)],
+) -> Result<Vec<Value>, AppError> {
     let interrupt = conn.get_interrupt_handle();
     std::thread::spawn(move || {
         std::thread::sleep(QUERY_TIME_CAP);
@@ -698,7 +716,11 @@ fn run_query_sync(conn: &Connection, sql: &str) -> Result<Vec<Value>, AppError> 
     }
     let column_names: Vec<String> = stmt.column_names().into_iter().map(str::to_string).collect();
     let mut rows_out = Vec::new();
-    let mut rows = stmt.query([])?;
+    let sql_values: Vec<(String, rusqlite::types::Value)> =
+        bindings.iter().map(|(k, v)| (k.clone(), json_to_sql_value(v))).collect();
+    let param_refs: Vec<(&str, &dyn rusqlite::ToSql)> =
+        sql_values.iter().map(|(k, v)| (k.as_str(), v as &dyn rusqlite::ToSql)).collect();
+    let mut rows = if param_refs.is_empty() { stmt.query([])? } else { stmt.query(&param_refs[..])? };
     loop {
         let row = match rows.next() {
             Ok(Some(r)) => r,
@@ -722,13 +744,149 @@ fn run_query_sync(conn: &Connection, sql: &str) -> Result<Vec<Value>, AppError> 
     Ok(rows_out)
 }
 
-pub async fn table_query(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    let sql = arg_str(args, "sql")?;
-    validate_query_structure(&sql)?;
+/// PRD-mcphost-row-policy requirement 2: converts a resolved rule/literal
+/// value into the `rusqlite` value it's bound as.
+fn json_to_sql_value(v: &Value) -> rusqlite::types::Value {
+    match v {
+        Value::Null => rusqlite::types::Value::Null,
+        Value::Bool(b) => rusqlite::types::Value::Integer(if *b { 1 } else { 0 }),
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                rusqlite::types::Value::Integer(i)
+            } else if let Some(f) = n.as_f64() {
+                rusqlite::types::Value::Real(f)
+            } else {
+                rusqlite::types::Value::Null
+            }
+        }
+        Value::String(s) => rusqlite::types::Value::Text(s.clone()),
+        other => rusqlite::types::Value::Text(other.to_string()),
+    }
+}
 
+/// PRD-mcphost-row-policy requirement 2: substitutes `compiled`'s `{pN}`
+/// template placeholders with fresh `:<tag>N` bound-parameter names, for a
+/// one-off `SELECT COUNT(*)` against `table` rather than the AST rewrite
+/// (used by [`withheld_count_sync`] below, which only ever queries one
+/// table directly, never a rewritten user query).
+fn predicate_count_sql(
+    table: &str,
+    compiled: &rowpolicy::CompiledPolicy,
+    tag: &str,
+) -> (String, Vec<(String, Value)>) {
+    let mut predicate = compiled.rls_predicate.clone();
+    let mut bindings = Vec::new();
+    for (i, v) in compiled.rls_params.iter().enumerate() {
+        let placeholder = format!("{{p{i}}}");
+        let name = format!(":{tag}{i}");
+        predicate = predicate.replace(&placeholder, &name);
+        bindings.push((name, v.clone()));
+    }
+    let quoted = table.replace('"', "\"\"");
+    (format!("SELECT COUNT(*) FROM \"{quoted}\" WHERE {predicate}"), bindings)
+}
+
+/// requirement 6: "`withheld_count` is rows... the unfiltered read would
+/// have returned, computed only when under 10,000 candidates, else null" --
+/// computed here as the policied table's own unfiltered row count minus
+/// the count its compiled predicate admits, not the outer query's own
+/// (possibly aggregated) result shape.
+fn withheld_count_sync(
+    conn: &Connection,
+    table: &str,
+    compiled: &rowpolicy::CompiledPolicy,
+) -> Result<Option<i64>, AppError> {
+    let quoted = table.replace('"', "\"\"");
+    let total: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM \"{quoted}\""), [], |r| r.get(0))?;
+    if total >= 10_000 {
+        return Ok(None);
+    }
+    if compiled.rls_predicate == "1 = 0" {
+        return Ok(Some(total));
+    }
+    let (sql, bindings) = predicate_count_sql(table, compiled, "wc");
+    let sql_values: Vec<(String, rusqlite::types::Value)> =
+        bindings.iter().map(|(k, v)| (k.clone(), json_to_sql_value(v))).collect();
+    let param_refs: Vec<(&str, &dyn rusqlite::ToSql)> =
+        sql_values.iter().map(|(k, v)| (k.as_str(), v as &dyn rusqlite::ToSql)).collect();
+    let admitted: i64 = conn.query_row(&sql, &param_refs[..], |r| r.get(0))?;
+    Ok(Some(total - admitted))
+}
+
+pub async fn table_query(
+    state: &AppState,
+    tenant: &Tenant,
+    args: &Value,
+    end_user: Option<&EndUser>,
+) -> Result<Value, AppError> {
+    let sql = arg_str(args, "sql")?;
+    let mut query = validate_query_structure(&sql)?;
+
+    let access = rowpolicy::resolve_access(state, tenant, end_user).await?;
     let path = tenant_db_path(state, tenant.id);
-    let rows = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| run_query_sync(conn, &sql)).await?;
-    Ok(json!({"rows": rows}))
+
+    match access {
+        rowpolicy::Access::Unrestricted => {
+            let rows =
+                with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+                    run_query_sync(conn, &sql)
+                })
+                .await?;
+            Ok(json!({"rows": rows}))
+        }
+        rowpolicy::Access::Restricted(ctx) => {
+            let mut table_names = rowpolicy::rewrite::referenced_table_names(&query);
+            table_names.sort();
+
+            let mut compiled = std::collections::HashMap::new();
+            for name in &table_names {
+                let policy = rowpolicy::load_table_policy(state, tenant.id, name).await?;
+                compiled.insert(name.clone(), rowpolicy::policy::compile(&policy, &ctx));
+            }
+
+            let outcome = rowpolicy::rewrite::apply(&mut query, &compiled)?;
+            let rewritten_sql = outcome.sql;
+            let bindings = outcome.bindings;
+
+            let primary = table_names.first().and_then(|name| compiled.get(name).map(|c| (name.clone(), c.clone())));
+
+            let (rows, withheld_count) = with_tenant_conn(
+                path,
+                state.db.cfg(),
+                state.db.counters_handle(),
+                move |conn| {
+                    let rows = run_query_sync_with_bindings(conn, &rewritten_sql, &bindings)?;
+                    let withheld = match &primary {
+                        Some((table, compiled)) => withheld_count_sync(conn, table, compiled)?,
+                        None => None,
+                    };
+                    Ok((rows, withheld))
+                },
+            )
+            .await?;
+
+            if let Some(primary_name) = table_names.first()
+                && let Some(primary_compiled) = compiled.get(primary_name)
+            {
+                state
+                    .db
+                    .audit_chain_append(
+                        tenant.id,
+                        ctx.subject.clone(),
+                        "sql".to_string(),
+                        primary_compiled.policy_hash.clone(),
+                        primary_compiled.rls_predicate.clone(),
+                        rows.len() as i64,
+                        withheld_count,
+                        crate::state::now_unix(),
+                        crate::state::new_ulid(),
+                    )
+                    .await?;
+            }
+
+            Ok(json!({"rows": rows}))
+        }
+    }
 }
 
 // ---- host.table.list / host.table.schema --------------------------------
@@ -957,6 +1115,7 @@ mod tests {
             &state,
             &t,
             &json!({"sql": "SELECT metric, value FROM metrics WHERE value > 0.5 ORDER BY value DESC"}),
+            None,
         )
         .await
         .expect("query");
@@ -995,7 +1154,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(err.code(), "table_schema_violation");
 
-        let result = table_query(&state, &t, &json!({"sql": "SELECT * FROM metrics"}))
+        let result = table_query(&state, &t, &json!({"sql": "SELECT * FROM metrics"}), None)
             .await
             .expect("query");
         assert!(
@@ -1036,6 +1195,7 @@ mod tests {
             &state,
             &tenant_b,
             &json!({"sql": "SELECT * FROM secrets_table"}),
+            None,
         )
         .await
         .unwrap_err();
@@ -1087,7 +1247,7 @@ mod tests {
             .await
             .expect("append past cap (row_cap only bounds query results, not appends)");
 
-        let err = table_query(&state, &t, &json!({"sql": "SELECT * FROM big"}))
+        let err = table_query(&state, &t, &json!({"sql": "SELECT * FROM big"}), None)
             .await
             .unwrap_err();
         assert_eq!(err.code(), "table_bound_exceeded");
