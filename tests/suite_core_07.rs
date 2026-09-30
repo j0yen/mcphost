@@ -1302,6 +1302,8 @@ mod tgraph_ac01_foreign_key_edge_and_graph_includes_both_tables;
 mod tgraph_ac02_join_paths_one_step_foreign_key;
 #[path = "tgraph_ac03_two_step_same_name_path.rs"]
 mod tgraph_ac03_two_step_same_name_path;
+#[path = "tgraph_ac04_no_shared_columns_returns_no_path_with_candidates.rs"]
+mod tgraph_ac04_no_shared_columns_returns_no_path_with_candidates;
 #[path = "tkparam_ac01_tenant_key_missing_is_invalid_params.rs"]
 mod tkparam_ac01_tenant_key_missing_is_invalid_params;
 #[path = "tkparam_ac02_non_string_tenant_key_is_invalid_params.rs"]
