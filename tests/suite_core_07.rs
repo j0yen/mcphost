@@ -1300,6 +1300,8 @@ mod tenantprm_ac09_llms_txt_documents_tenant_oauth;
 mod tgraph_ac01_foreign_key_edge_and_graph_includes_both_tables;
 #[path = "tgraph_ac02_join_paths_one_step_foreign_key.rs"]
 mod tgraph_ac02_join_paths_one_step_foreign_key;
+#[path = "tgraph_ac03_two_step_same_name_path.rs"]
+mod tgraph_ac03_two_step_same_name_path;
 #[path = "tkparam_ac01_tenant_key_missing_is_invalid_params.rs"]
 mod tkparam_ac01_tenant_key_missing_is_invalid_params;
 #[path = "tkparam_ac02_non_string_tenant_key_is_invalid_params.rs"]
