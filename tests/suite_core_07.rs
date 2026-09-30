@@ -1308,6 +1308,8 @@ mod tgraph_ac04_no_shared_columns_returns_no_path_with_candidates;
 mod tgraph_ac05_next_questions_five_entries_all_runnable;
 #[path = "tgraph_ac06_stale_after_append_tick_clears.rs"]
 mod tgraph_ac06_stale_after_append_tick_clears;
+#[path = "tgraph_ac07_tenant_isolation_identically_named_tables.rs"]
+mod tgraph_ac07_tenant_isolation_identically_named_tables;
 #[path = "tkparam_ac01_tenant_key_missing_is_invalid_params.rs"]
 mod tkparam_ac01_tenant_key_missing_is_invalid_params;
 #[path = "tkparam_ac02_non_string_tenant_key_is_invalid_params.rs"]
