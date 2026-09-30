@@ -573,6 +573,15 @@ impl AppError {
                 // `Structured` variant only because it carries `data.hint`,
                 // not because it's a different class of error.
                 "tool_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
+                // PRD-mcphost-row-policy requirement 7: `host.policy.*`/
+                // `host.audit.*` refusing an end-user credential is the
+                // same caller-credential-authority gate as
+                // `insufficient_scope` above, not a bad argument;
+                // `policy_widening` (`host.policy.set` refusing a rule
+                // change without `replace: true`) is a caller-input
+                // problem, same INVALID_PARAMS bucket as `invalid_spec`.
+                "tenant_key_required" => ErrorCode::INVALID_REQUEST,
+                "policy_widening" => ErrorCode::INVALID_PARAMS,
                 _ => ErrorCode::INTERNAL_ERROR,
             },
             AppError::MultiInvalid { errors, .. } => errors

@@ -44,7 +44,7 @@ async fn ac1_anonymous_tools_list_has_cache_fields() {
     assert!(names.contains(&"signup"), "{names:?}");
     assert_eq!(
         names.len(),
-        142,
+        143,
         "signup + host.* (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + host.tool_history/host.tool_rollback/host.tool_diff \
          (3 tools, PRD-mcphost-tool-versions) + host.state.* (9 tools, PRD-mcphost-tenant-state) + \
@@ -66,7 +66,7 @@ async fn ac1_anonymous_tools_list_has_cache_fields() {
          the three host.oauth.trusted_issuer_set/trusted_issuer_remove/trusted_issuers tools (PRD-mcphost-enterprise-managed-auth) + \
          the three host.docs.search/index_config/reindex tools (PRD-mcphost-docs-semantic-search) + \
          the two host.enduser.* tools (PRD-mcphost-end-user-identity) + \
-         the four host.policy.*/host.audit.verify tools (PRD-mcphost-row-policy): {names:?}"
+         the five host.policy.*/host.audit.chain/host.audit.verify tools (PRD-mcphost-row-policy): {names:?}"
     );
 }
 
@@ -146,7 +146,7 @@ async fn ac3_invalid_bearer_tools_list_has_cache_fields() {
     assert!(names.contains(&"signup"), "{names:?}");
     assert_eq!(
         names.len(),
-        142,
+        143,
         "signup + host.* (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + host.tool_history/host.tool_rollback/host.tool_diff \
          (3 tools, PRD-mcphost-tool-versions) + host.state.* (9 tools, PRD-mcphost-tenant-state) + \
@@ -168,6 +168,6 @@ async fn ac3_invalid_bearer_tools_list_has_cache_fields() {
          the three host.oauth.trusted_issuer_set/trusted_issuer_remove/trusted_issuers tools (PRD-mcphost-enterprise-managed-auth) + \
          the three host.docs.search/index_config/reindex tools (PRD-mcphost-docs-semantic-search) + \
          the two host.enduser.* tools (PRD-mcphost-end-user-identity) + \
-         the four host.policy.*/host.audit.verify tools (PRD-mcphost-row-policy): {names:?}"
+         the five host.policy.*/host.audit.chain/host.audit.verify tools (PRD-mcphost-row-policy): {names:?}"
     );
 }

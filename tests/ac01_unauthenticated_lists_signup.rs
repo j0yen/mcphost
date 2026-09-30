@@ -279,6 +279,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
         "host.policy.set",
         "host.policy.list",
         "host.policy.attrs_set",
+        "host.audit.chain",
         "host.audit.verify",
         // PRD-mcphost-end-user-audit-and-revoke: the end-user control
         // plane is discoverable unauthenticated too, same as every other
@@ -322,7 +323,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        142,
+        143,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the three host.tool_history/host.tool_rollback/host.tool_diff \
@@ -361,7 +362,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
          audit/audit_export tools (PRD-mcphost-oauth-client-policy) + \
          the two host.oauth.scope_set/scopes tools \
          (PRD-mcphost-tool-scopes-and-consent) + \
-         the four host.policy.*/host.audit.verify tools (PRD-mcphost-row-policy): \
+         the five host.policy.*/host.audit.chain/host.audit.verify tools (PRD-mcphost-row-policy): \
          {tool_names:?}"
     );
 }

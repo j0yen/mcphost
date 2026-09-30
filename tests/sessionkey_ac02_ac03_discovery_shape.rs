@@ -51,7 +51,7 @@ async fn every_host_star_descriptor_declares_an_optional_tenant_key() {
         .collect();
     assert_eq!(
         host_tools.len(),
-        138,
+        139,
         "the thirteen host.* control tools (incl. host.quickstart, host.tool_run, and \
          host.bridge_test) plus host.redeem plus host.key_rotate (PRD-mcphost-handoff-token) \
          plus host.tool_call plus the three host.tool_history/host.tool_rollback/host.tool_diff \
@@ -85,7 +85,7 @@ async fn every_host_star_descriptor_declares_an_optional_tenant_key() {
          (PRD-mcphost-end-user-audit-and-revoke) plus \
          the eight host.oauth.policy_set/policy/pending/client_approve/client_deny/revoke_all/ \
          audit/audit_export tools (PRD-mcphost-oauth-client-policy) plus \
-         the four host.policy.*/host.audit.verify tools (PRD-mcphost-row-policy): \
+         the five host.policy.*/host.audit.chain/host.audit.verify tools (PRD-mcphost-row-policy): \
          {entries:?}"
     );
 

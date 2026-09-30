@@ -996,6 +996,8 @@ mod rowpol_ac05_docs_prefix_policy_zero_hits_lexical_and_embeddings;
 mod rowpol_ac06_empty_allowed_set_1_equals_0_and_denies_docs;
 #[path = "rowpol_ac07_audit_verify_intact_then_tampered.rs"]
 mod rowpol_ac07_audit_verify_intact_then_tampered;
+#[path = "rowpol_ac08_audit_chain_pages_and_refuses_end_users.rs"]
+mod rowpol_ac08_audit_chain_pages_and_refuses_end_users;
 #[path = "run_metrics_handoff_glob_regression.rs"]
 mod run_metrics_handoff_glob_regression;
 #[path = "runoverflow_ac03_progress_counter_monotonic_validation.rs"]

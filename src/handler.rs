@@ -2699,6 +2699,20 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             ),
         ),
         Tool::new(
+            "host.audit.chain",
+            "Newest-first page of the hash-chained audit log, optionally scoped to one subject. \
+             Returns {records, returned_count, withheld_count} where withheld_count is how many \
+             more matching records exist beyond this page. Tenant-key only.",
+            host_schema(
+                json!({
+                    "subject": {"type": "string", "description": "Only records for this end-user subject."},
+                    "limit": {"type": "integer", "description": "Max records to return, 1-500; default 50."},
+                    "before_id": {"type": "integer", "description": "Only records with id less than this."},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
             "host.audit.verify",
             "Recompute the hash-chained audit log over [from_id, to_id] and report whether it's \
              intact, naming the first broken id if not.",
@@ -3790,6 +3804,7 @@ impl McpHostHandler {
             "host.policy.attrs_set" => {
                 crate::rowpolicy::policy_attrs_set(&self.state, tenant, &args, end_user).await
             }
+            "host.audit.chain" => crate::rowpolicy::audit_chain(&self.state, tenant, &args, end_user).await,
             "host.audit.verify" => crate::rowpolicy::audit_verify(&self.state, tenant, &args, end_user).await,
             "host.enduser.whoami" => Ok(crate::enduser::whoami(end_user)),
             "host.enduser.assertion_secret_rotate" => {

@@ -276,3 +276,39 @@ pub async fn audit_verify(
     let result = audit::verify_chain(&records);
     Ok(json!({"intact": result.intact, "first_broken_id": result.first_broken_id}))
 }
+
+/// requirement 7 (AC8): `host.audit.chain(subject?, limit?, before_id?)` --
+/// newest-first page, tenant-key only. `withheld_count` is the number of
+/// matching records beyond this page (`total - returned_count`), not a
+/// per-record field.
+pub async fn audit_chain(
+    state: &AppState,
+    tenant: &Tenant,
+    args: &Value,
+    end_user: Option<&EndUser>,
+) -> Result<Value, AppError> {
+    require_tenant_key(end_user)?;
+    let subject = args.get("subject").and_then(Value::as_str).map(str::to_string);
+    let limit = args.get("limit").and_then(Value::as_i64).unwrap_or(50).clamp(1, 500);
+    let before_id = args.get("before_id").and_then(Value::as_i64);
+    let (records, total) = state.db.audit_chain_list(tenant.id, subject, limit, before_id).await?;
+    let returned_count = records.len() as i64;
+    let withheld_count = total - returned_count;
+    let records_json: Vec<Value> = records
+        .into_iter()
+        .map(|r| {
+            json!({
+                "id": r.id,
+                "subject": r.subject,
+                "plane": r.plane,
+                "policy_hash": r.policy_hash,
+                "applied": r.applied,
+                "returned_count": r.returned_count,
+                "withheld_count": r.withheld_count,
+                "timestamp": r.timestamp_unix,
+                "request_id": r.request_id,
+            })
+        })
+        .collect();
+    Ok(json!({"records": records_json, "returned_count": returned_count, "withheld_count": withheld_count}))
+}
