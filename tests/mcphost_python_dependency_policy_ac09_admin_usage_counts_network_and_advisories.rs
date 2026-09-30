@@ -13,10 +13,10 @@ async fn admin_usage_tallies_tools_by_network_mode_and_advisory_state() {
         println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
-    // SAFETY: this file has exactly one #[tokio::test] fn.
-    unsafe {
-        std::env::set_var("MCPHOST_ADVISORY_MODE", "warn");
-    }
+    // Serialized against AC3's own `MCPHOST_ADVISORY_MODE` mutation --
+    // see `common::AdvisoryModeGuard` for why (test-suite consolidation
+    // put both files in one process).
+    let _advisory_mode = common::AdvisoryModeGuard::set("warn").await;
     let envs_dir = common::TempDataDir::new();
     let server = TestServer::start_with_kinds(python_kind_registry(&envs_dir.0)).await;
     let (_ns_a, key_a) = signup(&server.base_url, "AC9 Tenant A").await;
@@ -55,10 +55,6 @@ async fn admin_usage_tallies_tools_by_network_mode_and_advisory_state() {
         )
         .await
         .expect("publish flagged (warn mode must not fail it)");
-
-    unsafe {
-        std::env::remove_var("MCPHOST_ADVISORY_MODE");
-    }
 
     let admin = McpClient::with_bearer(&server.base_url, ADMIN_KEY);
     let usage = extract_structured(

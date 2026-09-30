@@ -1442,3 +1442,53 @@ pub fn extract_structured(call_result: &Value) -> Value {
     }
     Value::Null
 }
+
+/// Process-wide serialization for tests that mutate the
+/// `MCPHOST_ADVISORY_MODE` env var, which `control.rs`'s publish path reads
+/// fresh (`std::env::var`) on every call rather than caching it at server
+/// start.
+///
+/// `scripts/gen-test-suites.sh` consolidates many `tests/ac*.rs` files into
+/// a handful of suite binaries (see e.g. `tests/suite_sandbox_02.rs`), so a
+/// test file that is the *only* one setting this var within its own source
+/// file can still share a process -- and run concurrently, on its own
+/// tokio-test task -- with another such file bundled into the same suite.
+/// Without this guard, `known_advisory_fails_publish_when_mode_is_fail`
+/// (AC3, expects `fail`) and `admin_usage_tallies_tools_by_network_mode_and_advisory_state`
+/// (AC9, expects `warn`) race: whichever test's `set_var` lost the race left
+/// the other reading the wrong mode at `host.tool_publish` time, flaking
+/// AC3's "must fail" assertion about 1 run in 3.
+///
+/// Acquire via [`AdvisoryModeGuard::set`] and hold the returned guard for
+/// the test's entire publish-dependent span (letting it drop at end of
+/// test is simplest and correct); the `Drop` impl clears the var and
+/// releases the lock together, so no sibling test can observe a stale
+/// value or start its own span early.
+static ADVISORY_MODE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+pub struct AdvisoryModeGuard {
+    _permit: tokio::sync::MutexGuard<'static, ()>,
+}
+
+impl AdvisoryModeGuard {
+    pub async fn set(mode: &str) -> Self {
+        let permit = ADVISORY_MODE_LOCK.lock().await;
+        // SAFETY: `permit` serializes every test that touches this var --
+        // no sibling test can be between its own `set_var`/`remove_var`
+        // while this guard is held, so this process-wide mutation has no
+        // concurrent reader/writer.
+        unsafe {
+            std::env::set_var("MCPHOST_ADVISORY_MODE", mode);
+        }
+        Self { _permit: permit }
+    }
+}
+
+impl Drop for AdvisoryModeGuard {
+    fn drop(&mut self) {
+        // SAFETY: see `set` above -- still holding `_permit`.
+        unsafe {
+            std::env::remove_var("MCPHOST_ADVISORY_MODE");
+        }
+    }
+}
