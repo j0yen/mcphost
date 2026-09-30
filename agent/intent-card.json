@@ -1,115 +1,100 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-chart-in-a-minute.md",
-  "intent_slug": "mcphost-chart-in-a-minute",
-  "root_motivation": "Grounding: opportunity from visions/mcphost-aistack-harvest.md (WWHTBT leaf 1 and weakest link leaf 2). host.table.query returns a JSON array of rows and nothing else (src/tables.rs:725); a model describing those rows in prose is doing its own unverified arithmetic, and mcphost serves no HTML a chart could live on. ai-stack already has a tested, grammar-free chain (mqo-chart-recommender, mqo-vega-emitter, mqo-chart-caption, mqo-chart-vocab, mqo-result-profiler) that turns a typed column profile plus rows into a chart recommendation, a Vega-Lite spec, and a caption whose numbers are computed from the data, not guessed. This build vendors that chain, writes the one missing piece (a profiler that reads SQL rows instead of an MQO response, reusing src/tables_model.rs's existing classifiers), and exposes host.table.chart(sql) plus a signed share link so a spreadsheet owner can see the picture and hand it to a teammate.",
-  "user_persona": "The spreadsheet owner from the database recipe: a table on mcphost, a Claude client, no BI tool. After a question they want to see the answer as a chart and paste one sentence about it into a message, without trusting a model's own arithmetic.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-table-concept-graph.md",
+  "intent_slug": "mcphost-table-concept-graph",
+  "root_motivation": "Grounding: opportunity from visions/mcphost-aistack-harvest.md, parts from ~/projects/ai-stack's mcp-concept-graph (k_hop_neighbors/shortest_path over a hand-rolled property graph) and mqo-graph-traversal::suggest_next_questions. host.table.describe already detects foreign keys and suggests measures/dimensions per table, but only per table and per call -- an agent facing several tables must call describe on every one and infer the graph itself, and there is no join-path answer or question suggestion at all. That blocks a two-table task (loop mcphost-buildloop: satisfaction[database-in-a-minute]) on the join, not on the SQL. This build turns the tenant's own already-computed table_models into one small graph (tables_graph.rs), stored beside them and refreshed on the same tick, and exposes it as three read-only tools: the subgraph around a table, the join path with ready SQL, and up to five runnable next-question templates.",
+  "user_persona": "An agent facing a tenant with several host.table.* tables (e.g. a spreadsheet owner's separately-loaded sheets) that needs to know which tables join, on what, and what a sensible next question is, before writing SQL -- currently it must call describe on every table and infer the join itself.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 13
+    "target": 10
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the vendored crates in vendor/, When the gate runs, Then their own test suites pass unchanged and vendor/VENDOR.md names source repo and commit.",
-      "test": "tests/chart_ac01_vendor_crates_documented_and_wired.rs"
+      "description": "Given orders(id, customer_id, amount, day) and customers(id, name, region) where every customer_id exists in customers.id, When the tick runs, Then the graph has a foreign_key edge orders.customer_id -> customers.id with evidence detected, and host.table.graph(\"orders\", 1) includes both tables.",
+      "test": "tests/tgraph_ac01_foreign_key_edge_and_graph_includes_both_tables.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the 1,000-row fixture, When host.table.chart runs SELECT category, SUM(amount) AS total FROM expenses GROUP BY category, Then the profile has one nominal dimension and one quantitative measure, the recommendation mark is a bar, and the spec's data.values holds five rows.",
-      "test": "tests/chart_ac02_category_sum_profiles_bar.rs"
+      "description": "Given that graph, When host.table.join_paths(\"orders\", \"customers\") is called, Then the first path has one step, sql_join is \"orders JOIN customers ON orders.customer_id = customers.id\", and confidence is 1.0.",
+      "test": "tests/tgraph_ac02_join_paths_one_step_foreign_key.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the same result, When the caption is read, Then its headline names the fixture's largest category and every fact's value equals a value recomputed from the rows in the test.",
-      "test": "tests/chart_ac03_caption_recomputes_facts_from_rows.rs"
+      "description": "Given a third table regions(region, manager) with no foreign key but a region column of the same type as customers.region, When join_paths(\"orders\", \"regions\") is called, Then a two-step path returns via same_name with confidence 0.5 and evidence per step.",
+      "test": "tests/tgraph_ac03_two_step_same_name_path.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given SELECT day, SUM(amount) FROM expenses GROUP BY day, When chart runs, Then is_temporal is true for day only if it parses as a date; for the integer day column the mark is a bar, and for an ISO-date column in a second fixture table the mark is a line.",
-      "test": "tests/chart_ac04_temporal_day_column_picks_line_or_bar.rs"
+      "description": "Given two tables with no shared columns, When join_paths is called, Then no_path returns with each table's key and id columns listed as candidates.",
+      "test": "tests/tgraph_ac04_no_shared_columns_returns_no_path_with_candidates.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a query returning zero rows, When chart runs, Then mark is Table, vega_lite.data.values is empty, and the caption headline is the no-takeaway text.",
-      "test": "tests/chart_ac05_empty_result_is_table_with_no_takeaway.rs"
+      "description": "Given expenses(id, category, amount, day), When host.table.next_questions(\"expenses\") is called, Then five entries return, each sql parses and runs under host.table.query on the fixture, and one is a total of amount by category.",
+      "test": "tests/tgraph_ac05_next_questions_five_entries_all_runnable.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given SELECT COUNT(*) FROM expenses, When chart runs, Then mark is BigNumber and the caption headline states the count.",
-      "test": "tests/chart_ac06_count_star_is_bignumber.rs"
+      "description": "Given a host.table.append to orders, When graph is called within 30s, Then stale is true until the tick rebuilds, and false after.",
+      "test": "tests/tgraph_ac06_stale_after_append_tick_clears.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given mark: \"pie\" when the alternatives do not include it, When chart runs, Then a validation error names the allowed marks and no chart is stored.",
-      "test": "tests/chart_ac07_disallowed_mark_override_is_rejected.rs"
+      "description": "Given two tenants with identically named tables, When tenant A calls any of the three tools, Then no node or edge from tenant B appears.",
+      "test": "tests/tgraph_ac07_tenant_isolation_identically_named_tables.rs"
     },
     {
       "id": "AC8",
       "level": "SHOULD",
-      "description": "Given share: true, When the returned share_url is fetched without any auth header, Then 200 with HTML containing the spec inline and the caption headline, and no tenant id or key appears in the body.",
-      "test": "tests/chart_ac08_share_link_opens_unauthenticated.rs"
+      "description": "Given host.table.model_set(\"orders\", column \"amount\", key \"description\", value \"order total in USD\"), When the next rebuild runs, Then the amount node carries that text as an attribute and next_questions uses \"order total in USD\" in the matching question text.",
+      "test": "tests/tgraph_ac08_description_annotation_node_attribute_and_question_text.rs"
     },
     {
       "id": "AC9",
       "level": "SHOULD",
-      "description": "Given a share URL past its expiry or with an altered signature, When fetched, Then 410 or 403 respectively and no chart body.",
-      "test": "tests/chart_ac09_expired_or_altered_signature_refused.rs"
+      "description": "Given the python sandbox, When a tool calls mcphost.table.join_paths(\"orders\", \"customers\"), Then it receives the same object the tool returns.",
+      "test": "tests/tgraph_ac09_python_sandbox_join_paths.rs"
     },
     {
       "id": "AC10",
-      "level": "SHOULD",
-      "description": "Given 100 stored charts, When a 101st is shared, Then the oldest is gone and host.table.charts lists 100.",
-      "test": "tests/chart_ac10_101st_share_evicts_oldest.rs"
+      "level": "MUST",
+      "description": "Given 50 tables with 20 columns each, When the graph rebuilds, Then it completes under 500 ms on the builder.",
+      "test": "tests/tgraph_ac10_fifty_tables_twenty_columns_under_500ms.rs"
     },
     {
       "id": "AC11",
-      "level": "SHOULD",
-      "description": "Given a python tool calling mcphost.table.chart(sql), When it runs in the sandbox, Then it receives the same chart.v1 object the tool returns.",
-      "test": "tests/chart_ac11_python_bridge_returns_chart_v1.rs"
-    },
-    {
-      "id": "AC12",
       "level": "MUST",
-      "description": "Given prod after land, When examples/chart-in-a-minute/proof.sh https://mcphost.dev/mcp runs from carbon with a fresh signup, Then it exits 0 in under 30s, the caption's largest-category fact matches the fixture, and the share URL returns 200.",
-      "test": "DEFERRED: operator-provisioned (Live, prod after deploy, requires a real box and a deploy this dispatch cannot provision)"
-    },
-    {
-      "id": "AC13",
-      "level": "MUST",
-      "description": "Given www/llms.txt, When the chart section is read, Then it is under 50 lines and shows one chart call and one share link and no grammar other than SQL.",
-      "test": "tests/chart_ac13_llms_txt_section_under_50_lines.rs"
-    },
-    {
-      "id": "AC14",
-      "level": "SHOULD",
-      "description": "Given ten concurrent chart calls for one tenant, When they finish, Then all ten return chart.v1 and p95 latency on the builder is under 250ms.",
-      "test": "tests/chart_ac14_ten_concurrent_calls_p95_under_250ms.rs"
+      "description": "Given prod after land, When a fresh tenant creates orders and customers from a two-sheet fixture and calls host.table.join_paths(\"orders\", \"customers\"), Then the response carries the one-step foreign-key path with its sql_join.",
+      "test": "deferred -- operator-provisioned: needs a real post-deploy mcphost-1 healthz version check plus the join_paths response captured in a receipt under docs/receipts/, which this coder dispatch has no live host or deploy authorization to produce."
     }
   ],
   "scope": [
-    "vendor/{mqo-chart-vocab,mqo-result-profiler,mqo-chart-recommender,mqo-vega-emitter,mqo-chart-caption}/: five crates vendored unchanged as path dependencies, vendor/VENDOR.md records source repo (~/projects/ai-stack) and commit (4ef6c22).",
-    "src/chart.rs (new): builds a result-profile.v1 value from a SQL query's columns and rows (reusing src/tables_model.rs's key/category/measure/date classifiers, made pub(crate) for this), host.table.chart/host.table.charts tool implementations, signed share-link minting and verification, and the /charts/{id} HTML handler.",
-    "migrations/0057_chart_index.sql, src/db.rs: a tenant-agnostic chart_index table in the main mcphost.db routing an unauthenticated GET /charts/{id} to the right tenant's own SQLite file, where the chart body itself lives in a new _mcphost_charts table.",
-    "src/handler.rs, src/http.rs, src/kinds/python.rs, src/kinds/mod.rs: host.table.chart/host.table.charts tool descriptors and dispatch, the /charts/{id} route, and the mcphost.table.chart python sandbox bridge function.",
-    "www/llms.txt: new \"Chart in a minute\" recipe section. examples/chart-in-a-minute/: fixture.csv, proof.sh, synthorg-task.yaml, mirroring the database-in-a-minute precedent.",
-    "Cargo.toml/CHANGELOG.md: version bump 0.62.0 -> 0.63.0 (PRD's own build_version_bump: minor rule) and a CHANGELOG entry recording the feature and AC12's deferral.",
-    "tests/chart_ac01..14 (AC12 has no test file, recorded deferred): one integration test file per non-deferred AC, tests/support/chart_fixture.rs holding the shared 1,000-row expenses fixture and small events fixture."
+    "migrations/0057_table_graphs.sql: one table_graphs row per tenant (version, graph_json, computed_at, stale).",
+    "src/tables_graph.rs: ConceptGraph/GraphNode/GraphEdge, build_graph_from_models (pure, table_models -> graph), get_or_build_graph (bootstrap-on-first-call), tick_once (rebuilds every tenant with a stale graph), k_hop_subgraph, join-path search (table_edges/build_adjacency/find_paths/build_sql_join), next_questions' five templates, and the three tool entry points (table_graph/join_paths/next_questions).",
+    "src/tables_model.rs: merge_annotations made pub(crate) for reuse; tick_once calls tables_graph::tick_once at its own tail (same 30s window); model_set marks the graph stale for role/description annotations; table_describe's bootstrap branch marks the graph stale too (a table's very first model changes what an already-built graph should include).",
+    "src/tables.rs: table_append/table_drop mark the tenant's graph stale alongside the existing table-model stale mark; validate_query_structure made pub(crate) so next_questions reuses the exact same sqlparser gate host.table.query uses.",
+    "src/db.rs: TableGraphRow plus get/upsert/mark_stale/list_tenants_with_stale_table_graph, and list_table_model_annotations_for_tenant (one batched query the graph rebuild uses instead of one round trip per table -- AC10's own perf fix).",
+    "src/handler.rs: host.table.graph/join_paths/next_questions Tool::new + dispatch, and the same three ops on TenantTableBridge (mcphost.table.* from the python sandbox).",
+    "src/kinds/python.rs: PY_RUNNER_SCRIPT's mcphost.table.graph/.join_paths/.next_questions wrappers over the existing TableSidecarBridge channel.",
+    "contracts/host-tools.v1.json, www/llms.txt: regenerated (mcphost contract dump / mcphost llms-txt) for the three new tools.",
+    "Cargo.toml/Cargo.lock: version bump 0.62.0 -> 0.63.0 (PRD's own build_version_bump: minor)."
   ],
   "non_goals": [
-    "Server-side rendering to PNG or SVG -- the share page renders in the browser (PRD's own non-goal).",
-    "A charts gallery or dashboard composition -- mqo-dashboard-composer is not vendored.",
-    "Editing a recommendation's encoding -- the caller may only override mark, from the recommender's own alternatives.",
-    "Any query grammar beyond sql -- PRD's own non-goal, confirmed by AC13's test that the recipe section shows no grammar other than SQL."
+    "Enforcing joins or rejecting SQL that ignores the graph -- host.table.query is unchanged, the graph is advisory only.",
+    "Cross-tenant graphs, or graphs over documents -- one graph per tenant, table-shaped only.",
+    "Ontology lift, OWL, RDF, or SPARQL -- the graph stays table-shaped.",
+    "Learned or model-generated next questions -- templates only, per requirement 5.",
+    "P2 requirement 9 (200-table graph-size bound with a truncated flag) -- no AC in the dispatched list names it and the dispatch's own scope boundary says stop once every listed AC is green; not implemented."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -118,42 +103,46 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "test_file_names_use_underscores_not_the_prd_slugs_hyphens": "test_prefix chart (the PRD's own frontmatter field), same convention as every other test file in this repo.",
-      "crate_layout_stays_one_package": "mcphost is one package with [lib] and [[bin]] (Cargo.toml:11); vendored crates are path dependencies under vendor/ picked up by Cargo's implicit-workspace rule, not a workspace conversion -- deny.toml and clippy.toml apply to them unchanged.",
-      "charts_stored_per_tenant_not_centrally": "_mcphost_charts lives inside each tenant's own SQLite file (tables::tenant_db_path), matching every other host.table.* table; only a small global chart_index (new migration 0057) in the main mcphost.db routes an unauthenticated /charts/{id} request, which has no tenant in its URL, to the right tenant file."
+      "test_prefix": "tgraph (PRD's own frontmatter field)",
+      "migration_number": "0057 (0056 was the actual head at dispatch time, not the PRD's draft-time 0056 note)"
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does mcphost need its own profiler instead of reusing mqo-result-profiler::profile directly?",
-      "a": "mqo-result-profiler's profile(response, catalog) reads an MQO response shape ai-stack's other services produce; host.table.chart has a SQL query's columns and rows instead, so src/chart.rs builds the result-profile.v1 value itself, vendoring mqo-result-profiler only for its ResultProfile/ColumnProfile/MeasureRange types (PRD's own explicit instruction)."
+      "q": "Why build a new graph module instead of extending tables_model.rs's own per-table output?",
+      "a": "tables_model.rs's compute_model_sync already answers 'what is this one table' (roles, one table's own foreign_keys); the graph answers a structurally different question -- 'how do several tables connect' -- which needs a second table's model in scope at once (join_paths, next_questions' joined-category template) and its own traversal (k-hop, shortest path). Folding that into tables_model.rs would mix two different read shapes (one table vs. many) behind one module."
     },
     {
       "why": 2,
-      "q": "Why reuse src/tables_model.rs's classifiers instead of writing new measure/dimension thresholds for the chart profiler?",
-      "a": "PRD requirement 2 says so explicitly (\"Role decisions reuse the classifiers in src/tables_model.rs rather than new thresholds\") -- mcphost already has tested key/category/measure/date/id classifiers from the table-semantic-model PRD; a second set of thresholds would drift from them silently over time."
+      "q": "Why is there no 'described_as' edge for a column's description annotation, despite requirement 1 listing it as an edge kind?",
+      "a": "Requirement 1's own clause immediately qualifies it: 'the annotation text is a node attribute, not a node' -- and AC8 only asserts the amount NODE carries the text as an attribute, never asserts an edge. Modeled as a plain node.attributes.description, set whenever a description annotation exists, with no separate edge -- satisfies AC8's literal wording without inventing an edge target the PRD's own clarifying sentence rules out."
     },
     {
       "why": 3,
-      "q": "Why does AC12 get deferred rather than attempted against the real https://mcphost.dev?",
-      "a": "AC12 is explicitly a Live acceptance criterion (\"Given prod after land\") requiring a deploy that has not happened yet and a run from carbon (the real operator's box) -- this dispatch works only in an isolated git worktree against a remote build-and-test runner, with no authority to deploy or provision production infrastructure, so it is recorded deferred as operator-provisioned rather than faked against a local stand-in."
+      "q": "Why does next_questions' fourth template (measure by a category on a joined table) need a dedicated categories-style neighbor table in the AC5 fixture, when the AC's own Given clause names only expenses?",
+      "a": "expenses(id, category, amount, day) alone supports at most four of the five named templates (total-by-category, over-time, top-10, count-by-category) -- the fourth ('...on a joined table') structurally needs a second, foreign-key-connected table with its own category-role column. The AC's Given clause is the minimal description of intent, not an exhaustive fixture; the test adds one foreign-key-connected categories(category, group_name) table so all five templates actually fire, rather than inventing a sixth ad hoc template outside requirement 5's named list to pad the count."
     },
     {
       "why": 4,
-      "q": "Why is AC14's concurrency/latency test run against the in-process TestServer rather than a subprocess on a fixed reference box, the way the repo's other hardware-dependent AC (ac11_load_smoke) is?",
-      "a": "AC14's own bound (250ms p95 for 10 concurrent in-process chart calls) is two orders of magnitude looser than ac11_load_smoke's 50ms bound for 200 real-subprocess calls measuring RSS; an in-process TestServer run (0.37s total wall time observed) already clears that bound with wide margin and needs no subprocess isolation, so it runs unconditionally in the gate instead of being #[ignore]d for manual hardware-specific runs."
-    }
-  ],
-  "created_at": "2026-09-30T19:04:33Z",
-  "ambiguities_resolved": [
-    {
-      "question": "Requirement 5's examples/chart-in-a-minute/ directory has no dedicated AC number in the PRD's acceptance-criteria list (AC13 only covers the llms.txt section) -- does it still need its own delivered proof?",
-      "resolution": "Yes -- delivered as its own commit (fixture.csv matching tests/support/chart_fixture.rs::expenses_rows() exactly, proof.sh, synthorg-task.yaml) per the PRD's requirement 5 text, verified by actually building the mcphost binary and running proof.sh against it end to end (exit 0, ~1.3s wall time) rather than only checking the script parses."
+      "q": "Why did AC10's first fixture fail at 1.6s instead of the 500ms bound, and was the fix a real performance bug or a test artifact?",
+      "a": "Both, diagnosed in order: the fixture itself reused identical filler column names (col_02..col_19) across all 50 tables, which same_name's (name, type) grouping turned into ~25,000 edges from an 18-column collision -- fixed by making filler names unique per table. Separately, build_graph_for_tenant was doing one list_table_model_annotations DB round trip per table (50 sequential spawn_blocking calls) -- a real N+1 query pattern independent of the fixture bug, fixed with one batched list_table_model_annotations_for_tenant query grouped in memory. Both landed in AC10's own commit since the fixture bug was what surfaced the second, pre-existing one."
     },
     {
-      "question": "requirement 3 says host.table.chart(sql, title?, mark?) but P1 requirement 6 adds share: true -- is share part of the same tool or a separate one?",
-      "resolution": "Same tool, one additional optional argument (share: bool), consistent with requirement 6's own description of share as part of the host.table.chart call and with the python bridge's signature in requirement 7 (mcphost.table.chart(sql, title=None, mark=None, share=False))."
+      "why": 5,
+      "q": "Why is the graph rebuilt from stored table_models rather than re-sampling each tenant's SQLite tables directly?",
+      "a": "tables_model.rs's own tick already re-samples and stores per-table models (roles, foreign_keys) within its 30s window; re-deriving that from scratch inside tables_graph.rs would duplicate detect_foreign_keys' sibling-table sampling logic and double the per-tick SQLite work. build_graph_from_models is a pure function over already-computed model JSON instead, which is also what makes AC10's 500ms bound (over 50 tables) actually achievable -- it's JSON-to-graph processing, not 50 tables' worth of fresh SQL sampling."
+    }
+  ],
+  "created_at": "2026-09-30T00:00:00Z",
+  "ambiguities_resolved": [
+    {
+      "question": "What exact JSON shape does host.table.join_paths' no_path response take -- the PRD only says 'no_path returns with each table's key and id columns listed as candidates'.",
+      "resolution": "{from, to, paths: [], no_path: true, candidates: {<from_table>: [...], <to_table>: [...]}} -- candidates keyed by table name, each value the list of that table's key-or-id-role column names, read directly off the graph's own column nodes."
+    },
+    {
+      "question": "Can a column pair legitimately carry both a foreign_key edge and a same_name edge at once (e.g. two tables both declaring an FK-related column under the same name and type)?",
+      "resolution": "Yes, left as-is rather than suppressed -- each edge kind is an independent, factually true signal (requirement 1 lists them as three separate rules), and AC7's own tenant-isolation test had to be written around this exact case (orders.id/customers.id: a real foreign-key pair that also happens to share a name and type), which confirmed it doesn't break join_paths' own shortest-path-first ordering (FK's weight 1.0 still sorts ahead of same_name's 0.5 at equal step count)."
     }
   ]
 }

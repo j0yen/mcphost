@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-chart-in-a-minute.md (test_prefix: chart)",
+  "ac_test_map_prd": "PRD-mcphost-table-concept-graph.md (test_prefix: tgraph)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,20 +28,17 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/chart_ac01_vendor_crates_documented_and_wired.rs",
-    "AC2": "tests/chart_ac02_category_sum_profiles_bar.rs",
-    "AC3": "tests/chart_ac03_caption_recomputes_facts_from_rows.rs",
-    "AC4": "tests/chart_ac04_temporal_day_column_picks_line_or_bar.rs",
-    "AC5": "tests/chart_ac05_empty_result_is_table_with_no_takeaway.rs",
-    "AC6": "tests/chart_ac06_count_star_is_bignumber.rs",
-    "AC7": "tests/chart_ac07_disallowed_mark_override_is_rejected.rs",
-    "AC8": "tests/chart_ac08_share_link_opens_unauthenticated.rs",
-    "AC9": "tests/chart_ac09_expired_or_altered_signature_refused.rs",
-    "AC10": "tests/chart_ac10_101st_share_evicts_oldest.rs",
-    "AC11": "tests/chart_ac11_python_bridge_returns_chart_v1.rs",
-    "AC12": "DEFERRED: operator-provisioned (Live, prod after deploy; not in this dispatch scope)",
-    "AC13": "tests/chart_ac13_llms_txt_section_under_50_lines.rs",
-    "AC14": "tests/chart_ac14_ten_concurrent_calls_p95_under_250ms.rs"
+    "AC1": "tests/tgraph_ac01_foreign_key_edge_and_graph_includes_both_tables.rs",
+    "AC2": "tests/tgraph_ac02_join_paths_one_step_foreign_key.rs",
+    "AC3": "tests/tgraph_ac03_two_step_same_name_path.rs",
+    "AC4": "tests/tgraph_ac04_no_shared_columns_returns_no_path_with_candidates.rs",
+    "AC5": "tests/tgraph_ac05_next_questions_five_entries_all_runnable.rs",
+    "AC6": "tests/tgraph_ac06_stale_after_append_tick_clears.rs",
+    "AC7": "tests/tgraph_ac07_tenant_isolation_identically_named_tables.rs",
+    "AC8": "tests/tgraph_ac08_description_annotation_node_attribute_and_question_text.rs",
+    "AC9": "tests/tgraph_ac09_python_sandbox_join_paths.rs",
+    "AC10": "tests/tgraph_ac10_fifty_tables_twenty_columns_under_500ms.rs",
+    "AC11": "deferred -- operator-provisioned: needs a real post-deploy mcphost-1 healthz version check plus the join_paths response captured in a receipt under docs/receipts/"
   },
   "ac_test_map_by_prefix": {
     "oauthunverifiedclientconsentwarning": {
@@ -736,6 +733,23 @@
       "AC11": "tests/sessbind_ac11_session_bound_calls_are_metered_and_counted.rs",
       "AC12": "tests/sessbind_ac12_tenant_key_description_states_signup_optionality.rs",
       "AC13": "tests/sessbind_ac13_regression_gate.rs"
+    },
+    "chart": {
+      "_prd": "PRD-mcphost-chart-in-a-minute.md -- superseded by mcphost-table-concept-graph at HEAD; real test_prefix is chart",
+      "AC1": "tests/chart_ac01_vendor_crates_documented_and_wired.rs",
+      "AC2": "tests/chart_ac02_category_sum_profiles_bar.rs",
+      "AC3": "tests/chart_ac03_caption_recomputes_facts_from_rows.rs",
+      "AC4": "tests/chart_ac04_temporal_day_column_picks_line_or_bar.rs",
+      "AC5": "tests/chart_ac05_empty_result_is_table_with_no_takeaway.rs",
+      "AC6": "tests/chart_ac06_count_star_is_bignumber.rs",
+      "AC7": "tests/chart_ac07_disallowed_mark_override_is_rejected.rs",
+      "AC8": "tests/chart_ac08_share_link_opens_unauthenticated.rs",
+      "AC9": "tests/chart_ac09_expired_or_altered_signature_refused.rs",
+      "AC10": "tests/chart_ac10_101st_share_evicts_oldest.rs",
+      "AC11": "tests/chart_ac11_python_bridge_returns_chart_v1.rs",
+      "AC12": "DEFERRED: operator-provisioned (Live, prod after deploy; not in this dispatch scope)",
+      "AC13": "tests/chart_ac13_llms_txt_section_under_50_lines.rs",
+      "AC14": "tests/chart_ac14_ten_concurrent_calls_p95_under_250ms.rs"
     }
   }
 }
