@@ -52,7 +52,14 @@ own tool is **42.4s**.
    `host.tool_publish({..., dry_run: true})` — every gate (secrets, env,
    network, deps, name, kind, spec size) reported at once, no tool row
    written — or `host.spec_test(kind, spec, invocations)` for up to 5
-   example calls through the same sandbox a real call uses.
+   example calls through the same sandbox a real call uses. `kind` also
+   accepts a job-word alias instead of a runtime kind name — `webhook`,
+   `event`, `events`, `webhooks`, `inbound` or `trigger` for the inbound-
+   webhook recipe, `cron`, `schedule` or `scheduled` for the timed-run
+   recipe — both resolve to `http`; the response carries `resolved_from`
+   naming the alias, and `host.quickstart(kind)` returns the recipe's
+   filled-in `host.tool_publish` / `host.trigger.set` / `host.trigger.test`
+   steps.
 5. Call your tool. Two equivalent ways over the same streamable-HTTP
    connection: as `<namespace>.<tool_name>` (its own entry in
    `tools/list`), or `host.tool_call(name, args)` (same dispatch path,

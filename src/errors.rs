@@ -48,6 +48,82 @@ fn field_example(field: &str) -> Option<Value> {
     })
 }
 
+/// PRD-mcphost-unknown-kind-routes-to-recipe requirement 4: curated
+/// synonyms for a genuinely-unknown `kind` whose vocabulary is common
+/// enough to deserve a direct pointer even though its edit distance to
+/// every registered kind/alias is nowhere near [`MAX_DID_YOU_MEAN_DISTANCE`]
+/// -- `lambda`/`function`/`serverless`/`faas` all mean "run my code",
+/// which this host already does as the `python` kind. Checked before the
+/// edit-distance pass below, which stays the catch-all for an actual typo
+/// (`"pytho"`, `"htpp"`, ...).
+const DID_YOU_MEAN_HINTS: &[(&str, &str)] = &[
+    ("lambda", "python"),
+    ("function", "python"),
+    ("functions", "python"),
+    ("serverless", "python"),
+    ("faas", "python"),
+];
+
+/// Requirement 4: "edit distance ≤ 2 against kinds and aliases" -- the
+/// threshold a typo'd request (`"pythom"`, `"htpp"`) is matched under.
+const MAX_DID_YOU_MEAN_DISTANCE: usize = 2;
+
+/// Requirement 4: "max 3" -- `did_you_mean`'s own cap, hints included.
+const MAX_DID_YOU_MEAN: usize = 3;
+
+/// Plain Levenshtein distance (insert/delete/substitute, unit cost), byte-
+/// wise -- every candidate this compares against (`registered`/`aliases`)
+/// is ASCII, so byte-wise is character-wise here.
+fn levenshtein(a: &str, b: &str) -> usize {
+    let a: Vec<u8> = a.bytes().collect();
+    let b: Vec<u8> = b.bytes().collect();
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    let mut cur = vec![0usize; b.len() + 1];
+    for i in 1..=a.len() {
+        cur[0] = i;
+        for j in 1..=b.len() {
+            let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 };
+            cur[j] = (prev[j] + 1).min(cur[j - 1] + 1).min(prev[j - 1] + cost);
+        }
+        std::mem::swap(&mut prev, &mut cur);
+    }
+    prev[b.len()]
+}
+
+/// `UnknownKind`'s `data.did_you_mean` (requirement 4, AC4): a curated
+/// hint (see [`DID_YOU_MEAN_HINTS`]) first, then the closest registered
+/// kinds/aliases within [`MAX_DID_YOU_MEAN_DISTANCE`] edits, nearest
+/// first, capped at [`MAX_DID_YOU_MEAN`] total.
+fn did_you_mean(
+    requested: &str,
+    registered: &[&'static str],
+    aliases: &[&'static str],
+) -> Vec<&'static str> {
+    let lower = requested.to_ascii_lowercase();
+    let mut out: Vec<&'static str> = Vec::new();
+    for (hint, kind) in DID_YOU_MEAN_HINTS {
+        if *hint == lower && !out.contains(kind) {
+            out.push(kind);
+        }
+    }
+    let mut scored: Vec<(usize, &'static str)> = registered
+        .iter()
+        .chain(aliases.iter())
+        .filter(|c| !out.contains(*c))
+        .map(|c| (levenshtein(&lower, c), *c))
+        .filter(|(d, _)| *d <= MAX_DID_YOU_MEAN_DISTANCE)
+        .collect();
+    scored.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(b.1)));
+    for (_, candidate) in scored {
+        if out.len() >= MAX_DID_YOU_MEAN {
+            break;
+        }
+        out.push(candidate);
+    }
+    out.truncate(MAX_DID_YOU_MEAN);
+    out
+}
+
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum AppError {
     #[error("missing or invalid Authorization: Bearer key")]
@@ -96,10 +172,17 @@ pub enum AppError {
     /// exactly `invalid_params`.
     #[error("invalid params: {0}")]
     InvalidParams(String),
+    /// PRD-mcphost-unknown-kind-routes-to-recipe requirement 4 (AC4):
+    /// `aliases` (every job-word `control::resolve_kind` already tried
+    /// before giving up -- `kinds::aliases::alias_names()`) rides alongside
+    /// `registered` so `into_error_data`'s `data.aliases` and
+    /// `data.did_you_mean` (an edit-distance/curated-synonym match against
+    /// both lists) never drift from the actual alias table.
     #[error("kind '{requested}' is not registered; registered kinds: {registered:?}")]
     UnknownKind {
         requested: String,
         registered: Vec<&'static str>,
+        aliases: Vec<&'static str>,
     },
     #[error("invalid tool name '{0}': must match ^[a-z][a-z0-9_]{{1,40}}$")]
     InvalidToolName(String),
@@ -635,6 +718,17 @@ impl AppError {
         if let AppError::TrustedIssuerQuotaExceeded { limit, used } = &self {
             obj.insert("limit".to_string(), json!(limit));
             obj.insert("used".to_string(), json!(used));
+        }
+        // PRD-mcphost-unknown-kind-routes-to-recipe requirement 4 (AC4):
+        // `registered`/`aliases` ride straight through from the variant;
+        // `did_you_mean` is derived from both, never hand-maintained.
+        if let AppError::UnknownKind { requested, registered, aliases } = &self {
+            obj.insert("registered".to_string(), json!(registered));
+            obj.insert("aliases".to_string(), json!(aliases));
+            obj.insert(
+                "did_you_mean".to_string(),
+                json!(did_you_mean(requested, registered, aliases)),
+            );
         }
         if let Some(field) = field {
             obj.insert("field".to_string(), json!(field));

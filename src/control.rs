@@ -2,15 +2,49 @@
 //! `AppState` + arguments in, `serde_json::Value` (or [`AppError`]) out —
 //! `handler.rs` is the only place that touches `rmcp` wire types.
 
+use std::sync::Arc;
+
 use serde_json::{Value, json};
 
 use crate::auth::{generate_handoff_token, generate_key, generate_namespace, hash_key};
 use crate::db::{HandoffRedeemOutcome, Tenant};
 use crate::errors::AppError;
+use crate::kinds::{Kind, KindRegistry};
 use crate::state::{
     AppState, CALL_TIMEOUT, HANDOFF_TOKEN_TTL_SECS, MAX_REQUEST_BODY_BYTES, MAX_SPEC_BYTES,
     MAX_TOOL_OUTPUT_BYTES, MAX_TOOLS_PER_TENANT, now_unix, validate_tool_name,
 };
+
+/// [`resolve_kind`]'s return type, factored out (clippy::type_complexity):
+/// the resolved kind, plus `Some(matched alias)` only when [`resolve_kind`]
+/// got there via the alias table rather than an exact registered name.
+type ResolvedKind = (Arc<dyn Kind>, Option<&'static crate::kinds::aliases::KindAlias>);
+
+/// PRD-mcphost-unknown-kind-routes-to-recipe requirement 1/3: resolves
+/// `requested` against `kinds` -- an exact, registered kind name wins as
+/// given (no alias lookup attempted, so a real kind's own name is never
+/// shadowed by an alias); otherwise the alias table
+/// (`kinds::aliases::find_alias`) maps a job-word onto its runtime kind.
+/// `Ok`'s second element is `Some(matched alias)` only when an alias
+/// fired -- `None` for a direct kind hit -- so a caller can tell
+/// `resolved_from`/`recipe` apart from "no alias involved" without a
+/// second lookup. `UnknownKind` names both the registered kinds and the
+/// alias table so a caller has the same paths [`Self`] tried.
+fn resolve_kind(kinds: &KindRegistry, requested: &str) -> Result<ResolvedKind, AppError> {
+    if let Some(kind) = kinds.get(requested) {
+        return Ok((kind, None));
+    }
+    if let Some(alias) = crate::kinds::aliases::find_alias(requested)
+        && let Some(kind) = kinds.get(alias.kind)
+    {
+        return Ok((kind, Some(alias)));
+    }
+    Err(AppError::UnknownKind {
+        requested: requested.to_string(),
+        registered: kinds.names(),
+        aliases: crate::kinds::aliases::alias_names(),
+    })
+}
 
 fn arg_str(args: &Value, name: &str) -> Result<String, AppError> {
     args.get(name)
@@ -561,14 +595,9 @@ pub fn quickstart(
     // optional -- an agent that just calls `host.quickstart` with no
     // arguments (the documented "First run" flow) gets the python starter
     // recipe below rather than an `args_invalid` rejection.
-    let kind_name = arg_str_opt(args, "kind").unwrap_or_else(|| "python".to_string());
-    let kind = state
-        .kinds
-        .get(&kind_name)
-        .ok_or_else(|| AppError::UnknownKind {
-            requested: kind_name.clone(),
-            registered: state.kinds.names(),
-        })?;
+    let kind_name_requested = arg_str_opt(args, "kind").unwrap_or_else(|| "python".to_string());
+    let (kind, alias) = resolve_kind(&state.kinds, &kind_name_requested)?;
+    let kind_name = kind.name().to_string();
     let example = kind.example();
     let tool_name = "my_tool";
     let qualified_name = format!("{}.{}", tenant.namespace, tool_name);
@@ -734,10 +763,17 @@ pub fn quickstart(
     };
     let next = steps[2..].to_vec();
 
-    Ok(json!({
+    let mut response = json!({
         "authenticated": true,
         "namespace": tenant.namespace,
         "kind": kind_name,
+        // Requirement 6 / AC7: lists what's pickable without guessing --
+        // present on every authenticated response (additive), not only
+        // when `kind` was omitted, since a caller already mid-flow with
+        // one kind may still want to know what else exists.
+        "kinds": state.kinds.names(),
+        "aliases": crate::kinds::aliases::alias_names(),
+        "recipes": crate::kinds::aliases::recipe_names(),
         "try_before_call": try_before_call,
         "starter_tool": starter_tool,
         "next": next,
@@ -758,7 +794,22 @@ pub fn quickstart(
             "concurrent_calls_per_tenant": concurrent_calls_per_tenant,
             "concurrent_calls_host": crate::kinds::python::DEFAULT_MAX_CONCURRENT_CALLS,
         },
-    }))
+    });
+    // Requirement 2/3 (AC1-3): only present when `kind_name_requested`
+    // resolved through the alias table -- a direct kind request (`kind:
+    // "http"`) gets no `resolved_from`/`recipe`, same as before this PRD.
+    if let (Some(alias), Value::Object(map)) = (alias, &mut response) {
+        map.insert("resolved_from".to_string(), json!(kind_name_requested));
+        map.insert(
+            "recipe".to_string(),
+            json!({
+                "name": alias.recipe,
+                "steps": crate::kinds::aliases::recipe_steps(alias.recipe, tool_name, &example.spec),
+                "docs": "host.quickstart",
+            }),
+        );
+    }
+    Ok(response)
 }
 
 /// `subject` (PRD-mcphost-oauth-resource-server requirement 4 / AC2): the
@@ -924,7 +975,7 @@ pub async fn tool_publish(
     // write once every gate passes."
     let dry_run = arg_bool(args, "dry_run");
     let name = arg_str(args, "name")?;
-    let kind_name = arg_str(args, "kind")?;
+    let kind_name_requested = arg_str(args, "kind")?;
     let mut spec = args.get("spec").cloned().unwrap_or(Value::Null);
 
     validate_tool_name(&name)?;
@@ -977,13 +1028,13 @@ pub async fn tool_publish(
         return Err(AppError::SpecTooLarge(spec_bytes));
     }
 
-    let kind = state
-        .kinds
-        .get(&kind_name)
-        .ok_or_else(|| AppError::UnknownKind {
-            requested: kind_name.clone(),
-            registered: state.kinds.names(),
-        })?;
+    // PRD-mcphost-unknown-kind-routes-to-recipe requirement 3 (AC3): a
+    // `kind` matching the alias table resolves to its runtime kind before
+    // any of the checks below -- everything from here on (`kind_mismatch`,
+    // the `network`/`deps` gates, storage) runs against the resolved
+    // runtime kind, never the alias string.
+    let (kind, alias) = resolve_kind(&state.kinds, &kind_name_requested)?;
+    let kind_name = kind.name().to_string();
 
     // PRD-mcphost-tool-kind-honor requirement 1 (AC1/AC2/AC5): an explicit
     // `kind` of `http` or `python` is a constraint checked against what the
@@ -1317,6 +1368,13 @@ pub async fn tool_publish(
     // actually declared/inferred requirements.
     if let (Some(lock), Value::Object(map)) = (lock_summary, &mut response) {
         map.insert("lock".to_string(), lock);
+    }
+    // PRD-mcphost-unknown-kind-routes-to-recipe requirement 3 (AC3): only
+    // present when `kind` was given as an alias -- names the job-word the
+    // caller actually asked for, alongside `kind`'s own now-resolved
+    // runtime name above.
+    if let (Some(_), Value::Object(map)) = (alias, &mut response) {
+        map.insert("resolved_from".to_string(), json!(kind_name_requested));
     }
     Ok(response)
 }

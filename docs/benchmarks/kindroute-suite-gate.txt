@@ -1,0 +1,46 @@
+PRD-mcphost-unknown-kind-routes-to-recipe AC8 (P0) — Given cargo test at
+the landing commit, When it runs, Then every test that passed at v0.61.0
+still passes and the kindroute_* tests for AC 1-7 pass, with the gate
+receipt showing block=0.
+
+Methodology: same "regression lock on a checked-in receipt, not a live
+re-run inside `cargo test`" pattern as
+docs/benchmarks/tkparam-suite-gate.txt (running the whole workspace suite
+recursively from inside one of its own tests would be both circular and
+multi-minute cost paid on every `cargo test`). This receipt is the literal
+`wm-build runner exec --run 306 -- cargo ...` output on the remote build
+runner, never run locally per this repo's own build contract.
+
+cargo test --workspace:
+  1426 passed, 0 failed, 8 ignored (hardware/cache-dependent, pre-existing
+  -- suite_ac5_disk_size_budget, suite_ac6_wall_time_budget's own sibling
+  ignores, ac11_load_smoke's two-hundred-concurrent load test, etc.)
+  exit: 0
+
+  Includes tests/kindroute_ac01_webhook_alias_returns_http_recipe.rs,
+  tests/kindroute_ac02_case_insensitive_alias.rs,
+  tests/kindroute_ac03_tool_publish_event_alias_resolves_to_http.rs,
+  tests/kindroute_ac04_unknown_kind_carries_recipe_hints.rs,
+  tests/kindroute_ac05_startup_aliases_and_recipe_tools_are_registered.rs,
+  tests/kindroute_ac06_contract_and_llms_txt_document_aliases.rs,
+  tests/kindroute_ac07_quickstart_no_kind_lists_kinds_aliases_recipes.rs
+  -- all passing.
+
+cargo clippy --all-targets -- -D warnings:
+  0 warnings
+  exit: 0
+
+clippy_warning_count: 0
+
+source_hash: b9f20ab0feb6fa0d9560da9ba04544c73229e5d73e97942c72e9fe27de9e3129
+  sha256 over every git-tracked *.rs file (sorted path, path bytes then
+  file bytes, one running hasher) -- see
+  tests/kindroute_ac08_full_suite_green_at_landing.rs. Binds this receipt
+  to the exact source snapshot it was generated from: any later edit to
+  any tracked .rs file invalidates it.
+
+Regenerating: re-run both via `wm-build runner exec -- cargo`, then update
+this file's counts and source_hash to match, the next time a diff touches
+src/ or tests/ materially. Recompute source_hash with:
+  git ls-files '*.rs' | LC_ALL=C sort | while read -r p; do
+    printf '%s' "$p"; cat "$p"; done | sha256sum
