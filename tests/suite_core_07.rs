@@ -986,6 +986,8 @@ mod revdebt_ac1_intent_card_pointers_resolve;
 mod rowpol_ac01_sql_predicate_scopes_to_end_user_attribute;
 #[path = "rowpol_ac02_missing_attribute_fails_closed_to_1_equals_0.rs"]
 mod rowpol_ac02_missing_attribute_fails_closed_to_1_equals_0;
+#[path = "rowpol_ac03_unpolicied_table_zero_rows_for_end_user_all_for_tenant_key.rs"]
+mod rowpol_ac03_unpolicied_table_zero_rows_for_end_user_all_for_tenant_key;
 #[path = "run_metrics_handoff_glob_regression.rs"]
 mod run_metrics_handoff_glob_regression;
 #[path = "runoverflow_ac03_progress_counter_monotonic_validation.rs"]
