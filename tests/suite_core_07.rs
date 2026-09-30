@@ -992,6 +992,8 @@ mod rowpol_ac03_unpolicied_table_zero_rows_for_end_user_all_for_tenant_key;
 mod rowpol_ac04_cte_and_subquery_both_rewritten_via_ast;
 #[path = "rowpol_ac05_docs_prefix_policy_zero_hits_lexical_and_embeddings.rs"]
 mod rowpol_ac05_docs_prefix_policy_zero_hits_lexical_and_embeddings;
+#[path = "rowpol_ac06_empty_allowed_set_1_equals_0_and_denies_docs.rs"]
+mod rowpol_ac06_empty_allowed_set_1_equals_0_and_denies_docs;
 #[path = "run_metrics_handoff_glob_regression.rs"]
 mod run_metrics_handoff_glob_regression;
 #[path = "runoverflow_ac03_progress_counter_monotonic_validation.rs"]
