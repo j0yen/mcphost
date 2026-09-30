@@ -3546,6 +3546,15 @@ impl TableBackend for TenantTableBridge {
             // inside the python sandbox receives the same `chart.v1` object
             // `host.table.chart` itself returns.
             "chart" => crate::chart::table_chart(&self.state, &self.tenant, &args).await,
+            // PRD-mcphost-table-concept-graph P1 requirement 8: the same
+            // three tools `host.table.graph`/`.join_paths`/
+            // `.next_questions` expose, reachable from `mcphost.table` too
+            // (AC9: "the same object the tool returns" -- these call the
+            // exact same `tables_graph::*` functions `dispatch_control_tool`
+            // does).
+            "graph" => crate::tables_graph::table_graph(&self.state, &self.tenant, &args).await,
+            "join_paths" => crate::tables_graph::join_paths(&self.state, &self.tenant, &args).await,
+            "next_questions" => crate::tables_graph::next_questions(&self.state, &self.tenant, &args).await,
             other => Err(AppError::InvalidArgs(format!("unknown table op '{other}'"))),
         };
         result.map_err(app_error_to_kind_error)

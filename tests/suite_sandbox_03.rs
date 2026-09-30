@@ -144,6 +144,8 @@ mod surface_ac06_python_outputs_by_path;
 mod tables_ac05_python_sandbox_table_access;
 #[path = "tables_ac08_docs_and_kv_vs_table_sentence.rs"]
 mod tables_ac08_docs_and_kv_vs_table_sentence;
+#[path = "tgraph_ac09_python_sandbox_join_paths.rs"]
+mod tgraph_ac09_python_sandbox_join_paths;
 #[path = "tooltest_ac13_publish_error_parity.rs"]
 mod tooltest_ac13_publish_error_parity;
 #[path = "tooltest_ac1_python_two_invocations.rs"]
