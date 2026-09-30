@@ -809,10 +809,72 @@ async fn require_known_tenant_namespace(
     }
 }
 
+
+/// PRD-mcphost-session-bound-tenant-after-signup requirement 1: the session
+/// identity the binding map is keyed by.
+///
+/// The transport underneath stays stateless (`build_router` still passes
+/// `with_legacy_session_mode(false)`), because `rmcp`'s own session mode
+/// *requires* the header back on every follow-up request and the Claude
+/// Agent SDK never sends one -- see `session_bind`'s module docs and
+/// `tests/sessbind_ac01_*`. So the identifier is minted here instead:
+///
+/// * a request carrying an `Mcp-Session-Id` this process actually minted
+///   keeps it (that is what gives a signup and a later key-less call on the
+///   same connection one identity);
+/// * anything else -- no header, or a header holding a value this process
+///   did not mint (a guess, a client-chosen string, another process's id) --
+///   is replaced by a freshly minted one before the handler ever sees it, so
+///   a binding is never addressed by client input (the PRD's own
+///   non-functional clause);
+/// * every response echoes the session id, so a spec-compliant client can
+///   send it back. The request's own headers are never rewritten -- the
+///   resolved id rides in a request extension
+///   ([`crate::session_bind::RequestSessionId`]) so the transport
+///   underneath keeps reading the wire exactly as it did before. A client that ignores the header -- the SDK -- behaves
+///   byte-for-byte as it does at v0.60.35: it never reaches a binding,
+///   because it never presents the id one is stored under.
+async fn issue_session_id(
+    State(state): State<Arc<AppState>>,
+    mut req: Request<Body>,
+    next: Next,
+) -> Response {
+    let header = http::HeaderName::from_static(crate::session_bind::SESSION_ID_HEADER);
+    let presented = req
+        .headers()
+        .get(&header)
+        .and_then(|v| v.to_str().ok())
+        .filter(|id| state.session_bindings.is_server_issued(id))
+        .map(str::to_string);
+    let session_id = presented.unwrap_or_else(|| state.session_bindings.issue());
+    req.extensions_mut()
+        .insert(crate::session_bind::RequestSessionId(session_id.clone()));
+    let mut response = next.run(req).await;
+    if let Ok(value) = HeaderValue::from_str(&session_id) {
+        response.headers_mut().insert(header, value);
+    }
+    response
+}
+
 pub fn build_router(state: Arc<AppState>) -> Router {
+    build_router_with_session_mode(state, false)
+}
+
+/// PRD-mcphost-session-bound-tenant-after-signup: test-only seam behind
+/// `build_router`'s own fixed `false` -- production behavior is byte-for-
+/// byte unchanged (`build_router` always calls this with `false`). Exists
+/// so `tests/sessbind_ac01_transport_stateless_blocks_session_binding.rs`
+/// can build the exact production router with `legacy_session_mode(true)`
+/// and prove, against a real server, that enabling `rmcp`'s only session-
+/// identity mechanism breaks the already-shipped Claude Agent SDK replay
+/// (`tests/compat_ac11_ac12_claude_sdk_replay.rs`) -- the PRD's own
+/// technical-considerations exit clause ("if mcphost runs the transport
+/// stateless ... this PRD is blocked") turned into a reproducible test
+/// rather than an assertion in a changelog.
+pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode: bool) -> Router {
     let config = StreamableHttpServerConfig::default()
         .with_json_response(true)
-        .with_legacy_session_mode(false)
+        .with_legacy_session_mode(legacy_session_mode)
         .with_max_request_body_bytes(MAX_REQUEST_BODY_BYTES)
         // This endpoint's security boundary is the bearer key, not the Host
         // header: it is meant to be reached at whatever public domain the
@@ -854,7 +916,21 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             require_known_tenant_namespace,
-        ));
+        ))
+        // PRD-mcphost-session-bound-tenant-after-signup requirement 1: a
+        // `/t/{ns}/mcp` connection gets a session identity on exactly the
+        // same terms as `/mcp` -- see `root_mcp_router` below.
+        .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id));
+
+    // PRD-mcphost-session-bound-tenant-after-signup requirement 1: only the
+    // streamable-HTTP routes get a session identity, so `/healthz`, the
+    // OAuth endpoints and the router's own 404 fallback are untouched. Its
+    // own sub-router with `route_layer` (rather than `.layer()` on the
+    // merged router) for exactly the reason `tenant_mcp_router` above
+    // already documents: `.layer()` would wrap the default fallback too.
+    let root_mcp_router = Router::new()
+        .route_service("/mcp", service)
+        .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id));
 
     Router::new()
         .route("/healthz", get(healthz))
@@ -946,10 +1022,22 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // `/vault/callback` completes the code exchange server-side.
         .route("/vault/connect/{token}", get(crate::vault::get_connect))
         .route("/vault/callback", get(crate::vault::get_callback))
-        .route_service("/mcp", service)
+        .merge(root_mcp_router)
         .merge(tenant_mcp_router)
-        .layer(middleware::from_fn(protocol_version_and_log))
+        // PRD-mcphost-session-bound-tenant-after-signup requirement 7
+        // (AC10): `oauth_401_upgrade` must run INSIDE (closer to the
+        // router than) `protocol_version_and_log` -- axum's `.layer(L)`
+        // wraps the current service, so the LAST `.layer()` call becomes
+        // the OUTERMOST middleware. With `oauth_401_upgrade` added last
+        // (as it used to be), it saw the response before
+        // `protocol_version_and_log` (added before it, so wrapped inside
+        // it) had a chance to log -- the log line recorded the pre-upgrade
+        // status (200 for a `tenant_key_missing` refusal actually sent to
+        // the client as 401). Swapping the order makes
+        // `protocol_version_and_log` the outermost layer, so it logs
+        // whatever `oauth_401_upgrade` (now inner) already rewrote.
         .layer(middleware::from_fn_with_state(state.clone(), oauth_401_upgrade))
+        .layer(middleware::from_fn(protocol_version_and_log))
         .with_state(state)
 }
 

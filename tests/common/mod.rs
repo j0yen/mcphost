@@ -294,6 +294,7 @@ pub async fn bare_app_state() -> (AppState, TempDataDir) {
         end_user_activity: Default::default(),
         oauth_healthz_cache: Default::default(),
         verified_client_ids: mcphost::state::VerifiedClientIds::empty(),
+        session_bindings: mcphost::session_bind::SessionBindings::new(),
     };
     (state, data_dir)
 }
@@ -782,6 +783,7 @@ impl TestServer {
             end_user_activity: Default::default(),
             oauth_healthz_cache: Default::default(),
             verified_client_ids,
+            session_bindings: mcphost::session_bind::SessionBindings::new(),
         });
 
         // PRD-mcphost-runs-and-jobs: every test server runs the real
@@ -843,6 +845,15 @@ pub struct McpClient {
     /// that never asked for a specific client keeps seeing that value.
     client_name: String,
     client_version: String,
+    /// PRD-mcphost-session-bound-tenant-after-signup: opt-in
+    /// [`Self::with_session_continuity`] state -- the `Mcp-Session-Id` the
+    /// server issued on this client's first response, echoed on every later
+    /// request, exactly as a spec-compliant streamable-HTTP client does.
+    /// `None` (and never sent) unless that builder was called, so every
+    /// pre-existing test keeps making one independent stateless request per
+    /// call, which is the behaviour those tests were written against.
+    session_id: Arc<std::sync::Mutex<Option<String>>>,
+    session_continuity: bool,
 }
 
 #[derive(Debug)]
@@ -867,7 +878,37 @@ impl McpClient {
             next_id: AtomicU64::new(1),
             client_name: "mcphost-test".to_string(),
             client_version: "0.1.0".to_string(),
+            session_id: Arc::new(std::sync::Mutex::new(None)),
+            session_continuity: false,
         }
+    }
+
+    /// PRD-mcphost-session-bound-tenant-after-signup: make this client
+    /// behave like a real streamable-HTTP client -- remember the
+    /// `Mcp-Session-Id` the server issues and echo it on every subsequent
+    /// request, so a `signup` and the calls after it share one session.
+    /// Without this, each call is an independent stateless request that can
+    /// never see a binding (which is what the Claude Agent SDK does today,
+    /// and why AC3's anonymous behaviour is unchanged).
+    pub fn with_session_continuity(mut self) -> Self {
+        self.session_continuity = true;
+        self
+    }
+
+    /// The session id the server issued to this client, once one has been
+    /// seen. `None` before the first request, or when continuity is off.
+    pub fn session_id(&self) -> Option<String> {
+        self.session_id.lock().expect("session id lock").clone()
+    }
+
+    /// Adopt another client's session id -- for a test that needs a second,
+    /// differently-configured client (e.g. one carrying a bearer) on the
+    /// SAME session, which is what AC5's "header wins, the binding is
+    /// unchanged" needs to exercise.
+    pub fn joining_session_of(mut self, other: &McpClient) -> Self {
+        self.session_continuity = true;
+        self.session_id = Arc::clone(&other.session_id);
+        self
     }
 
     pub fn with_bearer(base_url: &str, key: &str) -> Self {
@@ -952,7 +993,21 @@ impl McpClient {
         if let Some((name, value)) = extra_header {
             req = req.header(name, value);
         }
-        req.send().await.expect("send request")
+        if self.session_continuity
+            && let Some(id) = self.session_id()
+        {
+            req = req.header("Mcp-Session-Id", id);
+        }
+        let response = req.send().await.expect("send request");
+        if self.session_continuity
+            && let Some(id) = response
+                .headers()
+                .get("Mcp-Session-Id")
+                .and_then(|v| v.to_str().ok())
+        {
+            *self.session_id.lock().expect("session id lock") = Some(id.to_string());
+        }
+        response
     }
 
     async fn post(&self, body: Value) -> reqwest::Response {
@@ -1354,6 +1409,7 @@ pub async fn bare_state(dir: &std::path::Path) -> AppState {
         end_user_activity: Default::default(),
         oauth_healthz_cache: Default::default(),
         verified_client_ids: mcphost::state::VerifiedClientIds::empty(),
+        session_bindings: mcphost::session_bind::SessionBindings::new(),
     }
 }
 

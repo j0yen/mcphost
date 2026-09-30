@@ -675,6 +675,7 @@ async fn main() -> anyhow::Result<()> {
                 end_user_activity: Default::default(),
                 oauth_healthz_cache: Default::default(),
                 verified_client_ids,
+                session_bindings: mcphost::session_bind::SessionBindings::new(),
             });
             // PRD-mcphost-abuse-guard-ban-list requirement 6: load the ban
             // cache once before this process ever serves a request, so the

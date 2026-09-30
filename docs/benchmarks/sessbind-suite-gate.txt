@@ -1,0 +1,46 @@
+mcphost sessbind suite gate -- PRD-mcphost-session-bound-tenant-after-signup
+head_sha: 284a44eaf93f
+
+cargo test --workspace: 1444 passed; 0 failed (13 test binaries, 8 ignored)
+clippy_warning_count: 0 (cargo clippy --all-targets -- -D warnings, clean)
+
+block=0 -- no AC of this PRD is blocked. AC1-AC13 each pair with a hermetic
+test that runs on every `cargo test`; nothing here is deferred, and nothing
+here needs an operator, a real box, or a live host.
+
+Session binding landed on mcphost's own session identity, not rmcp's.
+rmcp 3.3.0's only built-in Mcp-Session-Id mechanism (legacy_session_mode(true))
+makes the transport require the header back on every follow-up request, which
+the Claude Agent SDK's own recorded wire sequence never sends -- so
+src/http.rs's build_router still runs with_legacy_session_mode(false) and
+http::issue_session_id mints an HMAC-signed session id one layer above the
+transport. That break is pinned by a test that builds the exact production
+router with the flag flipped, not asserted in prose:
+sessbind_ac01_keyless_call_after_signup_runs_as_the_bound_tenant.rs::
+enabling_rmcps_own_session_mode_would_break_claude_sdk_replay. The shipped
+SDK compat guarantee (tests/compat_ac11_ac12_claude_sdk_replay.rs) is
+unchanged and green in the run above.
+
+AC -> test:
+  AC1  -- tests/sessbind_ac01_keyless_call_after_signup_runs_as_the_bound_tenant.rs
+  AC2  -- tests/sessbind_ac02_five_tools_run_as_the_bound_tenant.rs
+  AC3  -- tests/sessbind_ac03_anonymous_session_unchanged.rs
+  AC4  -- tests/sessbind_ac04_explicit_key_wins_over_the_binding.rs
+  AC5  -- tests/sessbind_ac05_bearer_wins_and_the_binding_survives.rs
+  AC6  -- tests/sessbind_ac06_second_signup_rebinds_and_reports_session_bound.rs
+  AC7  -- tests/sessbind_ac07_concurrent_sessions_no_cross_session_leak.rs
+  AC8  -- tests/sessbind_ac08_binding_map_is_bounded_under_a_session_flood.rs
+  AC9  -- tests/sessbind_ac09_disabled_bound_tenant_drops_the_binding.rs
+  AC10 -- tests/sessbind_ac10_request_log_records_the_upgraded_status.rs
+  AC11 -- tests/sessbind_ac11_session_bound_calls_are_metered_and_counted.rs
+  AC12 -- tests/sessbind_ac12_tenant_key_description_states_signup_optionality.rs
+  AC13 -- tests/sessbind_ac13_regression_gate.rs (this receipt)
+
+AC14 is Live -- the next nightly explore run's credential_arg_missing count
+against production after deploy-on-land. That is the operator's own
+post-deploy step, outside this build; it is not counted in block= above.
+
+Re-run and update this file (and its head_sha) via `wm-build runner exec --
+cargo test --workspace` / `cargo clippy --all-targets -- -D warnings` if a
+later PRD's diff touches src/http.rs, src/handler.rs, src/session_bind.rs, or
+the sessbind_* tests again materially.

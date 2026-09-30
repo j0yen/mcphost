@@ -1022,6 +1022,32 @@ mod self_offboard_ac3_offboarded_key_same_shape_as_unissued;
 mod self_offboard_ac4_pro_tenant_cancels_stripe_subscription;
 #[path = "self_offboard_ac5_admin_tenants_distinguishes_reason.rs"]
 mod self_offboard_ac5_admin_tenants_distinguishes_reason;
+#[path = "sessbind_ac01_keyless_call_after_signup_runs_as_the_bound_tenant.rs"]
+mod sessbind_ac01_keyless_call_after_signup_runs_as_the_bound_tenant;
+#[path = "sessbind_ac02_five_tools_run_as_the_bound_tenant.rs"]
+mod sessbind_ac02_five_tools_run_as_the_bound_tenant;
+#[path = "sessbind_ac03_anonymous_session_unchanged.rs"]
+mod sessbind_ac03_anonymous_session_unchanged;
+#[path = "sessbind_ac04_explicit_key_wins_over_the_binding.rs"]
+mod sessbind_ac04_explicit_key_wins_over_the_binding;
+#[path = "sessbind_ac05_bearer_wins_and_the_binding_survives.rs"]
+mod sessbind_ac05_bearer_wins_and_the_binding_survives;
+#[path = "sessbind_ac06_second_signup_rebinds_and_reports_session_bound.rs"]
+mod sessbind_ac06_second_signup_rebinds_and_reports_session_bound;
+#[path = "sessbind_ac07_concurrent_sessions_no_cross_session_leak.rs"]
+mod sessbind_ac07_concurrent_sessions_no_cross_session_leak;
+#[path = "sessbind_ac08_binding_map_is_bounded_under_a_session_flood.rs"]
+mod sessbind_ac08_binding_map_is_bounded_under_a_session_flood;
+#[path = "sessbind_ac09_disabled_bound_tenant_drops_the_binding.rs"]
+mod sessbind_ac09_disabled_bound_tenant_drops_the_binding;
+#[path = "sessbind_ac10_request_log_records_the_upgraded_status.rs"]
+mod sessbind_ac10_request_log_records_the_upgraded_status;
+#[path = "sessbind_ac11_session_bound_calls_are_metered_and_counted.rs"]
+mod sessbind_ac11_session_bound_calls_are_metered_and_counted;
+#[path = "sessbind_ac12_tenant_key_description_states_signup_optionality.rs"]
+mod sessbind_ac12_tenant_key_description_states_signup_optionality;
+#[path = "sessbind_ac13_regression_gate.rs"]
+mod sessbind_ac13_regression_gate;
 #[path = "sessionkey_ac02_ac03_discovery_shape.rs"]
 mod sessionkey_ac02_ac03_discovery_shape;
 #[path = "sessionkey_ac04_signup_usage_field.rs"]
