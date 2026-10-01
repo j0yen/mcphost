@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-lineage-blast-radius.md (test_prefix: lineage)",
+  "ac_test_map_prd": "PRD-mcphost-docs-hybrid-search.md (test_prefix: hybrid)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,19 +28,47 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/lineage_ac01_source_scan_registers_table_edge.rs",
-    "AC2": "tests/lineage_ac02_drop_with_no_consumers_is_unrefused.rs",
-    "AC3": "tests/lineage_ac03_blast_radius_ranks_chain_above_tool.rs",
-    "AC4": "tests/lineage_ac04_drop_gate_blocks_then_confirms_and_cascades.rs",
-    "AC5": "tests/lineage_ac05_effect_table_is_exhaustive.rs",
-    "AC6": "tests/lineage_ac06_trace_shows_chart_and_handle_downstream.rs",
-    "AC7": "tests/lineage_ac07_trace_pages_150_downstream_consumers.rs",
-    "AC8": "tests/lineage_ac08_blast_radius_is_tenant_scoped.rs",
-    "AC9": "tests/lineage_ac09_model_set_role_change_notes_chart.rs",
-    "AC10": "tests/lineage_ac10_blast_radius_1000_nodes_3000_edges_under_50ms.rs",
-    "AC12": "tests/lineage_ac12_python_bridge_trace_matches_tool.rs"
+    "AC1": "tests/hybrid_ac01_identifier_chunk_wins_via_lexical_rank.rs",
+    "AC2": "tests/hybrid_ac02_rrf_fuse_ties_and_normalization.rs",
+    "AC3": "tests/hybrid_ac03_lexical_mode_never_calls_provider.rs",
+    "AC4": "tests/hybrid_ac04_hybrid_without_provider_is_validation_error.rs",
+    "AC5": "tests/hybrid_ac05_default_mode_provider_failure_falls_back.rs",
+    "AC6": "tests/hybrid_ac06_hybrid_mode_cross_tenant_isolation.rs",
+    "AC7": "tests/hybrid_ac07_p95_latency_within_30ms_of_embeddings_only.rs",
+    "AC8": "tests/hybrid_ac08_hybrid_hit_rate_at_least_each_mode.rs",
+    "AC10": "tests/hybrid_ac10_filter_prefix_filters_before_fusion.rs"
   },
   "ac_test_map_by_prefix": {
+    "lineage": {
+      "_prd": "PRD-mcphost-lineage-blast-radius.md -- superseded by mcphost-docs-hybrid-search at HEAD; real test_prefix is lineage",
+      "AC1": "tests/lineage_ac01_source_scan_registers_table_edge.rs",
+      "AC2": "tests/lineage_ac02_drop_with_no_consumers_is_unrefused.rs",
+      "AC3": "tests/lineage_ac03_blast_radius_ranks_chain_above_tool.rs",
+      "AC4": "tests/lineage_ac04_drop_gate_blocks_then_confirms_and_cascades.rs",
+      "AC5": "tests/lineage_ac05_effect_table_is_exhaustive.rs",
+      "AC6": "tests/lineage_ac06_trace_shows_chart_and_handle_downstream.rs",
+      "AC7": "tests/lineage_ac07_trace_pages_150_downstream_consumers.rs",
+      "AC8": "tests/lineage_ac08_blast_radius_is_tenant_scoped.rs",
+      "AC9": "tests/lineage_ac09_model_set_role_change_notes_chart.rs",
+      "AC10": "tests/lineage_ac10_blast_radius_1000_nodes_3000_edges_under_50ms.rs",
+      "AC12": "tests/lineage_ac12_python_bridge_trace_matches_tool.rs"
+    },
+    "sessbind": {
+      "_prd": "PRD-mcphost-session-bound-tenant-after-signup.md -- superseded by mcphost-docs-hybrid-search at HEAD",
+      "AC1": "tests/sessbind_ac01_keyless_call_after_signup_runs_as_the_bound_tenant.rs",
+      "AC2": "tests/sessbind_ac02_five_tools_run_as_the_bound_tenant.rs",
+      "AC3": "tests/sessbind_ac03_anonymous_session_unchanged.rs",
+      "AC4": "tests/sessbind_ac04_explicit_key_wins_over_the_binding.rs",
+      "AC5": "tests/sessbind_ac05_bearer_wins_and_the_binding_survives.rs",
+      "AC6": "tests/sessbind_ac06_second_signup_rebinds_and_reports_session_bound.rs",
+      "AC7": "tests/sessbind_ac07_concurrent_sessions_no_cross_session_leak.rs",
+      "AC8": "tests/sessbind_ac08_binding_map_is_bounded_under_a_session_flood.rs",
+      "AC9": "tests/sessbind_ac09_disabled_bound_tenant_drops_the_binding.rs",
+      "AC10": "tests/sessbind_ac10_request_log_records_the_upgraded_status.rs",
+      "AC11": "tests/sessbind_ac11_session_bound_calls_are_metered_and_counted.rs",
+      "AC12": "tests/sessbind_ac12_tenant_key_description_states_signup_optionality.rs",
+      "AC13": "tests/sessbind_ac13_regression_gate.rs"
+    },
     "oauthunverifiedclientconsentwarning": {
       "_prd": "PRD-mcphost-oauth-unverified-client-consent-warning.md -- superseded by mcphost-unknown-kind-routes-to-recipe at HEAD; real test_prefix is mcphost_oauth_unverified_client_consent_warning",
       "AC1": "tests/mcphost_oauth_unverified_client_consent_warning_ac01_dcr_unverified_caution_renders.rs",

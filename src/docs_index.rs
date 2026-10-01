@@ -231,6 +231,54 @@ pub fn cosine(a: &[f32], b: &[f32]) -> f64 {
     dot / (norm_a.sqrt() * norm_b.sqrt())
 }
 
+// ---- fusion --------------------------------------------------------------
+
+/// PRD-mcphost-docs-hybrid-search requirement 1: the reciprocal rank fusion
+/// `k` -- fixed per the PRD's own open question ("Keep k_rrf fixed at 60 or
+/// expose it? Default: fixed").
+pub const K_RRF: f64 = 60.0;
+
+/// requirement 2/AC2: reciprocal rank fusion of two already rank-ordered
+/// candidate lists (`dense`/`sparse`, each sorted best-first; each pair's
+/// own `f64` is unused by the fusion math itself -- only list *position*
+/// becomes `rank_i(d)`, 1-based) -- `score(d) = Σ 1/(k_rrf + rank_i(d))`
+/// over whichever of the two lists contain `d`, renormalised so the top
+/// fused score is 1.0. Ties break by dense rank: a chunk absent from
+/// `dense` sorts after one present in it at the same fused score. Ported
+/// from aistack-vector's `rrf_fuse` (`~/projects/ai-stack @ 4ef6c22`).
+pub fn rrf_fuse<ID: Clone + Eq + std::hash::Hash>(
+    dense: &[(ID, f64)],
+    sparse: &[(ID, f64)],
+    k_rrf: f64,
+) -> Vec<(ID, f64)> {
+    use std::collections::HashMap;
+
+    let mut dense_rank: HashMap<ID, usize> = HashMap::new();
+    let mut scores: HashMap<ID, f64> = HashMap::new();
+    for (i, (id, _)) in dense.iter().enumerate() {
+        dense_rank.insert(id.clone(), i + 1);
+        *scores.entry(id.clone()).or_insert(0.0) += 1.0 / (k_rrf + (i + 1) as f64);
+    }
+    for (i, (id, _)) in sparse.iter().enumerate() {
+        *scores.entry(id.clone()).or_insert(0.0) += 1.0 / (k_rrf + (i + 1) as f64);
+    }
+
+    let max_score = scores.values().cloned().fold(0.0_f64, f64::max);
+    let mut out: Vec<(ID, f64)> = scores
+        .into_iter()
+        .map(|(id, s)| (id, if max_score > 0.0 { s / max_score } else { 0.0 }))
+        .collect();
+
+    out.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then_with(|| {
+            let ra = dense_rank.get(&a.0).copied().unwrap_or(usize::MAX);
+            let rb = dense_rank.get(&b.0).copied().unwrap_or(usize::MAX);
+            ra.cmp(&rb)
+        })
+    });
+    out
+}
+
 pub fn matches_filter(row: &ChunkVecRow, prefix: &Option<String>, name: &Option<String>) -> bool {
     if let Some(p) = prefix
         && !row.name.starts_with(p.as_str())

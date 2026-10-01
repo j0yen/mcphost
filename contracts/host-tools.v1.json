@@ -767,7 +767,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Ranked passage search over this tenant's document store. Lexical (BM25) by default; embeddings mode (set via host.docs.index_config) ranks by cosine and falls back to lexical (index.mode: \"lexical-fallback\") if the provider call fails. Returns [{document_id, name, version, chunk_no, offset, text, score}] plus an index block naming the mode and how stale the index is.",
+      "description": "Ranked passage search over this tenant's document store. Lexical (BM25) by default, or hybrid (reciprocal rank fusion of lexical and embeddings) once a provider is configured via host.docs.index_config -- falls back to lexical (index.mode: \"lexical-fallback\") if the provider call fails. mode overrides the default: \"lexical\" (never calls the provider), \"embeddings\", or \"hybrid\" (both require a configured provider). Returns [{document_id, name, version, chunk_no, offset, text, score, ranks: {lexical, embeddings}}] -- ranks names each hit's 1-based position in whichever source list(s) found it -- plus an index block naming the mode and how stale the index is.",
       "input_schema": {
         "properties": {
           "filter": {
@@ -787,6 +787,10 @@
           "k": {
             "description": "Max results to return, 1-20; default 5.",
             "type": "integer"
+          },
+          "mode": {
+            "description": "\"auto\" (default), \"lexical\", \"embeddings\", or \"hybrid\". \"embeddings\"/\"hybrid\" without a configured provider is a validation error.",
+            "type": "string"
           },
           "query": {
             "description": "Search query text.",

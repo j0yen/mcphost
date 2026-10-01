@@ -524,6 +524,24 @@ mod http_ac16_upstream_bridge_errors;
 mod http_ac17_upstream_egress_policy;
 #[path = "http_ac18_bridge_test_dry_run.rs"]
 mod http_ac18_bridge_test_dry_run;
+#[path = "hybrid_ac01_identifier_chunk_wins_via_lexical_rank.rs"]
+mod hybrid_ac01_identifier_chunk_wins_via_lexical_rank;
+#[path = "hybrid_ac02_rrf_fuse_ties_and_normalization.rs"]
+mod hybrid_ac02_rrf_fuse_ties_and_normalization;
+#[path = "hybrid_ac03_lexical_mode_never_calls_provider.rs"]
+mod hybrid_ac03_lexical_mode_never_calls_provider;
+#[path = "hybrid_ac04_hybrid_without_provider_is_validation_error.rs"]
+mod hybrid_ac04_hybrid_without_provider_is_validation_error;
+#[path = "hybrid_ac05_default_mode_provider_failure_falls_back.rs"]
+mod hybrid_ac05_default_mode_provider_failure_falls_back;
+#[path = "hybrid_ac06_hybrid_mode_cross_tenant_isolation.rs"]
+mod hybrid_ac06_hybrid_mode_cross_tenant_isolation;
+#[path = "hybrid_ac07_p95_latency_within_30ms_of_embeddings_only.rs"]
+mod hybrid_ac07_p95_latency_within_30ms_of_embeddings_only;
+#[path = "hybrid_ac08_hybrid_hit_rate_at_least_each_mode.rs"]
+mod hybrid_ac08_hybrid_hit_rate_at_least_each_mode;
+#[path = "hybrid_ac10_filter_prefix_filters_before_fusion.rs"]
+mod hybrid_ac10_filter_prefix_filters_before_fusion;
 #[path = "infer_ac05_ac06_ac07_http_schema.rs"]
 mod infer_ac05_ac06_ac07_http_schema;
 #[path = "infer_ac14_latency_budget.rs"]

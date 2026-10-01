@@ -12059,6 +12059,51 @@ impl Db {
         .await
     }
 
+    /// Test-only: PRD-mcphost-docs-hybrid-search AC7's 1k-chunk fixture,
+    /// the same one-transaction bypass as
+    /// [`Self::doc_chunks_bulk_insert_for_test`] but with a non-NULL
+    /// `vector` on every row (a fixed `dims`-length blob, distinct per row
+    /// only in its first component) so a hybrid search's dense candidate
+    /// pass has something to score -- the AC is about the added cost of
+    /// running the lexical query and fusing on top of an embeddings
+    /// search, not about how fast this test can embed 1k chunks.
+    pub async fn doc_chunks_bulk_insert_with_vectors_for_test(
+        &self,
+        tenant_id: i64,
+        count: i64,
+        dims: usize,
+    ) -> Result<(), AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            let tx = conn.unchecked_transaction()?;
+            {
+                let mut stmt = tx.prepare(
+                    "INSERT INTO doc_chunks \
+                         (tenant_id, document_id, version, chunk_no, chunk_offset, len, text, vector, name, created_at) \
+                     VALUES (?1, ?2, 1, 0, 0, ?3, ?4, ?5, ?2, ?6)",
+                )?;
+                let mut fts_stmt = tx.prepare(
+                    "INSERT INTO doc_chunks_fts (text, tenant_id, document_id, chunk_no) VALUES (?1, ?2, ?3, 0)",
+                )?;
+                for i in 0..count {
+                    let document_id = format!("hybridperfdoc{i}");
+                    let text = format!(
+                        "Filler passage content for load testing purposes, marker wordmarker{i} \
+                         sits here among ordinary prose words repeated for bulk padding."
+                    );
+                    let mut vector = vec![0.1f32; dims];
+                    vector[0] = (i % 97) as f32;
+                    let blob = crate::docs_index::encode_vector(&vector);
+                    stmt.execute(params![tenant_id, document_id, text.len() as i64, text, blob, now])?;
+                    fts_stmt.execute(params![text, tenant_id, document_id])?;
+                }
+            }
+            tx.commit()?;
+            Ok(())
+        })
+        .await
+    }
+
     // ---- documents (PRD-mcphost-document-store) --------------------------
     //
     // `docs.rs` owns mime detection, size/quota checks, and text extraction;

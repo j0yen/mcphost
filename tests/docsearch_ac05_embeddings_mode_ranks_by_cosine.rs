@@ -83,7 +83,11 @@ async fn rebuild_switches_to_embeddings_mode_and_search_ranks_by_cosine() {
     assert_eq!(status["index"]["rebuilding"], json!(false), "rebuild must be complete: {status:?}");
     assert_eq!(status["index"]["pending_documents"], json!(0));
 
-    let result = docs::doc_search(&state, &tenant, &json!({"query": "apple", "k": 5}))
+    // PRD-mcphost-docs-hybrid-search: default mode now fuses lexical and
+    // embeddings (index.mode "hybrid") once a provider is configured --
+    // explicit mode: "embeddings" keeps this test isolating cosine-only
+    // ranking, its own original purpose.
+    let result = docs::doc_search(&state, &tenant, &json!({"query": "apple", "k": 5, "mode": "embeddings"}))
         .await
         .expect("search ok");
     assert_eq!(result["index"]["mode"], json!("embeddings"));
