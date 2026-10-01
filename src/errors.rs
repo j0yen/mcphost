@@ -716,22 +716,63 @@ impl AppError {
         }
     }
 
+    /// Zero-arg convenience for the many call sites with no request-scoped
+    /// base URL in hand (hermetic unit tests, `kinds::conformance`'s shape
+    /// checks, the free function [`crate::handler::get_parts`]'s own
+    /// no-HTTP-transport edge case) -- same wire shape as
+    /// [`Self::into_error_data_at`] with `base_url: None`, which just means
+    /// no `help_url` is attached (PRD-mcphost-first-hour-support-surface
+    /// requirement 1 names `help_url` as present "for every code in a
+    /// table `HELP_CODES`", not unconditionally -- a response built with no
+    /// base url to build one from is the one case it's legitimately
+    /// absent).
     pub fn into_error_data(self) -> ErrorData {
+        self.into_error_data_at(None)
+    }
+
+    /// `base_url`: this host's own externally-reachable origin for *this*
+    /// request (PRD-mcphost-first-hour-support-surface technical
+    /// considerations: "the request's Host header or `MCPHOST_PUBLIC_URL`")
+    /// -- every real HTTP call site in `handler.rs` passes
+    /// `Some(&self.state.public_url)`, the same base every other generated
+    /// link on this host (`claim::claim_url`, `authz`'s issuer/resource
+    /// URIs, `webhooks`/`hooks`' callback URLs) already uses, so `help_url`
+    /// never disagrees with where those links point. `None` only when no
+    /// such base exists at all (see [`Self::into_error_data`]'s doc
+    /// comment).
+    pub fn into_error_data_at(self, base_url: Option<&str>) -> ErrorData {
         let code = self.code();
         let jsonrpc_code = self.jsonrpc_code();
-        // Audit finding 2: every other variant's `Display` is
-        // operator-authored, safe-by-construction copy -- `Internal`'s
-        // alone carries whatever raw upstream text the call site wrapped
-        // (`billing.rs`'s Stripe error bodies, `authz.rs`'s `io::Error`/
-        // pkcs8 decode text), so it is the only one swapped for a generic
-        // message plus a correlation id; the detail still reaches an
-        // operator, just via the server log instead of the wire.
-        let message = if let AppError::Internal(detail) = &self {
-            let request_id = generate_request_id();
-            tracing::error!(request_id = %request_id, detail = %detail, "internal error");
-            format!("internal error; request_id={request_id}")
-        } else {
-            self.to_string()
+        let request_id = generate_request_id();
+        // Audit finding 2 (mcphost-polish-p0-20260930), generalized by
+        // requirement 1/6 of PRD-mcphost-first-hour-support-surface: every
+        // other variant's `Display` is operator-authored, safe-by-
+        // construction copy -- these four codes alone can carry raw
+        // upstream/host detail (`Internal`: Stripe bodies, `io::Error`/
+        // pkcs8 decode text; `Storage`: a raw `rusqlite::Error`'s text;
+        // `RegistryRejected`: the registry API's own rejection body;
+        // `service_unavailable` (`Self::disk_floor`): free/floor byte
+        // counts), so these alone get swapped for a generic message plus a
+        // correlation id -- the detail still reaches an operator, just via
+        // the server log instead of the wire. Every other 5xx-mapped
+        // `Structured` code (`sandbox_unavailable`, `dependency_advisory`,
+        // `plan_required`, ...) is deliberately excluded: those messages
+        // are operator-authored and already pinned verbatim by their own
+        // PRDs' acceptance criteria (e.g.
+        // `tests/mcphost_python_dependency_policy_ac05_near_name_denied.rs`),
+        // not a leak this PRD's audit found -- rewriting them would be
+        // scope creep that breaks passing tests, not a fix.
+        let message = match code {
+            "internal" | "storage" | "registry_rejected" | "service_unavailable" => {
+                let detail = self.to_string();
+                tracing::error!(request_id = %request_id, code = %code, detail = %detail, "service error");
+                if code == "service_unavailable" {
+                    format!("service unavailable; request_id={request_id}")
+                } else {
+                    format!("internal error; request_id={request_id}")
+                }
+            }
+            _ => self.to_string(),
         };
         let (field, expected) = self.field_and_expected();
         let example = field.as_deref().and_then(field_example);
@@ -806,6 +847,20 @@ impl AppError {
         // quickstart tool that gives the caller a filled-in working
         // example for whatever it was trying to publish.
         obj.insert("docs".to_string(), json!("host.quickstart"));
+        // PRD-mcphost-first-hour-support-surface requirement 1 (AC1):
+        // every payload carries its own correlation id, not just
+        // `Internal`'s (which also folds it into `message` above, unchanged
+        // from before this PRD).
+        obj.insert("request_id".to_string(), json!(request_id));
+        // AC1: `help_url` for every code `crate::help::HELP_CODES` lists,
+        // resolving on whichever base this call arrived on -- absent (not
+        // `null`) for every other code, and absent entirely when no base
+        // was given (see `into_error_data_at`'s doc comment).
+        if let Some(base) = base_url
+            && let Some(url) = crate::help::help_url(base, code)
+        {
+            obj.insert("help_url".to_string(), json!(url));
+        }
         ErrorData::new(jsonrpc_code, message, Some(Value::Object(obj)))
     }
 

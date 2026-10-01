@@ -44,3 +44,22 @@ Read it with one curl from orch:
 by method, `clients`, `grants_active`, first-ever-call timestamps, a
 per-tenant breakdown, and the registration/consent/token funnel) for a
 caller holding the admin key.
+
+## `help_url_served{code}`
+
+PRD-mcphost-first-hour-support-surface requirement 8: which first-hour
+error codes developers actually hit, by page view of the generated
+`/help/<code>` page their `help_url` pointed at.
+
+    help_url_served{code} = admin healthz's help_url_served.<code>
+
+A process-wide, in-memory counter (`help::record_help_served`/
+`help::help_hits_snapshot`) -- it resets on restart and is not persisted,
+same tradeoff `hooks::EventCounters` already makes for
+`events_received_1h`/`events_rejected_1h`. Absent from the object entirely
+until a code's page has been served at least once; present codes only grow.
+
+Read it with the same curl `oauth_tenants_7d` above uses:
+
+    curl -s -H "Authorization: Bearer $(cat ~/.config/mcphost/admin-key)" \
+      https://<host>/healthz | jq '.help_url_served'
