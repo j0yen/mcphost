@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-chart-in-a-minute.md (test_prefix: chart)",
+  "ac_test_map_prd": "PRD-mcphost-row-policy.md (test_prefix: rowpol)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,20 +28,18 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/chart_ac01_vendor_crates_documented_and_wired.rs",
-    "AC2": "tests/chart_ac02_category_sum_profiles_bar.rs",
-    "AC3": "tests/chart_ac03_caption_recomputes_facts_from_rows.rs",
-    "AC4": "tests/chart_ac04_temporal_day_column_picks_line_or_bar.rs",
-    "AC5": "tests/chart_ac05_empty_result_is_table_with_no_takeaway.rs",
-    "AC6": "tests/chart_ac06_count_star_is_bignumber.rs",
-    "AC7": "tests/chart_ac07_disallowed_mark_override_is_rejected.rs",
-    "AC8": "tests/chart_ac08_share_link_opens_unauthenticated.rs",
-    "AC9": "tests/chart_ac09_expired_or_altered_signature_refused.rs",
-    "AC10": "tests/chart_ac10_101st_share_evicts_oldest.rs",
-    "AC11": "tests/chart_ac11_python_bridge_returns_chart_v1.rs",
-    "AC12": "DEFERRED: operator-provisioned (Live, prod after deploy; not in this dispatch scope)",
-    "AC13": "tests/chart_ac13_llms_txt_section_under_50_lines.rs",
-    "AC14": "tests/chart_ac14_ten_concurrent_calls_p95_under_250ms.rs"
+    "AC1": "tests/rowpol_ac01_sql_predicate_scopes_to_end_user_attribute.rs",
+    "AC2": "tests/rowpol_ac02_missing_attribute_fails_closed_to_1_equals_0.rs",
+    "AC3": "tests/rowpol_ac03_unpolicied_table_zero_rows_for_end_user_all_for_tenant_key.rs",
+    "AC4": "tests/rowpol_ac04_cte_and_subquery_both_rewritten_via_ast.rs",
+    "AC5": "tests/rowpol_ac05_docs_prefix_policy_zero_hits_lexical_and_embeddings.rs",
+    "AC6": "tests/rowpol_ac06_empty_allowed_set_1_equals_0_and_denies_docs.rs",
+    "AC7": "tests/rowpol_ac07_audit_verify_intact_then_tampered.rs",
+    "AC8": "tests/rowpol_ac08_audit_chain_pages_and_refuses_end_users.rs",
+    "AC9": "tests/rowpol_ac09_filtered_vs_unfiltered_p95_within_3ms.rs",
+    "AC10": "tests/rowpol_ac10_policy_set_refuses_a_widening_rule.rs",
+    "AC11": "deferred -- operator-provisioned; AC11 is the Live/production-only requirement (a fresh tenant on real prod running a policy-scoped query after land, host.audit.chain showing the hashed record) and needs operator authorization this coding sandbox does not have. Not in this dispatch's assigned AC list (AC1-10, 12) to begin with.",
+    "AC12": "tests/rowpol_ac12_python_bridge_threads_end_user_through_table_query.rs"
   },
   "ac_test_map_by_prefix": {
     "oauthunverifiedclientconsentwarning": {
@@ -736,6 +734,23 @@
       "AC11": "tests/sessbind_ac11_session_bound_calls_are_metered_and_counted.rs",
       "AC12": "tests/sessbind_ac12_tenant_key_description_states_signup_optionality.rs",
       "AC13": "tests/sessbind_ac13_regression_gate.rs"
+    },
+    "chart": {
+      "_prd": "PRD-mcphost-chart-in-a-minute.md -- archived by PRD-mcphost-row-policy's own test-map refresh (this dict key is the PRD's test_prefix, matching the convention every other entry in ac_test_map_by_prefix already follows).",
+      "AC1": "tests/chart_ac01_vendor_crates_documented_and_wired.rs",
+      "AC2": "tests/chart_ac02_category_sum_profiles_bar.rs",
+      "AC3": "tests/chart_ac03_caption_recomputes_facts_from_rows.rs",
+      "AC4": "tests/chart_ac04_temporal_day_column_picks_line_or_bar.rs",
+      "AC5": "tests/chart_ac05_empty_result_is_table_with_no_takeaway.rs",
+      "AC6": "tests/chart_ac06_count_star_is_bignumber.rs",
+      "AC7": "tests/chart_ac07_disallowed_mark_override_is_rejected.rs",
+      "AC8": "tests/chart_ac08_share_link_opens_unauthenticated.rs",
+      "AC9": "tests/chart_ac09_expired_or_altered_signature_refused.rs",
+      "AC10": "tests/chart_ac10_101st_share_evicts_oldest.rs",
+      "AC11": "tests/chart_ac11_python_bridge_returns_chart_v1.rs",
+      "AC12": "DEFERRED: operator-provisioned (Live, prod after deploy; not in this dispatch scope)",
+      "AC13": "tests/chart_ac13_llms_txt_section_under_50_lines.rs",
+      "AC14": "tests/chart_ac14_ten_concurrent_calls_p95_under_250ms.rs"
     }
   }
 }

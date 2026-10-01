@@ -1,115 +1,107 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-chart-in-a-minute.md",
-  "intent_slug": "mcphost-chart-in-a-minute",
-  "root_motivation": "Grounding: opportunity from visions/mcphost-aistack-harvest.md (WWHTBT leaf 1 and weakest link leaf 2). host.table.query returns a JSON array of rows and nothing else (src/tables.rs:725); a model describing those rows in prose is doing its own unverified arithmetic, and mcphost serves no HTML a chart could live on. ai-stack already has a tested, grammar-free chain (mqo-chart-recommender, mqo-vega-emitter, mqo-chart-caption, mqo-chart-vocab, mqo-result-profiler) that turns a typed column profile plus rows into a chart recommendation, a Vega-Lite spec, and a caption whose numbers are computed from the data, not guessed. This build vendors that chain, writes the one missing piece (a profiler that reads SQL rows instead of an MQO response, reusing src/tables_model.rs's existing classifiers), and exposes host.table.chart(sql) plus a signed share link so a spreadsheet owner can see the picture and hand it to a teammate.",
-  "user_persona": "The spreadsheet owner from the database recipe: a table on mcphost, a Claude client, no BI tool. After a question they want to see the answer as a chart and paste one sentence about it into a message, without trusting a model's own arithmetic.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-row-policy.md",
+  "intent_slug": "mcphost-row-policy",
+  "root_motivation": "mcphost isolates tenants by giving each its own SQLite file, but stops at that boundary: once a tenant lets end users (already carrying verified identities per PRD-mcphost-end-user-identity) query a shared table or search shared docs, every end user sees every row/chunk. ai-stack's security crate (~/projects/ai-stack @ 4ef6c22 aistack-security) solved the next step: one policy per principal compiles once into two enforcement artifacts (a SQL row filter and a retrieval filter) stamped with the same hash, with every retrieval appending a hash-chained audit record. This PRD ports the compile core and audit chain (shapes only -- the source tree was not present on this build host) and applies the filters inside host.table.query/host.docs.search by rewriting the parsed SQL AST, never by string concatenation.",
+  "user_persona": "A tenant admin who shares tables/documents with end users and needs each one scoped to their own rows (e.g. region = EU), plus an auditor who later needs to prove what a given subject could see. Also an agent author whose python-kind tool code reaches the same store via mcphost.table.query/mcphost.docs.search and expects the same scoping as a direct host.* call.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 13
+    "target": 11
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the vendored crates in vendor/, When the gate runs, Then their own test suites pass unchanged and vendor/VENDOR.md names source repo and commit.",
-      "test": "tests/chart_ac01_vendor_crates_documented_and_wired.rs"
+      "description": "Given orders with a policy region = Attr(region) and Alice with region = EU, When Alice runs SELECT COUNT(*) FROM orders, Then the count equals the EU rows only and the audit record's policy_hash equals the compiled hash for Alice.",
+      "test": "tests/rowpol_ac01_sql_predicate_scopes_to_end_user_attribute.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the 1,000-row fixture, When host.table.chart runs SELECT category, SUM(amount) AS total FROM expenses GROUP BY category, Then the profile has one nominal dimension and one quantitative measure, the recommendation mark is a bar, and the spec's data.values holds five rows.",
-      "test": "tests/chart_ac02_category_sum_profiles_bar.rs"
+      "description": "Given the same table and Bob with no region attribute, When Bob queries it, Then zero rows return and the applied predicate is 1 = 0.",
+      "test": "tests/rowpol_ac02_missing_attribute_fails_closed_to_1_equals_0.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the same result, When the caption is read, Then its headline names the fixture's largest category and every fact's value equals a value recomputed from the rows in the test.",
-      "test": "tests/chart_ac03_caption_recomputes_facts_from_rows.rs"
+      "description": "Given a table with no policy, When an end user queries it, Then zero rows return; When the tenant key queries it, Then all rows return and no audit record is written.",
+      "test": "tests/rowpol_ac03_unpolicied_table_zero_rows_for_end_user_all_for_tenant_key.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given SELECT day, SUM(amount) FROM expenses GROUP BY day, When chart runs, Then is_temporal is true for day only if it parses as a date; for the integer day column the mark is a bar, and for an ISO-date column in a second fixture table the mark is a line.",
-      "test": "tests/chart_ac04_temporal_day_column_picks_line_or_bar.rs"
+      "description": "Given a query with a CTE and a subquery both naming orders, When Alice runs it, Then both references are rewritten and the result matches the same query over EU rows only, and the test asserts the rewrite touched the AST nodes rather than the SQL text.",
+      "test": "tests/rowpol_ac04_cte_and_subquery_both_rewritten_via_ast.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a query returning zero rows, When chart runs, Then mark is Table, vega_lite.data.values is empty, and the caption headline is the no-takeaway text.",
-      "test": "tests/chart_ac05_empty_result_is_table_with_no_takeaway.rs"
+      "description": "Given a docs policy on prefix hr/ for role hr, When a user without the role searches a term that only hr/ documents contain, Then zero hits return in lexical, embeddings, and hybrid modes.",
+      "test": "tests/rowpol_ac05_docs_prefix_policy_zero_hits_lexical_and_embeddings.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given SELECT COUNT(*) FROM expenses, When chart runs, Then mark is BigNumber and the caption headline states the count.",
-      "test": "tests/chart_ac06_count_star_is_bignumber.rs"
+      "description": "Given an empty allowed set, When compiled, Then the SQL predicate is 1 = 0 and the docs filter admits nothing, and compiling twice yields the same hash.",
+      "test": "tests/rowpol_ac06_empty_allowed_set_1_equals_0_and_denies_docs.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given mark: \"pie\" when the alternatives do not include it, When chart runs, Then a validation error names the allowed marks and no chart is stored.",
-      "test": "tests/chart_ac07_disallowed_mark_override_is_rejected.rs"
+      "description": "Given 50 filtered reads, When host.audit.verify runs over them, Then intact is true; When one record's applied field is altered in the database, Then intact is false and the first broken id is reported.",
+      "test": "tests/rowpol_ac07_audit_verify_intact_then_tampered.rs"
     },
     {
       "id": "AC8",
-      "level": "SHOULD",
-      "description": "Given share: true, When the returned share_url is fetched without any auth header, Then 200 with HTML containing the spec inline and the caption headline, and no tenant id or key appears in the body.",
-      "test": "tests/chart_ac08_share_link_opens_unauthenticated.rs"
+      "level": "MUST",
+      "description": "Given host.audit.chain(subject: \"alice\", limit: 10), When called by the tenant key, Then ten newest records for Alice return with returned_count and withheld_count; When called with an end-user credential, Then it is refused.",
+      "test": "tests/rowpol_ac08_audit_chain_pages_and_refuses_end_users.rs"
     },
     {
       "id": "AC9",
       "level": "SHOULD",
-      "description": "Given a share URL past its expiry or with an altered signature, When fetched, Then 410 or 403 respectively and no chart body.",
-      "test": "tests/chart_ac09_expired_or_altered_signature_refused.rs"
+      "description": "Given the 1,000-row fixture, When 100 filtered and 100 unfiltered queries run, Then filtered p95 exceeds unfiltered p95 by at most 3 ms.",
+      "test": "tests/rowpol_ac09_filtered_vs_unfiltered_p95_within_3ms.rs"
     },
     {
       "id": "AC10",
       "level": "SHOULD",
-      "description": "Given 100 stored charts, When a 101st is shared, Then the oldest is gone and host.table.charts lists 100.",
-      "test": "tests/chart_ac10_101st_share_evicts_oldest.rs"
+      "description": "Given an existing rule region in (EU) for Alice, When host.policy.set proposes region in (EU, US) without replace, Then it is refused naming the widening.",
+      "test": "tests/rowpol_ac10_policy_set_refuses_a_widening_rule.rs"
     },
     {
       "id": "AC11",
-      "level": "SHOULD",
-      "description": "Given a python tool calling mcphost.table.chart(sql), When it runs in the sandbox, Then it receives the same chart.v1 object the tool returns.",
-      "test": "tests/chart_ac11_python_bridge_returns_chart_v1.rs"
+      "level": "MUST",
+      "description": "Given prod after land, When a fresh tenant sets a policy on the fixture table, registers an end user with region = EU, and that end user runs SELECT COUNT(*) FROM expenses, Then the count matches the EU rows and host.audit.chain shows the record with a hash (Live; evidence: mcphost-1 healthz version after deploy plus the query and audit responses in the receipt under docs/receipts/).",
+      "test": "deferred -- operator-provisioned; AC11 is the Live/production-only requirement (a real post-deploy probe against mcphost-1 with a receipt under docs/receipts/) and needs operator authorization this coding sandbox does not have. Not in this dispatch's assigned AC list (AC1-10, 12) to begin with."
     },
     {
       "id": "AC12",
-      "level": "MUST",
-      "description": "Given prod after land, When examples/chart-in-a-minute/proof.sh https://mcphost.dev/mcp runs from carbon with a fresh signup, Then it exits 0 in under 30s, the caption's largest-category fact matches the fixture, and the share URL returns 200.",
-      "test": "DEFERRED: operator-provisioned (Live, prod after deploy, requires a real box and a deploy this dispatch cannot provision)"
-    },
-    {
-      "id": "AC13",
-      "level": "MUST",
-      "description": "Given www/llms.txt, When the chart section is read, Then it is under 50 lines and shows one chart call and one share link and no grammar other than SQL.",
-      "test": "tests/chart_ac13_llms_txt_section_under_50_lines.rs"
-    },
-    {
-      "id": "AC14",
       "level": "SHOULD",
-      "description": "Given ten concurrent chart calls for one tenant, When they finish, Then all ten return chart.v1 and p95 latency on the builder is under 250ms.",
-      "test": "tests/chart_ac14_ten_concurrent_calls_p95_under_250ms.rs"
+      "description": "Given a python tool run as Alice, When it calls mcphost.table.query on orders, Then it receives EU rows only.",
+      "test": "tests/rowpol_ac12_python_bridge_threads_end_user_through_table_query.rs"
     }
   ],
   "scope": [
-    "vendor/{mqo-chart-vocab,mqo-result-profiler,mqo-chart-recommender,mqo-vega-emitter,mqo-chart-caption}/: five crates vendored unchanged as path dependencies, vendor/VENDOR.md records source repo (~/projects/ai-stack) and commit (4ef6c22).",
-    "src/chart.rs (new): builds a result-profile.v1 value from a SQL query's columns and rows (reusing src/tables_model.rs's key/category/measure/date classifiers, made pub(crate) for this), host.table.chart/host.table.charts tool implementations, signed share-link minting and verification, and the /charts/{id} HTML handler.",
-    "migrations/0057_chart_index.sql, src/db.rs: a tenant-agnostic chart_index table in the main mcphost.db routing an unauthenticated GET /charts/{id} to the right tenant's own SQLite file, where the chart body itself lives in a new _mcphost_charts table.",
-    "src/handler.rs, src/http.rs, src/kinds/python.rs, src/kinds/mod.rs: host.table.chart/host.table.charts tool descriptors and dispatch, the /charts/{id} route, and the mcphost.table.chart python sandbox bridge function.",
-    "www/llms.txt: new \"Chart in a minute\" recipe section. examples/chart-in-a-minute/: fixture.csv, proof.sh, synthorg-task.yaml, mirroring the database-in-a-minute precedent.",
-    "Cargo.toml/CHANGELOG.md: version bump 0.62.0 -> 0.63.0 (PRD's own build_version_bump: minor rule) and a CHANGELOG entry recording the feature and AC12's deferral.",
-    "tests/chart_ac01..14 (AC12 has no test file, recorded deferred): one integration test file per non-deferred AC, tests/support/chart_fixture.rs holding the shared 1,000-row expenses fixture and small events fixture."
+    "src/rowpolicy/{mod,policy,audit,rewrite}.rs: policy model (RowPolicy/PolicyTarget/PolicyRule/RuleOp/RuleValue), compile() -> CompiledPolicy (SQL predicate with {pN} placeholders + bound params, docs filter, policy_hash), SecurityContext, the AST-based rewrite (sqlparser 0.62 VisitMut over TableFactor, post_visit to avoid re-descending into a freshly-built derived subquery, CTE aliases excluded from the rewrite target set), audit record hashing/chain verification, and the host.policy.*/host.audit.* tool entrypoints -- all reimplemented from the PRD's described shapes since ~/projects/ai-stack was not present on this build host (documented in src/rowpolicy/mod.rs's own module doc comment).",
+    "migrations/0057_row_policies.sql, migrations/0058_audit_chain.sql + src/db.rs: row_policies/end_user_attributes tables and audit_chain table plus their CRUD (upsert_row_policy, end_user_attrs_set/get, audit_chain_append/list/range) and the test_tamper_audit_applied test-only helper AC7 uses to simulate tampering.",
+    "src/tables.rs: table_query gains an end_user parameter, branches on Access::Unrestricted (unchanged fast path, no audit) vs Access::Restricted (collects referenced table names via the AST, compiles each table's policy, rewrites the query, executes with named bindings, computes withheld_count for the primary table, appends one audit record).",
+    "src/docs.rs: doc_search gains an end_user parameter, resolves a docs_filter once and applies it to both the lexical and embeddings candidate lists before ranking; lexical_search_results over-fetches when a filter is active so truncation to k happens after filtering, not before.",
+    "src/handler.rs: host.policy.set/list/attrs_set and host.audit.chain/verify tool registrations and dispatch; TenantTableBridge/TenantDocsBridge gain an end_user field threaded from call_published_tool's already-resolved end_user (AC12), with the three internal dry-run construction sites (tool_test, spec_test, tool_run) and src/runs.rs's background-run path left at end_user: None since no real caller identity reaches them.",
+    "src/errors.rs: jsonrpc_code() gains explicit match arms for \"tenant_key_required\" (INVALID_REQUEST) and \"policy_widening\" (INVALID_PARAMS) so these AppError::Structured codes don't silently default to INTERNAL_ERROR.",
+    "Cargo.toml: sqlparser gains the \"visitor\" feature; version bump 0.62.0 -> 0.63.0 (PRD's own version_bump: minor rule). CHANGELOG.md: entry recording the PRD landing and AC11's deferral.",
+    "contracts/host-tools.v1.json, www/llms.txt: regenerated for the five new host.policy.*/host.audit.* tools.",
+    "tests/rowpol_ac01..ac10,ac12_*.rs: the eleven delivered tests (one per non-deferred AC)."
   ],
   "non_goals": [
-    "Server-side rendering to PNG or SVG -- the share page renders in the browser (PRD's own non-goal).",
-    "A charts gallery or dashboard composition -- mqo-dashboard-composer is not vendored.",
-    "Editing a recommendation's encoding -- the caller may only override mark, from the recommender's own alternatives.",
-    "Any query grammar beyond sql -- PRD's own non-goal, confirmed by AC13's test that the recipe section shows no grammar other than SQL."
+    "Column masking -- ColumnMask types are not ported in this PRD (PRD's own non-goal); no masking is applied anywhere.",
+    "Policy inheritance across tenants or namespaces -- dropped along with ai-stack's enrollment/namespace layer, which was never ported.",
+    "Applying policies to tenant-key calls -- a tenant key sees its own data whole; policies bind to end users only (Access::Unrestricted takes no filter and writes no audit record).",
+    "A policy language beyond equality and set membership (eq/in) on end-user attributes or literals -- no range, pattern, or boolean-combinator operators.",
+    "host.policy.simulate (P2 requirement 11) -- out of this dispatch's assigned AC list entirely.",
+    "AC11 (Live, prod-only, operator-provisioned) -- deferred; nothing branch-local can substitute for a real post-deploy prod probe."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -118,42 +110,52 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "test_file_names_use_underscores_not_the_prd_slugs_hyphens": "test_prefix chart (the PRD's own frontmatter field), same convention as every other test file in this repo.",
-      "crate_layout_stays_one_package": "mcphost is one package with [lib] and [[bin]] (Cargo.toml:11); vendored crates are path dependencies under vendor/ picked up by Cargo's implicit-workspace rule, not a workspace conversion -- deny.toml and clippy.toml apply to them unchanged.",
-      "charts_stored_per_tenant_not_centrally": "_mcphost_charts lives inside each tenant's own SQLite file (tables::tenant_db_path), matching every other host.table.* table; only a small global chart_index (new migration 0057) in the main mcphost.db routes an unauthenticated /charts/{id} request, which has no tenant in its URL, to the right tenant file."
+      "ast_rewrite_not_string_concatenation": "Requirement 4 forbids splicing predicate literals into SQL text; CompiledPolicy's rls_predicate uses {p0}/{p1}/... template placeholders bound via rusqlite named parameters on a query rewritten through sqlparser's VisitMut, and tests/rowpol_ac04 explicitly asserts the rewrite goes through AST nodes.",
+      "fail_closed_default": "Per the PRD's own Open Questions resolution (\"Default here: fail closed\"), an end user querying an unpolicied table gets zero rows from day one, not a per-tenant opt-out switch.",
+      "ai_stack_source_unavailable": "~/projects/ai-stack does not exist on this build host, so src/rowpolicy/{policy,audit,rewrite}.rs reimplement the PRD-described shapes/contracts (EntitlementPolicy/CompiledPolicy/AuditChain concepts) rather than porting literal source lines; documented inline in src/rowpolicy/mod.rs.",
+      "test_prefix": "rowpol (the PRD's own frontmatter field), same convention as every other test file in this repo."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does mcphost need its own profiler instead of reusing mqo-result-profiler::profile directly?",
-      "a": "mqo-result-profiler's profile(response, catalog) reads an MQO response shape ai-stack's other services produce; host.table.chart has a SQL query's columns and rows instead, so src/chart.rs builds the result-profile.v1 value itself, vendoring mqo-result-profiler only for its ResultProfile/ColumnProfile/MeasureRange types (PRD's own explicit instruction)."
+      "q": "Why does doc_search's AC5 only test lexical and embeddings when the AC text says lexical/embeddings/hybrid?",
+      "a": "doc_search only ever reports modes lexical, embeddings, or lexical-fallback (confirmed by grep across src/docs.rs) -- there is no third ranking mode called \"hybrid\" anywhere in this codebase, and requirement 5's own prose (not the AC's) names only \"lexical and embeddings\". Building a net-new hybrid-ranking mode to satisfy the AC's wording literally would be unjustified scope creep for a row-policy PRD, so the two real modes are treated as the full behavior surface the AC's phrasing maps onto."
     },
     {
       "why": 2,
-      "q": "Why reuse src/tables_model.rs's classifiers instead of writing new measure/dimension thresholds for the chart profiler?",
-      "a": "PRD requirement 2 says so explicitly (\"Role decisions reuse the classifiers in src/tables_model.rs rather than new thresholds\") -- mcphost already has tested key/category/measure/date/id classifiers from the table-semantic-model PRD; a second set of thresholds would drift from them silently over time."
+      "q": "Why does table_query write one audit record per call rather than one per policied table touched?",
+      "a": "The PRD specifies the RetrievalAuditRecord shape but not multi-table call semantics. One record per table_query call, keyed to the alphabetically-first policied table's compiled policy/hash/predicate, is sufficient for every AC (AC1-3 are single-table; AC4's CTE/subquery test doesn't assert audit fields) and keeps the audit chain's one-row-per-read shape simple rather than fragmenting a single logical read across N audit rows."
     },
     {
       "why": 3,
-      "q": "Why does AC12 get deferred rather than attempted against the real https://mcphost.dev?",
-      "a": "AC12 is explicitly a Live acceptance criterion (\"Given prod after land\") requiring a deploy that has not happened yet and a run from carbon (the real operator's box) -- this dispatch works only in an isolated git worktree against a remote build-and-test runner, with no authority to deploy or provision production infrastructure, so it is recorded deferred as operator-provisioned rather than faked against a local stand-in."
+      "q": "Why does the AST rewrite happen in post_visit_table_factor rather than pre_visit_table_factor?",
+      "a": "sqlparser's derived VisitMut recurses into a node's children using the value AFTER pre_visit ran on it -- rewriting Table into a freshly-built Derived subquery in pre_visit caused the same traversal to immediately re-descend into that fresh subtree's own fresh Table node, rewriting it again, forever (a real stack overflow hit during AC4 development). A Table variant has no children to recurse into, so mutating it in post_visit is never itself re-traversed."
     },
     {
       "why": 4,
-      "q": "Why is AC14's concurrency/latency test run against the in-process TestServer rather than a subprocess on a fixed reference box, the way the repo's other hardware-dependent AC (ac11_load_smoke) is?",
-      "a": "AC14's own bound (250ms p95 for 10 concurrent in-process chart calls) is two orders of magnitude looser than ac11_load_smoke's 50ms bound for 200 real-subprocess calls measuring RSS; an in-process TestServer run (0.37s total wall time observed) already clears that bound with wide margin and needs no subprocess isolation, so it runs unconditionally in the gate instead of being #[ignore]d for manual hardware-specific runs."
-    }
-  ],
-  "created_at": "2026-09-30T19:04:33Z",
-  "ambiguities_resolved": [
-    {
-      "question": "Requirement 5's examples/chart-in-a-minute/ directory has no dedicated AC number in the PRD's acceptance-criteria list (AC13 only covers the llms.txt section) -- does it still need its own delivered proof?",
-      "resolution": "Yes -- delivered as its own commit (fixture.csv matching tests/support/chart_fixture.rs::expenses_rows() exactly, proof.sh, synthorg-task.yaml) per the PRD's requirement 5 text, verified by actually building the mcphost binary and running proof.sh against it end to end (exit 0, ~1.3s wall time) rather than only checking the script parses."
+      "q": "Why does referenced_table_names need to special-case CTE aliases?",
+      "a": "A CTE alias reference (e.g. FROM recent where recent is a WITH-defined name) is structurally identical to a real table reference (TableFactor::Table{name: \"recent\"}) -- without filtering CTE aliases out of the collected table-name list, AC4's outer query wrapped the CTE's own already-filtered output in a second (SELECT * FROM recent WHERE 1 = 0) AS recent, nullifying rows the CTE had already correctly scoped. Fixed by collecting every WITH clause's alias names via a pre_visit_query hook and excluding them."
     },
     {
-      "question": "requirement 3 says host.table.chart(sql, title?, mark?) but P1 requirement 6 adds share: true -- is share part of the same tool or a separate one?",
-      "resolution": "Same tool, one additional optional argument (share: bool), consistent with requirement 6's own description of share as part of the host.table.chart call and with the python bridge's signature in requirement 7 (mcphost.table.chart(sql, title=None, mark=None, share=False))."
+      "why": 5,
+      "q": "Why do host.policy.* and host.audit.* tools refuse an end-user credential (tenant_key_required) instead of silently scoping the call to that end user?",
+      "a": "Requirement 7 says \"All tenant-key only\" -- these are policy-authoring and audit-reading operations, not data reads an end user should ever reach regardless of their own attributes (an end user auditing their own access, or widening their own policy, would defeat the whole mechanism). AC8 pins this with an explicit refusal assertion rather than a silent-scoping fallback, matching host.state.*'s own end_user argument shape being the exception, not the rule, for every other host.policy.*/host.audit.* tool."
+    }
+  ],
+  "created_at": "2026-09-30T00:00:00Z",
+  "ambiguities_resolved": [
+    {
+      "question": "Should withheld_count be computed at all on large tables (PRD's own open question)?",
+      "resolution": "Default taken: null above 10,000 candidates, computed via a lightweight COUNT(*) scoped to the primary table otherwise -- matches the PRD's own stated default, so no further judgment call was needed."
+    },
+    {
+      "question": "Fail closed for end users on unpolicied tables from day one, or a per-tenant switch (PRD's own open question)?",
+      "resolution": "Default taken: fail closed from day one, no per-tenant switch -- matches the PRD's own stated default (AC3 pins this directly: zero rows for an end user, all rows for the tenant key, on the same unpolicied table)."
+    },
+    {
+      "question": "Is the find_widening()/widens() dominance check (requirement 9/AC10) actually exercised end-to-end before this build is called done?",
+      "resolution": "Yes -- it was implemented alongside host.policy.set early (reusing requirement 1's op: in / Literal(Value) shapes) but left untested until AC10's own dispatch slot; tests/rowpol_ac10_policy_set_refuses_a_widening_rule.rs confirms a literal superset on the same column is refused with policy_widening naming the column, that re-asserting the same set or narrowing it is accepted without replace, and that replace: true confirms a genuine widening."
     }
   ]
 }
