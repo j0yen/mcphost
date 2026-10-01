@@ -637,6 +637,27 @@ async fn well_known_catalog(State(state): State<Arc<AppState>>) -> impl IntoResp
     }
 }
 
+/// mcphost-polish-p0-20260930 (audit finding 1): README's own "Connect"
+/// checklist links `/status.html` and `/aup.html`, but neither was ever
+/// routed by this binary -- a comment on the `boa_engine` dev-dependency
+/// (Cargo.toml) assumed "a static file only mcphost-deploy's Caddy ever
+/// serves" would cover it. That assumption was wrong in prod (both 404'd
+/// live): the Caddy catch-all documented above (`/hooks/...`'s own comment)
+/// already proxies every unmatched path to this backend, so a Caddy config
+/// drift (or simply never having a static-file block for `www/`) means
+/// this binary's own 404 is what a visitor actually sees. Embedding the
+/// page text at compile time and routing it here removes the
+/// deploy-config's static-file block as a second place these two pages'
+/// uptime depends on.
+async fn static_status_html() -> Response {
+    crate::claim::html_response(StatusCode::OK, include_str!("../www/status.html").to_string())
+}
+
+/// Twin of [`static_status_html`] for `/aup.html` -- same finding, same fix.
+async fn static_aup_html() -> Response {
+    crate::claim::html_response(StatusCode::OK, include_str!("../www/aup.html").to_string())
+}
+
 /// PRD-mcphost-status-feed requirement 3/AC1/AC10: `GET /status.json`,
 /// anonymous, cacheable 60s. With `component`/`days` query params both
 /// present (AC10), returns that one component's daily rollup rows instead
@@ -935,6 +956,10 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
     Router::new()
         .route("/healthz", get(healthz))
         .route("/status.json", get(status_json_route))
+        // mcphost-polish-p0-20260930 (audit finding 1): see
+        // `static_status_html`'s own doc comment.
+        .route("/status.html", get(static_status_html))
+        .route("/aup.html", get(static_aup_html))
         .route(
             "/.well-known/mcp/{namespace}/server.json",
             get(well_known_server_json),

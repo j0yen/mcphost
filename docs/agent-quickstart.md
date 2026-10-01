@@ -93,6 +93,60 @@ own tool is **42.4s**.
 
 <!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
 
+## Leaving
+
+`host.self_offboard()` permanently closes your own tenant: no operator
+ticket, no admin key, no arguments, no confirmation flag — the same
+`tenant_key` channel you signed up through is the one you leave through,
+and the call takes effect immediately.
+
+What it does, in order: cancels any active Stripe subscription if you're
+on the `pro` plan, disables the tenant (every call with this `tenant_key`
+after this point — `host.*` or `billing.*` — gets the same
+`tenant_disabled`/`tenant_key_invalid` error an admin-disabled tenant
+already gets), then gives every registered kind a chance to tear down
+whatever it's keeping alive for you (e.g. a `python` sandbox's warm pool).
+
+What it does NOT do: scrub your data. `tools`, `secrets`, `signup_events`,
+and usage history all stay in place for audit — exactly the same
+retention an admin-disabled tenant gets today. If you want a copy of what
+you built before leaving, run `host.export()` first; `self_offboard`
+doesn't bundle one for you.
+
+Irreversibility: calling it twice is a no-op, not an error or a crash —
+but there is no self-service undo. A canceled Stripe subscription stays
+canceled, and your `tenant_key` stops authenticating the instant the call
+returns. (An operator can flip the underlying tenant row back on with
+`admin.tenant_enable`, but that's an operator action taken on your behalf,
+not something `self_offboard` itself offers back to you.)
+
+## Contributing: naming a new `host.*` tool
+
+mcphost-polish-p0-20260930 (audit finding 5): the registry mixes
+`host.<namespace>.<verb>` (dotted — `host.agent.lookup`, `host.docs.put`,
+`host.group.create`, `host.channel.post`, `host.msg.send`,
+`host.lineage.trace`, `host.enduser.revoke`, ...) with
+`host.<noun>_<verb>` (underscored — `host.key_rotate`, `host.bridge_test`,
+`host.self_offboard`, ...) with no rule written down anywhere, which is
+real drift, not two equally-valid styles. Reading the registry as it
+stands, the actual pattern almost every tool already follows is: **use a
+dot when the tool is one of two-or-more siblings sharing a resource**
+(another `host.agent.*`/`host.docs.*`/`host.group.*`/... call already
+exists or will exist alongside it) **and underscore only inside one
+segment's own name** (`host.lineage.blast_radius`,
+`host.enduser.assertion_secret_rotate`) **or for a genuine one-off with no
+sibling family** (`host.export`, `host.key_rotate`). The one named
+exception is the `host.tool_*` sharing/publish family
+(`host.tool_call`/`host.tool_share`/`host.tool_list`/`host.tool_remove`/
+`host.tool_logs`/`host.tool_rollback`/`host.tool_diff`/`host.tool_history`/
+`host.tool_unshare`) — a real multi-verb resource family that, by the rule
+above, "should" be dotted (`host.tool.call`, ...) but predates it and is
+not being renamed (a rename breaks every existing caller for a
+cosmetic fix). Do not use `host.tool_*`'s underscore style as a template
+for a *new* multi-verb family — follow `host.agent.*`/`host.docs.*`
+instead. A PRD to actually reconcile `host.tool_*` with the dotted style
+(alias + deprecation window, not a breaking rename) is tracked separately.
+
 ## Contributing: routing a new top-level path
 
 Adding a new top-level directory or file to this repo (like `www/`,

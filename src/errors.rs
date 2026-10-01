@@ -5,11 +5,30 @@
 //! carried in the JSON-RPC error's `data.error_code` field so a caller (or a
 //! test) can match on it without parsing prose.
 
+use rand::RngCore;
 use rmcp::model::{ErrorCode, ErrorData};
 use serde_json::{Map, Value, json};
 
 use crate::kinds::KindError;
 use crate::kinds::infer::KindSignal;
+
+/// A short random correlation id for an `AppError::Internal` response
+/// (audit finding 2, mcphost-polish-p0-20260930): the client only ever
+/// sees "internal error; request_id=<id>"; the raw upstream detail
+/// (Stripe API bodies, `io::Error`/pkcs8 decode text, ...) goes to the
+/// server log at `error!` under the same id, so an operator can find the
+/// real cause from the id a caller reports without the client ever seeing
+/// that text. Same hex-encoding convention as `auth::generate_key`, just
+/// shorter -- this is a log-correlation token, not a secret.
+fn generate_request_id() -> String {
+    let mut bytes = [0u8; 8];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        s.push_str(&format!("{b:02x}"));
+    }
+    s
+}
 
 /// A corrected example value for a well-known spec/argument field name,
 /// shared by every kind's rejections (PRD-mcphost-publish-first-try
@@ -700,7 +719,20 @@ impl AppError {
     pub fn into_error_data(self) -> ErrorData {
         let code = self.code();
         let jsonrpc_code = self.jsonrpc_code();
-        let message = self.to_string();
+        // Audit finding 2: every other variant's `Display` is
+        // operator-authored, safe-by-construction copy -- `Internal`'s
+        // alone carries whatever raw upstream text the call site wrapped
+        // (`billing.rs`'s Stripe error bodies, `authz.rs`'s `io::Error`/
+        // pkcs8 decode text), so it is the only one swapped for a generic
+        // message plus a correlation id; the detail still reaches an
+        // operator, just via the server log instead of the wire.
+        let message = if let AppError::Internal(detail) = &self {
+            let request_id = generate_request_id();
+            tracing::error!(request_id = %request_id, detail = %detail, "internal error");
+            format!("internal error; request_id={request_id}")
+        } else {
+            self.to_string()
+        };
         let (field, expected) = self.field_and_expected();
         let example = field.as_deref().and_then(field_example);
         let mut obj: Map<String, Value> = match &self {
@@ -1235,5 +1267,39 @@ impl From<rusqlite::Error> for AppError {
         // existing structured error").
         crate::db::note_rusqlite_error(&e);
         AppError::Storage(e.to_string())
+    }
+}
+
+#[cfg(test)]
+mod internal_error_tests {
+    use super::*;
+
+    /// Audit finding 2 (mcphost-polish-p0-20260930): a `billing.rs`/
+    /// `authz.rs` call site that wraps raw upstream text (Stripe API
+    /// bodies, `io::Error`/pkcs8 decode text, ...) into `AppError::Internal`
+    /// must never hand that text to the client -- only a generic message
+    /// plus a correlation id the server log carries the real detail under.
+    #[test]
+    fn internal_error_response_hides_detail_and_carries_request_id() {
+        let detail = "stripe: secret-ish detail";
+        let response = AppError::Internal(detail.to_string()).into_error_data();
+
+        assert!(
+            !response.message.contains(detail),
+            "client-facing message must not contain the wrapped detail: {}",
+            response.message
+        );
+        assert!(
+            response.message.contains("request_id="),
+            "client-facing message must carry a request_id: {}",
+            response.message
+        );
+        // The machine-readable code string is unchanged by this fix.
+        let data = response.data.expect("error data object");
+        assert_eq!(data["error_code"], "internal");
+        assert!(
+            !data.to_string().contains(detail),
+            "the structured error data must not carry the wrapped detail either: {data}"
+        );
     }
 }

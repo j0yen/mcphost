@@ -59,6 +59,10 @@ own tool is **42.4s**.
    separate `env` map (up to 16 entries / 4 KiB total, names matching
    `^[A-Z][A-Z0-9_]{0,63}$`) — shown verbatim in `host.tool_test`, unlike
    `secrets`, which stay redacted there.
+8. Leave: `host.self_offboard()` permanently closes this tenant, same
+   channel you signed up through, no operator involved. See "Leaving" in
+   `docs/agent-quickstart.md` for the full contract (what's deleted, what
+   isn't, and that it can't be undone from here).
 
 <!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
 
