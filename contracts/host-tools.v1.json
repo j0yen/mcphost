@@ -288,7 +288,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Remove a mute.",
+      "description": "Remove a mute: the address's messages resume appearing in host.msg.inbox(unread_only=true).",
       "input_schema": {
         "properties": {
           "address": {
@@ -1416,7 +1416,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Remove a block.",
+      "description": "Remove a block: the address's future sends to you are accepted again.",
       "input_schema": {
         "properties": {
           "address": {
