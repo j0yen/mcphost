@@ -91,6 +91,10 @@ const MIGRATION_0055: &str = include_str!("../migrations/0055_enterprise_managed
 // had already claimed 0045 through 0055 for other PRDs.
 const MIGRATION_0056: &str = include_str!("../migrations/0056_tool_spec_exposure.sql");
 const MIGRATION_0057: &str = include_str!("../migrations/0057_chart_index.sql");
+// PRD-mcphost-lineage-blast-radius requirement 3: `lineage_nodes`/`lineage_edges`.
+// (Renumbered from this PRD's own 0057 during rebase: mcphost-chart-in-a-minute
+// claimed 0057 first, landing on main ahead of this branch.)
+const MIGRATION_0058: &str = include_str!("../migrations/0058_lineage.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -671,6 +675,29 @@ pub struct EndUserStatsRow {
     pub active_30d: i64,
     pub revoked: i64,
     pub purged: i64,
+}
+
+/// PRD-mcphost-lineage-blast-radius requirement 3: one `lineage_nodes` row,
+/// read back by [`crate::lineage::load_graph`] to build the in-memory
+/// [`crate::lineage::graph::LineageGraph`].
+#[derive(Debug, Clone)]
+pub struct LineageNodeRow {
+    pub node_id: String,
+    pub kind: String,
+    pub label: String,
+    pub uses: i64,
+    pub created_unix: i64,
+    pub last_used_unix: Option<i64>,
+    pub orphaned: bool,
+}
+
+/// PRD-mcphost-lineage-blast-radius requirement 3: one `lineage_edges` row.
+#[derive(Debug, Clone)]
+pub struct LineageEdgeRow {
+    pub upstream_id: String,
+    pub downstream_id: String,
+    pub evidence: String,
+    pub created_unix: i64,
 }
 
 /// PRD-mcphost-runs-and-jobs P0 requirement 1: one row of the `runs`
@@ -2075,7 +2102,8 @@ impl Db {
         Self::migrate_0054_tool_scopes_and_consent(&conn)?;
         Self::migrate_0055_enterprise_managed_auth(&conn)?;
         Self::migrate_0056_tool_spec_exposure(&conn)?;
-        Self::migrate_0057_chart_index(&conn)
+        Self::migrate_0057_chart_index(&conn)?;
+        Self::migrate_0058_lineage(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -2880,6 +2908,23 @@ impl Db {
         }
         Ok(())
     }
+
+    /// PRD-mcphost-lineage-blast-radius migration 0058 (requirement 3):
+    /// `lineage_nodes`/`lineage_edges`, gated on `lineage_nodes`'s own
+    /// existence -- same "new table, guard on its presence" convention as
+    /// 0055 above. (Renumbered from this PRD's own 0057 during rebase:
+    /// mcphost-chart-in-a-minute claimed 0057 first, landing on main ahead
+    /// of this branch.)
+    fn migrate_0058_lineage(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'lineage_nodes'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0058)?;
+        }
+        Ok(())
+    }
+
 
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
@@ -14446,6 +14491,159 @@ impl Db {
                  VALUES (?1, ?2, ?3, ?4, ?5)",
                 params![tenant_id, subject, action, detail, created_unix],
             )?;
+            Ok(())
+        })
+        .await
+    }
+
+    // ---- PRD-mcphost-lineage-blast-radius (requirement 3: persistence) ----
+
+    /// Every node this tenant has registered -- loaded in full (no paging)
+    /// to build the in-memory [`crate::lineage::graph::LineageGraph`];
+    /// `crate::lineage::load_graph` is the only caller and caches the
+    /// result for 30s (requirement 3's own cache window).
+    pub async fn lineage_load_nodes(&self, tenant_id: i64) -> Result<Vec<LineageNodeRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT node_id, kind, label, uses, created_unix, last_used_unix, orphaned \
+                 FROM lineage_nodes WHERE tenant_id = ?1",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id], |r| {
+                    Ok(LineageNodeRow {
+                        node_id: r.get(0)?,
+                        kind: r.get(1)?,
+                        label: r.get(2)?,
+                        uses: r.get(3)?,
+                        created_unix: r.get(4)?,
+                        last_used_unix: r.get(5)?,
+                        orphaned: r.get::<_, i64>(6)? != 0,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// Every edge this tenant has registered -- see [`Self::lineage_load_nodes`].
+    pub async fn lineage_load_edges(&self, tenant_id: i64) -> Result<Vec<LineageEdgeRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT upstream_id, downstream_id, evidence, created_unix \
+                 FROM lineage_edges WHERE tenant_id = ?1",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id], |r| {
+                    Ok(LineageEdgeRow {
+                        upstream_id: r.get(0)?,
+                        downstream_id: r.get(1)?,
+                        evidence: r.get(2)?,
+                        created_unix: r.get(3)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// Inserts a node if it doesn't exist yet for this tenant, else leaves
+    /// `uses`/`last_used_unix`/`orphaned` untouched and only refreshes
+    /// `label` and `kind` -- a re-registration (e.g. a tool republished
+    /// with a different source) must never reset an accumulated use count.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn lineage_upsert_node(
+        &self,
+        tenant_id: i64,
+        node_id: String,
+        kind: String,
+        label: String,
+        created_unix: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO lineage_nodes (tenant_id, node_id, kind, label, uses, created_unix, last_used_unix, orphaned) \
+                 VALUES (?1, ?2, ?3, ?4, 0, ?5, NULL, 0) \
+                 ON CONFLICT(tenant_id, node_id) DO UPDATE SET kind = excluded.kind, label = excluded.label",
+                params![tenant_id, node_id, kind, label, created_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Inserts an edge if it doesn't already exist for this tenant;
+    /// returns `true` when a new row was actually written (used only for
+    /// logging/testing, not for control flow).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn lineage_insert_edge(
+        &self,
+        tenant_id: i64,
+        upstream_id: String,
+        downstream_id: String,
+        evidence: String,
+        created_unix: i64,
+    ) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let inserted = conn.execute(
+                "INSERT OR IGNORE INTO lineage_edges (tenant_id, upstream_id, downstream_id, evidence, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![tenant_id, upstream_id, downstream_id, evidence, created_unix],
+            )?;
+            Ok(inserted > 0)
+        })
+        .await
+    }
+
+    /// requirement 5: bumps `uses`/`last_used_unix` on a node that just
+    /// recorded activity (a tool or chain's own node, or a table reached
+    /// transitively through a registered edge). A no-op (not an error) when
+    /// the node doesn't exist -- a run against a tool published before this
+    /// PRD landed and never backfilled has nothing to bump yet.
+    pub async fn lineage_bump_uses(&self, tenant_id: i64, node_id: String, last_used_unix: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE lineage_nodes SET uses = uses + 1, last_used_unix = ?3 \
+                 WHERE tenant_id = ?1 AND node_id = ?2",
+                params![tenant_id, node_id, last_used_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// requirement 7 cascade: removes a table's own node and every edge
+    /// touching it (both directions), used by a confirmed `host.table.drop`.
+    pub async fn lineage_delete_node_and_edges(&self, tenant_id: i64, node_id: String) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "DELETE FROM lineage_edges WHERE tenant_id = ?1 AND (upstream_id = ?2 OR downstream_id = ?2)",
+                params![tenant_id, node_id],
+            )?;
+            conn.execute(
+                "DELETE FROM lineage_nodes WHERE tenant_id = ?1 AND node_id = ?2",
+                params![tenant_id, node_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// requirement 7 cascade: flags a dependent chart/handle node
+    /// `orphaned` rather than deleting it (open question default: "kept,
+    /// flagged").
+    pub async fn lineage_mark_orphaned(&self, tenant_id: i64, node_ids: Vec<String>) -> Result<(), AppError> {
+        if node_ids.is_empty() {
+            return Ok(());
+        }
+        self.with_conn(move |conn| {
+            for node_id in &node_ids {
+                conn.execute(
+                    "UPDATE lineage_nodes SET orphaned = 1 WHERE tenant_id = ?1 AND node_id = ?2",
+                    params![tenant_id, node_id],
+                )?;
+            }
             Ok(())
         })
         .await

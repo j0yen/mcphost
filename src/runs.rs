@@ -19,10 +19,12 @@ use serde_json::{Map, Value, json};
 use crate::db::{RunRow, Tenant};
 use crate::errors::AppError;
 use crate::handler::{
-    BufferedLog, CellResourceSink, CountingStateBackend, TenantDocsBridge, TenantStateBridge,
-    TenantTableBridge, build_secret_resolver,
+    BufferedLog, CellResourceSink, CountingStateBackend, TenantDocsBridge, TenantLineageBridge,
+    TenantStateBridge, TenantTableBridge, build_secret_resolver,
 };
-use crate::kinds::{CallCtx, CallLog, DocsBackend, ProgressSink, ResourceSink, TableBackend};
+use crate::kinds::{
+    CallCtx, CallLog, DocsBackend, LineageBackend, ProgressSink, ResourceSink, TableBackend,
+};
 use crate::state::AppState;
 
 /// P0 requirement 4: the host-wide ceiling on concurrently-`running` jobs,
@@ -814,6 +816,10 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
             state: Arc::new(state.clone()),
             tenant: tenant.clone(),
         }) as Arc<dyn DocsBackend>,
+        lineage: Arc::new(TenantLineageBridge {
+            state: Arc::new(state.clone()),
+            tenant: tenant.clone(),
+        }) as Arc<dyn LineageBackend>,
         compose_depth: 0,
         compose_children: Some(Arc::new(std::sync::atomic::AtomicU32::new(0))),
         compose_db: Some(state.db.clone()),
@@ -970,10 +976,23 @@ async fn run_one_job(state: AppState, run: RunRow) {
         JobOutcome::Timeout => ("timeout".to_string(), None, None, None),
     };
 
-    let _ = state
+    let finalized = state
         .db
-        .finalize_run(run_id, tenant_id, status, result_ref, error_class, error_data, finished_unix, duration_ms)
-        .await;
+        .finalize_run(run_id.clone(), tenant_id, status, result_ref, error_class, error_data, finished_unix, duration_ms)
+        .await
+        .unwrap_or(false);
+
+    // PRD-mcphost-lineage-blast-radius requirement 5 (AC3): a finished run
+    // (any outcome -- "finished" means the run reached a terminal state,
+    // not that it succeeded) bumps `uses`/`last_used_unix` on its own
+    // tool/chain node and transitively on every table it reads. Guarded on
+    // `finalized` so a run that was already terminal (a duplicate
+    // finalize) never double-counts. Best-effort: never fails the run.
+    if finalized
+        && let Err(e) = crate::lineage::record_run_finished(&state, tenant_id, &run.tool_name).await
+    {
+        tracing::warn!(error = %e, run_id = %run_id, tool = %run.tool_name, "failed to record lineage usage after run finished");
+    }
 }
 
 /// PRD-mcphost-run-result-overflow-to-state requirement 2/AC2: the atomic

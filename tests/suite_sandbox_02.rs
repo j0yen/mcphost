@@ -118,6 +118,10 @@ mod limits_ac06_quickstart_docs_match_constants;
 mod limits_ac07_process_fork_storm_capped;
 #[path = "limits_ac08_usage_capacity_refusals.rs"]
 mod limits_ac08_usage_capacity_refusals;
+#[path = "lineage_ac01_source_scan_registers_table_edge.rs"]
+mod lineage_ac01_source_scan_registers_table_edge;
+#[path = "lineage_ac12_python_bridge_trace_matches_tool.rs"]
+mod lineage_ac12_python_bridge_trace_matches_tool;
 #[path = "mcphost_database_in_a_minute_ac02_all_rows_present.rs"]
 mod mcphost_database_in_a_minute_ac02_all_rows_present;
 #[path = "mcphost_database_in_a_minute_ac03_query_answers_match_fixture.rs"]
@@ -204,3 +208,73 @@ mod mcphost_uptime_probes_ac05_target_cap_at_20;
 mod mcphost_uptime_probes_ac07_synthorg_task_five_completions;
 #[path = "mcphost_uptime_probes_ac09_down_since_flip_sends_inbox.rs"]
 mod mcphost_uptime_probes_ac09_down_since_flip_sends_inbox;
+#[path = "plainenv_ac01_env_reaches_process.rs"]
+mod plainenv_ac01_env_reaches_process;
+#[path = "plainenv_ac02_invalid_names_refused.rs"]
+mod plainenv_ac02_invalid_names_refused;
+#[path = "plainenv_ac03_bounds.rs"]
+mod plainenv_ac03_bounds;
+#[path = "plainenv_ac04_secret_env_collision.rs"]
+mod plainenv_ac04_secret_env_collision;
+#[path = "plainenv_ac05_tool_test_environment_rendering.rs"]
+mod plainenv_ac05_tool_test_environment_rendering;
+#[path = "plainenv_ac06_env_only_tool_under_sandbox.rs"]
+mod plainenv_ac06_env_only_tool_under_sandbox;
+#[path = "plainenv_ac07_docs_and_tool_list.rs"]
+mod plainenv_ac07_docs_and_tool_list;
+#[path = "plainenv_ac08_warm_pool_invalidates_on_env_change.rs"]
+mod plainenv_ac08_warm_pool_invalidates_on_env_change;
+#[path = "plainenv_ac10_admin_reports_env_names_and_size.rs"]
+mod plainenv_ac10_admin_reports_env_names_and_size;
+#[path = "publishfirsttry_ac03_ac04_quickstart.rs"]
+mod publishfirsttry_ac03_ac04_quickstart;
+#[path = "publishfirsttry_ac06_docs_shared_source.rs"]
+mod publishfirsttry_ac06_docs_shared_source;
+#[path = "python_ac01_no_deps_cpu_memory.rs"]
+mod python_ac01_no_deps_cpu_memory;
+#[path = "python_ac02_requirements_build_and_building_state.rs"]
+mod python_ac02_requirements_build_and_building_state;
+#[path = "python_ac03_invalid_source_rejected.rs"]
+mod python_ac03_invalid_source_rejected;
+#[path = "python_ac04_disallowed_requirement.rs"]
+mod python_ac04_disallowed_requirement;
+#[path = "python_ac05_exception_traceback.rs"]
+mod python_ac05_exception_traceback;
+#[path = "python_ac06_timeout.rs"]
+mod python_ac06_timeout;
+#[path = "python_ac07_oom.rs"]
+mod python_ac07_oom;
+#[path = "python_ac08_network_none_blocks.rs"]
+mod python_ac08_network_none_blocks;
+#[path = "python_ac09_filesystem_isolation.rs"]
+mod python_ac09_filesystem_isolation;
+#[path = "python_ac10_fork_bomb_contained.rs"]
+mod python_ac10_fork_bomb_contained;
+#[path = "python_ac11_secret_redaction.rs"]
+mod python_ac11_secret_redaction;
+#[path = "python_ac12_republish_atomic.rs"]
+mod python_ac12_republish_atomic;
+#[path = "python_ac13_capacity_admission.rs"]
+mod python_ac13_capacity_admission;
+#[path = "python_ac14_cpu_budget_rate_limit.rs"]
+mod python_ac14_cpu_budget_rate_limit;
+#[path = "runenvelope_ac1_call_and_tool_run_parity.rs"]
+mod runenvelope_ac1_call_and_tool_run_parity;
+#[path = "runenvelope_ac2_no_declared_outputs_raw_payload.rs"]
+mod runenvelope_ac2_no_declared_outputs_raw_payload;
+#[path = "runenvelope_ac3_descriptor_and_decision_table_name_envelope.rs"]
+mod runenvelope_ac3_descriptor_and_decision_table_name_envelope;
+#[path = "runenvelope_ac4_no_calls_row_with_payload.rs"]
+mod runenvelope_ac4_no_calls_row_with_payload;
+#[path = "runoverflow_ac01_python_async_result_overflows_to_parts.rs"]
+mod runoverflow_ac01_python_async_result_overflows_to_parts;
+#[path = "runoverflow_ac02_state_quota_error_preserves_counters.rs"]
+mod runoverflow_ac02_state_quota_error_preserves_counters;
+#[path = "runoverflow_ac06_purge_drops_run_results_bytes_not_user_state.rs"]
+mod runoverflow_ac06_purge_drops_run_results_bytes_not_user_state;
+#[path = "runoverflow_ac07_llms_txt_long_running_jobs_walkthrough.rs"]
+mod runoverflow_ac07_llms_txt_long_running_jobs_walkthrough;
+#[path = "runoverflow_ac08_wait_until_counter_returns_while_running.rs"]
+mod runoverflow_ac08_wait_until_counter_returns_while_running;
+#[path = "runoverflow_ac09_sync_call_still_tool_output_too_large.rs"]
+mod runoverflow_ac09_sync_call_still_tool_output_too_large;

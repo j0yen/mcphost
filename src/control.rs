@@ -1306,6 +1306,19 @@ pub async fn tool_publish(
         )
         .await?;
 
+    // PRD-mcphost-lineage-blast-radius requirement 4 (AC1): register this
+    // publish's lineage edges -- a `python`/`wasm` tool's source scan plus
+    // declared `reads`, or (for `chain`) each step's own tool. Best-effort:
+    // logged, never fails an otherwise-successful publish.
+    let lineage_result = if kind_name == "chain" {
+        crate::lineage::register_chain_publish(state, tenant.id, &name, &spec).await
+    } else {
+        crate::lineage::register_tool_publish(state, tenant.id, &name, &kind_name, &spec).await
+    };
+    if let Err(e) = lineage_result {
+        tracing::warn!(error = %e, tenant = %tenant.namespace, tool = %name, "failed to register lineage edges for publish");
+    }
+
     // requirement 1: the durable audit row -- written only once `version`
     // is known, so it lines up with the `tool_versions` row `upsert_tool`
     // just inserted above.

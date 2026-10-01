@@ -403,6 +403,8 @@ mod tests {
             oauth_healthz_cache: Default::default(),
             verified_client_ids: crate::state::VerifiedClientIds::empty(),
             session_bindings: crate::session_bind::SessionBindings::new(),
+            lineage_cache: crate::lineage::new_cache(),
+            lineage_trace_pages: crate::lineage::new_trace_page_cache(),
         };
 
         let eu = verify_assertion(&state, &tenant, &token).await.expect("valid assertion");

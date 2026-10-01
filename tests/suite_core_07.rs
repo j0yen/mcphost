@@ -566,6 +566,24 @@ mod lanecov_ac06_malformed_lane_fails_naming_it;
 mod lanecov_ac07_docs_document_adding_a_lane;
 #[path = "limits_ac05_signup_burst_atomic.rs"]
 mod limits_ac05_signup_burst_atomic;
+#[path = "lineage_ac02_drop_with_no_consumers_is_unrefused.rs"]
+mod lineage_ac02_drop_with_no_consumers_is_unrefused;
+#[path = "lineage_ac03_blast_radius_ranks_chain_above_tool.rs"]
+mod lineage_ac03_blast_radius_ranks_chain_above_tool;
+#[path = "lineage_ac04_drop_gate_blocks_then_confirms_and_cascades.rs"]
+mod lineage_ac04_drop_gate_blocks_then_confirms_and_cascades;
+#[path = "lineage_ac05_effect_table_is_exhaustive.rs"]
+mod lineage_ac05_effect_table_is_exhaustive;
+#[path = "lineage_ac06_trace_shows_chart_and_handle_downstream.rs"]
+mod lineage_ac06_trace_shows_chart_and_handle_downstream;
+#[path = "lineage_ac07_trace_pages_150_downstream_consumers.rs"]
+mod lineage_ac07_trace_pages_150_downstream_consumers;
+#[path = "lineage_ac08_blast_radius_is_tenant_scoped.rs"]
+mod lineage_ac08_blast_radius_is_tenant_scoped;
+#[path = "lineage_ac09_model_set_role_change_notes_chart.rs"]
+mod lineage_ac09_model_set_role_change_notes_chart;
+#[path = "lineage_ac10_blast_radius_1000_nodes_3000_edges_under_50ms.rs"]
+mod lineage_ac10_blast_radius_1000_nodes_3000_edges_under_50ms;
 #[path = "mcphost_admin_schema_contract_ac01_tenants_schema_version.rs"]
 mod mcphost_admin_schema_contract_ac01_tenants_schema_version;
 #[path = "mcphost_admin_schema_contract_ac02_listings_validate_v1_schema.rs"]

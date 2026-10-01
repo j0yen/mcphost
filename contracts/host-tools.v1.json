@@ -1148,6 +1148,86 @@
       "since": "0.58.0"
     },
     {
+      "description": "Rank every consumer downstream of a node by how badly a change would hurt it: severity (breaking/degrading/none), a suggested action, and observed use.",
+      "input_schema": {
+        "properties": {
+          "change_kind": {
+            "description": "One of drop, rename, type_change, remove, add.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Node id to evaluate the change against, e.g. 'table:orders'.",
+            "type": "string"
+          },
+          "max_depth": {
+            "description": "Maximum traversal depth downstream of id. Unbounded if omitted.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          },
+          "top_n": {
+            "description": "Maximum ranked consumers to return; default 50. truncated: true when more were found.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "change_kind"
+        ],
+        "type": "object"
+      },
+      "name": "host.lineage.blast_radius",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List everything a node depends on (upstream) and everything that depends on it (downstream). A downstream list over 100 nodes comes back as downstream_count plus a downstream_handle to page through with host.lineage.trace_page.",
+      "input_schema": {
+        "properties": {
+          "id": {
+            "description": "Node id to trace, e.g. 'table:expenses'.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "name": "host.lineage.trace",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Page through a host.lineage.trace downstream_handle, 50 nodes at a time.",
+      "input_schema": {
+        "properties": {
+          "handle": {
+            "description": "downstream_handle from host.lineage.trace.",
+            "type": "string"
+          },
+          "offset": {
+            "description": "Row offset to start the page at; default 0.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "handle"
+        ],
+        "type": "object"
+      },
+      "name": "host.lineage.trace_page",
+      "since": "0.58.0"
+    },
+    {
       "description": "Mark messages as read for you; unread_only inbox reads stop returning them. Per-recipient -- a sender never sees others' receipts.",
       "input_schema": {
         "properties": {
@@ -2661,9 +2741,13 @@
       "since": "0.58.0"
     },
     {
-      "description": "Drop a declared table and every row it holds.",
+      "description": "Drop a declared table and every row it holds. Refused as lineage_blocked when a tool, chain, chart, or handle would break, unless confirm: true.",
       "input_schema": {
         "properties": {
+          "confirm": {
+            "description": "PRD-mcphost-lineage-blast-radius requirement 7: drop anyway even though a breaking consumer exists. Ignored when nothing breaking depends on this table.",
+            "type": "boolean"
+          },
           "name": {
             "description": "Name of the declared table to drop, with every row it holds.",
             "type": "string"

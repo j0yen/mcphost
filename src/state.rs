@@ -383,6 +383,14 @@ pub struct AppState {
     /// persisted, never visible to `admin.tenants`; same `Arc`-shared-
     /// across-clones rationale as [`AppState::checkout_sessions`].
     pub session_bindings: crate::session_bind::SessionBindings,
+    /// PRD-mcphost-lineage-blast-radius requirement 3: per-tenant, 30s-TTL
+    /// cache of the loaded `LineageGraph` -- see
+    /// [`crate::lineage::LineageCache`]. Same `Arc`-shared-across-clones
+    /// rationale as [`AppState::checkout_sessions`].
+    pub lineage_cache: crate::lineage::LineageCache,
+    /// requirement 8 (AC7): `host.lineage.trace`'s stored, pageable
+    /// downstream results -- see [`crate::lineage::TracePageCache`].
+    pub lineage_trace_pages: crate::lineage::TracePageCache,
 }
 
 pub fn now_unix() -> i64 {

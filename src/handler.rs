@@ -21,9 +21,9 @@ use crate::auth::{constant_time_eq, extract_bearer, hash_key};
 use crate::db::{Tenant, ToolRow};
 use crate::errors::AppError;
 use crate::kinds::{
-    CallCtx, CallLog, DocsBackend, Kind, KindError, KindRegistry, MAX_TEST_INVOCATIONS, NoDocs,
-    NoState, NoTable, NullLog, NullResourceSink, ResourceSink, SecretResolver, StateBackend,
-    TableBackend, describe_args_error, run_spec_test,
+    CallCtx, CallLog, DocsBackend, Kind, KindError, KindRegistry, LineageBackend,
+    MAX_TEST_INVOCATIONS, NoDocs, NoLineage, NoState, NoTable, NullLog, NullResourceSink,
+    ResourceSink, SecretResolver, StateBackend, TableBackend, describe_args_error, run_spec_test,
 };
 use crate::state::{
     AppState, MAX_SPEC_BYTES, TOOLS_LIST_TTL_GRACE_SECS, TOOLS_LIST_TTL_MS_STEADY, now_unix,
@@ -1449,12 +1449,19 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         ),
         Tool::new(
             "host.table.drop",
-            "Drop a declared table and every row it holds.",
+            "Drop a declared table and every row it holds. Refused as lineage_blocked when a \
+             tool, chain, chart, or handle would break, unless confirm: true.",
             host_schema(
                 json!({
                     "name": {
                         "type": "string",
                         "description": "Name of the declared table to drop, with every row it holds.",
+                    },
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "PRD-mcphost-lineage-blast-radius requirement 7: drop anyway even \
+                            though a breaking consumer exists. Ignored when nothing breaking depends on \
+                            this table.",
                     },
                 }),
                 &["name"],
@@ -1512,6 +1519,59 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             "List this tenant's stored (host.table.chart {share: true}) charts, newest first, \
              each with id, title, created_unix, and expires_unix.",
             host_schema(json!({}), &[]),
+        ),
+        // PRD-mcphost-lineage-blast-radius requirements 6/8: "what breaks
+        // if this table changes, before it changes" -- a small dependency
+        // graph (table/column/tool/chain/document/chart/handle/run nodes)
+        // ranking who depends on a node and how badly a change would hurt
+        // them.
+        Tool::new(
+            "host.lineage.blast_radius",
+            "Rank every consumer downstream of a node by how badly a change would hurt it: \
+             severity (breaking/degrading/none), a suggested action, and observed use.",
+            host_schema(
+                json!({
+                    "id": {
+                        "type": "string",
+                        "description": "Node id to evaluate the change against, e.g. 'table:orders'.",
+                    },
+                    "change_kind": {
+                        "type": "string",
+                        "description": "One of drop, rename, type_change, remove, add.",
+                    },
+                    "max_depth": {
+                        "type": "integer",
+                        "description": "Maximum traversal depth downstream of id. Unbounded if omitted.",
+                    },
+                    "top_n": {
+                        "type": "integer",
+                        "description": "Maximum ranked consumers to return; default 50. truncated: true \
+                            when more were found.",
+                    },
+                }),
+                &["id", "change_kind"],
+            ),
+        ),
+        Tool::new(
+            "host.lineage.trace",
+            "List everything a node depends on (upstream) and everything that depends on it \
+             (downstream). A downstream list over 100 nodes comes back as downstream_count plus a \
+             downstream_handle to page through with host.lineage.trace_page.",
+            host_schema(
+                json!({"id": {"type": "string", "description": "Node id to trace, e.g. 'table:expenses'."}}),
+                &["id"],
+            ),
+        ),
+        Tool::new(
+            "host.lineage.trace_page",
+            "Page through a host.lineage.trace downstream_handle, 50 nodes at a time.",
+            host_schema(
+                json!({
+                    "handle": {"type": "string", "description": "downstream_handle from host.lineage.trace."},
+                    "offset": {"type": "integer", "description": "Row offset to start the page at; default 0."},
+                }),
+                &["handle"],
+            ),
         ),
         // PRD-mcphost-document-store P0 requirements 2-5, P1 requirement 7:
         // a per-tenant document store (text, markdown, JSON, CSV) with a
@@ -3520,6 +3580,29 @@ impl DocsBackend for TenantDocsBridge {
     }
 }
 
+/// PRD-mcphost-lineage-blast-radius P1 requirement 10 (AC12):
+/// [`TenantDocsBridge`]'s counterpart for `CallCtx.lineage` -- bridges
+/// `Kind::call`'s sandboxed `mcphost.lineage` requests to `lineage.rs`'s
+/// real business logic for this call's own tenant, the exact same
+/// `trace`/`blast_radius` functions `host.lineage.trace`/`blast_radius`
+/// call, so a tool gets back the same object those tools return (AC12).
+pub(crate) struct TenantLineageBridge {
+    pub(crate) state: Arc<AppState>,
+    pub(crate) tenant: Tenant,
+}
+
+#[async_trait::async_trait]
+impl LineageBackend for TenantLineageBridge {
+    async fn call(&self, op: &str, args: Value) -> Result<Value, KindError> {
+        let result = match op {
+            "trace" => crate::lineage::trace(&self.state, &self.tenant, &args).await,
+            "blast_radius" => crate::lineage::blast_radius(&self.state, &self.tenant, &args).await,
+            other => Err(AppError::InvalidArgs(format!("unknown lineage op '{other}'"))),
+        };
+        result.map_err(app_error_to_kind_error)
+    }
+}
+
 /// requirement 5 / AC7: the per-call tally `CountingStateBackend` builds up
 /// as `mcphost.state`/`host.state.*` ops flow through this call's
 /// `CallCtx.state`, read back after `Kind::call`/`Kind::tool_run` returns
@@ -3755,6 +3838,9 @@ impl McpHostHandler {
             "host.table.query" => tables::table_query(&self.state, tenant, &args).await,
             "host.table.list" => tables::table_list(&self.state, tenant, &args).await,
             "host.table.drop" => tables::table_drop(&self.state, tenant, &args).await,
+            "host.lineage.blast_radius" => crate::lineage::blast_radius(&self.state, tenant, &args).await,
+            "host.lineage.trace" => crate::lineage::trace(&self.state, tenant, &args).await,
+            "host.lineage.trace_page" => crate::lineage::trace_page(&self.state, tenant, &args).await,
             "host.table.schema" => tables::table_schema(&self.state, tenant, &args).await,
             "host.table.chart" => crate::chart::table_chart(&self.state, tenant, &args).await,
             "host.table.charts" => crate::chart::table_charts_list(&self.state, tenant, &args).await,
@@ -4229,6 +4315,10 @@ impl McpHostHandler {
                 state: self.state.clone(),
                 tenant: tenant.clone(),
             }),
+            lineage: Arc::new(TenantLineageBridge {
+                state: self.state.clone(),
+                tenant: tenant.clone(),
+            }),
             // PRD-mcphost-composition requirement 1/2: every real
             // `tools/call`/`host.tool_call` dispatch is the root of its own
             // composition tree -- depth 0, a fresh per-tree children
@@ -4556,6 +4646,10 @@ impl McpHostHandler {
             state: self.state.clone(),
             tenant: tenant.clone(),
         });
+        let lineage_backend: Arc<dyn LineageBackend> = Arc::new(TenantLineageBridge {
+            state: self.state.clone(),
+            tenant: tenant.clone(),
+        });
         let resolved_timeout = self.resolve_call_timeout(&kind, &row.spec);
         let ctx = CallCtx {
             tenant_id: tenant.id,
@@ -4572,6 +4666,7 @@ impl McpHostHandler {
             state: state_backend.clone() as Arc<dyn StateBackend>,
             table: table_backend.clone(),
             docs: docs_backend.clone(),
+            lineage: lineage_backend.clone(),
             // PRD-mcphost-composition requirement 3/AC8: `chain`'s dry run
             // (`ctx.test_mode`) resolves only literal and `$.input.*`
             // mappings -- it never dispatches a step, so it never needs
@@ -4694,6 +4789,7 @@ impl McpHostHandler {
             state: Arc::new(NoState),
             table: Arc::new(NoTable),
             docs: Arc::new(NoDocs),
+            lineage: Arc::new(NoLineage),
             compose_depth: 0,
             compose_children: None,
             compose_db: None,
@@ -4848,6 +4944,10 @@ impl McpHostHandler {
             state: self.state.clone(),
             tenant: tenant.clone(),
         });
+        let lineage_backend: Arc<dyn LineageBackend> = Arc::new(TenantLineageBridge {
+            state: self.state.clone(),
+            tenant: tenant.clone(),
+        });
         let results = run_spec_test(&kind, &spec, &invocations, call_timeout, || CallCtx {
             tenant_id,
             namespace: namespace.clone(),
@@ -4863,6 +4963,7 @@ impl McpHostHandler {
             state: state_backend.clone(),
             table: table_backend.clone(),
             docs: docs_backend.clone(),
+            lineage: lineage_backend.clone(),
             compose_depth: 0,
             compose_children: None,
             compose_db: None,
@@ -5051,6 +5152,10 @@ impl McpHostHandler {
             state: self.state.clone(),
             tenant: tenant.clone(),
         });
+        let lineage_backend: Arc<dyn LineageBackend> = Arc::new(TenantLineageBridge {
+            state: self.state.clone(),
+            tenant: tenant.clone(),
+        });
         let resolved_timeout = self.resolve_call_timeout(&kind, &row.spec);
         let ctx = CallCtx {
             tenant_id: tenant.id,
@@ -5064,6 +5169,7 @@ impl McpHostHandler {
             state: state_backend.clone() as Arc<dyn StateBackend>,
             table: table_backend.clone(),
             docs: docs_backend.clone(),
+            lineage: lineage_backend.clone(),
             // PRD-mcphost-composition: `host.tool_run` has no notion of a
             // composition tree of its own yet (see `CallCtx::compose_db`'s
             // doc) -- `chain`/`mcphost.call` are unavailable from here,

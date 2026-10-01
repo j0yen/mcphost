@@ -522,8 +522,38 @@ pub async fn model_set(state: &AppState, tenant: &Tenant, args: &Value) -> Resul
     let table_for_check = table.clone();
     tables::with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| tables::load_schema_sync(conn, &table_for_check).map(|_| ())).await?;
 
-    state.db.upsert_table_model_annotation(tenant.id, table.clone(), column, key, value).await?;
-    Ok(json!({"table": table, "set": true}))
+    state.db.upsert_table_model_annotation(tenant.id, table.clone(), column, key.clone(), value).await?;
+
+    // PRD-mcphost-lineage-blast-radius requirement 9 (AC9): a `role`
+    // change calls the change gate with `TypeChange` -- `degrading` (or
+    // worse) consumers are reported here, never blocked; the annotation
+    // above is already written regardless.
+    let mut response = serde_json::Map::new();
+    response.insert("table".to_string(), json!(table));
+    response.insert("set".to_string(), json!(true));
+    if key == "role" {
+        let notes = crate::lineage::change_notes(state, tenant.id, &table, crate::lineage::ChangeKind::TypeChange).await?;
+        if !notes.is_empty() {
+            let notes_json: Vec<Value> = notes
+                .iter()
+                .map(|n| {
+                    json!({
+                        "id": n.id,
+                        "kind": n.kind.as_str(),
+                        "label": n.label,
+                        "severity": match n.severity {
+                            crate::lineage::Severity::Degrading => "degrading",
+                            crate::lineage::Severity::Breaking => "breaking",
+                            crate::lineage::Severity::None => "none",
+                        },
+                        "action": n.action,
+                    })
+                })
+                .collect();
+            response.insert("lineage_notes".to_string(), json!(notes_json));
+        }
+    }
+    Ok(Value::Object(response))
 }
 
 /// requirement 4: `host.table.models` -- every table this tenant has a

@@ -25,6 +25,60 @@ PRD-mcphost-chart-in-a-minute AC1-AC11, AC13, AC14. AC12 (Live: a
 `proof.sh` run against `https://mcphost.dev/mcp` from carbon after deploy)
 is deferred — operator-provisioned.
 
+## v0.64.0 — 2026-09-30
+
+"What breaks if this table changes, before it changes." `src/lineage/` ports
+ai-stack's `LineageGraph`/effect-table/`blast_radius`/`trace` design
+(`~/projects/ai-stack @ 4ef6c22`) with node kinds rewritten for mcphost's
+own entities -- `table`/`column`/`tool`/`chain`/`document`/`chart`/`handle`/
+`run`, ids `<kind>:<name>` -- persisted per tenant in two new tables
+(migration `0058_lineage.sql`) with a 30s in-memory cache, invalidated on
+every edge write. `host.tool_publish` now scans a published `python` tool's
+source for `mcphost.table.{query,chart,handle}("...")` calls (evidence
+`source_scan`) and reads an optional `reads: [table]` declaration (evidence
+`declared_reads`, the only signal a `wasm` tool has); a published `chain`
+registers an edge from each step's own tool. Three new tools answer from
+that graph: `host.lineage.blast_radius(id, change_kind, max_depth?, top_n?)`
+ranks every downstream consumer by severity (`breaking`/`degrading`/`none`,
+from a fixed effect table), then observed use, then depth; `host.lineage.trace(id)`
+lists upstream and downstream in full, handing back a `downstream_handle`
+instead of an inline list once a node has over 100 downstream consumers,
+paged 50 at a time by the third tool, `host.lineage.trace_page(handle, offset)`.
+The runs ledger bumps `uses`/`last_used_unix` on a tool or chain's own node
+when a run finishes, and transitively on every table upstream of it through
+registered edges.
+
+`host.table.drop` gains an optional `confirm` argument: a drop with no
+breaking consumer behaves exactly as before, but one with a `breaking`
+consumer is refused `lineage_blocked` (naming up to 10 consumers with their
+own `uses`) unless the caller passes `confirm: true`, and either the
+refusal or the confirmed drop writes a `tenant_audit` line. A confirmed
+drop removes the table's own lineage node and edges and marks any
+dependent `chart`/`handle` node `orphaned` (kept, flagged, not deleted --
+this PRD's own open-question default) rather than deleting it outright.
+`host.table.model_set`'s `role` key now runs the same effect table against
+a `TypeChange` and reports (never blocks on) a `lineage_notes` array naming
+any `degrading` consumer, such as a chart built over the changed column's
+table. Every `(ChangeKind, NodeKind)` pair the effect table can be asked
+about returns a defined effect/severity/action; `Add` is `none` for every
+consumer kind.
+
+A `python` tool's own sandboxed code can now call `mcphost.lineage.trace(id)`/
+`blast_radius(id, change_kind)` directly (`CallCtx` gains a `lineage`
+backend alongside `state`/`table`/`docs`, wired through every real dispatch
+and a composed chain step's own child context) and gets back the exact same
+object `host.lineage.trace`/`blast_radius` themselves return.
+
+Non-goals this PRD keeps: no column-level SQL parsing (edges are table/
+column references only), no cross-tenant edges (a blast radius or a trace
+never crosses a tenant boundary), and no table rename (mcphost has no
+rename tool yet).
+
+PRD-mcphost-lineage-blast-radius AC1-AC10, AC12. AC11 (Live: a fresh
+tenant's fixture chart blocks `host.table.drop("expenses")` without confirm
+and succeeds with `confirm: true` against a deployed box, receipt under
+docs/receipts/) is deferred -- operator-provisioned.
+
 ## v0.61.1 — 2026-09-30
 
 `host.quickstart` and `host.tool_publish` now accept the job-word an agent
