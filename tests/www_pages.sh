@@ -9,7 +9,7 @@
 # use-cases.html carry their required phrases; every host.*/billing.*/
 # mcphost.* identifier in those two files appears in www/llms-full.txt;
 # use-cases.html's three workflows each carry all five part labels;
-# compare.html's table has four competitor rows of six columns each,
+# compare.html's table has three competitor rows of six columns each,
 # sourced or "not stated"; the index footer links all four pages; and
 # llms.txt links /skill.md within its first ten lines.
 #
@@ -165,8 +165,8 @@ for block in row_blocks:
             print(f"row {name}: cell {plain!r} is not 'not stated' and no http comment precedes the row", file=sys.stderr)
             sys.exit(1)
 
-if data_rows != 4:
-    print(f"expected 4 non-mcphost data rows, found {data_rows}", file=sys.stderr)
+if data_rows != 3:
+    print(f"expected 3 non-mcphost data rows, found {data_rows}", file=sys.stderr)
     sys.exit(1)
 PY
 }
@@ -215,7 +215,7 @@ check "pricing.html host./billing./mcphost. identifiers all appear in llms-full.
 check "use-cases.html host./billing./mcphost. identifiers all appear in llms-full.txt" identifiers_covered www/use-cases.html
 
 # --- compare.html table (AC4) ---
-check "compare.html table has 4 competitor rows of 6 sourced-or-not-stated columns" compare_table_structure
+check "compare.html table has 3 competitor rows of 6 sourced-or-not-stated columns" compare_table_structure
 
 # --- footer / llms.txt wiring (AC6, minus the deploy-owned sitemap) ---
 check "index.html footer links pricing, use cases, compare, and skill.md" footer_links_all_four

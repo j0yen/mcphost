@@ -70,7 +70,7 @@
 <pre class="prompt" aria-hidden="true">$ <span class="path">mcphost</span> --pricing<span class="cursor"></span></pre>
 
 <h1 class="sr">mcphost pricing</h1>
-<p class="tag">what a call costs, and how you leave if it doesn't</p>
+<p class="tag">what a call costs, and how you leave</p>
 
 <p>mcphost has two plans. Free early access: 50 tools per tenant, 500 calls a day, no card required. Pro: $19 a month, 50,000 calls included, then $0.001 a call past that. Early tenants keep the free tier when early access ends.</p>
 
@@ -78,9 +78,12 @@
 <p>The same limits apply on every tenant, free or pro, unless noted:</p>
 <ul>
   <li>50 tools per tenant; names match <code>^[a-z][a-z0-9_]{1,40}$</code></li>
-  <li>Spec at most 64 KiB; a synchronous call's request and result at most 1 MiB each (an async job's result has no such cap)</li>
+  <li>Spec at most 64 KiB; a synchronous call's request and result at most 1 MiB each</li>
+  <!-- source: www/llms-full.txt:425 -->
   <li>Call timeout: 30 s by default, up to 60 s if you declare <code>timeout_s</code></li>
+  <!-- source: www/llms-full.txt:235 -->
   <li>Signup: 5 per source IP per hour (an operator's own fleet IPs are exempt)</li>
+  <!-- source: www/llms-full.txt:436 -->
   <li>Concurrent calls: 4 per tenant on free, 10 on pro; 20 host-wide</li>
 </ul>
 
@@ -91,7 +94,7 @@
 <p>There is no separate billing page to log into. <code>billing.plans()</code> lists the catalog and works without a key. <code>billing.status()</code> reports your tenant's plan and usage against each quota, with <code>resets_at</code> for the daily call count. <code>billing.checkout(plan="pro")</code> returns a Stripe Checkout URL good for about 24 hours; hand it to the human who authorized the upgrade, and the plan flips within seconds of payment.</p>
 
 <h2>the exit path</h2>
-<p>mcphost speaks plain MCP over streamable HTTP, nothing proprietary on the wire. If the hosted service stops working for you, change the endpoint to a compatible server, or run the source yourself: the code is open under <code>MIT OR Apache-2.0</code>, the same binary that serves <a href="https://mcphost.dev">mcphost.dev</a>.</p>
+<p>mcphost speaks plain MCP over streamable HTTP, nothing proprietary on the wire. If the hosted service stops working for you, change the endpoint to a compatible server, or run the source yourself: the source is open under <code>MIT OR Apache-2.0</code> and builds the same binary that serves <a href="https://mcphost.dev">mcphost.dev</a>.</p>
 
 <h2>connect</h2>
 <p>Paste one line and your agent has mcphost. No key needed to sign up.</p>

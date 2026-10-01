@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>mcphost compare — vs Backenly, Smithery, Klavis, Cloudflare Agents</title>
-<meta name="description" content="How mcphost compares to Backenly, Smithery, Klavis AI, and Cloudflare Agents on what each hosts, who provisions the account, per-end-user identity, licence, free tier, and the exit path. Sourced from each competitor's own public page.">
-<meta property="og:title" content="mcphost compare — vs Backenly, Smithery, Klavis, Cloudflare Agents">
-<meta property="og:description" content="How mcphost compares to Backenly, Smithery, Klavis AI, and Cloudflare Agents on what each hosts, who provisions the account, per-end-user identity, licence, free tier, and the exit path. Sourced from each competitor's own public page.">
+<title>mcphost compare — vs Backenly, Smithery, Cloudflare Agents</title>
+<meta name="description" content="How mcphost compares to Backenly, Smithery, and Cloudflare Agents on what each hosts, who provisions the account, per-end-user identity, licence, free tier, and the exit path. Sourced from each competitor's own public page.">
+<meta property="og:title" content="mcphost compare — vs Backenly, Smithery, Cloudflare Agents">
+<meta property="og:description" content="How mcphost compares to Backenly, Smithery, and Cloudflare Agents on what each hosts, who provisions the account, per-end-user identity, licence, free tier, and the exit path. Sourced from each competitor's own public page.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://mcphost.dev/compare">
 <meta property="og:site_name" content="mcphost">
@@ -79,9 +79,9 @@
 <pre class="prompt" aria-hidden="true">$ <span class="path">mcphost</span> --compare<span class="cursor"></span></pre>
 
 <h1 class="sr">mcphost compare</h1>
-<p class="tag">mcphost next to Backenly, Smithery, Klavis, and Cloudflare Agents</p>
+<p class="tag">mcphost next to Backenly, Smithery, and Cloudflare Agents</p>
 
-<p>mcphost hosts the tools your agent writes. Four products a visitor asks about next do related but different jobs. The table below is sourced from each competitor's own public page at build time, 2026-10-01; a cell is "not stated" where that page did not say, rather than a guess.</p>
+<p>mcphost hosts the tools your agent writes. Three products you may be weighing do related but different jobs. Each row comes from that product's own public page, read 2026-10-01. Where the page did not say, the cell reads "not stated".</p>
 
 <div class="cmp-wrap">
 <table class="cmp">
@@ -119,17 +119,6 @@
 <td>not stated</td>
 <td>not stated</td>
 </tr>
-<!-- source: https://www.klavis.ai/ -->
-<!-- source: https://github.com/Klavis-AI/klavis -->
-<tr>
-<th scope="row">Klavis</th>
-<td>As of this build, Klavis AI's own site markets training environments and data for AI agents (coding, tool-use), not MCP server hosting; its GitHub repo still describes an MCP integration platform.</td>
-<td>not stated</td>
-<td>not stated</td>
-<td>Apache-2.0 (GitHub repo)</td>
-<td>not stated</td>
-<td>not stated</td>
-</tr>
 <!-- source: https://developers.cloudflare.com/agents -->
 <tr>
 <th scope="row">Cloudflare Agents</th>
@@ -147,7 +136,6 @@
 <h2>when to choose each one over mcphost</h2>
 <p><b>Backenly</b> — choose it when the thing you need is a real Postgres database with auth, storage, and realtime as your product's backend, not a place to host the tools your agent writes.</p>
 <p><b>Smithery</b> — choose it when you want your agent to reach thousands of already-published third-party MCP servers through one auth flow, rather than publish and host your own tool.</p>
-<p><b>Klavis</b> — as of this build, choose Klavis if you need training environments or data for agent reinforcement learning; its current site does not describe an MCP-hosting product, so verify directly before relying on one.</p>
 <p><b>Cloudflare Agents</b> — choose it when you are building a durable, globally distributed agent application (chat, voice, email, Slack) and want to write the whole harness yourself on Workers, not just host a handful of tool calls.</p>
 
 <p style="margin-top:2.4rem">Paste one line and your agent has mcphost. No key needed to sign up.</p>
