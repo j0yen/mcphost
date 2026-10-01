@@ -677,6 +677,20 @@ fn static_text_page(content: &'static str) -> Response {
         .into_response()
 }
 
+/// Twin of [`static_text_page`] for `www/skill.md` (requirement 4,
+/// support_ac06): README/llms.txt now link `/skill.md` same-host, and the
+/// `Content-Type` header is `text/markdown`, not `text/plain` -- an agent
+/// or client reading it should see it as the markdown it is, matching how
+/// mcphost-deploy's own Caddy route serves it in prod.
+fn static_markdown_page(content: &'static str) -> Response {
+    (
+        StatusCode::OK,
+        [("content-type", "text/markdown; charset=utf-8")],
+        content,
+    )
+        .into_response()
+}
+
 /// `GET /help/<code>` (requirement 2, AC1-AC2): rendered at request time
 /// from `help::HELP_ENTRIES` plus whatever `MCPHOST_SUPPORT_URL` this
 /// process has *right now* -- not a committed file -- so an operator
@@ -1044,6 +1058,11 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         // get right or drift on).
         .route("/llms.txt", get(|| async { static_text_page(include_str!("../www/llms.txt")) }))
         .route("/llms-full.txt", get(|| async { static_text_page(include_str!("../www/llms-full.txt")) }))
+        // PRD-mcphost-www-trust-pages requirement 4 / support_ac06: this
+        // binary serves `/skill.md` itself, same as `/llms.txt` above --
+        // prod's Caddy route was the only thing serving it (404'd from
+        // here, the same gap status.html/aup.html's own hotfix closed).
+        .route("/skill.md", get(|| async { static_markdown_page(include_str!("../www/skill.md")) }))
         // requirement 2/4 (AC1, AC2, AC7): request-time-rendered, not
         // embedded -- see `help_page`'s doc comment.
         .route("/help/{code}", get(help_page))
