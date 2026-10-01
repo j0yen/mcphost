@@ -1009,6 +1009,10 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         // download URL a completed `host.export` run's result carries --
         // see `export::download`.
         .route("/exports/{run_id}", get(crate::export::download))
+        // PRD-mcphost-chart-in-a-minute P1 requirement 6: the signed share
+        // link a `host.table.chart {share: true}` call's result carries --
+        // see `chart::download`.
+        .route("/charts/{id}", get(crate::chart::download))
         // PRD-mcphost-human-claim-magic-link requirements 2-3: the claim
         // flow's own three plain-HTML routes -- `/claim/verify/{code}` is
         // registered alongside `/claim/{token}` without ambiguity since

@@ -6,7 +6,11 @@
 const LLMS_TXT: &str = include_str!("../www/llms.txt");
 
 const SECTION_HEADING: &str = "## Give Claude a database in one minute";
-const NEXT_HEADING: &str = "## Billing (tool calls, no dashboard)";
+// PRD-mcphost-chart-in-a-minute inserted its own "## Chart in a minute"
+// section directly after this one (reusing the same expenses table), so
+// the section boundary is whichever "## " heading comes next now, not
+// Billing specifically.
+const NEXT_HEADING: &str = "## Chart in a minute";
 
 fn section_lines() -> Vec<&'static str> {
     let start = LLMS_TXT.find(SECTION_HEADING).unwrap_or_else(|| {

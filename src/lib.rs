@@ -14,6 +14,7 @@ pub mod authz;
 pub mod bans;
 pub mod billing;
 pub mod channels;
+pub mod chart;
 pub mod claim;
 pub mod cli;
 pub mod compat_check;

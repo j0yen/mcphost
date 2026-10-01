@@ -12,6 +12,8 @@ mod ci_sandbox_support;
 mod assertion;
 #[path = "support/busyaudit.rs"]
 mod busyaudit;
+#[path = "support/chart_fixture.rs"]
+mod chart_fixture;
 #[path = "support/docs_qa.rs"]
 mod docs_qa;
 #[path = "support/fake_as.rs"]
@@ -228,6 +230,30 @@ mod channel_ac08_retention_tick_purges_old_posts;
 mod channel_ac09_close_blocks_posts_not_reads;
 #[path = "channel_ac10_freeze_blocks_posts_unfreeze_restores.rs"]
 mod channel_ac10_freeze_blocks_posts_unfreeze_restores;
+#[path = "chart_ac01_vendor_crates_documented_and_wired.rs"]
+mod chart_ac01_vendor_crates_documented_and_wired;
+#[path = "chart_ac02_category_sum_profiles_bar.rs"]
+mod chart_ac02_category_sum_profiles_bar;
+#[path = "chart_ac03_caption_recomputes_facts_from_rows.rs"]
+mod chart_ac03_caption_recomputes_facts_from_rows;
+#[path = "chart_ac04_temporal_day_column_picks_line_or_bar.rs"]
+mod chart_ac04_temporal_day_column_picks_line_or_bar;
+#[path = "chart_ac05_empty_result_is_table_with_no_takeaway.rs"]
+mod chart_ac05_empty_result_is_table_with_no_takeaway;
+#[path = "chart_ac06_count_star_is_bignumber.rs"]
+mod chart_ac06_count_star_is_bignumber;
+#[path = "chart_ac07_disallowed_mark_override_is_rejected.rs"]
+mod chart_ac07_disallowed_mark_override_is_rejected;
+#[path = "chart_ac08_share_link_opens_unauthenticated.rs"]
+mod chart_ac08_share_link_opens_unauthenticated;
+#[path = "chart_ac09_expired_or_altered_signature_refused.rs"]
+mod chart_ac09_expired_or_altered_signature_refused;
+#[path = "chart_ac10_101st_share_evicts_oldest.rs"]
+mod chart_ac10_101st_share_evicts_oldest;
+#[path = "chart_ac13_llms_txt_section_under_50_lines.rs"]
+mod chart_ac13_llms_txt_section_under_50_lines;
+#[path = "chart_ac14_ten_concurrent_calls_p95_under_250ms.rs"]
+mod chart_ac14_ten_concurrent_calls_p95_under_250ms;
 #[path = "checkcompat_ac02_ac03.rs"]
 mod checkcompat_ac02_ac03;
 #[path = "checkcompat_race_ac01_previous_up_within_1s.rs"]

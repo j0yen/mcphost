@@ -2562,6 +2562,54 @@
       "since": "0.58.0"
     },
     {
+      "description": "Run sql (the same read-only path and caps as host.table.query) and return chart.v1: a result-profile.v1 profile, a mark/encoding recommendation with rationale and alternatives, an inline-data Vega-Lite v5 spec, and a caption whose headline and facts are computed from the rows, never guessed. mark, if given, must be the recommended mark or one of its alternatives -- an unrecognized or disallowed mark (e.g. pie) fails naming the allowed set. share: true stores the chart (evicting this tenant's oldest past 100 stored) and returns a share_url valid 24 hours, no login required.",
+      "input_schema": {
+        "properties": {
+          "mark": {
+            "description": "Override the recommended mark; must be the recommendation's own mark or one of its alternatives.",
+            "type": "string"
+          },
+          "share": {
+            "description": "Store this chart and return share_url; default false.",
+            "type": "boolean"
+          },
+          "sql": {
+            "description": "A single read-only SELECT statement (CTEs allowed) over this tenant's own declared tables.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          },
+          "title": {
+            "description": "Optional chart title.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sql"
+        ],
+        "type": "object"
+      },
+      "name": "host.table.chart",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List this tenant's stored (host.table.chart {share: true}) charts, newest first, each with id, title, created_unix, and expires_unix.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.table.charts",
+      "since": "0.58.0"
+    },
+    {
       "description": "Declare a table in this tenant's SQL table store -- a different store from host.state.*'s key-value namespace and its own tables: use host.state.* for a handful of small values, host.table.* when you want real SQL (joins, aggregates, read-only queries) over rows. columns is {\"column\": \"text\"|\"integer\"|\"real\"| \"timestamp\"|\"boolean\"|\"json\"}; primary_key, if given, must name one of columns's own entries.",
       "input_schema": {
         "properties": {

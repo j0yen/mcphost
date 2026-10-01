@@ -2451,7 +2451,7 @@ checksum = "4facc753ae494aeb6e3c22f839b158aebd4f9270f55cd3c79906c45476c47ab4"
 
 [[package]]
 name = "mcphost"
-version = "0.62.0"
+version = "0.63.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -2470,6 +2470,11 @@ dependencies = [
  "libc",
  "mcphost",
  "minijinja",
+ "mqo-chart-caption",
+ "mqo-chart-recommender",
+ "mqo-chart-vocab",
+ "mqo-result-profiler",
+ "mqo-vega-emitter",
  "proptest",
  "rand 0.8.8",
  "rcgen",
@@ -2576,6 +2581,49 @@ dependencies = [
  "smallvec",
  "tagptr",
  "uuid",
+]
+
+[[package]]
+name = "mqo-chart-caption"
+version = "0.1.0"
+dependencies = [
+ "mqo-chart-vocab",
+ "mqo-result-profiler",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "mqo-chart-recommender"
+version = "0.1.0"
+dependencies = [
+ "mqo-chart-vocab",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "mqo-chart-vocab"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "mqo-result-profiler"
+version = "0.1.0"
+dependencies = [
+ "mqo-chart-vocab",
+ "serde",
+]
+
+[[package]]
+name = "mqo-vega-emitter"
+version = "0.1.0"
+dependencies = [
+ "mqo-chart-recommender",
+ "mqo-chart-vocab",
+ "serde_json",
 ]
 
 [[package]]

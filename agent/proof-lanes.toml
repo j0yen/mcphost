@@ -134,8 +134,8 @@ required_commands = [
 
 [[lane]]
 id = "examples"
-description = "Example recipes under examples/** whose behavior is proven by the mcphost_share_a_tool_not_a_key_ac*/mcphost_team_memory_ac*/mcphost_database_in_a_minute_ac*/mcphost_uptime_probes_ac*/firstpub_ac0[7,10]*/docsqa_ac* integration tests that spawn them (examples/share-a-tool/proof.sh, examples/share-a-tool/synthorg-task.yaml; examples/team-memory/proof.sh, examples/team-memory/tools/*.py, examples/team-memory/synthorg-task.yaml; examples/database-in-a-minute/proof.sh, examples/database-in-a-minute/fixture.csv, examples/database-in-a-minute/tools/*.py, examples/database-in-a-minute/synthorg-task.yaml; examples/uptime-probes/proof.sh, examples/uptime-probes/tools/*.py, examples/uptime-probes/synthorg-task.yaml; examples/first-run/proof.sh, examples/first-run/tools/text_stats.py; examples/docs-qa/docs-qa.sh, examples/docs-qa/ask_docs.py, examples/docs-qa/corpus/*.md, examples/docs-qa/corpus/gold.json, examples/docs-qa/synthorg-task.yaml). Added project-locally (PRD-mcphost-share-a-tool-not-a-key); examples/team-memory/** folded in 2026-09-21 (PRD-mcphost-team-memory); examples/database-in-a-minute/** and examples/uptime-probes/** folded in 2026-09-22 (PRD-mcphost-database-in-a-minute, PRD-mcphost-uptime-probes); examples/first-run/** folded in 2026-09-26 (PRD-mcphost-first-publish-real-kind, requirement 2); examples/docs-qa/** folded in 2026-09-25 (PRD-mcphost-docs-qa-recipe) -- same gap class as infer-data/db-migrations/deploy/www/docs above -- the shipped scaffold's proof-lanes.toml has no lane for examples/, and these files gate the AC0x tests identically to a tests/**/*.rs edit, so proof is a name-filtered cargo test run over the tests that actually exercise them rather than the whole rust-tests lane."
-globs = ["examples/share-a-tool/**", "examples/team-memory/**", "examples/database-in-a-minute/**", "examples/uptime-probes/**", "examples/first-run/**", "examples/docs-qa/**"]
+description = "Example recipes under examples/** whose behavior is proven by the mcphost_share_a_tool_not_a_key_ac*/mcphost_team_memory_ac*/mcphost_database_in_a_minute_ac*/mcphost_uptime_probes_ac*/firstpub_ac0[7,10]*/docsqa_ac*/chart_ac* integration tests that spawn or exercise them (examples/share-a-tool/proof.sh, examples/share-a-tool/synthorg-task.yaml; examples/team-memory/proof.sh, examples/team-memory/tools/*.py, examples/team-memory/synthorg-task.yaml; examples/database-in-a-minute/proof.sh, examples/database-in-a-minute/fixture.csv, examples/database-in-a-minute/tools/*.py, examples/database-in-a-minute/synthorg-task.yaml; examples/uptime-probes/proof.sh, examples/uptime-probes/tools/*.py, examples/uptime-probes/synthorg-task.yaml; examples/first-run/proof.sh, examples/first-run/tools/text_stats.py; examples/docs-qa/docs-qa.sh, examples/docs-qa/ask_docs.py, examples/docs-qa/corpus/*.md, examples/docs-qa/corpus/gold.json, examples/docs-qa/synthorg-task.yaml; examples/chart-in-a-minute/fixture.csv, examples/chart-in-a-minute/proof.sh, examples/chart-in-a-minute/synthorg-task.yaml). Added project-locally (PRD-mcphost-share-a-tool-not-a-key); examples/team-memory/** folded in 2026-09-21 (PRD-mcphost-team-memory); examples/database-in-a-minute/** and examples/uptime-probes/** folded in 2026-09-22 (PRD-mcphost-database-in-a-minute, PRD-mcphost-uptime-probes); examples/first-run/** folded in 2026-09-26 (PRD-mcphost-first-publish-real-kind, requirement 2); examples/docs-qa/** folded in 2026-09-25 (PRD-mcphost-docs-qa-recipe); examples/chart-in-a-minute/** folded in 2026-09-30 (PRD-mcphost-chart-in-a-minute, requirement 5 -- fixture.csv matches tests/support/chart_fixture.rs::expenses_rows() exactly and proof.sh is verified by hand against a live-built binary, but this PRD has no dedicated mcphost_chart_in_a_minute_ac0x subprocess test, so the chart_ac* tests that exercise the same host.table.chart/share-link mechanism proof.sh drives are this glob's proof surface instead) -- same gap class as infer-data/db-migrations/deploy/www/docs above -- the shipped scaffold's proof-lanes.toml has no lane for examples/, and these files gate the AC0x tests identically to a tests/**/*.rs edit, so proof is a name-filtered cargo test run over the tests that actually exercise them rather than the whole rust-tests lane."
+globs = ["examples/share-a-tool/**", "examples/team-memory/**", "examples/database-in-a-minute/**", "examples/uptime-probes/**", "examples/first-run/**", "examples/docs-qa/**", "examples/chart-in-a-minute/**"]
 required_commands = [
   "cargo test --workspace mcphost_share_a_tool_not_a_key_ac",
   "cargo test --workspace mcphost_team_memory_ac",
@@ -144,6 +144,7 @@ required_commands = [
   "cargo test --workspace firstpub_ac07",
   "cargo test --workspace firstpub_ac10",
   "cargo test --workspace docsqa_ac",
+  "cargo test --workspace chart_ac",
 ]
 
 [[lane]]
@@ -200,4 +201,14 @@ description = "PRD-mcphost-oauth-conformance-harness: the scenario gold file (te
 globs = ["tests/oauthconf/**", "docs/oauth-scenarios.md", "scripts/gen-oauth-scenarios-doc.sh"]
 required_commands = [
   "cargo test --workspace oauthconf_ac",
+]
+
+[[lane]]
+id = "vendor"
+description = "PRD-mcphost-chart-in-a-minute AC1: the ai-stack chart chain vendored unchanged as path dependencies (vendor/mqo-chart-vocab, vendor/mqo-result-profiler, vendor/mqo-chart-recommender, vendor/mqo-vega-emitter, vendor/mqo-chart-caption) plus vendor/VENDOR.md recording their source repo/commit. Added project-locally: same gap class as the contracts/admin-schemas/wasm-fixtures lanes above -- the shipped scaffold's proof-lanes.toml has no lane for vendor/, and Cargo's implicit-workspace rule (a workspace-less root package's path dependencies become workspace members of its own implicit workspace) already pulls every one of these crates' own test suites into the rust-source lane's own `cargo test`/`cargo clippy` commands, so this lane's required command is that same pair -- not a second build step, just routing."
+globs = ["vendor/**"]
+required_commands = [
+  "cargo check --workspace",
+  "cargo clippy --workspace -- -D warnings",
+  "cargo test --workspace",
 ]

@@ -1,104 +1,115 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-session-bound-tenant-after-signup.md",
-  "intent_slug": "mcphost-session-bound-tenant-after-signup",
-  "root_motivation": "Grounding: explore run explore-20260929T083053Z shows 15 of 168 sessions hitting tenant_key_missing 0.3-5s after signup; the actionable -32602 body is sent as HTTP 401, which the Claude Agent SDK drops, showing only a generic sign-in message. This build confirmed via tests/compat_ac11_ac12_claude_sdk_replay.rs and a full-suite run with legacy session mode enabled that mcphost's transport is fully stateless for the target client: rmcp classifies any initialize as session-based regardless of declared version, and the SDK's own recorded wire shape is indistinguishable from a session-wanting client. Matches the PRD's own exit condition: transport stateless -> blocked; do not substitute a client-supplied identifier.",
-  "user_persona": "The mcphost end user's agent (Claude Code / Agent SDK) that signs up and calls a host.* tool without repeating tenant_key -- blocked at the transport layer this build. The operator still gets two independent fixes: the journal recording the status a client actually received (AC10), and a regression pin that an anonymous session's refusal shape is unchanged (AC3).",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-chart-in-a-minute.md",
+  "intent_slug": "mcphost-chart-in-a-minute",
+  "root_motivation": "Grounding: opportunity from visions/mcphost-aistack-harvest.md (WWHTBT leaf 1 and weakest link leaf 2). host.table.query returns a JSON array of rows and nothing else (src/tables.rs:725); a model describing those rows in prose is doing its own unverified arithmetic, and mcphost serves no HTML a chart could live on. ai-stack already has a tested, grammar-free chain (mqo-chart-recommender, mqo-vega-emitter, mqo-chart-caption, mqo-chart-vocab, mqo-result-profiler) that turns a typed column profile plus rows into a chart recommendation, a Vega-Lite spec, and a caption whose numbers are computed from the data, not guessed. This build vendors that chain, writes the one missing piece (a profiler that reads SQL rows instead of an MQO response, reusing src/tables_model.rs's existing classifiers), and exposes host.table.chart(sql) plus a signed share link so a spreadsheet owner can see the picture and hand it to a teammate.",
+  "user_persona": "The spreadsheet owner from the database recipe: a table on mcphost, a Claude client, no BI tool. After a question they want to see the answer as a chart and paste one sentence about it into a message, without trusting a model's own arithmetic.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 3
+    "target": 13
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a streamable-HTTP session that ran signup successfully, When it calls host.catalog.search with no tenant_key and no Authorization header, Then the call succeeds as the new tenant.",
-      "test": "tests/sessbind_ac01_keyless_call_after_signup_runs_as_the_bound_tenant.rs"
+      "description": "Given the vendored crates in vendor/, When the gate runs, Then their own test suites pass unchanged and vendor/VENDOR.md names source repo and commit.",
+      "test": "tests/chart_ac01_vendor_crates_documented_and_wired.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the session in AC1, When it calls five more host.* tools with no tenant_key, Then every call runs as the bound tenant.",
-      "test": "tests/sessbind_ac02_five_tools_run_as_the_bound_tenant.rs"
+      "description": "Given the 1,000-row fixture, When host.table.chart runs SELECT category, SUM(amount) AS total FROM expenses GROUP BY category, Then the profile has one nominal dimension and one quantitative measure, the recommendation mark is a bar, and the spec's data.values holds five rows.",
+      "test": "tests/chart_ac02_category_sum_profiles_bar.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a fresh session with no signup, no tenant_key and no header, When it calls host.catalog.search, Then the response is HTTP 401 with WWW-Authenticate, JSON-RPC -32602, data.error_code tenant_key_missing, byte-for-byte the v0.60.35 body shape.",
-      "test": "tests/sessbind_ac03_anonymous_session_unchanged.rs"
+      "description": "Given the same result, When the caption is read, Then its headline names the fixture's largest category and every fact's value equals a value recomputed from the rows in the test.",
+      "test": "tests/chart_ac03_caption_recomputes_facts_from_rows.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a bound session, an explicit tenant_key of a different tenant wins; an invalid one is refused tenant_key_invalid, not the bound tenant.",
-      "test": "tests/sessbind_ac04_explicit_key_wins_over_the_binding.rs"
+      "description": "Given SELECT day, SUM(amount) FROM expenses GROUP BY day, When chart runs, Then is_temporal is true for day only if it parses as a date; for the integer day column the mark is a bar, and for an ISO-date column in a second fixture table the mark is a line.",
+      "test": "tests/chart_ac04_temporal_day_column_picks_line_or_bar.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a bound session, a valid bearer for tenant T2 wins (header wins), and the binding is unchanged for later header-less calls.",
-      "test": "tests/sessbind_ac05_bearer_wins_and_the_binding_survives.rs"
+      "description": "Given a query returning zero rows, When chart runs, Then mark is Table, vega_lite.data.values is empty, and the caption headline is the no-takeaway text.",
+      "test": "tests/chart_ac05_empty_result_is_table_with_no_takeaway.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a session that ran signup twice, a key-less call runs as the second tenant, and the second signup response's session_bound is true.",
-      "test": "tests/sessbind_ac06_second_signup_rebinds_and_reports_session_bound.rs"
+      "description": "Given SELECT COUNT(*) FROM expenses, When chart runs, Then mark is BigNumber and the caption headline states the count.",
+      "test": "tests/chart_ac06_count_star_is_bignumber.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given two concurrent sessions, A's calls succeed and B (never signed up) is refused tenant_key_missing; no binding leaks across sessions.",
-      "test": "tests/sessbind_ac07_concurrent_sessions_no_cross_session_leak.rs"
+      "description": "Given mark: \"pie\" when the alternatives do not include it, When chart runs, Then a validation error names the allowed marks and no chart is stored.",
+      "test": "tests/chart_ac07_disallowed_mark_override_is_rejected.rs"
     },
     {
       "id": "AC8",
-      "level": "MUST",
-      "description": "Given 50,000 sessions each running signup, the binding map holds at most 10,000 entries and RSS growth is under 20 MB.",
-      "test": "tests/sessbind_ac08_binding_map_is_bounded_under_a_session_flood.rs"
+      "level": "SHOULD",
+      "description": "Given share: true, When the returned share_url is fetched without any auth header, Then 200 with HTML containing the spec inline and the caption headline, and no tenant id or key appears in the body.",
+      "test": "tests/chart_ac08_share_link_opens_unauthenticated.rs"
     },
     {
       "id": "AC9",
-      "level": "MUST",
-      "description": "Given a bound session whose tenant is disabled, a key-less call gets TenantDisabled, and the following call gets tenant_key_missing (binding dropped).",
-      "test": "tests/sessbind_ac09_disabled_bound_tenant_drops_the_binding.rs"
+      "level": "SHOULD",
+      "description": "Given a share URL past its expiry or with an altered signature, When fetched, Then 410 or 403 respectively and no chart body.",
+      "test": "tests/chart_ac09_expired_or_altered_signature_refused.rs"
     },
     {
       "id": "AC10",
       "level": "SHOULD",
-      "description": "Given any tools/call that oauth_401_upgrade rewrites to 401, the request-log line's status field is 401, and for an unmodified 200 response it is 200.",
-      "test": "tests/sessbind_ac10_request_log_records_the_upgraded_status.rs"
+      "description": "Given 100 stored charts, When a 101st is shared, Then the oldest is gone and host.table.charts lists 100.",
+      "test": "tests/chart_ac10_101st_share_evicts_oldest.rs"
     },
     {
       "id": "AC11",
       "level": "SHOULD",
-      "description": "auth_method is session for AC1's call and key for AC4's; healthz's auth block reports session_bound_calls_24h >= 1.",
-      "test": "tests/sessbind_ac11_session_bound_calls_are_metered_and_counted.rs"
+      "description": "Given a python tool calling mcphost.table.chart(sql), When it runs in the sandbox, Then it receives the same chart.v1 object the tool returns.",
+      "test": "tests/chart_ac11_python_bridge_returns_chart_v1.rs"
     },
     {
       "id": "AC12",
-      "level": "MAY",
-      "description": "tools/list's tenant_key description states the key is optional on the connection that ran signup; contracts/host-tools.v1.json matches mcphost contract dump.",
-      "test": "tests/sessbind_ac12_tenant_key_description_states_signup_optionality.rs"
+      "level": "MUST",
+      "description": "Given prod after land, When examples/chart-in-a-minute/proof.sh https://mcphost.dev/mcp runs from carbon with a fresh signup, Then it exits 0 in under 30s, the caption's largest-category fact matches the fixture, and the share URL returns 200.",
+      "test": "DEFERRED: operator-provisioned (Live, prod after deploy, requires a real box and a deploy this dispatch cannot provision)"
     },
     {
       "id": "AC13",
       "level": "MUST",
-      "description": "Given cargo test at the landing commit, every test that passed at v0.60.35 still passes (tkparam/oauthrs suites unchanged) and the sessbind_* tests for the non-deferred ACs pass, gate receipt block=0.",
-      "test": "tests/sessbind_ac13_regression_gate.rs"
+      "description": "Given www/llms.txt, When the chart section is read, Then it is under 50 lines and shows one chart call and one share link and no grammar other than SQL.",
+      "test": "tests/chart_ac13_llms_txt_section_under_50_lines.rs"
+    },
+    {
+      "id": "AC14",
+      "level": "SHOULD",
+      "description": "Given ten concurrent chart calls for one tenant, When they finish, Then all ten return chart.v1 and p95 latency on the builder is under 250ms.",
+      "test": "tests/chart_ac14_ten_concurrent_calls_p95_under_250ms.rs"
     }
   ],
   "scope": [
-    "src/http.rs: build_router's two /mcp middleware .layer() calls reordered so oauth_401_upgrade (status rewrite) runs before protocol_version_and_log (the request logger) sees the response -- the only production code change this build makes. legacy_session_mode was tried at true and reverted; the module doc comment still describes today's fully-stateless config.",
-    "tests/sessbind_ac03_anonymous_session_unchanged.rs, tests/sessbind_ac10_request_log_records_the_upgraded_status.rs, tests/sessbind_ac13_regression_gate.rs: the three delivered tests.",
-    "Cargo.toml/CHANGELOG.md: version bump 0.60.35 -> 0.61.0 (PRD's own version_bump: minor rule) and the CHANGELOG entry recording both the AC10 fix and the AC1/AC2/AC4-AC9/AC11/AC12 deferral with its technical reason."
+    "vendor/{mqo-chart-vocab,mqo-result-profiler,mqo-chart-recommender,mqo-vega-emitter,mqo-chart-caption}/: five crates vendored unchanged as path dependencies, vendor/VENDOR.md records source repo (~/projects/ai-stack) and commit (4ef6c22).",
+    "src/chart.rs (new): builds a result-profile.v1 value from a SQL query's columns and rows (reusing src/tables_model.rs's key/category/measure/date classifiers, made pub(crate) for this), host.table.chart/host.table.charts tool implementations, signed share-link minting and verification, and the /charts/{id} HTML handler.",
+    "migrations/0057_chart_index.sql, src/db.rs: a tenant-agnostic chart_index table in the main mcphost.db routing an unauthenticated GET /charts/{id} to the right tenant's own SQLite file, where the chart body itself lives in a new _mcphost_charts table.",
+    "src/handler.rs, src/http.rs, src/kinds/python.rs, src/kinds/mod.rs: host.table.chart/host.table.charts tool descriptors and dispatch, the /charts/{id} route, and the mcphost.table.chart python sandbox bridge function.",
+    "www/llms.txt: new \"Chart in a minute\" recipe section. examples/chart-in-a-minute/: fixture.csv, proof.sh, synthorg-task.yaml, mirroring the database-in-a-minute precedent.",
+    "Cargo.toml/CHANGELOG.md: version bump 0.62.0 -> 0.63.0 (PRD's own build_version_bump: minor rule) and a CHANGELOG entry recording the feature and AC12's deferral.",
+    "tests/chart_ac01..14 (AC12 has no test file, recorded deferred): one integration test file per non-deferred AC, tests/support/chart_fixture.rs holding the shared 1,000-row expenses fixture and small events fixture."
   ],
   "non_goals": [
-    "Substituting a client-supplied or TCP-connection-derived identifier for a real transport session id -- the PRD's own technical considerations explicitly forbid this, and mcphost's Caddy reverse-proxy topology (connection pooling to the backend) would make a TCP-connection-identity substitute a cross-tenant binding-leak risk, not just an inferior approximation.",
-    "Bumping the rmcp dependency version or patching its session-classification behavior -- SEP-2567's removal of sessions from protocol version 2026-07-28 is a spec-level decision upstream, not a bug a dependency bump would change.",
-    "Any change to OAuth, bearer validation, or wrong_tenant semantics for bearer-vs-key conflicts -- PRD's own non-goal, untouched regardless of the deferral."
+    "Server-side rendering to PNG or SVG -- the share page renders in the browser (PRD's own non-goal).",
+    "A charts gallery or dashboard composition -- mqo-dashboard-composer is not vendored.",
+    "Editing a recommendation's encoding -- the caller may only override mark, from the recommender's own alternatives.",
+    "Any query grammar beyond sql -- PRD's own non-goal, confirmed by AC13's test that the recipe section shows no grammar other than SQL."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -107,41 +118,42 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "test_file_names_use_underscores_not_the_prd_slugs_hyphens": "test_prefix sessbind (the PRD's own frontmatter field), same convention as every other test file in this repo.",
-      "transport_session_blocker_is_load_bearing_not_a_convenience_finding": "This isn't 'harder than expected' -- it's the PRD's own written exit condition (Technical considerations: 'If mcphost runs the transport stateless (no session id), this PRD is blocked -- record it as blocked with the observation; do not substitute a client-supplied identifier'), confirmed true of this build before any code was written (src/http.rs's shipped with_legacy_session_mode(false)), and confirmed UNFIXABLE within this rmcp integration by the compat_ac11_ac12 regression test's own evidence (see root_motivation) rather than assumed."
+      "test_file_names_use_underscores_not_the_prd_slugs_hyphens": "test_prefix chart (the PRD's own frontmatter field), same convention as every other test file in this repo.",
+      "crate_layout_stays_one_package": "mcphost is one package with [lib] and [[bin]] (Cargo.toml:11); vendored crates are path dependencies under vendor/ picked up by Cargo's implicit-workspace rule, not a workspace conversion -- deny.toml and clippy.toml apply to them unchanged.",
+      "charts_stored_per_tenant_not_centrally": "_mcphost_charts lives inside each tenant's own SQLite file (tables::tenant_db_path), matching every other host.table.* table; only a small global chart_index (new migration 0057) in the main mcphost.db routes an unauthenticated /charts/{id} request, which has no tenant in its URL, to the right tenant file."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can't legacy_session_mode(true) just be enabled to get a real Mcp-Session-Id?",
-      "a": "Tried it: a full cargo test run showed 33 pre-existing test failures, all with the same shape -- a request lacking full per-request protocol metadata (which rmcp defaults to protocol version 2025-03-26, itself a legacy/session-eligible version) gets classified as legacy, and lacking an Mcp-Session-Id header, is refused 422 'Unexpected message, expect initialize request' instead of being served statelessly as it is today."
+      "q": "Why does mcphost need its own profiler instead of reusing mqo-result-profiler::profile directly?",
+      "a": "mqo-result-profiler's profile(response, catalog) reads an MQO response shape ai-stack's other services produce; host.table.chart has a SQL query's columns and rows instead, so src/chart.rs builds the result-profile.v1 value itself, vendoring mqo-result-profiler only for its ResultProfile/ColumnProfile/MeasureRange types (PRD's own explicit instruction)."
     },
     {
       "why": 2,
-      "q": "Why not route only genuinely session-wanting initialize calls to the legacy-mode service and everything else to the existing stateless one?",
-      "a": "rmcp classifies ANY initialize request as legacy-eligible regardless of its declared protocolVersion, and tests/compat_ac11_ac12_claude_sdk_replay.rs proves the real Claude Agent SDK's own initialize call (protocolVersion 2025-11-25) is byte-for-byte the same shape as a client that DOES want a session and never sends Mcp-Session-Id on any later call -- there is no signal in the initialize request itself to route on."
+      "q": "Why reuse src/tables_model.rs's classifiers instead of writing new measure/dimension thresholds for the chart profiler?",
+      "a": "PRD requirement 2 says so explicitly (\"Role decisions reuse the classifiers in src/tables_model.rs rather than new thresholds\") -- mcphost already has tested key/category/measure/date/id classifiers from the table-semantic-model PRD; a second set of thresholds would drift from them silently over time."
     },
     {
       "why": 3,
-      "q": "Why not mint mcphost's own per-connection identifier instead of rmcp's session id?",
-      "a": "The PRD's own non-functional section requires a transport-level, never-client-derived identifier; the only mcphost-visible transport signal weaker than rmcp's own session (e.g. the underlying TCP connection) is already documented elsewhere in this codebase (resolve_source_ip's doc comment) as unreliable in prod, since mcphost runs behind Caddy, which connection-pools to the backend -- two unrelated tenants' calls could share a backend connection, so a connection-identity binding would leak across tenants, violating AC7's own isolation guarantee outright."
+      "q": "Why does AC12 get deferred rather than attempted against the real https://mcphost.dev?",
+      "a": "AC12 is explicitly a Live acceptance criterion (\"Given prod after land\") requiring a deploy that has not happened yet and a run from carbon (the real operator's box) -- this dispatch works only in an isolated git worktree against a remote build-and-test runner, with no authority to deploy or provision production infrastructure, so it is recorded deferred as operator-provisioned rather than faked against a local stand-in."
     },
     {
       "why": 4,
-      "q": "Why defer AC10 and AC3's own delivery works given the same transport is otherwise untouched?",
-      "a": "AC10 (request-log status) and AC3 (anonymous refusal shape) don't depend on any session mechanism existing at all -- AC10 is a pure middleware-ordering fix, and AC3 is already true of today's code with zero changes, so both were safely delivered and tested independently of the blocked mechanism."
+      "q": "Why is AC14's concurrency/latency test run against the in-process TestServer rather than a subprocess on a fixed reference box, the way the repo's other hardware-dependent AC (ac11_load_smoke) is?",
+      "a": "AC14's own bound (250ms p95 for 10 concurrent in-process chart calls) is two orders of magnitude looser than ac11_load_smoke's 50ms bound for 200 real-subprocess calls measuring RSS; an in-process TestServer run (0.37s total wall time observed) already clears that bound with wide margin and needs no subprocess isolation, so it runs unconditionally in the gate instead of being #[ignore]d for manual hardware-specific runs."
     }
   ],
-  "created_at": "2026-09-30T00:00:00Z",
+  "created_at": "2026-09-30T19:04:33Z",
   "ambiguities_resolved": [
     {
-      "question": "Does prod issue Mcp-Session-Id today (the PRD's own open question)?",
-      "resolution": "No -- src/http.rs's shipped StreamableHttpServerConfig sets with_legacy_session_mode(false), which per rmcp's own doc comment means every request is served statelessly regardless of negotiated protocol version. Per the PRD's own technical-considerations sentence, this alone triggers the blocked outcome."
+      "question": "Requirement 5's examples/chart-in-a-minute/ directory has no dedicated AC number in the PRD's acceptance-criteria list (AC13 only covers the llms.txt section) -- does it still need its own delivered proof?",
+      "resolution": "Yes -- delivered as its own commit (fixture.csv matching tests/support/chart_fixture.rs::expenses_rows() exactly, proof.sh, synthorg-task.yaml) per the PRD's requirement 5 text, verified by actually building the mcphost binary and running proof.sh against it end to end (exit 0, ~1.3s wall time) rather than only checking the script parses."
     },
     {
-      "question": "Is enabling legacy session mode acceptable, given the open question defers that judgment to Joe if disabled?",
-      "resolution": "Empirically no, independent of a product judgment call: enabling it regresses 33 already-shipped, must-stay-green tests (AC13's own hard requirement) because rmcp's is_legacy_request classification cannot distinguish the real target client's own wire shape from a client that wants session semantics -- there is no configuration of this build's rmcp integration that adds session support without that regression, so this was not a preference to defer but a build-time fact to report."
+      "question": "requirement 3 says host.table.chart(sql, title?, mark?) but P1 requirement 6 adds share: true -- is share part of the same tool or a separate one?",
+      "resolution": "Same tool, one additional optional argument (share: bool), consistent with requirement 6's own description of share as part of the host.table.chart call and with the python bridge's signature in requirement 7 (mcphost.table.chart(sql, title=None, mark=None, share=False))."
     }
   ]
 }

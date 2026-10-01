@@ -1,0 +1,17 @@
+[package]
+name = "mqo-chart-caption"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Generates a data-computed headline and facts for a chart result -- vendored by mcphost, PRD-mcphost-chart-in-a-minute."
+publish = false
+
+[lib]
+name = "mqo_chart_caption"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+mqo-chart-vocab = { path = "../mqo-chart-vocab", version = "0.1.0" }
+mqo-result-profiler = { path = "../mqo-result-profiler", version = "0.1.0" }

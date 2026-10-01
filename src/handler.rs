@@ -1471,6 +1471,48 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &["table"],
             ),
         ),
+        // PRD-mcphost-chart-in-a-minute P0 requirement 3, P1 requirements
+        // 6/8: one SQL call returns a chart recommendation, an inline-data
+        // Vega-Lite spec, and a caption whose numbers are computed from the
+        // rows -- the picture `host.table.query`'s bare rows leave a caller
+        // to imagine.
+        Tool::new(
+            "host.table.chart",
+            "Run sql (the same read-only path and caps as host.table.query) and return \
+             chart.v1: a result-profile.v1 profile, a mark/encoding recommendation with \
+             rationale and alternatives, an inline-data Vega-Lite v5 spec, and a caption whose \
+             headline and facts are computed from the rows, never guessed. mark, if given, must \
+             be the recommended mark or one of its alternatives -- an unrecognized or \
+             disallowed mark (e.g. pie) fails naming the allowed set. share: true stores the \
+             chart (evicting this tenant's oldest past 100 stored) and returns a share_url \
+             valid 24 hours, no login required.",
+            host_schema(
+                json!({
+                    "sql": {
+                        "type": "string",
+                        "description": "A single read-only SELECT statement (CTEs allowed) \
+                            over this tenant's own declared tables.",
+                    },
+                    "title": {"type": "string", "description": "Optional chart title."},
+                    "mark": {
+                        "type": "string",
+                        "description": "Override the recommended mark; must be the \
+                            recommendation's own mark or one of its alternatives.",
+                    },
+                    "share": {
+                        "type": "boolean",
+                        "description": "Store this chart and return share_url; default false.",
+                    },
+                }),
+                &["sql"],
+            ),
+        ),
+        Tool::new(
+            "host.table.charts",
+            "List this tenant's stored (host.table.chart {share: true}) charts, newest first, \
+             each with id, title, created_unix, and expires_unix.",
+            host_schema(json!({}), &[]),
+        ),
         // PRD-mcphost-document-store P0 requirements 2-5, P1 requirement 7:
         // a per-tenant document store (text, markdown, JSON, CSV) with a
         // content hash, extracted text, and a per-tenant change watermark
@@ -3443,6 +3485,10 @@ impl TableBackend for TenantTableBridge {
             "list" => tables::table_list(&self.state, &self.tenant, &args).await,
             "drop" => tables::table_drop(&self.state, &self.tenant, &args).await,
             "schema" => tables::table_schema(&self.state, &self.tenant, &args).await,
+            // PRD-mcphost-chart-in-a-minute AC11: `mcphost.table.chart`
+            // inside the python sandbox receives the same `chart.v1` object
+            // `host.table.chart` itself returns.
+            "chart" => crate::chart::table_chart(&self.state, &self.tenant, &args).await,
             other => Err(AppError::InvalidArgs(format!("unknown table op '{other}'"))),
         };
         result.map_err(app_error_to_kind_error)
@@ -3710,6 +3756,8 @@ impl McpHostHandler {
             "host.table.list" => tables::table_list(&self.state, tenant, &args).await,
             "host.table.drop" => tables::table_drop(&self.state, tenant, &args).await,
             "host.table.schema" => tables::table_schema(&self.state, tenant, &args).await,
+            "host.table.chart" => crate::chart::table_chart(&self.state, tenant, &args).await,
+            "host.table.charts" => crate::chart::table_charts_list(&self.state, tenant, &args).await,
             "host.docs.put" => docs::doc_put(&self.state, tenant, &args).await,
             "host.docs.get" => docs::doc_get(&self.state, tenant, &args).await,
             "host.docs.list" => docs::doc_list(&self.state, tenant, &args).await,

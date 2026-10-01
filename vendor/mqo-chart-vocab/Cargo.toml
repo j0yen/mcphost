@@ -1,0 +1,17 @@
+[package]
+name = "mqo-chart-vocab"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Shared chart vocabulary (marks, data types, roles) for the ai-stack chart chain -- vendored by mcphost, PRD-mcphost-chart-in-a-minute."
+publish = false
+
+[lib]
+name = "mqo_chart_vocab"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"

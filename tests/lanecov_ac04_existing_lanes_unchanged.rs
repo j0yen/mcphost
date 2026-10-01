@@ -113,6 +113,12 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // lane (routes tests/oauthconf/** and docs/oauth-scenarios.md to the
     // oauthconf_ac0x proof tests and the doc-sharing check) -- a tenth,
     // intended addition since the baseline, not drift.
+    // PRD-mcphost-chart-in-a-minute added its own "vendor" lane (routes
+    // vendor/** -- the vendored ai-stack chart chain, AC1 -- to the
+    // existing rust-source lane's own cargo check/clippy/test commands,
+    // which Cargo's implicit-workspace rule already runs those crates
+    // through) -- an eleventh, intended addition since the baseline, not
+    // drift.
     assert_eq!(
         added,
         vec![
@@ -125,10 +131,11 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "oauthconf-data",
             "plugin",
             "sharing-docs",
+            "vendor",
             "wasm-fixtures"
         ],
         "only admin-schemas, checkcompat-race-soak, contracts, docsearch-fixtures, examples, \
-         loop-config, oauthconf-data, plugin, sharing-docs, and wasm-fixtures may have been \
-         added since {BASELINE_REV}"
+         loop-config, oauthconf-data, plugin, sharing-docs, vendor, and wasm-fixtures may have \
+         been added since {BASELINE_REV}"
     );
 }
