@@ -428,6 +428,26 @@ mod fleetips_reclassify_backfill;
 mod gatedebt_4f1112d_ac4_no_test_reads_gate_receipts;
 #[path = "gatedebt_4f1112d_ac5_no_flake_audit_selftest_names.rs"]
 mod gatedebt_4f1112d_ac5_no_flake_audit_selftest_names;
+#[path = "handle_ac01_materialize_50000_rows_dataset_summary.rs"]
+mod handle_ac01_materialize_50000_rows_dataset_summary;
+#[path = "handle_ac02_query_handle_aggregate_matches_source.rs"]
+mod handle_ac02_query_handle_aggregate_matches_source;
+#[path = "handle_ac03_unknown_handle_name_is_handle_not_found.rs"]
+mod handle_ac03_unknown_handle_name_is_handle_not_found;
+#[path = "handle_ac04_ttl_expiry_reaped_by_tick.rs"]
+mod handle_ac04_ttl_expiry_reaped_by_tick;
+#[path = "handle_ac05_byte_quota_evicts_lru_then_refuses_oversized.rs"]
+mod handle_ac05_byte_quota_evicts_lru_then_refuses_oversized;
+#[path = "handle_ac06_create_with_reserved_prefix_is_rejected.rs"]
+mod handle_ac06_create_with_reserved_prefix_is_rejected;
+#[path = "handle_ac07_update_statement_against_handle_is_refused.rs"]
+mod handle_ac07_update_statement_against_handle_is_refused;
+#[path = "handle_ac08_handle_export_signed_csv_url_expiry.rs"]
+mod handle_ac08_handle_export_signed_csv_url_expiry;
+#[path = "handle_ac11_cross_tenant_handle_name_is_not_found.rs"]
+mod handle_ac11_cross_tenant_handle_name_is_not_found;
+#[path = "handle_ac12_empty_result_materializes_zero_row_handle.rs"]
+mod handle_ac12_empty_result_materializes_zero_row_handle;
 #[path = "handoff_ac01_signup_returns_token_and_no_key.rs"]
 mod handoff_ac01_signup_returns_token_and_no_key;
 #[path = "handoff_ac02_redeem_single_use_and_expiry.rs"]

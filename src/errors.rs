@@ -536,6 +536,15 @@ impl AppError {
                 // already uses for the analogous KV-store rejections.
                 "table_schema_violation" | "table_not_found" | "table_query_rejected"
                 | "table_bound_exceeded" | "table_already_exists" => ErrorCode::INVALID_PARAMS,
+                // PRD-mcphost-result-handles requirement 3/4: a reference to
+                // a missing/expired handle is the same caller-input problem
+                // as `table_not_found` right above; a materialisation over
+                // its plan's `table_handle_bytes_max` is the same bucket the
+                // `state_quota_exceeded`/`trigger_quota_exceeded` group
+                // below already uses for a dedicated (non-generic) quota
+                // code.
+                "handle_not_found" => ErrorCode::INVALID_PARAMS,
+                "handle_quota_exceeded" => ErrorCode::INVALID_PARAMS,
                 // PRD-mcphost-document-store P0 requirements 2-5: a too-large
                 // put, an unsupported mime, or either quota overrun are all
                 // caller-input problems, same INVALID_PARAMS bucket as the

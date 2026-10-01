@@ -146,7 +146,7 @@ pub(crate) fn arg_str_opt(args: &Value, name: &str) -> Option<String> {
     args.get(name).and_then(Value::as_str).map(str::to_string)
 }
 
-fn plan_of<'a>(state: &'a AppState, plan_name: &str) -> Result<&'a Plan, AppError> {
+pub(crate) fn plan_of<'a>(state: &'a AppState, plan_name: &str) -> Result<&'a Plan, AppError> {
     state.plans.get(plan_name).ok_or_else(|| {
         AppError::Internal(format!(
             "tenant's plan '{plan_name}' is not in the loaded plan catalog"
@@ -216,7 +216,7 @@ fn query_rejected(reason: impl Into<String>) -> AppError {
 
 /// requirement 6/AC6: a query that ran past [`ROW_CAP`] or
 /// [`QUERY_TIME_CAP`].
-fn bound_exceeded(bound: &'static str, limit: i64) -> AppError {
+pub(crate) fn bound_exceeded(bound: &'static str, limit: i64) -> AppError {
     AppError::Structured {
         code: "table_bound_exceeded",
         message: format!("query exceeded bound '{bound}' (limit {limit})"),
@@ -253,6 +253,12 @@ fn open_conn(path: &Path, cfg: &crate::db::DbConfig) -> Result<Connection, AppEr
             created_unix INTEGER NOT NULL
         );"
     ))?;
+    // PRD-mcphost-result-handles: the per-tenant handle bookkeeping table
+    // lives in the same file, bootstrapped alongside META_TABLE above so
+    // every connection this module opens (not just `handles.rs`'s own
+    // callers) can rely on it already existing -- `host.table.query`
+    // checks it on every call, even one that never touches a handle.
+    crate::handles::ensure_meta_table_sync(&conn)?;
     Ok(conn)
 }
 
@@ -345,6 +351,16 @@ pub async fn table_create(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     if !is_valid_ident(&name) {
         return Err(AppError::InvalidArgs(format!(
             "name: must match ^[A-Za-z_][A-Za-z0-9_]{{0,63}}$; got '{name}'"
+        )));
+    }
+    // PRD-mcphost-result-handles requirement 6/AC6: `hdl_` is reserved for
+    // `host.table.query(..., handle: true)`'s own materialised tables --
+    // refused here, structurally, rather than left to collide with (or
+    // shadow) a real handle name.
+    if name.starts_with(crate::handles::HANDLE_PREFIX) {
+        return Err(AppError::InvalidArgs(format!(
+            "name: the '{}' prefix is reserved for result handles",
+            crate::handles::HANDLE_PREFIX
         )));
     }
     let columns_val = args
@@ -448,6 +464,16 @@ pub async fn table_drop(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
     let name = arg_str(args, "name")?;
     if !is_valid_ident(&name) {
         return Err(table_not_found(&name));
+    }
+    // requirement 6: the reserved prefix is refused here too -- a declared
+    // table can never be named `hdl_...` in the first place (see
+    // `table_create` above), so reaching this point with one always means
+    // the caller meant `host.table.handle_drop`, not this tool.
+    if name.starts_with(crate::handles::HANDLE_PREFIX) {
+        return Err(AppError::InvalidArgs(format!(
+            "name: the '{}' prefix is reserved for result handles; use host.table.handle_drop",
+            crate::handles::HANDLE_PREFIX
+        )));
     }
     let confirm = args.get("confirm").and_then(Value::as_bool).unwrap_or(false);
 
@@ -706,13 +732,16 @@ pub async fn table_append(state: &AppState, tenant: &Tenant, args: &Value) -> Re
 // ---- host.table.query ---------------------------------------------------
 
 /// requirement 2/AC3: parses `sql` and refuses (structurally, not by string
-/// matching) anything but exactly one `SELECT`/CTE statement.
-fn validate_query_structure(sql: &str) -> Result<(), AppError> {
+/// matching) anything but exactly one `SELECT`/CTE statement -- returning
+/// the parsed statement so a caller that also needs it (PRD-mcphost-
+/// result-handles' `handles::extract_handle_names`, over the same AST) does
+/// not re-parse.
+pub(crate) fn parse_single_select(sql: &str) -> Result<Vec<sqlparser::ast::Statement>, AppError> {
     let statements = sqlparser::parser::Parser::parse_sql(&sqlparser::dialect::GenericDialect {}, sql)
         .map_err(|e| query_rejected(format!("sql parse error: {e}")))?;
     match statements.as_slice() {
         [] => Err(query_rejected("empty statement")),
-        [sqlparser::ast::Statement::Query(_)] => Ok(()),
+        [sqlparser::ast::Statement::Query(_)] => Ok(statements),
         [_single_non_query] => Err(query_rejected(
             "must be a single read-only SELECT statement, not a write or DDL statement",
         )),
@@ -721,6 +750,7 @@ fn validate_query_structure(sql: &str) -> Result<(), AppError> {
         )),
     }
 }
+
 
 pub(crate) fn value_ref_to_json(v: ValueRef<'_>) -> Value {
     match v {
@@ -750,6 +780,17 @@ fn run_query_sync(conn: &Connection, sql: &str) -> Result<Vec<Value>, AppError> 
     });
 
     conn.pragma_update(None, "query_only", "ON")?;
+    let result = run_query_readonly(conn, sql);
+    // Restore: this same connection may go on to do bookkeeping writes
+    // (PRD-mcphost-result-handles requirement 4's `handles::bump_last_used_sync`)
+    // within the same `with_tenant_conn` call -- leaving query_only latched
+    // ON after a successful or failed read turns that write into a spurious
+    // "attempt to write a readonly database" error.
+    conn.pragma_update(None, "query_only", "OFF")?;
+    result
+}
+
+fn run_query_readonly(conn: &Connection, sql: &str) -> Result<Vec<Value>, AppError> {
     let mut stmt = conn.prepare(sql)?;
     if !stmt.readonly() {
         return Err(query_rejected("statement is not read-only"));
@@ -780,12 +821,37 @@ fn run_query_sync(conn: &Connection, sql: &str) -> Result<Vec<Value>, AppError> 
     Ok(rows_out)
 }
 
+/// PRD-mcphost-result-handles requirement 1: `handle: true` routes to
+/// [`crate::handles::materialize`] instead of this function's own row-
+/// collecting path -- `ROW_CAP` never applies to a materialisation.
+/// Otherwise unchanged except for requirement 3/AC3/AC11: any `hdl_<id>`
+/// name the submitted `sql` references (CTEs, joins, subqueries included --
+/// see [`crate::handles::extract_handle_names`]) must be a live handle of
+/// *this* tenant's or the call is refused `handle_not_found` naming it,
+/// checked on the same connection the query itself runs on so there is no
+/// window for the handle to expire between the check and the query; a
+/// successful query then bumps each referenced handle's `last_used_unix`
+/// (requirement 4's eviction order) on that same connection.
 pub async fn table_query(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let sql = arg_str(args, "sql")?;
-    validate_query_structure(&sql)?;
+    let statements = parse_single_select(&sql)?;
+
+    if args.get("handle").and_then(Value::as_bool).unwrap_or(false) {
+        return crate::handles::materialize(state, tenant, &sql, args).await;
+    }
+
+    let referenced = crate::handles::extract_handle_names(&statements);
 
     let path = tenant_db_path(state, tenant.id);
-    let rows = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| run_query_sync(conn, &sql)).await?;
+    let sql_for_conn = sql.clone();
+    let referenced_for_conn = referenced.clone();
+    let rows = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+        crate::handles::check_handles_live_sync(conn, &referenced_for_conn)?;
+        let rows = run_query_sync(conn, &sql_for_conn)?;
+        crate::handles::bump_last_used_sync(conn, &referenced_for_conn)?;
+        Ok(rows)
+    })
+    .await?;
     Ok(json!({"rows": rows}))
 }
 
@@ -963,23 +1029,23 @@ mod tests {
     /// multi-statement string are all rejected structurally.
     #[test]
     fn query_structure_rejects_non_select_and_multi_statement() {
-        assert!(validate_query_structure("select * from t").is_ok());
-        assert!(validate_query_structure("SELECT * FROM t WHERE x > 1").is_ok());
-        assert!(validate_query_structure("with c as (select 1) select * from c").is_ok());
+        assert!(parse_single_select("select * from t").is_ok());
+        assert!(parse_single_select("SELECT * FROM t WHERE x > 1").is_ok());
+        assert!(parse_single_select("with c as (select 1) select * from c").is_ok());
         assert_eq!(
-            validate_query_structure("update t set x = 1").unwrap_err().code(),
+            parse_single_select("update t set x = 1").unwrap_err().code(),
             "table_query_rejected"
         );
         assert_eq!(
-            validate_query_structure("drop table t").unwrap_err().code(),
+            parse_single_select("drop table t").unwrap_err().code(),
             "table_query_rejected"
         );
         assert_eq!(
-            validate_query_structure("select 1; select 2").unwrap_err().code(),
+            parse_single_select("select 1; select 2").unwrap_err().code(),
             "table_query_rejected"
         );
         assert_eq!(
-            validate_query_structure("select * from t where (").unwrap_err().code(),
+            parse_single_select("select * from t where (").unwrap_err().code(),
             "table_query_rejected"
         );
     }
