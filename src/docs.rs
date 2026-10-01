@@ -564,18 +564,35 @@ fn search_filter_name(args: &Value) -> Option<String> {
     args.get("filter").and_then(|f| f.get("name")).and_then(Value::as_str).map(str::to_string)
 }
 
-/// requirement 3/AC2/AC5/AC6/AC8: lexical by default (BM25 over the FTS5
-/// index); embeddings mode (a provider configured via `index_config`)
-/// embeds the query itself through that same provider and ranks by
-/// cosine, falling back to lexical (`index.mode: "lexical-fallback"`) the
-/// moment that provider call fails for any reason -- AC6's own
-/// non-functional requirement ("a provider outage degrades to lexical
-/// answers ... never to an error").
+/// requirement 1-6/AC1/AC3/AC4/AC5/AC6/AC10 (PRD-mcphost-docs-hybrid-search):
+/// `mode` (`auto` default, `lexical`, `embeddings`, `hybrid`) picks the
+/// ranking. `lexical` never touches the provider. `embeddings`/`hybrid`
+/// without a configured provider is a validation error (requirement 4).
+/// `auto` with a configured provider (and every explicit `hybrid` call)
+/// runs both the FTS5 lexical query and the cosine ranking, each to
+/// `3 x k` candidates (cap 60, requirement 1/technical considerations),
+/// fuses them with [`crate::docs_index::rrf_fuse`] at
+/// [`crate::docs_index::K_RRF`], and returns the top `k` with `ranks`
+/// naming each hit's position in either source list (requirement 3). A
+/// provider call that fails (or an empty response) degrades to the plain
+/// lexical ranking with `index.mode: "lexical-fallback"`, never an error
+/// (requirement 5) -- for every mode that would otherwise call the
+/// provider, not just `auto`, so an operator's explicit `mode: "hybrid"`
+/// during an outage gets the same fail-open behaviour `auto` always had.
+/// Both candidate lists are tenant- and `filter`-scoped before fusion
+/// (requirement 6/AC10): the lexical list by its own SQL `WHERE`, the
+/// dense list by [`crate::docs_index::matches_filter`].
 pub async fn doc_search(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let query = arg_str(args, "query")?;
     let k = args.get("k").and_then(Value::as_i64).unwrap_or(5).clamp(1, 20);
     let prefix = search_filter_prefix(args);
     let name = search_filter_name(args);
+    let requested_mode = arg_str_opt(args, "mode").unwrap_or_else(|| "auto".to_string());
+    if !matches!(requested_mode.as_str(), "auto" | "lexical" | "embeddings" | "hybrid") {
+        return Err(AppError::InvalidArgs(format!(
+            "mode must be one of 'auto', 'lexical', 'embeddings', 'hybrid', got '{requested_mode}'"
+        )));
+    }
 
     let now = crate::state::now_unix();
     state.db.doc_index_state_ensure(tenant.id, now).await?;
@@ -586,52 +603,53 @@ pub async fn doc_search(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
         .ok_or_else(|| AppError::Internal("doc_index_state row missing after ensure".into()))?;
     let lag_seconds = index_lag_seconds(state, tenant.id, idx.indexed_watermark, now).await?;
 
-    let mut mode = "lexical".to_string();
-    let results = if idx.provider == "openai-compatible"
-        && let (Some(endpoint), Some(model), Some(secret_name)) =
-            (idx.endpoint.as_deref(), idx.model.as_deref(), idx.secret_name.as_deref())
-    {
-        match crate::docs_index::call_embeddings_provider(
-            state,
-            tenant.id,
-            endpoint,
-            model,
-            secret_name,
-            std::slice::from_ref(&query),
-        )
-        .await
-        {
-            Ok(vectors) if !vectors.is_empty() => {
-                mode = "embeddings".to_string();
-                let qvec = &vectors[0];
-                let rows = state.db.doc_chunks_with_vectors(tenant.id).await?;
-                let mut scored: Vec<(f64, crate::db::ChunkVecRow)> = rows
-                    .into_iter()
-                    .filter(|r| crate::docs_index::matches_filter(r, &prefix, &name))
-                    .map(|r| {
-                        let v = crate::docs_index::decode_vector(&r.vector);
-                        (crate::docs_index::cosine(qvec, &v), r)
-                    })
-                    .collect();
-                scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-                scored.truncate(k as usize);
-                scored
-                    .into_iter()
-                    .map(|(score, r)| {
-                        json!({
-                            "document_id": r.document_id, "name": r.name, "version": r.version,
-                            "chunk_no": r.chunk_no, "offset": r.offset, "text": r.text, "score": score,
-                        })
-                    })
-                    .collect()
+    let provider_ready = idx.provider == "openai-compatible"
+        && idx.endpoint.is_some()
+        && idx.model.is_some()
+        && idx.secret_name.is_some();
+
+    if matches!(requested_mode.as_str(), "hybrid" | "embeddings") && !provider_ready {
+        return Err(AppError::InvalidArgs(format!(
+            "mode '{requested_mode}' requires a configured embeddings provider -- call \
+             host.docs.index_config with provider 'openai-compatible' first; this tenant has \
+             no provider configured"
+        )));
+    }
+
+    let want_hybrid_or_auto_configured =
+        requested_mode == "hybrid" || (requested_mode == "auto" && provider_ready);
+    let want_embeddings_only = requested_mode == "embeddings";
+
+    let (results, mode) = if requested_mode == "lexical" {
+        let hits = lexical_hits(state, tenant.id, &query, k, &prefix, &name).await?;
+        (lexical_hits_to_json(&hits), "lexical".to_string())
+    } else if want_embeddings_only {
+        match embed_query(state, tenant.id, &idx, &query).await {
+            Some(qvec) => {
+                let scored = dense_candidates(state, tenant.id, &qvec, &prefix, &name, k).await?;
+                (embeddings_hits_to_json(&scored), "embeddings".to_string())
             }
-            _ => {
-                mode = "lexical-fallback".to_string();
-                lexical_search_results(state, tenant.id, &query, k, &prefix, &name).await?
+            None => {
+                let hits = lexical_hits(state, tenant.id, &query, k, &prefix, &name).await?;
+                (lexical_hits_to_json(&hits), "lexical-fallback".to_string())
+            }
+        }
+    } else if want_hybrid_or_auto_configured {
+        match embed_query(state, tenant.id, &idx, &query).await {
+            Some(qvec) => {
+                let results =
+                    hybrid_search_results(state, tenant.id, &qvec, &query, k, &prefix, &name)
+                        .await?;
+                (results, "hybrid".to_string())
+            }
+            None => {
+                let hits = lexical_hits(state, tenant.id, &query, k, &prefix, &name).await?;
+                (lexical_hits_to_json(&hits), "lexical-fallback".to_string())
             }
         }
     } else {
-        lexical_search_results(state, tenant.id, &query, k, &prefix, &name).await?
+        let hits = lexical_hits(state, tenant.id, &query, k, &prefix, &name).await?;
+        (lexical_hits_to_json(&hits), "lexical".to_string())
     };
 
     let _ = state.db.document_usage_event_insert(tenant.id, "docs.search".to_string(), 1, now).await;
@@ -642,31 +660,175 @@ pub async fn doc_search(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
     }))
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn lexical_search_results(
+/// Embeds `query` through the tenant's configured provider -- `None` for
+/// any transport failure, non-2xx status, malformed body, or empty
+/// response, the single fail-open check every provider-calling mode
+/// (`auto` with a provider, `embeddings`, `hybrid`) shares (requirement 5).
+async fn embed_query(
     state: &AppState,
     tenant_id: i64,
+    idx: &crate::db::DocIndexStateRow,
+    query: &str,
+) -> Option<Vec<f32>> {
+    let (endpoint, model, secret_name) =
+        (idx.endpoint.as_deref()?, idx.model.as_deref()?, idx.secret_name.as_deref()?);
+    match crate::docs_index::call_embeddings_provider(
+        state,
+        tenant_id,
+        endpoint,
+        model,
+        secret_name,
+        std::slice::from_ref(&query.to_string()),
+    )
+    .await
+    {
+        Ok(vectors) if !vectors.is_empty() => Some(vectors[0].clone()),
+        _ => None,
+    }
+}
+
+/// requirement 1/technical considerations: every chunk this tenant has a
+/// vector for, tenant- and `filter`-scoped
+/// ([`crate::docs_index::matches_filter`]), ranked by cosine against
+/// `qvec` and truncated to `width` (the caller picks `k` for an
+/// embeddings-only ranking or `3 x k` capped at 60 for a hybrid dense
+/// candidate list).
+#[allow(clippy::too_many_arguments)]
+async fn dense_candidates(
+    state: &AppState,
+    tenant_id: i64,
+    qvec: &[f32],
+    prefix: &Option<String>,
+    name: &Option<String>,
+    width: i64,
+) -> Result<Vec<(f64, crate::db::ChunkVecRow)>, AppError> {
+    let rows = state.db.doc_chunks_with_vectors(tenant_id).await?;
+    let mut scored: Vec<(f64, crate::db::ChunkVecRow)> = rows
+        .into_iter()
+        .filter(|r| crate::docs_index::matches_filter(r, prefix, name))
+        .map(|r| {
+            let v = crate::docs_index::decode_vector(&r.vector);
+            (crate::docs_index::cosine(qvec, &v), r)
+        })
+        .collect();
+    scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    scored.truncate(width.max(0) as usize);
+    Ok(scored)
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn lexical_hits(
+    state: &AppState,
+    tenant_id: i64,
+    query: &str,
+    limit: i64,
+    prefix: &Option<String>,
+    name: &Option<String>,
+) -> Result<Vec<crate::db::ChunkHit>, AppError> {
+    let Some(match_expr) = crate::docs_index::sanitize_fts_query(query) else {
+        return Ok(Vec::new());
+    };
+    state.db.doc_chunks_search_lexical(tenant_id, match_expr, prefix.clone(), name.clone(), limit).await
+}
+
+/// requirement 3: a plain-lexical (or lexical-fallback) hit's `ranks` --
+/// its own 1-based position in the BM25-sorted list, no embeddings rank.
+fn lexical_hits_to_json(hits: &[crate::db::ChunkHit]) -> Vec<Value> {
+    hits.iter()
+        .enumerate()
+        .map(|(i, h)| {
+            json!({
+                "document_id": h.document_id, "name": h.name, "version": h.version,
+                "chunk_no": h.chunk_no, "offset": h.offset, "text": h.text, "score": h.score,
+                "ranks": {"lexical": (i as i64) + 1, "embeddings": Value::Null},
+            })
+        })
+        .collect()
+}
+
+/// requirement 3: an embeddings-only hit's `ranks` -- the symmetric case,
+/// no lexical rank.
+fn embeddings_hits_to_json(scored: &[(f64, crate::db::ChunkVecRow)]) -> Vec<Value> {
+    scored
+        .iter()
+        .enumerate()
+        .map(|(i, (score, r))| {
+            json!({
+                "document_id": r.document_id, "name": r.name, "version": r.version,
+                "chunk_no": r.chunk_no, "offset": r.offset, "text": r.text, "score": score,
+                "ranks": {"lexical": Value::Null, "embeddings": (i as i64) + 1},
+            })
+        })
+        .collect()
+}
+
+/// A chunk's fusion identity -- `(document_id, chunk_no)` is the table's
+/// own primary key minus `tenant_id`/`version` (every query here is
+/// already tenant-scoped, and a chunk's `chunk_no` is unique per document
+/// regardless of which `version` produced it, since the indexer always
+/// deletes a document's whole prior chunk set before writing its new one).
+type ChunkKey = (String, i64);
+
+/// requirement 1/2/3 (AC1/AC2/AC10): runs the lexical and dense candidate
+/// lists (each to `3 x k` capped at 60), fuses them with
+/// [`crate::docs_index::rrf_fuse`], and formats the top `k` fused hits
+/// with both source ranks.
+#[allow(clippy::too_many_arguments)]
+async fn hybrid_search_results(
+    state: &AppState,
+    tenant_id: i64,
+    qvec: &[f32],
     query: &str,
     k: i64,
     prefix: &Option<String>,
     name: &Option<String>,
 ) -> Result<Vec<Value>, AppError> {
-    let Some(match_expr) = crate::docs_index::sanitize_fts_query(query) else {
-        return Ok(Vec::new());
-    };
-    let hits = state
-        .db
-        .doc_chunks_search_lexical(tenant_id, match_expr, prefix.clone(), name.clone(), k)
-        .await?;
-    Ok(hits
-        .into_iter()
-        .map(|h| {
+    let width = (3 * k).min(60);
+
+    let sparse_hits = lexical_hits(state, tenant_id, query, width, prefix, name).await?;
+    let sparse_pairs: Vec<(ChunkKey, f64)> =
+        sparse_hits.iter().map(|h| ((h.document_id.clone(), h.chunk_no), h.score)).collect();
+
+    let dense_scored = dense_candidates(state, tenant_id, qvec, prefix, name, width).await?;
+    let dense_pairs: Vec<(ChunkKey, f64)> =
+        dense_scored.iter().map(|(s, r)| ((r.document_id.clone(), r.chunk_no), *s)).collect();
+
+    let sparse_rank: std::collections::HashMap<ChunkKey, i64> =
+        sparse_pairs.iter().enumerate().map(|(i, (id, _))| (id.clone(), i as i64 + 1)).collect();
+    let dense_rank: std::collections::HashMap<ChunkKey, i64> =
+        dense_pairs.iter().enumerate().map(|(i, (id, _))| (id.clone(), i as i64 + 1)).collect();
+
+    let sparse_map: std::collections::HashMap<ChunkKey, &crate::db::ChunkHit> =
+        sparse_hits.iter().map(|h| ((h.document_id.clone(), h.chunk_no), h)).collect();
+    let dense_map: std::collections::HashMap<ChunkKey, &crate::db::ChunkVecRow> =
+        dense_scored.iter().map(|(_, r)| ((r.document_id.clone(), r.chunk_no), r)).collect();
+
+    let fused = crate::docs_index::rrf_fuse(&dense_pairs, &sparse_pairs, crate::docs_index::K_RRF);
+
+    let mut out = Vec::with_capacity(k as usize);
+    for (id, score) in fused.into_iter().take(k as usize) {
+        let ranks = json!({
+            "lexical": sparse_rank.get(&id).copied(),
+            "embeddings": dense_rank.get(&id).copied(),
+        });
+        let entry = if let Some(h) = sparse_map.get(&id) {
             json!({
                 "document_id": h.document_id, "name": h.name, "version": h.version,
-                "chunk_no": h.chunk_no, "offset": h.offset, "text": h.text, "score": h.score,
+                "chunk_no": h.chunk_no, "offset": h.offset, "text": h.text,
+                "score": score, "ranks": ranks,
             })
-        })
-        .collect())
+        } else if let Some(r) = dense_map.get(&id) {
+            json!({
+                "document_id": r.document_id, "name": r.name, "version": r.version,
+                "chunk_no": r.chunk_no, "offset": r.offset, "text": r.text,
+                "score": score, "ranks": ranks,
+            })
+        } else {
+            continue;
+        };
+        out.push(entry);
+    }
+    Ok(out)
 }
 
 // ---- host.docs.index_config (P0 requirement 4) -------------------------

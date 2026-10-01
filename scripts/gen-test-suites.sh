@@ -474,7 +474,14 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # 715/90 caps above, spawning an 11th suite binary again -- caught by the
 # same P0 assertion. 715 -> 765 (core) and 90 -> 130 (sandbox) re-collapse
 # both back to 1 extra bucket each, landing the grand total back at 10.
-MAX_PER_SUITE = {"core": 765, "sandbox": 130}
+#
+# PRD-mcphost-docs-hybrid-search (rebased onto lineage-blast-radius,
+# 2026-09-30): this PRD's own nine `hybrid_ac*.rs` files (also
+# `core`-classified) join the same normal bucket on top of
+# lineage-blast-radius's own 765 cap above, spawning an 11th suite binary
+# again -- caught by the same P0 assertion. 765 -> 785 re-collapses core's
+# normal buckets to 1, landing the grand total back at 10.
+MAX_PER_SUITE = {"core": 785, "sandbox": 130}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

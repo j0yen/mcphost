@@ -1,105 +1,94 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-lineage-blast-radius.md",
-  "intent_slug": "mcphost-lineage-blast-radius",
-  "root_motivation": "A tenant can drop a table that a published tool, a chain, a stored chart, and a live handle all read, and nothing warns them -- host.table.drop drops the table and every row and knows nothing about consumers. ai-stack's LineageGraph (BTreeMap of nodes plus upstream/downstream adjacency), fixed effect table keyed by change kind and consumer kind, and breadth-first ranking weighted by observed use already answers this for ai-stack's own metrics/dashboard node kinds; this PRD ports the effect table, the ranking, and the report types, rewrites the node kinds for mcphost's own entities, persists the graph per tenant in SQLite, feeds usage counts from the runs ledger, and puts a gate in front of host.table.drop.",
-  "user_persona": "A tenant maintaining tables that its own tools, chains, charts, and handles depend on; an agent about to drop or reshape a table and wants to see what breaks, and how badly, before it does.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-docs-hybrid-search.md",
+  "intent_slug": "mcphost-docs-hybrid-search",
+  "root_motivation": "Grounding: the docs-qa recipe scored 90.0% offline on 2026-09-26 (5 of 5 sessions) with the persona baseline at 61.8%; the misses in that run were identifier-shaped questions the embedding-only ranking placed outside the top 5. doc_search (src/docs.rs) ranked by cosine alone when a provider was configured, or BM25 alone otherwise -- never both -- so a keyword query missed paraphrases and an embedding query missed exact identifiers and rare tokens. This build ports aistack-vector's rrf_fuse (reciprocal rank fusion) into docs_index.rs, runs both rankings when a provider is configured, and returns the fused top-k with each hit's source ranks.",
+  "user_persona": "An agent answering questions over a tenant's documents through host.docs.search (the rag_indexer persona in the synthorg corpus; docs-qa recipe) -- wants the top-5 to contain the passage that answers the question whether the question repeats the document's words or paraphrases them. Also the operator, who can force mode: \"lexical\"/\"embeddings\"/\"hybrid\" on one call to debug a tenant-reported miss.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 11
+    "target": 9
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a published python tool whose source calls mcphost.table.query(\"SELECT * FROM orders\"), When lineage is read, Then an edge table:orders -> tool:<name> exists with evidence source_scan.",
-      "test": "tests/lineage_ac01_source_scan_registers_table_edge.rs"
+      "description": "Given a tenant with a configured provider and a corpus where an identifier-bearing chunk ranks 12th by cosine and 1st by BM25, When host.docs.search runs with k: 5 and default mode, Then that chunk is in the top 5, index.mode is hybrid, and its ranks shows both positions.",
+      "test": "tests/hybrid_ac01_identifier_chunk_wins_via_lexical_rank.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a table with no consumers, When host.table.drop is called without confirm, Then it drops as before and no refusal is written.",
-      "test": "tests/lineage_ac02_drop_with_no_consumers_is_unrefused.rs"
+      "description": "Given the fusion function with two lists, When fused at k_rrf 60, Then a chunk present in both lists outranks a chunk at the same best rank in only one, and the top score is 1.0.",
+      "test": "tests/hybrid_ac02_rrf_fuse_ties_and_normalization.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a chain whose step tool reads orders and 40 finished runs of that chain, When host.lineage.blast_radius(\"table:orders\", \"drop\") is called, Then the chain appears with severity breaking, action from the effect table, and uses 40, ranked above a tool with 3 uses.",
-      "test": "tests/lineage_ac03_blast_radius_ranks_chain_above_tool.rs"
+      "description": "Given mode: \"lexical\", When search runs, Then the provider is not called (the test's fake provider records zero requests) and index.mode is lexical.",
+      "test": "tests/hybrid_ac03_lexical_mode_never_calls_provider.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given that table, When host.table.drop(\"orders\") is called without confirm, Then lineage_blocked lists the chain and the tool with their uses and the table still exists; When called with confirm: true, Then the table is dropped, its nodes and edges are removed, and dependent chart and handle nodes are marked orphaned.",
-      "test": "tests/lineage_ac04_drop_gate_blocks_then_confirms_and_cascades.rs"
+      "description": "Given mode: \"hybrid\" on a tenant with no provider, When search runs, Then a validation error names the missing provider config and no results are returned.",
+      "test": "tests/hybrid_ac04_hybrid_without_provider_is_validation_error.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the effect table, When every (ChangeKind, consumer_kind) pair is evaluated in a test, Then each returns a defined effect, severity, and action, and Add is none for every consumer.",
-      "test": "tests/lineage_ac05_effect_table_is_exhaustive.rs"
+      "description": "Given default mode and a provider that fails, When search runs, Then results are the lexical ranking, index.mode is lexical-fallback, and no error is returned.",
+      "test": "tests/hybrid_ac05_default_mode_provider_failure_falls_back.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a stored chart and a live handle both derived from expenses, When host.lineage.trace(\"table:expenses\") is called, Then both appear downstream with their kinds.",
-      "test": "tests/lineage_ac06_trace_shows_chart_and_handle_downstream.rs"
+      "description": "Given two tenants with overlapping document text, When tenant A searches, Then no hit belongs to tenant B in either candidate list or the fused result.",
+      "test": "tests/hybrid_ac06_hybrid_mode_cross_tenant_isolation.rs"
     },
     {
       "id": "AC7",
-      "level": "MUST",
-      "description": "Given 150 downstream consumers, When trace is called, Then a handle returns with downstream_count 150 and trace_page returns them 50 at a time.",
-      "test": "tests/lineage_ac07_trace_pages_150_downstream_consumers.rs"
+      "level": "SHOULD",
+      "description": "Given a tenant with 1,000 chunks, When 50 hybrid searches run, Then p95 latency exceeds embeddings-only p95 by at most 30 ms.",
+      "test": "tests/hybrid_ac07_p95_latency_within_30ms_of_embeddings_only.rs"
     },
     {
       "id": "AC8",
-      "level": "MUST",
-      "description": "Given two tenants with a table of the same name, When tenant A reads blast radius, Then no node from tenant B appears.",
-      "test": "tests/lineage_ac08_blast_radius_is_tenant_scoped.rs"
+      "level": "SHOULD",
+      "description": "Given the docs-qa seeded corpus and gold questions, When hit rate is measured for lexical, embeddings, and hybrid, Then hybrid is at least each of the others.",
+      "test": "tests/hybrid_ac08_hybrid_hit_rate_at_least_each_mode.rs"
     },
     {
       "id": "AC9",
-      "level": "SHOULD",
-      "description": "Given a model_set role change on a column a chart uses, When applied, Then the response includes a degrading note naming the chart and the change is applied.",
-      "test": "tests/lineage_ac09_model_set_role_change_notes_chart.rs"
+      "level": "MUST",
+      "description": "Given prod after land, When docs-qa.sh https://mcphost.dev runs from carbon with a fresh signup, Then it exits 0 and every search response reports index.mode: \"hybrid\".",
+      "test": "deferred -- operator-provisioned; no test. Requires a production deploy, DNS/carbon access, and an operator-run docs-qa.sh receipt under docs/receipts/ -- outside a build agent's authority (never provision, resize, delete, or reconfigure a server or service)."
     },
     {
       "id": "AC10",
       "level": "MUST",
-      "description": "Given 1,000 nodes and 3,000 edges, When blast radius runs, Then it completes under 50 ms on the builder.",
-      "test": "tests/lineage_ac10_blast_radius_1000_nodes_3000_edges_under_50ms.rs"
-    },
-    {
-      "id": "AC12",
-      "level": "SHOULD",
-      "description": "Given a python tool, When it calls mcphost.lineage.trace(\"table:orders\"), Then it receives the same object the tool returns.",
-      "test": "tests/lineage_ac12_python_bridge_trace_matches_tool.rs"
+      "description": "Given filter.prefix set, When hybrid search runs, Then every hit's name starts with the prefix and both candidate lists were filtered before fusion.",
+      "test": "tests/hybrid_ac10_filter_prefix_filters_before_fusion.rs"
     }
   ],
   "scope": [
-    "src/lineage/graph.rs: LineageGraph, NodeKind {table, column, tool, chain, document, chart, handle, run}, ChangeKind {Drop, Rename, TypeChange, Remove, Add}, LineageNode, ImpactedNode, ImpactReport, TraceEntry, blast_radius, trace -- ported from ai-stack @ 4ef6c22 with node kinds rewritten for mcphost's own entities.",
-    "src/lineage/effects.rs: the effect table (effect_for(change_kind, consumer_kind) -> (effect, severity, action)), data in one match, exhaustive over every (ChangeKind, NodeKind) pair.",
-    "src/lineage/scan.rs: source scanning for a python tool's mcphost.table.{query,chart,handle}(\"...\") calls, reusing sqlparser (already a dependency) to read table names out of the literal SQL rather than hand-rolling a second grammar.",
-    "src/lineage/mod.rs: persistence (30s per-tenant cache, invalidated on any edge write), register_edge/register_tool_publish/register_chain_publish, breaking_drop_consumers/cascade_table_drop (the drop gate's own entry points), change_notes (model_set's entry point), record_run_finished (the runs-ledger usage hook), and the three host.lineage.* tool handlers (blast_radius/trace/trace_page).",
-    "migrations/0057_lineage.sql + src/db.rs: lineage_nodes/lineage_edges tables and their Db methods (lineage_upsert_node/lineage_insert_edge/lineage_load_nodes/lineage_load_edges/lineage_bump_uses/lineage_delete_node_and_edges/lineage_mark_orphaned).",
-    "src/handler.rs: host.lineage.blast_radius/trace/trace_page tool descriptors and dispatch; host.table.drop gains an optional confirm argument.",
-    "src/tables.rs: table_drop's gate -- computes breaking_drop_consumers before the transaction, refuses lineage_blocked without confirm, writes a tenant_audit line on refusal or a confirmed override, cascades lineage cleanup after a successful drop.",
-    "src/tables_model.rs: model_set's role-key change now reports (never blocks on) degrading+ consumers via change_notes.",
-    "src/control.rs: tool_publish registers lineage edges after a successful publish (source-scan + declared reads for python/wasm, each chain step's own tool for a chain).",
-    "src/runs.rs: run_one_job bumps uses/last_used_unix on the finished run's own tool/chain node and transitively on every table upstream of it, once finalize_run confirms this call actually finalized the row.",
-    "src/kinds/mod.rs + src/kinds/python.rs + src/handler.rs (TenantLineageBridge) + src/runs.rs: CallCtx gains a lineage backend (LineageBackend/NoLineage), PY_RUNNER_SCRIPT's mcphost.lineage.trace/blast_radius call through to the exact host.lineage.* logic (AC12, P1 requirement 10).",
-    "Chart and handle are net-new node kinds with no existing mcphost feature owning their creation (mcphost has no chart-store or live-handle product yet) -- AC6/AC7/AC9 register them directly through the lineage module's own pub API (lineage::register_edge), the same integration point a future chart-store/live-handle PRD's own publish path would call."
+    "src/docs_index.rs: rrf_fuse (reciprocal rank fusion, k_rrf=60 fixed per the PRD's own open question) and the K_RRF constant, ported from aistack-vector.",
+    "src/docs.rs: doc_search rewritten around a mode argument (auto/lexical/embeddings/hybrid), embed_query/dense_candidates/lexical_hits helpers, and hybrid_search_results (fuses the lexical and dense candidate lists, each to 3xk capped at 60, and formats the top k with a ranks: {lexical, embeddings} field on every hit).",
+    "src/handler.rs: host.docs.search's tool schema gains the mode parameter and documents ranks in its description.",
+    "src/db.rs: Db::doc_chunks_bulk_insert_with_vectors_for_test, a vector-bearing sibling of the existing doc_chunks_bulk_insert_for_test, for AC7's 1,000-chunk latency fixture.",
+    "tests/docsearch_ac05_embeddings_mode_ranks_by_cosine.rs: updated to pass mode: \"embeddings\" explicitly, preserving its original cosine-only-ranking intent now that default mode fuses.",
+    "contracts/host-tools.v1.json: regenerated (mcphost contract dump) for host.docs.search's new mode parameter and ranks-bearing description.",
+    "scripts/gen-test-suites.sh: MAX_PER_SUITE.core 765 -> 785 (this PRD's own nine hybrid_ac*.rs files pushed core's non-exclusive bucket over the prior cap -- renumbered during rebase: mcphost-chart-in-a-minute and mcphost-lineage-blast-radius raised the cap to 715 then 765 first, landing on main ahead of this branch; same recurring bump this file's own comments already document).",
+    "Cargo.toml/Cargo.lock: this PRD's own version_bump: minor rule originally targeted 0.62.0 -> 0.63.0, but mcphost-chart-in-a-minute and mcphost-lineage-blast-radius claimed 0.63.0 and 0.64.0 first, landing on main ahead of this branch during rebase -- version stays at 0.64.0, no additional bump.",
+    "tests/hybrid_ac01..08,10_*.rs: the nine delivered tests (AC9 deferred, operator-provisioned)."
   ],
   "non_goals": [
-    "Column-level lineage inside SQL expressions -- edges are table and column references only (scan.rs reads FROM/JOIN table identifiers, never which columns a query selects).",
-    "Cross-tenant edges or sign-off from other tenants -- ai-stack's change_gate 'foreign domain' RequiresSignoff concept has no mcphost analogue; every graph load/write is strictly tenant_id-scoped (AC8).",
-    "The defensibility dossier, as-of reconstruction, legal hold, and ROI modules from ai-stack -- not ported.",
-    "Renaming tables -- mcphost has no rename tool; ChangeKind::Rename is defined (AC5 needs a full effect-table row for it) but nothing in this build calls it.",
-    "A real chart-store or live-handle product feature -- AC6/AC7/AC9's chart/handle nodes are registered directly via the lineage module's Rust API in tests, not through a new host.chart.*/host.handle.* tool surface (none is in this PRD's Engineering target).",
-    "Table -> column edges from a table's declared schema (requirement 4's last sentence) -- no AC exercises this, so it isn't wired; NodeKind::Column exists in the type system (AC5 needs it) but nothing currently creates a column node.",
-    "A host.document.* store and its derived_from edge trigger (requirement 4) -- no AC exercises it and no document-store product exists in mcphost yet."
+    "Replacing the remote embedding provider with a local model -- fastembed/ONNX stay out (PRD's own non-goal).",
+    "A new BM25 implementation -- SQLite's bm25() stays in use (PRD's own non-goal).",
+    "Re-ranking with a model, or query rewriting (PRD's own non-goal).",
+    "Changing chunking, index refresh cadence, or quotas (PRD's own non-goal).",
+    "Exposing k_rrf as a caller-tunable parameter -- the PRD's own open question resolves it fixed at 60."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -108,57 +97,47 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "test_file_names_use_test_prefix_lineage": "test_prefix lineage (the PRD's own frontmatter field): tests/lineage_ac<NN>_<slug>.rs, same convention as every other test file in this repo.",
-      "version_bump_minor": "PRD frontmatter build_version_bump: minor -- Cargo.toml/Cargo.lock/CHANGELOG.md bumped 0.63.0 -> 0.64.0 (renumbered during rebase: mcphost-chart-in-a-minute claimed 0.63.0 first, landing on main ahead of this branch).",
-      "ac11_deferred_operator_provisioned": "AC11 is a Live acceptance criterion (a fresh tenant against a deployed box, receipt under docs/receipts/) -- deferred, not built or tested here; a build agent never provisions or deploys infrastructure.",
-      "drop_gate_blocks_on_breaking_only": "Open question default taken: host.table.drop blocks only on severity breaking, never on degrading regardless of use count -- the PRD's own stated default, no override implemented.",
-      "orphaned_nodes_kept_not_deleted": "Open question default taken: a confirmed drop's dependent chart/handle nodes are flagged orphaned: true and kept, never deleted -- the PRD's own stated default."
+      "test_file_names_use_underscores_not_the_prd_slugs_hyphens": "test_prefix hybrid (the PRD's own frontmatter field), same convention as every other test file in this repo.",
+      "version_bump_minor": "PRD frontmatter build_version_bump: minor -- Cargo.toml/Cargo.lock originally bumped 0.62.0 -> 0.63.0 (renumbered during rebase: mcphost-chart-in-a-minute and mcphost-lineage-blast-radius claimed 0.63.0 and 0.64.0 first, landing on main ahead of this branch); version left at 0.64.0, no additional bump.",
+      "no_schema_change": "PRD's own technical considerations: ranks is computed per call from the two candidate lists' own list positions, not stored -- no migration.",
+      "outage_path_fails_open_for_every_provider_calling_mode": "Requirement 5 names only \"default mode\", but this build applies the same fail-open-to-lexical-fallback behaviour to explicit mode: \"hybrid\" and mode: \"embeddings\" too, so an operator's explicit override during a provider outage never turns into a hard error -- documented in hybrid_ac05's own module doc and this card, since it is a design decision beyond the PRD's literal text, not an accident."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does host.table.drop need a graph at all instead of just checking host.tool_list for a python source substring match at drop time?",
-      "a": "A substring scan at drop time can't rank severity, can't see chain-through-tool transitive consumers, can't carry observed use for ranking, and can't answer host.lineage.trace/blast_radius as their own tools -- the PRD's own AC3/AC6/AC7 all require a real graph with persisted uses, not a one-shot text search."
+      "q": "Why can't embeddings mode alone just rank identifier-shaped queries correctly?",
+      "a": "A remote embedding model's vector space is built for semantic paraphrase, not exact-token recall -- a rare identifier like an invoice number contributes little to the embedding compared to the surrounding prose, so a chunk whose only distinguishing content is that identifier can embed close to many unrelated chunks that share the prose's general topic. 2026-09-26's offline docs-qa run confirmed this concretely: identifier-shaped questions were the entire miss set at 90% hybrid-absent."
     },
     {
       "why": 2,
-      "q": "Why port ai-stack's design instead of writing a new graph model from scratch?",
-      "a": "ai-stack's LineageGraph/effect-table/blast_radius/trace already exist, are tested (~60 inline tests per the PRD's own grounding), and the PRD explicitly names the source commit and line ranges to port from -- re-deriving the same BFS-plus-ranking algorithm and effect-table shape from zero would be redundant work with a higher chance of a subtly different (and untested) ranking rule."
+      "q": "Why not just always prefer BM25 when the query looks like it contains an identifier?",
+      "a": "That requires classifying queries as \"identifier-shaped\" before ranking, which the PRD's own non-goals rule out (no query rewriting) and which fails the symmetric case (goal 2: a paraphrase query like \"when do we have to pay\" must still rank first via the embedding list, where BM25 alone would miss it entirely since none of its words appear in the document)."
     },
     {
       "why": 3,
-      "q": "Why does chart/handle registration go through the lineage module's own Rust API in tests instead of a new host.chart.*/host.handle.* tool?",
-      "a": "mcphost has no chart-store or live-handle feature at all yet (grep confirms no struct/tool for either) -- requirement 4 names 'a chart is stored'/'a handle is materialised' as registration TRIGGERS this PRD taps into, not products this PRD builds; the Engineering target's own 'three tools' (blast_radius/trace/trace_page) doesn't include chart/handle CRUD, so registering them for AC6/AC7/AC9 goes through the same internal entry point a future chart-store/live-handle PRD's own publish path would call."
+      "q": "Why reciprocal rank fusion specifically, rather than e.g. a weighted score blend of cosine and bm25?",
+      "a": "Cosine and bm25() live on incompatible, un-normalized scales (bm25 is negative-better and unbounded; cosine is bounded [-1,1] but a remote provider's actual score distribution is unknown ahead of time) -- any fixed weighting of the raw scores would need per-provider calibration. RRF only ever consumes rank *position*, which is scale-free by construction; aistack-vector's own rrf_fuse already proved this approach and ships unit-tested."
     },
     {
       "why": 4,
-      "q": "Why does table -> column edge registration (requirement 4's last sentence) go unbuilt?",
-      "a": "No AC exercises a column-level consumer -- AC9's 'role change on a column a chart uses' is satisfied by running the TypeChange gate against the column's own TABLE (since chart/tool/chain edges only ever point at tables, per the column-level-SQL-parsing non-goal), so a column node's own downstream edges are never populated or read by any acceptance criterion in this build."
-    },
-    {
-      "why": 5,
-      "q": "Why is the effect table's 'effect' field the same string for every consumer of a given change kind, rather than a per-consumer description?",
-      "a": "No AC distinguishes 'effect' text by consumer kind -- AC3 checks severity/action/uses, AC5 checks that effect/severity/action are all non-empty/defined and that Add is severity none for every consumer. Severity (the ranking bucket) and action (the remediation string) already vary per consumer; effect stays a short per-change-kind label (what happened) rather than a second copy of the severity distinction, keeping the table's three columns each carrying distinct information."
+      "q": "Why 3 x k candidates capped at 60, not just k or the whole index?",
+      "a": "Fusion needs each list to be wide enough that a chunk ranking well in only one list (AC1's own scenario: 12th by cosine) still has a rank position to contribute a fusion score from -- k alone would have missed AC1's own chunk entirely (rank 12 > k=5). The whole index is unbounded per tenant (AC7's own 1,000-chunk fixture, or more in production) and would blow the latency budget; 3k capped at 60 is the PRD's own explicit technical-considerations number, sized to keep the FTS5 and cosine scans bounded while still catching mid-list identifier chunks like AC1's."
     }
   ],
   "created_at": "2026-09-30T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Block host.table.drop on breaking consumers only, or also on degrading above some use threshold N? (PRD's own open question, default: breaking only.)",
-      "resolution": "Breaking only, per the PRD's own stated default -- AC4's gate (tables::table_drop) refuses only when breaking_drop_consumers (severity == Breaking) is non-empty; a degrading-only consumer never blocks a drop, matching AC9's model_set behavior (report, never block) for the same severity."
+      "question": "Does a provider failure under an explicit mode: \"hybrid\"/\"embeddings\" call return an error, or fall back to lexical the same way auto mode does (requirement 5 only names \"default mode\")?",
+      "resolution": "Fall back the same way (index.mode: \"lexical-fallback\", no error) -- the PRD's own non-functional posture throughout (goal 4, requirement 5's own framing) is that a provider outage never surfaces as an error under any mode that would otherwise call it; an operator explicitly asking for hybrid during an outage getting a hard error instead of today's fail-open behaviour would be a regression for debugging, not an improvement. Pinned in hard_constraints.additional and hybrid_ac05's own module doc."
     },
     {
-      "question": "Should a confirmed drop's orphaned charts/handles be deleted or kept with a flag? (PRD's own open question, default: kept, flagged.)",
-      "resolution": "Kept, flagged -- cascade_table_drop deletes only the dropped table's own node and edges; a dependent chart/handle node survives with orphaned: true (host.lineage.trace surfaces it), matching AC4's own wording 'are marked orphaned', not 'are removed'."
+      "question": "Does host.docs.status's own index.mode (\"embeddings\"/\"lexical\" based on configured provider, src/docs.rs doc_status) change to reflect hybrid?",
+      "resolution": "No -- doc_status describes the tenant's *configured* provider, not a per-call ranking outcome; it was already distinct from doc_search's own index.mode before this PRD (doc_search's mode could already read \"embeddings\" while status also read \"embeddings\", or \"lexical-fallback\" on search while status still read \"embeddings\"). Untouched by this build; only doc_search's own index.mode gains \"hybrid\"."
     },
     {
-      "question": "What does host.lineage.blast_radius's default max_depth mean when the caller omits it, given the PRD names a default only for top_n (50)?",
-      "resolution": "Unbounded (usize::MAX) -- the PRD only states a default for top_n; every AC's own blast_radius call either omits max_depth or relies on every real consumer being reachable, so an unbounded default (ranking/truncation still bounded by top_n) is the reading that doesn't silently drop a real consumer past an arbitrary depth no AC specifies."
-    },
-    {
-      "question": "Is a chain's own uses count bumped by running its step tools directly, or only by running the chain itself?",
-      "resolution": "Only by running the chain itself -- record_run_finished bumps the finished run's own tool-or-chain node (by name) and transitively every TABLE upstream of it, never an intermediate step tool's own node; AC3's '3 uses' on the directly-read tool and '40 uses' on the chain are two independently-run tools/chains, not the same runs counted twice."
+      "question": "What identity does a candidate chunk need for the dense and sparse lists to agree it's \"the same chunk\" during fusion?",
+      "resolution": "(document_id, chunk_no) -- the doc_chunks table's own primary key minus tenant_id (every query here is already tenant-scoped) and version (a chunk_no is unique per document regardless of which version produced it, since the indexer always deletes a document's whole prior chunk set before writing its new one, per migrations/0044_docs_index.sql's own schema doc)."
     }
   ]
 }

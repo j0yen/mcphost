@@ -1661,14 +1661,19 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         Tool::new(
             "host.docs.search",
             "Ranked passage search over this tenant's document store. Lexical (BM25) by \
-             default; embeddings mode (set via host.docs.index_config) ranks by cosine and \
-             falls back to lexical (index.mode: \"lexical-fallback\") if the provider call \
-             fails. Returns [{document_id, name, version, chunk_no, offset, text, score}] plus \
-             an index block naming the mode and how stale the index is.",
+             default, or hybrid (reciprocal rank fusion of lexical and embeddings) once a \
+             provider is configured via host.docs.index_config -- falls back to lexical \
+             (index.mode: \"lexical-fallback\") if the provider call fails. mode overrides the \
+             default: \"lexical\" (never calls the provider), \"embeddings\", or \"hybrid\" \
+             (both require a configured provider). Returns [{document_id, name, version, \
+             chunk_no, offset, text, score, ranks: {lexical, embeddings}}] -- ranks names each \
+             hit's 1-based position in whichever source list(s) found it -- plus an index block \
+             naming the mode and how stale the index is.",
             host_schema(
                 json!({
                     "query": {"type": "string", "description": "Search query text."},
                     "k": {"type": "integer", "description": "Max results to return, 1-20; default 5."},
+                    "mode": {"type": "string", "description": "\"auto\" (default), \"lexical\", \"embeddings\", or \"hybrid\". \"embeddings\"/\"hybrid\" without a configured provider is a validation error."},
                     "filter": {
                         "type": "object",
                         "description": "Restrict results to documents matching prefix and/or name.",
