@@ -29,7 +29,12 @@ impl Kind for EchoKind {
     }
 
     fn known_spec_fields(&self) -> &'static [&'static str] {
-        &["schema"]
+        // "reads" is not an echo field: it's `crate::lineage`'s own
+        // cross-kind table-dependency declaration
+        // (`lineage::register_tool_publish` reads `spec.reads` regardless
+        // of which kind published the spec), layered on top of every
+        // kind's own fields rather than owned by any one of them.
+        &["schema", "reads"]
     }
 
     fn validate_all(&self, spec: &Value) -> Vec<KindError> {

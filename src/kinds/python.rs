@@ -270,9 +270,10 @@ struct PythonSpec {
 /// message for the whole struct.
 /// PRD-mcphost-spec-unknown-field-rejection requirement 1 (AC1/AC3/AC4):
 /// every top-level key [`PythonSpecRaw`] below declares, `_dependency_lock`
-/// included -- kept next to it so the two can never drift silently
-/// (`tests::python_known_spec_fields_match_struct` round-trips a spec
-/// built from exactly this list through `parse_spec`).
+/// included, plus `reads` -- `crate::lineage`'s own cross-kind
+/// table-dependency declaration, not a python field (see
+/// `kinds::echo::EchoKind::known_spec_fields`'s doc for why every kind's
+/// list carries it).
 pub(crate) const KNOWN_SPEC_FIELDS: &[&str] = &[
     "source",
     "requirements",
@@ -285,6 +286,7 @@ pub(crate) const KNOWN_SPEC_FIELDS: &[&str] = &[
     "description",
     "_dependency_lock",
     "outputs",
+    "reads",
 ];
 
 #[derive(Debug, Clone, Deserialize)]

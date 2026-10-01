@@ -106,12 +106,14 @@ const WALL_BUDGET_SLACK: f64 = 0.8;
 const WALL_BUDGET_GRACE: Duration = Duration::from_millis(750);
 
 /// PRD-mcphost-spec-unknown-field-rejection requirement 1 (AC1): every
-/// top-level key [`parse_spec`] below reads via `spec.get(...)` -- kept
-/// next to it (no `Deserialize` struct exists here to derive this from;
-/// see that function's own `spec.get` calls) so the two can never drift
-/// silently (`tests::wasm_known_spec_fields_match_parser`).
+/// top-level key [`parse_spec`] below reads via `spec.get(...)`, plus
+/// `reads` -- `crate::lineage::register_tool_publish`'s doc calls this
+/// "the only signal a wasm tool has" for its own table-dependency
+/// declaration, since `wasm` has no `source` to scan the way `python`
+/// does (see `kinds::echo::EchoKind::known_spec_fields`'s doc for why
+/// every kind's list carries it).
 pub(crate) const KNOWN_SPEC_FIELDS: &[&str] =
-    &["component", "args_schema", "outputs", "timeout_s", "memory_mb"];
+    &["component", "args_schema", "outputs", "timeout_s", "memory_mb", "reads"];
 
 #[derive(Debug, Clone)]
 struct WasmSpec {

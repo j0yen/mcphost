@@ -39,14 +39,15 @@ use super::{CallCtx, Kind, KindError, KindExample, Path, ToolDescriptor, compose
 pub struct ChainKind;
 
 /// PRD-mcphost-spec-unknown-field-rejection requirement 1 (AC1): the only
-/// top-level key [`parse_steps`] below reads (`spec.steps`) -- kept next
-/// to it so the two can never drift silently
-/// (`tests::chain_known_spec_fields_match_parser`). `outputs` is
-/// deliberately absent: the module doc above lists it as a deferred,
-/// unapplied feature, but nothing in this file actually reads it today
+/// top-level key [`parse_steps`] below reads (`spec.steps`), plus `reads`
+/// -- `crate::lineage`'s own cross-kind table-dependency declaration, not
+/// a chain field (see `kinds::echo::EchoKind::known_spec_fields`'s doc
+/// for why every kind's list carries it). `outputs` is deliberately
+/// absent: the module doc above lists it as a deferred, unapplied
+/// feature, but nothing in this file actually reads it today
 /// (Requirement 4's "whatever the parser reads today" rule), so it is an
 /// unknown field exactly like any other until a later PRD makes it real.
-pub(crate) const KNOWN_SPEC_FIELDS: &[&str] = &["steps"];
+pub(crate) const KNOWN_SPEC_FIELDS: &[&str] = &["steps", "reads"];
 
 /// One parsed step: the target tool's local name, its own literal/path
 /// argument mapping (kept as raw `Value`s -- resolved fresh per call, and

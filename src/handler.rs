@@ -451,6 +451,18 @@ fn tool_publish_props() -> Value {
                 this tool: catalogued names from host.oauth.scopes, or the built-ins read/write. \
                 At most 8. Omit (or [] ) to require only mcp -- unaffected by any catalog.",
         },
+        // PRD-mcphost-first-publish-real-kind requirement 4: was read via
+        // `args.get("dry_run")` in `control::tool_publish` from that PRD's
+        // own landing but never added here -- an omission
+        // PRD-mcphost-spec-unknown-field-rejection's generic
+        // `unknown_argument` check surfaced (it refuses any argument this
+        // schema doesn't declare, dry_run included, before this PRD's fix).
+        "dry_run": {
+            "type": "boolean",
+            "description": "Collect and report every publish gate (kind, spec_size, secrets, \
+                env, network, deps, name, ...) without writing anything, even if every gate \
+                passes.",
+        },
     })
 }
 
@@ -2234,6 +2246,21 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                             pair, and bypasses a muted recipient's unread_only inbox filter (never a \
                             block or a closed contact_policy).",
                     },
+                    // PRD-mcphost-agent-inbox requirement 6 (AC7): declared
+                    // (not simply omitted) specifically so
+                    // PRD-mcphost-spec-unknown-field-rejection's generic
+                    // `unknown_argument` check -- which runs ahead of
+                    // every host.*/billing.* dispatch, this one included --
+                    // never shadows `messaging::reject_forged_from`'s own,
+                    // more specific `args_invalid` for this exact field.
+                    // Always rejected if present; never a real argument to
+                    // set.
+                    "from": {
+                        "type": "string",
+                        "description": "Reserved -- never set this. The sender is always the \
+                            authenticated tenant; a send carrying this argument is refused \
+                            args_invalid before anything else runs.",
+                    },
                 }),
                 &["to", "body"],
             ),
@@ -2254,6 +2281,14 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                         "type": "string",
                         "description": "Resend with the same key within 24h to get back the \
                             original message_id instead of a duplicate.",
+                    },
+                    // See host.msg.send's identical "from" property above
+                    // for why this is declared rather than omitted.
+                    "from": {
+                        "type": "string",
+                        "description": "Reserved -- never set this. The sender is always the \
+                            authenticated tenant; a reply carrying this argument is refused \
+                            args_invalid before anything else runs.",
                     },
                 }),
                 &["thread_id", "body"],

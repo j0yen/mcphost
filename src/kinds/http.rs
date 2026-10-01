@@ -116,9 +116,10 @@ impl HttpSpec {
 /// chance to give the friendlier "declare `upstream` OR `method`/`url`"
 /// error.
 /// PRD-mcphost-spec-unknown-field-rejection requirement 1 (AC1/AC2/AC4):
-/// every top-level key [`HttpSpecRaw`] below declares -- kept next to it so
-/// the two can never drift silently (`tests::http_known_spec_fields_match_struct`
-/// round-trips a spec built from exactly this list through `parse_spec`).
+/// every top-level key [`HttpSpecRaw`] below declares, plus `reads` --
+/// `crate::lineage`'s own cross-kind table-dependency declaration, not an
+/// http field (see `kinds::echo::EchoKind::known_spec_fields`'s doc for
+/// why every kind's list carries it).
 pub(crate) const KNOWN_SPEC_FIELDS: &[&str] = &[
     "method",
     "url",
@@ -132,6 +133,7 @@ pub(crate) const KNOWN_SPEC_FIELDS: &[&str] = &[
     "outputs",
     "upstream",
     "upstream_provider",
+    "reads",
 ];
 
 #[derive(Debug, Clone, Deserialize)]
