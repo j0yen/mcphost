@@ -1018,6 +1018,24 @@ mod publishfirsttry_ac01_tool_publish_description;
 mod publishfirsttry_ac02_structured_error_fields;
 #[path = "publishfirsttry_ac07_signup_next.rs"]
 mod publishfirsttry_ac07_signup_next;
+#[path = "qdiag_ac01_column_typo_fuzzy_covered_hint.rs"]
+mod qdiag_ac01_column_typo_fuzzy_covered_hint;
+#[path = "qdiag_ac02_table_typo_fuzzy_covered_hint.rs"]
+mod qdiag_ac02_table_typo_fuzzy_covered_hint;
+#[path = "qdiag_ac03_zero_row_value_absent_hint_and_latency.rs"]
+mod qdiag_ac03_zero_row_value_absent_hint_and_latency;
+#[path = "qdiag_ac04_successful_nonempty_diagnosis_and_hint_null.rs"]
+mod qdiag_ac04_successful_nonempty_diagnosis_and_hint_null;
+#[path = "qdiag_ac05_query_diagnose_tool_tenant_scoped.rs"]
+mod qdiag_ac05_query_diagnose_tool_tenant_scoped;
+#[path = "qdiag_ac06_query_stats_counts_and_percentiles.rs"]
+mod qdiag_ac06_query_stats_counts_and_percentiles;
+#[path = "qdiag_ac07_description_annotation_offers_candidate.rs"]
+mod qdiag_ac07_description_annotation_offers_candidate;
+#[path = "qdiag_ac08_footprint_columns_est_tokens.rs"]
+mod qdiag_ac08_footprint_columns_est_tokens;
+#[path = "qdiag_ac11_ten_concurrent_refused_queries_all_hinted.rs"]
+mod qdiag_ac11_ten_concurrent_refused_queries_all_hinted;
 #[path = "revdebt_ac1_intent_card_pointers_resolve.rs"]
 mod revdebt_ac1_intent_card_pointers_resolve;
 #[path = "run_metrics_handoff_glob_regression.rs"]

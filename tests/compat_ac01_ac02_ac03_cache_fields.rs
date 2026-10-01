@@ -44,7 +44,7 @@ async fn ac1_anonymous_tools_list_has_cache_fields() {
     assert!(names.contains(&"signup"), "{names:?}");
     assert_eq!(
         names.len(),
-        148,
+        150,
         "signup + host.* (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + host.tool_history/host.tool_rollback/host.tool_diff \
          (3 tools, PRD-mcphost-tool-versions) + host.state.* (9 tools, PRD-mcphost-tenant-state) + \
@@ -70,7 +70,8 @@ async fn ac1_anonymous_tools_list_has_cache_fields() {
          the three host.lineage.* tools (PRD-mcphost-lineage-blast-radius) + \
          the six host.vault.* tools (PRD-mcphost-upstream-token-vault, \
          PRD-mcphost-upstream-token-vault-status) + \
-         host.table.query_log (PRD-mcphost-table-context-and-sql-passthrough): {names:?}"
+         host.table.query_log (PRD-mcphost-table-context-and-sql-passthrough) + \
+         host.table.query_diagnose/query_stats (PRD-mcphost-query-diagnosis): {names:?}"
     );
 }
 
@@ -150,7 +151,7 @@ async fn ac3_invalid_bearer_tools_list_has_cache_fields() {
     assert!(names.contains(&"signup"), "{names:?}");
     assert_eq!(
         names.len(),
-        148,
+        150,
         "signup + host.* (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + host.tool_history/host.tool_rollback/host.tool_diff \
          (3 tools, PRD-mcphost-tool-versions) + host.state.* (9 tools, PRD-mcphost-tenant-state) + \
@@ -176,6 +177,7 @@ async fn ac3_invalid_bearer_tools_list_has_cache_fields() {
          the three host.lineage.* tools (PRD-mcphost-lineage-blast-radius) + \
          the six host.vault.* tools (PRD-mcphost-upstream-token-vault, \
          PRD-mcphost-upstream-token-vault-status) + \
-         host.table.query_log (PRD-mcphost-table-context-and-sql-passthrough): {names:?}"
+         host.table.query_log (PRD-mcphost-table-context-and-sql-passthrough) + \
+         host.table.query_diagnose/query_stats (PRD-mcphost-query-diagnosis): {names:?}"
     );
 }

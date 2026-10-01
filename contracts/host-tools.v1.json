@@ -2855,6 +2855,27 @@
       "since": "0.58.0"
     },
     {
+      "description": "Return the stored identifier-coverage diagnosis and hint for one host.table.query log row (by log_id from host.table.query_log), recomputed against the current schema if that row predates this feature. Scoped to this tenant's own rows; a log_id belonging to another tenant (or no such row) returns not_found.",
+      "input_schema": {
+        "properties": {
+          "log_id": {
+            "description": "A log row id from host.table.query_log's entries.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "log_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.table.query_diagnose",
+      "since": "0.58.0"
+    },
+    {
       "description": "List this tenant's own host.table.query calls, newest first, each with its sql, row_count (null on refusal), duration_ms, and error_code/error_message (null on success). Paged by before_id; limit defaults to 50 and is capped at 200. The log keeps only the newest 1,000 rows per tenant.",
       "input_schema": {
         "properties": {
@@ -2875,6 +2896,25 @@
         "type": "object"
       },
       "name": "host.table.query_log",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Summarize this tenant's own host.table.query calls over a trailing window: queries, ok, empty, refused (by error_code), p50_ms, p95_ms, result_rows_total, est_result_tokens_total, and the top 5 most common hints. window_s defaults to 86,400 (24h) and is capped at 604,800 (7d).",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          },
+          "window_s": {
+            "description": "Trailing window in seconds (default 86400, max 604800).",
+            "type": "integer"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.table.query_stats",
       "since": "0.58.0"
     },
     {
