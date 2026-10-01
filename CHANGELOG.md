@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.65.0 — 2026-10-01
+
+Every first-hour error payload now carries `request_id` (always) and
+`help_url` (for `bearer_invalid`, `tenant_key_missing`, `tenant_key_invalid`,
+`rate_limited`, `signup_paused`, `tool_not_found`, `unknown_kind`,
+`spec_too_large`, `invalid_spec`, `invalid_params`, `host_not_allowed`,
+`handle_taken`, `handle_reserved`, `spec_not_exposed`, `service_unavailable`,
+`internal`), resolving to a generated `/help/<code>` page (meaning, likely
+cause, fix) served from `src/help.rs`'s own table -- `GET /help` indexes
+every code. `AppError::Internal`'s message was already generic
+(mcphost-polish-p0-20260930); this release extends the same fixed-string
+treatment to `Storage`, `RegistryRejected`, and `disk_floor`
+(`service_unavailable`) so no 5xx this host returns leaks upstream text or
+host byte counts on the wire -- the raw detail is still logged under the
+response's own `request_id`. `billing::plans()` is now also served at
+`/plans.json` and rendered to `docs/plans.md` (`mcphost gen-docs
+--check` proves they match) and a live `www/plans.html`. `www/support.html`
+and every help page's footer render `MCPHOST_SUPPORT_URL` when the
+operator sets it, "support channel not configured" otherwise (the status
+feed's own `warnings` array says the same, not a silent blank).
+`host.whoami` gains a `links` object (`support`/`plans`/`status`/`help`).
+`www/status.html`/`www/aup.html` (hotfix d674ba4b) are joined by
+`www/plans.html`/`www/llms.txt`/`www/llms-full.txt` under one generalized
+`static_page` route helper, and a served-pages test now walks every
+same-host link in README/docs/llms.txt rather than spot-checking two.
+
+PRD-mcphost-first-hour-support-surface AC1-AC8 (`support_*` test files).
+AC9 (whole-suite-green-at-landing) is deferred to the wm-build gate itself;
+AC10 (Live, prod journey-harness evidence) is pasted into the receipt by
+the operator after deploy.
+
 ## v0.63.0 — 2026-09-30
 
 `host.table.chart(sql, title?, mark?, share?)` turns one SQL call into a

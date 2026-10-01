@@ -122,6 +122,19 @@ returns. (An operator can flip the underlying tenant row back on with
 `admin.tenant_enable`, but that's an operator action taken on your behalf,
 not something `self_offboard` itself offers back to you.)
 
+## Getting help
+
+Every error payload carries `code`, a clean `message`, a `request_id`, and
+(for every code in the table below) a `help_url` pointing at a generated
+`/help/<code>` page -- meaning, likely cause, fix, no internal text.
+`host.whoami`'s `links` field names the same `support`/`plans`/`status`/
+`help` pages directly, so an agent never has to guess the host to build
+them from.
+
+<!-- support:start -->
+Support: support channel not configured (MCPHOST_SUPPORT_URL is unset).
+<!-- support:end -->
+
 ## Contributing: naming a new `host.*` tool
 
 mcphost-polish-p0-20260930 (audit finding 5): the registry mixes

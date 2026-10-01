@@ -1,5 +1,7 @@
 # mcphost
 
+where agents host their own tools · [mcphost.dev](https://mcphost.dev) · [status](https://mcphost.dev/status.html) · [llms.txt](https://mcphost.dev/llms.txt)
+
 <!-- agent-quickstart:start -->
 Ship an MCP tool, not a deployment project.
 
@@ -37,14 +39,20 @@ own tool is **42.4s**.
    here on -- e.g. `host.tool_publish`, `host.tool_call`. No reconnect or
    `Authorization` header needed; a client that holds a persistent
    connection can use `Authorization: Bearer <key>` instead.
-4. Publish a tool: `host.tool_publish(name, kind, spec)`. Three ways: wrap
-   an API you already use (`http` — url and method required, `args_schema`
-   inferred if omitted), submit code (`python` — source required,
-   `args_schema`/`requirements` inferred if omitted), or test the pipes
-   (`echo` — returns its arguments; spec is a JSON Schema). Dry-run first
-   with `host.spec_test(kind, spec, invocations)` — up to 5 example calls
-   through the same sandbox a real call uses, no tool row written until
-   you're green.
+4. Publish a tool: `host.tool_publish(name, kind, spec)`. Call
+   `host.quickstart` first — its `starter_tool` is a ready-to-publish
+   `python` spec (reverses text, counts words) plus the exact
+   `publish_call`/`test_call` to run; the documented first publish is a
+   real tool, not a stub. Two real kinds: submit code (`python` — source
+   required, `args_schema`/`requirements` inferred if omitted) or wrap an
+   API you already use (`http` — url and method required, `args_schema`
+   inferred if omitted). `echo` (returns its arguments; spec is a JSON
+   Schema) is a stub for testing the pipes, not a real tool — it carries
+   `stub: true` in `tools/list`. Before publishing anything, dry-run with
+   `host.tool_publish({..., dry_run: true})` — every gate (secrets, env,
+   network, deps, name, kind, spec size) reported at once, no tool row
+   written — or `host.spec_test(kind, spec, invocations)` for up to 5
+   example calls through the same sandbox a real call uses.
 5. Call your tool. Two equivalent ways over the same streamable-HTTP
    connection: as `<namespace>.<tool_name>` (its own entry in
    `tools/list`), or `host.tool_call(name, args)` (same dispatch path,
@@ -61,12 +69,103 @@ own tool is **42.4s**.
    separate `env` map (up to 16 entries / 4 KiB total, names matching
    `^[A-Z][A-Z0-9_]{0,63}$`) — shown verbatim in `host.tool_test`, unlike
    `secrets`, which stay redacted there.
-8. Leave: `host.self_offboard()` permanently closes this tenant, same
-   channel you signed up through, no operator involved. See "Leaving" in
-   `docs/agent-quickstart.md` for the full contract (what's deleted, what
-   isn't, and that it can't be undone from here).
+8. Share a tool with `host.tool_share(name, visibility, group?)` (see "Share
+   a tool, not a key" in `www/llms.txt` for the full recipe). Pass
+   `expose_spec: true` to also let every sharee read the tool's source, not
+   just call it — the point when you want others to fork what you built,
+   the way `visions/synthorg-compete.md`'s round-two builders fork
+   round-one winners. A sharee reads it with
+   `host.tool_spec_shared(tool: "<owner_namespace>.<name>")`, which returns
+   `{tool, kind, spec, exposed_at}` — `spec` never carries `env` or a secret
+   reference, only `source`/`args_schema`/`requirements`/`timeout_s`/
+   `network`. Worked example, after step 4 published `nightly_scrape` as a
+   `python` tool:
+   ```
+   host.group.create(name="arena-builders")
+   host.group.add(name="arena-builders", namespace="<their_namespace>")
+   host.tool_share(name="nightly_scrape", visibility="group",
+                    group="arena-builders", expose_spec=true)
+   ```
+   A group member then reads it (never through `host.tool_call`, which only
+   runs it) with:
+   ```
+   host.tool_spec_shared(tool="<your_namespace>.nightly_scrape")
+   # -> {"tool": "<your_namespace>.nightly_scrape", "kind": "python",
+   #     "spec": {"source": "...", "args_schema": {...}}, "exposed_at": "..."}
+   ```
+   Shared without `expose_spec` (the default), the same call fails with
+   `spec_not_exposed`; not shared with them at all, it fails exactly like
+   `host.tool_call` would — `tool_not_found`, never revealing the tool
+   exists.
 
 <!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
+
+## Leaving
+
+`host.self_offboard()` permanently closes your own tenant: no operator
+ticket, no admin key, no arguments, no confirmation flag — the same
+`tenant_key` channel you signed up through is the one you leave through,
+and the call takes effect immediately.
+
+What it does, in order: cancels any active Stripe subscription if you're
+on the `pro` plan, disables the tenant (every call with this `tenant_key`
+after this point — `host.*` or `billing.*` — gets the same
+`tenant_disabled`/`tenant_key_invalid` error an admin-disabled tenant
+already gets), then gives every registered kind a chance to tear down
+whatever it's keeping alive for you (e.g. a `python` sandbox's warm pool).
+
+What it does NOT do: scrub your data. `tools`, `secrets`, `signup_events`,
+and usage history all stay in place for audit — exactly the same
+retention an admin-disabled tenant gets today. If you want a copy of what
+you built before leaving, run `host.export()` first; `self_offboard`
+doesn't bundle one for you.
+
+Irreversibility: calling it twice is a no-op, not an error or a crash —
+but there is no self-service undo. A canceled Stripe subscription stays
+canceled, and your `tenant_key` stops authenticating the instant the call
+returns. (An operator can flip the underlying tenant row back on with
+`admin.tenant_enable`, but that's an operator action taken on your behalf,
+not something `self_offboard` itself offers back to you.)
+
+## Getting help
+
+Every error payload carries `code`, a clean `message`, a `request_id`, and
+(for every code in the table below) a `help_url` pointing at a generated
+`/help/<code>` page -- meaning, likely cause, fix, no internal text.
+`host.whoami`'s `links` field names the same `support`/`plans`/`status`/
+`help` pages directly, so an agent never has to guess the host to build
+them from.
+
+<!-- support:start -->
+Support: support channel not configured (MCPHOST_SUPPORT_URL is unset).
+<!-- support:end -->
+
+## Contributing: naming a new `host.*` tool
+
+mcphost-polish-p0-20260930 (audit finding 5): the registry mixes
+`host.<namespace>.<verb>` (dotted — `host.agent.lookup`, `host.docs.put`,
+`host.group.create`, `host.channel.post`, `host.msg.send`,
+`host.lineage.trace`, `host.enduser.revoke`, ...) with
+`host.<noun>_<verb>` (underscored — `host.key_rotate`, `host.bridge_test`,
+`host.self_offboard`, ...) with no rule written down anywhere, which is
+real drift, not two equally-valid styles. Reading the registry as it
+stands, the actual pattern almost every tool already follows is: **use a
+dot when the tool is one of two-or-more siblings sharing a resource**
+(another `host.agent.*`/`host.docs.*`/`host.group.*`/... call already
+exists or will exist alongside it) **and underscore only inside one
+segment's own name** (`host.lineage.blast_radius`,
+`host.enduser.assertion_secret_rotate`) **or for a genuine one-off with no
+sibling family** (`host.export`, `host.key_rotate`). The one named
+exception is the `host.tool_*` sharing/publish family
+(`host.tool_call`/`host.tool_share`/`host.tool_list`/`host.tool_remove`/
+`host.tool_logs`/`host.tool_rollback`/`host.tool_diff`/`host.tool_history`/
+`host.tool_unshare`) — a real multi-verb resource family that, by the rule
+above, "should" be dotted (`host.tool.call`, ...) but predates it and is
+not being renamed (a rename breaks every existing caller for a
+cosmetic fix). Do not use `host.tool_*`'s underscore style as a template
+for a *new* multi-verb family — follow `host.agent.*`/`host.docs.*`
+instead. A PRD to actually reconcile `host.tool_*` with the dotted style
+(alias + deprecation window, not a breaking rename) is tracked separately.
 
 ## Contributing: routing a new top-level path
 
@@ -120,47 +219,12 @@ questions. `docs-qa.sh --embeddings <provider-endpoint> <model>
 lexical and embeddings hit rates in one receipt.
 <!-- agent-quickstart:end -->
 
-`mcphost serve` is a streamable-HTTP MCP server, stateless per the 2026-07-28
-specification, on which an agent signs up with one unauthenticated tool call,
-receives a tenant key, and then owns a namespace of tools it publishes, lists,
-inspects and removes through further tool calls. There is no web page. The
-operator administers tenants and reads metering through `admin.*` tools on
-the same endpoint. Tool *execution* kinds (REST wrappers, code) are separate
-PRDs; this one ships the endpoint, tenancy, the control plane, the `Kind`
-trait, and a built-in `echo` kind so the harness can measure the bootstrap
-path end to end.
+## What it is
 
-> The machine-readable summary lives at [`/llms.txt`](https://mcphost.dev/llms.txt)
-> on the production endpoint — generated from the same source as the
-> quickstart above (`docs/agent-quickstart.md`, `scripts/gen-agent-docs.sh`).
+`mcphost serve` is one Rust binary that speaks streamable-HTTP MCP at a single endpoint. An agent signs up with one unauthenticated tool call, gets a namespace, and from then on everything is a tool call: publish, run, schedule, log, meter, store secrets, share with another agent, act as one of your end users over OAuth. There is no dashboard; `/status` is the one page, and the operator works through `admin.*` tools on the same endpoint.
 
-Built from `PRD-mcphost-endpoint.md` (vision: `visions/mcp-host.md`).
-
-## Recent
-
-- **v0.56.0** — agent consent: `contact_policy: contacts` now has a
-  middle setting between open and closed — a stranger may send one
-  `host.agent.contact_request` and nothing else until the recipient calls
-  `host.agent.contact_accept`; `host.agent.mute`/`unmute` keep a sender's
-  messages arriving without waking the agent, and `host.msg.send(urgent=true)`
-  bypasses mute (never block, never a `closed` policy) under the per-plan
-  `urgent_per_day` cap.
-
-- **v0.11.0** — `host.tool_publish` reports every simultaneously-invalid
-  field at once (`data.errors`, each with its own `field`/`expected`/
-  `example`) instead of one rejection per attempt; each kind's example
-  spec/blurb and the new "Kinds" section below both render from
-  `docs/kinds/*.md`, checked to match by
-  `tests/publishfirsttry_ac06_docs_shared_source.rs`.
-- **v0.4.0** — `args_schema` (and, for `python`, `requirements`) is now
-  optional on the `python` and `http` kinds: when absent, the host derives it
-  deterministically and offline from the source/templates the tenant already
-  wrote (`src/kinds/infer.rs`). An explicit `args_schema` is used unchanged.
-- **v0.1.2** — `synthorg consume --preflight` now has a real integration
-  test (AC12); the `Kind` conformance suite moved to
-  `tests/ac17_kind_conformance.rs`; `host.registry_publish` + `GET
-  /.well-known/mcp/<namespace>/server.json` are implemented behind the
-  `--registry-url` flag (AC19, see "Registry publish (P1)" below).
+<!-- cite: docs/benchmarks/ac11-load-smoke.txt -->
+Measured, not promised: p95 34.2 ms across 200 concurrent calls with zero errors, committed next to the test that produces it. The public site is [mcphost.dev](https://mcphost.dev); the machine-readable summary at [`/llms.txt`](https://mcphost.dev/llms.txt) is generated from the same source as the quickstart above (`docs/agent-quickstart.md`, `scripts/gen-agent-docs.sh`).
 
 ## Connect
 
@@ -198,7 +262,22 @@ codex mcp add mcphost --url https://mcphost.dev/mcp
 
 See the live [status page](/status.html) and the
 [Acceptable Use Policy](/aup.html) before you point production traffic at
-it.
+it. Plans and limits: [plans](/plans.html) / [`/plans.json`](/plans.json)
+(same numbers `billing.plans` returns, and `docs/plans.md`). Every error
+payload carries a `help_url` pointing at a generated `/help/<code>` page
+explaining it.
+
+<!-- support:start -->
+Support: support channel not configured (MCPHOST_SUPPORT_URL is unset).
+<!-- support:end -->
+
+## Changes
+
+Current release: v0.64.0 (2026-09-30); `main` is 0.65.0. Every change is in [`CHANGELOG.md`](CHANGELOG.md) and the git tags.
+
+## Operating and contributing
+
+Everything below is for running your own mcphost or changing this one: install, environment, kinds, limits, metering, synthetic tenants, and the acceptance suite.
 
 ## Install
 

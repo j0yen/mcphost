@@ -19,7 +19,7 @@
 
 use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, extract_structured, signup};
-use serde_json::json;
+use serde_json::{Value, json};
 
 #[tokio::test]
 async fn ac1_whoami_defaults_for_a_profile_less_tenant() {
@@ -134,6 +134,22 @@ async fn ac4_unknown_disabled_and_deleted_are_indistinguishable() {
     }
     assert_eq!(err_unknown.message, err_disabled.message);
     assert_eq!(err_disabled.message, err_deleted.message);
-    assert_eq!(err_unknown.data, err_disabled.data);
-    assert_eq!(err_disabled.data, err_deleted.data);
+    // PRD-mcphost-first-hour-support-surface requirement 1 (AC1) gives
+    // every payload its own `request_id` -- a fresh random correlation id
+    // per call, not a side channel, so it's excluded before this AC4's own
+    // "the three reasons are byte-identical" comparison: the property under
+    // test is that `agent_not_found`'s `error_code`/`message`/`data` (minus
+    // that per-call id) never let a caller tell "unknown" from "disabled"
+    // from "deleted" apart, which still holds.
+    assert_eq!(without_request_id(&err_unknown.data), without_request_id(&err_disabled.data));
+    assert_eq!(without_request_id(&err_disabled.data), without_request_id(&err_deleted.data));
+}
+
+/// See the comment at this function's one call site above.
+fn without_request_id(data: &Value) -> Value {
+    let mut data = data.clone();
+    if let Some(obj) = data.as_object_mut() {
+        obj.remove("request_id");
+    }
+    data
 }

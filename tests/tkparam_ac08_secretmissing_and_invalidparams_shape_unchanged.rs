@@ -27,10 +27,14 @@ fn secret_missing_data_keys_are_unchanged() {
     let err = AppError::SecretMissing("missing".to_string()).into_error_data();
     let data = err.data.expect("SecretMissing must carry data");
 
+    // PRD-mcphost-first-hour-support-surface requirement 1 (AC1) adds
+    // `request_id` to every payload unconditionally -- additive to every
+    // variant alike, so this AC8 pairing keeps meaning what it always has
+    // ("no field/expected/example drift") with that one key folded in.
     assert_eq!(
         keys(&data),
-        BTreeSet::from(["error_code", "field", "expected", "docs"].map(String::from)),
-        "secret_missing data keys must be exactly error_code/field/expected/docs, no example: {data:?}"
+        BTreeSet::from(["error_code", "field", "expected", "docs", "request_id"].map(String::from)),
+        "secret_missing data keys must be exactly error_code/field/expected/docs/request_id, no example: {data:?}"
     );
 }
 
@@ -40,9 +44,11 @@ fn invalid_params_data_keys_are_unchanged() {
         AppError::InvalidParams("scopes: must be an array of strings".to_string()).into_error_data();
     let data = err.data.expect("InvalidParams must carry data");
 
+    // PRD-mcphost-first-hour-support-surface requirement 1 (AC1): see the
+    // comment on the sibling assertion above -- same additive `request_id`.
     assert_eq!(
         keys(&data),
-        BTreeSet::from(["error_code", "docs"].map(String::from)),
-        "invalid_params data keys must be exactly error_code/docs, no field/expected/example: {data:?}"
+        BTreeSet::from(["error_code", "docs", "request_id"].map(String::from)),
+        "invalid_params data keys must be exactly error_code/docs/request_id, no field/expected/example: {data:?}"
     );
 }
