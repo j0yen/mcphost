@@ -56,7 +56,11 @@ async fn tool_test_append_then_query_sees_uncommitted_row_but_table_stays_empty(
 
     // The tool's OWN result, from inside the savepoint, shows the row it
     // just appended.
-    let rows = structured["rows"].as_array().unwrap_or_else(|| panic!("rows array: {structured}"));
+    // `host.tool_test`'s python echo nests the tool's own return value
+    // under `result` (see `PythonKind::call`'s `ctx.test_mode` branch).
+    let rows = structured["result"]["rows"]
+        .as_array()
+        .unwrap_or_else(|| panic!("rows array: {structured}"));
     assert_eq!(rows.len(), 1, "the query inside the same call must see the uncommitted append: {structured}");
     assert_eq!(rows[0]["sensor"], json!("a"));
 
