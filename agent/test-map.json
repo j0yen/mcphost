@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-docs-hybrid-search.md (test_prefix: hybrid)",
+  "ac_test_map_prd": "PRD-mcphost-dry-run-side-effects.md (test_prefix: dryrun)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,17 +28,26 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/hybrid_ac01_identifier_chunk_wins_via_lexical_rank.rs",
-    "AC2": "tests/hybrid_ac02_rrf_fuse_ties_and_normalization.rs",
-    "AC3": "tests/hybrid_ac03_lexical_mode_never_calls_provider.rs",
-    "AC4": "tests/hybrid_ac04_hybrid_without_provider_is_validation_error.rs",
-    "AC5": "tests/hybrid_ac05_default_mode_provider_failure_falls_back.rs",
-    "AC6": "tests/hybrid_ac06_hybrid_mode_cross_tenant_isolation.rs",
-    "AC7": "tests/hybrid_ac07_p95_latency_within_30ms_of_embeddings_only.rs",
-    "AC8": "tests/hybrid_ac08_hybrid_hit_rate_at_least_each_mode.rs",
-    "AC10": "tests/hybrid_ac10_filter_prefix_filters_before_fusion.rs"
+    "AC1": "tests/dryrun_ac01_table_append_rolled_back.rs",
+    "AC2": "tests/dryrun_ac02_append_then_query_same_call_sees_write.rs",
+    "AC3": "tests/dryrun_ac03_non_rollbackable_effect_short_circuited.rs",
+    "AC4": "tests/dryrun_ac04_tool_run_test_state_write_rolled_back.rs",
+    "AC6": "tests/dryrun_ac06_tools_list_mentions_rolled_back_dry_run.rs",
+    "AC7": "src/tables.rs::tests::dryrun_ac7_quota_refuses_past_rows_max_through_test_conn_and_rolls_back"
   },
   "ac_test_map_by_prefix": {
+    "hybrid": {
+      "_prd": "PRD-mcphost-docs-hybrid-search.md -- superseded by mcphost-dry-run-side-effects at HEAD",
+      "AC1": "tests/hybrid_ac01_identifier_chunk_wins_via_lexical_rank.rs",
+      "AC2": "tests/hybrid_ac02_rrf_fuse_ties_and_normalization.rs",
+      "AC3": "tests/hybrid_ac03_lexical_mode_never_calls_provider.rs",
+      "AC4": "tests/hybrid_ac04_hybrid_without_provider_is_validation_error.rs",
+      "AC5": "tests/hybrid_ac05_default_mode_provider_failure_falls_back.rs",
+      "AC6": "tests/hybrid_ac06_hybrid_mode_cross_tenant_isolation.rs",
+      "AC7": "tests/hybrid_ac07_p95_latency_within_30ms_of_embeddings_only.rs",
+      "AC8": "tests/hybrid_ac08_hybrid_hit_rate_at_least_each_mode.rs",
+      "AC10": "tests/hybrid_ac10_filter_prefix_filters_before_fusion.rs"
+    },
     "lineage": {
       "_prd": "PRD-mcphost-lineage-blast-radius.md -- superseded by mcphost-docs-hybrid-search at HEAD; real test_prefix is lineage",
       "AC1": "tests/lineage_ac01_source_scan_registers_table_edge.rs",

@@ -5012,6 +5012,8 @@ mod tests {
             egress_allowed: true,
             end_user: None,
             vault_token: None,
+            dry_run: false,
+            dry_run_writes: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -5319,6 +5321,8 @@ mod tests {
             egress_allowed: true,
             end_user: None,
             vault_token: None,
+            dry_run: false,
+            dry_run_writes: Arc::new(Mutex::new(Vec::new())),
         }
     }
 

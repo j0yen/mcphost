@@ -1169,6 +1169,32 @@ pub struct CallCtx {
     /// a declared provider with no resolved token here as `upstream_not_connected`
     /// rather than sending an unauthenticated request.
     pub vault_token: Option<String>,
+    /// PRD-mcphost-dry-run-side-effects P0 requirement 1: `true` only for
+    /// `host.tool_test`, `host.trigger.test` (the executor's run of a
+    /// `runs.test`-marked row, `runs.rs::execute_job`), `host.spec_test`,
+    /// and `host.tool_run(test: true)` -- distinct from [`Self::test_mode`]
+    /// above, which `host.bridge_test` also sets and which keeps its prior
+    /// "still hits the real upstream, echo the rendered request" meaning
+    /// unchanged (Open question: `bridge_test` stays the tool for a real
+    /// upstream probe). A bridge/kind that can roll back its own writes
+    /// (the tenant-state and tenant-table sidecar bridges) does so under
+    /// this flag; a kind whose effect can't be rolled back once sent
+    /// (`http`'s outbound request) short-circuits it instead and records
+    /// what it would have sent into [`Self::dry_run_writes`]. `false` for
+    /// every ordinary call, including `host.bridge_test`.
+    pub dry_run: bool,
+    /// PRD-mcphost-dry-run-side-effects P0 requirement 3/4: every store
+    /// write a call made while [`Self::dry_run`] was set, one JSON object
+    /// per write (`{store, op, table?, rows}`) -- shared (via the `Arc`)
+    /// by every sidecar bridge and kind this call reaches, including
+    /// composed children, so one call's whole tree reports into the same
+    /// list. The real dispatch path (`handler.rs`'s four test entry
+    /// points) reads this back once `Kind::call` returns to fill the
+    /// result's `dry_run.writes`. Always present (never `None`) so a
+    /// `Kind`/bridge never has to branch on whether it exists -- for an
+    /// ordinary non-`dry_run` call nothing ever pushes to it, so it's just
+    /// an unused empty `Vec` for the lifetime of that call.
+    pub dry_run_writes: Arc<std::sync::Mutex<Vec<Value>>>,
 }
 
 impl CallCtx {
@@ -1198,12 +1224,33 @@ impl CallCtx {
             egress_allowed: true,
             end_user: None,
             vault_token: None,
+            dry_run: false,
+            dry_run_writes: Arc::new(std::sync::Mutex::new(Vec::new())),
         }
     }
 
     pub fn time_remaining(&self) -> Duration {
         self.deadline.saturating_duration_since(Instant::now())
     }
+}
+
+/// PRD-mcphost-dry-run-side-effects P0 requirement 3: `dry_run`'s own
+/// shape (`{writes, delivered, rolled_back}`), built once a dry-run
+/// `Kind::call` returns, from whatever the call tree pushed into
+/// [`CallCtx::dry_run_writes`]. `delivered` and `rolled_back` are both
+/// constants (never `false`/`true` resp.) -- every entry under this PRD is
+/// either an actually-rolled-back store write or a short-circuited,
+/// never-sent effect, never a half-measure the caller would need to
+/// distinguish per-entry.
+pub fn dry_run_envelope(writes: Vec<Value>) -> Value {
+    json!({"writes": writes, "delivered": false, "rolled_back": true})
+}
+
+/// One [`CallCtx::dry_run_writes`] entry. `table` is omitted (`null`) for a
+/// store with no table-shaped notion of what was written (an `http`
+/// request, a channel post).
+pub fn dry_run_write(store: &str, op: &str, table: Option<&str>, rows: i64) -> Value {
+    json!({"store": store, "op": op, "table": table, "rows": rows})
 }
 
 /// PRD-mcphost-composition requirement 2: how many levels of composed
@@ -1331,7 +1378,14 @@ pub async fn compose_call(
         secrets: ctx.secrets.clone(),
         deadline,
         log: ctx.log.clone(),
-        test_mode: false,
+        // PRD-mcphost-dry-run-side-effects P0 requirement 1: a composed
+        // child call is still part of the same dry run (if any) the parent
+        // is -- previously hardcoded `false` here, so a chain step (or a
+        // future `mcphost.call`) dispatched through `compose_call` under
+        // `host.tool_test` silently ran for real. `test_mode` propagates
+        // for the same reason: a child's own kind (e.g. `http`) should
+        // echo its rendered request exactly as the parent would have.
+        test_mode: ctx.test_mode,
         resources: ctx.resources.clone(),
         tool_name: Some(target_name.to_string()),
         // PRD-mcphost-tenant-state: composition stays inside one tenant
@@ -1386,6 +1440,11 @@ pub async fn compose_call(
         // above), so a composed child call carries whatever upstream token
         // the parent call already resolved.
         vault_token: ctx.vault_token.clone(),
+        // PRD-mcphost-dry-run-side-effects P0 requirement 1: a composed
+        // child call reports into the same `dry_run_writes` list the whole
+        // call tree shares, and inherits whether this is a dry run at all.
+        dry_run: ctx.dry_run,
+        dry_run_writes: ctx.dry_run_writes.clone(),
     };
 
     kind.call(&row.spec, args, &child_ctx).await

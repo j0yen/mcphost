@@ -1368,6 +1368,36 @@ impl Kind for HttpKind {
             None
         };
 
+        // PRD-mcphost-dry-run-side-effects P0 requirement 4: an outbound
+        // request can't be rolled back after the fact the way a table/
+        // state write can -- short-circuit before `builder.send()` ever
+        // runs, record what WOULD have gone out, and return a predictable
+        // empty response rather than the real one. Open question:
+        // `host.bridge_test` sets `test_mode` but never `dry_run` -- it
+        // stays the tool for a real upstream probe, so this never fires
+        // there.
+        if ctx.dry_run {
+            if let Ok(mut writes) = ctx.dry_run_writes.lock() {
+                writes.push(crate::kinds::dry_run_write(
+                    "http",
+                    &method_str,
+                    Some(rendered_url.as_str()),
+                    1,
+                ));
+            }
+            let result = json!({"status": null, "headers": {}, "body": null, "payload": null});
+            return Ok(if ctx.test_mode {
+                json!({
+                    "request": request_summary,
+                    "response": result,
+                    "schema": effective_schema,
+                    "dry_run_short_circuited": true,
+                })
+            } else {
+                result
+            });
+        }
+
         let mut builder = self
             .client
             .request(method, rendered_url.as_str())

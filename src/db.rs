@@ -1963,6 +1963,48 @@ impl Db {
         self.cfg
     }
 
+    /// PRD-mcphost-dry-run-side-effects P0 requirement 2: a second,
+    /// independent connection to this same `mcphost.db` file, with one
+    /// `SAVEPOINT` already open on it -- `ROLE_PRUNE`'s own standalone
+    /// connection ([`Self::open_with_cfg`] above) is the precedent this
+    /// follows for why a second connection to the same file is safe under
+    /// WAL. Every `mcphost.state` op a dry-run call makes is routed
+    /// through a `Db` built from this connection instead of `self` (see
+    /// `handler.rs`'s `TestStateBridge`), so it shares none of `self.conn`'s
+    /// serialization with concurrent real traffic -- holding this
+    /// savepoint open for a whole call never blocks another tenant's
+    /// write. Instrumented under `ROLE_SERVER` (no dedicated role: `for_
+    /// role`'s fallback already buckets anything else there, and this
+    /// connection's whole lifetime is one short-lived call, not a
+    /// standing pool worth its own counters).
+    pub(crate) fn open_shadow(&self) -> Result<Db, AppError> {
+        let (conn, _audit) = open_with_role(&self.path, ROLE_SERVER, &self.cfg)?;
+        conn.execute_batch("SAVEPOINT dry_run")?;
+        Ok(Db {
+            conn: Arc::new(Mutex::new(conn)),
+            path: self.path.clone(),
+            cfg: self.cfg,
+            counters: self.counters.clone(),
+            last_checkpoint_unix: self.last_checkpoint_unix.clone(),
+        })
+    }
+
+    /// Undoes everything written through a [`Self::open_shadow`] shadow
+    /// `Db`'s connection since it opened -- `self` here is always that
+    /// shadow `Db`, never the real shared one (`TestStateBridge` never
+    /// calls this on anything else). Safe to call more than once (a
+    /// second `ROLLBACK TO`/`RELEASE` on an already-released savepoint is
+    /// a plain SQLite error, swallowed here rather than propagated, since
+    /// by that point there is nothing left to undo).
+    pub(crate) async fn rollback_shadow(&self) {
+        let _ = self
+            .with_conn(|conn| {
+                conn.execute_batch("ROLLBACK TO dry_run; RELEASE dry_run;")
+                    .map_err(AppError::from)
+            })
+            .await;
+    }
+
     /// Requirement 1/4, AC2/AC7: the pragmas in force for every
     /// [`DbRole`] -- uniform by construction (every role opens through
     /// [`open_with_role`] with this same `cfg`), so this needs no live

@@ -20,10 +20,11 @@ use crate::db::{RunRow, Tenant};
 use crate::errors::AppError;
 use crate::handler::{
     BufferedLog, CellResourceSink, CountingStateBackend, TenantDocsBridge, TenantLineageBridge,
-    TenantStateBridge, TenantTableBridge, build_secret_resolver,
+    TenantStateBridge, TenantTableBridge, TestStateBridge, TestTableBridge, build_secret_resolver,
 };
 use crate::kinds::{
-    CallCtx, CallLog, DocsBackend, LineageBackend, ProgressSink, ResourceSink, TableBackend,
+    CallCtx, CallLog, DocsBackend, LineageBackend, ProgressSink, ResourceSink, StateBackend,
+    TableBackend, dry_run_envelope,
 };
 use crate::state::AppState;
 
@@ -791,27 +792,64 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
         tenant_id: run.tenant_id,
         last_write: Mutex::new(None),
     });
+    // PRD-mcphost-dry-run-side-effects P0 requirement 3: shared by every
+    // bridge this call's tree reaches; only ever read back below when
+    // `run.test` (an ordinary job never pushes to it).
+    let dry_run_writes = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let test_table_bridge = if run.test {
+        Some(Arc::new(TestTableBridge::new(
+            Arc::new(state.clone()),
+            tenant.clone(),
+            dry_run_writes.clone(),
+        )))
+    } else {
+        None
+    };
+    let test_state_bridge = if run.test {
+        Some(Arc::new(TestStateBridge::new(
+            Arc::new(state.clone()),
+            tenant.clone(),
+            dry_run_writes.clone(),
+        )))
+    } else {
+        None
+    };
     let ctx = CallCtx {
         tenant_id: tenant.id,
         namespace: tenant.namespace.clone(),
         secrets,
         deadline: Instant::now() + Duration::from_secs(deadline_s),
         log: log.clone() as Arc<dyn CallLog>,
-        test_mode: false,
+        // PRD-mcphost-dry-run-side-effects P0 requirement 1 / AC3: a
+        // `host.trigger.test`-created run is the ONE queued row this
+        // executor ever marks `test: true` (migration 0018) -- every
+        // other trigger kind (schedule, event, webhook, message) that
+        // isn't itself a dry run stays `false`, unchanged. `test_mode`
+        // tracks it too, so a kind that renders its request (`http`)
+        // echoes it here exactly as a synchronous `host.tool_test` would.
+        test_mode: run.test,
+        dry_run: run.test,
+        dry_run_writes: dry_run_writes.clone(),
         resources: resources.clone() as Arc<dyn ResourceSink>,
         tool_name: Some(local_name.clone()),
         state: Arc::new(CountingStateBackend::new(
-            Arc::new(TenantStateBridge {
-                state: Arc::new(state.clone()),
-                tenant: tenant.clone(),
-                end_user: None,
-            }),
+            match &test_state_bridge {
+                Some(b) => b.clone() as Arc<dyn StateBackend>,
+                None => Arc::new(TenantStateBridge {
+                    state: Arc::new(state.clone()),
+                    tenant: tenant.clone(),
+                    end_user: None,
+                }) as Arc<dyn StateBackend>,
+            },
             Some(log.clone() as Arc<dyn CallLog>),
         )),
-        table: Arc::new(TenantTableBridge {
-            state: Arc::new(state.clone()),
-            tenant: tenant.clone(),
-        }) as Arc<dyn TableBackend>,
+        table: match &test_table_bridge {
+            Some(b) => b.clone() as Arc<dyn TableBackend>,
+            None => Arc::new(TenantTableBridge {
+                state: Arc::new(state.clone()),
+                tenant: tenant.clone(),
+            }) as Arc<dyn TableBackend>,
+        },
         docs: Arc::new(TenantDocsBridge {
             state: Arc::new(state.clone()),
             tenant: tenant.clone(),
@@ -869,8 +907,39 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
             .await;
     }
 
+    // PRD-mcphost-dry-run-side-effects P0 requirement 2: roll back
+    // regardless of outcome (done, error, or timeout) -- a dry run that
+    // errors partway through must leave exactly as little behind as one
+    // that completes.
+    if let Some(b) = &test_table_bridge {
+        b.rollback().await;
+    }
+    if let Some(b) = &test_state_bridge {
+        b.rollback().await;
+    }
+
     match outcome {
-        Ok(Ok(value)) => JobOutcome::Done { result_value: value },
+        Ok(Ok(mut value)) => {
+            // AC3: `host.trigger.test`'s run row carries `dry_run` in its
+            // own result the same way `host.tool_test` carries it in its
+            // RPC response -- `host.runs.get`'s `result_ref` readback is
+            // this PRD's one visible proof point for a trigger-fired dry
+            // run, since the RPC call that created the run only ever gets
+            // back `{run_id, status, test: true}` (requirement 1's own
+            // `insert_queued_run` call site), not the tool's own result.
+            if run.test {
+                let writes = dry_run_writes.lock().map(|g| g.clone()).unwrap_or_default();
+                match &mut value {
+                    Value::Object(map) => {
+                        map.insert("dry_run".to_string(), dry_run_envelope(writes));
+                    }
+                    other => {
+                        *other = json!({"result": other.clone(), "dry_run": dry_run_envelope(writes)});
+                    }
+                }
+            }
+            JobOutcome::Done { result_value: value }
+        }
         Ok(Err(kind_err)) => {
             let app_err = AppError::from(kind_err);
             JobOutcome::Error {

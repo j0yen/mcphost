@@ -15,6 +15,7 @@ use rmcp::model::{
 };
 use rmcp::service::{NotificationContext, RequestContext};
 use rmcp::{RoleServer, ServerHandler};
+use rusqlite::Connection;
 use serde_json::{Map, Value, json};
 
 use crate::auth::{constant_time_eq, extract_bearer, hash_key};
@@ -23,7 +24,8 @@ use crate::errors::AppError;
 use crate::kinds::{
     CallCtx, CallLog, DocsBackend, Kind, KindError, KindRegistry, LineageBackend,
     MAX_TEST_INVOCATIONS, NoDocs, NoLineage, NoState, NoTable, NullLog, NullResourceSink,
-    ResourceSink, SecretResolver, StateBackend, TableBackend, describe_args_error, run_spec_test,
+    ResourceSink, SecretResolver, StateBackend, TableBackend, describe_args_error,
+    dry_run_envelope, run_spec_test,
 };
 use crate::state::{
     AppState, MAX_SPEC_BYTES, TOOLS_LIST_TTL_GRACE_SECS, TOOLS_LIST_TTL_MS_STEADY, now_unix,
@@ -601,7 +603,7 @@ fn tool_publish_description(kinds: &KindRegistry) -> String {
 /// (`tests/surface_ac02_dry_run_descriptions.rs`) and this function read the
 /// exact same source, per the PRD's own Technical considerations.
 const TOOL_TEST_DESC: &str =
-    "Dry-run an already-published tool by name, no calls row written; for the other cases see host.quickstart.";
+    "Dry-run an already-published tool by name: writes are rolled back and reported under dry_run; see host.quickstart.";
 const BRIDGE_TEST_DESC: &str =
     "Dry-run an unpublished http spec against its real upstream; for the other cases see host.quickstart.";
 const SPEC_TEST_DESC: &str =
@@ -867,6 +869,11 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                     "args": {
                         "type": "object",
                         "description": "Arguments to pass, same shape as a real call.",
+                    },
+                    "test": {
+                        "type": "boolean",
+                        "description": "When true, state/table writes are rolled back and \
+                            reported under dry_run instead of persisting; default false.",
                     },
                 }),
                 &["name", "args"],
@@ -2029,7 +2036,8 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              trigger, builds and self-signs a synthetic body exactly like a real sender would, \
              then stores and fires it through the same path POST /hook/... uses (one inbox row, \
              one run). The run is marked test: true. A wrong signature fails signature_invalid, \
-             naming the header it checked.",
+             naming the header it checked. The fired tool's own writes are rolled back and \
+             reported under dry_run; nothing is delivered.",
             host_schema(
                 json!({
                     "id": {"type": "string", "description": "The event, message or webhook trigger id."},
@@ -3685,12 +3693,12 @@ pub(crate) struct TenantTableBridge {
 impl TableBackend for TenantTableBridge {
     async fn call(&self, op: &str, args: Value) -> Result<Value, KindError> {
         let result = match op {
-            "create" => tables::table_create(&self.state, &self.tenant, &args).await,
-            "append" => tables::table_append(&self.state, &self.tenant, &args).await,
-            "query" => tables::table_query(&self.state, &self.tenant, &args).await,
-            "list" => tables::table_list(&self.state, &self.tenant, &args).await,
-            "drop" => tables::table_drop(&self.state, &self.tenant, &args).await,
-            "schema" => tables::table_schema(&self.state, &self.tenant, &args).await,
+            "create" => tables::table_create(&self.state, &self.tenant, &args, None).await,
+            "append" => tables::table_append(&self.state, &self.tenant, &args, None).await,
+            "query" => tables::table_query(&self.state, &self.tenant, &args, None).await,
+            "list" => tables::table_list(&self.state, &self.tenant, &args, None).await,
+            "drop" => tables::table_drop(&self.state, &self.tenant, &args, None).await,
+            "schema" => tables::table_schema(&self.state, &self.tenant, &args, None).await,
             // PRD-mcphost-chart-in-a-minute AC11: `mcphost.table.chart`
             // inside the python sandbox receives the same `chart.v1` object
             // `host.table.chart` itself returns.
@@ -3867,6 +3875,197 @@ impl StateBackend for CountingStateBackend {
     }
 }
 
+/// PRD-mcphost-dry-run-side-effects P0 requirement 2/3: [`TenantStateBridge`]'s
+/// dry-run counterpart. Every `mcphost.state` op a dry-run call makes runs
+/// against a SECOND, independent connection to the same `mcphost.db` file
+/// ([`crate::db::Db::open_shadow`]), with one `SAVEPOINT` already open on
+/// it, instead of the single shared connection every real tenant's traffic
+/// serializes through -- holding that savepoint open for the whole call
+/// never blocks anyone else's write. Lazily opened on first `mcphost.state`
+/// op (a call that never touches state opens nothing); [`Self::rollback`]
+/// undoes it, called exactly once, after `Kind::call` returns, by every
+/// one of `handler.rs`'s four test entry points and by
+/// `runs.rs::execute_job`.
+pub(crate) struct TestStateBridge {
+    state: Arc<AppState>,
+    tenant: Tenant,
+    shadow: tokio::sync::Mutex<Option<crate::db::Db>>,
+    /// Shared with the `CallCtx` this bridge is wired into (requirement 3):
+    /// every write lands in the SAME list the whole call's `dry_run.writes`
+    /// is read back from, not a private tally of its own.
+    writes: Arc<std::sync::Mutex<Vec<Value>>>,
+}
+
+impl TestStateBridge {
+    pub(crate) fn new(
+        state: Arc<AppState>,
+        tenant: Tenant,
+        writes: Arc<std::sync::Mutex<Vec<Value>>>,
+    ) -> Self {
+        Self {
+            state,
+            tenant,
+            shadow: tokio::sync::Mutex::new(None),
+            writes,
+        }
+    }
+
+    async fn shadow_state(&self) -> Result<Arc<AppState>, AppError> {
+        let mut guard = self.shadow.lock().await;
+        if guard.is_none() {
+            *guard = Some(self.state.db.open_shadow()?);
+        }
+        let shadow_db = guard.as_ref().expect("just set above").clone();
+        let mut shadow_state = (*self.state).clone();
+        shadow_state.db = shadow_db;
+        Ok(Arc::new(shadow_state))
+    }
+
+    /// Rolls back whatever `SAVEPOINT` this bridge opened; a no-op if it
+    /// never opened one (a call that made no `mcphost.state` op at all).
+    pub(crate) async fn rollback(&self) {
+        let guard = self.shadow.lock().await;
+        if let Some(db) = guard.as_ref() {
+            db.rollback_shadow().await;
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl StateBackend for TestStateBridge {
+    async fn call(&self, op: &str, args: Value) -> Result<Value, KindError> {
+        let shadow_state = self.shadow_state().await.map_err(app_error_to_kind_error)?;
+        let eu: Option<&crate::enduser::EndUser> = None;
+        let result = match op {
+            "get" => tenant_state::state_get(&shadow_state, &self.tenant, &args, eu).await,
+            "set" => tenant_state::state_set(&shadow_state, &self.tenant, &args, eu).await,
+            "delete" => tenant_state::state_delete(&shadow_state, &self.tenant, &args, eu).await,
+            "list" => tenant_state::state_list(&shadow_state, &self.tenant, &args, eu).await,
+            "table_create" => {
+                tenant_state::state_table_create(&shadow_state, &self.tenant, &args).await
+            }
+            "table_drop" => tenant_state::state_table_drop(&shadow_state, &self.tenant, &args).await,
+            "insert" => tenant_state::state_insert(&shadow_state, &self.tenant, &args, eu).await,
+            "query" => tenant_state::state_query(&shadow_state, &self.tenant, &args, eu).await,
+            "delete_rows" => {
+                tenant_state::state_delete_rows(&shadow_state, &self.tenant, &args, eu).await
+            }
+            other => Err(AppError::InvalidArgs(format!("unknown state op '{other}'"))),
+        };
+        if result.is_ok() && STATE_WRITE_OPS.contains(&op) {
+            let table = match op {
+                "table_create" | "table_drop" => {
+                    args.get("name").and_then(Value::as_str).map(str::to_string)
+                }
+                _ => args.get("table").and_then(Value::as_str).map(str::to_string),
+            };
+            if let Ok(mut w) = self.writes.lock() {
+                w.push(crate::kinds::dry_run_write("state", op, table.as_deref(), 1));
+            }
+        }
+        result.map_err(app_error_to_kind_error)
+    }
+}
+
+/// PRD-mcphost-dry-run-side-effects P0 requirement 2/3: [`TenantTableBridge`]'s
+/// dry-run counterpart. `tables.rs` keeps one tenant's whole table store in
+/// a single per-tenant file opened fresh per op; this bridge instead opens
+/// that file exactly ONCE per call ([`tables::open_test_conn`], which
+/// starts a `SAVEPOINT`) and routes every `mcphost.table` op in the call
+/// through that SAME held connection, so a later read in the same call
+/// sees an earlier write (AC2) and nothing commits until [`Self::rollback`]
+/// undoes it at call end.
+pub(crate) struct TestTableBridge {
+    state: Arc<AppState>,
+    tenant: Tenant,
+    conn: std::sync::Mutex<Option<Arc<std::sync::Mutex<Connection>>>>,
+    writes: Arc<std::sync::Mutex<Vec<Value>>>,
+}
+
+impl TestTableBridge {
+    pub(crate) fn new(
+        state: Arc<AppState>,
+        tenant: Tenant,
+        writes: Arc<std::sync::Mutex<Vec<Value>>>,
+    ) -> Self {
+        Self {
+            state,
+            tenant,
+            conn: std::sync::Mutex::new(None),
+            writes,
+        }
+    }
+
+    fn held_conn(&self) -> Result<Arc<std::sync::Mutex<Connection>>, AppError> {
+        let mut guard = self
+            .conn
+            .lock()
+            .map_err(|_| AppError::Storage("test table conn lock poisoned".into()))?;
+        if guard.is_none() {
+            let path = tables::tenant_db_path(&self.state, self.tenant.id);
+            let conn = tables::open_test_conn(&path, &self.state.db.cfg())?;
+            *guard = Some(Arc::new(std::sync::Mutex::new(conn)));
+        }
+        Ok(guard.as_ref().expect("just set above").clone())
+    }
+
+    /// Rolls back whatever `SAVEPOINT` this bridge opened; a no-op if it
+    /// never opened a connection at all (a call that made no `mcphost.
+    /// table` op).
+    pub(crate) async fn rollback(&self) {
+        let conn = self
+            .conn
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_else(|e| e.into_inner().clone());
+        if let Some(conn) = conn
+            && let Ok(guard) = conn.lock()
+        {
+            tables::rollback_test_conn(&guard);
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl TableBackend for TestTableBridge {
+    async fn call(&self, op: &str, args: Value) -> Result<Value, KindError> {
+        let conn = self.held_conn().map_err(app_error_to_kind_error)?;
+        let result = match op {
+            "create" => tables::table_create(&self.state, &self.tenant, &args, Some(conn)).await,
+            "append" => tables::table_append(&self.state, &self.tenant, &args, Some(conn)).await,
+            "query" => tables::table_query(&self.state, &self.tenant, &args, Some(conn)).await,
+            "list" => tables::table_list(&self.state, &self.tenant, &args, Some(conn)).await,
+            "drop" => tables::table_drop(&self.state, &self.tenant, &args, Some(conn)).await,
+            // `chart` has no SQL of its own needing the held connection --
+            // it re-runs `table_query` internally (reads, same rationale
+            // `TenantTableBridge::call` already gives it), harmlessly
+            // against a fresh connection even mid dry-run.
+            "chart" => crate::chart::table_chart(&self.state, &self.tenant, &args).await,
+            other => Err(AppError::InvalidArgs(format!("unknown table op '{other}'"))),
+        };
+        if result.is_ok()
+            && let "create" | "append" | "drop" = op
+        {
+            let table = args
+                .get(if op == "create" { "name" } else { "table" })
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            let rows = if op == "append" {
+                args.get("rows")
+                    .and_then(Value::as_array)
+                    .map(|a| a.len() as i64)
+                    .unwrap_or(1)
+            } else {
+                1
+            };
+            if let Ok(mut w) = self.writes.lock() {
+                w.push(crate::kinds::dry_run_write("table", op, table.as_deref(), rows));
+            }
+        }
+        result.map_err(app_error_to_kind_error)
+    }
+}
+
 // ---- the handler -----------------------------------------------------
 
 #[derive(Clone)]
@@ -3979,15 +4178,15 @@ impl McpHostHandler {
             "host.enduser.purge" => crate::enduserctl::purge(&self.state, tenant, &args).await,
             // PRD-mcphost-end-user-audit-and-revoke requirement 6 (AC8).
             "host.enduser.export" => crate::export::enduser_export(&self.state, tenant, &args).await,
-            "host.table.create" => tables::table_create(&self.state, tenant, &args).await,
-            "host.table.append" => tables::table_append(&self.state, tenant, &args).await,
-            "host.table.query" => tables::table_query(&self.state, tenant, &args).await,
-            "host.table.list" => tables::table_list(&self.state, tenant, &args).await,
-            "host.table.drop" => tables::table_drop(&self.state, tenant, &args).await,
+            "host.table.create" => tables::table_create(&self.state, tenant, &args, None).await,
+            "host.table.append" => tables::table_append(&self.state, tenant, &args, None).await,
+            "host.table.query" => tables::table_query(&self.state, tenant, &args, None).await,
+            "host.table.list" => tables::table_list(&self.state, tenant, &args, None).await,
+            "host.table.drop" => tables::table_drop(&self.state, tenant, &args, None).await,
             "host.lineage.blast_radius" => crate::lineage::blast_radius(&self.state, tenant, &args).await,
             "host.lineage.trace" => crate::lineage::trace(&self.state, tenant, &args).await,
             "host.lineage.trace_page" => crate::lineage::trace_page(&self.state, tenant, &args).await,
-            "host.table.schema" => tables::table_schema(&self.state, tenant, &args).await,
+            "host.table.schema" => tables::table_schema(&self.state, tenant, &args, None).await,
             "host.table.chart" => crate::chart::table_chart(&self.state, tenant, &args).await,
             "host.table.charts" => crate::chart::table_charts_list(&self.state, tenant, &args).await,
             "host.docs.put" => docs::doc_put(&self.state, tenant, &args).await,
@@ -4488,6 +4687,8 @@ impl McpHostHandler {
             cancel_pid: Arc::new(std::sync::Mutex::new(None)),
             end_user: end_user.cloned(),
             vault_token,
+            dry_run: false,
+            dry_run_writes: Arc::new(std::sync::Mutex::new(Vec::new())),
         };
         // requirement 4 (AC1/AC2): the three `calls` columns every branch
         // below's `record_call_attributed_with_end_user` writes.
@@ -4776,18 +4977,25 @@ impl McpHostHandler {
         }
 
         let secrets = build_secret_resolver(&self.state, tenant.id).await?;
+        // PRD-mcphost-dry-run-side-effects P0 requirement 2/3: shared by
+        // every bridge this call's tree reaches; read back below once
+        // `kind.call` returns.
+        let dry_run_writes = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let test_state_bridge = Arc::new(TestStateBridge::new(
+            self.state.clone(),
+            tenant.clone(),
+            dry_run_writes.clone(),
+        ));
         let state_backend = Arc::new(CountingStateBackend::new(
-            Arc::new(TenantStateBridge {
-                state: self.state.clone(),
-                tenant: tenant.clone(),
-                end_user: None,
-            }),
+            test_state_bridge.clone() as Arc<dyn StateBackend>,
             None,
         ));
-        let table_backend: Arc<dyn TableBackend> = Arc::new(TenantTableBridge {
-            state: self.state.clone(),
-            tenant: tenant.clone(),
-        });
+        let test_table_bridge = Arc::new(TestTableBridge::new(
+            self.state.clone(),
+            tenant.clone(),
+            dry_run_writes.clone(),
+        ));
+        let table_backend: Arc<dyn TableBackend> = test_table_bridge.clone();
         let docs_backend: Arc<dyn DocsBackend> = Arc::new(TenantDocsBridge {
             state: self.state.clone(),
             tenant: tenant.clone(),
@@ -4837,9 +5045,17 @@ impl McpHostHandler {
             // to thread through.
             end_user: None,
             vault_token: None,
+            // PRD-mcphost-dry-run-side-effects P0 requirement 1: the whole
+            // point of `host.tool_test` is that it writes nothing real.
+            dry_run: true,
+            dry_run_writes: dry_run_writes.clone(),
         };
 
-        match tokio::time::timeout(resolved_timeout, kind.call(&row.spec, call_args, &ctx)).await {
+        let outcome = tokio::time::timeout(resolved_timeout, kind.call(&row.spec, call_args, &ctx)).await;
+        // requirement 2: rolled back regardless of how the call ended.
+        test_table_bridge.rollback().await;
+        test_state_bridge.rollback().await;
+        match outcome {
             // AC19: `tenant_key` may appear anywhere inside the echoed
             // request `call_tool` already redacted from `args` by key name
             // before it reached here -- this final pass catches the same
@@ -4867,6 +5083,11 @@ impl McpHostHandler {
                 }
                 if let Value::Object(map) = &mut value {
                     map.insert("state".to_string(), state_backend.snapshot().to_json());
+                    // PRD-mcphost-dry-run-side-effects P0 requirement 3
+                    // (AC1, AC2, AC5): every store write this call's whole
+                    // tree made, rolled back above.
+                    let writes = dry_run_writes.lock().map(|g| g.clone()).unwrap_or_default();
+                    map.insert("dry_run".to_string(), dry_run_envelope(writes));
                 }
                 Ok(value)
             }
@@ -4955,6 +5176,12 @@ impl McpHostHandler {
             // run, not a metered call -- no end user to thread through.
             end_user: None,
             vault_token: None,
+            // PRD-mcphost-dry-run-side-effects Open question: `bridge_test`
+            // stays the tool for a REAL upstream probe (`test_mode` above
+            // still echoes the rendered request) -- `dry_run` short-
+            // circuits sends, which would defeat its one purpose.
+            dry_run: false,
+            dry_run_writes: Arc::new(std::sync::Mutex::new(Vec::new())),
         };
 
         match tokio::time::timeout(resolved_timeout, kind.call(&spec, call_args, &ctx)).await {
@@ -5077,15 +5304,24 @@ impl McpHostHandler {
             .map(|_| Arc::new(BufferedLog(std::sync::Mutex::new(Vec::new()))))
             .collect();
         let mut log_bufs_iter = log_bufs.iter().cloned();
-        let state_backend: Arc<dyn StateBackend> = Arc::new(TenantStateBridge {
-            state: self.state.clone(),
-            tenant: tenant.clone(),
-            end_user: None,
-        });
-        let table_backend: Arc<dyn TableBackend> = Arc::new(TenantTableBridge {
-            state: self.state.clone(),
-            tenant: tenant.clone(),
-        });
+        // PRD-mcphost-dry-run-side-effects P0 requirement 1/2: every
+        // invocation this one `host.spec_test` call runs shares the same
+        // dry run -- one connection, one savepoint, rolled back once after
+        // all of them finish (not per invocation), same as the other three
+        // test entry points.
+        let dry_run_writes = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let test_state_bridge = Arc::new(TestStateBridge::new(
+            self.state.clone(),
+            tenant.clone(),
+            dry_run_writes.clone(),
+        ));
+        let state_backend: Arc<dyn StateBackend> = test_state_bridge.clone();
+        let test_table_bridge = Arc::new(TestTableBridge::new(
+            self.state.clone(),
+            tenant.clone(),
+            dry_run_writes.clone(),
+        ));
+        let table_backend: Arc<dyn TableBackend> = test_table_bridge.clone();
         let docs_backend: Arc<dyn DocsBackend> = Arc::new(TenantDocsBridge {
             state: self.state.clone(),
             tenant: tenant.clone(),
@@ -5123,8 +5359,13 @@ impl McpHostHandler {
             // publish spec, not a real caller's identity-carrying call.
             end_user: None,
             vault_token: None,
+            dry_run: true,
+            dry_run_writes: dry_run_writes.clone(),
         })
         .await;
+        // requirement 2: rolled back once, after every invocation.
+        test_table_bridge.rollback().await;
+        test_state_bridge.rollback().await;
 
         // AC6: each executed invocation is metered like a normal call (a
         // `calls` row, counting toward `calls_per_day`) even though no
@@ -5278,22 +5519,48 @@ impl McpHostHandler {
             });
         }
 
+        // PRD-mcphost-dry-run-side-effects P0 requirement 1 (AC4):
+        // `host.tool_run(test: true)` is the fourth and last test entry
+        // point -- previously `tool_run` had no notion of `test` at all.
+        let is_test = args.get("test").and_then(Value::as_bool).unwrap_or(false);
+
         let secrets = build_secret_resolver(&self.state, tenant.id).await?;
+        let dry_run_writes = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let test_state_bridge = is_test.then(|| {
+            Arc::new(TestStateBridge::new(
+                self.state.clone(),
+                tenant.clone(),
+                dry_run_writes.clone(),
+            ))
+        });
+        let test_table_bridge = is_test.then(|| {
+            Arc::new(TestTableBridge::new(
+                self.state.clone(),
+                tenant.clone(),
+                dry_run_writes.clone(),
+            ))
+        });
         // requirement 5 / AC7: `host.tool_run`'s result carries a `state`
         // tally too (same shape as `host.tool_test`'s) -- read back from
         // `state_backend` after the call below.
         let state_backend = Arc::new(CountingStateBackend::new(
-            Arc::new(TenantStateBridge {
-                state: self.state.clone(),
-                tenant: tenant.clone(),
-                end_user: None,
-            }),
+            match &test_state_bridge {
+                Some(b) => b.clone() as Arc<dyn StateBackend>,
+                None => Arc::new(TenantStateBridge {
+                    state: self.state.clone(),
+                    tenant: tenant.clone(),
+                    end_user: None,
+                }) as Arc<dyn StateBackend>,
+            },
             None,
         ));
-        let table_backend: Arc<dyn TableBackend> = Arc::new(TenantTableBridge {
-            state: self.state.clone(),
-            tenant: tenant.clone(),
-        });
+        let table_backend: Arc<dyn TableBackend> = match &test_table_bridge {
+            Some(b) => b.clone(),
+            None => Arc::new(TenantTableBridge {
+                state: self.state.clone(),
+                tenant: tenant.clone(),
+            }),
+        };
         let docs_backend: Arc<dyn DocsBackend> = Arc::new(TenantDocsBridge {
             state: self.state.clone(),
             tenant: tenant.clone(),
@@ -5309,7 +5576,10 @@ impl McpHostHandler {
             secrets,
             deadline: Instant::now() + resolved_timeout,
             log: Arc::new(NullLog) as Arc<dyn CallLog>,
-            test_mode: false,
+            // `test_mode` mirrors `is_test` here (matching `host.tool_test`'s
+            // own ctx) so a kind that renders its request (`http`) echoes
+            // it exactly the same way under `host.tool_run(test: true)`.
+            test_mode: is_test,
             resources: Arc::new(NullResourceSink),
             tool_name: Some(local_name.clone()),
             state: state_backend.clone() as Arc<dyn StateBackend>,
@@ -5341,18 +5611,32 @@ impl McpHostHandler {
             // `tools/call` path, `call_published_tool`).
             end_user: None,
             vault_token: None,
+            dry_run: is_test,
+            dry_run_writes: dry_run_writes.clone(),
         };
 
         let start = Instant::now();
         let outcome =
             tokio::time::timeout(resolved_timeout, kind.tool_run(&row.spec, call_args, &ctx)).await;
         let duration_ms = start.elapsed().as_millis() as i64;
+        if let Some(b) = &test_table_bridge {
+            b.rollback().await;
+        }
+        if let Some(b) = &test_state_bridge {
+            b.rollback().await;
+        }
 
         match outcome {
             Ok(Ok(mut value)) => {
                 if let Some(obj) = value.as_object_mut() {
                     obj.insert("duration_ms".to_string(), json!(duration_ms));
                     obj.insert("state".to_string(), state_backend.snapshot().to_json());
+                    // AC4: stdout/stderr/exit code are returned exactly as
+                    // today (unchanged above); `dry_run` is additive.
+                    if is_test {
+                        let writes = dry_run_writes.lock().map(|g| g.clone()).unwrap_or_default();
+                        obj.insert("dry_run".to_string(), dry_run_envelope(writes));
+                    }
                 }
                 Ok(value)
             }

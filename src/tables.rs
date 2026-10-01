@@ -256,6 +256,24 @@ fn open_conn(path: &Path, cfg: &crate::db::DbConfig) -> Result<Connection, AppEr
     Ok(conn)
 }
 
+/// PRD-mcphost-dry-run-side-effects P0 requirement 2: [`open_conn`] plus
+/// one open `SAVEPOINT`, for `handler.rs`'s `TestTableBridge` to hold for
+/// the whole span of one `host.tool_test`/`host.trigger.test`/
+/// `host.spec_test`/`host.tool_run(test: true)` call.
+pub(crate) fn open_test_conn(path: &Path, cfg: &crate::db::DbConfig) -> Result<Connection, AppError> {
+    let conn = open_conn(path, cfg)?;
+    conn.execute_batch("SAVEPOINT dry_run")?;
+    Ok(conn)
+}
+
+/// Rolls back everything written through an [`open_test_conn`] connection
+/// since it opened. See [`crate::db::Db::rollback_shadow`]'s doc comment
+/// for why a second `ROLLBACK TO`/`RELEASE` on an already-released
+/// savepoint is swallowed rather than propagated.
+pub(crate) fn rollback_test_conn(conn: &Connection) {
+    let _ = conn.execute_batch("ROLLBACK TO dry_run; RELEASE dry_run;");
+}
+
 /// Runs `f` against a fresh connection to `path` on a blocking thread --
 /// the per-tenant-file analogue of `Db::with_conn`, minus the shared-mutex
 /// guard (each call gets its own `Connection`; there is no cross-call state
@@ -278,6 +296,42 @@ where
     })
     .await
     .map_err(|e| AppError::Internal(e.to_string()))?
+}
+
+/// PRD-mcphost-dry-run-side-effects P0 requirement 2: [`with_tenant_conn`]'s
+/// dry-run counterpart -- when `test_conn` is `Some` (handler.rs's
+/// `TestTableBridge`, opened once with a `SAVEPOINT` for the whole call),
+/// every op reuses that SAME already-open connection instead of opening a
+/// fresh one, so (a) a write inside it stays uncommitted until that one
+/// savepoint is rolled back at call end, and (b) a read later in the same
+/// call sees it (AC2: "the tool's own result shows the appended row").
+/// `None` is the unchanged, pre-existing fresh-connection-per-call path.
+pub(crate) async fn with_tenant_conn_or_override<F, T>(
+    path: PathBuf,
+    cfg: crate::db::DbConfig,
+    counters: std::sync::Arc<crate::db::DbCounters>,
+    test_conn: Option<std::sync::Arc<std::sync::Mutex<Connection>>>,
+    f: F,
+) -> Result<T, AppError>
+where
+    F: FnOnce(&Connection) -> Result<T, AppError> + Send + 'static,
+    T: Send + 'static,
+{
+    match test_conn {
+        Some(held) => {
+            tokio::task::spawn_blocking(move || {
+                crate::db::instrument_stmt(&counters, crate::db::ROLE_TENANT_TABLE, move || {
+                    let guard = held
+                        .lock()
+                        .map_err(|_| AppError::Storage("tenant table test conn lock poisoned".into()))?;
+                    f(&guard)
+                })
+            })
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?
+        }
+        None => with_tenant_conn(path, cfg, counters, f).await,
+    }
 }
 
 pub(crate) struct LoadedSchema {
@@ -340,7 +394,12 @@ pub(crate) fn list_table_names_sync(conn: &Connection) -> Result<Vec<String>, Ap
 /// one of `columns`'s own entries. requirement 4: refuses past the plan's
 /// `table_tables_max`, naming `billing.checkout` (the same upgrade-path
 /// shape every other plan quota in this crate already uses).
-pub async fn table_create(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+pub async fn table_create(
+    state: &AppState,
+    tenant: &Tenant,
+    args: &Value,
+    test_conn: Option<std::sync::Arc<std::sync::Mutex<Connection>>>,
+) -> Result<Value, AppError> {
     let name = arg_str(args, "name")?;
     if !is_valid_ident(&name) {
         return Err(AppError::InvalidArgs(format!(
@@ -392,7 +451,7 @@ pub async fn table_create(state: &AppState, tenant: &Tenant, args: &Value) -> Re
 
     let path = tenant_db_path(state, tenant.id);
     let name_for_conn = name.clone();
-    with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+    with_tenant_conn_or_override(path, state.db.cfg(), state.db.counters_handle(), test_conn, move |conn| {
         let existing: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM {META_TABLE}"), [], |r| r.get(0))?;
         if existing >= tables_max {
             return Err(crate::billing::quota_exceeded(
@@ -444,7 +503,12 @@ pub async fn table_create(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     Ok(json!({"name": name, "created": true}))
 }
 
-pub async fn table_drop(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+pub async fn table_drop(
+    state: &AppState,
+    tenant: &Tenant,
+    args: &Value,
+    test_conn: Option<std::sync::Arc<std::sync::Mutex<Connection>>>,
+) -> Result<Value, AppError> {
     let name = arg_str(args, "name")?;
     if !is_valid_ident(&name) {
         return Err(table_not_found(&name));
@@ -484,7 +548,7 @@ pub async fn table_drop(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
 
     let path = tenant_db_path(state, tenant.id);
     let name_for_conn = name.clone();
-    let dropped = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+    let dropped = with_tenant_conn_or_override(path, state.db.cfg(), state.db.counters_handle(), test_conn, move |conn| {
         let existing: i64 = conn.query_row(
             &format!("SELECT COUNT(*) FROM {META_TABLE} WHERE name = ?1"),
             params![name_for_conn],
@@ -642,7 +706,12 @@ fn insert_rows_sync(
 /// `tenant_state::check_bytes_quota` takes for the KV store), both checked
 /// inside the same connection/transaction as the insert so the check and
 /// the write can never race against a second call to this same tenant.
-pub async fn table_append(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+pub async fn table_append(
+    state: &AppState,
+    tenant: &Tenant,
+    args: &Value,
+    test_conn: Option<std::sync::Arc<std::sync::Mutex<Connection>>>,
+) -> Result<Value, AppError> {
     let table = arg_str(args, "table")?;
     let rows = parse_rows_arg(args)?;
 
@@ -657,7 +726,7 @@ pub async fn table_append(state: &AppState, tenant: &Tenant, args: &Value) -> Re
 
     let path = tenant_db_path(state, tenant.id);
     let table_for_conn = table.clone();
-    let ids = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+    let ids = with_tenant_conn_or_override(path, state.db.cfg(), state.db.counters_handle(), test_conn, move |conn| {
         let schema = load_schema_sync(conn, &table_for_conn)?;
         validate_rows(&schema, &rows)?;
 
@@ -750,6 +819,20 @@ fn run_query_sync(conn: &Connection, sql: &str) -> Result<Vec<Value>, AppError> 
     });
 
     conn.pragma_update(None, "query_only", "ON")?;
+    // PRD-mcphost-dry-run-side-effects P0 requirement 2: a non-test call
+    // gets a fresh connection it's about to drop anyway (this pragma dying
+    // with it is a no-op); a `TestTableBridge` call holds this SAME
+    // connection open for the rest of the dry run, which might still
+    // `append`/`create` after this query returns -- `query_only` must not
+    // outlive this one op there, or that later write would fail against a
+    // connection that never turned it back off.
+    struct QueryOnlyGuard<'c>(&'c Connection);
+    impl Drop for QueryOnlyGuard<'_> {
+        fn drop(&mut self) {
+            let _ = self.0.pragma_update(None, "query_only", "OFF");
+        }
+    }
+    let _query_only_guard = QueryOnlyGuard(conn);
     let mut stmt = conn.prepare(sql)?;
     if !stmt.readonly() {
         return Err(query_rejected("statement is not read-only"));
@@ -780,12 +863,20 @@ fn run_query_sync(conn: &Connection, sql: &str) -> Result<Vec<Value>, AppError> 
     Ok(rows_out)
 }
 
-pub async fn table_query(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+pub async fn table_query(
+    state: &AppState,
+    tenant: &Tenant,
+    args: &Value,
+    test_conn: Option<std::sync::Arc<std::sync::Mutex<Connection>>>,
+) -> Result<Value, AppError> {
     let sql = arg_str(args, "sql")?;
     validate_query_structure(&sql)?;
 
     let path = tenant_db_path(state, tenant.id);
-    let rows = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| run_query_sync(conn, &sql)).await?;
+    let rows = with_tenant_conn_or_override(path, state.db.cfg(), state.db.counters_handle(), test_conn, move |conn| {
+        run_query_sync(conn, &sql)
+    })
+    .await?;
     Ok(json!({"rows": rows}))
 }
 
@@ -794,10 +885,15 @@ pub async fn table_query(state: &AppState, tenant: &Tenant, args: &Value) -> Res
 /// requirement 7: which tables this tenant has declared, with each one's
 /// current row count, plus the tenant's whole table-store byte usage (the
 /// same file-size measure `table_append`'s quota check uses).
-pub async fn table_list(state: &AppState, tenant: &Tenant, _args: &Value) -> Result<Value, AppError> {
+pub async fn table_list(
+    state: &AppState,
+    tenant: &Tenant,
+    _args: &Value,
+    test_conn: Option<std::sync::Arc<std::sync::Mutex<Connection>>>,
+) -> Result<Value, AppError> {
     let path = tenant_db_path(state, tenant.id);
     let path_for_size = path.clone();
-    let tables = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+    let tables = with_tenant_conn_or_override(path, state.db.cfg(), state.db.counters_handle(), test_conn, move |conn| {
         let mut stmt = conn.prepare(&format!("SELECT name FROM {META_TABLE} ORDER BY name"))?;
         let names: Vec<String> = stmt
             .query_map([], |r| r.get(0))?
@@ -820,12 +916,17 @@ pub async fn table_list(state: &AppState, tenant: &Tenant, _args: &Value) -> Res
 /// declared table in one shared per-tenant file, so a single table's own
 /// slice of that isn't cheaply separable without reading every row; see the
 /// module doc's SQLite-per-tenant design note).
-pub async fn table_schema(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+pub async fn table_schema(
+    state: &AppState,
+    tenant: &Tenant,
+    args: &Value,
+    test_conn: Option<std::sync::Arc<std::sync::Mutex<Connection>>>,
+) -> Result<Value, AppError> {
     let table = arg_str(args, "table")?;
     let path = tenant_db_path(state, tenant.id);
     let path_for_size = path.clone();
     let table_for_conn = table.clone();
-    let (schema, row_count) = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+    let (schema, row_count) = with_tenant_conn_or_override(path, state.db.cfg(), state.db.counters_handle(), test_conn, move |conn| {
         let schema = load_schema_sync(conn, &table_for_conn)?;
         let row_count = row_count_sync(conn, &table_for_conn)?;
         Ok((schema, row_count))
@@ -997,6 +1098,7 @@ mod tests {
             &state,
             &t,
             &json!({"name": "metrics", "columns": {"metric": "text", "value": "real"}}),
+            None,
         )
         .await
         .expect("create");
@@ -1009,6 +1111,7 @@ mod tests {
                 {"metric": "mem", "value": 0.2},
                 {"metric": "disk", "value": 0.7},
             ]}),
+            None,
         )
         .await
         .expect("append");
@@ -1017,6 +1120,7 @@ mod tests {
             &state,
             &t,
             &json!({"sql": "SELECT metric, value FROM metrics WHERE value > 0.5 ORDER BY value DESC"}),
+            None,
         )
         .await
         .expect("query");
@@ -1039,6 +1143,7 @@ mod tests {
             &state,
             &t,
             &json!({"name": "metrics", "columns": {"metric": "text", "value": "real"}}),
+            None,
         )
         .await
         .expect("create");
@@ -1050,12 +1155,13 @@ mod tests {
                 {"metric": "cpu", "value": 0.9},
                 {"metric": "mem", "value": "high"},
             ]}),
+            None,
         )
         .await
         .unwrap_err();
         assert_eq!(err.code(), "table_schema_violation");
 
-        let result = table_query(&state, &t, &json!({"sql": "SELECT * FROM metrics"}))
+        let result = table_query(&state, &t, &json!({"sql": "SELECT * FROM metrics"}), None)
             .await
             .expect("query");
         assert!(
@@ -1067,6 +1173,7 @@ mod tests {
             &state,
             &t,
             &json!({"table": "metrics", "rows": [{"nope": 1}]}),
+            None,
         )
         .await
         .unwrap_err();
@@ -1088,6 +1195,7 @@ mod tests {
             &state,
             &tenant_a,
             &json!({"name": "secrets_table", "columns": {"v": "text"}}),
+            None,
         )
         .await
         .expect("create for tenant a");
@@ -1096,6 +1204,7 @@ mod tests {
             &state,
             &tenant_b,
             &json!({"sql": "SELECT * FROM secrets_table"}),
+            None,
         )
         .await
         .unwrap_err();
@@ -1104,6 +1213,75 @@ mod tests {
         // never a distinct "forbidden" code that would leak the table's
         // existence to the wrong tenant.
         assert_eq!(err.code(), "storage");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// PRD-mcphost-dry-run-side-effects P1 requirement 7 (AC7): a tenant one
+    /// row below `table_rows_max`, appending two more rows through a held
+    /// test connection ([`open_test_conn`], the same connection
+    /// `handler.rs`'s `TestTableBridge` holds for a `host.tool_test` call),
+    /// still refuses with the real `quota_exceeded` class -- the quota
+    /// check inside `table_append` is untouched by `test_conn`, only WHICH
+    /// connection it runs the same SQL against. A full HTTP-level
+    /// `host.tool_test` proof would need a `TestServer` constructor that
+    /// overrides `AppState.plans` before the executor/listener start,
+    /// which doesn't exist on any `TestServer::start_*` helper today (see
+    /// `tests/docsearch_ac07_chunk_quota_stops_indexer.rs`'s own doc
+    /// comment on why that override needs a directly-mutable, non-`Arc`
+    /// `AppState` instead) -- this unit test exercises the exact same
+    /// `table_append`/quota code path `TestTableBridge` calls, with the
+    /// same `Some(test_conn)` argument it passes, so it is still a direct
+    /// proof of this requirement, not an approximation of it.
+    #[tokio::test]
+    async fn dryrun_ac7_quota_refuses_past_rows_max_through_test_conn_and_rolls_back() {
+        let dir = scratch_dir("dryrun-ac7-quota");
+        let mut state = bare_state(&dir).await;
+        for p in &mut state.plans.plans {
+            if p.name == "free" {
+                p.table_rows_max = 1;
+            }
+        }
+        let t = test_tenant(&state, "dryrun-ac7").await;
+
+        table_create(&state, &t, &json!({"name": "quota_tbl", "columns": {"n": "integer"}}), None)
+            .await
+            .expect("create ok");
+        table_append(&state, &t, &json!({"table": "quota_tbl", "rows": [{"n": 0}]}), None)
+            .await
+            .expect("seed one row ok");
+
+        // The same connection `TestTableBridge` would hold for one whole
+        // `host.tool_test` call -- opened with a `SAVEPOINT`, same as a
+        // real dry run, then rolled back at the end regardless of outcome.
+        let path = tenant_db_path(&state, t.id);
+        let conn = std::sync::Arc::new(std::sync::Mutex::new(
+            open_test_conn(&path, &state.db.cfg()).expect("open test conn"),
+        ));
+
+        let err = table_append(
+            &state,
+            &t,
+            &json!({"table": "quota_tbl", "rows": [{"n": 1}, {"n": 2}]}),
+            Some(conn.clone()),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.code(), "quota_exceeded", "a dry run must still refuse past the real quota");
+
+        if let Ok(guard) = conn.lock() {
+            rollback_test_conn(&guard);
+        }
+
+        // Real row count (through a fresh, uninvolved connection) is
+        // exactly the one seeded row -- both the refused append AND
+        // nothing else from the held connection ever committed.
+        let rows = with_tenant_conn(tenant_db_path(&state, t.id), state.db.cfg(), state.db.counters_handle(), |conn| {
+            row_count_sync(conn, "quota_tbl")
+        })
+        .await
+        .expect("row count");
+        assert_eq!(rows, 1, "only the seeded row must remain after rollback");
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -1121,10 +1299,10 @@ mod tests {
         }
         let t = test_tenant(&state, "quota-tables").await;
 
-        table_create(&state, &t, &json!({"name": "a", "columns": {"x": "text"}}))
+        table_create(&state, &t, &json!({"name": "a", "columns": {"x": "text"}}), None)
             .await
             .expect("first table ok");
-        let err = table_create(&state, &t, &json!({"name": "b", "columns": {"x": "text"}}))
+        let err = table_create(&state, &t, &json!({"name": "b", "columns": {"x": "text"}}), None)
             .await
             .unwrap_err();
         assert_eq!(err.code(), "quota_exceeded");
@@ -1139,15 +1317,15 @@ mod tests {
         let dir = scratch_dir("row-cap");
         let state = bare_state(&dir).await;
         let t = test_tenant(&state, "t1").await;
-        table_create(&state, &t, &json!({"name": "big", "columns": {"n": "integer"}}))
+        table_create(&state, &t, &json!({"name": "big", "columns": {"n": "integer"}}), None)
             .await
             .expect("create");
         let rows: Vec<Value> = (0..(ROW_CAP + 5)).map(|n| json!({"n": n})).collect();
-        table_append(&state, &t, &json!({"table": "big", "rows": rows}))
+        table_append(&state, &t, &json!({"table": "big", "rows": rows}), None)
             .await
             .expect("append past cap (row_cap only bounds query results, not appends)");
 
-        let err = table_query(&state, &t, &json!({"sql": "SELECT * FROM big"}))
+        let err = table_query(&state, &t, &json!({"sql": "SELECT * FROM big"}), None)
             .await
             .unwrap_err();
         assert_eq!(err.code(), "table_bound_exceeded");
@@ -1160,13 +1338,13 @@ mod tests {
         let dir = scratch_dir("drop");
         let state = bare_state(&dir).await;
         let t = test_tenant(&state, "t1").await;
-        table_create(&state, &t, &json!({"name": "temp", "columns": {"x": "text"}}))
+        table_create(&state, &t, &json!({"name": "temp", "columns": {"x": "text"}}), None)
             .await
             .expect("create");
-        let result = table_drop(&state, &t, &json!({"name": "temp"})).await.expect("drop");
+        let result = table_drop(&state, &t, &json!({"name": "temp"}), None).await.expect("drop");
         assert_eq!(result["dropped"], true);
 
-        let err = table_append(&state, &t, &json!({"table": "temp", "rows": [{"x": "y"}]}))
+        let err = table_append(&state, &t, &json!({"table": "temp", "rows": [{"x": "y"}]}), None)
             .await
             .unwrap_err();
         assert_eq!(err.code(), "table_not_found");
@@ -1183,6 +1361,7 @@ mod tests {
             &state,
             &t,
             &json!({"name": "metrics", "columns": {"metric": "text", "value": "real"}}),
+            None,
         )
         .await
         .expect("create");
@@ -1190,11 +1369,12 @@ mod tests {
             &state,
             &t,
             &json!({"table": "metrics", "rows": [{"metric": "cpu", "value": 0.5}]}),
+            None,
         )
         .await
         .expect("append");
 
-        let result = table_schema(&state, &t, &json!({"table": "metrics"})).await.expect("schema");
+        let result = table_schema(&state, &t, &json!({"table": "metrics"}), None).await.expect("schema");
         assert_eq!(result["rows"], 1);
         assert_eq!(result["columns"]["metric"], "text");
         assert_eq!(result["columns"]["value"], "real");

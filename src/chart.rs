@@ -389,7 +389,7 @@ pub async fn table_chart(state: &AppState, tenant: &Tenant, args: &Value) -> Res
     let requested_mark = tables::arg_str_opt(args, "mark");
     let share = args.get("share").and_then(Value::as_bool).unwrap_or(false);
 
-    let query_result = tables::table_query(state, tenant, &json!({"sql": sql})).await?;
+    let query_result = tables::table_query(state, tenant, &json!({"sql": sql}), None).await?;
     let rows: Vec<Value> = query_result["rows"].as_array().cloned().unwrap_or_default();
 
     let profile = build_profile(state, tenant, &sql, &rows).await?;
