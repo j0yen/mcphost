@@ -30,8 +30,10 @@ own tool is **42.4s**.
    this exchange carries a dead credential. `host.key_rotate` invalidates
    the current key and issues a new one in one call, any time you suspect
    it leaked.
-3. Reconnect with `Authorization: Bearer <key>`. The `host.*` control
-   plane is now available.
+3. Pass `key` as the `tenant_key` argument on every `host.*` call from
+   here on -- e.g. `host.tool_publish`, `host.tool_call`. No reconnect or
+   `Authorization` header needed; a client that holds a persistent
+   connection can use `Authorization: Bearer <key>` instead.
 4. Publish a tool: `host.tool_publish(name, kind, spec)`. Call
    `host.quickstart` first — its `starter_tool` is a ready-to-publish
    `python` spec (reverses text, counts words) plus the exact
