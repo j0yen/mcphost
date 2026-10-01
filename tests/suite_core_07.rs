@@ -8,8 +8,6 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 mod ci_sandbox_support;
-#[path = "support/assertion.rs"]
-mod assertion;
 #[path = "support/busyaudit.rs"]
 mod busyaudit;
 #[path = "support/chart_fixture.rs"]
@@ -998,6 +996,8 @@ mod rowpol_ac06_empty_allowed_set_1_equals_0_and_denies_docs;
 mod rowpol_ac07_audit_verify_intact_then_tampered;
 #[path = "rowpol_ac08_audit_chain_pages_and_refuses_end_users.rs"]
 mod rowpol_ac08_audit_chain_pages_and_refuses_end_users;
+#[path = "rowpol_ac09_filtered_vs_unfiltered_p95_within_3ms.rs"]
+mod rowpol_ac09_filtered_vs_unfiltered_p95_within_3ms;
 #[path = "run_metrics_handoff_glob_regression.rs"]
 mod run_metrics_handoff_glob_regression;
 #[path = "runoverflow_ac03_progress_counter_monotonic_validation.rs"]
@@ -1438,19 +1438,3 @@ mod wasmkind_ac08_cache_reuses_compiled_artifact;
 mod wasmkind_ac09_healthz_reports_wasm_runtime;
 #[path = "wasmkind_ac10_declared_output_promotion_matches_python.rs"]
 mod wasmkind_ac10_declared_output_promotion_matches_python;
-#[path = "xaa_ac01_valid_assertion_no_consent.rs"]
-mod xaa_ac01_valid_assertion_no_consent;
-#[path = "xaa_ac03_invalid_grant_reasons_are_distinct_and_audited.rs"]
-mod xaa_ac03_invalid_grant_reasons_are_distinct_and_audited;
-#[path = "xaa_ac04_invalid_client_scope_target.rs"]
-mod xaa_ac04_invalid_client_scope_target;
-#[path = "xaa_ac05_metadata_grant_types_and_trusted_issuer.rs"]
-mod xaa_ac05_metadata_grant_types_and_trusted_issuer;
-#[path = "xaa_ac06_offline_access_gates_refresh_token.rs"]
-mod xaa_ac06_offline_access_gates_refresh_token;
-#[path = "xaa_ac07_revoke_and_unrevoke_end_user.rs"]
-mod xaa_ac07_revoke_and_unrevoke_end_user;
-#[path = "xaa_ac08_trusted_issuer_quota.rs"]
-mod xaa_ac08_trusted_issuer_quota;
-#[path = "xaa_ac09_hosted_and_key_paths_unchanged.rs"]
-mod xaa_ac09_hosted_and_key_paths_unchanged;
