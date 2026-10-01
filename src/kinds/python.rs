@@ -103,8 +103,8 @@ use tokio::sync::Semaphore;
 
 use super::infer;
 use super::{
-    CallCtx, DocsBackend, Kind, KindError, KindExample, OutputDecl, StateBackend, TableBackend,
-    ToolDescriptor,
+    CallCtx, DocsBackend, Kind, KindError, KindExample, LineageBackend, OutputDecl, StateBackend,
+    TableBackend, ToolDescriptor,
 };
 use crate::sandbox::{
     self, IsolationMechanism, NetworkMode, PersistentCallOutcome, PersistentSandbox,
@@ -2208,10 +2208,56 @@ _mcphost_docs_mod.get = _docs_get
 _mcphost_docs_mod.search = _docs_search
 _mcphost_docs_mod.DocsError = McphostDocsError
 
+# ---- mcphost.lineage (PRD-mcphost-lineage-blast-radius P1 requirement 10) -
+#
+# Same synchronous request-line-out/response-line-in round trip as
+# `mcphost.state`/`mcphost.table`/`mcphost.docs` above, marked
+# `__mcphost_lineage__` so the host side (`kinds::python::LineageSidecarBridge`)
+# can tell it apart on the same stdin/stdout pair. `trace`/`blast_radius`
+# return exactly the object `host.lineage.trace`/`blast_radius` themselves
+# return (AC12) -- this is a thin pass-through to that same host-side logic,
+# not a separate implementation.
+class McphostLineageError(Exception):
+    def __init__(self, code, message, data=None):
+        super().__init__(message)
+        self.code = code
+        self.data = data or {}
+
+def _lineage_call(op, **kwargs):
+    _real_stdout.write(json.dumps({"__mcphost_lineage__": True, "op": op, "args": kwargs}))
+    _real_stdout.write("\n")
+    _real_stdout.flush()
+    line = sys.stdin.readline()
+    if not line:
+        raise McphostLineageError("lineage_unavailable", "the lineage channel closed")
+    resp = json.loads(line)
+    if not resp.get("ok"):
+        raise McphostLineageError(
+            resp.get("code", "lineage_error"), resp.get("message", "lineage call failed"), resp.get("data")
+        )
+    return resp.get("result")
+
+def _lineage_trace(id):
+    return _lineage_call("trace", id=id)
+
+def _lineage_blast_radius(id, change_kind, max_depth=None, top_n=None):
+    kwargs = {"id": id, "change_kind": change_kind}
+    if max_depth is not None:
+        kwargs["max_depth"] = max_depth
+    if top_n is not None:
+        kwargs["top_n"] = top_n
+    return _lineage_call("blast_radius", **kwargs)
+
+_mcphost_lineage_mod = _mcphost_types.ModuleType("mcphost.lineage")
+_mcphost_lineage_mod.trace = _lineage_trace
+_mcphost_lineage_mod.blast_radius = _lineage_blast_radius
+_mcphost_lineage_mod.LineageError = McphostLineageError
+
 _mcphost_mod = _mcphost_types.ModuleType("mcphost")
 _mcphost_mod.state = _mcphost_state_mod
 _mcphost_mod.table = _mcphost_table_mod
 _mcphost_mod.docs = _mcphost_docs_mod
+_mcphost_mod.lineage = _mcphost_lineage_mod
 _mcphost_mod.call = _mcphost_call
 _mcphost_mod.CallError = McphostCallError
 
@@ -2243,6 +2289,7 @@ sys.modules["mcphost"] = _mcphost_mod
 sys.modules["mcphost.state"] = _mcphost_state_mod
 sys.modules["mcphost.table"] = _mcphost_table_mod
 sys.modules["mcphost.docs"] = _mcphost_docs_mod
+sys.modules["mcphost.lineage"] = _mcphost_lineage_mod
 
 _END_USER_ENV_KEYS = (
     "MCPHOST_END_USER_ID",
@@ -2672,6 +2719,47 @@ impl SidecarBridge for DocsSidecarBridge<'_> {
     }
 }
 
+/// PRD-mcphost-lineage-blast-radius P1 requirement 10 (AC12):
+/// [`StateSidecarBridge`]'s counterpart for `CallCtx.lineage` --
+/// `PY_RUNNER_SCRIPT`'s `mcphost.lineage` functions emit
+/// `{"__mcphost_lineage__": true, "op": ..., "args": {...}}` and block
+/// reading the response line this produces.
+struct LineageSidecarBridge<'a> {
+    lineage: &'a Arc<dyn LineageBackend>,
+}
+
+#[async_trait::async_trait]
+impl SidecarBridge for LineageSidecarBridge<'_> {
+    async fn intercept(&self, line: &[u8]) -> Option<Vec<u8>> {
+        let request: Value = serde_json::from_slice(line).ok()?;
+        if request.get("__mcphost_lineage__").and_then(Value::as_bool) != Some(true) {
+            return None;
+        }
+        let op = request.get("op").and_then(Value::as_str).unwrap_or("");
+        let args = request.get("args").cloned().unwrap_or(Value::Null);
+        let response = match self.lineage.call(op, args).await {
+            Ok(result) => json!({"ok": true, "result": result}),
+            Err(e) => {
+                let (code, message, data) = match e {
+                    KindError::Structured {
+                        code,
+                        message,
+                        data,
+                    } => (code, message, data),
+                    KindError::InvalidArgs(m) => ("lineage_args_invalid", m, Value::Null),
+                    KindError::InvalidSpec(m) => ("lineage_args_invalid", m, Value::Null),
+                    KindError::Exec(m) => ("lineage_error", m, Value::Null),
+                };
+                json!({"ok": false, "code": code, "message": message, "data": data})
+            }
+        };
+        Some(serde_json::to_vec(&response).unwrap_or_else(|_| {
+            br#"{"ok":false,"code":"lineage_error","message":"internal: response not serializable"}"#
+                .to_vec()
+        }))
+    }
+}
+
 /// PRD-mcphost-composition requirement 1: bridges the same sidecar channel
 /// to `kinds::compose_call` -- `PY_RUNNER_SCRIPT`'s `mcphost.call(name,
 /// args, timeout_s=None)` emits `{"__mcphost_call__": true, "name": ...,
@@ -2783,6 +2871,12 @@ impl SidecarBridge for HostSidecarBridge<'_> {
             docs: &self.ctx.docs,
         };
         if let Some(response) = docs_bridge.intercept(line).await {
+            return Some(response);
+        }
+        let lineage_bridge = LineageSidecarBridge {
+            lineage: &self.ctx.lineage,
+        };
+        if let Some(response) = lineage_bridge.intercept(line).await {
             return Some(response);
         }
         let progress_bridge = ProgressSidecarBridge { ctx: self.ctx };
@@ -4905,6 +4999,7 @@ mod tests {
             tool_name: Some(tool_name.to_string()),
             state: Arc::new(crate::kinds::NoState),
             table: Arc::new(crate::kinds::NoTable),
+            lineage: Arc::new(crate::kinds::NoLineage),
             docs: Arc::new(crate::kinds::NoDocs),
             compose_depth: 0,
             compose_children: None,
@@ -5211,6 +5306,7 @@ mod tests {
             tool_name: Some(tool_name.to_string()),
             state: Arc::new(crate::kinds::NoState),
             table: Arc::new(crate::kinds::NoTable),
+            lineage: Arc::new(crate::kinds::NoLineage),
             docs: Arc::new(crate::kinds::NoDocs),
             compose_depth: 0,
             compose_children: None,

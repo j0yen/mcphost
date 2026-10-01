@@ -44,11 +44,12 @@ async fn ac1_anonymous_tools_list_has_cache_fields() {
     assert!(names.contains(&"signup"), "{names:?}");
     assert_eq!(
         names.len(),
-        138,
+        141,
         "signup + host.* (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + host.tool_history/host.tool_rollback/host.tool_diff \
          (3 tools, PRD-mcphost-tool-versions) + host.state.* (9 tools, PRD-mcphost-tenant-state) + \
          host.table.* (9 tools, PRD-mcphost-tenant-tables, PRD-mcphost-table-semantic-model) + \
+         the two host.table.chart/charts tools (PRD-mcphost-chart-in-a-minute) + \
          host.tool_share/host.tool_spec_shared/host.tool_unshare/host.group.*/host.catalog.* \
          (9 tools, PRD-mcphost-sharing, PRD-mcphost-shared-tool-spec-readback) + \
          host.share.caller_limit/caller_limit_remove \
@@ -65,7 +66,8 @@ async fn ac1_anonymous_tools_list_has_cache_fields() {
          the four host.oauth.provider_set/provider/provider_remove/doctor tools (PRD-mcphost-federated-end-user-login) + \
          the three host.oauth.trusted_issuer_set/trusted_issuer_remove/trusted_issuers tools (PRD-mcphost-enterprise-managed-auth) + \
          the three host.docs.search/index_config/reindex tools (PRD-mcphost-docs-semantic-search) + \
-         the two host.enduser.* tools (PRD-mcphost-end-user-identity): {names:?}"
+         the two host.enduser.* tools (PRD-mcphost-end-user-identity) + \
+         the three host.lineage.* tools (PRD-mcphost-lineage-blast-radius): {names:?}"
     );
 }
 
@@ -145,11 +147,12 @@ async fn ac3_invalid_bearer_tools_list_has_cache_fields() {
     assert!(names.contains(&"signup"), "{names:?}");
     assert_eq!(
         names.len(),
-        138,
+        141,
         "signup + host.* (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + host.tool_history/host.tool_rollback/host.tool_diff \
          (3 tools, PRD-mcphost-tool-versions) + host.state.* (9 tools, PRD-mcphost-tenant-state) + \
          host.table.* (9 tools, PRD-mcphost-tenant-tables, PRD-mcphost-table-semantic-model) + \
+         the two host.table.chart/charts tools (PRD-mcphost-chart-in-a-minute) + \
          host.tool_share/host.tool_spec_shared/host.tool_unshare/host.group.*/host.catalog.* \
          (9 tools, PRD-mcphost-sharing, PRD-mcphost-shared-tool-spec-readback) + \
          host.share.caller_limit/caller_limit_remove \
@@ -166,6 +169,7 @@ async fn ac3_invalid_bearer_tools_list_has_cache_fields() {
          the four host.oauth.provider_set/provider/provider_remove/doctor tools (PRD-mcphost-federated-end-user-login) + \
          the three host.oauth.trusted_issuer_set/trusted_issuer_remove/trusted_issuers tools (PRD-mcphost-enterprise-managed-auth) + \
          the three host.docs.search/index_config/reindex tools (PRD-mcphost-docs-semantic-search) + \
-         the two host.enduser.* tools (PRD-mcphost-end-user-identity): {names:?}"
+         the two host.enduser.* tools (PRD-mcphost-end-user-identity) + \
+         the three host.lineage.* tools (PRD-mcphost-lineage-blast-radius): {names:?}"
     );
 }

@@ -467,7 +467,14 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # spawning an 11th suite binary again -- caught by the same P0 assertion.
 # 700 -> 715 re-collapses core's normal buckets to 1, landing the grand
 # total back at 10.
-MAX_PER_SUITE = {"core": 715, "sandbox": 90}
+#
+# PRD-mcphost-lineage-blast-radius (rebased onto chart-in-a-minute,
+# 2026-09-30): this PRD's own eleven `lineage_ac*.rs` files (8 core + 4
+# sandbox) join the same normal buckets on top of chart-in-a-minute's own
+# 715/90 caps above, spawning an 11th suite binary again -- caught by the
+# same P0 assertion. 715 -> 765 (core) and 90 -> 130 (sandbox) re-collapse
+# both back to 1 extra bucket each, landing the grand total back at 10.
+MAX_PER_SUITE = {"core": 765, "sandbox": 130}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

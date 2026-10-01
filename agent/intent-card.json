@@ -1,115 +1,105 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-chart-in-a-minute.md",
-  "intent_slug": "mcphost-chart-in-a-minute",
-  "root_motivation": "Grounding: opportunity from visions/mcphost-aistack-harvest.md (WWHTBT leaf 1 and weakest link leaf 2). host.table.query returns a JSON array of rows and nothing else (src/tables.rs:725); a model describing those rows in prose is doing its own unverified arithmetic, and mcphost serves no HTML a chart could live on. ai-stack already has a tested, grammar-free chain (mqo-chart-recommender, mqo-vega-emitter, mqo-chart-caption, mqo-chart-vocab, mqo-result-profiler) that turns a typed column profile plus rows into a chart recommendation, a Vega-Lite spec, and a caption whose numbers are computed from the data, not guessed. This build vendors that chain, writes the one missing piece (a profiler that reads SQL rows instead of an MQO response, reusing src/tables_model.rs's existing classifiers), and exposes host.table.chart(sql) plus a signed share link so a spreadsheet owner can see the picture and hand it to a teammate.",
-  "user_persona": "The spreadsheet owner from the database recipe: a table on mcphost, a Claude client, no BI tool. After a question they want to see the answer as a chart and paste one sentence about it into a message, without trusting a model's own arithmetic.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-lineage-blast-radius.md",
+  "intent_slug": "mcphost-lineage-blast-radius",
+  "root_motivation": "A tenant can drop a table that a published tool, a chain, a stored chart, and a live handle all read, and nothing warns them -- host.table.drop drops the table and every row and knows nothing about consumers. ai-stack's LineageGraph (BTreeMap of nodes plus upstream/downstream adjacency), fixed effect table keyed by change kind and consumer kind, and breadth-first ranking weighted by observed use already answers this for ai-stack's own metrics/dashboard node kinds; this PRD ports the effect table, the ranking, and the report types, rewrites the node kinds for mcphost's own entities, persists the graph per tenant in SQLite, feeds usage counts from the runs ledger, and puts a gate in front of host.table.drop.",
+  "user_persona": "A tenant maintaining tables that its own tools, chains, charts, and handles depend on; an agent about to drop or reshape a table and wants to see what breaks, and how badly, before it does.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 13
+    "target": 11
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the vendored crates in vendor/, When the gate runs, Then their own test suites pass unchanged and vendor/VENDOR.md names source repo and commit.",
-      "test": "tests/chart_ac01_vendor_crates_documented_and_wired.rs"
+      "description": "Given a published python tool whose source calls mcphost.table.query(\"SELECT * FROM orders\"), When lineage is read, Then an edge table:orders -> tool:<name> exists with evidence source_scan.",
+      "test": "tests/lineage_ac01_source_scan_registers_table_edge.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the 1,000-row fixture, When host.table.chart runs SELECT category, SUM(amount) AS total FROM expenses GROUP BY category, Then the profile has one nominal dimension and one quantitative measure, the recommendation mark is a bar, and the spec's data.values holds five rows.",
-      "test": "tests/chart_ac02_category_sum_profiles_bar.rs"
+      "description": "Given a table with no consumers, When host.table.drop is called without confirm, Then it drops as before and no refusal is written.",
+      "test": "tests/lineage_ac02_drop_with_no_consumers_is_unrefused.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the same result, When the caption is read, Then its headline names the fixture's largest category and every fact's value equals a value recomputed from the rows in the test.",
-      "test": "tests/chart_ac03_caption_recomputes_facts_from_rows.rs"
+      "description": "Given a chain whose step tool reads orders and 40 finished runs of that chain, When host.lineage.blast_radius(\"table:orders\", \"drop\") is called, Then the chain appears with severity breaking, action from the effect table, and uses 40, ranked above a tool with 3 uses.",
+      "test": "tests/lineage_ac03_blast_radius_ranks_chain_above_tool.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given SELECT day, SUM(amount) FROM expenses GROUP BY day, When chart runs, Then is_temporal is true for day only if it parses as a date; for the integer day column the mark is a bar, and for an ISO-date column in a second fixture table the mark is a line.",
-      "test": "tests/chart_ac04_temporal_day_column_picks_line_or_bar.rs"
+      "description": "Given that table, When host.table.drop(\"orders\") is called without confirm, Then lineage_blocked lists the chain and the tool with their uses and the table still exists; When called with confirm: true, Then the table is dropped, its nodes and edges are removed, and dependent chart and handle nodes are marked orphaned.",
+      "test": "tests/lineage_ac04_drop_gate_blocks_then_confirms_and_cascades.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a query returning zero rows, When chart runs, Then mark is Table, vega_lite.data.values is empty, and the caption headline is the no-takeaway text.",
-      "test": "tests/chart_ac05_empty_result_is_table_with_no_takeaway.rs"
+      "description": "Given the effect table, When every (ChangeKind, consumer_kind) pair is evaluated in a test, Then each returns a defined effect, severity, and action, and Add is none for every consumer.",
+      "test": "tests/lineage_ac05_effect_table_is_exhaustive.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given SELECT COUNT(*) FROM expenses, When chart runs, Then mark is BigNumber and the caption headline states the count.",
-      "test": "tests/chart_ac06_count_star_is_bignumber.rs"
+      "description": "Given a stored chart and a live handle both derived from expenses, When host.lineage.trace(\"table:expenses\") is called, Then both appear downstream with their kinds.",
+      "test": "tests/lineage_ac06_trace_shows_chart_and_handle_downstream.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given mark: \"pie\" when the alternatives do not include it, When chart runs, Then a validation error names the allowed marks and no chart is stored.",
-      "test": "tests/chart_ac07_disallowed_mark_override_is_rejected.rs"
+      "description": "Given 150 downstream consumers, When trace is called, Then a handle returns with downstream_count 150 and trace_page returns them 50 at a time.",
+      "test": "tests/lineage_ac07_trace_pages_150_downstream_consumers.rs"
     },
     {
       "id": "AC8",
-      "level": "SHOULD",
-      "description": "Given share: true, When the returned share_url is fetched without any auth header, Then 200 with HTML containing the spec inline and the caption headline, and no tenant id or key appears in the body.",
-      "test": "tests/chart_ac08_share_link_opens_unauthenticated.rs"
+      "level": "MUST",
+      "description": "Given two tenants with a table of the same name, When tenant A reads blast radius, Then no node from tenant B appears.",
+      "test": "tests/lineage_ac08_blast_radius_is_tenant_scoped.rs"
     },
     {
       "id": "AC9",
       "level": "SHOULD",
-      "description": "Given a share URL past its expiry or with an altered signature, When fetched, Then 410 or 403 respectively and no chart body.",
-      "test": "tests/chart_ac09_expired_or_altered_signature_refused.rs"
+      "description": "Given a model_set role change on a column a chart uses, When applied, Then the response includes a degrading note naming the chart and the change is applied.",
+      "test": "tests/lineage_ac09_model_set_role_change_notes_chart.rs"
     },
     {
       "id": "AC10",
-      "level": "SHOULD",
-      "description": "Given 100 stored charts, When a 101st is shared, Then the oldest is gone and host.table.charts lists 100.",
-      "test": "tests/chart_ac10_101st_share_evicts_oldest.rs"
-    },
-    {
-      "id": "AC11",
-      "level": "SHOULD",
-      "description": "Given a python tool calling mcphost.table.chart(sql), When it runs in the sandbox, Then it receives the same chart.v1 object the tool returns.",
-      "test": "tests/chart_ac11_python_bridge_returns_chart_v1.rs"
+      "level": "MUST",
+      "description": "Given 1,000 nodes and 3,000 edges, When blast radius runs, Then it completes under 50 ms on the builder.",
+      "test": "tests/lineage_ac10_blast_radius_1000_nodes_3000_edges_under_50ms.rs"
     },
     {
       "id": "AC12",
-      "level": "MUST",
-      "description": "Given prod after land, When examples/chart-in-a-minute/proof.sh https://mcphost.dev/mcp runs from carbon with a fresh signup, Then it exits 0 in under 30s, the caption's largest-category fact matches the fixture, and the share URL returns 200.",
-      "test": "DEFERRED: operator-provisioned (Live, prod after deploy, requires a real box and a deploy this dispatch cannot provision)"
-    },
-    {
-      "id": "AC13",
-      "level": "MUST",
-      "description": "Given www/llms.txt, When the chart section is read, Then it is under 50 lines and shows one chart call and one share link and no grammar other than SQL.",
-      "test": "tests/chart_ac13_llms_txt_section_under_50_lines.rs"
-    },
-    {
-      "id": "AC14",
       "level": "SHOULD",
-      "description": "Given ten concurrent chart calls for one tenant, When they finish, Then all ten return chart.v1 and p95 latency on the builder is under 250ms.",
-      "test": "tests/chart_ac14_ten_concurrent_calls_p95_under_250ms.rs"
+      "description": "Given a python tool, When it calls mcphost.lineage.trace(\"table:orders\"), Then it receives the same object the tool returns.",
+      "test": "tests/lineage_ac12_python_bridge_trace_matches_tool.rs"
     }
   ],
   "scope": [
-    "vendor/{mqo-chart-vocab,mqo-result-profiler,mqo-chart-recommender,mqo-vega-emitter,mqo-chart-caption}/: five crates vendored unchanged as path dependencies, vendor/VENDOR.md records source repo (~/projects/ai-stack) and commit (4ef6c22).",
-    "src/chart.rs (new): builds a result-profile.v1 value from a SQL query's columns and rows (reusing src/tables_model.rs's key/category/measure/date classifiers, made pub(crate) for this), host.table.chart/host.table.charts tool implementations, signed share-link minting and verification, and the /charts/{id} HTML handler.",
-    "migrations/0057_chart_index.sql, src/db.rs: a tenant-agnostic chart_index table in the main mcphost.db routing an unauthenticated GET /charts/{id} to the right tenant's own SQLite file, where the chart body itself lives in a new _mcphost_charts table.",
-    "src/handler.rs, src/http.rs, src/kinds/python.rs, src/kinds/mod.rs: host.table.chart/host.table.charts tool descriptors and dispatch, the /charts/{id} route, and the mcphost.table.chart python sandbox bridge function.",
-    "www/llms.txt: new \"Chart in a minute\" recipe section. examples/chart-in-a-minute/: fixture.csv, proof.sh, synthorg-task.yaml, mirroring the database-in-a-minute precedent.",
-    "Cargo.toml/CHANGELOG.md: version bump 0.62.0 -> 0.63.0 (PRD's own build_version_bump: minor rule) and a CHANGELOG entry recording the feature and AC12's deferral.",
-    "tests/chart_ac01..14 (AC12 has no test file, recorded deferred): one integration test file per non-deferred AC, tests/support/chart_fixture.rs holding the shared 1,000-row expenses fixture and small events fixture."
+    "src/lineage/graph.rs: LineageGraph, NodeKind {table, column, tool, chain, document, chart, handle, run}, ChangeKind {Drop, Rename, TypeChange, Remove, Add}, LineageNode, ImpactedNode, ImpactReport, TraceEntry, blast_radius, trace -- ported from ai-stack @ 4ef6c22 with node kinds rewritten for mcphost's own entities.",
+    "src/lineage/effects.rs: the effect table (effect_for(change_kind, consumer_kind) -> (effect, severity, action)), data in one match, exhaustive over every (ChangeKind, NodeKind) pair.",
+    "src/lineage/scan.rs: source scanning for a python tool's mcphost.table.{query,chart,handle}(\"...\") calls, reusing sqlparser (already a dependency) to read table names out of the literal SQL rather than hand-rolling a second grammar.",
+    "src/lineage/mod.rs: persistence (30s per-tenant cache, invalidated on any edge write), register_edge/register_tool_publish/register_chain_publish, breaking_drop_consumers/cascade_table_drop (the drop gate's own entry points), change_notes (model_set's entry point), record_run_finished (the runs-ledger usage hook), and the three host.lineage.* tool handlers (blast_radius/trace/trace_page).",
+    "migrations/0057_lineage.sql + src/db.rs: lineage_nodes/lineage_edges tables and their Db methods (lineage_upsert_node/lineage_insert_edge/lineage_load_nodes/lineage_load_edges/lineage_bump_uses/lineage_delete_node_and_edges/lineage_mark_orphaned).",
+    "src/handler.rs: host.lineage.blast_radius/trace/trace_page tool descriptors and dispatch; host.table.drop gains an optional confirm argument.",
+    "src/tables.rs: table_drop's gate -- computes breaking_drop_consumers before the transaction, refuses lineage_blocked without confirm, writes a tenant_audit line on refusal or a confirmed override, cascades lineage cleanup after a successful drop.",
+    "src/tables_model.rs: model_set's role-key change now reports (never blocks on) degrading+ consumers via change_notes.",
+    "src/control.rs: tool_publish registers lineage edges after a successful publish (source-scan + declared reads for python/wasm, each chain step's own tool for a chain).",
+    "src/runs.rs: run_one_job bumps uses/last_used_unix on the finished run's own tool/chain node and transitively on every table upstream of it, once finalize_run confirms this call actually finalized the row.",
+    "src/kinds/mod.rs + src/kinds/python.rs + src/handler.rs (TenantLineageBridge) + src/runs.rs: CallCtx gains a lineage backend (LineageBackend/NoLineage), PY_RUNNER_SCRIPT's mcphost.lineage.trace/blast_radius call through to the exact host.lineage.* logic (AC12, P1 requirement 10).",
+    "Chart and handle are net-new node kinds with no existing mcphost feature owning their creation (mcphost has no chart-store or live-handle product yet) -- AC6/AC7/AC9 register them directly through the lineage module's own pub API (lineage::register_edge), the same integration point a future chart-store/live-handle PRD's own publish path would call."
   ],
   "non_goals": [
-    "Server-side rendering to PNG or SVG -- the share page renders in the browser (PRD's own non-goal).",
-    "A charts gallery or dashboard composition -- mqo-dashboard-composer is not vendored.",
-    "Editing a recommendation's encoding -- the caller may only override mark, from the recommender's own alternatives.",
-    "Any query grammar beyond sql -- PRD's own non-goal, confirmed by AC13's test that the recipe section shows no grammar other than SQL."
+    "Column-level lineage inside SQL expressions -- edges are table and column references only (scan.rs reads FROM/JOIN table identifiers, never which columns a query selects).",
+    "Cross-tenant edges or sign-off from other tenants -- ai-stack's change_gate 'foreign domain' RequiresSignoff concept has no mcphost analogue; every graph load/write is strictly tenant_id-scoped (AC8).",
+    "The defensibility dossier, as-of reconstruction, legal hold, and ROI modules from ai-stack -- not ported.",
+    "Renaming tables -- mcphost has no rename tool; ChangeKind::Rename is defined (AC5 needs a full effect-table row for it) but nothing in this build calls it.",
+    "A real chart-store or live-handle product feature -- AC6/AC7/AC9's chart/handle nodes are registered directly via the lineage module's Rust API in tests, not through a new host.chart.*/host.handle.* tool surface (none is in this PRD's Engineering target).",
+    "Table -> column edges from a table's declared schema (requirement 4's last sentence) -- no AC exercises this, so it isn't wired; NodeKind::Column exists in the type system (AC5 needs it) but nothing currently creates a column node.",
+    "A host.document.* store and its derived_from edge trigger (requirement 4) -- no AC exercises it and no document-store product exists in mcphost yet."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -118,42 +108,57 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "test_file_names_use_underscores_not_the_prd_slugs_hyphens": "test_prefix chart (the PRD's own frontmatter field), same convention as every other test file in this repo.",
-      "crate_layout_stays_one_package": "mcphost is one package with [lib] and [[bin]] (Cargo.toml:11); vendored crates are path dependencies under vendor/ picked up by Cargo's implicit-workspace rule, not a workspace conversion -- deny.toml and clippy.toml apply to them unchanged.",
-      "charts_stored_per_tenant_not_centrally": "_mcphost_charts lives inside each tenant's own SQLite file (tables::tenant_db_path), matching every other host.table.* table; only a small global chart_index (new migration 0057) in the main mcphost.db routes an unauthenticated /charts/{id} request, which has no tenant in its URL, to the right tenant file."
+      "test_file_names_use_test_prefix_lineage": "test_prefix lineage (the PRD's own frontmatter field): tests/lineage_ac<NN>_<slug>.rs, same convention as every other test file in this repo.",
+      "version_bump_minor": "PRD frontmatter build_version_bump: minor -- Cargo.toml/Cargo.lock/CHANGELOG.md bumped 0.63.0 -> 0.64.0 (renumbered during rebase: mcphost-chart-in-a-minute claimed 0.63.0 first, landing on main ahead of this branch).",
+      "ac11_deferred_operator_provisioned": "AC11 is a Live acceptance criterion (a fresh tenant against a deployed box, receipt under docs/receipts/) -- deferred, not built or tested here; a build agent never provisions or deploys infrastructure.",
+      "drop_gate_blocks_on_breaking_only": "Open question default taken: host.table.drop blocks only on severity breaking, never on degrading regardless of use count -- the PRD's own stated default, no override implemented.",
+      "orphaned_nodes_kept_not_deleted": "Open question default taken: a confirmed drop's dependent chart/handle nodes are flagged orphaned: true and kept, never deleted -- the PRD's own stated default."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does mcphost need its own profiler instead of reusing mqo-result-profiler::profile directly?",
-      "a": "mqo-result-profiler's profile(response, catalog) reads an MQO response shape ai-stack's other services produce; host.table.chart has a SQL query's columns and rows instead, so src/chart.rs builds the result-profile.v1 value itself, vendoring mqo-result-profiler only for its ResultProfile/ColumnProfile/MeasureRange types (PRD's own explicit instruction)."
+      "q": "Why does host.table.drop need a graph at all instead of just checking host.tool_list for a python source substring match at drop time?",
+      "a": "A substring scan at drop time can't rank severity, can't see chain-through-tool transitive consumers, can't carry observed use for ranking, and can't answer host.lineage.trace/blast_radius as their own tools -- the PRD's own AC3/AC6/AC7 all require a real graph with persisted uses, not a one-shot text search."
     },
     {
       "why": 2,
-      "q": "Why reuse src/tables_model.rs's classifiers instead of writing new measure/dimension thresholds for the chart profiler?",
-      "a": "PRD requirement 2 says so explicitly (\"Role decisions reuse the classifiers in src/tables_model.rs rather than new thresholds\") -- mcphost already has tested key/category/measure/date/id classifiers from the table-semantic-model PRD; a second set of thresholds would drift from them silently over time."
+      "q": "Why port ai-stack's design instead of writing a new graph model from scratch?",
+      "a": "ai-stack's LineageGraph/effect-table/blast_radius/trace already exist, are tested (~60 inline tests per the PRD's own grounding), and the PRD explicitly names the source commit and line ranges to port from -- re-deriving the same BFS-plus-ranking algorithm and effect-table shape from zero would be redundant work with a higher chance of a subtly different (and untested) ranking rule."
     },
     {
       "why": 3,
-      "q": "Why does AC12 get deferred rather than attempted against the real https://mcphost.dev?",
-      "a": "AC12 is explicitly a Live acceptance criterion (\"Given prod after land\") requiring a deploy that has not happened yet and a run from carbon (the real operator's box) -- this dispatch works only in an isolated git worktree against a remote build-and-test runner, with no authority to deploy or provision production infrastructure, so it is recorded deferred as operator-provisioned rather than faked against a local stand-in."
+      "q": "Why does chart/handle registration go through the lineage module's own Rust API in tests instead of a new host.chart.*/host.handle.* tool?",
+      "a": "mcphost has no chart-store or live-handle feature at all yet (grep confirms no struct/tool for either) -- requirement 4 names 'a chart is stored'/'a handle is materialised' as registration TRIGGERS this PRD taps into, not products this PRD builds; the Engineering target's own 'three tools' (blast_radius/trace/trace_page) doesn't include chart/handle CRUD, so registering them for AC6/AC7/AC9 goes through the same internal entry point a future chart-store/live-handle PRD's own publish path would call."
     },
     {
       "why": 4,
-      "q": "Why is AC14's concurrency/latency test run against the in-process TestServer rather than a subprocess on a fixed reference box, the way the repo's other hardware-dependent AC (ac11_load_smoke) is?",
-      "a": "AC14's own bound (250ms p95 for 10 concurrent in-process chart calls) is two orders of magnitude looser than ac11_load_smoke's 50ms bound for 200 real-subprocess calls measuring RSS; an in-process TestServer run (0.37s total wall time observed) already clears that bound with wide margin and needs no subprocess isolation, so it runs unconditionally in the gate instead of being #[ignore]d for manual hardware-specific runs."
-    }
-  ],
-  "created_at": "2026-09-30T19:04:33Z",
-  "ambiguities_resolved": [
-    {
-      "question": "Requirement 5's examples/chart-in-a-minute/ directory has no dedicated AC number in the PRD's acceptance-criteria list (AC13 only covers the llms.txt section) -- does it still need its own delivered proof?",
-      "resolution": "Yes -- delivered as its own commit (fixture.csv matching tests/support/chart_fixture.rs::expenses_rows() exactly, proof.sh, synthorg-task.yaml) per the PRD's requirement 5 text, verified by actually building the mcphost binary and running proof.sh against it end to end (exit 0, ~1.3s wall time) rather than only checking the script parses."
+      "q": "Why does table -> column edge registration (requirement 4's last sentence) go unbuilt?",
+      "a": "No AC exercises a column-level consumer -- AC9's 'role change on a column a chart uses' is satisfied by running the TypeChange gate against the column's own TABLE (since chart/tool/chain edges only ever point at tables, per the column-level-SQL-parsing non-goal), so a column node's own downstream edges are never populated or read by any acceptance criterion in this build."
     },
     {
-      "question": "requirement 3 says host.table.chart(sql, title?, mark?) but P1 requirement 6 adds share: true -- is share part of the same tool or a separate one?",
-      "resolution": "Same tool, one additional optional argument (share: bool), consistent with requirement 6's own description of share as part of the host.table.chart call and with the python bridge's signature in requirement 7 (mcphost.table.chart(sql, title=None, mark=None, share=False))."
+      "why": 5,
+      "q": "Why is the effect table's 'effect' field the same string for every consumer of a given change kind, rather than a per-consumer description?",
+      "a": "No AC distinguishes 'effect' text by consumer kind -- AC3 checks severity/action/uses, AC5 checks that effect/severity/action are all non-empty/defined and that Add is severity none for every consumer. Severity (the ranking bucket) and action (the remediation string) already vary per consumer; effect stays a short per-change-kind label (what happened) rather than a second copy of the severity distinction, keeping the table's three columns each carrying distinct information."
+    }
+  ],
+  "created_at": "2026-09-30T00:00:00Z",
+  "ambiguities_resolved": [
+    {
+      "question": "Block host.table.drop on breaking consumers only, or also on degrading above some use threshold N? (PRD's own open question, default: breaking only.)",
+      "resolution": "Breaking only, per the PRD's own stated default -- AC4's gate (tables::table_drop) refuses only when breaking_drop_consumers (severity == Breaking) is non-empty; a degrading-only consumer never blocks a drop, matching AC9's model_set behavior (report, never block) for the same severity."
+    },
+    {
+      "question": "Should a confirmed drop's orphaned charts/handles be deleted or kept with a flag? (PRD's own open question, default: kept, flagged.)",
+      "resolution": "Kept, flagged -- cascade_table_drop deletes only the dropped table's own node and edges; a dependent chart/handle node survives with orphaned: true (host.lineage.trace surfaces it), matching AC4's own wording 'are marked orphaned', not 'are removed'."
+    },
+    {
+      "question": "What does host.lineage.blast_radius's default max_depth mean when the caller omits it, given the PRD names a default only for top_n (50)?",
+      "resolution": "Unbounded (usize::MAX) -- the PRD only states a default for top_n; every AC's own blast_radius call either omits max_depth or relies on every real consumer being reachable, so an unbounded default (ranking/truncation still bounded by top_n) is the reading that doesn't silently drop a real consumer past an arbitrary depth no AC specifies."
+    },
+    {
+      "question": "Is a chain's own uses count bumped by running its step tools directly, or only by running the chain itself?",
+      "resolution": "Only by running the chain itself -- record_run_finished bumps the finished run's own tool-or-chain node (by name) and transitively every TABLE upstream of it, never an intermediate step tool's own node; AC3's '3 uses' on the directly-read tool and '40 uses' on the chain are two independently-run tools/chains, not the same runs counted twice."
     }
   ]
 }

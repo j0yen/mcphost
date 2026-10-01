@@ -449,6 +449,39 @@ pub async fn table_drop(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
     if !is_valid_ident(&name) {
         return Err(table_not_found(&name));
     }
+    let confirm = args.get("confirm").and_then(Value::as_bool).unwrap_or(false);
+
+    // PRD-mcphost-lineage-blast-radius requirement 7 (AC2/AC4): gate
+    // placement is before the transaction below, so a refusal costs one
+    // graph load and never touches the tenant's table file. AC2: a table
+    // with no breaking consumers drops exactly as before -- `breaking` is
+    // empty, this whole block is skipped, no refusal is written.
+    let breaking = crate::lineage::breaking_drop_consumers(state, tenant.id, &name).await?;
+    if !breaking.is_empty() && !confirm {
+        let consumers: Vec<Value> = breaking
+            .iter()
+            .take(10)
+            .map(|n| json!({"id": n.id, "kind": n.kind.as_str(), "label": n.label, "uses": n.uses}))
+            .collect();
+        let _ = state
+            .db
+            .record_tenant_audit(
+                tenant.id,
+                "table".to_string(),
+                "table_drop_refused".to_string(),
+                Some(format!("table '{name}' drop refused: {} breaking consumer(s)", breaking.len())),
+            )
+            .await;
+        return Err(AppError::Structured {
+            code: "lineage_blocked",
+            message: format!(
+                "dropping '{name}' would break {} consumer(s); call again with confirm: true to proceed",
+                breaking.len()
+            ),
+            data: json!({"lineage_blocked": consumers}),
+        });
+    }
+
     let path = tenant_db_path(state, tenant.id);
     let name_for_conn = name.clone();
     let dropped = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
@@ -475,6 +508,31 @@ pub async fn table_drop(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
     // when neither ever existed): `dropped == false` for a name that was
     // never declared, in which case there is nothing to clean up either.
     state.db.delete_table_model_and_annotations(tenant.id, name.clone()).await?;
+
+    // PRD-mcphost-lineage-blast-radius requirement 7 (AC4): a confirmed
+    // drop over breaking consumers gets its own audit line (the refusal
+    // path above already wrote one for the refused attempt); cascade
+    // removes the table's own lineage node/edges and orphans dependent
+    // chart/handle nodes.
+    if dropped {
+        if !breaking.is_empty() {
+            let _ = state
+                .db
+                .record_tenant_audit(
+                    tenant.id,
+                    "table".to_string(),
+                    "table_drop_confirmed".to_string(),
+                    Some(format!(
+                        "table '{name}' dropped with confirm: true over {} breaking consumer(s)",
+                        breaking.len()
+                    )),
+                )
+                .await;
+        }
+        if let Err(e) = crate::lineage::cascade_table_drop(state, tenant.id, &name).await {
+            tracing::warn!(error = %e, table = %name, "failed to cascade lineage cleanup after table drop");
+        }
+    }
 
     Ok(json!({"name": name, "dropped": dropped}))
 }
@@ -849,6 +907,8 @@ mod tests {
             oauth_healthz_cache: Default::default(),
             verified_client_ids: crate::state::VerifiedClientIds::empty(),
             session_bindings: crate::session_bind::SessionBindings::new(),
+            lineage_cache: crate::lineage::new_cache(),
+            lineage_trace_pages: crate::lineage::new_trace_page_cache(),
         }
     }
 

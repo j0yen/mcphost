@@ -987,6 +987,32 @@ impl DocsBackend for NoDocs {
     }
 }
 
+/// PRD-mcphost-lineage-blast-radius P1 requirement 10 (AC12): `mcphost.lineage`
+/// inside the python kind's sandbox -- the same shape [`TableBackend`]/
+/// [`DocsBackend`] give their own stores, for the lineage graph instead.
+/// `op` is `"trace"` or `"blast_radius"`, `args` that op's own JSON
+/// argument object (the same shape `host.lineage.trace`/`blast_radius`
+/// take) -- so a tool gets back exactly the object those tools return
+/// (AC12), not a bespoke shape.
+#[async_trait::async_trait]
+pub trait LineageBackend: Send + Sync {
+    async fn call(&self, op: &str, args: Value) -> Result<Value, KindError>;
+}
+
+/// A backend with no lineage graph behind it -- [`NoTable`]/[`NoDocs`]'s
+/// counterpart for [`LineageBackend`], same "fail clearly rather than
+/// silently no-op" stance.
+pub struct NoLineage;
+#[async_trait::async_trait]
+impl LineageBackend for NoLineage {
+    async fn call(&self, _op: &str, _args: Value) -> Result<Value, KindError> {
+        Err(KindError::structured(
+            "lineage_unavailable",
+            "no tenant lineage backend is wired for this call context",
+        ))
+    }
+}
+
 /// PRD-mcphost-runs-and-jobs P0 requirement 5: where a sandboxed call's
 /// `mcphost.progress(pct, msg)` (see `kinds::python`'s `ProgressSidecarBridge`)
 /// lands. `handler.rs`'s real dispatch path wires this to a sink that
@@ -1048,6 +1074,10 @@ pub struct CallCtx {
     /// `handler.rs`'s real dispatch path, which wires this call's own
     /// tenant into `docs.rs`.
     pub docs: Arc<dyn DocsBackend>,
+    /// See [`LineageBackend`]. Defaults to [`NoLineage`] everywhere but
+    /// `handler.rs`'s real dispatch path (and `runs.rs`'s async job
+    /// executor), which wires this call's own tenant into `lineage.rs`.
+    pub lineage: Arc<dyn LineageBackend>,
     /// PRD-mcphost-composition requirement 2: how many levels of
     /// composition already led to this call -- `0` for every ordinary
     /// top-level `tools/call`/`host.tool_call`. [`compose_call`] refuses a
@@ -1156,6 +1186,7 @@ impl CallCtx {
             state: Arc::new(NoState),
             table: Arc::new(NoTable),
             docs: Arc::new(NoDocs),
+            lineage: Arc::new(NoLineage),
             compose_depth: 0,
             compose_children: None,
             compose_db: None,
@@ -1315,6 +1346,11 @@ pub async fn compose_call(
         // above -- composition stays inside one tenant, so the child's
         // `mcphost.docs` reaches the exact same tenant's document store.
         docs: ctx.docs.clone(),
+        // PRD-mcphost-lineage-blast-radius: same reasoning as `state`/
+        // `table`/`docs` above -- composition stays inside one tenant, so
+        // the child's `mcphost.lineage` reaches the exact same tenant's
+        // lineage graph.
+        lineage: ctx.lineage.clone(),
         compose_depth: next_depth,
         compose_children: Some(children.clone()),
         compose_db: Some(db.clone()),

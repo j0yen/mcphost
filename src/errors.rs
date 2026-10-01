@@ -573,6 +573,12 @@ impl AppError {
                 // `Structured` variant only because it carries `data.hint`,
                 // not because it's a different class of error.
                 "tool_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
+                // PRD-mcphost-lineage-blast-radius requirement 7: a drop
+                // refused because a breaking consumer exists is a
+                // caller-input problem (the caller omitted `confirm: true`),
+                // same INVALID_PARAMS bucket as `table_not_found` above.
+                "lineage_blocked" => ErrorCode::INVALID_PARAMS,
+                "lineage_handle_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
                 _ => ErrorCode::INTERNAL_ERROR,
             },
             AppError::MultiInvalid { errors, .. } => errors

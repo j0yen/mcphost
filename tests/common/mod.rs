@@ -295,6 +295,8 @@ pub async fn bare_app_state() -> (AppState, TempDataDir) {
         oauth_healthz_cache: Default::default(),
         verified_client_ids: mcphost::state::VerifiedClientIds::empty(),
         session_bindings: mcphost::session_bind::SessionBindings::new(),
+        lineage_cache: mcphost::lineage::new_cache(),
+        lineage_trace_pages: mcphost::lineage::new_trace_page_cache(),
     };
     (state, data_dir)
 }
@@ -784,6 +786,8 @@ impl TestServer {
             oauth_healthz_cache: Default::default(),
             verified_client_ids,
             session_bindings: mcphost::session_bind::SessionBindings::new(),
+            lineage_cache: mcphost::lineage::new_cache(),
+            lineage_trace_pages: mcphost::lineage::new_trace_page_cache(),
         });
 
         // PRD-mcphost-runs-and-jobs: every test server runs the real
@@ -1410,6 +1414,8 @@ pub async fn bare_state(dir: &std::path::Path) -> AppState {
         oauth_healthz_cache: Default::default(),
         verified_client_ids: mcphost::state::VerifiedClientIds::empty(),
         session_bindings: mcphost::session_bind::SessionBindings::new(),
+        lineage_cache: mcphost::lineage::new_cache(),
+        lineage_trace_pages: mcphost::lineage::new_trace_page_cache(),
     }
 }
 

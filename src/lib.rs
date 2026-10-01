@@ -37,6 +37,7 @@ pub mod handler;
 pub mod hooks;
 pub mod http;
 pub mod kinds;
+pub mod lineage;
 pub mod llms_txt;
 pub mod messaging;
 pub mod metering;
