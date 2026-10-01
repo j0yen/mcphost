@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-sandbox-channel-msg-bridge.md",
-  "intent_slug": "mcphost-sandbox-channel-msg-bridge",
-  "root_motivation": "A tool running inside the python sandbox can detect a condition (a stalled build, a threshold breach) but cannot alert anyone: host.channel.post/host.msg.send are callable only from outside the sandbox, and the http kind's own SSRF guard refuses a loopback call back to this same box. On 2026-09-30 the fleet board's own schedule (fleet_stall_check) computed should_post: true for a red run and could not deliver it -- a human relayed the post twice. This PRD adds mcphost.channel/mcphost.msg sidecar modules beside the already-shipped mcphost.state/mcphost.table/mcphost.docs/mcphost.lineage, reusing channels.rs/messaging.rs's own business logic (not the MCP handler) so a sandboxed tool's post/send is tenancy-, quota-, and test-mode-identical to the external verb.",
-  "user_persona": "A workflow-orchestrator or agent-to-agent builder whose scheduled/webhook python tool detects a condition and needs to post to a channel or message another tenant without egress or secrets.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-url-bound-tenants.md",
+  "intent_slug": "mcphost-url-bound-tenants",
+  "root_motivation": "Today identity is a carried credential: a client must call signup, redeem a key, and pass it as a header or tenant_key argument on every call -- a flow the PM rejected twice in two days as too complicated. Every tenant gets a secret personal URL (https://mcphost.dev/u/<secret>/mcp) that is its whole credential instead: pasting the URL into a client is the entire onboarding, the URL is as rotatable as the key already is, and a human can mint one from a web page in one click.",
+  "user_persona": "A person with Claude Desktop, Claude Code, claude.ai, or Cursor who wants an agent on mcphost with no signup/redeem/key dance; an agent on a URL-bound session that needs to tell its human what its own URL is; a tenant whose URL leaked and needs it dead in one call.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,59 +14,72 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a published python tool whose source does `from mcphost import channel; channel.post(cid, {\"n\": 1})` with `cid` a channel the tenant opened, When called, Then the call result carries the post's `seq` and `host.channel.read(cid)` returns the post with the tenant as sender.",
-      "test": "tests/chanbridge_ac01_python_channel_post_seq_and_host_sees_tenant.rs"
+      "description": "Given a tenant with a URL secret, When a streamable-HTTP tools/call host.whoami is POSTed to /u/<secret>/mcp with no Authorization header and no tenant_key, Then the result names that tenant with auth_method: \"url\".",
+      "test": "tests/urltenant_ac01_path_secret_whoami_auth_method_url.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a python tool doing `from mcphost import msg; msg.send(to, {\"hello\": 1})` where `to` is a tenant that accepted contact, When called, Then the recipient's `host.msg.inbox` shows the message and the result carries the thread id.",
-      "test": "tests/chanbridge_ac02_python_msg_send_reaches_inbox_with_thread_id.rs"
+      "description": "Given a random or rotated secret, When any request hits /u/<wrong>/mcp, Then HTTP 404 with the standard error body, no WWW-Authenticate header, and no resource-metadata link.",
+      "test": "tests/urltenant_ac02_wrong_or_rotated_secret_404.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a tenant at its plan's message quota, When the tool calls `msg.send`, Then Python receives `McphostBridgeError` with `.code` equal to the external verb's error class and nothing is sent.",
-      "test": "tests/chanbridge_ac03_msg_send_quota_raises_bridge_error_nothing_sent.rs"
+      "description": "Given a URL-bound session, When host.key_rotate is called, Then the response carries a new key and a new URL, the old URL returns 404 on the next request, and the old key is tenant_key_invalid.",
+      "test": "tests/urltenant_ac03_key_rotate_rotates_key_and_url.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given the same tool run under `host.tool_test`, When it calls `channel.post`, Then the return is `{delivered: false, would_post: {...}}`, `host.channel.read` shows no new post, and no agent-wake trigger fires.",
-      "test": "tests/chanbridge_ac04_tool_test_dry_run_reports_would_post_no_write_no_trigger.rs"
+      "description": "Given a browser, When GET /u/new then the button's POST /u/new run, Then a tenant exists with source: \"url-page\", the page shows the URL and four copy snippets, and a sixth POST from the same IP within the hour is refused with the signup limiter's error.",
+      "test": "tests/urltenant_ac04_new_url_page_and_signup_limiter.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a tool that loops `channel.post` 1000 times, When called, Then the call fails at `state_ops_per_call_max` with the shared sidecar error and at most that many posts exist.",
-      "test": "tests/chanbridge_ac05_channel_post_loop_fails_at_state_ops_per_call_max.rs"
+      "description": "Given GET /u/<secret>/mcp with a browser Accept: text/html, When fetched, Then a short text page explains the URL and how to add it, and the response is not an MCP error.",
+      "test": "tests/urltenant_ac05_browser_get_shows_explainer_page.rs"
     },
     {
       "id": "AC6",
-      "level": "SHOULD",
-      "description": "Given `host.quickstart kind=python` (or `docs/kinds/python.md` when the discoverability PRD is absent), When read, Then `mcphost.channel` and `mcphost.msg` appear with the signatures in requirement 1.",
-      "test": "tests/chanbridge_ac06_python_kind_doc_documents_channel_and_msg.rs"
+      "level": "MUST",
+      "description": "Given a URL-bound session, When host.quickstart kind=echo is called, Then the response has no signup step and authenticated: true.",
+      "test": "tests/urltenant_ac06_quickstart_url_bound_no_signup_step.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given two reads with `ack=True`, When the second runs, Then it returns only posts after the first read's `next_cursor`.",
-      "test": "tests/chanbridge_ac07_channel_read_ack_resumes_from_stored_cursor.rs"
+      "level": "MUST",
+      "description": "Given a request on /u/<secret>/mcp carrying an Authorization: Bearer for a different tenant, When dispatched, Then the error class is auth_conflict and no call is executed.",
+      "test": "tests/urltenant_ac07_header_conflict_is_auth_conflict.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given the landed binary deployed on prod and a fresh URL minted at https://mcphost.dev/u/new, When that URL is added to Claude Code, Claude Desktop, claude.ai, and Cursor and each runs host.whoami, Then all four return the same tenant with auth_method: \"url\" and none shows an OAuth or login prompt.",
+      "test": "deferred -- operator-provisioned: Live, prod, operator-run client-compatibility matrix; needs a real deploy and four real MCP clients this coding sandbox cannot drive. See the coder dispatch's own deferred list."
+    },
+    {
+      "id": "AC9",
+      "level": "MUST",
+      "description": "Given prod request logs for one hour after landing, When grepped for the minted secret, Then zero matches.",
+      "test": "deferred -- operator-provisioned: Live, prod log access this coding sandbox does not have. See the coder dispatch's own deferred list."
     }
   ],
   "scope": [
-    "src/kinds/mod.rs: ChannelBackend/NoChannel, MsgBackend/NoMsg traits (same shape as StateBackend/TableBackend/DocsBackend/LineageBackend), CallCtx.channel/msg fields, CallCtx.sidecar_ops (Arc<AtomicI64>, shared per call tree)/sidecar_ops_max (resolved plan quota) fields, for_test defaults, compose_call's child_ctx inherits channel/msg/sidecar_ops/sidecar_ops_max from the parent.",
-    "src/kinds/python.rs: ChannelSidecarBridge/MsgSidecarBridge (same request-line-out/response-line-in shape as StateSidecarBridge/TableSidecarBridge, marked __mcphost_channel__/__mcphost_msg__), check_sidecar_ops_cap (requirement 5's shared counter check, same state_quota_exceeded/state_ops_per_call_max shape tenant_state.rs's own quota_exceeded produces), both chained into HostSidecarBridge; PY_RUNNER_SCRIPT gains mcphost.channel (post/read)/mcphost.msg (send/inbox) modules, a shared McphostBridgeError base class, and sys.modules registration.",
-    "src/handler.rs: TenantChannelBridge/TenantMsgBridge (call channels::post/read and messaging::send/inbox directly, not the MCP handler, with the parent call's own Tenant), sidecar_ops_cap helper (reads plan.state_ops_per_call_max), wired into every real CallCtx construction site (call_published_tool, tool_test, bridge_test [NoChannel/NoMsg -- http-only], spec_test, tool_run).",
-    "src/runs.rs: execute_job's CallCtx also wires TenantChannelBridge/TenantMsgBridge -- the actual path a scheduled/webhook tool (the PRD's own Grounding, fleet_stall_check) posts through.",
-    "docs/kinds/python.md: new mcphost.channel / mcphost.msg section (requirement 6 fallback -- sandbox_api.modules/the discoverability PRD has not landed)."
+    "src/auth.rs: generate_url_secret -- 26-char Crockford base32 of 128 random bits, hashed at rest via the existing hash_key.",
+    "migrations/0059_url_bound_tenants.sql + src/db.rs: tenants.url_secret_hash/url_rotated_at (nullable, UNIQUE-indexed), Db::find_tenant_by_url_secret_hash, Db::rotate_tenant_url_secret.",
+    "src/handler.rs: resolve_path_secret_auth (new highest-precedence Auth step, before the Authorization header), AC7's auth_conflict check, auth_method/calls_auth_method gain \"url\".",
+    "src/http.rs: /u/{secret}/mcp (require_known_url_secret: 404 unknown/rotated secrets, browser-Accept explainer page), GET/POST /u/new (one-button signup page via the existing control::signup path).",
+    "src/control.rs: host.key_rotate also rotates the URL secret and returns both key and url.",
+    "src/errors.rs: AppError::AuthConflict (auth_conflict)."
   ],
   "non_goals": [
-    "msg.wait inside the sandbox -- Non-goals: the 30s call timeout makes a blocking wait a footgun; an agent polls with a schedule instead.",
-    "New delivery kinds (email, SMS) -- Non-goals: those are http tools with secrets, already possible on plans with egress.",
-    "Reading channels by name -- Non-goals: PRD-mcphost-channel-read-name-parity; this bridge takes the id host.channel.open already returned, same as the external verb.",
-    "msg.reply/msg.ack (P2 requirement 8) -- no AC covers them; not built, per the dispatch instruction to implement only the listed, non-deferred ACs.",
-    "A real PRD-mcphost-dry-run-side-effects rollback mechanism -- that PRD has not landed (no would_post/dry_run pattern anywhere in src/ before this PRD); requirement 4's own text says this PRD implements the check for these two bridges itself, which is what ChannelSidecarBridge/MsgSidecarBridge's own ctx.test_mode short-circuit does, directly, before ever reaching the real channel/msg backend."
+    "Replacing the bearer key -- Authorization header, tenant_key argument, and session binding keep working unchanged.",
+    "Implicit tenant creation on bare /mcp -- PRD-mcphost-implicit-signup.",
+    "Invite URLs with pre-shared tools -- PRD-mcphost-invite-links.",
+    "OAuth on /u/ paths -- /t/{ns}/mcp stays the OAuth-audience URI; /u/ serves no oauth-protected-resource metadata and never 401s.",
+    "Requirements 8 (www/llms.txt copy), 9 (url_rotated_at on a key-authenticated whoami), and 10 (admin.tenant_url_disable) are P1/P2 and not in this dispatch's assigned AC list; not implemented here."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -75,55 +88,45 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "test_file_names_use_test_prefix_chanbridge": "test_prefix chanbridge (the PRD's own frontmatter field): tests/chanbridge_ac<NN>_<slug>.rs, same convention as every other test file in this repo.",
-      "version_bump_minor": "PRD frontmatter build_version_bump: minor -- Cargo.toml/Cargo.lock bumped 0.65.0 -> 0.66.0.",
-      "ac8_deferred_operator_provisioned": "AC8 is a Live acceptance criterion (the landed binary deployed on prod, a real schedule retargeted at a real tenant, evidence pasted into the PRD's own evidence block) -- deferred, not built or tested here; a build agent never provisions, deploys to, or authorizes changes on a live/prod host.",
-      "python_body_argument_is_json_not_text": "Open question not raised by the PRD but forced by its own AC1/AC2 examples (`channel.post(cid, {\"n\": 1})`, `msg.send(to, {\"hello\": 1})`): the external host.channel.post/host.msg.send verbs take a text `body` plus an optional JSON `data`, so the python wrapper (not the Rust bridge) serializes a non-string `body` into the host's own `body` text field and, when it's a JSON object, also passes it through as `data` -- a caller gets both the human-readable text and the structured value back from host.channel.read/host.msg.inbox.",
-      "shared_mcphost_bridgeerror_class": "Requirement 3's own wording (\"surfaces in Python as McphostBridgeError\") is read as one shared exception class, not two independently-named per-module classes -- McphostChannelError/McphostMsgError both subclass a single McphostBridgeError (exposed as mcphost.channel.BridgeError/mcphost.msg.BridgeError/mcphost.BridgeError), so a tool can catch either sidecar's refusal with one except clause.",
-      "sidecar_ops_shared_counter_is_new_for_channel_msg_only": "Requirement 5's \"shared budget with state/table ops\" is read as sharing plans.toml's state_ops_per_call_max VALUE (both plans currently set it to 200), not retrofitting tenant_state.rs/tables.rs's own existing per-call row-count checks onto one literal shared counter -- CallCtx.sidecar_ops is a new running counter that ChannelSidecarBridge/MsgSidecarBridge increment and check against that same plan value; state/table's own per-call checks are unchanged.",
-      "ac1_channel_the_tenant_opened_is_a_group_channel": "host.channel.read only resolves a channel through channel_group_lookup (migration 0028's group-based channel) -- the legacy, ungated host.channel.open(name) channel (migration 0027) has no read entry point at all. AC1's \"a channel the tenant opened\" is built as host.group.create + host.channel.open(group=...), where the owner is always an authorized reader/poster of its own channel (same contract channel_ac01's own \"O reads too\" assertion proves)."
+      "test_file_names_use_test_prefix_urltenant": "test_prefix urltenant (the PRD's own frontmatter field): tests/urltenant_ac<NN>_<slug>.rs, same convention as every other test file in this repo."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does the dry-run short-circuit live inside ChannelSidecarBridge/MsgSidecarBridge in python.rs rather than inside TenantChannelBridge/TenantMsgBridge in handler.rs (next to channels::post/messaging::send themselves)?",
-      "a": "Technical considerations is explicit: a delivered post also wakes an agent-wake trigger that a DB rollback can't un-fire, so the short-circuit must happen BEFORE delivery, not rely on one. The sidecar bridge is the one place that sees ctx.test_mode AND intercepts the call before it reaches channels::post/messaging::send at all -- TenantChannelBridge/TenantMsgBridge are thin pass-throughs with no test_mode awareness, matching every other TenantXBridge in handler.rs."
+      "q": "Why does a secret URL need to exist when the tenant_key argument already works on any client that can set a header or pass an argument?",
+      "a": "Several real MCP clients (Claude Desktop custom connectors, claude.ai, Cursor's mcp.json) have no UI for a bearer header or a tool-call argument -- their only input is a URL."
     },
     {
       "why": 2,
-      "q": "Why give CallCtx a brand-new sidecar_ops/sidecar_ops_max pair instead of reusing CallCtx.compose_children's existing Arc<AtomicU32> ceiling machinery?",
-      "a": "compose_children caps composed CHILD CALLS (a different resource, COMPOSE_CHILDREN_MAX=50, enforced by kinds::compose_call) -- requirement 5 caps SIDECAR OPS (channel/msg calls within one call, against the tenant's own plan-resolved state_ops_per_call_max, which varies free/pro in principle even though both currently read 200). Reusing compose_children's counter would conflate two independently-specified ceilings with two different sources of truth."
+      "q": "Why not just put the tenant_key in the URL's query string instead of a whole new path/secret scheme?",
+      "a": "A query string is logged by proxies and browser history by default in a way a path segment that this host explicitly redacts is not, and a path-based secret reuses the exact precedent this codebase already has (/hook/{id})."
     },
     {
       "why": 3,
-      "q": "Why does a non-string body get serialized into BOTH the host's body text field and its data object, rather than picking one?",
-      "a": "host.channel.post/host.msg.send's own body argument must be a non-empty string (arg_str), so a dict body has nowhere else to go but a stringified body; but discarding the structured value entirely would make host.channel.read/host.msg.inbox strictly less useful to a reader than the AC1/AC2 python call that produced the post -- data already exists on both verbs for exactly this (an optional JSON object alongside body), so population costs nothing and loses nothing."
+      "q": "Why does the path secret have to outrank the Authorization header in the Auth precedence chain instead of slotting in after it?",
+      "a": "A /u/<secret>/mcp URL is meant to be the WHOLE credential with nothing else required -- if the header won by default, a stale or wrong header on the same connection would silently shadow the URL's own tenant, defeating 'paste the URL and nothing else.'"
     },
     {
       "why": 4,
-      "q": "Why wire TenantChannelBridge/TenantMsgBridge into runs.rs's execute_job (the async job executor) when no AC exercises a scheduled job directly?",
-      "a": "The PRD's entire Grounding section is a schedule (fleet_stall_check) that needed this bridge and couldn't reach it -- leaving the job executor's CallCtx on NoChannel/NoMsg would ship every AC green while leaving the PRD's own motivating failure mode (a scheduled tool's post) still broken, since AC8 (the one AC that would have caught this) is Live/deferred, not built here."
+      "q": "Why refuse outright (auth_conflict) rather than just trusting the path secret whenever both are present?",
+      "a": "Silently picking one of two valid-but-different credentials is exactly the kind of ambiguous resolution this codebase's own ConflictingCredentials/WrongTenant precedents already refuse, so a caller never discovers after the fact which tenant it actually ran as."
     },
     {
       "why": 5,
-      "q": "Why does channel.post/msg.send's request envelope key the dry-run body as `would_post` for msg.send too, instead of `would_send`?",
-      "a": "Requirement 4's own text names the literal shape for both: \"channel.post and msg.send return {delivered: false, would_post: {...}}\" -- one key name for both bridges, not a per-bridge-named field, so a caller checking for a dry run doesn't need to branch on which bridge it called."
+      "q": "Why 404 instead of 401 for a wrong/rotated secret?",
+      "a": "A 401 (or any response shaped differently for 'wrong' vs 'doesn't exist') would let a prober distinguish a once-valid rotated secret from a pure guess; 404 byte-identical to an unmapped route leaks nothing."
     }
   ],
   "created_at": "2026-10-01T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Should channel.post be attributed to the tool (sender = tool:<name>) or to the tenant only? (PRD's own Open question, drafted: tenant, with via_tool in the post's metadata, due 2026-10-08.)",
-      "resolution": "Tenant only, no via_tool metadata -- channels::post/post_group already attribute every post to the calling Tenant (from_address = tenant.namespace) regardless of caller (direct MCP call or sandbox bridge), and no AC requires a via_tool field; the PRD's own open question was still open (due after this build) at build time, so the existing, already-tested attribution behavior was left unchanged rather than guessing the resolution."
+      "question": "Should every tenant get a URL secret eagerly at signup (requirement 2's literal 'generated at tenant creation for every new tenant'), or only lazily when first needed?",
+      "resolution": "Implemented lazily only, via host.key_rotate (always rotates/mints) and the /u/new page's own first-time mint -- no AC in this dispatch's assigned list tests eager generation at every signup, and signup's own JSON response field set is pinned byte-for-byte by tests/handoff_ac05_raw_signup_still_works_unchanged.rs, which a new field would break."
     },
     {
-      "question": "What does a sandboxed tool's `to` argument to msg.send accept, given AC2's own example passes a single address rather than the external verb's array?",
-      "resolution": "Either a single address (string) or a list -- the python wrapper normalizes `to if isinstance(to, list) else [to]` before calling through, so AC2's `msg.send(to, {...})` and a multi-recipient `msg.send([a, b], {...})` both reach host.msg.send's own array argument unchanged."
-    },
-    {
-      "question": "Does the sidecar_ops cap apply only to mcphost.channel/mcphost.msg, or retroactively to mcphost.state/mcphost.table's existing sidecar calls too?",
-      "resolution": "Channel/msg only -- CallCtx.sidecar_ops is incremented solely by ChannelSidecarBridge/MsgSidecarBridge; StateSidecarBridge/TableSidecarBridge are unmodified by this PRD (their own existing per-call row-count quota checks in tenant_state.rs/tables.rs are untouched), avoiding a behavior change on two already-shipped, already-tested bridges that no AC in this PRD exercises."
+      "question": "Should host.whoami disclose the plaintext URL for a key-authenticated (non-URL-bound) session, per requirement 3's 'or just-created session' clause?",
+      "resolution": "Out of scope for this dispatch's AC list (none of AC1-7 test host.whoami's own url/url_set fields) -- host.whoami's auth_method now reports \"url\" when resolved via the path secret (AC1), but no plaintext-disclosure logic beyond that was added, since the plaintext is only ever available at the moment of generation/rotation (host.key_rotate's own response, or the /u/new page) and is never recoverable from the stored hash afterward."
     }
   ]
 }

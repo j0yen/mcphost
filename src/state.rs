@@ -452,8 +452,10 @@ pub fn now_unix_ms() -> i64 {
 }
 
 /// Crockford base32 alphabet -- excludes I, L, O, U to avoid transcription
-/// confusion, the same alphabet a real ULID uses.
-const CROCKFORD_ALPHABET: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+/// confusion, the same alphabet a real ULID uses. `pub(crate)` so
+/// `auth::generate_url_secret` (PRD-mcphost-url-bound-tenants) can encode
+/// its own 128 random bits with it instead of hand-rolling a second copy.
+pub(crate) const CROCKFORD_ALPHABET: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
 /// PRD-mcphost-runs-and-jobs requirement 1: `runs.id (ulid)` -- a
 /// lexicographically-sortable, time-prefixed identifier so `ORDER BY id`

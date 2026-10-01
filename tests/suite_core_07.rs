@@ -1406,6 +1406,8 @@ mod tooltest_ac6_quota_and_metering;
 mod tooltest_ac7_too_many_invocations;
 #[path = "tooltest_ac9_ac10_listing_and_auth.rs"]
 mod tooltest_ac9_ac10_listing_and_auth;
+#[path = "urltenant_ac01_path_secret_whoami_auth_method_url.rs"]
+mod urltenant_ac01_path_secret_whoami_auth_method_url;
 #[path = "vault_ac01_connect_link_redirects_to_auth_url.rs"]
 mod vault_ac01_connect_link_redirects_to_auth_url;
 #[path = "vault_ac02_callback_exchanges_code_and_stores_tokens.rs"]

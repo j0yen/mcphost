@@ -10,8 +10,8 @@ use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
 use axum::body::{Body, Bytes};
-use axum::extract::{Path, Query, State};
-use axum::http::{HeaderMap, HeaderValue, Request, StatusCode, header::CACHE_CONTROL};
+use axum::extract::{ConnectInfo, Path, Query, State};
+use axum::http::{HeaderMap, HeaderValue, Method, Request, StatusCode, header::CACHE_CONTROL};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -895,6 +895,177 @@ async fn oauth_401_upgrade(State(state): State<Arc<AppState>>, req: Request<Body
     response
 }
 
+/// PRD-mcphost-url-bound-tenants requirement 4: `GET /u/new` -- a one-button
+/// page; pressing it `POST`s to the same path (see [`post_new_url`]).
+async fn get_new_url() -> Response {
+    crate::claim::html_response(StatusCode::OK, render_new_url_page())
+}
+
+fn render_new_url_page() -> String {
+    crate::claim::page(
+        "mcphost — get your URL",
+        "<h1>Get your URL</h1>\
+         <p>One click gets you a private mcphost URL -- no account, no email. Paste it into \
+         Claude Code, Claude Desktop, claude.ai, or Cursor, and your agent's next message can \
+         publish a tool.</p>\
+         <form method=\"post\" action=\"/u/new\"><button type=\"submit\">Get my URL</button></form>",
+    )
+}
+
+/// requirement 4 / AC4: the literal phrase every rate-limited `POST /u/new`
+/// gets -- same page claim.rs's own `render_rate_limited` renders for
+/// `/claim/*`, text-identical since the signup limiter is the thing that
+/// actually fired either way, but a copy here rather than a cross-module
+/// call since the two modules render independent pages.
+fn render_new_url_rate_limited() -> String {
+    crate::claim::page(
+        "mcphost — too many requests",
+        "<h1>Too many requests</h1><p>Try again later.</p>",
+    )
+}
+
+fn render_new_url_storage_error() -> String {
+    crate::claim::page(
+        "mcphost — something went wrong",
+        "<h1>Something went wrong</h1><p>Please try again in a minute.</p>",
+    )
+}
+
+/// requirement 4 (AC4): the four copy snippets the page shows once a URL
+/// exists -- Claude Code, Claude Desktop/claude.ai (paste), Cursor (JSON),
+/// and generic JSON, in that order.
+fn render_new_url_result_page(url: &str) -> String {
+    let url = crate::claim::html_escape(url);
+    crate::claim::page(
+        "mcphost — your URL",
+        &format!(
+            "<h1>Your mcphost URL</h1>\
+             <p><code>{url}</code></p>\
+             <p>Treat this link like a password -- anyone who has it can act as your tenant. \
+             If it ever leaks, ask your agent to call <code>host.key_rotate</code> to mint a \
+             fresh one.</p>\
+             <p>Claude Code:</p><p><code>claude mcp add --transport http mcphost {url}</code></p>\
+             <p>Claude Desktop / claude.ai: paste this URL into \"Add custom connector\".</p>\
+             <p>Cursor (<code>mcp.json</code>):</p>\
+             <p><code>{{&quot;mcpServers&quot;: {{&quot;mcphost&quot;: {{&quot;url&quot;: &quot;{url}&quot;}}}}}}</code></p>\
+             <p>Generic JSON:</p><p><code>{{&quot;url&quot;: &quot;{url}&quot;}}</code></p>",
+        ),
+    )
+}
+
+/// `POST /u/new` (requirement 4, AC4): mints a tenant via the existing
+/// `signup` path (`source: "url-page"`), subject to the same per-IP limiter
+/// and kill switch as any other signup, then mints and shows that tenant's
+/// own URL secret -- its first one, since this tenant was just created.
+async fn post_new_url(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+) -> Response {
+    let ip = crate::claim::source_ip(&headers, peer);
+    let display_name = format!("agent-{}", crate::state::new_ulid());
+    let signup_result = crate::control::signup(
+        &state,
+        &json!({"name": display_name, "source": "url-page"}),
+        &ip,
+        crate::control::SignupAttribution::default(),
+    )
+    .await;
+    let tenant_id = match signup_result {
+        Ok(value) => {
+            let Some(namespace) = value.get("tenant").and_then(Value::as_str) else {
+                return crate::claim::html_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    render_new_url_storage_error(),
+                );
+            };
+            match state.db.find_tenant_by_namespace(namespace.to_string()).await {
+                Ok(Some(tenant)) => tenant.id,
+                _ => {
+                    return crate::claim::html_response(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        render_new_url_storage_error(),
+                    );
+                }
+            }
+        }
+        Err(err) if err.code() == "rate_limited" => {
+            return crate::claim::html_response(
+                StatusCode::TOO_MANY_REQUESTS,
+                render_new_url_rate_limited(),
+            );
+        }
+        Err(_) => {
+            return crate::claim::html_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                render_new_url_storage_error(),
+            );
+        }
+    };
+    let url_secret = crate::auth::generate_url_secret();
+    if state
+        .db
+        .rotate_tenant_url_secret(tenant_id, crate::auth::hash_key(&url_secret))
+        .await
+        .is_err()
+    {
+        return crate::claim::html_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            render_new_url_storage_error(),
+        );
+    }
+    let url = format!("{}/u/{}/mcp", state.public_url.trim_end_matches('/'), url_secret);
+    crate::claim::html_response(StatusCode::OK, render_new_url_result_page(&url))
+}
+
+/// PRD-mcphost-url-bound-tenants requirement 1/5 (AC2, AC5): `/u/{secret}/mcp`
+/// for a secret that names no tenant at all is 404, byte-identical to any
+/// other unmapped path -- same shape as [`require_known_tenant_namespace`]
+/// below, scoped to this route instead. A known secret's own `GET` without
+/// MCP's required `Accept` header (i.e. a browser navigating straight to
+/// the link, the way a human who just pasted it from `/u/new` would) gets a
+/// short text/html explainer instead of ever reaching the MCP service
+/// (AC5) -- so a client never gets a chance to attempt an MCP handshake, or
+/// see an MCP-shaped error, against what a human just opened in a browser
+/// tab. Runs before `resolve_path_secret_auth`/dispatch (this middleware
+/// sits in front of the whole streamable-HTTP service), so both checks
+/// apply regardless of any other credential the request carries.
+async fn require_known_url_secret(
+    State(state): State<Arc<AppState>>,
+    Path(secret): Path<String>,
+    req: Request<Body>,
+    next: Next,
+) -> Response {
+    let hash = crate::auth::hash_key(&secret);
+    match state.db.find_tenant_by_url_secret_hash(hash).await {
+        Ok(Some(_)) => {}
+        _ => return StatusCode::NOT_FOUND.into_response(),
+    }
+    let wants_html = req
+        .headers()
+        .get(axum::http::header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.contains("text/html"));
+    if req.method() == Method::GET && wants_html {
+        return crate::claim::html_response(StatusCode::OK, render_url_explainer(&state, &secret));
+    }
+    next.run(req).await
+}
+
+fn render_url_explainer(state: &AppState, secret: &str) -> String {
+    let url = format!("{}/u/{}/mcp", state.public_url.trim_end_matches('/'), secret);
+    let url = crate::claim::html_escape(&url);
+    crate::claim::page(
+        "mcphost — your URL",
+        &format!(
+            "<h1>This is your mcphost URL</h1>\
+             <p>Add <code>{url}</code> as an MCP server in your client -- no login, no key. \
+             Anyone with this exact link can act as your tenant, so treat it like a password. \
+             Leaked it? Ask your agent to call <code>host.key_rotate</code> for a fresh one.</p>",
+        ),
+    )
+}
+
 /// PRD-mcphost-tenant-resource-metadata requirement 1 (AC3): `/t/{ns}/mcp`
 /// for an `<ns>` that names no tenant at all is 404, byte-identical to
 /// axum's own no-route-matched fallback (`StatusCode::NOT_FOUND.into_response()`
@@ -1025,6 +1196,20 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         // PRD-mcphost-session-bound-tenant-after-signup requirement 1: a
         // `/t/{ns}/mcp` connection gets a session identity on exactly the
         // same terms as `/mcp` -- see `root_mcp_router` below.
+        .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id));
+
+    // PRD-mcphost-url-bound-tenants requirement 1: `/u/{secret}/mcp` serves
+    // the identical streamable-HTTP service as `/mcp`/`/t/{ns}/mcp` --
+    // path-secret resolution happens inside `handler.rs`
+    // (`resolve_path_secret_auth`), not here. Same `route_layer` shape as
+    // `tenant_mcp_router` above, for the same "scoped to the route actually
+    // matched" reason.
+    let url_mcp_router = Router::new()
+        .route_service("/u/{secret}/mcp", service.clone())
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_known_url_secret,
+        ))
         .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id));
 
     // PRD-mcphost-session-bound-tenant-after-signup requirement 1: only the
@@ -1159,8 +1344,13 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         // `/vault/callback` completes the code exchange server-side.
         .route("/vault/connect/{token}", get(crate::vault::get_connect))
         .route("/vault/callback", get(crate::vault::get_callback))
+        // PRD-mcphost-url-bound-tenants requirement 4: the one-button
+        // signup page -- `GET` renders it, `POST` mints the tenant and its
+        // first URL.
+        .route("/u/new", get(get_new_url).post(post_new_url))
         .merge(root_mcp_router)
         .merge(tenant_mcp_router)
+        .merge(url_mcp_router)
         // PRD-mcphost-session-bound-tenant-after-signup requirement 7
         // (AC10): `oauth_401_upgrade` must run INSIDE (closer to the
         // router than) `protocol_version_and_log` -- axum's `.layer(L)`

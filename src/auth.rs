@@ -37,6 +37,33 @@ pub fn generate_handoff_token() -> String {
     format!("ho_{}", generate_key())
 }
 
+/// PRD-mcphost-url-bound-tenants requirement 2: a tenant's secret-URL
+/// token -- 26-character Crockford base32 (same alphabet/packing
+/// `state::new_ulid`'s own random half uses) of 128 random bits, with no
+/// time component (unlike a ULID, this must never leak when its tenant
+/// signed up). 128 bits don't divide evenly into 5-bit groups: the top 2
+/// bits of the first character are always zero, costing nothing (the 128
+/// bits of real randomness are unchanged) and matching exactly how
+/// `state::new_ulid` already packs its own 80-bit random half into 16
+/// characters, just scaled to one more byte. Stored hashed (`hash_key`,
+/// same convention as a tenant key) as `tenants.url_secret_hash`, never in
+/// the clear.
+pub fn generate_url_secret() -> String {
+    let mut bytes = [0u8; 16];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    let mut acc: u128 = 0;
+    for b in bytes {
+        acc = (acc << 8) | b as u128;
+    }
+    let mut out = String::with_capacity(26);
+    for i in (0..26).rev() {
+        let shift = i * 5;
+        let idx = ((acc >> shift) & 0x1f) as usize;
+        out.push(crate::state::CROCKFORD_ALPHABET[idx] as char);
+    }
+    out
+}
+
 /// SHA-256 of a key, hex-encoded; the only form a key is ever stored in.
 pub fn hash_key(key: &str) -> String {
     let mut hasher = Sha256::new();
@@ -80,6 +107,15 @@ mod tests {
         assert!(ns.starts_with("t_"));
         assert_eq!(ns.len(), 10);
         assert!(ns[2..].chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn url_secret_is_26_crockford_chars_and_unpredictable() {
+        let a = generate_url_secret();
+        let b = generate_url_secret();
+        assert_eq!(a.len(), 26);
+        assert!(a.chars().all(|c| crate::state::CROCKFORD_ALPHABET.contains(&(c as u8))));
+        assert_ne!(a, b, "two generated secrets must not collide");
     }
 
     #[test]
