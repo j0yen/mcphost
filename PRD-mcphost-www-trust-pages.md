@@ -1,6 +1,7 @@
 # PRD: mcphost-www-trust-pages — pricing, use cases, compare, and an agent skill file for mcphost.dev
 
-- Status: queued
+- Status: building
+- Direct-build: 2026-10-01 carbon, Joe "pages" (direct, not wm-build)
 - build_target: shell
 - build_into: /home/jsy/wintermute/mcphost
 - build_priority: normal
