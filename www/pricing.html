@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mcphost pricing — free early access, then $19/month</title>
+<meta name="description" content="mcphost's free plan: 50 tools, 500 calls a day, no card. Pro is $19 a month: 50,000 calls, then $0.001 a call. Calls are the only meter; logs, secrets, schedules, and status are free.">
+<meta property="og:title" content="mcphost pricing — free early access, then $19/month">
+<meta property="og:description" content="mcphost's free plan: 50 tools, 500 calls a day, no card. Pro is $19 a month: 50,000 calls, then $0.001 a call. Calls are the only meter; logs, secrets, schedules, and status are free.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://mcphost.dev/pricing">
+<meta property="og:site_name" content="mcphost">
+<style>
+  /* Committed single look: simple modern terminal. Deliberately no light theme. */
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0b0d0e; color: #c9cdd1;
+         font-family: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+         font-size: 15px; line-height: 1.65; }
+  .wrap { max-width: 44rem; margin: 0 auto; padding: 3.5rem 1.4rem 4rem; }
+  pre { margin: 0 0 1.2rem; overflow-x: auto; color: #c9cdd1; }
+  .prompt { color: #8b949e; }
+  .prompt .path { color: #e6edf3; }
+  .cursor { display: inline-block; width: .55em; height: 1.1em; vertical-align: text-bottom;
+            background: #c9cdd1; animation: blink 1.2s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .cursor { animation: none; } }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden;
+        clip-path: inset(50%); white-space: nowrap; margin: 0; }
+  .banner { color: #e6edf3; margin: 1.6rem 0 .4rem; line-height: 1.25;
+            font-size: clamp(9px, 2.9vw, 15px); }
+  h2 { font-size: .95rem; font-weight: 600; color: #e6edf3; margin: 2.4rem 0 .6rem; }
+  h2::before { content: "## "; color: #484f58; font-weight: 400; }
+  .tag { color: #8b949e; margin: 0 0 .9rem; }
+  .proof { color: #3fb950; margin: 0 0 2.2rem; font-size: .92em; }
+  .proof a { color: #3fb950; text-decoration: underline; text-underline-offset: 3px; }
+  p, ul { margin: 0 0 1rem; }
+  code { color: #e6edf3; background: #161b22; padding: .1em .35em; border-radius: 4px; }
+  pre code { background: none; padding: 0; }
+  .listing { border: 1px solid #21262d; border-radius: 6px; padding: 1rem 1.1rem;
+             background: #0d1117; }
+  .listing .c { color: #8b949e; }
+  a { color: #58a6ff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ul { list-style: none; padding-left: 1.3rem; }
+  li::before { content: "- "; color: #484f58; margin-left: -1.3rem; }
+  footer { margin-top: 3.5rem; padding-top: 1.2rem; border-top: 1px solid #21262d;
+           color: #8b949e; font-size: .9em; }
+  .snd { background: none; border: 1px solid #21262d; border-radius: 6px;
+         padding: .35rem .8rem; margin: 1.6rem 0 0; font: inherit; color: #8b949e;
+         cursor: pointer; }
+  .snd:hover { color: #e6edf3; border-color: #484f58; }
+  .connect { margin: 0 0 1.6rem; }
+  .snip { margin: 0 0 .8rem; position: relative; }
+  .snip-label { color: #e6edf3; font-size: .85em; margin: 0 0 .3rem; }
+  .snip .listing { margin: 0; padding-right: 4.5rem; }
+  .copy { position: absolute; top: .6rem; right: .6rem; background: none;
+          border: 1px solid #21262d; border-radius: 6px; padding: .2rem .6rem;
+          font: inherit; font-size: .8em; color: #8b949e; cursor: pointer; }
+  .copy:hover { color: #e6edf3; border-color: #484f58; }
+  .cap { color: #8b949e; font-size: .85em; margin: -.3rem 0 1.2rem; }
+  .faq dt { color: #e6edf3; font-weight: 600; margin: 0 0 .3rem; }
+  .faq dd { margin: 0 0 1.1rem; }
+  .faq dd:last-child { margin-bottom: 0; }
+</style>
+</head>
+<body>
+<main class="wrap">
+
+<pre class="prompt" aria-hidden="true">$ <span class="path">mcphost</span> --pricing<span class="cursor"></span></pre>
+
+<h1 class="sr">mcphost pricing</h1>
+<p class="tag">what a call costs, and how you leave if it doesn't</p>
+
+<p>mcphost has two plans. Free early access: 50 tools per tenant, 500 calls a day, no card required. Pro: $19 a month, 50,000 calls included, then $0.001 a call past that. Early tenants keep the free tier when early access ends.</p>
+
+<h2>quotas</h2>
+<p>The same limits apply on every tenant, free or pro, unless noted:</p>
+<ul>
+  <li>50 tools per tenant; names match <code>^[a-z][a-z0-9_]{1,40}$</code></li>
+  <li>Spec at most 64 KiB; a synchronous call's request and result at most 1 MiB each (an async job's result has no such cap)</li>
+  <li>Call timeout: 30 s by default, up to 60 s if you declare <code>timeout_s</code></li>
+  <li>Signup: 5 per source IP per hour (an operator's own fleet IPs are exempt)</li>
+  <li>Concurrent calls: 4 per tenant on free, 10 on pro; 20 host-wide</li>
+</ul>
+
+<h2>what is metered</h2>
+<p>Calls are the only meter. A call past your plan's daily or monthly limit fails with <code>quota_exceeded</code>, the limit, your usage, and <code>next: "billing.checkout"</code>; it does not retry itself. Logs, secrets, schedules, and status are free: reading <code>host.tool_logs</code>, storing a secret, setting a <code>host.trigger.set</code> schedule, or checking <code>/status</code> never counts against your quota.</p>
+
+<h2>billing is a tool call</h2>
+<p>There is no separate billing page to log into. <code>billing.plans()</code> lists the catalog and works without a key. <code>billing.status()</code> reports your tenant's plan and usage against each quota, with <code>resets_at</code> for the daily call count. <code>billing.checkout(plan="pro")</code> returns a Stripe Checkout URL good for about 24 hours; hand it to the human who authorized the upgrade, and the plan flips within seconds of payment.</p>
+
+<h2>the exit path</h2>
+<p>mcphost speaks plain MCP over streamable HTTP, nothing proprietary on the wire. If the hosted service stops working for you, change the endpoint to a compatible server, or run the source yourself: the code is open under <code>MIT OR Apache-2.0</code>, the same binary that serves <a href="https://mcphost.dev">mcphost.dev</a>.</p>
+
+<h2>connect</h2>
+<p>Paste one line and your agent has mcphost. No key needed to sign up.</p>
+<div class="connect">
+  <div class="snip">
+    <p class="snip-label">Claude Code</p>
+    <pre class="listing"><code id="snip-claude-code">claude mcp add --transport http mcphost https://mcphost.dev/mcp</code></pre>
+    <button class="copy" type="button" data-copy-target="snip-claude-code">copy</button>
+  </div>
+</div>
+
+<footer>mcphost · <a href="/llms.txt">llms.txt</a> · <a href="/status">status</a> · <a href="https://github.com/j0yen/mcphost">github</a><br>
+<a href="/pricing">pricing</a> · <a href="/use-cases">use cases</a> · <a href="/compare">compare</a> · <a href="/skill.md">skill.md</a><br>
+<a href="/terms">terms</a> · <a href="/privacy">privacy</a> · <a href="/aup">acceptable use</a></footer>
+</main>
+<script>
+(function () {
+  "use strict";
+  document.querySelectorAll(".copy").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var target = document.getElementById(btn.getAttribute("data-copy-target"));
+      if (!target) return;
+      var text = target.textContent;
+      var done = function () {
+        var was = btn.textContent;
+        btn.textContent = "copied";
+        setTimeout(function () { btn.textContent = was; }, 1200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done);
+      } else {
+        var ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand("copy"); } catch (e) { /* no-op */ }
+        document.body.removeChild(ta);
+        done();
+      }
+    });
+  });
+})();
+</script>
+<!-- mcphost-deploy: static site marker, do not remove -->
+</body>
+</html>

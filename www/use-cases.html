@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mcphost use cases — three workflows an agent runs on its own</title>
+<meta name="description" content="Three mcphost workflows: a coding agent that gives itself a nightly job, a SaaS backend where each call acts as a different signed-in end user, and a fleet of agents sharing one tool and an inbox. Each ends in a real limitation.">
+<meta property="og:title" content="mcphost use cases — three workflows an agent runs on its own">
+<meta property="og:description" content="Three mcphost workflows: a coding agent that gives itself a nightly job, a SaaS backend where each call acts as a different signed-in end user, and a fleet of agents sharing one tool and an inbox. Each ends in a real limitation.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://mcphost.dev/use-cases">
+<meta property="og:site_name" content="mcphost">
+<style>
+  /* Committed single look: simple modern terminal. Deliberately no light theme. */
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0b0d0e; color: #c9cdd1;
+         font-family: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+         font-size: 15px; line-height: 1.65; }
+  .wrap { max-width: 44rem; margin: 0 auto; padding: 3.5rem 1.4rem 4rem; }
+  pre { margin: 0 0 1.2rem; overflow-x: auto; color: #c9cdd1; }
+  .prompt { color: #8b949e; }
+  .prompt .path { color: #e6edf3; }
+  .cursor { display: inline-block; width: .55em; height: 1.1em; vertical-align: text-bottom;
+            background: #c9cdd1; animation: blink 1.2s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .cursor { animation: none; } }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden;
+        clip-path: inset(50%); white-space: nowrap; margin: 0; }
+  .banner { color: #e6edf3; margin: 1.6rem 0 .4rem; line-height: 1.25;
+            font-size: clamp(9px, 2.9vw, 15px); }
+  h2 { font-size: .95rem; font-weight: 600; color: #e6edf3; margin: 2.4rem 0 .6rem; }
+  h2::before { content: "## "; color: #484f58; font-weight: 400; }
+  .tag { color: #8b949e; margin: 0 0 .9rem; }
+  .proof { color: #3fb950; margin: 0 0 2.2rem; font-size: .92em; }
+  .proof a { color: #3fb950; text-decoration: underline; text-underline-offset: 3px; }
+  p, ul { margin: 0 0 1rem; }
+  code { color: #e6edf3; background: #161b22; padding: .1em .35em; border-radius: 4px; }
+  pre code { background: none; padding: 0; }
+  .listing { border: 1px solid #21262d; border-radius: 6px; padding: 1rem 1.1rem;
+             background: #0d1117; }
+  .listing .c { color: #8b949e; }
+  a { color: #58a6ff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ul { list-style: none; padding-left: 1.3rem; }
+  li::before { content: "- "; color: #484f58; margin-left: -1.3rem; }
+  footer { margin-top: 3.5rem; padding-top: 1.2rem; border-top: 1px solid #21262d;
+           color: #8b949e; font-size: .9em; }
+  .snd { background: none; border: 1px solid #21262d; border-radius: 6px;
+         padding: .35rem .8rem; margin: 1.6rem 0 0; font: inherit; color: #8b949e;
+         cursor: pointer; }
+  .snd:hover { color: #e6edf3; border-color: #484f58; }
+  .connect { margin: 0 0 1.6rem; }
+  .snip { margin: 0 0 .8rem; position: relative; }
+  .snip-label { color: #e6edf3; font-size: .85em; margin: 0 0 .3rem; }
+  .snip .listing { margin: 0; padding-right: 4.5rem; }
+  .copy { position: absolute; top: .6rem; right: .6rem; background: none;
+          border: 1px solid #21262d; border-radius: 6px; padding: .2rem .6rem;
+          font: inherit; font-size: .8em; color: #8b949e; cursor: pointer; }
+  .copy:hover { color: #e6edf3; border-color: #484f58; }
+  .cap { color: #8b949e; font-size: .85em; margin: -.3rem 0 1.2rem; }
+  .part { margin: 0 0 .7rem; }
+  .part b { color: #e6edf3; }
+  .faq dt { color: #e6edf3; font-weight: 600; margin: 0 0 .3rem; }
+  .faq dd { margin: 0 0 1.1rem; }
+  .faq dd:last-child { margin-bottom: 0; }
+</style>
+</head>
+<body>
+<main class="wrap">
+
+<pre class="prompt" aria-hidden="true">$ <span class="path">mcphost</span> --use-cases<span class="cursor"></span></pre>
+
+<h1 class="sr">mcphost use cases</h1>
+<p class="tag">three workflows, each ending in what it will not do</p>
+
+<p>Three ways agents use mcphost today. Every tool name below is one your agent can call right now; the limitation at the end of each is the first thing to check before you build on it.</p>
+
+<h2>a coding agent that keeps working unattended</h2>
+<p class="part"><b>problem</b> — Your coding agent needs to keep working after you close the laptop: a nightly dependency audit, a log sweep, a backup check. It has no server of its own to run it on.</p>
+<p class="part"><b>otherwise</b> — You would provision a small VM or a cron box, write a deploy script for it, and remember to patch it.</p>
+<p class="snip-label">sequence</p>
+<pre class="listing"><code>signup("nightwatch")                                              <span class="c"># tenant, key, namespace</span>
+host.tool_publish("dep_audit", kind="python", spec={...})          <span class="c"># the audit logic, live immediately</span>
+host.trigger.set(tool="dep_audit", kind="schedule",
+                  schedule="0 3 * * *")                             <span class="c"># fires at 3 am, no host to patch</span>
+host.trigger.test(tool="dep_audit")                                 <span class="c"># run it once now, before trusting the cron</span>
+host.tool_logs("dep_audit")                                         <span class="c"># every run: trigger, duration, caller</span></code></pre>
+<p class="part"><b>yours</b> — You still write the audit logic and decide what a failure should do; mcphost only runs it on time, keeps it live without a restart, and keeps the log.</p>
+<p class="part"><b>limitation</b> — A job that needs outbound network access is refused on the free plan; pro unlocks it, and only when the operator has configured an egress proxy, not on request.</p>
+
+<h2>a SaaS backend where every call is a different signed-in user</h2>
+<p class="part"><b>problem</b> — Your SaaS backend must act as whichever of your users is signed in on a given call, not as one shared service account.</p>
+<p class="part"><b>otherwise</b> — You would run your own OAuth authorization server, store a token per user, and inject the right one into every outbound call by hand.</p>
+<p class="snip-label">sequence</p>
+<pre class="listing"><code>host.oauth.provider_set(issuer, client_id, client_secret)           <span class="c"># register your identity provider once</span>
+host.oauth.issuer_set(issuer, ...)                                  <span class="c"># this tenant now trusts that issuer</span>
+host.oauth.scope_set(name="read",
+                      description="Search your records")           <span class="c"># scope a tool for consent</span>
+host.enduser.whoami()                                               <span class="c"># the logged-in user, per this call</span>
+host.runs.list(end_user_subject="usr_123")                          <span class="c"># this user's own run history, filtered</span></code></pre>
+<p class="part"><b>yours</b> — You still write the business logic each tool call runs; mcphost only resolves which end user is calling, injects their identity, and logs it per run.</p>
+<p class="part"><b>limitation</b> — Only the issuer you registered is trusted; a user your client authenticates through a different, unregistered issuer is refused, not silently accepted.</p>
+
+<h2>a fleet of agents sharing one tool and an inbox</h2>
+<p class="part"><b>problem</b> — A fleet of agents needs to share one tool and hand work to each other without every agent re-implementing it or polling a shared database.</p>
+<p class="part"><b>otherwise</b> — You would stand up a message queue and a shared credentials store, and write the access control yourself.</p>
+<p class="snip-label">sequence</p>
+<pre class="listing"><code>host.group.create(name="fleet")                                     <span class="c"># one group for the team</span>
+host.tool_share(name="stripe_balance",
+                 visibility="group", group="fleet")                 <span class="c"># share the tool, not the key</span>
+host.group.add(name="fleet",
+                namespace="teammate_ns")                            <span class="c"># add a teammate's namespace</span>
+host.msg.send(to="teammate_ns", text="balance tool is live")        <span class="c"># leave a message in their inbox</span>
+host.msg.inbox()                                                    <span class="c"># a teammate reads what was left for them</span></code></pre>
+<p class="part"><b>yours</b> — You still decide who belongs in the group and what the message means; mcphost only carries the share and the message.</p>
+<p class="part"><b>limitation</b> — A shared tool call still counts against the owner's own call quota, never the caller's; a popular shared tool can exhaust the owner's plan.</p>
+
+<p style="margin-top:2.4rem">Paste one line and your agent has mcphost. No key needed to sign up.</p>
+<div class="connect">
+  <div class="snip">
+    <p class="snip-label">Claude Code</p>
+    <pre class="listing"><code id="snip-claude-code">claude mcp add --transport http mcphost https://mcphost.dev/mcp</code></pre>
+    <button class="copy" type="button" data-copy-target="snip-claude-code">copy</button>
+  </div>
+</div>
+
+<footer>mcphost · <a href="/llms.txt">llms.txt</a> · <a href="/status">status</a> · <a href="https://github.com/j0yen/mcphost">github</a><br>
+<a href="/pricing">pricing</a> · <a href="/use-cases">use cases</a> · <a href="/compare">compare</a> · <a href="/skill.md">skill.md</a><br>
+<a href="/terms">terms</a> · <a href="/privacy">privacy</a> · <a href="/aup">acceptable use</a></footer>
+</main>
+<script>
+(function () {
+  "use strict";
+  document.querySelectorAll(".copy").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var target = document.getElementById(btn.getAttribute("data-copy-target"));
+      if (!target) return;
+      var text = target.textContent;
+      var done = function () {
+        var was = btn.textContent;
+        btn.textContent = "copied";
+        setTimeout(function () { btn.textContent = was; }, 1200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done);
+      } else {
+        var ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand("copy"); } catch (e) { /* no-op */ }
+        document.body.removeChild(ta);
+        done();
+      }
+    });
+  });
+})();
+</script>
+<!-- mcphost-deploy: static site marker, do not remove -->
+</body>
+</html>

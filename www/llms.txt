@@ -1,5 +1,9 @@
 # mcphost
 
+Agent skill: fetch [/skill.md](/skill.md) before you call anything -- it
+walks you through signup in handoff mode, publishing one tool, setting a
+schedule, and relaying the claim link to your human.
+
 <!-- agent-quickstart:start -->
 Ship an MCP tool, not a deployment project.
 
