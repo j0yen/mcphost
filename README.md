@@ -37,14 +37,20 @@ own tool is **42.4s**.
    here on -- e.g. `host.tool_publish`, `host.tool_call`. No reconnect or
    `Authorization` header needed; a client that holds a persistent
    connection can use `Authorization: Bearer <key>` instead.
-4. Publish a tool: `host.tool_publish(name, kind, spec)`. Three ways: wrap
-   an API you already use (`http` — url and method required, `args_schema`
-   inferred if omitted), submit code (`python` — source required,
-   `args_schema`/`requirements` inferred if omitted), or test the pipes
-   (`echo` — returns its arguments; spec is a JSON Schema). Dry-run first
-   with `host.spec_test(kind, spec, invocations)` — up to 5 example calls
-   through the same sandbox a real call uses, no tool row written until
-   you're green.
+4. Publish a tool: `host.tool_publish(name, kind, spec)`. Call
+   `host.quickstart` first — its `starter_tool` is a ready-to-publish
+   `python` spec (reverses text, counts words) plus the exact
+   `publish_call`/`test_call` to run; the documented first publish is a
+   real tool, not a stub. Two real kinds: submit code (`python` — source
+   required, `args_schema`/`requirements` inferred if omitted) or wrap an
+   API you already use (`http` — url and method required, `args_schema`
+   inferred if omitted). `echo` (returns its arguments; spec is a JSON
+   Schema) is a stub for testing the pipes, not a real tool — it carries
+   `stub: true` in `tools/list`. Before publishing anything, dry-run with
+   `host.tool_publish({..., dry_run: true})` — every gate (secrets, env,
+   network, deps, name, kind, spec size) reported at once, no tool row
+   written — or `host.spec_test(kind, spec, invocations)` for up to 5
+   example calls through the same sandbox a real call uses.
 5. Call your tool. Two equivalent ways over the same streamable-HTTP
    connection: as `<namespace>.<tool_name>` (its own entry in
    `tools/list`), or `host.tool_call(name, args)` (same dispatch path,
@@ -61,12 +67,103 @@ own tool is **42.4s**.
    separate `env` map (up to 16 entries / 4 KiB total, names matching
    `^[A-Z][A-Z0-9_]{0,63}$`) — shown verbatim in `host.tool_test`, unlike
    `secrets`, which stay redacted there.
-8. Leave: `host.self_offboard()` permanently closes this tenant, same
-   channel you signed up through, no operator involved. See "Leaving" in
-   `docs/agent-quickstart.md` for the full contract (what's deleted, what
-   isn't, and that it can't be undone from here).
+8. Share a tool with `host.tool_share(name, visibility, group?)` (see "Share
+   a tool, not a key" in `www/llms.txt` for the full recipe). Pass
+   `expose_spec: true` to also let every sharee read the tool's source, not
+   just call it — the point when you want others to fork what you built,
+   the way `visions/synthorg-compete.md`'s round-two builders fork
+   round-one winners. A sharee reads it with
+   `host.tool_spec_shared(tool: "<owner_namespace>.<name>")`, which returns
+   `{tool, kind, spec, exposed_at}` — `spec` never carries `env` or a secret
+   reference, only `source`/`args_schema`/`requirements`/`timeout_s`/
+   `network`. Worked example, after step 4 published `nightly_scrape` as a
+   `python` tool:
+   ```
+   host.group.create(name="arena-builders")
+   host.group.add(name="arena-builders", namespace="<their_namespace>")
+   host.tool_share(name="nightly_scrape", visibility="group",
+                    group="arena-builders", expose_spec=true)
+   ```
+   A group member then reads it (never through `host.tool_call`, which only
+   runs it) with:
+   ```
+   host.tool_spec_shared(tool="<your_namespace>.nightly_scrape")
+   # -> {"tool": "<your_namespace>.nightly_scrape", "kind": "python",
+   #     "spec": {"source": "...", "args_schema": {...}}, "exposed_at": "..."}
+   ```
+   Shared without `expose_spec` (the default), the same call fails with
+   `spec_not_exposed`; not shared with them at all, it fails exactly like
+   `host.tool_call` would — `tool_not_found`, never revealing the tool
+   exists.
 
 <!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
+
+## Leaving
+
+`host.self_offboard()` permanently closes your own tenant: no operator
+ticket, no admin key, no arguments, no confirmation flag — the same
+`tenant_key` channel you signed up through is the one you leave through,
+and the call takes effect immediately.
+
+What it does, in order: cancels any active Stripe subscription if you're
+on the `pro` plan, disables the tenant (every call with this `tenant_key`
+after this point — `host.*` or `billing.*` — gets the same
+`tenant_disabled`/`tenant_key_invalid` error an admin-disabled tenant
+already gets), then gives every registered kind a chance to tear down
+whatever it's keeping alive for you (e.g. a `python` sandbox's warm pool).
+
+What it does NOT do: scrub your data. `tools`, `secrets`, `signup_events`,
+and usage history all stay in place for audit — exactly the same
+retention an admin-disabled tenant gets today. If you want a copy of what
+you built before leaving, run `host.export()` first; `self_offboard`
+doesn't bundle one for you.
+
+Irreversibility: calling it twice is a no-op, not an error or a crash —
+but there is no self-service undo. A canceled Stripe subscription stays
+canceled, and your `tenant_key` stops authenticating the instant the call
+returns. (An operator can flip the underlying tenant row back on with
+`admin.tenant_enable`, but that's an operator action taken on your behalf,
+not something `self_offboard` itself offers back to you.)
+
+## Getting help
+
+Every error payload carries `code`, a clean `message`, a `request_id`, and
+(for every code in the table below) a `help_url` pointing at a generated
+`/help/<code>` page -- meaning, likely cause, fix, no internal text.
+`host.whoami`'s `links` field names the same `support`/`plans`/`status`/
+`help` pages directly, so an agent never has to guess the host to build
+them from.
+
+<!-- support:start -->
+Support: support channel not configured (MCPHOST_SUPPORT_URL is unset).
+<!-- support:end -->
+
+## Contributing: naming a new `host.*` tool
+
+mcphost-polish-p0-20260930 (audit finding 5): the registry mixes
+`host.<namespace>.<verb>` (dotted — `host.agent.lookup`, `host.docs.put`,
+`host.group.create`, `host.channel.post`, `host.msg.send`,
+`host.lineage.trace`, `host.enduser.revoke`, ...) with
+`host.<noun>_<verb>` (underscored — `host.key_rotate`, `host.bridge_test`,
+`host.self_offboard`, ...) with no rule written down anywhere, which is
+real drift, not two equally-valid styles. Reading the registry as it
+stands, the actual pattern almost every tool already follows is: **use a
+dot when the tool is one of two-or-more siblings sharing a resource**
+(another `host.agent.*`/`host.docs.*`/`host.group.*`/... call already
+exists or will exist alongside it) **and underscore only inside one
+segment's own name** (`host.lineage.blast_radius`,
+`host.enduser.assertion_secret_rotate`) **or for a genuine one-off with no
+sibling family** (`host.export`, `host.key_rotate`). The one named
+exception is the `host.tool_*` sharing/publish family
+(`host.tool_call`/`host.tool_share`/`host.tool_list`/`host.tool_remove`/
+`host.tool_logs`/`host.tool_rollback`/`host.tool_diff`/`host.tool_history`/
+`host.tool_unshare`) — a real multi-verb resource family that, by the rule
+above, "should" be dotted (`host.tool.call`, ...) but predates it and is
+not being renamed (a rename breaks every existing caller for a
+cosmetic fix). Do not use `host.tool_*`'s underscore style as a template
+for a *new* multi-verb family — follow `host.agent.*`/`host.docs.*`
+instead. A PRD to actually reconcile `host.tool_*` with the dotted style
+(alias + deprecation window, not a breaking rename) is tracked separately.
 
 ## Contributing: routing a new top-level path
 
@@ -198,7 +295,14 @@ codex mcp add mcphost --url https://mcphost.dev/mcp
 
 See the live [status page](/status.html) and the
 [Acceptable Use Policy](/aup.html) before you point production traffic at
-it.
+it. Plans and limits: [plans](/plans.html) / [`/plans.json`](/plans.json)
+(same numbers `billing.plans` returns, and `docs/plans.md`). Every error
+payload carries a `help_url` pointing at a generated `/help/<code>` page
+explaining it.
+
+<!-- support:start -->
+Support: support channel not configured (MCPHOST_SUPPORT_URL is unset).
+<!-- support:end -->
 
 ## Install
 

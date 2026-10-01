@@ -899,6 +899,12 @@ pub async fn whoami(
         // this call arrived on `/mcp` or the tenant's own `/t/{ns}/mcp`.
         "resource": crate::oauth::canonical_resource_uri(&state.public_url, &tenant.namespace),
         "metadata_url": crate::oauth::tenant_metadata_url(&state.public_url, &tenant.namespace),
+        // PRD-mcphost-first-hour-support-surface requirement 7 (AC7): an
+        // agent calling host.whoami for its own identity also learns where
+        // to point its human for support/plans/status/help, no search
+        // required -- same `state.public_url` base every other link on this
+        // response already uses.
+        "links": crate::help::surface_links(&state.public_url),
     }))
 }
 

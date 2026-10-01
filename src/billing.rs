@@ -841,8 +841,19 @@ pub fn billing_unavailable(reason: impl Into<String>) -> AppError {
 /// `billing_mode`. Never fails -- there is always at least a default
 /// catalog loaded at startup.
 pub fn plans(state: &AppState) -> Value {
-    let plans: Vec<Value> = state
-        .plans
+    plans_from_catalog(&state.plans, state.billing_config.billing_mode())
+}
+
+/// The data half of [`plans`], factored out so
+/// PRD-mcphost-first-hour-support-surface's `gendocs::render_plans_markdown`
+/// (and its own hermetic "byte-identical to a fresh render" test, AC4) can
+/// build the exact same JSON the live `billing.plans` tool and `/plans.json`
+/// route return, from just a [`crate::plans::PlanCatalog`] and a
+/// `billing_mode` string -- no [`AppState`] (and the sqlite/http-client/...
+/// plumbing that comes with one) required to render documentation from data
+/// that was never anything but this catalog to begin with.
+pub fn plans_from_catalog(catalog: &crate::plans::PlanCatalog, billing_mode: &str) -> Value {
+    let plans: Vec<Value> = catalog
         .plans
         .iter()
         .map(|p| {
@@ -858,7 +869,7 @@ pub fn plans(state: &AppState) -> Value {
         .collect();
     json!({
         "plans": plans,
-        "billing_mode": state.billing_config.billing_mode(),
+        "billing_mode": billing_mode,
     })
 }
 

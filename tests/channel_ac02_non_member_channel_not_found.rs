@@ -6,14 +6,27 @@
 
 use crate::common;
 use common::{McpClient, RpcError, TestServer, extract_structured, signup};
-use serde_json::json;
+use serde_json::{Value, json};
+
+/// PRD-mcphost-first-hour-support-surface requirement 1 (AC1): every
+/// payload now carries its own random `request_id`, excluded here before
+/// comparing `data` -- it's a per-call correlation id, not a side channel,
+/// so two calls legitimately differing only by it are still the
+/// `channel_not_found` byte-identity this AC is actually about.
+fn without_request_id(data: &Value) -> Value {
+    let mut data = data.clone();
+    if let Some(obj) = data.as_object_mut() {
+        obj.remove("request_id");
+    }
+    data
+}
 
 fn assert_same_error(a: &RpcError, b: &RpcError, what: &str) {
     assert_eq!(a.code, b.code, "{what}: jsonrpc code differs");
     assert_eq!(a.message, b.message, "{what}: message differs");
     assert_eq!(a.error_code.as_deref(), Some("channel_not_found"), "{what}: {a:?}");
     assert_eq!(a.error_code, b.error_code, "{what}: error_code differs");
-    assert_eq!(a.data, b.data, "{what}: data differs");
+    assert_eq!(without_request_id(&a.data), without_request_id(&b.data), "{what}: data differs");
 }
 
 #[tokio::test]

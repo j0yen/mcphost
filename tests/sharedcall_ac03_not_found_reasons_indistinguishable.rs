@@ -40,11 +40,21 @@ async fn probe(client: &McpClient, qualified: &str, n: usize) -> (Value, Vec<f64
         let result = client.tools_call("host.tool_call", json!({"name": qualified})).await;
         durations.push(start.elapsed().as_secs_f64() * 1000.0);
         let err = result.expect_err("a not-found qualified name must never succeed");
+        // PRD-mcphost-first-hour-support-surface requirement 1 (AC1): every
+        // payload now carries its own random `request_id` -- a per-call
+        // correlation id, not a side channel, excluded here so this AC's
+        // "byte-identical" claim is about the actual non-leaking shape
+        // (`code`/`error_code`/`message`/every other `data` field, help_url
+        // included) rather than a value that was never meant to repeat.
+        let mut data_without_request_id = err.data.clone();
+        if let Some(obj) = data_without_request_id.as_object_mut() {
+            obj.remove("request_id");
+        }
         let this_shape = json!({
             "code": err.code,
             "error_code": err.error_code,
             "message": err.message,
-            "data": err.data,
+            "data": data_without_request_id,
         });
         match &shape {
             None => shape = Some(this_shape),
