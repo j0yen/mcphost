@@ -348,7 +348,7 @@ pub async fn doc_put(state: &AppState, tenant: &Tenant, args: &Value) -> Result<
         .documents_put(
             tenant.id,
             new_id,
-            name,
+            name.clone(),
             content_hash,
             content,
             bytes,
@@ -367,6 +367,31 @@ pub async fn doc_put(state: &AppState, tenant: &Tenant, args: &Value) -> Result<
             .db
             .document_usage_event_insert(tenant.id, "docs.put_bytes".to_string(), outcome.bytes, now)
             .await?;
+    }
+
+    // PRD-mcphost-lineage-blast-radius requirement 4: "a document is put
+    // with a `derived_from` metadata key naming a table" -- registers
+    // `table:<name> -> document:<name>`. `derived_from` may be a single
+    // table name or an array of them. Best-effort, same convention as
+    // `control::tool_publish`'s own lineage registration: logged, never
+    // fails an otherwise-successful put.
+    let derived_from: Vec<String> = match metadata.get("derived_from") {
+        Some(Value::String(s)) => vec![s.clone()],
+        Some(Value::Array(a)) => a.iter().filter_map(|v| v.as_str()).map(str::to_string).collect(),
+        _ => Vec::new(),
+    };
+    for table in derived_from {
+        if let Err(e) = crate::lineage::register_edge(
+            state,
+            tenant.id,
+            (crate::lineage::NodeKind::Table, &table, &table),
+            (crate::lineage::NodeKind::Document, &name, &name),
+            "derived_from",
+        )
+        .await
+        {
+            tracing::warn!(error = %e, tenant = %tenant.namespace, document = %name, table = %table, "failed to register lineage edge for document derived_from");
+        }
     }
 
     Ok(json!({
