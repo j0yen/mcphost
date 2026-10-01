@@ -998,6 +998,8 @@ mod rowpol_ac07_audit_verify_intact_then_tampered;
 mod rowpol_ac08_audit_chain_pages_and_refuses_end_users;
 #[path = "rowpol_ac09_filtered_vs_unfiltered_p95_within_3ms.rs"]
 mod rowpol_ac09_filtered_vs_unfiltered_p95_within_3ms;
+#[path = "rowpol_ac10_policy_set_refuses_a_widening_rule.rs"]
+mod rowpol_ac10_policy_set_refuses_a_widening_rule;
 #[path = "run_metrics_handoff_glob_regression.rs"]
 mod run_metrics_handoff_glob_regression;
 #[path = "runoverflow_ac03_progress_counter_monotonic_validation.rs"]
