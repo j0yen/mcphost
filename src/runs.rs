@@ -19,11 +19,13 @@ use serde_json::{Map, Value, json};
 use crate::db::{RunRow, Tenant};
 use crate::errors::AppError;
 use crate::handler::{
-    BufferedLog, CellResourceSink, CountingStateBackend, TenantDocsBridge, TenantLineageBridge,
-    TenantStateBridge, TenantTableBridge, build_secret_resolver,
+    BufferedLog, CellResourceSink, CountingStateBackend, TenantChannelBridge, TenantDocsBridge,
+    TenantLineageBridge, TenantMsgBridge, TenantStateBridge, TenantTableBridge,
+    build_secret_resolver,
 };
 use crate::kinds::{
-    CallCtx, CallLog, DocsBackend, LineageBackend, ProgressSink, ResourceSink, TableBackend,
+    CallCtx, CallLog, ChannelBackend, DocsBackend, LineageBackend, MsgBackend, ProgressSink,
+    ResourceSink, TableBackend,
 };
 use crate::state::AppState;
 
@@ -820,6 +822,26 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
             state: Arc::new(state.clone()),
             tenant: tenant.clone(),
         }) as Arc<dyn LineageBackend>,
+        // PRD-mcphost-sandbox-channel-msg-bridge requirement 2: a
+        // scheduled/async job's `mcphost.channel`/`mcphost.msg` reach this
+        // same tenant's real channel/messaging service, same convention as
+        // `state`/`table`/`docs`/`lineage` above -- this is the path
+        // `fleet_stall_check`-shaped schedules (the PRD's own Grounding)
+        // actually post through.
+        channel: Arc::new(TenantChannelBridge {
+            state: Arc::new(state.clone()),
+            tenant: tenant.clone(),
+        }) as Arc<dyn ChannelBackend>,
+        msg: Arc::new(TenantMsgBridge {
+            state: Arc::new(state.clone()),
+            tenant: tenant.clone(),
+        }) as Arc<dyn MsgBackend>,
+        sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
+        sidecar_ops_max: state
+            .plans
+            .get(&tenant.plan)
+            .map(|p| p.state_ops_per_call_max)
+            .unwrap_or(i64::MAX),
         compose_depth: 0,
         compose_children: Some(Arc::new(std::sync::atomic::AtomicU32::new(0))),
         compose_db: Some(state.db.clone()),

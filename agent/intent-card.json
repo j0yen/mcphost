@@ -1,94 +1,72 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-docs-hybrid-search.md",
-  "intent_slug": "mcphost-docs-hybrid-search",
-  "root_motivation": "Grounding: the docs-qa recipe scored 90.0% offline on 2026-09-26 (5 of 5 sessions) with the persona baseline at 61.8%; the misses in that run were identifier-shaped questions the embedding-only ranking placed outside the top 5. doc_search (src/docs.rs) ranked by cosine alone when a provider was configured, or BM25 alone otherwise -- never both -- so a keyword query missed paraphrases and an embedding query missed exact identifiers and rare tokens. This build ports aistack-vector's rrf_fuse (reciprocal rank fusion) into docs_index.rs, runs both rankings when a provider is configured, and returns the fused top-k with each hit's source ranks.",
-  "user_persona": "An agent answering questions over a tenant's documents through host.docs.search (the rag_indexer persona in the synthorg corpus; docs-qa recipe) -- wants the top-5 to contain the passage that answers the question whether the question repeats the document's words or paraphrases them. Also the operator, who can force mode: \"lexical\"/\"embeddings\"/\"hybrid\" on one call to debug a tenant-reported miss.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-sandbox-channel-msg-bridge.md",
+  "intent_slug": "mcphost-sandbox-channel-msg-bridge",
+  "root_motivation": "A tool running inside the python sandbox can detect a condition (a stalled build, a threshold breach) but cannot alert anyone: host.channel.post/host.msg.send are callable only from outside the sandbox, and the http kind's own SSRF guard refuses a loopback call back to this same box. On 2026-09-30 the fleet board's own schedule (fleet_stall_check) computed should_post: true for a red run and could not deliver it -- a human relayed the post twice. This PRD adds mcphost.channel/mcphost.msg sidecar modules beside the already-shipped mcphost.state/mcphost.table/mcphost.docs/mcphost.lineage, reusing channels.rs/messaging.rs's own business logic (not the MCP handler) so a sandboxed tool's post/send is tenancy-, quota-, and test-mode-identical to the external verb.",
+  "user_persona": "A workflow-orchestrator or agent-to-agent builder whose scheduled/webhook python tool detects a condition and needs to post to a channel or message another tenant without egress or secrets.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 9
+    "target": 7
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a tenant with a configured provider and a corpus where an identifier-bearing chunk ranks 12th by cosine and 1st by BM25, When host.docs.search runs with k: 5 and default mode, Then that chunk is in the top 5, index.mode is hybrid, and its ranks shows both positions.",
-      "test": "tests/hybrid_ac01_identifier_chunk_wins_via_lexical_rank.rs"
+      "description": "Given a published python tool whose source does `from mcphost import channel; channel.post(cid, {\"n\": 1})` with `cid` a channel the tenant opened, When called, Then the call result carries the post's `seq` and `host.channel.read(cid)` returns the post with the tenant as sender.",
+      "test": "tests/chanbridge_ac01_python_channel_post_seq_and_host_sees_tenant.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the fusion function with two lists, When fused at k_rrf 60, Then a chunk present in both lists outranks a chunk at the same best rank in only one, and the top score is 1.0.",
-      "test": "tests/hybrid_ac02_rrf_fuse_ties_and_normalization.rs"
+      "description": "Given a python tool doing `from mcphost import msg; msg.send(to, {\"hello\": 1})` where `to` is a tenant that accepted contact, When called, Then the recipient's `host.msg.inbox` shows the message and the result carries the thread id.",
+      "test": "tests/chanbridge_ac02_python_msg_send_reaches_inbox_with_thread_id.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given mode: \"lexical\", When search runs, Then the provider is not called (the test's fake provider records zero requests) and index.mode is lexical.",
-      "test": "tests/hybrid_ac03_lexical_mode_never_calls_provider.rs"
+      "description": "Given a tenant at its plan's message quota, When the tool calls `msg.send`, Then Python receives `McphostBridgeError` with `.code` equal to the external verb's error class and nothing is sent.",
+      "test": "tests/chanbridge_ac03_msg_send_quota_raises_bridge_error_nothing_sent.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given mode: \"hybrid\" on a tenant with no provider, When search runs, Then a validation error names the missing provider config and no results are returned.",
-      "test": "tests/hybrid_ac04_hybrid_without_provider_is_validation_error.rs"
+      "description": "Given the same tool run under `host.tool_test`, When it calls `channel.post`, Then the return is `{delivered: false, would_post: {...}}`, `host.channel.read` shows no new post, and no agent-wake trigger fires.",
+      "test": "tests/chanbridge_ac04_tool_test_dry_run_reports_would_post_no_write_no_trigger.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given default mode and a provider that fails, When search runs, Then results are the lexical ranking, index.mode is lexical-fallback, and no error is returned.",
-      "test": "tests/hybrid_ac05_default_mode_provider_failure_falls_back.rs"
+      "description": "Given a tool that loops `channel.post` 1000 times, When called, Then the call fails at `state_ops_per_call_max` with the shared sidecar error and at most that many posts exist.",
+      "test": "tests/chanbridge_ac05_channel_post_loop_fails_at_state_ops_per_call_max.rs"
     },
     {
       "id": "AC6",
-      "level": "MUST",
-      "description": "Given two tenants with overlapping document text, When tenant A searches, Then no hit belongs to tenant B in either candidate list or the fused result.",
-      "test": "tests/hybrid_ac06_hybrid_mode_cross_tenant_isolation.rs"
+      "level": "SHOULD",
+      "description": "Given `host.quickstart kind=python` (or `docs/kinds/python.md` when the discoverability PRD is absent), When read, Then `mcphost.channel` and `mcphost.msg` appear with the signatures in requirement 1.",
+      "test": "tests/chanbridge_ac06_python_kind_doc_documents_channel_and_msg.rs"
     },
     {
       "id": "AC7",
       "level": "SHOULD",
-      "description": "Given a tenant with 1,000 chunks, When 50 hybrid searches run, Then p95 latency exceeds embeddings-only p95 by at most 30 ms.",
-      "test": "tests/hybrid_ac07_p95_latency_within_30ms_of_embeddings_only.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "SHOULD",
-      "description": "Given the docs-qa seeded corpus and gold questions, When hit rate is measured for lexical, embeddings, and hybrid, Then hybrid is at least each of the others.",
-      "test": "tests/hybrid_ac08_hybrid_hit_rate_at_least_each_mode.rs"
-    },
-    {
-      "id": "AC9",
-      "level": "MUST",
-      "description": "Given prod after land, When docs-qa.sh https://mcphost.dev runs from carbon with a fresh signup, Then it exits 0 and every search response reports index.mode: \"hybrid\".",
-      "test": "deferred -- operator-provisioned; no test. Requires a production deploy, DNS/carbon access, and an operator-run docs-qa.sh receipt under docs/receipts/ -- outside a build agent's authority (never provision, resize, delete, or reconfigure a server or service)."
-    },
-    {
-      "id": "AC10",
-      "level": "MUST",
-      "description": "Given filter.prefix set, When hybrid search runs, Then every hit's name starts with the prefix and both candidate lists were filtered before fusion.",
-      "test": "tests/hybrid_ac10_filter_prefix_filters_before_fusion.rs"
+      "description": "Given two reads with `ack=True`, When the second runs, Then it returns only posts after the first read's `next_cursor`.",
+      "test": "tests/chanbridge_ac07_channel_read_ack_resumes_from_stored_cursor.rs"
     }
   ],
   "scope": [
-    "src/docs_index.rs: rrf_fuse (reciprocal rank fusion, k_rrf=60 fixed per the PRD's own open question) and the K_RRF constant, ported from aistack-vector.",
-    "src/docs.rs: doc_search rewritten around a mode argument (auto/lexical/embeddings/hybrid), embed_query/dense_candidates/lexical_hits helpers, and hybrid_search_results (fuses the lexical and dense candidate lists, each to 3xk capped at 60, and formats the top k with a ranks: {lexical, embeddings} field on every hit).",
-    "src/handler.rs: host.docs.search's tool schema gains the mode parameter and documents ranks in its description.",
-    "src/db.rs: Db::doc_chunks_bulk_insert_with_vectors_for_test, a vector-bearing sibling of the existing doc_chunks_bulk_insert_for_test, for AC7's 1,000-chunk latency fixture.",
-    "tests/docsearch_ac05_embeddings_mode_ranks_by_cosine.rs: updated to pass mode: \"embeddings\" explicitly, preserving its original cosine-only-ranking intent now that default mode fuses.",
-    "contracts/host-tools.v1.json: regenerated (mcphost contract dump) for host.docs.search's new mode parameter and ranks-bearing description.",
-    "scripts/gen-test-suites.sh: MAX_PER_SUITE.core 765 -> 785 (this PRD's own nine hybrid_ac*.rs files pushed core's non-exclusive bucket over the prior cap -- renumbered during rebase: mcphost-chart-in-a-minute and mcphost-lineage-blast-radius raised the cap to 715 then 765 first, landing on main ahead of this branch; same recurring bump this file's own comments already document).",
-    "Cargo.toml/Cargo.lock: this PRD's own version_bump: minor rule originally targeted 0.62.0 -> 0.63.0, but mcphost-chart-in-a-minute and mcphost-lineage-blast-radius claimed 0.63.0 and 0.64.0 first, landing on main ahead of this branch during rebase -- version stays at 0.64.0, no additional bump.",
-    "tests/hybrid_ac01..08,10_*.rs: the nine delivered tests (AC9 deferred, operator-provisioned)."
+    "src/kinds/mod.rs: ChannelBackend/NoChannel, MsgBackend/NoMsg traits (same shape as StateBackend/TableBackend/DocsBackend/LineageBackend), CallCtx.channel/msg fields, CallCtx.sidecar_ops (Arc<AtomicI64>, shared per call tree)/sidecar_ops_max (resolved plan quota) fields, for_test defaults, compose_call's child_ctx inherits channel/msg/sidecar_ops/sidecar_ops_max from the parent.",
+    "src/kinds/python.rs: ChannelSidecarBridge/MsgSidecarBridge (same request-line-out/response-line-in shape as StateSidecarBridge/TableSidecarBridge, marked __mcphost_channel__/__mcphost_msg__), check_sidecar_ops_cap (requirement 5's shared counter check, same state_quota_exceeded/state_ops_per_call_max shape tenant_state.rs's own quota_exceeded produces), both chained into HostSidecarBridge; PY_RUNNER_SCRIPT gains mcphost.channel (post/read)/mcphost.msg (send/inbox) modules, a shared McphostBridgeError base class, and sys.modules registration.",
+    "src/handler.rs: TenantChannelBridge/TenantMsgBridge (call channels::post/read and messaging::send/inbox directly, not the MCP handler, with the parent call's own Tenant), sidecar_ops_cap helper (reads plan.state_ops_per_call_max), wired into every real CallCtx construction site (call_published_tool, tool_test, bridge_test [NoChannel/NoMsg -- http-only], spec_test, tool_run).",
+    "src/runs.rs: execute_job's CallCtx also wires TenantChannelBridge/TenantMsgBridge -- the actual path a scheduled/webhook tool (the PRD's own Grounding, fleet_stall_check) posts through.",
+    "docs/kinds/python.md: new mcphost.channel / mcphost.msg section (requirement 6 fallback -- sandbox_api.modules/the discoverability PRD has not landed)."
   ],
   "non_goals": [
-    "Replacing the remote embedding provider with a local model -- fastembed/ONNX stay out (PRD's own non-goal).",
-    "A new BM25 implementation -- SQLite's bm25() stays in use (PRD's own non-goal).",
-    "Re-ranking with a model, or query rewriting (PRD's own non-goal).",
-    "Changing chunking, index refresh cadence, or quotas (PRD's own non-goal).",
-    "Exposing k_rrf as a caller-tunable parameter -- the PRD's own open question resolves it fixed at 60."
+    "msg.wait inside the sandbox -- Non-goals: the 30s call timeout makes a blocking wait a footgun; an agent polls with a schedule instead.",
+    "New delivery kinds (email, SMS) -- Non-goals: those are http tools with secrets, already possible on plans with egress.",
+    "Reading channels by name -- Non-goals: PRD-mcphost-channel-read-name-parity; this bridge takes the id host.channel.open already returned, same as the external verb.",
+    "msg.reply/msg.ack (P2 requirement 8) -- no AC covers them; not built, per the dispatch instruction to implement only the listed, non-deferred ACs.",
+    "A real PRD-mcphost-dry-run-side-effects rollback mechanism -- that PRD has not landed (no would_post/dry_run pattern anywhere in src/ before this PRD); requirement 4's own text says this PRD implements the check for these two bridges itself, which is what ChannelSidecarBridge/MsgSidecarBridge's own ctx.test_mode short-circuit does, directly, before ever reaching the real channel/msg backend."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -97,47 +75,55 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "test_file_names_use_underscores_not_the_prd_slugs_hyphens": "test_prefix hybrid (the PRD's own frontmatter field), same convention as every other test file in this repo.",
-      "version_bump_minor": "PRD frontmatter build_version_bump: minor -- Cargo.toml/Cargo.lock originally bumped 0.62.0 -> 0.63.0 (renumbered during rebase: mcphost-chart-in-a-minute and mcphost-lineage-blast-radius claimed 0.63.0 and 0.64.0 first, landing on main ahead of this branch); version left at 0.64.0, no additional bump.",
-      "no_schema_change": "PRD's own technical considerations: ranks is computed per call from the two candidate lists' own list positions, not stored -- no migration.",
-      "outage_path_fails_open_for_every_provider_calling_mode": "Requirement 5 names only \"default mode\", but this build applies the same fail-open-to-lexical-fallback behaviour to explicit mode: \"hybrid\" and mode: \"embeddings\" too, so an operator's explicit override during a provider outage never turns into a hard error -- documented in hybrid_ac05's own module doc and this card, since it is a design decision beyond the PRD's literal text, not an accident."
+      "test_file_names_use_test_prefix_chanbridge": "test_prefix chanbridge (the PRD's own frontmatter field): tests/chanbridge_ac<NN>_<slug>.rs, same convention as every other test file in this repo.",
+      "version_bump_minor": "PRD frontmatter build_version_bump: minor -- Cargo.toml/Cargo.lock bumped 0.65.0 -> 0.66.0.",
+      "ac8_deferred_operator_provisioned": "AC8 is a Live acceptance criterion (the landed binary deployed on prod, a real schedule retargeted at a real tenant, evidence pasted into the PRD's own evidence block) -- deferred, not built or tested here; a build agent never provisions, deploys to, or authorizes changes on a live/prod host.",
+      "python_body_argument_is_json_not_text": "Open question not raised by the PRD but forced by its own AC1/AC2 examples (`channel.post(cid, {\"n\": 1})`, `msg.send(to, {\"hello\": 1})`): the external host.channel.post/host.msg.send verbs take a text `body` plus an optional JSON `data`, so the python wrapper (not the Rust bridge) serializes a non-string `body` into the host's own `body` text field and, when it's a JSON object, also passes it through as `data` -- a caller gets both the human-readable text and the structured value back from host.channel.read/host.msg.inbox.",
+      "shared_mcphost_bridgeerror_class": "Requirement 3's own wording (\"surfaces in Python as McphostBridgeError\") is read as one shared exception class, not two independently-named per-module classes -- McphostChannelError/McphostMsgError both subclass a single McphostBridgeError (exposed as mcphost.channel.BridgeError/mcphost.msg.BridgeError/mcphost.BridgeError), so a tool can catch either sidecar's refusal with one except clause.",
+      "sidecar_ops_shared_counter_is_new_for_channel_msg_only": "Requirement 5's \"shared budget with state/table ops\" is read as sharing plans.toml's state_ops_per_call_max VALUE (both plans currently set it to 200), not retrofitting tenant_state.rs/tables.rs's own existing per-call row-count checks onto one literal shared counter -- CallCtx.sidecar_ops is a new running counter that ChannelSidecarBridge/MsgSidecarBridge increment and check against that same plan value; state/table's own per-call checks are unchanged.",
+      "ac1_channel_the_tenant_opened_is_a_group_channel": "host.channel.read only resolves a channel through channel_group_lookup (migration 0028's group-based channel) -- the legacy, ungated host.channel.open(name) channel (migration 0027) has no read entry point at all. AC1's \"a channel the tenant opened\" is built as host.group.create + host.channel.open(group=...), where the owner is always an authorized reader/poster of its own channel (same contract channel_ac01's own \"O reads too\" assertion proves)."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can't embeddings mode alone just rank identifier-shaped queries correctly?",
-      "a": "A remote embedding model's vector space is built for semantic paraphrase, not exact-token recall -- a rare identifier like an invoice number contributes little to the embedding compared to the surrounding prose, so a chunk whose only distinguishing content is that identifier can embed close to many unrelated chunks that share the prose's general topic. 2026-09-26's offline docs-qa run confirmed this concretely: identifier-shaped questions were the entire miss set at 90% hybrid-absent."
+      "q": "Why does the dry-run short-circuit live inside ChannelSidecarBridge/MsgSidecarBridge in python.rs rather than inside TenantChannelBridge/TenantMsgBridge in handler.rs (next to channels::post/messaging::send themselves)?",
+      "a": "Technical considerations is explicit: a delivered post also wakes an agent-wake trigger that a DB rollback can't un-fire, so the short-circuit must happen BEFORE delivery, not rely on one. The sidecar bridge is the one place that sees ctx.test_mode AND intercepts the call before it reaches channels::post/messaging::send at all -- TenantChannelBridge/TenantMsgBridge are thin pass-throughs with no test_mode awareness, matching every other TenantXBridge in handler.rs."
     },
     {
       "why": 2,
-      "q": "Why not just always prefer BM25 when the query looks like it contains an identifier?",
-      "a": "That requires classifying queries as \"identifier-shaped\" before ranking, which the PRD's own non-goals rule out (no query rewriting) and which fails the symmetric case (goal 2: a paraphrase query like \"when do we have to pay\" must still rank first via the embedding list, where BM25 alone would miss it entirely since none of its words appear in the document)."
+      "q": "Why give CallCtx a brand-new sidecar_ops/sidecar_ops_max pair instead of reusing CallCtx.compose_children's existing Arc<AtomicU32> ceiling machinery?",
+      "a": "compose_children caps composed CHILD CALLS (a different resource, COMPOSE_CHILDREN_MAX=50, enforced by kinds::compose_call) -- requirement 5 caps SIDECAR OPS (channel/msg calls within one call, against the tenant's own plan-resolved state_ops_per_call_max, which varies free/pro in principle even though both currently read 200). Reusing compose_children's counter would conflate two independently-specified ceilings with two different sources of truth."
     },
     {
       "why": 3,
-      "q": "Why reciprocal rank fusion specifically, rather than e.g. a weighted score blend of cosine and bm25?",
-      "a": "Cosine and bm25() live on incompatible, un-normalized scales (bm25 is negative-better and unbounded; cosine is bounded [-1,1] but a remote provider's actual score distribution is unknown ahead of time) -- any fixed weighting of the raw scores would need per-provider calibration. RRF only ever consumes rank *position*, which is scale-free by construction; aistack-vector's own rrf_fuse already proved this approach and ships unit-tested."
+      "q": "Why does a non-string body get serialized into BOTH the host's body text field and its data object, rather than picking one?",
+      "a": "host.channel.post/host.msg.send's own body argument must be a non-empty string (arg_str), so a dict body has nowhere else to go but a stringified body; but discarding the structured value entirely would make host.channel.read/host.msg.inbox strictly less useful to a reader than the AC1/AC2 python call that produced the post -- data already exists on both verbs for exactly this (an optional JSON object alongside body), so population costs nothing and loses nothing."
     },
     {
       "why": 4,
-      "q": "Why 3 x k candidates capped at 60, not just k or the whole index?",
-      "a": "Fusion needs each list to be wide enough that a chunk ranking well in only one list (AC1's own scenario: 12th by cosine) still has a rank position to contribute a fusion score from -- k alone would have missed AC1's own chunk entirely (rank 12 > k=5). The whole index is unbounded per tenant (AC7's own 1,000-chunk fixture, or more in production) and would blow the latency budget; 3k capped at 60 is the PRD's own explicit technical-considerations number, sized to keep the FTS5 and cosine scans bounded while still catching mid-list identifier chunks like AC1's."
+      "q": "Why wire TenantChannelBridge/TenantMsgBridge into runs.rs's execute_job (the async job executor) when no AC exercises a scheduled job directly?",
+      "a": "The PRD's entire Grounding section is a schedule (fleet_stall_check) that needed this bridge and couldn't reach it -- leaving the job executor's CallCtx on NoChannel/NoMsg would ship every AC green while leaving the PRD's own motivating failure mode (a scheduled tool's post) still broken, since AC8 (the one AC that would have caught this) is Live/deferred, not built here."
+    },
+    {
+      "why": 5,
+      "q": "Why does channel.post/msg.send's request envelope key the dry-run body as `would_post` for msg.send too, instead of `would_send`?",
+      "a": "Requirement 4's own text names the literal shape for both: \"channel.post and msg.send return {delivered: false, would_post: {...}}\" -- one key name for both bridges, not a per-bridge-named field, so a caller checking for a dry run doesn't need to branch on which bridge it called."
     }
   ],
-  "created_at": "2026-09-30T00:00:00Z",
+  "created_at": "2026-10-01T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Does a provider failure under an explicit mode: \"hybrid\"/\"embeddings\" call return an error, or fall back to lexical the same way auto mode does (requirement 5 only names \"default mode\")?",
-      "resolution": "Fall back the same way (index.mode: \"lexical-fallback\", no error) -- the PRD's own non-functional posture throughout (goal 4, requirement 5's own framing) is that a provider outage never surfaces as an error under any mode that would otherwise call it; an operator explicitly asking for hybrid during an outage getting a hard error instead of today's fail-open behaviour would be a regression for debugging, not an improvement. Pinned in hard_constraints.additional and hybrid_ac05's own module doc."
+      "question": "Should channel.post be attributed to the tool (sender = tool:<name>) or to the tenant only? (PRD's own Open question, drafted: tenant, with via_tool in the post's metadata, due 2026-10-08.)",
+      "resolution": "Tenant only, no via_tool metadata -- channels::post/post_group already attribute every post to the calling Tenant (from_address = tenant.namespace) regardless of caller (direct MCP call or sandbox bridge), and no AC requires a via_tool field; the PRD's own open question was still open (due after this build) at build time, so the existing, already-tested attribution behavior was left unchanged rather than guessing the resolution."
     },
     {
-      "question": "Does host.docs.status's own index.mode (\"embeddings\"/\"lexical\" based on configured provider, src/docs.rs doc_status) change to reflect hybrid?",
-      "resolution": "No -- doc_status describes the tenant's *configured* provider, not a per-call ranking outcome; it was already distinct from doc_search's own index.mode before this PRD (doc_search's mode could already read \"embeddings\" while status also read \"embeddings\", or \"lexical-fallback\" on search while status still read \"embeddings\"). Untouched by this build; only doc_search's own index.mode gains \"hybrid\"."
+      "question": "What does a sandboxed tool's `to` argument to msg.send accept, given AC2's own example passes a single address rather than the external verb's array?",
+      "resolution": "Either a single address (string) or a list -- the python wrapper normalizes `to if isinstance(to, list) else [to]` before calling through, so AC2's `msg.send(to, {...})` and a multi-recipient `msg.send([a, b], {...})` both reach host.msg.send's own array argument unchanged."
     },
     {
-      "question": "What identity does a candidate chunk need for the dense and sparse lists to agree it's \"the same chunk\" during fusion?",
-      "resolution": "(document_id, chunk_no) -- the doc_chunks table's own primary key minus tenant_id (every query here is already tenant-scoped) and version (a chunk_no is unique per document regardless of which version produced it, since the indexer always deletes a document's whole prior chunk set before writing its new one, per migrations/0044_docs_index.sql's own schema doc)."
+      "question": "Does the sidecar_ops cap apply only to mcphost.channel/mcphost.msg, or retroactively to mcphost.state/mcphost.table's existing sidecar calls too?",
+      "resolution": "Channel/msg only -- CallCtx.sidecar_ops is incremented solely by ChannelSidecarBridge/MsgSidecarBridge; StateSidecarBridge/TableSidecarBridge are unmodified by this PRD (their own existing per-call row-count quota checks in tenant_state.rs/tables.rs are untouched), avoiding a behavior change on two already-shipped, already-tested bridges that no AC in this PRD exercises."
     }
   ]
 }
