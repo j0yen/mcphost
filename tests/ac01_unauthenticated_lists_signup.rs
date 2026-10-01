@@ -320,7 +320,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        141,
+        147,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the three host.tool_history/host.tool_rollback/host.tool_diff \
@@ -360,7 +360,9 @@ async fn unauthenticated_tools_list_is_signup_only() {
          the two host.oauth.scope_set/scopes tools \
          (PRD-mcphost-tool-scopes-and-consent) + \
          the three host.lineage.blast_radius/trace/trace_page tools \
-         (PRD-mcphost-lineage-blast-radius): \
+         (PRD-mcphost-lineage-blast-radius) + \
+         the six host.vault.* tools (PRD-mcphost-upstream-token-vault, \
+         PRD-mcphost-upstream-token-vault-status): \
          {tool_names:?}"
     );
 }
