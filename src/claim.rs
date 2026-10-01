@@ -368,7 +368,9 @@ async fn send_verify_email(state: &AppState, tenant: &Tenant, email: &str) -> Re
 /// `source_ip` -- these routes sit on the same axum `Router` behind the
 /// same reverse proxy, so they need the same `X-Forwarded-For` handling to
 /// get a real per-caller address instead of Caddy's own loopback one.
-fn source_ip(headers: &HeaderMap, peer: SocketAddr) -> String {
+/// `pub(crate)`: PRD-mcphost-url-bound-tenants's own `/u/new` POST route
+/// (`http.rs`) reuses this rather than a third hand-rolled copy.
+pub(crate) fn source_ip(headers: &HeaderMap, peer: SocketAddr) -> String {
     let forwarded_for = headers
         .get("x-forwarded-for")
         .and_then(|v| v.to_str().ok());

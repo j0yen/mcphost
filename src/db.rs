@@ -95,6 +95,9 @@ const MIGRATION_0057: &str = include_str!("../migrations/0057_chart_index.sql");
 // (Renumbered from this PRD's own 0057 during rebase: mcphost-chart-in-a-minute
 // claimed 0057 first, landing on main ahead of this branch.)
 const MIGRATION_0058: &str = include_str!("../migrations/0058_lineage.sql");
+/// PRD-mcphost-url-bound-tenants requirement 2: `tenants.url_secret_hash`/
+/// `url_rotated_at`.
+const MIGRATION_0059: &str = include_str!("../migrations/0059_url_bound_tenants.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -110,7 +113,8 @@ const TENANT_COLUMNS: &str = "id, namespace, display_name, key_hash, created_at,
     last_tool_change_unix, namespace_verified, registry_namespace, plan, plan_since, billing_ref, \
     stripe_customer_id, synthetic, source_class, client_name, client_version, classified_by, \
     created_unix, origin, origin_detail, key_rotated_unix, disabled_reason, mesh_frozen_at, \
-    signup_source, owner_email, owner_verified_at, claim_token_hash, claim_expires_at";
+    signup_source, owner_email, owner_verified_at, claim_token_hash, claim_expires_at, \
+    url_secret_hash, url_rotated_at";
 
 fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
     Ok(Tenant {
@@ -143,6 +147,8 @@ fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
         owner_verified_at: r.get(26)?,
         claim_token_hash: r.get(27)?,
         claim_expires_at: r.get(28)?,
+        url_secret_hash: r.get(29)?,
+        url_rotated_at: r.get(30)?,
     })
 }
 
@@ -468,6 +474,17 @@ pub struct Tenant {
     /// Unix seconds after which [`Self::claim_token_hash`] no longer
     /// resolves (AC4: `MCPHOST_CLAIM_TOKEN_TTL_SECS`, default 7 days).
     pub claim_expires_at: Option<i64>,
+    /// PRD-mcphost-url-bound-tenants requirement 2: SHA-256 hex of this
+    /// tenant's `/u/<secret>/mcp` URL secret (`auth::hash_key` over
+    /// `auth::generate_url_secret`'s output), the same hash-at-rest
+    /// convention as [`Self::key_hash`]. `None` until the `/u/new` signup
+    /// page or `host.key_rotate` first generates one for this tenant.
+    /// Migration 0059 also gives it a `UNIQUE` index, so
+    /// `find_tenant_by_url_secret_hash` is an indexed point lookup.
+    pub url_secret_hash: Option<String>,
+    /// Unix seconds of the last time [`Self::url_secret_hash`] changed
+    /// (set or rotated alike); `None` until then.
+    pub url_rotated_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2103,7 +2120,8 @@ impl Db {
         Self::migrate_0055_enterprise_managed_auth(&conn)?;
         Self::migrate_0056_tool_spec_exposure(&conn)?;
         Self::migrate_0057_chart_index(&conn)?;
-        Self::migrate_0058_lineage(&conn)
+        Self::migrate_0058_lineage(&conn)?;
+        Self::migrate_0059_url_bound_tenants(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -2926,6 +2944,19 @@ impl Db {
     }
 
 
+    /// PRD-mcphost-url-bound-tenants requirement 2: gated on
+    /// `tenants.url_secret_hash`, same `pragma_table_info` idempotency shape
+    /// 0002/0032 above use for a single additive `ALTER TABLE ADD COLUMN`.
+    fn migrate_0059_url_bound_tenants(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'url_secret_hash'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0059)?;
+        }
+        Ok(())
+    }
+
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
     /// subcommand.
@@ -3162,6 +3193,8 @@ impl Db {
                 owner_verified_at: None,
                 claim_token_hash: None,
                 claim_expires_at: None,
+                url_secret_hash: None,
+                url_rotated_at: None,
             })
         })
         .await
@@ -3241,6 +3274,47 @@ impl Db {
             conn.query_row(&sql, params![namespace], tenant_from_row)
                 .optional()
                 .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-url-bound-tenants requirement 1: resolves a `/u/{secret}/mcp`
+    /// path's own `<secret>` to its tenant -- `handler::resolve_path_secret_auth`'s
+    /// only DB read, and `http::require_known_url_secret`'s existence check
+    /// before that (one indexed hash lookup either way, migration 0059's own
+    /// `UNIQUE` index on this column).
+    pub async fn find_tenant_by_url_secret_hash(
+        &self,
+        url_secret_hash: String,
+    ) -> Result<Option<Tenant>, AppError> {
+        self.with_conn(move |conn| {
+            let sql = format!("SELECT {TENANT_COLUMNS} FROM tenants WHERE url_secret_hash = ?1");
+            conn.query_row(&sql, params![url_secret_hash], tenant_from_row)
+                .optional()
+                .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-url-bound-tenants requirement 2/3 (AC3): replace this
+    /// tenant's URL secret hash in place and stamp `url_rotated_at` -- one
+    /// statement, same shape as [`Self::rotate_tenant_key`] above, so the
+    /// old secret stops resolving (`find_tenant_by_url_secret_hash` on its
+    /// hash returns nothing) the instant this returns. Also the first-ever
+    /// generation for a tenant that has never had one (`url_secret_hash`
+    /// starts `NULL`) -- the `/u/new` signup page's own first call.
+    pub async fn rotate_tenant_url_secret(
+        &self,
+        tenant_id: i64,
+        new_url_secret_hash: String,
+    ) -> Result<(), AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tenants SET url_secret_hash = ?1, url_rotated_at = ?2 WHERE id = ?3",
+                params![new_url_secret_hash, now, tenant_id],
+            )?;
+            Ok(())
         })
         .await
     }

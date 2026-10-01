@@ -76,11 +76,19 @@ fn value_to_json_object(v: Value) -> Map<String, Value> {
 /// neither an `Authorization` header nor a `tenant_key` argument resolved
 /// (see `call_tool`), so `via_session_binding` implies `oauth_caller ==
 /// None`.
+///
+/// PRD-mcphost-url-bound-tenants requirement 7: the domain gains `url` --
+/// resolved via the request's own `/u/{secret}/mcp` path, the new
+/// highest-precedence step (checked before any of the others, so
+/// `via_url_secret` implies both `oauth_caller == None` and
+/// `via_session_binding == false`).
 fn calls_auth_method(
     oauth_caller: Option<&crate::oauth::OauthCaller>,
     via_session_binding: bool,
+    via_url_secret: bool,
 ) -> &'static str {
     match oauth_caller.map(|o| o.auth_method) {
+        _ if via_url_secret => "url",
         None if via_session_binding => "session",
         None => "key",
         Some("hosted_token") => "hosted_token",
@@ -168,6 +176,46 @@ async fn resolve_tenant_key_auth(state: &AppState, args: &Value) -> Result<Auth,
             Ok(Auth::Tenant(Box::new(t), None))
         }
         None => Ok(Auth::Invalid),
+    }
+}
+
+/// PRD-mcphost-url-bound-tenants requirement 1: the `<secret>` segment of a
+/// `/u/{secret}/mcp` request, read straight off the original request's own
+/// URI -- same convention as `tenant_path_namespace` above. `None` for
+/// every other path (`/mcp`, `/t/{ns}/mcp`, ...).
+fn url_path_secret(parts: &http::request::Parts) -> Option<&str> {
+    parts.uri.path().strip_prefix("/u/")?.strip_suffix("/mcp")
+}
+
+/// PRD-mcphost-url-bound-tenants requirement 1: the new, highest-precedence
+/// step in the `Auth` chain ("path secret -> Authorization header ->
+/// tenant_key argument -> session binding -> anonymous") -- consulted
+/// before [`resolve_auth`] itself. `Ok(None)` for any path that isn't
+/// `/u/{secret}/mcp` at all, so every other route's resolution is
+/// untouched. A secret this host has never issued (or has since rotated
+/// away from) should never reach here in practice -- `http::require_known_url_secret`
+/// already 404s the request before dispatch ever runs -- but a disabled
+/// tenant's own still-valid secret is handled explicitly, the same
+/// `TenantDisabled` refusal the header/argument paths already give a
+/// disabled tenant's key.
+async fn resolve_path_secret_auth(
+    state: &AppState,
+    parts: &http::request::Parts,
+) -> Result<Option<Auth>, AppError> {
+    let Some(secret) = url_path_secret(parts) else {
+        return Ok(None);
+    };
+    let hash = hash_key(secret);
+    match state.db.find_tenant_by_url_secret_hash(hash).await? {
+        Some(t) if t.disabled => Err(AppError::TenantDisabled),
+        Some(t) => {
+            // See the mirrored comment in `resolve_auth` above.
+            if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
+                tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump last_seen_unix");
+            }
+            Ok(Some(Auth::Tenant(Box::new(t), None)))
+        }
+        None => Ok(None),
     }
 }
 
@@ -5820,9 +5868,20 @@ impl ServerHandler for McpHostHandler {
         ctx: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
         let parts = get_parts(&ctx)?;
-        let auth = resolve_auth(&self.state, parts)
+        // PRD-mcphost-url-bound-tenants requirement 1: same highest-
+        // precedence path-secret step `call_tool` uses, so a `tools/list` on
+        // a `/u/{secret}/mcp` connection sees that tenant's own tools too.
+        let auth = match resolve_path_secret_auth(&self.state, parts)
             .await
-            .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
+            .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
+        {
+            Some(a) => a,
+            None => {
+                resolve_auth(&self.state, parts)
+                    .await
+                    .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
+            }
+        };
         // PRD-mcphost-tenant-resource-metadata requirement 1 (AC3): a real
         // tenant whose namespace doesn't match a `/t/{ns}/mcp` path's own
         // `<ns>` never gets even a tool listing for it.
@@ -5940,9 +5999,26 @@ impl ServerHandler for McpHostHandler {
         let body_name = request.name.to_string();
         let mismatch = header_name.is_some_and(|h| h != body_name);
 
-        let mut auth = resolve_auth(&self.state, parts)
+        // PRD-mcphost-url-bound-tenants requirement 1: path secret is the
+        // new highest-precedence step in the `Auth` chain ("path secret ->
+        // Authorization header -> tenant_key argument -> session binding ->
+        // anonymous") -- checked before the header, so a `/u/{secret}/mcp`
+        // request runs as that tenant with no Authorization header and no
+        // tenant_key argument at all (AC1). `None` for every other path, in
+        // which case resolution falls through to the pre-existing header
+        // path exactly as before this PRD.
+        let path_secret_auth = resolve_path_secret_auth(&self.state, parts)
             .await
             .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
+        let via_url_secret = path_secret_auth.is_some();
+        let mut auth = match path_secret_auth {
+            Some(a) => a,
+            None => {
+                resolve_auth(&self.state, parts)
+                    .await
+                    .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
+            }
+        };
 
         let raw_args = Value::Object(request.arguments.unwrap_or_default());
         // Requirement 5/6: the header always wins whenever the connection
@@ -5983,6 +6059,25 @@ impl ServerHandler for McpHostHandler {
         {
             auth = bound;
             via_session_binding = true;
+        }
+        // PRD-mcphost-url-bound-tenants requirement 1 (AC7): a request on
+        // `/u/{secret}/mcp` that ALSO carries an `Authorization: Bearer` for
+        // a different tenant than the path secret's own is refused outright
+        // -- never silently resolved to either credential, and dispatch
+        // never runs. Compares raw tenant keys only (the realistic shape of
+        // a credential presented alongside a URL secret, same convention as
+        // the `tenant_key`-argument-vs-header conflict check below); an
+        // absent or unrecognized bearer is not a conflict.
+        if via_url_secret
+            && let Auth::Tenant(path_tenant, _) = &auth
+            && let Some(key) = crate::auth::extract_bearer(&parts.headers)
+        {
+            let hash = hash_key(&key);
+            if let Ok(Some(header_tenant)) = self.state.db.find_tenant_by_key_hash(hash).await
+                && header_tenant.id != path_tenant.id
+            {
+                return Err(AppError::AuthConflict.into_error_data_at(Some(&self.state.public_url)));
+            }
         }
         // PRD-mcphost-tenant-resource-metadata requirement 1 (AC2, AC3): a
         // real tenant (key- or JWT-resolved alike) whose namespace doesn't
@@ -6292,8 +6387,18 @@ impl ServerHandler for McpHostHandler {
                 // pre-existing header/`tenant_key`-argument paths (no
                 // `OauthCaller` at all), else whichever this call's own
                 // bearer resolved to (`"oauth"`/`"hosted_token"`).
-                let auth_method = oauth_caller.as_ref().map_or("key", |o| o.auth_method);
-                let calls_method = calls_auth_method(oauth_caller.as_ref(), via_session_binding);
+                //
+                // PRD-mcphost-url-bound-tenants requirement 3 (AC1): `"url"`
+                // when this call resolved via its own `/u/{secret}/mcp`
+                // path -- checked first, since `via_url_secret` implies
+                // `oauth_caller == None` (same precedence `calls_auth_method`
+                // below already encodes).
+                let auth_method = if via_url_secret {
+                    "url"
+                } else {
+                    oauth_caller.as_ref().map_or("key", |o| o.auth_method)
+                };
+                let calls_method = calls_auth_method(oauth_caller.as_ref(), via_session_binding, via_url_secret);
                 self.dispatch_tenant_tool(tenant, subject, auth_method, calls_method, end_user.as_ref(), name, args)
                     .await
             }
@@ -6308,7 +6413,7 @@ impl ServerHandler for McpHostHandler {
                         None,
                         None,
                         end_user.as_ref(),
-                        calls_auth_method(oauth_caller.as_ref(), via_session_binding),
+                        calls_auth_method(oauth_caller.as_ref(), via_session_binding, via_url_secret),
                         token_scope,
                     )
                     .await
@@ -6341,7 +6446,7 @@ impl ServerHandler for McpHostHandler {
                         mismatch,
                         version,
                         end_user.as_ref(),
-                        calls_auth_method(oauth_caller.as_ref(), via_session_binding),
+                        calls_auth_method(oauth_caller.as_ref(), via_session_binding, via_url_secret),
                     )
                     .await
                 }

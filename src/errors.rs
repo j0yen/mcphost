@@ -351,6 +351,15 @@ pub enum AppError {
     /// `oauth::OauthCaller::scope`'s doc comment).
     #[error("insufficient_scope: the bearer token's scope does not include 'mcp'")]
     InsufficientScope,
+    /// PRD-mcphost-url-bound-tenants requirement 1 (AC7): a request on
+    /// `/u/{secret}/mcp` that also carries an `Authorization: Bearer` for a
+    /// DIFFERENT tenant than the one the path secret named. Distinct from
+    /// [`Self::ConflictingCredentials`] (that one's own `tenant_key`-argument
+    /// vs. header conflict) because the PRD pins this one's own wire code to
+    /// exactly `auth_conflict` -- same INVALID_REQUEST posture, never
+    /// silently picking either credential.
+    #[error("auth_conflict: this path's URL secret and the Authorization header resolved to different tenants")]
+    AuthConflict,
     /// PRD-mcphost-enterprise-managed-auth requirement 1 (AC8): a tenant may
     /// register at most [`crate::oauth::MAX_TRUSTED_ISSUERS_PER_TENANT`]
     /// identity-assertion trusted issuers -- a distinct quota (and wire
@@ -413,6 +422,7 @@ impl AppError {
             AppError::ConflictingCredentials => "conflicting_credentials",
             AppError::WrongTenant => "wrong_tenant",
             AppError::InsufficientScope => "insufficient_scope",
+            AppError::AuthConflict => "auth_conflict",
             AppError::TrustedIssuerQuotaExceeded { .. } => "quota_trusted_issuers",
         }
     }
@@ -459,7 +469,8 @@ impl AppError {
             | AppError::InvalidToken(_)
             | AppError::ConflictingCredentials
             | AppError::WrongTenant
-            | AppError::InsufficientScope => ErrorCode::INVALID_REQUEST,
+            | AppError::InsufficientScope
+            | AppError::AuthConflict => ErrorCode::INVALID_REQUEST,
             // `host_not_allowed`/`args_invalid`/`template_error` are caller
             // (or spec-author) input problems; `rate_limited` mirrors
             // AppError::RateLimited above; the remaining `upstream_*` /

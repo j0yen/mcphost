@@ -438,17 +438,34 @@ pub async fn redeem(state: &AppState, args: &Value) -> Result<Value, AppError> {
 /// anything from this point on, since `resolve_auth`/`resolve_tenant_key_auth`
 /// both look a presented key up by hash, and this tenant's row no longer
 /// carries the old one.
+///
+/// PRD-mcphost-url-bound-tenants requirement 3 (AC3): rotates this tenant's
+/// `/u/<secret>/mcp` URL secret in the same call -- regardless of whether
+/// one already existed (this is also how a tenant that has never had a URL
+/// gets its first one). The old secret stops resolving
+/// (`Db::find_tenant_by_url_secret_hash` on its hash returns nothing) the
+/// instant [`crate::db::Db::rotate_tenant_url_secret`] returns, same
+/// no-overlap-window guarantee as the key rotation right above it.
 pub async fn key_rotate(state: &AppState, tenant: &Tenant) -> Result<Value, AppError> {
     let new_key = generate_key();
     let new_key_hash = hash_key(&new_key);
     state.db.rotate_tenant_key(tenant.id, new_key_hash).await?;
-    tracing::info!(tenant = %tenant.namespace, "tenant key rotated");
+    let url_secret = crate::auth::generate_url_secret();
+    state
+        .db
+        .rotate_tenant_url_secret(tenant.id, hash_key(&url_secret))
+        .await?;
+    let url = format!("{}/u/{}/mcp", state.public_url.trim_end_matches('/'), url_secret);
+    tracing::info!(tenant = %tenant.namespace, "tenant key and URL rotated");
     Ok(json!({
         "tenant": tenant.namespace,
         "key": new_key,
+        "url": url,
         "usage": "This replaces your previous tenant key immediately -- pass this new key as \
             the tenant_key argument (or Authorization header) on every call from here on; \
-            the old key now fails as unauthenticated.",
+            the old key now fails as unauthenticated. It also replaces your previous URL: the \
+            old /u/<secret>/mcp link is now a 404, and the new url above needs no key or header \
+            at all.",
     }))
 }
 
