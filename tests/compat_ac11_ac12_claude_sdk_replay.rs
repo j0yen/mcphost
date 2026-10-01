@@ -196,7 +196,7 @@ async fn ac12_claude_agent_sdk_sequence_lists_signup_with_schema() {
     // Migration/compatibility section).
     assert_eq!(
         tools.len(),
-        147,
+        150,
         "signup + host.* (incl. host.quickstart, host.tool_run, host.bridge_test) + \
          host.tool_call + host.tool_history/host.tool_rollback/host.tool_diff \
          (3 tools, PRD-mcphost-tool-versions) + host.state.* (9 tools, PRD-mcphost-tenant-state) + \
@@ -221,7 +221,9 @@ async fn ac12_claude_agent_sdk_sequence_lists_signup_with_schema() {
          the two host.enduser.* tools (PRD-mcphost-end-user-identity) + \
          the three host.lineage.* tools (PRD-mcphost-lineage-blast-radius) + \
          the six host.vault.* tools (PRD-mcphost-upstream-token-vault, \
-         PRD-mcphost-upstream-token-vault-status): {tools:?}"
+         PRD-mcphost-upstream-token-vault-status) + \
+         the three host.table.handles/handle_drop/handle_export tools \
+         (PRD-mcphost-result-handles): {tools:?}"
     );
     let tool = tools
         .iter()
