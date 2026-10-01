@@ -1,8 +1,15 @@
 //! PRD-mcphost-first-publish-real-kind
 //! AC1 (P0) -- Given a fresh free-plan tenant, When `host.quickstart` is
 //! called, Then `starter_tool.kind == "python"` and executing `publish_call`
-//! then `test_call` verbatim returns `{reversed: "olleh", words: 1}` for
-//! input "hello".
+//! then `test_call` verbatim returns a real computed result for input
+//! "hello".
+//!
+//! PRD-mcphost-sandbox-bridge-discoverability requirement 2 (AC2) changed
+//! what that real result looks like: the starter is now a `mcphost.table`
+//! bridge example (`{appended: 1, words: 1, ...}`), not pure-stdlib
+//! reversal (`{reversed: "olleh", words: 1}`) -- updated here rather than
+//! left asserting the old shape, which this PRD's own change would
+//! otherwise break.
 
 use crate::common;
 use common::{TestServer, extract_structured, python_kind_registry, signup};
@@ -63,9 +70,9 @@ async fn quickstart_starter_tool_publishes_and_runs_for_real() {
     let test_structured = extract_structured(&test_result);
 
     assert_eq!(
-        test_structured["result"]["reversed"],
-        json!("olleh"),
-        "reversing 'hello' must return 'olleh': {test_structured}"
+        test_structured["result"]["appended"],
+        json!(1),
+        "the starter's table bridge must append exactly one row: {test_structured}"
     );
     assert_eq!(
         test_structured["result"]["words"],

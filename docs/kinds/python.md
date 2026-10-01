@@ -18,6 +18,26 @@ Result envelope contract: an optional `outputs` array of field names (`"outputs"
 
 `outputs` also accepts an object mapping each field name to a path (`"outputs": {"score": "$.data.score"}`, the same `$.a.b[0].c` dotted/indexed grammar `http` accepts -- no wildcards, filters, or recursive descent); that path is read directly from `main`'s return value (PRD-mcphost-surface-fluidity), the same as `http`'s own path-declared fields -- a bare-name entry in the same `outputs` still falls back to the wrapper-search promotion above.
 
+## The sandbox API (`import mcphost`)
+
+PRD-mcphost-sandbox-bridge-discoverability: everything below this line
+lives behind one import, `import mcphost` -- there is no `import host` and
+no `mcphost_sdk`. The registered submodules are `mcphost.state`,
+`mcphost.table`, `mcphost.docs`, and `mcphost.lineage` (one section each,
+below); `mcphost.call` and `mcphost.progress` are attributes on the
+top-level `mcphost` module itself, not their own submodule. `host.quickstart
+kind=python`'s `sandbox_api` field carries this same list, generated from
+the one Rust constant (`kinds::python::SANDBOX_API_MODULES`) both it and
+the publish-time static check read.
+
+A source that writes `import host`, `from host import ...`,
+`import mcphost_sdk`, or `mcphost.<name>` for an unregistered `<name>`
+fails `host.spec_test`/`host.tool_publish` with error class
+`unknown_import` and `data.hint` naming every module above -- before any
+sandbox ever spins up. A dynamic `import host`/`import mcphost_sdk` that
+escapes that text scan (inside a function body, say) gets the identical
+`unknown_import` error at call time instead of a raw Python traceback.
+
 ## mcphost.state (per-tenant memory)
 
 `import mcphost` inside `source` and call `mcphost.state.get/set/delete/list/insert/query/delete_rows/table_create` -- the same store `host.state.*` reads and seeds from the agent's own session, scoped to this tenant, reachable with `network: none`:

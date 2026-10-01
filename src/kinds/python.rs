@@ -328,8 +328,14 @@ fn default_outputs() -> Value {
 /// `http_field_hint` for the shared design.
 fn python_field_hint(field: &str) -> Option<(&'static str, Value)> {
     Some(match field {
+        // PRD-mcphost-sandbox-bridge-discoverability requirement 6 (AC6):
+        // the one spec-field help entry a tenant actually reads before
+        // writing `source` -- names `import mcphost` and the three
+        // documented modules right where a type-mismatch error on `source`
+        // would otherwise just say "a string".
         "source" => (
-            "a string",
+            "a string -- a tool's own code can `import mcphost` (mcphost.state, \
+             mcphost.table, mcphost.docs) to persist between calls",
             json!("def main(args):\n    return {\"ok\": True}\n"),
         ),
         "requirements" => ("a list of strings", json!(["requests"])),
@@ -626,6 +632,176 @@ fn validate_env_all(env: &BTreeMap<String, String>) -> Vec<KindError> {
     errors
 }
 
+// ---- sandbox API discoverability (PRD-mcphost-sandbox-bridge-discoverability) ----
+//
+// One registered `mcphost.*` submodule, with the one-line call signatures
+// `host.quickstart`'s `sandbox_api.modules` (`control::quickstart`) shows
+// verbatim. This list is the single source of truth requirement 1 (AC1)
+// asks for: it names exactly the `sys.modules["mcphost.*"]` entries
+// [`PY_RUNNER_SCRIPT`] registers just above `_END_USER_ENV_KEYS` (state,
+// table, docs, lineage) -- `tests/bridgedisc_ac01_sandbox_api_matches_runner_registration.rs`
+// proves the two never drift apart -- and both `quickstart` and
+// [`scan_unknown_mcphost_import`] below read it instead of each keeping
+// their own hand-copied module list.
+pub struct SandboxModule {
+    pub name: &'static str,
+    pub signatures: &'static [&'static str],
+}
+
+pub const SANDBOX_API_MODULES: &[SandboxModule] = &[
+    SandboxModule {
+        name: "state",
+        signatures: &["get(key)", "set(key, value)", "delete(key)"],
+    },
+    SandboxModule {
+        name: "table",
+        signatures: &[
+            "create(name, columns, primary_key=None)",
+            "append(table, rows)",
+            "query(sql)",
+        ],
+    },
+    SandboxModule {
+        name: "docs",
+        signatures: &["get(id=None, name=None)", "search(query, k=None, filter=None)"],
+    },
+    SandboxModule {
+        name: "lineage",
+        signatures: &[
+            "trace(id)",
+            "blast_radius(id, change_kind, max_depth=None, top_n=None)",
+        ],
+    },
+];
+
+/// `mcphost.<x>` callables that live directly on the top-level `mcphost`
+/// module (`_mcphost_mod.call`/`.progress` in [`PY_RUNNER_SCRIPT`]) rather
+/// than as their own `sys.modules["mcphost.<x>"]` entry -- `sandbox_api`'s
+/// `attrs` field, distinct from `modules` above.
+pub const SANDBOX_API_ATTRS: &[&str] = &["call", "progress"];
+
+/// The literal import line every sandbox module doc (`sandbox_api.import`,
+/// `docs/kinds/python.md`, `www/llms.txt`, the SKILL) shows.
+pub const SANDBOX_API_IMPORT_LINE: &str = "import mcphost";
+
+/// `mcphost.<name>` attribute names that are valid but aren't themselves a
+/// bridge call -- a submodule name, a top-level attr, or `CallError`
+/// (`_mcphost_mod.CallError`, the one exception class exposed straight on
+/// `mcphost` rather than on a submodule) -- so
+/// [`scan_unknown_mcphost_import`] doesn't flag a tool's own
+/// `except mcphost.CallError:`.
+fn is_known_mcphost_attr(name: &str) -> bool {
+    SANDBOX_API_MODULES.iter().any(|m| m.name == name) || SANDBOX_API_ATTRS.contains(&name) || name == "CallError"
+}
+
+/// Requirement 1's hint text (also requirement 4's run-time mapping, same
+/// wording either way): names the import line plus every registered
+/// module, so `data.hint` always contains `import mcphost` and the module
+/// names AC3/AC4 check for.
+fn unknown_import_hint() -> String {
+    let modules: Vec<String> = SANDBOX_API_MODULES.iter().map(|m| format!("mcphost.{}", m.name)).collect();
+    format!("the sandbox API is '{SANDBOX_API_IMPORT_LINE}' ({})", modules.join(", "))
+}
+
+/// Builds the `unknown_import` [`KindError`] both the publish-time scan
+/// (requirement 3 / AC3) and the run-time `ModuleNotFoundError` mapping
+/// (requirement 4 / AC4) return -- same `code`, same `data.hint`, so an
+/// agent sees one error shape regardless of which path caught the bad
+/// import. `bad_name` is the unresolvable name itself (`"host"`,
+/// `"mcphost_sdk"`, or `"mcphost.<name>"`) -- never raw stdout/stderr, so no
+/// traceback rides along in `data` (AC4: "no raw traceback appears in
+/// `result`").
+fn unknown_import_error(bad_name: &str) -> KindError {
+    let hint = unknown_import_hint();
+    KindError::structured_with(
+        "unknown_import",
+        format!("unknown_import: no module '{bad_name}'; {hint}"),
+        json!({"hint": hint, "module": bad_name}),
+    )
+}
+
+/// Requirement 3 (AC3): a line-based scan over `source` -- no AST, per this
+/// PRD's own scoped decision that a false positive inside a string literal
+/// is acceptable at P0. Three patterns: a bare `import host`/`from host
+/// import ...`, an `import mcphost_sdk`/`from mcphost_sdk import ...`, and
+/// an `mcphost.<name>` attribute reference where `<name>` isn't a
+/// registered module/attr ([`is_known_mcphost_attr`]). Returns the first
+/// unresolvable name, or `None` when the source only ever names registered
+/// modules.
+fn scan_unknown_mcphost_import(source: &str) -> Option<String> {
+    for raw_line in source.lines() {
+        let line = raw_line.trim_start();
+        if word_prefix_matches(line, "import host") || word_prefix_matches(line, "from host") {
+            return Some("host".to_string());
+        }
+        if word_prefix_matches(line, "import mcphost_sdk") || word_prefix_matches(line, "from mcphost_sdk") {
+            return Some("mcphost_sdk".to_string());
+        }
+    }
+    let mut rest = source;
+    const PREFIX: &str = "mcphost.";
+    while let Some(idx) = rest.find(PREFIX) {
+        let after = &rest[idx + PREFIX.len()..];
+        let name: String = after
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if !name.is_empty() && !is_known_mcphost_attr(&name) {
+            return Some(format!("mcphost.{name}"));
+        }
+        rest = &rest[idx + PREFIX.len()..];
+    }
+    None
+}
+
+/// `line` starts with `prefix` as a whole word -- the character right
+/// after `prefix` (if any) is neither alphanumeric nor `_`, so `import
+/// hostile_takeover` (a real, unrelated module name) doesn't false-positive
+/// as `import host`.
+fn word_prefix_matches(line: &str, prefix: &str) -> bool {
+    let Some(rest) = line.strip_prefix(prefix) else {
+        return false;
+    };
+    rest.chars().next().is_none_or(|c| !c.is_ascii_alphanumeric() && c != '_')
+}
+
+/// Requirement 4 (AC4): shared by both places a `ModuleNotFoundError` for
+/// `host`/`mcphost_sdk` can surface. `message` is either a bare Python
+/// exception message (`str(e)` -- `"No module named 'mcphost_sdk'"`, no
+/// class prefix: this is what [`PY_RUNNER_SCRIPT`]'s own `except
+/// Exception` branch puts in a normal `{"ok": false, ...}` envelope when
+/// the bad import is *inside* `main`, e.g. nested in a function body --
+/// escaping [`scan_unknown_mcphost_import`]'s text scan, which only runs
+/// on the stored `source`, never on what a function body does when
+/// called) or a full traceback's last line (`"ModuleNotFoundError: No
+/// module named 'host'"` -- what an uncaught *module-level* `import host`
+/// leaves on stderr when it crashes `exec_module` before `main` is even
+/// looked up). Returns the bad name only for exactly these two (the same
+/// two requirement 3's static scan rejects at publish time) -- a
+/// `ModuleNotFoundError` for anything else (a tenant's own missing
+/// third-party dependency, say) is left to the existing generic
+/// `tool_exception` fallback either caller already has.
+fn unknown_import_name_from_message(message: &str) -> Option<&str> {
+    let msg = message.strip_prefix("ModuleNotFoundError: ").unwrap_or(message);
+    let rest = msg.trim().strip_prefix("No module named ")?;
+    let bad = rest.trim_matches(|c: char| c == '\'' || c == '"');
+    if bad == "host" || bad == "mcphost_sdk" { Some(bad) } else { None }
+}
+
+/// The uncaught-crash half of requirement 4: an uncaught module-level
+/// `import host`/`import mcphost_sdk` leaves no `{"ok": false, ...}`
+/// envelope at all, just a raw interpreter traceback on stderr. Python's
+/// traceback always ends with the exception's own `ClassName: message`
+/// line, so the LAST line of `stderr_tail` is checked rather than scanning
+/// the whole blob (which may also hold the chain of `File "...", line N`
+/// frames above it, each of which could itself mention an unrelated
+/// module name in a quoted path).
+fn module_not_found_hint(stderr_tail: &str) -> Option<KindError> {
+    let last_line = stderr_tail.lines().next_back().unwrap_or("").trim();
+    let bad = unknown_import_name_from_message(last_line)?;
+    Some(unknown_import_error(bad))
+}
+
 /// Requirement 3 / AC2: same fields [`validate_spec_fields`] checks, but
 /// collecting every violation instead of returning at the first with `?`.
 fn validate_spec_fields_all(parsed: &PythonSpec) -> Vec<KindError> {
@@ -637,6 +813,13 @@ fn validate_spec_fields_all(parsed: &PythonSpec) -> Vec<KindError> {
             "source: {} bytes, over the {MAX_SOURCE_BYTES}-byte limit",
             parsed.source.len()
         )));
+    }
+    // PRD-mcphost-sandbox-bridge-discoverability requirement 3 (AC3): a
+    // publish-time text scan over `source` -- cheap (no AST, no sandbox
+    // spin-up) and run before any of the heavier gates below, since a spec
+    // doomed to `unknown_import` has nothing else worth checking.
+    if let Some(bad_name) = scan_unknown_mcphost_import(&parsed.source) {
+        errors.push(unknown_import_error(&bad_name));
     }
     errors.extend(validate_requirements_all(&parsed.requirements));
     errors.extend(validate_env_all(&parsed.env));
@@ -2472,6 +2655,21 @@ fn map_envelope_error(envelope: &Value, stderr_tail: &str) -> KindError {
                 .get("traceback")
                 .and_then(Value::as_str)
                 .unwrap_or("");
+            // PRD-mcphost-sandbox-bridge-discoverability requirement 4
+            // (AC4): a `ModuleNotFoundError` for `host`/`mcphost_sdk`
+            // raised *inside* `main` (e.g. nested in a function body,
+            // escaping the publish-time static scan) is caught by
+            // `PY_RUNNER_SCRIPT`'s own `except Exception` into exactly
+            // this envelope shape -- `error == "ModuleNotFoundError"`,
+            // `message` the bare `str(e)` -- so it must be checked here,
+            // before falling through to the generic `tool_exception`
+            // below, or the agent would see a hint-free exception instead
+            // of the same `unknown_import` the publish-time scan gives.
+            if error == "ModuleNotFoundError"
+                && let Some(bad) = unknown_import_name_from_message(message)
+            {
+                return unknown_import_error(bad);
+            }
             // Requirement 1/AC2: every exception that escapes the tool's
             // own code is `phase: tool_code`, carries the exception class
             // separately from the message (`error`), and -- when
@@ -3035,11 +3233,18 @@ fn map_sandbox_outcome(outcome: SandboxOutcome, allow_oversized: bool) -> Result
             ..
         } => match serde_json::from_str::<Value>(&stdout_tail) {
             Ok(envelope) => Err(map_envelope_error(&envelope, &stderr_tail)),
-            Err(_) => Err(KindError::structured_with(
-                "tool_exception",
-                "the tool process exited with an error and produced no readable envelope",
-                json!({"stdout_tail": stdout_tail, "stderr_tail": stderr_tail}),
-            )),
+            // Requirement 4 (AC4): an uncaught `ModuleNotFoundError` from
+            // `import host`/`import mcphost_sdk` leaves no JSON envelope at
+            // all on stdout -- this is exactly that fallback arm, checked
+            // first for the one traceback shape this PRD gives a real hint
+            // for before falling back to the generic, hint-free message.
+            Err(_) => Err(module_not_found_hint(&stderr_tail).unwrap_or_else(|| {
+                KindError::structured_with(
+                    "tool_exception",
+                    "the tool process exited with an error and produced no readable envelope",
+                    json!({"stdout_tail": stdout_tail, "stderr_tail": stderr_tail}),
+                )
+            })),
         },
         SandboxOutcome::Signaled {
             signal,
@@ -5549,5 +5754,108 @@ mod tests {
             }
             other => panic!("expected the planted Ready status to survive untouched, got {other:?}"),
         }
+    }
+
+    // ---- PRD-mcphost-sandbox-bridge-discoverability --------------------
+
+    #[test]
+    fn scan_flags_bare_import_host_and_mcphost_sdk() {
+        assert_eq!(
+            scan_unknown_mcphost_import("import host\n\ndef main(args):\n    return {}\n"),
+            Some("host".to_string())
+        );
+        assert_eq!(
+            scan_unknown_mcphost_import("from host import state\n\ndef main(args):\n    return {}\n"),
+            Some("host".to_string())
+        );
+        assert_eq!(
+            scan_unknown_mcphost_import("import mcphost_sdk\n\ndef main(args):\n    return {}\n"),
+            Some("mcphost_sdk".to_string())
+        );
+    }
+
+    #[test]
+    fn scan_flags_unregistered_mcphost_attribute() {
+        assert_eq!(
+            scan_unknown_mcphost_import("import mcphost\ndef main(args):\n    return mcphost.nonexistent()\n"),
+            Some("mcphost.nonexistent".to_string())
+        );
+    }
+
+    #[test]
+    fn scan_allows_every_registered_module_and_attr() {
+        let source = "import mcphost\ndef main(args):\n    mcphost.table.create(name=\"t\", columns={\"a\": \"text\"})\n    mcphost.table.append(table=\"t\", rows=[])\n    mcphost.state.get(\"k\")\n    mcphost.docs.get(\"d\")\n    mcphost.lineage.trace(\"t\")\n    try:\n        mcphost.call(\"x\", {})\n    except mcphost.CallError:\n        pass\n    mcphost.progress(1, \"ok\")\n    return {}\n";
+        assert_eq!(scan_unknown_mcphost_import(source), None);
+    }
+
+    #[test]
+    fn scan_does_not_false_positive_on_unrelated_names() {
+        // `hostile_takeover` and `mcphostess` must never be mistaken for
+        // `host`/`mcphost.<x>` -- see `word_prefix_matches`'s own doc.
+        assert_eq!(
+            scan_unknown_mcphost_import("import hostile_takeover\ndef main(args):\n    return {}\n"),
+            None
+        );
+    }
+
+    #[test]
+    fn unknown_import_error_hint_names_import_line_and_modules() {
+        let err = unknown_import_error("host");
+        match err {
+            KindError::Structured { code, data, .. } => {
+                assert_eq!(code, "unknown_import");
+                let hint = data["hint"].as_str().expect("hint present");
+                assert!(hint.contains("import mcphost"));
+                for m in ["mcphost.state", "mcphost.table", "mcphost.docs"] {
+                    assert!(hint.contains(m), "hint missing {m}: {hint}");
+                }
+                assert_eq!(data["module"], json!("host"));
+            }
+            other => panic!("expected Structured, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn module_not_found_hint_maps_host_and_mcphost_sdk() {
+        assert!(module_not_found_hint("Traceback (most recent call last):\n  File \"tool.py\", line 1, in <module>\nModuleNotFoundError: No module named 'host'").is_some());
+        assert!(module_not_found_hint("ModuleNotFoundError: No module named 'mcphost_sdk'").is_some());
+        // An unrelated missing third-party dependency is left to the
+        // existing generic fallback -- not every ModuleNotFoundError is
+        // this PRD's concern.
+        assert!(module_not_found_hint("ModuleNotFoundError: No module named 'numpy'").is_none());
+        assert!(module_not_found_hint("").is_none());
+    }
+
+    #[test]
+    fn unknown_import_name_from_message_handles_bare_and_prefixed_forms() {
+        assert_eq!(unknown_import_name_from_message("No module named 'host'"), Some("host"));
+        assert_eq!(
+            unknown_import_name_from_message("ModuleNotFoundError: No module named \"mcphost_sdk\""),
+            Some("mcphost_sdk")
+        );
+        assert_eq!(unknown_import_name_from_message("No module named 'numpy'"), None);
+    }
+
+    #[test]
+    fn sandbox_api_modules_match_py_runner_script_registration() {
+        // AC1's own invariant, proven directly against the runner script
+        // literal rather than through a running server: every
+        // `sys.modules["mcphost.<x>"]` PY_RUNNER_SCRIPT registers has a
+        // matching entry in SANDBOX_API_MODULES, and vice versa.
+        let registered: std::collections::BTreeSet<String> = PY_RUNNER_SCRIPT
+            .lines()
+            .filter_map(|l| {
+                let l = l.trim();
+                let rest = l.strip_prefix("sys.modules[\"mcphost.")?;
+                let name: String = rest.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+                (!name.is_empty()).then_some(name)
+            })
+            .collect();
+        let declared: std::collections::BTreeSet<String> =
+            SANDBOX_API_MODULES.iter().map(|m| m.name.to_string()).collect();
+        assert_eq!(
+            registered, declared,
+            "SANDBOX_API_MODULES must name exactly the sys.modules[\"mcphost.*\"] entries PY_RUNNER_SCRIPT registers"
+        );
     }
 }

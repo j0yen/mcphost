@@ -3002,7 +3002,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Publish a tool of a registered kind (echo) under this tenant's namespace. Call host.quickstart(kind) first for a filled-in example spec and the full publish-to-call sequence. Name must match ^[a-z][a-z0-9_]{1,40}$; a rejection names the failing field and a corrected example. Try host.tool_test before a real call.",
+      "description": "Publish a tool of a registered kind (echo) under this tenant's namespace. Call host.quickstart(kind) first for a filled-in example spec and the full publish-to-call sequence. A python tool's source may import mcphost (mcphost.state, mcphost.table, mcphost.docs) to persist; a wrong import fails unknown_import, not a traceback. Name must match ^[a-z][a-z0-9_]{1,40}$; a rejection names the failing field and a corrected example. Try host.tool_test before a real call.",
       "input_schema": {
         "properties": {
           "kind": {

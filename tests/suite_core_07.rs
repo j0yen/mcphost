@@ -172,6 +172,8 @@ mod billing_ac10_webhook_mode_mismatch;
 mod billing_ac11_healthz_paying_tenants;
 #[path = "billing_ac13_checkout_reuse.rs"]
 mod billing_ac13_checkout_reuse;
+#[path = "bridgedisc_ac07_sandbox_api_doc_check_script.rs"]
+mod bridgedisc_ac07_sandbox_api_doc_check_script;
 #[path = "busyaudit_ac01_startup_pragma_audit_default_config.rs"]
 mod busyaudit_ac01_startup_pragma_audit_default_config;
 #[path = "busyaudit_ac02_env_override_busy_timeout.rs"]

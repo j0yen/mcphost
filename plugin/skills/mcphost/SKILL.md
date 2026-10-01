@@ -37,6 +37,18 @@ work end to end:
 host.tool_publish(name="hello", kind="echo", spec={"schema": {"type": "object"}})
 ```
 
+## 3b. Writing a `python` tool? `import mcphost`
+
+A `python`-kind tool's own code reaches the sandbox API with one import:
+`import mcphost`. The registered submodules are `mcphost.state`,
+`mcphost.table`, `mcphost.docs`, `mcphost.lineage`; `mcphost.call` and
+`mcphost.progress` are attributes on `mcphost` itself, not their own
+submodule. There is no `import host` and no `mcphost_sdk` -- either fails
+`host.tool_publish`/`host.spec_test` with `unknown_import` naming the real
+modules. Call `host.quickstart kind=python` for the full list with one-line
+signatures, plus a starter tool that publishes and persists through
+`mcphost.table` on the first try.
+
 ## 4. Set one schedule
 
 Give the tenant a recurring job with `host.trigger.set`:

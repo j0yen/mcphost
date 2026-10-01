@@ -245,10 +245,18 @@ reconnect needed.
 
 The documented first publish is a real `python` tool, not a stub --
 `host.quickstart`'s own `starter_tool` hands back this exact spec plus the
-`publish_call`/`test_call` below:
+`publish_call`/`test_call` below. It is also a *bridge* example: every
+python tool's own code reaches the sandbox API with one import, `import
+mcphost` -- no `import host`, no `mcphost_sdk`. The registered submodules
+are `mcphost.state`, `mcphost.table`, `mcphost.docs`, `mcphost.lineage`;
+`mcphost.call`/`mcphost.progress` are attributes on `mcphost` itself. Get
+the same list, with one-line signatures, from `host.quickstart kind=python`'s
+`sandbox_api` field. A wrong import (`import host`, say) fails
+`host.tool_publish`/`host.spec_test` with `unknown_import` naming the real
+modules, before any sandbox ever runs.
 
 ```
-host.tool_publish(name="text_stats", kind="python", spec={"source": "def main(args):\n    text = args.get(\"text\", \"\")\n    reversed_text = text[::-1]\n    words = len(text.split())\n    return {\n        \"reversed\": reversed_text,\n        \"words\": words,\n    }\n"})
+host.tool_publish(name="text_stats", kind="python", spec={"source": "import mcphost\n\ndef main(args):\n    text = args.get(\"text\", \"\")\n    if not isinstance(text, str) or not text:\n        raise ValueError(\"text: required non-empty string\")\n    try:\n        mcphost.table.create(name=\"text_stats_log\", columns={\"text\": \"text\", \"words\": \"integer\"})\n    except mcphost.table.TableError:\n        pass\n    words = len(text.split())\n    result = mcphost.table.append(table=\"text_stats_log\", rows=[{\"text\": text, \"words\": words}])\n    result[\"words\"] = words\n    return result\n"})
 ```
 
 ### Test
@@ -257,8 +265,8 @@ host.tool_publish(name="text_stats", kind="python", spec={"source": "def main(ar
 host.tool_test(name="text_stats", args={"text": "hello"})
 ```
 
-Returns `result.reversed == "olleh"` and `result.words == 1` -- a real
-answer, computed by the tool you just published, not an echo of the input.
+Returns `result.appended == 1` and `result.words == 1` -- the tool's own
+code persisted the row through `mcphost.table`, not just computed a value.
 
 ### Schedule
 

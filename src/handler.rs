@@ -581,6 +581,15 @@ fn tool_publish_description(kinds: &KindRegistry) -> String {
             ));
         }
     }
+    // PRD-mcphost-sandbox-bridge-discoverability requirement 6 (AC6): the
+    // one import line a python tool's own source uses to reach the
+    // sandbox API, named here so a client that reads tools/list and never
+    // calls host.quickstart still learns it exists, before guessing
+    // `import host` and getting a bare traceback.
+    out.push_str(
+        " A python tool's source may import mcphost (mcphost.state, mcphost.table, \
+         mcphost.docs) to persist; a wrong import fails unknown_import, not a traceback.",
+    );
     out.push_str(
         " Name must match ^[a-z][a-z0-9_]{1,40}$; a rejection names the failing field and a \
          corrected example. Try host.tool_test before a real call.",

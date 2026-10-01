@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use crate::auth::{generate_handoff_token, generate_key, generate_namespace, hash_key};
 use crate::db::{HandoffRedeemOutcome, Tenant};
@@ -508,14 +508,19 @@ pub async fn self_offboard(state: &AppState, tenant: &Tenant) -> Result<Value, A
 }
 
 /// PRD-mcphost-first-publish-real-kind requirement 1 (AC1): the documented
-/// first publish -- a real python tool, not the echo stub. Reverses its
-/// input and counts its words, so `host.quickstart`'s own `test_call`
-/// (`{"text": "hello"}`) proves the tool actually does something
-/// (`{"reversed": "olleh", "words": 1}`) rather than merely publishing.
-/// Free-plan-safe by construction: no `secrets`, no `network`, no
-/// `requirements`.
+/// first publish -- a real python tool, not the echo stub.
+///
+/// PRD-mcphost-sandbox-bridge-discoverability requirement 2 (AC2): this is
+/// now a *bridge* example, not a pure-stdlib one -- it validates `text`,
+/// creates its table on first use (`mcphost.table.TableError` on every call
+/// after, caught and ignored), and returns `mcphost.table.append`'s own
+/// bridge result (`{table, appended, ids}`) plus `words`, so
+/// `host.quickstart`'s own `test_call` (`{"text": "hello"}`) proves the
+/// sandbox's `import mcphost` channel actually persists something, not just
+/// that pure-python code ran. Free-plan-safe by construction: no `secrets`,
+/// no `network`, no `requirements`.
 const STARTER_TOOL_NAME: &str = "text_stats";
-const STARTER_TOOL_SOURCE: &str = "def main(args):\n    text = args.get(\"text\", \"\")\n    reversed_text = text[::-1]\n    words = len(text.split())\n    return {\n        \"reversed\": reversed_text,\n        \"words\": words,\n    }\n";
+const STARTER_TOOL_SOURCE: &str = "import mcphost\n\ndef main(args):\n    text = args.get(\"text\", \"\")\n    if not isinstance(text, str) or not text:\n        raise ValueError(\"text: required non-empty string\")\n    try:\n        mcphost.table.create(name=\"text_stats_log\", columns={\"text\": \"text\", \"words\": \"integer\"})\n    except mcphost.table.TableError:\n        pass\n    words = len(text.split())\n    result = mcphost.table.append(table=\"text_stats_log\", rows=[{\"text\": text, \"words\": words}])\n    result[\"words\"] = words\n    return result\n";
 
 /// PRD-mcphost-first-publish-real-kind requirement 6 (AC8): `host.quickstart
 /// {kind: "http"}`'s own starter -- a public JSON API with no auth, for a
@@ -629,6 +634,14 @@ pub fn quickstart(
             "table_tables_max": plan.table_tables_max,
             "table_rows_max": plan.table_rows_max,
             "table_bytes_max": plan.table_bytes_max,
+            // PRD-mcphost-sandbox-bridge-discoverability requirement 5
+            // (AC5): the plan name that allows `network: "public"`/
+            // `"egress"` -- same plan `AppError::plan_required("network",
+            // "pro")` (this file, `tool_publish`) and `network_policy::
+            // plan_required_fields` already enforce; named here so an
+            // agent reading only `host.quickstart` learns the gate exists
+            // before it designs around egress it cannot have.
+            "network_public": "pro",
             // PRD-mcphost-runs-and-jobs P0 requirement 8.
             "job_max_s": plan.job_max_s,
             "jobs_concurrent": plan.jobs_concurrent,
@@ -696,6 +709,12 @@ pub fn quickstart(
             "case": "a published python tool, for result.payload plus stdout, stderr and exit code",
             "call": "host.tool_run",
             "arguments": {"name": tool_name, "args": python_example.call_args},
+            // Requirement 5 (AC5): "no network by default" -- the python
+            // row's own reminder that `network` defaults to "none"; see
+            // `limits.plan.network_public` above for the plan that lifts
+            // it.
+            "note": "python tools get no network access by default; network: \"public\" or \
+                \"egress\" requires the plan named in limits.plan.network_public",
         }));
     }
 
@@ -799,6 +818,47 @@ pub fn quickstart(
             "concurrent_calls_host": crate::kinds::python::DEFAULT_MAX_CONCURRENT_CALLS,
         },
     });
+    // PRD-mcphost-sandbox-bridge-discoverability requirement 1 (AC1): only
+    // present for `kind == "python"` -- the PRD names `host.quickstart
+    // kind=python` specifically, and `sandbox_api` describes a sandbox
+    // other kinds don't have. Built straight from
+    // `kinds::python::SANDBOX_API_MODULES`/`SANDBOX_API_ATTRS` (one source
+    // of truth with the static import scan, `scan_unknown_mcphost_import`,
+    // and the `sys.modules["mcphost.*"]` registration in `PY_RUNNER_SCRIPT`
+    // they both describe) so a module added to that constant appears here
+    // with no second edit.
+    if kind_name == "python"
+        && let Value::Object(map) = &mut response
+    {
+        let modules: Map<String, Value> = crate::kinds::python::SANDBOX_API_MODULES
+            .iter()
+            .map(|m| {
+                (
+                    format!("mcphost.{}", m.name),
+                    json!(m.signatures),
+                )
+            })
+            .collect();
+        let attrs: Vec<Value> = crate::kinds::python::SANDBOX_API_ATTRS
+            .iter()
+            .map(|a| json!(format!("mcphost.{a}")))
+            .collect();
+        map.insert(
+            "sandbox_api".to_string(),
+            json!({
+                "import": crate::kinds::python::SANDBOX_API_IMPORT_LINE,
+                "modules": Value::Object(modules),
+                "attrs": attrs,
+                // P2 (AC8): one `mcphost.state` example beside the table
+                // starter -- `get`/`set`, the two calls every first tool
+                // needs before it needs the real-SQL table store.
+                "example": {
+                    "get": {"call": "mcphost.state.get(key)", "note": "returns the stored value, or None"},
+                    "set": {"call": "mcphost.state.set(key, value)", "note": "value must be JSON-serializable"},
+                },
+            }),
+        );
+    }
     // Requirement 2/3 (AC1-3): only present when `kind_name_requested`
     // resolved through the alias table -- a direct kind request (`kind:
     // "http"`) gets no `resolved_from`/`recipe`, same as before this PRD.
