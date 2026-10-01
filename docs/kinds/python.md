@@ -56,6 +56,18 @@ A failure (unknown id/name) raises `mcphost.docs.DocsError` (`.code`/`.data`, e.
 
 See the `chain` kind for the declarative form of the same idea: an ordered list of tool calls with no python of your own to write.
 
+## mcphost.channel / mcphost.msg (post to a channel, send a message)
+
+`from mcphost import channel, msg` and call `channel.post(channel_id, body, *, kind=None)`, `channel.read(channel_id, cursor=None, limit=100, ack=False)`, `msg.send(to, body, *, thread=None, urgent=False)`, `msg.inbox(limit=50, cursor=None)` -- the same `host.channel.*`/`host.msg.*` the agent calls from outside the sandbox, reachable with `network: none`, over the same channel `mcphost.state` uses. Each call runs as the tool's own tenant, under that call's `test`/plan quotas, and is metered as a sidecar op on the parent call (shared budget with `mcphost.state`/`mcphost.table`'s own `state_ops_per_call_max`):
+
+```json
+{
+  "source": "from mcphost import channel\ndef main(args):\n    return channel.post(args[\"channel_id\"], {\"status\": \"red\"})\n"
+}
+```
+
+`channel_id`/`to` are the ids `host.channel.open`/the agent directory already gave you (this bridge doesn't look channels up by name -- PRD-mcphost-channel-read-name-parity is a separate PRD). `body` may be a string or any JSON-serializable value (a non-string `body` is both stringified into the post/message text and, when it's an object, passed through as `data`); `to` for `msg.send` may be a single address or a list. A refusal (a quota trip, an unauthorized channel, a closed contact) raises `mcphost.channel.ChannelError`/`mcphost.msg.MsgError` -- both subclasses of the shared `mcphost.BridgeError`, carrying `.code`/`.data` identical to the matching `host.channel.*`/`host.msg.*` error envelope. Under `host.tool_test`, `channel.post`/`msg.send` never deliver: they return `{"delivered": false, "would_post": {...}}` and write nothing, so a dry run can never wake an agent's own channel/message trigger.
+
 ## env (plain configuration, distinct from secrets)
 
 `"env": {"UPSTREAM_URL": "https://example.test", "MODE": "fast"}` puts plain, non-secret configuration into the sandboxed process's environment beside `secrets` -- an endpoint URL, a mode flag, a tenant identifier: anything that isn't a credential and doesn't need the secret store's encryption, rotation story, or `host.tool_test` redaction.

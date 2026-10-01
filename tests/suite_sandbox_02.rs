@@ -26,6 +26,18 @@ mod uptime_probes;
 
 #[path = "ac17_kind_conformance.rs"]
 mod ac17_kind_conformance;
+#[path = "chanbridge_ac01_python_channel_post_seq_and_host_sees_tenant.rs"]
+mod chanbridge_ac01_python_channel_post_seq_and_host_sees_tenant;
+#[path = "chanbridge_ac02_python_msg_send_reaches_inbox_with_thread_id.rs"]
+mod chanbridge_ac02_python_msg_send_reaches_inbox_with_thread_id;
+#[path = "chanbridge_ac03_msg_send_quota_raises_bridge_error_nothing_sent.rs"]
+mod chanbridge_ac03_msg_send_quota_raises_bridge_error_nothing_sent;
+#[path = "chanbridge_ac04_tool_test_dry_run_reports_would_post_no_write_no_trigger.rs"]
+mod chanbridge_ac04_tool_test_dry_run_reports_would_post_no_write_no_trigger;
+#[path = "chanbridge_ac05_channel_post_loop_fails_at_state_ops_per_call_max.rs"]
+mod chanbridge_ac05_channel_post_loop_fails_at_state_ops_per_call_max;
+#[path = "chanbridge_ac07_channel_read_ack_resumes_from_stored_cursor.rs"]
+mod chanbridge_ac07_channel_read_ack_resumes_from_stored_cursor;
 #[path = "chart_ac11_python_bridge_returns_chart_v1.rs"]
 mod chart_ac11_python_bridge_returns_chart_v1;
 #[path = "ci_sandbox_ac02_capable_env_never_skips.rs"]
@@ -266,15 +278,3 @@ mod runenvelope_ac2_no_declared_outputs_raw_payload;
 mod runenvelope_ac3_descriptor_and_decision_table_name_envelope;
 #[path = "runenvelope_ac4_no_calls_row_with_payload.rs"]
 mod runenvelope_ac4_no_calls_row_with_payload;
-#[path = "runoverflow_ac01_python_async_result_overflows_to_parts.rs"]
-mod runoverflow_ac01_python_async_result_overflows_to_parts;
-#[path = "runoverflow_ac02_state_quota_error_preserves_counters.rs"]
-mod runoverflow_ac02_state_quota_error_preserves_counters;
-#[path = "runoverflow_ac06_purge_drops_run_results_bytes_not_user_state.rs"]
-mod runoverflow_ac06_purge_drops_run_results_bytes_not_user_state;
-#[path = "runoverflow_ac07_llms_txt_long_running_jobs_walkthrough.rs"]
-mod runoverflow_ac07_llms_txt_long_running_jobs_walkthrough;
-#[path = "runoverflow_ac08_wait_until_counter_returns_while_running.rs"]
-mod runoverflow_ac08_wait_until_counter_returns_while_running;
-#[path = "runoverflow_ac09_sync_call_still_tool_output_too_large.rs"]
-mod runoverflow_ac09_sync_call_still_tool_output_too_large;

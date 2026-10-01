@@ -1013,6 +1013,55 @@ impl LineageBackend for NoLineage {
     }
 }
 
+/// PRD-mcphost-sandbox-channel-msg-bridge requirement 2: `mcphost.channel`
+/// inside the python kind's sandbox -- the same shape [`TableBackend`]/
+/// [`DocsBackend`]/[`LineageBackend`] give their own stores, for
+/// `host.channel.*` instead. `op` is `"post"` or `"read"`, `args` that op's
+/// own JSON argument object (the same shape `host.channel.post`/`read`
+/// take) -- the implementation calls those same `channels.rs` functions, not
+/// the MCP handler, to avoid re-authenticating (Technical considerations).
+#[async_trait::async_trait]
+pub trait ChannelBackend: Send + Sync {
+    async fn call(&self, op: &str, args: Value) -> Result<Value, KindError>;
+}
+
+/// A backend with no channel service behind it -- [`NoTable`]/[`NoDocs`]/
+/// [`NoLineage`]'s counterpart for [`ChannelBackend`], same "fail clearly
+/// rather than silently no-op" stance.
+pub struct NoChannel;
+#[async_trait::async_trait]
+impl ChannelBackend for NoChannel {
+    async fn call(&self, _op: &str, _args: Value) -> Result<Value, KindError> {
+        Err(KindError::structured(
+            "channel_unavailable",
+            "no tenant channel backend is wired for this call context",
+        ))
+    }
+}
+
+/// PRD-mcphost-sandbox-channel-msg-bridge requirement 2: [`ChannelBackend`]'s
+/// counterpart for `mcphost.msg` -- `op` is `"send"` or `"inbox"`, `args`
+/// that op's own JSON argument object (the same shape `host.msg.send`/
+/// `inbox` take), calling the same `messaging.rs` functions those tools do.
+#[async_trait::async_trait]
+pub trait MsgBackend: Send + Sync {
+    async fn call(&self, op: &str, args: Value) -> Result<Value, KindError>;
+}
+
+/// A backend with no messaging service behind it -- [`NoChannel`]'s
+/// counterpart for [`MsgBackend`], same "fail clearly rather than silently
+/// no-op" stance.
+pub struct NoMsg;
+#[async_trait::async_trait]
+impl MsgBackend for NoMsg {
+    async fn call(&self, _op: &str, _args: Value) -> Result<Value, KindError> {
+        Err(KindError::structured(
+            "msg_unavailable",
+            "no tenant messaging backend is wired for this call context",
+        ))
+    }
+}
+
 /// PRD-mcphost-runs-and-jobs P0 requirement 5: where a sandboxed call's
 /// `mcphost.progress(pct, msg)` (see `kinds::python`'s `ProgressSidecarBridge`)
 /// lands. `handler.rs`'s real dispatch path wires this to a sink that
@@ -1169,6 +1218,35 @@ pub struct CallCtx {
     /// a declared provider with no resolved token here as `upstream_not_connected`
     /// rather than sending an unauthenticated request.
     pub vault_token: Option<String>,
+    /// See [`ChannelBackend`]. Defaults to [`NoChannel`] everywhere but
+    /// `handler.rs`'s real dispatch path, which wires this call's own
+    /// tenant into `channels.rs`.
+    pub channel: Arc<dyn ChannelBackend>,
+    /// See [`MsgBackend`]. Defaults to [`NoMsg`] everywhere but
+    /// `handler.rs`'s real dispatch path, which wires this call's own
+    /// tenant into `messaging.rs`.
+    pub msg: Arc<dyn MsgBackend>,
+    /// PRD-mcphost-sandbox-channel-msg-bridge requirement 5: the running
+    /// count of `mcphost.channel`/`mcphost.msg` sidecar calls made so far in
+    /// this call (shared, via the `Arc`, the same "one counter for the whole
+    /// tree" convention [`Self::compose_children`] already uses) -- checked
+    /// against [`Self::sidecar_ops_max`] by `kinds::python`'s
+    /// `ChannelSidecarBridge`/`MsgSidecarBridge` before each call reaches
+    /// [`Self::channel`]/[`Self::msg`], so a tool that loops `channel.post`
+    /// cannot flood a channel from one call (AC5). Fresh (`0`) for every
+    /// top-level call; `for_test`/the conformance suite never check it
+    /// (`sidecar_ops_max` is `i64::MAX` there).
+    pub sidecar_ops: Arc<std::sync::atomic::AtomicI64>,
+    /// PRD-mcphost-sandbox-channel-msg-bridge requirement 5: this call's
+    /// tenant's `plans.toml` `state_ops_per_call_max` -- the same shared
+    /// budget `tenant_state.rs`'s own per-call row-count check already
+    /// enforces for `mcphost.state`/`mcphost.table`, resolved once by
+    /// `handler.rs` from the tenant's plan before dispatch, same convention
+    /// [`Self::concurrent_calls_per_tenant`] already uses. `i64::MAX` in
+    /// every context with no notion of a tenant plan (`for_test`, the
+    /// conformance suite) -- same permissive default that field's
+    /// `usize::MAX` already uses for the same class of context.
+    pub sidecar_ops_max: i64,
 }
 
 impl CallCtx {
@@ -1198,6 +1276,10 @@ impl CallCtx {
             egress_allowed: true,
             end_user: None,
             vault_token: None,
+            channel: Arc::new(NoChannel),
+            msg: Arc::new(NoMsg),
+            sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
+            sidecar_ops_max: i64::MAX,
         }
     }
 
@@ -1386,6 +1468,16 @@ pub async fn compose_call(
         // above), so a composed child call carries whatever upstream token
         // the parent call already resolved.
         vault_token: ctx.vault_token.clone(),
+        // PRD-mcphost-sandbox-channel-msg-bridge: composition stays inside
+        // one tenant (same reasoning as `state`/`table`/`docs`/`lineage`
+        // above), so the child's `mcphost.channel`/`mcphost.msg` reach the
+        // exact same tenant's channel/messaging service, sharing the
+        // parent's own `sidecar_ops` counter and cap (AC5's budget is per
+        // call TREE, not per node, same convention `compose_children` uses).
+        channel: ctx.channel.clone(),
+        msg: ctx.msg.clone(),
+        sidecar_ops: ctx.sidecar_ops.clone(),
+        sidecar_ops_max: ctx.sidecar_ops_max,
     };
 
     kind.call(&row.spec, args, &child_ctx).await
