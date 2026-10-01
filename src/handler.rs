@@ -2816,6 +2816,139 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &["subject"],
             ),
         ),
+        // PRD-mcphost-upstream-token-vault requirement 2 (AC9, AC11): never
+        // returns client_secret; re-setting an existing name is free
+        // against vault_providers_max (see vault::provider_set).
+        Tool::new(
+            "host.vault.provider_set",
+            "Register or update a tenant's upstream OAuth provider (e.g. \"slack\") so end \
+             users can connect it; client_secret is stored encrypted and never returned by \
+             host.vault.providers. Per-plan vault_providers_max caps distinct provider names.",
+            host_schema(
+                json!({
+                    "name": {
+                        "type": "string",
+                        "description": "Provider name to register or update, e.g. \"slack\".",
+                    },
+                    "preset": {
+                        "type": "string",
+                        "description": "One of slack, github, google -- prefills \
+                            auth_url/token_url. An explicit auth_url/token_url below always \
+                            overrides the matching preset value, field by field.",
+                    },
+                    "auth_url": {
+                        "type": "string",
+                        "description": "OAuth authorization URL. Required unless preset \
+                            supplies it.",
+                    },
+                    "token_url": {
+                        "type": "string",
+                        "description": "OAuth token-exchange URL. Required unless preset \
+                            supplies it.",
+                    },
+                    "client_id": {
+                        "type": "string",
+                        "description": "The upstream OAuth application's client_id.",
+                    },
+                    "client_secret": {
+                        "type": "string",
+                        "description": "The upstream OAuth application's client_secret -- stored \
+                            encrypted and never returned by host.vault.providers.",
+                    },
+                    "scopes": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "OAuth scopes to request, e.g. [\"channels:read\"] -- \
+                            joined space-delimited when sent to the provider.",
+                    },
+                }),
+                &["name", "client_id", "client_secret", "scopes"],
+            ),
+        ),
+        // PRD-mcphost-upstream-token-vault requirement 2 (AC9): client_secret
+        // never appears in the output, only encrypted in the table.
+        Tool::new(
+            "host.vault.providers",
+            "List this tenant's registered upstream OAuth providers (auth_url, token_url, \
+             client_id, scopes) -- client_secret never appears here.",
+            host_schema(json!({}), &[]),
+        ),
+        // PRD-mcphost-upstream-token-vault requirement 3 (AC1, AC7): the
+        // one-time handoff link an end user's browser completes.
+        Tool::new(
+            "host.vault.connect_link",
+            "Mint a one-time browser link (valid 15 min) for an end user to authorize a \
+             registered upstream OAuth provider; completing it stores their access and refresh \
+             tokens, encrypted, in the host.",
+            host_schema(
+                json!({
+                    "provider": {
+                        "type": "string",
+                        "description": "The registered provider name to connect, e.g. \"slack\".",
+                    },
+                    "end_user": {
+                        "type": "string",
+                        "description": "Must be \"self\": the caller's own verified end-user \
+                            identity. Required -- there is no tenant-wide upstream connection.",
+                    },
+                }),
+                &["provider", "end_user"],
+            ),
+        ),
+        // PRD-mcphost-upstream-token-vault requirement 5 (AC1-AC3, AC6): the
+        // union of registered providers and this subject's own token rows,
+        // so a just-removed provider with a residual token still surfaces.
+        Tool::new(
+            "host.vault.status",
+            "Show which upstream providers an end user has connected, with connected, \
+             expires_at, and scopes per provider -- never the token itself.",
+            host_schema(
+                json!({
+                    "end_user": {
+                        "type": "string",
+                        "description": "\"self\" for the caller's own verified end-user identity, \
+                            or an explicit subject only when the call carries no end-user \
+                            identity of its own. Required.",
+                    },
+                }),
+                &["end_user"],
+            ),
+        ),
+        // PRD-mcphost-upstream-token-vault requirement 5 (AC8): revokes
+        // locally; the next call needing this provider's token returns
+        // upstream_not_connected with a fresh connect_link.
+        Tool::new(
+            "host.vault.disconnect",
+            "Revoke an end user's stored upstream token for a provider. The next call needing \
+             it returns upstream_not_connected with a fresh host.vault.connect_link URL.",
+            host_schema(
+                json!({
+                    "provider": {
+                        "type": "string",
+                        "description": "The provider name to disconnect, e.g. \"slack\".",
+                    },
+                    "end_user": {
+                        "type": "string",
+                        "description": "Must be \"self\": the caller's own verified end-user \
+                            identity. Required -- there is no tenant-wide upstream connection.",
+                    },
+                }),
+                &["provider", "end_user"],
+            ),
+        ),
+        // PRD-mcphost-upstream-token-vault requirement 2: the reverse of
+        // provider_set -- deletes the provider and revokes every end user's
+        // stored token for it in one transaction.
+        Tool::new(
+            "host.vault.provider_remove",
+            "Delete a registered upstream OAuth provider and revoke every end user's stored \
+             token for it; a disconnected end user's host.vault.status then shows \
+             connected: false.",
+            host_schema(
+                json!({"name": {"type": "string", "description": "The provider name to remove."}}),
+                &["name"],
+            ),
+        ),
     ];
     if authenticated {
         tools.push(Tool::new(

@@ -3496,6 +3496,166 @@
       "since": "0.58.0"
     },
     {
+      "description": "Mint a one-time browser link (valid 15 min) for an end user to authorize a registered upstream OAuth provider; completing it stores their access and refresh tokens, encrypted, in the host.",
+      "input_schema": {
+        "properties": {
+          "end_user": {
+            "description": "Must be \"self\": the caller's own verified end-user identity. Required -- there is no tenant-wide upstream connection.",
+            "type": "string"
+          },
+          "provider": {
+            "description": "The registered provider name to connect, e.g. \"slack\".",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "end_user"
+        ],
+        "type": "object"
+      },
+      "name": "host.vault.connect_link",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Revoke an end user's stored upstream token for a provider. The next call needing it returns upstream_not_connected with a fresh host.vault.connect_link URL.",
+      "input_schema": {
+        "properties": {
+          "end_user": {
+            "description": "Must be \"self\": the caller's own verified end-user identity. Required -- there is no tenant-wide upstream connection.",
+            "type": "string"
+          },
+          "provider": {
+            "description": "The provider name to disconnect, e.g. \"slack\".",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "end_user"
+        ],
+        "type": "object"
+      },
+      "name": "host.vault.disconnect",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Delete a registered upstream OAuth provider and revoke every end user's stored token for it; a disconnected end user's host.vault.status then shows connected: false.",
+      "input_schema": {
+        "properties": {
+          "name": {
+            "description": "The provider name to remove.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "name": "host.vault.provider_remove",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Register or update a tenant's upstream OAuth provider (e.g. \"slack\") so end users can connect it; client_secret is stored encrypted and never returned by host.vault.providers. Per-plan vault_providers_max caps distinct provider names.",
+      "input_schema": {
+        "properties": {
+          "auth_url": {
+            "description": "OAuth authorization URL. Required unless preset supplies it.",
+            "type": "string"
+          },
+          "client_id": {
+            "description": "The upstream OAuth application's client_id.",
+            "type": "string"
+          },
+          "client_secret": {
+            "description": "The upstream OAuth application's client_secret -- stored encrypted and never returned by host.vault.providers.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Provider name to register or update, e.g. \"slack\".",
+            "type": "string"
+          },
+          "preset": {
+            "description": "One of slack, github, google -- prefills auth_url/token_url. An explicit auth_url/token_url below always overrides the matching preset value, field by field.",
+            "type": "string"
+          },
+          "scopes": {
+            "description": "OAuth scopes to request, e.g. [\"channels:read\"] -- joined space-delimited when sent to the provider.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          },
+          "token_url": {
+            "description": "OAuth token-exchange URL. Required unless preset supplies it.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "client_id",
+          "client_secret",
+          "scopes"
+        ],
+        "type": "object"
+      },
+      "name": "host.vault.provider_set",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List this tenant's registered upstream OAuth providers (auth_url, token_url, client_id, scopes) -- client_secret never appears here.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.vault.providers",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Show which upstream providers an end user has connected, with connected, expires_at, and scopes per provider -- never the token itself.",
+      "input_schema": {
+        "properties": {
+          "end_user": {
+            "description": "\"self\" for the caller's own verified end-user identity, or an explicit subject only when the call carries no end-user identity of its own. Required.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "end_user"
+        ],
+        "type": "object"
+      },
+      "name": "host.vault.status",
+      "since": "0.58.0"
+    },
+    {
       "description": "Return the calling tenant's identity, including key_age_s and key_rotated_at for auditing credential hygiene.",
       "input_schema": {
         "properties": {
