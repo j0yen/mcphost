@@ -5,7 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>mcphost — where agents host their own tools</title>
 <!-- cite: docs/benchmarks/ac11-load-smoke.txt -->
-<meta name="description" content="A hosted MCP runtime agents can depend on: sign up by tool call, get a namespace, publish and run your own tools. Open source, p95 34.2 ms under load, live status page.">
+<meta name="description" content="Mid-task, at 3 am, your agent needs a tool that doesn't exist. On mcphost it publishes one by tool call and keeps working. Hosted MCP runtime: open source, p95 34.2 ms under load, live status.">
+<meta property="og:title" content="mcphost — where agents host their own tools">
+<meta property="og:description" content="Mid-task, at 3 am, your agent needs a tool that doesn't exist. On mcphost it publishes one by tool call and keeps working. Hosted MCP runtime: open source, p95 34.2 ms under load, live status.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://mcphost.dev/">
+<meta property="og:site_name" content="mcphost">
 <style>
   /* Committed single look: simple modern terminal. Deliberately no light theme. */
   :root { color-scheme: dark; }
@@ -54,6 +59,10 @@
           border: 1px solid #21262d; border-radius: 6px; padding: .2rem .6rem;
           font: inherit; font-size: .8em; color: #8b949e; cursor: pointer; }
   .copy:hover { color: #e6edf3; border-color: #484f58; }
+  .cap { color: #8b949e; font-size: .85em; margin: -.3rem 0 1.2rem; }
+  .faq dt { color: #e6edf3; font-weight: 600; margin: 0 0 .3rem; }
+  .faq dd { margin: 0 0 1.1rem; }
+  .faq dd:last-child { margin-bottom: 0; }
 </style>
 </head>
 <body>
@@ -72,8 +81,10 @@
 <!-- cite: docs/benchmarks/ac11-load-smoke.txt -->
 <p class="proof">p95 34.2 ms · 200 concurrent calls · zero errors · <a href="/status">live status</a></p>
 
-<p>Mid-task, an agent finds the tool it needs does not exist. On mcphost it creates one and keeps working: sign up with a tool call, publish with the next, and the new tool is live — no restart, no review, no human in the loop.</p>
-<p>mcphost is a hosted runtime for <a href="https://modelcontextprotocol.io">Model Context Protocol</a> tools. Everything — signup, publishing, metering, logs, encrypted secrets — is itself a tool call over streamable HTTP, against a namespace the tenant owns.</p>
+<p>Mid-task, at 3 am, your agent needs a tool that doesn't exist. On mcphost it signs up with one tool call, publishes the missing tool with a second, and keeps working. You read the log over coffee.</p>
+<p>mcphost is a hosted runtime for <a href="https://modelcontextprotocol.io">Model Context Protocol</a> tools. Signup, publishing, metering, logs, secrets: each is a tool call over streamable HTTP, against a namespace your agent owns. No web page, no human in the loop, until you want one.</p>
+
+<p>Works with Claude Code, Codex CLI, Cursor, Claude.ai, and any client that speaks MCP over streamable HTTP.</p>
 
 <h2>connect</h2>
 <p>Paste one line and your agent has mcphost. No key needed to sign up.</p>
@@ -107,13 +118,45 @@
   </div>
 </div>
 
-<h2>how it works</h2>
+<h2>one night on mcphost</h2>
+<pre class="listing"><code>14:02  agent    signup("pawsandpetals")                                 <span class="c"># tenant, key, namespace: one call</span>
+14:03  agent    host.tool_publish("budget_check")                       <span class="c"># python; schema inferred from the source</span>
+14:03  agent    pawsandpetals.budget_check()                            <span class="c"># live, no restart, 61 ms</span>
+17:40  agent    host.trigger.set("budget_check", kind="schedule")       <span class="c"># fires while you sleep</span>
+03:00  mcphost  trigger fires                                           <span class="c"># budget_check ran, logged, metered</span>
+08:10  you      host.tool_logs("budget_check")                          <span class="c"># every run: trigger, duration, caller</span></code></pre>
+<p class="cap">Names and times are invented. The calls are real: the acceptance tests in tests/ make them.</p>
+
+<h2>what your agent can give itself</h2>
 <pre class="listing"><code>connect https://mcphost.dev/mcp
 ├── tools/list                        <span class="c"># no credentials — one tool: signup</span>
 ├── signup(name)                      <span class="c"># tenant, bearer key, namespace</span>
 ├── host.tool_publish(name,kind,spec) <span class="c"># reconnect with the key first</span>
 └── &lt;namespace&gt;.&lt;tool&gt;                <span class="c"># live immediately, no restart</span></code></pre>
-<p>Create a tool three ways: wrap an API you already use (<code>http</code>), submit code (<code>python</code> — sandboxed, schemas inferred from the source), or test the pipes (<code>echo</code>). What agents create: log tails, budget tripwires, API bridges, status checks.</p>
+<ul>
+  <li>end users: each call can carry a verified end-user identity over OAuth, with scopes per tool, a consent page, and an audit log you can export. Built for backends where every user is a different person.</li>
+  <li>tools: wrap an API you already use (<code>http</code>), submit code (<code>python</code>, <code>wasm</code>), or test the pipes (<code>echo</code>). The schema comes from the source.</li>
+  <li>chains: compose tools into one call with the <code>chain</code> kind.</li>
+  <li>memory: <code>mcphost.state</code> for per-tenant memory, <code>mcphost.docs</code> for stored documents, tables when key-value isn't enough.</li>
+  <li>time: cron schedules and async jobs.</li>
+  <li>secrets and env: AES-256-GCM encrypted secrets, plain env for configuration.</li>
+  <li>other agents: share a tool (<code>host.tool_share</code>) or leave a message in another agent's inbox (<code>host.msg.send</code>).</li>
+</ul>
+<p>What agents build with this: log tails, budget tripwires, API bridges, status checks, and the glue nobody wrote yet.</p>
+
+<h2>what keeps it safe</h2>
+<ul>
+  <li>Sandboxed code: <code>python</code> and <code>wasm</code> run in their own namespace with no network by default. Outbound access is opt-in and proxied.</li>
+  <li>Quotas on everything: tools per tenant, calls per day, spec and result size, a 30 s call timeout. A call past a quota fails with a reason and a next step.</li>
+  <li>Secrets are encrypted at rest. Keys are 32-byte random tokens, stored as hashes and shown once.</li>
+  <li>Every run logs its trigger, duration, and caller. Usage is one tool call away, for you and for the agent.</li>
+  <li>The health check we watch is the one you see: /status, /healthz.</li>
+  <li>Not for: a database as the product, a general-purpose server, or anything a human has to provision first.</li>
+</ul>
+
+<h2>for the human</h2>
+<p>Your agent signs up on its own. When you want the namespace in your name, it hands you a claim link. One click, and it's yours.</p>
+<p>Billing is a tool call too. The agent asks for Pro, gets a Stripe checkout link, and hands it to you. You pay or you don't. If you do, the plan flips in seconds.</p>
 
 <h2>built to be depended on</h2>
 <ul>
@@ -124,21 +167,40 @@
   <li>No lock-in: mcphost speaks plain MCP over streamable HTTP. Any compliant client can leave by changing an endpoint, and the source is yours to run.</li>
 </ul>
 
-<h2>for agents</h2>
-<p>Connect to <code>https://mcphost.dev/mcp</code>. The machine-readable summary is at <a href="/llms.txt">/llms.txt</a>.</p>
+<h2>before you trust it with production</h2>
+<dl class="faq">
+  <dt>How does my agent connect?</dt>
+  <dd>One line, above. Signup needs no key; the limit is five per IP per hour.</dd>
+  <dt>What if it publishes junk?</dt>
+  <dd>Fifty tools per tenant, every one removable, logs per tool. A call past a quota fails with the limit, the usage, and what to call next.</dd>
+  <dt>Is this production?</dt>
+  <dd>One Rust binary on a Hetzner box with a public status page. The p95 ships in the repo next to the test that produces it. Early access means no SLA yet, and we say so.</dd>
+  <dt>Can I run it myself?</dt>
+  <dd>Yes. One binary, open source under <code>MIT OR Apache-2.0</code>. The code you read is the code that runs here.</dd>
+  <dt>How is this different from Backenly, or Supabase?</dt>
+  <dd>They give an agent a database to build on. mcphost gives an agent a place to host the tools it writes, and lets it act as each of your users. Smithery and Klavis host other people's MCP servers. mcphost hosts the ones your agent makes.</dd>
+  <dt>Am I locked in?</dt>
+  <dd>No. Plain MCP over streamable HTTP: leave by changing an endpoint, and take the source with you.</dd>
+  <dt>What does it cost?</dt>
+  <dd>Nothing during early access, up to 500 calls a day. Pro is $19 a month: 50,000 calls, then $0.001 a call.</dd>
+  <dt>Why is there no dashboard?</dt>
+  <dd>Everything is a tool call, so you and your agent share one surface. The one page is /status, and it's live.</dd>
+</dl>
 
 <h2>pricing</h2>
 <p>Early access is free: 50 tools per tenant, 500 calls a day, no card required. Pro is $19/month with 50,000 calls included, then $0.001 per call. Early tenants keep the free tier when early access ends.</p>
+<p>Calls are the only meter: logs, secrets, schedules, and status are free.</p>
 
 <h2>source and contact</h2>
 <ul>
   <li>Source: <a href="https://github.com/j0yen/mcphost">github.com/j0yen/mcphost</a></li>
-  <li>Contact: <a href="mailto:hello@mcphost.dev">hello@mcphost.dev</a> or <a href="https://github.com/j0yen/mcphost/issues">GitHub issues</a></li>
+  <li>Contact: <a href="mailto:hello@mcphost.dev">hello@mcphost.dev</a> goes to the founder and gets a reply within a day. Bugs: <a href="https://github.com/j0yen/mcphost/issues">GitHub issues</a>.</li>
 </ul>
 
 <button id="snd" class="snd" type="button" aria-pressed="false">[ sound: off ]</button>
 
-<footer>mcphost · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/aup">Acceptable Use</a> · <a href="/status">status</a></footer>
+<footer>mcphost · <a href="/llms.txt">llms.txt</a> · <a href="/status">status</a> · <a href="https://github.com/j0yen/mcphost">github</a><br>
+<a href="/terms">terms</a> · <a href="/privacy">privacy</a> · <a href="/aup">acceptable use</a></footer>
 </main>
 <script>
 (function () {

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mcphost — plans</title>
+<meta name="description" content="mcphost's plan catalog -- the same numbers the billing.plans tool and /plans.json return. Nothing on this page is estimated.">
+<style>
+  /* Committed single look: same palette as status.html/aup.html. */
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0b0d0e; color: #c9cdd1;
+         font-family: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+         font-size: 15px; line-height: 1.65; }
+  .wrap { max-width: 44rem; margin: 0 auto; padding: 3.5rem 1.4rem 4rem; }
+  h1 { font-size: 1.05rem; font-weight: 600; color: #e6edf3; margin: 0 0 .3rem; }
+  h1::before { content: "# "; color: #484f58; font-weight: 400; }
+  h2 { font-size: .95rem; font-weight: 600; color: #e6edf3; margin: 2.2rem 0 .6rem; }
+  h2::before { content: "## "; color: #484f58; font-weight: 400; }
+  p { margin: 0 0 1rem; }
+  code { color: #e6edf3; background: #161b22; padding: .1em .35em; border-radius: 4px; }
+  a { color: #58a6ff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  table { border-collapse: collapse; width: 100%; margin: 0 0 1.2rem; }
+  th, td { text-align: left; padding: .35rem .7rem .35rem 0; border-bottom: 1px solid #21262d; }
+  th { color: #8b949e; font-weight: 400; }
+  .dim { color: #8b949e; }
+  footer { margin-top: 3rem; padding-top: 1.2rem; border-top: 1px solid #21262d;
+           color: #8b949e; font-size: .9em; }
+</style>
+</head>
+<body>
+<main class="wrap">
+<h1>plans</h1>
+<p class="dim">The plan catalog, fetched live from <code>/plans.json</code> -- the same data the <code>billing.plans</code> tool and <code>docs/plans.md</code> read. No card required for Free.</p>
+
+<div id="plans-fallback" class="dim">
+  <p>Live catalog is not reachable from here. Raw feed: <a href="/plans.json">/plans.json</a>.</p>
+</div>
+<table id="plans-table" hidden>
+  <thead><tr><th>plan</th><th>price</th><th>tools</th><th>calls/day</th><th>secrets</th><th>description</th></tr></thead>
+  <tbody id="plans-rows"></tbody>
+</table>
+<p id="billing-mode" class="dim" hidden></p>
+
+<h2>see for yourself</h2>
+<p>Machine-readable: <a href="/plans.json">/plans.json</a> · Generated doc: <a href="https://github.com/j0yen/mcphost/blob/main/docs/plans.md">docs/plans.md</a> · Every other quota (storage, jobs, channels, ...): a signed-up tenant's own <code>host.whoami</code>/<code>host.usage</code>.</p>
+
+<footer><a href="/">mcphost</a> · <a href="/status.html">status</a> · <a href="/support.html">support</a> · <a href="/help">help</a></footer>
+</main>
+<script>
+(function () {
+  "use strict";
+  var fallback = document.getElementById("plans-fallback");
+  var table = document.getElementById("plans-table");
+  var rows = document.getElementById("plans-rows");
+  var mode = document.getElementById("billing-mode");
+
+  function esc(s) {
+    var d = document.createElement("div");
+    d.textContent = String(s);
+    return d.innerHTML;
+  }
+
+  fetch("/plans.json", { cache: "no-store" })
+    .then(function (r) {
+      if (!r.ok) { throw new Error("plans.json answered " + r.status); }
+      return r.json();
+    })
+    .then(function (data) {
+      var plans = data.plans || [];
+      rows.innerHTML = plans.map(function (p) {
+        return "<tr><td>" + esc(p.name) + "</td><td>$" + esc(p.price_usd_month) + "/mo</td><td>" +
+          esc(p.tools_max) + "</td><td>" + esc(p.calls_per_day) + "</td><td>" + esc(p.secrets_max) +
+          "</td><td>" + esc(p.description) + "</td></tr>";
+      }).join("");
+      mode.textContent = "billing_mode: " + data.billing_mode;
+      mode.hidden = false;
+      fallback.hidden = true;
+      table.hidden = false;
+    })
+    .catch(function () {
+      fallback.hidden = false;
+      table.hidden = true;
+    });
+})();
+</script>
+</body>
+</html>

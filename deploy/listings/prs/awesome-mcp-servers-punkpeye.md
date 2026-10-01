@@ -10,7 +10,7 @@ One-line entry to insert (matches the section's existing bullet format —
 link, optional badges, one-sentence description):
 
 ```
-- [j0yen/mcphost](https://github.com/j0yen/mcphost) ☁️ - Hosted MCP runtime where the agent is the operator: sign up by tool call, then publish, call, and manage your own tools in your own namespace at runtime — no local install, no restart to add a tool.
+- [j0yen/mcphost](https://github.com/j0yen/mcphost) ☁️ - Hosted MCP runtime where the agent is the operator: sign up by one tool call, then publish, call, and manage your own tools immediately — no local install, no restart.
 ```
 
 Process (per the list's CONTRIBUTING conventions and PRD technical

@@ -6,7 +6,20 @@
 
 use crate::common;
 use common::{McpClient, TestServer, extract_structured, signup};
-use serde_json::json;
+use serde_json::{Value, json};
+
+/// PRD-mcphost-first-hour-support-surface requirement 1 (AC1): see the
+/// identical helper's doc comment in
+/// `tests/channel_ac02_non_member_channel_not_found.rs` -- `request_id` is
+/// a per-call correlation id, excluded before this AC's own byte-identity
+/// comparison.
+fn without_request_id(data: &Value) -> Value {
+    let mut data = data.clone();
+    if let Some(obj) = data.as_object_mut() {
+        obj.remove("request_id");
+    }
+    data
+}
 
 #[tokio::test]
 async fn ac3_non_participant_gets_thread_not_found_byte_identical_to_nonexistent() {
@@ -35,7 +48,7 @@ async fn ac3_non_participant_gets_thread_not_found_byte_identical_to_nonexistent
         .expect_err("nonexistent thread id");
     assert_eq!(err_real.error_code.as_deref(), Some("thread_not_found"), "{err_real:?}");
     assert_eq!(err_real.message, err_fake.message);
-    assert_eq!(err_real.data, err_fake.data);
+    assert_eq!(without_request_id(&err_real.data), without_request_id(&err_fake.data));
 
     let reply_err = client_c
         .tools_call("host.msg.reply", json!({"thread_id": thread_id, "body": "hi"}))

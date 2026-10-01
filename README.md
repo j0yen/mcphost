@@ -33,8 +33,10 @@ own tool is **42.4s**.
    this exchange carries a dead credential. `host.key.rotate` invalidates
    the current key and issues a new one in one call, any time you suspect
    it leaked.
-3. Reconnect with `Authorization: Bearer <key>`. The `host.*` control
-   plane is now available.
+3. Pass `key` as the `tenant_key` argument on every `host.*` call from
+   here on -- e.g. `host.tool.publish`, `host.tool.call`. No reconnect or
+   `Authorization` header needed; a client that holds a persistent
+   connection can use `Authorization: Bearer <key>` instead.
 4. Publish a tool: `host.tool.publish(name, kind, spec)`. Call
    `host.quickstart` first — its `starter_tool` is a ready-to-publish
    `python` spec (reverses text, counts words) plus the exact
@@ -123,32 +125,37 @@ returns. (An operator can flip the underlying tenant row back on with
 `admin.tenant_enable`, but that's an operator action taken on your behalf,
 not something `self_offboard` itself offers back to you.)
 
+## Getting help
+
+Every error payload carries `code`, a clean `message`, a `request_id`, and
+(for every code in the table below) a `help_url` pointing at a generated
+`/help/<code>` page -- meaning, likely cause, fix, no internal text.
+`host.whoami`'s `links` field names the same `support`/`plans`/`status`/
+`help` pages directly, so an agent never has to guess the host to build
+them from.
+
+<!-- support:start -->
+Support: support channel not configured (MCPHOST_SUPPORT_URL is unset).
+<!-- support:end -->
+
+
 ## Contributing: naming a new `host.*` tool
 
-mcphost-polish-p0-20260930 (audit finding 5): the registry mixes
-`host.<namespace>.<verb>` (dotted — `host.agent.lookup`, `host.docs.put`,
-`host.group.create`, `host.channel.post`, `host.msg.send`,
-`host.lineage.trace`, `host.enduser.revoke`, ...) with
-`host.<noun>_<verb>` (underscored — `host.key.rotate`, `host.bridge.test`,
-`host.self.offboard`, ...) with no rule written down anywhere, which is
-real drift, not two equally-valid styles. Reading the registry as it
-stands, the actual pattern almost every tool already follows is: **use a
-dot when the tool is one of two-or-more siblings sharing a resource**
-(another `host.agent.*`/`host.docs.*`/`host.group.*`/... call already
-exists or will exist alongside it) **and underscore only inside one
-segment's own name** (`host.lineage.blast_radius`,
-`host.enduser.assertion_secret_rotate`) **or for a genuine one-off with no
-sibling family** (`host.export`, `host.key.rotate`). The one named
-exception is the `host.tool_*` sharing/publish family
-(`host.tool.call`/`host.tool.share`/`host.tool.list`/`host.tool.remove`/
-`host.tool.logs`/`host.tool.rollback`/`host.tool.diff`/`host.tool.history`/
-`host.tool.unshare`) — a real multi-verb resource family that, by the rule
-above, "should" be dotted (`host.tool.call`, ...) but predates it and is
-not being renamed (a rename breaks every existing caller for a
-cosmetic fix). Do not use `host.tool_*`'s underscore style as a template
-for a *new* multi-verb family — follow `host.agent.*`/`host.docs.*`
-instead. A PRD to actually reconcile `host.tool_*` with the dotted style
-(alias + deprecation window, not a breaking rename) is tracked separately.
+mcphost-polish-p0-20260930 (audit finding 5) found the registry mixing
+dotted (`host.agent.lookup`, `host.docs.put`, `host.group.create`, ...)
+and underscored (`host.tool_publish`, `host.key_rotate`, ...) styles with
+no rule written down anywhere. PRD-mcphost-tool-naming-convention-and-
+aliases wrote the rule down and fixed the drift: every `host.*` tool is
+now `host.<family>.<verb>`, the 20 tools that didn't follow it (the
+`host.tool_*` family plus `host.key_rotate`, `host.self_offboard`,
+`host.bridge_test`, `host.secret_set`, `host.secret_list`,
+`host.registry_publish`, `host.spec_test`) got canonical names while
+their old names keep working forever-unbroken as deprecated aliases
+through 2026-12-30, and `scripts/tool-naming-lint.sh` fails CI on any new
+violation. See `docs/tool-naming.md` for the rule itself, the exceptions
+(`signup`, `billing.*`, `admin.*`, and the seven singleton-noun tools),
+and the five-step checklist for adding a tool without drifting from
+either.
 
 ## Contributing: routing a new top-level path
 
@@ -280,7 +287,14 @@ codex mcp add mcphost --url https://mcphost.dev/mcp
 
 See the live [status page](/status.html) and the
 [Acceptable Use Policy](/aup.html) before you point production traffic at
-it.
+it. Plans and limits: [plans](/plans.html) / [`/plans.json`](/plans.json)
+(same numbers `billing.plans` returns, and `docs/plans.md`). Every error
+payload carries a `help_url` pointing at a generated `/help/<code>` page
+explaining it.
+
+<!-- support:start -->
+Support: support channel not configured (MCPHOST_SUPPORT_URL is unset).
+<!-- support:end -->
 
 ## Install
 

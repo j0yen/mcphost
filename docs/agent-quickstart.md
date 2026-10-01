@@ -30,8 +30,10 @@ own tool is **42.4s**.
    this exchange carries a dead credential. `host.key.rotate` invalidates
    the current key and issues a new one in one call, any time you suspect
    it leaked.
-3. Reconnect with `Authorization: Bearer <key>`. The `host.*` control
-   plane is now available.
+3. Pass `key` as the `tenant_key` argument on every `host.*` call from
+   here on -- e.g. `host.tool.publish`, `host.tool.call`. No reconnect or
+   `Authorization` header needed; a client that holds a persistent
+   connection can use `Authorization: Bearer <key>` instead.
 4. Publish a tool: `host.tool.publish(name, kind, spec)`. Call
    `host.quickstart` first — its `starter_tool` is a ready-to-publish
    `python` spec (reverses text, counts words) plus the exact
@@ -119,6 +121,19 @@ canceled, and your `tenant_key` stops authenticating the instant the call
 returns. (An operator can flip the underlying tenant row back on with
 `admin.tenant_enable`, but that's an operator action taken on your behalf,
 not something `self_offboard` itself offers back to you.)
+
+## Getting help
+
+Every error payload carries `code`, a clean `message`, a `request_id`, and
+(for every code in the table below) a `help_url` pointing at a generated
+`/help/<code>` page -- meaning, likely cause, fix, no internal text.
+`host.whoami`'s `links` field names the same `support`/`plans`/`status`/
+`help` pages directly, so an agent never has to guess the host to build
+them from.
+
+<!-- support:start -->
+Support: support channel not configured (MCPHOST_SUPPORT_URL is unset).
+<!-- support:end -->
 
 ## Contributing: naming a new `host.*` tool
 

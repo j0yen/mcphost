@@ -114,6 +114,17 @@ enum Command {
         #[arg(long)]
         path: Option<PathBuf>,
     },
+    /// PRD-mcphost-first-hour-support-surface requirement 3 (AC4):
+    /// regenerate `docs/plans.md` from `billing::plans_from_catalog` over
+    /// `PlanCatalog::default_catalog()` -- the exact data `billing.plans`
+    /// and `/plans.json` serve. Same `--check`-without-writing convention
+    /// as `LlmsTxt` above.
+    GenDocs {
+        /// Exit 1 without writing if `docs/plans.md` is stale, instead of
+        /// rewriting it.
+        #[arg(long)]
+        check: bool,
+    },
     /// PRD-mcphost-host-tool-deprecation requirement 1 (P0, AC1): the
     /// `host.*`/`billing.*` tool surface as a versioned contract.
     Contract {
@@ -442,6 +453,27 @@ async fn main() -> anyhow::Result<()> {
                     println!("tools-doc: {} already up to date", path.display());
                 }
                 Ok(())
+            }
+        }
+        Command::GenDocs { check } => {
+            // Deliberately no `init_tracing()`: same rationale as `LlmsTxt`
+            // above -- plain stdout/exit-code, no JSON log line.
+            match mcphost::gendocs::run(check) {
+                Ok(stale) => {
+                    if check {
+                        if stale {
+                            std::process::exit(1);
+                        }
+                        println!("gen-docs --check: {} is up to date", mcphost::gendocs::PLANS_DOC_PATH);
+                    } else {
+                        println!("gen-docs: wrote {}", mcphost::gendocs::PLANS_DOC_PATH);
+                    }
+                    Ok(())
+                }
+                Err(e) => {
+                    eprintln!("gen-docs: {e}");
+                    std::process::exit(2);
+                }
             }
         }
         Command::Contract { action } => match action {

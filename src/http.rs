@@ -182,6 +182,12 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
                     .collect::<Vec<_>>()
             ),
         );
+        // PRD-mcphost-first-hour-support-surface requirement 8:
+        // `help_url_served{code}` -- how many times each generated
+        // `/help/<code>` page has actually been served, since this process
+        // started (admin-only, same bucket as the other internal counts
+        // above -- not something an anonymous caller needs).
+        obj.insert("help_url_served".to_string(), crate::help::help_hits_snapshot());
     }
     // PRD-mcphost-signup-kill-switch-and-source requirement 2 / AC6: a
     // caller-claimed-channel breakdown of external signups, all-time and
@@ -659,13 +665,77 @@ async fn well_known_catalog(State(state): State<Arc<AppState>>) -> impl IntoResp
 /// page text at compile time and routing it here removes the
 /// deploy-config's static-file block as a second place these two pages'
 /// uptime depends on.
-async fn static_status_html() -> Response {
-    crate::claim::html_response(StatusCode::OK, include_str!("../www/status.html").to_string())
+/// Generalized by PRD-mcphost-first-hour-support-surface (non-functional:
+/// "no duplicating" the status/aup pattern) into one helper every
+/// compile-time-embedded `www/*.html` page's route closes over, instead of
+/// a new named `async fn` per page -- `status.html`/`aup.html` keep the
+/// exact route/response shape the hotfix above gave them (still
+/// `include_str!`, still `claim::html_response`), `plans.html` (new,
+/// requirement 3) joins them the same way.
+fn static_page(content: &'static str) -> Response {
+    crate::claim::html_response(StatusCode::OK, content.to_string())
 }
 
-/// Twin of [`static_status_html`] for `/aup.html` -- same finding, same fix.
-async fn static_aup_html() -> Response {
-    crate::claim::html_response(StatusCode::OK, include_str!("../www/aup.html").to_string())
+/// Twin of [`static_page`] for the plain-text `www/*.txt` files
+/// (`llms.txt`'s own convention expects `text/plain`, not HTML).
+fn static_text_page(content: &'static str) -> Response {
+    (
+        StatusCode::OK,
+        [("content-type", "text/plain; charset=utf-8")],
+        content,
+    )
+        .into_response()
+}
+
+/// `GET /help/<code>` (requirement 2, AC1-AC2): rendered at request time
+/// from `help::HELP_ENTRIES` plus whatever `MCPHOST_SUPPORT_URL` this
+/// process has *right now* -- not a committed file -- so an operator
+/// setting that env var takes effect without a rebuild (see `help.rs`'s
+/// module doc comment for why this one page and `support.html`/`/help`
+/// below are request-time-rendered while `status.html`/`aup.html`/
+/// `plans.html` stay compile-time-embedded).
+async fn help_page(Path(code): Path<String>) -> Response {
+    match crate::help::entry(&code) {
+        Some(e) => {
+            crate::help::record_help_served(e.code);
+            let support_url = std::env::var("MCPHOST_SUPPORT_URL").ok();
+            crate::claim::html_response(
+                StatusCode::OK,
+                crate::help::render_help_page(e, support_url.as_deref()),
+            )
+        }
+        None => crate::claim::html_response(
+            StatusCode::NOT_FOUND,
+            "no help page for that code".to_string(),
+        ),
+    }
+}
+
+/// `GET /help` (requirement 7's `links.help`): an index of every code, so
+/// that link resolves to something readable rather than a 404.
+async fn help_index() -> Response {
+    let support_url = std::env::var("MCPHOST_SUPPORT_URL").ok();
+    crate::claim::html_response(
+        StatusCode::OK,
+        crate::help::render_help_index(support_url.as_deref()),
+    )
+}
+
+/// `GET /support.html` (requirement 4): see [`help_page`]'s doc comment for
+/// why this is request-time-rendered rather than a committed file.
+async fn support_page() -> Response {
+    let support_url = std::env::var("MCPHOST_SUPPORT_URL").ok();
+    crate::claim::html_response(
+        StatusCode::OK,
+        crate::help::render_support_page(support_url.as_deref()),
+    )
+}
+
+/// `GET /plans.json` (requirement 3, AC4): the exact `billing::plans`
+/// output -- the same function the `billing.plans` tool calls, so the two
+/// can never disagree.
+async fn plans_json_route(State(state): State<Arc<AppState>>) -> Response {
+    (StatusCode::OK, Json(crate::billing::plans(&state))).into_response()
 }
 
 /// PRD-mcphost-status-feed requirement 3/AC1/AC10: `GET /status.json`,
@@ -966,10 +1036,29 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
     Router::new()
         .route("/healthz", get(healthz))
         .route("/status.json", get(status_json_route))
-        // mcphost-polish-p0-20260930 (audit finding 1): see
-        // `static_status_html`'s own doc comment.
-        .route("/status.html", get(static_status_html))
-        .route("/aup.html", get(static_aup_html))
+        // mcphost-polish-p0-20260930 (audit finding 1), generalized by
+        // PRD-mcphost-first-hour-support-surface: see `static_page`'s own
+        // doc comment -- same compile-time-embedded `www/*.html` pattern,
+        // one shared helper instead of one named `async fn` per page.
+        .route("/status.html", get(|| async { static_page(include_str!("../www/status.html")) }))
+        .route("/aup.html", get(|| async { static_page(include_str!("../www/aup.html")) }))
+        // requirement 3 (AC4): a static shell that fetches the live
+        // `/plans.json` client-side -- see `www/plans.html`'s own comment.
+        .route("/plans.html", get(|| async { static_page(include_str!("../www/plans.html")) }))
+        .route("/plans.json", get(plans_json_route))
+        // requirement 5/8 (AC6, AC8): README/llms.txt already link
+        // `/llms.txt` (absolute, as `https://mcphost.dev/llms.txt`) and
+        // `/llms-full.txt` -- routed here for the same reason status/aup
+        // are (requirement 8: every `www/` page is served *by this
+        // binary*, not left to a reverse proxy's own static-file config to
+        // get right or drift on).
+        .route("/llms.txt", get(|| async { static_text_page(include_str!("../www/llms.txt")) }))
+        .route("/llms-full.txt", get(|| async { static_text_page(include_str!("../www/llms-full.txt")) }))
+        // requirement 2/4 (AC1, AC2, AC7): request-time-rendered, not
+        // embedded -- see `help_page`'s doc comment.
+        .route("/help/{code}", get(help_page))
+        .route("/help", get(help_index))
+        .route("/support.html", get(support_page))
         .route(
             "/.well-known/mcp/{namespace}/server.json",
             get(well_known_server_json),
