@@ -28,9 +28,10 @@ one call.
 
 ## 3. Publish one tool
 
-Reconnect to the same endpoint with `Authorization: Bearer <key>` and call
-`host.tool_publish(name, kind, spec)`. The `echo` kind is the fastest way
-to prove the pipes work end to end:
+Pass the `key` from step 2 as the `tenant_key` argument and call
+`host.tool_publish(name, kind, spec)` on the same connection -- no
+reconnect needed. The `echo` kind is the fastest way to prove the pipes
+work end to end:
 
 ```
 host.tool_publish(name="hello", kind="echo", spec={"schema": {"type": "object"}})
