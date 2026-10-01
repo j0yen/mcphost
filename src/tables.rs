@@ -833,22 +833,32 @@ fn truncate_sql_for_log(sql: &str) -> (String, bool) {
     (sql[..end].to_string(), true)
 }
 
+/// requirement 2/3: the one logged query's outcome, bundled so
+/// [`log_query_sync`] takes one struct instead of four loose scalars --
+/// `src/tables.rs` is on `tests/checkcompat_race_ac07_suite_green_and_clippy_clean.rs`'s
+/// fixed file list, which forbids a new clippy allow-attribute here (clean
+/// by construction, not by suppression), and clippy's too-many-arguments
+/// lint counts `conn`/`sql_logged`/`truncated` plus these four as seven.
+struct QueryLogOutcome<'a> {
+    row_count: Option<i64>,
+    duration_ms: i64,
+    error_code: Option<&'a str>,
+    error_message: Option<&'a str>,
+}
+
 /// requirement 2/3: appends one row to [`QUERY_LOG_TABLE`] and, in the same
 /// transaction, evicts the oldest row(s) past [`QUERY_LOG_MAX_ROWS`].
 /// Deliberately returns `Result` (rather than swallowing its own errors) so
 /// the caller decides how to honor requirement 2's "logging failure never
 /// fails the query" -- which here means logging the error and discarding
 /// it, never propagating it to the caller of [`table_query`].
-#[allow(clippy::too_many_arguments)]
 fn log_query_sync(
     conn: &Connection,
     sql_logged: &str,
     truncated: bool,
-    row_count: Option<i64>,
-    duration_ms: i64,
-    error_code: Option<&str>,
-    error_message: Option<&str>,
+    log: &QueryLogOutcome<'_>,
 ) -> Result<(), AppError> {
+    let QueryLogOutcome { row_count, duration_ms, error_code, error_message } = *log;
     // requirement 2: a SUCCESSFUL `run_query_sync` left this connection in
     // `PRAGMA query_only = ON` for the rest of its lifetime (set once per
     // call in `run_query_sync`, never reset) -- the log write below is the
@@ -912,15 +922,13 @@ fn run_and_log_query_sync(conn: &Connection, sql: &str) -> Result<Vec<Value>, Ap
         Ok(rows) => (Some(rows.len() as i64), None, None),
         Err(e) => (None, Some(e.code().to_string()), Some(e.to_string())),
     };
-    if let Err(log_err) = log_query_sync(
-        conn,
-        &sql_logged,
-        truncated,
+    let log = QueryLogOutcome {
         row_count,
         duration_ms,
-        error_code.as_deref(),
-        error_message.as_deref(),
-    ) {
+        error_code: error_code.as_deref(),
+        error_message: error_message.as_deref(),
+    };
+    if let Err(log_err) = log_query_sync(conn, &sql_logged, truncated, &log) {
         tracing::warn!(error = %log_err, "failed to write host.table.query log row");
     }
     result
