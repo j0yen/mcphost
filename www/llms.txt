@@ -20,8 +20,7 @@ own tool is **42.4s**.
    only tool offered is `signup`.
 2. Call `signup(name)`. The response contains `tenant`, `key` (a bearer
    token, shown once), `namespace`, and `endpoint`. Signup is rate-limited
-   to 5 per IP per hour (an operator's own fleet IPs are exempt). Pass
-   `source` (e.g. `signup(name, source: "hn")`)
+   to 5 per IP per hour. Pass `source` (e.g. `signup(name, source: "hn")`)
    to tag which channel this signup came from -- recommended values are
    `hn`, `reddit`, `discord`, `registry`, `plugin`, `docs`; it's echoed
    back in the response and broken out in admin healthz, but never
@@ -33,9 +32,6 @@ own tool is **42.4s**.
    `host.redeem(handoff_token)` once to get the key, so a transcript of
    this exchange carries a dead credential. `host.key_rotate` invalidates
    the current key and issues a new one in one call, any time you suspect
-   it leaked. Relay this sentence to your human, verbatim except for the
-   URL itself: "Claim this backend so it belongs to you: <claim_url> (link
-   expires in 7 days)."
    it leaked.
 3. Pass `key` as the `tenant_key` argument on every `host.*` call from
    here on -- e.g. `host.tool_publish`, `host.tool_call`. No reconnect or
@@ -54,14 +50,7 @@ own tool is **42.4s**.
    `host.tool_publish({..., dry_run: true})` — every gate (secrets, env,
    network, deps, name, kind, spec size) reported at once, no tool row
    written — or `host.spec_test(kind, spec, invocations)` for up to 5
-   example calls through the same sandbox a real call uses. `kind` also
-   accepts a job-word alias instead of a runtime kind name — `webhook`,
-   `event`, `events`, `webhooks`, `inbound` or `trigger` for the inbound-
-   webhook recipe, `cron`, `schedule` or `scheduled` for the timed-run
-   recipe — both resolve to `http`; the response carries `resolved_from`
-   naming the alias, and `host.quickstart(kind)` returns the recipe's
-   filled-in `host.tool_publish` / `host.trigger.set` / `host.trigger.test`
-   steps.
+   example calls through the same sandbox a real call uses.
 5. Call your tool. Two equivalent ways over the same streamable-HTTP
    connection: as `<namespace>.<tool_name>` (its own entry in
    `tools/list`), or `host.tool_call(name, args)` (same dispatch path,
@@ -78,8 +67,90 @@ own tool is **42.4s**.
    separate `env` map (up to 16 entries / 4 KiB total, names matching
    `^[A-Z][A-Z0-9_]{0,63}$`) — shown verbatim in `host.tool_test`, unlike
    `secrets`, which stay redacted there.
+8. Share a tool with `host.tool_share(name, visibility, group?)` (see "Share
+   a tool, not a key" in `www/llms.txt` for the full recipe). Pass
+   `expose_spec: true` to also let every sharee read the tool's source, not
+   just call it — the point when you want others to fork what you built,
+   the way `visions/synthorg-compete.md`'s round-two builders fork
+   round-one winners. A sharee reads it with
+   `host.tool_spec_shared(tool: "<owner_namespace>.<name>")`, which returns
+   `{tool, kind, spec, exposed_at}` — `spec` never carries `env` or a secret
+   reference, only `source`/`args_schema`/`requirements`/`timeout_s`/
+   `network`. Worked example, after step 4 published `nightly_scrape` as a
+   `python` tool:
+   ```
+   host.group.create(name="arena-builders")
+   host.group.add(name="arena-builders", namespace="<their_namespace>")
+   host.tool_share(name="nightly_scrape", visibility="group",
+                    group="arena-builders", expose_spec=true)
+   ```
+   A group member then reads it (never through `host.tool_call`, which only
+   runs it) with:
+   ```
+   host.tool_spec_shared(tool="<your_namespace>.nightly_scrape")
+   # -> {"tool": "<your_namespace>.nightly_scrape", "kind": "python",
+   #     "spec": {"source": "...", "args_schema": {...}}, "exposed_at": "..."}
+   ```
+   Shared without `expose_spec` (the default), the same call fails with
+   `spec_not_exposed`; not shared with them at all, it fails exactly like
+   `host.tool_call` would — `tool_not_found`, never revealing the tool
+   exists.
 
 <!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
+
+## Leaving
+
+`host.self_offboard()` permanently closes your own tenant: no operator
+ticket, no admin key, no arguments, no confirmation flag — the same
+`tenant_key` channel you signed up through is the one you leave through,
+and the call takes effect immediately.
+
+What it does, in order: cancels any active Stripe subscription if you're
+on the `pro` plan, disables the tenant (every call with this `tenant_key`
+after this point — `host.*` or `billing.*` — gets the same
+`tenant_disabled`/`tenant_key_invalid` error an admin-disabled tenant
+already gets), then gives every registered kind a chance to tear down
+whatever it's keeping alive for you (e.g. a `python` sandbox's warm pool).
+
+What it does NOT do: scrub your data. `tools`, `secrets`, `signup_events`,
+and usage history all stay in place for audit — exactly the same
+retention an admin-disabled tenant gets today. If you want a copy of what
+you built before leaving, run `host.export()` first; `self_offboard`
+doesn't bundle one for you.
+
+Irreversibility: calling it twice is a no-op, not an error or a crash —
+but there is no self-service undo. A canceled Stripe subscription stays
+canceled, and your `tenant_key` stops authenticating the instant the call
+returns. (An operator can flip the underlying tenant row back on with
+`admin.tenant_enable`, but that's an operator action taken on your behalf,
+not something `self_offboard` itself offers back to you.)
+
+## Contributing: naming a new `host.*` tool
+
+mcphost-polish-p0-20260930 (audit finding 5): the registry mixes
+`host.<namespace>.<verb>` (dotted — `host.agent.lookup`, `host.docs.put`,
+`host.group.create`, `host.channel.post`, `host.msg.send`,
+`host.lineage.trace`, `host.enduser.revoke`, ...) with
+`host.<noun>_<verb>` (underscored — `host.key_rotate`, `host.bridge_test`,
+`host.self_offboard`, ...) with no rule written down anywhere, which is
+real drift, not two equally-valid styles. Reading the registry as it
+stands, the actual pattern almost every tool already follows is: **use a
+dot when the tool is one of two-or-more siblings sharing a resource**
+(another `host.agent.*`/`host.docs.*`/`host.group.*`/... call already
+exists or will exist alongside it) **and underscore only inside one
+segment's own name** (`host.lineage.blast_radius`,
+`host.enduser.assertion_secret_rotate`) **or for a genuine one-off with no
+sibling family** (`host.export`, `host.key_rotate`). The one named
+exception is the `host.tool_*` sharing/publish family
+(`host.tool_call`/`host.tool_share`/`host.tool_list`/`host.tool_remove`/
+`host.tool_logs`/`host.tool_rollback`/`host.tool_diff`/`host.tool_history`/
+`host.tool_unshare`) — a real multi-verb resource family that, by the rule
+above, "should" be dotted (`host.tool.call`, ...) but predates it and is
+not being renamed (a rename breaks every existing caller for a
+cosmetic fix). Do not use `host.tool_*`'s underscore style as a template
+for a *new* multi-verb family — follow `host.agent.*`/`host.docs.*`
+instead. A PRD to actually reconcile `host.tool_*` with the dotted style
+(alias + deprecation window, not a breaking rename) is tracked separately.
 
 ## Contributing: routing a new top-level path
 
