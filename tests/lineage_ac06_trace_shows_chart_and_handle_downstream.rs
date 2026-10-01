@@ -1,6 +1,13 @@
 //! PRD-mcphost-lineage-blast-radius AC6 (P0) -- Given a stored chart and a live handle both derived from
 //! `expenses`, When `host.lineage.trace("table:expenses")` is called, Then
 //! both appear downstream with their kinds.
+//!
+//! Unit test of the `lineage::register_edge`/`trace` primitives only: it
+//! calls `register_edge` directly rather than going through a real
+//! producer's tool path (`handle` has no producer at all yet in mcphost;
+//! `chart` does, and is exercised end-to-end by `lineage_ac11`, added
+//! after this test's tautological coverage let a real chart-store bug
+//! reach prod -- see that file's header for the root cause).
 
 use crate::common;
 use common::{TestServer, extract_structured, signup};

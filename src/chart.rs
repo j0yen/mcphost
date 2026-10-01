@@ -439,6 +439,30 @@ pub async fn table_chart(state: &AppState, tenant: &Tenant, args: &Value) -> Res
         }
         let expires_unix = created_unix + crate::export::EXPORT_URL_TTL_SECS;
         let share_url = signed_chart_url(&state.public_url, &tenant.key_hash, &id, expires_unix);
+
+        // PRD-mcphost-lineage-blast-radius requirement 4 (AC11): register
+        // this stored chart's lineage edge from the SQL's base table, the
+        // same `source_scan`-style single-table extraction
+        // `build_profile`'s own fallback already uses above -- so
+        // `host.table.drop` on that table sees this chart downstream.
+        // Best-effort, same convention as `control::tool_publish`'s own
+        // lineage registration: logged, never fails an otherwise-successful
+        // share.
+        if let Some(table) = base_table_name(&sql) {
+            let label = title.as_deref().unwrap_or(&id);
+            if let Err(e) = crate::lineage::register_edge(
+                state,
+                tenant.id,
+                (crate::lineage::NodeKind::Table, &table, &table),
+                (crate::lineage::NodeKind::Chart, &id, label),
+                "chart_store",
+            )
+            .await
+            {
+                tracing::warn!(error = %e, tenant = %tenant.namespace, chart_id = %id, "failed to register lineage edge for stored chart");
+            }
+        }
+
         if let Some(obj) = out.as_object_mut() {
             obj.insert("chart_id".to_string(), json!(id));
             obj.insert("share_url".to_string(), json!(share_url));
