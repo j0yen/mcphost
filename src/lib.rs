@@ -35,6 +35,7 @@ pub mod federation;
 pub mod funnel;
 pub mod gendocs;
 pub mod handler;
+pub mod handles;
 pub mod help;
 pub mod hooks;
 pub mod http;

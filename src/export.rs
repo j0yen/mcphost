@@ -562,6 +562,21 @@ async fn build_archive(
     }))
 }
 
+/// PRD-mcphost-result-handles P1 requirement 7: the file extension and
+/// content-type `download` below serves this run's own kind under -- a
+/// tar.gz archive for `EXPORT_TOOL_NAME`/`ENDUSER_EXPORT_TOOL_NAME`, a CSV
+/// for `crate::handles::HANDLE_EXPORT_TOOL_NAME`. `None` for any other
+/// `tool_name`, which reads as "not an export run" the same as today.
+fn export_kind(tool_name: &str) -> Option<(&'static str, &'static str, &'static str)> {
+    if tool_name == EXPORT_TOOL_NAME || tool_name == ENDUSER_EXPORT_TOOL_NAME {
+        Some(("tar.gz", "application/gzip", "export.tar.gz"))
+    } else if tool_name == crate::handles::HANDLE_EXPORT_TOOL_NAME {
+        Some(("csv", "text/csv", "handle.csv"))
+    } else {
+        None
+    }
+}
+
 /// `GET /exports/{run_id}?expires=<unix>&sig=<hex>` (P0 requirement 2):
 /// unauthenticated -- the signature itself is the whole auth story, same
 /// shape as `host.redeem`'s handoff token. AC2: downloads within 24h of
@@ -574,8 +589,10 @@ pub async fn download(
     let Ok(Some(run)) = state.db.find_run_by_id(run_id.clone()).await else {
         return (StatusCode::NOT_FOUND, "export not found").into_response();
     };
-    let is_export = run.tool_name == EXPORT_TOOL_NAME || run.tool_name == ENDUSER_EXPORT_TOOL_NAME;
-    if !is_export || run.status != "done" {
+    let Some((ext, content_type, filename)) = export_kind(&run.tool_name) else {
+        return (StatusCode::NOT_FOUND, "export not found").into_response();
+    };
+    if run.status != "done" {
         return (StatusCode::NOT_FOUND, "export not found").into_response();
     }
     let Ok(Some(tenant)) = state.db.find_tenant_by_id(run.tenant_id).await else {
@@ -600,17 +617,17 @@ pub async fn download(
         .db
         .data_dir()
         .join(EXPORT_DIR)
-        .join(format!("{run_id}.tar.gz"));
+        .join(format!("{run_id}.{ext}"));
     match tokio::fs::read(&archive_path).await {
-        Ok(bytes) => (
-            StatusCode::OK,
-            [
-                ("content-type", "application/gzip"),
-                ("content-disposition", "attachment; filename=\"export.tar.gz\""),
-            ],
-            bytes,
-        )
-            .into_response(),
+        Ok(bytes) => {
+            let disposition = format!("attachment; filename=\"{filename}\"");
+            (
+                StatusCode::OK,
+                [("content-type", content_type), ("content-disposition", disposition.as_str())],
+                bytes,
+            )
+                .into_response()
+        }
         Err(_) => (StatusCode::NOT_FOUND, "export archive missing").into_response(),
     }
 }

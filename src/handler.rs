@@ -1434,18 +1434,66 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         Tool::new(
             "host.table.query",
             "Run a single read-only SQL SELECT (CTEs allowed) against this tenant's own \
-             tables. Structurally rejected (not by string matching): anything but exactly one \
-             SELECT statement, a result over 1,000 rows, or a query running past 5 seconds -- \
-             each refusal names the rule or bound it hit.",
+             tables and handles. Structurally rejected (not by string matching): anything but \
+             exactly one SELECT statement, a result over 1,000 rows (unless handle: true), or \
+             a query running past 5 seconds -- each refusal names the rule or bound it hit. \
+             handle: true materialises the result instead (no row cap) as a new hdl_<id> table \
+             and returns a dataset-summary.v1 (row_count, a 20-row sample, per-column stats \
+             computed over every row, bytes, expires_unix); later calls can SELECT ... FROM \
+             hdl_<id>, through the same read-only guards, until it expires or is dropped \
+             (host.table.handle_drop). A reference to a missing or expired handle fails \
+             handle_not_found naming it.",
             host_schema(
                 json!({
                     "sql": {
                         "type": "string",
                         "description": "A single read-only SELECT statement (CTEs allowed) \
-                            over this tenant's own declared tables.",
+                            over this tenant's own declared tables and live handles \
+                            (hdl_<id>).",
+                    },
+                    "handle": {
+                        "type": "boolean",
+                        "description": "Materialise sql's result as a new handle instead of \
+                            returning rows; default false.",
+                    },
+                    "ttl_s": {
+                        "type": "integer",
+                        "description": "Only with handle: true. Seconds until the new handle \
+                            expires; default 3600, maximum 86400.",
                     },
                 }),
                 &["sql"],
+            ),
+        ),
+        Tool::new(
+            "host.table.handles",
+            "List this tenant's live host.table.query(..., handle: true) handles, newest \
+             first, each with handle, row_count, bytes, created_unix, expires_unix, \
+             last_used_unix, and derived_from (the SQL that produced it), plus bytes_used \
+             (the sum across every listed handle).",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "host.table.handle_drop",
+            "Drop one result handle (its hdl_<id> table and metadata) before it expires on \
+             its own.",
+            host_schema(
+                json!({
+                    "handle": {"type": "string", "description": "The hdl_<id> handle name to drop."},
+                }),
+                &["handle"],
+            ),
+        ),
+        Tool::new(
+            "host.table.handle_export",
+            "Write one result handle's rows as CSV through the same background-job/signed- \
+             URL path as host.export, returning a run_id whose host.runs.get result carries a \
+             download_url valid 24 hours.",
+            host_schema(
+                json!({
+                    "handle": {"type": "string", "description": "The hdl_<id> handle name to export."},
+                }),
+                &["handle"],
             ),
         ),
         Tool::new(
@@ -3695,6 +3743,12 @@ impl TableBackend for TenantTableBridge {
             // inside the python sandbox receives the same `chart.v1` object
             // `host.table.chart` itself returns.
             "chart" => crate::chart::table_chart(&self.state, &self.tenant, &args).await,
+            // PRD-mcphost-result-handles P1 requirement 8: `mcphost.table.query(
+            // sql, handle=True, ttl_s=None)` reaches this same `"query"` arm
+            // unchanged (it reads `handle`/`ttl_s` straight out of `args`);
+            // `handles`/`handle_drop` are the sandbox's own thin wrappers.
+            "handles" => crate::handles::handles_list(&self.state, &self.tenant, &args).await,
+            "handle_drop" => crate::handles::handle_drop(&self.state, &self.tenant, &args).await,
             other => Err(AppError::InvalidArgs(format!("unknown table op '{other}'"))),
         };
         result.map_err(app_error_to_kind_error)
@@ -3990,6 +4044,10 @@ impl McpHostHandler {
             "host.table.schema" => tables::table_schema(&self.state, tenant, &args).await,
             "host.table.chart" => crate::chart::table_chart(&self.state, tenant, &args).await,
             "host.table.charts" => crate::chart::table_charts_list(&self.state, tenant, &args).await,
+            // PRD-mcphost-result-handles requirement 5/P1 requirement 7.
+            "host.table.handles" => crate::handles::handles_list(&self.state, tenant, &args).await,
+            "host.table.handle_drop" => crate::handles::handle_drop(&self.state, tenant, &args).await,
+            "host.table.handle_export" => crate::handles::handle_export(&self.state, tenant, &args).await,
             "host.docs.put" => docs::doc_put(&self.state, tenant, &args).await,
             "host.docs.get" => docs::doc_get(&self.state, tenant, &args).await,
             "host.docs.list" => docs::doc_list(&self.state, tenant, &args).await,

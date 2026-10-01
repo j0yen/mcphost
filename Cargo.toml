@@ -74,7 +74,14 @@ serde_path_to_error = "0.1.20"
 # multi-statement SQL -- a real AST parser rather than a hand-rolled
 # prefix/keyword check, the same "don't hand-roll what a crate already gets
 # right" call `sha1` above makes for HMAC-SHA1.
-sqlparser = "0.62"
+#
+# PRD-mcphost-result-handles requirement 3 (AC3/AC11): the "visitor"
+# feature's `visit_relations` walks a parsed statement's table references
+# (CTEs, joins, subqueries included) structurally, so `host.table.query`
+# can tell whether a referenced `hdl_<id>` name is a live handle before
+# running the query -- the same "structural, not string-matching" stance
+# `validate_query_structure` already takes.
+sqlparser = { version = "0.62", features = ["visitor"] }
 # PRD-mcphost-wasm-kind requirement 2: the `wasm` kind's execution engine --
 # a library, not a subprocess, so isolation travels with the compiled
 # component instead of depending on the host's userns/bwrap/AppArmor policy

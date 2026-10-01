@@ -82,6 +82,8 @@ mod firstpub_ac06_get_info_no_echo_steering;
 mod firstpub_ac07_llms_txt_first_run_executes;
 #[path = "firstpub_ac08_quickstart_http_starter.rs"]
 mod firstpub_ac08_quickstart_http_starter;
+#[path = "handle_ac09_python_sandbox_query_handle_true_then_queries_it.rs"]
+mod handle_ac09_python_sandbox_query_handle_true_then_queries_it;
 #[path = "infer_ac01_ac02_ac03_python_schema.rs"]
 mod infer_ac01_ac02_ac03_python_schema;
 #[path = "infer_ac04_python_explicit_schema.rs"]

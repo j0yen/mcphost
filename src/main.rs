@@ -764,6 +764,10 @@ async fn main() -> anyhow::Result<()> {
             // table-model recompute tick, started once here alongside the
             // other background tasks.
             mcphost::tables_model::spawn_tick((*state).clone());
+            // PRD-mcphost-result-handles requirement 4: the 30s result-
+            // handle expiry reap, started once here alongside the other
+            // background tasks.
+            mcphost::handles::spawn_tick((*state).clone());
             // PRD-mcphost-sqlite-busy-timeout-audit requirement 6: the
             // minute contention-alert tick, started once here alongside
             // the other background tasks.
