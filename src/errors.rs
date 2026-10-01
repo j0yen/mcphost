@@ -1313,6 +1313,52 @@ impl AppError {
         }
     }
 
+    /// PRD-mcphost-invite-links requirement 2/4 (AC2, AC4): the invite is
+    /// no longer usable to mint a new tenant -- revoked, expired, or (the
+    /// race AC4 names) just lost the last slot to a concurrent caller.
+    /// Also the body `http::require_valid_invite_code` renders (as JSON,
+    /// not via this `AppError` path -- that check runs before MCP dispatch
+    /// ever starts) for the same reason under a plain `/i/{code}/mcp`
+    /// request with no valid session to dispatch through at all.
+    pub fn invite_invalid() -> Self {
+        AppError::Structured {
+            code: "invite_invalid",
+            message: "this invite is no longer valid".to_string(),
+            data: json!({}),
+        }
+    }
+
+    /// requirement 3/11: the per-code (20/hour) or per-inviter (100/day,
+    /// standing invites only) invite-creation rate limit.
+    pub fn invite_rate_limited(retry_after_secs: i64) -> Self {
+        AppError::Structured {
+            code: "invite_rate_limited",
+            message: "too many invites created through this code recently".to_string(),
+            data: json!({"retry_after_secs": retry_after_secs}),
+        }
+    }
+
+    /// requirement 1 (AC7): `host.invite.create` over the plan's
+    /// `invites_max` live `"created"` invites.
+    pub fn invites_max(limit: i64) -> Self {
+        AppError::Structured {
+            code: "invites_max",
+            message: format!("this plan allows at most {limit} live invites; revoke one first"),
+            data: json!({"invites_max": limit}),
+        }
+    }
+
+    /// `host.invite.revoke {code}` against a code this tenant doesn't own
+    /// (or that doesn't exist at all) -- collapsed to one shape, same
+    /// "unknown vs hidden" convention as [`Self::contact_request_not_found`].
+    pub fn invite_not_found() -> Self {
+        AppError::Structured {
+            code: "invite_not_found",
+            message: "no invite found for that code".to_string(),
+            data: json!({}),
+        }
+    }
+
     pub fn disk_floor(free_bytes: u64, floor_bytes: u64) -> Self {
         AppError::Structured {
             code: "service_unavailable",

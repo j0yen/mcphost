@@ -64,6 +64,15 @@ pub fn generate_url_secret() -> String {
     out
 }
 
+/// PRD-mcphost-invite-links non-functional requirement: "a code is 20+
+/// characters of 100+ bits" -- identical shape/entropy to
+/// [`generate_url_secret`] (26-char Crockford base32, 128 random bits), as
+/// a separate name so an invite code's entropy can change independently
+/// of a tenant's own URL secret if the two ever diverge.
+pub fn generate_invite_code() -> String {
+    generate_url_secret()
+}
+
 /// SHA-256 of a key, hex-encoded; the only form a key is ever stored in.
 pub fn hash_key(key: &str) -> String {
     let mut hasher = Sha256::new();

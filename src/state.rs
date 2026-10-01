@@ -391,6 +391,14 @@ pub struct AppState {
     /// requirement 8 (AC7): `host.lineage.trace`'s stored, pageable
     /// downstream results -- see [`crate::lineage::TracePageCache`].
     pub lineage_trace_pages: crate::lineage::TracePageCache,
+    /// PRD-mcphost-invite-links requirement 14 (AC13): which streamable-
+    /// HTTP sessions have already seen the `_meta.invite_url` hint on a
+    /// shared-tool call, so it attaches at most once per session -- see
+    /// [`crate::invites::mark_invite_hint_shown`]. Never persisted, same
+    /// `Arc`-shared-across-clones rationale as [`AppState::session_bindings`],
+    /// unbounded by design (bounded by live session count, same as
+    /// `session_bindings`'s own map).
+    pub invite_hint_sessions: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
 }
 
 pub fn now_unix() -> i64 {

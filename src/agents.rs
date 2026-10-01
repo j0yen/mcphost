@@ -190,7 +190,28 @@ pub async fn lookup(state: &AppState, args: &Value) -> Result<Value, AppError> {
         .lookup_agent(address.to_string())
         .await?
         .ok_or_else(AppError::agent_not_found)?;
-    Ok(card_json(&card))
+    let mut value = card_json(&card);
+    // PRD-mcphost-invite-links requirement 12 (AC11): `invited_by`
+    // (`card.address` is always the bare `t.namespace`, see
+    // `AGENT_CARD_SELECT`) and `invitees_count` -- best-effort, since a
+    // lookup's identity fields above must never fail over a lineage read.
+    let invited_by = state
+        .db
+        .find_tenant_by_namespace(card.address.clone())
+        .await
+        .ok()
+        .flatten()
+        .and_then(|t| t.invited_by);
+    let invitees_count = state
+        .db
+        .count_invitees(card.address.clone())
+        .await
+        .unwrap_or(0);
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert("invited_by".to_string(), json!(invited_by));
+        obj.insert("invitees_count".to_string(), json!(invitees_count));
+    }
+    Ok(value)
 }
 
 /// `host.agent.search(query?, tag?, limit≤50, cursor?)` (requirement 5 /

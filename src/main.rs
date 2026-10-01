@@ -710,6 +710,7 @@ async fn main() -> anyhow::Result<()> {
                 session_bindings: mcphost::session_bind::SessionBindings::new(),
                 lineage_cache: mcphost::lineage::new_cache(),
                 lineage_trace_pages: mcphost::lineage::new_trace_page_cache(),
+                invite_hint_sessions: Default::default(),
             });
             // PRD-mcphost-abuse-guard-ban-list requirement 6: load the ban
             // cache once before this process ever serves a request, so the

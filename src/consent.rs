@@ -122,7 +122,16 @@ pub fn classify_existing_request(
             "SELECT id, status, note, created_at, created_unix_ms, decided_unix_ms \
              FROM contact_requests WHERE from_tenant_id = ?1 AND to_tenant_id = ?2",
             params![from_tenant_id, to_tenant_id],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
+            |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                ))
+            },
         )
         .optional()?;
     let Some((id, status, note, created_at, created_unix_ms, decided_unix_ms)) = existing else {
@@ -255,13 +264,22 @@ fn plan_for<'a>(state: &'a AppState, tenant: &Tenant) -> Result<&'a crate::plans
 /// `contact_pending`, quota-exceeded, or a blocked/nonexistent address's
 /// `agent_not_found`) comes back as an `Err(AppError)` directly from that
 /// method, so this is just argument validation plus a pass-through.
-pub async fn contact_request(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+pub async fn contact_request(
+    state: &AppState,
+    tenant: &Tenant,
+    args: &Value,
+) -> Result<Value, AppError> {
     let address = arg_str(args, "address")?;
     let note = arg_note(args)?;
     let plan = plan_for(state, tenant)?;
     let pending = state
         .db
-        .contact_request(tenant.clone(), address.clone(), note, plan.contact_requests_per_day)
+        .contact_request(
+            tenant.clone(),
+            address.clone(),
+            note,
+            plan.contact_requests_per_day,
+        )
         .await?;
     Ok(json!({
         "status": "pending",
@@ -298,6 +316,9 @@ pub async fn contacts(state: &AppState, tenant: &Tenant, args: &Value) -> Result
         "contacts": view.contacts.iter().map(|c| json!({
             "address": c.address,
             "accepted_at": c.accepted_at,
+            // PRD-mcphost-invite-links requirement 7 (AC3): present only
+            // for a pair created by an invite's resolution.
+            "via": c.via,
         })).collect::<Vec<_>>(),
         "incoming": view.incoming.iter().map(contact_request_json).collect::<Vec<_>>(),
         "outgoing": view.outgoing.iter().map(contact_request_json).collect::<Vec<_>>(),
@@ -314,7 +335,11 @@ fn validate_status(raw: &str) -> Result<String, AppError> {
 }
 
 /// `host.agent.contact_accept(request_id)` (requirement 3 / AC3).
-pub async fn contact_accept(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+pub async fn contact_accept(
+    state: &AppState,
+    tenant: &Tenant,
+    args: &Value,
+) -> Result<Value, AppError> {
     let request_id = arg_str(args, "request_id")?;
     let decision = state.db.contact_accept(tenant.id, request_id).await?;
     Ok(json!({
@@ -326,7 +351,11 @@ pub async fn contact_accept(state: &AppState, tenant: &Tenant, args: &Value) -> 
 }
 
 /// `host.agent.contact_deny(request_id)` (requirement 3 / AC4).
-pub async fn contact_deny(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+pub async fn contact_deny(
+    state: &AppState,
+    tenant: &Tenant,
+    args: &Value,
+) -> Result<Value, AppError> {
     let request_id = arg_str(args, "request_id")?;
     let decision = state.db.contact_deny(tenant.id, request_id).await?;
     Ok(json!({
@@ -369,21 +398,35 @@ pub async fn unmute(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
 /// a status string (`AppError::code()`) instead of routing through
 /// [`contact_request`] above, which would turn the first failure into a
 /// whole-call `Err`.
-pub async fn contacts_import(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+pub async fn contacts_import(
+    state: &AppState,
+    tenant: &Tenant,
+    args: &Value,
+) -> Result<Value, AppError> {
     let addresses: Vec<String> = match args.get("addresses") {
         Some(Value::Array(a)) => a
             .iter()
             .map(|v| {
-                v.as_str()
-                    .map(str::to_string)
-                    .ok_or_else(|| AppError::InvalidArgs("addresses: every entry must be a string".to_string()))
+                v.as_str().map(str::to_string).ok_or_else(|| {
+                    AppError::InvalidArgs("addresses: every entry must be a string".to_string())
+                })
             })
             .collect::<Result<Vec<_>, _>>()?,
-        Some(_) => return Err(AppError::InvalidArgs("addresses: must be an array of addresses".to_string())),
-        None => return Err(AppError::InvalidArgs("missing required argument 'addresses'".to_string())),
+        Some(_) => {
+            return Err(AppError::InvalidArgs(
+                "addresses: must be an array of addresses".to_string(),
+            ));
+        }
+        None => {
+            return Err(AppError::InvalidArgs(
+                "missing required argument 'addresses'".to_string(),
+            ));
+        }
     };
     if addresses.is_empty() {
-        return Err(AppError::InvalidArgs("addresses: must name at least one address".to_string()));
+        return Err(AppError::InvalidArgs(
+            "addresses: must name at least one address".to_string(),
+        ));
     }
     if addresses.len() > MAX_IMPORT_ADDRESSES {
         return Err(AppError::InvalidArgs(format!(
@@ -396,7 +439,12 @@ pub async fn contacts_import(state: &AppState, tenant: &Tenant, args: &Value) ->
     for address in addresses {
         let entry = match state
             .db
-            .contact_request(tenant.clone(), address.clone(), None, plan.contact_requests_per_day)
+            .contact_request(
+                tenant.clone(),
+                address.clone(),
+                None,
+                plan.contact_requests_per_day,
+            )
             .await
         {
             Ok(pending) => json!({

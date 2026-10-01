@@ -215,6 +215,14 @@ pub struct Plan {
     /// once -- a further one is rejected with `quota_vault_providers`.
     /// Requirement 2 names both defaults directly: "free 2, pro 20".
     pub vault_providers_max: i64,
+    /// PRD-mcphost-invite-links requirement 1 (AC7): how many of this
+    /// plan's tenants' `"created"` invites (`host.invite.create`'s capped,
+    /// expiring kind -- never the one standing invite every tenant also
+    /// has, requirement 10) may be live (unexpired, unexhausted,
+    /// unrevoked) at once. Defaults to the `free` plan's own default (3)
+    /// when a hand-edited `plans.toml` predates this key, same
+    /// tolerant-parse convention as `shared_tools_max`/`vault_providers_max`.
+    pub invites_max: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -309,6 +317,7 @@ impl PlanCatalog {
                     // PRD-mcphost-upstream-token-vault requirement 2:
                     // "free 2" vault providers.
                     vault_providers_max: 2,
+                    invites_max: 3,
                 },
                 Plan {
                     name: "pro".to_string(),
@@ -392,6 +401,7 @@ impl PlanCatalog {
                     // PRD-mcphost-upstream-token-vault requirement 2:
                     // "pro 20" vault providers.
                     vault_providers_max: 20,
+                    invites_max: 20,
                 },
             ],
         }
@@ -509,6 +519,7 @@ impl PlanCatalog {
                 "vault_providers_max = {}\n",
                 p.vault_providers_max
             ));
+            out.push_str(&format!("invites_max = {}\n", p.invites_max));
             out.push('\n');
         }
         out
@@ -591,6 +602,7 @@ impl PlanCatalog {
                 "docs_chunks_max" => builder.docs_chunks_max = Some(int_value()),
                 "end_users_max" => builder.end_users_max = Some(int_value()),
                 "vault_providers_max" => builder.vault_providers_max = Some(int_value()),
+                "invites_max" => builder.invites_max = Some(int_value()),
                 _ => {}
             }
         }
@@ -666,6 +678,7 @@ struct PlanBuilder {
     docs_chunks_max: Option<i64>,
     end_users_max: Option<i64>,
     vault_providers_max: Option<i64>,
+    invites_max: Option<i64>,
 }
 
 impl PlanBuilder {
@@ -728,6 +741,7 @@ impl PlanBuilder {
             docs_chunks_max: quota!(docs_chunks_max),
             end_users_max: quota!(end_users_max),
             vault_providers_max: quota!(vault_providers_max),
+            invites_max: quota!(invites_max),
         };
         Ok((plan, defaulted))
     }
