@@ -1,8 +1,12 @@
 //! PRD-mcphost-data-retention
 //! AC6 (P0) — Given free space below the floor (simulated by a test
-//! hook), When `host.tool_call` runs, Then it returns
-//! `service_unavailable: disk floor` and `healthz` reports
-//! `disk_ok: false`.
+//! hook), When `host.tool_call` runs, Then it returns `service_unavailable`
+//! (`data.reason: "disk_floor"`) and `healthz` reports `disk_ok: false`.
+//! The client message itself was `"disk floor: <N> bytes free is below the
+//! <M>-byte floor"` until PRD-mcphost-first-hour-support-surface
+//! requirement 1 (AC3) made it the fixed generic string every 5xx this
+//! host can return now uses -- host capacity numbers never belonged on the
+//! wire; `data.reason` still names it.
 //!
 //! Free space is pinned via `DiskGuard::set_free_bytes_override_for_test`
 //! rather than actually filling the test's tmpfs -- same "flip an
@@ -57,11 +61,18 @@ async fn below_floor_refuses_tool_call_and_healthz_reports_disk_not_ok() {
         .await
         .expect_err("host.tool_call must refuse below the disk floor");
     assert_eq!(err.error_code.as_deref(), Some("service_unavailable"));
+    // PRD-mcphost-first-hour-support-surface requirement 1 / AC3: the
+    // client-facing message is now the fixed generic string (no byte
+    // counts, no host numbers) -- this AC's own "disk floor" wording moved
+    // to `data.reason`, which was already there and is unchanged; the
+    // 5xx-message test (`support_ac03_*`) covers the generic-message
+    // contract itself.
     assert!(
-        err.message.contains("disk floor"),
-        "message must mention 'disk floor', got {:?}",
+        err.message.starts_with("service unavailable; request_id="),
+        "message must be the fixed generic string, got {:?}",
         err.message
     );
+    assert_eq!(err.data["reason"], json!("disk_floor"), "{:?}", err.data);
 
     let health = admin_healthz(&server.base_url).await;
     assert_eq!(

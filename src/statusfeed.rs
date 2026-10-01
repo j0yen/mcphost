@@ -389,12 +389,22 @@ pub async fn status_json(state: &AppState) -> Result<Value, AppError> {
         .list_recent_closed_incidents(now_unix() - RECENT_INCIDENTS_DAYS * 86_400)
         .await?;
     let overall = overall_state(&states, &open_incidents);
+    // PRD-mcphost-first-hour-support-surface requirement 4 (AC5): an
+    // unconfigured support channel is a readiness warning, not a silent
+    // blank -- the same phrase `help::support_line`'s generated pages use,
+    // so a reader can't see one page say "configured" and another stay
+    // silent about it.
+    let support_url = std::env::var("MCPHOST_SUPPORT_URL").ok();
+    let warnings: Vec<&str> = crate::help::support_unconfigured_warning(support_url.as_deref())
+        .into_iter()
+        .collect();
     Ok(json!({
         "state": overall,
         "generated_at": now_unix(),
         "components": components,
         "incidents_open": open_incidents.iter().map(incident_json).collect::<Vec<_>>(),
         "incidents_recent_30d": recent_closed.iter().map(incident_json).collect::<Vec<_>>(),
+        "warnings": warnings,
     }))
 }
 

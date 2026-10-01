@@ -264,6 +264,13 @@ async fn resolve_session_binding(
 }
 
 fn get_parts(ctx: &RequestContext<RoleServer>) -> Result<&http::request::Parts, McpError> {
+    // Plain `into_error_data()` (no base url): there is no `AppState` in
+    // scope here to build a `help_url` from, and this branch only fires for
+    // a non-HTTP transport (no request parts at all) -- a condition the
+    // caller has no page to visit for anyway. Every error built *after*
+    // `parts` is available below uses `into_error_data_at` instead (see its
+    // doc comment on `AppError`, PRD-mcphost-first-hour-support-surface
+    // requirement 1/7).
     ctx.extensions.get::<http::request::Parts>().ok_or_else(|| {
         AppError::Internal("no HTTP request parts on this call".into()).into_error_data()
     })
@@ -5547,7 +5554,7 @@ impl ServerHandler for McpHostHandler {
         let parts = get_parts(&ctx)?;
         let auth = resolve_auth(&self.state, parts)
             .await
-            .map_err(AppError::into_error_data)?;
+            .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
         // PRD-mcphost-tenant-resource-metadata requirement 1 (AC3): a real
         // tenant whose namespace doesn't match a `/t/{ns}/mcp` path's own
         // `<ns>` never gets even a tool listing for it.
@@ -5555,7 +5562,7 @@ impl ServerHandler for McpHostHandler {
             && let Some(ns) = tenant_path_namespace(parts)
             && tenant.namespace != ns
         {
-            return Err(AppError::WrongTenant.into_error_data());
+            return Err(AppError::WrongTenant.into_error_data_at(Some(&self.state.public_url)));
         }
 
         // PRD-mcphost-protocol-compat requirement 5: every branch resolves
@@ -5588,7 +5595,7 @@ impl ServerHandler for McpHostHandler {
                     .db
                     .list_tools(tenant.id)
                     .await
-                    .map_err(AppError::into_error_data)?;
+                    .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
                 // PRD-mcphost-tool-scopes-and-consent requirement 3 (AC2):
                 // a scoped token only sees tools whose own declared
                 // `scopes` (or `["mcp"]` when unset) it satisfies --
@@ -5667,7 +5674,7 @@ impl ServerHandler for McpHostHandler {
 
         let mut auth = resolve_auth(&self.state, parts)
             .await
-            .map_err(AppError::into_error_data)?;
+            .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
 
         let raw_args = Value::Object(request.arguments.unwrap_or_default());
         // Requirement 5/6: the header always wins whenever the connection
@@ -5687,7 +5694,7 @@ impl ServerHandler for McpHostHandler {
         if via_tenant_key_arg {
             auth = resolve_tenant_key_auth(&self.state, &raw_args)
                 .await
-                .map_err(AppError::into_error_data)?;
+                .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
         }
         // PRD-mcphost-session-bound-tenant-after-signup requirements 1-2
         // (AC1, AC2, AC4, AC5): the last step of the precedence rule. Gated
@@ -5704,7 +5711,7 @@ impl ServerHandler for McpHostHandler {
             && let Some(session_id) = session_id.as_deref()
             && let Some(bound) = resolve_session_binding(&self.state, session_id)
                 .await
-                .map_err(AppError::into_error_data)?
+                .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
         {
             auth = bound;
             via_session_binding = true;
@@ -5717,7 +5724,7 @@ impl ServerHandler for McpHostHandler {
             && let Some(ns) = tenant_path_namespace(parts)
             && tenant.namespace != ns
         {
-            return Err(AppError::WrongTenant.into_error_data());
+            return Err(AppError::WrongTenant.into_error_data_at(Some(&self.state.public_url)));
         }
         // PRD-mcphost-tenant-resource-metadata requirement 4 (AC5): a
         // bearer JWT's `scope` claim, when present, must contain `mcp` --
@@ -5740,7 +5747,7 @@ impl ServerHandler for McpHostHandler {
             && !scope.split_whitespace().any(|w| w == "mcp")
             && !body_name.starts_with(&format!("{}.", tenant.namespace))
         {
-            return Err(AppError::InsufficientScope.into_error_data());
+            return Err(AppError::InsufficientScope.into_error_data_at(Some(&self.state.public_url)));
         }
         // PRD-mcphost-oauth-resource-server requirement 7 / AC8: the header
         // already won (requirement 5/6's usual precedence -- `auth` above
@@ -5757,7 +5764,7 @@ impl ServerHandler for McpHostHandler {
             if let Ok(Some(key_tenant)) = self.state.db.find_tenant_by_key_hash(hash).await
                 && key_tenant.id != header_tenant.id
             {
-                return Err(AppError::ConflictingCredentials.into_error_data());
+                return Err(AppError::ConflictingCredentials.into_error_data_at(Some(&self.state.public_url)));
             }
         }
         // PRD-mcphost-tenant-attribution requirement 2's "first
@@ -5789,7 +5796,7 @@ impl ServerHandler for McpHostHandler {
             && let Err(err) = crate::bans::enforce(&self.state, "key", &tenant.key_hash).await
         {
             tracing::warn!(code = err.code(), tenant = %tenant.namespace, tool = %body_name, "call refused: tenant banned");
-            return Err(err.into_error_data());
+            return Err(err.into_error_data_at(Some(&self.state.public_url)));
         }
         // PRD-mcphost-end-user-identity requirement 1/2: resolved once,
         // before dispatch, from either the OAuth bearer this call's `auth`
@@ -6084,7 +6091,7 @@ impl ServerHandler for McpHostHandler {
                 }
                 Ok(CallToolResponse::from(CallToolResult::structured(value)))
             }
-            Err(app_err) => Err(app_err.into_error_data()),
+            Err(app_err) => Err(app_err.into_error_data_at(Some(&self.state.public_url))),
         }
     }
 
