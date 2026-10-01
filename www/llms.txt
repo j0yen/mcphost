@@ -599,7 +599,7 @@ Runnable end-to-end proof, 1,000-row fixture included:
 ## Chart in a minute
 
 One SQL call turns a question into a chart spec, a data-computed caption,
-and a link -- no chart grammar, `sql` is the only way to name the data.
+and a link -- no chart grammar, you name the data with `sql`.
 
 1. Reuse the `expenses` table, through `host.table.*` (the real-SQL store
    `host.table.query` already reads, not `host.state.*` above):
