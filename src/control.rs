@@ -131,7 +131,11 @@ fn arg_i64(args: &Value, name: &str) -> Result<i64, AppError> {
 /// header and it was silently ignored rather than acted on. Never returns
 /// `Err` -- an invalid label must never fail the signup it's attached to
 /// (requirement 2: "signup proceeds exactly as today").
-fn validate_synthetic_header(raw: Option<&str>) -> Option<String> {
+/// `pub(crate)`: PRD-mcphost-invite-links's own tenant-creation path
+/// (`invites::claim_on_first_call`) reuses this exact classification
+/// rather than a second copy, the same "one function, not two" rationale
+/// `claim.rs`'s own `pub(crate) source_ip` doc comment already explains.
+pub(crate) fn validate_synthetic_header(raw: Option<&str>) -> Option<String> {
     let raw = raw?;
     if raw.is_empty() {
         return None;
@@ -873,16 +877,36 @@ pub async fn whoami(
             })
         })
         .collect();
+    // PRD-mcphost-invite-links requirement 10 (AC9): every tenant has a
+    // standing invite by the time `host.whoami` returns, created lazily
+    // here for any tenant born before this PRD (or through a creation
+    // path -- `signup`, `url-page` -- that doesn't mint one itself).
+    // Best-effort: a storage hiccup here must never fail identity itself.
+    let invite_url = crate::invites::standing_invite_url(state, tenant.id)
+        .await
+        .ok();
     Ok(json!({
         "tenant": tenant.namespace,
         "namespace": tenant.namespace,
         "display_name": tenant.display_name,
         "created_at": tenant.created_at,
         "disabled": tenant.disabled,
+        // requirement 10/12 (AC9, AC11): this tenant's own standing
+        // invite URL, and (only for an invite-created tenant) who
+        // invited it in.
+        "invite_url": invite_url,
+        "invited_by": tenant.invited_by,
         // PRD-grand-loop-billing goal: an agent's own identity call
         // already tells it what plan it's on, with no extra round trip.
         "plan": tenant.plan,
         "plan_since": tenant.plan_since,
+        // PRD-mcphost-implicit-signup P1 requirement 6: the caller-claimed
+        // `signup` `source` (`"implicit"` for a tenant this call's own
+        // bare `host.*`/`billing.*` request minted, `"url-page"`/
+        // `"url"`/whatever else a caller passed) -- additive, `null` for
+        // every tenant that signed up with no `source` at all (unchanged
+        // shape for every pre-existing caller).
+        "source": tenant.signup_source,
         // PRD-mcphost-tenant-attribution P1 requirement 6 / AC6: how this
         // host classified the caller, and the client it recorded for it --
         // an agent (or a human testing) can confirm how it was seen
@@ -1727,6 +1751,9 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
         .into_iter()
         .map(|(table, days)| (table, json!(days)))
         .collect();
+    // PRD-mcphost-invite-links requirement 12 (AC11): {sent_7d,
+    // accepted_7d, k}, this tenant's own invite-funnel view.
+    let invites = crate::invites::usage_block(state, tenant).await?;
     Ok(json!({
         "window": window,
         "calls": stats.calls,
@@ -1758,6 +1785,7 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
             "seconds": scheduled.seconds,
         },
         "retention_days": retention_days,
+        "invites": invites,
     }))
 }
 

@@ -544,12 +544,50 @@ mod hybrid_ac07_p95_latency_within_30ms_of_embeddings_only;
 mod hybrid_ac08_hybrid_hit_rate_at_least_each_mode;
 #[path = "hybrid_ac10_filter_prefix_filters_before_fusion.rs"]
 mod hybrid_ac10_filter_prefix_filters_before_fusion;
+#[path = "implsign_ac01_bare_call_creates_implicit_tenant_with_onboarding.rs"]
+mod implsign_ac01_bare_call_creates_implicit_tenant_with_onboarding;
+#[path = "implsign_ac02_second_call_carries_no_onboarding.rs"]
+mod implsign_ac02_second_call_carries_no_onboarding;
+#[path = "implsign_ac03_rate_limit_refuses_with_help_and_retry.rs"]
+mod implsign_ac03_rate_limit_refuses_with_help_and_retry;
+#[path = "implsign_ac04_pause_file_refuses_within_1s.rs"]
+mod implsign_ac04_pause_file_refuses_within_1s;
+#[path = "implsign_ac05_pre_existing_anonymous_tools_create_no_tenant.rs"]
+mod implsign_ac05_pre_existing_anonymous_tools_create_no_tenant;
+#[path = "implsign_ac06_unknown_tenant_key_stays_invalid.rs"]
+mod implsign_ac06_unknown_tenant_key_stays_invalid;
+#[path = "implsign_ac07_no_bare_call_ever_returns_tenant_key_missing.rs"]
+mod implsign_ac07_no_bare_call_ever_returns_tenant_key_missing;
 #[path = "infer_ac05_ac06_ac07_http_schema.rs"]
 mod infer_ac05_ac06_ac07_http_schema;
 #[path = "infer_ac14_latency_budget.rs"]
 mod infer_ac14_latency_budget;
 #[path = "infer_ac17_no_execution.rs"]
 mod infer_ac17_no_execution;
+#[path = "invite_ac01_create_returns_url_and_list_shows_zero_uses.rs"]
+mod invite_ac01_create_returns_url_and_list_shows_zero_uses;
+#[path = "invite_ac02_first_call_creates_tenant_with_onboarding.rs"]
+mod invite_ac02_first_call_creates_tenant_with_onboarding;
+#[path = "invite_ac03_contacts_accepted_both_ways_and_usage_shows_call.rs"]
+mod invite_ac03_contacts_accepted_both_ways_and_usage_shows_call;
+#[path = "invite_ac04_race_for_last_slot_yields_exactly_max_uses.rs"]
+mod invite_ac04_race_for_last_slot_yields_exactly_max_uses;
+#[path = "invite_ac05_revoked_or_expired_404_no_identity_leak_existing_still_work.rs"]
+mod invite_ac05_revoked_or_expired_404_no_identity_leak_existing_still_work;
+#[path = "invite_ac06_per_code_limiter_not_per_ip.rs"]
+mod invite_ac06_per_code_limiter_not_per_ip;
+#[path = "invite_ac07_free_plan_invites_max_and_revoke_frees_slot.rs"]
+mod invite_ac07_free_plan_invites_max_and_revoke_frees_slot;
+#[path = "invite_ac09_standing_invite_present_at_whoami_not_counted.rs"]
+mod invite_ac09_standing_invite_present_at_whoami_not_counted;
+#[path = "invite_ac10_standing_invite_rate_limit_and_revoke_rotates.rs"]
+mod invite_ac10_standing_invite_rate_limit_and_revoke_rotates;
+#[path = "invite_ac11_lineage_chain_lookup_and_usage_k.rs"]
+mod invite_ac11_lineage_chain_lookup_and_usage_k;
+#[path = "invite_ac12_shares_are_one_hop_across_a_depth_3_chain.rs"]
+mod invite_ac12_shares_are_one_hop_across_a_depth_3_chain;
+#[path = "invite_ac13_meta_invite_url_hint_once_per_session.rs"]
+mod invite_ac13_meta_invite_url_hint_once_per_session;
 #[path = "kindhonor_ac1_http_kind_honored.rs"]
 mod kindhonor_ac1_http_kind_honored;
 #[path = "kindhonor_ac3_spec_test_reports_kind.rs"]

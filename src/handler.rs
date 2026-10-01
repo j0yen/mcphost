@@ -187,6 +187,14 @@ fn url_path_secret(parts: &http::request::Parts) -> Option<&str> {
     parts.uri.path().strip_prefix("/u/")?.strip_suffix("/mcp")
 }
 
+/// PRD-mcphost-invite-links requirement 2: the `<code>` segment of a
+/// `/i/{code}/mcp` request, read straight off the original request's own
+/// URI -- same convention as [`url_path_secret`] above. `None` for every
+/// other path.
+fn invite_path_code(parts: &http::request::Parts) -> Option<&str> {
+    parts.uri.path().strip_prefix("/i/")?.strip_suffix("/mcp")
+}
+
 /// PRD-mcphost-url-bound-tenants requirement 1: the new, highest-precedence
 /// step in the `Auth` chain ("path secret -> Authorization header ->
 /// tenant_key argument -> session binding -> anonymous") -- consulted
@@ -497,6 +505,13 @@ fn tool_publish_props() -> Value {
 }
 
 const TOOL_PUBLISH_REQUIRED: &[&str] = &["name", "kind", "spec"];
+
+/// PRD-mcphost-invite-links requirement 14 (AC13): the sentinel field
+/// `call_shared_tool` smuggles the hint URL on; `call_tool`'s own final
+/// conversion strips it back off and promotes it to the real wire
+/// `_meta.invite_url` -- never left on the `structuredContent` a caller
+/// actually reads.
+const INVITE_URL_HINT_KEY: &str = "__invite_url_hint";
 
 /// PRD-mcphost-tenant-data-export P1 requirement 4 / AC5: the plain
 /// (no `tenant_key`) JSON Schema a `host.tool_publish` call's own args are
@@ -1107,6 +1122,54 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                     },
                 }),
                 &["name", "visibility"],
+            ),
+        ),
+        // PRD-mcphost-invite-links requirement 1 (AC1, AC7): one URL that
+        // carries tenant creation, contact, and tool visibility together
+        // -- see `invites.rs`.
+        Tool::new(
+            "host.invite.create",
+            "Mint a /i/<code>/mcp URL that signs a friend's agent up as a new tenant on its \
+             first call, already an accepted contact of yours with the listed tools shared to \
+             it. Defaults: max_uses 10 (cap 100), expires_in_days 30 (cap 365), share defaults \
+             to every tool you've already shared with visibility \"group\". Your plan limits how \
+             many of these may be live at once (host.invite.revoke frees a slot).",
+            host_schema(
+                json!({
+                    "share": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Local names of your own tools to share with the invitee; \
+                            omit to default to every tool already shared with visibility \"group\".",
+                    },
+                    "max_uses": {"type": "integer", "description": "Default 10, max 100."},
+                    "expires_in_days": {"type": "integer", "description": "Default 30, max 365."},
+                    "caller_limit_per_day": {
+                        "type": "integer",
+                        "description": "Optional calls_per_day cap on the invitee for each shared tool.",
+                    },
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.invite.list",
+            "List every invite you've created, standing invite included, with uses, max_uses, \
+             expiry, revoked state, and the namespaces it has invited in.",
+            host_schema(json!({}), &[]),
+        ),
+        // requirement 5/11 (AC10): a `\"created\"` invite's code is
+        // revoked outright; your own standing invite is ROTATED (a fresh
+        // URL, same row) since you always have exactly one.
+        Tool::new(
+            "host.invite.revoke",
+            "Revoke an invite by its code. Revoking a created (capped, expiring) invite stops \
+             new tenants from joining through it -- existing invitees keep their shares. \
+             Revoking your own standing invite instead rotates it: the old URL stops working \
+             and this returns a fresh one.",
+            host_schema(
+                json!({"code": {"type": "string", "description": "The invite's own code (from its /i/<code>/mcp URL)."}}),
+                &["code"],
             ),
         ),
         // PRD-mcphost-shared-tool-spec-readback P0 requirement 2: the
@@ -3974,6 +4037,146 @@ impl McpHostHandler {
         Self { state }
     }
 
+    /// PRD-mcphost-implicit-signup requirement 1 (AC1, AC2, AC3, AC4): the
+    /// bare `/mcp` first call -- no `Authorization` header, no
+    /// `tenant_key` argument, no prior session binding. Mints a tenant
+    /// through the existing [`control::signup`] with `source: "implicit"`
+    /// (so it obeys the same per-IP limiter, fleet-IP classification, and
+    /// pause kill-switch `signup` always has), binds the session to it
+    /// exactly as [`bind_session_to_created_tenant`] does for `signup`/
+    /// `host.redeem`, mints its `/u/{secret}/mcp` URL (requirement 2's
+    /// `onboarding.url`, same primitive [`control::key_rotate`] uses), then
+    /// re-dispatches `name`/`args` as that tenant and stamps `onboarding`
+    /// onto the result -- never a separate "signed up" response (technical
+    /// considerations).
+    #[allow(clippy::too_many_arguments)]
+    async fn dispatch_implicit_signup(
+        &self,
+        ctx: &RequestContext<RoleServer>,
+        parts: &http::request::Parts,
+        source_ip_addr: &str,
+        session_id: Option<&str>,
+        name: &str,
+        args: Value,
+    ) -> Result<Value, AppError> {
+        let help_url = format!("{}/u/new", self.state.public_url.trim_end_matches('/'));
+        // Requirement 1: `agent-<8-char ulid suffix>` -- the last 8
+        // characters of a fresh ULID, same uniqueness `control::new_ulid`
+        // already gives the full-length `agent-<ulid>` names `/u/new`'s
+        // own `post_new_url` mints.
+        let ulid = crate::state::new_ulid();
+        let suffix = &ulid[ulid.len() - 8..];
+        let implicit_name = format!("agent-{suffix}");
+
+        let (client_name, client_version) = match peer_client_info(ctx) {
+            Some((name, version)) => (Some(name), Some(version)),
+            None => (None, None),
+        };
+        let user_agent = user_agent_header(parts);
+        let synthetic = synthetic_header(parts);
+        let attribution = control::SignupAttribution {
+            synthetic_header: synthetic.as_deref(),
+            client_name: client_name.as_deref(),
+            client_version: client_version.as_deref(),
+            user_agent: user_agent.as_deref(),
+        };
+
+        let created = control::signup(
+            &self.state,
+            &json!({"name": implicit_name, "source": "implicit"}),
+            source_ip_addr,
+            attribution,
+        )
+        .await;
+        // Capture the namespace before `bind_session_to_created_tenant`
+        // consumes `created` -- requirement 1's own tenant, never anything
+        // the caller named.
+        let namespace = created
+            .as_ref()
+            .ok()
+            .and_then(|v| v.get("tenant"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        // Requirement 1 / technical considerations: reused verbatim -- same
+        // session-binding call `signup`/`host.redeem` make above. Its
+        // return value (the mutated signup envelope) is discarded on
+        // success; only the binding side effect and a propagated error
+        // matter here, since the caller never sees the signup response
+        // itself, only the original call's result plus `onboarding`
+        // (requirement 2).
+        if let Err(e) = bind_session_to_created_tenant(&self.state, session_id, created).await {
+            // Requirement 3 (AC3, AC4): the limiter's/kill-switch's refusal,
+            // renamed and enriched with `data.help`/`data.retry_after_s` --
+            // no tenant or tool was created (signup itself never got that
+            // far).
+            return Err(AppError::implicit_signup_refused(e, help_url));
+        }
+        let Some(namespace) = namespace else {
+            return Err(AppError::Internal(
+                "implicit signup: signup response carried no tenant namespace".to_string(),
+            ));
+        };
+        let tenant = self
+            .state
+            .db
+            .find_tenant_by_namespace(namespace)
+            .await?
+            .ok_or_else(|| {
+                AppError::Internal(
+                    "implicit signup: tenant vanished immediately after creation".to_string(),
+                )
+            })?;
+
+        // Requirement 2: this tenant's own `/u/{secret}/mcp` URL -- same
+        // generate-then-rotate pair `control::key_rotate`/`post_new_url`
+        // already use to mint a tenant's first URL secret.
+        let url_secret = crate::auth::generate_url_secret();
+        if let Err(e) = self
+            .state
+            .db
+            .rotate_tenant_url_secret(tenant.id, hash_key(&url_secret))
+            .await
+        {
+            tracing::warn!(error = %e, tenant = %tenant.namespace, "implicit signup: failed to mint URL secret");
+        }
+        let url = format!(
+            "{}/u/{}/mcp",
+            self.state.public_url.trim_end_matches('/'),
+            url_secret
+        );
+
+        tracing::info!(tenant = %tenant.namespace, tool = %name, "implicit signup: tenant created from bare host.*/billing.* call");
+
+        // Re-dispatch the triggering call as the tenant that now exists --
+        // same arm the pre-existing `Auth::Tenant` path below uses for
+        // every other `host.*`/`billing.*` call, so the result is
+        // identical in shape to what an already-authenticated caller would
+        // have gotten, plus `onboarding` below.
+        let calls_method = calls_auth_method(None, false, false);
+        let result = self
+            .dispatch_tenant_tool(&tenant, None, "key", calls_method, None, name, args)
+            .await;
+
+        result.map(|mut value| {
+            if let Some(obj) = value.as_object_mut() {
+                obj.insert(
+                    "onboarding".to_string(),
+                    json!({
+                        "tenant": tenant.namespace,
+                        "url": url,
+                        "note": format!(
+                            "You are now tenant {}. Save this URL as your mcphost server \
+                             address; it is your credential. Call host.key_rotate if it \
+                             leaks.",
+                            tenant.namespace
+                        ),
+                    }),
+                );
+            }
+            value
+        })
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn dispatch_tenant_tool(
         &self,
@@ -4011,6 +4214,9 @@ impl McpHostHandler {
             "host.changelog" => control::changelog(&self.state, &args),
             "host.export" => crate::export::export(&self.state, tenant, &args).await,
             "host.tool_share" => crate::sharing::tool_share(&self.state, tenant, &args).await,
+            "host.invite.create" => crate::invites::create(&self.state, tenant, &args).await,
+            "host.invite.list" => crate::invites::list(&self.state, tenant).await,
+            "host.invite.revoke" => crate::invites::revoke(&self.state, tenant, &args).await,
             "host.tool_spec_shared" => self.tool_spec_shared(tenant, args).await,
             "host.tool_unshare" => crate::sharing::tool_unshare(&self.state, tenant, &args).await,
             "host.share.caller_limit" => {
@@ -5615,7 +5821,7 @@ impl McpHostHandler {
                     return crate::runs::enqueue_shared(&self.state, tenant, ns, local, call_args)
                         .await;
                 }
-                self.call_shared_tool(tenant, ns, local, call_args, false, version, end_user, auth_method)
+                self.call_shared_tool(tenant, ns, local, call_args, false, version, end_user, auth_method, None)
                     .await
             }
             None => {
@@ -5641,6 +5847,12 @@ impl McpHostHandler {
     // (`call_tool`'s cross-tenant arm) -- same shape as
     // `call_published_tool` above.
     #[allow(clippy::too_many_arguments)]
+    // PRD-mcphost-invite-links requirement 14 (AC13): `session_id` is
+    // `None` from the `host.tool_call` call site (host_tool_call has no
+    // session identity on hand) and `Some` from raw `<owner_ns>.<local>`
+    // dispatch -- the hint only ever attaches on the latter; see this
+    // function's own body.
+    #[allow(clippy::too_many_arguments)]
     async fn call_shared_tool(
         &self,
         caller: &Tenant,
@@ -5651,22 +5863,47 @@ impl McpHostHandler {
         version: Option<i64>,
         end_user: Option<&crate::enduser::EndUser>,
         auth_method: &str,
+        session_id: Option<&str>,
     ) -> Result<Value, AppError> {
         let (owner, _row) =
             crate::sharing::resolve_shared_tool(&self.state, caller, owner_ns, local_name).await?;
 
-        self.call_published_tool(
-            &owner,
-            local_name,
-            args,
-            mcp_name_mismatch,
-            Some(caller),
-            version,
-            end_user,
-            auth_method,
-            None,
-        )
-        .await
+        let result = self
+            .call_published_tool(
+                &owner,
+                local_name,
+                args,
+                mcp_name_mismatch,
+                Some(caller),
+                version,
+                end_user,
+                auth_method,
+                None,
+            )
+            .await;
+
+        // requirement 14 (AC13): once per session, the FIRST shared-tool
+        // call an invitee makes carries its own standing invite URL under
+        // `_meta.invite_url` -- smuggled as a sentinel field on the
+        // `Value` here (removed and promoted to real wire `_meta` by
+        // `call_tool`'s own final conversion) since this layer never
+        // touches `rmcp` wire types directly.
+        match result {
+            Ok(mut value) if caller.invited_by.is_some() => {
+                let shown_already = session_id
+                    .map(|id| !crate::invites::mark_invite_hint_shown(&self.state, id))
+                    .unwrap_or(true);
+                if !shown_already
+                    && let Ok(url) =
+                        crate::invites::standing_invite_url(&self.state, caller.id).await
+                    && let Some(obj) = value.as_object_mut()
+                {
+                    obj.insert(INVITE_URL_HINT_KEY.to_string(), json!(url));
+                }
+                Ok(value)
+            }
+            other => other,
+        }
     }
 
     /// The visibility half of [`Self::call_shared_tool`]'s resolution,
@@ -6337,6 +6574,29 @@ impl ServerHandler for McpHostHandler {
                 let redeemed = control::redeem(&self.state, &raw_args).await;
                 bind_session_to_created_tenant(&self.state, session_id.as_deref(), redeemed).await
             }
+            // PRD-mcphost-implicit-signup requirement 1 (AC1): the bare
+            // case -- no `Authorization` header and no `tenant_key`
+            // argument at all (both resolvers above stayed `Anonymous`) --
+            // on any other `host.*`/`billing.*` call implicitly creates a
+            // tenant instead of refusing. Never `admin.*` (that name space
+            // never starts with `host.`/`billing.` and never reaches
+            // here); never `signup`/`host.redeem`/`host.quickstart`/
+            // `billing.plans` either -- those are matched by their own
+            // arms above regardless of `auth`, so `name` here can never be
+            // one of them. Binds the session exactly as `signup`/
+            // `host.redeem` do and re-dispatches this very call as the new
+            // tenant, so the caller sees its real result plus `onboarding`
+            // in one round trip rather than a separate "signed up"
+            // response (technical considerations: "the call that triggered
+            // creation must be executed after binding in the same
+            // request").
+            (Auth::Anonymous, name)
+                if via_tenant_key_arg
+                    && (name.starts_with("host.") || name.starts_with("billing.")) =>
+            {
+                self.dispatch_implicit_signup(&ctx, parts, &source, session_id.as_deref(), name, args)
+                    .await
+            }
             // PRD-mcphost-auth-error-names-argument requirement 1-3 /
             // AC1-4: three distinct auth failures now, not one. A header
             // was sent and didn't resolve (`!via_tenant_key_arg`) keeps the
@@ -6349,6 +6609,75 @@ impl ServerHandler for McpHostHandler {
             // the tool name -- never the key itself, which never appears
             // in `body_name` (the requested tool's name, not its
             // arguments).
+            // PRD-mcphost-invite-links requirement 2/6 (AC2, AC6):
+            // reached only when NO credential resolved at all -- header,
+            // `tenant_key` argument, and session binding all came back
+            // `Auth::Anonymous` (the guards above already ran) -- and the
+            // request arrived on `/i/{code}/mcp`. Mirrors
+            // PRD-mcphost-implicit-signup's own not-yet-landed branch
+            // (same `bind_session_to_created_tenant` reuse), scoped to
+            // this one path so `/mcp`'s own `tenant_key_missing` refusal
+            // below is untouched.
+            (Auth::Anonymous, name)
+                if via_tenant_key_arg
+                    && (name.starts_with("host.") || name.starts_with("billing."))
+                    && let Some(code) = invite_path_code(parts) =>
+            {
+                let (client_name, client_version) = match peer_client_info(&ctx) {
+                    Some((n, v)) => (Some(n), Some(v)),
+                    None => (None, None),
+                };
+                let created = crate::invites::claim_on_first_call(
+                    &self.state,
+                    code,
+                    &source,
+                    synthetic_header(parts).as_deref(),
+                    client_name.as_deref(),
+                    client_version.as_deref(),
+                )
+                .await;
+                match bind_session_to_created_tenant(&self.state, session_id.as_deref(), created).await
+                {
+                    Err(e) => Err(e),
+                    Ok(onboarding_value) => {
+                        let ns = onboarding_value
+                            .get("tenant")
+                            .and_then(Value::as_str)
+                            .map(str::to_string);
+                        let found = match ns {
+                            Some(ns) => self.state.db.find_tenant_by_namespace(ns).await,
+                            None => Ok(None),
+                        };
+                        match found {
+                            Ok(Some(invitee)) => {
+                                match self
+                                    .dispatch_tenant_tool(
+                                        &invitee, None, "url", "url", None, name, args,
+                                    )
+                                    .await
+                                {
+                                    Ok(mut result) => {
+                                        if let Some(obj) = result.as_object_mut() {
+                                            obj.insert(
+                                                "onboarding".to_string(),
+                                                onboarding_value
+                                                    .get("onboarding")
+                                                    .cloned()
+                                                    .unwrap_or(Value::Null),
+                                            );
+                                        }
+                                        Ok(result)
+                                    }
+                                    Err(e) => Err(e),
+                                }
+                            }
+                            _ => Err(AppError::Internal(
+                                "invite: created tenant not found for dispatch".into(),
+                            )),
+                        }
+                    }
+                }
+            }
             (Auth::Anonymous, _) if via_tenant_key_arg => {
                 let err = AppError::TenantKeyMissing;
                 tracing::warn!(code = err.code(), tool = %body_name, "host.* call refused: tenant_key missing");
@@ -6447,6 +6776,7 @@ impl ServerHandler for McpHostHandler {
                         version,
                         end_user.as_ref(),
                         calls_auth_method(oauth_caller.as_ref(), via_session_binding, via_url_secret),
+                        session_id.as_deref(),
                     )
                     .await
                 }
@@ -6462,7 +6792,22 @@ impl ServerHandler for McpHostHandler {
                 {
                     obj.insert("deprecations".to_string(), json!(deprecation_notices));
                 }
-                Ok(CallToolResponse::from(CallToolResult::structured(value)))
+                // PRD-mcphost-invite-links requirement 14 (AC13): promote
+                // `call_shared_tool`'s sentinel field to real wire
+                // `_meta.invite_url` -- the ONE place a result's `_meta`
+                // is ever set, so every other call site above stays a
+                // plain `Result<Value, AppError>` with no `rmcp` type in
+                // sight.
+                let invite_hint = value
+                    .as_object_mut()
+                    .and_then(|obj| obj.remove(INVITE_URL_HINT_KEY));
+                let mut result = CallToolResult::structured(value);
+                if let Some(url) = invite_hint {
+                    let mut meta = rmcp::model::MetaObject::new();
+                    meta.0.insert("invite_url".to_string(), url);
+                    result = result.with_meta(Some(meta));
+                }
+                Ok(CallToolResponse::from(result))
             }
             Err(app_err) => Err(app_err.into_error_data_at(Some(&self.state.public_url))),
         }

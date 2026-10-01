@@ -83,6 +83,12 @@ async fn usage_without_by_keeps_the_pre_prd_shape() {
         "scheduled",
         "retention_days",
         "run_results_bytes",
+        // PRD-mcphost-invite-links requirement 12 (AC11): `{sent_7d,
+        // accepted_7d, k}`, added to this same per-tenant shape after
+        // this test's original authorship -- same "a later PRD extends
+        // this set deliberately" precedent `run_results_bytes` above
+        // documents.
+        "invites",
     ]
     .into_iter()
     .collect();

@@ -405,6 +405,7 @@ mod tests {
             session_bindings: crate::session_bind::SessionBindings::new(),
             lineage_cache: crate::lineage::new_cache(),
             lineage_trace_pages: crate::lineage::new_trace_page_cache(),
+            invite_hint_sessions: Default::default(),
         };
 
         let eu = verify_assertion(&state, &tenant, &token).await.expect("valid assertion");

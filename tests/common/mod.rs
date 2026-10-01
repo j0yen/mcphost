@@ -297,6 +297,7 @@ pub async fn bare_app_state() -> (AppState, TempDataDir) {
         session_bindings: mcphost::session_bind::SessionBindings::new(),
         lineage_cache: mcphost::lineage::new_cache(),
         lineage_trace_pages: mcphost::lineage::new_trace_page_cache(),
+invite_hint_sessions: Default::default(),
     };
     (state, data_dir)
 }
@@ -788,6 +789,7 @@ impl TestServer {
             session_bindings: mcphost::session_bind::SessionBindings::new(),
             lineage_cache: mcphost::lineage::new_cache(),
             lineage_trace_pages: mcphost::lineage::new_trace_page_cache(),
+invite_hint_sessions: Default::default(),
         });
 
         // PRD-mcphost-runs-and-jobs: every test server runs the real
@@ -1416,6 +1418,7 @@ pub async fn bare_state(dir: &std::path::Path) -> AppState {
         session_bindings: mcphost::session_bind::SessionBindings::new(),
         lineage_cache: mcphost::lineage::new_cache(),
         lineage_trace_pages: mcphost::lineage::new_trace_page_cache(),
+invite_hint_sessions: Default::default(),
     }
 }
 

@@ -1052,6 +1052,59 @@ async fn require_known_url_secret(
     next.run(req).await
 }
 
+/// PRD-mcphost-invite-links requirement 4 (AC5): `/i/{code}/mcp` for a
+/// code that no longer resolves to a usable invite (unknown, expired,
+/// exhausted, or revoked) -- HTTP 404 with error class `invite_invalid`
+/// in the body (unlike `require_known_url_secret`'s bare 404: AC5 names
+/// the error class explicitly) and, for a browser `GET`, a text page that
+/// names no inviter identity at all. Runs before any MCP dispatch, same
+/// "sits in front of the whole streamable-HTTP service" shape as
+/// `require_known_url_secret`/`require_known_tenant_namespace` above.
+async fn require_valid_invite_code(
+    State(state): State<Arc<AppState>>,
+    Path(code): Path<String>,
+    req: Request<Body>,
+    next: Next,
+) -> Response {
+    let hash = crate::auth::hash_key(&code);
+    let now = crate::state::now_unix();
+    let live = matches!(
+        state.db.find_invite_by_code_hash(hash).await,
+        Ok(Some(invite)) if invite.is_live(now)
+    );
+    if !live {
+        let wants_html = req
+            .headers()
+            .get(axum::http::header::ACCEPT)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.contains("text/html"));
+        if req.method() == Method::GET && wants_html {
+            return crate::claim::html_response(
+                StatusCode::NOT_FOUND,
+                render_invite_invalid_page(),
+            );
+        }
+        return (
+            StatusCode::NOT_FOUND,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            serde_json::json!({"error": "invite_invalid", "message": "this invite is no longer valid"})
+                .to_string(),
+        )
+            .into_response();
+    }
+    next.run(req).await
+}
+
+/// requirement 4 (AC5): "no inviter identity leaked" -- a fixed page, no
+/// dynamic content at all.
+fn render_invite_invalid_page() -> String {
+    crate::claim::page(
+        "mcphost — invite not valid",
+        "<h1>This invite is no longer valid</h1><p>It may have expired, been fully used, or \
+         been revoked. Ask whoever sent it for a new one.</p>",
+    )
+}
+
 fn render_url_explainer(state: &AppState, secret: &str) -> String {
     let url = format!("{}/u/{}/mcp", state.public_url.trim_end_matches('/'), secret);
     let url = crate::claim::html_escape(&url);
@@ -1212,6 +1265,20 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         ))
         .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id));
 
+    // PRD-mcphost-invite-links requirement 2: `/i/{code}/mcp` serves the
+    // identical streamable-HTTP service as every other `*mcp` route --
+    // invite resolution (tenant creation, contact, shares) happens inside
+    // `handler.rs` (`invites::claim_on_first_call`), not here; this
+    // middleware only gates on "is the code still usable at all" (AC5),
+    // same `route_layer`-scoped shape as `url_mcp_router` above.
+    let invite_mcp_router = Router::new()
+        .route_service("/i/{code}/mcp", service.clone())
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_valid_invite_code,
+        ))
+        .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id));
+
     // PRD-mcphost-session-bound-tenant-after-signup requirement 1: only the
     // streamable-HTTP routes get a session identity, so `/healthz`, the
     // OAuth endpoints and the router's own 404 fallback are untouched. Its
@@ -1351,6 +1418,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         .merge(root_mcp_router)
         .merge(tenant_mcp_router)
         .merge(url_mcp_router)
+        .merge(invite_mcp_router)
         // PRD-mcphost-session-bound-tenant-after-signup requirement 7
         // (AC10): `oauth_401_upgrade` must run INSIDE (closer to the
         // router than) `protocol_version_and_log` -- axum's `.layer(L)`

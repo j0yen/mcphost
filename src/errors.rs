@@ -1252,6 +1252,47 @@ impl AppError {
         }
     }
 
+    /// PRD-mcphost-implicit-signup requirement 3 (AC3, AC4): wraps a
+    /// refusal from the `signup` path taken on behalf of an *implicit*
+    /// tenant creation -- a bare `host.*`/`billing.*` call, never the
+    /// `signup` tool itself -- so the caller can tell the two apart
+    /// (`signup_rate_limited` here vs. plain `rate_limited` from calling
+    /// `signup` directly) and always gets a `data.help` pointer at
+    /// `/u/new` plus a `data.retry_after_s` hint, regardless of which of
+    /// `signup`'s own two gates (the per-IP limiter or the pause
+    /// kill-switch) fired. `signup_paused` keeps its existing code
+    /// (requirement 3's "existing classes") -- only its `data` gains the
+    /// two new fields; any other error `signup` could return (a bad
+    /// `name` argument, storage failure, ...) passes through unchanged.
+    pub fn implicit_signup_refused(inner: AppError, help_url: String) -> Self {
+        match inner {
+            AppError::RateLimited => AppError::Structured {
+                code: "signup_rate_limited",
+                message: "signup rate limit exceeded for this source; try again later".to_string(),
+                data: json!({
+                    "help": help_url,
+                    "retry_after_s": crate::state::SIGNUP_RATE_LIMIT_WINDOW_SECS,
+                }),
+            },
+            AppError::Structured {
+                code: "signup_paused",
+                message,
+                data,
+            } => {
+                let retry_after_s = data
+                    .get("retry_after_secs")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(60);
+                AppError::Structured {
+                    code: "signup_paused",
+                    message,
+                    data: json!({"help": help_url, "retry_after_s": retry_after_s}),
+                }
+            }
+            other => other,
+        }
+    }
+
     /// PRD-mcphost-abuse-guard-ban-list requirement 2 / AC1-3: a banned
     /// subject's refusal -- `expires_at` always present (`null` for a
     /// permanent ban), `reason` present as a key only when the operator
@@ -1269,6 +1310,52 @@ impl AppError {
             code: "banned",
             message: "this subject is banned".to_string(),
             data: Value::Object(data),
+        }
+    }
+
+    /// PRD-mcphost-invite-links requirement 2/4 (AC2, AC4): the invite is
+    /// no longer usable to mint a new tenant -- revoked, expired, or (the
+    /// race AC4 names) just lost the last slot to a concurrent caller.
+    /// Also the body `http::require_valid_invite_code` renders (as JSON,
+    /// not via this `AppError` path -- that check runs before MCP dispatch
+    /// ever starts) for the same reason under a plain `/i/{code}/mcp`
+    /// request with no valid session to dispatch through at all.
+    pub fn invite_invalid() -> Self {
+        AppError::Structured {
+            code: "invite_invalid",
+            message: "this invite is no longer valid".to_string(),
+            data: json!({}),
+        }
+    }
+
+    /// requirement 3/11: the per-code (20/hour) or per-inviter (100/day,
+    /// standing invites only) invite-creation rate limit.
+    pub fn invite_rate_limited(retry_after_secs: i64) -> Self {
+        AppError::Structured {
+            code: "invite_rate_limited",
+            message: "too many invites created through this code recently".to_string(),
+            data: json!({"retry_after_secs": retry_after_secs}),
+        }
+    }
+
+    /// requirement 1 (AC7): `host.invite.create` over the plan's
+    /// `invites_max` live `"created"` invites.
+    pub fn invites_max(limit: i64) -> Self {
+        AppError::Structured {
+            code: "invites_max",
+            message: format!("this plan allows at most {limit} live invites; revoke one first"),
+            data: json!({"invites_max": limit}),
+        }
+    }
+
+    /// `host.invite.revoke {code}` against a code this tenant doesn't own
+    /// (or that doesn't exist at all) -- collapsed to one shape, same
+    /// "unknown vs hidden" convention as [`Self::contact_request_not_found`].
+    pub fn invite_not_found() -> Self {
+        AppError::Structured {
+            code: "invite_not_found",
+            message: "no invite found for that code".to_string(),
+            data: json!({}),
         }
     }
 

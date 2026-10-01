@@ -1137,6 +1137,76 @@
       "since": "0.58.0"
     },
     {
+      "description": "Mint a /i/<code>/mcp URL that signs a friend's agent up as a new tenant on its first call, already an accepted contact of yours with the listed tools shared to it. Defaults: max_uses 10 (cap 100), expires_in_days 30 (cap 365), share defaults to every tool you've already shared with visibility \"group\". Your plan limits how many of these may be live at once (host.invite.revoke frees a slot).",
+      "input_schema": {
+        "properties": {
+          "caller_limit_per_day": {
+            "description": "Optional calls_per_day cap on the invitee for each shared tool.",
+            "type": "integer"
+          },
+          "expires_in_days": {
+            "description": "Default 30, max 365.",
+            "type": "integer"
+          },
+          "max_uses": {
+            "description": "Default 10, max 100.",
+            "type": "integer"
+          },
+          "share": {
+            "description": "Local names of your own tools to share with the invitee; omit to default to every tool already shared with visibility \"group\".",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.invite.create",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List every invite you've created, standing invite included, with uses, max_uses, expiry, revoked state, and the namespaces it has invited in.",
+      "input_schema": {
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.invite.list",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Revoke an invite by its code. Revoking a created (capped, expiring) invite stops new tenants from joining through it -- existing invitees keep their shares. Revoking your own standing invite instead rotates it: the old URL stops working and this returns a fresh one.",
+      "input_schema": {
+        "properties": {
+          "code": {
+            "description": "The invite's own code (from its /i/<code>/mcp URL).",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "type": "object"
+      },
+      "name": "host.invite.revoke",
+      "since": "0.58.0"
+    },
+    {
       "description": "Issue a new tenant key and invalidate the current one immediately: every other call using the old key fails as unauthenticated from this point on. Returns the new key exactly once -- use it (as tenant_key or Authorization) for every call after this one.",
       "input_schema": {
         "properties": {
