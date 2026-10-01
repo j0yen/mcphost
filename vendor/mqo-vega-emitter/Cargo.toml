@@ -1,0 +1,16 @@
+[package]
+name = "mqo-vega-emitter"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Emits an inline-data Vega-Lite v5 spec from a chart recommendation and rows -- vendored by mcphost, PRD-mcphost-chart-in-a-minute."
+publish = false
+
+[lib]
+name = "mqo_vega_emitter"
+path = "src/lib.rs"
+
+[dependencies]
+serde_json = "1"
+mqo-chart-vocab = { path = "../mqo-chart-vocab", version = "0.1.0" }
+mqo-chart-recommender = { path = "../mqo-chart-recommender", version = "0.1.0" }

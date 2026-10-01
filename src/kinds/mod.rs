@@ -941,7 +941,8 @@ impl StateBackend for NoState {
 /// python kind's sandbox -- the same shape [`StateBackend`] gives
 /// `mcphost.state`, for the real-SQL `host.table.*` store instead of the
 /// KV/filter-grammar one. `op` names one of `tables.rs`'s own verbs
-/// (`"create"`, `"append"`, `"query"`, `"list"`, `"drop"`, `"schema"`) and
+/// (`"create"`, `"append"`, `"query"`, `"list"`, `"drop"`, `"schema"`,
+/// `"chart"` -- PRD-mcphost-chart-in-a-minute AC11) and
 /// `args` is that verb's own JSON argument object.
 #[async_trait::async_trait]
 pub trait TableBackend: Send + Sync {

@@ -38,7 +38,11 @@ const TICK_INTERVAL_SECS: u64 = 10;
 const CATEGORY_MAX_DISTINCT: i64 = 20;
 const CATEGORY_MAX_DISTINCT_SHARE: f64 = 0.05;
 const ID_MIN_DISTINCT_SHARE: f64 = 0.9;
-const DATE_MIN_PARSE_RATE: f64 = 0.95;
+/// PRD-mcphost-chart-in-a-minute requirement 2/AC4: `pub(crate)` so
+/// `chart.rs`'s own temporal check (`column_is_temporal`) uses the exact
+/// same threshold this module's own `date` role does, rather than a second,
+/// possibly-drifting constant.
+pub(crate) const DATE_MIN_PARSE_RATE: f64 = 0.95;
 
 fn round4(x: f64) -> f64 {
     (x * 10_000.0).round() / 10_000.0
@@ -50,7 +54,9 @@ fn round4(x: f64) -> f64 {
 /// sampled values (requirement 2's `date` rule), not a validator, and this
 /// crate already avoids a `chrono`/`time` dependency for small,
 /// self-contained date math (see `state::rfc3339_from_unix`).
-fn is_iso_date(s: &str) -> bool {
+/// `pub(crate)`: PRD-mcphost-chart-in-a-minute's `chart.rs` reuses this same
+/// check for its own `is_temporal` field rather than a second parser.
+pub(crate) fn is_iso_date(s: &str) -> bool {
     let b = s.as_bytes();
     if b.len() < 10 {
         return false;
@@ -80,16 +86,22 @@ fn canonical_key(v: &Value) -> String {
 /// (requirement 2) and [`ColumnAnalysis::value_keys`], the distinct
 /// non-null value set requirement 3's foreign-key detection checks for
 /// containment against a candidate target table's own key column.
-struct ColumnAnalysis {
-    type_: &'static str,
-    role: &'static str,
-    null_share: f64,
-    distinct: i64,
-    distinct_share: f64,
-    min: Value,
-    max: Value,
-    top_values: Vec<Value>,
-    value_keys: HashSet<String>,
+///
+/// `pub(crate)` (fields included): PRD-mcphost-chart-in-a-minute's
+/// `chart.rs` builds this same struct (via [`ColBuilder`]) over a query
+/// result's own rows, reusing this module's key/category/measure/date/id
+/// thresholds for its `result-profile.v1` role/type classification instead
+/// of a second set of thresholds.
+pub(crate) struct ColumnAnalysis {
+    pub(crate) type_: &'static str,
+    pub(crate) role: &'static str,
+    pub(crate) null_share: f64,
+    pub(crate) distinct: i64,
+    pub(crate) distinct_share: f64,
+    pub(crate) min: Value,
+    pub(crate) max: Value,
+    pub(crate) top_values: Vec<Value>,
+    pub(crate) value_keys: HashSet<String>,
 }
 
 impl ColumnAnalysis {
@@ -129,8 +141,11 @@ impl ColumnAnalysis {
 /// turns the accumulation into a [`ColumnAnalysis`] -- kept as a separate
 /// type so the running state (frequency table, per-value example, running
 /// min/max) doesn't leak into the reported shape above.
+///
+/// `pub(crate)`: see [`ColumnAnalysis`]'s own doc comment -- `chart.rs`
+/// pushes a query result column's values through this exact accumulator.
 #[derive(Default)]
-struct ColBuilder {
+pub(crate) struct ColBuilder {
     null_count: i64,
     non_null: i64,
     freq: HashMap<String, i64>,
@@ -144,7 +159,7 @@ struct ColBuilder {
 }
 
 impl ColBuilder {
-    fn push(&mut self, v: Value) {
+    pub(crate) fn push(&mut self, v: Value) {
         if v.is_null() {
             self.null_count += 1;
             return;
@@ -174,7 +189,7 @@ impl ColBuilder {
     /// requirement 2's five rules, applied in the order the requirement
     /// states them (`key`, `category`, `measure`, `date`, `id`) -- the
     /// first that matches wins, `text` otherwise.
-    fn finish(self, ty: ColumnType, sample_count: i64) -> ColumnAnalysis {
+    pub(crate) fn finish(self, ty: ColumnType, sample_count: i64) -> ColumnAnalysis {
         let distinct = self.freq.len() as i64;
         let null_share = if sample_count > 0 {
             self.null_count as f64 / sample_count as f64

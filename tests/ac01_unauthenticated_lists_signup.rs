@@ -314,14 +314,14 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        136,
+        138,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the three host.tool_history/host.tool_rollback/host.tool_diff \
          tools (PRD-mcphost-tool-versions) + the nine host.state.* tools \
          (PRD-mcphost-tenant-state) \
-         + the nine host.table.* tools (PRD-mcphost-tenant-tables, \
-         PRD-mcphost-table-semantic-model) \
+         + the eleven host.table.* tools (PRD-mcphost-tenant-tables, \
+         PRD-mcphost-table-semantic-model, PRD-mcphost-chart-in-a-minute) \
          + the nine host.tool_share/host.tool_spec_shared/host.tool_unshare/host.group.*/ \
          host.catalog.* tools (PRD-mcphost-sharing, \
          PRD-mcphost-shared-tool-spec-readback) + the two host.share.caller_limit/ \

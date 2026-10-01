@@ -2093,6 +2093,19 @@ def _table_drop(name):
 def _table_schema(table):
     return _table_call("schema", table=table)
 
+# PRD-mcphost-chart-in-a-minute AC11: mirrors host.table.chart -- the
+# sandboxed caller receives the same chart.v1 object the tool itself
+# returns, over this same loopback channel.
+def _table_chart(sql, title=None, mark=None, share=None):
+    kwargs = {"sql": sql}
+    if title is not None:
+        kwargs["title"] = title
+    if mark is not None:
+        kwargs["mark"] = mark
+    if share is not None:
+        kwargs["share"] = share
+    return _table_call("chart", **kwargs)
+
 _mcphost_table_mod = _mcphost_types.ModuleType("mcphost.table")
 _mcphost_table_mod.create = _table_create
 _mcphost_table_mod.append = _table_append
@@ -2100,6 +2113,7 @@ _mcphost_table_mod.query = _table_query
 _mcphost_table_mod.list = _table_list
 _mcphost_table_mod.drop = _table_drop
 _mcphost_table_mod.schema = _table_schema
+_mcphost_table_mod.chart = _table_chart
 _mcphost_table_mod.TableError = McphostTableError
 
 # ---- mcphost.call (PRD-mcphost-composition requirement 1) -----------------

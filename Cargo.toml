@@ -1,7 +1,25 @@
+# PRD-mcphost-chart-in-a-minute AC1: without this table, the five
+# `vendor/*` path dependencies below are ordinary library deps of an
+# implicit single-package workspace -- `cargo test --workspace -p
+# mqo-chart-vocab` (the gate's own invocation shape, see
+# agent/proof-lanes.toml / .buildloop/ci-equivalent.toml) errors "not
+# found in workspace" and their `#[cfg(test)]` modules never compile.
+# Listing them as explicit members makes `cargo test --workspace` /
+# `cargo clippy --workspace` actually cover them.
+[workspace]
+members = [
+    ".",
+    "vendor/mqo-chart-vocab",
+    "vendor/mqo-result-profiler",
+    "vendor/mqo-chart-recommender",
+    "vendor/mqo-vega-emitter",
+    "vendor/mqo-chart-caption",
+]
+
 [package]
 autotests = false  # gen-test-suites.sh: explicit [[test]] suites below
 name = "mcphost"
-version = "0.62.0"
+version = "0.63.0"
 edition = "2024"
 rust-version = "1.94"
 description = "One MCP endpoint an agent can join and administer without a human"
@@ -106,6 +124,17 @@ ring = "0.17"
 # dev-dependencies-only, pinned for `lanecov`'s proof-lanes.toml parser)
 # since that now needs to compile into `src/`, not just `tests/`.
 toml = "0.8"
+# PRD-mcphost-chart-in-a-minute P0 requirement 1 (AC1): ai-stack's
+# grammar-free chart chain, vendored unchanged under vendor/<crate> as path
+# dependencies -- see vendor/VENDOR.md for source repo/commit. `src/chart.rs`
+# is the one piece mcphost writes itself: a `result-profile.v1` profiler over
+# `host.table.query` rows (ai-stack's own profiler reads an MQO response
+# instead, which mcphost has none of).
+mqo-chart-vocab = { path = "vendor/mqo-chart-vocab", version = "0.1.0" }
+mqo-result-profiler = { path = "vendor/mqo-result-profiler", version = "0.1.0" }
+mqo-chart-recommender = { path = "vendor/mqo-chart-recommender", version = "0.1.0" }
+mqo-vega-emitter = { path = "vendor/mqo-vega-emitter", version = "0.1.0" }
+mqo-chart-caption = { path = "vendor/mqo-chart-caption", version = "0.1.0" }
 
 [features]
 # PRD-mcphost-classify-precision: gates PythonKind's test-only selftest

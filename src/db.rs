@@ -90,6 +90,7 @@ const MIGRATION_0055: &str = include_str!("../migrations/0055_enterprise_managed
 // renumbered from this PRD's own 0045 during the merge of origin/main, which
 // had already claimed 0045 through 0055 for other PRDs.
 const MIGRATION_0056: &str = include_str!("../migrations/0056_tool_spec_exposure.sql");
+const MIGRATION_0057: &str = include_str!("../migrations/0057_chart_index.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -2073,7 +2074,8 @@ impl Db {
         Self::migrate_0053_oauth_demand_signal(&conn)?;
         Self::migrate_0054_tool_scopes_and_consent(&conn)?;
         Self::migrate_0055_enterprise_managed_auth(&conn)?;
-        Self::migrate_0056_tool_spec_exposure(&conn)
+        Self::migrate_0056_tool_spec_exposure(&conn)?;
+        Self::migrate_0057_chart_index(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -2865,6 +2867,19 @@ impl Db {
         Ok(())
     }
 
+    /// PRD-mcphost-chart-in-a-minute P1 requirement 6: the global
+    /// `chart_index` table `GET /charts/{id}` uses to resolve a chart id to
+    /// its owning tenant. Same idempotency shape as 0054/0055 above (gated
+    /// on the new table's own existence).
+    fn migrate_0057_chart_index(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'chart_index'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0057)?;
+        }
+        Ok(())
+    }
 
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
@@ -3195,6 +3210,49 @@ impl Db {
             conn.query_row(&sql, params![tenant_id], tenant_from_row)
                 .optional()
                 .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-chart-in-a-minute P1 requirement 6: records that `id`
+    /// (a `host.table.chart {share: true}` chart) belongs to `tenant_id`,
+    /// so `GET /charts/{id}` can resolve the owning tenant before opening
+    /// its per-tenant table file. `INSERT OR REPLACE` -- a chart id is a
+    /// fresh ULID every time (`chart.rs::table_chart`), so this is always a
+    /// first insert in practice; `OR REPLACE` just makes the call
+    /// idempotent rather than erroring on an impossible collision.
+    pub async fn record_chart_owner(&self, tenant_id: i64, chart_id: String, created_unix: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT OR REPLACE INTO chart_index (id, tenant_id, created_unix) VALUES (?1, ?2, ?3)",
+                params![chart_id, tenant_id, created_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// The tenant that owns chart `chart_id`, or `None` for an id this host
+    /// never stored (or has since evicted -- see
+    /// [`Self::delete_chart_owner`]).
+    pub async fn find_chart_owner(&self, chart_id: String) -> Result<Option<i64>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row("SELECT tenant_id FROM chart_index WHERE id = ?1", params![chart_id], |r| r.get(0))
+                .optional()
+                .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// AC10: `chart.rs::store_chart`'s own eviction (past 100 stored
+    /// charts) removes the oldest chart's row from its tenant's table file;
+    /// this removes the matching `chart_index` row so `GET /charts/{id}`
+    /// reads the evicted id as not-found rather than resolving a tenant
+    /// whose file no longer has it.
+    pub async fn delete_chart_owner(&self, chart_id: String) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute("DELETE FROM chart_index WHERE id = ?1", params![chart_id])?;
+            Ok(())
         })
         .await
     }

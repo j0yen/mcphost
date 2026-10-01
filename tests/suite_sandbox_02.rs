@@ -8,6 +8,8 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 mod ci_sandbox_support;
+#[path = "support/chart_fixture.rs"]
+mod chart_fixture;
 #[path = "support/docs_qa.rs"]
 mod docs_qa;
 #[path = "support/egress_proxy_lock.rs"]
@@ -24,6 +26,8 @@ mod uptime_probes;
 
 #[path = "ac17_kind_conformance.rs"]
 mod ac17_kind_conformance;
+#[path = "chart_ac11_python_bridge_returns_chart_v1.rs"]
+mod chart_ac11_python_bridge_returns_chart_v1;
 #[path = "ci_sandbox_ac02_capable_env_never_skips.rs"]
 mod ci_sandbox_ac02_capable_env_never_skips;
 #[path = "ci_sandbox_ac05_ci_var_alone_never_skips.rs"]

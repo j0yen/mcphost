@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.63.0 — 2026-09-30
+
+`host.table.chart(sql, title?, mark?, share?)` turns one SQL call into a
+chart recommendation, a Vega-Lite v5 spec, and a caption whose numbers are
+computed from the rows the query returned, never guessed by a model.
+`mqo-chart-vocab`, `mqo-result-profiler`, `mqo-chart-recommender`,
+`mqo-vega-emitter`, and `mqo-chart-caption` are vendored unchanged from
+ai-stack's chart chain as path dependencies under `vendor/`; mcphost's own
+`src/chart.rs` profiles a SQL result's rows into a `result-profile.v1`
+value, reusing `src/tables_model.rs`'s existing key/category/measure/date
+classifiers rather than inventing new thresholds. `share: true` stores the
+chart (capped at 100 per tenant, oldest evicted) and returns a
+`share_url` signed the same way `src/export.rs` signs `/exports/{run_id}`,
+good for 24 hours and openable with no login at `/charts/{id}` — the page
+inlines the spec and caption, never a tenant id or key.
+`mcphost.table.chart(sql)` reaches the same tool from a `python` sandbox
+tool. `host.table.charts()` lists a tenant's stored charts newest first.
+`www/llms.txt` gains a "Chart in a minute" recipe section (under 50
+lines, SQL only) and `examples/chart-in-a-minute/` a runnable proof
+script.
+
+PRD-mcphost-chart-in-a-minute AC1-AC11, AC13, AC14. AC12 (Live: a
+`proof.sh` run against `https://mcphost.dev/mcp` from carbon after deploy)
+is deferred — operator-provisioned.
+
 ## v0.61.1 — 2026-09-30
 
 `host.quickstart` and `host.tool_publish` now accept the job-word an agent

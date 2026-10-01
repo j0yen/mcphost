@@ -1,0 +1,18 @@
+[package]
+name = "mqo-result-profiler"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "result-profile.v1 types for the ai-stack chart chain -- vendored by mcphost (types only; mcphost writes its own profiler over SQL rows in src/chart.rs), PRD-mcphost-chart-in-a-minute."
+publish = false
+
+[lib]
+name = "mqo_result_profiler"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+mqo-chart-vocab = { path = "../mqo-chart-vocab", version = "0.1.0" }
+
+[dev-dependencies]
+serde_json = "1"
