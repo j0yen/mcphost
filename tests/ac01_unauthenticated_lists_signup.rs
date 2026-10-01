@@ -320,7 +320,7 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        147,
+        148,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the three host.tool_history/host.tool_rollback/host.tool_diff \
@@ -362,7 +362,8 @@ async fn unauthenticated_tools_list_is_signup_only() {
          the three host.lineage.blast_radius/trace/trace_page tools \
          (PRD-mcphost-lineage-blast-radius) + \
          the six host.vault.* tools (PRD-mcphost-upstream-token-vault, \
-         PRD-mcphost-upstream-token-vault-status): \
+         PRD-mcphost-upstream-token-vault-status) + \
+         host.table.query_log (PRD-mcphost-table-context-and-sql-passthrough): \
          {tool_names:?}"
     );
 }

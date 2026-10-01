@@ -1202,6 +1202,26 @@ mod specpath_ac06_list_form_seen_at_hint;
 mod specpath_ac07_replay_recorded_sessions_map_form;
 #[path = "specpath_ac08_wildcard_path_rejected.rs"]
 mod specpath_ac08_wildcard_path_rejected;
+#[path = "sqlpass_ac01_schema_table_description.rs"]
+mod sqlpass_ac01_schema_table_description;
+#[path = "sqlpass_ac02_schema_column_description.rs"]
+mod sqlpass_ac02_schema_column_description;
+#[path = "sqlpass_ac03_no_annotations_matches_pre_change_shape.rs"]
+mod sqlpass_ac03_no_annotations_matches_pre_change_shape;
+#[path = "sqlpass_ac04_successful_query_logs_row_count.rs"]
+mod sqlpass_ac04_successful_query_logs_row_count;
+#[path = "sqlpass_ac05_refused_update_logs_refusal.rs"]
+mod sqlpass_ac05_refused_update_logs_refusal;
+#[path = "sqlpass_ac06_query_log_tenant_isolation_and_limit_cap.rs"]
+mod sqlpass_ac06_query_log_tenant_isolation_and_limit_cap;
+#[path = "sqlpass_ac07_log_bounded_at_1000_rows.rs"]
+mod sqlpass_ac07_log_bounded_at_1000_rows;
+#[path = "sqlpass_ac11_ten_concurrent_queries_all_logged.rs"]
+mod sqlpass_ac11_ten_concurrent_queries_all_logged;
+#[path = "sqlpass_ac12_empty_table_query_logs_zero_rows.rs"]
+mod sqlpass_ac12_empty_table_query_logs_zero_rows;
+#[path = "sqlpass_ac13_long_sql_truncated_not_refused.rs"]
+mod sqlpass_ac13_long_sql_truncated_not_refused;
 #[path = "state_ac01_kv_roundtrip.rs"]
 mod state_ac01_kv_roundtrip;
 #[path = "state_ac04_table_query.rs"]

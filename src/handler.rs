@@ -1448,6 +1448,29 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &["sql"],
             ),
         ),
+        // PRD-mcphost-table-context-and-sql-passthrough requirement 4/AC6:
+        // every `host.table.query` call -- success or refusal -- writes a
+        // row; this is the tenant-facing read of that log.
+        Tool::new(
+            "host.table.query_log",
+            "List this tenant's own host.table.query calls, newest first, each with its sql, \
+             row_count (null on refusal), duration_ms, and error_code/error_message (null on \
+             success). Paged by before_id; limit defaults to 50 and is capped at 200. The log \
+             keeps only the newest 1,000 rows per tenant.",
+            host_schema(
+                json!({
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max rows to return (default 50, capped at 200).",
+                    },
+                    "before_id": {
+                        "type": "integer",
+                        "description": "Page strictly older than this log row id.",
+                    },
+                }),
+                &[],
+            ),
+        ),
         Tool::new(
             "host.table.list",
             "List this tenant's declared tables, each with its current row count, plus the \
@@ -3982,6 +4005,7 @@ impl McpHostHandler {
             "host.table.create" => tables::table_create(&self.state, tenant, &args).await,
             "host.table.append" => tables::table_append(&self.state, tenant, &args).await,
             "host.table.query" => tables::table_query(&self.state, tenant, &args).await,
+            "host.table.query_log" => tables::table_query_log(&self.state, tenant, &args).await,
             "host.table.list" => tables::table_list(&self.state, tenant, &args).await,
             "host.table.drop" => tables::table_drop(&self.state, tenant, &args).await,
             "host.lineage.blast_radius" => crate::lineage::blast_radius(&self.state, tenant, &args).await,
@@ -6236,3 +6260,4 @@ impl ServerHandler for McpHostHandler {
 
     async fn on_initialized(&self, _context: NotificationContext<RoleServer>) {}
 }
+
