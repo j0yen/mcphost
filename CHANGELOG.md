@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.65.1 — 2026-10-01
+
+`host.channel.read`/`close`/`freeze`/`unfreeze` now resolve a named
+channel (`host.channel.open(name: ...)`) the same way `post` always did,
+by id or by name -- previously `read` only ran the group-channel lookup,
+so a channel opened by name was postable but never readable
+(`channel_not_found`, every time). `resolve_channel` (`channels.rs`) is
+the one lookup every `host.channel.*` verb now goes through;
+`channel_not_found`'s error carries the caller's own key as `data.key`
+and names both lookups it tried. Posting no longer auto-advances the
+poster's own read cursor (a poster is a reader too, matching the cursor
+semantics a group channel's post already had), and `host.channel.open`'s
+`tools/list` description now names both channel kinds as readable.
+
+PRD-mcphost-channel-read-name-parity AC1-AC6 (`chanread_ac0N_*` test
+files). AC7 (Live, prod evidence against the fleet channel) is deferred to
+the operator after deploy.
+
 ## v0.65.0 — 2026-10-01
 
 Every first-hour error payload now carries `request_id` (always) and

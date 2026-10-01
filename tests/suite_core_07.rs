@@ -230,6 +230,18 @@ mod channel_ac08_retention_tick_purges_old_posts;
 mod channel_ac09_close_blocks_posts_not_reads;
 #[path = "channel_ac10_freeze_blocks_posts_unfreeze_restores.rs"]
 mod channel_ac10_freeze_blocks_posts_unfreeze_restores;
+#[path = "chanread_ac01_named_channel_post_then_read_by_id.rs"]
+mod chanread_ac01_named_channel_post_then_read_by_id;
+#[path = "chanread_ac02_named_channel_read_by_name.rs"]
+mod chanread_ac02_named_channel_read_by_name;
+#[path = "chanread_ac03_group_channel_no_regression.rs"]
+mod chanread_ac03_group_channel_no_regression;
+#[path = "chanread_ac04_nonexistent_key_names_both_lookups.rs"]
+mod chanread_ac04_nonexistent_key_names_both_lookups;
+#[path = "chanread_ac05_named_channel_freeze_and_close_parity.rs"]
+mod chanread_ac05_named_channel_freeze_and_close_parity;
+#[path = "chanread_ac06_tools_list_names_both_kinds.rs"]
+mod chanread_ac06_tools_list_names_both_kinds;
 #[path = "chart_ac01_vendor_crates_documented_and_wired.rs"]
 mod chart_ac01_vendor_crates_documented_and_wired;
 #[path = "chart_ac02_category_sum_profiles_bar.rs"]

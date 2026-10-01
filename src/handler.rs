@@ -2401,8 +2401,10 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             "host.channel.open",
             "Create a named channel, or return the existing one of that name; or, with group \
              instead of name, open (idempotently) the one channel for a group you own -- every \
-             current member can then host.channel.post/read it. Refuses channels_max \
-             (quota_exceeded) past the plan's cap.",
+             current member can then host.channel.post/read it. Two channel kinds exist, named \
+             and group, and both are fully readable: host.channel.post/read/close/freeze/ \
+             unfreeze all resolve a named or a group channel's id (or a named channel's own \
+             name) the same way. Refuses channels_max (quota_exceeded) past the plan's cap.",
             host_schema(
                 json!({
                     "name": {"type": "string", "description": "Channel name to create or look up."},
@@ -2413,9 +2415,10 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         ),
         Tool::new(
             "host.channel.post",
-            "Post to a channel by name or channel_id; advances your own read cursor to the \
-             new post. Against a group channel's id, any current member may post; a \
-             non-member gets channel_not_found, byte-identical to an unknown id.",
+            "Post to a channel by name or channel_id. Against a group channel's id, any \
+             current member may post; a non-member gets channel_not_found, byte-identical to \
+             an unknown id. Against a named channel, any tenant that knows its id or name may \
+             post; closed or frozen (either kind) refuses with channel_closed/channel_frozen.",
             host_schema(
                 json!({
                     "channel": {"type": "string", "description": "Channel name or channel_id."},
@@ -2427,12 +2430,14 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         ),
         Tool::new(
             "host.channel.read",
-            "Read a group channel's posts in seq order since a cursor (default: your own last \
-             read position, or 0 for a first read). ack: true stores next_cursor as your new \
-             read position. A non-member gets channel_not_found.",
+            "Read a channel's posts (group or named -- by id, or a named channel's own name) \
+             in seq order since a cursor (default: your own last read position, or 0 for a \
+             first read). ack: true stores next_cursor as your new read position. A group \
+             channel's non-member, or anyone but a named channel's own owner, gets \
+             channel_not_found.",
             host_schema(
                 json!({
-                    "channel_id": {"type": "string", "description": "The group channel's id, from host.channel.open(group=...)."},
+                    "channel_id": {"type": "string", "description": "The channel's id (or, for a named channel, its name), from host.channel.open."},
                     "cursor": {"type": "integer", "description": "Read posts with seq greater than this; omit to resume from your own stored cursor."},
                     "limit": {"type": "integer", "description": "Max posts to return; default 50, max 100."},
                     "ack": {"type": "boolean", "description": "Store next_cursor as your new read position."},
@@ -2442,27 +2447,28 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         ),
         Tool::new(
             "host.channel.close",
-            "Owner-only: close a group channel. Further host.channel.post calls get \
+            "Owner-only: close a channel (group or named). Further host.channel.post calls get \
              channel_closed; host.channel.read keeps working.",
             host_schema(
-                json!({"channel_id": {"type": "string", "description": "The group channel's id."}}),
+                json!({"channel_id": {"type": "string", "description": "The channel's id."}}),
                 &["channel_id"],
             ),
         ),
         Tool::new(
             "host.channel.freeze",
-            "Owner-only: freeze a group channel. Further host.channel.post calls get \
+            "Owner-only: freeze a channel (group or named). Further host.channel.post calls get \
              channel_frozen; host.channel.read keeps working.",
             host_schema(
-                json!({"channel_id": {"type": "string", "description": "The group channel's id."}}),
+                json!({"channel_id": {"type": "string", "description": "The channel's id."}}),
                 &["channel_id"],
             ),
         ),
         Tool::new(
             "host.channel.unfreeze",
-            "Owner-only: undo host.channel.freeze; the next post succeeds with the next seq.",
+            "Owner-only: undo host.channel.freeze (group or named); the next post succeeds with \
+             the next seq.",
             host_schema(
-                json!({"channel_id": {"type": "string", "description": "The group channel's id."}}),
+                json!({"channel_id": {"type": "string", "description": "The channel's id."}}),
                 &["channel_id"],
             ),
         ),
