@@ -1,94 +1,69 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-docs-hybrid-search.md",
-  "intent_slug": "mcphost-docs-hybrid-search",
-  "root_motivation": "Grounding: the docs-qa recipe scored 90.0% offline on 2026-09-26 (5 of 5 sessions) with the persona baseline at 61.8%; the misses in that run were identifier-shaped questions the embedding-only ranking placed outside the top 5. doc_search (src/docs.rs) ranked by cosine alone when a provider was configured, or BM25 alone otherwise -- never both -- so a keyword query missed paraphrases and an embedding query missed exact identifiers and rare tokens. This build ports aistack-vector's rrf_fuse (reciprocal rank fusion) into docs_index.rs, runs both rankings when a provider is configured, and returns the fused top-k with each hit's source ranks.",
-  "user_persona": "An agent answering questions over a tenant's documents through host.docs.search (the rag_indexer persona in the synthorg corpus; docs-qa recipe) -- wants the top-5 to contain the passage that answers the question whether the question repeats the document's words or paraphrases them. Also the operator, who can force mode: \"lexical\"/\"embeddings\"/\"hybrid\" on one call to debug a tenant-reported miss.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-channel-read-name-parity.md",
+  "intent_slug": "mcphost-channel-read-name-parity",
+  "root_motivation": "Grounding: fleet board dogfood, 2026-09-30 -- host.channel.open(name: \"fleet\") returned id 01M3V2YTK8F0TF96KX6Q29T08Z; host.channel.post on that id succeeded; host.channel.read on the same id failed \"no channel found for that name or id\", reproduced three times running. post (src/channels.rs) already tried a group-channel lookup then fell back to the named-channel id-or-name lookup (src/db.rs); read ran only the group lookup, so a channel opened by name -- the first form host.channel.open's own doc comment documents -- was writable and unreadable. freeze/close had the same narrower, group-only reach. This build gives every host.channel.* verb (open excepted, since its own group vs name argument already disambiguates what it creates) one resolve_channel(tenant, key) lookup in channels.rs, so a channel reachable by one verb is reachable by every other one too.",
+  "user_persona": "An agent that opens a channel by name (the first form host.channel.open documents) and expects post/read/freeze/close to all resolve that same name or id -- the fleet board's own alert-verification loop was blocked exactly here. Also an agent that mistypes a key and needs the error to say what lookups were tried, and the operator, who needs freeze/close to work identically on a named or a group channel for moderation to hold.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 9
+    "target": 6
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a tenant with a configured provider and a corpus where an identifier-bearing chunk ranks 12th by cosine and 1st by BM25, When host.docs.search runs with k: 5 and default mode, Then that chunk is in the top 5, index.mode is hybrid, and its ranks shows both positions.",
-      "test": "tests/hybrid_ac01_identifier_chunk_wins_via_lexical_rank.rs"
+      "description": "Given host.channel.open(name: \"t\") returning id X, When host.channel.post(X, body) then host.channel.read(X) run, Then read returns the post with seq 1 and a next_cursor.",
+      "test": "tests/chanread_ac01_named_channel_post_then_read_by_id.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the fusion function with two lists, When fused at k_rrf 60, Then a chunk present in both lists outranks a chunk at the same best rank in only one, and the top score is 1.0.",
-      "test": "tests/hybrid_ac02_rrf_fuse_ties_and_normalization.rs"
+      "description": "Given the same channel, When host.channel.read(\"t\") runs by name, Then it returns the same posts.",
+      "test": "tests/chanread_ac02_named_channel_read_by_name.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given mode: \"lexical\", When search runs, Then the provider is not called (the test's fake provider records zero requests) and index.mode is lexical.",
-      "test": "tests/hybrid_ac03_lexical_mode_never_calls_provider.rs"
+      "description": "Given a group channel, When read, post, freeze, close run as before this PRD, Then results are byte-identical to the pre-PRD fixtures (no regression).",
+      "test": "tests/chanread_ac03_group_channel_no_regression.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given mode: \"hybrid\" on a tenant with no provider, When search runs, Then a validation error names the missing provider config and no results are returned.",
-      "test": "tests/hybrid_ac04_hybrid_without_provider_is_validation_error.rs"
+      "description": "Given a nonexistent key, When any channel verb runs, Then the error class is channel_not_found, data.key echoes the input, and the message names both lookups.",
+      "test": "tests/chanread_ac04_nonexistent_key_names_both_lookups.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given default mode and a provider that fails, When search runs, Then results are the lexical ranking, index.mode is lexical-fallback, and no error is returned.",
-      "test": "tests/hybrid_ac05_default_mode_provider_failure_falls_back.rs"
+      "description": "Given a named channel, When freeze(X) then post(X, ...) run, Then post fails channel_frozen; When close(X) then read(X), Then read still works (closed channels stay readable, matching errors.rs's documented rule).",
+      "test": "tests/chanread_ac05_named_channel_freeze_and_close_parity.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given two tenants with overlapping document text, When tenant A searches, Then no hit belongs to tenant B in either candidate list or the fused result.",
-      "test": "tests/hybrid_ac06_hybrid_mode_cross_tenant_isolation.rs"
-    },
-    {
-      "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given a tenant with 1,000 chunks, When 50 hybrid searches run, Then p95 latency exceeds embeddings-only p95 by at most 30 ms.",
-      "test": "tests/hybrid_ac07_p95_latency_within_30ms_of_embeddings_only.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "SHOULD",
-      "description": "Given the docs-qa seeded corpus and gold questions, When hit rate is measured for lexical, embeddings, and hybrid, Then hybrid is at least each of the others.",
-      "test": "tests/hybrid_ac08_hybrid_hit_rate_at_least_each_mode.rs"
-    },
-    {
-      "id": "AC9",
-      "level": "MUST",
-      "description": "Given prod after land, When docs-qa.sh https://mcphost.dev runs from carbon with a fresh signup, Then it exits 0 and every search response reports index.mode: \"hybrid\".",
-      "test": "deferred -- operator-provisioned; no test. Requires a production deploy, DNS/carbon access, and an operator-run docs-qa.sh receipt under docs/receipts/ -- outside a build agent's authority (never provision, resize, delete, or reconfigure a server or service)."
-    },
-    {
-      "id": "AC10",
-      "level": "MUST",
-      "description": "Given filter.prefix set, When hybrid search runs, Then every hit's name starts with the prefix and both candidate lists were filtered before fusion.",
-      "test": "tests/hybrid_ac10_filter_prefix_filters_before_fusion.rs"
+      "description": "Given tools/list, When fetched, Then host.channel.open's description names both channel kinds and says both are readable.",
+      "test": "tests/chanread_ac06_tools_list_names_both_kinds.rs"
     }
   ],
   "scope": [
-    "src/docs_index.rs: rrf_fuse (reciprocal rank fusion, k_rrf=60 fixed per the PRD's own open question) and the K_RRF constant, ported from aistack-vector.",
-    "src/docs.rs: doc_search rewritten around a mode argument (auto/lexical/embeddings/hybrid), embed_query/dense_candidates/lexical_hits helpers, and hybrid_search_results (fuses the lexical and dense candidate lists, each to 3xk capped at 60, and formats the top k with a ranks: {lexical, embeddings} field on every hit).",
-    "src/handler.rs: host.docs.search's tool schema gains the mode parameter and documents ranks in its description.",
-    "src/db.rs: Db::doc_chunks_bulk_insert_with_vectors_for_test, a vector-bearing sibling of the existing doc_chunks_bulk_insert_for_test, for AC7's 1,000-chunk latency fixture.",
-    "tests/docsearch_ac05_embeddings_mode_ranks_by_cosine.rs: updated to pass mode: \"embeddings\" explicitly, preserving its original cosine-only-ranking intent now that default mode fuses.",
-    "contracts/host-tools.v1.json: regenerated (mcphost contract dump) for host.docs.search's new mode parameter and ranks-bearing description.",
-    "scripts/gen-test-suites.sh: MAX_PER_SUITE.core 765 -> 785 (this PRD's own nine hybrid_ac*.rs files pushed core's non-exclusive bucket over the prior cap -- renumbered during rebase: mcphost-chart-in-a-minute and mcphost-lineage-blast-radius raised the cap to 715 then 765 first, landing on main ahead of this branch; same recurring bump this file's own comments already document).",
-    "Cargo.toml/Cargo.lock: this PRD's own version_bump: minor rule originally targeted 0.62.0 -> 0.63.0, but mcphost-chart-in-a-minute and mcphost-lineage-blast-radius claimed 0.63.0 and 0.64.0 first, landing on main ahead of this branch during rebase -- version stays at 0.64.0, no additional bump.",
-    "tests/hybrid_ac01..08,10_*.rs: the nine delivered tests (AC9 deferred, operator-provisioned)."
+    "src/channels.rs: resolve_channel(state, tenant, key) (requirement 1) -- group lookup by id first, then the named-channel id-or-name lookup, returning a ResolvedChannel{channel_id, kind: Group|Named, owner_tenant_id, group_name, closed_at, frozen_at}; open/post/read/close/freeze/unfreeze all route through it instead of each keeping a private lookup.",
+    "src/db.rs: channel_named_lookup, the named-channel counterpart to the existing channel_group_lookup, selecting closed_at/frozen_at off the channels row so post/read/freeze/close/unfreeze all see the same two columns regardless of channel kind; channel_group_set_flag's UPDATE WHERE clause extended to also match a named channel owned (channels.created_by) by the caller, the missing owner-side half AC5 needs.",
+    "src/errors.rs: AppError::channel_not_found(key) now takes the caller's key, carries it as data.key, and names both lookups it tried, replacing the old static \"name or id\" message that named a lookup read never actually ran.",
+    "src/handler.rs: host.channel.open/post/read/close/freeze/unfreeze tool descriptions (tools/list) state that both a named and a group channel exist and are both fully readable, since read/close/freeze/unfreeze now reach a named channel too.",
+    "CHANGELOG.md / Cargo.toml / Cargo.lock / plugin/.claude-plugin/plugin.json: v0.65.0 -> v0.65.1, this PRD's own build_version_bump: patch.",
+    "contracts/host-tools.v1.json: regenerated for the six tool description changes above.",
+    "tests/chanread_ac01..06_*.rs: the six delivered tests, one per AC, all non-deferred.",
+    "tests/channel_ac02_non_member_channel_not_found.rs / tests/meshops_ac06_purge_dry_run_then_real.rs: adjusted for this PRD's own behavior changes -- channel_ac02's byte-identity check now also excludes data.key (which legitimately differs between the two inputs it compares, same as request_id already did); meshops_ac06 now acks an explicit read to get a stored cursor, since channel_post no longer auto-advances the poster's own cursor on insert (AC1's fix: a poster is a reader too, so posting must not make the post invisible to the poster's own very next read)."
   ],
   "non_goals": [
-    "Replacing the remote embedding provider with a local model -- fastembed/ONNX stay out (PRD's own non-goal).",
-    "A new BM25 implementation -- SQLite's bm25() stays in use (PRD's own non-goal).",
-    "Re-ranking with a model, or query rewriting (PRD's own non-goal).",
-    "Changing chunking, index refresh cadence, or quotas (PRD's own non-goal).",
-    "Exposing k_rrf as a caller-tunable parameter -- the PRD's own open question resolves it fixed at 60."
+    "New channel features: retention, membership changes (PRD's own non-goal).",
+    "Changing group-channel semantics or cursors from PRD-mcphost-agent-channels (PRD's own non-goal).",
+    "The name-path deprecation branch (channel_name_deprecated) -- the PRD's own open question is drafted 'keep, parity', which is the branch this build implements; the deprecation alternative was not built.",
+    "host.channel.list kind-per-row display (PRD's own P2, requirement 6) -- host.channel.list does not exist in this codebase, so there is nothing to extend.",
+    "AC7 from the PRD text (prod read-after-land evidence against tenant joe-test's live fleet channel) -- not in this dispatch's assigned AC list; operator-provisioned, requires a deployed binary and prod access."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -97,47 +72,48 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "test_file_names_use_underscores_not_the_prd_slugs_hyphens": "test_prefix hybrid (the PRD's own frontmatter field), same convention as every other test file in this repo.",
-      "version_bump_minor": "PRD frontmatter build_version_bump: minor -- Cargo.toml/Cargo.lock originally bumped 0.62.0 -> 0.63.0 (renumbered during rebase: mcphost-chart-in-a-minute and mcphost-lineage-blast-radius claimed 0.63.0 and 0.64.0 first, landing on main ahead of this branch); version left at 0.64.0, no additional bump.",
-      "no_schema_change": "PRD's own technical considerations: ranks is computed per call from the two candidate lists' own list positions, not stored -- no migration.",
-      "outage_path_fails_open_for_every_provider_calling_mode": "Requirement 5 names only \"default mode\", but this build applies the same fail-open-to-lexical-fallback behaviour to explicit mode: \"hybrid\" and mode: \"embeddings\" too, so an operator's explicit override during a provider outage never turns into a hard error -- documented in hybrid_ac05's own module doc and this card, since it is a design decision beyond the PRD's literal text, not an accident."
+      "test_file_names_use_underscores_not_the_prd_slugs_hyphens": "test_prefix chanread (the PRD's own frontmatter field), same convention as every other test file in this repo.",
+      "version_bump_patch": "PRD frontmatter build_version_bump: patch -- Cargo.toml/Cargo.lock/plugin.json bumped 0.65.0 -> 0.65.1, landed with AC6.",
+      "no_schema_change": "PRD's own migration/compatibility section: no schema change, existing named channels become readable; routing only, not new queries (PRD's own technical considerations).",
+      "named_channel_readers_are_owner_only": "PRD's own technical considerations, drafted: a named channel's readers are its owner only -- a non-owner's read gets channel_not_found, identical in shape to a miss (AC4's own parity requirement), not a separate authorization error class.",
+      "post_no_longer_auto_advances_the_poster_cursor": "Landed with AC1 as a necessary side effect, not a separate requirement: channel_post previously advanced the poster's own channel_cursors row on insert, which made a poster's own post invisible to the poster's own very next read -- the opposite of this PRD's point (a poster is a reader too). Two pre-existing tests (channel_ac02, meshops_ac06) were adjusted for this, not regressed."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why can't embeddings mode alone just rank identifier-shaped queries correctly?",
-      "a": "A remote embedding model's vector space is built for semantic paraphrase, not exact-token recall -- a rare identifier like an invoice number contributes little to the embedding compared to the surrounding prose, so a chunk whose only distinguishing content is that identifier can embed close to many unrelated chunks that share the prose's general topic. 2026-09-26's offline docs-qa run confirmed this concretely: identifier-shaped questions were the entire miss set at 90% hybrid-absent."
+      "q": "Why did read() never see a named channel in the first place?",
+      "a": "read's query joined through groups (JOIN groups g ON g.id = c.group_id) because it was written for PRD-mcphost-agent-channels, which only ever created group channels -- migration 0027's earlier, ungated name-keyed channels (PRD-mcphost-agent-mesh-ops) predate that join and were never retrofitted into it."
     },
     {
       "why": 2,
-      "q": "Why not just always prefer BM25 when the query looks like it contains an identifier?",
-      "a": "That requires classifying queries as \"identifier-shaped\" before ranking, which the PRD's own non-goals rule out (no query rewriting) and which fails the symmetric case (goal 2: a paraphrase query like \"when do we have to pay\" must still rank first via the embedding list, where BM25 alone would miss it entirely since none of its words appear in the document)."
+      "q": "Why did post() already handle both kinds but read() didn't?",
+      "a": "post() kept the migration-0027 mesh-ops code path as its own `else` arm alongside the newer group path (two lookups, written at two different times for two different PRDs, never merged); read() was only ever written once, for the group case, so it had no equivalent fallback to fall into."
     },
     {
       "why": 3,
-      "q": "Why reciprocal rank fusion specifically, rather than e.g. a weighted score blend of cosine and bm25?",
-      "a": "Cosine and bm25() live on incompatible, un-normalized scales (bm25 is negative-better and unbounded; cosine is bounded [-1,1] but a remote provider's actual score distribution is unknown ahead of time) -- any fixed weighting of the raw scores would need per-provider calibration. RRF only ever consumes rank *position*, which is scale-free by construction; aistack-vector's own rrf_fuse already proved this approach and ships unit-tested."
+      "q": "Why wasn't the gap caught before the 2026-09-30 dogfood run?",
+      "a": "open(name) -> post -> read is exactly the sequence host.channel.open's own doc comment (\"creates the channel if it doesn't already exist, else returns the existing one\") tells a caller to use, but no existing test exercised that specific sequence end-to-end across both verbs -- the mesh-ops and agent-channels test suites each proved their own PRD's verbs in isolation."
     },
     {
       "why": 4,
-      "q": "Why 3 x k candidates capped at 60, not just k or the whole index?",
-      "a": "Fusion needs each list to be wide enough that a chunk ranking well in only one list (AC1's own scenario: 12th by cosine) still has a rank position to contribute a fusion score from -- k alone would have missed AC1's own chunk entirely (rank 12 > k=5). The whole index is unbounded per tenant (AC7's own 1,000-chunk fixture, or more in production) and would blow the latency budget; 3k capped at 60 is the PRD's own explicit technical-considerations number, sized to keep the FTS5 and cosine scans bounded while still catching mid-list identifier chunks like AC1's."
+      "q": "Why unify through one resolve_channel instead of just adding a second lookup inside read()?",
+      "a": "freeze/close/unfreeze had the identical gap (group-only reach) for the identical reason -- patching read() alone would have left three more call sites to independently remember to patch the same way, the exact failure mode (a lookup rule duplicated instead of shared) that produced this bug in the first place."
     }
   ],
-  "created_at": "2026-09-30T00:00:00Z",
+  "created_at": "2026-10-01T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Does a provider failure under an explicit mode: \"hybrid\"/\"embeddings\" call return an error, or fall back to lexical the same way auto mode does (requirement 5 only names \"default mode\")?",
-      "resolution": "Fall back the same way (index.mode: \"lexical-fallback\", no error) -- the PRD's own non-functional posture throughout (goal 4, requirement 5's own framing) is that a provider outage never surfaces as an error under any mode that would otherwise call it; an operator explicitly asking for hybrid during an outage getting a hard error instead of today's fail-open behaviour would be a regression for debugging, not an improvement. Pinned in hard_constraints.additional and hybrid_ac05's own module doc."
+      "question": "Does a named channel's read stay owner-only, or open up to anyone who has ever posted to it (PRD's own technical considerations names both options, drafted 'owner only')?",
+      "resolution": "Owner only, per the PRD's own drafted default -- a non-owner's read gets channel_not_found, not a distinct authorization error, so a miss and an unauthorized hit read identically (the same posture AC2/AC4 already require for a group channel's non-member). Named channels are single-tenant today; broadening this is out of scope (PRD non-goal: no membership changes)."
     },
     {
-      "question": "Does host.docs.status's own index.mode (\"embeddings\"/\"lexical\" based on configured provider, src/docs.rs doc_status) change to reflect hybrid?",
-      "resolution": "No -- doc_status describes the tenant's *configured* provider, not a per-call ranking outcome; it was already distinct from doc_search's own index.mode before this PRD (doc_search's mode could already read \"embeddings\" while status also read \"embeddings\", or \"lexical-fallback\" on search while status still read \"embeddings\"). Untouched by this build; only doc_search's own index.mode gains \"hybrid\"."
+      "question": "Keep the name-opened channel path (parity) or deprecate it in favor of group channels (PRD's own open question, owner Joe, due 2026-10-08)?",
+      "resolution": "Keep, parity -- the PRD's own TL;DR names this as the drafted default, and the open question's due date (2026-10-08) is after this dispatch's build date; AC6 states both kinds exist and are both readable rather than naming a deprecation. If Joe decides to deprecate later, that is a follow-up PRD, not a revision of this one."
     },
     {
-      "question": "What identity does a candidate chunk need for the dense and sparse lists to agree it's \"the same chunk\" during fusion?",
-      "resolution": "(document_id, chunk_no) -- the doc_chunks table's own primary key minus tenant_id (every query here is already tenant-scoped) and version (a chunk_no is unique per document regardless of which version produced it, since the indexer always deletes a document's whole prior chunk set before writing its new one, per migrations/0044_docs_index.sql's own schema doc)."
+      "question": "Should channel_post's pre-PRD auto-advance of the poster's own cursor survive unification, now that read() can see the poster's own post?",
+      "resolution": "No -- removed. Auto-advancing on post meant a poster's own next read (cursor already past the post) returned nothing, which is the same bug class this PRD fixes (a channel you can post to, you should be able to read), just one hop later. channel_ac02 and meshops_ac06 were adjusted for this, not regressed; see hard_constraints.additional."
     }
   ]
 }

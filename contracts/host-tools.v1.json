@@ -413,11 +413,11 @@
       "since": "0.58.1"
     },
     {
-      "description": "Owner-only: close a group channel. Further host.channel.post calls get channel_closed; host.channel.read keeps working.",
+      "description": "Owner-only: close a channel (group or named). Further host.channel.post calls get channel_closed; host.channel.read keeps working.",
       "input_schema": {
         "properties": {
           "channel_id": {
-            "description": "The group channel's id.",
+            "description": "The channel's id.",
             "type": "string"
           },
           "tenant_key": {
@@ -434,11 +434,11 @@
       "since": "0.58.0"
     },
     {
-      "description": "Owner-only: freeze a group channel. Further host.channel.post calls get channel_frozen; host.channel.read keeps working.",
+      "description": "Owner-only: freeze a channel (group or named). Further host.channel.post calls get channel_frozen; host.channel.read keeps working.",
       "input_schema": {
         "properties": {
           "channel_id": {
-            "description": "The group channel's id.",
+            "description": "The channel's id.",
             "type": "string"
           },
           "tenant_key": {
@@ -455,7 +455,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Create a named channel, or return the existing one of that name; or, with group instead of name, open (idempotently) the one channel for a group you own -- every current member can then host.channel.post/read it. Refuses channels_max (quota_exceeded) past the plan's cap.",
+      "description": "Create a named channel, or return the existing one of that name; or, with group instead of name, open (idempotently) the one channel for a group you own -- every current member can then host.channel.post/read it. Two channel kinds exist, named and group, and both are fully readable: host.channel.post/read/close/freeze/ unfreeze all resolve a named or a group channel's id (or a named channel's own name) the same way. Refuses channels_max (quota_exceeded) past the plan's cap.",
       "input_schema": {
         "properties": {
           "group": {
@@ -478,7 +478,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Post to a channel by name or channel_id; advances your own read cursor to the new post. Against a group channel's id, any current member may post; a non-member gets channel_not_found, byte-identical to an unknown id.",
+      "description": "Post to a channel by name or channel_id. Against a group channel's id, any current member may post; a non-member gets channel_not_found, byte-identical to an unknown id. Against a named channel, any tenant that knows its id or name may post; closed or frozen (either kind) refuses with channel_closed/channel_frozen.",
       "input_schema": {
         "properties": {
           "body": {
@@ -508,7 +508,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Read a group channel's posts in seq order since a cursor (default: your own last read position, or 0 for a first read). ack: true stores next_cursor as your new read position. A non-member gets channel_not_found.",
+      "description": "Read a channel's posts (group or named -- by id, or a named channel's own name) in seq order since a cursor (default: your own last read position, or 0 for a first read). ack: true stores next_cursor as your new read position. A group channel's non-member, or anyone but a named channel's own owner, gets channel_not_found.",
       "input_schema": {
         "properties": {
           "ack": {
@@ -516,7 +516,7 @@
             "type": "boolean"
           },
           "channel_id": {
-            "description": "The group channel's id, from host.channel.open(group=...).",
+            "description": "The channel's id (or, for a named channel, its name), from host.channel.open.",
             "type": "string"
           },
           "cursor": {
@@ -541,11 +541,11 @@
       "since": "0.58.0"
     },
     {
-      "description": "Owner-only: undo host.channel.freeze; the next post succeeds with the next seq.",
+      "description": "Owner-only: undo host.channel.freeze (group or named); the next post succeeds with the next seq.",
       "input_schema": {
         "properties": {
           "channel_id": {
-            "description": "The group channel's id.",
+            "description": "The channel's id.",
             "type": "string"
           },
           "tenant_key": {
