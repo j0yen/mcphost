@@ -1684,6 +1684,69 @@ async fn usage_breakdown(state: &AppState, tenant: &Tenant, args: &Value, by: St
     }))
 }
 
+// ---- next-hint (PRD-mcphost-one-next-tool requirement 4) -------------------
+
+/// Requirement 4: a static table keyed on the tool the tenant just
+/// successfully called -- the chosen tool is never the one just called
+/// (none of these entries map a tool to itself) and the caller
+/// (`handler::maybe_attach_next_hint`) separately skips a chosen tool the
+/// tenant has already used. `host.tool_share`'s own entry is
+/// `host.msg.send`: `PRD-mcphost-invite-links` (the drafted
+/// `host.invite.create` alternative) has not landed in this crate.
+///
+/// Requirement 6: every `why` here is one sentence, well under 120
+/// characters, and names no internal identifier (tenant namespace, tool
+/// spec field, error code).
+const NEXT_HINT_TABLE: &[(&str, &str, &str)] = &[
+    ("host.tool_publish", "host.tool_call", "Call it to see your new tool run for real."),
+    (
+        "host.tool_call",
+        "host.tool_share",
+        "Share it so a teammate or another tenant can call it too.",
+    ),
+    (
+        "host.state.set",
+        "host.trigger.set",
+        "Run it automatically on a schedule instead of calling it by hand.",
+    ),
+    (
+        "host.state.get",
+        "host.table.create",
+        "Store rows in a real table instead of loose key-value state.",
+    ),
+    (
+        "host.state.list",
+        "host.table.create",
+        "Store rows in a real table instead of loose key-value state.",
+    ),
+    (
+        "host.tool_share",
+        "host.msg.send",
+        "Message another agent now that you have something to share.",
+    ),
+    (
+        "host.trigger.set",
+        "host.runs.list",
+        "See every run this schedule has kicked off.",
+    ),
+];
+
+/// Requirement 4's own fallback: "any tool not in the table maps to
+/// host.quickstart".
+const NEXT_HINT_DEFAULT: (&str, &str) = ("host.quickstart", "See a filled-in example for your next tool.");
+
+/// The `{tool, why}` pair for a tool that just succeeded -- pure, no I/O,
+/// so `handler::maybe_attach_next_hint` can call it before deciding
+/// whether the tenant's distinct-tool count and already-used set allow it
+/// through.
+pub fn next_hint_for(called: &str) -> (&'static str, &'static str) {
+    NEXT_HINT_TABLE
+        .iter()
+        .find(|(from, _, _)| *from == called)
+        .map(|(_, tool, why)| (*tool, *why))
+        .unwrap_or(NEXT_HINT_DEFAULT)
+}
+
 pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     // AC6: `by` omitted keeps the pre-PRD per-tenant shape byte for byte --
     // every field below this point is unchanged from before this PRD.
@@ -1727,6 +1790,13 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
         .into_iter()
         .map(|(table, days)| (table, json!(days)))
         .collect();
+    // PRD-mcphost-one-next-tool requirement 9 (AC9): a fixed 7-day window,
+    // independent of this response's own `window`/`by` argument -- the AC's
+    // own example ("Given seven days in which 10 hints were shown...")
+    // pins this to a constant lookback, not whatever window the caller asked
+    // the rest of the response to use.
+    let (hints_shown_7d, hints_followed_7d) =
+        state.db.hints_usage(tenant.id, now_unix() - 7 * 24 * 3600).await?;
     Ok(json!({
         "window": window,
         "calls": stats.calls,
@@ -1758,6 +1828,10 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
             "seconds": scheduled.seconds,
         },
         "retention_days": retention_days,
+        "hints": {
+            "shown_7d": hints_shown_7d,
+            "followed_7d": hints_followed_7d,
+        },
     }))
 }
 

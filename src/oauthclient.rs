@@ -875,7 +875,35 @@ async fn call_tool(
     }
     let resp = req.send().await.map_err(|e| e.to_string())?;
     let status = resp.status().as_u16();
-    let body = resp.json::<Value>().await.map_err(|e| e.to_string())?;
+    // PRD-mcphost-one-next-tool requirement 3: a call that binds this
+    // connection (`signup`) now emits `notifications/tools/list_changed`
+    // before its own result, which forces mcphost's stateless transport to
+    // upgrade this one response from `application/json` to
+    // `text/event-stream` (`rmcp`'s own `StreamableHttpServerConfig::json_response`
+    // fallback) -- the real JSON-RPC message is always the last one on the
+    // wire.
+    let content_type = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
+    let body = if content_type.starts_with("text/event-stream") {
+        let text = resp.text().await.map_err(|e| e.to_string())?;
+        text.split("\n\n")
+            .filter_map(|block| {
+                block.lines().find_map(|line| {
+                    line.strip_prefix("data: ").or_else(|| line.strip_prefix("data:"))
+                })
+            })
+            .filter(|data| !data.is_empty())
+            .filter_map(|data| serde_json::from_str::<Value>(data).ok())
+            .collect::<Vec<Value>>()
+            .pop()
+            .ok_or_else(|| format!("no JSON-RPC message in SSE body: {text}"))?
+    } else {
+        resp.json::<Value>().await.map_err(|e| e.to_string())?
+    };
     Ok((status, body))
 }
 

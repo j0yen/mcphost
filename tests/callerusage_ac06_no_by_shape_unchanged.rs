@@ -68,7 +68,9 @@ async fn usage_without_by_keeps_the_pre_prd_shape() {
     // ahead of this branch's own rebase) added it to this same per-tenant
     // shape -- it predates this PRD's own AC6 fixture but not this test's
     // original authorship, so it belongs in the unchanged set alongside
-    // every other pre-existing field.
+    // every other pre-existing field. `hints` is PRD-mcphost-one-next-tool
+    // requirement 9 (AC9)'s own addition, landed after this test, so it's
+    // the one deliberate new top-level field.
     let expected_keys: BTreeSet<&str> = [
         "window",
         "calls",
@@ -83,6 +85,7 @@ async fn usage_without_by_keeps_the_pre_prd_shape() {
         "scheduled",
         "retention_days",
         "run_results_bytes",
+        "hints",
     ]
     .into_iter()
     .collect();

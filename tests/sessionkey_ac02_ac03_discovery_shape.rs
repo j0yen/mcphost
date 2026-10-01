@@ -51,44 +51,12 @@ async fn every_host_star_descriptor_declares_an_optional_tenant_key() {
         .collect();
     assert_eq!(
         host_tools.len(),
-        143,
-        "the thirteen host.* control tools (incl. host.quickstart, host.tool_run, and \
-         host.bridge_test) plus host.redeem plus host.key_rotate (PRD-mcphost-handoff-token) \
-         plus host.tool_call plus the three host.tool_history/host.tool_rollback/host.tool_diff \
-         tools (PRD-mcphost-tool-versions) plus the nine host.state.* tools \
-         (PRD-mcphost-tenant-state) plus the eleven host.table.* tools \
-         (PRD-mcphost-tenant-tables, PRD-mcphost-table-semantic-model, \
-         PRD-mcphost-chart-in-a-minute) plus the nine \
-         host.tool_share/host.tool_spec_shared/host.tool_unshare/ \
-         host.group.*/host.catalog.* tools (PRD-mcphost-sharing, \
-         PRD-mcphost-shared-tool-spec-readback) plus the two \
-         host.share.caller_limit/caller_limit_remove tools \
-         (PRD-mcphost-shared-tool-caller-usage) plus the six \
-         host.runs.* tools (PRD-mcphost-runs-and-jobs, PRD-mcphost-run-result-overflow-to-state) \
-         plus host.progress (PRD-mcphost-run-result-overflow-to-state) plus the nine \
-         host.trigger.* tools (PRD-mcphost-schedules, PRD-mcphost-inbound-events) plus the \
-         four host.agent.* tools (PRD-mcphost-agent-directory) plus the eight \
-         host.msg.* tools (PRD-mcphost-agent-inbox, PRD-mcphost-agent-wake) plus the seven \
-         host.agent.contact_*/mute/unmute tools (PRD-mcphost-agent-consent) plus \
-         host.self_offboard (PRD-mcphost-tenant-self-offboard) + host.changelog (PRD-mcphost-host-tool-deprecation) plus \
-         host.export (PRD-mcphost-tenant-data-export) plus \
-         the six host.channel.* tools (PRD-mcphost-agent-mesh-ops, PRD-mcphost-agent-channels) plus \
-         the six host.docs.* tools (PRD-mcphost-document-store) plus \
-         the five host.oauth.* tools (PRD-mcphost-oauth-resource-server, PRD-mcphost-hosted-authorization-server) plus \
-         the four host.oauth.provider_set/provider/provider_remove/doctor tools \
-         (PRD-mcphost-federated-end-user-login) plus the three \
-         host.oauth.trusted_issuer_set/trusted_issuer_remove/trusted_issuers tools \
-         (PRD-mcphost-enterprise-managed-auth) plus the three \
-         host.docs.search/index_config/reindex tools (PRD-mcphost-docs-semantic-search) plus \
-         the two host.enduser.* tools (PRD-mcphost-end-user-identity) plus \
-         the seven host.enduser.get/audit/revoke/unrevoke/purge/export/list tools \
-         (PRD-mcphost-end-user-audit-and-revoke) plus \
-         the eight host.oauth.policy_set/policy/pending/client_approve/client_deny/revoke_all/ \
-         audit/audit_export tools (PRD-mcphost-oauth-client-policy) plus \
-         the three host.lineage.* tools (PRD-mcphost-lineage-blast-radius) plus \
-         the six host.vault.* tools (PRD-mcphost-upstream-token-vault, \
-         PRD-mcphost-upstream-token-vault-status): \
-         {entries:?}"
+        10,
+        "PRD-mcphost-one-next-tool requirement 1 (AC1): the anonymous starter set carries ten \
+         host.* tools (host.quickstart, host.redeem, host.whoami, host.tool_publish, \
+         host.tool_call, host.tool_test, host.state.set, host.state.get, host.state.list, \
+         host.tool_share) -- billing.plans and signup are the starter set's other two \
+         entries, neither host.*-prefixed: {entries:?}"
     );
 
     for tool in host_tools {

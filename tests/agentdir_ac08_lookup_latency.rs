@@ -65,6 +65,7 @@ async fn two_hundred_sequential_lookups_stay_under_50ms_p95() {
             Some(Some("seeded for AC8".to_string())),
             Some(vec!["latency".to_string()]),
             None,
+            None,
         )
         .await
         .map(|_| ())

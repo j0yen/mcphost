@@ -21,6 +21,29 @@ either credential. The bearer key, `Authorization` header, `tenant_key`
 argument, and session binding all keep working unchanged -- the URL is an
 additional credential, not a replacement.
 
+## v0.67.0 — 2026-10-01
+
+Anonymous sessions now see a 12-tool starter `tools/list` (`signup` plus
+`host.quickstart`, `host.redeem`, `billing.plans`, `host.whoami`,
+`host.tool_publish`, `host.tool_call`, `host.tool_test`, `host.state.set`,
+`host.state.get`, `host.state.list`, `host.tool_share`) instead of the full
+control-plane surface; a session bound by `signup`/`host.redeem` keeps
+seeing the full listing, and that binding now emits
+`notifications/tools/list_changed` so the client's own `tools/list` cache
+no longer goes stale (`capabilities.tools.listChanged` advertised in
+`get_info`). Every successful `host.*` result for a tenant that has used
+fewer than five distinct tools now carries `next: {tool, why}`, a static
+hint at what to try next -- suppressed for header-authenticated sessions
+(it only ever applies to a `tenant_key`-argument or session-bound caller)
+and for a tenant that set `host.agent.profile_set(hints: false)`.
+`host.usage` gains `hints: {shown_7d, followed_7d}`, a fixed 7-day count of
+hints shown and followed, independent of the response's own `window`
+argument.
+
+PRD-mcphost-one-next-tool AC1-AC7, AC9 (`nexttool_*` test files). AC8
+(Live, operator-provisioned production rollout) is deferred -- not
+something this repo's own test suite can prove.
+
 ## v0.65.0 — 2026-10-01
 
 Every first-hour error payload now carries `request_id` (always) and

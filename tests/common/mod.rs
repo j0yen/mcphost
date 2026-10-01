@@ -1094,10 +1094,38 @@ impl McpClient {
             .post_with_extra(&body, Some("2026-07-28"), None, extra_header)
             .await;
         let status = resp.status();
-        let body: Value = resp
-            .json()
-            .await
-            .unwrap_or_else(|e| panic!("parse {method} response ({status}): {e}"));
+        // PRD-mcphost-one-next-tool requirement 3 (AC3): a call that binds
+        // this session (`signup`/`host.redeem`) now emits
+        // `notifications/tools/list_changed` before its own result --
+        // `rmcp`'s own `StreamableHttpServerConfig::json_response` doc says
+        // a handler that emits anything before its final response forces
+        // that one response to upgrade from plain `application/json` to
+        // `text/event-stream` carrying both, in order, so every existing
+        // caller of this shared helper (effectively every test that calls
+        // `signup`) needs to keep working against either shape. The real
+        // JSON-RPC result is always the LAST message on the wire -- any
+        // notification comes first (see `tools_call_collect_messages`,
+        // which keeps the whole ordered sequence for the dedicated AC3
+        // test).
+        let content_type = resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        let body: Value = if content_type.starts_with("text/event-stream") {
+            let text = resp
+                .text()
+                .await
+                .unwrap_or_else(|e| panic!("read {method} SSE body ({status}): {e}"));
+            parse_sse_messages(&text)
+                .pop()
+                .unwrap_or_else(|| panic!("{method} SSE body carried no JSON-RPC message: {text}"))
+        } else {
+            resp.json()
+                .await
+                .unwrap_or_else(|e| panic!("parse {method} response ({status}): {e}"))
+        };
         if let Some(error) = body.get("error") {
             return Err(RpcError {
                 code: error.get("code").and_then(Value::as_i64).unwrap_or(0),
@@ -1142,6 +1170,55 @@ impl McpClient {
             Some(header),
         )
         .await
+    }
+
+    /// PRD-mcphost-one-next-tool AC3: calls a tool and returns every
+    /// JSON-RPC message the wire response carried, in order -- a plain
+    /// `application/json` response (the common case) comes back as the
+    /// one-element list `[result-or-error]`; a `text/event-stream` response
+    /// (forced when the handler emits `notifications/tools/list_changed`
+    /// before its own result, see `call_with_extra_header`'s own doc
+    /// comment) comes back with the notification(s) first and the real
+    /// response last, exactly the ordering AC3 needs to prove.
+    pub async fn tools_call_collect_messages(&self, name: &str, arguments: Value) -> Vec<Value> {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let params = json!({
+            "name": name,
+            "arguments": arguments,
+            "_meta": {
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/clientInfo": {
+                    "name": self.client_name,
+                    "version": self.client_version,
+                },
+            },
+        });
+        let body = json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": "tools/call",
+            "params": params,
+        });
+        let resp = self
+            .post_with_extra(&body, Some("2026-07-28"), Some(name), None)
+            .await;
+        let status = resp.status();
+        let content_type = resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        let text = resp
+            .text()
+            .await
+            .unwrap_or_else(|e| panic!("read tools/call body ({status}): {e}"));
+        if content_type.starts_with("text/event-stream") {
+            parse_sse_messages(&text)
+        } else {
+            vec![serde_json::from_str(&text).unwrap_or_else(|e| panic!("parse tools/call response ({status}): {e}"))]
+        }
     }
 }
 
@@ -1432,6 +1509,27 @@ pub async fn bare_tenant(state: &AppState, namespace: &str) -> mcphost::db::Tena
         )
         .await
         .expect("create_tenant")
+}
+
+/// PRD-mcphost-one-next-tool requirement 3 (AC3): parse a `text/event-stream`
+/// response body into its ordered JSON-RPC messages -- each event is a
+/// `data: <json>` line (`rmcp`'s own wire format, no `event:` line since
+/// every message here is the default `message` type), blocks separated by a
+/// blank line. Used both by [`McpClient::call_with_extra_header`] (which
+/// only needs the last message, the real result) and
+/// [`McpClient::tools_call_collect_messages`] (which needs the whole
+/// sequence, notification(s) included, to prove ordering).
+pub fn parse_sse_messages(text: &str) -> Vec<Value> {
+    text.split("\n\n")
+        .filter_map(|block| {
+            block.lines().find_map(|line| {
+                line.strip_prefix("data: ")
+                    .or_else(|| line.strip_prefix("data:"))
+            })
+        })
+        .filter(|data| !data.is_empty())
+        .map(|data| serde_json::from_str(data).unwrap_or_else(|e| panic!("parse SSE data as JSON: {e}: {data}")))
+        .collect()
 }
 
 /// `CallToolResult::structured` puts the value in `structuredContent`;

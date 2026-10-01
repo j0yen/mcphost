@@ -175,53 +175,17 @@ async fn ac12_claude_agent_sdk_sequence_lists_signup_with_schema() {
     let tools = body["result"]["tools"]
         .as_array()
         .expect("result.tools is an array");
-    // PRD-mcphost-session-key requirement 1 widened the anonymous list from
-    // `signup` alone to `signup` plus the discoverable `host.*` control
-    // plane; PRD-mcphost-publish-first-try requirement 4 added
-    // `host.quickstart`, PRD-mcphost-code-tools-warm-pool requirement 3
-    // added `host.tool_run`, PRD-grand-loop-billing added the three
-    // `billing.*` tools, PRD-mcphost-rest-bridge P1 requirement added
-    // `host.bridge_test`, PRD-mcphost-tenant-state requirement 2 added the
-    // nine `host.state.*` tools, PRD-mcphost-sharing added the eight
-    // host.tool_share/host.tool_unshare/host.group.*/host.catalog.* tools,
-    // and PRD-mcphost-runs-and-jobs requirement 7 added five
-    // `host.runs.*` tools (PRD-mcphost-run-result-overflow-to-state added a
-    // sixth, `host.runs.part`, plus the standalone `host.progress`),
-    // PRD-mcphost-schedules requirement 2 added
-    // the seven `host.trigger.*` tools, and PRD-mcphost-inbound-events
-    // requirement 3 added two more (`host.trigger.test`/`replay`), and
-    // PRD-mcphost-handoff-token requirements 2-3 added two more
-    // (`host.redeem`/`host.key_rotate`) -- fifty-one tools total, no
-    // client can break on the growth (see that PRD's
-    // Migration/compatibility section).
+    // PRD-mcphost-one-next-tool requirement 1 (AC1) narrowed the anonymous
+    // listing to a twelve-tool starter set (signup plus eleven
+    // host.*/billing.* tools) -- the full control plane PRD-mcphost-session-key
+    // once widened this to is still reachable, just one bound-session hop
+    // away (requirement 2), so this replay (which never signs up) sees only
+    // the starter set.
     assert_eq!(
         tools.len(),
-        147,
-        "signup + host.* (incl. host.quickstart, host.tool_run, host.bridge_test) + \
-         host.tool_call + host.tool_history/host.tool_rollback/host.tool_diff \
-         (3 tools, PRD-mcphost-tool-versions) + host.state.* (9 tools, PRD-mcphost-tenant-state) + \
-         host.table.* (9 tools, PRD-mcphost-tenant-tables, PRD-mcphost-table-semantic-model) + \
-         host.tool_share/host.tool_spec_shared/host.tool_unshare/host.group.*/host.catalog.* \
-         (9 tools, PRD-mcphost-sharing, PRD-mcphost-shared-tool-spec-readback) + \
-         host.share.caller_limit/caller_limit_remove \
-         (2 tools, PRD-mcphost-shared-tool-caller-usage) + host.runs.* (6 tools, PRD-mcphost-runs-and-jobs, \
-         PRD-mcphost-run-result-overflow-to-state) + host.progress (1 tool, \
-         PRD-mcphost-run-result-overflow-to-state) + \
-         host.trigger.* (9 tools, PRD-mcphost-schedules, PRD-mcphost-inbound-events) + \
-         billing.* (3 tools) + host.agent.* (4 tools, PRD-mcphost-agent-directory) + \
-         host.msg.* (8 tools, PRD-mcphost-agent-inbox, PRD-mcphost-agent-wake) + \
-         host.agent.contact_*/mute/unmute (7 tools, PRD-mcphost-agent-consent) + \
-         host.self_offboard (PRD-mcphost-tenant-self-offboard) + host.changelog (PRD-mcphost-host-tool-deprecation) + \
-         host.export (PRD-mcphost-tenant-data-export) + \
-         the six host.channel.* tools (PRD-mcphost-agent-mesh-ops, PRD-mcphost-agent-channels) + the six host.docs.* tools (PRD-mcphost-document-store) + \
-         the five host.oauth.* tools (PRD-mcphost-oauth-resource-server, PRD-mcphost-hosted-authorization-server) + \
-         the four host.oauth.provider_set/provider/provider_remove/doctor tools (PRD-mcphost-federated-end-user-login) + \
-         the three host.oauth.trusted_issuer_set/trusted_issuer_remove/trusted_issuers tools (PRD-mcphost-enterprise-managed-auth) + \
-         the three host.docs.search/index_config/reindex tools (PRD-mcphost-docs-semantic-search) + \
-         the two host.enduser.* tools (PRD-mcphost-end-user-identity) + \
-         the three host.lineage.* tools (PRD-mcphost-lineage-blast-radius) + \
-         the six host.vault.* tools (PRD-mcphost-upstream-token-vault, \
-         PRD-mcphost-upstream-token-vault-status): {tools:?}"
+        12,
+        "signup plus the eleven-tool starter set (PRD-mcphost-one-next-tool requirement 1): \
+         {tools:?}"
     );
     let tool = tools
         .iter()

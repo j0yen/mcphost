@@ -13,7 +13,7 @@ use rmcp::model::{
     CacheScope, CallToolRequestParams, CallToolResponse, CallToolResult, Implementation,
     ListToolsResult, PaginatedRequestParams, ServerCapabilities, ServerInfo, Tool,
 };
-use rmcp::service::{NotificationContext, RequestContext};
+use rmcp::service::{NotificationContext, Peer, RequestContext};
 use rmcp::{RoleServer, ServerHandler};
 use serde_json::{Map, Value, json};
 
@@ -236,9 +236,24 @@ async fn resolve_path_secret_auth(
 ///
 /// Requirement 6 (AC6): a bound response says so, in a machine-readable
 /// field and in the `usage` sentence the agent is already reading.
+///
+/// PRD-mcphost-one-next-tool requirement 3 (AC3): `peer` is this very
+/// request's own peer handle -- in mcphost's stateless streamable-HTTP
+/// setup (`with_legacy_session_mode(false)`, `src/http.rs`), that is the
+/// only server-to-client channel this session is ever guaranteed to have
+/// open, so the notification rides the same response as the `signup`/
+/// `host.redeem` result that just bound it (`rmcp`'s own
+/// `StreamableHttpServerConfig::json_response` doc: a notification emitted
+/// before the handler's final response forces that one response to upgrade
+/// from plain JSON to an SSE stream carrying both, in order). Best-effort,
+/// per the PRD's own technical considerations ("when the client has none
+/// open, the notification is dropped and the full list appears on the
+/// client's next tools/list anyway") -- a send failure never fails the
+/// call that triggered it.
 async fn bind_session_to_created_tenant(
     state: &AppState,
     session_id: Option<&str>,
+    peer: &Peer<RoleServer>,
     result: Result<Value, AppError>,
 ) -> Result<Value, AppError> {
     let mut value = result?;
@@ -255,6 +270,9 @@ async fn bind_session_to_created_tenant(
         return Ok(value);
     }
     tracing::info!(tenant = %tenant.namespace, "session bound to tenant after signup");
+    if let Err(e) = peer.notify_tool_list_changed().await {
+        tracing::warn!(tenant = %tenant.namespace, error = %e, "notify_tool_list_changed failed");
+    }
     if let Some(obj) = value.as_object_mut() {
         obj.insert("session_bound".to_string(), json!(true));
         if let Some(usage) = obj.get("usage").and_then(Value::as_str) {
@@ -549,10 +567,50 @@ fn host_schema(mut props: Value, required: &[&str]) -> Map<String, Value> {
 /// `signup` itself; a real regression here would return 0). Kept in this
 /// module rather than `statusfeed.rs` since `signup_tool`/`host_tools` are
 /// private to it.
+///
+/// PRD-mcphost-one-next-tool requirement 1: the anonymous branch now
+/// returns [`starter_tools`], not the full `host_tools(kinds, false)` set --
+/// this probe follows it so a starter-set regression (e.g. an empty list)
+/// still trips the self-check.
 pub(crate) fn self_check_tools_list(state: &AppState) -> usize {
-    let mut tools = vec![signup_tool()];
-    tools.extend(host_tools(&state.kinds, false));
-    tools.len()
+    starter_tools(&state.kinds).len()
+}
+
+/// PRD-mcphost-one-next-tool requirement 1 (AC1): the starter set an
+/// `Auth::Anonymous`/`Auth::Invalid` session's `tools/list` returns --
+/// `signup` first (AC1), then eleven `host.*`/`billing.*` tools a fresh
+/// agent needs to reach and share its first published tool. One constant,
+/// per the requirement's own "the set is one constant" clause; overridden
+/// at read time by `MCPHOST_STARTER_TOOLS` is explicitly P2/out of scope
+/// here (Non-goals).
+const STARTER_TOOL_NAMES: &[&str] = &[
+    "host.quickstart",
+    "host.redeem",
+    "billing.plans",
+    "host.whoami",
+    "host.tool_publish",
+    "host.tool_call",
+    "host.tool_test",
+    "host.state.set",
+    "host.state.get",
+    "host.state.list",
+    "host.tool_share",
+];
+
+/// A filter over [`host_tools`]'s full descriptor set, not a second source
+/// of truth (requirement 1's own technical consideration) -- `signup` first,
+/// then each [`STARTER_TOOL_NAMES`] entry in that fixed order, carrying its
+/// real descriptor (schema included) from the authoritative set.
+fn starter_tools(kinds: &KindRegistry) -> Vec<Tool> {
+    let full = host_tools(kinds, false);
+    let mut tools = Vec::with_capacity(STARTER_TOOL_NAMES.len() + 1);
+    tools.push(signup_tool());
+    for name in STARTER_TOOL_NAMES {
+        if let Some(tool) = full.iter().find(|t| t.name == *name) {
+            tools.push(tool.clone());
+        }
+    }
+    tools
 }
 
 /// PRD-mcphost-end-user-identity requirement 5: the `end_user` argument
@@ -2142,11 +2200,11 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         Tool::new(
             "host.agent.profile_set",
             "Claim or update this tenant's agent-directory card: an optional unique @handle \
-             (^[a-z][a-z0-9_]{2,31}$, stored lower-case), a description, up to 16 tags, and a \
-             contact_policy (open, contacts, or closed). Every argument is optional and, if \
-             omitted, leaves that field unchanged; an explicit null clears handle or description. \
-             A taken handle fails with handle_taken (names no one); a reserved one fails with \
-             handle_reserved.",
+             (^[a-z][a-z0-9_]{2,31}$, stored lower-case), a description, up to 16 tags, a \
+             contact_policy (open, contacts, or closed), and whether host.* results carry a \
+             next hint. Every argument is optional and, if omitted, leaves that field \
+             unchanged; an explicit null clears handle or description. A taken handle fails \
+             with handle_taken (names no one); a reserved one fails with handle_reserved.",
             host_schema(
                 json!({
                     "handle": {
@@ -2168,6 +2226,12 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                         "type": "string",
                         "enum": ["open", "contacts", "closed"],
                         "description": "What contact this tenant accepts; enforced by the inbox PRD.",
+                    },
+                    "hints": {
+                        "type": "boolean",
+                        "description": "false permanently stops host.* results from carrying a \
+                            next hint for this tenant; true turns it back on. Omit to leave \
+                            unchanged (default true).",
                     },
                 }),
                 &[],
@@ -3972,6 +4036,81 @@ pub struct McpHostHandler {
 impl McpHostHandler {
     pub fn new(state: Arc<AppState>) -> Self {
         Self { state }
+    }
+
+    /// PRD-mcphost-one-next-tool requirement 4 (AC4, AC5), requirement 5
+    /// (AC6, AC7): attaches `next: {tool, why}` to a successful `host.*`
+    /// tenant result when every condition holds:
+    /// - `header_authenticated` is false (AC7: a bearer-header-resolved
+    ///   call, key or OAuth alike, never gets one);
+    /// - the tenant hasn't turned hints off (`host.agent.profile_set(hints:
+    ///   false)`, AC6);
+    /// - the tenant had used fewer than five distinct `host.*` tools
+    ///   *before* this call (AC5) -- checked before, not after,
+    ///   [`Self::record_host_tool_use`] below records this very call;
+    /// - `value` doesn't already carry its own `next` -- `signup`/
+    ///   `host.redeem`/`host.quickstart`'s pre-existing literal-string
+    ///   field is never overwritten (the PRD's own non-goal: "not changing
+    ///   host.quickstart's try_before_call table");
+    /// - the chosen tool (`control::next_hint_for`) isn't the one just
+    ///   called and isn't already used (requirement 4's own clause).
+    ///
+    /// Called only for a `host.*` name on a resolved `Auth::Tenant` --
+    /// `billing.*` and a tenant's own namespaced/shared tool calls return
+    /// immediately (requirement 8), as does `admin.*` (never reaches this
+    /// method at all).
+    async fn maybe_attach_next_hint(
+        &self,
+        tenant: &Tenant,
+        header_authenticated: bool,
+        called: &str,
+        value: &mut Value,
+    ) {
+        if !called.starts_with("host.") {
+            return;
+        }
+        // Resolves ANY hint this tenant was shown on a previous call,
+        // before considering whether THIS call shows a new one -- so a
+        // call can never resolve the hint it is itself about to issue.
+        if let Err(e) = self.state.db.resolve_pending_hint(tenant.id, called.to_string()).await {
+            tracing::warn!(tenant = %tenant.namespace, error = %e, "resolve_pending_hint failed");
+        }
+        if !header_authenticated && value.get("next").is_none() {
+            match self.state.db.agent_profile(tenant.id).await {
+                Ok(profile) if profile.hints => {
+                    match self.state.db.count_distinct_host_tools_used(tenant.id).await {
+                        Ok(used_before) if used_before < 5 => {
+                            let (hint_tool, why) = control::next_hint_for(called);
+                            let already_used = hint_tool == called
+                                || self
+                                    .state
+                                    .db
+                                    .host_tool_already_used(tenant.id, hint_tool.to_string())
+                                    .await
+                                    .unwrap_or(true);
+                            if !already_used
+                                && let Some(obj) = value.as_object_mut()
+                            {
+                                obj.insert("next".to_string(), json!({"tool": hint_tool, "why": why}));
+                                if let Err(e) = self
+                                    .state
+                                    .db
+                                    .record_hint_shown(tenant.id, hint_tool.to_string(), now_unix())
+                                    .await
+                                {
+                                    tracing::warn!(tenant = %tenant.namespace, error = %e, "record_hint_shown failed");
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+        }
+        if let Err(e) = self.state.db.record_host_tool_use(tenant.id, called.to_string(), now_unix()).await {
+            tracing::warn!(tenant = %tenant.namespace, error = %e, "record_host_tool_use failed");
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -5858,8 +5997,19 @@ impl ServerHandler for McpHostHandler {
                 status.detail
             ));
         }
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-            .with_instructions(instructions)
+        // PRD-mcphost-one-next-tool requirement 3: advertised unconditionally
+        // -- a client that never echoes `notifications/tools/list_changed`
+        // (or never sees one at all, per the technical considerations'
+        // "dropped when no channel is open") still works today, since every
+        // tool stays callable by name and a fresh `tools/list` always
+        // reflects the current auth state regardless of this flag.
+        ServerInfo::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_tool_list_changed()
+                .build(),
+        )
+        .with_instructions(instructions)
     }
 
     async fn list_tools(
@@ -5871,7 +6021,7 @@ impl ServerHandler for McpHostHandler {
         // PRD-mcphost-url-bound-tenants requirement 1: same highest-
         // precedence path-secret step `call_tool` uses, so a `tools/list` on
         // a `/u/{secret}/mcp` connection sees that tenant's own tools too.
-        let auth = match resolve_path_secret_auth(&self.state, parts)
+        let mut auth = match resolve_path_secret_auth(&self.state, parts)
             .await
             .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
         {
@@ -5882,6 +6032,22 @@ impl ServerHandler for McpHostHandler {
                     .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
             }
         };
+        // PRD-mcphost-one-next-tool requirement 2/3 (AC2, AC3): `tools/list`
+        // carries no `tenant_key` argument of its own, but a session this
+        // PRD's starter set would otherwise narrow may already be bound to a
+        // tenant (`signup`/`host.redeem` on this same session -- see
+        // `bind_session_to_created_tenant`) -- that session must keep seeing
+        // the full listing with no reconnect, same precedence `call_tool`
+        // already gives the binding (only consulted when the header found
+        // nothing at all).
+        if matches!(auth, Auth::Anonymous)
+            && let Some(session_id) = session_id(parts)
+            && let Some(bound) = resolve_session_binding(&self.state, &session_id)
+                .await
+                .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
+        {
+            auth = bound;
+        }
         // PRD-mcphost-tenant-resource-metadata requirement 1 (AC3): a real
         // tenant whose namespace doesn't match a `/t/{ns}/mcp` path's own
         // `<ns>` never gets even a tool listing for it.
@@ -5900,19 +6066,14 @@ impl ServerHandler for McpHostHandler {
         // variant is added -- see the anonymous/admin branches this
         // replaced, which did exactly that.
         let (mut tools, ttl_ms) = match auth {
-            // PRD-mcphost-session-key requirement 1 / AC1-3: the `host.*`
-            // control plane (and `host.tool_call`) is discoverable before
-            // signup -- an anonymous or invalid-bearer caller cannot attach
-            // a key mid-session any other way (that's this PRD's whole
-            // premise), so it must already be able to see, and read the
-            // schema of, every tool it will need. These are static
-            // descriptors carrying no tenant data; no namespaced tool, no
-            // `admin.*` tool and no tenant-existence information is ever in
-            // this branch.
+            // PRD-mcphost-one-next-tool requirement 1 (AC1): an anonymous or
+            // invalid-bearer session now sees only the starter set, not the
+            // full `host.*`/`billing.*` control plane PRD-mcphost-session-key
+            // originally widened this branch to -- the fuller set is still
+            // discoverable, just one `host.quickstart`/`signup` hop away
+            // from a bound session (requirement 2 below).
             Auth::Anonymous | Auth::Invalid => {
-                let mut tools = vec![signup_tool()];
-                tools.extend(host_tools(&self.state.kinds, false));
-                (tools, TOOLS_LIST_TTL_MS_STEADY)
+                (starter_tools(&self.state.kinds), TOOLS_LIST_TTL_MS_STEADY)
             }
             Auth::Admin => (admin_tools(), TOOLS_LIST_TTL_MS_STEADY),
             Auth::Tenant(tenant, oauth_caller) => {
@@ -6271,7 +6432,7 @@ impl ServerHandler for McpHostHandler {
                 // PRD-mcphost-session-bound-tenant-after-signup
                 // requirements 1/6 (AC1, AC6): this session now IS that
                 // tenant, and the response says so.
-                bind_session_to_created_tenant(&self.state, session_id.as_deref(), created).await
+                bind_session_to_created_tenant(&self.state, session_id.as_deref(), &ctx.peer, created).await
             }
             // Requirement 4 / AC3-4: `host.quickstart` is readable before
             // signup, same as the rest of the `host.*` control plane in
@@ -6335,7 +6496,7 @@ impl ServerHandler for McpHostHandler {
                 // `tenant_key` to the caller -- the handoff redeem path
                 // included".
                 let redeemed = control::redeem(&self.state, &raw_args).await;
-                bind_session_to_created_tenant(&self.state, session_id.as_deref(), redeemed).await
+                bind_session_to_created_tenant(&self.state, session_id.as_deref(), &ctx.peer, redeemed).await
             }
             // PRD-mcphost-auth-error-names-argument requirement 1-3 /
             // AC1-4: three distinct auth failures now, not one. A header
@@ -6461,6 +6622,16 @@ impl ServerHandler for McpHostHandler {
                     && let Some(obj) = value.as_object_mut()
                 {
                     obj.insert("deprecations".to_string(), json!(deprecation_notices));
+                }
+                // PRD-mcphost-one-next-tool requirement 4 (AC4, AC5),
+                // requirement 5 (AC6, AC7): `maybe_attach_next_hint` itself
+                // is a no-op for anything but a `host.*` name, so this is
+                // safe to call unconditionally for every `Auth::Tenant`
+                // success, including a namespaced/shared-tool call and
+                // `billing.*` (requirement 8).
+                if let Auth::Tenant(tenant, _) = &auth {
+                    self.maybe_attach_next_hint(tenant, !via_tenant_key_arg, &body_name, &mut value)
+                        .await;
                 }
                 Ok(CallToolResponse::from(CallToolResult::structured(value)))
             }

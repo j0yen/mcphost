@@ -4,9 +4,17 @@
 //! Then `tenant_key` is absent from every `required` array, and its
 //! `description` contains both `Authorization: Bearer` and
 //! `tenant_key_missing`.
+//!
+//! PRD-mcphost-one-next-tool requirement 1 narrowed an anonymous
+//! `tools/list` to a twelve-tool starter set that excludes four of these
+//! six (`host.catalog.search`/`get`, `host.state.table_create`/`insert`,
+//! `host.agent.profile_set`) -- switched to an authenticated session per
+//! that PRD's own migration note ("switched to authenticated sessions"):
+//! `host_schema`'s generated `tenant_key` property (what this test actually
+//! proves) is identical regardless of auth state.
 
 use crate::common;
-use common::{McpClient, TestServer};
+use common::{McpClient, TestServer, signup};
 
 const SIX_TOOLS: &[&str] = &[
     "host.tool_publish",
@@ -20,7 +28,8 @@ const SIX_TOOLS: &[&str] = &[
 #[tokio::test]
 async fn tenant_key_is_optional_and_self_documenting_on_every_tool() {
     let server = TestServer::start().await;
-    let client = McpClient::new(&server.base_url);
+    let (_ns, key) = signup(&server.base_url, "AC9 Tenant").await;
+    let client = McpClient::with_bearer(&server.base_url, &key);
 
     let listed = client.tools_list().await.expect("tools/list ok");
     let tools = listed["tools"].as_array().expect("tools array");

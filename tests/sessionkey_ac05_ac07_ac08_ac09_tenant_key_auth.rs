@@ -51,6 +51,11 @@ async fn whoami_via_tenant_key_matches_the_bearer_path() {
     assert!((bearer_age - arg_age).abs() <= 1, "key_age_s drift: {bearer_age} vs {arg_age}");
     bearer_result.as_object_mut().unwrap().remove("key_age_s");
     arg_result.as_object_mut().unwrap().remove("key_age_s");
+    // PRD-mcphost-one-next-tool requirement 5 (AC7): a header-authenticated
+    // call never carries next, but a tenant_key-argument call on a young
+    // tenant does -- that asymmetry is this PRD's own intent, not a
+    // violation of "same payload", so strip it before the equivalence check.
+    arg_result.as_object_mut().unwrap().remove("next");
     assert_eq!(
         bearer_result, arg_result,
         "an argument-authenticated whoami must return exactly what the bearer path returns"
