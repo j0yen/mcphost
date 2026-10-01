@@ -2269,13 +2269,127 @@ _mcphost_lineage_mod.trace = _lineage_trace
 _mcphost_lineage_mod.blast_radius = _lineage_blast_radius
 _mcphost_lineage_mod.LineageError = McphostLineageError
 
+# ---- mcphost.channel / mcphost.msg (PRD-mcphost-sandbox-channel-msg-bridge)
+#
+# Same synchronous request-line-out/response-line-in round trip as
+# `mcphost.state`/`mcphost.table`/`mcphost.docs`/`mcphost.lineage` above,
+# marked `__mcphost_channel__`/`__mcphost_msg__` so the host side
+# (`kinds::python::ChannelSidecarBridge`/`MsgSidecarBridge`) can tell them
+# apart on the same stdin/stdout pair. Requirement 3: a refusal (a quota
+# trip, a channel the tenant can't reach, ...) surfaces as a
+# `McphostBridgeError` -- one shared base class both `mcphost.channel` and
+# `mcphost.msg` raise, so a tool can catch either sidecar's refusal with a
+# single `except McphostBridgeError` the same way it would catch the real
+# `host.channel.post`/`host.msg.send` error envelope outside the sandbox.
+class McphostBridgeError(Exception):
+    def __init__(self, code, message, data=None):
+        super().__init__(message)
+        self.code = code
+        self.data = data or {}
+
+class McphostChannelError(McphostBridgeError):
+    pass
+
+class McphostMsgError(McphostBridgeError):
+    pass
+
+def _channel_call(op, **kwargs):
+    _real_stdout.write(json.dumps({"__mcphost_channel__": True, "op": op, "args": kwargs}))
+    _real_stdout.write("\n")
+    _real_stdout.flush()
+    line = sys.stdin.readline()
+    if not line:
+        raise McphostChannelError("channel_unavailable", "the channel bridge closed")
+    resp = json.loads(line)
+    if not resp.get("ok"):
+        raise McphostChannelError(
+            resp.get("code", "channel_error"), resp.get("message", "channel call failed"), resp.get("data")
+        )
+    return resp.get("result")
+
+# requirement 1: `post(channel_id, body, *, kind=None)` -- `body` mirrors
+# `host.channel.post`'s own free-form argument (the external verb takes a
+# text `body` plus an optional JSON `data`); since a sandboxed tool's most
+# natural call shape is `channel.post(cid, {"n": 1})` (AC1), a non-string
+# `body` is serialized into the host's `body` text field and, when it's a
+# JSON object, also passed through as `data` so a reader gets both the
+# human-readable text and the structured value. `kind` is accepted for a
+# future post-kind distinction (not yet a host-side concept) and dropped.
+def _channel_post(channel_id, body, kind=None):
+    kwargs = {"channel": channel_id}
+    if isinstance(body, str):
+        kwargs["body"] = body
+    else:
+        kwargs["body"] = json.dumps(body)
+        if isinstance(body, dict):
+            kwargs["data"] = body
+    return _channel_call("post", **kwargs)
+
+def _channel_read(channel_id, cursor=None, limit=100, ack=False):
+    kwargs = {"channel_id": channel_id, "limit": limit, "ack": ack}
+    if cursor is not None:
+        kwargs["cursor"] = cursor
+    return _channel_call("read", **kwargs)
+
+_mcphost_channel_mod = _mcphost_types.ModuleType("mcphost.channel")
+_mcphost_channel_mod.post = _channel_post
+_mcphost_channel_mod.read = _channel_read
+_mcphost_channel_mod.ChannelError = McphostChannelError
+_mcphost_channel_mod.BridgeError = McphostBridgeError
+
+def _msg_call(op, **kwargs):
+    _real_stdout.write(json.dumps({"__mcphost_msg__": True, "op": op, "args": kwargs}))
+    _real_stdout.write("\n")
+    _real_stdout.flush()
+    line = sys.stdin.readline()
+    if not line:
+        raise McphostMsgError("msg_unavailable", "the msg bridge closed")
+    resp = json.loads(line)
+    if not resp.get("ok"):
+        raise McphostMsgError(
+            resp.get("code", "msg_error"), resp.get("message", "msg call failed"), resp.get("data")
+        )
+    return resp.get("result")
+
+# requirement 1: `send(to, body, *, thread=None, urgent=False)` -- `to` may
+# be a single address (AC2's own `msg.send(to, {"hello": 1})`) or a list,
+# normalized here into `host.msg.send`'s own `to` array argument. `body`
+# follows the same string-or-JSON-object handling `_channel_post` above
+# uses.
+def _msg_send(to, body, thread=None, urgent=False):
+    kwargs = {"to": to if isinstance(to, list) else [to], "urgent": urgent}
+    if isinstance(body, str):
+        kwargs["body"] = body
+    else:
+        kwargs["body"] = json.dumps(body)
+        if isinstance(body, dict):
+            kwargs["data"] = body
+    if thread is not None:
+        kwargs["thread_id"] = thread
+    return _msg_call("send", **kwargs)
+
+def _msg_inbox(limit=50, cursor=None):
+    kwargs = {"limit": limit}
+    if cursor is not None:
+        kwargs["cursor"] = cursor
+    return _msg_call("inbox", **kwargs)
+
+_mcphost_msg_mod = _mcphost_types.ModuleType("mcphost.msg")
+_mcphost_msg_mod.send = _msg_send
+_mcphost_msg_mod.inbox = _msg_inbox
+_mcphost_msg_mod.MsgError = McphostMsgError
+_mcphost_msg_mod.BridgeError = McphostBridgeError
+
 _mcphost_mod = _mcphost_types.ModuleType("mcphost")
 _mcphost_mod.state = _mcphost_state_mod
 _mcphost_mod.table = _mcphost_table_mod
 _mcphost_mod.docs = _mcphost_docs_mod
 _mcphost_mod.lineage = _mcphost_lineage_mod
+_mcphost_mod.channel = _mcphost_channel_mod
+_mcphost_mod.msg = _mcphost_msg_mod
 _mcphost_mod.call = _mcphost_call
 _mcphost_mod.CallError = McphostCallError
+_mcphost_mod.BridgeError = McphostBridgeError
 
 # ---- mcphost.progress (PRD-mcphost-runs-and-jobs P0 requirement 5) --------
 #
@@ -2306,6 +2420,8 @@ sys.modules["mcphost.state"] = _mcphost_state_mod
 sys.modules["mcphost.table"] = _mcphost_table_mod
 sys.modules["mcphost.docs"] = _mcphost_docs_mod
 sys.modules["mcphost.lineage"] = _mcphost_lineage_mod
+sys.modules["mcphost.channel"] = _mcphost_channel_mod
+sys.modules["mcphost.msg"] = _mcphost_msg_mod
 
 _END_USER_ENV_KEYS = (
     "MCPHOST_END_USER_ID",
@@ -2776,6 +2892,148 @@ impl SidecarBridge for LineageSidecarBridge<'_> {
     }
 }
 
+/// PRD-mcphost-sandbox-channel-msg-bridge requirement 5 (AC5): checked by
+/// both [`ChannelSidecarBridge`] and [`MsgSidecarBridge`] before every call
+/// reaches `ctx.channel`/`ctx.msg` -- increments `ctx.sidecar_ops` (shared
+/// across the whole call, the same "one counter, checked by every caller"
+/// convention `kinds::compose_call`'s own `compose_children` ceiling uses)
+/// and, once it exceeds `ctx.sidecar_ops_max`, answers with the same
+/// `state_quota_exceeded`/`state_ops_per_call_max` shape `tenant_state.rs`'s
+/// own `quota_exceeded` helper produces for `mcphost.state`/`mcphost.table`
+/// (Technical considerations: "shared budget with state/table ops") rather
+/// than a channel/msg-specific code, so a tool sees the one quota taxonomy
+/// regardless of which sidecar it floods. `None` means under budget; the
+/// caller should proceed.
+fn check_sidecar_ops_cap(ctx: &CallCtx) -> Option<Vec<u8>> {
+    let used = ctx
+        .sidecar_ops
+        .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        + 1;
+    if used <= ctx.sidecar_ops_max {
+        return None;
+    }
+    let response = json!({
+        "ok": false,
+        "code": "state_quota_exceeded",
+        "message": format!(
+            "state quota exceeded: state_ops_per_call_max (limit {}, at {})",
+            ctx.sidecar_ops_max, used
+        ),
+        "data": {"quota": "state_ops_per_call_max", "limit": ctx.sidecar_ops_max, "used": used},
+    });
+    Some(serde_json::to_vec(&response).unwrap_or_else(|_| {
+        br#"{"ok":false,"code":"state_quota_exceeded","message":"sidecar ops quota exceeded"}"#
+            .to_vec()
+    }))
+}
+
+/// PRD-mcphost-sandbox-channel-msg-bridge requirement 2: [`TableSidecarBridge`]'s
+/// counterpart for `CallCtx.channel` -- `PY_RUNNER_SCRIPT`'s `mcphost.channel`
+/// functions emit `{"__mcphost_channel__": true, "op": ..., "args": {...}}`
+/// and block reading the response line this produces.
+///
+/// Requirement 4 (AC4): a `test: true` parent call's `post` never reaches
+/// `ctx.channel` at all -- it answers `{"delivered": false, "would_post":
+/// {...}}` straight from here. PRD-mcphost-dry-run-side-effects (which would
+/// otherwise own this rollback) has not landed, and Technical
+/// considerations explains why a rollback wouldn't be enough even if it
+/// had: a delivered post also wakes an agent-wake trigger a DB rollback
+/// can't un-fire, so this must short-circuit BEFORE delivery. `read` is
+/// unaffected -- it has no side effect to roll back.
+struct ChannelSidecarBridge<'a> {
+    ctx: &'a CallCtx,
+}
+
+#[async_trait::async_trait]
+impl SidecarBridge for ChannelSidecarBridge<'_> {
+    async fn intercept(&self, line: &[u8]) -> Option<Vec<u8>> {
+        let request: Value = serde_json::from_slice(line).ok()?;
+        if request.get("__mcphost_channel__").and_then(Value::as_bool) != Some(true) {
+            return None;
+        }
+        if let Some(response) = check_sidecar_ops_cap(self.ctx) {
+            return Some(response);
+        }
+        let op = request.get("op").and_then(Value::as_str).unwrap_or("");
+        let args = request.get("args").cloned().unwrap_or(Value::Null);
+        if self.ctx.test_mode && op == "post" {
+            let response = json!({"ok": true, "result": {"delivered": false, "would_post": args}});
+            return Some(serde_json::to_vec(&response).unwrap_or_default());
+        }
+        let response = match self.ctx.channel.call(op, args).await {
+            Ok(result) => json!({"ok": true, "result": result}),
+            Err(e) => {
+                let (code, message, data) = match e {
+                    KindError::Structured {
+                        code,
+                        message,
+                        data,
+                    } => (code, message, data),
+                    KindError::InvalidArgs(m) => ("channel_args_invalid", m, Value::Null),
+                    KindError::InvalidSpec(m) => ("channel_args_invalid", m, Value::Null),
+                    KindError::Exec(m) => ("channel_error", m, Value::Null),
+                };
+                json!({"ok": false, "code": code, "message": message, "data": data})
+            }
+        };
+        Some(serde_json::to_vec(&response).unwrap_or_else(|_| {
+            br#"{"ok":false,"code":"channel_error","message":"internal: response not serializable"}"#
+                .to_vec()
+        }))
+    }
+}
+
+/// PRD-mcphost-sandbox-channel-msg-bridge requirement 2: [`ChannelSidecarBridge`]'s
+/// counterpart for `CallCtx.msg` -- `PY_RUNNER_SCRIPT`'s `mcphost.msg`
+/// functions emit `{"__mcphost_msg__": true, "op": ..., "args": {...}}` and
+/// block reading the response line this produces.
+///
+/// Requirement 4 (AC4): same `test: true` short-circuit as
+/// [`ChannelSidecarBridge`], for `send` instead of `post` -- `inbox` is a
+/// read, unaffected.
+struct MsgSidecarBridge<'a> {
+    ctx: &'a CallCtx,
+}
+
+#[async_trait::async_trait]
+impl SidecarBridge for MsgSidecarBridge<'_> {
+    async fn intercept(&self, line: &[u8]) -> Option<Vec<u8>> {
+        let request: Value = serde_json::from_slice(line).ok()?;
+        if request.get("__mcphost_msg__").and_then(Value::as_bool) != Some(true) {
+            return None;
+        }
+        if let Some(response) = check_sidecar_ops_cap(self.ctx) {
+            return Some(response);
+        }
+        let op = request.get("op").and_then(Value::as_str).unwrap_or("");
+        let args = request.get("args").cloned().unwrap_or(Value::Null);
+        if self.ctx.test_mode && op == "send" {
+            let response = json!({"ok": true, "result": {"delivered": false, "would_post": args}});
+            return Some(serde_json::to_vec(&response).unwrap_or_default());
+        }
+        let response = match self.ctx.msg.call(op, args).await {
+            Ok(result) => json!({"ok": true, "result": result}),
+            Err(e) => {
+                let (code, message, data) = match e {
+                    KindError::Structured {
+                        code,
+                        message,
+                        data,
+                    } => (code, message, data),
+                    KindError::InvalidArgs(m) => ("msg_args_invalid", m, Value::Null),
+                    KindError::InvalidSpec(m) => ("msg_args_invalid", m, Value::Null),
+                    KindError::Exec(m) => ("msg_error", m, Value::Null),
+                };
+                json!({"ok": false, "code": code, "message": message, "data": data})
+            }
+        };
+        Some(serde_json::to_vec(&response).unwrap_or_else(|_| {
+            br#"{"ok":false,"code":"msg_error","message":"internal: response not serializable"}"#
+                .to_vec()
+        }))
+    }
+}
+
 /// PRD-mcphost-composition requirement 1: bridges the same sidecar channel
 /// to `kinds::compose_call` -- `PY_RUNNER_SCRIPT`'s `mcphost.call(name,
 /// args, timeout_s=None)` emits `{"__mcphost_call__": true, "name": ...,
@@ -2893,6 +3151,14 @@ impl SidecarBridge for HostSidecarBridge<'_> {
             lineage: &self.ctx.lineage,
         };
         if let Some(response) = lineage_bridge.intercept(line).await {
+            return Some(response);
+        }
+        let channel_bridge = ChannelSidecarBridge { ctx: self.ctx };
+        if let Some(response) = channel_bridge.intercept(line).await {
+            return Some(response);
+        }
+        let msg_bridge = MsgSidecarBridge { ctx: self.ctx };
+        if let Some(response) = msg_bridge.intercept(line).await {
             return Some(response);
         }
         let progress_bridge = ProgressSidecarBridge { ctx: self.ctx };
@@ -5028,6 +5294,10 @@ mod tests {
             egress_allowed: true,
             end_user: None,
             vault_token: None,
+            channel: Arc::new(crate::kinds::NoChannel),
+            msg: Arc::new(crate::kinds::NoMsg),
+            sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
+            sidecar_ops_max: i64::MAX,
         }
     }
 
@@ -5335,6 +5605,10 @@ mod tests {
             egress_allowed: true,
             end_user: None,
             vault_token: None,
+            channel: Arc::new(crate::kinds::NoChannel),
+            msg: Arc::new(crate::kinds::NoMsg),
+            sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
+            sidecar_ops_max: i64::MAX,
         }
     }
 

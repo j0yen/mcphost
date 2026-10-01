@@ -21,9 +21,10 @@ use crate::auth::{constant_time_eq, extract_bearer, hash_key};
 use crate::db::{Tenant, ToolRow};
 use crate::errors::AppError;
 use crate::kinds::{
-    CallCtx, CallLog, DocsBackend, Kind, KindError, KindRegistry, LineageBackend,
-    MAX_TEST_INVOCATIONS, NoDocs, NoLineage, NoState, NoTable, NullLog, NullResourceSink,
-    ResourceSink, SecretResolver, StateBackend, TableBackend, describe_args_error, run_spec_test,
+    CallCtx, CallLog, ChannelBackend, DocsBackend, Kind, KindError, KindRegistry, LineageBackend,
+    MAX_TEST_INVOCATIONS, MsgBackend, NoChannel, NoDocs, NoLineage, NoMsg, NoState, NoTable,
+    NullLog, NullResourceSink, ResourceSink, SecretResolver, StateBackend, TableBackend,
+    describe_args_error, run_spec_test,
 };
 use crate::state::{
     AppState, MAX_SPEC_BYTES, TOOLS_LIST_TTL_GRACE_SECS, TOOLS_LIST_TTL_MS_STEADY, now_unix,
@@ -3803,6 +3804,52 @@ impl LineageBackend for TenantLineageBridge {
     }
 }
 
+/// PRD-mcphost-sandbox-channel-msg-bridge requirement 2: [`TenantLineageBridge`]'s
+/// counterpart for `CallCtx.channel` -- bridges `Kind::call`'s sandboxed
+/// `mcphost.channel` requests to `channels.rs`'s real business logic for
+/// this call's own tenant, the exact same `post`/`read` functions
+/// `host.channel.post`/`read` call (not the MCP handler, so this never
+/// re-authenticates), so a tool's post is attributed to the tenant exactly
+/// as a direct `host.channel.post` call would be (AC1).
+pub(crate) struct TenantChannelBridge {
+    pub(crate) state: Arc<AppState>,
+    pub(crate) tenant: Tenant,
+}
+
+#[async_trait::async_trait]
+impl ChannelBackend for TenantChannelBridge {
+    async fn call(&self, op: &str, args: Value) -> Result<Value, KindError> {
+        let result = match op {
+            "post" => channels::post(&self.state, &self.tenant, &args).await,
+            "read" => channels::read(&self.state, &self.tenant, &args).await,
+            other => Err(AppError::InvalidArgs(format!("unknown channel op '{other}'"))),
+        };
+        result.map_err(app_error_to_kind_error)
+    }
+}
+
+/// PRD-mcphost-sandbox-channel-msg-bridge requirement 2: [`TenantChannelBridge`]'s
+/// counterpart for `CallCtx.msg` -- bridges `Kind::call`'s sandboxed
+/// `mcphost.msg` requests to `messaging.rs`'s real business logic for this
+/// call's own tenant, the exact same `send`/`inbox` functions
+/// `host.msg.send`/`inbox` call.
+pub(crate) struct TenantMsgBridge {
+    pub(crate) state: Arc<AppState>,
+    pub(crate) tenant: Tenant,
+}
+
+#[async_trait::async_trait]
+impl MsgBackend for TenantMsgBridge {
+    async fn call(&self, op: &str, args: Value) -> Result<Value, KindError> {
+        let result = match op {
+            "send" => messaging::send(&self.state, &self.tenant, &args).await,
+            "inbox" => messaging::inbox(&self.state, &self.tenant, &args).await,
+            other => Err(AppError::InvalidArgs(format!("unknown msg op '{other}'"))),
+        };
+        result.map_err(app_error_to_kind_error)
+    }
+}
+
 /// requirement 5 / AC7: the per-call tally `CountingStateBackend` builds up
 /// as `mcphost.state`/`host.state.*` ops flow through this call's
 /// `CallCtx.state`, read back after `Kind::call`/`Kind::tool_run` returns
@@ -4329,6 +4376,20 @@ impl McpHostHandler {
             .unwrap_or(usize::MAX)
     }
 
+    /// PRD-mcphost-sandbox-channel-msg-bridge requirement 5: `tenant`'s
+    /// `state_ops_per_call_max`, read from its plan -- the shared budget
+    /// `kinds::python`'s `ChannelSidecarBridge`/`MsgSidecarBridge` check
+    /// `CallCtx.sidecar_ops` against. `i64::MAX` (no cap) if the tenant's
+    /// plan has somehow fallen out of the loaded catalog, same degrade
+    /// [`Self::concurrent_calls_cap`] above uses.
+    fn sidecar_ops_cap(&self, tenant: &Tenant) -> i64 {
+        self.state
+            .plans
+            .get(&tenant.plan)
+            .map(|plan| plan.state_ops_per_call_max)
+            .unwrap_or(i64::MAX)
+    }
+
     /// Execute a published tenant tool (`<namespace>.<local-name>`),
     /// metering the call and enforcing its resolved deadline (requirement
     /// 1: the spec's own `timeout_s` when it declared one, else
@@ -4523,6 +4584,19 @@ impl McpHostHandler {
                 state: self.state.clone(),
                 tenant: tenant.clone(),
             }),
+            // PRD-mcphost-sandbox-channel-msg-bridge requirement 2: same
+            // "real tenant backend on the real dispatch path" convention
+            // `state`/`table`/`docs`/`lineage` above already use.
+            channel: Arc::new(TenantChannelBridge {
+                state: self.state.clone(),
+                tenant: tenant.clone(),
+            }),
+            msg: Arc::new(TenantMsgBridge {
+                state: self.state.clone(),
+                tenant: tenant.clone(),
+            }),
+            sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
+            sidecar_ops_max: self.sidecar_ops_cap(tenant),
             // PRD-mcphost-composition requirement 1/2: every real
             // `tools/call`/`host.tool_call` dispatch is the root of its own
             // composition tree -- depth 0, a fresh per-tree children
@@ -4854,6 +4928,20 @@ impl McpHostHandler {
             state: self.state.clone(),
             tenant: tenant.clone(),
         });
+        // PRD-mcphost-sandbox-channel-msg-bridge requirement 4 (AC4): the
+        // real tenant backends are wired in even for this dry-run path --
+        // `ChannelSidecarBridge`/`MsgSidecarBridge` short-circuit on
+        // `ctx.test_mode` before ever reaching them, so `channel.read`
+        // (not a side effect) still works normally while `channel.post`/
+        // `msg.send` never do.
+        let channel_backend: Arc<dyn ChannelBackend> = Arc::new(TenantChannelBridge {
+            state: self.state.clone(),
+            tenant: tenant.clone(),
+        });
+        let msg_backend: Arc<dyn MsgBackend> = Arc::new(TenantMsgBridge {
+            state: self.state.clone(),
+            tenant: tenant.clone(),
+        });
         let resolved_timeout = self.resolve_call_timeout(&kind, &row.spec);
         let ctx = CallCtx {
             tenant_id: tenant.id,
@@ -4871,6 +4959,10 @@ impl McpHostHandler {
             table: table_backend.clone(),
             docs: docs_backend.clone(),
             lineage: lineage_backend.clone(),
+            channel: channel_backend.clone(),
+            msg: msg_backend.clone(),
+            sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
+            sidecar_ops_max: self.sidecar_ops_cap(tenant),
             // PRD-mcphost-composition requirement 3/AC8: `chain`'s dry run
             // (`ctx.test_mode`) resolves only literal and `$.input.*`
             // mappings -- it never dispatches a step, so it never needs
@@ -4994,6 +5086,14 @@ impl McpHostHandler {
             table: Arc::new(NoTable),
             docs: Arc::new(NoDocs),
             lineage: Arc::new(NoLineage),
+            // `host.bridge_test` always dispatches to the `http` kind
+            // (fixed above), which has no notion of `mcphost.channel`/
+            // `mcphost.msg` either -- same `NoChannel`/`NoMsg` reasoning as
+            // `NoState` above.
+            channel: Arc::new(NoChannel),
+            msg: Arc::new(NoMsg),
+            sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
+            sidecar_ops_max: i64::MAX,
             compose_depth: 0,
             compose_children: None,
             compose_db: None,
@@ -5152,6 +5252,19 @@ impl McpHostHandler {
             state: self.state.clone(),
             tenant: tenant.clone(),
         });
+        // PRD-mcphost-sandbox-channel-msg-bridge requirement 4 (AC4): same
+        // "real backend, short-circuited on `test_mode` inside the bridge
+        // itself" wiring `tool_test` above uses -- `spec` here may be a
+        // python kind too.
+        let channel_backend: Arc<dyn ChannelBackend> = Arc::new(TenantChannelBridge {
+            state: self.state.clone(),
+            tenant: tenant.clone(),
+        });
+        let msg_backend: Arc<dyn MsgBackend> = Arc::new(TenantMsgBridge {
+            state: self.state.clone(),
+            tenant: tenant.clone(),
+        });
+        let sidecar_ops_max = self.sidecar_ops_cap(tenant);
         let results = run_spec_test(&kind, &spec, &invocations, call_timeout, || CallCtx {
             tenant_id,
             namespace: namespace.clone(),
@@ -5168,6 +5281,10 @@ impl McpHostHandler {
             table: table_backend.clone(),
             docs: docs_backend.clone(),
             lineage: lineage_backend.clone(),
+            channel: channel_backend.clone(),
+            msg: msg_backend.clone(),
+            sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
+            sidecar_ops_max,
             compose_depth: 0,
             compose_children: None,
             compose_db: None,
@@ -5360,6 +5477,14 @@ impl McpHostHandler {
             state: self.state.clone(),
             tenant: tenant.clone(),
         });
+        let channel_backend: Arc<dyn ChannelBackend> = Arc::new(TenantChannelBridge {
+            state: self.state.clone(),
+            tenant: tenant.clone(),
+        });
+        let msg_backend: Arc<dyn MsgBackend> = Arc::new(TenantMsgBridge {
+            state: self.state.clone(),
+            tenant: tenant.clone(),
+        });
         let resolved_timeout = self.resolve_call_timeout(&kind, &row.spec);
         let ctx = CallCtx {
             tenant_id: tenant.id,
@@ -5374,6 +5499,10 @@ impl McpHostHandler {
             table: table_backend.clone(),
             docs: docs_backend.clone(),
             lineage: lineage_backend.clone(),
+            channel: channel_backend.clone(),
+            msg: msg_backend.clone(),
+            sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
+            sidecar_ops_max: self.sidecar_ops_cap(tenant),
             // PRD-mcphost-composition: `host.tool_run` has no notion of a
             // composition tree of its own yet (see `CallCtx::compose_db`'s
             // doc) -- `chain`/`mcphost.call` are unavailable from here,

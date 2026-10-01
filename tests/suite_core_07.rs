@@ -210,6 +210,8 @@ mod callerusage_ac07_rollup_speed_at_scale;
 mod callerusage_ac08_end_user_key_includes_caller;
 #[path = "callerusage_ac09_admin_usage_top_audited.rs"]
 mod callerusage_ac09_admin_usage_top_audited;
+#[path = "chanbridge_ac06_python_kind_doc_documents_channel_and_msg.rs"]
+mod chanbridge_ac06_python_kind_doc_documents_channel_and_msg;
 #[path = "channel_ac01_group_open_and_broadcast_read.rs"]
 mod channel_ac01_group_open_and_broadcast_read;
 #[path = "channel_ac02_non_member_channel_not_found.rs"]
