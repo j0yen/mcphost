@@ -2,6 +2,7 @@
 //! AC1 — Given llms.txt, When the section is read, Then it lists the two
 //! tables, two tools, and the schedule call, under 70 lines, with the
 //! calls/day arithmetic.
+// PRD-mcphost-tool-naming-convention-and-aliases: updated to the canonical name -- docs/www/llms.txt now read host.<family>.<verb>, not the old underscore form this test used to parse/compare against.
 
 const LLMS_TXT: &str = include_str!("../www/llms.txt");
 
@@ -45,7 +46,7 @@ fn section_lists_the_two_tables_two_tools_and_schedule_call() {
     );
 
     // The two tools.
-    let publish_count = section.matches("host.tool_publish").count();
+    let publish_count = section.matches("host.tool.publish").count();
     assert_eq!(
         publish_count, 2,
         "section must publish exactly two tools (probe, status), found {publish_count}"

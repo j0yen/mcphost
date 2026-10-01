@@ -423,6 +423,16 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
     if let Some(obj) = body.as_object_mut() {
         obj.insert("oauth".to_string(), crate::oauth_stats::healthz_json(state).await);
     }
+    // PRD-mcphost-tool-naming-convention-and-aliases requirement 5
+    // (AC5): per-canonical-name alias-vs-canonical call counts, so the
+    // sunset decision has a number -- see docs/metrics.md's
+    // tool_alias_usage entry.
+    if let Some(obj) = body.as_object_mut() {
+        obj.insert(
+            "tool_aliases".to_string(),
+            crate::tool_aliases::healthz_json(&state.alias_call_counters),
+        );
+    }
     if let Some(obj) = body.as_object_mut() {
         obj.insert(
             "plans".to_string(),

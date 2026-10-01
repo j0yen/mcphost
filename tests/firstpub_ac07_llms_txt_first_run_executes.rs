@@ -3,6 +3,7 @@
 //! followed literally by the docs test (each call parsed and executed),
 //! Then the published tool is python kind and the test call returns the
 //! real output.
+// PRD-mcphost-tool-naming-convention-and-aliases: updated to the canonical name -- docs/www/llms.txt now read host.<family>.<verb>, not the old underscore form this test used to parse/compare against.
 
 use crate::common;
 use common::{TestServer, extract_structured, python_kind_registry, signup};
@@ -37,7 +38,7 @@ fn code_blocks_between(text: &str, start_heading: &str, end_heading: &str) -> Ve
     blocks
 }
 
-/// Converts one doc-style call snippet (`host.tool_publish(name="x",
+/// Converts one doc-style call snippet (`host.tool.publish(name="x",
 /// kind="python", spec={"source": "..."})`) into `(rpc_name,
 /// arguments_json)`. The doc's own convention already writes every value as
 /// valid JSON (quoted strings with JSON escaping, `{...}`/`[...]` for
@@ -136,8 +137,8 @@ async fn first_run_publish_then_test_is_a_real_python_tool() {
     );
     let (publish_call, publish_args) = parse_doc_call(&blocks[0]);
     let (test_call, test_args) = parse_doc_call(&blocks[1]);
-    assert_eq!(publish_call, "host.tool_publish");
-    assert_eq!(test_call, "host.tool_test");
+    assert_eq!(publish_call, "host.tool.publish");
+    assert_eq!(test_call, "host.tool.test");
     assert_eq!(
         publish_args["kind"], "python",
         "First run's documented publish must be python kind: {publish_args}"

@@ -2,6 +2,7 @@
 //! AC1 — Given llms.txt, When the section is read, Then it shows
 //! `table_create`, batched insert, the `query` publish, and the Desktop
 //! connection line, under 70 lines.
+// PRD-mcphost-tool-naming-convention-and-aliases: updated to the canonical name -- docs/www/llms.txt now read host.<family>.<verb>, not the old underscore form this test used to parse/compare against.
 
 const LLMS_TXT: &str = include_str!("../www/llms.txt");
 
@@ -61,8 +62,8 @@ fn section_shows_a_batched_insert_with_batch_size_stated() {
 fn section_shows_the_query_publish() {
     let section = section_lines().join("\n");
     assert!(
-        section.contains("host.tool_publish(name=\"query\""),
-        "section must show the query tool's host.tool_publish call"
+        section.contains("host.tool.publish(name=\"query\""),
+        "section must show the query tool's host.tool.publish call"
     );
     assert!(
         section.contains("kind=\"python\""),

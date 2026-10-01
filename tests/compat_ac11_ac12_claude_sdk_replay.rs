@@ -196,7 +196,8 @@ async fn ac12_claude_agent_sdk_sequence_lists_signup_with_schema() {
     // Migration/compatibility section).
     assert_eq!(
         tools.len(),
-        141,
+// PRD-mcphost-tool-naming-convention-and-aliases requirement 2/3 (AC8): +19 for the 19 host.* aliases now also advertised in tools/list (the naming-rule violators keep their old name working, alongside their new canonical one).
+        160,
         "signup + host.* (incl. host.quickstart, host.tool_run, host.bridge_test) + \
          host.tool_call + host.tool_history/host.tool_rollback/host.tool_diff \
          (3 tools, PRD-mcphost-tool-versions) + host.state.* (9 tools, PRD-mcphost-tenant-state) + \

@@ -391,6 +391,21 @@ pub struct AppState {
     /// requirement 8 (AC7): `host.lineage.trace`'s stored, pageable
     /// downstream results -- see [`crate::lineage::TracePageCache`].
     pub lineage_trace_pages: crate::lineage::TracePageCache,
+    /// PRD-mcphost-tool-naming-convention-and-aliases requirement 2: the
+    /// (tenant_id, alias) -> last-logged unix-day map backing
+    /// tool_deprecated_alias's "at most once per tenant per day" cap.
+    /// In-memory only, same Arc-shared-across-clones rationale as
+    /// [`AppState::checkout_sessions`].
+    pub alias_log_dedupe: crate::tool_aliases::AliasLogDedupe,
+    /// requirement 6 (P1, AC7): sessions already shown naming_rule_url
+    /// on host.whoami -- see [`crate::tool_aliases::NamingRuleUrlSeen`].
+    /// In-memory only, same rationale as [`AppState::session_bindings`].
+    pub naming_rule_url_shown: crate::tool_aliases::NamingRuleUrlSeen,
+    /// requirement 5 (AC5): per-canonical-name alias-vs-canonical call
+    /// counts -- see [`crate::tool_aliases::AliasCallCounters`] and
+    /// `/healthz`'s `tool_aliases` field. In-memory only, same
+    /// rationale as [`AppState::alias_log_dedupe`].
+    pub alias_call_counters: crate::tool_aliases::AliasCallCounters,
 }
 
 pub fn now_unix() -> i64 {

@@ -44,3 +44,23 @@ Read it with one curl from orch:
 by method, `clients`, `grants_active`, first-ever-call timestamps, a
 per-tenant breakdown, and the registration/consent/token funnel) for a
 caller holding the admin key.
+
+## `tool_alias_usage`
+
+PRD-mcphost-tool-naming-convention-and-aliases requirement 5: per-canonical-name
+call counts, split by whether the caller used the old (alias) or new
+(canonical) spelling -- so the sunset decision (removing an alias once
+usage reaches zero) has a number behind it.
+
+    tool_alias_usage.<canonical>.alias     = healthz's tool_aliases[<canonical>].alias
+    tool_alias_usage.<canonical>.canonical = healthz's tool_aliases[<canonical>].canonical
+
+Every canonical name in `src/tool_aliases.rs`'s `ALIASES` table is present,
+even at zero, so an operator can see which aliases have truly gone quiet.
+Counts every successful host.*/billing.* call to either spelling;
+in-memory only (reset on restart, same posture as `oauth_tenants_7d`'s own
+cache).
+
+Read it with one curl from orch:
+
+    curl -s https://<host>/healthz | jq '.tool_aliases["host.tool.share"]'

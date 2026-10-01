@@ -80,7 +80,13 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
     );
     assert_eq!(
         names.len(),
-        141,
+// PRD-mcphost-tool-naming-convention-and-aliases requirement 2/3 (AC8): +19 for the 19 host.* aliases now also advertised in tools/list (the naming-rule violators keep their old name working, alongside their new canonical one).
+        // PRD-mcphost-tool-naming-convention-and-aliases requirement
+        // 2/3 (AC8): +1 more than the anonymous-context 160 -- this is
+        // an authenticated tenant's list, which also carries
+        // host.spec.test's own alias (host.spec_test), gated the same
+        // authenticated-only way its canonical always has been.
+        161,
         "there must be exactly the sixteen host.* control-plane tools \
          (incl. host.quickstart, host.tool_run, host.bridge_test, host.spec_test -- \
          PRD-mcphost-tool-test, and host.redeem/host.key_rotate -- \

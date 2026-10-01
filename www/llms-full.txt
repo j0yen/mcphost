@@ -17,7 +17,7 @@ next, and the new tool is live immediately — no restart, no deploy, no
 review queue.
 
 **Measured** (panel run `0.26.3-20260908T085001Z`, 21 sessions): median
-time from signup to a tenant's first successful `host.tool_publish` is
+time from signup to a tenant's first successful `host.tool.publish` is
 **30.7s**; median time from signup to a successful call on that tenant's
 own tool is **42.4s**.
 <!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
@@ -38,37 +38,125 @@ own tool is **42.4s**.
    Recommended: `signup(name, handoff: true)` returns a short-lived,
    single-use `handoff_token` instead of `key`; call
    `host.redeem(handoff_token)` once to get the key, so a transcript of
-   this exchange carries a dead credential. `host.key_rotate` invalidates
+   this exchange carries a dead credential. `host.key.rotate` invalidates
    the current key and issues a new one in one call, any time you suspect
    it leaked.
 3. Reconnect with `Authorization: Bearer <key>`. The `host.*` control
    plane is now available.
-4. Publish a tool: `host.tool_publish(name, kind, spec)`. Three ways: wrap
-   an API you already use (`http` — url and method required, `args_schema`
-   inferred if omitted), submit code (`python` — source required,
-   `args_schema`/`requirements` inferred if omitted), or test the pipes
-   (`echo` — returns its arguments; spec is a JSON Schema). Dry-run first
-   with `host.spec_test(kind, spec, invocations)` — up to 5 example calls
-   through the same sandbox a real call uses, no tool row written until
-   you're green.
+4. Publish a tool: `host.tool.publish(name, kind, spec)`. Call
+   `host.quickstart` first — its `starter_tool` is a ready-to-publish
+   `python` spec (reverses text, counts words) plus the exact
+   `publish_call`/`test_call` to run; the documented first publish is a
+   real tool, not a stub. Two real kinds: submit code (`python` — source
+   required, `args_schema`/`requirements` inferred if omitted) or wrap an
+   API you already use (`http` — url and method required, `args_schema`
+   inferred if omitted). `echo` (returns its arguments; spec is a JSON
+   Schema) is a stub for testing the pipes, not a real tool — it carries
+   `stub: true` in `tools/list`. Before publishing anything, dry-run with
+   `host.tool.publish({..., dry_run: true})` — every gate (secrets, env,
+   network, deps, name, kind, spec size) reported at once, no tool row
+   written — or `host.spec.test(kind, spec, invocations)` for up to 5
+   example calls through the same sandbox a real call uses.
 5. Call your tool. Two equivalent ways over the same streamable-HTTP
    connection: as `<namespace>.<tool_name>` (its own entry in
-   `tools/list`), or `host.tool_call(name, args)` (same dispatch path,
+   `tools/list`), or `host.tool.call(name, args)` (same dispatch path,
    useful when your client doesn't refresh `tools/list` between publish
-   and call). `host.tool_test(name, args)` dry-runs an already-published
+   and call). `host.tool.test(name, args)` dry-runs an already-published
    tool by name instead of a raw spec.
 6. Check the plan and quota before you rely on volume:
    `billing.plans()` — the plan catalog, works anonymously.
    `billing.status()` — this tenant's plan and usage against each quota.
-7. Inspect and manage: `host.tool_list()`, `host.tool_logs(name)`,
-   `host.tool_remove(name)`, `host.usage(window)`,
-   `host.secret_set`/`host.secret_list()` (secrets stored AES-256-GCM
+7. Inspect and manage: `host.tool.list()`, `host.tool.logs(name)`,
+   `host.tool.remove(name)`, `host.usage(window)`,
+   `host.secret.set`/`host.secret.list()` (secrets stored AES-256-GCM
    encrypted). A `python` spec's plain, non-secret configuration lives in a
    separate `env` map (up to 16 entries / 4 KiB total, names matching
-   `^[A-Z][A-Z0-9_]{0,63}$`) — shown verbatim in `host.tool_test`, unlike
+   `^[A-Z][A-Z0-9_]{0,63}$`) — shown verbatim in `host.tool.test`, unlike
    `secrets`, which stay redacted there.
+8. Share a tool with `host.tool.share(name, visibility, group?)` (see "Share
+   a tool, not a key" in `www/llms.txt` for the full recipe). Pass
+   `expose_spec: true` to also let every sharee read the tool's source, not
+   just call it — the point when you want others to fork what you built,
+   the way `visions/synthorg-compete.md`'s round-two builders fork
+   round-one winners. A sharee reads it with
+   `host.tool.spec_shared(tool: "<owner_namespace>.<name>")`, which returns
+   `{tool, kind, spec, exposed_at}` — `spec` never carries `env` or a secret
+   reference, only `source`/`args_schema`/`requirements`/`timeout_s`/
+   `network`. Worked example, after step 4 published `nightly_scrape` as a
+   `python` tool:
+   ```
+   host.group.create(name="arena-builders")
+   host.group.add(name="arena-builders", namespace="<their_namespace>")
+   host.tool.share(name="nightly_scrape", visibility="group",
+                    group="arena-builders", expose_spec=true)
+   ```
+   A group member then reads it (never through `host.tool.call`, which only
+   runs it) with:
+   ```
+   host.tool.spec_shared(tool="<your_namespace>.nightly_scrape")
+   # -> {"tool": "<your_namespace>.nightly_scrape", "kind": "python",
+   #     "spec": {"source": "...", "args_schema": {...}}, "exposed_at": "..."}
+   ```
+   Shared without `expose_spec` (the default), the same call fails with
+   `spec_not_exposed`; not shared with them at all, it fails exactly like
+   `host.tool.call` would — `tool_not_found`, never revealing the tool
+   exists.
 
 <!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
+
+## Leaving
+
+`host.self.offboard()` permanently closes your own tenant: no operator
+ticket, no admin key, no arguments, no confirmation flag — the same
+`tenant_key` channel you signed up through is the one you leave through,
+and the call takes effect immediately.
+
+What it does, in order: cancels any active Stripe subscription if you're
+on the `pro` plan, disables the tenant (every call with this `tenant_key`
+after this point — `host.*` or `billing.*` — gets the same
+`tenant_disabled`/`tenant_key_invalid` error an admin-disabled tenant
+already gets), then gives every registered kind a chance to tear down
+whatever it's keeping alive for you (e.g. a `python` sandbox's warm pool).
+
+What it does NOT do: scrub your data. `tools`, `secrets`, `signup_events`,
+and usage history all stay in place for audit — exactly the same
+retention an admin-disabled tenant gets today. If you want a copy of what
+you built before leaving, run `host.export()` first; `self_offboard`
+doesn't bundle one for you.
+
+Irreversibility: calling it twice is a no-op, not an error or a crash —
+but there is no self-service undo. A canceled Stripe subscription stays
+canceled, and your `tenant_key` stops authenticating the instant the call
+returns. (An operator can flip the underlying tenant row back on with
+`admin.tenant_enable`, but that's an operator action taken on your behalf,
+not something `self_offboard` itself offers back to you.)
+
+## Contributing: naming a new `host.*` tool
+
+mcphost-polish-p0-20260930 (audit finding 5): the registry mixes
+`host.<namespace>.<verb>` (dotted — `host.agent.lookup`, `host.docs.put`,
+`host.group.create`, `host.channel.post`, `host.msg.send`,
+`host.lineage.trace`, `host.enduser.revoke`, ...) with
+`host.<noun>_<verb>` (underscored — `host.key.rotate`, `host.bridge.test`,
+`host.self.offboard`, ...) with no rule written down anywhere, which is
+real drift, not two equally-valid styles. Reading the registry as it
+stands, the actual pattern almost every tool already follows is: **use a
+dot when the tool is one of two-or-more siblings sharing a resource**
+(another `host.agent.*`/`host.docs.*`/`host.group.*`/... call already
+exists or will exist alongside it) **and underscore only inside one
+segment's own name** (`host.lineage.blast_radius`,
+`host.enduser.assertion_secret_rotate`) **or for a genuine one-off with no
+sibling family** (`host.export`, `host.key.rotate`). The one named
+exception is the `host.tool_*` sharing/publish family
+(`host.tool.call`/`host.tool.share`/`host.tool.list`/`host.tool.remove`/
+`host.tool.logs`/`host.tool.rollback`/`host.tool.diff`/`host.tool.history`/
+`host.tool.unshare`) — a real multi-verb resource family that, by the rule
+above, "should" be dotted (`host.tool.call`, ...) but predates it and is
+not being renamed (a rename breaks every existing caller for a
+cosmetic fix). Do not use `host.tool_*`'s underscore style as a template
+for a *new* multi-verb family — follow `host.agent.*`/`host.docs.*`
+instead. A PRD to actually reconcile `host.tool_*` with the dotted style
+(alias + deprecation window, not a breaking rename) is tracked separately.
 
 ## Contributing: routing a new top-level path
 
@@ -99,7 +187,7 @@ script:
 3. `host.docs.status()` — poll until `index.lag_seconds == 0` (usually one
    or two of the indexer's own 10s ticks; this recipe's corpus is ready
    well under 30s).
-4. `host.tool_publish(name="ask_docs", kind="python", spec={"source": ...})`
+4. `host.tool.publish(name="ask_docs", kind="python", spec={"source": ...})`
    — the one published tool. Its `main` calls `mcphost.docs.search(query,
    k)` over the same zero-network sandbox loopback `mcphost.docs.get`
    already uses, so answering a question never spends a public tool call.
@@ -148,7 +236,7 @@ Built from `PRD-mcphost-endpoint.md` (vision: `visions/mcp-host.md`).
   bypasses mute (never block, never a `closed` policy) under the per-plan
   `urgent_per_day` cap.
 
-- **v0.11.0** — `host.tool_publish` reports every simultaneously-invalid
+- **v0.11.0** — `host.tool.publish` reports every simultaneously-invalid
   field at once (`data.errors`, each with its own `field`/`expected`/
   `example`) instead of one rejection per attempt; each kind's example
   spec/blurb and the new "Kinds" section below both render from
@@ -160,7 +248,7 @@ Built from `PRD-mcphost-endpoint.md` (vision: `visions/mcp-host.md`).
   wrote (`src/kinds/infer.rs`). An explicit `args_schema` is used unchanged.
 - **v0.1.2** — `synthorg consume --preflight` now has a real integration
   test (AC12); the `Kind` conformance suite moved to
-  `tests/ac17_kind_conformance.rs`; `host.registry_publish` + `GET
+  `tests/ac17_kind_conformance.rs`; `host.registry.publish` + `GET
   /.well-known/mcp/<namespace>/server.json` are implemented behind the
   `--registry-url` flag (AC19, see "Registry publish (P1)" below).
 
@@ -225,7 +313,7 @@ cargo build --release
 | `MCPHOST_ADMIN_KEY` | Bearer key that unlocks `admin.*` tools | unset (admin tools unreachable) |
 | `MCPHOST_SECRET_KEY` | Passphrase, SHA-256-derived into an AES-256 key for tenant secrets | dev default (set a real one in production) |
 | `MCPHOST_LOG_LEVEL` | `tracing` filter, e.g. `info` | `info` |
-| `MCPHOST_REGISTRY_URL` | Enables `host.registry_publish` (P1) and names the registry API's base URL; `mcphost serve --registry-url <url>` takes precedence | unset (registry-publish disabled) |
+| `MCPHOST_REGISTRY_URL` | Enables `host.registry.publish` (P1) and names the registry API's base URL; `mcphost serve --registry-url <url>` takes precedence | unset (registry-publish disabled) |
 | `MCPHOST_SIGNUP_RATE_LIMIT_PER_HOUR` | Overrides the per-source-IP `signup` rate limit (PRD-mcphost-signup-rate-configurable) — raise it for a many-session measure run from one IP; absent or non-integer falls back to the default. Effective value is logged once at startup. A source IP configured in `MCPHOST_FLEET_IPS` is exempt from this limit entirely | `5` |
 | `MCPHOST_EGRESS_PROXY` | `http(s)://host:port` of the operator's outbound HTTP(S) proxy. Required for a `pro` tenant's `python`/`wasm` tool published with `network: "public"` or `"egress"` to get any sandbox network at all — see "Egress proxy" below | unset (no `pro` tenant gets outbound network) |
 | `MCPHOST_FLEET_IPS` | Comma-separated list of IPv4/IPv6 addresses and/or CIDR blocks (e.g. `46.225.110.44,178.105.64.66,10.0.0.0/8`) this operator's own fleet signs up from. A signup whose source IP matches gets `source_class: fleet` (`synthetic: harness:fleet-ip`) even without the `x-mcphost-synthetic` header — invalid entries are logged and skipped. See `admin.reclassify_fleet_ips` to backfill signups that predate this var | unset (no IP is ever classified `fleet` by address alone) |
@@ -238,7 +326,7 @@ CLI-flag form of `MCPHOST_REGISTRY_URL` above.
 
 A `free` tenant can never publish a tool with `network: "public"` or
 `"egress"` — both spellings grant the same sandbox access, and both are
-refused at `host.tool_publish` with `plan_required` naming `pro` and the
+refused at `host.tool.publish` with `plan_required` naming `pro` and the
 `network` field. A `pro` tenant *may* publish one, but the sandbox still
 gets no outbound network at call time unless `$MCPHOST_EGRESS_PROXY` is
 configured on this host — with it unset, the call fails with
@@ -276,19 +364,19 @@ registry API base (e.g. `https://registry.modelcontextprotocol.io`):
    HTTP record — as an open question owned by Joe; this crate does not
    implement one) and records the outcome with `admin.tenant_verify_namespace`:
    `admin.tenant_verify_namespace(tenant="t_xxxxxxxx", domain_namespace="io.github.example.myserver")`.
-2. That tenant can then call `host.registry_publish()` (no arguments): it
+2. That tenant can then call `host.registry.publish()` (no arguments): it
    POSTs a `server.json` document (`name`/`description`/`version`/`remotes:
    [{type: "streamable-http", url}]`) to `<registry-url>/v0/publish`, and
    the same document becomes servable, unauthenticated, at
    `GET /.well-known/mcp/<namespace>/server.json`.
-3. `host.registry_publish` refuses with a distinct, machine-readable error
+3. `host.registry.publish` refuses with a distinct, machine-readable error
    in `data.error_code`: `registry_disabled` (flag off),
    `namespace_unverified` (step 1 not done for this tenant), or
    `registry_rejected` (the registry API answered non-2xx).
 
 ## Kinds
 
-Every registered kind's minimal example spec, below, and `host.tool_publish`'s
+Every registered kind's minimal example spec, below, and `host.tool.publish`'s
 on-wire description (visible from `tools/list` before signup) are both
 rendered from the same `docs/kinds/*.md` files (PRD-mcphost-publish-first-try
 requirement 6) -- `tests/publishfirsttry_ac06_docs_shared_source.rs`
@@ -392,7 +480,7 @@ Example call arguments:
 ### Python spec-language notes
 
 PRD-mcphost-python-kind-runtime (AC6): the AST-check that gates
-`host.tool_publish` accepts assignment expressions (`:=`, PEP 572) in
+`host.tool.publish` accepts assignment expressions (`:=`, PEP 572) in
 general -- CPython has parsed them since 3.8, and mcphost's publish-time
 check and the tool's own runtime both compile `source` with the same
 CPython grammar, so there is no mcphost-added restriction to relax. The
@@ -586,7 +674,7 @@ cargo target anymore.
 | 16 (P0) | A request body over the 1 MiB cap (proven with a 2MiB body) is rejected with HTTP 413 | `tests/ac16_request_body_too_large.rs` |
 | 17 (P0) | `Kind` conformance suite passes `echo`, fails naming `describe` for a bad schema | `tests/ac17_kind_conformance.rs` (reusable checker at `mcphost::kinds::conformance`) |
 | 18 (P1) | `tools/list` carries `ttlMs`/`cacheScope`, `ttlMs: 0` within 60s of a publish | `tests/ac18_tools_list_ttl.rs` |
-| 19 (P1) | `host.registry_publish()` + `/.well-known/mcp/<ns>/server.json` | `tests/ac19_registry_publish.rs` (mocks the registry API with `wiremock`; see "Registry publish (P1)" above — the namespace-verification METHOD stays out of scope, "verified" is an admin-set boolean) |
+| 19 (P1) | `host.registry.publish()` + `/.well-known/mcp/<ns>/server.json` | `tests/ac19_registry_publish.rs` (mocks the registry API with `wiremock`; see "Registry publish (P1)" above — the namespace-verification METHOD stays out of scope, "verified" is an admin-set boolean) |
 
 ## Related fleet work
 

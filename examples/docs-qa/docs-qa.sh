@@ -202,12 +202,12 @@ def publish_ask_docs(key):
     with open(ASK_DOCS_SOURCE_PATH, encoding="utf-8") as f:
         source = f.read()
     resp = mcp_call(
-        "host.tool_publish",
+        "host.tool.publish",
         {"name": "ask_docs", "kind": "python", "spec": {"source": source}},
         key,
     )
     if is_error(resp):
-        fail(f"host.tool_publish ask_docs failed: {resp['error']}")
+        fail(f"host.tool.publish ask_docs failed: {resp['error']}")
 
 
 def ask_gold_questions(namespace, key, gold):

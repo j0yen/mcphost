@@ -6,7 +6,7 @@ next, and the new tool is live immediately — no restart, no deploy, no
 review queue.
 
 **Measured** (panel run `0.26.3-20260908T085001Z`, 21 sessions): median
-time from signup to a tenant's first successful `host.tool_publish` is
+time from signup to a tenant's first successful `host.tool.publish` is
 **30.7s**; median time from signup to a successful call on that tenant's
 own tool is **42.4s**.
 <!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
@@ -27,12 +27,12 @@ own tool is **42.4s**.
    Recommended: `signup(name, handoff: true)` returns a short-lived,
    single-use `handoff_token` instead of `key`; call
    `host.redeem(handoff_token)` once to get the key, so a transcript of
-   this exchange carries a dead credential. `host.key_rotate` invalidates
+   this exchange carries a dead credential. `host.key.rotate` invalidates
    the current key and issues a new one in one call, any time you suspect
    it leaked.
 3. Reconnect with `Authorization: Bearer <key>`. The `host.*` control
    plane is now available.
-4. Publish a tool: `host.tool_publish(name, kind, spec)`. Call
+4. Publish a tool: `host.tool.publish(name, kind, spec)`. Call
    `host.quickstart` first — its `starter_tool` is a ready-to-publish
    `python` spec (reverses text, counts words) plus the exact
    `publish_call`/`test_call` to run; the documented first publish is a
@@ -42,33 +42,33 @@ own tool is **42.4s**.
    inferred if omitted). `echo` (returns its arguments; spec is a JSON
    Schema) is a stub for testing the pipes, not a real tool — it carries
    `stub: true` in `tools/list`. Before publishing anything, dry-run with
-   `host.tool_publish({..., dry_run: true})` — every gate (secrets, env,
+   `host.tool.publish({..., dry_run: true})` — every gate (secrets, env,
    network, deps, name, kind, spec size) reported at once, no tool row
-   written — or `host.spec_test(kind, spec, invocations)` for up to 5
+   written — or `host.spec.test(kind, spec, invocations)` for up to 5
    example calls through the same sandbox a real call uses.
 5. Call your tool. Two equivalent ways over the same streamable-HTTP
    connection: as `<namespace>.<tool_name>` (its own entry in
-   `tools/list`), or `host.tool_call(name, args)` (same dispatch path,
+   `tools/list`), or `host.tool.call(name, args)` (same dispatch path,
    useful when your client doesn't refresh `tools/list` between publish
-   and call). `host.tool_test(name, args)` dry-runs an already-published
+   and call). `host.tool.test(name, args)` dry-runs an already-published
    tool by name instead of a raw spec.
 6. Check the plan and quota before you rely on volume:
    `billing.plans()` — the plan catalog, works anonymously.
    `billing.status()` — this tenant's plan and usage against each quota.
-7. Inspect and manage: `host.tool_list()`, `host.tool_logs(name)`,
-   `host.tool_remove(name)`, `host.usage(window)`,
-   `host.secret_set`/`host.secret_list()` (secrets stored AES-256-GCM
+7. Inspect and manage: `host.tool.list()`, `host.tool.logs(name)`,
+   `host.tool.remove(name)`, `host.usage(window)`,
+   `host.secret.set`/`host.secret.list()` (secrets stored AES-256-GCM
    encrypted). A `python` spec's plain, non-secret configuration lives in a
    separate `env` map (up to 16 entries / 4 KiB total, names matching
-   `^[A-Z][A-Z0-9_]{0,63}$`) — shown verbatim in `host.tool_test`, unlike
+   `^[A-Z][A-Z0-9_]{0,63}$`) — shown verbatim in `host.tool.test`, unlike
    `secrets`, which stay redacted there.
-8. Share a tool with `host.tool_share(name, visibility, group?)` (see "Share
+8. Share a tool with `host.tool.share(name, visibility, group?)` (see "Share
    a tool, not a key" in `www/llms.txt` for the full recipe). Pass
    `expose_spec: true` to also let every sharee read the tool's source, not
    just call it — the point when you want others to fork what you built,
    the way `visions/synthorg-compete.md`'s round-two builders fork
    round-one winners. A sharee reads it with
-   `host.tool_spec_shared(tool: "<owner_namespace>.<name>")`, which returns
+   `host.tool.spec_shared(tool: "<owner_namespace>.<name>")`, which returns
    `{tool, kind, spec, exposed_at}` — `spec` never carries `env` or a secret
    reference, only `source`/`args_schema`/`requirements`/`timeout_s`/
    `network`. Worked example, after step 4 published `nightly_scrape` as a
@@ -76,26 +76,26 @@ own tool is **42.4s**.
    ```
    host.group.create(name="arena-builders")
    host.group.add(name="arena-builders", namespace="<their_namespace>")
-   host.tool_share(name="nightly_scrape", visibility="group",
+   host.tool.share(name="nightly_scrape", visibility="group",
                     group="arena-builders", expose_spec=true)
    ```
-   A group member then reads it (never through `host.tool_call`, which only
+   A group member then reads it (never through `host.tool.call`, which only
    runs it) with:
    ```
-   host.tool_spec_shared(tool="<your_namespace>.nightly_scrape")
+   host.tool.spec_shared(tool="<your_namespace>.nightly_scrape")
    # -> {"tool": "<your_namespace>.nightly_scrape", "kind": "python",
    #     "spec": {"source": "...", "args_schema": {...}}, "exposed_at": "..."}
    ```
    Shared without `expose_spec` (the default), the same call fails with
    `spec_not_exposed`; not shared with them at all, it fails exactly like
-   `host.tool_call` would — `tool_not_found`, never revealing the tool
+   `host.tool.call` would — `tool_not_found`, never revealing the tool
    exists.
 
 <!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
 
 ## Leaving
 
-`host.self_offboard()` permanently closes your own tenant: no operator
+`host.self.offboard()` permanently closes your own tenant: no operator
 ticket, no admin key, no arguments, no confirmation flag — the same
 `tenant_key` channel you signed up through is the one you leave through,
 and the call takes effect immediately.
@@ -126,8 +126,8 @@ mcphost-polish-p0-20260930 (audit finding 5): the registry mixes
 `host.<namespace>.<verb>` (dotted — `host.agent.lookup`, `host.docs.put`,
 `host.group.create`, `host.channel.post`, `host.msg.send`,
 `host.lineage.trace`, `host.enduser.revoke`, ...) with
-`host.<noun>_<verb>` (underscored — `host.key_rotate`, `host.bridge_test`,
-`host.self_offboard`, ...) with no rule written down anywhere, which is
+`host.<noun>_<verb>` (underscored — `host.key.rotate`, `host.bridge.test`,
+`host.self.offboard`, ...) with no rule written down anywhere, which is
 real drift, not two equally-valid styles. Reading the registry as it
 stands, the actual pattern almost every tool already follows is: **use a
 dot when the tool is one of two-or-more siblings sharing a resource**
@@ -135,11 +135,11 @@ dot when the tool is one of two-or-more siblings sharing a resource**
 exists or will exist alongside it) **and underscore only inside one
 segment's own name** (`host.lineage.blast_radius`,
 `host.enduser.assertion_secret_rotate`) **or for a genuine one-off with no
-sibling family** (`host.export`, `host.key_rotate`). The one named
+sibling family** (`host.export`, `host.key.rotate`). The one named
 exception is the `host.tool_*` sharing/publish family
-(`host.tool_call`/`host.tool_share`/`host.tool_list`/`host.tool_remove`/
-`host.tool_logs`/`host.tool_rollback`/`host.tool_diff`/`host.tool_history`/
-`host.tool_unshare`) — a real multi-verb resource family that, by the rule
+(`host.tool.call`/`host.tool.share`/`host.tool.list`/`host.tool.remove`/
+`host.tool.logs`/`host.tool.rollback`/`host.tool.diff`/`host.tool.history`/
+`host.tool.unshare`) — a real multi-verb resource family that, by the rule
 above, "should" be dotted (`host.tool.call`, ...) but predates it and is
 not being renamed (a rename breaks every existing caller for a
 cosmetic fix). Do not use `host.tool_*`'s underscore style as a template
@@ -176,7 +176,7 @@ script:
 3. `host.docs.status()` — poll until `index.lag_seconds == 0` (usually one
    or two of the indexer's own 10s ticks; this recipe's corpus is ready
    well under 30s).
-4. `host.tool_publish(name="ask_docs", kind="python", spec={"source": ...})`
+4. `host.tool.publish(name="ask_docs", kind="python", spec={"source": ...})`
    — the one published tool. Its `main` calls `mcphost.docs.search(query,
    k)` over the same zero-network sandbox loopback `mcphost.docs.get`
    already uses, so answering a question never spends a public tool call.

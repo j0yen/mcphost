@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.65.0 — 2026-10-01
+
+One naming rule for the host.* tool surface: host.<family>.<verb>, enforced by
+scripts/tool-naming-lint.sh and tests/toolname_ac01_lint_catches_new_violations.rs.
+The 20 tools that violated it (the host.tool_* family plus host.key_rotate,
+host.self_offboard, host.bridge_test, host.secret_set, host.secret_list,
+host.registry_publish, and host.spec_test) keep working unchanged under their
+old names as deprecated aliases (src/tool_aliases.rs) through 2026-12-30:
+tools/list advertises each with _meta["x-deprecated"] (replaced_by, sunset),
+calling one returns the same result plus that same hint, and
+tool_deprecated_alias logs once per tenant per day. /healthz's new
+tool_aliases field counts alias-vs-canonical calls per canonical name
+(docs/metrics.md's tool_alias_usage) so the eventual sunset decision has a
+number behind it. An unrecognized name one edit away from a name in that
+table now gets a did_you_mean hint on its tool_not_found error, and a
+session's first host.whoami carries naming_rule_url. docs/tools.md (every
+canonical, family, description, plus the renamed-tools table) and
+www/llms.txt's tool list are both generated from the live registry (mcphost
+tools-doc / mcphost llms-txt) -- see docs/tool-naming.md for the rule, the
+exceptions (signup, billing.*, admin.*, and the singleton-noun tools), and
+how to add a tool without drifting from either.
+
 ## v0.63.0 — 2026-09-30
 
 `host.table.chart(sql, title?, mark?, share?)` turns one SQL call into a

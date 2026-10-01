@@ -10,6 +10,7 @@
 //! one place that "..." is substituted for a real 1.4 MiB fixture tool
 //! before executing, so the doc stays literally executable without
 //! actually inlining a python source into it.
+// PRD-mcphost-tool-naming-convention-and-aliases: updated to the canonical name -- docs/www/llms.txt now read host.<family>.<verb>, not the old underscore form this test used to parse/compare against.
 
 use crate::common;
 use common::{TestServer, poll_until_ready, python_kind_registry, signup};
@@ -127,7 +128,7 @@ async fn long_running_jobs_walkthrough_executes_literally_against_a_1_4mib_fixtu
 
         // The doc's own "source omitted for space" convention -- substitute
         // the real fixture tool so this call is genuinely executable.
-        if name == "host.tool_publish"
+        if name == "host.tool.publish"
             && let Some(spec) = args.get_mut("spec")
             && spec.get("source") == Some(&json!("..."))
         {
@@ -135,7 +136,7 @@ async fn long_running_jobs_walkthrough_executes_literally_against_a_1_4mib_fixtu
             spec["args_schema"] = json!({"type": "object"});
         }
 
-        let result = if name == "host.tool_publish" {
+        let result = if name == "host.tool.publish" {
             // Cold-build through a dry run first so the async call below
             // measures the job path, not the one-time environment build.
             client.tools_call(&name, args.clone()).await.map(|v| {
@@ -157,7 +158,7 @@ async fn long_running_jobs_walkthrough_executes_literally_against_a_1_4mib_fixtu
         }
 
         let structured = common::extract_structured(&value);
-        if name == "host.tool_call"
+        if name == "host.tool.call"
             && let Some(id) = structured.get("run_id").and_then(Value::as_str)
         {
             run_id = Some(id.to_string());

@@ -5,7 +5,7 @@
 //!
 //! The section's five numbered steps each lead with exactly one inline-code
 //! call (`signup(...)`, `host.docs.put(...)`, `host.docs.status()`,
-//! `host.tool_publish(...)`, `<namespace>.ask_docs(...)`); this test parses
+//! `host.tool.publish(...)`, `<namespace>.ask_docs(...)`); this test parses
 //! that ordered call sequence straight out of the doc's own numbered list
 //! (a hand-rolled scan, same "no need for a whole parser crate for one
 //! self-owned fixture" precedent `mcphost_uptime_probes_ac07_*`'s
@@ -14,6 +14,7 @@
 //! the in-process test host actually made (recorded in its own receipt's
 //! `calls` field) -- so the doc can never silently drift from what the
 //! script does.
+// PRD-mcphost-tool-naming-convention-and-aliases: updated to the canonical name -- docs/www/llms.txt now read host.<family>.<verb>, not the old underscore form this test used to parse/compare against.
 
 use crate::common;
 use crate::docs_qa;
@@ -70,7 +71,7 @@ async fn doc_and_script_agree_on_the_call_sequence() {
     let parsed_calls = ordered_calls_from_section(section_text());
     assert_eq!(
         parsed_calls,
-        vec!["signup", "host.docs.put", "host.docs.status", "host.tool_publish", "ask_docs"],
+        vec!["signup", "host.docs.put", "host.docs.status", "host.tool.publish", "ask_docs"],
         "the doc's five numbered steps must each lead with exactly one of these calls, in order"
     );
 

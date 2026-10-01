@@ -59,6 +59,8 @@ pub mod statusfeed;
 pub mod tables;
 pub mod tables_model;
 pub mod tenant_state;
+pub mod tool_aliases;
+pub mod toolsdoc;
 pub mod triggers;
 pub mod vault;
 pub mod webhooks;

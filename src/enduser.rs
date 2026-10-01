@@ -405,6 +405,9 @@ mod tests {
             session_bindings: crate::session_bind::SessionBindings::new(),
             lineage_cache: crate::lineage::new_cache(),
             lineage_trace_pages: crate::lineage::new_trace_page_cache(),
+            alias_log_dedupe: crate::tool_aliases::new_alias_log_dedupe(),
+            naming_rule_url_shown: crate::tool_aliases::new_naming_rule_url_seen(),
+            alias_call_counters: crate::tool_aliases::new_alias_call_counters(),
         };
 
         let eu = verify_assertion(&state, &tenant, &token).await.expect("valid assertion");

@@ -2,6 +2,7 @@
 //! AC1 — Given llms.txt, When the section is read, Then it lists the
 //! table, two tools, group creation, two shares, and the add call, under
 //! 70 lines.
+// PRD-mcphost-tool-naming-convention-and-aliases: updated to the canonical name -- docs/www/llms.txt now read host.<family>.<verb>, not the old underscore form this test used to parse/compare against.
 
 const LLMS_TXT: &str = include_str!("../www/llms.txt");
 
@@ -40,7 +41,7 @@ fn section_lists_the_table_two_tools_group_and_two_shares_and_the_add_call() {
     );
 
     // The two tools.
-    let publish_count = section.matches("host.tool_publish").count();
+    let publish_count = section.matches("host.tool.publish").count();
     assert_eq!(
         publish_count, 2,
         "section must publish exactly two tools (remember, recall), found {publish_count}"
@@ -57,7 +58,7 @@ fn section_lists_the_table_two_tools_group_and_two_shares_and_the_add_call() {
     );
 
     // The two shares.
-    let share_count = section.matches("host.tool_share").count();
+    let share_count = section.matches("host.tool.share").count();
     assert_eq!(
         share_count, 2,
         "section must share exactly two tools to the group, found {share_count}"

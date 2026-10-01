@@ -93,7 +93,7 @@ const MAX_DID_YOU_MEAN: usize = 3;
 /// Plain Levenshtein distance (insert/delete/substitute, unit cost), byte-
 /// wise -- every candidate this compares against (`registered`/`aliases`)
 /// is ASCII, so byte-wise is character-wise here.
-fn levenshtein(a: &str, b: &str) -> usize {
+pub(crate) fn levenshtein(a: &str, b: &str) -> usize {
     let a: Vec<u8> = a.bytes().collect();
     let b: Vec<u8> = b.bytes().collect();
     let mut prev: Vec<usize> = (0..=b.len()).collect();
@@ -767,6 +767,18 @@ impl AppError {
                 "did_you_mean".to_string(),
                 json!(did_you_mean(requested, registered, aliases)),
             );
+        }
+        // PRD-mcphost-tool-naming-convention-and-aliases requirement 6
+        // (AC6): a host.*/billing.* ToolNotFound one edit away from a name
+        // this PRD's own alias table governs gets the same did_you_mean
+        // treatment UnknownKind already has above -- see
+        // tool_aliases::did_you_mean's own doc for why the candidate set is
+        // this table rather than the full live registry.
+        if let AppError::ToolNotFound(name) = &self {
+            let hints = crate::tool_aliases::did_you_mean(name);
+            if !hints.is_empty() {
+                obj.insert("did_you_mean".to_string(), json!(hints));
+            }
         }
         if let Some(field) = field {
             obj.insert("field".to_string(), json!(field));

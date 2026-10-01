@@ -99,6 +99,21 @@ enum Command {
         #[arg(long)]
         path: Option<PathBuf>,
     },
+    /// PRD-mcphost-tool-naming-convention-and-aliases requirement 4
+    /// (AC4): regenerate `docs/tools.md` from the same descriptors
+    /// `tools/list` serves (`handler::host_tool_descriptors`), plus the
+    /// alias table's own "renamed tools" section -- same `--check`/write
+    /// convention as `LlmsTxt`/`Contract Dump` above.
+    ToolsDoc {
+        /// Exit 1 without writing if the file is stale, instead of
+        /// rewriting it.
+        #[arg(long)]
+        check: bool,
+        /// Path to the tools doc to update. Defaults to `docs/tools.md`
+        /// relative to the current directory (run from the repo root).
+        #[arg(long)]
+        path: Option<PathBuf>,
+    },
     /// PRD-mcphost-host-tool-deprecation requirement 1 (P0, AC1): the
     /// `host.*`/`billing.*` tool surface as a versioned contract.
     Contract {
@@ -401,6 +416,34 @@ async fn main() -> anyhow::Result<()> {
                 Ok(())
             }
         }
+        Command::ToolsDoc { check, path } => {
+            // Deliberately no init_tracing(): same rationale as LlmsTxt
+            // above -- this subcommand's contract is plain stdout/exit-code.
+            let path = path.unwrap_or_else(|| PathBuf::from("docs/tools.md"));
+            let kinds = KindRegistry::with_builtin();
+            let rendered = mcphost::toolsdoc::render_tools_doc(&kinds);
+            let existing = std::fs::read_to_string(&path).unwrap_or_default();
+            if check {
+                if rendered == existing {
+                    println!("tools-doc --check: {} is up to date", path.display());
+                    Ok(())
+                } else {
+                    eprintln!(
+                        "tools-doc --check: {} is stale (run `mcphost tools-doc`)",
+                        path.display()
+                    );
+                    std::process::exit(1);
+                }
+            } else {
+                if rendered != existing {
+                    std::fs::write(&path, &rendered)?;
+                    println!("tools-doc: regenerated {}", path.display());
+                } else {
+                    println!("tools-doc: {} already up to date", path.display());
+                }
+                Ok(())
+            }
+        }
         Command::Contract { action } => match action {
             ContractCommand::Dump { check, path } => {
                 // Deliberately no `init_tracing()`: same rationale as
@@ -678,6 +721,9 @@ async fn main() -> anyhow::Result<()> {
                 session_bindings: mcphost::session_bind::SessionBindings::new(),
                 lineage_cache: mcphost::lineage::new_cache(),
                 lineage_trace_pages: mcphost::lineage::new_trace_page_cache(),
+                alias_log_dedupe: mcphost::tool_aliases::new_alias_log_dedupe(),
+                naming_rule_url_shown: mcphost::tool_aliases::new_naming_rule_url_seen(),
+                alias_call_counters: mcphost::tool_aliases::new_alias_call_counters(),
             });
             // PRD-mcphost-abuse-guard-ban-list requirement 6: load the ban
             // cache once before this process ever serves a request, so the

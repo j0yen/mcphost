@@ -320,7 +320,8 @@ async fn unauthenticated_tools_list_is_signup_only() {
     );
     assert_eq!(
         tool_names.len(),
-        141,
+// PRD-mcphost-tool-naming-convention-and-aliases requirement 2/3 (AC8): +19 for the 19 host.* aliases now also advertised in tools/list (the naming-rule violators keep their old name working, alongside their new canonical one).
+        160,
         "signup + host.redeem + host.key_rotate (PRD-mcphost-handoff-token) + the thirteen \
          host.* tools (incl. host.quickstart, host.tool_run, and host.bridge_test) + \
          host.tool_call + the three host.tool_history/host.tool_rollback/host.tool_diff \

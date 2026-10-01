@@ -1,6 +1,7 @@
 //! PRD-mcphost-share-a-tool-not-a-key
 //! AC1 — Given llms.txt, When the section is read, Then it lists the six
 //! calls in order with one argument block each and is under 60 lines.
+// PRD-mcphost-tool-naming-convention-and-aliases: updated to the canonical name -- docs/www/llms.txt now read host.<family>.<verb>, not the old underscore form this test used to parse/compare against.
 
 const LLMS_TXT: &str = include_str!("../www/llms.txt");
 
@@ -9,12 +10,12 @@ const NEXT_HEADING: &str = "### Share a tool, not a key: public variant";
 
 /// The six calls, in the exact order Requirement 1 lists them.
 const EXPECTED_CALLS_IN_ORDER: [&str; 6] = [
-    "host.secret_set",
-    "host.tool_publish",
+    "host.secret.set",
+    "host.tool.publish",
     "host.group.create",
-    "host.tool_share",
+    "host.tool.share",
     "host.group.add",
-    "host.tool_call",
+    "host.tool.call",
 ];
 
 fn section_lines() -> Vec<&'static str> {
