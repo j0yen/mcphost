@@ -667,7 +667,7 @@ cargo target anymore.
 
 ## Related fleet work
 
-- [`mcp-core`](https://github.com/j0yen/mcp-core) — the reusable stdio
+- `mcp-core` (private repo, not publicly linkable) — the reusable stdio
   JSON-RPC 2.0 MCP-server core (`Tool` trait + `serve_stdio`) other wintermute
   MCP servers build on. Not reused here: `mcphost` is a streamable-HTTP
   server (`rmcp`), not a stdio server, and its tool surface is dynamic

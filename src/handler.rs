@@ -2274,7 +2274,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         ),
         Tool::new(
             "host.msg.unblock",
-            "Remove a block.",
+            "Remove a block: the address's future sends to you are accepted again.",
             host_schema(
                 json!({"address": {"type": "string", "description": "The @handle or t_... namespace to unblock."}}),
                 &["address"],
@@ -2365,7 +2365,8 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         ),
         Tool::new(
             "host.agent.unmute",
-            "Remove a mute.",
+            "Remove a mute: the address's messages resume appearing in \
+             host.msg.inbox(unread_only=true).",
             host_schema(
                 json!({"address": {"type": "string", "description": "The @handle or t_... namespace to unmute."}}),
                 &["address"],

@@ -1276,6 +1276,8 @@ mod surface_ac05_llms_txt_tool_parity;
 mod surface_ac07_tool_publish_description_length;
 #[path = "surface_ac08_get_info_mentions_try_before_call.rs"]
 mod surface_ac08_get_info_mentions_try_before_call;
+#[path = "surface_tool_description_min_length.rs"]
+mod surface_tool_description_min_length;
 #[path = "synthetic_ac01_migration_null_default.rs"]
 mod synthetic_ac01_migration_null_default;
 #[path = "synthetic_ac02_signup_header_sets_label.rs"]
