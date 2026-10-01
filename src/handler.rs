@@ -1471,6 +1471,44 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &[],
             ),
         ),
+        // PRD-mcphost-query-diagnosis P0 requirement 5/AC5: the hint a
+        // refused or empty host.table.query call left in its log row, or a
+        // fresh recompute when an older row predates this feature.
+        Tool::new(
+            "host.table.query_diagnose",
+            "Return the stored identifier-coverage diagnosis and hint for one host.table.query \
+             log row (by log_id from host.table.query_log), recomputed against the current \
+             schema if that row predates this feature. Scoped to this tenant's own rows; a \
+             log_id belonging to another tenant (or no such row) returns not_found.",
+            host_schema(
+                json!({
+                    "log_id": {
+                        "type": "integer",
+                        "description": "A log row id from host.table.query_log's entries.",
+                    },
+                }),
+                &["log_id"],
+            ),
+        ),
+        // PRD-mcphost-query-diagnosis P0 requirement 6/AC6: per-tenant
+        // query counts, outcome breakdown, latency percentiles, result
+        // footprint, and the most common hints over a trailing window.
+        Tool::new(
+            "host.table.query_stats",
+            "Summarize this tenant's own host.table.query calls over a trailing window: \
+             queries, ok, empty, refused (by error_code), p50_ms, p95_ms, result_rows_total, \
+             est_result_tokens_total, and the top 5 most common hints. window_s defaults to \
+             86,400 (24h) and is capped at 604,800 (7d).",
+            host_schema(
+                json!({
+                    "window_s": {
+                        "type": "integer",
+                        "description": "Trailing window in seconds (default 86400, max 604800).",
+                    },
+                }),
+                &[],
+            ),
+        ),
         Tool::new(
             "host.table.list",
             "List this tenant's declared tables, each with its current row count, plus the \
@@ -3714,6 +3752,11 @@ impl TableBackend for TenantTableBridge {
             "list" => tables::table_list(&self.state, &self.tenant, &args).await,
             "drop" => tables::table_drop(&self.state, &self.tenant, &args).await,
             "schema" => tables::table_schema(&self.state, &self.tenant, &args).await,
+            // PRD-mcphost-query-diagnosis P1 requirement 8/AC9: the
+            // sandboxed caller receives the same object the tool itself
+            // returns, over this same loopback channel.
+            "query_diagnose" => tables::table_query_diagnose(&self.state, &self.tenant, &args).await,
+            "query_stats" => tables::table_query_stats(&self.state, &self.tenant, &args).await,
             // PRD-mcphost-chart-in-a-minute AC11: `mcphost.table.chart`
             // inside the python sandbox receives the same `chart.v1` object
             // `host.table.chart` itself returns.
@@ -4006,6 +4049,8 @@ impl McpHostHandler {
             "host.table.append" => tables::table_append(&self.state, tenant, &args).await,
             "host.table.query" => tables::table_query(&self.state, tenant, &args).await,
             "host.table.query_log" => tables::table_query_log(&self.state, tenant, &args).await,
+            "host.table.query_diagnose" => tables::table_query_diagnose(&self.state, tenant, &args).await,
+            "host.table.query_stats" => tables::table_query_stats(&self.state, tenant, &args).await,
             "host.table.list" => tables::table_list(&self.state, tenant, &args).await,
             "host.table.drop" => tables::table_drop(&self.state, tenant, &args).await,
             "host.lineage.blast_radius" => crate::lineage::blast_radius(&self.state, tenant, &args).await,
