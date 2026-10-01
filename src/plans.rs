@@ -215,6 +215,19 @@ pub struct Plan {
     /// once -- a further one is rejected with `quota_vault_providers`.
     /// Requirement 2 names both defaults directly: "free 2, pro 20".
     pub vault_providers_max: i64,
+    /// PRD-mcphost-result-handles requirement 4 (AC5): total bytes across a
+    /// tenant's *live* `host.table.query(..., handle: true)` handles --
+    /// separate from [`Self::table_bytes_max`] (Open Questions: "Separate
+    /// `table_handle_bytes_max` or share the table byte pool? Default here:
+    /// separate, free 64 MiB"), since a handle is a transient derived
+    /// result (24h ceiling) rather than a declared table a tenant chose to
+    /// keep. Materialising past it evicts the least-recently-queried
+    /// handles first (requirement 4); a single materialisation that alone
+    /// exceeds the cap is refused `handle_quota_exceeded` naming it.
+    /// Defaults to the `free` plan's own default (64 MiB) when a
+    /// hand-edited `plans.toml` predates this key, same tolerant-parse
+    /// convention as every other field above.
+    pub table_handle_bytes_max: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -309,6 +322,9 @@ impl PlanCatalog {
                     // PRD-mcphost-upstream-token-vault requirement 2:
                     // "free 2" vault providers.
                     vault_providers_max: 2,
+                    // PRD-mcphost-result-handles Open Questions: "Default
+                    // here: separate, free 64 MiB".
+                    table_handle_bytes_max: 64 * 1024 * 1024,
                 },
                 Plan {
                     name: "pro".to_string(),
@@ -392,6 +408,11 @@ impl PlanCatalog {
                     // PRD-mcphost-upstream-token-vault requirement 2:
                     // "pro 20" vault providers.
                     vault_providers_max: 20,
+                    // PRD-mcphost-result-handles: no published pro number
+                    // -- sized against the same free/pro ratio
+                    // `contact_requests_per_day`/`urgent_per_day` already
+                    // use (~25x-33x): free 64 MiB -> pro 2 GiB (32x).
+                    table_handle_bytes_max: 2 * 1024 * 1024 * 1024,
                 },
             ],
         }
@@ -509,6 +530,10 @@ impl PlanCatalog {
                 "vault_providers_max = {}\n",
                 p.vault_providers_max
             ));
+            out.push_str(&format!(
+                "table_handle_bytes_max = {}\n",
+                p.table_handle_bytes_max
+            ));
             out.push('\n');
         }
         out
@@ -591,6 +616,7 @@ impl PlanCatalog {
                 "docs_chunks_max" => builder.docs_chunks_max = Some(int_value()),
                 "end_users_max" => builder.end_users_max = Some(int_value()),
                 "vault_providers_max" => builder.vault_providers_max = Some(int_value()),
+                "table_handle_bytes_max" => builder.table_handle_bytes_max = Some(int_value()),
                 _ => {}
             }
         }
@@ -666,6 +692,7 @@ struct PlanBuilder {
     docs_chunks_max: Option<i64>,
     end_users_max: Option<i64>,
     vault_providers_max: Option<i64>,
+    table_handle_bytes_max: Option<i64>,
 }
 
 impl PlanBuilder {
@@ -728,6 +755,7 @@ impl PlanBuilder {
             docs_chunks_max: quota!(docs_chunks_max),
             end_users_max: quota!(end_users_max),
             vault_providers_max: quota!(vault_providers_max),
+            table_handle_bytes_max: quota!(table_handle_bytes_max),
         };
         Ok((plan, defaulted))
     }
