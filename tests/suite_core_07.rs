@@ -544,6 +544,20 @@ mod hybrid_ac07_p95_latency_within_30ms_of_embeddings_only;
 mod hybrid_ac08_hybrid_hit_rate_at_least_each_mode;
 #[path = "hybrid_ac10_filter_prefix_filters_before_fusion.rs"]
 mod hybrid_ac10_filter_prefix_filters_before_fusion;
+#[path = "implsign_ac01_bare_call_creates_implicit_tenant_with_onboarding.rs"]
+mod implsign_ac01_bare_call_creates_implicit_tenant_with_onboarding;
+#[path = "implsign_ac02_second_call_carries_no_onboarding.rs"]
+mod implsign_ac02_second_call_carries_no_onboarding;
+#[path = "implsign_ac03_rate_limit_refuses_with_help_and_retry.rs"]
+mod implsign_ac03_rate_limit_refuses_with_help_and_retry;
+#[path = "implsign_ac04_pause_file_refuses_within_1s.rs"]
+mod implsign_ac04_pause_file_refuses_within_1s;
+#[path = "implsign_ac05_pre_existing_anonymous_tools_create_no_tenant.rs"]
+mod implsign_ac05_pre_existing_anonymous_tools_create_no_tenant;
+#[path = "implsign_ac06_unknown_tenant_key_stays_invalid.rs"]
+mod implsign_ac06_unknown_tenant_key_stays_invalid;
+#[path = "implsign_ac07_no_bare_call_ever_returns_tenant_key_missing.rs"]
+mod implsign_ac07_no_bare_call_ever_returns_tenant_key_missing;
 #[path = "infer_ac05_ac06_ac07_http_schema.rs"]
 mod infer_ac05_ac06_ac07_http_schema;
 #[path = "infer_ac14_latency_budget.rs"]

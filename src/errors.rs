@@ -1252,6 +1252,47 @@ impl AppError {
         }
     }
 
+    /// PRD-mcphost-implicit-signup requirement 3 (AC3, AC4): wraps a
+    /// refusal from the `signup` path taken on behalf of an *implicit*
+    /// tenant creation -- a bare `host.*`/`billing.*` call, never the
+    /// `signup` tool itself -- so the caller can tell the two apart
+    /// (`signup_rate_limited` here vs. plain `rate_limited` from calling
+    /// `signup` directly) and always gets a `data.help` pointer at
+    /// `/u/new` plus a `data.retry_after_s` hint, regardless of which of
+    /// `signup`'s own two gates (the per-IP limiter or the pause
+    /// kill-switch) fired. `signup_paused` keeps its existing code
+    /// (requirement 3's "existing classes") -- only its `data` gains the
+    /// two new fields; any other error `signup` could return (a bad
+    /// `name` argument, storage failure, ...) passes through unchanged.
+    pub fn implicit_signup_refused(inner: AppError, help_url: String) -> Self {
+        match inner {
+            AppError::RateLimited => AppError::Structured {
+                code: "signup_rate_limited",
+                message: "signup rate limit exceeded for this source; try again later".to_string(),
+                data: json!({
+                    "help": help_url,
+                    "retry_after_s": crate::state::SIGNUP_RATE_LIMIT_WINDOW_SECS,
+                }),
+            },
+            AppError::Structured {
+                code: "signup_paused",
+                message,
+                data,
+            } => {
+                let retry_after_s = data
+                    .get("retry_after_secs")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(60);
+                AppError::Structured {
+                    code: "signup_paused",
+                    message,
+                    data: json!({"help": help_url, "retry_after_s": retry_after_s}),
+                }
+            }
+            other => other,
+        }
+    }
+
     /// PRD-mcphost-abuse-guard-ban-list requirement 2 / AC1-3: a banned
     /// subject's refusal -- `expires_at` always present (`null` for a
     /// permanent ban), `reason` present as a key only when the operator

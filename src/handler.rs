@@ -3974,6 +3974,146 @@ impl McpHostHandler {
         Self { state }
     }
 
+    /// PRD-mcphost-implicit-signup requirement 1 (AC1, AC2, AC3, AC4): the
+    /// bare `/mcp` first call -- no `Authorization` header, no
+    /// `tenant_key` argument, no prior session binding. Mints a tenant
+    /// through the existing [`control::signup`] with `source: "implicit"`
+    /// (so it obeys the same per-IP limiter, fleet-IP classification, and
+    /// pause kill-switch `signup` always has), binds the session to it
+    /// exactly as [`bind_session_to_created_tenant`] does for `signup`/
+    /// `host.redeem`, mints its `/u/{secret}/mcp` URL (requirement 2's
+    /// `onboarding.url`, same primitive [`control::key_rotate`] uses), then
+    /// re-dispatches `name`/`args` as that tenant and stamps `onboarding`
+    /// onto the result -- never a separate "signed up" response (technical
+    /// considerations).
+    #[allow(clippy::too_many_arguments)]
+    async fn dispatch_implicit_signup(
+        &self,
+        ctx: &RequestContext<RoleServer>,
+        parts: &http::request::Parts,
+        source_ip_addr: &str,
+        session_id: Option<&str>,
+        name: &str,
+        args: Value,
+    ) -> Result<Value, AppError> {
+        let help_url = format!("{}/u/new", self.state.public_url.trim_end_matches('/'));
+        // Requirement 1: `agent-<8-char ulid suffix>` -- the last 8
+        // characters of a fresh ULID, same uniqueness `control::new_ulid`
+        // already gives the full-length `agent-<ulid>` names `/u/new`'s
+        // own `post_new_url` mints.
+        let ulid = crate::state::new_ulid();
+        let suffix = &ulid[ulid.len() - 8..];
+        let implicit_name = format!("agent-{suffix}");
+
+        let (client_name, client_version) = match peer_client_info(ctx) {
+            Some((name, version)) => (Some(name), Some(version)),
+            None => (None, None),
+        };
+        let user_agent = user_agent_header(parts);
+        let synthetic = synthetic_header(parts);
+        let attribution = control::SignupAttribution {
+            synthetic_header: synthetic.as_deref(),
+            client_name: client_name.as_deref(),
+            client_version: client_version.as_deref(),
+            user_agent: user_agent.as_deref(),
+        };
+
+        let created = control::signup(
+            &self.state,
+            &json!({"name": implicit_name, "source": "implicit"}),
+            source_ip_addr,
+            attribution,
+        )
+        .await;
+        // Capture the namespace before `bind_session_to_created_tenant`
+        // consumes `created` -- requirement 1's own tenant, never anything
+        // the caller named.
+        let namespace = created
+            .as_ref()
+            .ok()
+            .and_then(|v| v.get("tenant"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        // Requirement 1 / technical considerations: reused verbatim -- same
+        // session-binding call `signup`/`host.redeem` make above. Its
+        // return value (the mutated signup envelope) is discarded on
+        // success; only the binding side effect and a propagated error
+        // matter here, since the caller never sees the signup response
+        // itself, only the original call's result plus `onboarding`
+        // (requirement 2).
+        if let Err(e) = bind_session_to_created_tenant(&self.state, session_id, created).await {
+            // Requirement 3 (AC3, AC4): the limiter's/kill-switch's refusal,
+            // renamed and enriched with `data.help`/`data.retry_after_s` --
+            // no tenant or tool was created (signup itself never got that
+            // far).
+            return Err(AppError::implicit_signup_refused(e, help_url));
+        }
+        let Some(namespace) = namespace else {
+            return Err(AppError::Internal(
+                "implicit signup: signup response carried no tenant namespace".to_string(),
+            ));
+        };
+        let tenant = self
+            .state
+            .db
+            .find_tenant_by_namespace(namespace)
+            .await?
+            .ok_or_else(|| {
+                AppError::Internal(
+                    "implicit signup: tenant vanished immediately after creation".to_string(),
+                )
+            })?;
+
+        // Requirement 2: this tenant's own `/u/{secret}/mcp` URL -- same
+        // generate-then-rotate pair `control::key_rotate`/`post_new_url`
+        // already use to mint a tenant's first URL secret.
+        let url_secret = crate::auth::generate_url_secret();
+        if let Err(e) = self
+            .state
+            .db
+            .rotate_tenant_url_secret(tenant.id, hash_key(&url_secret))
+            .await
+        {
+            tracing::warn!(error = %e, tenant = %tenant.namespace, "implicit signup: failed to mint URL secret");
+        }
+        let url = format!(
+            "{}/u/{}/mcp",
+            self.state.public_url.trim_end_matches('/'),
+            url_secret
+        );
+
+        tracing::info!(tenant = %tenant.namespace, tool = %name, "implicit signup: tenant created from bare host.*/billing.* call");
+
+        // Re-dispatch the triggering call as the tenant that now exists --
+        // same arm the pre-existing `Auth::Tenant` path below uses for
+        // every other `host.*`/`billing.*` call, so the result is
+        // identical in shape to what an already-authenticated caller would
+        // have gotten, plus `onboarding` below.
+        let calls_method = calls_auth_method(None, false, false);
+        let result = self
+            .dispatch_tenant_tool(&tenant, None, "key", calls_method, None, name, args)
+            .await;
+
+        result.map(|mut value| {
+            if let Some(obj) = value.as_object_mut() {
+                obj.insert(
+                    "onboarding".to_string(),
+                    json!({
+                        "tenant": tenant.namespace,
+                        "url": url,
+                        "note": format!(
+                            "You are now tenant {}. Save this URL as your mcphost server \
+                             address; it is your credential. Call host.key_rotate if it \
+                             leaks.",
+                            tenant.namespace
+                        ),
+                    }),
+                );
+            }
+            value
+        })
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn dispatch_tenant_tool(
         &self,
@@ -6336,6 +6476,29 @@ impl ServerHandler for McpHostHandler {
                 // included".
                 let redeemed = control::redeem(&self.state, &raw_args).await;
                 bind_session_to_created_tenant(&self.state, session_id.as_deref(), redeemed).await
+            }
+            // PRD-mcphost-implicit-signup requirement 1 (AC1): the bare
+            // case -- no `Authorization` header and no `tenant_key`
+            // argument at all (both resolvers above stayed `Anonymous`) --
+            // on any other `host.*`/`billing.*` call implicitly creates a
+            // tenant instead of refusing. Never `admin.*` (that name space
+            // never starts with `host.`/`billing.` and never reaches
+            // here); never `signup`/`host.redeem`/`host.quickstart`/
+            // `billing.plans` either -- those are matched by their own
+            // arms above regardless of `auth`, so `name` here can never be
+            // one of them. Binds the session exactly as `signup`/
+            // `host.redeem` do and re-dispatches this very call as the new
+            // tenant, so the caller sees its real result plus `onboarding`
+            // in one round trip rather than a separate "signed up"
+            // response (technical considerations: "the call that triggered
+            // creation must be executed after binding in the same
+            // request").
+            (Auth::Anonymous, name)
+                if via_tenant_key_arg
+                    && (name.starts_with("host.") || name.starts_with("billing.")) =>
+            {
+                self.dispatch_implicit_signup(&ctx, parts, &source, session_id.as_deref(), name, args)
+                    .await
             }
             // PRD-mcphost-auth-error-names-argument requirement 1-3 /
             // AC1-4: three distinct auth failures now, not one. A header

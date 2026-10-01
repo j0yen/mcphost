@@ -883,6 +883,13 @@ pub async fn whoami(
         // already tells it what plan it's on, with no extra round trip.
         "plan": tenant.plan,
         "plan_since": tenant.plan_since,
+        // PRD-mcphost-implicit-signup P1 requirement 6: the caller-claimed
+        // `signup` `source` (`"implicit"` for a tenant this call's own
+        // bare `host.*`/`billing.*` request minted, `"url-page"`/
+        // `"url"`/whatever else a caller passed) -- additive, `null` for
+        // every tenant that signed up with no `source` at all (unchanged
+        // shape for every pre-existing caller).
+        "source": tenant.signup_source,
         // PRD-mcphost-tenant-attribution P1 requirement 6 / AC6: how this
         // host classified the caller, and the client it recorded for it --
         // an agent (or a human testing) can confirm how it was seen
