@@ -1,6 +1,8 @@
 # PRD: mcphost-www-trust-pages — pricing, use cases, compare, and an agent skill file for mcphost.dev
 
-- Status: building
+- Status: built
+- Built: 2026-10-01
+- Live evidence: 2026-10-01T09:06:54Z (2026-10-01 02:06 PDT) from carbon: /pricing /use-cases /compare /plans 200 text/html, /skill.md 200 text/markdown; mcphost merge b168503 (#92), mcphost-deploy vendor e93fd77 + routes 06fde6f/857edc7, redeploy from orch checkout (backup 20261001T090549Z, www content: written)
 - Direct-build: 2026-10-01 carbon, Joe "pages" (direct, not wm-build)
 - build_target: shell
 - build_into: /home/jsy/wintermute/mcphost
@@ -11,6 +13,8 @@
 - PM: Joe
 - Drafted: 2026-09-30
 - Engineering target: mcphost (www/pricing.html, www/use-cases.html, www/compare.html, www/skill.md, www/sitemap.xml, www/llms.txt, www/index.html footer); mcphost-deploy (Caddy routes in install.py, hand commit after land)
+- iter_log: 2026-10-01T09:06:54Z built (direct, carbon): ACs 1-5,7,8 paired by tests/www_pages.sh + suite_core_07 lanecov; AC6 sitemap half satisfied in mcphost-deploy (857edc7); AC9 live: five paths 200 (evidence line above); AC10 satisfied by the merged Caddy template rendering in mcphost-deploy tests
+
 
 ## TL;DR
 
