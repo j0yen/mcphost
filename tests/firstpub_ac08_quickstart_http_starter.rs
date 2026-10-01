@@ -5,7 +5,7 @@
 
 use crate::common;
 use common::{TestServer, extract_structured, http_kind_registry, signup};
-use serde_json::json;
+use serde_json::{Value, json};
 use wiremock::matchers::method;
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -62,14 +62,32 @@ async fn quickstart_http_starter_publishes_and_returns_the_fixtures_json() {
         .expect("starter_tool.test_call must succeed verbatim");
     let test_structured = extract_structured(&test_result);
 
+    // PRD-mcphost-dry-run-side-effects requirement 4: `host.tool_test`
+    // (the starter's `test_call`) now short-circuits the http call instead
+    // of really hitting the upstream, so it no longer carries the
+    // fixture's JSON -- that's proven below via the starter's own `next`
+    // step, the real call.
+    assert_eq!(test_structured["response"]["body"], Value::Null, "{test_structured}");
+    assert_eq!(test_structured["dry_run_short_circuited"], json!(true));
+
+    let starter_name = starter["name"].as_str().expect("starter.name");
+    let real_result = client
+        .tools_call(
+            "host.tool_call",
+            json!({"name": starter_name, "args": {}}),
+        )
+        .await
+        .expect("the published starter tool's real call must succeed");
+    let real_structured = extract_structured(&real_result);
+
     unsafe {
         std::env::remove_var("MCPHOST_HTTP_STARTER_URL");
     }
 
     assert_eq!(
-        test_structured["response"]["body"]["fact"],
+        real_structured["body"]["fact"],
         json!("A group of cats is called a clowder."),
-        "must return the fixture's own JSON: {test_structured}"
+        "the real call must return the fixture's own JSON: {real_structured}"
     );
-    assert_eq!(test_structured["response"]["body"]["length"], json!(38));
+    assert_eq!(real_structured["body"]["length"], json!(38));
 }

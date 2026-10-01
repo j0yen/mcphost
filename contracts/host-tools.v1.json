@@ -3101,6 +3101,10 @@
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
             "type": "string"
+          },
+          "test": {
+            "description": "When true, state/table writes are rolled back and reported under dry_run instead of persisting; default false.",
+            "type": "boolean"
           }
         },
         "required": [
@@ -3172,7 +3176,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Dry-run an already-published tool by name, no calls row written; for the other cases see host.quickstart.",
+      "description": "Dry-run an already-published tool by name: writes are rolled back and reported under dry_run; see host.quickstart.",
       "input_schema": {
         "properties": {
           "args": {
@@ -3426,7 +3430,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Dry-run an event trigger's verify config against a payload you supply, without exposing its real URL -- verifies the signature exactly as POST /hooks/... would, then runs the tool with the event as its argument. On a message trigger, runs the tool with a synthetic envelope (test: true, no messages row created). On a webhook trigger, builds and self-signs a synthetic body exactly like a real sender would, then stores and fires it through the same path POST /hook/... uses (one inbox row, one run). The run is marked test: true. A wrong signature fails signature_invalid, naming the header it checked.",
+      "description": "Dry-run an event trigger's verify config against a payload you supply, without exposing its real URL -- verifies the signature exactly as POST /hooks/... would, then runs the tool with the event as its argument. On a message trigger, runs the tool with a synthetic envelope (test: true, no messages row created). On a webhook trigger, builds and self-signs a synthetic body exactly like a real sender would, then stores and fires it through the same path POST /hook/... uses (one inbox row, one run). The run is marked test: true. A wrong signature fails signature_invalid, naming the header it checked. The fired tool's own writes are rolled back and reported under dry_run; nothing is delivered.",
       "input_schema": {
         "properties": {
           "body": {

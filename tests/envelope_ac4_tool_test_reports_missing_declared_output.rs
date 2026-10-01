@@ -61,8 +61,17 @@ async fn tool_test_names_a_declared_field_the_implementation_never_emits() {
     assert_eq!(structured["envelope"]["declared"], json!(["blocking_tool"]));
 }
 
+// PRD-mcphost-dry-run-side-effects requirement 4 supersedes the http half
+// of this AC's "green" case: `host.tool_test` now short-circuits the http
+// call before the upstream ever answers, so `payload` is always absent
+// and a declared field is always reported missing for an http-kind spec --
+// renamed from `tool_test_reports_green_when_every_declared_field_is_found`
+// to say what it now actually proves. The real "every field found" case
+// for http still exists, just not through `host.tool_test` any more; the
+// python-kind version of this AC (`runenvelope_ac4_no_calls_row_with_payload`,
+// via `host.tool_run`'s real-call path) is unaffected.
 #[tokio::test]
-async fn tool_test_reports_green_when_every_declared_field_is_found() {
+async fn tool_test_reports_missing_even_when_upstream_would_have_had_the_field() {
     let upstream = MockServer::start().await;
     Mock::given(method("GET"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
@@ -98,10 +107,14 @@ async fn tool_test_reports_green_when_every_declared_field_is_found() {
         .expect("tool_test ok");
     let structured = extract_structured(&result);
 
-    assert_eq!(structured["envelope"]["missing"], json!([]));
-    assert_eq!(structured["envelope"]["green"], true);
+    assert_eq!(structured["envelope"]["missing"], json!(["blocking_tool"]));
+    assert_eq!(structured["envelope"]["green"], false);
+    assert_eq!(structured["dry_run_short_circuited"], json!(true));
+
+    let received = upstream.received_requests().await.expect("mock recorded");
     assert_eq!(
-        structured["envelope"]["found_at_contract_path"],
-        json!(["blocking_tool"])
+        received.len(),
+        0,
+        "host.tool_test must short-circuit, never perform the real call"
     );
 }

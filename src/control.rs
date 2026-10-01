@@ -709,8 +709,10 @@ pub fn quickstart(
         json!({
             "call": "host.tool_test",
             "arguments": {"name": tool_name, "args": example.call_args},
-            "note": "Dry-run it: the real call, but it counts toward neither \
-                host.usage nor host.tool_logs, so it's safe to repeat while iterating.",
+            "note": "Dry-run it: writes are rolled back and non-rollbackable \
+                effects (like an http call) are short-circuited and reported \
+                under dry_run; it counts toward neither host.usage nor \
+                host.tool_logs, so it's safe to repeat while iterating.",
         }),
         json!({
             "call": qualified_name,

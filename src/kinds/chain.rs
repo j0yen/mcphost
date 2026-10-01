@@ -165,7 +165,13 @@ fn dry_run_report(steps: &[ParsedStep], call_args: &Value) -> Value {
             })
         })
         .collect();
-    json!({"dry_run": true, "steps": report})
+    // PRD-mcphost-dry-run-side-effects: `handler.rs`'s `tool_test`/
+    // `tool_run`/`spec_test` now always attach their own top-level
+    // `dry_run` key (the rollback/writes envelope) to whatever this
+    // function returns -- `chain_dry_run`, not `dry_run`, so that one
+    // isn't clobbered by this kind's older, narrower "no step executed"
+    // flag below.
+    json!({"chain_dry_run": true, "steps": report})
 }
 
 #[async_trait::async_trait]

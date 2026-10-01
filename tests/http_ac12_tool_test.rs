@@ -4,7 +4,7 @@
 
 use crate::common;
 use common::{McpClient, TestServer, extract_structured, http_kind_registry, signup};
-use serde_json::json;
+use serde_json::{Value, json};
 use wiremock::matchers::method;
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -55,7 +55,11 @@ async fn tool_test_echoes_redacted_request_and_skips_the_calls_row() {
         .expect("tool_test ok");
     let structured = extract_structured(&result);
 
-    assert_eq!(structured["response"]["status"], 200);
+    // PRD-mcphost-dry-run-side-effects AC: `host.tool_test` now short-
+    // circuits non-rollbackable http calls instead of really hitting the
+    // upstream -- `host.bridge_test` is the tool for that real probe.
+    assert_eq!(structured["response"]["status"], Value::Null);
+    assert_eq!(structured["dry_run_short_circuited"], json!(true));
     let request_dump = structured["request"].to_string();
     assert!(
         !request_dump.contains("topsecretvalue"),
@@ -67,7 +71,7 @@ async fn tool_test_echoes_redacted_request_and_skips_the_calls_row() {
     );
 
     // After: still zero -- `host.tool_test` must not have written a `calls`
-    // row, even though it really hit the upstream.
+    // row (it short-circuited the http call entirely).
     let usage_after = client
         .tools_call("host.usage", json!({}))
         .await
@@ -84,7 +88,7 @@ async fn tool_test_echoes_redacted_request_and_skips_the_calls_row() {
         .expect("mock server tracks requests");
     assert_eq!(
         requests.len(),
-        1,
-        "host.tool_test must perform the real call"
+        0,
+        "host.tool_test must short-circuit, never perform the real call"
     );
 }

@@ -661,7 +661,14 @@ fn insert_rows_sync(
     schema: &LoadedSchema,
     rows: &[Map<String, Value>],
 ) -> Result<Vec<i64>, AppError> {
-    conn.execute("BEGIN IMMEDIATE", [])?;
+    // PRD-mcphost-dry-run-side-effects: a `SAVEPOINT`, not `BEGIN
+    // IMMEDIATE` -- this connection may already be inside a transaction
+    // (`TestTableBridge`'s own outer `SAVEPOINT dry_run`, held for a whole
+    // `host.tool_test` call), and SQLite refuses a nested `BEGIN`
+    // ("cannot start a transaction within a transaction") while happily
+    // nesting a second `SAVEPOINT`. Named distinctly from that outer one
+    // so `RELEASE`/`ROLLBACK TO` below only ever resolves to this one.
+    conn.execute("SAVEPOINT insert_rows", [])?;
     let outcome: Result<Vec<i64>, AppError> = (|| {
         let mut ids = Vec::with_capacity(rows.len());
         for row in rows {
@@ -688,11 +695,12 @@ fn insert_rows_sync(
     })();
     match outcome {
         Ok(ids) => {
-            conn.execute("COMMIT", [])?;
+            conn.execute("RELEASE insert_rows", [])?;
             Ok(ids)
         }
         Err(e) => {
-            let _ = conn.execute("ROLLBACK", []);
+            let _ = conn.execute("ROLLBACK TO insert_rows", []);
+            let _ = conn.execute("RELEASE insert_rows", []);
             Err(e)
         }
     }

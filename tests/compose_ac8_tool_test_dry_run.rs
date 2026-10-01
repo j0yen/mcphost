@@ -34,7 +34,11 @@ async fn tool_test_on_a_chain_reports_resolved_args_per_step_without_executing_a
         .expect("tool_test must succeed -- it must never dispatch a step");
     let structured = common::extract_structured(&result);
 
-    assert_eq!(structured["dry_run"], json!(true));
+    // `chain_dry_run` (not `dry_run`): `host.tool_test`'s own `dry_run`
+    // envelope (PRD-mcphost-dry-run-side-effects) now occupies that key on
+    // every result, so this kind's older "no step executed" flag moved
+    // to avoid colliding with it.
+    assert_eq!(structured["chain_dry_run"], json!(true));
     let steps = structured["steps"].as_array().expect("steps report");
     assert_eq!(steps.len(), 2);
 

@@ -1385,6 +1385,12 @@ impl Kind for HttpKind {
                     1,
                 ));
             }
+            // AC12 (PRD-mcphost-tool-test): a short-circuited invocation
+            // still leaves one log line, the same observability contract
+            // a real call's own `ctx.log.log(...)` below gives it -- the
+            // short-circuit changes what went out, not whether this
+            // invocation is visible in `host.tool_logs` at all.
+            ctx.log.log(&format!("{method_str} {host} dry_run_short_circuited"));
             let result = json!({"status": null, "headers": {}, "body": null, "payload": null});
             return Ok(if ctx.test_mode {
                 json!({

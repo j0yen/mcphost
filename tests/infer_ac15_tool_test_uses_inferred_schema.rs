@@ -13,7 +13,7 @@
 use crate::common;
 use common::{TestServer, extract_structured, http_kind_registry, poll_until_ready, python_kind_registry, signup};
 use mcphost::sandbox;
-use serde_json::json;
+use serde_json::{Value, json};
 use std::time::Duration;
 
 #[tokio::test]
@@ -112,7 +112,13 @@ async fn tool_test_response_carries_the_inferred_http_schema() {
         .expect("tool_test ok");
     let structured = extract_structured(&result);
 
-    assert_eq!(structured["response"]["status"], 200);
+    // PRD-mcphost-dry-run-side-effects requirement 4: `host.tool_test` now
+    // short-circuits the http call before it reaches the upstream, so the
+    // status is null -- the schema (this AC's own subject) is still
+    // attached regardless, proving it's genuinely inferred and shown, not
+    // merely derived from a real response.
+    assert_eq!(structured["response"]["status"], Value::Null);
+    assert_eq!(structured["dry_run_short_circuited"], json!(true));
     assert_eq!(structured["schema"]["required"], json!(["city"]));
     assert!(structured["schema"]["properties"]["city"].is_object());
 }
