@@ -1414,6 +1414,8 @@ mod urltenant_ac02_wrong_or_rotated_secret_404;
 mod urltenant_ac03_key_rotate_rotates_key_and_url;
 #[path = "urltenant_ac04_new_url_page_and_signup_limiter.rs"]
 mod urltenant_ac04_new_url_page_and_signup_limiter;
+#[path = "urltenant_ac05_browser_get_shows_explainer_page.rs"]
+mod urltenant_ac05_browser_get_shows_explainer_page;
 #[path = "vault_ac01_connect_link_redirects_to_auth_url.rs"]
 mod vault_ac01_connect_link_redirects_to_auth_url;
 #[path = "vault_ac02_callback_exchanges_code_and_stores_tokens.rs"]
