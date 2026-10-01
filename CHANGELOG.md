@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.67.0 — 2026-10-01
+
+Every tenant can now be reached by one secret URL,
+`https://<host>/u/<secret>/mcp`, that is its whole credential: a streamable-
+HTTP request on that path runs as that tenant with no `Authorization`
+header and no `tenant_key` argument, reported on `host.whoami` as
+`auth_method: "url"`. `host.key_rotate` now rotates the URL secret
+alongside the key in the same call, returning both -- the old URL 404s
+(byte-identical to any unmapped route; no `WWW-Authenticate`, no
+resource-metadata link) the instant it returns. `GET /u/new` serves a
+one-button page; its `POST` mints a tenant (`source: "url-page"`, same
+per-IP signup limiter and kill switch as `signup`) and shows the URL with
+copy snippets for Claude Code, Claude Desktop/claude.ai, Cursor, and
+generic JSON. A browser `GET` on a tenant's own URL (`Accept: text/html`)
+gets a short explainer page instead of an MCP handshake attempt. A request
+on `/u/<secret>/mcp` that also carries an `Authorization: Bearer` for a
+*different* tenant is refused `auth_conflict` rather than silently picking
+either credential. The bearer key, `Authorization` header, `tenant_key`
+argument, and session binding all keep working unchanged -- the URL is an
+additional credential, not a replacement.
+
 ## v0.65.0 — 2026-10-01
 
 Every first-hour error payload now carries `request_id` (always) and
