@@ -119,6 +119,13 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // which Cargo's implicit-workspace rule already runs those crates
     // through) -- an eleventh, intended addition since the baseline, not
     // drift.
+    // chore/listings-wave1 added its own "launch-docs" lane (routes
+    // docs/launch/** -- the wave-1 directory-listing checklist -- to
+    // scripts/launch-docs-check.sh, duplicated from the pre-existing docs
+    // lane's own UTF-8/non-empty check rather than folded into it, for the
+    // same required_commands-immutability reason the sharing-docs lane
+    // above gives) -- a twelfth, intended addition since the baseline, not
+    // drift.
     assert_eq!(
         added,
         vec![
@@ -127,6 +134,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "contracts",
             "docsearch-fixtures",
             "examples",
+            "launch-docs",
             "loop-config",
             "oauthconf-data",
             "plugin",
@@ -135,7 +143,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "wasm-fixtures"
         ],
         "only admin-schemas, checkcompat-race-soak, contracts, docsearch-fixtures, examples, \
-         loop-config, oauthconf-data, plugin, sharing-docs, vendor, and wasm-fixtures may have \
-         been added since {BASELINE_REV}"
+         launch-docs, loop-config, oauthconf-data, plugin, sharing-docs, vendor, and \
+         wasm-fixtures may have been added since {BASELINE_REV}"
     );
 }

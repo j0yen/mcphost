@@ -11,7 +11,7 @@ One-line entry to insert (adapt to the target list's exact bullet format
 at PR-open time):
 
 ```
-- [mcphost](https://github.com/j0yen/mcphost) - Hosted MCP runtime where the agent is the operator: sign up by tool call, then publish, call, and manage your own tools in your own namespace at runtime.
+- [mcphost](https://github.com/j0yen/mcphost) - Hosted MCP runtime where the agent is the operator: sign up by one tool call, then publish, call, and manage your own tools immediately — no local install, no restart.
 ```
 
 Process: fork under `j0yen`, branch `add-mcphost`, insert alphabetically,

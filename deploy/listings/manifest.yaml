@@ -43,6 +43,15 @@
     against a locally-checked-out 0.27.0 — reconcile has not run since;
     that gap is what makes this entry `stale` today.
 
+    2026-09-30 (chore/listings-wave1): server.json's own `version` field
+    corrected here (repo) from 0.14.0 to 0.64.0, the current tag — this
+    repo does not publish to the registry itself, so the live registry
+    entry stays stale until mcphost-deploy's reconcile job
+    (PRD-mcphost-listing-freshness) actually runs against this corrected
+    file. Not run as part of this change (no publish, per PUBLISH-OK
+    gating above); see docs/launch/wave1-checklist.md for who/what runs
+    it next.
+
 - id: awesome-mcp-servers-punkpeye
   name: awesome-mcp-servers (punkpeye)
   method: pr
