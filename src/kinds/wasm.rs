@@ -105,6 +105,16 @@ const WALL_BUDGET_SLACK: f64 = 0.8;
 /// requested timeout is.
 const WALL_BUDGET_GRACE: Duration = Duration::from_millis(750);
 
+/// PRD-mcphost-spec-unknown-field-rejection requirement 1 (AC1): every
+/// top-level key [`parse_spec`] below reads via `spec.get(...)`, plus
+/// `reads` -- `crate::lineage::register_tool_publish`'s doc calls this
+/// "the only signal a wasm tool has" for its own table-dependency
+/// declaration, since `wasm` has no `source` to scan the way `python`
+/// does (see `kinds::echo::EchoKind::known_spec_fields`'s doc for why
+/// every kind's list carries it).
+pub(crate) const KNOWN_SPEC_FIELDS: &[&str] =
+    &["component", "args_schema", "outputs", "timeout_s", "memory_mb", "reads"];
+
 #[derive(Debug, Clone)]
 struct WasmSpec {
     component: Vec<u8>,
@@ -492,11 +502,22 @@ impl Kind for WasmKind {
         "wasm"
     }
 
+    fn known_spec_fields(&self) -> &'static [&'static str] {
+        KNOWN_SPEC_FIELDS
+    }
+
     fn validate(&self, spec: &Value) -> Result<(), KindError> {
         self.validate_all(spec).into_iter().next().map_or(Ok(()), Err)
     }
 
     fn validate_all(&self, spec: &Value) -> Vec<KindError> {
+        // PRD-mcphost-spec-unknown-field-rejection requirement 1 (AC1):
+        // `parse_spec` below reads each field by name via `spec.get(...)`
+        // and simply never looks at anything else -- this is the only
+        // place in the `wasm` kind that would ever notice an unknown key.
+        if let Err(e) = super::check_unknown_spec_fields(spec, self) {
+            return vec![e];
+        }
         match parse_spec(spec) {
             Ok(parsed) => validate_spec_fields_all(&parsed, &self.engine),
             Err(e) => vec![e],

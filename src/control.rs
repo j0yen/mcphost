@@ -1085,7 +1085,17 @@ pub async fn tool_publish(
 
     // Requirement 3 / AC2: every simultaneously-failing field is reported
     // at once, not just the first -- see `AppError::from_kind_violations`.
-    if let Some(err) = AppError::from_kind_violations(kind.validate_all(&spec)) {
+    // PRD-mcphost-spec-unknown-field-rejection requirement 1 (AC2): an
+    // `unknown_spec_field` violation in there gets `data.valid_for` filled
+    // in from the full registry right here, before `from_kind_violations`
+    // ever turns it into an `AppError` -- `kind.validate_all` itself has no
+    // `&KindRegistry` to check sibling kinds against.
+    let violations: Vec<crate::kinds::KindError> = kind
+        .validate_all(&spec)
+        .into_iter()
+        .map(|e| crate::kinds::enrich_unknown_spec_field_valid_for(e, &state.kinds))
+        .collect();
+    if let Some(err) = AppError::from_kind_violations(violations) {
         return Err(err);
     }
     kind.validate_async(&spec).await?;

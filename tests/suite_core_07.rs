@@ -1404,6 +1404,14 @@ mod tooltest_ac6_quota_and_metering;
 mod tooltest_ac7_too_many_invocations;
 #[path = "tooltest_ac9_ac10_listing_and_auth.rs"]
 mod tooltest_ac9_ac10_listing_and_auth;
+#[path = "unkfield_ac04_trigger_set_unknown_argument.rs"]
+mod unkfield_ac04_trigger_set_unknown_argument;
+#[path = "unkfield_ac05_tools_list_additional_properties_false.rs"]
+mod unkfield_ac05_tools_list_additional_properties_false;
+#[path = "unkfield_ac06_doc_examples_never_rejected.rs"]
+mod unkfield_ac06_doc_examples_never_rejected;
+#[path = "unkfield_ac07_spec_fields_doc_check_script.rs"]
+mod unkfield_ac07_spec_fields_doc_check_script;
 #[path = "vault_ac01_connect_link_redirects_to_auth_url.rs"]
 mod vault_ac01_connect_link_redirects_to_auth_url;
 #[path = "vault_ac02_callback_exchanges_code_and_stores_tokens.rs"]

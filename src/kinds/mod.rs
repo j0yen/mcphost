@@ -1653,6 +1653,136 @@ pub trait Kind: Send + Sync {
     fn source_for_output_search<'a>(&self, call_result: &'a Value) -> Option<&'a Value> {
         self.payload_from_call_result(call_result)
     }
+
+    /// PRD-mcphost-spec-unknown-field-rejection requirement 1 (AC1/AC2/AC3/
+    /// AC4): every top-level key this kind's own parser actually reads out
+    /// of a `spec` -- the same field-help table each kind's own
+    /// `*_field_hint` function already maintains for error messages
+    /// (Grounding: "the per-kind field help table ... already enumerates
+    /// known fields"), so adopting this method is never a second,
+    /// independently-maintained list. `&[]` (the default) opts a kind OUT
+    /// of [`check_unknown_spec_fields`] entirely -- exactly as if the check
+    /// didn't exist for it -- which is deliberate for a kind with no fixed
+    /// field set of its own (none exist today; every registered kind
+    /// overrides this).
+    fn known_spec_fields(&self) -> &'static [&'static str] {
+        &[]
+    }
+}
+
+/// PRD-mcphost-spec-unknown-field-rejection requirement 1 (AC1/AC3): the
+/// shared top-level-key check every kind that overrides
+/// [`Kind::known_spec_fields`] runs before any other validation --
+/// `kind.known_spec_fields()` empty (the trait default) makes this a
+/// no-op, so a kind that hasn't adopted the method yet is unaffected.
+///
+/// Reports the *first* unknown key found (object-insertion order, same
+/// "first unknown" convention `host.tool_publish`'s other single-field
+/// checks use) rather than every one at once -- requirement 3's
+/// multi-field collection is `Kind::validate_all`'s existing job for
+/// *simultaneously valid-but-wrong* fields; a spec carrying an unknown key
+/// at all is refused outright, so there is nothing useful to add by also
+/// naming a second one.
+///
+/// Returns `data.valid_for` empty here -- this function has no registry to
+/// check sibling kinds against. [`enrich_unknown_spec_field_valid_for`]
+/// fills it in at the two real call sites (`control::tool_publish`,
+/// `handler::spec_test`) that do have one, right after this returns,
+/// before the error is ever shown to a caller.
+pub fn check_unknown_spec_fields(spec: &Value, kind: &dyn Kind) -> Result<(), KindError> {
+    let known = kind.known_spec_fields();
+    if known.is_empty() {
+        return Ok(());
+    }
+    let Some(obj) = spec.as_object() else {
+        // Not an object at all -- every kind's own `validate`/`parse_spec`
+        // already rejects this shape with its own clearer message; nothing
+        // for this check to add.
+        return Ok(());
+    };
+    for key in obj.keys() {
+        if known.contains(&key.as_str()) {
+            continue;
+        }
+        let did_you_mean = known
+            .iter()
+            .map(|k| (crate::errors::levenshtein(key, k), *k))
+            .filter(|(d, _)| *d <= 2)
+            .min_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(b.1)))
+            .map(|(_, k)| k);
+        let kind_name = kind.name();
+        let mut message = format!(
+            "'{key}' is not a {kind_name} spec field; known: {}",
+            known.join(", ")
+        );
+        let mut data = json!({
+            "field": key,
+            "kind": kind_name,
+            "known": known,
+        });
+        if let Some(dym) = did_you_mean {
+            message.push_str(&format!(" -- did you mean '{dym}'?"));
+            if let Some(obj) = data.as_object_mut() {
+                obj.insert("did_you_mean".to_string(), json!(dym));
+            }
+        }
+        return Err(KindError::structured_with(
+            "unknown_spec_field",
+            message,
+            data,
+        ));
+    }
+    Ok(())
+}
+
+/// PRD-mcphost-spec-unknown-field-rejection requirement 1 (AC2): called
+/// right after [`Kind::validate_all`] returns, at both real call sites
+/// (`control::tool_publish`, `handler::spec_test`) -- if `err` is an
+/// `unknown_spec_field` [`KindError::Structured`], adds `data.valid_for`:
+/// every *other* registered kind whose own `known_spec_fields()` contains
+/// the same key, so `{source, url}` published as `kind: "python"` names
+/// `http` as where `url` belongs instead of just saying "unknown". Any
+/// other error (or an `unknown_spec_field` naming a key no registered kind
+/// recognizes at all) passes through unchanged.
+pub fn enrich_unknown_spec_field_valid_for(err: KindError, registry: &KindRegistry) -> KindError {
+    let KindError::Structured {
+        code: "unknown_spec_field",
+        message,
+        mut data,
+    } = err
+    else {
+        return err;
+    };
+    let (Some(field), Some(this_kind)) = (
+        data.get("field")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        data.get("kind").and_then(Value::as_str).map(str::to_string),
+    ) else {
+        return KindError::Structured {
+            code: "unknown_spec_field",
+            message,
+            data,
+        };
+    };
+    let valid_for: Vec<&'static str> = registry
+        .all()
+        .filter(|k| k.name() != this_kind.as_str())
+        .filter(|k| k.known_spec_fields().contains(&field.as_str()))
+        .map(|k| k.name())
+        .collect();
+    let mut message = message;
+    if !valid_for.is_empty() {
+        if let Some(obj) = data.as_object_mut() {
+            obj.insert("valid_for".to_string(), json!(valid_for));
+        }
+        message.push_str(&format!(" (valid for: {})", valid_for.join(", ")));
+    }
+    KindError::Structured {
+        code: "unknown_spec_field",
+        message,
+        data,
+    }
 }
 
 /// Registry of known [`Kind`]s, keyed by [`Kind::name`]. `host.tool_publish`

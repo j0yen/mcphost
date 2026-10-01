@@ -410,6 +410,13 @@ fn schema(props: Value, required: &[&str]) -> Map<String, Value> {
         "type": "object",
         "properties": props,
         "required": required,
+        // PRD-mcphost-spec-unknown-field-rejection requirement 3 (AC5):
+        // every `host.*`/`billing.*` (and, as a side effect, `admin.*`)
+        // `inputSchema` built through this function declares the rule a
+        // schema-aware client can enforce locally -- `dispatch_tenant_tool`'s
+        // `check_unknown_top_level_args` is this same rule enforced at
+        // dispatch time for a client that doesn't.
+        "additionalProperties": false,
     }))
 }
 
@@ -443,6 +450,18 @@ fn tool_publish_props() -> Value {
             "description": "OAuth scopes a token must carry (directly, or via mcp) to reach \
                 this tool: catalogued names from host.oauth.scopes, or the built-ins read/write. \
                 At most 8. Omit (or [] ) to require only mcp -- unaffected by any catalog.",
+        },
+        // PRD-mcphost-first-publish-real-kind requirement 4: was read via
+        // `args.get("dry_run")` in `control::tool_publish` from that PRD's
+        // own landing but never added here -- an omission
+        // PRD-mcphost-spec-unknown-field-rejection's generic
+        // `unknown_argument` check surfaced (it refuses any argument this
+        // schema doesn't declare, dry_run included, before this PRD's fix).
+        "dry_run": {
+            "type": "boolean",
+            "description": "Collect and report every publish gate (kind, spec_size, secrets, \
+                env, network, deps, name, ...) without writing anything, even if every gate \
+                passes.",
         },
     })
 }
@@ -691,6 +710,38 @@ fn annotate_deprecated_tools(tools: &mut [Tool], deprecations: &[crate::api_cont
             }
         }
     }
+}
+
+/// PRD-mcphost-spec-unknown-field-rejection requirement 2 (AC4): the
+/// top-level keys of `args` checked against `name`'s own registered
+/// `inputSchema.properties` (from `tools` -- normally `host_tools(&state.kinds,
+/// true)`, built once by the caller rather than per-key here). `name` not
+/// found in `tools` at all is left alone (`None`) -- that's a typo'd/
+/// unregistered tool name, which the real dispatch `match` below already
+/// reports as `ToolNotFound`; this function only ever fires for a *known*
+/// tool given an argument it doesn't recognize.
+fn check_unknown_top_level_args(tools: &[Tool], name: &str, args: &Value) -> Option<AppError> {
+    let tool = tools.iter().find(|t| t.name.as_ref() == name)?;
+    let args_obj = args.as_object()?;
+    let known: Vec<&str> = tool
+        .input_schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .map(|props| props.keys().map(String::as_str).collect())
+        .unwrap_or_default();
+    for key in args_obj.keys() {
+        if !known.contains(&key.as_str()) {
+            return Some(AppError::Structured {
+                code: "unknown_argument",
+                message: format!(
+                    "'{key}' is not a recognized argument for {name}; known: {}",
+                    known.join(", ")
+                ),
+                data: json!({"argument": key, "tool": name, "known": known}),
+            });
+        }
+    }
+    None
 }
 
 /// PRD-mcphost-tool-test AC9: `host.spec_test`, unlike every other `host.*`
@@ -2195,6 +2246,21 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                             pair, and bypasses a muted recipient's unread_only inbox filter (never a \
                             block or a closed contact_policy).",
                     },
+                    // PRD-mcphost-agent-inbox requirement 6 (AC7): declared
+                    // (not simply omitted) specifically so
+                    // PRD-mcphost-spec-unknown-field-rejection's generic
+                    // `unknown_argument` check -- which runs ahead of
+                    // every host.*/billing.* dispatch, this one included --
+                    // never shadows `messaging::reject_forged_from`'s own,
+                    // more specific `args_invalid` for this exact field.
+                    // Always rejected if present; never a real argument to
+                    // set.
+                    "from": {
+                        "type": "string",
+                        "description": "Reserved -- never set this. The sender is always the \
+                            authenticated tenant; a send carrying this argument is refused \
+                            args_invalid before anything else runs.",
+                    },
                 }),
                 &["to", "body"],
             ),
@@ -2215,6 +2281,14 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                         "type": "string",
                         "description": "Resend with the same key within 24h to get back the \
                             original message_id instead of a duplicate.",
+                    },
+                    // See host.msg.send's identical "from" property above
+                    // for why this is declared rather than omitted.
+                    "from": {
+                        "type": "string",
+                        "description": "Reserved -- never set this. The sender is always the \
+                            authenticated tenant; a reply carrying this argument is refused \
+                            args_invalid before anything else runs.",
                     },
                 }),
                 &["thread_id", "body"],
@@ -3896,6 +3970,18 @@ impl McpHostHandler {
         name: &str,
         args: Value,
     ) -> Result<Value, AppError> {
+        // PRD-mcphost-spec-unknown-field-rejection requirement 2 (AC4):
+        // checked once, here, ahead of every arm below -- so a typo'd or
+        // hallucinated argument (the PRD's own incident: a `name` passed to
+        // `host.trigger.set` meant for a different, not-yet-landed PRD) is
+        // refused before the real handler ever runs, rather than silently
+        // dropped by whichever handler's own `args.get(...)` never looked
+        // for it.
+        if let Some(err) =
+            check_unknown_top_level_args(&host_tools(&self.state.kinds, true), name, &args)
+        {
+            return Err(err);
+        }
         match name {
             "host.whoami" => control::whoami(&self.state, tenant, subject, auth_method).await,
             "host.key_rotate" => control::key_rotate(&self.state, tenant).await,
@@ -5047,7 +5133,16 @@ impl McpHostHandler {
             return Err(AppError::sandbox_unavailable(&status, retry_after_s));
         }
 
-        if let Some(err) = AppError::from_kind_violations(kind.validate_all(&spec)) {
+        // PRD-mcphost-spec-unknown-field-rejection requirement 1 (AC2):
+        // same `valid_for` enrichment `control::tool_publish` runs, so
+        // `host.spec_test` reports the identical error shape a real
+        // publish would have.
+        let violations: Vec<KindError> = kind
+            .validate_all(&spec)
+            .into_iter()
+            .map(|e| crate::kinds::enrich_unknown_spec_field_valid_for(e, &self.state.kinds))
+            .collect();
+        if let Some(err) = AppError::from_kind_violations(violations) {
             return Err(err);
         }
         kind.validate_async(&spec).await?;

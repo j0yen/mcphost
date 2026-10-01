@@ -28,6 +28,15 @@ impl Kind for EchoKind {
             .map_or(Ok(()), Err)
     }
 
+    fn known_spec_fields(&self) -> &'static [&'static str] {
+        // "reads" is not an echo field: it's `crate::lineage`'s own
+        // cross-kind table-dependency declaration
+        // (`lineage::register_tool_publish` reads `spec.reads` regardless
+        // of which kind published the spec), layered on top of every
+        // kind's own fields rather than owned by any one of them.
+        &["schema", "reads"]
+    }
+
     fn validate_all(&self, spec: &Value) -> Vec<KindError> {
         // Messages below follow this crate's shared "<field>: <what was
         // expected>" convention (`errors::AppError::split_field`) so
@@ -36,6 +45,13 @@ impl Kind for EchoKind {
         // special-casing here -- PRD-mcphost-publish-first-try requirement 2.
         if !spec.is_object() {
             return vec![KindError::InvalidSpec("spec: must be a JSON object".into())];
+        }
+        // PRD-mcphost-spec-unknown-field-rejection requirement 1 (AC1):
+        // checked before `schema`'s own presence/validity -- an unknown
+        // key is wrong regardless of whether `schema` itself is also
+        // missing or invalid.
+        if let Err(e) = super::check_unknown_spec_fields(spec, self) {
+            return vec![e];
         }
         match spec.get("schema") {
             None => vec![KindError::InvalidSpec("spec.schema: is required".into())],

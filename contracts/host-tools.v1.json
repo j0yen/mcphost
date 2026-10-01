@@ -7,6 +7,7 @@
     {
       "description": "Create (or reuse an open one for the same plan) a Stripe Checkout URL to upgrade this tenant, defaulting to the pro plan. Returns billing_unavailable if this host has no Stripe key configured -- call billing.plans first to check.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "plan": {
             "description": "Which plan to check out; default: pro.",
@@ -26,6 +27,7 @@
     {
       "description": "The plan catalog (price and quotas per plan) and whether Stripe billing is configured on this host. Anonymous callers get the same answer as tenants.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -41,6 +43,7 @@
     {
       "description": "This tenant's plan, usage against each quota, and when the daily call quota resets.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -56,6 +59,7 @@
     {
       "description": "Accept a pending contact request addressed to you: both you and the requester become accepted contacts, visible from either side via host.agent.contacts().",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "request_id": {
             "description": "The request to accept.",
@@ -77,6 +81,7 @@
     {
       "description": "Deny a pending contact request addressed to you. The requester's subsequent sends and requests get contact_pending for 7 days, then may request again.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "request_id": {
             "description": "The request to deny.",
@@ -98,6 +103,7 @@
     {
       "description": "Request contact with a contacts-mode address; creates or returns the pending request. not_needed for an open address or one you already have an accepted contact with; contact_refused for a closed address; contact_pending if a request is already pending or was denied within the last 7 days; agent_not_found (same as a nonexistent address) if that address has blocked you. Quota contact_requests_per_day.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "address": {
             "description": "An @handle or a bare namespace (t_...).",
@@ -123,6 +129,7 @@
     {
       "description": "List your accepted contacts and every pending/decided contact request in either direction; status optionally narrows incoming/outgoing to one of pending, accepted, denied, expired.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "status": {
             "description": "Filter incoming/outgoing requests to this status; omit for all.",
@@ -148,6 +155,7 @@
     {
       "description": "Request contact with up to 50 addresses at once (e.g. an operator's own fleet of tenants); each is resolved the same way a single host.agent.contact_request would be, but a per-address failure (already connected, already pending, blocked, over quota, ...) is reported in that address's own result entry rather than failing the whole call.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "addresses": {
             "description": "1 to 50 @handle or t_... addresses.",
@@ -172,6 +180,7 @@
     {
       "description": "Resolve another agent's namespace or @handle to its public card (address, handle, display_name, description, tags, contact_policy, last_seen, source_class). Unknown, disabled, and deleted addresses all return the identical agent_not_found error.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "address": {
             "description": "An @handle (e.g. \"@indexer\") or a bare namespace (t_...).",
@@ -193,6 +202,7 @@
     {
       "description": "Mute an address: its future messages are still stored and readable via host.msg.thread, but excluded from host.msg.inbox(unread_only=true) -- unless sent urgent: true, which bypasses the mute filter (never a block or closed policy).",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "address": {
             "description": "The @handle or t_... namespace to mute.",
@@ -214,6 +224,7 @@
     {
       "description": "Claim or update this tenant's agent-directory card: an optional unique @handle (^[a-z][a-z0-9_]{2,31}$, stored lower-case), a description, up to 16 tags, and a contact_policy (open, contacts, or closed). Every argument is optional and, if omitted, leaves that field unchanged; an explicit null clears handle or description. A taken handle fails with handle_taken (names no one); a reserved one fails with handle_reserved.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "contact_policy": {
             "description": "What contact this tenant accepts; enforced by the inbox PRD.",
@@ -259,6 +270,7 @@
     {
       "description": "Find agents by exact tag or a case-insensitive substring of handle, display name, or description. Disabled tenants are excluded. Ordered by handle (unclaimed last), then namespace; page with cursor from the previous response.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "cursor": {
             "description": "Opaque cursor from a previous host.agent.search response's cursor field; omit for the first page.",
@@ -290,6 +302,7 @@
     {
       "description": "Remove a mute: the address's messages resume appearing in host.msg.inbox(unread_only=true).",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "address": {
             "description": "The @handle or t_... namespace to unmute.",
@@ -311,6 +324,7 @@
     {
       "description": "Return this tenant's own agent-directory address: namespace, handle (if claimed), display name, contact_policy and plan. Never a key hash, billing field, or call log.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -326,6 +340,7 @@
     {
       "description": "Dry-run an unpublished http spec against its real upstream; for the other cases see host.quickstart.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "args": {
             "description": "Arguments to render into the spec, same shape as a real call.",
@@ -352,6 +367,7 @@
     {
       "description": "Return one public tool's descriptor and args_schema by its full name (<namespace>.<name>).",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "full_name": {
             "description": "The tool's full name, <namespace>.<name>.",
@@ -373,6 +389,7 @@
     {
       "description": "Search public tools across every tenant by name/description substring.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "limit": {
             "description": "Max results; default 20.",
@@ -396,6 +413,7 @@
     {
       "description": "List what changed in the host.*/billing.* tool surface -- additions, deprecations, and removals -- since an optional version. Read-only.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "since": {
             "description": "Only list changes after this version, e.g. \"0.57.0\". Omit to list every tracked change.",
@@ -415,6 +433,7 @@
     {
       "description": "Owner-only: close a group channel. Further host.channel.post calls get channel_closed; host.channel.read keeps working.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "channel_id": {
             "description": "The group channel's id.",
@@ -436,6 +455,7 @@
     {
       "description": "Owner-only: freeze a group channel. Further host.channel.post calls get channel_frozen; host.channel.read keeps working.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "channel_id": {
             "description": "The group channel's id.",
@@ -457,6 +477,7 @@
     {
       "description": "Create a named channel, or return the existing one of that name; or, with group instead of name, open (idempotently) the one channel for a group you own -- every current member can then host.channel.post/read it. Refuses channels_max (quota_exceeded) past the plan's cap.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "group": {
             "description": "A group you own (host.group.create); open its one channel instead.",
@@ -480,6 +501,7 @@
     {
       "description": "Post to a channel by name or channel_id; advances your own read cursor to the new post. Against a group channel's id, any current member may post; a non-member gets channel_not_found, byte-identical to an unknown id.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "body": {
             "description": "Post text; non-empty after trim.",
@@ -510,6 +532,7 @@
     {
       "description": "Read a group channel's posts in seq order since a cursor (default: your own last read position, or 0 for a first read). ack: true stores next_cursor as your new read position. A non-member gets channel_not_found.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "ack": {
             "description": "Store next_cursor as your new read position.",
@@ -543,6 +566,7 @@
     {
       "description": "Owner-only: undo host.channel.freeze; the next post succeeds with the next seq.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "channel_id": {
             "description": "The group channel's id.",
@@ -564,6 +588,7 @@
     {
       "description": "Soft-delete a document by id or name; still visible via host.docs.list {since} with deleted: true.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "id": {
             "description": "Document id to delete; use name instead if you don't have it.",
@@ -587,6 +612,7 @@
     {
       "description": "Read a document by id or name -- version defaults to the current one; text: true also returns the extracted plain text this document's mime produced at put time.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "id": {
             "description": "Document id to read; use name instead if you don't have it.",
@@ -618,6 +644,7 @@
     {
       "description": "Configure this tenant's search index provider. provider: \"none\" (lexical only, the default) or \"openai-compatible\" (endpoint, model, and secret -- a tenant secret name used as the embeddings request's bearer -- all required). Changing config re-indexes every document from scratch in the background.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "dims": {
             "description": "Expected embedding dimensionality, for documentation purposes.",
@@ -655,6 +682,7 @@
     {
       "description": "List documents in this tenant's document store. Without since, returns the current live snapshot; with since (a watermark from host.docs.status, 0 for everything), returns every document changed since, including deleted ones (deleted: true).",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "cursor": {
             "description": "Opaque pagination cursor from a previous list call's next_cursor."
@@ -685,6 +713,7 @@
     {
       "description": "Drop stored versions of a document older than older_than_versions versions back from its current one -- get {version: <a dropped version>} then reads not found.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "id": {
             "description": "Document id to purge old versions of; use name instead if you don't have it.",
@@ -714,6 +743,7 @@
     {
       "description": "Write (or, for an already-used name, create a new version of) a document in this tenant's document store. mime is detected from name and content when omitted; allowed mimes are text/plain, text/markdown, application/json, text/csv. content (or content_base64 for arbitrary bytes) must be at most MCPHOST_DOC_MAX_BYTES (default 2 MiB). Identical content to the current version is a no-op that repeats the current version.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "content": {
             "description": "Document content as text; use content_base64 instead for arbitrary bytes.",
@@ -750,6 +780,7 @@
     {
       "description": "Force this tenant's search index to re-chunk (and re-embed, if a provider is configured) one document (document_id) or, without document_id, every document, on the indexer's next tick.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "document_id": {
             "description": "Reindex only this document; omit to reindex every document.",
@@ -769,6 +800,7 @@
     {
       "description": "Ranked passage search over this tenant's document store. Lexical (BM25) by default, or hybrid (reciprocal rank fusion of lexical and embeddings) once a provider is configured via host.docs.index_config -- falls back to lexical (index.mode: \"lexical-fallback\") if the provider call fails. mode overrides the default: \"lexical\" (never calls the provider), \"embeddings\", or \"hybrid\" (both require a configured provider). Returns [{document_id, name, version, chunk_no, offset, text, score, ranks: {lexical, embeddings}}] -- ranks names each hit's 1-based position in whichever source list(s) found it -- plus an index block naming the mode and how stale the index is.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "filter": {
             "description": "Restrict results to documents matching prefix and/or name.",
@@ -812,6 +844,7 @@
     {
       "description": "This tenant's document store counters: documents, bytes, text_bytes, the current change watermark, this plan's document/byte quotas, and an index block (mode, indexed_watermark, lag_seconds, pending_documents, chunks, rebuilding, quota_chunks_reached) describing the search index's own freshness.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -827,6 +860,7 @@
     {
       "description": "Generate and store a new per-tenant secret for signing end_user_assertion (HS256 compact JWS, claims sub/iat/exp with exp <= iat + 3600). Returns the secret once; it is never shown again and never appears in host.secret_list. Assertions signed with any prior secret stop verifying immediately -- no overlap window.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -842,6 +876,7 @@
     {
       "description": "One end user's calls (tool, outcome, run_id, impersonated) merged with its revoke/unrevoke/purge control-plane events, newest first, paged by cursor.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "cursor": {
             "description": "Opaque; resume after a previous response's cursor.",
@@ -875,6 +910,7 @@
     {
       "description": "Export one end user's state rows and call history as a bundle at /exports/<run_id>, the same envelope host.export returns (download_url, size_bytes, expires_unix).",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "subject": {
             "description": "The end user's subject.",
@@ -896,6 +932,7 @@
     {
       "description": "One end user's roster row (subject, issuer, first_seen, last_seen, calls_total, revoked_at, revoked_by, purged_at) plus its live state_rows, vault_connections, and runs_30d counts.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "subject": {
             "description": "The end user's subject.",
@@ -917,6 +954,7 @@
     {
       "description": "List this tenant's end users with last-seen and call counts, newest last-seen first. Optional since (unix seconds, filters last_seen), revoked (bool), limit (default 50, max 1000), and cursor (from a previous page's cursor field).",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "cursor": {
             "description": "Opaque; resume after a previous response's cursor.",
@@ -948,6 +986,7 @@
     {
       "description": "Delete a revoked end user's scoped state and vault-token rows, de-identify its calls rows (kept, never deleted), and set purged_at. Requires the end user to be revoked first (revoke_required otherwise). Returns {state_rows, vault_tokens} counts.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "subject": {
             "description": "The end user's subject.",
@@ -969,6 +1008,7 @@
     {
       "description": "Revoke an end user: its next identified call is refused with end_user_revoked, no tool runs, and its vault-token connections are disconnected.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "reason": {
             "type": "string"
@@ -993,6 +1033,7 @@
     {
       "description": "Reverse a prior host.enduser.revoke; the end user's calls succeed again.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "subject": {
             "description": "The end user's subject.",
@@ -1014,6 +1055,7 @@
     {
       "description": "The end user (if any) this call itself carries: {subject, issuer, method, verified_at} from the OAuth bearer's sub/iss or a verified end_user_assertion; null when the call carries no verified end-user identity.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -1029,6 +1071,7 @@
     {
       "description": "Build a downloadable .tar.gz of everything this tenant owns: tool sources, state, secret NAMES (never values), run/thread history and usage, plus a manifest.json re-publishable via host.tool_publish. Runs as a background job (poll host.runs.get with the returned run_id) -- calling this again while one is already running returns that same run_id rather than starting a second one. The finished run's result carries a download_url valid 24 hours.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -1051,6 +1094,7 @@
     {
       "description": "Add a tenant (by namespace) to a group this tenant owns.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "name": {
             "description": "Group name.",
@@ -1077,6 +1121,7 @@
     {
       "description": "Create a named group this tenant owns, for host.tool_share(visibility: \"group\").",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "name": {
             "description": "Group name.",
@@ -1098,6 +1143,7 @@
     {
       "description": "List the groups this tenant owns and their members.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -1113,6 +1159,7 @@
     {
       "description": "Remove a tenant (by namespace) from a group this tenant owns.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "name": {
             "description": "Group name.",
@@ -1139,6 +1186,7 @@
     {
       "description": "Issue a new tenant key and invalidate the current one immediately: every other call using the old key fails as unauthenticated from this point on. Returns the new key exactly once -- use it (as tenant_key or Authorization) for every call after this one.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -1154,6 +1202,7 @@
     {
       "description": "Rank every consumer downstream of a node by how badly a change would hurt it: severity (breaking/degrading/none), a suggested action, and observed use.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "change_kind": {
             "description": "One of drop, rename, type_change, remove, add.",
@@ -1188,6 +1237,7 @@
     {
       "description": "List everything a node depends on (upstream) and everything that depends on it (downstream). A downstream list over 100 nodes comes back as downstream_count plus a downstream_handle to page through with host.lineage.trace_page.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "id": {
             "description": "Node id to trace, e.g. 'table:expenses'.",
@@ -1209,6 +1259,7 @@
     {
       "description": "Page through a host.lineage.trace downstream_handle, 50 nodes at a time.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "handle": {
             "description": "downstream_handle from host.lineage.trace.",
@@ -1234,6 +1285,7 @@
     {
       "description": "Mark messages as read for you; unread_only inbox reads stop returning them. Per-recipient -- a sender never sees others' receipts.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "message_ids": {
             "description": "message_ids to mark read for you.",
@@ -1258,6 +1310,7 @@
     {
       "description": "Block an address: its future sends to you are refused agent_not_found, byte-identical to sending to a nonexistent address. You can still send to it. Block lists are never exposed to the blocked party.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "address": {
             "description": "The @handle or t_... namespace to block.",
@@ -1279,6 +1332,7 @@
     {
       "description": "Every unread-or-read message across every thread you participate in, excluding your own sends, ordered oldest first; page with cursor from the previous response's next_cursor.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "cursor": {
             "description": "Opaque; omit for the first page.",
@@ -1306,6 +1360,7 @@
     {
       "description": "Reply in a thread you participate in; appends with the next seq. Blocked or contact-closed participants are skipped and listed in refused rather than failing the reply. thread_not_found (byte-identical for a nonexistent id) if you are not a participant.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "body": {
             "description": "Message text; non-empty after trim.",
@@ -1317,6 +1372,10 @@
           },
           "dedupe_key": {
             "description": "Resend with the same key within 24h to get back the original message_id instead of a duplicate.",
+            "type": "string"
+          },
+          "from": {
+            "description": "Reserved -- never set this. The sender is always the authenticated tenant; a reply carrying this argument is refused args_invalid before anything else runs.",
             "type": "string"
           },
           "in_reply_to": {
@@ -1344,6 +1403,7 @@
     {
       "description": "Send a message to one or more agent-directory addresses, creating a new thread (or, with thread_id, adding to one you already participate in). Refused recipients (agent_not_found, contact_refused, recipient_inbox_full) are listed in refused rather than failing the whole call; from is always the authenticated tenant, never a caller argument.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "body": {
             "description": "Message text; non-empty after trim.",
@@ -1355,6 +1415,10 @@
           },
           "dedupe_key": {
             "description": "Resend with the same key within 24h to get back the original message_id instead of a duplicate.",
+            "type": "string"
+          },
+          "from": {
+            "description": "Reserved -- never set this. The sender is always the authenticated tenant; a send carrying this argument is refused args_invalid before anything else runs.",
             "type": "string"
           },
           "tenant_key": {
@@ -1389,6 +1453,7 @@
     {
       "description": "Every message in one thread you participate in, ordered by seq; thread_not_found if you are not (or no longer) a participant.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "cursor": {
             "description": "The seq to resume after; omit for the start.",
@@ -1418,6 +1483,7 @@
     {
       "description": "Remove a block: the address's future sends to you are accepted again.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "address": {
             "description": "The @handle or t_... namespace to unblock.",
@@ -1439,6 +1505,7 @@
     {
       "description": "Long-poll for a new message until one past cursor arrives or timeout_s elapses (max 25s), returning the same shape as host.msg.inbox either way -- for a client with no polling loop of its own. On timeout, messages is empty and next_cursor is unchanged.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "cursor": {
             "description": "Opaque; omit to wait for the next message from now.",
@@ -1466,6 +1533,7 @@
     {
       "description": "Page this tenant's OAuth auth audit log (authorize/consent/token/refresh/revoke/ policy_change/approved/denied/refused events), newest additions last. Optional since/until (unix seconds) and event filters; limit defaults to 50, max 500; cursor resumes from a previous page's cursor field.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "cursor": {
             "type": "string"
@@ -1496,6 +1564,7 @@
     {
       "description": "Export this tenant's OAuth auth audit log for since..until as JSON lines (one object per line, same fields host.oauth.audit pages). Refuses export_too_large (with a suggested narrower window) past 50 MiB.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "since": {
             "description": "Start of the export window, unix seconds (inclusive).",
@@ -1522,6 +1591,7 @@
     {
       "description": "Approve a pending client (from host.oauth.pending): its next /oauth/authorize reaches consent directly.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "client_id": {
             "description": "The client_id to approve, as listed by host.oauth.pending.",
@@ -1543,6 +1613,7 @@
     {
       "description": "Deny a pending client (from host.oauth.pending): every later authorize attempt reads client_not_allowed.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "client_id": {
             "description": "The client_id to deny, as listed by host.oauth.pending.",
@@ -1564,6 +1635,7 @@
     {
       "description": "Diagnose this tenant's OIDC provider setup: discovery reachable, jwks_uri reachable, per-tenant resource metadata, whether the callback URL is listed in the provider's discovery document (when exposed), and a dry-run authorize URL. One line per check with ok|fail and a fix.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -1579,6 +1651,7 @@
     {
       "description": "Revoke one hosted-authorization-server grant by id (from host.oauth.grants): its access tokens fail within 60s and its refresh tokens stop rotating.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "id": {
             "description": "The grant id.",
@@ -1600,6 +1673,7 @@
     {
       "description": "List the OAuth clients currently connected to this tenant through mcphost's own hosted authorization server (host.oauth.issuer_set is for a tenant's own bring-your-own issuer instead): each grant's client_name, method (cimd|dcr), resource, created_at and last_used_at.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -1615,6 +1689,7 @@
     {
       "description": "Remove one of this tenant's registered OAuth issuers; bearer JWTs from it stop authenticating immediately.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "issuer": {
             "description": "The issuer to remove.",
@@ -1636,6 +1711,7 @@
     {
       "description": "Register (or update) an OAuth issuer for this tenant: bearer JWTs with iss equal to issuer, a matching aud, verified against jwks_url, authenticate as this tenant. Up to 3 issuers per tenant; an issuer already registered by another tenant is refused issuer_already_registered.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "audience": {
             "description": "The JWT `aud` claim value to require.",
@@ -1667,6 +1743,7 @@
     {
       "description": "List this tenant's registered OAuth issuers with their audience, jwks_url, and JWKS fetch age.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -1682,6 +1759,7 @@
     {
       "description": "List clients awaiting approval under this tenant's clients: approve policy.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -1697,6 +1775,7 @@
     {
       "description": "This tenant's current hosted-authorization-server client and session policy (host.oauth.policy_set's own field shape); the documented defaults for a tenant that has never called host.oauth.policy_set.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -1712,6 +1791,7 @@
     {
       "description": "Set this tenant's hosted-authorization-server client and session policy. Every field is optional and, when omitted, keeps its current (or default) value: clients (any|allowlist|approve, default any), allowlist (client_id or CIMD-host strings, for allowlist mode), access_ttl_s (300..3600, default 3600), refresh_ttl_s (3600..2592000, default 2592000), max_grant_age_s (a refresh past this many seconds since consent fails invalid_grant/grant_expired; null clears it), reconsent_after_s (a refresh past this many seconds since consent fails invalid_grant/reconsent_required and the next authorize shows consent again; null clears it).",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "access_ttl_s": {
             "type": "integer"
@@ -1753,6 +1833,7 @@
     {
       "description": "This tenant's registered OIDC identity provider (issuer, client_id, endpoints, scopes, flags) -- null if none is set. Never carries the client secret.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -1768,6 +1849,7 @@
     {
       "description": "Remove this tenant's OIDC identity provider: every federated grant it produced is revoked immediately, and the per-tenant resource falls back to key/claim (owner) login.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -1783,6 +1865,7 @@
     {
       "description": "Register (or update) this tenant's own OIDC identity provider: end users who connect to this tenant's per-tenant resource log in through it. Fetches the issuer's discovery document once (https only) and stores authorization_endpoint, token_endpoint, and jwks_uri. client_secret is encrypted at rest and never shown again.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "claims_map": {
             "description": "Optional {\"email\": \"<claim name>\", \"name\": \"<claim name>\"} override; defaults to the claim names themselves.",
@@ -1833,6 +1916,7 @@
     {
       "description": "Revoke every one of this tenant's live grants, refresh tokens and pending clients at once: access tokens fail within 60s.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -1848,6 +1932,7 @@
     {
       "description": "Declare (or update) one scope this tenant's tools may require: name (a catalogued name, or the built-ins read/write) and a human-readable description shown on the OAuth consent page. Up to 32 catalog entries per tenant.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "description": {
             "description": "Human-readable text shown on the OAuth consent page.",
@@ -1874,6 +1959,7 @@
     {
       "description": "List this tenant's own scope catalog: name and description.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -1889,6 +1975,7 @@
     {
       "description": "Remove one of this tenant's trusted identity-assertion issuers; its assertions stop authenticating immediately.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "issuer": {
             "description": "The issuer to remove.",
@@ -1910,6 +1997,7 @@
     {
       "description": "Register (or update) an identity-assertion issuer for this tenant's enterprise-managed auth: identity assertions with iss equal to issuer, from client_id, verified against jwks_url, mint a token for the employee they name -- no consent screen. Up to 4 trusted issuers per tenant; a 5th is refused quota_trusted_issuers; an issuer already trusted by another tenant is refused issuer_already_registered.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "audience": {
             "description": "Expected assertion `aud`, when the provider signs one other than this host's own issuer URL.",
@@ -1945,6 +2033,7 @@
     {
       "description": "List this tenant's trusted identity-assertion issuers with their jwks_url, client_id and audience.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -1960,6 +2049,7 @@
     {
       "description": "Report (or merge in) counters and/or pct/msg on a run, by id. Each named counter (items_processed, items_total, bytes_out, custom.<k>) is monotonic on its own -- a lower value than what's already stored fails validation with nothing written. Read back via host.runs.get/wait/list's counters field.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "counters": {
             "description": "items_processed?, items_total?, bytes_out?, custom?: {k: number} -- each key monotonic.",
@@ -1993,6 +2083,7 @@
     {
       "description": "Return the shortest ordered sequence of calls to a working tool of `kind`, with your namespace and a filled-in example already substituted in, plus the current limits and a try_before_call table naming the one dry-run tool for each case. Read-only. Call this before host.tool_publish if you're not sure what a spec should look like. Unauthenticated callers get the signup step first.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "kind": {
             "description": "Which registered kind to return a worked example for, e.g. echo, http, python -- or a job-word alias (webhook, event, cron, ...) for its recipe. Omit to see every kind, alias and recipe name.",
@@ -2014,6 +2105,7 @@
     {
       "description": "Exchange a signup(handoff: true) handoff_token for the tenant key it was issued for. Single-use: a second redemption fails with handoff_token_redeemed; past its expiry it fails with handoff_token_expired. Unauthenticated -- the token itself is the proof.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "handoff_token": {
             "description": "The handoff_token signup(handoff: true) returned.",
@@ -2035,6 +2127,7 @@
     {
       "description": "Publish this tenant's server.json to the configured MCP registry (requires --registry-url and admin.tenant_verify_namespace first).",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -2050,6 +2143,7 @@
     {
       "description": "Stop a queued or running job: its sandbox process is killed within ~2s and the run reads cancelled. A run that already finished fails with run_not_cancellable.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "run_id": {
             "description": "The run id to cancel.",
@@ -2071,6 +2165,7 @@
     {
       "description": "Read one run's status, progress and (once done) result by id -- the same run a host.tool_call(..., async=true) or a scheduled/triggered execution created.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "run_id": {
             "description": "The run id to read.",
@@ -2092,6 +2187,7 @@
     {
       "description": "List this tenant's recent runs, newest first, optionally filtered by tool, status (queued|running|done|error|timeout|cancelled), trigger (call|job|schedule|event|chain) or end_user_subject (the end user, if any, the run ran as).",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "end_user_subject": {
             "description": "Only runs that ran as this end user's subject.",
@@ -2127,6 +2223,7 @@
     {
       "description": "Read part n of a run's result (host.runs.get/wait inline only part 0). A run whose whole result fit inline reads back parts: 1, n: 0 with the full result. n past the last part fails with not_found.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "n": {
             "description": "The 0-based part index; default 0.",
@@ -2152,6 +2249,7 @@
     {
       "description": "Delete the stored results of every done run finished at or before before_unix; each then reads done with result: null, purged: true. Frees state_bytes_max quota the results were counted against.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "before_unix": {
             "description": "Purge results of runs finished at or before this unix timestamp.",
@@ -2173,6 +2271,7 @@
     {
       "description": "Long-poll one run until it finalizes, until: {counter, gte} is reached, or timeout_s elapses (max 25s), returning its current status either way -- for a client with no polling loop of its own.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "run_id": {
             "description": "The run id to wait on.",
@@ -2202,6 +2301,7 @@
     {
       "description": "List this tenant's secret names (never their values).",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -2217,6 +2317,7 @@
     {
       "description": "Store an encrypted secret value under this tenant's namespace.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "name": {
             "description": "Secret name, referenced from a spec as secret.<name>.",
@@ -2243,6 +2344,7 @@
     {
       "description": "Permanently close your own account: disables the tenant, cancels any active Stripe subscription (pro plan), and stops your key from authenticating anything further -- same as an admin-disabled tenant. Idempotent: an already-offboarded key gets the same tenant_disabled/tenant_key_invalid error every other host.*/ billing.* call already gets from it, not a crash. This does not scrub historical usage/signup records -- those stay for audit, same as today's admin-disabled tenants.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -2258,6 +2360,7 @@
     {
       "description": "Cap how many successful calls a caller tenant may make per UTC day into one of this tenant's shared tools. The tool must already be shared. Exceeding the cap fails the call with quota_caller (never runs it); this tenant's own calls to the tool are unaffected.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "caller_tenant": {
             "description": "The caller's namespace to cap.",
@@ -2289,6 +2392,7 @@
     {
       "description": "Remove a caller_limit set by host.share.caller_limit.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "caller_tenant": {
             "description": "The caller's namespace whose limit to remove.",
@@ -2315,6 +2419,7 @@
     {
       "description": "Dry-run an unpublished spec of any kind with example invocations; for the other cases see host.quickstart.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "invocations": {
             "description": "Up to 5 example call-argument objects to run through the spec, e.g. [{\"msg\": \"hi\"}].",
@@ -2350,6 +2455,7 @@
     {
       "description": "Delete one key from this tenant's key-value state namespace.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "end_user": {
             "description": "\"self\" for the caller's own verified end-user identity, an explicit subject (only when this call carries no end-user identity of its own), or omit/null for the tenant-wide value.",
@@ -2378,6 +2484,7 @@
     {
       "description": "Delete rows from a declared table matching an optional where filter (same grammar as host.state.query); omitting where deletes every row in the table.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "end_user": {
             "description": "\"self\" for the caller's own verified end-user identity, an explicit subject (only when this call carries no end-user identity of its own), or omit/null for the tenant-wide value.",
@@ -2410,6 +2517,7 @@
     {
       "description": "Read one key from this tenant's key-value state namespace. Returns found: false (not an error) if the key was never set.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "end_user": {
             "description": "\"self\" for the caller's own verified end-user identity, an explicit subject (only when this call carries no end-user identity of its own), or omit/null for the tenant-wide value.",
@@ -2438,6 +2546,7 @@
     {
       "description": "Insert one row (an object) or several (an array of objects) into a declared table. Each row is validated against the table's schema first -- a type mismatch fails the whole call with state_schema_violation and writes nothing.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "end_user": {
             "description": "\"self\" for the caller's own verified end-user identity, an explicit subject (only when this call carries no end-user identity of its own), or omit/null for the tenant-wide value.",
@@ -2470,6 +2579,7 @@
     {
       "description": "List keys (with their current values) in this tenant's key-value state namespace, optionally filtered by prefix.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "end_user": {
             "description": "\"self\" for the caller's own verified end-user identity, an explicit subject (only when this call carries no end-user identity of its own), or omit/null for the tenant-wide value.",
@@ -2500,6 +2610,7 @@
     {
       "description": "Read rows from a declared table, optionally filtered (where: \"field op value\", ops = != < <= > >=, clauses joined by ' and '), ordered (order_by: \"field\" or \"field desc\") and capped (limit).",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "end_user": {
             "description": "\"self\" for the caller's own verified end-user identity, an explicit subject (only when this call carries no end-user identity of its own), or omit/null for the tenant-wide value.",
@@ -2540,6 +2651,7 @@
     {
       "description": "Write one key in this tenant's key-value state namespace; value may be any JSON value. Overrun of the plan's state_bytes_max quota fails with state_quota_exceeded and writes nothing.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "end_user": {
             "description": "\"self\" for the caller's own verified end-user identity, an explicit subject (only when this call carries no end-user identity of its own), or omit/null for the tenant-wide value.",
@@ -2572,6 +2684,7 @@
     {
       "description": "Declare (or replace the schema of) a table in this tenant's state store. schema is {\"column\": \"text\"|\"integer\"|\"real\"|\"boolean\"|\"json\"}; primary_key, if given, must name one of schema's columns -- an insert whose row matches an existing row's primary_key value replaces it.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "name": {
             "description": "Table name to declare, or replace the schema of.",
@@ -2602,6 +2715,7 @@
     {
       "description": "Drop a declared table and every row it holds.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "name": {
             "description": "Name of the declared table to drop, with every row it holds.",
@@ -2623,6 +2737,7 @@
     {
       "description": "Append one row (an object) or several (an array of objects) to a declared table. Each row is validated against the table's schema first -- a type mismatch fails the whole call with table_schema_violation and writes nothing.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "rows": {
             "description": "One row (an object) or several (an array of objects), each validated against the table's schema."
@@ -2648,6 +2763,7 @@
     {
       "description": "Run sql (the same read-only path and caps as host.table.query) and return chart.v1: a result-profile.v1 profile, a mark/encoding recommendation with rationale and alternatives, an inline-data Vega-Lite v5 spec, and a caption whose headline and facts are computed from the rows, never guessed. mark, if given, must be the recommended mark or one of its alternatives -- an unrecognized or disallowed mark (e.g. pie) fails naming the allowed set. share: true stores the chart (evicting this tenant's oldest past 100 stored) and returns a share_url valid 24 hours, no login required.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "mark": {
             "description": "Override the recommended mark; must be the recommendation's own mark or one of its alternatives.",
@@ -2681,6 +2797,7 @@
     {
       "description": "List this tenant's stored (host.table.chart {share: true}) charts, newest first, each with id, title, created_unix, and expires_unix.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -2696,6 +2813,7 @@
     {
       "description": "Declare a table in this tenant's SQL table store -- a different store from host.state.*'s key-value namespace and its own tables: use host.state.* for a handful of small values, host.table.* when you want real SQL (joins, aggregates, read-only queries) over rows. columns is {\"column\": \"text\"|\"integer\"|\"real\"| \"timestamp\"|\"boolean\"|\"json\"}; primary_key, if given, must name one of columns's own entries.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "columns": {
             "description": "Column name to type map, each type one of text|integer|real|timestamp|boolean|json, e.g. {\"id\": \"integer\"}.",
@@ -2726,6 +2844,7 @@
     {
       "description": "Return the generated semantic model for a declared table: per column its inferred type, null share, distinct count, min/max or top values, and role (key|category|measure|date|id|text); per table its row count, candidate primary key, detected foreign keys, and suggested measures/dimensions. Refreshes after append/create within 30s; a call right after a write returns the previous model with stale: true rather than blocking.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "table": {
             "description": "Name of the declared table to describe.",
@@ -2747,6 +2866,7 @@
     {
       "description": "Drop a declared table and every row it holds. Refused as lineage_blocked when a tool, chain, chart, or handle would break, unless confirm: true.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "confirm": {
             "description": "PRD-mcphost-lineage-blast-radius requirement 7: drop anyway even though a breaking consumer exists. Ignored when nothing breaking depends on this table.",
@@ -2772,6 +2892,7 @@
     {
       "description": "List this tenant's declared tables, each with its current row count, plus the tenant's whole table-store byte usage.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -2787,6 +2908,7 @@
     {
       "description": "Annotate a declared table or one of its columns -- the next describe merges this back in (an annotation's role wins over the inferred one; unit/description are added; hidden marks a column to omit from a summary). key must be one of role, unit, description, hidden.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "column": {
             "description": "Column name to annotate; omit for a table-level annotation.",
@@ -2821,6 +2943,7 @@
     {
       "description": "List every declared table that has a computed semantic model, each with its version, staleness, row count and when it was last computed.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -2836,6 +2959,7 @@
     {
       "description": "Run a single read-only SQL SELECT (CTEs allowed) against this tenant's own tables. Structurally rejected (not by string matching): anything but exactly one SELECT statement, a result over 1,000 rows, or a query running past 5 seconds -- each refusal names the rule or bound it hit.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "sql": {
             "description": "A single read-only SELECT statement (CTEs allowed) over this tenant's own declared tables.",
@@ -2857,6 +2981,7 @@
     {
       "description": "Return one table's columns, types, row count and byte count, without running a query -- how an agent discovers its own table shape.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "table": {
             "description": "Name of the declared table to describe.",
@@ -2878,6 +3003,7 @@
     {
       "description": "Invoke a tool this tenant has already published, by its local name -- the same real, metered call as calling it directly by its namespaced name (<namespace>.<name>), for a session that has no way to see its own namespaced tool name yet. Unlike host.tool_test, this counts toward host.usage and appears in host.tool_logs. Pass async: true for a tool that needs more than the call deadline: returns {run_id, status: \"queued\"} immediately instead of running inline -- see host.runs.get/wait. Pass version to pin the call to one of host.tool_history's versions instead of whichever is current.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "args": {
             "description": "Arguments to pass, validated against the tool's own args_schema.",
@@ -2912,6 +3038,7 @@
     {
       "description": "Return a unified diff between two published versions of one of this tenant's tools.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "from": {
             "description": "The earlier version number.",
@@ -2943,6 +3070,7 @@
     {
       "description": "List every published version of one of this tenant's tools, newest first, each with its creation time, source_sha256, and whether it's the current one.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "name": {
             "description": "Local name of the tool.",
@@ -2964,6 +3092,7 @@
     {
       "description": "List this tenant's published tools.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -2979,6 +3108,7 @@
     {
       "description": "Return the most recent log lines for one of this tenant's tools.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "limit": {
             "description": "Max lines to return, most recent first; default 20.",
@@ -3004,7 +3134,12 @@
     {
       "description": "Publish a tool of a registered kind (echo) under this tenant's namespace. Call host.quickstart(kind) first for a filled-in example spec and the full publish-to-call sequence. Name must match ^[a-z][a-z0-9_]{1,40}$; a rejection names the failing field and a corrected example. Try host.tool_test before a real call.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
+          "dry_run": {
+            "description": "Collect and report every publish gate (kind, spec_size, secrets, env, network, deps, name, ...) without writing anything, even if every gate passes.",
+            "type": "boolean"
+          },
           "kind": {
             "description": "Which registered kind to publish under: chain, echo, http, python, wasm. A job-word alias also resolves here -- event, events, webhook, webhooks, inbound or trigger for an inbound webhook, cron, schedule or scheduled for a timed run -- both resolve to kind http and the descriptor comes back with resolved_from naming the alias you asked for.",
             "type": "string"
@@ -3042,6 +3177,7 @@
     {
       "description": "Remove a published tool by its local name.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "name": {
             "description": "Local name of the tool to remove.",
@@ -3063,6 +3199,7 @@
     {
       "description": "Make an earlier published version of one of this tenant's tools current again -- the next host.tool_call (or namespaced call) runs that version's source. See host.tool_history for the valid version numbers.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "name": {
             "description": "Local name of the tool to roll back.",
@@ -3089,6 +3226,7 @@
     {
       "description": "Debug-run a published python tool: result.payload plus duration_ms and exit_code; for the other cases see host.quickstart.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "args": {
             "description": "Arguments to pass, same shape as a real call.",
@@ -3115,6 +3253,7 @@
     {
       "description": "Share one of this tenant's published tools with everyone (visibility: \"public\") or with a named group this tenant owns (visibility: \"group\", group: <name>). The tool keeps running in this tenant's own sandbox with this tenant's own secrets; a caller reaches it as <this tenant's namespace>.<name>.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "description": {
             "description": "Catalog-facing blurb; shown by host.catalog.search/get.",
@@ -3153,6 +3292,7 @@
     {
       "description": "Read a shared tool's kind and redacted spec -- only works when the owner shared it with expose_spec: true. The spec never carries env values or secret references (see host.tool_share's expose_spec).",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -3174,6 +3314,7 @@
     {
       "description": "Dry-run an already-published tool by name, no calls row written; for the other cases see host.quickstart.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "args": {
             "description": "Arguments to pass, same shape as a real call.",
@@ -3200,6 +3341,7 @@
     {
       "description": "Take a shared tool back to private.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "name": {
             "description": "Local name of the tool to unshare.",
@@ -3221,6 +3363,7 @@
     {
       "description": "Run a schedule once right now, for testing -- recorded as trigger: \"schedule\" with manual: true, independent of next_unix or pause state.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "id": {
             "description": "The trigger id.",
@@ -3242,6 +3385,7 @@
     {
       "description": "Read one trigger's current schedule, next_unix, last_run_id and last_status.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "id": {
             "description": "The trigger id.",
@@ -3263,6 +3407,7 @@
     {
       "description": "List this tenant's triggers (optionally filtered by tool), each with next_unix, last_run_id and last_status (schedule), url/verify/unverified (event), or url/name/verify with no secret (webhook).",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -3282,6 +3427,7 @@
     {
       "description": "Stop a trigger from firing until resumed; still counts toward schedules_max.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "id": {
             "description": "The trigger id.",
@@ -3303,6 +3449,7 @@
     {
       "description": "Delete a trigger outright (frees its schedules_max slot, unlike pause).",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "id": {
             "description": "The trigger id.",
@@ -3324,6 +3471,7 @@
     {
       "description": "Re-run a past event- or message-triggered run's exact stored event/envelope (no re-verification -- the original delivery already passed it). The new run's trigger_ref names the original run id. For a webhook trigger, pass id (the trigger) and row_id (an inbox_<name> row id, e.g. from POST /hook/...'s own response or host.state.query) instead of run_id -- a paused delivery has no run to replay from.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "id": {
             "description": "kind=\"webhook\" only: the trigger id (paired with row_id).",
@@ -3351,6 +3499,7 @@
     {
       "description": "Re-enable a paused trigger; if its scheduled time already passed, the next tick fires it once (a missed firing is never replayed).",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "id": {
             "description": "The trigger id.",
@@ -3372,6 +3521,7 @@
     {
       "description": "Run a published tool on a cron schedule (5-field: minute hour day-of-month month day-of-week, UTC), give it a public webhook URL (kind=\"event\"): a signed POST to that URL runs the tool with the event as its argument, fire it whenever this tenant receives a message (kind=\"message\"): the tool runs with the message envelope as its argument, or give it an inbound-inbox URL (kind=\"webhook\"): a verified POST lands as a row in state table inbox_<name> and fires the tool with that row as its argument -- the response carries {url, secret} once (host.trigger.get afterwards never returns the secret again). Each firing/delivery is a run visible in host.runs.list(trigger=\"schedule\"|\"event\"|\"message\"|\"webhook\"). Refuses schedules_max (trigger_quota_exceeded, shared by schedule and webhook triggers), event_triggers_max (shared by event and message triggers) or a too-short schedule interval (trigger_interval_too_short); an invalid expression or verify config fails trigger_invalid naming the field.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "args": {
             "description": "Arguments passed to the tool on each firing/delivery (kind=\"schedule\"/\"event\" only -- a message trigger's whole argument is the message envelope and a webhook trigger's whole argument is the stored inbox row).",
@@ -3428,6 +3578,7 @@
     {
       "description": "Dry-run an event trigger's verify config against a payload you supply, without exposing its real URL -- verifies the signature exactly as POST /hooks/... would, then runs the tool with the event as its argument. On a message trigger, runs the tool with a synthetic envelope (test: true, no messages row created). On a webhook trigger, builds and self-signs a synthetic body exactly like a real sender would, then stores and fires it through the same path POST /hook/... uses (one inbox row, one run). The run is marked test: true. A wrong signature fails signature_invalid, naming the header it checked.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "body": {
             "description": "kind=\"event\"/\"webhook\": the payload to verify and run with -- any JSON value. kind=\"message\": the synthetic envelope's body text."
@@ -3463,6 +3614,7 @@
     {
       "description": "Calls, errors and duration percentiles for this tenant over a window. Pass `by` (\"tool\", \"caller\", or \"end_user\") for a breakdown instead of the plain per-tenant summary: \"caller\" (only valid for a tool this tenant has shared) shows which tenant called in and how much; \"end_user\" shows which identified end user called, with the caller tenant folded into the key when the call crossed tenants. Breakdown rows cap at 1000 per page; pass the returned `cursor` back to page further.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "by": {
             "description": "\"tool\", \"caller\", or \"end_user\" -- omit for the plain per-tenant summary.",
@@ -3498,6 +3650,7 @@
     {
       "description": "Mint a one-time browser link (valid 15 min) for an end user to authorize a registered upstream OAuth provider; completing it stores their access and refresh tokens, encrypted, in the host.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "end_user": {
             "description": "Must be \"self\": the caller's own verified end-user identity. Required -- there is no tenant-wide upstream connection.",
@@ -3524,6 +3677,7 @@
     {
       "description": "Revoke an end user's stored upstream token for a provider. The next call needing it returns upstream_not_connected with a fresh host.vault.connect_link URL.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "end_user": {
             "description": "Must be \"self\": the caller's own verified end-user identity. Required -- there is no tenant-wide upstream connection.",
@@ -3550,6 +3704,7 @@
     {
       "description": "Delete a registered upstream OAuth provider and revoke every end user's stored token for it; a disconnected end user's host.vault.status then shows connected: false.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "name": {
             "description": "The provider name to remove.",
@@ -3571,6 +3726,7 @@
     {
       "description": "Register or update a tenant's upstream OAuth provider (e.g. \"slack\") so end users can connect it; client_secret is stored encrypted and never returned by host.vault.providers. Per-plan vault_providers_max caps distinct provider names.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "auth_url": {
             "description": "OAuth authorization URL. Required unless preset supplies it.",
@@ -3622,6 +3778,7 @@
     {
       "description": "List this tenant's registered upstream OAuth providers (auth_url, token_url, client_id, scopes) -- client_secret never appears here.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
@@ -3637,6 +3794,7 @@
     {
       "description": "Show which upstream providers an end user has connected, with connected, expires_at, and scopes per provider -- never the token itself.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "end_user": {
             "description": "\"self\" for the caller's own verified end-user identity, or an explicit subject only when the call carries no end-user identity of its own. Required.",
@@ -3658,6 +3816,7 @@
     {
       "description": "Return the calling tenant's identity, including key_age_s and key_rotated_at for auditing credential hygiene.",
       "input_schema": {
+        "additionalProperties": false,
         "properties": {
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",

@@ -268,6 +268,27 @@ struct PythonSpec {
 /// actual shape check in [`parse_spec`], where a violation can name
 /// `outputs`/`outputs.<name>` specifically instead of the generic serde
 /// message for the whole struct.
+/// PRD-mcphost-spec-unknown-field-rejection requirement 1 (AC1/AC3/AC4):
+/// every top-level key [`PythonSpecRaw`] below declares, `_dependency_lock`
+/// included, plus `reads` -- `crate::lineage`'s own cross-kind
+/// table-dependency declaration, not a python field (see
+/// `kinds::echo::EchoKind::known_spec_fields`'s doc for why every kind's
+/// list carries it).
+pub(crate) const KNOWN_SPEC_FIELDS: &[&str] = &[
+    "source",
+    "requirements",
+    "args_schema",
+    "timeout_s",
+    "memory_mb",
+    "network",
+    "secrets",
+    "env",
+    "description",
+    "_dependency_lock",
+    "outputs",
+    "reads",
+];
+
 #[derive(Debug, Clone, Deserialize)]
 struct PythonSpecRaw {
     source: String,
@@ -4055,12 +4076,25 @@ impl Kind for PythonKind {
         "python"
     }
 
+    fn known_spec_fields(&self) -> &'static [&'static str] {
+        KNOWN_SPEC_FIELDS
+    }
+
     fn validate(&self, spec: &Value) -> Result<(), KindError> {
+        // PRD-mcphost-spec-unknown-field-rejection requirement 1 (AC1):
+        // `PythonSpecRaw`'s `Deserialize` silently drops any key it
+        // doesn't declare (e.g. a fictitious `write_table`), so this is
+        // the only place in the `python` kind that would ever notice one
+        // -- checked before `parse_spec`, same as `validate_all` below.
+        super::check_unknown_spec_fields(spec, self)?;
         let parsed = parse_spec(spec)?;
         validate_spec_fields(&parsed)
     }
 
     fn validate_all(&self, spec: &Value) -> Vec<KindError> {
+        if let Err(e) = super::check_unknown_spec_fields(spec, self) {
+            return vec![e];
+        }
         match parse_spec(spec) {
             Ok(parsed) => validate_spec_fields_all(&parsed),
             Err(e) => vec![e],

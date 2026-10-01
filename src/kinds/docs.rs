@@ -95,6 +95,61 @@ pub fn render_readme_section() -> String {
         .join("\n\n")
 }
 
+/// PRD-mcphost-spec-unknown-field-rejection requirement 6 (AC7): one
+/// `markdown` doc's own worked example spec (its first ```json block, via
+/// [`parse_kind_doc`]) against `known` -- the same list [`Kind::
+/// known_spec_fields`] returns for that kind. `extra_in_doc` names every
+/// top-level key the example uses that `known` doesn't declare: a doc
+/// promising a field the parser doesn't actually read (the drift
+/// direction `scripts/spec-fields-doc-check.sh` exists to catch -- the
+/// *other* direction, a real field the doc never mentions, isn't a doc
+/// drift the way an unworking documented one is, and is caught instead by
+/// `host.spec_test`-against-real-docs at a real publish, AC6's guardrail).
+pub fn doc_example_extra_fields(markdown: &str, known: &[&str]) -> Vec<String> {
+    let example = parse_kind_doc(markdown);
+    example
+        .spec
+        .as_object()
+        .map(|obj| {
+            obj.keys()
+                .filter(|k| !known.contains(&k.as_str()))
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// One kind's outcome, as `scripts/spec-fields-doc-check.sh` prints it
+/// (requirement 6, AC7: "one `kind=<k> fields=<n> doc_in_sync=true` line
+/// per kind").
+pub struct SpecFieldsDocCheck {
+    pub kind: &'static str,
+    pub fields: usize,
+    pub doc_in_sync: bool,
+    pub extra_in_doc: Vec<String>,
+}
+
+/// AC7: runs [`doc_example_extra_fields`] for every kind this `registry`
+/// actually has registered among [`KIND_DOCS`] -- a kind with a doc file
+/// but not currently registered (none today) is skipped rather than
+/// reported against an empty field list, which would always "fail".
+pub fn check_docs_against_known_fields(registry: &super::KindRegistry) -> Vec<SpecFieldsDocCheck> {
+    KIND_DOCS
+        .iter()
+        .filter_map(|(name, markdown)| {
+            let kind = registry.get(name)?;
+            let known = kind.known_spec_fields();
+            let extra_in_doc = doc_example_extra_fields(markdown, known);
+            Some(SpecFieldsDocCheck {
+                kind: name,
+                fields: known.len(),
+                doc_in_sync: extra_in_doc.is_empty(),
+                extra_in_doc,
+            })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
