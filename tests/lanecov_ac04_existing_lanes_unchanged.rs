@@ -126,6 +126,13 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // same required_commands-immutability reason the sharing-docs lane
     // above gives) -- a twelfth, intended addition since the baseline, not
     // drift.
+    // PRD-mcphost-sandbox-bridge-discoverability added its own
+    // "sandbox-api-doc-check" lane (routes the new
+    // scripts/sandbox-api-doc-check.sh to its own invocation, same
+    // required_commands-immutability reason the sharing-docs/launch-docs
+    // lanes above give -- the three doc files it checks are already
+    // routed by their own pre-existing lanes) -- a thirteenth, intended
+    // addition since the baseline, not drift.
     assert_eq!(
         added,
         vec![
@@ -138,12 +145,13 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "loop-config",
             "oauthconf-data",
             "plugin",
+            "sandbox-api-doc-check",
             "sharing-docs",
             "vendor",
             "wasm-fixtures"
         ],
         "only admin-schemas, checkcompat-race-soak, contracts, docsearch-fixtures, examples, \
-         launch-docs, loop-config, oauthconf-data, plugin, sharing-docs, vendor, and \
-         wasm-fixtures may have been added since {BASELINE_REV}"
+         launch-docs, loop-config, oauthconf-data, plugin, sandbox-api-doc-check, sharing-docs, \
+         vendor, and wasm-fixtures may have been added since {BASELINE_REV}"
     );
 }

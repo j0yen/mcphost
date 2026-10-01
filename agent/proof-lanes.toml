@@ -117,6 +117,14 @@ required_commands = [
 ]
 
 [[lane]]
+id = "sandbox-api-doc-check"
+description = "PRD-mcphost-sandbox-bridge-discoverability (requirement 7/AC7): scripts/sandbox-api-doc-check.sh diffs docs/kinds/python.md, www/llms.txt, and plugin/skills/mcphost/SKILL.md's own mcphost.* module mentions against src/kinds/python.rs's sys.modules[\"mcphost.*\"] registration -- given its own lane rather than folded into the pre-existing docs lane above, since tests/lanecov_ac04_existing_lanes_unchanged.rs pins every pre-existing lane's required_commands as an immutable baseline (same reasoning as the sharing-docs/launch-docs lanes above). The three doc files themselves are already routed by their own pre-existing lanes (docs, www, plugin); this lane exists only to route the new script file."
+globs = ["scripts/sandbox-api-doc-check.sh"]
+required_commands = [
+  "scripts/sandbox-api-doc-check.sh",
+]
+
+[[lane]]
 id = "harness-readonly"
 description = "Harness files; should never change after scaffold"
 globs = [
