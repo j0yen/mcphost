@@ -3540,6 +3540,12 @@ impl StateBackend for TenantStateBridge {
 pub(crate) struct TenantTableBridge {
     pub(crate) state: Arc<AppState>,
     pub(crate) tenant: Tenant,
+    /// PRD-mcphost-row-policy requirement 10/AC12: this call's own end
+    /// user (if any), threaded into `table_query` exactly like
+    /// `TenantStateBridge::end_user` -- so a row policy scoped to an end
+    /// user applies identically whether `host.table.query` is reached
+    /// directly or via `mcphost.table.query` inside a python sandbox.
+    pub(crate) end_user: Option<crate::enduser::EndUser>,
 }
 
 #[async_trait::async_trait]
@@ -3548,10 +3554,9 @@ impl TableBackend for TenantTableBridge {
         let result = match op {
             "create" => tables::table_create(&self.state, &self.tenant, &args).await,
             "append" => tables::table_append(&self.state, &self.tenant, &args).await,
-            // PRD-mcphost-row-policy requirement 10/AC12 threads the real
-            // end user through here; until then this bridge (unlike
-            // `TenantStateBridge`) carries none.
-            "query" => tables::table_query(&self.state, &self.tenant, &args, None).await,
+            "query" => {
+                tables::table_query(&self.state, &self.tenant, &args, self.end_user.as_ref()).await
+            }
             "list" => tables::table_list(&self.state, &self.tenant, &args).await,
             "drop" => tables::table_drop(&self.state, &self.tenant, &args).await,
             "schema" => tables::table_schema(&self.state, &self.tenant, &args).await,
@@ -3576,6 +3581,12 @@ impl TableBackend for TenantTableBridge {
 pub(crate) struct TenantDocsBridge {
     pub(crate) state: Arc<AppState>,
     pub(crate) tenant: Tenant,
+    /// PRD-mcphost-row-policy requirement 10: this call's own end user (if
+    /// any), threaded into `doc_search` exactly like
+    /// `TenantTableBridge::end_user` -- so a doc-prefix policy scoped to an
+    /// end user applies identically whether `host.docs.search` is reached
+    /// directly or via `mcphost.docs.search` inside a python sandbox.
+    pub(crate) end_user: Option<crate::enduser::EndUser>,
 }
 
 #[async_trait::async_trait]
@@ -3583,10 +3594,9 @@ impl DocsBackend for TenantDocsBridge {
     async fn call(&self, op: &str, args: Value) -> Result<Value, KindError> {
         let result = match op {
             "get" => docs::doc_get(&self.state, &self.tenant, &args).await,
-            // PRD-mcphost-row-policy requirement 10/AC12 threads the real
-            // end user through here; until then this bridge (unlike
-            // `TenantStateBridge`) carries none.
-            "search" => docs::doc_search(&self.state, &self.tenant, &args, None).await,
+            "search" => {
+                docs::doc_search(&self.state, &self.tenant, &args, self.end_user.as_ref()).await
+            }
             other => Err(AppError::InvalidArgs(format!("unknown docs op '{other}'"))),
         };
         result.map_err(app_error_to_kind_error)
@@ -4305,10 +4315,12 @@ impl McpHostHandler {
             table: Arc::new(TenantTableBridge {
                 state: self.state.clone(),
                 tenant: tenant.clone(),
+                end_user: end_user.cloned(),
             }),
             docs: Arc::new(TenantDocsBridge {
                 state: self.state.clone(),
                 tenant: tenant.clone(),
+                end_user: end_user.cloned(),
             }),
             // PRD-mcphost-composition requirement 1/2: every real
             // `tools/call`/`host.tool_call` dispatch is the root of its own
@@ -4632,10 +4644,12 @@ impl McpHostHandler {
         let table_backend: Arc<dyn TableBackend> = Arc::new(TenantTableBridge {
             state: self.state.clone(),
             tenant: tenant.clone(),
+            end_user: None,
         });
         let docs_backend: Arc<dyn DocsBackend> = Arc::new(TenantDocsBridge {
             state: self.state.clone(),
             tenant: tenant.clone(),
+            end_user: None,
         });
         let resolved_timeout = self.resolve_call_timeout(&kind, &row.spec);
         let ctx = CallCtx {
@@ -4924,10 +4938,12 @@ impl McpHostHandler {
         let table_backend: Arc<dyn TableBackend> = Arc::new(TenantTableBridge {
             state: self.state.clone(),
             tenant: tenant.clone(),
+            end_user: None,
         });
         let docs_backend: Arc<dyn DocsBackend> = Arc::new(TenantDocsBridge {
             state: self.state.clone(),
             tenant: tenant.clone(),
+            end_user: None,
         });
         let results = run_spec_test(&kind, &spec, &invocations, call_timeout, || CallCtx {
             tenant_id,
@@ -5127,10 +5143,12 @@ impl McpHostHandler {
         let table_backend: Arc<dyn TableBackend> = Arc::new(TenantTableBridge {
             state: self.state.clone(),
             tenant: tenant.clone(),
+            end_user: None,
         });
         let docs_backend: Arc<dyn DocsBackend> = Arc::new(TenantDocsBridge {
             state: self.state.clone(),
             tenant: tenant.clone(),
+            end_user: None,
         });
         let resolved_timeout = self.resolve_call_timeout(&kind, &row.spec);
         let ctx = CallCtx {

@@ -809,10 +809,12 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
         table: Arc::new(TenantTableBridge {
             state: Arc::new(state.clone()),
             tenant: tenant.clone(),
+            end_user: None,
         }) as Arc<dyn TableBackend>,
         docs: Arc::new(TenantDocsBridge {
             state: Arc::new(state.clone()),
             tenant: tenant.clone(),
+            end_user: None,
         }) as Arc<dyn DocsBackend>,
         compose_depth: 0,
         compose_children: Some(Arc::new(std::sync::atomic::AtomicU32::new(0))),
