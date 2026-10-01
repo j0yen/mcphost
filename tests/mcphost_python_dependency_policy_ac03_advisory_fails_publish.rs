@@ -18,14 +18,10 @@ async fn known_advisory_fails_publish_when_mode_is_fail() {
         println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
-    // SAFETY: this file has exactly one #[tokio::test] fn, so no sibling
-    // test in this binary can observe (or race) this process-wide env var
-    // -- same rationale `kinds::python`'s own
-    // `ensure_uv_discoverable_for_test` doc comment gives for its `PATH`
-    // mutation.
-    unsafe {
-        std::env::set_var("MCPHOST_ADVISORY_MODE", "fail");
-    }
+    // Serialized against AC9's own `MCPHOST_ADVISORY_MODE` mutation --
+    // see `common::AdvisoryModeGuard` for why (test-suite consolidation
+    // put both files in one process).
+    let _advisory_mode = common::AdvisoryModeGuard::set("fail").await;
 
     let envs_dir = common::TempDataDir::new();
     let server = TestServer::start_with_kinds(python_kind_registry(&envs_dir.0)).await;
@@ -44,10 +40,6 @@ async fn known_advisory_fails_publish_when_mode_is_fail() {
         )
         .await
         .expect_err("publish must fail when a known advisory's fix is available");
-
-    unsafe {
-        std::env::remove_var("MCPHOST_ADVISORY_MODE");
-    }
 
     assert_eq!(err.error_code.as_deref(), Some("dependency_advisory"), "{err:?}");
     assert!(
