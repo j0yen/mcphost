@@ -38,6 +38,16 @@ use super::{CallCtx, Kind, KindError, KindExample, Path, ToolDescriptor, compose
 
 pub struct ChainKind;
 
+/// PRD-mcphost-spec-unknown-field-rejection requirement 1 (AC1): the only
+/// top-level key [`parse_steps`] below reads (`spec.steps`) -- kept next
+/// to it so the two can never drift silently
+/// (`tests::chain_known_spec_fields_match_parser`). `outputs` is
+/// deliberately absent: the module doc above lists it as a deferred,
+/// unapplied feature, but nothing in this file actually reads it today
+/// (Requirement 4's "whatever the parser reads today" rule), so it is an
+/// unknown field exactly like any other until a later PRD makes it real.
+pub(crate) const KNOWN_SPEC_FIELDS: &[&str] = &["steps"];
+
 /// One parsed step: the target tool's local name, its own literal/path
 /// argument mapping (kept as raw `Value`s -- resolved fresh per call, and
 /// per dry-run report), and whether a failure here stops the chain
@@ -174,7 +184,16 @@ impl Kind for ChainKind {
         "chain"
     }
 
+    fn known_spec_fields(&self) -> &'static [&'static str] {
+        KNOWN_SPEC_FIELDS
+    }
+
     fn validate(&self, spec: &Value) -> Result<(), KindError> {
+        // PRD-mcphost-spec-unknown-field-rejection requirement 1 (AC1):
+        // `parse_steps` below reads only `spec.steps` -- this is the only
+        // place in the `chain` kind that would ever notice a top-level key
+        // it doesn't recognize.
+        super::check_unknown_spec_fields(spec, self)?;
         parse_steps(spec).map(|_| ())
     }
 

@@ -105,6 +105,14 @@ const WALL_BUDGET_SLACK: f64 = 0.8;
 /// requested timeout is.
 const WALL_BUDGET_GRACE: Duration = Duration::from_millis(750);
 
+/// PRD-mcphost-spec-unknown-field-rejection requirement 1 (AC1): every
+/// top-level key [`parse_spec`] below reads via `spec.get(...)` -- kept
+/// next to it (no `Deserialize` struct exists here to derive this from;
+/// see that function's own `spec.get` calls) so the two can never drift
+/// silently (`tests::wasm_known_spec_fields_match_parser`).
+pub(crate) const KNOWN_SPEC_FIELDS: &[&str] =
+    &["component", "args_schema", "outputs", "timeout_s", "memory_mb"];
+
 #[derive(Debug, Clone)]
 struct WasmSpec {
     component: Vec<u8>,
@@ -492,11 +500,22 @@ impl Kind for WasmKind {
         "wasm"
     }
 
+    fn known_spec_fields(&self) -> &'static [&'static str] {
+        KNOWN_SPEC_FIELDS
+    }
+
     fn validate(&self, spec: &Value) -> Result<(), KindError> {
         self.validate_all(spec).into_iter().next().map_or(Ok(()), Err)
     }
 
     fn validate_all(&self, spec: &Value) -> Vec<KindError> {
+        // PRD-mcphost-spec-unknown-field-rejection requirement 1 (AC1):
+        // `parse_spec` below reads each field by name via `spec.get(...)`
+        // and simply never looks at anything else -- this is the only
+        // place in the `wasm` kind that would ever notice an unknown key.
+        if let Err(e) = super::check_unknown_spec_fields(spec, self) {
+            return vec![e];
+        }
         match parse_spec(spec) {
             Ok(parsed) => validate_spec_fields_all(&parsed, &self.engine),
             Err(e) => vec![e],

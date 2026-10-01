@@ -93,7 +93,13 @@ const MAX_DID_YOU_MEAN: usize = 3;
 /// Plain Levenshtein distance (insert/delete/substitute, unit cost), byte-
 /// wise -- every candidate this compares against (`registered`/`aliases`)
 /// is ASCII, so byte-wise is character-wise here.
-fn levenshtein(a: &str, b: &str) -> usize {
+///
+/// `pub(crate)`: PRD-mcphost-spec-unknown-field-rejection requirement 1
+/// (AC3) reuses this exact distance function for a spec's
+/// `unknown_spec_field.did_you_mean` rather than hand-rolling a second
+/// one in `kinds::mod` that could silently drift from this one's cost
+/// model.
+pub(crate) fn levenshtein(a: &str, b: &str) -> usize {
     let a: Vec<u8> = a.bytes().collect();
     let b: Vec<u8> = b.bytes().collect();
     let mut prev: Vec<usize> = (0..=b.len()).collect();

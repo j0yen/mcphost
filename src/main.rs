@@ -99,6 +99,16 @@ enum Command {
         #[arg(long)]
         path: Option<PathBuf>,
     },
+    /// PRD-mcphost-spec-unknown-field-rejection requirement 6 (AC7): for
+    /// every kind with a `docs/kinds/<name>.md` file, diffs that doc's own
+    /// worked example spec against `Kind::known_spec_fields()` -- prints
+    /// one `kind=<k> fields=<n> doc_in_sync=<bool>` line per kind and
+    /// exits 1 (naming the offending field(s)) the moment a doc's example
+    /// uses a key the parser doesn't actually read. Needs the full
+    /// production kind registry (http/python/wasm, not just echo), unlike
+    /// `LlmsTxt`/`GenDocs` above, since that's exactly what differs kind
+    /// to kind here.
+    SpecFieldsCheck,
     /// PRD-mcphost-first-hour-support-surface requirement 3 (AC4):
     /// regenerate `docs/plans.md` from `billing::plans_from_catalog` over
     /// `PlanCatalog::default_catalog()` -- the exact data `billing.plans`
@@ -410,6 +420,42 @@ async fn main() -> anyhow::Result<()> {
                     println!("llms-txt: {} already up to date", path.display());
                 }
                 Ok(())
+            }
+        }
+        Command::SpecFieldsCheck => {
+            // Deliberately no `init_tracing()`: same rationale as
+            // `LlmsTxt`/`GenDocs` above -- plain stdout/exit-code, no JSON
+            // log line. A lightweight registry: real `HttpKind`/
+            // `PythonKind`/`ChainKind`/`WasmKind` instances, same as
+            // production's `main` registers, but none of this calls
+            // `run_startup_selftest()` or binds a port -- this subcommand
+            // never serves traffic, so there's nothing to probe first.
+            let mut kinds = KindRegistry::with_builtin();
+            kinds.register(std::sync::Arc::new(HttpKind::new("example.invalid")?));
+            kinds.register(std::sync::Arc::new(PythonKind::new(&std::env::temp_dir())));
+            kinds.register(std::sync::Arc::new(ChainKind));
+            kinds.register(std::sync::Arc::new(mcphost::kinds::wasm::WasmKind::new()));
+
+            let results = mcphost::kinds::docs::check_docs_against_known_fields(&kinds);
+            let mut ok = true;
+            for r in &results {
+                println!(
+                    "kind={} fields={} doc_in_sync={}",
+                    r.kind, r.fields, r.doc_in_sync
+                );
+                if !r.doc_in_sync {
+                    ok = false;
+                    eprintln!(
+                        "spec-fields-check: {}: doc example uses field(s) not in known_spec_fields: {}",
+                        r.kind,
+                        r.extra_in_doc.join(", ")
+                    );
+                }
+            }
+            if ok {
+                Ok(())
+            } else {
+                std::process::exit(1);
             }
         }
         Command::GenDocs { check } => {

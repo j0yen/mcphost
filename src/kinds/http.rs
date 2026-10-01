@@ -115,6 +115,25 @@ impl HttpSpec {
 /// `upstream`-only spec doesn't fail to parse before [`parse_spec`] gets a
 /// chance to give the friendlier "declare `upstream` OR `method`/`url`"
 /// error.
+/// PRD-mcphost-spec-unknown-field-rejection requirement 1 (AC1/AC2/AC4):
+/// every top-level key [`HttpSpecRaw`] below declares -- kept next to it so
+/// the two can never drift silently (`tests::http_known_spec_fields_match_struct`
+/// round-trips a spec built from exactly this list through `parse_spec`).
+pub(crate) const KNOWN_SPEC_FIELDS: &[&str] = &[
+    "method",
+    "url",
+    "headers",
+    "query",
+    "body",
+    "args_schema",
+    "timeout_s",
+    "response",
+    "description",
+    "outputs",
+    "upstream",
+    "upstream_provider",
+];
+
 #[derive(Debug, Clone, Deserialize)]
 struct HttpSpecRaw {
     #[serde(default)]
@@ -998,6 +1017,10 @@ impl Kind for HttpKind {
             .map_or(Ok(()), Err)
     }
 
+    fn known_spec_fields(&self) -> &'static [&'static str] {
+        KNOWN_SPEC_FIELDS
+    }
+
     /// Requirement 3 / AC2: every field below is checked independently of
     /// the others (no `?` short-circuit past the initial parse, which is
     /// the one genuine prerequisite -- nothing else can be checked against
@@ -1005,6 +1028,13 @@ impl Kind for HttpKind {
     /// one of them back in a single rejection instead of one per publish
     /// attempt.
     fn validate_all(&self, spec: &Value) -> Vec<KindError> {
+        // PRD-mcphost-spec-unknown-field-rejection requirement 1 (AC1/AC2):
+        // checked before `parse_spec` -- `HttpSpecRaw`'s `Deserialize`
+        // silently drops any key it doesn't declare, so this is the only
+        // place in the `http` kind that would ever notice one.
+        if let Err(e) = super::check_unknown_spec_fields(spec, self) {
+            return vec![e];
+        }
         let parsed = match parse_spec(spec) {
             Ok(p) => p,
             Err(e) => return vec![e],
