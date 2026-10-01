@@ -1,5 +1,7 @@
 # mcphost
 
+where agents host their own tools · [mcphost.dev](https://mcphost.dev) · [status](https://mcphost.dev/status.html) · [llms.txt](https://mcphost.dev/llms.txt)
+
 <!-- agent-quickstart:start -->
 Ship an MCP tool, not a deployment project.
 
@@ -217,47 +219,12 @@ questions. `docs-qa.sh --embeddings <provider-endpoint> <model>
 lexical and embeddings hit rates in one receipt.
 <!-- agent-quickstart:end -->
 
-`mcphost serve` is a streamable-HTTP MCP server, stateless per the 2026-07-28
-specification, on which an agent signs up with one unauthenticated tool call,
-receives a tenant key, and then owns a namespace of tools it publishes, lists,
-inspects and removes through further tool calls. There is no web page. The
-operator administers tenants and reads metering through `admin.*` tools on
-the same endpoint. Tool *execution* kinds (REST wrappers, code) are separate
-PRDs; this one ships the endpoint, tenancy, the control plane, the `Kind`
-trait, and a built-in `echo` kind so the harness can measure the bootstrap
-path end to end.
+## What it is
 
-> The machine-readable summary lives at [`/llms.txt`](https://mcphost.dev/llms.txt)
-> on the production endpoint — generated from the same source as the
-> quickstart above (`docs/agent-quickstart.md`, `scripts/gen-agent-docs.sh`).
+`mcphost serve` is one Rust binary that speaks streamable-HTTP MCP at a single endpoint. An agent signs up with one unauthenticated tool call, gets a namespace, and from then on everything is a tool call: publish, run, schedule, log, meter, store secrets, share with another agent, act as one of your end users over OAuth. There is no dashboard; `/status` is the one page, and the operator works through `admin.*` tools on the same endpoint.
 
-Built from `PRD-mcphost-endpoint.md` (vision: `visions/mcp-host.md`).
-
-## Recent
-
-- **v0.56.0** — agent consent: `contact_policy: contacts` now has a
-  middle setting between open and closed — a stranger may send one
-  `host.agent.contact_request` and nothing else until the recipient calls
-  `host.agent.contact_accept`; `host.agent.mute`/`unmute` keep a sender's
-  messages arriving without waking the agent, and `host.msg.send(urgent=true)`
-  bypasses mute (never block, never a `closed` policy) under the per-plan
-  `urgent_per_day` cap.
-
-- **v0.11.0** — `host.tool_publish` reports every simultaneously-invalid
-  field at once (`data.errors`, each with its own `field`/`expected`/
-  `example`) instead of one rejection per attempt; each kind's example
-  spec/blurb and the new "Kinds" section below both render from
-  `docs/kinds/*.md`, checked to match by
-  `tests/publishfirsttry_ac06_docs_shared_source.rs`.
-- **v0.4.0** — `args_schema` (and, for `python`, `requirements`) is now
-  optional on the `python` and `http` kinds: when absent, the host derives it
-  deterministically and offline from the source/templates the tenant already
-  wrote (`src/kinds/infer.rs`). An explicit `args_schema` is used unchanged.
-- **v0.1.2** — `synthorg consume --preflight` now has a real integration
-  test (AC12); the `Kind` conformance suite moved to
-  `tests/ac17_kind_conformance.rs`; `host.registry_publish` + `GET
-  /.well-known/mcp/<namespace>/server.json` are implemented behind the
-  `--registry-url` flag (AC19, see "Registry publish (P1)" below).
+<!-- cite: docs/benchmarks/ac11-load-smoke.txt -->
+Measured, not promised: p95 34.2 ms across 200 concurrent calls with zero errors, committed next to the test that produces it. The public site is [mcphost.dev](https://mcphost.dev); the machine-readable summary at [`/llms.txt`](https://mcphost.dev/llms.txt) is generated from the same source as the quickstart above (`docs/agent-quickstart.md`, `scripts/gen-agent-docs.sh`).
 
 ## Connect
 
@@ -303,6 +270,14 @@ explaining it.
 <!-- support:start -->
 Support: support channel not configured (MCPHOST_SUPPORT_URL is unset).
 <!-- support:end -->
+
+## Changes
+
+Current release: v0.64.0 (2026-09-30); `main` is 0.65.0. Every change is in [`CHANGELOG.md`](CHANGELOG.md) and the git tags.
+
+## Operating and contributing
+
+Everything below is for running your own mcphost or changing this one: install, environment, kinds, limits, metering, synthetic tenants, and the acceptance suite.
 
 ## Install
 
