@@ -452,14 +452,6 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # re-collapses core's normal buckets to 1, landing the grand total back
 # at 10.
 #
-# PRD-mcphost-session-bound-tenant-after-signup (2026-09-30, fixing
-# verifier findings for AC1/AC2/AC4-AC9/AC11/AC12): this PRD's own ten
-# `sessbind_ac*.rs` files (also `core`-classified) join the same normal
-# bucket on top of the oauth-unverified-client-consent-warning PRD's own
-# 680 cap above, spawning an 11th suite binary again -- caught by the same
-# P0 assertion. 680 -> 700 re-collapses core's normal buckets to 1,
-# landing the grand total back at 10.
-#
 # PRD-mcphost-chart-in-a-minute (2026-09-30): this PRD's own thirteen
 # `chart_ac*.rs` core-classified files (AC11's own sandboxed python-bridge
 # test is `sandbox`-classified, unaffected) join the same normal bucket on
@@ -467,7 +459,14 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # spawning an 11th suite binary again -- caught by the same P0 assertion.
 # 700 -> 715 re-collapses core's normal buckets to 1, landing the grand
 # total back at 10.
-MAX_PER_SUITE = {"core": 715, "sandbox": 90}
+#
+# PRD-mcphost-row-policy (2026-09-30, rebased onto chart-in-a-minute): this
+# PRD's own twelve `rowpol_ac*.rs` files (also `core`-classified) join the
+# same normal bucket on top of chart-in-a-minute's own 715 cap above,
+# spawning an 11th suite binary again -- caught by the same P0 assertion.
+# 715 -> 735 re-collapses core's normal buckets to 1, landing the grand
+# total back at 10.
+MAX_PER_SUITE = {"core": 735, "sandbox": 90}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"
