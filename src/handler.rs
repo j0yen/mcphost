@@ -3563,7 +3563,10 @@ impl TableBackend for TenantTableBridge {
             // PRD-mcphost-chart-in-a-minute AC11: `mcphost.table.chart`
             // inside the python sandbox receives the same `chart.v1` object
             // `host.table.chart` itself returns.
-            "chart" => crate::chart::table_chart(&self.state, &self.tenant, &args).await,
+            "chart" => {
+                crate::chart::table_chart(&self.state, &self.tenant, &args, self.end_user.as_ref())
+                    .await
+            }
             other => Err(AppError::InvalidArgs(format!("unknown table op '{other}'"))),
         };
         result.map_err(app_error_to_kind_error)
@@ -3847,7 +3850,9 @@ impl McpHostHandler {
             "host.table.list" => tables::table_list(&self.state, tenant, &args).await,
             "host.table.drop" => tables::table_drop(&self.state, tenant, &args).await,
             "host.table.schema" => tables::table_schema(&self.state, tenant, &args).await,
-            "host.table.chart" => crate::chart::table_chart(&self.state, tenant, &args).await,
+            "host.table.chart" => {
+                crate::chart::table_chart(&self.state, tenant, &args, end_user).await
+            }
             "host.table.charts" => crate::chart::table_charts_list(&self.state, tenant, &args).await,
             "host.docs.put" => docs::doc_put(&self.state, tenant, &args).await,
             "host.docs.get" => docs::doc_get(&self.state, tenant, &args).await,
