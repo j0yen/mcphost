@@ -1410,6 +1410,8 @@ mod tooltest_ac9_ac10_listing_and_auth;
 mod urltenant_ac01_path_secret_whoami_auth_method_url;
 #[path = "urltenant_ac02_wrong_or_rotated_secret_404.rs"]
 mod urltenant_ac02_wrong_or_rotated_secret_404;
+#[path = "urltenant_ac03_key_rotate_rotates_key_and_url.rs"]
+mod urltenant_ac03_key_rotate_rotates_key_and_url;
 #[path = "vault_ac01_connect_link_redirects_to_auth_url.rs"]
 mod vault_ac01_connect_link_redirects_to_auth_url;
 #[path = "vault_ac02_callback_exchanges_code_and_stores_tokens.rs"]
