@@ -16,6 +16,9 @@ members = [
     "vendor/mqo-chart-caption",
 ]
 
+[profile.release]
+strip = true
+
 [package]
 autotests = false  # gen-test-suites.sh: explicit [[test]] suites below
 name = "mcphost"
