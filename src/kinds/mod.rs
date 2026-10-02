@@ -1138,6 +1138,44 @@ impl MsgBackend for NoMsg {
     }
 }
 
+/// PRD-mcphost-chain-host-steps requirement 1: a step's target, as
+/// [`compose_call`] wired into `handler.rs::dispatch_tenant_tool` can reach
+/// a `host.*` verb -- `op` is the full dotted name (e.g.
+/// `"host.table.append"`), `args` that verb's own JSON argument object
+/// exactly as a direct call would send it. Distinct from
+/// [`StateBackend`]/[`TableBackend`]/[`DocsBackend`] (each scoped to one
+/// store's own small vocabulary of ops) because a chain step may name any
+/// allowlisted verb across every one of those stores, plus
+/// `host.channel.post`/`host.msg.send`/`host.tool_call`, which have no
+/// backend of their own.
+#[async_trait::async_trait]
+pub trait HostDispatch: Send + Sync {
+    async fn call(&self, name: &str, args: Value) -> Result<Value, KindError>;
+}
+
+/// PRD-mcphost-chain-host-steps requirements 1/2: the allowlisted `host.*`
+/// verbs a chain step may name, resolved by [`compose_call`] after a bare
+/// tenant-tool lookup misses. Destructive or control-plane verbs
+/// (`host.tool_remove`, `host.key_rotate`, `host.oauth.*`,
+/// `host.self_offboard`, `billing.*`) are deliberately absent (Non-goals) --
+/// a step naming one of those fails `step_tool_not_allowed` naming this
+/// exact list (`data.allowed`), the same list `host.quickstart kind=chain`
+/// reports as `host_steps_allowed` (requirement 1: "exported ... as one
+/// Rust constant").
+pub const HOST_STEPS_ALLOWED: &[&str] = &[
+    "host.table.append",
+    "host.table.query",
+    "host.table.create",
+    "host.state.get",
+    "host.state.set",
+    "host.state.delete",
+    "host.channel.post",
+    "host.msg.send",
+    "host.docs.put",
+    "host.docs.search",
+    "host.tool_call",
+];
+
 /// PRD-mcphost-runs-and-jobs P0 requirement 5: where a sandboxed call's
 /// `mcphost.progress(pct, msg)` (see `kinds::python`'s `ProgressSidecarBridge`)
 /// lands. `handler.rs`'s real dispatch path wires this to a sink that
@@ -1323,6 +1361,17 @@ pub struct CallCtx {
     /// conformance suite) -- same permissive default that field's
     /// `usize::MAX` already uses for the same class of context.
     pub sidecar_ops_max: i64,
+    /// PRD-mcphost-chain-host-steps requirement 1/3: lets a composing
+    /// `Kind`'s step dispatch ([`compose_call`]) reach an allowlisted
+    /// `host.*` verb through `handler.rs::dispatch_tenant_tool` without
+    /// `kinds` depending on `handler` -- same "trait object bridge resolved
+    /// by the real dispatch path" shape [`StateBackend`]/[`TableBackend`]/
+    /// [`DocsBackend`]/[`LineageBackend`] already use. `None` in every
+    /// context a host step can't run in (`host.tool_test`/`host.spec_test`'s
+    /// dry runs never dispatch a step at all, `for_test`, the conformance
+    /// suite) -- [`compose_call`] reports a clear "unavailable" error rather
+    /// than panicking when a step needs it and finds `None`.
+    pub host_dispatch: Option<Arc<dyn HostDispatch>>,
 }
 
 impl CallCtx {
@@ -1356,6 +1405,7 @@ impl CallCtx {
             msg: Arc::new(NoMsg),
             sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             sidecar_ops_max: i64::MAX,
+            host_dispatch: None,
         }
     }
 
@@ -1448,13 +1498,32 @@ pub async fn compose_call(
         ));
     };
 
-    let row = db
+    let maybe_row = db
         .get_tool(tenant_id, target_name.to_string())
         .await
-        .map_err(|e| KindError::Exec(format!("tool lookup failed: {e}")))?
-        .ok_or_else(|| {
-            KindError::structured("tool_not_found", format!("no such tool: {target_name}"))
-        })?;
+        .map_err(|e| KindError::Exec(format!("tool lookup failed: {e}")))?;
+    // Requirement 1: a bare name that isn't one of this tenant's own tools
+    // may still be an allowlisted `host.*` verb -- checked only on a lookup
+    // miss, so a tenant tool happens to shadow a same-named host verb (none
+    // collide today; `host.*` names are reserved, `validate_tool_name`
+    // forbids a dot in a tenant's own tool name either way).
+    let row = match maybe_row {
+        Some(row) => row,
+        None if HOST_STEPS_ALLOWED.contains(&target_name) => {
+            let Some(host) = ctx.host_dispatch.as_ref() else {
+                return Err(KindError::Exec(
+                    "host-step dispatch is unavailable in this call context".into(),
+                ));
+            };
+            return host.call(target_name, args).await;
+        }
+        None => {
+            return Err(KindError::structured(
+                "tool_not_found",
+                format!("no such tool: {target_name}"),
+            ));
+        }
+    };
     let kind = kinds.get(&row.kind).ok_or_else(|| {
         KindError::Exec(format!(
             "published tool names unregistered kind '{}'",
@@ -1554,6 +1623,12 @@ pub async fn compose_call(
         msg: ctx.msg.clone(),
         sidecar_ops: ctx.sidecar_ops.clone(),
         sidecar_ops_max: ctx.sidecar_ops_max,
+        // PRD-mcphost-chain-host-steps: composition stays inside one tenant
+        // (same reasoning as `state`/`table`/`docs` above) -- a nested
+        // composed call (a chain step whose own tool is itself a chain) can
+        // still reach a host step through the same bridge the parent call
+        // was given.
+        host_dispatch: ctx.host_dispatch.clone(),
     };
 
     kind.call(&row.spec, args, &child_ctx).await

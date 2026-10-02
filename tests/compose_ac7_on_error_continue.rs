@@ -13,11 +13,15 @@ async fn step_two_continuing_past_failure_lets_step_three_run_and_the_chain_succ
     let client = common::McpClient::with_bearer(&server.base_url, &key);
 
     let schema = json!({"type": "object"});
-    publish(&client, "step1", "echo", json!({"schema": schema})).await;
-    publish(&client, "step3", "echo", json!({"schema": schema})).await;
-    // "step2" is deliberately never published -- its dispatch fails with
-    // `tool_not_found`, exercising the `on_error: "continue"` path without
-    // needing a second failure mode.
+    publish(&client, "step1", "echo", json!({"schema": schema.clone()})).await;
+    publish(&client, "step3", "echo", json!({"schema": schema.clone()})).await;
+    // PRD-mcphost-chain-host-steps requirement 4 (landed after this PRD):
+    // `host.tool_publish` now resolves every step's tool before publishing
+    // -- "step2" is published too, just so the chain itself resolves, then
+    // removed again before the chain is ever CALLED, so its dispatch still
+    // fails with `tool_not_found` exactly as when it was never published at
+    // all, exercising the `on_error: "continue"` path the same way.
+    publish(&client, "step2", "echo", json!({"schema": schema})).await;
 
     let chain_spec = json!({
         "steps": [
@@ -30,6 +34,11 @@ async fn step_two_continuing_past_failure_lets_step_three_run_and_the_chain_succ
     });
     let chain = publish(&client, "pipeline", "chain", chain_spec).await;
     assert_eq!(chain, format!("{ns}.pipeline"));
+
+    client
+        .tools_call("host.tool_remove", json!({"name": "step2"}))
+        .await
+        .expect("host.tool_remove must succeed");
 
     let call = client
         .tools_call(&chain, json!({"n": 7}))

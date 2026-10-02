@@ -866,6 +866,14 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
         // `upstream_not_connected` inside `HttpKind::call` rather than
         // sending an unauthenticated request.
         vault_token: None,
+        // PRD-mcphost-chain-host-steps: not wired for the async job
+        // executor -- every acceptance criterion this PRD builds against
+        // calls the chain synchronously (`handler.rs::call_published_tool`,
+        // which does wire this); a job-triggered chain's host step fails
+        // clearly (`host-step dispatch is unavailable`) rather than
+        // silently, same posture `compose_db`/`compose_kinds` already take
+        // wherever they're `None`.
+        host_dispatch: None,
     };
 
     let outcome = tokio::time::timeout(

@@ -20,6 +20,19 @@ async fn replay_of_a_failed_message_triggered_run_reuses_the_stored_envelope() {
     // exist -- same trick `hooks_ac8_trigger_replay_new_run_trigger_ref.rs`
     // uses for the event-kind version of this AC), so the message-fired run
     // lands `error` and is worth replaying.
+    //
+    // PRD-mcphost-chain-host-steps requirement 4 (landed after this PRD):
+    // `host.tool_publish` now resolves every step's tool before publishing
+    // -- "does_not_exist" is published too, just so `broken_handler` itself
+    // resolves, then removed again before the message ever fires, so its
+    // dispatch still fails exactly as when it was never published at all.
+    client_r
+        .tools_call(
+            "host.tool_publish",
+            json!({"name": "does_not_exist", "kind": "echo", "spec": {"schema": {"type": "object"}}}),
+        )
+        .await
+        .expect("publish");
     client_r
         .tools_call(
             "host.tool_publish",
@@ -31,6 +44,10 @@ async fn replay_of_a_failed_message_triggered_run_reuses_the_stored_envelope() {
         )
         .await
         .expect("publish");
+    client_r
+        .tools_call("host.tool_remove", json!({"name": "does_not_exist"}))
+        .await
+        .expect("remove");
     client_r
         .tools_call("host.trigger.set", json!({"tool": "broken_handler", "kind": "message"}))
         .await

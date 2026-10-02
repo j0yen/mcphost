@@ -1,84 +1,78 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-spec-unknown-field-rejection.md",
-  "intent_slug": "mcphost-spec-unknown-field-rejection",
-  "root_motivation": "An agent writing a spec from memory, from a docs page for another kind, or from a hallucinated field name gets silent acceptance today: the tool publishes, the test passes, and the behavior the field was supposed to add never happens. On 2026-09-30 a fictitious `write_table` key in a python spec published cleanly, and a `name` argument to `host.trigger.set` was dropped without a word. For an agent, a silent no-op is worse than an error: it cannot be debugged from the outputs.",
-  "user_persona": "A tool author publishing a spec with a typo'd or hallucinated field name; an agent calling a host.* control-plane tool with an argument key the tool does not define; a schema-aware MCP client that wants to catch either mistake locally before the call; an operator who wants docs and the parser's own field list to never silently drift apart.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-chain-host-steps.md",
+  "intent_slug": "mcphost-chain-host-steps",
+  "root_motivation": "A chain step naming a host.* verb publishes and dry-runs green today, then fails tool_not_found on every real fire: compose_call only resolves a step against the tenant's own tools table, never the host.*/billing.* dispatcher handler.rs's ~150-arm match actually uses. On 2026-09-30 this cost one full build round on the fleet-board dogfood chain, and the quickstart's own chain example names two tools (fetch_rows/write_rows) that exist nowhere, so every agent that follows it hits the same failure.",
+  "user_persona": "A workflow-orchestrator agent composing a fetch/transform/persist pipeline whose last step is a host.* write; a first-hour agent following host.quickstart kind=chain; an operator who wants a chain step barred from naming a destructive control-plane verb.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 8
+    "target": 7
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a python spec with an extra key `write_table`, When host.tool_publish or host.spec_test runs, Then the error class is unknown_spec_field, data.field == \"write_table\", data.known lists the python fields, and no tool is published.",
-      "test": "tests/unkfield_ac01_write_table_rejected.rs"
+      "description": "Given a chain whose step 2 is {\"tool\":\"host.table.append\",\"args\":{\"table\":\"runs\",\"rows\":\"$.prev.result.rows\"}}, When published and called with input that step 1 turns into one row, Then the run status is done, steps[1].result.appended == 1, and host.table.query returns the row.",
+      "test": "tests/chainhost_ac01_host_table_append_step.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a python spec containing url (an http field), When published, Then data.valid_for contains \"http\".",
-      "test": "tests/unkfield_ac02_misplaced_field_valid_for.rs"
+      "description": "Given a chain spec whose step names a bare tool that does not exist in the tenant, When host.spec_test or host.tool_publish runs, Then the error class is step_tool_not_found, data.step is the index, data.name the string, and nothing is published.",
+      "test": "tests/chainhost_ac02_step_tool_not_found.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a spec key one edit away from a known field (sourc), When published, Then data.did_you_mean == \"source\".",
-      "test": "tests/unkfield_ac03_near_miss_did_you_mean.rs"
+      "description": "Given a chain spec whose step names host.tool_remove, When published, Then the error class is step_tool_not_allowed and data.allowed equals the allowlist returned by host.quickstart kind=chain.",
+      "test": "tests/chainhost_ac03_step_tool_not_allowed.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given host.trigger.set called with an argument key the tool does not define, When dispatched, Then the error class is unknown_argument with data.known equal to the registered properties and no trigger is created.",
-      "test": "tests/unkfield_ac04_trigger_set_unknown_argument.rs"
+      "description": "Given a published chain with a host.table.append step, When host.tool_test runs it, Then the dry-run report lists the step as resolved: host and, once PRD-mcphost-dry-run-side-effects has landed, no row is written; before that, the report carries side_effects: true for that step.",
+      "test": "tests/chainhost_ac04_dry_run_report_resolved_host.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given tools/list, When fetched, Then every host.* and billing.* tool's inputSchema.additionalProperties == false.",
-      "test": "tests/unkfield_ac05_tools_list_additional_properties_false.rs"
+      "description": "Given host.quickstart kind=chain, When its steps[0].arguments.spec is passed to host.spec_test unchanged on a tenant that published the quickstart's python starter, Then spec_test passes with every step resolved.",
+      "test": "tests/chainhost_ac05_quickstart_chain_example_resolves.rs"
     },
     {
       "id": "AC6",
-      "level": "MUST",
-      "description": "Given the example spec from every docs/kinds/*.md page and from host.quickstart for each kind, When each is passed to host.spec_test, Then none fails unknown_spec_field (guardrail).",
-      "test": "tests/unkfield_ac06_doc_examples_never_rejected.rs"
+      "level": "SHOULD",
+      "description": "Given a chain with one host step, When called once, Then host.usage by=tool shows one call for the chain and the calls row carries step_tool: \"host.table.append\".",
+      "test": "tests/chainhost_ac06_usage_by_tool_step_tool.rs"
     },
     {
       "id": "AC7",
-      "level": "MUST",
-      "description": "Given scripts/spec-fields-doc-check.sh at the landing commit, When run, Then it exits 0 and prints one kind=<k> fields=<n> doc_in_sync=true line per kind; given a fixture doc with an extra field, Then it exits 1 naming it.",
-      "test": "tests/unkfield_ac07_spec_fields_doc_check_script.rs"
+      "level": "SHOULD",
+      "description": "Given a free-plan tenant at table_rows_max, When a chain's host.table.append step would exceed it, Then the run fails at that step with the same error class a direct host.table.append call returns.",
+      "test": "tests/chainhost_ac07_table_rows_max_at_step.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given the landed binary deployed on prod and tenant joe-test, When host.spec_test(kind: python, spec: {source, write_table: \"runs\"}, invocations: [{}]) is called, Then the response is the unknown_spec_field error and host.tool_list shows no new tool.",
-      "test": "deferred -- operator-provisioned: Live, prod tenant joe-test; needs a real deploy this coding sandbox cannot drive. See the coder dispatch's own deferred list."
+      "description": "Given the landed binary deployed on prod and tenant joe-test's webhook trigger fleet_ingest retargeted at a chain whose second step is host.table.append, When ~/.local/bin/fleet-post manual chainhost-live fleet-board-verify webhook gate runs from orch, Then within 60s host.table.query on runs returns a row with run_id = 'chainhost-live' and host.runs.get for the hook's run shows status: done with the host step resolved: host.",
+      "test": "deferred -- operator-provisioned: Live, a landed binary deployed on prod, tenant joe-test's webhook retargeted at a chain, and ~/.local/bin/fleet-post run from orch, with both JSON results pasted into the PRD's evidence block; needs a real deploy and operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
     }
   ],
   "scope": [
-    "src/kinds/mod.rs: Kind::known_spec_fields() (default &[]), check_unknown_spec_field (first-unknown-key scan, cross-kind valid_for, Levenshtein did_you_mean), UNIVERSAL_SPEC_FIELDS (reads).",
-    "src/kinds/{echo,http,python,wasm,chain}.rs: each kind's own known_spec_fields() implementation, matching its existing field-help table / raw struct / manual parser exactly.",
-    "src/control.rs (tool_publish) + src/handler.rs (spec_test): check_unknown_spec_field called ahead of every other gate (including sandbox readiness), before any parsing or storage.",
-    "src/errors.rs: check_unknown_argument (unknown_argument, tenant_key always known), levenshtein made pub(crate) for reuse, unknown_spec_field/unknown_argument routed to INVALID_PARAMS.",
-    "src/handler.rs: known_control_plane_args (reads a tool's own registered inputSchema.properties straight off host_tool_descriptors, so data.known can never drift from what tools/list advertises); schema() now sets additionalProperties: false on every host.*/billing.*/admin.* control-plane schema.",
-    "src/triggers.rs: host.trigger.set calls check_unknown_argument before its tool lookup / any kind-specific dispatch.",
-    "scripts/spec-fields-doc-check.sh: parses known_spec_fields() straight out of each src/kinds/<kind>.rs and diffs it against docs/kinds/<kind>.md (first-json-block keys must be known; every known field must appear in the page's text).",
-    "docs/kinds/python.md, docs/kinds/http.md: added the few known fields (python: timeout_s/memory_mb/network/secrets/description; http: headers/query/timeout_s/description) the pages never mentioned, so the landing commit's own doc-check run is green.",
-    "contracts/host-tools.v1.json: regenerated (mcphost contract dump) for the additionalProperties: false addition.",
-    "agent/proof-lanes.toml: new spec-fields-doc-check lane (scripts/spec-fields-doc-check.sh is a brand-new, otherwise-unrouted path; the pre-existing docs lane's required_commands is a pinned baseline tests/lanecov_ac04_existing_lanes_unchanged.rs asserts, so a new lane rather than folding in, same precedent as the sharing-docs/launch-docs lanes)."
+    "src/kinds/mod.rs: HostDispatch trait + HOST_STEPS_ALLOWED allowlist constant, compose_call's bare-tool-lookup-miss fallback to an allowlisted host.* verb, CallCtx.host_dispatch (bridged by handler.rs, None everywhere a host step can't run).",
+    "src/kinds/chain.rs: resolve_steps (publish/spec_test-time resolution against the tenant's tools then HOST_STEPS_ALLOWED, step_tool_not_found/step_tool_not_allowed with data.step/data.name/data.allowed/data.suggestions), dry_run_report's resolved/side_effects fields, the quickstart example (python starter + host.table.append).",
+    "src/handler.rs: TenantHostStepBridge (HostDispatch impl bridging a chain step to dispatch_tenant_tool with the chain run's own tenant/end_user/auth_method), TenantHostStepBridge.step_tool cell read back by call_published_tool into calls.step_tool.",
+    "src/db.rs: record_call_attributed_with_end_user_and_step_tool (step_tool threaded through the calls insert), last_call_step_tool_for_test, migration 0061 (calls.step_tool).",
+    "migrations/0061_chain_host_step_tool.sql: additive calls.step_tool TEXT column."
   ],
   "non_goals": [
-    "Validating values beyond what each kind already validates.",
-    "Rejecting unknown keys inside a tool's own schema for its arguments (those belong to the tool author).",
-    "Rejecting unknown fields inside config_json blobs that are opaque by design.",
-    "Requirement 7 (chain per-step unknown-field checks, data.step) -- P1, no AC in this dispatch's assigned list; deferred.",
-    "Requirement 8 (host.tool_test warnings on an already-published tool's stored spec) -- P2, no AC in this dispatch's assigned list; deferred.",
-    "Applying check_unknown_argument to every host.*/billing.* tool (only host.trigger.set, AC4's own tool, is wired in this dispatch) -- the helper is generic and reusable, but auditing every one of the ~147 other tools' real accepted arguments against their declared schema (closing gaps like the grounding PRD's own found `dry_run`/`from` cases) is broader than this dispatch's assigned AC list."
+    "Child run rows and $.steps[i] lineage (PRD-mcphost-chain-run-lineage).",
+    "Allowing destructive or control-plane verbs in steps (host.tool_remove, host.key_rotate, host.oauth.*, host.self_offboard, billing.*) -- refused with step_tool_not_allowed.",
+    "Cross-tenant steps beyond what host.tool_call already permits.",
+    "docs/kinds/chain.md's generated host-steps section (P2 requirement 8, no AC in this dispatch's assigned list) -- deferred.",
+    "AC8 (prod/live retrigger-and-verify) -- operator-provisioned, not reachable from this coding sandbox."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -87,49 +81,45 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "test_file_names_use_test_prefix_unkfield": "test_prefix unkfield (the PRD's own frontmatter field): tests/unkfield_ac<NN>_<slug>.rs, same convention as every other test file in this repo."
+      "test_file_names_use_test_prefix_chainhost": "test_prefix chainhost (the PRD's own frontmatter field): tests/chainhost_ac<NN>_<slug>.rs, same convention as every other test file in this repo."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does an unknown spec field need a dedicated error class instead of being folded into the existing invalid_spec taxonomy?",
-      "a": "invalid_spec already means 'a field I understand has the wrong shape' -- conflating it with 'a field I don't understand at all' would make a caller's own retry logic have to string-match the message to tell which mistake it made."
+      "q": "Why does compose_call need a second resolution path (HOST_STEPS_ALLOWED) instead of just adding host.* rows to the tenant's own tools table?",
+      "a": "host.* verbs are dispatched by handler.rs's dispatch_tenant_tool, a fixed ~150-arm match over control-plane logic, not by a Kind::call against a stored spec -- there is no spec to store a tools-table row around, so a step naming one has to reach that dispatcher directly."
     },
     {
       "why": 2,
-      "q": "Why compute data.known from the parser's own field-help table / raw struct fields rather than hand-writing a list once?",
-      "a": "The Problem statement's whole failure mode is a parser and a 'what fields exist' list drifting apart silently -- a second hand-maintained list for the error message would reintroduce exactly that drift one level up."
+      "q": "Why resolve every step's tool at publish/spec_test time (resolve_steps) rather than only at call time (compose_call's own narrower lookup)?",
+      "a": "This PRD's own grounding incident is exactly a chain that published and dry-ran green with an unresolvable step, discovered only when a real trigger fired -- resolving at publish time turns that into an immediate refusal instead of a silent landmine."
     },
     {
       "why": 3,
-      "q": "Why run check_unknown_spec_field ahead of the sandbox-readiness gate in host.tool_publish/host.spec_test, rather than after it (its original position when first drafted)?",
-      "a": "A caller shouldn't need a working python sandbox to learn their spec has a typo; placing the check first also makes the AC tests independent of whether this build environment's sandbox mechanism is actually available."
+      "q": "Why does TenantHostStepBridge always pass subject: None and auth_method: \"key\" rather than re-deriving the chain run's own caller identity?",
+      "a": "Of every allowlisted verb, only host.whoami (not on the allowlist) ever reads either parameter, so there is nothing a chain step loses by not re-deriving them; end_user and calls_auth_method (what the allowlisted verbs actually meter by) are threaded through from the chain's own real call."
     },
     {
       "why": 4,
-      "q": "Why read host.trigger.set's known argument list off its own live inputSchema.properties (handler::known_control_plane_args) instead of a small hand-written const next to check_unknown_argument's call site?",
-      "a": "AC4 literally requires data.known to equal 'the registered properties' -- deriving it from the one place those properties are actually registered (the schema tools/list advertises) makes that equality true by construction instead of by a second list staying in sync by hand."
+      "q": "Why is step_tool a single-slot Mutex cell on TenantHostStepBridge, read back after kind.call returns, rather than a field CallCtx carries directly?",
+      "a": "Same shape CellResourceSink already uses for cpu_ms/peak_rss_kb: the value is only known once the chain's own step dispatch actually runs, and the one calls row call_published_tool writes needs to read it back after kind.call returns, not before."
     },
     {
       "why": 5,
-      "q": "Why does docs/kinds/python.md's doc-check pass require editing the doc rather than loosening the script's field-presence check?",
-      "a": "The script's own point (requirement 6) is that docs and the parser cannot silently drift -- discovering mid-build that timeout_s/memory_mb/network/secrets/description were real, working python spec fields the docs page never mentioned is exactly the drift this PRD exists to close, not a false positive to suppress."
+      "q": "Why keep record_call_attributed_with_end_user as a separate wrapper instead of adding step_tool directly to it?",
+      "a": "Same 'existing call sites don't all need a trailing None' rationale every prior wrapper in that chain already documents -- record_call_attributed_with_end_user_and_step_tool is the fifth layer, not a breaking change to the fourth."
     }
   ],
-  "created_at": "2026-10-01T17:00:00Z",
+  "created_at": "2026-10-02T06:56:09Z",
   "ambiguities_resolved": [
     {
-      "question": "Should the universal reads: [table] lineage field (accepted on every kind's spec by lineage::register_tool_publish, not owned by any one kind's own parser) be listed inside each kind's own known_spec_fields(), or treated separately?",
-      "resolution": "Treated separately (UNIVERSAL_SPEC_FIELDS in kinds::mod), excluded from every kind's own known_spec_fields() list -- the PRD's own user-story example ('known: source, requirements, network, secrets, env, outputs, schema') never lists reads either, and folding it into every kind's list would also wrongly put it in every unknown_spec_field error's data.known and in scripts/spec-fields-doc-check.sh's per-kind field count."
+      "question": "When a chain has more than one host step, which one does calls.step_tool (AC6) record?",
+      "resolution": "The last one dispatched -- TenantHostStepBridge.step_tool is a single-slot cell overwritten on each host dispatch, same 'last writer wins' shape CellResourceSink already uses for cpu_ms/peak_rss_kb. Requirement 6 and AC6 only exercise a chain with exactly one host step; no landed chain spec has more than one yet."
     },
     {
-      "question": "Should python's known_spec_fields() include the host-injected _dependency_lock field (stored back into a published spec by control::tool_publish's own deps gate, after validation)?",
-      "resolution": "Excluded -- it is injected strictly AFTER check_unknown_spec_field runs (the deps gate that writes it sits well below the publish-time gates this check runs ahead of), so a tenant-authored spec never carries it at the point this check sees it; including it would also expose an internal/reserved field name in data.known, which python_field_hint deliberately never does either."
-    },
-    {
-      "question": "Should requirement 2's unknown_argument check be wired into every host.*/billing.* tool's dispatch in this same dispatch, given the PRD's own P0 wording ('Every host.* and billing.* tool rejects...')?",
-      "resolution": "Scoped to host.trigger.set only -- AC4 (the only AC in this dispatch's assigned list that tests requirement 2) names that one tool; applying it to all ~147 others would require auditing each one's real accepted arguments against its declared schema (the grounding PRD's own evidence names dry_run/from as exactly this kind of latent gap), which is broader than this dispatch's assigned AC list and its own 'stop once every listed AC is green' instruction. check_unknown_argument/known_control_plane_args are written generically so a later dispatch can wire the rest in without re-deriving the mechanism."
+      "question": "Does a host step's own dispatch (dispatch_tenant_tool) write its own calls row, double-counting host.usage by=tool?",
+      "resolution": "No -- dispatch_tenant_tool's match arms call the control-plane business logic directly (tables::table_append, tenant_state::state_set, etc.), never call_published_tool, so a host step writes no calls row of its own; the chain's own one row (tool_name = the chain) is the only one, satisfying AC6's 'shows one call for the chain' as-is."
     }
   ]
 }

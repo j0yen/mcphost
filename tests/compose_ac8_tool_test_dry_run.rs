@@ -2,10 +2,18 @@
 //! When run, Then the report lists each step's resolved arguments and no
 //! step executes.
 //!
-//! Neither step's target tool is ever published; if the dry run actually
-//! dispatched a step, `compose_call` would fail it with `tool_not_found`
-//! and `host.tool_test` would report that failure instead of succeeding --
-//! this call succeeding at all is itself proof no step executed.
+//! Neither step's target tool exists BY THE TIME the dry run runs; if it
+//! actually dispatched a step, `compose_call` would fail it with
+//! `tool_not_found` and `host.tool_test` would report that failure instead
+//! of succeeding -- this call succeeding at all is itself proof no step
+//! executed.
+//!
+//! PRD-mcphost-chain-host-steps requirement 4 (landed after this PRD):
+//! `host.tool_publish` now resolves every step's tool before publishing, so
+//! both step targets are published first (as trivial `echo` tools) purely
+//! to satisfy that resolution, then removed again before this test ever
+//! calls `host.tool_test` -- "does not exist" by the time the dry run
+//! matters, same as before this PRD.
 
 use crate::common;
 use common::{TestServer, chain_kind_registry, publish, signup};
@@ -17,6 +25,10 @@ async fn tool_test_on_a_chain_reports_resolved_args_per_step_without_executing_a
     let (_ns, key) = signup(&server.base_url, "Dry Run Tenant").await;
     let client = common::McpClient::with_bearer(&server.base_url, &key);
 
+    let schema = json!({"type": "object"});
+    publish(&client, "does_not_exist_1", "echo", json!({"schema": schema.clone()})).await;
+    publish(&client, "does_not_exist_2", "echo", json!({"schema": schema})).await;
+
     let chain_spec = json!({
         "steps": [
             {"tool": "does_not_exist_1", "args": {"x": "$.input.x"}},
@@ -24,6 +36,15 @@ async fn tool_test_on_a_chain_reports_resolved_args_per_step_without_executing_a
         ]
     });
     publish(&client, "pipeline", "chain", chain_spec).await;
+
+    client
+        .tools_call("host.tool_remove", json!({"name": "does_not_exist_1"}))
+        .await
+        .expect("host.tool_remove must succeed");
+    client
+        .tools_call("host.tool_remove", json!({"name": "does_not_exist_2"}))
+        .await
+        .expect("host.tool_remove must succeed");
 
     let result = client
         .tools_call(

@@ -102,6 +102,8 @@ const MIGRATION_0059: &str = include_str!("../migrations/0059_url_bound_tenants.
 // this PRD's own 0059 during rebase -- mcphost-url-bound-tenants claimed
 // 0059 first, landing on main ahead of this branch.
 const MIGRATION_0060: &str = include_str!("../migrations/0060_next_hint.sql");
+/// PRD-mcphost-chain-host-steps P1 requirement 6 (AC6): `calls.step_tool`.
+const MIGRATION_0061: &str = include_str!("../migrations/0061_chain_host_step_tool.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -2144,7 +2146,8 @@ impl Db {
         Self::migrate_0057_chart_index(&conn)?;
         Self::migrate_0058_lineage(&conn)?;
         Self::migrate_0059_url_bound_tenants(&conn)?;
-        Self::migrate_0060_next_hint(&conn)
+        Self::migrate_0060_next_hint(&conn)?;
+        Self::migrate_0061_chain_host_step_tool(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -2984,6 +2987,18 @@ impl Db {
         Ok(())
     }
 
+    /// PRD-mcphost-chain-host-steps P1 requirement 6 / AC6: gated on
+    /// `calls.step_tool`, same `pragma_table_info` idempotency pattern as
+    /// 0004's `calls.cpu_ms`.
+    fn migrate_0061_chain_host_step_tool(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('calls') WHERE name = 'step_tool'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0061)?;
+        }
+        Ok(())
+    }
 
     /// PRD-mcphost-url-bound-tenants requirement 2: gated on
     /// `tenants.url_secret_hash`, same `pragma_table_info` idempotency shape
@@ -6980,6 +6995,28 @@ impl Db {
         .await
     }
 
+    /// Test-only (PRD-mcphost-chain-host-steps AC6): the most recent
+    /// `calls` row's `step_tool` for `(tenant_id, tool_name)` -- `None` if
+    /// no call has landed yet, `Some(None)` for a call that landed but
+    /// dispatched no host step.
+    pub async fn last_call_step_tool_for_test(
+        &self,
+        tenant_id: i64,
+        tool_name: String,
+    ) -> Result<Option<Option<String>>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT step_tool FROM calls \
+                 WHERE tenant_id = ?1 AND tool_name = ?2 ORDER BY id DESC LIMIT 1",
+                params![tenant_id, tool_name],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
     /// Test-only: the most recent `calls` row's end-user columns for
     /// `(tenant_id, tool_name)` -- `(end_user_subject, end_user_issuer,
     /// end_user_method)`, `None` if no call has landed yet.
@@ -7177,6 +7214,58 @@ impl Db {
         // reads, not re-derived here.
         auth_method: String,
     ) -> Result<(), AppError> {
+        self.record_call_attributed_with_end_user_and_step_tool(
+            tenant_id,
+            tool_name,
+            duration_ms,
+            ok,
+            error_class,
+            cpu_ms,
+            peak_rss_kb,
+            outcome,
+            origin,
+            origin_detail,
+            caller_tenant_id,
+            end_user_subject,
+            end_user_issuer,
+            end_user_method,
+            shared_owner_namespace,
+            auth_method,
+            None,
+        )
+        .await
+    }
+
+    /// PRD-mcphost-chain-host-steps P1 requirement 6 (AC6): same as
+    /// [`Self::record_call_attributed_with_end_user`], plus `step_tool` --
+    /// the allowlisted `host.*` verb a chain step dispatched during this
+    /// one call, `Some` only when `call_published_tool`'s own `CallCtx`
+    /// (via `TenantHostStepBridge`) observed exactly that (a chain with no
+    /// host step, or any non-chain call, leaves it `None`). Kept as a fifth
+    /// wrapper rather than widening `record_call_attributed_with_end_user`
+    /// itself, same "existing call sites don't all need a trailing `None`"
+    /// rationale that function's own doc comment already gives.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn record_call_attributed_with_end_user_and_step_tool(
+        &self,
+        tenant_id: i64,
+        tool_name: String,
+        duration_ms: i64,
+        ok: bool,
+        error_class: Option<String>,
+        cpu_ms: Option<i64>,
+        peak_rss_kb: Option<i64>,
+        outcome: &str,
+        origin: String,
+        origin_detail: Option<String>,
+        caller_tenant_id: Option<i64>,
+        end_user_subject: Option<String>,
+        end_user_issuer: Option<String>,
+        end_user_method: Option<String>,
+        shared_owner_namespace: Option<String>,
+        auth_method: String,
+        step_tool: Option<String>,
+    ) -> Result<(), AppError> {
         let started_at = now_rfc3339();
         let started_unix = now_unix();
         let outcome = outcome.to_string();
@@ -7206,9 +7295,9 @@ impl Db {
         self.with_conn(move |conn| {
             let tx = conn.unchecked_transaction()?;
             tx.execute(
-                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id, auth_method) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
-                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id.clone(), auth_method],
+                "INSERT INTO calls (tenant_id, tool_name, started_at, started_unix, duration_ms, ok, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id, auth_method, step_tool) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+                params![tenant_id, tool_name, started_at, started_unix, duration_ms, ok as i64, error_class, cpu_ms, peak_rss_kb, outcome, origin, origin_detail, caller_tenant_id, end_user_subject, end_user_issuer, end_user_method, run_id.clone(), auth_method, step_tool],
             )?;
             tx.execute(
                 "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, \

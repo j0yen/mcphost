@@ -34,9 +34,72 @@
 
 use serde_json::{Map, Value, json};
 
-use super::{CallCtx, Kind, KindError, KindExample, Path, ToolDescriptor, compose_call};
+use super::{CallCtx, HOST_STEPS_ALLOWED, Kind, KindError, KindExample, Path, ToolDescriptor, compose_call};
+use crate::errors::AppError;
 
 pub struct ChainKind;
+
+/// Requirement 4 ("up to three nearest sibling names"): the closest
+/// `tenant_names` to `name` by plain edit distance, nearest first, capped
+/// at three -- no distance cutoff (unlike `errors::did_you_mean`'s kind-name
+/// suggestions), since any three of a tenant's own tool names are a useful
+/// pointer for a typo'd step, not only a near-miss one.
+fn nearest_sibling_names(name: &str, tenant_names: &[String]) -> Vec<String> {
+    let mut scored: Vec<(usize, &str)> = tenant_names
+        .iter()
+        .map(|n| (crate::errors::levenshtein(name, n), n.as_str()))
+        .collect();
+    scored.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(b.1)));
+    scored.into_iter().take(3).map(|(_, n)| n.to_string()).collect()
+}
+
+/// Requirement 4: resolves every step's `tool` against `tenant_id`'s own
+/// tools, then [`HOST_STEPS_ALLOWED`] -- called once at `host.tool_publish`
+/// and `host.spec_test` time (never from [`compose_call`]'s own, narrower,
+/// runtime-only resolution), so an unresolvable step is refused before
+/// anything is published rather than discovered the first time a trigger
+/// fires (this PRD's own grounding incident: a chain with a bare
+/// `host.table.append` step published and dry-ran green, then failed every
+/// real fire). A bare name that exists as neither fails `step_tool_not_found`
+/// (`data.step`, `data.name`, up to three `data.suggestions`); a `host.*`
+/// name off the allowlist fails `step_tool_not_allowed` (`data.allowed`).
+/// `data.step` is 1-based, matching this module's own `steps`/`steps_trace`
+/// numbering everywhere else (`dry_run_report`, `failed_step`).
+pub async fn resolve_steps(db: &crate::db::Db, tenant_id: i64, spec: &Value) -> Result<(), AppError> {
+    let steps = parse_steps(spec).map_err(AppError::from)?;
+    let mut tenant_names: Option<Vec<String>> = None;
+    for (i, step) in steps.iter().enumerate() {
+        let step_no = i + 1;
+        if db.get_tool(tenant_id, step.tool.clone()).await?.is_some() {
+            continue;
+        }
+        if HOST_STEPS_ALLOWED.contains(&step.tool.as_str()) {
+            continue;
+        }
+        if step.tool.starts_with("host.") || step.tool.starts_with("billing.") {
+            return Err(AppError::Structured {
+                code: "step_tool_not_allowed",
+                message: format!(
+                    "step {step_no} ('{}'): not an allowlisted host step; allowed: {}",
+                    step.tool,
+                    HOST_STEPS_ALLOWED.join(", ")
+                ),
+                data: json!({"step": step_no, "name": step.tool, "allowed": HOST_STEPS_ALLOWED}),
+            });
+        }
+        if tenant_names.is_none() {
+            let names = db.list_tools(tenant_id).await?.into_iter().map(|t| t.name).collect();
+            tenant_names = Some(names);
+        }
+        let suggestions = nearest_sibling_names(&step.tool, tenant_names.as_deref().unwrap_or(&[]));
+        return Err(AppError::Structured {
+            code: "step_tool_not_found",
+            message: format!("step {step_no} ('{}'): no such tool", step.tool),
+            data: json!({"step": step_no, "name": step.tool, "suggestions": suggestions}),
+        });
+    }
+    Ok(())
+}
 
 /// One parsed step: the target tool's local name, its own literal/path
 /// argument mapping (kept as raw `Value`s -- resolved fresh per call, and
@@ -138,6 +201,17 @@ fn resolve_args(raw: &Map<String, Value>, context: &Value) -> Result<Value, Stri
 /// real (no step has run), so it's reported as `{"unresolved_path": "$..."}`
 /// instead of a value; `$.input.*` and literals resolve exactly as a real
 /// call would.
+///
+/// PRD-mcphost-chain-host-steps requirement 4/AC4: each step also carries
+/// `resolved` (`"host"` for an allowlisted `host.*` verb, `"tenant"` for a
+/// sibling tool -- a step here was already resolved once, at publish time
+/// (`resolve_steps`), so this is a pure syntactic re-derivation, no DB
+/// lookup needed) and, for a `"host"` step, `side_effects: true` -- until
+/// PRD-mcphost-dry-run-side-effects lands, a dry run never dispatches ANY
+/// step (host or tenant), so a host step's own real-world write (e.g.
+/// `host.table.append`'s row) would NOT happen during this report; the flag
+/// says so explicitly rather than leaving an agent to assume dry-run safety
+/// it doesn't have yet for that step.
 fn dry_run_report(steps: &[ParsedStep], call_args: &Value) -> Value {
     // Only `input` is available before anything has run.
     let context = json!({"input": call_args, "prev": Value::Null, "steps": []});
@@ -158,11 +232,19 @@ fn dry_run_report(steps: &[ParsedStep], call_args: &Value) -> Value {
                 };
                 resolved.insert(k.clone(), value);
             }
-            json!({
+            let is_host = HOST_STEPS_ALLOWED.contains(&step.tool.as_str());
+            let mut entry = json!({
                 "step": i + 1,
                 "tool": step.tool,
                 "resolved_args": resolved,
-            })
+                "resolved": if is_host { "host" } else { "tenant" },
+            });
+            if is_host
+                && let Value::Object(map) = &mut entry
+            {
+                map.insert("side_effects".to_string(), json!(true));
+            }
+            entry
         })
         .collect();
     json!({"dry_run": true, "steps": report})
@@ -266,6 +348,15 @@ impl Kind for ChainKind {
                         "step": failed_step_no,
                         "tool": step.tool,
                         "status": "done",
+                        // PRD-mcphost-chain-host-steps AC1: a step's own
+                        // result is now in its own trace entry, not only
+                        // reachable as the chain's overall `result` (the
+                        // last step's own) or via `$.steps[i].result` inside
+                        // a LATER step's own mapping -- a caller inspecting
+                        // the finished call's trace directly (no further
+                        // step to map through) can read any step's result,
+                        // not only the last one.
+                        "result": result.clone(),
                     }));
                     step_results.push(result.clone());
                     prev = Some(result.clone());
@@ -321,15 +412,26 @@ impl Kind for ChainKind {
     }
 
     fn example(&self) -> KindExample {
+        // PRD-mcphost-chain-host-steps requirement 5 (AC5): the quickstart's
+        // own fixed recommendation -- the python starter
+        // (`control::STARTER_TOOL_NAME`, referenced by name only; this
+        // module can't depend on that tool actually existing) followed by
+        // `host.table.append` -- uses tools that exist, unlike the prior
+        // `fetch_rows`/`write_rows` placeholders this PRD's own grounding
+        // incident traces to. `host.quickstart kind=chain` resolves on any
+        // tenant that already published that starter (AC5); the dynamic
+        // "this tenant's own first two tools" override in `handler.rs`
+        // takes precedence once a tenant has two non-chain tools of its
+        // own, same as before this PRD.
         KindExample {
             spec: json!({
                 "steps": [
-                    {"tool": "fetch_rows", "args": {"since": "$.input.since"}},
-                    {"tool": "write_rows", "args": {"rows": "$.prev.result.rows"}}
+                    {"tool": crate::control::STARTER_TOOL_NAME, "args": {"text": "$.input.text"}},
+                    {"tool": "host.table.append", "args": {"table": "runs", "rows": "$.prev.result"}}
                 ]
             }),
-            call_args: json!({"since": "2026-01-01"}),
-            blurb: "steps run in order; each step's args may pull from $.input (this call's own args), $.prev (the previous step's result), or $.steps[i] (any earlier step's result by 0-based index).".to_string(),
+            call_args: json!({"text": "hello"}),
+            blurb: "steps run in order; each step's args may pull from $.input (this call's own args), $.prev (the previous step's result), or $.steps[i] (any earlier step's result by 0-based index). A step may also name an allowlisted host.* verb (host.quickstart's own host_steps_allowed) -- it runs under this chain's own tenant, metered as one step.".to_string(),
         }
     }
 }

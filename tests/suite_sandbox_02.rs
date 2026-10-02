@@ -26,6 +26,8 @@ mod uptime_probes;
 
 #[path = "ac17_kind_conformance.rs"]
 mod ac17_kind_conformance;
+#[path = "chainhost_ac05_quickstart_chain_example_resolves.rs"]
+mod chainhost_ac05_quickstart_chain_example_resolves;
 #[path = "chanbridge_ac01_python_channel_post_seq_and_host_sees_tenant.rs"]
 mod chanbridge_ac01_python_channel_post_seq_and_host_sees_tenant;
 #[path = "chanbridge_ac02_python_msg_send_reaches_inbox_with_thread_id.rs"]

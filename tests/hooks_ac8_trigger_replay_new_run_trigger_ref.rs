@@ -21,6 +21,19 @@ async fn replay_reuses_the_stored_event_and_names_the_original_run() {
     // forcing the run to fail at dispatch. Simpler: use a `chain` tool with
     // a step naming a tool that doesn't exist, which `kinds::chain::call`
     // reports as a structured error, finalizing the run `error`.
+    //
+    // PRD-mcphost-chain-host-steps requirement 4 (landed after this PRD):
+    // `host.tool_publish` now resolves every step's tool before publishing
+    // -- "does_not_exist" is published too, just so `broken_hook` itself
+    // resolves, then removed again before the webhook ever fires, so its
+    // dispatch still fails exactly as when it was never published at all.
+    client
+        .tools_call(
+            "host.tool_publish",
+            json!({"name": "does_not_exist", "kind": "echo", "spec": {"schema": {"type": "object"}}}),
+        )
+        .await
+        .expect("publish");
     client
         .tools_call(
             "host.tool_publish",
@@ -32,6 +45,10 @@ async fn replay_reuses_the_stored_event_and_names_the_original_run() {
         )
         .await
         .expect("publish");
+    client
+        .tools_call("host.tool_remove", json!({"name": "does_not_exist"}))
+        .await
+        .expect("remove");
     client
         .tools_call(
             "host.trigger.set",
