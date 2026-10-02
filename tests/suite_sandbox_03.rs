@@ -92,6 +92,14 @@ mod tooltest_ac13_publish_error_parity;
 mod tooltest_ac1_python_two_invocations;
 #[path = "tooltest_ac2_python_exception_other_still_runs.rs"]
 mod tooltest_ac2_python_exception_other_still_runs;
+#[path = "unkfield_ac01_write_table_rejected.rs"]
+mod unkfield_ac01_write_table_rejected;
+#[path = "unkfield_ac02_misplaced_field_valid_for.rs"]
+mod unkfield_ac02_misplaced_field_valid_for;
+#[path = "unkfield_ac03_near_miss_did_you_mean.rs"]
+mod unkfield_ac03_near_miss_did_you_mean;
+#[path = "unkfield_ac06_doc_examples_never_rejected.rs"]
+mod unkfield_ac06_doc_examples_never_rejected;
 #[path = "warmpool_ac06_ac07_tool_run.rs"]
 mod warmpool_ac06_ac07_tool_run;
 #[path = "wasmkind_ac04_independent_of_sandbox_mechanism.rs"]

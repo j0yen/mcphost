@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-one-next-tool.md (test_prefix: nexttool)",
+  "ac_test_map_prd": "PRD-mcphost-spec-unknown-field-rejection.md (test_prefix: unkfield)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,15 +28,14 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/nexttool_ac01_anonymous_starter_set.rs",
-    "AC2": "tests/nexttool_ac02_authenticated_listing_unchanged.rs",
-    "AC3": "tests/nexttool_ac03_signup_emits_list_changed.rs",
-    "AC4": "tests/nexttool_ac04_tool_publish_next_hint.rs",
-    "AC5": "tests/nexttool_ac05_five_distinct_tools_suppresses_hint.rs",
-    "AC6": "tests/nexttool_ac06_hints_false_suppresses_hint.rs",
-    "AC7": "tests/nexttool_ac07_header_authenticated_never_gets_hint.rs",
-    "AC8": "deferred -- operator-provisioned; AC8 is the Live/production-only requirement (implicit-signup auto-binding in production) and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list.",
-    "AC9": "tests/nexttool_ac09_host_usage_hints_shown_and_followed.rs"
+    "AC1": "tests/unkfield_ac01_write_table_rejected.rs",
+    "AC2": "tests/unkfield_ac02_misplaced_field_valid_for.rs",
+    "AC3": "tests/unkfield_ac03_near_miss_did_you_mean.rs",
+    "AC4": "tests/unkfield_ac04_trigger_set_unknown_argument.rs",
+    "AC5": "tests/unkfield_ac05_tools_list_additional_properties_false.rs",
+    "AC6": "tests/unkfield_ac06_doc_examples_never_rejected.rs",
+    "AC7": "tests/unkfield_ac07_spec_fields_doc_check_script.rs",
+    "AC8": "deferred -- operator-provisioned: Live, prod tenant joe-test; needs a real deploy this coding sandbox cannot drive. See the coder dispatch's own deferred list."
   },
   "ac_test_map_by_prefix": {
     "chanbridge": {

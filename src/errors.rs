@@ -92,8 +92,11 @@ const MAX_DID_YOU_MEAN: usize = 3;
 
 /// Plain Levenshtein distance (insert/delete/substitute, unit cost), byte-
 /// wise -- every candidate this compares against (`registered`/`aliases`)
-/// is ASCII, so byte-wise is character-wise here.
-fn levenshtein(a: &str, b: &str) -> usize {
+/// is ASCII, so byte-wise is character-wise here. `pub(crate)`:
+/// PRD-mcphost-spec-unknown-field-rejection's `kinds::nearest_known_field`
+/// reuses this same distance function for a spec field's `did_you_mean`
+/// rather than a second hand-copied implementation.
+pub(crate) fn levenshtein(a: &str, b: &str) -> usize {
     let a: Vec<u8> = a.bytes().collect();
     let b: Vec<u8> = b.bytes().collect();
     let mut prev: Vec<usize> = (0..=b.len()).collect();
@@ -141,6 +144,35 @@ fn did_you_mean(
     }
     out.truncate(MAX_DID_YOU_MEAN);
     out
+}
+
+/// PRD-mcphost-spec-unknown-field-rejection requirement 2 (AC4): refuses a
+/// top-level `args` key that isn't in `known` with `unknown_argument` --
+/// `tenant_key` is always known (requirement 2's own carve-out: every
+/// `host_schema`-built tool accepts it as connection auth, never listed in
+/// a tool's own hand-written properties). A no-op when `args` isn't a JSON
+/// object (the control-plane handler's own argument-shape error takes
+/// over). `known` rides straight into `data.known` -- callers pass the
+/// tool's own registered property names (AC4: "equal to the registered
+/// properties"), never a second hand-maintained list.
+pub fn check_unknown_argument(args: &Value, tool: &str, known: &[String]) -> Result<(), AppError> {
+    let Some(obj) = args.as_object() else {
+        return Ok(());
+    };
+    for key in obj.keys() {
+        if key == "tenant_key" || known.iter().any(|k| k == key) {
+            continue;
+        }
+        return Err(AppError::Structured {
+            code: "unknown_argument",
+            message: format!(
+                "'{key}' is not a recognized argument for {tool}; known: {}",
+                known.join(", ")
+            ),
+            data: json!({"field": key, "tool": tool, "known": known}),
+        });
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -500,6 +532,11 @@ impl AppError {
                 // `KindError::Structured` instead of `KindError::InvalidSpec`.
                 "host_not_allowed" | "args_invalid" | "template_error" | "kind_mismatch"
                 | "invalid_spec"
+                // PRD-mcphost-spec-unknown-field-rejection requirement 1/2: a
+                // spec or control-plane call carrying a key the server
+                // doesn't understand is the same caller-input problem as
+                // `invalid_spec`/`args_invalid` above.
+                | "unknown_spec_field" | "unknown_argument"
                 // PRD-mcphost-python-kind-plain-env requirement 3 (AC4): a
                 // publish/secret_set naming a colliding env/secret key is
                 // the same caller-input problem as `invalid_spec` above.

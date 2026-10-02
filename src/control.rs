@@ -1078,6 +1078,16 @@ pub async fn tool_publish(
         return Err(AppError::kind_mismatch(&kind_name, &signal));
     }
 
+    // PRD-mcphost-spec-unknown-field-rejection requirement 1 (AC1/AC2/AC3):
+    // a spec key no kind understands is refused before any other gate --
+    // including sandbox readiness just below -- since a caller shouldn't
+    // need a working sandbox to learn their spec has a typo, and a kind's
+    // own parser would otherwise silently ignore a field it doesn't read
+    // (the exact silent-accept bug this check exists to close).
+    if let Some(err) = crate::kinds::check_unknown_spec_field(kind.as_ref(), &spec, &state.kinds) {
+        return Err(err.into());
+    }
+
     // PRD-mcphost-sandbox-ready requirement 3 (AC3): a kind whose sandbox
     // self-test is currently failing (only `python` reports a status at
     // all -- `sandbox_status()` is `None` for `echo`/`http`, AC4) is

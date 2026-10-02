@@ -998,6 +998,25 @@ impl Kind for HttpKind {
             .map_or(Ok(()), Err)
     }
 
+    /// PRD-mcphost-spec-unknown-field-rejection requirement 1/4: the exact
+    /// set [`HttpSpecRaw`]/[`http_field_hint`] already enumerate.
+    fn known_spec_fields(&self) -> &'static [&'static str] {
+        &[
+            "method",
+            "url",
+            "headers",
+            "query",
+            "body",
+            "args_schema",
+            "timeout_s",
+            "response",
+            "description",
+            "outputs",
+            "upstream",
+            "upstream_provider",
+        ]
+    }
+
     /// Requirement 3 / AC2: every field below is checked independently of
     /// the others (no `?` short-circuit past the initial parse, which is
     /// the one genuine prerequisite -- nothing else can be checked against

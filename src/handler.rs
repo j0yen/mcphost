@@ -477,6 +477,18 @@ fn schema(props: Value, required: &[&str]) -> Map<String, Value> {
         "type": "object",
         "properties": props,
         "required": required,
+        // PRD-mcphost-spec-unknown-field-rejection requirement 3 (AC5):
+        // every control-plane tool this function builds a schema for
+        // (`host.*`/`billing.*` via `host_schema`, `admin.*` directly)
+        // advertises that an unlisted top-level argument is invalid, so a
+        // schema-aware client catches it before the call ever reaches the
+        // host. A published TENANT tool's own schema (`Kind::describe`)
+        // is built entirely separately (each kind's own `json!` literal,
+        // e.g. `http::compile_upstream`'s own explicit `additionalProperties:
+        // false`) and never goes through this function -- non-goal 2 ("an
+        // unknown key inside a tool's own `schema`... belongs to the tool
+        // author") is untouched.
+        "additionalProperties": false,
     }))
 }
 
@@ -744,6 +756,21 @@ pub fn llms_txt_tool_names(kinds: &KindRegistry) -> Vec<String> {
 /// as `llms_txt_tool_names` -- no `AppState`, no DB.
 pub fn host_tool_descriptors(kinds: &KindRegistry) -> Vec<Tool> {
     host_tools(kinds, true)
+}
+
+/// PRD-mcphost-spec-unknown-field-rejection requirement 2 (AC4): `name`'s
+/// own top-level argument keys, read straight off the exact schema
+/// `tools/list` advertises for it -- never a second hand-copied list, so a
+/// caller building an `unknown_argument` rejection's `data.known` can never
+/// drift from what the tool's own `inputSchema.properties` actually says.
+/// `None` when `name` isn't a `host.*`/`billing.*` tool this registry
+/// builds at all.
+pub fn known_control_plane_args(name: &str, kinds: &KindRegistry) -> Option<Vec<String>> {
+    host_tool_descriptors(kinds)
+        .into_iter()
+        .find(|t| t.name.as_ref() == name)
+        .and_then(|t| t.input_schema.get("properties").and_then(Value::as_object).cloned())
+        .map(|props| props.keys().cloned().collect())
 }
 
 /// PRD-mcphost-host-tool-deprecation requirement 3 / AC3: mutates
@@ -5324,6 +5351,15 @@ impl McpHostHandler {
                     registered: self.state.kinds.names(),
                     aliases: crate::kinds::aliases::alias_names(),
                 })?;
+
+        // PRD-mcphost-spec-unknown-field-rejection requirement 1 (AC1/AC2/
+        // AC3): same check, same "ahead of sandbox readiness" spot, as
+        // `control::tool_publish`.
+        if let Some(err) =
+            crate::kinds::check_unknown_spec_field(kind.as_ref(), &spec, &self.state.kinds)
+        {
+            return Err(err.into());
+        }
 
         if let Some(status) = kind.sandbox_status()
             && !status.ready

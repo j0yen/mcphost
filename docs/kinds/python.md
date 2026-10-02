@@ -18,6 +18,8 @@ Result envelope contract: an optional `outputs` array of field names (`"outputs"
 
 `outputs` also accepts an object mapping each field name to a path (`"outputs": {"score": "$.data.score"}`, the same `$.a.b[0].c` dotted/indexed grammar `http` accepts -- no wildcards, filters, or recursive descent); that path is read directly from `main`'s return value (PRD-mcphost-surface-fluidity), the same as `http`'s own path-declared fields -- a bare-name entry in the same `outputs` still falls back to the wrapper-search promotion above.
 
+Other spec fields: `timeout_s` (a positive integer number of seconds the sandboxed call may run, default 10), `memory_mb` (a positive integer number of megabytes the sandbox may use, default 256), `network` (`"none"` (default), `"public"`, or `"egress"` -- what the sandboxed process may reach beyond the `mcphost.*` bridges above), `secrets` (a list of `host.secret_set` names this tool may read, each injected as a `SECRET_<NAME>` environment variable -- see `env` below for the plain, non-secret counterpart), and `description` (a human-readable string shown in `tools/list`).
+
 ## mcphost.state (per-tenant memory)
 
 `import mcphost` inside `source` and call `mcphost.state.get/set/delete/list/insert/query/delete_rows/table_create` -- the same store `host.state.*` reads and seeds from the agent's own session, scoped to this tenant, reachable with `network: none`:

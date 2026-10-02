@@ -4326,6 +4326,25 @@ impl Kind for PythonKind {
         validate_spec_fields(&parsed)
     }
 
+    /// PRD-mcphost-spec-unknown-field-rejection requirement 1/4: the exact
+    /// set [`PythonSpecRaw`]/[`python_field_hint`] already enumerate --
+    /// `_dependency_lock` excluded (reserved, host-injected after
+    /// validation, never a field a tenant writes themselves).
+    fn known_spec_fields(&self) -> &'static [&'static str] {
+        &[
+            "source",
+            "requirements",
+            "args_schema",
+            "timeout_s",
+            "memory_mb",
+            "network",
+            "secrets",
+            "env",
+            "description",
+            "outputs",
+        ]
+    }
+
     fn validate_all(&self, spec: &Value) -> Vec<KindError> {
         match parse_spec(spec) {
             Ok(parsed) => validate_spec_fields_all(&parsed),
