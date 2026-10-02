@@ -68,8 +68,14 @@ async fn unready_sandbox_reports_at_healthz_and_the_host_still_serves() {
         .expect("echo publish must still work while python's sandbox is broken");
 }
 
+// PRD-mcphost-sandbox-ready AC2 split in two per
+// PRD-mcphost-test-suite-flake-lints requirement 6 (same shape as
+// `enduserctl_ac10`'s pagination/perf split): correctness below carries no
+// timing assertion at all, and the timing half just below it uses
+// `perf_budget!`'s warm-up-then-5-timed-runs median instead of one
+// wall-clock sample.
 #[tokio::test]
-async fn ready_sandbox_reports_ok_within_5s_of_start() {
+async fn ready_sandbox_reports_ok_via_healthz() {
     if sandbox::require_user_namespaces_or_ci_skip() {
         println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
@@ -77,7 +83,6 @@ async fn ready_sandbox_reports_ok_within_5s_of_start() {
     let data_dir = common::TempDataDir::new();
     let (kinds, py) = python_kind_registry_with_selftest(&data_dir.0, 300);
 
-    let before = std::time::Instant::now();
     let status = py.run_startup_selftest().await;
     assert!(
         status.ready,
@@ -88,8 +93,35 @@ async fn ready_sandbox_reports_ok_within_5s_of_start() {
     let server = TestServer::start_with_kinds(kinds).await;
     let body = healthz(&server.base_url).await;
     assert_eq!(body["sandbox_ready"], json!(true), "healthz: {body}");
-    assert!(
-        before.elapsed() < std::time::Duration::from_secs(5),
-        "sandbox_checked_at must be within 5s of start"
-    );
+}
+
+// AC2's own timing half: "`sandbox_checked_at` is within 5 s of start".
+// `checked_at` (src/sandbox.rs `SandboxStatus::ready`) is stamped the
+// instant `run_startup_selftest` returns -- the same call `main.rs` makes
+// at real process start -- so that call is the ONLY thing this property is
+// about. The old single-`Instant` version timed that call PLUS
+// `TestServer::start_with_kinds` (bind a real HTTP listener) PLUS a real
+// HTTP round trip to `/healthz`, none of which `checked_at` depends on;
+// under the gate box's load (32 vCPU, up to 8 concurrent gates) that
+// unrelated scaffolding is what blew the 5s budget (run 339: same single
+// failure in both flake-audit attempts, 57/58 passing), not a slow sandbox
+// probe. `perf_budget!` also gets the `MCPHOST_PERF_SKIP` escape hatch for
+// free, so a loaded gate box skips the measurement and the final gate
+// re-runs it quiet.
+#[tokio::test]
+async fn ready_sandbox_selftest_completes_within_5s_of_start() {
+    if sandbox::require_user_namespaces_or_ci_skip() {
+        println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
+        return;
+    }
+    let data_dir = common::TempDataDir::new();
+    let (_kinds, py) = python_kind_registry_with_selftest(&data_dir.0, 300);
+
+    crate::perf_budget!(5000, {
+        let status = py.run_startup_selftest().await;
+        assert!(
+            status.ready,
+            "expected ready on a working sandbox, got: {status:?}"
+        );
+    });
 }
