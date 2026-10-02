@@ -640,6 +640,34 @@ mod mcphost_admin_schema_contract_ac05_doctor_live_schema_version;
 mod mcphost_admin_schema_contract_ac06_admin_rs_fields_match_schema;
 #[path = "mcphost_admin_schema_contract_ac07_whoami_admin_schema_version.rs"]
 mod mcphost_admin_schema_contract_ac07_whoami_admin_schema_version;
+#[path = "mcphost_chain_run_lineage_ac01_chain_declares_required_inputs.rs"]
+mod mcphost_chain_run_lineage_ac01_chain_declares_required_inputs;
+#[path = "mcphost_chain_run_lineage_ac02_no_input_paths_keeps_plain_schema.rs"]
+mod mcphost_chain_run_lineage_ac02_no_input_paths_keeps_plain_schema;
+#[path = "mcphost_chain_run_lineage_ac03_compose_input_missing_before_step_one.rs"]
+mod mcphost_chain_run_lineage_ac03_compose_input_missing_before_step_one;
+#[path = "mcphost_chain_run_lineage_ac04_child_run_rows_per_step.rs"]
+mod mcphost_chain_run_lineage_ac04_child_run_rows_per_step;
+#[path = "mcphost_chain_run_lineage_ac05_runs_list_filters_children.rs"]
+mod mcphost_chain_run_lineage_ac05_runs_list_filters_children;
+#[path = "mcphost_chain_run_lineage_ac06_on_error_stop_partial_children.rs"]
+mod mcphost_chain_run_lineage_ac06_on_error_stop_partial_children;
+#[path = "mcphost_chain_run_lineage_ac07_children_inherit_end_user.rs"]
+mod mcphost_chain_run_lineage_ac07_children_inherit_end_user;
+#[path = "mcphost_chain_run_lineage_ac08_chain_meters_as_one_call.rs"]
+mod mcphost_chain_run_lineage_ac08_chain_meters_as_one_call;
+#[path = "mcphost_chain_run_lineage_ac09_lifecycle_delete_and_purge_cascade.rs"]
+mod mcphost_chain_run_lineage_ac09_lifecycle_delete_and_purge_cascade;
+#[path = "mcphost_chain_run_lineage_ac10_tool_test_reports_inputs_required.rs"]
+mod mcphost_chain_run_lineage_ac10_tool_test_reports_inputs_required;
+#[path = "mcphost_chain_run_lineage_ac11_failed_child_carries_step_no_and_parent_tool.rs"]
+mod mcphost_chain_run_lineage_ac11_failed_child_carries_step_no_and_parent_tool;
+#[path = "mcphost_chain_run_lineage_ac12_healthz_composition_counters.rs"]
+mod mcphost_chain_run_lineage_ac12_healthz_composition_counters;
+#[path = "mcphost_chain_run_lineage_ac13_daily_pipeline_persona_trailer.rs"]
+mod mcphost_chain_run_lineage_ac13_daily_pipeline_persona_trailer;
+#[path = "mcphost_chain_run_lineage_ac13_deferral_is_justified.rs"]
+mod mcphost_chain_run_lineage_ac13_deferral_is_justified;
 #[path = "mcphost_claude_code_plugin_and_snippets_ac01_plugin_assets_script.rs"]
 mod mcphost_claude_code_plugin_and_snippets_ac01_plugin_assets_script;
 #[path = "mcphost_claude_code_plugin_and_snippets_ac02_plugin_json_and_mcp_json_version.rs"]

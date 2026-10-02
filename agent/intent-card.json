@@ -1,83 +1,112 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-sandbox-bridge-discoverability.md",
-  "intent_slug": "mcphost-sandbox-bridge-discoverability",
-  "root_motivation": "The sandbox bridge (import mcphost; mcphost.state/table/docs/lineage/call/progress) already exists and works, but no surface a python tool author actually reads names the import -- the 2026-09-30 fleet-board dogfood grounding shows a coder wrote import host, got a bare ModuleNotFoundError traceback, read host.quickstart's own note about persistence with no import name in it, and concluded (wrongly) that the sandbox could not persist state, burning three coder rounds and ~95 tool calls instead of host.quickstart's documented four. This PRD makes every surface a python tool author sees -- quickstart's sandbox_api field, the starter tool, the static/run-time unknown_import checks, tools/list, and the three docs -- name import mcphost from one Rust constant, so the gap can't reopen by a module being added to the runner without that constant following.",
-  "user_persona": "An integration-specialist/workflow-orchestrator agent (projects/mcp-host.md) publishing its first python tool and needing to persist or read tenant state from inside it, discoverable from host.quickstart alone with no human relay.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-chain-run-lineage.md",
+  "intent_slug": "mcphost-chain-run-lineage",
+  "root_motivation": "Grounding (truth-tier failures 2026-09-28/09-29; chain.rs:28-31,188,185-245; mod.rs:1181,1187; runs.rs:185-215). A chain publishes input_schema: {\"type\":\"object\"} -- it never says which $.input.<name> values its steps need, so the first call is args:{} and dies at step 1 with compose_mapping_missing (4 of 4 chain sessions, 09-28/09-29). A chain run leaves no per-step run rows: chain.rs's result carries a steps trace as the only stand-in, so 'did all three steps finish?' is unanswerable via host.runs.*, and the gold runs.last(tool=daily_pipeline).children.count == 3 can never be observed. Fix: derive required inputs from $.input.* mapping paths at publish time, refuse a call missing them before any step runs (compose_input_missing naming every missing field), and record one child run row per executed step (trigger: \"composition\", parent_run_id) that host.runs.get inlines one level deep.",
+  "user_persona": "Two (PRD user stories): (1) a data-pipeline builder / workflow orchestrator agent that publishes a chain, learns its inputs from host.tool_spec/tools/list, and reads three done child runs after one call; (2) a SaaS operator running a per-end-user pipeline, who needs child runs to carry the parent's end_user_subject so per-user credential resolution and audit stay correct.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 7
+    "target": 12
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a fresh tenant, When it calls host.quickstart kind=python, Then the response carries sandbox_api.import == \"import mcphost\" and sandbox_api.modules keys exactly equal to the runner script's registered mcphost.* modules, and a fixture that adds a module to the registration constant sees it in quickstart with no other edit.",
-      "test": "tests/bridgedisc_ac01_sandbox_api_source_of_truth.rs"
+      "description": "Given a chain published with steps [{fetch_data, args:{url:\"$.input.url\"}}, {transform, args:{rows:\"$.prev.result.rows\"}}, {write, args:{rows:\"$.prev.result.rows\", region:\"$.input.region\"}}], When tools/list is read, Then input_schema.required == [\"url\",\"region\"].",
+      "test": "tests/mcphost_chain_run_lineage_ac01_chain_declares_required_inputs.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the python starter_tool from quickstart published verbatim, When host.tool_test runs its test_call, Then the result contains a bridge appended count and host.table.query on the starter's table returns the row.",
-      "test": "tests/bridgedisc_ac02_starter_tool_bridge_table.rs"
+      "description": "Given a chain with no $.input.* paths, When published, Then its input_schema is exactly {\"type\":\"object\"}.",
+      "test": "tests/mcphost_chain_run_lineage_ac02_no_input_paths_keeps_plain_schema.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a python spec whose source contains import host, When host.spec_test or host.tool_publish runs, Then the error class is unknown_import, data.hint contains import mcphost and all three module names, and nothing is published.",
-      "test": "tests/bridgedisc_ac03_unknown_import_rejected_at_publish.rs"
+      "description": "Given the chain from AC-1, When host.tool_call(name, args={}) is called, Then it fails compose_input_missing with data.missing == [\"url\",\"region\"], data.step == 1, and host.runs.list(include_children=true) shows zero trigger=\"composition\" rows for this tenant.",
+      "test": "tests/mcphost_chain_run_lineage_ac03_compose_input_missing_before_step_one.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a published python tool whose source does import mcphost_sdk inside a function (escaping the static scan), When it is called, Then the call fails unknown_import with the same hint and no raw traceback appears in result.",
-      "test": "tests/bridgedisc_ac04_runtime_unknown_import_no_traceback.rs"
+      "description": "Given the chain from AC-1 and args {url, region}, When called and awaited, Then host.runs.get(parent).children has exactly 3 rows in step order, each with trigger == \"composition\", parent_run_id == parent, status == \"done\", tool equal to the step's tool.",
+      "test": "tests/mcphost_chain_run_lineage_ac04_child_run_rows_per_step.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a free-plan tenant, When it calls host.quickstart kind=python, Then limits.plan.network_public names the plan that allows network: \"public\", and the python row of try_before_call says network is off by default.",
-      "test": "tests/bridgedisc_ac05_network_public_plan_named.rs"
+      "description": "Given that same run, When host.runs.list() is called with no filters, Then only the parent row appears; parent_run_id=parent shows exactly the 3 children; trigger=\"composition\" shows the 3 children.",
+      "test": "tests/mcphost_chain_run_lineage_ac05_runs_list_filters_children.rs"
     },
     {
       "id": "AC6",
-      "level": "SHOULD",
-      "description": "Given tools/list, When fetched, Then the host.tool_publish description and the python kind's field help each contain import mcphost and mcphost.table.",
-      "test": "tests/bridgedisc_ac06_tools_list_mentions_import_mcphost.rs"
+      "level": "MUST",
+      "description": "Given a 3-step chain whose step 2 fails with on_error: \"stop\", When awaited, Then the parent's outcome is a failure, child 1 is done, child 2 is failed with the step's error_class, and no child 3 row exists.",
+      "test": "tests/mcphost_chain_run_lineage_ac06_on_error_stop_partial_children.rs"
     },
     {
       "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given scripts/sandbox-api-doc-check.sh at the landing commit, When run, Then it exits 0 and reports modules=<n> docs_in_sync=3; given a fixture doc with one module removed, Then it exits 1 naming the missing module and file.",
-      "test": "tests/bridgedisc_ac07_sandbox_api_doc_check.rs"
+      "level": "MUST",
+      "description": "Given a 3-step chain run by an end user with end_user_subject = \"alice\", When children are read, Then each child's end_user equals the parent's.",
+      "test": "tests/mcphost_chain_run_lineage_ac07_children_inherit_end_user.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given the landed binary deployed on prod, When a fresh tenant created by the synthorg explore persona runs host.quickstart kind=python and publishes the returned starter verbatim, Then its first host.tool_test succeeds and host.usage by=tool for that tenant shows at most 6 calls between quickstart and the first successful bridge write (Live: prod tenant, evidence = the probe's JSON report and host.usage output pasted into the PRD's evidence block).",
-      "test": "deferred -- operator-provisioned; AC8 is the Live/production-only requirement (a real deploy, a synthorg probe run against it, a receipt pasted into the PRD) and needs operator authorization/deploy access this coding sandbox does not have. See the coder dispatch's own deferred list."
+      "description": "Given one 3-step chain run, When host.usage and the calls ledger are read, Then the chain counts as exactly 1 call and the busyaudit/metering suites pass unchanged.",
+      "test": "tests/mcphost_chain_run_lineage_ac08_chain_meters_as_one_call.rs"
+    },
+    {
+      "id": "AC9",
+      "level": "MUST",
+      "description": "Given a tenant with one parent and 3 children, When admin tenant delete runs, Then all 4 run rows are gone; and when host.runs.purge covers the parent's window, the children's stored results are purged too.",
+      "test": "tests/mcphost_chain_run_lineage_ac09_lifecycle_delete_and_purge_cascade.rs"
+    },
+    {
+      "id": "AC10",
+      "level": "MUST",
+      "description": "Given host.tool_test on the chain from AC-1, When called, Then the report includes inputs_required == [\"url\",\"region\"].",
+      "test": "tests/mcphost_chain_run_lineage_ac10_tool_test_reports_inputs_required.rs"
+    },
+    {
+      "id": "AC11",
+      "level": "SHOULD",
+      "description": "Given a failed child row, When host.runs.list(status=\"failed\", trigger=\"composition\") is read, Then the row carries step_no and parent_tool.",
+      "test": "tests/mcphost_chain_run_lineage_ac11_failed_child_carries_step_no_and_parent_tool.rs"
+    },
+    {
+      "id": "AC12",
+      "level": "SHOULD",
+      "description": "Given two chain runs and one compose_input_missing refusal, When /healthz is read, Then runs.composition_children_total == 6 and runs.composition_parents_failed_input_total == 1.",
+      "test": "tests/mcphost_chain_run_lineage_ac12_healthz_composition_counters.rs"
+    },
+    {
+      "id": "AC13",
+      "level": "MAY",
+      "description": "DEFERRED (operator-provisioned: needs prod deploy + a nightly cron this build role cannot touch). Given prod mcphost deployed and the truth-tier probe fix landed, one nightly run executing the daily-pipeline-chain scores >= 0.75 with children.count == 3.",
+      "test": "deferred -- operator-provisioned: measured by nightly `synthorg consume --tier truth` on orch (data-pipeline-builder-daily-pipeline-chain recipe score); see PRD-mcphost-chain-run-lineage.md's mock_justifications entry for AC13 and tests/mcphost_chain_run_lineage_ac13_daily_pipeline_persona_trailer.rs::persona_two_call_sequence_yields_three_done_children (the branch's own mechanism, not counted as AC13's proof). Conjunct 4 (the >= 0.75 score) is narrowed, not deferred whole: synthorg's own scorer is `timeliness * accuracy * helpfulness` (`_classify_gold_agreement`) meaned over the recipe's scored sessions against RECIPE_SATISFACTION_TARGET = 0.75 (`_recipe_satisfaction`), `helpfulness` is one of three judge labels and `_accuracy_score` one of three values, so accuracy == 1.0 is strictly necessary for the bar (0.5 * 1.0 * 1.0 = 0.5 < 0.75) and accuracy == 1.0 takes the gold observation this branch supplies. That scorer is ported and asserted against the branch's real observation by the same trailer file's the_recipe_bar_is_unreachable_without_the_children_this_prd_inlines and the_ported_scorer_matches_synthorgs_own_arithmetic. The probe's runs-order half is landed cross-repo in /home/jsy/repos/synthorg (master, commit c07c297, committed not pushed: normalize_probed_runs + _emit_host_context_probe(runs_order=...), proven by tests/chainlineage_ac13_probe_runs_order_test.py). What stays operator-provisioned is only the two factors this branch does not own -- the nightly judge's own `helped` label and the persona's own wall clock -- from a paid run against a prod deployment."
     }
   ],
   "scope": [
-    "src/kinds/python.rs: BridgeModule/BRIDGE_MODULES/BRIDGE_ATTRS (the one registration constant), build_sandbox_api, runner_script_registered_modules (the independent drift check against PY_RUNNER_SCRIPT's own sys.modules[...] lines), unknown_import_hint/unknown_import_error, scan_unknown_imports (the static publish-time check, wired into validate_spec_fields_all), runtime_unknown_import/runtime_unknown_import_in_text (the run-time ModuleNotFoundError mapping, wired into map_envelope_error and map_sandbox_outcome's NonZeroExit arm), python_field_hint's \"network\" entry (made pub(crate) so handler.rs can embed it).",
-    "src/control.rs: quickstart's new sandbox_api field (via kinds::python::build_sandbox_api), the starter tool rewritten from text_stats (reverse/word-count) to table_note (mcphost.table.create/append bridge example), limits.plan.network_public, the python try_before_call row's new note.",
-    "src/handler.rs: tool_publish_description's sandbox-API sentence, tool_publish_props's spec field description embedding python_field_hint(\"network\").",
-    "docs/kinds/python.md: new ## The sandbox API marked block plus new ## mcphost.table / ## mcphost.lineage sections (previously undocumented despite being registered bridge modules).",
-    "docs/agent-quickstart.md (generated into README.md/www/llms.txt via the existing gen-agent-docs.sh): starter_tool description updated from \"reverses text, counts words\" to the table_note bridge example.",
-    "www/llms.txt: First run's Publish/Test/Schedule blocks follow table_note; new ### The sandbox API marked block.",
-    "plugin/skills/mcphost/SKILL.md: new marked block after step 3 naming the sandbox API for a python publish.",
-    "examples/first-run/: proof.sh and tools/table_note.py (renamed from tools/text_stats.py) follow the same starter-tool change.",
-    "scripts/sandbox-api-doc-check.sh (new): renders the module table from BRIDGE_MODULES and checks/writes the marked block in the three docs above.",
-    "tests/firstpub_ac01/ac07/ac10 (PRD-mcphost-first-publish-real-kind, already landed): updated to assert the new starter's appended/table result shape instead of the retired reversed/words fields -- unavoidable since AC2 changes the exact surface those tests pinned.",
-    "agent/proof-lanes.toml + tests/lanecov_ac04_existing_lanes_unchanged.rs: new sandbox-api-docs lane for the new script, added to that test's own added-lanes whitelist."
+    "src/kinds/chain.rs: derive input_schema.required from every step's $.input.<name> mapping path (describe()); host.tool_test's dry run also reports inputs_required; ChainKind::call refuses compose_input_missing before step 1 dispatches when a required input is missing from the call's args; ChainKind::validates_own_args() -> true so the generic dispatch-time schema validator (which would otherwise enforce the same input_schema.required BEFORE chain's own call() ever ran) steps aside.",
+    "src/kinds/mod.rs: Kind::validates_own_args() new trait method (default false); CallCtx::parent_run_id: Option<String> new field; compose_call gains a step_no: Option<i64> parameter and, when ctx.parent_run_id is Some, records one composed child run row (trigger: \"composition\") per dispatch attempt via Db::insert_composed_run, whatever the outcome (self-call refusal, depth/children ceiling, tool lookup, or the target Kind::call's own Ok/Err) -- 'one row per executed step' matches chain.rs's own pre-existing steps trace, which already reports a dispatch refusal the same way it reports the target's own failure.",
+    "src/db.rs: RunRow/RUN_COLUMNS gain parent_run_id/step_no/parent_tool (migration 0061, additive); Db::insert_composed_run, Db::get_run_children; Db::list_runs gains parent_run_id/include_children (default excludes composed children unless parent_run_id, trigger=\"composition\", or include_children=true is given); Db::record_call_attributed_with_end_user gains an Option<String> pre-generated run_id parameter; Db::count_composition_children_total/count_composition_parents_failed_input_total for /healthz.",
+    "src/handler.rs: call_published_tool pre-generates its own run id BEFORE dispatch (was: generated only after the call returned) and threads it into CallCtx::parent_run_id so a composing chain's children can attribute to the not-yet-written parent row; host.tool_test/host.tool_call/host.tool_run/runs::enqueue[_shared]/compose_call all gain a `!kind.validates_own_args()` guard around the generic input_schema validator.",
+    "src/runs.rs: execute_job's CallCtx carries parent_run_id: Some(run.id) so an async/scheduled chain job gets the same lineage a synchronous call gets; runs::get inlines a run's direct children (one level, via get_run_children); runs::list parses parent_run_id/include_children.",
+    "src/http.rs: /healthz gains a runs: {composition_children_total, composition_parents_failed_input_total} block.",
+    "migrations/0061_runs_parent_run_id.sql: additive parent_run_id/step_no/parent_tool columns + index.",
+    "contracts/host-tools.v1.json: regenerated (host.runs.list's description/input_schema changed)."
   ],
   "non_goals": [
-    "Adding new bridge modules (mcphost.channel, mcphost.msg) -- PRD-mcphost-sandbox-channel-msg-bridge's own scope, not this PRD's.",
-    "Changing network plan gating -- the vision's own open question; network_public just names the existing pro-plan gate, it doesn't change it.",
-    "Renaming any tool -- PRD-mcphost-tool-naming-convention-and-aliases owns names; this PRD uses canonical names as that PRD defines them at landing (no tool this PRD touches has been renamed by that PRD yet).",
-    "AST-based import analysis -- the static scan (AC3) is deliberately a line-based, no-AST text scan per the PRD's own Technical considerations; false positives inside string literals/comments are accepted, and a dynamically constructed import is explicitly out of scope for the static half (covered instead by the run-time mapping, AC4)."
+    "No workflow engine: no branching, map steps, retries, or fan-out -- depth/children ceilings (COMPOSE_DEPTH_MAX, COMPOSE_CHILDREN_MAX) unchanged.",
+    "No recursion in `children` beyond one level -- a nested chain's own children are read by querying that child's run id directly, not auto-expanded.",
+    "No change to the $. mapping grammar; `outputs` promotion stays deferred as chain.rs already documents.",
+    "host.export archiving children under the parent's run id, and host.runs.cancel explicitly cascading to not-yet-started children (P0 requirement 7's other two clauses) -- not exercised by any listed AC; export's existing top-level-only scope is preserved unchanged rather than extended speculatively.",
+    "host.tool_test accepting args and reporting per-step mapping resolution against them (P2 requirement 10) -- no listed AC needs it beyond the existing dry-run/inputs_required behavior.",
+    "AC13 (the live truth-tier recipe score) -- operator-provisioned, deferred."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -86,58 +115,50 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "test_file_names_use_test_prefix_bridgedisc": "test_prefix bridgedisc (the PRD's own frontmatter field): tests/bridgedisc_ac<NN>_<slug>.rs, same convention as every other test file in this repo.",
-      "version_bump_minor": "PRD frontmatter build_version_bump: minor -- Cargo.toml/Cargo.lock/plugin/.mcp.json/plugin/.claude-plugin/plugin.json/CHANGELOG.md bumped 0.68.0 -> 0.69.0.",
-      "ac8_deferred_operator_provisioned": "AC8 is a Live acceptance criterion (a fresh tenant against a deployed box, a synthorg probe run, evidence pasted into the PRD) -- deferred, not built or tested here; a build agent never provisions or deploys infrastructure.",
-      "sandbox_api_modules_includes_lineage": "AC1 requires sandbox_api.modules keys to exactly equal the runner script's registered mcphost.* modules -- that set is four (state, table, docs, lineage), not the three AC3's own hint-text wording names, so BRIDGE_MODULES and sandbox_api carry all four; AC3's \"contains ... all three module names\" is satisfied as a subset check (the hint lists all four, which trivially contains any three of them), never read as \"contains only three\".",
-      "starter_table_auto_create_if_missing": "Open question default taken: the starter calls mcphost.table.create and catches table_already_exists, rather than telling the author to run host.table.create first -- the PRD's own drafted default.",
-      "mcphost_call_not_in_starter": "Open question default taken: mcphost.call is listed in sandbox_api.attrs, not demonstrated in the starter tool itself -- the PRD's own drafted default."
+      "chain_kind_generic_arg_validation_bypass": "chain's new input_schema.required, if enforced by the SAME generic dispatch-time jsonschema validator every other kind uses (call_published_tool, host.tool_test, host.tool_run, compose_call, runs::enqueue[_shared]), would reject a call missing an input with args_invalid BEFORE chain's own Kind::call ever ran -- making compose_input_missing (AC3, naming every missing field) unreachable, and breaking host.tool_test's dry run on an incomplete call (AC10). Kind::validates_own_args() is the opt-out: true only for chain, every other kind unaffected.",
+      "composed_child_rows_cover_every_dispatch_outcome_not_just_kind_call_success": "compose_call records a run row for EVERY dispatch attempt once lineage is active (ctx.parent_run_id is Some) -- including a self-call/depth/children-ceiling refusal or a tool-not-found lookup miss, not only a case where the target Kind::call itself ran -- matching chain.rs's own pre-existing steps trace, which already reports those same refusals as a step's own status/error_class (see tests/compose_ac7_on_error_continue.rs's 'step2 is deliberately never published' convention)."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does the static import scan (AC3) need a separate run-time ModuleNotFoundError mapping (AC4) at all, instead of just rejecting every disallowed import at publish time?",
-      "a": "The static scan is deliberately a line-based text match over literal import/from statements (the PRD's own Technical considerations: no AST, dynamic imports out of scope) -- a source that builds its import dynamically (importlib.import_module(\"mcphost_sdk\")) never contains a literal import mcphost_sdk line, so it publishes cleanly and only fails once that call actually executes and CPython itself raises ModuleNotFoundError. AC4 exists specifically to give that run-time failure the same unknown_import class and hint instead of leaking a raw exception class/traceback, since the static half can't catch everything by construction."
+      "q": "Why is data-pipeline-builder-daily-pipeline-chain 0.00 on 09-28/09-29?",
+      "a": "Gold children.count == 3 is False (no children in any run row) and, before that, the first run of the chain fails."
     },
     {
       "why": 2,
-      "q": "Why is BRIDGE_MODULES a hand-written Rust constant kept in sync with PY_RUNNER_SCRIPT's sys.modules[...] lines by a test, rather than generating PY_RUNNER_SCRIPT's own module-registration code from the constant?",
-      "a": "PY_RUNNER_SCRIPT is a single large raw-string Python literal with hand-written request/response plumbing per module (each one's own _state_call/_table_call-style synchronous round trip through the sidecar bridge) -- collapsing that into codegen from a simple (name, signatures) list would be a much larger refactor than this PRD's scope, and isn't what any AC actually requires. AC1 only requires that sandbox_api.modules exactly equal what the runner script registers; runner_script_registered_modules() parses the actual sys.modules[...] lines back out of the script text and a test asserts the two never drift, which proves the invariant without the larger refactor."
+      "q": "Why did the first run fail?",
+      "a": "The agent called with args: {}; step 1 needed $.input.url."
     },
     {
       "why": 3,
-      "q": "Why does the starter tool change (AC2) require editing three already-landed tests from a different PRD (PRD-mcphost-first-publish-real-kind's firstpub_ac01/ac07/ac10)?",
-      "a": "Requirement 2 explicitly mandates turning host.quickstart's one starter_tool into a bridge example (\"the python starter_tool becomes a bridge example ... test_call matches\"), which necessarily changes its source, name, and result shape -- the three firstpub_ac* tests pinned the old reversed/words shape byte-for-byte, so leaving them unedited would either fail them outright or (worse) force keeping two different starter tools. Editing a prior PRD's test to match an intentional, later-PRD-mandated change to shared surface is the same pattern this repo already uses elsewhere (e.g. PRD-mcphost-session-bound-tenant-after-signup's own AC12 renames a field a prior test asserted on)."
+      "q": "Why did the agent pass nothing?",
+      "a": "The published chain's input_schema is an empty object schema; host.tool_spec/tools/list show no required inputs, and host.tool_test's dry run reports the steps but not the inputs they will need."
     },
     {
       "why": 4,
-      "q": "Why is python_field_hint (previously private to kinds::python, used only for publish-time error messages) now pub(crate) and embedded into handler.rs's tools/list schema instead of writing a second, independent sandbox-API sentence for tools/list?",
-      "a": "AC6 names two places (host.tool_publish's description, and \"the python kind's field help ('network' => ... block)\") that must each mention import mcphost/mcphost.table -- the second is a direct pointer at this exact match arm's own code locus, matching the PRD's own Grounding-paragraph convention of citing precise source locations. Reusing the same hint text keeps the two in sync by construction (one string, two readers: the invalid_spec error path and tools/list) rather than risking two independently-worded mentions drifting apart."
+      "q": "Why is the schema empty?",
+      "a": "The chain kind was scaffolded with mapping parsing for validation only; deriving a schema from $.input.* paths was not in that tick's scope, and no test asserted a chain's schema."
     },
     {
       "why": 5,
-      "q": "Why does scripts/sandbox-api-doc-check.sh parse src/kinds/python.rs's text directly with a regex instead of adding a CLI subcommand that dumps BRIDGE_MODULES as JSON?",
-      "a": "scripts/gen-oauth-scenarios-doc.sh already establishes this repo's convention for a doc-sync script: read the structured source directly (there, a TOML gold file; here, a Rust const's own literal syntax) rather than requiring a compiled binary to introspect itself. A CLI dump subcommand would need a full cargo build before the doc check could ever run, making it unusable as a fast, standalone pre-commit-style check -- the regex (two patterns, name: \"...\" and purpose: \"...\", matched in order within the BRIDGE_MODULES block) is simple enough that AC7's own fixture test (one module's bullet line removed) proves it actually detects drift, not just that it runs."
+      "q": "Why no child runs?",
+      "a": "Explicitly deferred to a runs-and-jobs PRD that had not landed when chain.rs was scaffolded; the parent's own steps trace was accepted as a stand-in, and nothing downstream forced the issue until the truth-tier gold asked for lineage. Deepest actionable level: (a) publish-time input derivation + call-time pre-check; (b) child run rows written by compose_call for every step dispatch, inlined by host.runs.get."
     }
   ],
-  "created_at": "2026-10-01T00:00:00Z",
+  "created_at": "2026-09-29T21:25:04Z",
   "ambiguities_resolved": [
     {
-      "question": "Should AC1's sandbox_api.modules list include mcphost.lineage, given AC3's own hint-text wording names only three modules (\"mcphost.state, mcphost.table, mcphost.docs\")?",
-      "resolution": "Yes -- AC1's own text requires sandbox_api.modules to exactly equal the runner script's registered mcphost.* modules, which is four (state/table/docs/lineage), not three; AC3's \"data.hint contains ... all three module names\" is a subset (\"contains\") requirement, satisfied by a hint that also names a fourth module, never read as \"contains exactly three and no more\"."
+      "question": "AC4/AC13 say 'run via host.tool_run' -- is that the literal host.tool_run RPC (a debug dispatch to Kind::tool_run, which chain never overrides, so it always returns tool_run_unsupported)?",
+      "resolution": "No -- Technical Considerations explicitly names the synchronous host.tool_call dispatch site (handler.rs::call_published_tool) as where CallCtx::parent_run_id is set, and the PRD's own evidence section's transcripts all use host_tool_call. Read 'run via host.tool_run' as generic phrasing for 'run it' (host.tool_call), not the distinct host.tool_run debug RPC."
     },
     {
-      "question": "Should the starter tool's table be auto-created on first publish, or should quickstart tell the author to run host.table.create first? (PRD's own open question, drafted default: starter calls table.create if missing.)",
-      "resolution": "Starter calls mcphost.table.create and catches TableError where .code == \"table_already_exists\", per the PRD's own stated default -- makes the starter's test_call (and any later real call) idempotent and safe to repeat, matching host.quickstart's own \"safe to retry while iterating\" convention for every other step."
+      "question": "AC6 says 'the parent is failed' -- is that the literal run status string \"failed\"?",
+      "resolution": "No -- this crate's existing call/job run status vocabulary is done/error/timeout/cancelled (no \"failed\"); only requirement 4's own text introduces done/failed as the CHILD status vocabulary specifically. The parent (written by the pre-existing generic call/job finalize path) keeps status \"error\" for a failure; 'the parent is failed' reads as a description of outcome, not a literal value, since AC6's own parallel wording for children ('child 2 is failed') does use requirement 4's literal new vocabulary."
     },
     {
-      "question": "Should mcphost.call (call a sibling tool) appear in the starter as well, or only in sandbox_api.attrs? (PRD's own open question, drafted default: listed in attrs, not in the starter.)",
-      "resolution": "Listed only in sandbox_api.attrs, per the PRD's own stated default -- the starter's own job (AC2) is proving a bridge write through mcphost.table, and composing a second tool call would widen what test_call has to prove without any AC asking for it."
-    },
-    {
-      "question": "How should AC4's \"a published python tool whose source does import mcphost_sdk inside a function (escaping the static scan)\" actually be constructed as a test fixture, given the static scan (as implemented) matches a literal import statement regardless of indentation?",
-      "resolution": "Via importlib.import_module(\"mcphost_sdk\") -- a dynamic call, not a literal import statement -- which the static scan's own text-matching design (no AST, literal import/from lines only) cannot catch by construction, matching requirement 3's own \"dynamic imports are out of scope\" carve-out and making the AC4 fixture a genuine escape rather than an artifact of under-scanning indented lines."
+      "question": "Should a composed child row exist for a step compose_call refuses BEFORE ever reaching the target's own Kind::call (self-call, depth/children ceiling, tool-not-found, schema mismatch)?",
+      "resolution": "Yes -- matches chain.rs's own pre-existing steps trace, which already reports exactly these refusals as a step's status/error_class (tests/compose_ac7_on_error_continue.rs relies on step2 never being published so its dispatch fails tool_not_found, asserted as steps[1].status == \"error\"). Treating every compose_call invocation (not just a successful hand-off into the target's own call) as 'one executed step' keeps the new run-row ledger and the pre-existing trace in agreement."
     }
   ]
 }

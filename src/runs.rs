@@ -222,6 +222,13 @@ fn run_to_json(run: &RunRow) -> Value {
         "test": run.test,
         // PRD-mcphost-runs-end-user-subject P0 requirement 3.
         "end_user": end_user_to_json(run),
+        // PRD-mcphost-chain-run-lineage requirement 4/8: `null` for every
+        // top-level run (unchanged shape); a composed child's own parent
+        // run id, and (P1 requirement 8, AC11) the step number/immediate
+        // parent tool name `chain`'s own steps carry.
+        "parent_run_id": run.parent_run_id,
+        "step_no": run.step_no,
+        "parent_tool": run.parent_tool,
     })
 }
 
@@ -247,6 +254,13 @@ async fn attach_result(
 
 /// `host.runs.get(run_id)`, inlining the stored result (P0 requirement 7:
 /// "`host.runs.get` inlines it") when one is present and not yet purged.
+///
+/// PRD-mcphost-chain-run-lineage requirement 5 (AC4): also inlines this
+/// run's own direct children (one level -- each child's own `children`
+/// field is never populated here, only the plain [`run_to_json`] shape) as
+/// `children`, in step order. A run with none (every non-composing run,
+/// and a composed child itself, since nesting stops at one level) reads
+/// back `children: []`, not an absent field.
 pub async fn get(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let run_id = arg_str(args, "run_id")?;
     let run = state
@@ -258,7 +272,14 @@ pub async fn get(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Valu
             message: format!("no run '{run_id}' for this tenant"),
             data: json!({"run_id": run_id}),
         })?;
-    let value = run_to_json(&run);
+    let mut value = run_to_json(&run);
+    let children = state.db.get_run_children(tenant.id, run_id).await?;
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert(
+            "children".to_string(),
+            json!(children.iter().map(run_to_json).collect::<Vec<_>>()),
+        );
+    }
     attach_result(state, tenant.id, &run, value).await
 }
 
@@ -301,21 +322,77 @@ pub async fn part(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     Ok(json!({"n": n, "parts": parts, "bytes": bytes, "data": data}))
 }
 
-/// `host.runs.list(tool?, status?, trigger?, end_user_subject?, limit?)`.
+/// `host.runs.list(tool?, status?, trigger?, end_user_subject?,
+/// parent_run_id?, include_children?, limit?)`.
 /// PRD-mcphost-runs-end-user-subject P0 requirement 4 (AC2): `end_user_subject`
 /// filters within this tenant; a subject with no runs (even `carol`, never
 /// heard of) returns an empty list, never an error.
+///
+/// PRD-mcphost-chain-run-lineage requirement 5 (AC5): by default (none of
+/// `parent_run_id`, `trigger: "composition"`, `include_children: true`
+/// given) this excludes every composed child row, so a tenant with one
+/// 3-step chain run sees exactly one row -- `parent_run_id` narrows to one
+/// parent's own children, `trigger: "composition"` broadens to every
+/// composed child, and `include_children: true` is the explicit opt-in for
+/// every other filter combination.
+///
+/// Requirement 5 / AC13: every returned top-level row carries its own
+/// `children` (one level, step order -- the same array [`get`] inlines),
+/// because a lineage reader does not necessarily follow up with a
+/// `host.runs.get`. The truth-tier probe that scores
+/// `data-pipeline-builder-daily-pipeline-chain` is exactly that reader:
+/// `synthorg`'s `_emit_host_context_probe` makes ONE `host.runs.list` call
+/// with no arguments and evaluates `runs.last(tool=daily_pipeline).children
+/// .count == 3` straight off those rows, never calling `host.runs.get` at
+/// all -- so without `children` here, a chain's lineage is invisible to it
+/// no matter how many child rows this PRD writes. A composed child's own
+/// row (returned only under `parent_run_id`/`trigger: "composition"`/
+/// `include_children`) reads back its own direct children the same way --
+/// `[]` for a leaf step; the array never recurses, so a nested chain's
+/// grandchildren appear only on the row that is their own parent, the same
+/// one-level rule [`get`] follows.
 pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let tool = arg_str_opt(args, "tool");
     let status = arg_str_opt(args, "status");
     let trigger = arg_str_opt(args, "trigger");
     let end_user_subject = arg_str_opt(args, "end_user_subject");
+    let parent_run_id = arg_str_opt(args, "parent_run_id");
+    let include_children = args.get("include_children").and_then(Value::as_bool).unwrap_or(false);
     let limit = arg_i64_opt(args, "limit").unwrap_or(20).clamp(1, 200);
     let rows = state
         .db
-        .list_runs(tenant.id, tool, status, trigger, end_user_subject, limit)
+        .list_runs(
+            tenant.id,
+            tool,
+            status,
+            trigger,
+            end_user_subject,
+            parent_run_id,
+            include_children,
+            limit,
+        )
         .await?;
-    Ok(json!({"runs": rows.iter().map(run_to_json).collect::<Vec<_>>()}))
+    // One query for the whole page's children, not one per row.
+    let parent_ids: Vec<String> = rows.iter().map(|r| r.id.clone()).collect();
+    let children = state.db.list_run_children_for_parents(tenant.id, parent_ids).await?;
+    let mut by_parent: HashMap<&str, Vec<Value>> = HashMap::new();
+    for child in &children {
+        if let Some(parent) = child.parent_run_id.as_deref() {
+            by_parent.entry(parent).or_default().push(run_to_json(child));
+        }
+    }
+    let runs: Vec<Value> = rows
+        .iter()
+        .map(|row| {
+            let mut value = run_to_json(row);
+            if let Some(obj) = value.as_object_mut() {
+                let own = by_parent.remove(row.id.as_str()).unwrap_or_default();
+                obj.insert("children".to_string(), Value::Array(own));
+            }
+            value
+        })
+        .collect();
+    Ok(json!({"runs": runs}))
 }
 
 /// `host.runs.cancel(run_id)` (AC4). Marks the run `cancelled` in the
@@ -576,7 +653,10 @@ pub async fn enqueue(
         ))
     })?;
     let descriptor = kind.describe(&row.spec);
-    if let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
+    // PRD-mcphost-chain-run-lineage requirement 3: see
+    // `Kind::validates_own_args`'s own doc comment.
+    if !kind.validates_own_args()
+        && let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
         && let Err(e) = validator.validate(&args)
     {
         let data = crate::kinds::describe_args_error(&e);
@@ -645,7 +725,10 @@ pub async fn enqueue_shared(
         ))
     })?;
     let descriptor = kind.describe(&row.spec);
-    if let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
+    // PRD-mcphost-chain-run-lineage requirement 3: see
+    // `Kind::validates_own_args`'s own doc comment.
+    if !kind.validates_own_args()
+        && let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
         && let Err(e) = validator.validate(&args)
     {
         let data = crate::kinds::describe_args_error(&e);
@@ -874,6 +957,12 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
         // silently, same posture `compose_db`/`compose_kinds` already take
         // wherever they're `None`.
         host_dispatch: None,
+        // PRD-mcphost-chain-run-lineage requirement 4: this job's own
+        // `run.id` -- a composing `Kind` (`chain`) dispatched as a job
+        // attributes every child run row it writes to this run, exactly
+        // like `handler.rs::call_published_tool`'s synchronous path
+        // attributes to its own pre-generated run id.
+        parent_run_id: Some(run.id.clone()),
     };
 
     let outcome = tokio::time::timeout(
@@ -1152,6 +1241,9 @@ mod tests {
             end_user_subject: None,
             end_user_issuer: None,
             end_user_method: None,
+            parent_run_id: None,
+            step_no: None,
+            parent_tool: None,
         };
         let value = run_to_json(&run);
         assert_eq!(value["purged"], json!(true));

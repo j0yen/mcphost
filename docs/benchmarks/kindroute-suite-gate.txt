@@ -8,11 +8,16 @@ re-run inside `cargo test`" pattern as
 docs/benchmarks/tkparam-suite-gate.txt (running the whole workspace suite
 recursively from inside one of its own tests would be both circular and
 multi-minute cost paid on every `cargo test`). This receipt is the literal
-`wm-build runner exec --run 306 -- cargo ...` output on the remote build
-runner, never run locally per this repo's own build contract.
+`wm-build runner exec --run 309 -- cargo ...` output on the remote build
+runner, never run locally per this repo's own build contract. Regenerated
+by PRD-mcphost-chain-run-lineage (2026-09-30), whose AC13 fix pass added
+three tests to two existing files (the ported truth-tier scorer, and the
+cross-repo synthorg pointer check) and so moved the source_hash and the
+pass count 1449 -> 1452 -- the kindroute AC1-7 tests this receipt was
+named for are unaffected and still pass.
 
 cargo test --workspace:
-  1426 passed, 0 failed, 8 ignored (hardware/cache-dependent, pre-existing
+  1452 passed, 0 failed, 8 ignored (hardware/cache-dependent, pre-existing
   -- suite_ac5_disk_size_budget, suite_ac6_wall_time_budget's own sibling
   ignores, ac11_load_smoke's two-hundred-concurrent load test, etc.)
   exit: 0

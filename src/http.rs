@@ -278,6 +278,23 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
             }),
         );
     }
+    // PRD-mcphost-chain-run-lineage P1 requirement 9 (AC12): additive,
+    // always present (0 on a box with no composed chain runs yet) --
+    // `composition_children_total` is every composed step run across every
+    // tenant, `composition_parents_failed_input_total` is every chain call
+    // refused before step 1 for a missing `$.input.*` value (requirement 3).
+    if let Some(obj) = body.as_object_mut() {
+        let composition_children_total = state.db.count_composition_children_total().await.unwrap_or(0);
+        let composition_parents_failed_input_total =
+            state.db.count_composition_parents_failed_input_total().await.unwrap_or(0);
+        obj.insert(
+            "runs".to_string(),
+            json!({
+                "composition_children_total": composition_children_total,
+                "composition_parents_failed_input_total": composition_parents_failed_input_total,
+            }),
+        );
+    }
     // PRD-mcphost-synthetic-flag P1 requirement 6 / AC10: `paying_tenants_real`
     // appears only once a labeled tenant has actually gone paid -- absent,
     // not present-and-equal, on every host where it can never have

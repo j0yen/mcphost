@@ -3350,8 +3350,19 @@ impl SidecarBridge for ComposeSidecarBridge<'_> {
         let name = request.get("name").and_then(Value::as_str).unwrap_or("");
         let args = request.get("args").cloned().unwrap_or(Value::Null);
         let timeout_s = request.get("timeout_s").and_then(Value::as_u64);
-        let response = match crate::kinds::compose_call(self.ctx, self.ctx.tenant_id, name, args, timeout_s)
-            .await
+        let response = match crate::kinds::compose_call(
+            self.ctx,
+            self.ctx.tenant_id,
+            name,
+            args,
+            timeout_s,
+            // PRD-mcphost-chain-run-lineage requirement 4: `step_no` is
+            // `chain`'s own step-numbering concept -- a python tool's
+            // `mcphost.call` has no notion of "step N", so its composed
+            // child run row (if lineage is active) carries no `step_no`.
+            None,
+        )
+        .await
         {
             Ok(result) => json!({"ok": true, "result": result}),
             Err(e) => {
@@ -5619,6 +5630,7 @@ mod tests {
             sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             sidecar_ops_max: i64::MAX,
             host_dispatch: None,
+            parent_run_id: None,
         }
     }
 
@@ -5931,6 +5943,7 @@ mod tests {
             sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             sidecar_ops_max: i64::MAX,
             host_dispatch: None,
+            parent_run_id: None,
         }
     }
 

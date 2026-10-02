@@ -1372,6 +1372,19 @@ pub struct CallCtx {
     /// suite) -- [`compose_call`] reports a clear "unavailable" error rather
     /// than panicking when a step needs it and finds `None`.
     pub host_dispatch: Option<Arc<dyn HostDispatch>>,
+    /// PRD-mcphost-chain-run-lineage requirement 4: the run id [`compose_call`]
+    /// should record as the `parent_run_id` of any child run row it writes
+    /// for a call dispatched through this `ctx` -- the id of THIS call's
+    /// own run row, set by `handler.rs::call_published_tool` (a synchronous
+    /// dispatch, whose run row is otherwise only written after the call
+    /// returns -- see that call site's own comment) and `runs::execute_job`
+    /// (an async job's already-known `run.id`). `None` in every context
+    /// with no run row of its own to hang children from (`for_test`, the
+    /// conformance suite, `host.tool_test`/`host.tool_run`, which also
+    /// leave `compose_db`/`compose_kinds` `None`) -- [`compose_call`] writes
+    /// no run row at all when this is `None`, composition lineage simply
+    /// isn't recorded, exactly like today.
+    pub parent_run_id: Option<String>,
 }
 
 impl CallCtx {
@@ -1406,6 +1419,7 @@ impl CallCtx {
             sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             sidecar_ops_max: i64::MAX,
             host_dispatch: None,
+            parent_run_id: None,
         }
     }
 
@@ -1427,35 +1441,22 @@ pub const COMPOSE_DEPTH_MAX: u32 = 4;
 /// `compose_children_exceeded`.
 pub const COMPOSE_CHILDREN_MAX: u32 = 50;
 
-/// PRD-mcphost-composition requirements 1/2: dispatches `target_name` (in
-/// `tenant_id`'s tool table) as a child of whatever call `ctx` belongs to.
-/// The one entry point every composing `Kind` uses -- today `chain`'s step
-/// dispatch; once the sandbox grows a nested-call channel, `python`'s
-/// `mcphost.call` calls this too, unchanged.
-///
-/// Enforces, in order: requirement 2's immediate self-call refusal
-/// (`compose_self_call`), the depth ceiling (`compose_depth_exceeded`,
-/// [`COMPOSE_DEPTH_MAX`]), and the per-tree children ceiling
-/// (`compose_children_exceeded`, [`COMPOSE_CHILDREN_MAX`]) -- all before
-/// `target_name` is even looked up, so a refusal never touches the tool
-/// table. `ctx.compose_children`/`compose_db`/`compose_kinds` all being
-/// `Some` is this function's precondition for anything past the ceiling
-/// checks; a caller with any of them `None` gets a plain `Exec` error
-/// rather than a panic (composition not wired into this call context --
-/// `host.tool_test`/`host.tool_run` today).
-///
-/// PRD-mcphost-runs-and-jobs (this PRD's declared dependency) has not
-/// shipped: there is no `runs` table, so this records no child run row --
-/// it dispatches and returns the child's result, and a caller that wants a
-/// receipt (`chain`'s own `steps` trace) builds it from this call's
-/// `Ok`/`Err` itself. Wiring a real child run here is the follow-up once
-/// that PRD lands.
-pub async fn compose_call(
+/// PRD-mcphost-chain-run-lineage requirement 4: [`compose_call`]'s own
+/// dispatch logic, unchanged from before this PRD except for
+/// `validates_own_args` (requirement 3) and threading `child_run_id` into
+/// the dispatched child's own `CallCtx::parent_run_id` (so a further-nested
+/// composed call attributes to THIS dispatch, not the top of the tree).
+/// Split out so [`compose_call`] can record a child run row around
+/// whatever this returns, `Ok` or `Err`, without duplicating the dispatch
+/// logic itself.
+#[allow(clippy::too_many_arguments)]
+async fn compose_dispatch(
     ctx: &CallCtx,
     tenant_id: i64,
     target_name: &str,
     args: Value,
     timeout_s: Option<u64>,
+    child_run_id: &str,
 ) -> Result<Value, KindError> {
     if ctx.tool_name.as_deref() == Some(target_name) {
         return Err(KindError::structured(
@@ -1532,7 +1533,8 @@ pub async fn compose_call(
     })?;
 
     let descriptor = kind.describe(&row.spec);
-    if let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
+    if !kind.validates_own_args()
+        && let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
         && let Err(e) = validator.validate(&args)
     {
         let data = describe_args_error(&e);
@@ -1629,9 +1631,124 @@ pub async fn compose_call(
         // still reach a host step through the same bridge the parent call
         // was given.
         host_dispatch: ctx.host_dispatch.clone(),
+        // PRD-mcphost-chain-run-lineage requirement 4: propagate lineage
+        // downward only when it's actually active for this call tree (`ctx`
+        // itself has a `parent_run_id`) -- a further-nested composed call
+        // (this child dispatching its own children, e.g. a chain-of-chains)
+        // attributes to THIS dispatch's own row (`child_run_id`), not the
+        // top of the tree, so `host.runs.get`'s "one level" inlining stays
+        // correct at every depth. `None` when lineage isn't active here
+        // (`ctx.parent_run_id` is `None`), matching every other
+        // composition-unavailable field above.
+        parent_run_id: ctx.parent_run_id.is_some().then(|| child_run_id.to_string()),
     };
 
     kind.call(&row.spec, args, &child_ctx).await
+}
+
+/// PRD-mcphost-composition requirements 1/2: dispatches `target_name` (in
+/// `tenant_id`'s tool table) as a child of whatever call `ctx` belongs to.
+/// The one entry point every composing `Kind` uses -- today `chain`'s step
+/// dispatch; once the sandbox grows a nested-call channel, `python`'s
+/// `mcphost.call` calls this too, unchanged.
+///
+/// Enforces, in order: requirement 2's immediate self-call refusal
+/// (`compose_self_call`), the depth ceiling (`compose_depth_exceeded`,
+/// [`COMPOSE_DEPTH_MAX`]), and the per-tree children ceiling
+/// (`compose_children_exceeded`, [`COMPOSE_CHILDREN_MAX`]) -- all before
+/// `target_name` is even looked up, so a refusal never touches the tool
+/// table. `ctx.compose_children`/`compose_db`/`compose_kinds` all being
+/// `Some` is this function's precondition for anything past the ceiling
+/// checks; a caller with any of them `None` gets a plain `Exec` error
+/// rather than a panic (composition not wired into this call context --
+/// `host.tool_test`/`host.tool_run` today).
+///
+/// PRD-mcphost-chain-run-lineage requirement 4: when `ctx.parent_run_id` is
+/// `Some` (lineage active for this call tree), records ONE run row for
+/// THIS dispatch -- `trigger: "composition"`, `parent_run_id:
+/// ctx.parent_run_id`, `status` following [`compose_dispatch`]'s own
+/// `Ok`/`Err` outcome -- regardless of WHERE in `compose_dispatch` that
+/// outcome came from (a refused self-call/depth/children-ceiling/
+/// tool-lookup exactly as much as the target `Kind::call` itself failing):
+/// every one of those is "this step was attempted," matching `chain.rs`'s
+/// own pre-existing `steps` trace, which already reports a step's dispatch
+/// refusal (e.g. `tool_not_found`) the same way it reports the target's own
+/// failure. `step_no`/`parent_tool` (P1 requirement 8, AC11) are `chain`'s
+/// own step-numbering (`None`/absent for every other composing kind, e.g.
+/// python's `mcphost.call`) and the immediate caller's own tool name,
+/// respectively -- NOT the top of the composition tree, so nested
+/// composition attributes each row to its own immediate parent. When
+/// `ctx.parent_run_id` is `None` (lineage not active, e.g. `host.tool_test`/
+/// `host.tool_run`), this records nothing at all, unchanged from before
+/// this PRD.
+#[allow(clippy::too_many_arguments)]
+pub async fn compose_call(
+    ctx: &CallCtx,
+    tenant_id: i64,
+    target_name: &str,
+    args: Value,
+    timeout_s: Option<u64>,
+    step_no: Option<i64>,
+) -> Result<Value, KindError> {
+    let child_run_id = crate::state::new_ulid();
+    let started_unix = crate::state::now_unix();
+    let start = Instant::now();
+    let result = compose_dispatch(ctx, tenant_id, target_name, args, timeout_s, &child_run_id).await;
+
+    if let (Some(parent_run_id), Some(db)) = (ctx.parent_run_id.clone(), ctx.compose_db.as_ref()) {
+        let duration_ms = start.elapsed().as_millis() as i64;
+        let finished_unix = crate::state::now_unix();
+        let (status, error_class, result_value): (&str, Option<String>, Option<&Value>) = match &result {
+            Ok(value) => ("done", None, Some(value)),
+            Err(e) => (
+                "failed",
+                Some(crate::errors::AppError::from(e.clone()).code().to_string()),
+                None,
+            ),
+        };
+        // requirement 4: "result storage for children follows the existing
+        // parts rule" -- a successful child's result lives at the same
+        // `runs/<id>/part/0` key `run_one_job` writes for a job, so
+        // `host.runs.purge` (which already deletes every `runs/<id>/part/*`
+        // key for a `done` row with a `result_ref`) cascades to a child's
+        // stored result with no extra code of its own. Awaited (not
+        // fire-and-forget) so the part is already readable by the time this
+        // dispatch (and the whole chain call it's part of) returns.
+        let mut result_ref = None;
+        if let Some(value) = result_value {
+            let value_json = serde_json::to_string(value).unwrap_or_else(|_| "null".to_string());
+            let bytes = value_json.len() as i64;
+            let _ = db
+                .state_kv_set(tenant_id, crate::runs::part_key(&child_run_id, 0), String::new(), value_json)
+                .await;
+            result_ref = Some(json!({"parts": 1, "bytes": bytes, "content_type": "application/json"}).to_string());
+        }
+        let (end_user_subject, end_user_issuer, end_user_method) = match &ctx.end_user {
+            Some(e) => (Some(e.subject.clone()), e.issuer.clone(), Some(e.method.as_str().to_string())),
+            None => (None, None, None),
+        };
+        let _ = db
+            .insert_composed_run(crate::db::ComposedRun {
+                run_id: child_run_id,
+                tenant_id,
+                parent_run_id,
+                tool_name: target_name.to_string(),
+                step_no,
+                parent_tool: ctx.tool_name.clone().unwrap_or_default(),
+                status: status.to_string(),
+                error_class,
+                result_ref,
+                started_unix,
+                finished_unix,
+                duration_ms,
+                end_user_subject,
+                end_user_issuer,
+                end_user_method,
+            })
+            .await;
+    }
+
+    result
 }
 
 /// A tool execution kind. Implementors are registered in a [`KindRegistry`]
@@ -1714,6 +1831,24 @@ pub trait Kind: Send + Sync {
     /// only `http` does.
     fn declared_upstream_provider(&self, _spec: &Value) -> Option<String> {
         None
+    }
+
+    /// PRD-mcphost-chain-run-lineage requirement 3: `true` for a `Kind`
+    /// whose own [`Kind::call`] performs its own args-completeness check
+    /// (and reports a kind-specific structured error naming every missing
+    /// field) rather than relying on the generic `input_schema` validator
+    /// every dispatch path (`call_published_tool`, `host.tool_test`,
+    /// `host.tool_run`, [`compose_call`], `runs::enqueue[_shared]`) runs
+    /// before ever reaching [`Kind::call`]. `chain`'s `input_schema.required`
+    /// (requirement 1) exists for introspection (`tools/list`, `host.tool_spec`)
+    /// -- if the generic validator also enforced it, a call missing an
+    /// input would fail `args_invalid` before `chain`'s own call-time
+    /// pre-check ever ran, so `compose_input_missing` (naming every missing
+    /// field, not just the first) would be unreachable. Defaults to `false`
+    /// (unchanged behavior) for every kind whose schema fully describes
+    /// what the generic validator should enforce.
+    fn validates_own_args(&self) -> bool {
+        false
     }
 
     /// PRD-mcphost-python-kind-plain-env requirement 1: this `spec`'s own

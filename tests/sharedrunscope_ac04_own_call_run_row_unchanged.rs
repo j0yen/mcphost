@@ -75,6 +75,14 @@ async fn own_sync_call_run_row_is_unchanged() {
             // run row now reports end_user; an unidentified own-tenant call
             // has none.
             "end_user": null,
+            // PRD-mcphost-chain-run-lineage requirement 4/8: additive --
+            // `null` for a top-level, non-composed run like this one.
+            "parent_run_id": null,
+            "step_no": null,
+            "parent_tool": null,
+            // Requirement 5: `host.runs.list` inlines each row's own
+            // `children` (one level) -- `[]` for a leaf run like this one.
+            "children": [],
         }),
         "own-tenant run row must be byte-identical to the pre-existing shape: {sanitized}"
     );

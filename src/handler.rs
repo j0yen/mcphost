@@ -1942,8 +1942,10 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             "host.runs.list",
             "List this tenant's recent runs, newest first, optionally filtered by tool, \
              status (queued|running|done|error|timeout|cancelled), trigger \
-             (call|job|schedule|event|chain) or end_user_subject (the end user, if any, the \
-             run ran as).",
+             (call|job|schedule|event|composition|...) or end_user_subject (the end user, if \
+             any, the run ran as). A chain's own composed step runs (trigger: \"composition\") \
+             are excluded by default -- pass parent_run_id, trigger: \"composition\", or \
+             include_children: true to see them.",
             host_schema(
                 json!({
                     "tool": {"type": "string", "description": "Only runs of this tool name."},
@@ -1952,6 +1954,15 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                     "end_user_subject": {
                         "type": "string",
                         "description": "Only runs that ran as this end user's subject.",
+                    },
+                    "parent_run_id": {
+                        "type": "string",
+                        "description": "Only the composed child runs of this parent run id.",
+                    },
+                    "include_children": {
+                        "type": "boolean",
+                        "description": "Include composed child runs (trigger: \"composition\") \
+                             alongside top-level ones; default false.",
                     },
                     "limit": {"type": "integer", "description": "Max runs to return; default 20."},
                 }),
@@ -4691,7 +4702,13 @@ impl McpHostHandler {
         })?;
 
         let descriptor = kind.describe(&spec);
-        if let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
+        // PRD-mcphost-chain-run-lineage requirement 3: `chain` handles its
+        // own args-completeness check (`compose_input_missing`, naming
+        // every missing `$.input.*` field) inside `Kind::call` itself --
+        // see `Kind::validates_own_args`'s own doc comment for why the
+        // generic schema check below must not pre-empt it.
+        if !kind.validates_own_args()
+            && let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
             && let Err(e) = validator.validate(&args)
         {
             // AC4: the wire code for a schema-invalid call to a *published*
@@ -4770,6 +4787,14 @@ impl McpHostHandler {
         // `TenantHostStepBridge::step_tool`'s own doc comment.
         let step_tool_cell: Arc<std::sync::Mutex<Option<String>>> = Arc::new(std::sync::Mutex::new(None));
         let resolved_timeout = self.resolve_call_timeout(&kind, &spec);
+        // PRD-mcphost-chain-run-lineage requirement 4 (open question 1:
+        // "always, so lineage is uniform"): generated BEFORE dispatch
+        // (unlike before this PRD, where `record_call_attributed_with_end_user`
+        // minted this call's own run id only after the call returned) so a
+        // composing `Kind` (`chain`) can set every child run row it writes
+        // DURING the call as `parent_run_id`-ing this id -- the row itself
+        // is still only inserted below, once the outcome is known.
+        let run_id = crate::state::new_ulid();
         let ctx = CallCtx {
             tenant_id: tenant.id,
             namespace: tenant.namespace.clone(),
@@ -4854,6 +4879,7 @@ impl McpHostHandler {
                 calls_auth_method: auth_method.to_string(),
                 step_tool: step_tool_cell.clone(),
             })),
+            parent_run_id: Some(run_id.clone()),
         };
         // requirement 4 (AC1/AC2): the three `calls` columns every branch
         // below's `record_call_attributed_with_end_user` writes.
@@ -4948,6 +4974,7 @@ impl McpHostHandler {
                         end_user_method.clone(),
                         shared_owner_namespace.clone(),
                         auth_method.to_string(),
+                        Some(run_id.clone()),
                         step_tool.clone(),
                     )
                     .await
@@ -5037,6 +5064,7 @@ impl McpHostHandler {
                         end_user_method.clone(),
                         shared_owner_namespace.clone(),
                         auth_method.to_string(),
+                        Some(run_id.clone()),
                         step_tool.clone(),
                     )
                     .await;
@@ -5070,6 +5098,7 @@ impl McpHostHandler {
                         end_user_method.clone(),
                         shared_owner_namespace.clone(),
                         auth_method.to_string(),
+                        Some(run_id.clone()),
                         step_tool.clone(),
                     )
                     .await;
@@ -5131,7 +5160,13 @@ impl McpHostHandler {
         }
 
         let descriptor = kind.describe(&row.spec);
-        if let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
+        // PRD-mcphost-chain-run-lineage requirement 2/10: `host.tool_test`
+        // must be able to dry-run a chain missing some of its required
+        // inputs (reporting `inputs_required`/unresolved paths rather than
+        // refusing outright) -- see `Kind::validates_own_args`'s own doc
+        // comment.
+        if !kind.validates_own_args()
+            && let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
             && let Err(e) = validator.validate(&call_args)
         {
             // Requirement 1/AC3 (PRD-mcphost-python-kind-runtime): phase
@@ -5233,6 +5268,11 @@ impl McpHostHandler {
             // `kinds::chain`'s own `ctx.test_mode` branch) -- there is
             // nothing for a host step to reach here.
             host_dispatch: None,
+            // PRD-mcphost-chain-run-lineage: `host.tool_test` writes no run
+            // row of its own (same "no `calls` row, no metering" contract
+            // as every other field here already documents) -- nothing for
+            // a composed child to attribute to, same as `compose_db` above.
+            parent_run_id: None,
         };
 
         match tokio::time::timeout(resolved_timeout, kind.call(&row.spec, call_args, &ctx)).await {
@@ -5362,6 +5402,10 @@ impl McpHostHandler {
             // `host.bridge_test` always dispatches to the `http` kind
             // (fixed above), which never composes -- nothing to reach here.
             host_dispatch: None,
+            // PRD-mcphost-chain-run-lineage: a dry run against an
+            // unpublished spec has no run row of its own to hang a
+            // composed child from.
+            parent_run_id: None,
         };
 
         match tokio::time::timeout(resolved_timeout, kind.call(&spec, call_args, &ctx)).await {
@@ -5568,6 +5612,9 @@ impl McpHostHandler {
             // never dispatches a step either (same `ctx.test_mode` branch
             // `host.tool_test` short-circuits on) -- nothing to reach here.
             host_dispatch: None,
+            // PRD-mcphost-chain-run-lineage: same "pre-publish dry run, no
+            // run row of its own" reasoning as `end_user` above.
+            parent_run_id: None,
         })
         .await;
 
@@ -5706,7 +5753,12 @@ impl McpHostHandler {
         }
 
         let descriptor = kind.describe(&row.spec);
-        if let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
+        // PRD-mcphost-chain-run-lineage requirement 3: see
+        // `Kind::validates_own_args`'s own doc comment -- `chain` is
+        // `tool_run_unsupported` regardless, but this keeps every dispatch
+        // path's schema-check behavior consistent.
+        if !kind.validates_own_args()
+            && let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
             && let Err(e) = validator.validate(&call_args)
         {
             // Requirement 1/AC3 (PRD-mcphost-python-kind-runtime): phase
@@ -5803,6 +5855,9 @@ impl McpHostHandler {
             // different entry point than `Kind::call`, which `chain` never
             // overrides) -- nothing to reach here.
             host_dispatch: None,
+            // PRD-mcphost-chain-run-lineage: same "no composition tree,
+            // no run row" reasoning as `compose_db`/`end_user` above.
+            parent_run_id: None,
         };
 
         let start = Instant::now();

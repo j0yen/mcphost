@@ -69,11 +69,23 @@ async fn list_output_is_unchanged_but_for_the_added_end_user_key() {
     .into_iter()
     .collect();
     let actual_keys: BTreeSet<&str> = run.keys().map(String::as_str).collect();
-    let expected_keys: BTreeSet<&str> =
-        pre_prd_keys.union(&["end_user"].into_iter().collect()).copied().collect();
+    // PRD-mcphost-chain-run-lineage requirement 4/8: `parent_run_id`
+    // (`null` for a top-level run like this one) and (P1 requirement 8)
+    // `step_no`/`parent_tool` (also `null` here) -- additive, same
+    // "frozen set plus this PRD's own new keys" convention this test
+    // already uses for `end_user`. Requirement 5: `host.runs.list` also
+    // inlines each row's own `children` (one level, `[]` for a leaf run
+    // like this one) -- without it, a probe that only ever calls
+    // `host.runs.list` (never `host.runs.get`) could not observe a
+    // chain's lineage at all; see
+    // tests/mcphost_chain_run_lineage_ac13_daily_pipeline_persona_trailer.rs.
+    let added_keys: BTreeSet<&str> =
+        ["end_user", "parent_run_id", "step_no", "parent_tool", "children"].into_iter().collect();
+    let expected_keys: BTreeSet<&str> = pre_prd_keys.union(&added_keys).copied().collect();
     assert_eq!(
         actual_keys, expected_keys,
-        "run row's key set must be exactly the pre-PRD set plus end_user: {run:?}"
+        "run row's key set must be exactly the pre-PRD set plus end_user/parent_run_id/step_no/parent_tool/children: {run:?}"
     );
     assert_eq!(run["end_user"], Value::Null, "no end user on this call: {run:?}");
+    assert_eq!(run["children"], json!([]), "a leaf run has no children: {run:?}");
 }

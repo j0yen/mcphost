@@ -105,7 +105,7 @@ async fn overlapping_firing_is_recorded_as_skipped_overlap() {
 
     let runs = state
         .db
-        .list_runs(tenant.id, None, Some("skipped".to_string()), Some("schedule".to_string()), None, 20)
+        .list_runs(tenant.id, None, Some("skipped".to_string()), Some("schedule".to_string()), None, None, false, 20)
         .await
         .expect("list_runs");
     let skipped_overlap = runs

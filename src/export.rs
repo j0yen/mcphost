@@ -502,7 +502,10 @@ async fn build_archive(
     let secret_names = state.db.list_secret_names(tenant.id).await?;
     let state_rows = state.db.state_kv_list(tenant.id, None, 100_000, String::new()).await?;
     let documents = state.db.documents_for_export(tenant.id).await?;
-    let run_rows = state.db.list_runs(tenant.id, None, None, None, None, 1000).await?;
+    // PRD-mcphost-chain-run-lineage: unchanged export scope -- top-level
+    // runs only (`parent_run_id: None, include_children: false`), same set
+    // this export already archived before composed child rows existed.
+    let run_rows = state.db.list_runs(tenant.id, None, None, None, None, None, false, 1000).await?;
     let messages = state.db.msg_inbox(tenant.id, None, 1000, false).await?;
     let usage = crate::control::usage(state, tenant, &json!({})).await?;
 
