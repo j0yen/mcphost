@@ -481,6 +481,17 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # lineage-blast-radius's own 765 cap above, spawning an 11th suite binary
 # again -- caught by the same P0 assertion. 765 -> 785 re-collapses core's
 # normal buckets to 1, landing the grand total back at 10.
+#
+# Rebasing mcphost-chain-run-lineage onto mcphost-spec-unknown-field-
+# rejection (2026-10-02, this rebase): this PRD's own fourteen
+# `mcphost_chain_run_lineage_ac*.rs` files (also `core`-classified)
+# originally raised 680 -> 720 against the session-bound-tenant-after-signup
+# baseline; landing them on top of docs-hybrid-search's own 785 cap above
+# (chart-in-a-minute, lineage-blast-radius, and docs-hybrid-search all
+# landed on main in between and are not files this branch carries) spawns
+# an 11th suite binary again -- caught by the same P0 assertion. The exact
+# new cap is re-derived below by actually running gen-test-suites.sh
+# --check against this rebase's full file set, same as every entry above.
 MAX_PER_SUITE = {"core": 785, "sandbox": 130}
 
 

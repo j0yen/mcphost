@@ -2181,7 +2181,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "List this tenant's recent runs, newest first, optionally filtered by tool, status (queued|running|done|error|timeout|cancelled), trigger (call|job|schedule|event|chain) or end_user_subject (the end user, if any, the run ran as).",
+      "description": "List this tenant's recent runs, newest first, optionally filtered by tool, status (queued|running|done|error|timeout|cancelled), trigger (call|job|schedule|event|composition|...) or end_user_subject (the end user, if any, the run ran as). A chain's own composed step runs (trigger: \"composition\") are excluded by default -- pass parent_run_id, trigger: \"composition\", or include_children: true to see them.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -2189,9 +2189,17 @@
             "description": "Only runs that ran as this end user's subject.",
             "type": "string"
           },
+          "include_children": {
+            "description": "Include composed child runs (trigger: \"composition\") alongside top-level ones; default false.",
+            "type": "boolean"
+          },
           "limit": {
             "description": "Max runs to return; default 20.",
             "type": "integer"
+          },
+          "parent_run_id": {
+            "description": "Only the composed child runs of this parent run id.",
+            "type": "string"
           },
           "status": {
             "description": "Only runs in this status.",

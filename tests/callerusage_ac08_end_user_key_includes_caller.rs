@@ -65,6 +65,8 @@ async fn end_user_keys_carry_the_caller_tenant_when_shared() {
         // qualified name) exactly as before this PRD.
         None,
         "key".to_string(),
+            // PRD-mcphost-chain-run-lineage: no pre-generated run id -- generate fresh.
+            None,
         )
         .await
         .expect("seed A/u1 call");
@@ -80,6 +82,8 @@ async fn end_user_keys_carry_the_caller_tenant_when_shared() {
         // qualified name) exactly as before this PRD.
         None,
         "key".to_string(),
+            // PRD-mcphost-chain-run-lineage: no pre-generated run id -- generate fresh.
+            None,
         )
         .await
         .expect("seed B/u1 call");

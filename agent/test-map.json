@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-sandbox-bridge-discoverability.md (test_prefix: bridgedisc)",
+  "ac_test_map_prd": "PRD-mcphost-chain-run-lineage.md (test_prefix: mcphost_chain_run_lineage)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,16 +28,32 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/bridgedisc_ac01_sandbox_api_source_of_truth.rs",
-    "AC2": "tests/bridgedisc_ac02_starter_tool_bridge_table.rs",
-    "AC3": "tests/bridgedisc_ac03_unknown_import_rejected_at_publish.rs",
-    "AC4": "tests/bridgedisc_ac04_runtime_unknown_import_no_traceback.rs",
-    "AC5": "tests/bridgedisc_ac05_network_public_plan_named.rs",
-    "AC6": "tests/bridgedisc_ac06_tools_list_mentions_import_mcphost.rs",
-    "AC7": "tests/bridgedisc_ac07_sandbox_api_doc_check.rs",
-    "AC8": "deferred -- operator-provisioned; AC8 is the Live/production-only requirement (a fresh tenant created by the synthorg explore persona on a real deploy, host.usage evidence pasted into the PRD's evidence block) and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
+    "AC1": "tests/mcphost_chain_run_lineage_ac01_chain_declares_required_inputs.rs",
+    "AC2": "tests/mcphost_chain_run_lineage_ac02_no_input_paths_keeps_plain_schema.rs",
+    "AC3": "tests/mcphost_chain_run_lineage_ac03_compose_input_missing_before_step_one.rs",
+    "AC4": "tests/mcphost_chain_run_lineage_ac04_child_run_rows_per_step.rs",
+    "AC5": "tests/mcphost_chain_run_lineage_ac05_runs_list_filters_children.rs",
+    "AC6": "tests/mcphost_chain_run_lineage_ac06_on_error_stop_partial_children.rs",
+    "AC7": "tests/mcphost_chain_run_lineage_ac07_children_inherit_end_user.rs",
+    "AC8": "tests/mcphost_chain_run_lineage_ac08_chain_meters_as_one_call.rs",
+    "AC9": "tests/mcphost_chain_run_lineage_ac09_lifecycle_delete_and_purge_cascade.rs",
+    "AC10": "tests/mcphost_chain_run_lineage_ac10_tool_test_reports_inputs_required.rs",
+    "AC11": "tests/mcphost_chain_run_lineage_ac11_failed_child_carries_step_no_and_parent_tool.rs",
+    "AC12": "tests/mcphost_chain_run_lineage_ac12_healthz_composition_counters.rs",
+    "AC13": "deferred -- operator-provisioned: AC13's Then is a truth-tier `synthorg consume --tier truth --endpoint https://mcphost.dev/mcp` run against prod after this PRD lands, scoring data-pipeline-builder-daily-pipeline-chain >= 0.75 (~$5 and ~40 min of billed frontier calls, driven from ~/repos/synthorg by the operator's nightly timer on host orch, needing the operator's ANTHROPIC_API_KEY / SYNTHORG_PROD_ENDPOINT / SYNTHORG_TRUTH_BRIEF that this sandbox does not hold, and gated on the separate PRD-synthorg-truth-tier-probe-as-tenant). Declared in PRD-mcphost-chain-run-lineage.md's frontmatter: 'deferred_acs: [13]' plus its mock_justifications entry for AC13. The live check that fails until the operator's run has happened: tests/mcphost_chain_run_lineage_ac13_daily_pipeline_persona_trailer.rs::persona_two_call_sequence_yields_three_done_children (MCPHOST_LIVE=1, MCPHOST_URL). Conjunct 4 (the >= 0.75 score) is narrowed, not deferred whole: synthorg's own scorer is `timeliness * accuracy * helpfulness` (`_classify_gold_agreement`) meaned over the recipe's scored sessions against RECIPE_SATISFACTION_TARGET = 0.75 (`_recipe_satisfaction`), `helpfulness` is one of three judge labels and `_accuracy_score` one of three values, so accuracy == 1.0 is strictly necessary for the bar (0.5 * 1.0 * 1.0 = 0.5 < 0.75) and accuracy == 1.0 takes the gold observation this branch supplies. That scorer is ported and asserted against the branch's real observation by the same trailer file's the_recipe_bar_is_unreachable_without_the_children_this_prd_inlines and the_ported_scorer_matches_synthorgs_own_arithmetic. The probe's runs-order half is landed cross-repo in /home/jsy/repos/synthorg (master, commit c07c297, committed not pushed: normalize_probed_runs + _emit_host_context_probe(runs_order=...), proven by tests/chainlineage_ac13_probe_runs_order_test.py). What stays operator-provisioned is only the two factors this branch does not own -- the nightly judge's own `helped` label and the persona's own wall clock -- from a paid run against a prod deployment. That file's always-on tests prove the branch's own mechanism and conjunct 4's product-side factor (schema-derived compose_input_missing refusal, the same-shape retry succeeding, host.runs.list(tool=...)'s most-recent row inlining exactly 3 done children) against a real server built from this branch -- the branch's mechanism, not AC13, and not counted as AC13's proof. tests/mcphost_chain_run_lineage_ac13_deferral_is_justified.rs locks this paper trail (frontmatter vs test-map vs intent-card). Requirements 1-9 (schema derivation, compose_input_missing, child run rows, read-back filters, accounting, lifecycle parity) are all proven standalone by AC1-AC12 above, per the PRD's own Technical Considerations note that the live AC is a soft coupling, not a build-order gate."
   },
   "ac_test_map_by_prefix": {
+    "bridgedisc": {
+      "_prd": "PRD-mcphost-sandbox-bridge-discoverability.md -- superseded by mcphost-chain-run-lineage at HEAD (this rebase); real test_prefix is bridgedisc",
+      "AC1": "tests/bridgedisc_ac01_sandbox_api_source_of_truth.rs",
+      "AC2": "tests/bridgedisc_ac02_starter_tool_bridge_table.rs",
+      "AC3": "tests/bridgedisc_ac03_unknown_import_rejected_at_publish.rs",
+      "AC4": "tests/bridgedisc_ac04_runtime_unknown_import_no_traceback.rs",
+      "AC5": "tests/bridgedisc_ac05_network_public_plan_named.rs",
+      "AC6": "tests/bridgedisc_ac06_tools_list_mentions_import_mcphost.rs",
+      "AC7": "tests/bridgedisc_ac07_sandbox_api_doc_check.rs",
+      "AC8": "deferred -- operator-provisioned; AC8 is the Live/production-only requirement (a fresh tenant created by the synthorg explore persona on a real deploy, host.usage evidence pasted into the PRD's evidence block) and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
+    },
     "chainhost": {
       "_prd": "PRD-mcphost-chain-host-steps.md -- superseded by mcphost-sandbox-bridge-discoverability at HEAD (this rebase); real test_prefix is chainhost",
       "AC1": "tests/chainhost_ac01_host_table_append_step.rs",
@@ -125,6 +141,18 @@
       "AC7": "tests/mcphost_oauth_unverified_client_consent_warning_ac07_caution_links_to_explainer.rs",
       "AC8": "tests/mcphost_oauth_unverified_client_consent_warning_ac08_consent_record_notes_unverified.rs",
       "AC9": "tests/mcphost_oauth_unverified_client_consent_warning_ac09_verified_flow_unchanged.rs"
+    },
+    "kindroute": {
+      "_prd": "PRD-mcphost-unknown-kind-routes-to-recipe.md -- superseded by mcphost-chain-run-lineage at HEAD; real test_prefix is kindroute",
+      "AC1": "tests/kindroute_ac01_webhook_alias_returns_http_recipe.rs",
+      "AC2": "tests/kindroute_ac02_case_insensitive_alias.rs",
+      "AC3": "tests/kindroute_ac03_tool_publish_event_alias_resolves_to_http.rs",
+      "AC4": "tests/kindroute_ac04_unknown_kind_carries_recipe_hints.rs",
+      "AC5": "tests/kindroute_ac05_startup_aliases_and_recipe_tools_are_registered.rs",
+      "AC6": "tests/kindroute_ac06_contract_and_llms_txt_document_aliases.rs",
+      "AC7": "tests/kindroute_ac07_quickstart_no_kind_lists_kinds_aliases_recipes.rs",
+      "AC8": "tests/kindroute_ac08_full_suite_green_at_landing.rs -- pins the docs/benchmarks/kindroute-suite-gate.txt receipt (cargo test --workspace / cargo clippy at this PRD's landing commit); the receipt itself is the proof of 'every v0.61.0 test still passes', not re-run inside this file.",
+      "AC9": "deferred (Live) -- operator-provisioned: AC9's Then is a one-shot mcp probe (host.quickstart kind=webhook) against https://mcphost.dev as a fresh synthetic tenant after deploy-on-land, plus the next nightly explore's dx-findings.jsonl zero-unknown_kind count for event/webhook, needing operator access this coder dispatch does not hold. Declared deferred per the coder dispatch's own list (operator-provisioned)."
     },
     "ac": {
       "_prd": "the founding hand-built implementation (commit 9315032); tests/ac<NN>_*.rs + tests/ac17_kind_conformance.rs",
@@ -814,7 +842,8 @@
       "AC7": "tests/docsqa_ac07_embeddings_reports_both_hit_rates.rs",
       "AC8": "tests/docsqa_ac08_zero_passages_is_structured_not_an_error.rs",
       "AC9": "deferred (Live) -- operator-provisioned: needs a real signup from carbon against https://mcphost.dev after deploy, under 60s, with the receipt committed under docs/receipts/; this coder dispatch has no live operator access.",
-      "AC10": "deferred -- operator-provisioned: AC10's Then is a truth-tier `synthorg consume --tier truth --endpoint https://mcphost.dev/mcp` run against prod after this PRD lands (~$5 and ~40 min of billed frontier calls, driven from ~/repos/synthorg, needing the operator's ANTHROPIC_API_KEY / SYNTHORG_PROD_ENDPOINT / SYNTHORG_TRUTH_BRIEF that this sandbox does not hold). Declared in PRD-mcphost-docs-qa-recipe.md's frontmatter: 'deferred_acs: [9, 10]' plus its mock_justifications entry for AC10. The live check that fails until the operator's run has happened: tests/docsqa_ac10_truth_tier_panel_satisfaction_recorded.rs::live_truth_tier_panel_run_meets_the_target (MCPHOST_LIVE=1, MCPHOST_PANEL_MEASURE=<run>/measure.json). That file's always-on tests prove the recorder's mechanism on measures assembled only from two real synthorg runs' own numbers -- the branch's mechanism, not AC10, and not counted as AC10's proof. tests/docsqa_ac10_deferral_is_justified.rs locks this paper trail (frontmatter vs test-map vs intent-card). AC6 proves the pre-land cross-repo wiring this worktree can test now."
+      "AC10": "deferred -- operator-provisioned: AC10's Then is a truth-tier `synthorg consume --tier truth --endpoint https://mcphost.dev/mcp` run against prod after this PRD lands (~$5 and ~40 min of billed frontier calls, driven from ~/repos/synthorg, needing the operator's ANTHROPIC_API_KEY / SYNTHORG_PROD_ENDPOINT / SYNTHORG_TRUTH_BRIEF that this sandbox does not hold). Declared in PRD-mcphost-docs-qa-recipe.md's frontmatter: 'deferred_acs: [9, 10]' plus its mock_justifications entry for AC10. The live check that fails until the operator's run has happened: tests/docsqa_ac10_truth_tier_panel_satisfaction_recorded.rs::live_truth_tier_panel_run_meets_the_target (MCPHOST_LIVE=1, MCPHOST_PANEL_MEASURE=<run>/measure.json). That file's always-on tests prove the recorder's mechanism on measures assembled only from two real synthorg runs' own numbers -- the branch's mechanism, not AC10, and not counted as AC10's proof. tests/docsqa_ac10_deferral_is_justified.rs locks this paper trail (frontmatter vs test-map vs intent-card). AC6 proves the pre-land cross-repo wiring this worktree can test now.",
+      "_prd": "PRD-mcphost-docs-qa-recipe.md -- superseded by mcphost-tenant-key-missing-is-invalid-params at HEAD; real test_prefix is docsqa"
     },
     "chart": {
       "_prd": "PRD-mcphost-chart-in-a-minute.md -- superseded by mcphost-lineage-blast-radius at HEAD (this rebase); real test_prefix is chart",

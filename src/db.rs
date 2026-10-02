@@ -104,6 +104,11 @@ const MIGRATION_0059: &str = include_str!("../migrations/0059_url_bound_tenants.
 const MIGRATION_0060: &str = include_str!("../migrations/0060_next_hint.sql");
 /// PRD-mcphost-chain-host-steps P1 requirement 6 (AC6): `calls.step_tool`.
 const MIGRATION_0061: &str = include_str!("../migrations/0061_chain_host_step_tool.sql");
+// PRD-mcphost-chain-run-lineage migration (requirement: parent_run_id/
+// step_no/parent_tool on runs): renumbered from this PRD's own 0057 during
+// this rebase -- 0057 through 0061 were all claimed by other PRDs landing
+// on main ahead of this branch.
+const MIGRATION_0062: &str = include_str!("../migrations/0062_runs_parent_run_id.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -807,12 +812,29 @@ pub struct RunRow {
     pub end_user_subject: Option<String>,
     pub end_user_issuer: Option<String>,
     pub end_user_method: Option<String>,
+    /// PRD-mcphost-chain-run-lineage requirement 4 / migration 0061: the
+    /// run this row is a composed child of -- `None` for every top-level
+    /// run (an ordinary `call`/`job`/`schedule`/`event`/`message`/`webhook`
+    /// row, unchanged), `Some(parent's run id)` for a `trigger =
+    /// "composition"` row [`Db::insert_composed_run`] writes.
+    pub parent_run_id: Option<String>,
+    /// requirement 8 (P1, AC11) / migration 0061: this composed child's
+    /// 1-based position among its parent's steps -- `chain`'s own
+    /// step-numbering; `None` for a composed child written by anything
+    /// other than `chain` (e.g. python's `mcphost.call`, which has no
+    /// notion of "step N"), and for every non-composed row.
+    pub step_no: Option<i64>,
+    /// requirement 8 (P1, AC11) / migration 0061: the immediate parent's
+    /// own tool name (NOT the top of a nested composition tree) -- `None`
+    /// for every non-composed row.
+    pub parent_tool: Option<String>,
 }
 
 const RUN_COLUMNS: &str = "id, tenant_id, tool_name, trigger, trigger_ref, caller_tenant_id, \
     status, progress_json, result_ref, error_class, started_unix, finished_unix, duration_ms, \
     deadline_s, attempt, purged_unix, args_json, manual, test_run, message_id, counters_json, \
-    error_data_json, end_user_subject, end_user_issuer, end_user_method";
+    error_data_json, end_user_subject, end_user_issuer, end_user_method, parent_run_id, step_no, \
+    parent_tool";
 
 fn run_row_from_row(r: &Row) -> rusqlite::Result<RunRow> {
     Ok(RunRow {
@@ -841,6 +863,9 @@ fn run_row_from_row(r: &Row) -> rusqlite::Result<RunRow> {
         end_user_subject: r.get(22)?,
         end_user_issuer: r.get(23)?,
         end_user_method: r.get(24)?,
+        parent_run_id: r.get(25)?,
+        step_no: r.get(26)?,
+        parent_tool: r.get(27)?,
     })
 }
 
@@ -1473,6 +1498,30 @@ pub struct RejectedRun {
     pub trigger_ref: String,
     pub message_id: Option<String>,
     pub error_class: &'static str,
+}
+
+/// PRD-mcphost-chain-run-lineage requirement 4: params for
+/// [`Db::insert_composed_run`], bundled for the same transposition-proofing
+/// reason [`RejectedRun`]'s own doc comment gives (`tool_name`/`parent_tool`/
+/// `error_class` are three more adjacent `String`-ish fields a positional
+/// call site could transpose).
+#[derive(Debug, Clone)]
+pub struct ComposedRun {
+    pub run_id: String,
+    pub tenant_id: i64,
+    pub parent_run_id: String,
+    pub tool_name: String,
+    pub step_no: Option<i64>,
+    pub parent_tool: String,
+    pub status: String,
+    pub error_class: Option<String>,
+    pub result_ref: Option<String>,
+    pub started_unix: i64,
+    pub finished_unix: i64,
+    pub duration_ms: i64,
+    pub end_user_subject: Option<String>,
+    pub end_user_issuer: Option<String>,
+    pub end_user_method: Option<String>,
 }
 
 /// PRD-mcphost-shared-tool-caller-usage requirement 6 (AC7): the window
@@ -2147,7 +2196,8 @@ impl Db {
         Self::migrate_0058_lineage(&conn)?;
         Self::migrate_0059_url_bound_tenants(&conn)?;
         Self::migrate_0060_next_hint(&conn)?;
-        Self::migrate_0061_chain_host_step_tool(&conn)
+        Self::migrate_0061_chain_host_step_tool(&conn)?;
+        Self::migrate_0062_runs_parent_run_id(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -3009,6 +3059,25 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0059)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-chain-run-lineage migration 0062 (requirement 4 / P1
+    /// requirement 8): gated on `runs.parent_run_id`, same
+    /// `pragma_table_info` idempotency-guard convention 0002 above uses for
+    /// a bare `ALTER TABLE ADD COLUMN`. (Renumbered from this PRD's own 0057
+    /// during this rebase: mcphost-chart-in-a-minute, mcphost-lineage-
+    /// blast-radius, mcphost-url-bound-tenants, mcphost-one-next-tool, and
+    /// mcphost-chain-host-steps claimed 0057 through 0061 first, landing on
+    /// main ahead of this branch; see the 0048 doc comment above for this
+    /// rebase-renumbering convention.)
+    fn migrate_0062_runs_parent_run_id(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('runs') WHERE name = 'parent_run_id'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0062)?;
         }
         Ok(())
     }
@@ -7170,6 +7239,7 @@ impl Db {
             // same default migration 0053's `auth_method DEFAULT 'key'`
             // backfills onto every pre-migration row.
             "key".to_string(),
+            None,
         )
         .await
     }
@@ -7213,6 +7283,15 @@ impl Db {
         // `Auth`/`OauthCaller` this function's `end_user_*` triple already
         // reads, not re-derived here.
         auth_method: String,
+        // PRD-mcphost-chain-run-lineage requirement 4: `Some(id)` when the
+        // caller (`handler.rs::call_published_tool`) already generated this
+        // call's own run id BEFORE dispatch, so a composing `Kind`
+        // (`chain`) could set `CallCtx::parent_run_id` to it and attribute
+        // child run rows written DURING the call to the row this function
+        // is about to insert -- `None` (generate fresh, exactly as before
+        // this PRD) for every other call site, which has no such pre-known
+        // id.
+        run_id: Option<String>,
     ) -> Result<(), AppError> {
         self.record_call_attributed_with_end_user_and_step_tool(
             tenant_id,
@@ -7231,6 +7310,7 @@ impl Db {
             end_user_method,
             shared_owner_namespace,
             auth_method,
+            run_id,
             None,
         )
         .await
@@ -7264,6 +7344,10 @@ impl Db {
         end_user_method: Option<String>,
         shared_owner_namespace: Option<String>,
         auth_method: String,
+        // PRD-mcphost-chain-run-lineage requirement 4: see
+        // [`Self::record_call_attributed_with_end_user`]'s own doc comment
+        // on this same parameter.
+        run_id: Option<String>,
         step_tool: Option<String>,
     ) -> Result<(), AppError> {
         let started_at = now_rfc3339();
@@ -7275,7 +7359,7 @@ impl Db {
         // day one and a crash between the two inserts is impossible (both
         // land, or neither does). `calls` itself is untouched (unmodified
         // columns, unmodified insert above this comment).
-        let run_id = crate::state::new_ulid();
+        let run_id = run_id.unwrap_or_else(crate::state::new_ulid);
         let run_status = match (ok, outcome.as_str()) {
             (true, _) => "done",
             (false, "call_timeout") => "timeout",
@@ -7690,6 +7774,102 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-chain-run-lineage requirement 4: records one composed
+    /// child run row, already terminal (`done`/`failed` -- [`compose_call`]
+    /// has the outcome in hand before this is ever called, unlike
+    /// [`Self::insert_queued_run`], which inserts `queued` for the executor
+    /// to finalize later). `trigger` is always `"composition"`,
+    /// `trigger_ref` mirrors `parent_run_id` (the same "what caused this
+    /// row" convention `trigger_ref` already carries for a schedule's
+    /// trigger id).
+    ///
+    /// [`compose_call`]: crate::kinds::compose_call
+    pub async fn insert_composed_run(&self, run: ComposedRun) -> Result<(), AppError> {
+        let ComposedRun {
+            run_id,
+            tenant_id,
+            parent_run_id,
+            tool_name,
+            step_no,
+            parent_tool,
+            status,
+            error_class,
+            result_ref,
+            started_unix,
+            finished_unix,
+            duration_ms,
+            end_user_subject,
+            end_user_issuer,
+            end_user_method,
+        } = run;
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO runs (id, tenant_id, tool_name, trigger, trigger_ref, parent_run_id, \
+                 step_no, parent_tool, status, error_class, result_ref, started_unix, finished_unix, \
+                 duration_ms, attempt, end_user_subject, end_user_issuer, end_user_method) \
+                 VALUES (?1, ?2, ?3, 'composition', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 1, ?14, ?15, ?16)",
+                params![
+                    run_id, tenant_id, tool_name, parent_run_id.clone(), parent_run_id, step_no,
+                    parent_tool, status, error_class, result_ref, started_unix, finished_unix,
+                    duration_ms, end_user_subject, end_user_issuer, end_user_method
+                ],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `host.runs.get`'s "one level" child inlining (requirement 5): every
+    /// row whose `parent_run_id` is `run_id`, in step order (`rowid`, the
+    /// same true-insertion-order convention [`Self::list_runs`]'s own
+    /// comment explains) -- a normal, non-composing run's children are
+    /// always empty, not an error.
+    pub async fn get_run_children(&self, tenant_id: i64, run_id: String) -> Result<Vec<RunRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(&format!(
+                "SELECT {RUN_COLUMNS} FROM runs WHERE tenant_id = ?1 AND parent_run_id = ?2 ORDER BY rowid"
+            ))?;
+            let rows = stmt
+                .query_map(params![tenant_id, run_id], run_row_from_row)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// `host.runs.list`'s own child inlining (requirement 5, AC13): every
+    /// child of any of `parent_ids`, in one query, in step order (`rowid`,
+    /// the same convention [`Self::get_run_children`] uses) -- a list page
+    /// of up to 200 parents inlines its lineage without 200 round trips.
+    /// An empty `parent_ids` never touches the database at all.
+    pub async fn list_run_children_for_parents(
+        &self,
+        tenant_id: i64,
+        parent_ids: Vec<String>,
+    ) -> Result<Vec<RunRow>, AppError> {
+        if parent_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.with_conn(move |conn| {
+            let placeholders =
+                (0..parent_ids.len()).map(|i| format!("?{}", i + 2)).collect::<Vec<_>>().join(", ");
+            let mut stmt = conn.prepare(&format!(
+                "SELECT {RUN_COLUMNS} FROM runs WHERE tenant_id = ?1 \
+                 AND parent_run_id IN ({placeholders}) ORDER BY rowid"
+            ))?;
+            let mut binds: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(tenant_id)];
+            for id in parent_ids {
+                binds.push(Box::new(id));
+            }
+            let refs: Vec<&dyn rusqlite::ToSql> = binds.iter().map(|b| b.as_ref()).collect();
+            let rows = stmt
+                .query_map(refs.as_slice(), run_row_from_row)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
     /// PRD-mcphost-schedules P0 requirement 3: records a firing the
     /// scheduler tick skipped because the trigger's previous run was still
     /// `queued`/`running` (AC5) -- inserted already-terminal (`skipped`),
@@ -7932,12 +8112,23 @@ impl Db {
         .await
     }
 
-    /// `host.runs.list(tool?, status?, trigger?, end_user_subject?, limit?)`
-    /// -- newest first. PRD-mcphost-runs-end-user-subject P0 requirement 4
-    /// (AC2): `end_user_subject`, when given, filters within this tenant;
-    /// a subject no run carries (even a real one, just never used) is an
+    /// `host.runs.list(tool?, status?, trigger?, end_user_subject?,
+    /// parent_run_id?, include_children?, limit?)` -- newest first.
+    /// PRD-mcphost-runs-end-user-subject P0 requirement 4 (AC2):
+    /// `end_user_subject`, when given, filters within this tenant; a
+    /// subject no run carries (even a real one, just never used) is an
     /// empty list, never an error -- same "unknown filter value is an empty
     /// result" shape `tool_name`/`status`/`trigger` above already have.
+    ///
+    /// PRD-mcphost-chain-run-lineage requirement 5 (AC5): default (no
+    /// `parent_run_id`, `trigger != "composition"`, `include_children`
+    /// false) excludes every composed child row (`parent_run_id IS NULL`),
+    /// so an existing caller counting runs to infer chain steps sees the
+    /// exact same row count as before this PRD -- an explicit
+    /// `parent_run_id` filter, `trigger = "composition"`, or
+    /// `include_children = true` each opt back in, since asking for
+    /// children by any of those three names is unambiguous about wanting
+    /// them.
     #[allow(clippy::too_many_arguments)]
     pub async fn list_runs(
         &self,
@@ -7946,6 +8137,8 @@ impl Db {
         status: Option<String>,
         trigger: Option<String>,
         end_user_subject: Option<String>,
+        parent_run_id: Option<String>,
+        include_children: bool,
         limit: i64,
     ) -> Result<Vec<RunRow>, AppError> {
         self.with_conn(move |conn| {
@@ -7962,6 +8155,7 @@ impl Db {
                 binds.push(Box::new(s));
                 idx += 1;
             }
+            let trigger_is_composition = trigger.as_deref() == Some("composition");
             if let Some(tr) = trigger {
                 sql.push_str(&format!(" AND trigger = ?{idx}"));
                 binds.push(Box::new(tr));
@@ -7971,6 +8165,13 @@ impl Db {
                 sql.push_str(&format!(" AND end_user_subject = ?{idx}"));
                 binds.push(Box::new(eu));
                 idx += 1;
+            }
+            if let Some(pr) = parent_run_id {
+                sql.push_str(&format!(" AND parent_run_id = ?{idx}"));
+                binds.push(Box::new(pr));
+                idx += 1;
+            } else if !include_children && !trigger_is_composition {
+                sql.push_str(" AND parent_run_id IS NULL");
             }
             // `rowid`, not `id` (a ulid): see `lease_next_queued_run`'s
             // comment -- same-millisecond ties on `id` would otherwise
@@ -8017,6 +8218,34 @@ impl Db {
                 .query_map(refs.as_slice(), run_row_from_row)?
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-chain-run-lineage P1 requirement 9 (AC12): `/healthz`'s
+    /// `runs.composition_children_total` -- every composed child run row,
+    /// all tenants, all time (same unwindowed-global-count convention
+    /// `tools_total`/`tenants_total` already use).
+    pub async fn count_composition_children_total(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            conn.query_row("SELECT COUNT(*) FROM runs WHERE trigger = 'composition'", [], |r| r.get(0))
+                .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 9 (AC12): `/healthz`'s
+    /// `runs.composition_parents_failed_input_total` -- every run (sync
+    /// `call` or async `job`) that refused with `compose_input_missing`
+    /// (requirement 3), i.e. a chain called before any step ran.
+    pub async fn count_composition_parents_failed_input_total(&self) -> Result<i64, AppError> {
+        self.with_conn(|conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM runs WHERE error_class = 'compose_input_missing'",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
         })
         .await
     }

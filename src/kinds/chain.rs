@@ -25,12 +25,20 @@
 //!   is accepted at publish time but not yet applied -- the chain's result
 //!   is always its last step's result, matching the *default* behavior
 //!   `outputs` would only override.
-//! - Real child-run rows (`host.runs.get` inlining children, `trigger`
-//!   values) wait on PRD-mcphost-runs-and-jobs, not built yet -- this
-//!   kind's own result carries a `steps` trace (`tool`, `status`,
-//!   `error_class`) as the best available stand-in.
 //! - `on_error: "continue"` (requirement 3) is implemented (requirement 3 /
 //!   AC7); `map` steps (P2) are not.
+//!
+//! PRD-mcphost-chain-run-lineage (requirements 1-3): real child-run rows
+//! (`host.runs.get` inlining children, `trigger: "composition"`) are now
+//! written by [`compose_call`] itself for every step dispatch below -- this
+//! kind's own `steps` trace stays (existing callers of the chain's result
+//! shape are unaffected), it's no longer the only record of what ran.
+//! `describe()` now derives `input_schema.required` from every step's
+//! `$.input.<name>` mapping paths, and [`ChainKind::call`] refuses a call
+//! missing one of them (`compose_input_missing`) before step 1 ever
+//! dispatches -- see [`super::Kind::validates_own_args`]'s own doc comment
+//! for why the generic dispatch-time schema check has to step aside for
+//! this kind specifically.
 
 use serde_json::{Map, Value, json};
 
@@ -99,6 +107,77 @@ pub async fn resolve_steps(db: &crate::db::Db, tenant_id: i64, spec: &Value) -> 
         });
     }
     Ok(())
+}
+
+/// PRD-mcphost-chain-run-lineage requirement 1: one `$.input.<name>`
+/// reference, first-appearance order -- `name` is the schema
+/// property/required entry it contributes; `step_no`/`tool` (1-based) name
+/// the first step that references it, for [`ChainKind::call`]'s own
+/// call-time pre-check (requirement 3) to point at when that name turns out
+/// to be missing from the call's actual args.
+struct InputRef {
+    name: String,
+    step_no: usize,
+    tool: String,
+}
+
+/// Requirement 1: the argument name a `$.input.<name>[...]` path
+/// contributes -- the first segment after `input.`, up to the next `.` or
+/// `[`. Deliberately NOT `super::Path::parse` (whose parsed segments are
+/// private to this crate's mapping-resolution code, and whose stricter
+/// grammar checking belongs at call time, not schema-derivation time,
+/// exactly like `resolve_args` below already treats an unparseable path as
+/// "doesn't resolve," not a publish-time error) -- this only needs the
+/// first segment's name, on a raw string that may not even be non-`$.`
+/// yet (a step's `args` value that doesn't start with `"$."` is a literal,
+/// never reaches here).
+fn input_arg_name(raw: &str) -> Option<String> {
+    let rest = raw.strip_prefix("$.input.")?;
+    let end = rest.find(['.', '[']).unwrap_or(rest.len());
+    (!rest[..end].is_empty()).then(|| rest[..end].to_string())
+}
+
+/// Requirement 1: every step's `args`, in step order, contributing each
+/// `$.input.<name>` reference it makes -- deduplicated by name (first
+/// appearance wins), so `daily_pipeline`'s `region` used by both step 1 and
+/// step 3 appears once, attributed to step 1.
+fn collect_input_refs(steps: &[ParsedStep]) -> Vec<InputRef> {
+    let mut seen = std::collections::HashSet::new();
+    let mut refs = Vec::new();
+    for (i, step) in steps.iter().enumerate() {
+        for v in step.args.values() {
+            if let Value::String(s) = v
+                && let Some(name) = input_arg_name(s)
+                && seen.insert(name.clone())
+            {
+                refs.push(InputRef {
+                    name,
+                    step_no: i + 1,
+                    tool: step.tool.clone(),
+                });
+            }
+        }
+    }
+    refs
+}
+
+/// Requirement 1: `describe()`'s `input_schema` -- exactly `{"type":
+/// "object"}` for a chain with no `$.input.*` paths at all (unchanged from
+/// before this PRD), else an object schema naming every referenced input,
+/// all required, typed `{}` (permissive -- a step's own mapping doesn't pin
+/// a type, only that the value must be present).
+fn chain_input_schema(steps: &[ParsedStep]) -> Value {
+    let refs = collect_input_refs(steps);
+    if refs.is_empty() {
+        return json!({"type": "object"});
+    }
+    let properties: Map<String, Value> = refs.iter().map(|r| (r.name.clone(), json!({}))).collect();
+    let required: Vec<&str> = refs.iter().map(|r| r.name.as_str()).collect();
+    json!({
+        "type": "object",
+        "properties": Value::Object(properties),
+        "required": required,
+    })
 }
 
 /// One parsed step: the target tool's local name, its own literal/path
@@ -212,6 +291,12 @@ fn resolve_args(raw: &Map<String, Value>, context: &Value) -> Result<Value, Stri
 /// `host.table.append`'s row) would NOT happen during this report; the flag
 /// says so explicitly rather than leaving an agent to assume dry-run safety
 /// it doesn't have yet for that step.
+///
+/// PRD-mcphost-chain-run-lineage requirement 2 (AC10): also reports
+/// `inputs_required` -- the same list [`chain_input_schema`] derives into
+/// `input_schema.required` -- alongside the existing per-step trace, so a
+/// caller dry-running a chain (with or without a complete `call_args`)
+/// learns what it must pass without needing a second `host.tool_spec` read.
 fn dry_run_report(steps: &[ParsedStep], call_args: &Value) -> Value {
     // Only `input` is available before anything has run.
     let context = json!({"input": call_args, "prev": Value::Null, "steps": []});
@@ -247,7 +332,8 @@ fn dry_run_report(steps: &[ParsedStep], call_args: &Value) -> Value {
             entry
         })
         .collect();
-    json!({"dry_run": true, "steps": report})
+    let inputs_required: Vec<String> = collect_input_refs(steps).into_iter().map(|r| r.name).collect();
+    json!({"dry_run": true, "steps": report, "inputs_required": inputs_required})
 }
 
 #[async_trait::async_trait]
@@ -268,15 +354,37 @@ impl Kind for ChainKind {
         &["steps"]
     }
 
-    fn describe(&self, _spec: &Value) -> ToolDescriptor {
+    /// PRD-mcphost-chain-run-lineage requirement 1: `input_schema` is
+    /// derived from every step's `$.input.<name>` mapping path
+    /// ([`chain_input_schema`]) -- exactly `{"type": "object"}` (unchanged
+    /// from before this PRD) for a chain with none. `_spec` failing to
+    /// parse here can't happen for an already-published tool (`validate`
+    /// already rejected it at publish time), so the fallback is only ever
+    /// exercised by a caller that skips validation entirely (this kind's
+    /// own unit tests) -- same permissive schema a parse failure would have
+    /// produced before this PRD existed.
+    fn describe(&self, spec: &Value) -> ToolDescriptor {
+        let input_schema = parse_steps(spec)
+            .map(|steps| chain_input_schema(&steps))
+            .unwrap_or_else(|_| json!({"type": "object"}));
         ToolDescriptor {
             name: "chain".to_string(),
             description: "Runs a fixed sequence of this tenant's tools in order, passing each step's mapped result into the next.".to_string(),
-            // Requirement 4: a step's mapping may reach `$.input.<anything>`
-            // -- the chain's own call args have no fixed shape the chain
-            // itself can declare, so this stays maximally permissive.
-            input_schema: json!({"type": "object"}),
+            input_schema,
         }
+    }
+
+    /// PRD-mcphost-chain-run-lineage requirement 3: `chain`'s own call-time
+    /// pre-check (below) reports every missing `$.input.*` at once
+    /// (`compose_input_missing`) -- if the generic dispatch-time validator
+    /// also enforced `describe()`'s new `input_schema.required`, a call
+    /// missing an input would fail `args_invalid` (naming only the first
+    /// missing field) before ever reaching this kind's own `call`, making
+    /// `compose_input_missing` unreachable. `host.tool_test`'s dry run
+    /// (`ctx.test_mode`) needs the same carve-out to resolve what it can
+    /// from an incomplete `call_args` rather than refusing outright.
+    fn validates_own_args(&self) -> bool {
+        true
     }
 
     async fn call(&self, spec: &Value, args: Value, ctx: &CallCtx) -> Result<Value, KindError> {
@@ -286,6 +394,38 @@ impl Kind for ChainKind {
         // nothing.
         if ctx.test_mode {
             return Ok(dry_run_report(&steps, &args));
+        }
+
+        // PRD-mcphost-chain-run-lineage requirement 3 (AC3): refuse before
+        // step 1 ever dispatches if any `$.input.*` path a step references
+        // is missing from `args` -- naming every missing field (not just
+        // the first) and the first step that actually needs one of them.
+        // Zero steps run, so [`compose_call`] never gets a chance to write
+        // a child run row for this call at all (requirement 4's "one row
+        // per EXECUTED step").
+        let input_refs = collect_input_refs(&steps);
+        let mut missing: Vec<&str> = Vec::new();
+        let mut first_missing: Option<&InputRef> = None;
+        for r in &input_refs {
+            if args.get(r.name.as_str()).is_none() {
+                missing.push(&r.name);
+                if first_missing.is_none() {
+                    first_missing = Some(r);
+                }
+            }
+        }
+        if let Some(first) = first_missing {
+            let tool_name = ctx.tool_name.as_deref().unwrap_or("chain");
+            return Err(KindError::structured_with(
+                "compose_input_missing",
+                format!(
+                    "chain '{tool_name}' needs input(s) [{}] (used by step {} '{}')",
+                    missing.join(", "),
+                    first.step_no,
+                    first.tool,
+                ),
+                json!({"missing": missing, "step": first.step_no, "tool": first.tool}),
+            ));
         }
 
         let mut steps_trace: Vec<Value> = Vec::with_capacity(steps.len());
@@ -342,7 +482,19 @@ impl Kind for ChainKind {
                 }
             };
 
-            match compose_call(ctx, ctx.tenant_id, &step.tool, resolved_args.clone(), None).await {
+            match compose_call(
+                ctx,
+                ctx.tenant_id,
+                &step.tool,
+                resolved_args.clone(),
+                None,
+                // PRD-mcphost-chain-run-lineage requirement 8 (AC11): this
+                // step's own 1-based position, so a composed child run row
+                // (if lineage is active) carries `step_no`.
+                Some(failed_step_no as i64),
+            )
+            .await
+            {
                 Ok(result) => {
                     steps_trace.push(json!({
                         "step": failed_step_no,

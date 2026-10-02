@@ -56,6 +56,8 @@ async fn end_user_breakdown_reports_each_subjects_count() {
             // qualified name) exactly as before this PRD.
             None,
             "key".to_string(),
+                // PRD-mcphost-chain-run-lineage: no pre-generated run id -- generate fresh.
+                None,
             )
             .await
             .expect("seed u1 call");
@@ -83,6 +85,8 @@ async fn end_user_breakdown_reports_each_subjects_count() {
         // qualified name) exactly as before this PRD.
         None,
         "key".to_string(),
+            // PRD-mcphost-chain-run-lineage: no pre-generated run id -- generate fresh.
+            None,
         )
         .await
         .expect("seed u2 call");
