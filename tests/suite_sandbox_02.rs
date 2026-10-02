@@ -19,6 +19,8 @@ mod federation;
 #[path = "support/host.rs"]
 #[allow(dead_code)]
 mod host;
+#[path = "support/lanecov.rs"]
+mod lanecov;
 #[path = "support/oauth.rs"]
 mod oauth;
 #[path = "support/uptime_probes.rs"]
@@ -26,6 +28,18 @@ mod uptime_probes;
 
 #[path = "ac17_kind_conformance.rs"]
 mod ac17_kind_conformance;
+#[path = "bridgedisc_ac01_sandbox_api_source_of_truth.rs"]
+mod bridgedisc_ac01_sandbox_api_source_of_truth;
+#[path = "bridgedisc_ac02_starter_tool_bridge_table.rs"]
+mod bridgedisc_ac02_starter_tool_bridge_table;
+#[path = "bridgedisc_ac03_unknown_import_rejected_at_publish.rs"]
+mod bridgedisc_ac03_unknown_import_rejected_at_publish;
+#[path = "bridgedisc_ac04_runtime_unknown_import_no_traceback.rs"]
+mod bridgedisc_ac04_runtime_unknown_import_no_traceback;
+#[path = "bridgedisc_ac05_network_public_plan_named.rs"]
+mod bridgedisc_ac05_network_public_plan_named;
+#[path = "bridgedisc_ac06_tools_list_mentions_import_mcphost.rs"]
+mod bridgedisc_ac06_tools_list_mentions_import_mcphost;
 #[path = "chainhost_ac05_quickstart_chain_example_resolves.rs"]
 mod chainhost_ac05_quickstart_chain_example_resolves;
 #[path = "chanbridge_ac01_python_channel_post_seq_and_host_sees_tenant.rs"]
@@ -118,6 +132,8 @@ mod kindhonor_ac2_kind_mismatch_refused;
 mod kindroute_ac04_unknown_kind_carries_recipe_hints;
 #[path = "kindroute_ac05_startup_aliases_and_recipe_tools_are_registered.rs"]
 mod kindroute_ac05_startup_aliases_and_recipe_tools_are_registered;
+#[path = "lanecov_ac04_existing_lanes_unchanged.rs"]
+mod lanecov_ac04_existing_lanes_unchanged;
 #[path = "limits_ac01_declared_timeout_honored.rs"]
 mod limits_ac01_declared_timeout_honored;
 #[path = "limits_ac02_default_timeout_when_undeclared.rs"]
@@ -244,39 +260,3 @@ mod plainenv_ac10_admin_reports_env_names_and_size;
 mod publishfirsttry_ac03_ac04_quickstart;
 #[path = "publishfirsttry_ac06_docs_shared_source.rs"]
 mod publishfirsttry_ac06_docs_shared_source;
-#[path = "python_ac01_no_deps_cpu_memory.rs"]
-mod python_ac01_no_deps_cpu_memory;
-#[path = "python_ac02_requirements_build_and_building_state.rs"]
-mod python_ac02_requirements_build_and_building_state;
-#[path = "python_ac03_invalid_source_rejected.rs"]
-mod python_ac03_invalid_source_rejected;
-#[path = "python_ac04_disallowed_requirement.rs"]
-mod python_ac04_disallowed_requirement;
-#[path = "python_ac05_exception_traceback.rs"]
-mod python_ac05_exception_traceback;
-#[path = "python_ac06_timeout.rs"]
-mod python_ac06_timeout;
-#[path = "python_ac07_oom.rs"]
-mod python_ac07_oom;
-#[path = "python_ac08_network_none_blocks.rs"]
-mod python_ac08_network_none_blocks;
-#[path = "python_ac09_filesystem_isolation.rs"]
-mod python_ac09_filesystem_isolation;
-#[path = "python_ac10_fork_bomb_contained.rs"]
-mod python_ac10_fork_bomb_contained;
-#[path = "python_ac11_secret_redaction.rs"]
-mod python_ac11_secret_redaction;
-#[path = "python_ac12_republish_atomic.rs"]
-mod python_ac12_republish_atomic;
-#[path = "python_ac13_capacity_admission.rs"]
-mod python_ac13_capacity_admission;
-#[path = "python_ac14_cpu_budget_rate_limit.rs"]
-mod python_ac14_cpu_budget_rate_limit;
-#[path = "runenvelope_ac1_call_and_tool_run_parity.rs"]
-mod runenvelope_ac1_call_and_tool_run_parity;
-#[path = "runenvelope_ac2_no_declared_outputs_raw_payload.rs"]
-mod runenvelope_ac2_no_declared_outputs_raw_payload;
-#[path = "runenvelope_ac3_descriptor_and_decision_table_name_envelope.rs"]
-mod runenvelope_ac3_descriptor_and_decision_table_name_envelope;
-#[path = "runenvelope_ac4_no_calls_row_with_payload.rs"]
-mod runenvelope_ac4_no_calls_row_with_payload;

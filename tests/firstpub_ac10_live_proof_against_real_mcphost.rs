@@ -20,7 +20,7 @@ fn live_mode_enabled(raw: Option<&str>) -> bool {
 
 /// AC10 (P0, Live) -- runs `examples/first-run/proof.sh` against the real
 /// `$MCPHOST_URL` (default `https://mcphost.dev/mcp`) end to end: signs up,
-/// publishes `text_stats` as a python tool, calls it, and asserts the real
+/// publishes `table_note` as a python tool, calls it, and asserts the real
 /// output. Only executes with `MCPHOST_LIVE=1`; otherwise this is a
 /// successful no-op.
 #[tokio::test]

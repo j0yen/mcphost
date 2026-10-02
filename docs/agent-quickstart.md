@@ -36,9 +36,10 @@ own tool is **42.4s**.
    connection can use `Authorization: Bearer <key>` instead.
 4. Publish a tool: `host.tool_publish(name, kind, spec)`. Call
    `host.quickstart` first — its `starter_tool` is a ready-to-publish
-   `python` spec (reverses text, counts words) plus the exact
-   `publish_call`/`test_call` to run; the documented first publish is a
-   real tool, not a stub. Two real kinds: submit code (`python` — source
+   `python` spec (appends a note through `mcphost.table`, the sandbox's
+   `import mcphost` bridge -- see `sandbox_api` in the same response) plus
+   the exact `publish_call`/`test_call` to run; the documented first
+   publish is a real tool, not a stub. Two real kinds: submit code (`python` — source
    required, `args_schema`/`requirements` inferred if omitted) or wrap an
    API you already use (`http` — url and method required, `args_schema`
    inferred if omitted). `echo` (returns its arguments; spec is a JSON

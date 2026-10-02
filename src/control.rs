@@ -525,18 +525,22 @@ pub async fn self_offboard(state: &AppState, tenant: &Tenant) -> Result<Value, A
 }
 
 /// PRD-mcphost-first-publish-real-kind requirement 1 (AC1): the documented
-/// first publish -- a real python tool, not the echo stub. Reverses its
-/// input and counts its words, so `host.quickstart`'s own `test_call`
-/// (`{"text": "hello"}`) proves the tool actually does something
-/// (`{"reversed": "olleh", "words": 1}`) rather than merely publishing.
-/// Free-plan-safe by construction: no `secrets`, no `network`, no
+/// first publish -- a real python tool, not the echo stub.
+/// PRD-mcphost-sandbox-bridge-discoverability requirement 2 (AC2): the
+/// starter is now a bridge example rather than a pure-function one --
+/// `main` validates its own input, creates its table on first use (idle
+/// afterward: `mcphost.table.create` raises `table_already_exists`, caught
+/// and ignored), and appends a row through `mcphost.table`, so
+/// `host.quickstart`'s own `test_call` (`{"note": "hello"}`) proves the
+/// tool actually reaches the tenant's own persistent store, not just that
+/// it runs. Free-plan-safe by construction: no `secrets`, no `network`, no
 /// `requirements`.
 // PRD-mcphost-chain-host-steps requirement 5: `pub(crate)`, not private --
 // `kinds::chain::ChainKind::example` names this exact tool (by name, source
 // unused there) as its first step, so `host.quickstart kind=chain`'s
 // example resolves on a tenant that has already published this starter.
-pub(crate) const STARTER_TOOL_NAME: &str = "text_stats";
-pub(crate) const STARTER_TOOL_SOURCE: &str = "def main(args):\n    text = args.get(\"text\", \"\")\n    reversed_text = text[::-1]\n    words = len(text.split())\n    return {\n        \"reversed\": reversed_text,\n        \"words\": words,\n    }\n";
+pub(crate) const STARTER_TOOL_NAME: &str = "table_note";
+pub(crate) const STARTER_TOOL_SOURCE: &str = "import mcphost\n\nNOTES_TABLE = \"quickstart_notes\"\n\n\ndef main(args):\n    note = args.get(\"note\", \"\")\n    if not isinstance(note, str) or not note:\n        return {\"error\": \"note must be a non-empty string\"}\n    try:\n        mcphost.table.create(name=NOTES_TABLE, columns={\"note\": \"text\"})\n    except mcphost.table.TableError as e:\n        if e.code != \"table_already_exists\":\n            raise\n    result = mcphost.table.append(table=NOTES_TABLE, rows=[{\"note\": note}])\n    return {\"appended\": result[\"appended\"], \"table\": NOTES_TABLE}\n";
 
 /// PRD-mcphost-first-publish-real-kind requirement 6 (AC8): `host.quickstart
 /// {kind: "http"}`'s own starter -- a public JSON API with no auth, for a
@@ -662,6 +666,13 @@ pub fn quickstart(
             "event_triggers_max": plan.event_triggers_max,
             "events_per_minute": plan.events_per_minute,
             "event_body_bytes_max": plan.event_body_bytes_max,
+            // PRD-mcphost-sandbox-bridge-discoverability requirement 5
+            // (AC5): names the plan `network: "public"`/`"egress"` needs --
+            // the same one `network_policy::plan_required_fields` and
+            // `AppError::plan_required("network", "pro")` already gate on,
+            // so a free-plan tenant reading quickstart alone learns this
+            // without first hitting the republish-with-network-none refusal.
+            "network_public": "pro",
         })
     });
     // PRD-mcphost-call-limits-honest requirement 5 / AC6: the six limits an
@@ -713,10 +724,16 @@ pub fn quickstart(
         // PRD-mcphost-tool-run-envelope requirement 3 / AC3: the case text
         // now names the standard envelope (`result.payload`) alongside the
         // run metadata, matching `TOOL_RUN_DESC` in `handler.rs`.
+        // PRD-mcphost-sandbox-bridge-discoverability requirement 5 (AC5):
+        // the one row a python-publishing agent reads before designing
+        // around egress it doesn't have -- paired with `limits.plan.
+        // network_public` above (the plan that lifts the default).
         try_before_call.push(json!({
             "case": "a published python tool, for result.payload plus stdout, stderr and exit code",
             "call": "host.tool_run",
             "arguments": {"name": tool_name, "args": python_example.call_args},
+            "note": "network is off by default (network: \"none\"); network: \"public\" needs the \
+                pro plan (limits.plan.network_public).",
         }));
     }
 
@@ -782,7 +799,7 @@ pub fn quickstart(
             },
             "test_call": {
                 "call": "host.tool_test",
-                "arguments": {"name": STARTER_TOOL_NAME, "args": {"text": "hello"}},
+                "arguments": {"name": STARTER_TOOL_NAME, "args": {"note": "hello"}},
             },
         })
     };
@@ -801,6 +818,13 @@ pub fn quickstart(
         "recipes": crate::kinds::aliases::recipe_names(),
         "try_before_call": try_before_call,
         "starter_tool": starter_tool,
+        // PRD-mcphost-sandbox-bridge-discoverability requirement 1 (AC1):
+        // the one place a python tool author learns the sandbox's
+        // `import mcphost` story -- built from `kinds::python::BRIDGE_MODULES`,
+        // the same list the runner script's own `sys.modules["mcphost.*"]`
+        // registration reads from (see `kinds::python::runner_script_registered_modules`'s
+        // own doc comment for how a test proves the two never drift).
+        "sandbox_api": crate::kinds::python::build_sandbox_api(crate::kinds::python::BRIDGE_MODULES),
         "next": next,
         "steps": steps,
         "limits": {

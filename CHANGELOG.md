@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.69.0 — 2026-10-02
+
+`host.quickstart kind=python` now carries `sandbox_api`: `import mcphost`
+plus the one-line call signatures for every `mcphost.*` submodule the
+runner script registers (`state`, `table`, `docs`, `lineage`, `channel`,
+`msg`), generated from one Rust constant (`BRIDGE_MODULES` in
+`src/kinds/python.rs`) so a module added there needs no second edit. The
+python starter tool is now a `mcphost.table` bridge example
+(`table.create`/`table.append`) instead of a bridge-free `text_stats`.
+`host.spec_test` and `host.tool_publish` statically reject `import host`,
+`from host import ...`, `import mcphost_sdk`, and any unregistered
+`mcphost.<name>` attribute use as `unknown_import`, naming the real import
+and every registered module in `data.hint`; a sandbox run whose stderr
+ends in the matching `ModuleNotFoundError` gets the same error class and
+hint instead of a raw traceback. The quickstart `limits.plan` object gains
+`network_public`, and the python `try_before_call` row notes network is
+off by default. `tools/list`'s `host.tool_publish` description and the
+python kind's `network` field help both name `import mcphost` and
+`mcphost.table`. A new `scripts/sandbox-api-doc-check.sh` keeps
+`docs/kinds/python.md`, `www/llms.txt`, and
+`plugin/skills/mcphost/SKILL.md` in sync with the same module list.
+
+PRD-mcphost-sandbox-bridge-discoverability AC1-AC7. AC8 (Live, prod
+synthorg probe) is left for the gate.
+
 ## v0.68.0 — 2026-10-01
 
 `host.tool_publish` and `host.spec_test` now reject any spec key a kind
@@ -87,6 +112,35 @@ PRD-mcphost-first-hour-support-surface AC1-AC8 (`support_*` test files).
 AC9 (whole-suite-green-at-landing) is deferred to the wm-build gate itself;
 AC10 (Live, prod journey-harness evidence) is pasted into the receipt by
 the operator after deploy.
+
+## v0.65.0 — 2026-10-01
+
+`host.quickstart kind=python` now returns `sandbox_api`: `{import: "import
+mcphost", modules: {mcphost.state, mcphost.table, mcphost.docs,
+mcphost.lineage}, attrs: [mcphost.call, mcphost.progress]}`, built from one
+Rust constant (`kinds::python::BRIDGE_MODULES`) that also backs the
+`unknown_import` publish-time rejection's hint text -- a python tool author
+who reads only `host.quickstart` now sees the exact `import mcphost`
+module table the sandbox actually registers, closing the gap a 2026-09-30
+fleet-board dogfood hit (a coder wrote `import host`, got a bare
+traceback, and wrongly concluded the sandbox couldn't persist state).
+The quickstart starter (`table_note`) is now a bridge example --
+`mcphost.table.create`/`.append` -- instead of a pure reverse/word-count
+function, so its own `test_call` proves a real write. `host.spec_test` and
+`host.tool_publish` now statically reject `import host`, `import
+mcphost_sdk`, and any unregistered `mcphost.<name>` with `unknown_import`
+naming the real modules, before any sandbox spins up; the same class
+covers a sandboxed call's own `ModuleNotFoundError` for either name at run
+time (e.g. a dynamically constructed `importlib.import_module(...)` that
+escapes the static scan), with no raw traceback in the response.
+`limits.plan.network_public` names the plan (`pro`) that allows `network:
+"public"`, and the python row of `try_before_call` now says network is off
+by default. `tools/list`'s `host.tool_publish` description and the python
+kind's own `network` field help both mention `import mcphost`/
+`mcphost.table`. `scripts/sandbox-api-doc-check.sh` keeps
+`docs/kinds/python.md`, `www/llms.txt`, and
+`plugin/skills/mcphost/SKILL.md` in sync with the same module table,
+generated from the one constant.
 
 ## v0.63.0 — 2026-09-30
 

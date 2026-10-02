@@ -133,6 +133,15 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // required_commands-immutability reason the sharing-docs/launch-docs
     // lanes above give) -- a thirteenth, intended addition since the
     // baseline, not drift.
+    // PRD-mcphost-sandbox-bridge-discoverability added its own
+    // "sandbox-api-docs" lane (routes scripts/sandbox-api-doc-check.sh --
+    // the drift check that docs/kinds/python.md, www/llms.txt, and
+    // plugin/skills/mcphost/SKILL.md stay in sync with
+    // kinds::python::BRIDGE_MODULES -- to that script's own check mode,
+    // kept separate from the pre-existing docs/www/plugin lanes for the
+    // same required_commands-immutability reason the sharing-docs/
+    // launch-docs lanes above already give) -- a fourteenth, intended
+    // addition since the baseline, not drift.
     assert_eq!(
         added,
         vec![
@@ -145,13 +154,14 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "loop-config",
             "oauthconf-data",
             "plugin",
+            "sandbox-api-docs",
             "sharing-docs",
             "spec-fields-doc-check",
             "vendor",
             "wasm-fixtures"
         ],
         "only admin-schemas, checkcompat-race-soak, contracts, docsearch-fixtures, examples, \
-         launch-docs, loop-config, oauthconf-data, plugin, sharing-docs, \
+         launch-docs, loop-config, oauthconf-data, plugin, sandbox-api-docs, sharing-docs, \
          spec-fields-doc-check, vendor, and wasm-fixtures may have been added since {BASELINE_REV}"
     );
 }

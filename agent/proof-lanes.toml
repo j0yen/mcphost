@@ -228,3 +228,11 @@ required_commands = [
   "cargo clippy --workspace -- -D warnings",
   "cargo test --workspace",
 ]
+
+[[lane]]
+id = "sandbox-api-docs"
+description = "PRD-mcphost-sandbox-bridge-discoverability requirement 7 (AC7): scripts/sandbox-api-doc-check.sh, the drift check that docs/kinds/python.md, www/llms.txt, and plugin/skills/mcphost/SKILL.md each carry the same mcphost.* module table rendered from src/kinds/python.rs's own BRIDGE_MODULES constant. Added project-locally: the shipped scaffold's proof-lanes.toml has no lane for a project-local doc-check script under scripts/, and no existing lane's required_commands would run this script's own drift check (docs/www/plugin each have their own lane, but none names this script), kept as its own lane rather than folded into any of those three specifically so tests/lanecov_ac04_existing_lanes_unchanged.rs's required_commands-unchanged half stays green, same reasoning the sharing-docs/launch-docs lanes above already give. Proof is the script's own check mode (bare invocation, no args), matching tests/bridgedisc_ac07_sandbox_api_doc_check.rs's own two cases (clean pass, fixture-removed-module failure)."
+globs = ["scripts/sandbox-api-doc-check.sh"]
+required_commands = [
+  "scripts/sandbox-api-doc-check.sh",
+]

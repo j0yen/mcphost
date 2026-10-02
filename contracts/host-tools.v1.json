@@ -3128,7 +3128,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Publish a tool of a registered kind (echo) under this tenant's namespace. Call host.quickstart(kind) first for a filled-in example spec and the full publish-to-call sequence. Name must match ^[a-z][a-z0-9_]{1,40}$; a rejection names the failing field and a corrected example. Try host.tool_test before a real call.",
+      "description": "Publish a tool of a registered kind (echo) under this tenant's namespace. Call host.quickstart(kind) first for a filled-in example spec and the full publish-to-call sequence. Python's sandbox API: import mcphost (mcphost.table, mcphost.state, mcphost.docs). Name must match ^[a-z][a-z0-9_]{1,40}$; a rejection names the failing field and a corrected example. Try host.tool_test before a real call.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -3148,7 +3148,7 @@
             "type": "array"
           },
           "spec": {
-            "description": "The kind-specific spec object; see host.quickstart(kind) for a filled-in example.",
+            "description": "The kind-specific spec object; see host.quickstart(kind) for a filled-in example. For python's network field: \"none\", \"public\", or \"egress\" -- a tool's own code reaches this tenant's data with `import mcphost` (mcphost.table, mcphost.state, mcphost.docs, mcphost.lineage) even when network is \"none\".",
             "type": "object"
           },
           "tenant_key": {
