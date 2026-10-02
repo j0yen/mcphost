@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.70.1 — 2026-10-02
+
+Security: `wasmtime`/`wasmtime-wasi` bumped 46.0.3 -> 48.0.5, resolving
+RUSTSEC-2026-0321, -0322, -0323, -0324 (wasmtime-wasi: `poll_oneoff` fuel
+bypass, excessive host memory on stdio-less guests, uninitialized struct
+padding leaked by `fd_readdir`, pre-epoch filesystem timestamp panic) and
+-0327 (wasmtime: unvalidated async-lifted callback result count overflows
+a native stack buffer). All five require `>=48.0.4` to resolve; also
+bumps `yoke-derive` 0.8.3 -> 0.8.4 (0.8.3 was yanked, unrelated to
+wasmtime, surfaced by the same `cargo deny check advisories` gate).
+`WASM_RUNTIME_VERSION` (reported in `/healthz`) now reads "wasmtime
+48.0.5" to match. `deny.toml`'s RUSTSEC-2026-0316/-0314 gate-debt ignores
+are removed -- both were already `>=48.0.3` fixes the same bump covers.
+
 ## v0.69.0 — 2026-10-02
 
 `host.quickstart kind=python` now carries `sandbox_api`: `import mcphost`
