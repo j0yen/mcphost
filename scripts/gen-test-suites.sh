@@ -516,12 +516,13 @@ def classify(path):
 
 
 # Matches ONLY this generator's own output file names (tests/suite_core_01.rs,
-# tests/suite_sandbox_02.rs, ...) -- deliberately narrower than "starts with
-# suite_", because this PRD's own `test_prefix: suite` AC-pairing selftests
-# are named tests/suite_ac<N>_*.rs (verified-completed.sh's `prefix:<p>` rule
-# needs that exact shape) and must never be mistaken for generated output, or
-# a regen would silently delete them as "stray".
-GENERATED_SUITE_RE = re.compile(r'^suite_(?:core|sandbox)_[0-9]+\.rs$')
+# tests/suite_sandbox_02.rs, tests/suite_env_core_01.rs,
+# tests/suite_env_sandbox_01.rs, ...) -- deliberately narrower than "starts
+# with suite_", because this PRD's own `test_prefix: suite` AC-pairing
+# selftests are named tests/suite_ac<N>_*.rs (verified-completed.sh's
+# `prefix:<p>` rule needs that exact shape) and must never be mistaken for
+# generated output, or a regen would silently delete them as "stray".
+GENERATED_SUITE_RE = re.compile(r'^suite_(?:core|sandbox|env_core|env_sandbox)_[0-9]+\.rs$')
 
 AC_PREFIX_RE = re.compile(r'^(ac[0-9]+)_')
 PREFIX_RE = re.compile(r'^([a-z0-9]+)_')
@@ -546,6 +547,25 @@ EXCLUSIVE_GLOBAL_RE = re.compile(r'tracing::subscriber::set_global_default')
 
 def is_exclusive_global(content):
     return bool(EXCLUSIVE_GLOBAL_RE.search(content))
+
+
+# PRD-mcphost-test-suite-flake-lints requirement 5: a file that mutates a
+# process-wide env var through `tests/common::EnvGuard` (directly, or via
+# the `AdvisoryModeGuard` thin alias) is routed into its own `suite_env_
+# <core|sandbox>_NN.rs` binary, segregated from every file that does NOT
+# touch env state -- so a future `EnvGuard` bug (the mutex never acquired,
+# the restore skipped on panic, ...) can only ever race ANOTHER env-guarded
+# test, never silently corrupt an unrelated test's env read. Still split by
+# capability (`core`/`sandbox`) first, same as every other bucket here, so a
+# sandbox-needing env-guarded file keeps the userns grant its own suite
+# binary needs. Matches the thin `AdvisoryModeGuard` alias too, since a
+# caller of it (e.g. `common::AdvisoryModeGuard::set("warn")`) never spells
+# `EnvGuard` in its own source at all.
+ENV_GUARD_RE = re.compile(r'EnvGuard|AdvisoryModeGuard')
+
+
+def is_env_guarded(content):
+    return bool(ENV_GUARD_RE.search(content))
 
 
 def distribute_exclusive(buckets, exclusive_stems):
@@ -735,6 +755,45 @@ def suite_content(members_meta):
     return "".join(parts)
 
 
+# Env suites hold a small minority of files (every test that touches
+# EnvGuard/AdvisoryModeGuard, a few dozen at most) -- unlike MAX_PER_SUITE,
+# nothing here has ever needed per-PRD retuning, so one generous cap keeps
+# each partition's env-guarded files in a single suite_env_<part>_01.rs
+# until that stops being true.
+ENV_MAX_PER_SUITE = {"core": 500, "sandbox": 500}
+
+
+def build_suites(name_prefix, cap_by_partition, stems_by_partition, exclusive_by_partition, migrations, suite_files):
+    """Buckets `stems_by_partition[part]` (+ `exclusive_by_partition[part]`
+    as singletons) into `<name_prefix>_<part>_NN` suites, same area-key
+    bucketing every suite kind here uses, writing each suite's content into
+    `suite_files` and returning `{part: [suite_name, ...]}`."""
+    names_by_partition = {}
+    for part in ("core", "sandbox"):
+        stems = sorted(stems_by_partition[part])
+        grouped = {}
+        for stem in stems:
+            grouped.setdefault(area_key(stem), []).append(stem)
+        groups = sorted(grouped.items())
+        for k in grouped:
+            grouped[k].sort()
+        groups = [(k, grouped[k]) for k, _ in groups]
+        buckets = bucketize(groups, cap_by_partition[part])
+        buckets = distribute_exclusive(buckets, exclusive_by_partition[part])
+        names = []
+        for i, bucket in enumerate(buckets, 1):
+            name = f"{name_prefix}_{part}_{i:02d}"
+            names.append(name)
+            meta = []
+            for stem in sorted(bucket):
+                path = f"tests/{stem}.rs"
+                _content, needs_common, needs_ci_sandbox, support_helpers = migrations[path]
+                meta.append((stem, needs_common, needs_ci_sandbox, support_helpers))
+            suite_files[f"tests/{name}.rs"] = suite_content(meta)
+        names_by_partition[part] = names
+    return names_by_partition
+
+
 def compute_plan():
     all_files = sorted(
         f for f in glob.glob("tests/*.rs")
@@ -746,6 +805,8 @@ def compute_plan():
     migrations = {}  # path -> (new_content, needs_common, needs_ci_sandbox, support_helpers)
     by_partition = {"core": [], "sandbox": []}
     exclusive_by_partition = {"core": [], "sandbox": []}
+    env_by_partition = {"core": [], "sandbox": []}
+    env_exclusive_by_partition = {"core": [], "sandbox": []}
     for f in all_files:
         with open(f, encoding="utf-8") as fh:
             content = fh.read()
@@ -753,37 +814,29 @@ def compute_plan():
         new_content, needs_common, needs_ci_sandbox, support_helpers = migrate_content(content)
         migrations[f] = (new_content, needs_common, needs_ci_sandbox, support_helpers)
         stem = os.path.basename(f)[:-3]
-        if is_exclusive_global(content):
+        env = is_env_guarded(content)
+        exclusive = is_exclusive_global(content)
+        if env and exclusive:
+            env_exclusive_by_partition[part].append(stem)
+        elif env:
+            env_by_partition[part].append(stem)
+        elif exclusive:
             exclusive_by_partition[part].append(stem)
         else:
             by_partition[part].append(stem)
 
     suite_files = {}  # path -> content
-    suite_names_by_partition = {}
-    for part in ("core", "sandbox"):
-        stems = sorted(by_partition[part])
-        grouped = {}
-        for stem in stems:
-            grouped.setdefault(area_key(stem), []).append(stem)
-        groups = sorted(grouped.items())
-        for k in grouped:
-            grouped[k].sort()
-        groups = [(k, grouped[k]) for k, _ in groups]
-        buckets = bucketize(groups, MAX_PER_SUITE[part])
-        buckets = distribute_exclusive(buckets, exclusive_by_partition[part])
-        names = []
-        for i, bucket in enumerate(buckets, 1):
-            name = f"suite_{part}_{i:02d}"
-            names.append(name)
-            meta = []
-            for stem in sorted(bucket):
-                path = f"tests/{stem}.rs"
-                _content, needs_common, needs_ci_sandbox, support_helpers = migrations[path]
-                meta.append((stem, needs_common, needs_ci_sandbox, support_helpers))
-            suite_files[f"tests/{name}.rs"] = suite_content(meta)
-        suite_names_by_partition[part] = names
+    suite_names_by_partition = build_suites(
+        "suite", MAX_PER_SUITE, by_partition, exclusive_by_partition, migrations, suite_files
+    )
+    env_suite_names_by_partition = build_suites(
+        "suite_env", ENV_MAX_PER_SUITE, env_by_partition, env_exclusive_by_partition, migrations, suite_files
+    )
 
-    all_suite_names = sorted(suite_names_by_partition["core"] + suite_names_by_partition["sandbox"])
+    all_suite_names = sorted(
+        suite_names_by_partition["core"] + suite_names_by_partition["sandbox"]
+        + env_suite_names_by_partition["core"] + env_suite_names_by_partition["sandbox"]
+    )
 
     with open("Cargo.toml", encoding="utf-8") as fh:
         cargo_toml = fh.read()

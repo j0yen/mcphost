@@ -59,11 +59,11 @@ async fn reaudit_flags_a_newly_discovered_advisory_without_disabling_the_tool() 
             .to_string(),
     )
     .expect("write fixture advisory db");
-    // SAFETY: this file has exactly one #[tokio::test] fn, so no sibling
-    // test in this binary can observe (or race) this process-wide env var.
-    unsafe {
-        std::env::set_var("MCPHOST_ADVISORY_DB_PATH", &advisory_db_path);
-    }
+    let _env = common::EnvGuard::set(
+        "MCPHOST_ADVISORY_DB_PATH",
+        &advisory_db_path.to_string_lossy(),
+    )
+    .await;
 
     let admin = McpClient::with_bearer(&server.base_url, ADMIN_KEY);
     let reaudit = extract_structured(
@@ -73,9 +73,7 @@ async fn reaudit_flags_a_newly_discovered_advisory_without_disabling_the_tool() 
             .expect("admin.dependency_reaudit"),
     );
 
-    unsafe {
-        std::env::remove_var("MCPHOST_ADVISORY_DB_PATH");
-    }
+    drop(_env);
 
     assert_eq!(
         reaudit["tools_flagged"].as_i64(),

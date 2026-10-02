@@ -20,15 +20,7 @@ async fn quickstart_http_starter_publishes_and_returns_the_fixtures_json() {
         .mount(&upstream)
         .await;
 
-    // SAFETY: this file has exactly one #[tokio::test] fn, so no sibling
-    // test in this binary can observe (or race) this process-wide env var
-    // -- same rationale `kinds::python`'s own
-    // `ensure_uv_discoverable_for_test` doc comment gives for its `PATH`
-    // mutation, and `mcphost_python_dependency_policy_ac03`'s own
-    // `MCPHOST_ADVISORY_MODE` mutation.
-    unsafe {
-        std::env::set_var("MCPHOST_HTTP_STARTER_URL", format!("{}/fact", upstream.uri()));
-    }
+    let _env = common::EnvGuard::set("MCPHOST_HTTP_STARTER_URL", &format!("{}/fact", upstream.uri())).await;
 
     let server = TestServer::start_with_kinds(http_kind_registry()).await;
     let (_ns, key) = signup(&server.base_url, "AC8 Tenant").await;
@@ -62,9 +54,7 @@ async fn quickstart_http_starter_publishes_and_returns_the_fixtures_json() {
         .expect("starter_tool.test_call must succeed verbatim");
     let test_structured = extract_structured(&test_result);
 
-    unsafe {
-        std::env::remove_var("MCPHOST_HTTP_STARTER_URL");
-    }
+    drop(_env);
 
     assert_eq!(
         test_structured["response"]["body"]["fact"],

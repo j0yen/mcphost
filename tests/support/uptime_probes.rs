@@ -13,15 +13,6 @@ use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
-// Not `#[path] mod egress_proxy_lock;` here: that would compile a second,
-// separate `static LOCK` distinct from the one the
-// `mcphost_sandbox_egress_allowlist_ac{03,06,07}_*.rs` files (which are
-// always sandbox-classified into the same suite binary as this file's own
-// callers) declare at the suite root -- defeating the shared lock. `crate::`
-// reaches that single suite-root instance instead, same as this file's own
-// `use crate::common::...` above.
-use crate::egress_proxy_lock;
-
 pub fn probe_source() -> String {
     std::fs::read_to_string(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/uptime-probes/tools/probe.py"),
@@ -184,21 +175,16 @@ async fn start_forward_proxy() -> String {
 /// and promotes `ns` to `pro` via `admin.plan_set` -- everything a
 /// `network: "public"` `probe` publish/call now needs (AC1/AC3).
 ///
-/// Returns the held `egress_proxy_lock` guard: `cargo test`'s default
-/// (no nextest) model runs every `#[tokio::test]` fn in a `tests/suite_*.rs`
+/// Returns the held [`common::EnvGuard`]: `cargo test`'s default (no
+/// nextest) model runs every `#[tokio::test]` fn in a `tests/suite_*.rs`
 /// binary concurrently as threads within ONE process, so this and every
-/// `mcphost_sandbox_egress_allowlist_ac{03,06,07}_*.rs` test that also
+/// `mcphost_sandbox_egress_allowlist_ac{03,04,06,07}_*.rs` test that also
 /// mutates the process-wide `$MCPHOST_EGRESS_PROXY` share one lock -- the
 /// caller must keep the returned guard alive for its whole test body (not
 /// just this call), same as those AC files do themselves.
-pub async fn grant_egress(server: &TestServer, ns: &str) -> tokio::sync::MutexGuard<'static, ()> {
-    let guard = egress_proxy_lock::guard().await;
+pub async fn grant_egress(server: &TestServer, ns: &str) -> crate::common::EnvGuard {
     let proxy = start_forward_proxy().await;
-    // SAFETY: held across the caller's whole test body via the returned
-    // guard above, so no other test in this binary observes a torn env var.
-    unsafe {
-        std::env::set_var("MCPHOST_EGRESS_PROXY", &proxy);
-    }
+    let guard = crate::common::EnvGuard::set("MCPHOST_EGRESS_PROXY", &proxy).await;
     let admin = McpClient::with_bearer(&server.base_url, ADMIN_KEY);
     admin
         .tools_call(

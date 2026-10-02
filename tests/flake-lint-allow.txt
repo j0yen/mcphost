@@ -1,0 +1,4 @@
+# flake-lint allow-list — PRD-mcphost-test-suite-flake-lints.
+# One entry per line: path:rule # reason. Keep this list short (P0: at
+# most 5 entries at landing, not growing week over week) — a new finding
+# should be fixed, not appended here.

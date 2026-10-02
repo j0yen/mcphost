@@ -85,6 +85,14 @@ required_commands = [
 ]
 
 [[lane]]
+id = "flake-lint"
+description = "PRD-mcphost-test-suite-flake-lints: scripts/flake-lint.sh (the env-mutation/single-shot-perf/receipt-read scanner over tests/**/*.rs) and its allow-list, tests/flake-lint-allow.txt (path:rule # reason, capped at 5 entries at landing). Added project-locally: same gap class as the ci-scripts lane above -- the shipped scaffold's proof-lanes.toml has no lane for either path, and the script's own behavior is proven by the flakelint_ac0N integration tests that already live under the pre-existing rust-tests lane's tests/**/*.rs glob, so this lane's own required command is a name-filtered cargo test run over those rather than the whole rust-tests lane."
+globs = ["scripts/flake-lint.sh", "tests/flake-lint-allow.txt"]
+required_commands = [
+  "cargo test --workspace flakelint_ac",
+]
+
+[[lane]]
 id = "www"
 description = "Static marketing/legal site served alongside the API (index/terms/privacy/aup/llms.txt). Added project-locally: the shipped scaffold template's proof-lanes.toml has no lane for www/** either (same gap class as db-migrations, infer-data and deploy above) -- the www-redesign commits' 5 changed paths (www/index.html, www/terms.html, www/privacy.html, www/aup.html, www/llms.txt) were unrouted, blocking PRD-mcphost-healthz-minimal's vti-plan gate receipt though they were not part of that PRD's own diff. No JS build tooling or HTML linter exists in this repo (no node/npm, no tidy/xmllint on the build host), so proof is scripts/www-check.sh: a minimal Python-stdlib (html.parser) check that each www/*.html file is valid UTF-8, non-empty, and parses without error, and that llms.txt is valid non-empty UTF-8 text. Not a style/accessibility linter -- an honest floor, not a fake pass. tests/www_pages.sh folded in 2026-10-01 (PRD-mcphost-www-trust-pages, requirement 9): its own asset/content check for the four trust pages (pricing/use-cases/compare/skill.md) is a shell script under tests/, not a tests/**/*.rs file, so it falls outside the rust-tests lane's glob the same way tests/plugin_assets.sh falls outside it for the plugin lane; folded into this lane rather than required_commands (pinned by lanecov_ac04) since www/** already routes here and the new check is just one more www-shaped script."
 globs = ["www/**", "scripts/www-check.sh", "scripts/listings-check.sh", "scripts/listings-submit.sh", "deploy/listings/**", "tests/www_pages.sh"]

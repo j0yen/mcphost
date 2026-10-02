@@ -88,10 +88,11 @@ fn scan_dir(dir: &Path, needle: &str, self_file: &str, offenders: &mut Vec<Strin
 }
 
 /// Strips quotes, parens, whitespace, `+`, and `.` so an adjacent
-/// concatenation like `"target" + "/autobuilder" + "/receipts"` or
-/// `"target". to_owned() + "/autobuilder/receipts"` still collapses back
-/// to the plain needle for comparison. Does not defeat every possible
-/// obfuscation — see the module doc's disclosed limitation.
+/// concatenation of the needle's three path segments, written with extra
+/// punctuation in between (literal quotes, a `+` operator, a `.to_owned()`
+/// call) rather than as one plain string, still collapses back to the
+/// bare needle for comparison. Does not defeat every possible obfuscation
+/// — see the module doc's disclosed limitation.
 fn normalize(s: &str) -> String {
     s.chars()
         .filter(|c| !matches!(c, '"' | '\'' | '(' | ')' | '+' | '.' | ' ' | '\t' | '\n'))

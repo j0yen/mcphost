@@ -8,23 +8,15 @@ use common::{ADMIN_KEY, McpClient, TempDataDir, TestServer, python_kind_registry
 use mcphost::sandbox;
 use serde_json::json;
 
-use crate::egress_proxy_lock;
-
 #[tokio::test]
 async fn pro_tenant_with_no_proxy_configured_gets_egress_unavailable() {
     if sandbox::require_user_namespaces_or_ci_skip() {
         println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
-    // See egress_proxy_lock's doc comment: serializes this test against
-    // the other two files in this PRD that also mutate the process-wide
-    // MCPHOST_EGRESS_PROXY env var.
-    let _guard = egress_proxy_lock::guard().await;
-    // SAFETY: held across this whole test body via the async guard above,
-    // so no other test in this binary observes a torn env var.
-    unsafe {
-        std::env::remove_var("MCPHOST_EGRESS_PROXY");
-    }
+    // Serializes this test against the other files in this PRD that also
+    // mutate the process-wide MCPHOST_EGRESS_PROXY env var.
+    let _guard = common::EnvGuard::clear("MCPHOST_EGRESS_PROXY").await;
 
     let envs_dir = TempDataDir::new();
     let server = TestServer::start_with_kinds(python_kind_registry(&envs_dir.0)).await;

@@ -142,6 +142,24 @@ kind's own `network` field help both mention `import mcphost`/
 `plugin/skills/mcphost/SKILL.md` in sync with the same module table,
 generated from the one constant.
 
+## v0.64.1 — 2026-10-01
+
+`scripts/flake-lint.sh` scans `tests/**/*.rs` for three test shapes that
+cost four hand-interventions on gate blocks in one day (run 320's own
+grounding): a bare `set_var`/`remove_var` outside `tests/common::EnvGuard`
+(a process-wide env race between two tests sharing a consolidated suite
+binary), a wall-clock budget asserted from a single measurement instead of
+the new `perf_budget!(budget_ms, { ... })` helper (median of 5 warm runs,
+skips under `MCPHOST_PERF_SKIP=1` printing `perf skipped (load)`), and a
+test that opens a path under the gate's own receipt tree. Findings not
+listed in `tests/flake-lint-allow.txt` (capped at 5 entries) block CI's
+new `flake-lint` job. `EnvGuard` generalises the prior `AdvisoryModeGuard`
+pattern to any env var (now a thin alias); `scripts/gen-test-suites.sh`
+groups every `EnvGuard`-using test into its own `suite_env_<core|sandbox>`
+binary so a guard bug can only ever race another guarded test.
+`enduserctl_ac10` (the PRD's own named false-red) and nine other
+`set_var`-shaped tests are converted to `EnvGuard`/`perf_budget!`.
+
 ## v0.63.0 — 2026-09-30
 
 `host.table.chart(sql, title?, mark?, share?)` turns one SQL call into a

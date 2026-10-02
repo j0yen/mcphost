@@ -12,8 +12,6 @@ mod ci_sandbox_support;
 mod chart_fixture;
 #[path = "support/docs_qa.rs"]
 mod docs_qa;
-#[path = "support/egress_proxy_lock.rs"]
-mod egress_proxy_lock;
 #[path = "support/federation.rs"]
 mod federation;
 #[path = "support/host.rs"]
@@ -108,8 +106,6 @@ mod firstpub_ac05_stub_flag_in_tools_list;
 mod firstpub_ac06_get_info_no_echo_steering;
 #[path = "firstpub_ac07_llms_txt_first_run_executes.rs"]
 mod firstpub_ac07_llms_txt_first_run_executes;
-#[path = "firstpub_ac08_quickstart_http_starter.rs"]
-mod firstpub_ac08_quickstart_http_starter;
 #[path = "infer_ac01_ac02_ac03_python_schema.rs"]
 mod infer_ac01_ac02_ac03_python_schema;
 #[path = "infer_ac04_python_explicit_schema.rs"]
@@ -168,30 +164,16 @@ mod mcphost_database_in_a_minute_ac09_csv_import_batches_internally;
 mod mcphost_python_dependency_policy_ac01_lock_stored_and_require_hashes;
 #[path = "mcphost_python_dependency_policy_ac02_rebuild_matches_lock.rs"]
 mod mcphost_python_dependency_policy_ac02_rebuild_matches_lock;
-#[path = "mcphost_python_dependency_policy_ac03_advisory_fails_publish.rs"]
-mod mcphost_python_dependency_policy_ac03_advisory_fails_publish;
 #[path = "mcphost_python_dependency_policy_ac04_free_tenant_network_none_default.rs"]
 mod mcphost_python_dependency_policy_ac04_free_tenant_network_none_default;
 #[path = "mcphost_python_dependency_policy_ac05_near_name_denied.rs"]
 mod mcphost_python_dependency_policy_ac05_near_name_denied;
 #[path = "mcphost_python_dependency_policy_ac07_supplied_lock_stored_without_reresolving.rs"]
 mod mcphost_python_dependency_policy_ac07_supplied_lock_stored_without_reresolving;
-#[path = "mcphost_python_dependency_policy_ac08_reaudit_flags_new_advisory.rs"]
-mod mcphost_python_dependency_policy_ac08_reaudit_flags_new_advisory;
-#[path = "mcphost_python_dependency_policy_ac09_admin_usage_counts_network_and_advisories.rs"]
-mod mcphost_python_dependency_policy_ac09_admin_usage_counts_network_and_advisories;
 #[path = "mcphost_sandbox_egress_allowlist_ac01_free_publish_public_refused.rs"]
 mod mcphost_sandbox_egress_allowlist_ac01_free_publish_public_refused;
 #[path = "mcphost_sandbox_egress_allowlist_ac02_free_publish_egress_refused.rs"]
 mod mcphost_sandbox_egress_allowlist_ac02_free_publish_egress_refused;
-#[path = "mcphost_sandbox_egress_allowlist_ac03_pro_no_proxy_egress_unavailable.rs"]
-mod mcphost_sandbox_egress_allowlist_ac03_pro_no_proxy_egress_unavailable;
-#[path = "mcphost_sandbox_egress_allowlist_ac04_egress_proxy_command_and_env.rs"]
-mod mcphost_sandbox_egress_allowlist_ac04_egress_proxy_command_and_env;
-#[path = "mcphost_sandbox_egress_allowlist_ac06_downgrade_then_upgrade_republish_hint.rs"]
-mod mcphost_sandbox_egress_allowlist_ac06_downgrade_then_upgrade_republish_hint;
-#[path = "mcphost_sandbox_egress_allowlist_ac07_healthz_network_denied_counters.rs"]
-mod mcphost_sandbox_egress_allowlist_ac07_healthz_network_denied_counters;
 #[path = "mcphost_sandbox_egress_allowlist_ac08_concurrent_free_publishes_refused.rs"]
 mod mcphost_sandbox_egress_allowlist_ac08_concurrent_free_publishes_refused;
 #[path = "mcphost_sandbox_egress_allowlist_ac10_uptime_probes_fixture_no_longer_free.rs"]
@@ -260,3 +242,39 @@ mod plainenv_ac10_admin_reports_env_names_and_size;
 mod publishfirsttry_ac03_ac04_quickstart;
 #[path = "publishfirsttry_ac06_docs_shared_source.rs"]
 mod publishfirsttry_ac06_docs_shared_source;
+#[path = "python_ac01_no_deps_cpu_memory.rs"]
+mod python_ac01_no_deps_cpu_memory;
+#[path = "python_ac02_requirements_build_and_building_state.rs"]
+mod python_ac02_requirements_build_and_building_state;
+#[path = "python_ac03_invalid_source_rejected.rs"]
+mod python_ac03_invalid_source_rejected;
+#[path = "python_ac04_disallowed_requirement.rs"]
+mod python_ac04_disallowed_requirement;
+#[path = "python_ac05_exception_traceback.rs"]
+mod python_ac05_exception_traceback;
+#[path = "python_ac06_timeout.rs"]
+mod python_ac06_timeout;
+#[path = "python_ac07_oom.rs"]
+mod python_ac07_oom;
+#[path = "python_ac08_network_none_blocks.rs"]
+mod python_ac08_network_none_blocks;
+#[path = "python_ac09_filesystem_isolation.rs"]
+mod python_ac09_filesystem_isolation;
+#[path = "python_ac10_fork_bomb_contained.rs"]
+mod python_ac10_fork_bomb_contained;
+#[path = "python_ac11_secret_redaction.rs"]
+mod python_ac11_secret_redaction;
+#[path = "python_ac12_republish_atomic.rs"]
+mod python_ac12_republish_atomic;
+#[path = "python_ac13_capacity_admission.rs"]
+mod python_ac13_capacity_admission;
+#[path = "python_ac14_cpu_budget_rate_limit.rs"]
+mod python_ac14_cpu_budget_rate_limit;
+#[path = "runenvelope_ac1_call_and_tool_run_parity.rs"]
+mod runenvelope_ac1_call_and_tool_run_parity;
+#[path = "runenvelope_ac2_no_declared_outputs_raw_payload.rs"]
+mod runenvelope_ac2_no_declared_outputs_raw_payload;
+#[path = "runenvelope_ac3_descriptor_and_decision_table_name_envelope.rs"]
+mod runenvelope_ac3_descriptor_and_decision_table_name_envelope;
+#[path = "runenvelope_ac4_no_calls_row_with_payload.rs"]
+mod runenvelope_ac4_no_calls_row_with_payload;

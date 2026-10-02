@@ -10,8 +10,6 @@ use mcphost::sandbox;
 use serde_json::json;
 use std::time::Duration;
 
-use crate::egress_proxy_lock;
-
 /// `admin.plan_set`'s billing-ledger event id is `admin.plan_set:<ns>:
 /// <unix_seconds>` (src/admin.rs) -- a second `plan_set` for the same
 /// tenant inside the same wall-clock second collides on that id
@@ -29,15 +27,9 @@ async fn existing_public_tool_fails_on_downgrade_then_succeeds_after_upgrade() {
         println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
-    // See egress_proxy_lock's doc comment: serializes this test against
-    // the other files in this PRD that also mutate the process-wide
-    // MCPHOST_EGRESS_PROXY env var.
-    let _guard = egress_proxy_lock::guard().await;
-    // SAFETY: held across this whole test body via the async guard above,
-    // so no other test in this binary observes a torn env var.
-    unsafe {
-        std::env::set_var("MCPHOST_EGRESS_PROXY", "http://127.0.0.1:1");
-    }
+    // Serializes this test against the other files in this PRD that also
+    // mutate the process-wide MCPHOST_EGRESS_PROXY env var.
+    let _guard = common::EnvGuard::set("MCPHOST_EGRESS_PROXY", "http://127.0.0.1:1").await;
 
     let envs_dir = TempDataDir::new();
     let server = TestServer::start_with_kinds(python_kind_registry(&envs_dir.0)).await;
