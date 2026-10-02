@@ -326,7 +326,13 @@ fn default_outputs() -> Value {
 /// PRD-mcphost-spec-output-paths requirement 1: `expected`/`example` for
 /// every field [`PythonSpecRaw`] names -- see `kinds::http`'s
 /// `http_field_hint` for the shared design.
-fn python_field_hint(field: &str) -> Option<(&'static str, Value)> {
+///
+/// `pub(crate)`: PRD-mcphost-sandbox-bridge-discoverability requirement 6
+/// (AC6) -- `handler::tool_publish_props`'s own `spec` field description
+/// embeds this same `"network"` entry's hint text into `tools/list`, so
+/// the sandbox API mention here reaches a caller that only ever reads
+/// `tools/list`, not just this field's own publish-time error messages.
+pub(crate) fn python_field_hint(field: &str) -> Option<(&'static str, Value)> {
     Some(match field {
         "source" => (
             "a string",
@@ -336,7 +342,12 @@ fn python_field_hint(field: &str) -> Option<(&'static str, Value)> {
         "args_schema" => ("a JSON Schema object", json!({"type": "object"})),
         "timeout_s" => ("a positive integer number of seconds", json!(10)),
         "memory_mb" => ("a positive integer number of megabytes", json!(256)),
-        "network" => ("\"none\", \"public\", or \"egress\"", json!("none")),
+        "network" => (
+            "\"none\", \"public\", or \"egress\" -- a tool's own code reaches this tenant's \
+             data with `import mcphost` (mcphost.table, mcphost.state, mcphost.docs, \
+             mcphost.lineage) even when network is \"none\"",
+            json!("none"),
+        ),
         "secrets" => ("a list of strings", json!(["api_key"])),
         "env" => (
             "a map of name to string value; names must match ^[A-Z][A-Z0-9_]{0,63}$",
@@ -637,6 +648,14 @@ fn validate_spec_fields_all(parsed: &PythonSpec) -> Vec<KindError> {
             "source: {} bytes, over the {MAX_SOURCE_BYTES}-byte limit",
             parsed.source.len()
         )));
+    } else if let Some(bad_name) = scan_unknown_imports(&parsed.source) {
+        // PRD-mcphost-sandbox-bridge-discoverability requirement 3 (AC3):
+        // `import host`, `import mcphost_sdk`, or an unregistered
+        // `mcphost.<name>` fails both host.spec_test and host.tool_publish
+        // (both funnel through `validate_all`, which calls this fn) with
+        // `unknown_import` naming the real module -- before anything else
+        // about the spec is even checked, and before any sandbox spins up.
+        errors.push(unknown_import_error(&bad_name));
     }
     errors.extend(validate_requirements_all(&parsed.requirements));
     errors.extend(validate_env_all(&parsed.env));
@@ -1916,6 +1935,282 @@ fn merge_env(secret_env: &[(String, String)], env: &[(String, String)]) -> Vec<(
     combined
 }
 
+// ---- sandbox bridge registration (PRD-mcphost-sandbox-bridge-discoverability) --
+//
+// requirement 1 (AC1): one Rust constant naming every `mcphost.*` submodule
+// [`PY_RUNNER_SCRIPT`] below registers in `sys.modules` -- `host.quickstart`'s
+// `sandbox_api` field (`control::quickstart`, via [`build_sandbox_api`]), the
+// static unknown-import scan ([`scan_unknown_imports`]), the `unknown_import`
+// hint text ([`unknown_import_hint`]), and `scripts/sandbox-api-doc-check.sh`
+// all read this list instead of a second, hand-copied one. `signatures` are
+// one-line, pre-formatted call + short doc strings -- exactly what
+// `sandbox_api.modules` hands back, not a (call, doc) tuple `build_sandbox_api`
+// would have to re-render.
+#[derive(Clone, Copy)]
+pub struct BridgeModule {
+    pub name: &'static str,
+    pub purpose: &'static str,
+    pub signatures: &'static [&'static str],
+}
+
+/// The runner script registers six `mcphost.*` submodules in `sys.modules`
+/// (`mcphost.state`, `.table`, `.docs`, `.lineage`, `.channel`, `.msg` -- see
+/// the `sys.modules[...] = ...` lines inside [`PY_RUNNER_SCRIPT`]);
+/// `mcphost.call`/`mcphost.progress` are plain attributes on the top-level
+/// `mcphost` module instead (see [`BRIDGE_ATTRS`]), not their own
+/// `sys.modules` entry, so they're listed separately.
+/// [`runner_script_registered_modules`] parses the actual script text back
+/// out so a test can prove this constant hasn't drifted from it.
+pub const BRIDGE_MODULES: &[BridgeModule] = &[
+    BridgeModule {
+        name: "state",
+        purpose: "per-tenant key/value store and filter-grammar tables (same store host.state.* uses)",
+        signatures: &[
+            "mcphost.state.get(key, default=None) -- read a value, or default if unset",
+            "mcphost.state.set(key, value) -- write a value",
+            "mcphost.state.delete(key) -- remove a key",
+            "mcphost.state.list(prefix=None, limit=None) -- list keys, optionally by prefix",
+            "mcphost.state.table_create(name, schema, primary_key=None) -- create a filter-grammar table",
+            "mcphost.state.table_drop(name) -- drop a filter-grammar table",
+            "mcphost.state.insert(table, rows) -- insert rows into a filter-grammar table",
+            "mcphost.state.query(table, where=None, order_by=None, limit=None) -- query a filter-grammar table",
+            "mcphost.state.delete_rows(table, where=None) -- delete rows from a filter-grammar table",
+        ],
+    },
+    BridgeModule {
+        name: "table",
+        purpose: "per-tenant SQL tables (same store host.table.* uses)",
+        signatures: &[
+            "mcphost.table.create(name, columns, primary_key=None) -- create a SQL table",
+            "mcphost.table.append(table, rows) -- append rows to a SQL table",
+            "mcphost.table.query(sql) -- run a read-only SQL query",
+            "mcphost.table.list() -- list this tenant's SQL tables",
+            "mcphost.table.drop(name) -- drop a SQL table",
+            "mcphost.table.schema(table) -- describe a SQL table's columns",
+            "mcphost.table.chart(sql, title=None, mark=None, share=None) -- chart a SQL query's result",
+        ],
+    },
+    BridgeModule {
+        name: "docs",
+        purpose: "read or search this tenant's stored documents (same store host.docs.* uses)",
+        signatures: &[
+            "mcphost.docs.get(id=None, name=None) -- read a document's extracted text",
+            "mcphost.docs.search(query, k=None, filter=None) -- search this tenant's documents",
+        ],
+    },
+    BridgeModule {
+        name: "lineage",
+        purpose: "trace an artifact's lineage or estimate a change's blast radius (same report host.lineage.* uses)",
+        signatures: &[
+            "mcphost.lineage.trace(id) -- trace an artifact's lineage",
+            "mcphost.lineage.blast_radius(id, change_kind, max_depth=None, top_n=None) -- estimate a change's blast radius",
+        ],
+    },
+    BridgeModule {
+        name: "channel",
+        purpose: "post to or read a tenant channel (same store host.channel.* uses)",
+        signatures: &[
+            "mcphost.channel.post(channel_id, body, kind=None) -- post to a channel",
+            "mcphost.channel.read(channel_id, cursor=None, limit=100, ack=False) -- read a channel, optionally acking a cursor",
+        ],
+    },
+    BridgeModule {
+        name: "msg",
+        purpose: "send or read direct messages (same store host.msg.* uses)",
+        signatures: &[
+            "mcphost.msg.send(to, body, thread=None, urgent=False) -- send a direct message",
+            "mcphost.msg.inbox(limit=50, cursor=None) -- read this tenant's inbox",
+        ],
+    },
+];
+
+/// The two bridge functions that live as plain attributes on the top-level
+/// `mcphost` module (`mcphost.call`, `mcphost.progress`) rather than their own
+/// `sys.modules` entry -- `sandbox_api.attrs` in [`build_sandbox_api`].
+pub const BRIDGE_ATTRS: &[&str] = &[
+    "mcphost.call(name, args=None, timeout_s=None) -- call a sibling tool",
+    "mcphost.progress(pct=None, msg=None) -- report progress from inside a job",
+];
+
+/// Requirement 1 (AC1): `host.quickstart`'s `sandbox_api` field, built from
+/// `modules` alone -- `control::quickstart` always calls this with
+/// [`BRIDGE_MODULES`]; a test proving "a module added to the registration
+/// constant appears in quickstart with no other edit" calls it with
+/// [`BRIDGE_MODULES`] plus one extra fixture entry instead, since this
+/// function itself never special-cases a module by name.
+pub fn build_sandbox_api(modules: &[BridgeModule]) -> Value {
+    let mut modules_obj = serde_json::Map::new();
+    for m in modules {
+        modules_obj.insert(format!("mcphost.{}", m.name), json!(m.signatures));
+    }
+    json!({
+        "import": "import mcphost",
+        "modules": Value::Object(modules_obj),
+        "attrs": BRIDGE_ATTRS,
+    })
+}
+
+/// AC1: the independent check that [`BRIDGE_MODULES`] hasn't drifted from
+/// what [`PY_RUNNER_SCRIPT`] actually registers -- parses every
+/// `sys.modules["mcphost.<name>"] = ...` line back out of the script text
+/// (never re-reads [`BRIDGE_MODULES`] itself), so a test comparing the two
+/// lists is a real proof, not a tautology.
+pub fn runner_script_registered_modules() -> Vec<String> {
+    PY_RUNNER_SCRIPT
+        .lines()
+        .filter_map(|line| {
+            let rest = line.trim().strip_prefix("sys.modules[\"mcphost.")?;
+            let end = rest.find('"')?;
+            Some(rest[..end].to_string())
+        })
+        .collect()
+}
+
+/// Requirement 3 (AC3) / requirement 4 (AC4): the hint text named in both
+/// the publish-time `unknown_import` rejection and the run-time one --
+/// always lists every [`BRIDGE_MODULES`] name, so it trivially contains
+/// whichever subset a given caller is told to check for.
+pub fn unknown_import_hint() -> String {
+    let names: Vec<String> = BRIDGE_MODULES.iter().map(|m| format!("mcphost.{}", m.name)).collect();
+    format!("the sandbox API is 'import mcphost' ({})", names.join(", "))
+}
+
+/// Requirement 3 (AC3) / requirement 4 (AC4): the one `unknown_import`
+/// [`KindError`] both the static scan and the run-time mapping build, so a
+/// caller sees the same `code`/message/hint shape from either path.
+fn unknown_import_error(bad_name: &str) -> KindError {
+    let hint = unknown_import_hint();
+    KindError::structured_with(
+        "unknown_import",
+        format!("unknown_import: no module '{bad_name}'; {hint}"),
+        json!({"hint": hint, "module": bad_name}),
+    )
+}
+
+/// Every name a tool's source may legitimately write after `mcphost.` --
+/// the registered submodules, the two attribute-style bridge functions
+/// ([`BRIDGE_ATTRS`]), and the two top-level error classes the runner
+/// script also hangs off the `mcphost` module (`_mcphost_mod.CallError`,
+/// `_mcphost_mod.BridgeError` -- predating this PRD, caught by
+/// `mcphost.CallError`/`mcphost.BridgeError` source like
+/// `chanbridge_ac03_msg_send_quota_raises_bridge_error_nothing_sent.rs`'s
+/// `isinstance(e, mcphost.BridgeError)`) -- shared by
+/// [`scan_unknown_imports`]'s generic `mcphost.<name>` check and its `from
+/// mcphost import <name>` check.
+fn known_mcphost_names() -> std::collections::BTreeSet<&'static str> {
+    let mut names: std::collections::BTreeSet<&'static str> =
+        BRIDGE_MODULES.iter().map(|m| m.name).collect();
+    names.insert("call");
+    names.insert("progress");
+    names.insert("CallError");
+    names.insert("BridgeError");
+    names
+}
+
+/// The leading identifier characters of `s` (ASCII alphanumeric or `_`) --
+/// used by [`scan_unknown_imports`] to find the word boundary a plain
+/// `s.find(char::is_whitespace)` can't (a `.`, `,`, or `(` ends an
+/// identifier just as surely as whitespace does).
+fn leading_ident(s: &str) -> &str {
+    let end = s
+        .find(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .unwrap_or(s.len());
+    &s[..end]
+}
+
+/// Requirement 3 (AC3): a line-based, no-AST scan over a python spec's
+/// `source` for the three import shapes requirement 3 names --
+/// `import host`/`from host import ...`, `import mcphost_sdk`/`from
+/// mcphost_sdk import ...`, and `mcphost.<name>`/`from mcphost import
+/// <name>` where `<name>` isn't one of [`known_mcphost_names`]. Matches
+/// regardless of indentation (so a `def main(args): import host` inside a
+/// function body is caught exactly like a module-level one) but only a
+/// literal `import`/`from` statement's own text -- a dynamically
+/// constructed import (`importlib.import_module("mcphost_sdk")`) is the
+/// "dynamic imports are out of scope" case this requirement's own text
+/// calls out, left to the run-time `ModuleNotFoundError` mapping
+/// ([`runtime_unknown_import`]) instead. False positives inside a string
+/// literal or comment are accepted at P0, per the same requirement's text.
+/// Returns the first offending name found, scanning top to bottom.
+fn scan_unknown_imports(source: &str) -> Option<String> {
+    let known = known_mcphost_names();
+    for raw_line in source.lines() {
+        let line = raw_line.trim_start();
+        if let Some(rest) = line.strip_prefix("import ") {
+            let name = leading_ident(rest.trim_start());
+            if name == "host" || name == "mcphost_sdk" {
+                return Some(name.to_string());
+            }
+        } else if let Some(rest) = line.strip_prefix("from ") {
+            let rest = rest.trim_start();
+            let module = leading_ident(rest);
+            if module == "host" || module == "mcphost_sdk" {
+                return Some(module.to_string());
+            }
+            if module == "mcphost"
+                && let Some(names) = rest[module.len()..].trim_start().strip_prefix("import ")
+            {
+                for part in names.split(',') {
+                    let name = leading_ident(part.trim());
+                    if !name.is_empty() && !known.contains(name) {
+                        return Some(format!("mcphost.{name}"));
+                    }
+                }
+            }
+        }
+        // Generic `mcphost.<name>` attribute use anywhere on the line (also
+        // reached for `import mcphost.<name>`, harmlessly re-checking a name
+        // the branch above may already have approved).
+        let mut search_from = 0usize;
+        while let Some(found) = line[search_from..].find("mcphost.") {
+            let idx = search_from + found;
+            let after = &line[idx + "mcphost.".len()..];
+            let name = leading_ident(after);
+            if !name.is_empty() && !known.contains(name) {
+                return Some(format!("mcphost.{name}"));
+            }
+            search_from = idx + "mcphost.".len() + name.len().max(1);
+        }
+    }
+    None
+}
+
+/// Requirement 4 (AC4): the two names a sandboxed run's own
+/// `ModuleNotFoundError` maps to `unknown_import` for -- `host` and
+/// `mcphost_sdk`, the same pair requirement 3's static scan names (an
+/// import that escapes that scan, e.g. a dynamically constructed
+/// `importlib.import_module("mcphost_sdk")`, still fails exactly this way
+/// the moment it actually runs).
+const RUNTIME_UNKNOWN_IMPORT_NAMES: &[&str] = &["host", "mcphost_sdk"];
+
+/// AC4: `exception_class`/`message` come from the runner script's own
+/// envelope (`error`/`message` -- see [`map_envelope_error`]); CPython's
+/// `ModuleNotFoundError.__str__` is always exactly `"No module named
+/// '<name>'"`, so a substring match on that exact phrasing is precise, not
+/// a loose heuristic.
+fn runtime_unknown_import(exception_class: &str, message: &str) -> Option<&'static str> {
+    if exception_class != "ModuleNotFoundError" {
+        return None;
+    }
+    RUNTIME_UNKNOWN_IMPORT_NAMES
+        .iter()
+        .find(|name| message.contains(&format!("No module named '{name}'")))
+        .copied()
+}
+
+/// AC4's own wording ("a sandbox run whose stderr ends in
+/// `ModuleNotFoundError: No module named 'host'`"): the same check as
+/// [`runtime_unknown_import`], but over a raw stderr tail -- the path a
+/// module-level (not function-body) `import host`/`mcphost_sdk` takes when
+/// the sandboxed process crashes before ever emitting a clean envelope
+/// line (see [`map_sandbox_outcome`]'s `NonZeroExit` arm).
+fn runtime_unknown_import_in_text(text: &str) -> Option<&'static str> {
+    RUNTIME_UNKNOWN_IMPORT_NAMES
+        .iter()
+        .find(|name| text.contains(&format!("ModuleNotFoundError: No module named '{name}'")))
+        .copied()
+}
+
 // ---- runner protocol envelope (this kind's own convention) ---------------
 //
 // PRD-mcphost-code-tools-warm-pool requirement 1/5: this script is now a
@@ -2588,6 +2883,17 @@ fn map_envelope_error(envelope: &Value, stderr_tail: &str) -> KindError {
                 .get("traceback")
                 .and_then(Value::as_str)
                 .unwrap_or("");
+            // PRD-mcphost-sandbox-bridge-discoverability requirement 4
+            // (AC4): a `ModuleNotFoundError` for `host`/`mcphost_sdk` --
+            // typically one that escaped requirement 3's static scan by
+            // being constructed dynamically (`importlib.import_module(...)`)
+            // -- maps to the same `unknown_import` class and hint a
+            // rejected publish gets, with no `traceback`/`stderr_tail` in
+            // `data` (unlike the generic branch below), so no raw
+            // traceback reaches the caller.
+            if let Some(module) = runtime_unknown_import(error, message) {
+                return unknown_import_error(module);
+            }
             // Requirement 1/AC2: every exception that escapes the tool's
             // own code is `phase: tool_code`, carries the exception class
             // separately from the message (`error`), and -- when
@@ -3299,14 +3605,25 @@ fn map_sandbox_outcome(outcome: SandboxOutcome, allow_oversized: bool) -> Result
             stdout_tail,
             stderr_tail,
             ..
-        } => match serde_json::from_str::<Value>(&stdout_tail) {
-            Ok(envelope) => Err(map_envelope_error(&envelope, &stderr_tail)),
-            Err(_) => Err(KindError::structured_with(
-                "tool_exception",
-                "the tool process exited with an error and produced no readable envelope",
-                json!({"stdout_tail": stdout_tail, "stderr_tail": stderr_tail}),
-            )),
-        },
+        } => {
+            // Requirement 4 (AC4), AC4's own wording: "a sandbox run whose
+            // stderr ends in ModuleNotFoundError: No module named 'host'"
+            // -- a module-level `import host`/`mcphost_sdk` crashes the
+            // runner script before it ever emits a JSON envelope line, so
+            // `stdout_tail` never parses; the raw CPython traceback on
+            // `stderr_tail` is the only place this failure is visible.
+            if let Some(module) = runtime_unknown_import_in_text(&stderr_tail) {
+                return Err(unknown_import_error(module));
+            }
+            match serde_json::from_str::<Value>(&stdout_tail) {
+                Ok(envelope) => Err(map_envelope_error(&envelope, &stderr_tail)),
+                Err(_) => Err(KindError::structured_with(
+                    "tool_exception",
+                    "the tool process exited with an error and produced no readable envelope",
+                    json!({"stdout_tail": stdout_tail, "stderr_tail": stderr_tail}),
+                )),
+            }
+        }
         SandboxOutcome::Signaled {
             signal,
             stdout_tail,

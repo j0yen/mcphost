@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # proof.sh -- runnable end-to-end proof of "First run" (see www/llms.txt).
-# One fresh tenant against $MCPHOST_URL: signs up, publishes `text_stats`
-# as a python tool (reverses text, counts words -- no secrets, no network,
-# no deps, publishes on the free plan), calls it with a known input, and
-# asserts the real output.
+# One fresh tenant against $MCPHOST_URL: signs up, publishes `table_note`
+# as a python tool (appends a note through mcphost.table -- no secrets, no
+# network, no deps, publishes on the free plan), calls it with a known
+# input, and asserts the real bridge output.
 #
 # Requires: bash, curl, python3. Deliberately has no jq dependency.
 #
@@ -172,25 +172,27 @@ OWNER_KEY=$(json_str "$owner_struct" "key")
 check "owner_signed_up" "$([[ -n "$OWNER_KEY" ]] && echo 1 || echo 0)"
 echo "OWNER_NS=${OWNER_NS}"
 
-# 2. Publish text_stats as a python tool -- requirement 1, AC1: no secrets,
-#    no network, no deps, publishes on the free plan.
-SRC=$(cat tools/text_stats.py)
-publish_args=$(python3 -c 'import json,sys; print(json.dumps({"name":"text_stats","kind":"python","spec":{"source": sys.argv[1]}}))' "$SRC")
+# 2. Publish table_note as a python tool -- PRD-mcphost-sandbox-bridge-
+#    discoverability requirement 2 (AC2): no secrets, no network, no deps,
+#    publishes on the free plan.
+SRC=$(cat tools/table_note.py)
+publish_args=$(python3 -c 'import json,sys; print(json.dumps({"name":"table_note","kind":"python","spec":{"source": sys.argv[1]}}))' "$SRC")
 publish_resp=$(mcp_call "host.tool_publish" "$publish_args" "$OWNER_KEY")
 check "publish_succeeds" "$(has_error "$publish_resp" && echo 0 || echo 1)"
 TOOL_KIND=$(json_str "$(structured_of "$publish_resp")" "kind")
 check "published_kind_is_python" "$([[ "$TOOL_KIND" == "python" ]] && echo 1 || echo 0)"
 echo "TOOL_KIND=${TOOL_KIND}"
 
-# 3. Call it -- AC1: reversing "hello" returns a real answer, not an echo.
-call_resp=$(mcp_call_ready "host.tool_test" '{"name": "text_stats", "args": {"text": "hello"}}' "$OWNER_KEY")
+# 3. Call it -- AC2: appending a note through mcphost.table returns a real
+#    bridge answer, not an echo.
+call_resp=$(mcp_call_ready "host.tool_test" '{"name": "table_note", "args": {"note": "hello"}}' "$OWNER_KEY")
 check "call_succeeds" "$(has_error "$call_resp" && echo 0 || echo 1)"
 call_struct=$(structured_of "$call_resp")
-REVERSED=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print((d.get("result") or {}).get("reversed",""))' "$call_struct")
-WORDS=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print((d.get("result") or {}).get("words",""))' "$call_struct")
-check "reversed_is_olleh" "$([[ "$REVERSED" == "olleh" ]] && echo 1 || echo 0)"
-check "words_is_1" "$([[ "$WORDS" == "1" ]] && echo 1 || echo 0)"
-echo "REVERSED=${REVERSED} WORDS=${WORDS}"
+APPENDED=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print((d.get("result") or {}).get("appended",""))' "$call_struct")
+TABLE=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print((d.get("result") or {}).get("table",""))' "$call_struct")
+check "appended_is_1" "$([[ "$APPENDED" == "1" ]] && echo 1 || echo 0)"
+check "table_is_quickstart_notes" "$([[ "$TABLE" == "quickstart_notes" ]] && echo 1 || echo 0)"
+echo "APPENDED=${APPENDED} TABLE=${TABLE}"
 
 END_EPOCH=$(python3 -c 'import time; print(time.time())')
 WALL_MS=$(python3 -c "print(int((${END_EPOCH} - ${START_EPOCH}) * 1000))")

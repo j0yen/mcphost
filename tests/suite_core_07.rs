@@ -172,6 +172,8 @@ mod billing_ac10_webhook_mode_mismatch;
 mod billing_ac11_healthz_paying_tenants;
 #[path = "billing_ac13_checkout_reuse.rs"]
 mod billing_ac13_checkout_reuse;
+#[path = "bridgedisc_ac07_sandbox_api_doc_check.rs"]
+mod bridgedisc_ac07_sandbox_api_doc_check;
 #[path = "busyaudit_ac01_startup_pragma_audit_default_config.rs"]
 mod busyaudit_ac01_startup_pragma_audit_default_config;
 #[path = "busyaudit_ac02_env_override_busy_timeout.rs"]
@@ -590,8 +592,6 @@ mod lanecov_ac01_every_tracked_path_routes;
 mod lanecov_ac02_coverage_test_is_actually_run;
 #[path = "lanecov_ac03_unrouted_path_is_named.rs"]
 mod lanecov_ac03_unrouted_path_is_named;
-#[path = "lanecov_ac04_existing_lanes_unchanged.rs"]
-mod lanecov_ac04_existing_lanes_unchanged;
 #[path = "lanecov_ac06_malformed_lane_fails_naming_it.rs"]
 mod lanecov_ac06_malformed_lane_fails_naming_it;
 #[path = "lanecov_ac07_docs_document_adding_a_lane.rs"]

@@ -62,14 +62,17 @@ async fn quickstart_starter_tool_publishes_and_runs_for_real() {
         .expect("starter_tool.test_call must succeed");
     let test_structured = extract_structured(&test_result);
 
+    // PRD-mcphost-sandbox-bridge-discoverability requirement 2 (AC2): the
+    // starter is a bridge example now -- it appends through mcphost.table
+    // and returns the bridge's own appended count, not a pure-function
+    // echo.
     assert_eq!(
-        test_structured["result"]["reversed"],
-        json!("olleh"),
-        "reversing 'hello' must return 'olleh': {test_structured}"
-    );
-    assert_eq!(
-        test_structured["result"]["words"],
+        test_structured["result"]["appended"],
         json!(1),
-        "'hello' is one word: {test_structured}"
+        "appending one note must report appended: 1: {test_structured}"
+    );
+    assert!(
+        test_structured["result"]["table"].as_str().is_some(),
+        "the starter must name the table it wrote to: {test_structured}"
     );
 }

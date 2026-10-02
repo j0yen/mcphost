@@ -161,9 +161,9 @@ async fn first_run_publish_then_test_is_a_real_python_tool() {
         .expect("First run's own test call must succeed verbatim");
     let structured = extract_structured(&test_result);
     assert_eq!(
-        structured["result"]["reversed"],
-        Value::String("olleh".to_string()),
-        "First run's test call must return the real output: {structured}"
+        structured["result"]["appended"],
+        Value::from(1),
+        "First run's test call must return the real bridge output: {structured}"
     );
-    assert_eq!(structured["result"]["words"], Value::from(1));
+    assert!(structured["result"]["table"].as_str().is_some());
 }

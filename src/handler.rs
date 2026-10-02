@@ -513,8 +513,18 @@ fn tool_publish_props() -> Value {
         },
         "spec": {
             "type": "object",
-            "description": "The kind-specific spec object; see host.quickstart(kind) for a \
-                filled-in example.",
+            // PRD-mcphost-sandbox-bridge-discoverability requirement 6
+            // (AC6): the python kind's own "network" field hint
+            // (`kinds::python::python_field_hint`) is embedded here so its
+            // `import mcphost`/`mcphost.table` mention reaches tools/list,
+            // not just a rejected publish's error message.
+            "description": format!(
+                "The kind-specific spec object; see host.quickstart(kind) for a filled-in \
+                 example. For python's network field: {}.",
+                crate::kinds::python::python_field_hint("network")
+                    .map(|(hint, _)| hint)
+                    .unwrap_or_default()
+            ),
         },
         "scopes": {
             "type": "array",
@@ -679,7 +689,8 @@ fn tool_publish_description(kinds: &KindRegistry) -> String {
     let mut out = format!(
         "Publish a tool of a registered kind ({kind_names}) under this tenant's namespace. \
          Call host.quickstart(kind) first for a filled-in example spec and the full \
-         publish-to-call sequence."
+         publish-to-call sequence. Python's sandbox API: import mcphost (mcphost.table, \
+         mcphost.state, mcphost.docs)."
     );
     // PRD-mcphost-sandbox-ready P1 requirement 7 (AC8): a client that reads
     // this description before publishing must still see, right here, that a
