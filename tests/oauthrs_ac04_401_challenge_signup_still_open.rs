@@ -54,6 +54,24 @@ async fn signup_without_credentials_still_succeeds() {
 
     let resp = bare_call(&client, "signup", json!({"name": "No Credential Tenant"})).await;
     assert_eq!(resp.status(), reqwest::StatusCode::OK);
-    let body: serde_json::Value = resp.json().await.expect("parse signup response");
+    // PRD-mcphost-one-next-tool requirement 3: signup binds this session
+    // and now emits notifications/tools/list_changed before its own
+    // result, which upgrades this response from application/json to
+    // text/event-stream (see common::parse_sse_messages's own doc) -- the
+    // real JSON-RPC message is the last one on the wire either way.
+    let content_type = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
+    let body: serde_json::Value = if content_type.starts_with("text/event-stream") {
+        let text = resp.text().await.expect("read signup SSE body");
+        common::parse_sse_messages(&text)
+            .pop()
+            .expect("signup SSE body carried no JSON-RPC message")
+    } else {
+        resp.json().await.expect("parse signup response")
+    };
     assert!(body.get("error").is_none(), "signup must not error: {body:?}");
 }

@@ -908,6 +908,22 @@ mod msg_ac13_unread_only;
 mod msg_ac14_thread_continuation;
 #[path = "msg_regr01_dedupe_hit_preserves_refused.rs"]
 mod msg_regr01_dedupe_hit_preserves_refused;
+#[path = "nexttool_ac01_anonymous_starter_set.rs"]
+mod nexttool_ac01_anonymous_starter_set;
+#[path = "nexttool_ac02_authenticated_listing_unchanged.rs"]
+mod nexttool_ac02_authenticated_listing_unchanged;
+#[path = "nexttool_ac03_signup_emits_list_changed.rs"]
+mod nexttool_ac03_signup_emits_list_changed;
+#[path = "nexttool_ac04_tool_publish_next_hint.rs"]
+mod nexttool_ac04_tool_publish_next_hint;
+#[path = "nexttool_ac05_five_distinct_tools_suppresses_hint.rs"]
+mod nexttool_ac05_five_distinct_tools_suppresses_hint;
+#[path = "nexttool_ac06_hints_false_suppresses_hint.rs"]
+mod nexttool_ac06_hints_false_suppresses_hint;
+#[path = "nexttool_ac07_header_authenticated_never_gets_hint.rs"]
+mod nexttool_ac07_header_authenticated_never_gets_hint;
+#[path = "nexttool_ac09_host_usage_hints_shown_and_followed.rs"]
+mod nexttool_ac09_host_usage_hints_shown_and_followed;
 #[path = "oauthconf_ac01_gate_verdict_table_matches_gold.rs"]
 mod oauthconf_ac01_gate_verdict_table_matches_gold;
 #[path = "oauthconf_ac02_cimd_preferred_over_dcr_and_unsupported_without_either.rs"]

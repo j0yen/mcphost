@@ -98,6 +98,10 @@ const MIGRATION_0058: &str = include_str!("../migrations/0058_lineage.sql");
 /// PRD-mcphost-url-bound-tenants requirement 2: `tenants.url_secret_hash`/
 /// `url_rotated_at`.
 const MIGRATION_0059: &str = include_str!("../migrations/0059_url_bound_tenants.sql");
+// PRD-mcphost-one-next-tool migration (requirement 4/5/7): renumbered from
+// this PRD's own 0059 during rebase -- mcphost-url-bound-tenants claimed
+// 0059 first, landing on main ahead of this branch.
+const MIGRATION_0060: &str = include_str!("../migrations/0060_next_hint.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -274,12 +278,29 @@ fn message_row_from_row(r: &Row) -> rusqlite::Result<MessageRow> {
 /// The `agent_profiles` row alone (no tenant join) -- what
 /// `host.agent.whoami`/`host.agent.profile_set` need, since both already
 /// have the caller's [`Tenant`] in hand.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct AgentProfileRow {
     pub handle: Option<String>,
     pub description: Option<String>,
     pub tags: Vec<String>,
     pub contact_policy: String,
+    /// PRD-mcphost-one-next-tool requirement 5 (AC6): `host.agent.profile_set
+    /// (hints = false)` clears this; `true` for every tenant that has never
+    /// called it, including rows that predate this column (migration 0059's
+    /// own `DEFAULT 1`).
+    pub hints: bool,
+}
+
+impl Default for AgentProfileRow {
+    fn default() -> Self {
+        Self {
+            handle: None,
+            description: None,
+            tags: Vec::new(),
+            contact_policy: String::new(),
+            hints: true,
+        }
+    }
 }
 
 fn agent_profile_row_from_row(r: &Row) -> rusqlite::Result<AgentProfileRow> {
@@ -289,6 +310,7 @@ fn agent_profile_row_from_row(r: &Row) -> rusqlite::Result<AgentProfileRow> {
         description: r.get(1)?,
         tags: serde_json::from_str(&tags_json).unwrap_or_default(),
         contact_policy: r.get(3)?,
+        hints: r.get::<_, i64>(4)? != 0,
     })
 }
 
@@ -2121,7 +2143,8 @@ impl Db {
         Self::migrate_0056_tool_spec_exposure(&conn)?;
         Self::migrate_0057_chart_index(&conn)?;
         Self::migrate_0058_lineage(&conn)?;
-        Self::migrate_0059_url_bound_tenants(&conn)
+        Self::migrate_0059_url_bound_tenants(&conn)?;
+        Self::migrate_0060_next_hint(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -2943,6 +2966,24 @@ impl Db {
         Ok(())
     }
 
+    /// PRD-mcphost-one-next-tool migration 0060: `host_tool_usage`/
+    /// `hint_events` (two new tables) plus `agent_profiles.hints` (one
+    /// additive column) -- gated on `host_tool_usage`'s own existence, same
+    /// "new table, guard on its presence" convention as 0058 above; the
+    /// `ALTER TABLE` runs exactly once, in the same batch, the first time
+    /// this guard is false. (Renumbered from this PRD's own 0059 during
+    /// rebase: mcphost-url-bound-tenants claimed 0059 first, landing on
+    /// main ahead of this branch.)
+    fn migrate_0060_next_hint(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'host_tool_usage'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0060)?;
+        }
+        Ok(())
+    }
+
 
     /// PRD-mcphost-url-bound-tenants requirement 2: gated on
     /// `tenants.url_secret_hash`, same `pragma_table_info` idempotency shape
@@ -3400,7 +3441,7 @@ impl Db {
 
     fn query_agent_profile(conn: &Connection, tenant_id: i64) -> Result<AgentProfileRow, AppError> {
         conn.query_row(
-            "SELECT handle, description, tags_json, contact_policy FROM agent_profiles \
+            "SELECT handle, description, tags_json, contact_policy, hints FROM agent_profiles \
              WHERE tenant_id = ?1",
             params![tenant_id],
             agent_profile_row_from_row,
@@ -3435,6 +3476,7 @@ impl Db {
         description: Option<Option<String>>,
         tags: Option<Vec<String>>,
         contact_policy: Option<String>,
+        hints: Option<bool>,
     ) -> Result<SetProfileOutcome, AppError> {
         self.with_conn(move |conn| {
             conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
@@ -3461,25 +3503,28 @@ impl Db {
                 };
                 let new_tags = tags.unwrap_or_else(|| current.tags.clone());
                 let new_contact_policy = contact_policy.unwrap_or(current.contact_policy);
+                let new_hints = hints.unwrap_or(current.hints);
                 let tags_json = serde_json::to_string(&new_tags).unwrap_or_else(|_| "[]".to_string());
                 let now = now_rfc3339();
                 conn.execute(
                     "INSERT INTO agent_profiles \
-                         (tenant_id, handle, description, tags_json, contact_policy, updated_at) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
+                         (tenant_id, handle, description, tags_json, contact_policy, hints, updated_at) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) \
                      ON CONFLICT(tenant_id) DO UPDATE SET \
                          handle = excluded.handle, \
                          description = excluded.description, \
                          tags_json = excluded.tags_json, \
                          contact_policy = excluded.contact_policy, \
+                         hints = excluded.hints, \
                          updated_at = excluded.updated_at",
-                    params![tenant_id, new_handle, new_description, tags_json, new_contact_policy, now],
+                    params![tenant_id, new_handle, new_description, tags_json, new_contact_policy, new_hints as i64, now],
                 )?;
                 Ok(SetProfileOutcome::Ok(AgentProfileRow {
                     handle: new_handle,
                     description: new_description,
                     tags: new_tags,
                     contact_policy: new_contact_policy,
+                    hints: new_hints,
                 }))
             })();
             match &outcome {
@@ -3491,6 +3536,130 @@ impl Db {
                 }
             }
             outcome
+        })
+        .await
+    }
+
+    // ---- next-hint (PRD-mcphost-one-next-tool) ------------------------
+
+    /// PRD-mcphost-one-next-tool requirement 4 (AC4, AC5): how many
+    /// distinct `host.*` tools this tenant has ever successfully called,
+    /// read from [`Self::host_tool_usage`]'s own table rather than the
+    /// pre-existing `calls` table (which only ever logs a tenant's OWN
+    /// published-tool invocations, not a control-plane verb like
+    /// `host.tool_publish` itself).
+    pub async fn count_distinct_host_tools_used(&self, tenant_id: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM host_tool_usage WHERE tenant_id = ?1",
+                params![tenant_id],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-one-next-tool requirement 4: true if this tenant has
+    /// already successfully called `tool_name` -- a hint never suggests a
+    /// tool the tenant has already used.
+    pub async fn host_tool_already_used(&self, tenant_id: i64, tool_name: String) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            conn.prepare("SELECT 1 FROM host_tool_usage WHERE tenant_id = ?1 AND tool_name = ?2")?
+                .exists(params![tenant_id, tool_name])
+                .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-one-next-tool requirement 4: records that `tool_name`
+    /// succeeded for this tenant at least once -- idempotent (a second
+    /// success for the same tool is a no-op), called on every successful
+    /// `host.*` dispatch regardless of whether a hint was eligible, so the
+    /// distinct count stays accurate past the five-tool cutoff too.
+    pub async fn record_host_tool_use(&self, tenant_id: i64, tool_name: String, now_unix: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT OR IGNORE INTO host_tool_usage (tenant_id, tool_name, first_used_unix) \
+                 VALUES (?1, ?2, ?3)",
+                params![tenant_id, tool_name, now_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-one-next-tool requirement 7 (AC9): records that `next`
+    /// named `hinted_tool` on this tenant's result just now.
+    pub async fn record_hint_shown(&self, tenant_id: i64, hinted_tool: String, shown_unix: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO hint_events (tenant_id, hinted_tool, shown_unix) VALUES (?1, ?2, ?3)",
+                params![tenant_id, hinted_tool, shown_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-one-next-tool requirement 7 (AC9): "followed means the
+    /// hinted tool was the tenant's next successful call" -- resolves (at
+    /// most) the single most recent unresolved hint for this tenant against
+    /// `called_tool`, the host.* tool that just succeeded. `resolved` is
+    /// set either way so a later, unrelated call never retroactively flips
+    /// this same hint. A no-op when there is no pending hint (most calls).
+    pub async fn resolve_pending_hint(&self, tenant_id: i64, called_tool: String) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE hint_events SET resolved = 1, followed = (hinted_tool = ?2) \
+                 WHERE id = ( \
+                     SELECT id FROM hint_events \
+                     WHERE tenant_id = ?1 AND resolved = 0 \
+                     ORDER BY shown_unix DESC, id DESC LIMIT 1 \
+                 )",
+                params![tenant_id, called_tool],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `host.usage`'s `hints: {shown_7d, followed_7d}` (requirement 7 /
+    /// AC9) -- `since_unix` is the caller's own window start, same
+    /// convention as [`Self::usage`]'s own `since`.
+    pub async fn hints_usage(&self, tenant_id: i64, since_unix: i64) -> Result<(i64, i64), AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*), COALESCE(SUM(followed), 0) FROM hint_events \
+                 WHERE tenant_id = ?1 AND shown_unix >= ?2",
+                params![tenant_id, since_unix],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Test-only: seeds a `hint_events` row at an arbitrary age and
+    /// followed state, bypassing a real hint-and-next-call sequence --
+    /// AC9's "10 shown, 3 followed over 7 days" fixture needs rows this
+    /// shaped, not a dozen real tenants manufactured to trigger them
+    /// naturally.
+    pub async fn insert_hint_event_for_test(
+        &self,
+        tenant_id: i64,
+        hinted_tool: &str,
+        shown_unix: i64,
+        followed: bool,
+    ) -> Result<(), AppError> {
+        let hinted_tool = hinted_tool.to_string();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO hint_events (tenant_id, hinted_tool, shown_unix, resolved, followed) \
+                 VALUES (?1, ?2, ?3, 1, ?4)",
+                params![tenant_id, hinted_tool, shown_unix, followed as i64],
+            )?;
+            Ok(())
         })
         .await
     }

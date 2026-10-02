@@ -43,10 +43,30 @@ async fn bare_tools_call(client: &McpClient, name: &str, arguments: Value, id: u
         )
         .await;
     let status = resp.status();
-    let body: Value = resp
-        .json()
-        .await
-        .unwrap_or_else(|e| panic!("parse {name} response ({status}): {e}"));
+    // PRD-mcphost-one-next-tool requirement 3: a call that binds this
+    // session (signup) now emits notifications/tools/list_changed before
+    // its own result, upgrading this response from application/json to
+    // text/event-stream (see common::parse_sse_messages's own doc) -- the
+    // real JSON-RPC message is the last one on the wire either way.
+    let content_type = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
+    let body: Value = if content_type.starts_with("text/event-stream") {
+        let text = resp
+            .text()
+            .await
+            .unwrap_or_else(|e| panic!("read {name} SSE body ({status}): {e}"));
+        common::parse_sse_messages(&text)
+            .pop()
+            .unwrap_or_else(|| panic!("{name} SSE body carried no JSON-RPC message: {text}"))
+    } else {
+        resp.json()
+            .await
+            .unwrap_or_else(|e| panic!("parse {name} response ({status}): {e}"))
+    };
     assert!(
         body.get("error").is_none(),
         "bare {name} call must succeed (no clientInfo is not an error): {body:?}"

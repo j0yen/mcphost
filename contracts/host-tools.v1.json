@@ -212,7 +212,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Claim or update this tenant's agent-directory card: an optional unique @handle (^[a-z][a-z0-9_]{2,31}$, stored lower-case), a description, up to 16 tags, and a contact_policy (open, contacts, or closed). Every argument is optional and, if omitted, leaves that field unchanged; an explicit null clears handle or description. A taken handle fails with handle_taken (names no one); a reserved one fails with handle_reserved.",
+      "description": "Claim or update this tenant's agent-directory card: an optional unique @handle (^[a-z][a-z0-9_]{2,31}$, stored lower-case), a description, up to 16 tags, a contact_policy (open, contacts, or closed), and whether host.* results carry a next hint. Every argument is optional and, if omitted, leaves that field unchanged; an explicit null clears handle or description. A taken handle fails with handle_taken (names no one); a reserved one fails with handle_reserved.",
       "input_schema": {
         "properties": {
           "contact_policy": {
@@ -237,6 +237,10 @@
               "string",
               "null"
             ]
+          },
+          "hints": {
+            "description": "false permanently stops host.* results from carrying a next hint for this tenant; true turns it back on. Omit to leave unchanged (default true).",
+            "type": "boolean"
           },
           "tags": {
             "description": "Up to 16 tags of up to 32 bytes each, for host.agent.search.",

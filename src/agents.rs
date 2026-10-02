@@ -161,10 +161,18 @@ pub async fn profile_set(state: &AppState, tenant: &Tenant, args: &Value) -> Res
             ));
         }
     };
+    // PRD-mcphost-one-next-tool requirement 5 (AC6): `hints = false` opts
+    // the tenant out of every later `next` hint, permanently (no other
+    // value re-enables it except `hints = true`).
+    let hints = match args.get("hints") {
+        None => None,
+        Some(Value::Bool(b)) => Some(*b),
+        Some(_) => return Err(AppError::InvalidArgs("hints: must be a boolean".to_string())),
+    };
 
     match state
         .db
-        .set_agent_profile(tenant.id, handle, description, tags, contact_policy)
+        .set_agent_profile(tenant.id, handle, description, tags, contact_policy, hints)
         .await?
     {
         SetProfileOutcome::HandleTaken => Err(AppError::handle_taken()),
@@ -174,6 +182,7 @@ pub async fn profile_set(state: &AppState, tenant: &Tenant, args: &Value) -> Res
             "description": profile.description,
             "tags": profile.tags,
             "contact_policy": profile.contact_policy,
+            "hints": profile.hints,
         })),
     }
 }

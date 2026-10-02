@@ -10,9 +10,16 @@
 //! pins; every `host.*` descriptor shares one generated description
 //! (`handler::host_schema`), so the assertion runs over all of them rather
 //! than a sample.
+//!
+//! PRD-mcphost-one-next-tool requirement 1 narrowed an anonymous
+//! `tools/list` to a twelve-tool starter set that excludes four of these
+//! six -- switched to an authenticated session per that PRD's own migration
+//! note, same fix as `tkparam_ac09`'s sibling file: `host_schema`'s
+//! generated `tenant_key` description (what this test actually proves) is
+//! identical regardless of auth state.
 
 use crate::common;
-use common::{McpClient, TestServer};
+use common::{McpClient, TestServer, signup};
 use mcphost::api_contract::dump_contract_bytes;
 use mcphost::kinds::KindRegistry;
 use serde_json::Value;
@@ -32,16 +39,17 @@ const OPTIONALITY_CLAIM: &str = "Optional on the connection that ran signup";
 #[tokio::test]
 async fn every_host_tools_tenant_key_description_states_signup_connection_optionality() {
     let server = TestServer::start().await;
-    let anonymous = McpClient::new(&server.base_url);
+    let (_ns, key) = signup(&server.base_url, "AC12 Tenant").await;
+    let client = McpClient::with_bearer(&server.base_url, &key);
 
-    let listed = anonymous.tools_list().await.expect("anonymous tools/list");
+    let listed = client.tools_list().await.expect("authenticated tools/list");
     let tools = listed["tools"].as_array().expect("tools array");
 
     for name in SIX_TOOLS {
         let tool = tools
             .iter()
             .find(|t| t["name"].as_str() == Some(name))
-            .unwrap_or_else(|| panic!("anonymous tools/list must still list {name}"));
+            .unwrap_or_else(|| panic!("authenticated tools/list must still list {name}"));
         let description = tool["inputSchema"]["properties"]["tenant_key"]["description"]
             .as_str()
             .unwrap_or_else(|| panic!("{name} must carry a tenant_key description: {tool}"));

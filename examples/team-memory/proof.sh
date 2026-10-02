@@ -70,7 +70,30 @@ PY
   )
   [[ -n "$key" ]] && hdrs+=(-H "Authorization: Bearer ${key}")
   [[ -n "$hname" ]] && hdrs+=(-H "${hname}: ${hval}")
-  curl -sS --connect-timeout 5 --max-time 30 -X POST "$MCPHOST_URL" "${hdrs[@]}" -d "$body"
+  local raw
+  raw=$(curl -sS --connect-timeout 5 --max-time 30 -X POST "$MCPHOST_URL" "${hdrs[@]}" -d "$body")
+  # PRD-mcphost-one-next-tool requirement 3: a call that binds this
+  # connection (signup) now emits notifications/tools/list_changed before
+  # its own result, which upgrades that one response from a plain JSON
+  # body to a text/event-stream one (one "data: <json>" line per message,
+  # blocks separated by a blank line) -- normalize back to the plain
+  # final JSON-RPC message here so every caller below keeps reading a
+  # single JSON object either way.
+  python3 - "$raw" <<'PYEOF'
+import sys
+raw = sys.argv[1]
+if raw.lstrip().startswith("data:"):
+    last = None
+    for block in raw.split("\n\n"):
+        for line in block.splitlines():
+            if line.startswith("data: "):
+                last = line[len("data: "):]
+            elif line.startswith("data:"):
+                last = line[len("data:"):]
+    print(last if last is not None else raw)
+else:
+    print(raw)
+PYEOF
 }
 
 # error_code_of <raw_json> -- prints error.data.error_code, or empty.

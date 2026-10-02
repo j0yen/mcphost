@@ -135,7 +135,23 @@ def mcp_call(tool, arguments, key=None):
             raw = resp.read()
     except urllib.error.HTTPError as e:
         raw = e.read()
-    return json.loads(raw)
+    text = raw.decode()
+    # PRD-mcphost-one-next-tool requirement 3: a call that binds this
+    # connection (signup) now emits notifications/tools/list_changed
+    # before its own result, which upgrades that one response from a
+    # plain JSON body to a text/event-stream one (one "data: <json>" line
+    # per message, blocks separated by a blank line) -- the real JSON-RPC
+    # message is always the last one on the wire.
+    if text.lstrip().startswith("data:"):
+        last = None
+        for block in text.split("\n\n"):
+            for line in block.splitlines():
+                if line.startswith("data: "):
+                    last = line[len("data: "):]
+                elif line.startswith("data:"):
+                    last = line[len("data:"):]
+        text = last if last is not None else text
+    return json.loads(text)
 
 
 def is_error(resp):
