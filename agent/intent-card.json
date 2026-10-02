@@ -1,85 +1,69 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-one-next-tool.md",
-  "intent_slug": "mcphost-one-next-tool",
-  "root_motivation": "A freshly signed-up tenant's tools/list dumps the entire host.*/billing.* control-plane surface at once -- dozens of tools with no ordering, so a young agent has no signal for what to call next. This PRD narrows the anonymous (pre-signup) tools/list to a 12-tool starter set, keeps the full listing for every authenticated/bound session, emits notifications/tools/list_changed when a session binds so a client's cached list doesn't go stale, and has every host.* result for a tenant under 5 distinct tools used carry a next: {tool, why} hint from a static table -- suppressed once a tenant is past that threshold, header-authenticated, or has opted out via host.agent.profile_set(hints: false).",
-  "user_persona": "A freshly signed-up agent calling mcphost for the first time, and the operator who wants that agent to discover tool_call/tool_share/table.create organically instead of reading the whole control-plane surface up front.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-channel-read-name-parity.md",
+  "intent_slug": "mcphost-channel-read-name-parity",
+  "root_motivation": "Grounding: fleet board dogfood, 2026-09-30 -- host.channel.open(name: \"fleet\") returned id 01M3V2YTK8F0TF96KX6Q29T08Z; host.channel.post on that id succeeded; host.channel.read on the same id failed \"no channel found for that name or id\", reproduced three times running. post (src/channels.rs) already tried a group-channel lookup then fell back to the named-channel id-or-name lookup (src/db.rs); read ran only the group lookup, so a channel opened by name -- the first form host.channel.open's own doc comment documents -- was writable and unreadable. freeze/close had the same narrower, group-only reach. This build gives every host.channel.* verb (open excepted, since its own group vs name argument already disambiguates what it creates) one resolve_channel(tenant, key) lookup in channels.rs, so a channel reachable by one verb is reachable by every other one too.",
+  "user_persona": "An agent that opens a channel by name (the first form host.channel.open documents) and expects post/read/freeze/close to all resolve that same name or id -- the fleet board's own alert-verification loop was blocked exactly here. Also an agent that mistypes a key and needs the error to say what lookups were tried, and the operator, who needs freeze/close to work identically on a named or a group channel for moderation to hold.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 8
+    "target": 6
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given an anonymous (pre-signup) session, When it calls tools/list, Then it receives exactly the 12-tool starter set (signup first, then host.quickstart, host.redeem, billing.plans, host.whoami, host.tool_publish, host.tool_call, host.tool_test, host.state.set, host.state.get, host.state.list, host.tool_share), not the full control-plane surface.",
-      "test": "tests/nexttool_ac01_anonymous_starter_set.rs"
+      "description": "Given host.channel.open(name: \"t\") returning id X, When host.channel.post(X, body) then host.channel.read(X) run, Then read returns the post with seq 1 and a next_cursor.",
+      "test": "tests/chanread_ac01_named_channel_post_then_read_by_id.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given an authenticated session (bearer header) or a session bound by signup/host.redeem, When it calls tools/list, Then it receives the full, unchanged listing -- the starter-set narrowing applies only to anonymous sessions.",
-      "test": "tests/nexttool_ac02_authenticated_listing_unchanged.rs"
+      "description": "Given the same channel, When host.channel.read(\"t\") runs by name, Then it returns the same posts.",
+      "test": "tests/chanread_ac02_named_channel_read_by_name.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a session that calls signup (or host.redeem) and binds, When the bind completes, Then the server emits notifications/tools/list_changed on that connection (capabilities.tools.listChanged advertised in get_info) and the session's next tools/list returns the full listing.",
-      "test": "tests/nexttool_ac03_signup_emits_list_changed.rs"
+      "description": "Given a group channel, When read, post, freeze, close run as before this PRD, Then results are byte-identical to the pre-PRD fixtures (no regression).",
+      "test": "tests/chanread_ac03_group_channel_no_regression.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a new tenant with zero host.* tools used, When host.tool_publish succeeds, Then the result carries next: {tool: \"host.tool_call\", why: <=120 chars} and no other entry.",
-      "test": "tests/nexttool_ac04_tool_publish_next_hint.rs"
+      "description": "Given a nonexistent key, When any channel verb runs, Then the error class is channel_not_found, data.key echoes the input, and the message names both lookups.",
+      "test": "tests/chanread_ac04_nonexistent_key_names_both_lookups.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a tenant that has used five distinct host.* tools, When any further host.* call succeeds, Then no next field is present.",
-      "test": "tests/nexttool_ac05_five_distinct_tools_suppresses_hint.rs"
+      "description": "Given a named channel, When freeze(X) then post(X, ...) run, Then post fails channel_frozen; When close(X) then read(X), Then read still works (closed channels stay readable, matching errors.rs's documented rule).",
+      "test": "tests/chanread_ac05_named_channel_freeze_and_close_parity.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given host.agent.profile_set(hints: false), When any later host.* call succeeds, Then no next field is present, regardless of distinct-tool count.",
-      "test": "tests/nexttool_ac06_hints_false_suppresses_hint.rs"
-    },
-    {
-      "id": "AC7",
-      "level": "MUST",
-      "description": "Given a header-authenticated (Authorization: Bearer) session on a new tenant, When host.tool_publish succeeds, Then no next field is present -- hints apply only to tenant_key-argument or session-bound callers.",
-      "test": "tests/nexttool_ac07_header_authenticated_never_gets_hint.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "MUST",
-      "description": "Live/production: a real young tenant on https://mcphost.dev/mcp sees a next hint on its first host.tool_publish after ship.",
-      "test": "deferred -- operator-provisioned; AC8 is the Live/production-only requirement and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
-    },
-    {
-      "id": "AC9",
-      "level": "SHOULD",
-      "description": "Given seven days in which 10 hints were shown and 3 were followed, When host.usage is called, Then hints.shown_7d == 10 and hints.followed_7d == 3, independent of the response's own window/by argument.",
-      "test": "tests/nexttool_ac09_host_usage_hints_shown_and_followed.rs"
+      "description": "Given tools/list, When fetched, Then host.channel.open's description names both channel kinds and says both are readable.",
+      "test": "tests/chanread_ac06_tools_list_names_both_kinds.rs"
     }
   ],
   "scope": [
-    "src/handler.rs: starter_tools()/STARTER_TOOL_NAMES (AC1), list_tools's Auth::Anonymous branch and its new session-binding resolution step (AC2/AC3), get_info's enable_tool_list_changed() (AC3), bind_session_to_created_tenant's peer.notify_tool_list_changed() call (AC3), maybe_attach_next_hint (AC4-7), host.agent.profile_set's new hints schema property (AC6).",
-    "src/control.rs: next_hint_for()/NEXT_HINT_TABLE/NEXT_HINT_DEFAULT (AC4-7), usage()'s new hints: {shown_7d, followed_7d} field (AC9).",
-    "src/db.rs: migration 0059 (host_tool_usage table, hint_events table, agent_profiles.hints column), count_distinct_host_tools_used/host_tool_already_used/record_host_tool_use/record_hint_shown/resolve_pending_hint/hints_usage/insert_hint_event_for_test, AgentProfileRow.hints field, set_agent_profile's new hints parameter.",
-    "src/agents.rs: profile_set's hints argument parsing and echo.",
-    "migrations/0059_next_hint.sql: new file.",
-    "contracts/host-tools.v1.json: regenerated for host.agent.profile_set's new hints schema property.",
-    "src/oauthclient.rs, src/compat_check.rs, tests/common/mod.rs, examples/*/proof.sh, examples/docs-qa/docs-qa.sh: SSE-response-unwrapping fixes, made necessary by AC3's notify_tool_list_changed() upgrading mcphost's stateless POST responses to text/event-stream whenever a bind fires (an inherent rmcp behavior, not a bug) -- every caller that previously assumed a plain application/json response to signup/host.redeem (and, transitively, anything that calls through src/oauthclient.rs::call_tool or src/compat_check.rs::rpc_call) needed to handle the SSE-wrapped form too."
+    "src/channels.rs: resolve_channel(state, tenant, key) (requirement 1) -- group lookup by id first, then the named-channel id-or-name lookup, returning a ResolvedChannel{channel_id, kind: Group|Named, owner_tenant_id, group_name, closed_at, frozen_at}; open/post/read/close/freeze/unfreeze all route through it instead of each keeping a private lookup.",
+    "src/db.rs: channel_named_lookup, the named-channel counterpart to the existing channel_group_lookup, selecting closed_at/frozen_at off the channels row so post/read/freeze/close/unfreeze all see the same two columns regardless of channel kind; channel_group_set_flag's UPDATE WHERE clause extended to also match a named channel owned (channels.created_by) by the caller, the missing owner-side half AC5 needs.",
+    "src/errors.rs: AppError::channel_not_found(key) now takes the caller's key, carries it as data.key, and names both lookups it tried, replacing the old static \"name or id\" message that named a lookup read never actually ran.",
+    "src/handler.rs: host.channel.open/post/read/close/freeze/unfreeze tool descriptions (tools/list) state that both a named and a group channel exist and are both fully readable, since read/close/freeze/unfreeze now reach a named channel too.",
+    "CHANGELOG.md / Cargo.toml / Cargo.lock / plugin/.claude-plugin/plugin.json: v0.65.0 -> v0.65.1, this PRD's own build_version_bump: patch.",
+    "contracts/host-tools.v1.json: regenerated for the six tool description changes above.",
+    "tests/chanread_ac01..06_*.rs: the six delivered tests, one per AC, all non-deferred.",
+    "tests/channel_ac02_non_member_channel_not_found.rs / tests/meshops_ac06_purge_dry_run_then_real.rs: adjusted for this PRD's own behavior changes -- channel_ac02's byte-identity check now also excludes data.key (which legitimately differs between the two inputs it compares, same as request_id already did); meshops_ac06 now acks an explicit read to get a stored cursor, since channel_post no longer auto-advances the poster's own cursor on insert (AC1's fix: a poster is a reader too, so posting must not make the post invisible to the poster's own very next read)."
   ],
   "non_goals": [
-    "Hiding tools from authenticated sessions -- Non-goals: the starter-set narrowing applies only to anonymous, pre-signup sessions; every authenticated or session-bound caller keeps seeing the full listing, unchanged.",
-    "Building a recommender -- Non-goals: next is chosen from one static, hand-written table keyed by the tool just called, not a model or ranking of the tenant's actual usage pattern.",
-    "Changing host.quickstart's try_before_call table -- Non-goals: that table is a separate, already-shipped discovery mechanism this PRD leaves untouched.",
-    "Implicit signup auto-binding a session without a signup/host.redeem call -- that is a separate, not-yet-built PRD; AC3's notify_tool_list_changed() fires only on signup/host.redeem's own successful bind."
+    "New channel features: retention, membership changes (PRD's own non-goal).",
+    "Changing group-channel semantics or cursors from PRD-mcphost-agent-channels (PRD's own non-goal).",
+    "The name-path deprecation branch (channel_name_deprecated) -- the PRD's own open question is drafted 'keep, parity', which is the branch this build implements; the deprecation alternative was not built.",
+    "host.channel.list kind-per-row display (PRD's own P2, requirement 6) -- host.channel.list does not exist in this codebase, so there is nothing to extend.",
+    "AC7 from the PRD text (prod read-after-land evidence against tenant joe-test's live fleet channel) -- not in this dispatch's assigned AC list; operator-provisioned, requires a deployed binary and prod access."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -88,54 +72,48 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "test_file_names_use_test_prefix_nexttool": "test_prefix nexttool (the PRD's own frontmatter field): tests/nexttool_ac<NN>_<slug>.rs, same convention as every other test file in this repo.",
-      "version_bump_minor": "PRD frontmatter build_version_bump: minor -- Cargo.toml/Cargo.lock/plugin/.claude-plugin/plugin.json/plugin/.mcp.json bumped 0.66.0 -> 0.67.0.",
-      "ac8_deferred_operator_provisioned": "AC8 is a Live acceptance criterion (a real young tenant on https://mcphost.dev/mcp after ship) -- deferred, not built or tested here; a build agent never provisions, deploys to, or authorizes changes on a live/prod host.",
-      "distinct_tools_used_is_a_new_table_not_the_existing_calls_table": "The PRD's own technical considerations suggested deriving the distinct-tools-used counter from the pre-existing calls table (\"no new table\"). Deviated from this: calls only logs a tenant's own published-tool invocations (local tool names), never control-plane verb calls like host.tool_publish/host.whoami themselves, so \"already used host.tool_call\" could never be true against it, and widening calls' population to include every host.* verb call risked breaking many existing host.usage call-count assertions across the suite. A dedicated host_tool_usage table is the safer, more isolated design given real suite-stability constraints.",
-      "sse_upgrade_on_every_bind_is_inherent_not_a_bug": "The PRD's own technical considerations note (\"when the client has none open, the notification is dropped and the full list appears on the client's next tools/list anyway\") undersells the actual rmcp behavior: a stateless POST response is upgraded from application/json to text/event-stream whenever the handler emits ANY notification before its final response, which happens on every single signup/host.redeem bind (mcphost's stateless transport mints a fresh, always-unbound session id per request when the client doesn't echo Mcp-Session-Id, so the very first bind always fires). This is architecturally correct and unavoidable -- confirmed by reading rmcp's stateless_sse_response source -- not a defect to route around; every caller of signup/host.redeem across this repo's own tests, oauthclient.rs, compat_check.rs, and examples/*/proof.sh needed an SSE-aware body parse instead.",
-      "hints_9_field_is_a_fixed_seven_day_window": "AC9's own example (\"Given seven days in which 10 hints were shown...\") pins hints.shown_7d/followed_7d to a constant 7*24*3600-second lookback computed fresh on every call, independent of host.usage's own window/by argument -- not a reuse of the request's own window parameter."
+      "test_file_names_use_underscores_not_the_prd_slugs_hyphens": "test_prefix chanread (the PRD's own frontmatter field), same convention as every other test file in this repo.",
+      "version_bump_patch": "PRD frontmatter build_version_bump: patch -- Cargo.toml/Cargo.lock/plugin.json bumped 0.65.0 -> 0.65.1, landed with AC6.",
+      "no_schema_change": "PRD's own migration/compatibility section: no schema change, existing named channels become readable; routing only, not new queries (PRD's own technical considerations).",
+      "named_channel_readers_are_owner_only": "PRD's own technical considerations, drafted: a named channel's readers are its owner only -- a non-owner's read gets channel_not_found, identical in shape to a miss (AC4's own parity requirement), not a separate authorization error class.",
+      "post_no_longer_auto_advances_the_poster_cursor": "Landed with AC1 as a necessary side effect, not a separate requirement: channel_post previously advanced the poster's own channel_cursors row on insert, which made a poster's own post invisible to the poster's own very next read -- the opposite of this PRD's point (a poster is a reader too). Two pre-existing tests (channel_ac02, meshops_ac06) were adjusted for this, not regressed."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does maybe_attach_next_hint record_host_tool_use AFTER the distinct-tool-count eligibility check rather than before?",
-      "a": "AC4 requires \"zero tools used\" to reflect tenant state strictly BEFORE the current call; recording the current call's own tool first would inflate the pre-call count by one and could flip a should-get-a-hint call into a past-the-cutoff one, breaking the AC4/AC5 boundary exactly at the cutoff."
+      "q": "Why did read() never see a named channel in the first place?",
+      "a": "read's query joined through groups (JOIN groups g ON g.id = c.group_id) because it was written for PRD-mcphost-agent-channels, which only ever created group channels -- migration 0027's earlier, ungated name-keyed channels (PRD-mcphost-agent-mesh-ops) predate that join and were never retrofitted into it."
     },
     {
       "why": 2,
-      "q": "Why is header-authenticated-ness computed as !via_tenant_key_arg rather than a new, independently-tracked flag?",
-      "a": "call_tool already tracks via_tenant_key_arg/via_session_binding for auth-precedence; a header-authenticated call is precisely the one that used neither tenant_key argument nor session binding to resolve its tenant, so reusing the existing flag avoids a second, parallel source of truth for the same fact."
+      "q": "Why did post() already handle both kinds but read() didn't?",
+      "a": "post() kept the migration-0027 mesh-ops code path as its own `else` arm alongside the newer group path (two lookups, written at two different times for two different PRDs, never merged); read() was only ever written once, for the group case, so it had no equivalent fallback to fall into."
     },
     {
       "why": 3,
-      "q": "Why does the next hint table key off the tool that was JUST called rather than the tenant's whole usage history?",
-      "a": "Non-goals explicitly rules out building a recommender; a static table keyed by \"what did you just do\" is the simplest mechanism that still produces a contextually relevant suggestion (publish -> call, call -> share) without any ranking logic or historical analysis."
+      "q": "Why wasn't the gap caught before the 2026-09-30 dogfood run?",
+      "a": "open(name) -> post -> read is exactly the sequence host.channel.open's own doc comment (\"creates the channel if it doesn't already exist, else returns the existing one\") tells a caller to use, but no existing test exercised that specific sequence end-to-end across both verbs -- the mesh-ops and agent-channels test suites each proved their own PRD's verbs in isolation."
     },
     {
       "why": 4,
-      "q": "Why is host_tool_already_used checked before attaching a hint, rather than always suggesting the table's fixed next tool?",
-      "a": "Suggesting a tool the tenant has already used would be a stale, useless hint (e.g. re-suggesting host.tool_share after the tenant already shared); checking already-used status keeps every hint pointing at something genuinely new to that tenant, falling through to NEXT_HINT_DEFAULT (host.quickstart) when the table's own suggestion has already been exhausted."
-    },
-    {
-      "why": 5,
-      "q": "Why does AC2's test only exercise header-authenticated and session-bound (post-signup) listings, not the /u/<secret>/mcp URL-bound path the PRD's own AC2 text mentions?",
-      "a": "/u/<secret>/mcp belongs to PRD-mcphost-url-bound-tenants, a separate, independently-shipped PRD not in this dispatch's scope -- AC2's own wording covers \"authenticated/bound sessions\" generically, and the two auth paths this repo's handler actually resolves for an authenticated tenant (bearer header, session binding) are both exercised; a third path this repo doesn't own cannot be tested here."
+      "q": "Why unify through one resolve_channel instead of just adding a second lookup inside read()?",
+      "a": "freeze/close/unfreeze had the identical gap (group-only reach) for the identical reason -- patching read() alone would have left three more call sites to independently remember to patch the same way, the exact failure mode (a lookup rule duplicated instead of shared) that produced this bug in the first place."
     }
   ],
-  "created_at": "2026-10-01T17:00:00Z",
+  "created_at": "2026-10-01T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Does the distinct-tools-used counter derive from the existing calls table, per the PRD's own technical-considerations suggestion?",
-      "resolution": "No -- see hard_constraints.additional.distinct_tools_used_is_a_new_table_not_the_existing_calls_table. A dedicated host_tool_usage table is used instead, a deliberate, documented deviation from the PRD's own suggestion."
+      "question": "Does a named channel's read stay owner-only, or open up to anyone who has ever posted to it (PRD's own technical considerations names both options, drafted 'owner only')?",
+      "resolution": "Owner only, per the PRD's own drafted default -- a non-owner's read gets channel_not_found, not a distinct authorization error, so a miss and an unauthorized hit read identically (the same posture AC2/AC4 already require for a group channel's non-member). Named channels are single-tenant today; broadening this is out of scope (PRD non-goal: no membership changes)."
     },
     {
-      "question": "Does notify_tool_list_changed() firing on every bind break any existing test that assumes a plain JSON response from signup/host.redeem?",
-      "resolution": "Yes, extensively -- see hard_constraints.additional.sse_upgrade_on_every_bind_is_inherent_not_a_bug. Every affected call site (tests, src/oauthclient.rs, src/compat_check.rs, examples/*/proof.sh) was given SSE-aware response parsing rather than suppressing the notification."
+      "question": "Keep the name-opened channel path (parity) or deprecate it in favor of group channels (PRD's own open question, owner Joe, due 2026-10-08)?",
+      "resolution": "Keep, parity -- the PRD's own TL;DR names this as the drafted default, and the open question's due date (2026-10-08) is after this dispatch's build date; AC6 states both kinds exist and are both readable rather than naming a deprecation. If Joe decides to deprecate later, that is a follow-up PRD, not a revision of this one."
     },
     {
-      "question": "Is host.usage's hints field windowed the same as the rest of the response (the window/by argument), or fixed?",
-      "resolution": "Fixed at 7 days always -- see hard_constraints.additional.hints_9_field_is_a_fixed_seven_day_window, per AC9's own literal example."
+      "question": "Should channel_post's pre-PRD auto-advance of the poster's own cursor survive unification, now that read() can see the poster's own post?",
+      "resolution": "No -- removed. Auto-advancing on post meant a poster's own next read (cursor already past the post) returned nothing, which is the same bug class this PRD fixes (a channel you can post to, you should be able to read), just one hop later. channel_ac02 and meshops_ac06 were adjusted for this, not regressed; see hard_constraints.additional."
     }
   ]
 }

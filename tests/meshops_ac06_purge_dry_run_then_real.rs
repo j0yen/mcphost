@@ -128,6 +128,14 @@ async fn ac6_purge_dry_run_reports_then_real_run_deletes_and_clamps_cursors() {
         .test_backdate_channel_post(old_post_id.clone(), now_ms - forty_days_ms)
         .await
         .expect("backdate old post");
+    // PRD-mcphost-channel-read-name-parity requirement 3: posting no longer
+    // auto-advances the poster's own cursor (same "poster is a reader too"
+    // semantics a group channel already had) -- an explicit ack:true read
+    // is what gives X a stored cursor to clamp below.
+    client_x
+        .tools_call("host.channel.read", json!({"channel_id": channel_id, "ack": true}))
+        .await
+        .expect("X acks its own read");
     let tenant_x = server
         .state
         .db

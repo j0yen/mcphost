@@ -1114,14 +1114,20 @@ impl AppError {
         }
     }
 
-    /// PRD-mcphost-agent-mesh-ops: `host.channel.post` against a `channel`
-    /// argument that names no existing channel -- same "doesn't exist"
-    /// shape as [`AppError::thread_not_found`]/[`AppError::agent_not_found`].
-    pub fn channel_not_found() -> Self {
+    /// PRD-mcphost-agent-mesh-ops: every `host.channel.*` verb against a key
+    /// naming no channel it's allowed to resolve -- same "doesn't exist"
+    /// shape as [`AppError::thread_not_found`]/[`AppError::agent_not_found`],
+    /// plus (PRD-mcphost-channel-read-name-parity requirement 4 / AC4)
+    /// `data.key` echoing the caller's own input and a message naming both
+    /// lookups `resolve_channel` tried (`channels.rs`), so a miss explains
+    /// itself instead of repeating the old "name or id" wording that named
+    /// a lookup `read` never actually ran.
+    pub fn channel_not_found(key: &str) -> Self {
         AppError::Structured {
             code: "channel_not_found",
-            message: "no channel found for that name or id".to_string(),
-            data: json!({}),
+            message: "no channel found for that key: tried group channel by id, and channel by id or name"
+                .to_string(),
+            data: json!({"key": key}),
         }
     }
 
