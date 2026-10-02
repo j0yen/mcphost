@@ -3935,6 +3935,56 @@ impl MsgBackend for TenantMsgBridge {
     }
 }
 
+/// PRD-mcphost-chain-host-steps requirement 1/3: [`TenantLineageBridge`]'s
+/// counterpart for `CallCtx.host_dispatch` -- bridges a chain step naming an
+/// allowlisted `host.*` verb (`kinds::HOST_STEPS_ALLOWED`) to this host's
+/// own `dispatch_tenant_tool`, the exact same ~150-arm match a direct
+/// `host.*` call goes through, so a step's result/error is identical to
+/// what calling that verb directly would return (requirement 3). `subject`
+/// is always `None` and `auth_method` always `"key"`: of every allowlisted
+/// verb, only `host.whoami` (not on the allowlist) ever reads either
+/// parameter, so there is nothing for a chain step to lose by not
+/// re-deriving the chain run's own caller identity here -- `end_user` and
+/// `calls_auth_method` (the two parameters an allowlisted verb's own nested
+/// dispatch, `host.tool_call`, actually meters by) are threaded through
+/// from the chain's own real call.
+pub(crate) struct TenantHostStepBridge {
+    pub(crate) handler: McpHostHandler,
+    pub(crate) tenant: Tenant,
+    pub(crate) end_user: Option<crate::enduser::EndUser>,
+    pub(crate) calls_auth_method: String,
+    /// PRD-mcphost-chain-host-steps P1 requirement 6 (AC6): the name of the
+    /// most recent `host.*` verb this bridge dispatched, read back by
+    /// `call_published_tool` after `kind.call` returns and written into
+    /// that one call's own `calls.step_tool` -- same single-slot-cell shape
+    /// as [`CellResourceSink`] above. A chain with more than one host step
+    /// overwrites this each dispatch, so only the last one survives; no
+    /// landed chain spec has more than one yet (requirement 6 only
+    /// promises attribution for "a chain with one host step").
+    pub(crate) step_tool: Arc<std::sync::Mutex<Option<String>>>,
+}
+
+#[async_trait::async_trait]
+impl crate::kinds::HostDispatch for TenantHostStepBridge {
+    async fn call(&self, name: &str, args: Value) -> Result<Value, KindError> {
+        if let Ok(mut slot) = self.step_tool.lock() {
+            *slot = Some(name.to_string());
+        }
+        self.handler
+            .dispatch_tenant_tool(
+                &self.tenant,
+                None,
+                "key",
+                &self.calls_auth_method,
+                self.end_user.as_ref(),
+                name,
+                args,
+            )
+            .await
+            .map_err(app_error_to_kind_error)
+    }
+}
+
 /// requirement 5 / AC7: the per-call tally `CountingStateBackend` builds up
 /// as `mcphost.state`/`host.state.*` ops flow through this call's
 /// `CallCtx.state`, read back after `Kind::call`/`Kind::tool_run` returns
@@ -4705,6 +4755,9 @@ impl McpHostHandler {
         let secrets = build_secret_resolver(&self.state, tenant.id).await?;
         let log = Arc::new(BufferedLog(std::sync::Mutex::new(Vec::new())));
         let resources = Arc::new(CellResourceSink(std::sync::Mutex::new(None)));
+        // PRD-mcphost-chain-host-steps P1 requirement 6 (AC6): see
+        // `TenantHostStepBridge::step_tool`'s own doc comment.
+        let step_tool_cell: Arc<std::sync::Mutex<Option<String>>> = Arc::new(std::sync::Mutex::new(None));
         let resolved_timeout = self.resolve_call_timeout(&kind, &spec);
         let ctx = CallCtx {
             tenant_id: tenant.id,
@@ -4776,6 +4829,20 @@ impl McpHostHandler {
             cancel_pid: Arc::new(std::sync::Mutex::new(None)),
             end_user: end_user.cloned(),
             vault_token,
+            // PRD-mcphost-chain-host-steps requirement 1/3: every real
+            // `tools/call`/`host.tool_call` dispatch can reach an
+            // allowlisted `host.*` verb through this call's own
+            // `dispatch_tenant_tool`, same "root of its own composition
+            // tree" reasoning as `compose_depth`/`compose_db` above -- a
+            // `chain` tool's step dispatch is the first (and, today, only)
+            // `Kind` that ever consults this.
+            host_dispatch: Some(Arc::new(TenantHostStepBridge {
+                handler: self.clone(),
+                tenant: tenant.clone(),
+                end_user: end_user.cloned(),
+                calls_auth_method: auth_method.to_string(),
+                step_tool: step_tool_cell.clone(),
+            })),
         };
         // requirement 4 (AC1/AC2): the three `calls` columns every branch
         // below's `record_call_attributed_with_end_user` writes.
@@ -4795,6 +4862,10 @@ impl McpHostHandler {
         let outcome = tokio::time::timeout(resolved_timeout, kind.call(&spec, args, &ctx)).await;
         let duration_ms = start.elapsed().as_millis() as i64;
         let (cpu_ms, peak_rss_kb) = resources.0.lock().map(|g| *g).unwrap_or_default().unzip();
+        // requirement 6 (AC6): whichever host step (if any) this call's own
+        // `TenantHostStepBridge` dispatched, read back after `kind.call`
+        // returns so every branch below's `calls` row carries it.
+        let step_tool = step_tool_cell.lock().ok().and_then(|g| g.clone());
 
         // PRD-mcphost-sharing requirement 3: "host.tool_logs on the owner
         // side shows the caller namespace" -- one line per cross-tenant
@@ -4849,7 +4920,7 @@ impl McpHostHandler {
                 if let Err(storage_err) = self
                     .state
                     .db
-                    .record_call_attributed_with_end_user(
+                    .record_call_attributed_with_end_user_and_step_tool(
                         tenant.id,
                         local_name.to_string(),
                         duration_ms,
@@ -4866,6 +4937,7 @@ impl McpHostHandler {
                         end_user_method.clone(),
                         shared_owner_namespace.clone(),
                         auth_method.to_string(),
+                        step_tool.clone(),
                     )
                     .await
                 {
@@ -4937,7 +5009,7 @@ impl McpHostHandler {
                 let _ = self
                     .state
                     .db
-                    .record_call_attributed_with_end_user(
+                    .record_call_attributed_with_end_user_and_step_tool(
                         tenant.id,
                         local_name.to_string(),
                         duration_ms,
@@ -4954,6 +5026,7 @@ impl McpHostHandler {
                         end_user_method.clone(),
                         shared_owner_namespace.clone(),
                         auth_method.to_string(),
+                        step_tool.clone(),
                     )
                     .await;
                 if let Some(subject) = &end_user_subject {
@@ -4969,7 +5042,7 @@ impl McpHostHandler {
                 let _ = self
                     .state
                     .db
-                    .record_call_attributed_with_end_user(
+                    .record_call_attributed_with_end_user_and_step_tool(
                         tenant.id,
                         local_name.to_string(),
                         duration_ms,
@@ -4986,6 +5059,7 @@ impl McpHostHandler {
                         end_user_method.clone(),
                         shared_owner_namespace.clone(),
                         auth_method.to_string(),
+                        step_tool.clone(),
                     )
                     .await;
                 if let Some(subject) = &end_user_subject {
@@ -5143,6 +5217,11 @@ impl McpHostHandler {
             // to thread through.
             end_user: None,
             vault_token: None,
+            // PRD-mcphost-chain-host-steps: `host.tool_test`'s dry run
+            // (`ctx.test_mode`) never dispatches a step at all (see
+            // `kinds::chain`'s own `ctx.test_mode` branch) -- there is
+            // nothing for a host step to reach here.
+            host_dispatch: None,
         };
 
         match tokio::time::timeout(resolved_timeout, kind.call(&row.spec, call_args, &ctx)).await {
@@ -5269,6 +5348,9 @@ impl McpHostHandler {
             // run, not a metered call -- no end user to thread through.
             end_user: None,
             vault_token: None,
+            // `host.bridge_test` always dispatches to the `http` kind
+            // (fixed above), which never composes -- nothing to reach here.
+            host_dispatch: None,
         };
 
         match tokio::time::timeout(resolved_timeout, kind.call(&spec, call_args, &ctx)).await {
@@ -5375,6 +5457,14 @@ impl McpHostHandler {
         }
         kind.validate_async(&spec).await?;
 
+        // PRD-mcphost-chain-host-steps requirement 4: `host.spec_test` on a
+        // `chain` spec resolves every step exactly like `host.tool_publish`
+        // does -- a spec that would fail to publish must fail to spec_test
+        // too, for the same reason (AC2/AC5).
+        if kind_name == "chain" {
+            crate::kinds::chain::resolve_steps(&self.state.db, tenant.id, &spec).await?;
+        }
+
         // AC6: refused exactly as a normal call at quota, checked once
         // before any invocation executes (not per-invocation) -- the same
         // gate a real dispatched call passes through.
@@ -5463,6 +5553,10 @@ impl McpHostHandler {
             // publish spec, not a real caller's identity-carrying call.
             end_user: None,
             vault_token: None,
+            // PRD-mcphost-chain-host-steps: `host.spec_test`'s dry run
+            // never dispatches a step either (same `ctx.test_mode` branch
+            // `host.tool_test` short-circuits on) -- nothing to reach here.
+            host_dispatch: None,
         })
         .await;
 
@@ -5693,6 +5787,11 @@ impl McpHostHandler {
             // `tools/call` path, `call_published_tool`).
             end_user: None,
             vault_token: None,
+            // PRD-mcphost-chain-host-steps: `host.tool_run`'s debug run has
+            // no notion of a host step at all (`Kind::tool_run` is a
+            // different entry point than `Kind::call`, which `chain` never
+            // overrides) -- nothing to reach here.
+            host_dispatch: None,
         };
 
         let start = Instant::now();
@@ -6484,8 +6583,9 @@ impl ServerHandler for McpHostHandler {
                         // tenant has at least two tools of its own,
                         // `host.quickstart(kind="chain")`'s example wires
                         // the placeholder two-step spec onto them by name
-                        // instead of `ChainKind::example`'s static
-                        // `fetch_rows`/`write_rows` placeholders -- still
+                        // instead of `ChainKind::example`'s static example
+                        // (PRD-mcphost-chain-host-steps requirement 5: the
+                        // python starter plus `host.table.append`) -- still
                         // just an example (`host.tool_publish` still has to
                         // be called to actually create it), but one that
                         // calls something the tenant already published.

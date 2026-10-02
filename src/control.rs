@@ -531,8 +531,12 @@ pub async fn self_offboard(state: &AppState, tenant: &Tenant) -> Result<Value, A
 /// (`{"reversed": "olleh", "words": 1}`) rather than merely publishing.
 /// Free-plan-safe by construction: no `secrets`, no `network`, no
 /// `requirements`.
-const STARTER_TOOL_NAME: &str = "text_stats";
-const STARTER_TOOL_SOURCE: &str = "def main(args):\n    text = args.get(\"text\", \"\")\n    reversed_text = text[::-1]\n    words = len(text.split())\n    return {\n        \"reversed\": reversed_text,\n        \"words\": words,\n    }\n";
+// PRD-mcphost-chain-host-steps requirement 5: `pub(crate)`, not private --
+// `kinds::chain::ChainKind::example` names this exact tool (by name, source
+// unused there) as its first step, so `host.quickstart kind=chain`'s
+// example resolves on a tenant that has already published this starter.
+pub(crate) const STARTER_TOOL_NAME: &str = "text_stats";
+pub(crate) const STARTER_TOOL_SOURCE: &str = "def main(args):\n    text = args.get(\"text\", \"\")\n    reversed_text = text[::-1]\n    words = len(text.split())\n    return {\n        \"reversed\": reversed_text,\n        \"words\": words,\n    }\n";
 
 /// PRD-mcphost-first-publish-real-kind requirement 6 (AC8): `host.quickstart
 /// {kind: "http"}`'s own starter -- a public JSON API with no auth, for a
@@ -816,6 +820,21 @@ pub fn quickstart(
             "concurrent_calls_host": crate::kinds::python::DEFAULT_MAX_CONCURRENT_CALLS,
         },
     });
+    // PRD-mcphost-chain-host-steps requirement 1: `host.quickstart
+    // kind=chain`'s own allowlist of step-nameable `host.*` verbs --
+    // exported under this exact key so `host.tool_publish`'s
+    // `step_tool_not_allowed` rejection (`data.allowed`) and this field
+    // name the identical list, byte for byte (same constant, AC3). Scoped
+    // to `kind == "chain"` only -- irrelevant noise on any other kind's
+    // response.
+    if kind_name == "chain"
+        && let Value::Object(map) = &mut response
+    {
+        map.insert(
+            "host_steps_allowed".to_string(),
+            json!(crate::kinds::HOST_STEPS_ALLOWED),
+        );
+    }
     // Requirement 2/3 (AC1-3): only present when `kind_name_requested`
     // resolved through the alias table -- a direct kind request (`kind:
     // "http"`) gets no `resolved_from`/`recipe`, same as before this PRD.
@@ -1116,6 +1135,16 @@ pub async fn tool_publish(
         return Err(err);
     }
     kind.validate_async(&spec).await?;
+
+    // PRD-mcphost-chain-host-steps requirement 4: a `chain` spec's every
+    // step must resolve (a sibling tenant tool, or an allowlisted `host.*`
+    // verb) before anything is published -- checked here, unconditionally
+    // (even under `dry_run`, same posture as the `kind_mismatch` check
+    // above), so an unresolvable step is never silently stored (AC2/AC3:
+    // "nothing is published").
+    if kind_name == "chain" {
+        crate::kinds::chain::resolve_steps(&state.db, tenant.id, &spec).await?;
+    }
 
     // PRD-mcphost-first-publish-real-kind requirement 4 (AC3/AC4): from here
     // on, every remaining pre-check is "collectible" -- it's recorded as its

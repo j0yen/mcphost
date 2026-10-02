@@ -210,6 +210,18 @@ mod callerusage_ac07_rollup_speed_at_scale;
 mod callerusage_ac08_end_user_key_includes_caller;
 #[path = "callerusage_ac09_admin_usage_top_audited.rs"]
 mod callerusage_ac09_admin_usage_top_audited;
+#[path = "chainhost_ac01_host_table_append_step.rs"]
+mod chainhost_ac01_host_table_append_step;
+#[path = "chainhost_ac02_step_tool_not_found.rs"]
+mod chainhost_ac02_step_tool_not_found;
+#[path = "chainhost_ac03_step_tool_not_allowed.rs"]
+mod chainhost_ac03_step_tool_not_allowed;
+#[path = "chainhost_ac04_dry_run_report_resolved_host.rs"]
+mod chainhost_ac04_dry_run_report_resolved_host;
+#[path = "chainhost_ac06_usage_by_tool_step_tool.rs"]
+mod chainhost_ac06_usage_by_tool_step_tool;
+#[path = "chainhost_ac07_table_rows_max_at_step.rs"]
+mod chainhost_ac07_table_rows_max_at_step;
 #[path = "chanbridge_ac06_python_kind_doc_documents_channel_and_msg.rs"]
 mod chanbridge_ac06_python_kind_doc_documents_channel_and_msg;
 #[path = "channel_ac01_group_open_and_broadcast_read.rs"]

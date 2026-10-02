@@ -5301,6 +5301,7 @@ mod tests {
             msg: Arc::new(crate::kinds::NoMsg),
             sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             sidecar_ops_max: i64::MAX,
+            host_dispatch: None,
         }
     }
 
@@ -5612,6 +5613,7 @@ mod tests {
             msg: Arc::new(crate::kinds::NoMsg),
             sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
             sidecar_ops_max: i64::MAX,
+            host_dispatch: None,
         }
     }
 

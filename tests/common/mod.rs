@@ -112,6 +112,18 @@ pub fn all_kinds_registry(data_dir: &Path) -> KindRegistry {
     kinds
 }
 
+/// `echo` (base) + `chain` + a `python` kind rooted at `data_dir` --
+/// PRD-mcphost-chain-host-steps AC5's own entry point: a tenant must be
+/// able to publish the `host.quickstart kind=chain` example's first step
+/// (the python starter, `control::STARTER_TOOL_NAME`), which needs the real
+/// `python` kind registered, not just `chain_kind_registry()`'s `echo`.
+pub fn chain_and_python_kind_registry(data_dir: &Path) -> KindRegistry {
+    let mut kinds = KindRegistry::with_builtin();
+    kinds.register(Arc::new(mcphost::kinds::chain::ChainKind));
+    kinds.register(Arc::new(PythonKind::new(data_dir)));
+    kinds
+}
+
 /// `echo` (base) + `chain` -- the `compose_ac*.rs` suite's usual entry
 /// point (PRD-mcphost-composition). `echo` is enough to compose against
 /// directly (its `call` just validates and returns its args); a chain step
