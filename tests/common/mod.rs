@@ -1559,52 +1559,130 @@ pub fn extract_structured(call_result: &Value) -> Value {
     Value::Null
 }
 
-/// Process-wide serialization for tests that mutate the
-/// `MCPHOST_ADVISORY_MODE` env var, which `control.rs`'s publish path reads
-/// fresh (`std::env::var`) on every call rather than caching it at server
-/// start.
+/// Process-wide serialization for tests that mutate a process env var,
+/// generalising the `AdvisoryModeGuard` pattern (originally specific to
+/// `MCPHOST_ADVISORY_MODE`) to any key.
 ///
 /// `scripts/gen-test-suites.sh` consolidates many `tests/ac*.rs` files into
 /// a handful of suite binaries (see e.g. `tests/suite_sandbox_02.rs`), so a
-/// test file that is the *only* one setting this var within its own source
-/// file can still share a process -- and run concurrently, on its own
-/// tokio-test task -- with another such file bundled into the same suite.
-/// Without this guard, `known_advisory_fails_publish_when_mode_is_fail`
-/// (AC3, expects `fail`) and `admin_usage_tallies_tools_by_network_mode_and_advisory_state`
-/// (AC9, expects `warn`) race: whichever test's `set_var` lost the race left
-/// the other reading the wrong mode at `host.tool_publish` time, flaking
-/// AC3's "must fail" assertion about 1 run in 3.
+/// test file that is the *only* one setting a var within its own source file
+/// can still share a process -- and run concurrently, on its own tokio-test
+/// task -- with another such file bundled into the same suite. Without this
+/// guard, two tests racing the same var can each observe the other's value
+/// mid-call (`known_advisory_fails_publish_when_mode_is_fail`, AC3, expects
+/// `fail`, raced
+/// `admin_usage_tallies_tools_by_network_mode_and_advisory_state`, AC9,
+/// expects `warn`, flaking AC3's "must fail" assertion about 1 run in 3).
 ///
-/// Acquire via [`AdvisoryModeGuard::set`] and hold the returned guard for
-/// the test's entire publish-dependent span (letting it drop at end of
-/// test is simplest and correct); the `Drop` impl clears the var and
-/// releases the lock together, so no sibling test can observe a stale
-/// value or start its own span early.
-static ADVISORY_MODE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+/// Acquire via [`EnvGuard::set`] and hold the returned guard for the test's
+/// entire env-dependent span (letting it drop at end of test is simplest
+/// and correct); the `Drop` impl restores the var's prior value (or removes
+/// it if unset before) and releases the lock together, so no sibling test
+/// can observe a stale value or start its own span early. One process-wide
+/// lock, not one per key: two tests guarding two *different* keys still
+/// serialize against each other, which is strictly safer than racing (and
+/// guarded tests are a small minority of the suite, so the lost parallelism
+/// doesn't matter).
+static ENV_GUARD_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-pub struct AdvisoryModeGuard {
+pub struct EnvGuard {
+    key: &'static str,
+    prev: Option<String>,
     _permit: tokio::sync::MutexGuard<'static, ()>,
 }
 
-impl AdvisoryModeGuard {
-    pub async fn set(mode: &str) -> Self {
-        let permit = ADVISORY_MODE_LOCK.lock().await;
-        // SAFETY: `permit` serializes every test that touches this var --
-        // no sibling test can be between its own `set_var`/`remove_var`
+impl EnvGuard {
+    pub async fn set(key: &'static str, value: &str) -> Self {
+        let permit = ENV_GUARD_LOCK.lock().await;
+        let prev = std::env::var(key).ok();
+        // SAFETY: `permit` serializes every test that touches any guarded
+        // var -- no sibling test can be between its own set_var/remove_var
         // while this guard is held, so this process-wide mutation has no
         // concurrent reader/writer.
         unsafe {
-            std::env::set_var("MCPHOST_ADVISORY_MODE", mode);
+            std::env::set_var(key, value);
         }
-        Self { _permit: permit }
+        Self { key, prev, _permit: permit }
+    }
+
+    /// Like [`set`](Self::set), but ensures `key` is absent rather than
+    /// giving it a value (e.g. simulating "no proxy configured").
+    pub async fn clear(key: &'static str) -> Self {
+        let permit = ENV_GUARD_LOCK.lock().await;
+        let prev = std::env::var(key).ok();
+        // SAFETY: see `set` above.
+        unsafe {
+            std::env::remove_var(key);
+        }
+        Self { key, prev, _permit: permit }
     }
 }
 
-impl Drop for AdvisoryModeGuard {
+impl Drop for EnvGuard {
     fn drop(&mut self) {
         // SAFETY: see `set` above -- still holding `_permit`.
         unsafe {
-            std::env::remove_var("MCPHOST_ADVISORY_MODE");
+            match &self.prev {
+                Some(v) => std::env::set_var(self.key, v),
+                None => std::env::remove_var(self.key),
+            }
         }
     }
+}
+
+/// Thin alias over [`EnvGuard`], kept so existing call sites
+/// (`common::AdvisoryModeGuard::set(mode)`) don't need to name the var.
+pub struct AdvisoryModeGuard;
+
+impl AdvisoryModeGuard {
+    pub async fn set(mode: &str) -> EnvGuard {
+        EnvGuard::set("MCPHOST_ADVISORY_MODE", mode).await
+    }
+}
+
+/// `perf_budget!(budget_ms, { body })` — PRD-mcphost-test-suite-flake-lints
+/// requirement 3. Runs `body` once as an untimed warm-up (so lazy init or a
+/// cold cache doesn't skew the first timed sample), then
+/// [`PERF_BUDGET_SAMPLES`] timed runs, and asserts the MEDIAN elapsed time
+/// is at most `budget_ms` — a single measurement on a loaded shared builder
+/// measures the builder's load, not the code under test (the
+/// `enduserctl_ac10` false red: 52ms once against a 50ms budget, run 309).
+///
+/// Skips (prints `perf skipped (load)`, passes without measuring) when
+/// `$MCPHOST_PERF_SKIP=1`, which the gate sets when `/proc/loadavg`'s load1
+/// exceeds nproc/2; the final gate re-runs the same test on a quiet box
+/// with the var unset. Always prints the measured median (or the skip) to
+/// stderr, so the gate log carries the number either way.
+///
+/// `#[macro_export]` always hoists a macro to the DEFINING crate's root
+/// (module nesting is irrelevant to it), so call sites use
+/// `crate::perf_budget!(...)`, not `common::perf_budget!(...)`.
+pub const PERF_BUDGET_SAMPLES: usize = 5;
+
+#[macro_export]
+macro_rules! perf_budget {
+    ($budget_ms:expr, $body:block) => {{
+        if std::env::var("MCPHOST_PERF_SKIP").ok().as_deref() == Some("1") {
+            eprintln!("perf skipped (load)");
+        } else {
+            // Untimed warm-up.
+            { $body }
+            let mut samples: Vec<std::time::Duration> =
+                Vec::with_capacity($crate::common::PERF_BUDGET_SAMPLES);
+            for _ in 0..$crate::common::PERF_BUDGET_SAMPLES {
+                let __perf_budget_start = std::time::Instant::now();
+                { $body }
+                samples.push(__perf_budget_start.elapsed());
+            }
+            samples.sort();
+            let median = samples[samples.len() / 2];
+            let budget = std::time::Duration::from_millis($budget_ms as u64);
+            eprintln!("perf_budget: median={median:?} budget={budget:?}");
+            assert!(
+                median <= budget,
+                "perf budget exceeded: median {median:?} over {} samples > budget {budget:?}",
+                $crate::common::PERF_BUDGET_SAMPLES,
+            );
+        }
+    }};
 }

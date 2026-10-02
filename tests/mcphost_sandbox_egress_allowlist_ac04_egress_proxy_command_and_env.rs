@@ -25,8 +25,6 @@ use serde_json::json;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use crate::egress_proxy_lock;
-
 const PROXY: &str = "http://127.0.0.1:3128";
 
 #[tokio::test]
@@ -35,15 +33,9 @@ async fn pro_tenant_calling_an_egress_tool_sees_the_configured_proxy_in_its_env(
         println!("{} (CI)", sandbox::USERNS_SKIP_MARKER);
         return;
     }
-    // See egress_proxy_lock's doc comment: serializes this test against
-    // the other files in this PRD that also mutate the process-wide
-    // MCPHOST_EGRESS_PROXY env var.
-    let _guard = egress_proxy_lock::guard().await;
-    // SAFETY: held across this whole test body via the async guard above,
-    // so no other test in this binary observes a torn env var.
-    unsafe {
-        std::env::set_var("MCPHOST_EGRESS_PROXY", PROXY);
-    }
+    // Serializes this test against the other files in this PRD that also
+    // mutate the process-wide MCPHOST_EGRESS_PROXY env var.
+    let _guard = common::EnvGuard::set("MCPHOST_EGRESS_PROXY", PROXY).await;
 
     let envs_dir = TempDataDir::new();
     let server = TestServer::start_with_kinds(python_kind_registry(&envs_dir.0)).await;
@@ -81,9 +73,7 @@ async fn pro_tenant_calling_an_egress_tool_sees_the_configured_proxy_in_its_env(
         "the sandboxed child must see the configured proxy as https_proxy: {structured}"
     );
 
-    unsafe {
-        std::env::remove_var("MCPHOST_EGRESS_PROXY");
-    }
+    drop(_guard);
 }
 
 fn base_spec(isolation: IsolationMechanism) -> RunSpec {

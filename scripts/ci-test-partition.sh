@@ -108,11 +108,14 @@ classify() { # <file> -> prints "sandbox" or "core"
 }
 
 # suite_names <sandbox|core> -> bare suite binary names, one per line, sorted
-# (tests/suite_core_NN.rs / tests/suite_sandbox_NN.rs, as written by
-# gen-test-suites.sh -- never tests/*.rs member files anymore).
+# (tests/suite_core_NN.rs / tests/suite_sandbox_NN.rs, PLUS
+# tests/suite_env_core_NN.rs / tests/suite_env_sandbox_NN.rs --
+# PRD-mcphost-test-suite-flake-lints requirement 5's env-guarded-only
+# binaries, capability-partitioned the same as every other suite -- as
+# written by gen-test-suites.sh. Never tests/*.rs member files themselves.
 suite_names() {
   local want="$1" f
-  for f in "$REPO_ROOT"/tests/suite_"$want"_*.rs; do
+  for f in "$REPO_ROOT"/tests/suite_"$want"_*.rs "$REPO_ROOT"/tests/suite_env_"$want"_*.rs; do
     [ -e "$f" ] || continue
     basename "$f" .rs
   done | LC_ALL=C sort
@@ -220,8 +223,8 @@ check() {
     base="$(basename "$f")"
     want="$(classify "$f")"
     in_core=0; in_sandbox=0
-    grep -qF "#[path = \"$base\"]" "$REPO_ROOT"/tests/suite_core_*.rs 2>/dev/null && in_core=1
-    grep -qF "#[path = \"$base\"]" "$REPO_ROOT"/tests/suite_sandbox_*.rs 2>/dev/null && in_sandbox=1
+    grep -qF "#[path = \"$base\"]" "$REPO_ROOT"/tests/suite_core_*.rs "$REPO_ROOT"/tests/suite_env_core_*.rs 2>/dev/null && in_core=1
+    grep -qF "#[path = \"$base\"]" "$REPO_ROOT"/tests/suite_sandbox_*.rs "$REPO_ROOT"/tests/suite_env_sandbox_*.rs 2>/dev/null && in_sandbox=1
     if [ "$in_core" -eq 1 ] && [ "$in_sandbox" -eq 1 ]; then
       echo "ci-test-partition: $base is included in BOTH a core and a sandbox suite" >&2
       rc=1

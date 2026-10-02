@@ -436,6 +436,14 @@ mod firstcall_ac6_outcome_metering;
 mod firstpub_ac09_dry_run_spec_size_short_circuits;
 #[path = "firstpub_ac10_live_proof_against_real_mcphost.rs"]
 mod firstpub_ac10_live_proof_against_real_mcphost;
+#[path = "flakelint_ac02_single_shot_perf.rs"]
+mod flakelint_ac02_single_shot_perf;
+#[path = "flakelint_ac03_receipt_read.rs"]
+mod flakelint_ac03_receipt_read;
+#[path = "flakelint_ac04_allow_list.rs"]
+mod flakelint_ac04_allow_list;
+#[path = "flakelint_ac06_perf_budget_skip_and_median.rs"]
+mod flakelint_ac06_perf_budget_skip_and_median;
 #[path = "fleetips_reclassify_backfill.rs"]
 mod fleetips_reclassify_backfill;
 #[path = "gatedebt_4f1112d_ac4_no_test_reads_gate_receipts.rs"]
@@ -1286,8 +1294,6 @@ mod support_ac02_internal_error_generic_and_logged;
 mod support_ac03_disk_floor_and_5xx_messages_generic;
 #[path = "support_ac04_plans_doc_and_json_consistent.rs"]
 mod support_ac04_plans_doc_and_json_consistent;
-#[path = "support_ac05_support_url_rendered_or_not_configured.rs"]
-mod support_ac05_support_url_rendered_or_not_configured;
 #[path = "support_ac06_served_pages_from_docs_and_readme.rs"]
 mod support_ac06_served_pages_from_docs_and_readme;
 #[path = "support_ac07_whoami_links_resolve.rs"]

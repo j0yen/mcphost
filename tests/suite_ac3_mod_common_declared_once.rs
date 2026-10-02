@@ -11,7 +11,10 @@ fn repo_root() -> PathBuf {
 }
 
 fn is_generated_suite(name: &str) -> bool {
-    name.starts_with("suite_core_") || name.starts_with("suite_sandbox_")
+    name.starts_with("suite_core_")
+        || name.starts_with("suite_sandbox_")
+        || name.starts_with("suite_env_core_")
+        || name.starts_with("suite_env_sandbox_")
 }
 
 #[test]

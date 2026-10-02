@@ -224,3 +224,20 @@ jobs:
             echo "::error::one or more sandbox matrix shards did not succeed (result=${{ needs.sandbox.result }}) -- see the sandbox job's shard runs above."
             exit 1
           fi
+
+  # PRD-mcphost-test-suite-flake-lints requirement 4. No `needs:` on `gate`/
+  # `sandbox` -- it's a plain bash/grep/awk scan over tests/**/*.rs (no
+  # Rust toolchain needed), so it runs concurrently with them rather than
+  # adding to the workflow's wall time. `scripts/risk-gate.sh` runs this
+  # same script for wm-build's own gate (that invocation lives in the
+  # harness-readonly skill script risk-gate.sh execs, not in this repo).
+  flake-lint:
+    name: flake-lint (env-mutation, single-shot-perf, receipt-read)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: scripts/flake-lint.sh tests
+        run: ./scripts/flake-lint.sh tests

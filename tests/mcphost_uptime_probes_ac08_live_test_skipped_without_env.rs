@@ -85,6 +85,10 @@ fn live_mode_is_disabled_when_mcphost_live_is_unset_or_not_1() {
 /// its tests on multiple threads, including `live_proof_against_real_mcphost_when_enabled`
 /// concurrently, and flipping the var to "1" process-wide could make that
 /// test attempt a real network call in an offline test run.
+// Exclusive access to MCPHOST_LIVE held by MCPHOST_LIVE_ENV_LOCK
+// (std::sync::Mutex) for this fn's whole body; the value is read then
+// unconditionally restored before the guard drops.
+// flake-lint: env-guarded
 #[test]
 fn mcphost_live_env_var_gates_the_real_skip_check() {
     let _guard = MCPHOST_LIVE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());

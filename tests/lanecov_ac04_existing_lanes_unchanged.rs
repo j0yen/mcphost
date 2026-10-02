@@ -119,19 +119,23 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // which Cargo's implicit-workspace rule already runs those crates
     // through) -- an eleventh, intended addition since the baseline, not
     // drift.
+    // PRD-mcphost-test-suite-flake-lints added its own "flake-lint" lane
+    // (routes scripts/flake-lint.sh and tests/flake-lint-allow.txt to a
+    // name-filtered cargo test run over the flakelint_ac0N proof tests) --
+    // a twelfth, intended addition since the baseline, not drift.
     // chore/listings-wave1 added its own "launch-docs" lane (routes
     // docs/launch/** -- the wave-1 directory-listing checklist -- to
     // scripts/launch-docs-check.sh, duplicated from the pre-existing docs
     // lane's own UTF-8/non-empty check rather than folded into it, for the
     // same required_commands-immutability reason the sharing-docs lane
-    // above gives) -- a twelfth, intended addition since the baseline, not
-    // drift.
+    // above gives) -- a thirteenth, intended addition since the baseline,
+    // not drift.
     // PRD-mcphost-spec-unknown-field-rejection added its own
     // "spec-fields-doc-check" lane (routes the new
     // scripts/spec-fields-doc-check.sh to its own --run, duplicated from
     // the pre-existing docs lane rather than folded into it, for the same
     // required_commands-immutability reason the sharing-docs/launch-docs
-    // lanes above give) -- a thirteenth, intended addition since the
+    // lanes above give) -- a fourteenth, intended addition since the
     // baseline, not drift.
     // PRD-mcphost-sandbox-bridge-discoverability added its own
     // "sandbox-api-docs" lane (routes scripts/sandbox-api-doc-check.sh --
@@ -150,6 +154,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "contracts",
             "docsearch-fixtures",
             "examples",
+            "flake-lint",
             "launch-docs",
             "loop-config",
             "oauthconf-data",
@@ -161,7 +166,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "wasm-fixtures"
         ],
         "only admin-schemas, checkcompat-race-soak, contracts, docsearch-fixtures, examples, \
-         launch-docs, loop-config, oauthconf-data, plugin, sandbox-api-docs, sharing-docs, \
+         flake-lint, launch-docs, loop-config, oauthconf-data, plugin, sandbox-api-docs, sharing-docs, \
          spec-fields-doc-check, vendor, and wasm-fixtures may have been added since {BASELINE_REV}"
     );
 }

@@ -26,6 +26,10 @@ struct SupportUrlGuard {
 }
 
 impl SupportUrlGuard {
+    // `permit` excludes every other test touching MCPHOST_SUPPORT_URL for
+    // this guard's whole lifetime (see SUPPORT_URL_LOCK's doc comment
+    // above).
+    // flake-lint: env-guarded
     async fn set(url: &str) -> Self {
         let permit = SUPPORT_URL_LOCK.lock().await;
         // SAFETY: `permit` excludes every other test touching this var for
@@ -34,6 +38,8 @@ impl SupportUrlGuard {
         Self { _permit: permit }
     }
 
+    // Same exclusion as `set` above.
+    // flake-lint: env-guarded
     async fn unset() -> Self {
         let permit = SUPPORT_URL_LOCK.lock().await;
         unsafe { std::env::remove_var("MCPHOST_SUPPORT_URL") };
@@ -42,6 +48,9 @@ impl SupportUrlGuard {
 }
 
 impl Drop for SupportUrlGuard {
+    // Still holding `_permit` (see `set`/`unset` above), so this runs
+    // under the same exclusion.
+    // flake-lint: env-guarded
     fn drop(&mut self) {
         // SAFETY: see `set`/`unset` above -- still holding `_permit`.
         unsafe { std::env::remove_var("MCPHOST_SUPPORT_URL") };
