@@ -117,6 +117,14 @@ required_commands = [
 ]
 
 [[lane]]
+id = "spec-fields-doc-check"
+description = "PRD-mcphost-spec-unknown-field-rejection requirement 6 (AC7): scripts/spec-fields-doc-check.sh diffs each kind's known_spec_fields() (parsed straight out of its own src/kinds/<kind>.rs, never a second hand-maintained list) against its docs/kinds/<kind>.md page, so the two can't silently drift. Given its own lane rather than folded into the pre-existing docs lane above, since tests/lanecov_ac04_existing_lanes_unchanged.rs pins every pre-existing lane's required_commands as an immutable baseline and folding in here would have changed the docs lane's own required_commands (same reasoning as the sharing-docs/launch-docs lanes above)."
+globs = ["scripts/spec-fields-doc-check.sh"]
+required_commands = [
+  "scripts/spec-fields-doc-check.sh",
+]
+
+[[lane]]
 id = "harness-readonly"
 description = "Harness files; should never change after scaffold"
 globs = [

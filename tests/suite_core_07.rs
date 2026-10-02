@@ -1422,6 +1422,12 @@ mod tooltest_ac6_quota_and_metering;
 mod tooltest_ac7_too_many_invocations;
 #[path = "tooltest_ac9_ac10_listing_and_auth.rs"]
 mod tooltest_ac9_ac10_listing_and_auth;
+#[path = "unkfield_ac04_trigger_set_unknown_argument.rs"]
+mod unkfield_ac04_trigger_set_unknown_argument;
+#[path = "unkfield_ac05_tools_list_additional_properties_false.rs"]
+mod unkfield_ac05_tools_list_additional_properties_false;
+#[path = "unkfield_ac07_spec_fields_doc_check_script.rs"]
+mod unkfield_ac07_spec_fields_doc_check_script;
 #[path = "urltenant_ac01_path_secret_whoami_auth_method_url.rs"]
 mod urltenant_ac01_path_secret_whoami_auth_method_url;
 #[path = "urltenant_ac02_wrong_or_rotated_secret_404.rs"]

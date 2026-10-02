@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.68.0 — 2026-10-01
+
+`host.tool_publish` and `host.spec_test` now reject any spec key a kind
+doesn't recognize instead of silently ignoring it: the error names the
+offending `field`, lists the kind's own `known` fields, points at
+`valid_for` other kinds when the field belongs to one of them, and offers
+a `did_you_mean` suggestion for a one-or-two-edit typo. `host.trigger.set`
+applies the same treatment to its own argument keys. Every `host.*` and
+`billing.*` tool's advertised schema now sets `additionalProperties:
+false`. A new `scripts/spec-fields-doc-check.sh` keeps each kind's
+`docs/kinds/*.md` page in sync with its `known_spec_fields()` list,
+checked in its own `spec-fields-doc-check` proof-lane.
+
 ## v0.67.0 — 2026-10-01
 
 Every tenant can now be reached by one secret URL,

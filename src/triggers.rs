@@ -214,6 +214,14 @@ async fn trigger_to_json(state: &AppState, tenant: &Tenant, row: TriggerRow) -> 
 /// The tool lookup is shared by both kinds; each kind's own argument shape
 /// and quota lives in [`set_schedule`]/[`crate::hooks::set_event_trigger`].
 pub async fn set(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    // PRD-mcphost-spec-unknown-field-rejection requirement 2 (AC4): refused
+    // before the tool lookup/any kind-specific dispatch below -- an
+    // argument key this tool doesn't define must never silently create a
+    // trigger shaped differently than the caller intended.
+    if let Some(known) = crate::handler::known_control_plane_args("host.trigger.set", &state.kinds)
+    {
+        crate::errors::check_unknown_argument(args, "host.trigger.set", &known)?;
+    }
     let tool = arg_str(args, "tool")?;
     let kind = arg_str_opt(args, "kind").unwrap_or_else(|| "schedule".to_string());
     state

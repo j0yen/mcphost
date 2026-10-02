@@ -503,6 +503,12 @@ impl Kind for WasmKind {
         }
     }
 
+    /// PRD-mcphost-spec-unknown-field-rejection requirement 1/4: the exact
+    /// set [`parse_spec`] reads.
+    fn known_spec_fields(&self) -> &'static [&'static str] {
+        &["component", "args_schema", "outputs", "timeout_s", "memory_mb"]
+    }
+
     fn describe(&self, spec: &Value) -> ToolDescriptor {
         match parse_spec(spec) {
             Ok(parsed) => ToolDescriptor {

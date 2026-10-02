@@ -574,6 +574,82 @@ impl Path {
     }
 }
 
+// ---- unknown spec field rejection (PRD-mcphost-spec-unknown-field-rejection) ---
+//
+// `host.tool_publish`/`host.spec_test` both call [`check_unknown_spec_field`]
+// right before `Kind::validate_all`, so a spec key no kind understands is
+// refused before any parsing, gating, or storage happens -- the silent
+// no-op (`write_table` on a python spec) this PRD exists to close.
+
+/// Spec fields accepted on every kind's spec regardless of its own
+/// [`Kind::known_spec_fields`] -- `reads: [table, ...]`
+/// (`lineage::register_tool_publish`) is read directly off the raw spec by
+/// every kind, not owned by any one kind's own parser, so it would
+/// otherwise look "unknown" on every kind it's used with.
+const UNIVERSAL_SPEC_FIELDS: &[&str] = &["reads"];
+
+/// Requirement 1's Levenshtein `did_you_mean`: the single nearest field in
+/// `known` within [`MAX_DID_YOU_MEAN_SPEC_FIELD_DISTANCE`] edits, nearest
+/// first (ties broken by `known`'s own order) -- `None` when nothing is
+/// close enough to be worth suggesting.
+const MAX_DID_YOU_MEAN_SPEC_FIELD_DISTANCE: usize = 2;
+
+fn nearest_known_field(field: &str, known: &[&'static str]) -> Option<&'static str> {
+    known
+        .iter()
+        .map(|k| (crate::errors::levenshtein(field, k), *k))
+        .filter(|(d, _)| *d <= MAX_DID_YOU_MEAN_SPEC_FIELD_DISTANCE)
+        .min_by_key(|(d, _)| *d)
+        .map(|(_, k)| k)
+}
+
+/// Requirement 1 (AC1/AC2/AC3): the first top-level key in `spec` that
+/// isn't in `kind.known_spec_fields()` (and isn't a
+/// [`UNIVERSAL_SPEC_FIELDS`] entry) fails `unknown_spec_field`, naming the
+/// field, this kind's own known fields (`data.known`), which OTHER
+/// registered kinds accept it (`data.valid_for`, requirement 5 -- omitted
+/// when none do), and a Levenshtein near-miss (`data.did_you_mean`,
+/// omitted when none is close enough). `None` when every key is known, or
+/// when `spec` isn't a JSON object at all (that shape failure is each
+/// kind's own `validate`/`validate_all` to report, not this check's).
+/// Keys are walked in `spec`'s own serialized order (`serde_json::Map`
+/// without the `preserve_order` feature sorts keys), so "the first
+/// unknown" is deterministic even though it isn't necessarily the order
+/// the caller wrote them in.
+pub fn check_unknown_spec_field(kind: &dyn Kind, spec: &Value, registry: &KindRegistry) -> Option<KindError> {
+    let obj = spec.as_object()?;
+    let known = kind.known_spec_fields();
+    for key in obj.keys() {
+        let key = key.as_str();
+        if known.contains(&key) || UNIVERSAL_SPEC_FIELDS.contains(&key) {
+            continue;
+        }
+        let valid_for: Vec<&'static str> = registry
+            .all()
+            .filter(|k| k.name() != kind.name())
+            .filter(|k| k.known_spec_fields().contains(&key))
+            .map(|k| k.name())
+            .collect();
+        let did_you_mean = nearest_known_field(key, known);
+        let message = format!(
+            "'{key}' is not a {} spec field; known: {}",
+            kind.name(),
+            known.join(", "),
+        );
+        let mut data = json!({"field": key, "kind": kind.name(), "known": known});
+        if let Some(obj) = data.as_object_mut() {
+            if !valid_for.is_empty() {
+                obj.insert("valid_for".to_string(), json!(valid_for));
+            }
+            if let Some(did_you_mean) = did_you_mean {
+                obj.insert("did_you_mean".to_string(), json!(did_you_mean));
+            }
+        }
+        return Some(KindError::structured_with("unknown_spec_field", message, data));
+    }
+    None
+}
+
 /// Requirement 1's structured `invalid_spec` shape: `field` (a dotted path),
 /// `got` (the JSON type found there), `expected` (a plain phrase), `example`
 /// (one accepted value) -- message `invalid spec: <field>: expected
@@ -1494,6 +1570,21 @@ pub trait Kind: Send + Sync {
     /// Validate a tenant-supplied `spec` before it is stored. Return
     /// [`KindError::InvalidSpec`] naming what's wrong.
     fn validate(&self, spec: &Value) -> Result<(), KindError>;
+
+    /// PRD-mcphost-spec-unknown-field-rejection requirement 1: this kind's
+    /// own top-level spec field names -- the same list its field-help table
+    /// (or raw struct) already enumerates for error messages, now also used
+    /// by [`check_unknown_spec_field`] to refuse a spec key no kind
+    /// understands before it's ever parsed or stored. `&[]` (the default)
+    /// for a `Kind` with no notion of this check (test-only fixtures in
+    /// `tests/ac15_call_timeout.rs`/`tests/ac17_kind_conformance.rs`) --
+    /// safe because [`check_unknown_spec_field`] is only ever invoked from
+    /// `control::tool_publish`/`handler::spec_test`, never from `Kind::
+    /// validate` itself, so a fixture `Kind` exercised only via direct
+    /// `Kind` method calls (`kinds::conformance`) never reaches it.
+    fn known_spec_fields(&self) -> &'static [&'static str] {
+        &[]
+    }
 
     /// Every simultaneously-failing field, not just the first (requirement 3
     /// / AC2): a `Kind` that can cheaply check more than one field

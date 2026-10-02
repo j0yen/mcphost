@@ -178,6 +178,14 @@ impl Kind for ChainKind {
         parse_steps(spec).map(|_| ())
     }
 
+    /// PRD-mcphost-spec-unknown-field-rejection requirement 1/4: `steps` is
+    /// the only top-level field [`parse_steps`] reads today -- per-step key
+    /// checking (`tool`/`args`/`on_error`, requirement 7) is a deferred P1
+    /// follow-up, not this field list's concern.
+    fn known_spec_fields(&self) -> &'static [&'static str] {
+        &["steps"]
+    }
+
     fn describe(&self, _spec: &Value) -> ToolDescriptor {
         ToolDescriptor {
             name: "chain".to_string(),

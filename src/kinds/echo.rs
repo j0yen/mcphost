@@ -28,6 +28,10 @@ impl Kind for EchoKind {
             .map_or(Ok(()), Err)
     }
 
+    fn known_spec_fields(&self) -> &'static [&'static str] {
+        &["schema"]
+    }
+
     fn validate_all(&self, spec: &Value) -> Vec<KindError> {
         // Messages below follow this crate's shared "<field>: <what was
         // expected>" convention (`errors::AppError::split_field`) so
