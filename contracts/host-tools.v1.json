@@ -2894,6 +2894,57 @@
       "since": "0.58.0"
     },
     {
+      "description": "Return this tenant's table concept graph: nodes are tables and columns, edges are column_of/foreign_key/same_name with evidence. Omit table for the whole graph, or give one to get the k_hop_neighbors subgraph around it (hops 1-3, default 1). stale is true between a write and the next tick's rebuild.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "hops": {
+            "description": "How many hops to expand around table, 1-3; default 1.",
+            "type": "integer"
+          },
+          "table": {
+            "description": "Table to center the subgraph on; omit for the whole graph.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.table.graph",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Return up to three shortest join paths between two declared tables, each with its own steps, a ready sql_join clause and a confidence (1.0 for an all-foreign-key path). Returns no_path: true with each table's key/id candidate columns when nothing connects them.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "from": {
+            "description": "Table to start the join path from.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          },
+          "to": {
+            "description": "Table to find a join path to.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "type": "object"
+      },
+      "name": "host.table.join_paths",
+      "since": "0.58.0"
+    },
+    {
       "description": "List this tenant's declared tables, each with its current row count, plus the tenant's whole table-store byte usage.",
       "input_schema": {
         "additionalProperties": false,
@@ -2958,6 +3009,32 @@
         "type": "object"
       },
       "name": "host.table.models",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Return up to five suggested next questions over a declared table as {question, sql, connected_via}: total of a measure by a category, a measure over a date column, top 10 ids by a measure, a measure by a category on a joined table, and count of rows by category -- whichever templates this table's roles support. Every sql runs unchanged under host.table.query.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "Max questions to return, 1-5; default 5.",
+            "type": "integer"
+          },
+          "table": {
+            "description": "Table to suggest next questions for.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "table"
+        ],
+        "type": "object"
+      },
+      "name": "host.table.next_questions",
       "since": "0.58.0"
     },
     {

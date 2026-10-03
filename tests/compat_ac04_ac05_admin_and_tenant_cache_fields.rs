@@ -80,7 +80,7 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
     );
     assert_eq!(
         names.len(),
-        147,
+        150,
         "there must be exactly the sixteen host.* control-plane tools \
          (incl. host.quickstart, host.tool_run, host.bridge_test, host.spec_test -- \
          PRD-mcphost-tool-test, and host.redeem/host.key_rotate -- \
@@ -111,8 +111,10 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
          the two host.enduser.* tools (PRD-mcphost-end-user-identity) plus \
          the eight host.oauth.policy_set/policy/pending/client_approve/client_deny/revoke_all/ \
          audit/audit_export tools (PRD-mcphost-oauth-client-policy) plus \
-         the three host.lineage.* tools (PRD-mcphost-lineage-blast-radius) + \
+         the three host.lineage.* tools (PRD-mcphost-lineage-blast-radius) plus \
          the six host.vault.* tools (PRD-mcphost-upstream-token-vault, \
-         PRD-mcphost-upstream-token-vault-status): {names:?}"
+         PRD-mcphost-upstream-token-vault-status) plus \
+         the three host.table.graph/join_paths/next_questions tools \
+         (PRD-mcphost-table-concept-graph): {names:?}"
     );
 }

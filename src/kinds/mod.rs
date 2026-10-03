@@ -1018,8 +1018,10 @@ impl StateBackend for NoState {
 /// `mcphost.state`, for the real-SQL `host.table.*` store instead of the
 /// KV/filter-grammar one. `op` names one of `tables.rs`'s own verbs
 /// (`"create"`, `"append"`, `"query"`, `"list"`, `"drop"`, `"schema"`,
-/// `"chart"` -- PRD-mcphost-chart-in-a-minute AC11) and
-/// `args` is that verb's own JSON argument object.
+/// `"chart"` -- PRD-mcphost-chart-in-a-minute AC11), or
+/// (PRD-mcphost-table-concept-graph P1 requirement 8) one of
+/// `tables_graph.rs`'s own (`"graph"`, `"join_paths"`, `"next_questions"`),
+/// and `args` is that verb's own JSON argument object.
 #[async_trait::async_trait]
 pub trait TableBackend: Send + Sync {
     async fn call(&self, op: &str, args: Value) -> Result<Value, KindError>;

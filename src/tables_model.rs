@@ -437,7 +437,7 @@ const ANNOTATION_KEYS: &[&str] = &["role", "unit", "description", "hidden"];
 /// on the model's top level; a column-level one is set on that column's
 /// own object. `role` overwrites the column's `role` field but leaves
 /// `inferred_role` (the raw classification) untouched -- AC8's own proof.
-fn merge_annotations(mut model: Value, annotations: &[TableModelAnnotationRow]) -> Value {
+pub(crate) fn merge_annotations(mut model: Value, annotations: &[TableModelAnnotationRow]) -> Value {
     for ann in annotations {
         if ann.column_name.is_empty() {
             if let Some(obj) = model.as_object_mut() {
@@ -481,6 +481,16 @@ pub async fn table_describe(state: &AppState, tenant: &Tenant, args: &Value) -> 
             let model_json = serde_json::to_string(&model)
                 .map_err(|e| AppError::Internal(format!("table model serialize: {e}")))?;
             state.db.upsert_table_model(tenant.id, table.clone(), 1, model_json, row_count).await?;
+            // PRD-mcphost-table-concept-graph requirement 2: a table's
+            // very first model (this bootstrap) changes which tables an
+            // already-built graph should include -- mark it stale so the
+            // next tick picks the new table up. A tenant with no graph
+            // built yet has nothing to mark (its first graph/join_paths/
+            // next_questions call bootstraps fresh from current models
+            // anyway, this table included).
+            if let Err(e) = state.db.mark_table_graph_stale(tenant.id).await {
+                tracing::warn!(error = %e, table = %table, "failed to mark table graph stale after model bootstrap");
+            }
             (model, 1, false, crate::state::now_unix())
         }
     };
@@ -522,7 +532,21 @@ pub async fn model_set(state: &AppState, tenant: &Tenant, args: &Value) -> Resul
     let table_for_check = table.clone();
     tables::with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| tables::load_schema_sync(conn, &table_for_check).map(|_| ())).await?;
 
+    // PRD-mcphost-table-concept-graph requirement 7/AC8: a `role` or
+    // `description` annotation changes what the graph's column nodes
+    // carry (the node's `kind`, or its `description` attribute), so the
+    // next tick must rebuild it. `unit`/`hidden` don't feed the graph at
+    // all -- marking stale for those would just burn a rebuild for
+    // nothing every tick picks up anyway.
+    let graph_affecting = key == "role" || key == "description";
+
     state.db.upsert_table_model_annotation(tenant.id, table.clone(), column, key.clone(), value).await?;
+
+    if graph_affecting
+        && let Err(e) = state.db.mark_table_graph_stale(tenant.id).await
+    {
+        tracing::warn!(error = %e, table = %table, "failed to mark table graph stale after model_set");
+    }
 
     // PRD-mcphost-lineage-blast-radius requirement 9 (AC9): a `role`
     // change calls the change gate with `TypeChange` -- `degrading` (or
@@ -615,6 +639,15 @@ pub async fn tick_once(state: &AppState) -> Result<(), AppError> {
         {
             tracing::warn!(error = %e, tenant_id, table = %table, "table model store failed");
         }
+    }
+
+    // PRD-mcphost-table-concept-graph requirement 2: the graph rebuild
+    // rides the same tick, within the same 30s window `describe` promises
+    // -- run after every table model in this cycle has already been
+    // recomputed above, so a tenant's rebuild always sees this cycle's
+    // freshest models rather than racing ahead of them.
+    if let Err(e) = crate::tables_graph::tick_once(state).await {
+        tracing::warn!(error = %e, "table graph tick failed");
     }
     Ok(())
 }

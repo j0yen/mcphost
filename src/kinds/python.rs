@@ -2401,6 +2401,27 @@ def _table_chart(sql, title=None, mark=None, share=None):
         kwargs["share"] = share
     return _table_call("chart", **kwargs)
 
+# PRD-mcphost-table-concept-graph P1 requirement 8: the same three tools
+# `host.table.graph`/`.join_paths`/`.next_questions` expose, reachable from
+# a sandboxed tool's own code over this same channel.
+def _table_graph(table=None, hops=None):
+    kwargs = {}
+    if table is not None:
+        kwargs["table"] = table
+    if hops is not None:
+        kwargs["hops"] = hops
+    return _table_call("graph", **kwargs)
+
+def _table_join_paths(from_, to):
+    return _table_call("join_paths", **{"from": from_, "to": to})
+
+def _table_next_questions(table, limit=None):
+    kwargs = {"table": table}
+    if limit is not None:
+        kwargs["limit"] = limit
+    return _table_call("next_questions", **kwargs)
+
+
 _mcphost_table_mod = _mcphost_types.ModuleType("mcphost.table")
 _mcphost_table_mod.create = _table_create
 _mcphost_table_mod.append = _table_append
@@ -2409,6 +2430,9 @@ _mcphost_table_mod.list = _table_list
 _mcphost_table_mod.drop = _table_drop
 _mcphost_table_mod.schema = _table_schema
 _mcphost_table_mod.chart = _table_chart
+_mcphost_table_mod.graph = _table_graph
+_mcphost_table_mod.join_paths = _table_join_paths
+_mcphost_table_mod.next_questions = _table_next_questions
 _mcphost_table_mod.TableError = McphostTableError
 
 # ---- mcphost.call (PRD-mcphost-composition requirement 1) -----------------
