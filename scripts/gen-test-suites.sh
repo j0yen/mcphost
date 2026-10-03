@@ -492,7 +492,16 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # an 11th suite binary again -- caught by the same P0 assertion. The exact
 # new cap is re-derived below by actually running gen-test-suites.sh
 # --check against this rebase's full file set, same as every entry above.
-MAX_PER_SUITE = {"core": 785, "sandbox": 130}
+#
+# PRD-mcphost-table-concept-graph (rebased onto mcphost-chain-run-lineage,
+# 2026-10-02): this PRD's own nine `tgraph_ac*.rs` core-classified files
+# (AC9's own sandboxed-tool test is `sandbox`-classified, unaffected) join
+# the same normal bucket on top of chain-run-lineage's own 785 cap above,
+# spawning an 11th suite binary again -- caught by the same P0 assertion.
+# 785 -> 794 (core) re-collapses core's normal buckets to 1, landing the
+# grand total back at 10; sandbox's 130 cap already covers tgraph's own
+# single sandbox file.
+MAX_PER_SUITE = {"core": 794, "sandbox": 130}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

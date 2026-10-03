@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.71.0 — 2026-10-02
+
+The tenant's own `host.table.*` tables joined into one graph
+(PRD-mcphost-table-concept-graph): `src/tables_graph.rs` builds a
+`ConceptGraph` per tenant from the models `host.table.describe` already
+computes -- `column_of`, `foreign_key` (from each model's detected
+`foreign_keys`), and `same_name` (equal-name, equal-type columns across
+tables) edges -- stored in a new `table_graphs` row (migration 0063) and
+rebuilt on the same tick `tables_model.rs` already runs, within its
+existing 30s window. Three new tools: `host.table.graph(table?, hops?)`
+(the whole graph, or a k-hop subgraph around one table), `host.table
+.join_paths(from, to)` (up to three shortest join paths with a ready
+`sql_join` clause and a confidence score, or `no_path` with each table's
+key/id candidates), and `host.table.next_questions(table, limit?)` (up to
+five template-generated, parse-checked SQL questions). All three are
+tenant-scoped and mirrored into the python sandbox as `mcphost.table
+.graph`/`.join_paths`/`.next_questions`. `host.table.model_set`'s `role`/
+`description` keys now also mark the tenant's graph stale so the next
+tick picks up the annotation.
+
 ## v0.70.1 — 2026-10-02
 
 Security: `wasmtime`/`wasmtime-wasi` bumped 46.0.3 -> 48.0.5, resolving

@@ -1925,6 +1925,63 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              version, staleness, row count and when it was last computed.",
             host_schema(json!({}), &[]),
         ),
+        // PRD-mcphost-table-concept-graph requirement 3: the tenant's
+        // tables joined into one graph -- nodes are tables (kind: table)
+        // and columns (kind: key|id|measure|category|date|text), edges are
+        // column_of/foreign_key/same_name, each carrying its own evidence.
+        // Rebuilt by the same tick that refreshes host.table.describe's
+        // models (requirement 2), within the same 30s window.
+        Tool::new(
+            "host.table.graph",
+            "Return this tenant's table concept graph: nodes are tables and columns, edges are \
+             column_of/foreign_key/same_name with evidence. Omit table for the whole graph, or \
+             give one to get the k_hop_neighbors subgraph around it (hops 1-3, default 1). \
+             stale is true between a write and the next tick's rebuild.",
+            host_schema(
+                json!({
+                    "table": {"type": "string", "description": "Table to center the subgraph on; omit for the whole graph."},
+                    "hops": {"type": "integer", "description": "How many hops to expand around table, 1-3; default 1."},
+                }),
+                &[],
+            ),
+        ),
+        // PRD-mcphost-table-concept-graph requirement 4: the ready-to-run
+        // join clause between two tables, with its own evidence and
+        // confidence (1.0 for an all-foreign-key path, the product of edge
+        // weights otherwise), or no_path with each table's key/id
+        // candidate columns when nothing connects them.
+        Tool::new(
+            "host.table.join_paths",
+            "Return up to three shortest join paths between two declared tables, each with its \
+             own steps, a ready sql_join clause and a confidence (1.0 for an all-foreign-key \
+             path). Returns no_path: true with each table's key/id candidate columns when \
+             nothing connects them.",
+            host_schema(
+                json!({
+                    "from": {"type": "string", "description": "Table to start the join path from."},
+                    "to": {"type": "string", "description": "Table to find a join path to."},
+                }),
+                &["from", "to"],
+            ),
+        ),
+        // PRD-mcphost-table-concept-graph requirement 5: up to five
+        // template-generated, parse-checked questions over one table, each
+        // runnable unchanged under host.table.query.
+        Tool::new(
+            "host.table.next_questions",
+            "Return up to five suggested next questions over a declared table as \
+             {question, sql, connected_via}: total of a measure by a category, a measure over \
+             a date column, top 10 ids by a measure, a measure by a category on a joined table, \
+             and count of rows by category -- whichever templates this table's roles support. \
+             Every sql runs unchanged under host.table.query.",
+            host_schema(
+                json!({
+                    "table": {"type": "string", "description": "Table to suggest next questions for."},
+                    "limit": {"type": "integer", "description": "Max questions to return, 1-5; default 5."},
+                }),
+                &["table"],
+            ),
+        ),
         // PRD-mcphost-runs-and-jobs P0 requirement 7: the ledger's own
         // tenant-facing tools, alongside host.state.* above.
         Tool::new(
@@ -3857,6 +3914,15 @@ impl TableBackend for TenantTableBridge {
             // inside the python sandbox receives the same `chart.v1` object
             // `host.table.chart` itself returns.
             "chart" => crate::chart::table_chart(&self.state, &self.tenant, &args).await,
+            // PRD-mcphost-table-concept-graph P1 requirement 8: the same
+            // three tools `host.table.graph`/`.join_paths`/
+            // `.next_questions` expose, reachable from `mcphost.table` too
+            // (AC9: "the same object the tool returns" -- these call the
+            // exact same `tables_graph::*` functions `dispatch_control_tool`
+            // does).
+            "graph" => crate::tables_graph::table_graph(&self.state, &self.tenant, &args).await,
+            "join_paths" => crate::tables_graph::join_paths(&self.state, &self.tenant, &args).await,
+            "next_questions" => crate::tables_graph::next_questions(&self.state, &self.tenant, &args).await,
             other => Err(AppError::InvalidArgs(format!("unknown table op '{other}'"))),
         };
         result.map_err(app_error_to_kind_error)
@@ -4332,6 +4398,9 @@ impl McpHostHandler {
             "host.table.describe" => crate::tables_model::table_describe(&self.state, tenant, &args).await,
             "host.table.model_set" => crate::tables_model::model_set(&self.state, tenant, &args).await,
             "host.table.models" => crate::tables_model::table_models_list(&self.state, tenant, &args).await,
+            "host.table.graph" => crate::tables_graph::table_graph(&self.state, tenant, &args).await,
+            "host.table.join_paths" => crate::tables_graph::join_paths(&self.state, tenant, &args).await,
+            "host.table.next_questions" => crate::tables_graph::next_questions(&self.state, tenant, &args).await,
             "host.docs.search" => docs::doc_search(&self.state, tenant, &args).await,
             "host.docs.index_config" => docs::doc_index_config(&self.state, tenant, &args).await,
             "host.docs.reindex" => docs::doc_reindex(&self.state, tenant, &args).await,

@@ -1,112 +1,100 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-chain-run-lineage.md",
-  "intent_slug": "mcphost-chain-run-lineage",
-  "root_motivation": "Grounding (truth-tier failures 2026-09-28/09-29; chain.rs:28-31,188,185-245; mod.rs:1181,1187; runs.rs:185-215). A chain publishes input_schema: {\"type\":\"object\"} -- it never says which $.input.<name> values its steps need, so the first call is args:{} and dies at step 1 with compose_mapping_missing (4 of 4 chain sessions, 09-28/09-29). A chain run leaves no per-step run rows: chain.rs's result carries a steps trace as the only stand-in, so 'did all three steps finish?' is unanswerable via host.runs.*, and the gold runs.last(tool=daily_pipeline).children.count == 3 can never be observed. Fix: derive required inputs from $.input.* mapping paths at publish time, refuse a call missing them before any step runs (compose_input_missing naming every missing field), and record one child run row per executed step (trigger: \"composition\", parent_run_id) that host.runs.get inlines one level deep.",
-  "user_persona": "Two (PRD user stories): (1) a data-pipeline builder / workflow orchestrator agent that publishes a chain, learns its inputs from host.tool_spec/tools/list, and reads three done child runs after one call; (2) a SaaS operator running a per-end-user pipeline, who needs child runs to carry the parent's end_user_subject so per-user credential resolution and audit stay correct.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-table-concept-graph.md",
+  "intent_slug": "mcphost-table-concept-graph",
+  "root_motivation": "Grounding: opportunity from visions/mcphost-aistack-harvest.md, parts from ~/projects/ai-stack's mcp-concept-graph (k_hop_neighbors/shortest_path over a hand-rolled property graph) and mqo-graph-traversal::suggest_next_questions. host.table.describe already detects foreign keys and suggests measures/dimensions per table, but only per table and per call -- an agent facing several tables must call describe on every one and infer the graph itself, and there is no join-path answer or question suggestion at all. That blocks a two-table task (loop mcphost-buildloop: satisfaction[database-in-a-minute]) on the join, not on the SQL. This build turns the tenant's own already-computed table_models into one small graph (tables_graph.rs), stored beside them and refreshed on the same tick, and exposes it as three read-only tools: the subgraph around a table, the join path with ready SQL, and up to five runnable next-question templates.",
+  "user_persona": "An agent facing a tenant with several host.table.* tables (e.g. a spreadsheet owner's separately-loaded sheets) that needs to know which tables join, on what, and what a sensible next question is, before writing SQL -- currently it must call describe on every table and infer the join itself.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 12
+    "target": 10
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a chain published with steps [{fetch_data, args:{url:\"$.input.url\"}}, {transform, args:{rows:\"$.prev.result.rows\"}}, {write, args:{rows:\"$.prev.result.rows\", region:\"$.input.region\"}}], When tools/list is read, Then input_schema.required == [\"url\",\"region\"].",
-      "test": "tests/mcphost_chain_run_lineage_ac01_chain_declares_required_inputs.rs"
+      "description": "Given orders(id, customer_id, amount, day) and customers(id, name, region) where every customer_id exists in customers.id, When the tick runs, Then the graph has a foreign_key edge orders.customer_id -> customers.id with evidence detected, and host.table.graph(\"orders\", 1) includes both tables.",
+      "test": "tests/tgraph_ac01_foreign_key_edge_and_graph_includes_both_tables.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a chain with no $.input.* paths, When published, Then its input_schema is exactly {\"type\":\"object\"}.",
-      "test": "tests/mcphost_chain_run_lineage_ac02_no_input_paths_keeps_plain_schema.rs"
+      "description": "Given that graph, When host.table.join_paths(\"orders\", \"customers\") is called, Then the first path has one step, sql_join is \"orders JOIN customers ON orders.customer_id = customers.id\", and confidence is 1.0.",
+      "test": "tests/tgraph_ac02_join_paths_one_step_foreign_key.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the chain from AC-1, When host.tool_call(name, args={}) is called, Then it fails compose_input_missing with data.missing == [\"url\",\"region\"], data.step == 1, and host.runs.list(include_children=true) shows zero trigger=\"composition\" rows for this tenant.",
-      "test": "tests/mcphost_chain_run_lineage_ac03_compose_input_missing_before_step_one.rs"
+      "description": "Given a third table regions(region, manager) with no foreign key but a region column of the same type as customers.region, When join_paths(\"orders\", \"regions\") is called, Then a two-step path returns via same_name with confidence 0.5 and evidence per step.",
+      "test": "tests/tgraph_ac03_two_step_same_name_path.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given the chain from AC-1 and args {url, region}, When called and awaited, Then host.runs.get(parent).children has exactly 3 rows in step order, each with trigger == \"composition\", parent_run_id == parent, status == \"done\", tool equal to the step's tool.",
-      "test": "tests/mcphost_chain_run_lineage_ac04_child_run_rows_per_step.rs"
+      "description": "Given two tables with no shared columns, When join_paths is called, Then no_path returns with each table's key and id columns listed as candidates.",
+      "test": "tests/tgraph_ac04_no_shared_columns_returns_no_path_with_candidates.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given that same run, When host.runs.list() is called with no filters, Then only the parent row appears; parent_run_id=parent shows exactly the 3 children; trigger=\"composition\" shows the 3 children.",
-      "test": "tests/mcphost_chain_run_lineage_ac05_runs_list_filters_children.rs"
+      "description": "Given expenses(id, category, amount, day), When host.table.next_questions(\"expenses\") is called, Then five entries return, each sql parses and runs under host.table.query on the fixture, and one is a total of amount by category.",
+      "test": "tests/tgraph_ac05_next_questions_five_entries_all_runnable.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a 3-step chain whose step 2 fails with on_error: \"stop\", When awaited, Then the parent's outcome is a failure, child 1 is done, child 2 is failed with the step's error_class, and no child 3 row exists.",
-      "test": "tests/mcphost_chain_run_lineage_ac06_on_error_stop_partial_children.rs"
+      "description": "Given a host.table.append to orders, When graph is called within 30s, Then stale is true until the tick rebuilds, and false after.",
+      "test": "tests/tgraph_ac06_stale_after_append_tick_clears.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given a 3-step chain run by an end user with end_user_subject = \"alice\", When children are read, Then each child's end_user equals the parent's.",
-      "test": "tests/mcphost_chain_run_lineage_ac07_children_inherit_end_user.rs"
+      "description": "Given two tenants with identically named tables, When tenant A calls any of the three tools, Then no node or edge from tenant B appears.",
+      "test": "tests/tgraph_ac07_tenant_isolation_identically_named_tables.rs"
     },
     {
       "id": "AC8",
-      "level": "MUST",
-      "description": "Given one 3-step chain run, When host.usage and the calls ledger are read, Then the chain counts as exactly 1 call and the busyaudit/metering suites pass unchanged.",
-      "test": "tests/mcphost_chain_run_lineage_ac08_chain_meters_as_one_call.rs"
+      "level": "SHOULD",
+      "description": "Given host.table.model_set(\"orders\", column \"amount\", key \"description\", value \"order total in USD\"), When the next rebuild runs, Then the amount node carries that text as an attribute and next_questions uses \"order total in USD\" in the matching question text.",
+      "test": "tests/tgraph_ac08_description_annotation_node_attribute_and_question_text.rs"
     },
     {
       "id": "AC9",
-      "level": "MUST",
-      "description": "Given a tenant with one parent and 3 children, When admin tenant delete runs, Then all 4 run rows are gone; and when host.runs.purge covers the parent's window, the children's stored results are purged too.",
-      "test": "tests/mcphost_chain_run_lineage_ac09_lifecycle_delete_and_purge_cascade.rs"
+      "level": "SHOULD",
+      "description": "Given the python sandbox, When a tool calls mcphost.table.join_paths(\"orders\", \"customers\"), Then it receives the same object the tool returns.",
+      "test": "tests/tgraph_ac09_python_sandbox_join_paths.rs"
     },
     {
       "id": "AC10",
       "level": "MUST",
-      "description": "Given host.tool_test on the chain from AC-1, When called, Then the report includes inputs_required == [\"url\",\"region\"].",
-      "test": "tests/mcphost_chain_run_lineage_ac10_tool_test_reports_inputs_required.rs"
+      "description": "Given 50 tables with 20 columns each, When the graph rebuilds, Then it completes under 500 ms on the builder.",
+      "test": "tests/tgraph_ac10_fifty_tables_twenty_columns_under_500ms.rs"
     },
     {
       "id": "AC11",
-      "level": "SHOULD",
-      "description": "Given a failed child row, When host.runs.list(status=\"failed\", trigger=\"composition\") is read, Then the row carries step_no and parent_tool.",
-      "test": "tests/mcphost_chain_run_lineage_ac11_failed_child_carries_step_no_and_parent_tool.rs"
-    },
-    {
-      "id": "AC12",
-      "level": "SHOULD",
-      "description": "Given two chain runs and one compose_input_missing refusal, When /healthz is read, Then runs.composition_children_total == 6 and runs.composition_parents_failed_input_total == 1.",
-      "test": "tests/mcphost_chain_run_lineage_ac12_healthz_composition_counters.rs"
-    },
-    {
-      "id": "AC13",
-      "level": "MAY",
-      "description": "DEFERRED (operator-provisioned: needs prod deploy + a nightly cron this build role cannot touch). Given prod mcphost deployed and the truth-tier probe fix landed, one nightly run executing the daily-pipeline-chain scores >= 0.75 with children.count == 3.",
-      "test": "deferred -- operator-provisioned: measured by nightly `synthorg consume --tier truth` on orch (data-pipeline-builder-daily-pipeline-chain recipe score); see PRD-mcphost-chain-run-lineage.md's mock_justifications entry for AC13 and tests/mcphost_chain_run_lineage_ac13_daily_pipeline_persona_trailer.rs::persona_two_call_sequence_yields_three_done_children (the branch's own mechanism, not counted as AC13's proof). Conjunct 4 (the >= 0.75 score) is narrowed, not deferred whole: synthorg's own scorer is `timeliness * accuracy * helpfulness` (`_classify_gold_agreement`) meaned over the recipe's scored sessions against RECIPE_SATISFACTION_TARGET = 0.75 (`_recipe_satisfaction`), `helpfulness` is one of three judge labels and `_accuracy_score` one of three values, so accuracy == 1.0 is strictly necessary for the bar (0.5 * 1.0 * 1.0 = 0.5 < 0.75) and accuracy == 1.0 takes the gold observation this branch supplies. That scorer is ported and asserted against the branch's real observation by the same trailer file's the_recipe_bar_is_unreachable_without_the_children_this_prd_inlines and the_ported_scorer_matches_synthorgs_own_arithmetic. The probe's runs-order half is landed cross-repo in /home/jsy/repos/synthorg (master, commit c07c297, committed not pushed: normalize_probed_runs + _emit_host_context_probe(runs_order=...), proven by tests/chainlineage_ac13_probe_runs_order_test.py). What stays operator-provisioned is only the two factors this branch does not own -- the nightly judge's own `helped` label and the persona's own wall clock -- from a paid run against a prod deployment."
+      "level": "MUST",
+      "description": "Given prod after land, When a fresh tenant creates orders and customers from a two-sheet fixture and calls host.table.join_paths(\"orders\", \"customers\"), Then the response carries the one-step foreign-key path with its sql_join.",
+      "test": "deferred -- operator-provisioned: needs a real post-deploy mcphost-1 healthz version check plus the join_paths response captured in a receipt under docs/receipts/, which this coder dispatch has no live host or deploy authorization to produce."
     }
   ],
   "scope": [
-    "src/kinds/chain.rs: derive input_schema.required from every step's $.input.<name> mapping path (describe()); host.tool_test's dry run also reports inputs_required; ChainKind::call refuses compose_input_missing before step 1 dispatches when a required input is missing from the call's args; ChainKind::validates_own_args() -> true so the generic dispatch-time schema validator (which would otherwise enforce the same input_schema.required BEFORE chain's own call() ever ran) steps aside.",
-    "src/kinds/mod.rs: Kind::validates_own_args() new trait method (default false); CallCtx::parent_run_id: Option<String> new field; compose_call gains a step_no: Option<i64> parameter and, when ctx.parent_run_id is Some, records one composed child run row (trigger: \"composition\") per dispatch attempt via Db::insert_composed_run, whatever the outcome (self-call refusal, depth/children ceiling, tool lookup, or the target Kind::call's own Ok/Err) -- 'one row per executed step' matches chain.rs's own pre-existing steps trace, which already reports a dispatch refusal the same way it reports the target's own failure.",
-    "src/db.rs: RunRow/RUN_COLUMNS gain parent_run_id/step_no/parent_tool (migration 0061, additive); Db::insert_composed_run, Db::get_run_children; Db::list_runs gains parent_run_id/include_children (default excludes composed children unless parent_run_id, trigger=\"composition\", or include_children=true is given); Db::record_call_attributed_with_end_user gains an Option<String> pre-generated run_id parameter; Db::count_composition_children_total/count_composition_parents_failed_input_total for /healthz.",
-    "src/handler.rs: call_published_tool pre-generates its own run id BEFORE dispatch (was: generated only after the call returned) and threads it into CallCtx::parent_run_id so a composing chain's children can attribute to the not-yet-written parent row; host.tool_test/host.tool_call/host.tool_run/runs::enqueue[_shared]/compose_call all gain a `!kind.validates_own_args()` guard around the generic input_schema validator.",
-    "src/runs.rs: execute_job's CallCtx carries parent_run_id: Some(run.id) so an async/scheduled chain job gets the same lineage a synchronous call gets; runs::get inlines a run's direct children (one level, via get_run_children); runs::list parses parent_run_id/include_children.",
-    "src/http.rs: /healthz gains a runs: {composition_children_total, composition_parents_failed_input_total} block.",
-    "migrations/0061_runs_parent_run_id.sql: additive parent_run_id/step_no/parent_tool columns + index.",
-    "contracts/host-tools.v1.json: regenerated (host.runs.list's description/input_schema changed)."
+    "migrations/0063_table_graphs.sql: one table_graphs row per tenant (version, graph_json, computed_at, stale).",
+    "src/tables_graph.rs: ConceptGraph/GraphNode/GraphEdge, build_graph_from_models (pure, table_models -> graph), get_or_build_graph (bootstrap-on-first-call), tick_once (rebuilds every tenant with a stale graph), k_hop_subgraph, join-path search (table_edges/build_adjacency/find_paths/build_sql_join), next_questions' five templates, and the three tool entry points (table_graph/join_paths/next_questions).",
+    "src/tables_model.rs: merge_annotations made pub(crate) for reuse; tick_once calls tables_graph::tick_once at its own tail (same 30s window); model_set marks the graph stale for role/description annotations; table_describe's bootstrap branch marks the graph stale too (a table's very first model changes what an already-built graph should include).",
+    "src/tables.rs: table_append/table_drop mark the tenant's graph stale alongside the existing table-model stale mark; validate_query_structure made pub(crate) so next_questions reuses the exact same sqlparser gate host.table.query uses.",
+    "src/db.rs: TableGraphRow plus get/upsert/mark_stale/list_tenants_with_stale_table_graph, and list_table_model_annotations_for_tenant (one batched query the graph rebuild uses instead of one round trip per table -- AC10's own perf fix).",
+    "src/handler.rs: host.table.graph/join_paths/next_questions Tool::new + dispatch, and the same three ops on TenantTableBridge (mcphost.table.* from the python sandbox).",
+    "src/kinds/python.rs: PY_RUNNER_SCRIPT's mcphost.table.graph/.join_paths/.next_questions wrappers over the existing TableSidecarBridge channel.",
+    "contracts/host-tools.v1.json, www/llms.txt: regenerated (mcphost contract dump / mcphost llms-txt) for the three new tools.",
+    "Cargo.toml/Cargo.lock: version bump (PRD's own build_version_bump: minor)."
   ],
   "non_goals": [
-    "No workflow engine: no branching, map steps, retries, or fan-out -- depth/children ceilings (COMPOSE_DEPTH_MAX, COMPOSE_CHILDREN_MAX) unchanged.",
-    "No recursion in `children` beyond one level -- a nested chain's own children are read by querying that child's run id directly, not auto-expanded.",
-    "No change to the $. mapping grammar; `outputs` promotion stays deferred as chain.rs already documents.",
-    "host.export archiving children under the parent's run id, and host.runs.cancel explicitly cascading to not-yet-started children (P0 requirement 7's other two clauses) -- not exercised by any listed AC; export's existing top-level-only scope is preserved unchanged rather than extended speculatively.",
-    "host.tool_test accepting args and reporting per-step mapping resolution against them (P2 requirement 10) -- no listed AC needs it beyond the existing dry-run/inputs_required behavior.",
-    "AC13 (the live truth-tier recipe score) -- operator-provisioned, deferred."
+    "Enforcing joins or rejecting SQL that ignores the graph -- host.table.query is unchanged, the graph is advisory only.",
+    "Cross-tenant graphs, or graphs over documents -- one graph per tenant, table-shaped only.",
+    "Ontology lift, OWL, RDF, or SPARQL -- the graph stays table-shaped.",
+    "Learned or model-generated next questions -- templates only, per requirement 5.",
+    "P2 requirement 9 (200-table graph-size bound with a truncated flag) -- no AC in the dispatched list names it and the dispatch's own scope boundary says stop once every listed AC is green; not implemented."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -115,50 +103,46 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "chain_kind_generic_arg_validation_bypass": "chain's new input_schema.required, if enforced by the SAME generic dispatch-time jsonschema validator every other kind uses (call_published_tool, host.tool_test, host.tool_run, compose_call, runs::enqueue[_shared]), would reject a call missing an input with args_invalid BEFORE chain's own Kind::call ever ran -- making compose_input_missing (AC3, naming every missing field) unreachable, and breaking host.tool_test's dry run on an incomplete call (AC10). Kind::validates_own_args() is the opt-out: true only for chain, every other kind unaffected.",
-      "composed_child_rows_cover_every_dispatch_outcome_not_just_kind_call_success": "compose_call records a run row for EVERY dispatch attempt once lineage is active (ctx.parent_run_id is Some) -- including a self-call/depth/children-ceiling refusal or a tool-not-found lookup miss, not only a case where the target Kind::call itself ran -- matching chain.rs's own pre-existing steps trace, which already reports those same refusals as a step's own status/error_class (see tests/compose_ac7_on_error_continue.rs's 'step2 is deliberately never published' convention)."
+      "test_prefix": "tgraph (PRD's own frontmatter field)",
+      "migration_number": "0063 (renumbered three times during rebase: mcphost-chart-in-a-minute claimed 0057 first, then mcphost-lineage-blast-radius claimed 0058 first, then mcphost-url-bound-tenants claimed 0059 first, all landing on main ahead of this branch)"
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why is data-pipeline-builder-daily-pipeline-chain 0.00 on 09-28/09-29?",
-      "a": "Gold children.count == 3 is False (no children in any run row) and, before that, the first run of the chain fails."
+      "q": "Why build a new graph module instead of extending tables_model.rs's own per-table output?",
+      "a": "tables_model.rs's compute_model_sync already answers 'what is this one table' (roles, one table's own foreign_keys); the graph answers a structurally different question -- 'how do several tables connect' -- which needs a second table's model in scope at once (join_paths, next_questions' joined-category template) and its own traversal (k-hop, shortest path). Folding that into tables_model.rs would mix two different read shapes (one table vs. many) behind one module."
     },
     {
       "why": 2,
-      "q": "Why did the first run fail?",
-      "a": "The agent called with args: {}; step 1 needed $.input.url."
+      "q": "Why is there no 'described_as' edge for a column's description annotation, despite requirement 1 listing it as an edge kind?",
+      "a": "Requirement 1's own clause immediately qualifies it: 'the annotation text is a node attribute, not a node' -- and AC8 only asserts the amount NODE carries the text as an attribute, never asserts an edge. Modeled as a plain node.attributes.description, set whenever a description annotation exists, with no separate edge -- satisfies AC8's literal wording without inventing an edge target the PRD's own clarifying sentence rules out."
     },
     {
       "why": 3,
-      "q": "Why did the agent pass nothing?",
-      "a": "The published chain's input_schema is an empty object schema; host.tool_spec/tools/list show no required inputs, and host.tool_test's dry run reports the steps but not the inputs they will need."
+      "q": "Why does next_questions' fourth template (measure by a category on a joined table) need a dedicated categories-style neighbor table in the AC5 fixture, when the AC's own Given clause names only expenses?",
+      "a": "expenses(id, category, amount, day) alone supports at most four of the five named templates (total-by-category, over-time, top-10, count-by-category) -- the fourth ('...on a joined table') structurally needs a second, foreign-key-connected table with its own category-role column. The AC's Given clause is the minimal description of intent, not an exhaustive fixture; the test adds one foreign-key-connected categories(category, group_name) table so all five templates actually fire, rather than inventing a sixth ad hoc template outside requirement 5's named list to pad the count."
     },
     {
       "why": 4,
-      "q": "Why is the schema empty?",
-      "a": "The chain kind was scaffolded with mapping parsing for validation only; deriving a schema from $.input.* paths was not in that tick's scope, and no test asserted a chain's schema."
+      "q": "Why did AC10's first fixture fail at 1.6s instead of the 500ms bound, and was the fix a real performance bug or a test artifact?",
+      "a": "Both, diagnosed in order: the fixture itself reused identical filler column names (col_02..col_19) across all 50 tables, which same_name's (name, type) grouping turned into ~25,000 edges from an 18-column collision -- fixed by making filler names unique per table. Separately, build_graph_for_tenant was doing one list_table_model_annotations DB round trip per table (50 sequential spawn_blocking calls) -- a real N+1 query pattern independent of the fixture bug, fixed with one batched list_table_model_annotations_for_tenant query grouped in memory. Both landed in AC10's own commit since the fixture bug was what surfaced the second, pre-existing one."
     },
     {
       "why": 5,
-      "q": "Why no child runs?",
-      "a": "Explicitly deferred to a runs-and-jobs PRD that had not landed when chain.rs was scaffolded; the parent's own steps trace was accepted as a stand-in, and nothing downstream forced the issue until the truth-tier gold asked for lineage. Deepest actionable level: (a) publish-time input derivation + call-time pre-check; (b) child run rows written by compose_call for every step dispatch, inlined by host.runs.get."
+      "q": "Why is the graph rebuilt from stored table_models rather than re-sampling each tenant's SQLite tables directly?",
+      "a": "tables_model.rs's own tick already re-samples and stores per-table models (roles, foreign_keys) within its 30s window; re-deriving that from scratch inside tables_graph.rs would duplicate detect_foreign_keys' sibling-table sampling logic and double the per-tick SQLite work. build_graph_from_models is a pure function over already-computed model JSON instead, which is also what makes AC10's 500ms bound (over 50 tables) actually achievable -- it's JSON-to-graph processing, not 50 tables' worth of fresh SQL sampling."
     }
   ],
-  "created_at": "2026-09-29T21:25:04Z",
+  "created_at": "2026-09-30T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "AC4/AC13 say 'run via host.tool_run' -- is that the literal host.tool_run RPC (a debug dispatch to Kind::tool_run, which chain never overrides, so it always returns tool_run_unsupported)?",
-      "resolution": "No -- Technical Considerations explicitly names the synchronous host.tool_call dispatch site (handler.rs::call_published_tool) as where CallCtx::parent_run_id is set, and the PRD's own evidence section's transcripts all use host_tool_call. Read 'run via host.tool_run' as generic phrasing for 'run it' (host.tool_call), not the distinct host.tool_run debug RPC."
+      "question": "What exact JSON shape does host.table.join_paths' no_path response take -- the PRD only says 'no_path returns with each table's key and id columns listed as candidates'.",
+      "resolution": "{from, to, paths: [], no_path: true, candidates: {<from_table>: [...], <to_table>: [...]}} -- candidates keyed by table name, each value the list of that table's key-or-id-role column names, read directly off the graph's own column nodes."
     },
     {
-      "question": "AC6 says 'the parent is failed' -- is that the literal run status string \"failed\"?",
-      "resolution": "No -- this crate's existing call/job run status vocabulary is done/error/timeout/cancelled (no \"failed\"); only requirement 4's own text introduces done/failed as the CHILD status vocabulary specifically. The parent (written by the pre-existing generic call/job finalize path) keeps status \"error\" for a failure; 'the parent is failed' reads as a description of outcome, not a literal value, since AC6's own parallel wording for children ('child 2 is failed') does use requirement 4's literal new vocabulary."
-    },
-    {
-      "question": "Should a composed child row exist for a step compose_call refuses BEFORE ever reaching the target's own Kind::call (self-call, depth/children ceiling, tool-not-found, schema mismatch)?",
-      "resolution": "Yes -- matches chain.rs's own pre-existing steps trace, which already reports exactly these refusals as a step's status/error_class (tests/compose_ac7_on_error_continue.rs relies on step2 never being published so its dispatch fails tool_not_found, asserted as steps[1].status == \"error\"). Treating every compose_call invocation (not just a successful hand-off into the target's own call) as 'one executed step' keeps the new run-row ledger and the pre-existing trace in agreement."
+      "question": "Can a column pair legitimately carry both a foreign_key edge and a same_name edge at once (e.g. two tables both declaring an FK-related column under the same name and type)?",
+      "resolution": "Yes, left as-is rather than suppressed -- each edge kind is an independent, factually true signal (requirement 1 lists them as three separate rules), and AC7's own tenant-isolation test had to be written around this exact case (orders.id/customers.id: a real foreign-key pair that also happens to share a name and type), which confirmed it doesn't break join_paths' own shortest-path-first ordering (FK's weight 1.0 still sorts ahead of same_name's 0.5 at equal step count)."
     }
   ]
 }

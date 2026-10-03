@@ -59,6 +59,7 @@ pub mod sharing;
 pub mod state;
 pub mod statusfeed;
 pub mod tables;
+pub mod tables_graph;
 pub mod tables_model;
 pub mod tenant_state;
 pub mod triggers;
