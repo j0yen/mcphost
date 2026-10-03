@@ -889,6 +889,22 @@
       "AC6": "tests/unkfield_ac06_doc_examples_never_rejected.rs",
       "AC7": "tests/unkfield_ac07_spec_fields_doc_check_script.rs",
       "AC8": "deferred -- operator-provisioned: Live, prod tenant joe-test; needs a real deploy this coding sandbox cannot drive. See the coder dispatch's own deferred list."
+    },
+    "mcphost_chain_run_lineage": {
+      "_prd": "PRD-mcphost-chain-run-lineage.md (test_prefix: mcphost_chain_run_lineage) -- superseded by mcphost-tool-naming-convention-and-aliases at HEAD (this rebase); real test_prefix is mcphost_chain_run_lineage",
+      "AC1": "tests/mcphost_chain_run_lineage_ac01_chain_declares_required_inputs.rs",
+      "AC2": "tests/mcphost_chain_run_lineage_ac02_no_input_paths_keeps_plain_schema.rs",
+      "AC3": "tests/mcphost_chain_run_lineage_ac03_compose_input_missing_before_step_one.rs",
+      "AC4": "tests/mcphost_chain_run_lineage_ac04_child_run_rows_per_step.rs",
+      "AC5": "tests/mcphost_chain_run_lineage_ac05_runs_list_filters_children.rs",
+      "AC6": "tests/mcphost_chain_run_lineage_ac06_on_error_stop_partial_children.rs",
+      "AC7": "tests/mcphost_chain_run_lineage_ac07_children_inherit_end_user.rs",
+      "AC8": "tests/mcphost_chain_run_lineage_ac08_chain_meters_as_one_call.rs",
+      "AC9": "tests/mcphost_chain_run_lineage_ac09_lifecycle_delete_and_purge_cascade.rs",
+      "AC10": "tests/mcphost_chain_run_lineage_ac10_tool_test_reports_inputs_required.rs",
+      "AC11": "tests/mcphost_chain_run_lineage_ac11_failed_child_carries_step_no_and_parent_tool.rs",
+      "AC12": "tests/mcphost_chain_run_lineage_ac12_healthz_composition_counters.rs",
+      "AC13": "deferred -- operator-provisioned: AC13's Then is a truth-tier `synthorg consume --tier truth --endpoint https://mcphost.dev/mcp` run against prod after this PRD lands, scoring data-pipeline-builder-daily-pipeline-chain >= 0.75 (~$5 and ~40 min of billed frontier calls, driven from ~/repos/synthorg by the operator's nightly timer on host orch, needing the operator's ANTHROPIC_API_KEY / SYNTHORG_PROD_ENDPOINT / SYNTHORG_TRUTH_BRIEF that this sandbox does not hold, and gated on the separate PRD-synthorg-truth-tier-probe-as-tenant). Declared in PRD-mcphost-chain-run-lineage.md's frontmatter: 'deferred_acs: [13]' plus its mock_justifications entry for AC13. The live check that fails until the operator's run has happened: tests/mcphost_chain_run_lineage_ac13_daily_pipeline_persona_trailer.rs::persona_two_call_sequence_yields_three_done_children (MCPHOST_LIVE=1, MCPHOST_URL). Conjunct 4 (the >= 0.75 score) is narrowed, not deferred whole: synthorg's own scorer is `timeliness * accuracy * helpfulness` (`_classify_gold_agreement`) meaned over the recipe's scored sessions against RECIPE_SATISFACTION_TARGET = 0.75 (`_recipe_satisfaction`), `helpfulness` is one of three judge labels and `_accuracy_score` one of three values, so accuracy == 1.0 is strictly necessary for the bar (0.5 * 1.0 * 1.0 = 0.5 < 0.75) and accuracy == 1.0 takes the gold observation this branch supplies. That scorer is ported and asserted against the branch's real observation by the same trailer file's the_recipe_bar_is_unreachable_without_the_children_this_prd_inlines and the_ported_scorer_matches_synthorgs_own_arithmetic. The probe's runs-order half is landed cross-repo in /home/jsy/repos/synthorg (master, commit c07c297, committed not pushed: normalize_probed_runs + _emit_host_context_probe(runs_order=...), proven by tests/chainlineage_ac13_probe_runs_order_test.py). What stays operator-provisioned is only the two factors this branch does not own -- the nightly judge's own `helped` label and the persona's own wall clock -- from a paid run against a prod deployment. That file's always-on tests prove the branch's own mechanism and conjunct 4's product-side factor (schema-derived compose_input_missing refusal, the same-shape retry succeeding, host.runs.list(tool=...)'s most-recent row inlining exactly 3 done children) against a real server built from this branch -- the branch's mechanism, not AC13, and not counted as AC13's proof. tests/mcphost_chain_run_lineage_ac13_deferral_is_justified.rs locks this paper trail (frontmatter vs test-map vs intent-card). Requirements 1-9 (schema derivation, compose_input_missing, child run rows, read-back filters, accounting, lifecycle parity) are all proven standalone by AC1-AC12 above, per the PRD's own Technical Considerations note that the live AC is a soft coupling, not a build-order gate."
     }
   }
 }
