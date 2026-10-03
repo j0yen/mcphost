@@ -246,3 +246,11 @@ globs = ["scripts/sandbox-api-doc-check.sh"]
 required_commands = [
   "scripts/sandbox-api-doc-check.sh",
 ]
+
+[[lane]]
+id = "tool-naming"
+description = "PRD-mcphost-tool-naming-convention-and-aliases: the naming rule doc (docs/tool-naming.md), the generated tool listing (docs/tools.md, rendered by gendocs::render_tools_markdown -- folded into the pre-existing `mcphost gen-docs` subcommand, not a new script), and the naming lint (scripts/tool-naming-lint.sh). Given its own lane rather than folded into the pre-existing docs lane above, since tests/lanecov_ac04_existing_lanes_unchanged.rs pins every pre-existing lane's required_commands as an immutable baseline (same reasoning as the sharing-docs/launch-docs/spec-fields-doc-check lanes above). The lint itself is the proof (violations=0 against the live registry); the toolname_ac0x integration tests (routed through the pre-existing rust-tests lane, since they live under tests/**/*.rs) cover the rest of this PRD's behavior, including docs/tools.md's own drift check."
+globs = ["docs/tool-naming.md", "docs/tools.md", "scripts/tool-naming-lint.sh"]
+required_commands = [
+  "scripts/tool-naming-lint.sh",
+]

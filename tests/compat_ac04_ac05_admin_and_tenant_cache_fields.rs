@@ -78,9 +78,23 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
             .all(|n| n.starts_with("host.") || n.starts_with("billing.")),
         "a tenant with no published tools must see only host.*/billing.* tools: {names:?}"
     );
+    // PRD-mcphost-tool-naming-convention-and-aliases requirement 2/3: 147
+    // -> 167 (+20) -- every host.tool_*-family/host.key_rotate/
+    // host.self_offboard/host.secret_*/host.registry_publish/
+    // host.bridge_test/host.spec_test violator is now registered under
+    // its dotted canonical name AND kept working under its old name as a
+    // deprecated alias, so the control-plane surface this tenant sees
+    // gained 20 names (the aliases) with none removed.
     assert_eq!(
         names.len(),
-        155,
+        // PRD-mcphost-tool-naming-convention-and-aliases rebase onto main
+        // (which had grown 147 -> 150 with host.table.graph/join_paths/
+        // next_questions, then 150 -> 151 with host.table.query_log from
+        // PRD-mcphost-table-context-and-sql-passthrough, then 151 -> 155
+        // with host.drift.reviews/review/resolve/check from
+        // PRD-mcphost-drift-review):
+        // 155 + 20 aliases = 175.
+        175,
         "there must be exactly the sixteen host.* control-plane tools \
          (incl. host.quickstart, host.tool_run, host.bridge_test, host.spec_test -- \
          PRD-mcphost-tool-test, and host.redeem/host.key_rotate -- \
@@ -118,6 +132,7 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
          the three host.table.graph/join_paths/next_questions tools \
          (PRD-mcphost-table-concept-graph) plus \
          the four host.drift.reviews/review/resolve/check tools \
-         (PRD-mcphost-drift-review): {names:?}"
+         (PRD-mcphost-drift-review) plus the 20 deprecated-alias tools \
+         (PRD-mcphost-tool-naming-convention-and-aliases): {names:?}"
     );
 }

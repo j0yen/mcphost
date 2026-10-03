@@ -8,13 +8,19 @@ const SECTION_HEADING: &str = "## Share a tool, not a key";
 const NEXT_HEADING: &str = "### Share a tool, not a key: public variant";
 
 /// The six calls, in the exact order Requirement 1 lists them.
+///
+/// PRD-mcphost-tool-naming-convention-and-aliases requirement 4: the
+/// prose source (`docs/sharing.md`) these names are generated from now
+/// uses each tool's canonical dotted name (`host.secret_set` ->
+/// `host.secret.set`, etc.) -- the old underscored names still work (kept
+/// as deprecated aliases), they're just no longer what the docs teach.
 const EXPECTED_CALLS_IN_ORDER: [&str; 6] = [
-    "host.secret_set",
-    "host.tool_publish",
+    "host.secret.set",
+    "host.tool.publish",
     "host.group.create",
-    "host.tool_share",
+    "host.tool.share",
     "host.group.add",
-    "host.tool_call",
+    "host.tool.call",
 ];
 
 fn section_lines() -> Vec<&'static str> {

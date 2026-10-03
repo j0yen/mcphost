@@ -427,22 +427,25 @@ async fn main() -> anyhow::Result<()> {
         Command::GenDocs { check } => {
             // Deliberately no `init_tracing()`: same rationale as `LlmsTxt`
             // above -- plain stdout/exit-code, no JSON log line.
-            match mcphost::gendocs::run(check) {
+            let kinds = KindRegistry::with_builtin();
+            match mcphost::gendocs::run(check, &kinds) {
                 Ok(stale) => {
                     if check {
                         if stale {
                             std::process::exit(1);
                         }
                         println!(
-                            "gen-docs --check: {} and {} are up to date",
+                            "gen-docs --check: {}, {} and {} are up to date",
                             mcphost::gendocs::PLANS_DOC_PATH,
-                            mcphost::gendocs::PLANS_HTML_PATH
+                            mcphost::gendocs::PLANS_HTML_PATH,
+                            mcphost::gendocs::TOOLS_DOC_PATH
                         );
                     } else {
                         println!(
-                            "gen-docs: wrote {} and {}",
+                            "gen-docs: wrote {}, {} and {}",
                             mcphost::gendocs::PLANS_DOC_PATH,
-                            mcphost::gendocs::PLANS_HTML_PATH
+                            mcphost::gendocs::PLANS_HTML_PATH,
+                            mcphost::gendocs::TOOLS_DOC_PATH
                         );
                     }
                     Ok(())

@@ -188,6 +188,11 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
         // started (admin-only, same bucket as the other internal counts
         // above -- not something an anonymous caller needs).
         obj.insert("help_url_served".to_string(), crate::help::help_hits_snapshot());
+        // PRD-mcphost-tool-naming-convention-and-aliases requirement 5
+        // (AC5): `tool_alias_calls{tool}` -- `docs/metrics.md`'s own name
+        // for this counter -- per canonical name that has seen an alias
+        // and/or canonical call since this process started.
+        obj.insert("tool_alias_calls".to_string(), crate::tool_aliases::alias_metrics_snapshot());
     }
     // PRD-mcphost-signup-kill-switch-and-source requirement 2 / AC6: a
     // caller-claimed-channel breakdown of external signups, all-time and

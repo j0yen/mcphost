@@ -16,17 +16,21 @@ fn read(rel: &str) -> String {
 
 #[test]
 fn both_docs_name_expose_spec_and_tool_spec_shared_with_a_worked_example() {
+    // PRD-mcphost-tool-naming-convention-and-aliases requirement 4: the
+    // docs now teach the canonical dotted name, host.tool.spec_shared --
+    // host.tool_spec_shared still works (kept as a deprecated alias), it's
+    // just no longer what these two files show.
     for (path, text) in [(QUICKSTART, read(QUICKSTART)), (LLMS_TXT, read(LLMS_TXT))] {
         assert!(text.contains("expose_spec"), "{path} must mention expose_spec");
         assert!(
-            text.contains("host.tool_spec_shared"),
-            "{path} must mention host.tool_spec_shared"
+            text.contains("host.tool.spec_shared"),
+            "{path} must mention host.tool.spec_shared"
         );
-        // A worked example: an actual `host.tool_spec_shared(tool=...)` call,
+        // A worked example: an actual `host.tool.spec_shared(tool=...)` call,
         // not just a mention of the name in prose.
         assert!(
-            text.contains("host.tool_spec_shared(tool="),
-            "{path} must show a worked host.tool_spec_shared(tool=...) call"
+            text.contains("host.tool.spec_shared(tool="),
+            "{path} must show a worked host.tool.spec_shared(tool=...) call"
         );
         // The redaction guarantee, restated beside the example.
         assert!(

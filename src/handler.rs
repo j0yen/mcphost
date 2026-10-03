@@ -651,7 +651,7 @@ fn end_user_arg_schema() -> Value {
     })
 }
 
-fn signup_tool() -> Tool {
+pub(crate) fn signup_tool() -> Tool {
     Tool::new(
         "signup",
         "Create a tenant and receive a bearer key and namespace. Unauthenticated. Recommended: \
@@ -885,7 +885,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         // every other host.* tenant tool -- host_schema's tenant_key
         // property is exactly the credential being rotated here.
         Tool::new(
-            "host.key_rotate",
+            "host.key.rotate",
             "Issue a new tenant key and invalidate the current one immediately: every other \
              call using the old key fails as unauthenticated from this point on. Returns the \
              new key exactly once -- use it (as tenant_key or Authorization) for every call \
@@ -898,7 +898,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         // No admin key, no operator ticket: the same channel a tenant
         // signed up through is the one it leaves through.
         Tool::new(
-            "host.self_offboard",
+            "host.self.offboard",
             "Permanently close your own account: disables the tenant, cancels any active \
              Stripe subscription (pro plan), and stops your key from authenticating anything \
              further -- same as an admin-disabled tenant. Idempotent: an already-offboarded \
@@ -909,7 +909,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             host_schema(json!({}), &[]),
         ),
         Tool::new(
-            "host.tool_publish",
+            "host.tool.publish",
             tool_publish_description(kinds),
             host_schema(tool_publish_props(), TOOL_PUBLISH_REQUIRED),
         ),
@@ -935,12 +935,12 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             ),
         ),
         Tool::new(
-            "host.tool_list",
+            "host.tool.list",
             "List this tenant's published tools.",
             host_schema(json!({}), &[]),
         ),
         Tool::new(
-            "host.tool_remove",
+            "host.tool.remove",
             "Remove a published tool by its local name.",
             host_schema(
                 json!({
@@ -950,7 +950,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             ),
         ),
         Tool::new(
-            "host.tool_logs",
+            "host.tool.logs",
             "Return the most recent log lines for one of this tenant's tools.",
             host_schema(
                 json!({
@@ -967,7 +967,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             ),
         ),
         Tool::new(
-            "host.tool_test",
+            "host.tool.test",
             TOOL_TEST_DESC,
             host_schema(
                 json!({
@@ -984,7 +984,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             ),
         ),
         Tool::new(
-            "host.bridge_test",
+            "host.bridge.test",
             BRIDGE_TEST_DESC,
             host_schema(
                 json!({
@@ -1002,7 +1002,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             ),
         ),
         Tool::new(
-            "host.tool_run",
+            "host.tool.run",
             TOOL_RUN_DESC,
             host_schema(
                 json!({
@@ -1024,7 +1024,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             ),
         ),
         Tool::new(
-            "host.tool_call",
+            "host.tool.call",
             "Invoke a tool this tenant has already published, by its local name -- the \
              same real, metered call as calling it directly by its namespaced name \
              (<namespace>.<name>), for a session that has no way to see its own \
@@ -1059,7 +1059,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         // every publish is a new, immutable version; these three read/undo
         // that history.
         Tool::new(
-            "host.tool_history",
+            "host.tool.history",
             "List every published version of one of this tenant's tools, newest first, \
              each with its creation time, source_sha256, and whether it's the current one.",
             host_schema(
@@ -1070,7 +1070,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             ),
         ),
         Tool::new(
-            "host.tool_rollback",
+            "host.tool.rollback",
             "Make an earlier published version of one of this tenant's tools current \
              again -- the next host.tool_call (or namespaced call) runs that version's \
              source. See host.tool_history for the valid version numbers.",
@@ -1086,7 +1086,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             ),
         ),
         Tool::new(
-            "host.tool_diff",
+            "host.tool.diff",
             "Return a unified diff between two published versions of one of this \
              tenant's tools.",
             host_schema(
@@ -1184,7 +1184,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         // `public` (any tenant) or `group` (a named allow-list this
         // tenant owns) -- see `sharing.rs`.
         Tool::new(
-            "host.tool_share",
+            "host.tool.share",
             "Share one of this tenant's published tools with everyone (visibility: \"public\") \
              or with a named group this tenant owns (visibility: \"group\", group: <name>). \
              The tool keeps running in this tenant's own sandbox with this tenant's own \
@@ -1214,7 +1214,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         // PRD-mcphost-shared-tool-spec-readback P0 requirement 2: the
         // sharee-side counterpart to expose_spec.
         Tool::new(
-            "host.tool_spec_shared",
+            "host.tool.spec_shared",
             "Read a shared tool's kind and redacted spec -- only works when the owner shared it \
              with expose_spec: true. The spec never carries env values or secret references \
              (see host.tool_share's expose_spec).",
@@ -1230,7 +1230,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             ),
         ),
         Tool::new(
-            "host.tool_unshare",
+            "host.tool.unshare",
             "Take a shared tool back to private.",
             host_schema(
                 json!({
@@ -1337,7 +1337,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             ),
         ),
         Tool::new(
-            "host.secret_set",
+            "host.secret.set",
             "Store an encrypted secret value under this tenant's namespace.",
             host_schema(
                 json!({
@@ -1354,12 +1354,12 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             ),
         ),
         Tool::new(
-            "host.secret_list",
+            "host.secret.list",
             "List this tenant's secret names (never their values).",
             host_schema(json!({}), &[]),
         ),
         Tool::new(
-            "host.registry_publish",
+            "host.registry.publish",
             "Publish this tenant's server.json to the configured MCP registry \
              (requires --registry-url and admin.tenant_verify_namespace first).",
             host_schema(json!({}), &[]),
@@ -3277,7 +3277,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
     ];
     if authenticated {
         tools.push(Tool::new(
-            "host.spec_test",
+            "host.spec.test",
             SPEC_TEST_DESC,
             host_schema(
                 json!({
@@ -3302,7 +3302,45 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             ),
         ));
     }
+    apply_tool_aliases(&mut tools);
     tools
+}
+
+/// PRD-mcphost-tool-naming-convention-and-aliases requirement 2/3: for
+/// every [`crate::tool_aliases::TOOL_ALIASES`] entry whose canonical tool
+/// is in `tools`, pushes a clone of it under the old (alias) name, with
+/// `x-deprecated: {replaced_by, sunset}` added to the clone's own input
+/// schema (requirement 2's wire shape -- deliberately distinct field
+/// names from `annotate_deprecated_tools`'s `{since, sunset, replacement}`,
+/// a different, per-field deprecation system this one doesn't reuse). The
+/// alias clone's `description` and `inputSchema` are otherwise byte-
+/// identical to the canonical's (AC3's own "equal to the canonical's"),
+/// since it's a clone, not a second hand-written descriptor -- no
+/// `[DEPRECATED ...]` text is prepended here the way
+/// `annotate_deprecated_tools` prepends one to its own descriptions, since
+/// several canonical descriptions (the dry-run tools') are already budgeted
+/// to the byte (`tests/surface_ac02_dry_run_descriptions.rs`'s 160-char
+/// cap) with no room for one; `x-deprecated` is the machine-readable
+/// signal, same as every other field this registry carries. A no-op for
+/// any [`crate::tool_aliases::TOOL_ALIASES`] entry whose canonical isn't
+/// in `tools` (e.g. `host.spec_test`'s alias is only added when
+/// `authenticated`, matching its canonical's own gating above).
+fn apply_tool_aliases(tools: &mut Vec<Tool>) {
+    for a in crate::tool_aliases::TOOL_ALIASES {
+        let Some(canonical) = tools.iter().find(|t| t.name == a.canonical) else {
+            continue;
+        };
+        let mut clone = canonical.clone();
+        clone.name = Cow::Borrowed(a.alias);
+        Arc::make_mut(&mut clone.input_schema).insert(
+            "x-deprecated".to_string(),
+            json!({
+                "replaced_by": a.canonical,
+                "sunset": crate::tool_aliases::SUNSET_DATE,
+            }),
+        );
+        tools.push(clone);
+    }
 }
 
 fn admin_tools() -> Vec<Tool> {
@@ -4493,26 +4531,26 @@ impl McpHostHandler {
     ) -> Result<Value, AppError> {
         match name {
             "host.whoami" => control::whoami(&self.state, tenant, subject, auth_method).await,
-            "host.key_rotate" => control::key_rotate(&self.state, tenant).await,
-            "host.self_offboard" => control::self_offboard(&self.state, tenant).await,
-            "host.tool_publish" => control::tool_publish(&self.state, tenant, &args).await,
-            "host.tool_list" => control::tool_list(&self.state, tenant).await,
-            "host.tool_remove" => control::tool_remove(&self.state, tenant, &args).await,
-            "host.tool_logs" => control::tool_logs(&self.state, tenant, &args).await,
-            "host.tool_test" => self.tool_test(tenant, args).await,
-            "host.bridge_test" => self.bridge_test(tenant, args).await,
-            "host.spec_test" => self.spec_test(tenant, args).await,
-            "host.tool_run" => self.tool_run(tenant, args).await,
-            "host.tool_call" => self.host_tool_call(tenant, args, calls_auth_method, end_user).await,
-            "host.tool_history" => control::tool_history(&self.state, tenant, &args).await,
-            "host.tool_rollback" => control::tool_rollback(&self.state, tenant, &args).await,
-            "host.tool_diff" => control::tool_diff(&self.state, tenant, &args).await,
+            "host.key.rotate" => control::key_rotate(&self.state, tenant).await,
+            "host.self.offboard" => control::self_offboard(&self.state, tenant).await,
+            "host.tool.publish" => control::tool_publish(&self.state, tenant, &args).await,
+            "host.tool.list" => control::tool_list(&self.state, tenant).await,
+            "host.tool.remove" => control::tool_remove(&self.state, tenant, &args).await,
+            "host.tool.logs" => control::tool_logs(&self.state, tenant, &args).await,
+            "host.tool.test" => self.tool_test(tenant, args).await,
+            "host.bridge.test" => self.bridge_test(tenant, args).await,
+            "host.spec.test" => self.spec_test(tenant, args).await,
+            "host.tool.run" => self.tool_run(tenant, args).await,
+            "host.tool.call" => self.host_tool_call(tenant, args, calls_auth_method, end_user).await,
+            "host.tool.history" => control::tool_history(&self.state, tenant, &args).await,
+            "host.tool.rollback" => control::tool_rollback(&self.state, tenant, &args).await,
+            "host.tool.diff" => control::tool_diff(&self.state, tenant, &args).await,
             "host.usage" => control::usage(&self.state, tenant, &args).await,
             "host.changelog" => control::changelog(&self.state, &args),
             "host.export" => crate::export::export(&self.state, tenant, &args).await,
-            "host.tool_share" => crate::sharing::tool_share(&self.state, tenant, &args).await,
-            "host.tool_spec_shared" => self.tool_spec_shared(tenant, args).await,
-            "host.tool_unshare" => crate::sharing::tool_unshare(&self.state, tenant, &args).await,
+            "host.tool.share" => crate::sharing::tool_share(&self.state, tenant, &args).await,
+            "host.tool.spec_shared" => self.tool_spec_shared(tenant, args).await,
+            "host.tool.unshare" => crate::sharing::tool_unshare(&self.state, tenant, &args).await,
             "host.share.caller_limit" => {
                 crate::sharing::caller_limit(&self.state, tenant, &args).await
             }
@@ -4525,9 +4563,9 @@ impl McpHostHandler {
             "host.group.list" => crate::sharing::group_list(&self.state, tenant).await,
             "host.catalog.search" => crate::sharing::catalog_search(&self.state, &args).await,
             "host.catalog.get" => crate::sharing::catalog_get(&self.state, &args).await,
-            "host.secret_set" => control::secret_set(&self.state, tenant, &args).await,
-            "host.secret_list" => control::secret_list(&self.state, tenant).await,
-            "host.registry_publish" => control::registry_publish(&self.state, tenant, &args).await,
+            "host.secret.set" => control::secret_set(&self.state, tenant, &args).await,
+            "host.secret.list" => control::secret_list(&self.state, tenant).await,
+            "host.registry.publish" => control::registry_publish(&self.state, tenant, &args).await,
             "host.state.get" => tenant_state::state_get(&self.state, tenant, &args, end_user).await,
             "host.state.set" => tenant_state::state_set(&self.state, tenant, &args, end_user).await,
             "host.state.delete" => {
@@ -4676,7 +4714,21 @@ impl McpHostHandler {
             "host.oauth.trusted_issuer_set" => crate::oauth::trusted_issuer_set(&self.state, tenant, &args).await,
             "host.oauth.trusted_issuer_remove" => crate::oauth::trusted_issuer_remove(&self.state, tenant, &args).await,
             "host.oauth.trusted_issuers" => crate::oauth::trusted_issuers_list(&self.state, tenant).await,
-            other => Err(AppError::ToolNotFound(other.to_string())),
+            // PRD-mcphost-tool-naming-convention-and-aliases requirement 6
+            // (AC6): `did_you_mean` against every *canonical* control-plane
+            // name (never a deprecated alias -- see
+            // `AppError::host_tool_not_found`'s own doc), not the bare
+            // `ToolNotFound` every other unmatched-name case in this crate
+            // still uses (those have no "nearby real name" universe this
+            // cheap to compute at the call site).
+            other => {
+                let candidates: Vec<String> = host_tools(&self.state.kinds, true)
+                    .into_iter()
+                    .filter(|t| crate::tool_aliases::resolve(&t.name).is_none())
+                    .map(|t| t.name.to_string())
+                    .collect();
+                Err(AppError::host_tool_not_found(other, &candidates))
+            }
         }
     }
 
@@ -6971,6 +7023,14 @@ impl ServerHandler for McpHostHandler {
         // result after the match instead.
         let deprecation_notices =
             crate::api_contract::deprecation_notices(&body_name, &args, &self.state.deprecations);
+        // PRD-mcphost-tool-naming-convention-and-aliases requirement 2:
+        // `Some(canonical)` iff `body_name` is a registered alias --
+        // resolved once here (before the dispatch match moves `body_name`
+        // into whichever arm handles it) so dispatch below always matches
+        // on the canonical name, and the success handler after the match
+        // can still tell an alias call from a canonical one to attach the
+        // deprecation hint / log / metric.
+        let alias_canonical = crate::tool_aliases::resolve(&body_name);
 
         let outcome: Result<Value, AppError> = if let Some(err) = end_user_err {
             Err(err)
@@ -7125,8 +7185,20 @@ impl ServerHandler for McpHostHandler {
                     oauth_caller.as_ref().map_or("key", |o| o.auth_method)
                 };
                 let calls_method = calls_auth_method(oauth_caller.as_ref(), via_session_binding, via_url_secret);
-                self.dispatch_tenant_tool(tenant, subject, auth_method, calls_method, end_user.as_ref(), name, args)
-                    .await
+                // requirement 2: dispatch always sees the canonical name --
+                // `alias_canonical` is `Some` iff `name` is a registered
+                // alias of it.
+                let dispatch_name = alias_canonical.unwrap_or(name);
+                self.dispatch_tenant_tool(
+                    tenant,
+                    subject,
+                    auth_method,
+                    calls_method,
+                    end_user.as_ref(),
+                    dispatch_name,
+                    args,
+                )
+                .await
             }
             (Auth::Tenant(tenant, oauth_caller), name) => match name.split_once('.') {
                 Some((ns, local)) if ns == tenant.namespace => {
@@ -7198,7 +7270,60 @@ impl ServerHandler for McpHostHandler {
                     self.maybe_attach_next_hint(tenant, !via_tenant_key_arg, &body_name, &mut value)
                         .await;
                 }
-                Ok(CallToolResponse::from(CallToolResult::structured(value)))
+                // PRD-mcphost-tool-naming-convention-and-aliases
+                // requirement 6 (P1, AC7): `host.whoami`'s first answer in
+                // a session carries `naming_rule_url`; every later one in
+                // the same session doesn't. Keyed on the transport's own
+                // session id (present regardless of auth state), not the
+                // tenant -- an anonymous probe before signup still only
+                // ever sees it once.
+                if body_name == "host.whoami" {
+                    let show = match session_id.as_deref() {
+                        Some(sid) => crate::tool_aliases::mark_whoami_hint_shown(sid),
+                        None => true,
+                    };
+                    if show && let Some(obj) = value.as_object_mut() {
+                        obj.insert(
+                            "naming_rule_url".to_string(),
+                            json!(crate::tool_aliases::naming_rule_url()),
+                        );
+                    }
+                }
+                crate::tool_aliases::record_call(&body_name);
+                let result = CallToolResult::structured(value);
+                // requirement 2: an alias call's response carries the
+                // deprecation hint in `_meta.deprecated` (the MCP field
+                // this protocol gives a tool result for exactly this,
+                // per the open question this PRD resolved at build:
+                // "deprecation hint goes ... to `tools/list` + logs" when
+                // `_meta` doesn't survive a client, but it's always set
+                // here regardless -- a client that drops `_meta` simply
+                // never sees it, same as any other `_meta` extension),
+                // plus one `tool_deprecated_alias` log line per tenant
+                // per day (`Auth::Tenant` only -- `Auth::Admin` never
+                // reaches a `host.*` alias; see the admin-only `host.whoami`
+                // arm above).
+                let result = if let (Some(canonical), Auth::Tenant(tenant, _)) = (alias_canonical, &auth) {
+                    crate::tool_aliases::maybe_log_deprecated_alias(
+                        tenant.id,
+                        &tenant.key_hash,
+                        &body_name,
+                        canonical,
+                        &crate::state::date_from_unix(now_unix()),
+                    );
+                    let mut meta = rmcp::model::MetaObject::new();
+                    meta.0.insert(
+                        "deprecated".to_string(),
+                        json!({
+                            "replaced_by": canonical,
+                            "sunset": crate::tool_aliases::SUNSET_DATE,
+                        }),
+                    );
+                    result.with_meta(Some(meta))
+                } else {
+                    result
+                };
+                Ok(CallToolResponse::from(result))
             }
             Err(app_err) => Err(app_err.into_error_data_at(Some(&self.state.public_url))),
         }

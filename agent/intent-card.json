@@ -1,106 +1,94 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-drift-review.md",
-  "intent_slug": "mcphost-drift-review",
-  "root_motivation": "Grounding: opportunity -- visions/mcphost-aistack-harvest.md addendum 2026-09-30 (drift pattern), ported from ~/projects/ai-stack @ 4ef6c22 aistack-observability (store.rs grounding_records/definition_versions/drift_queue/emitted_reviews, drift.rs DriftDetector/on_version_change/QuestionDelta, review.rs DriftReviewItem, alert.rs AlertEvent, eval.rs's EvalHarness stub replaced with deterministic re-execution). After PRD-mcphost-table-context-and-sql-passthrough, the query log holds every SQL statement with its row count, documents carry a version, and table notes are annotations with updated_at and no version history -- but nothing links a change to the queries that depended on the changed thing, and nothing re-runs them. A note edit that fixes one question silently breaks another, and the only signal was the next complaint.",
-  "user_persona": "A tenant who edits a table note, appends rows that change a column's inferred role, or uploads a new document version, and the agent that answered questions from the previous state and needs to know which earlier answers are now stale.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tool-naming-convention-and-aliases.md",
+  "intent_slug": "mcphost-tool-naming-convention-and-aliases",
+  "root_motivation": "The registry in src/handler.rs mixes host.<family>_<verb> (host.tool_publish, host.tool_share, host.key_rotate, ...) with host.<family>.<verb> (host.docs.put, host.agent.lookup, host.group.create, ...) and two un-prefixed families (signup, billing.*), with no rule written down anywhere. Synthorg's scripted explorer already invented dotted variants that don't exist (host.tool.call_shared, host.tool.recall) and a chain's ledger probe calls a nonexistent host.calls.list -- integrators guess, and guess wrong, costing a tool_not_found and a lost minute every time.",
+  "user_persona": "An agent operator integrating mcphost for the first time, whose client autocompletes a new host.* call from a sibling family's name; an existing client whose code already calls an old underscored name; an operator deciding when an alias's usage has dropped enough to sunset it.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 11
+    "target": 8
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a table note change through host.table.model_set, When the tick runs, Then context_versions has a new row for that target and a drift_queue entry with status queued, then done within 60 s.",
-      "test": "tests/drift_ac01_table_note_change_queues_and_completes.rs"
+      "description": "Given the registry at the landing commit, When scripts/tool-naming-lint.sh runs, Then it exits 0, lists each documented exception with its reason, and reports violations=0 aliases=<n>; given a fixture registering host.secret_delete, Then it exits 1 naming host.secret.delete.",
+      "test": "tests/toolname_ac01_lint_reports_violations.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given 12 logged queries naming expenses and a note change on it, When the review is produced, Then it holds 12 deltas, changed_count 0, regressed_count 0, and no alert is written.",
-      "test": "tests/drift_ac02_cosmetic_note_change_zero_regressions.rs"
+      "description": "Given a client calling host.tool_share with valid arguments, When dispatched, Then the result equals a call to host.tool.share with the same arguments, the response carries the deprecation hint (where the protocol allows), and exactly one tool_deprecated_alias log line appears for that tenant that day across 5 calls.",
+      "test": "tests/toolname_ac02_alias_dispatch_hint_and_log.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the same change applied twice with identical content, When both are processed, Then one review item exists.",
-      "test": "tests/drift_ac03_identical_content_applied_twice_one_review.rs"
+      "description": "Given tools/list, When fetched, Then every canonical name is present, every alias is present with x-deprecated.replaced_by equal to its canonical and a sunset date 90 days after landing, and the alias's inputSchema equals the canonical's.",
+      "test": "tests/toolname_ac03_tools_list_alias_entries.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given an append that changes a column's inferred role, When the review runs, Then a logged GROUP BY over that column shows before.row_count 7 and after.row_count 31 with changed: true.",
-      "test": "tests/drift_ac04_append_changes_group_by_row_count.rs"
+      "description": "Given docs/** and plugin/** at the landing commit, When the docs-names test runs, Then every host.*/billing.*/signup literal exists in the registry, and docs/tools.md is byte-identical to a fresh gen-docs run.",
+      "test": "tests/toolname_ac04_docs_names_exist_and_tools_doc_fresh.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a logged query that now errors after a schema change, When reviewed, Then its delta carries after.error_code, regressed_count is at least 1, and a drift_regression alert with severity warning exists.",
-      "test": "tests/drift_ac05_dropped_table_regresses_with_error_and_alert.rs"
+      "description": "Given the alias metrics, When 3 alias calls and 2 canonical calls happen for a tool with a deprecated alias, Then the counter named in docs/metrics.md reads alias=3 canonical=2.",
+      "test": "tests/toolname_ac05_alias_metrics_counter.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a document uploaded as version 3 and 5 logged searches whose top hits included version 2, When reviewed, Then 5 search deltas exist and any with top-5 overlap under 3 counts as regressed.",
-      "test": "tests/drift_ac06_document_version_search_overlap_regression.rs"
+      "description": "Given an unknown name one edit away from a canonical (host.tool.shar), When called, Then tool_not_found includes did_you_mean: [\"host.tool.share\"].",
+      "test": "tests/toolname_ac06_did_you_mean_suggests_canonical.rs"
     },
     {
       "id": "AC7",
-      "level": "MUST",
-      "description": "Given host.drift.resolve(item_id, \"cosmetic\"), When host.drift.reviews(open_only: true) is called, Then the item is absent and host.drift.review(item_id) shows the reason.",
-      "test": "tests/drift_ac07_resolve_hides_from_open_only_and_shows_reason.rs"
+      "level": "SHOULD",
+      "description": "Given a new session's first host.whoami, When answered, Then the response includes naming_rule_url; the second call in the session does not.",
+      "test": "tests/toolname_ac07_whoami_naming_rule_url_once_per_session.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given two tenants, When tenant A reads reviews, Then none of tenant B's appear.",
-      "test": "tests/drift_ac08_cross_tenant_reviews_isolated.rs"
+      "description": "Given the existing test suite, When any test asserted an exact tools/list count, Then it is updated to the new count with a comment citing this PRD, and no other test changed.",
+      "test": "tests/toolname_ac08_tools_list_counts_updated.rs"
     },
     {
       "id": "AC9",
       "level": "MUST",
-      "description": "Given 50 affected queries on the fixture, When a change is processed, Then re-runs finish under 5 s on the builder and the tenant's daily call count rose by one.",
-      "test": "tests/drift_ac09_fifty_queries_rerun_under_5s_one_call.rs"
+      "description": "Given cargo test at the landing commit, When it runs, Then every previously passing test passes and the toolname_* tests for AC 1-8 pass.",
+      "test": "deferred -- proven by the wm-build gate itself (block=0 at landing); no hermetic test can pair a whole-suite-green claim -- rule of 2026-09-30."
     },
     {
       "id": "AC10",
-      "level": "SHOULD",
-      "description": "Given host.drift.check(\"expenses\") with no version change, When the tick runs, Then a review with the current deltas is produced.",
-      "test": "tests/drift_ac10_manual_check_produces_review_without_version_change.rs"
-    },
-    {
-      "id": "AC11",
-      "level": "SHOULD",
-      "description": "Given prod after land, When a fresh tenant loads the fixture, runs three queries over expenses, changes the table note, and calls host.drift.reviews, Then one open review lists three deltas with changed_count 0 (Live; evidence: mcphost-1 healthz version after deploy plus the reviews response in the receipt under docs/receipts/).",
-      "test": "deferred (Live) -- operator-provisioned: needs a real run against production after deploy, with the receipt committed under docs/receipts/; this coder dispatch never provisions, resizes, deletes, or reconfigures any server, volume, or service, so AC11 is declared deferred rather than faked."
-    },
-    {
-      "id": "AC12",
-      "level": "SHOULD",
-      "description": "Given a python tool, When it calls mcphost.drift.reviews(), Then it receives the same list the tool returns.",
-      "test": "tests/drift_ac12_python_mcphost_drift_reviews_matches_tool.rs"
+      "level": "MUST",
+      "description": "Given the landed binary deployed on prod and the next nightly promise/toolconf run, When they read prod's tools/list, Then every canonical name and alias from the PR's table is served, an alias call via the journey harness returns the deprecation hint, and the promise ledger reports 0 phantom names in docs/**.",
+      "test": "deferred -- operator-provisioned: Live, a landed binary deployed on prod and the next nightly promise/toolconf run reading prod's tools/list, with the tools/list excerpt and the ledger row pasted into the PRD's evidence block by the operator; needs a real deploy this coding sandbox does not have."
     }
   ],
   "scope": [
-    "src/drift/ (new): versions.rs (context_versions write hooks), queue.rs (drift_queue enqueue + content dedupe hash), rerun.rs (the tick-driven re-run engine: SQL AST table-name extraction, dependent-query/search lookup, QueryDelta/SearchDelta, regression detection), review.rs (host.drift.reviews/review/resolve), alert.rs (drift_alerts on regression).",
-    "src/db.rs: migration 0066 (context_versions, drift_queue, emitted_reviews, drift_reviews, drift_alerts) and the Db methods/row structs over them.",
-    "src/tables.rs: a new _docs_search_log-sibling sample_hash column on _mcphost_query_log, log_query extended to write it, run_query_sync made pub(crate) for rerun.rs's reuse.",
-    "src/tables_model.rs: model_set and tick_once each call the new versions:: hooks (table_note / table_schema changes); tick_once also drains the drift queue via drift::rerun::tick_once at the end of its own 10s cycle.",
-    "src/docs.rs: doc_put calls versions::record_document_change on a real content change; doc_search split into a logging wrapper plus a non-logging search_core, with a new rerun_search helper for drift's own internal re-runs so they never re-log themselves into _docs_search_log.",
-    "src/handler.rs: four new tenant tools (host.drift.reviews/review/resolve/check) and (AC12) a TenantDriftBridge bridging CallCtx.drift to drift::reviews for the python sandbox.",
-    "src/kinds/mod.rs, src/kinds/python.rs, src/runs.rs: DriftBackend/NoDrift plumbing and the mcphost.drift python shim (AC12).",
-    "Cargo.toml: minor version bump 0.78.0 -> 0.79.0 per this PRD's build_version_bump field.",
-    "Gate artifacts kept in sync with the new tool surface: contracts/host-tools.v1.json, www/llms.txt, docs/kinds/python.md, plugin/skills/mcphost/SKILL.md, plugin/.claude-plugin/plugin.json, scripts/gen-test-suites.sh (sandbox suite cap)."
+    "src/tool_aliases.rs: TOOL_ALIASES (alias -> canonical table), resolve/aliases_of/is_canonical_with_aliases, alias-call metrics (record_call/alias_metrics_snapshot), per-tenant-per-day log dedup (mark_alias_logged/maybe_log_deprecated_alias), per-session naming_rule_url dedup (mark_whoami_hint_shown/naming_rule_url), SUNSET_DATE.",
+    "src/handler.rs: host_tools()'s 20 renamed Tool::new literals (host.tool_publish -> host.tool.publish, etc.) and apply_tool_aliases (injects each alias's Tool clone with x-deprecated into tools/list); dispatch_tenant_tool's matching renamed match arms and its did_you_mean-enriched tool_not_found fallback; call_tool's alias resolution before dispatch, _meta.deprecated attachment, alias-call metric/log hook, and host.whoami's naming_rule_url attachment.",
+    "src/errors.rs: AppError::host_tool_not_found (did_you_mean against canonical names only, never an alias).",
+    "src/gendocs.rs: render_tools_markdown/TOOLS_DOC_PATH, folded into the existing mcphost gen-docs subcommand.",
+    "src/state.rs: date_from_unix. src/help.rs: REPO_DOCS_BASE made pub(crate) for reuse.",
+    "src/http.rs: /healthz's tool_alias_calls field.",
+    "docs/tool-naming.md (new), docs/tools.md (generated), docs/metrics.md's tool_alias_calls{tool} section, docs/agent-quickstart.md/docs/sharing.md/plugin/skills/mcphost/SKILL.md retaught to canonical names, www/llms.txt and README.md regenerated from them.",
+    "scripts/tool-naming-lint.sh (new), agent/proof-lanes.toml's tool-naming lane, contracts/host-tools.v1.json regenerated.",
+    "Necessary fallout: tests/compat_ac04_ac05_admin_and_tenant_cache_fields.rs (147->167), tests/mcphost_share_a_tool_not_a_key_ac01_llms_txt_section.rs and tests/mcphost_shared_tool_spec_readback_ac07_docs_worked_example.rs (canonical names), tests/lanecov_ac04_existing_lanes_unchanged.rs (tool-naming lane addition)."
   ],
   "non_goals": [
-    "Judging whether a changed answer is better or worse -- the review shows the diff; a person or the loop decides (PRD non-goal).",
-    "Model-based evaluation of any kind -- eval.rs's EvalHarness is replaced with deterministic re-execution, not ported (PRD non-goal / technical considerations).",
-    "Drift on host.state key-value data (PRD non-goal).",
-    "Retention beyond 90 days of review items -- left to the existing purge tick, not newly implemented here (PRD non-goal).",
-    "Requirement 9 (host.drift.stats) and requirement 11 (P2 value diff for queries under 100 rows) are P1/P2 requirements in the PRD body with no corresponding acceptance criterion in the PRD's own AC list (1-12) and were not in this dispatch's assigned AC list -- left unimplemented, not deferred, since they were never in scope for this pass."
+    "Changing any tool's behaviour or arguments.",
+    "Removing any alias -- a sunset date is set; removal is a later PRD after usage reaches zero.",
+    "Renaming signup/billing.* (documented exceptions) or the admin.* surface (operator-only; separate rule, left untouched).",
+    "admin.tools.aliases (P2 requirement 7, no AC in this dispatch's assigned list) -- deferred.",
+    "AC9 (whole-suite-green proof) and AC10 (prod/live retrigger-and-verify) -- operator-provisioned/gate-provided, not reachable from this coding sandbox."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -109,47 +97,53 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "test_file_names_use_underscores_not_the_prd_slugs_hyphens": "test_prefix drift (the PRD's own frontmatter field), same convention as every other test file in this repo.",
-      "ac11_is_live_operator_provisioned": "AC11's Then needs a real run against production after deploy, with a receipt committed under docs/receipts/; this coder dispatch never provisions, resizes, deletes, or reconfigures any server, volume, or service, so AC11 is declared deferred rather than faked.",
-      "no_committed_receipt_asserts_current_head_sha": "Per the dispatch's own instruction, no test in this PRD asserts that a committed receipt/fixture records the current HEAD sha or 'no changes since' a sha.",
-      "clippy_clean_by_construction_on_touched_checkcompat_files": "tests/checkcompat_race_ac07_suite_green_and_clippy_clean.rs forbids a new #[allow(clippy::...)] in src/tables.rs specifically (one of five files from an earlier PRD); log_query was refactored to bundle its trailing outcome fields into a QueryLogOutcome struct instead of suppressing too_many_arguments there. New drift-only functions elsewhere (src/db.rs, src/drift/queue.rs, src/drift/versions.rs) use #[allow(clippy::too_many_arguments)] following the existing Db::record_call_attributed precedent, since those files are outside that test's fixed list."
+      "test_file_names_use_test_prefix_toolname": "test_prefix toolname (the PRD's own frontmatter field): tests/toolname_ac<NN>_<slug>.rs, same convention as every other test file in this repo."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why re-run the stored SQL/search deterministically instead of porting ai-stack's eval.rs (an external evaluator)?",
-      "a": "mcphost already has the real, read-only execution path (host.table.query's guards, host.docs.search's ranking) that produced the original logged result -- re-running the same path and diffing is strictly more deterministic and cheaper than calling out to an evaluator, and the PRD's own technical considerations say exactly this ('mcphost can do better by re-running the stored SQL, or the stored search, and diffing')."
+      "q": "Why keep every old underscored name working as an alias instead of just renaming in place?",
+      "a": "Goal 2 is explicit (\"zero breaking changes\"), and the grounding incident is guesswork from a client reading one name and guessing another's shape -- breaking the two paying-path clients that already exist would trade one integration-friction problem for a worse one."
     },
     {
       "why": 2,
-      "q": "Why two separate dedupe mechanisms (a unique index on drift_queue's (tenant_id, kind, target, trigger_version) vs emitted_reviews' content hash) rather than one?",
-      "a": "AC1 requires every distinct context_versions row to be queued (so a tenant can see each edit was processed), but AC3 requires that applying the identical note value twice -- two distinct versions, identical content -- still produces only one review. Queue-level dedup (per exact version) and review-level dedup (per content hash) are different questions; collapsing them into one would fail one of the two ACs."
+      "q": "Why inject the alias as a cloned Tool entry in host_tools() rather than a second hand-written Tool::new call per alias?",
+      "a": "A hand-written twin would drift the moment the canonical's schema/description changed; cloning guarantees AC3's own 'alias's inputSchema equals the canonical's' by construction instead of by discipline."
     },
     {
       "why": 3,
-      "q": "Why version every table-model tick recompute as a 'table_schema change' unconditionally, rather than diffing old vs new column roles to decide if anything really changed?",
-      "a": "AC4's own scenario (an append that changes row counts under a GROUP BY) is really a question about data, not about the model's own role/type inference changing at all -- the tick recompute is conceptually the re-assessment event the PRD means by 'table schema' drift, and versioning every recompute lets the natural re-run (seeing a different row count) carry the signal, with no separate role-diff logic needed."
+      "q": "Why resolve an alias to its canonical before dispatch_tenant_tool's match, rather than adding a second match arm per alias?",
+      "a": "dispatch_tenant_tool's ~150-arm match already names each canonical exactly once; duplicating arms for 20 aliases would double the places a future edit to one handler's call site has to touch. Resolving once in call_tool keeps the match the single source of canonical-name-to-handler wiring."
     },
     {
       "why": 4,
-      "q": "Why does AC5 use host.table.drop rather than an ALTER-COLUMN-style operation to produce a genuinely erroring re-run?",
-      "a": "The host.table.* API has no column-type-narrowing or ALTER-COLUMN operation that could make a previously-valid SELECT start erroring; dropping the table after a change is already queued (but before the tick drains it) is the one real operation in the existing surface that turns a previously-successful logged query into a genuine 'no such table' SQLite error at re-run time, which is what AC5's Then actually requires."
+      "q": "Why is the per-tenant-per-day log dedup and the alias-call metric an in-memory, process-wide static instead of a DB table?",
+      "a": "Same tradeoff this crate's own help_url_served{code} counter already makes (help.rs's own doc comment) -- host-wide telemetry for an operator's sunset decision, not a durable per-call audit record; a DB migration for it would be new surface this PRD's requirements don't ask for."
+    },
+    {
+      "why": 5,
+      "q": "Why does AppError::host_tool_not_found's did_you_mean search only canonical names, never a registered alias, even when an alias is the closer edit-distance match?",
+      "a": "Requirement 6's own point is steering a typo toward the name this PRD wants integrators to learn; suggesting another deprecated name would just relocate the guesswork this PRD exists to remove."
     }
   ],
-  "created_at": "2026-10-03T00:00:00Z",
+  "created_at": "2026-10-02T12:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Does host.drift.reviews/review/resolve/check get its own 'since' version in contracts/host-tools.v1.json, or does it inherit the CONTRACT_BASELINE_SINCE every pre-existing tool shares?",
-      "resolution": "Added a dedicated HOST_DRIFT_SINCE = \"0.79.0\" constant in src/api_contract.rs (matching this PRD's own version-bump commit), following the same precedent host.changelog's own HOST_CHANGELOG_SINCE already set, rather than letting four brand-new tools silently report the 0.58.0 baseline."
+      "question": "Dotted canonical (default) vs underscore canonical?",
+      "resolution": "Dotted, per the PRD's own open-question resolution (\"coder proceeds with dotted unless told\") and the registry's own already-dominant style (host.docs.put, host.agent.lookup, host.group.create, ...)."
     },
     {
-      "question": "Should drift's own internal re-run of a logged search write a new row to _docs_search_log?",
-      "resolution": "No -- doing so would make drift::rerun's own background re-run look like a new dependent search, which a later tick would then pick up again, compounding forever. docs::doc_search was split into a logging/metering wrapper plus a non-logging search_core, with a new docs::rerun_search helper (search_core only) used exclusively by drift::rerun::rerun_document."
+      "question": "Sunset length?",
+      "resolution": "90 days from this PRD's own landing work (2026-10-02), per the PRD's own open-question resolution (\"90 days default\") -- SUNSET_DATE = 2026-12-31, a fixed commitment rather than a rolling landing-date computation, so tools/list's x-deprecated.sunset doesn't change on every call."
     },
     {
-      "question": "Should drift_alerts reuse the existing host-wide alerts table/raise() infra in src/alerts.rs?",
-      "resolution": "No -- a dedicated drift_alerts table (migration 0066) was added instead, so this PRD controls the exact severity strings (\"warning\"/\"critical\") and shape the PRD's own AlertEvent {kind, severity, detail} names, independent of the existing AlertConfig/Severity enum's own semantics."
+      "question": "Does the MCP _meta field survive every client SDK? If not, where does the deprecation hint go?",
+      "resolution": "_meta.deprecated is always attached to a successful alias call's CallToolResult regardless of client support -- a client that drops _meta simply never sees it, same as any other _meta extension; tools/list's x-deprecated and the tool_deprecated_alias log line are the two channels guaranteed to survive any client."
+    },
+    {
+      "question": "Which singleton-noun host.<noun> tools (no sibling verb) get a lint exception beyond the PRD's own 5 named examples (host.whoami, host.redeem, host.quickstart, host.changelog, host.usage)?",
+      "resolution": "host.export and host.progress, found by applying the PRD's own stated rule (\"no sibling verbs route under this family\") systematically across the full registry rather than treating the 5 named examples as the exhaustive list."
     }
   ]
 }
