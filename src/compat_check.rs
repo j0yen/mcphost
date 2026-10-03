@@ -262,11 +262,11 @@ fn lookup_user(name: &str) -> Result<RunAsUser, CompatCheckFailure> {
         step: "spawn",
         detail: format!("--run-as user name {name:?} contains an interior NUL byte"),
     })?;
+    // SAFETY: a zeroed `libc::passwd` is a valid (if meaningless) bit pattern -- it is only ever read after `getpwnam_r` below populates it.
     let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
     let mut buf = vec![0u8; 16 * 1024];
     let mut result: *mut libc::passwd = std::ptr::null_mut();
-    // SAFETY: `cname` and `buf` are valid for the duration of this call;
-    // `pwd`/`result` are out-parameters this stack frame owns exclusively.
+    // SAFETY: `cname` and `buf` are valid for the duration of this call; `pwd`/`result` are out-parameters this stack frame owns exclusively.
     let rc = unsafe {
         libc::getpwnam_r(
             cname.as_ptr(),
@@ -483,16 +483,12 @@ fn stderr_tail_text(tail: &StderrTail) -> String {
 /// root; see [`resolve_run_as`]).
 fn apply_run_as(cmd: &mut Command, user: Option<RunAsUser>) {
     let Some(user) = user else { return };
-    // SAFETY: this closure runs strictly between fork and exec in the
-    // freshly forked, single-threaded child -- the same window
-    // `BindPlan::Inherited`'s own `pre_exec` closure below uses. Order
-    // matters and is done by hand here (not via `Command::uid`/`gid`)
-    // because those two alone leave root's own supplementary groups
-    // (gid 0, plus any wheel/sudo/docker membership) riding along on the
-    // child even after its primary uid/gid drops: `setgroups` clears them
-    // first, while this process can still call it, then `setgid` then
-    // `setuid` last, in that order, since `setuid` is what gives up the
-    // ability to change any of the three.
+    // Order matters and is done by hand here (not via `Command::uid`/`gid`) because those two
+    // alone leave root's own supplementary groups (gid 0, plus any wheel/sudo/docker membership)
+    // riding along on the child even after its primary uid/gid drops: `setgroups` clears them
+    // first, while this process can still call it, then `setgid` then `setuid` last, in that
+    // order, since `setuid` is what gives up the ability to change any of the three.
+    // SAFETY: this closure runs strictly between fork and exec in the freshly forked, single-threaded child -- the same window `BindPlan::Inherited`'s own `pre_exec` closure below uses.
     unsafe {
         cmd.pre_exec(move || {
             if libc::setgroups(0, std::ptr::null()) != 0 {
