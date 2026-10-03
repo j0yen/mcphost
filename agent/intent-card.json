@@ -1,100 +1,74 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-table-concept-graph.md",
-  "intent_slug": "mcphost-table-concept-graph",
-  "root_motivation": "Grounding: opportunity from visions/mcphost-aistack-harvest.md, parts from ~/projects/ai-stack's mcp-concept-graph (k_hop_neighbors/shortest_path over a hand-rolled property graph) and mqo-graph-traversal::suggest_next_questions. host.table.describe already detects foreign keys and suggests measures/dimensions per table, but only per table and per call -- an agent facing several tables must call describe on every one and infer the graph itself, and there is no join-path answer or question suggestion at all. That blocks a two-table task (loop mcphost-buildloop: satisfaction[database-in-a-minute]) on the join, not on the SQL. This build turns the tenant's own already-computed table_models into one small graph (tables_graph.rs), stored beside them and refreshed on the same tick, and exposes it as three read-only tools: the subgraph around a table, the join path with ready SQL, and up to five runnable next-question templates.",
-  "user_persona": "An agent facing a tenant with several host.table.* tables (e.g. a spreadsheet owner's separately-loaded sheets) that needs to know which tables join, on what, and what a sensible next question is, before writing SQL -- currently it must call describe on every table and infer the join itself.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-trigger-set-idempotent.md",
+  "intent_slug": "mcphost-trigger-set-idempotent",
+  "root_motivation": "host.trigger.set has no update verb: re-running it (an agent retargeting a hook, or a scheduled agent re-running its own setup script) always inserts, so the natural 'set it again' mints a duplicate trigger, eats a quota slot, and fires twice. The 2026-09-30 fleet board dogfood incident is the concrete case: retargeting a webhook minted a second trigger and consumed a free-plan webhook slot the coder had to remove by hand. This PRD gives every trigger a tenant-unique name (default <kind>:<tool_name>) and makes host.trigger.set an upsert keyed by that name: an existing same-kind trigger is updated in place (same id, same hook URL), a different-kind collision is refused, and every other trigger verb accepts name wherever it accepts id.",
+  "user_persona": "A workflow-orchestrator or scheduled agent that re-runs its own setup script on every boot and needs that to be safe; a hook author retargeting an existing webhook/schedule to a new tool without losing its URL or quota slot.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 10
+    "target": 7
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given orders(id, customer_id, amount, day) and customers(id, name, region) where every customer_id exists in customers.id, When the tick runs, Then the graph has a foreign_key edge orders.customer_id -> customers.id with evidence detected, and host.table.graph(\"orders\", 1) includes both tables.",
-      "test": "tests/tgraph_ac01_foreign_key_edge_and_graph_includes_both_tables.rs"
+      "description": "Given no trigger named webhook:ingest, When host.trigger.set(kind: webhook, tool: ingest) runs twice, Then the second call returns created: false, changed: [], host.trigger.list shows one row, and the quota counter is 1.",
+      "test": "tests/trigidem_ac01_webhook_set_twice_idempotent.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given that graph, When host.table.join_paths(\"orders\", \"customers\") is called, Then the first path has one step, sql_join is \"orders JOIN customers ON orders.customer_id = customers.id\", and confidence is 1.0.",
-      "test": "tests/tgraph_ac02_join_paths_one_step_foreign_key.rs"
+      "description": "Given an existing webhook trigger, When set runs with the same name and a different tool, Then changed == [\"tool_name\"], the id and hook URL are unchanged, and a POST to the hook URL runs the new tool.",
+      "test": "tests/trigidem_ac02_webhook_update_tool_keeps_id_and_url.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a third table regions(region, manager) with no foreign key but a region column of the same type as customers.region, When join_paths(\"orders\", \"regions\") is called, Then a two-step path returns via same_name with confidence 0.5 and evidence per step.",
-      "test": "tests/tgraph_ac03_two_step_same_name_path.rs"
+      "description": "Given a schedule trigger, When set runs with the same name and a new cron, Then next_unix reflects the new cron and changed includes schedule.",
+      "test": "tests/trigidem_ac03_schedule_update_cron_changes_next_unix.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given two tables with no shared columns, When join_paths is called, Then no_path returns with each table's key and id columns listed as candidates.",
-      "test": "tests/tgraph_ac04_no_shared_columns_returns_no_path_with_candidates.rs"
+      "description": "Given a webhook named x, When set(kind: schedule, name: \"x\") runs, Then the error class is trigger_kind_mismatch and nothing changes.",
+      "test": "tests/trigidem_ac04_kind_mismatch_refused.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given expenses(id, category, amount, day), When host.table.next_questions(\"expenses\") is called, Then five entries return, each sql parses and runs under host.table.query on the fixture, and one is a total of amount by category.",
-      "test": "tests/tgraph_ac05_next_questions_five_entries_all_runnable.rs"
+      "description": "Given a trigger, When host.trigger.remove(name: ...), pause(name), fire(name), and test(name) run, Then each behaves identically to the id form.",
+      "test": "tests/trigidem_ac05_verbs_accept_name.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a host.table.append to orders, When graph is called within 30s, Then stale is true until the tick rebuilds, and false after.",
-      "test": "tests/tgraph_ac06_stale_after_append_tick_clears.rs"
+      "description": "Given a database with two same-kind triggers for one tool before migration, When the migration runs, Then both survive with names <kind>:<tool> and <kind>:<tool>-2 and list shows both.",
+      "test": "tests/trigidem_ac06_migration_backfills_duplicate_names.rs"
     },
     {
       "id": "AC7",
-      "level": "MUST",
-      "description": "Given two tenants with identically named tables, When tenant A calls any of the three tools, Then no node or edge from tenant B appears.",
-      "test": "tests/tgraph_ac07_tenant_isolation_identically_named_tables.rs"
-    },
-    {
-      "id": "AC8",
       "level": "SHOULD",
-      "description": "Given host.table.model_set(\"orders\", column \"amount\", key \"description\", value \"order total in USD\"), When the next rebuild runs, Then the amount node carries that text as an attribute and next_questions uses \"order total in USD\" in the matching question text.",
-      "test": "tests/tgraph_ac08_description_annotation_node_attribute_and_question_text.rs"
-    },
-    {
-      "id": "AC9",
-      "level": "SHOULD",
-      "description": "Given the python sandbox, When a tool calls mcphost.table.join_paths(\"orders\", \"customers\"), Then it receives the same object the tool returns.",
-      "test": "tests/tgraph_ac09_python_sandbox_join_paths.rs"
-    },
-    {
-      "id": "AC10",
-      "level": "MUST",
-      "description": "Given 50 tables with 20 columns each, When the graph rebuilds, Then it completes under 500 ms on the builder.",
-      "test": "tests/tgraph_ac10_fifty_tables_twenty_columns_under_500ms.rs"
-    },
-    {
-      "id": "AC11",
-      "level": "MUST",
-      "description": "Given prod after land, When a fresh tenant creates orders and customers from a two-sheet fixture and calls host.table.join_paths(\"orders\", \"customers\"), Then the response carries the one-step foreign-key path with its sql_join.",
-      "test": "deferred -- operator-provisioned: needs a real post-deploy mcphost-1 healthz version check plus the join_paths response captured in a receipt under docs/receipts/, which this coder dispatch has no live host or deploy authorization to produce."
+      "description": "Given the quickstart webhook-inbox recipe, When read, Then its set step shows name and states that repeating the call is safe.",
+      "test": "tests/trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent.rs"
     }
   ],
   "scope": [
-    "migrations/0063_table_graphs.sql: one table_graphs row per tenant (version, graph_json, computed_at, stale).",
-    "src/tables_graph.rs: ConceptGraph/GraphNode/GraphEdge, build_graph_from_models (pure, table_models -> graph), get_or_build_graph (bootstrap-on-first-call), tick_once (rebuilds every tenant with a stale graph), k_hop_subgraph, join-path search (table_edges/build_adjacency/find_paths/build_sql_join), next_questions' five templates, and the three tool entry points (table_graph/join_paths/next_questions).",
-    "src/tables_model.rs: merge_annotations made pub(crate) for reuse; tick_once calls tables_graph::tick_once at its own tail (same 30s window); model_set marks the graph stale for role/description annotations; table_describe's bootstrap branch marks the graph stale too (a table's very first model changes what an already-built graph should include).",
-    "src/tables.rs: table_append/table_drop mark the tenant's graph stale alongside the existing table-model stale mark; validate_query_structure made pub(crate) so next_questions reuses the exact same sqlparser gate host.table.query uses.",
-    "src/db.rs: TableGraphRow plus get/upsert/mark_stale/list_tenants_with_stale_table_graph, and list_table_model_annotations_for_tenant (one batched query the graph rebuild uses instead of one round trip per table -- AC10's own perf fix).",
-    "src/handler.rs: host.table.graph/join_paths/next_questions Tool::new + dispatch, and the same three ops on TenantTableBridge (mcphost.table.* from the python sandbox).",
-    "src/kinds/python.rs: PY_RUNNER_SCRIPT's mcphost.table.graph/.join_paths/.next_questions wrappers over the existing TableSidecarBridge channel.",
-    "contracts/host-tools.v1.json, www/llms.txt: regenerated (mcphost contract dump / mcphost llms-txt) for the three new tools.",
-    "Cargo.toml/Cargo.lock: version bump (PRD's own build_version_bump: minor)."
+    "migrations/0059_trigger_names.sql + src/db.rs: triggers.name TEXT (nullable, backfilled), unique (tenant_id, name) index; TriggerRow.name; insert_trigger/update_trigger/get_trigger_by_name; backfill_trigger_names_sync (P0 requirement 1 / AC6's collision-suffixing backfill, run unconditionally every migrate() call).",
+    "src/triggers.rs: the host.trigger.set dispatcher resolves name (default <kind>:<tool>), looks it up, refuses trigger_kind_mismatch on a different-kind collision, and routes create vs. update to each kind's own set_* function; annotate_set_result wraps every kind's response in {created, changed}; resolve() is the shared id-or-name lookup host.trigger.get/pause/resume/remove/fire (this module) and hooks::test/replay (hooks.rs) all call.",
+    "src/triggers.rs (set_schedule) / src/hooks.rs (set_event_trigger) / src/webhooks.rs (set_webhook_trigger): each kind's create path is unchanged in shape (still validates, quota-checks, inserts with the resolved name); each gains an update path that diffs the new config against the existing row, writes only when something actually changed (config_hash/tool_name equality is a no-op, requirement 6 / AC1's own 'changed: []' case), and never touches next_unix unless the schedule-shaped part of the config changed. webhooks::set_webhook_trigger's update never regenerates hook_id or the secret (AC2).",
+    "src/handler.rs: host.trigger.set's description/schema document name and the idempotence rule; host.trigger.get/pause/resume/remove/fire/test/replay schemas add name as an id alternative and drop id from required.",
+    "src/kinds/aliases.rs: the webhook-inbox and schedules quickstart recipes' host.trigger.set step shows name and carries a note stating repeated calls are safe (P0 requirement 5 / AC7).",
+    "contracts/host-tools.v1.json: regenerated (mcphost contract dump) to match the schema changes above."
   ],
   "non_goals": [
-    "Enforcing joins or rejecting SQL that ignores the graph -- host.table.query is unchanged, the graph is advisory only.",
-    "Cross-tenant graphs, or graphs over documents -- one graph per tenant, table-shaped only.",
-    "Ontology lift, OWL, RDF, or SPARQL -- the graph stays table-shaped.",
-    "Learned or model-generated next questions -- templates only, per requirement 5.",
-    "P2 requirement 9 (200-table graph-size bound with a truncated flag) -- no AC in the dispatched list names it and the dispatch's own scope boundary says stop once every listed AC is green; not implemented."
+    "Changing hook signing or verification -- PRD-mcphost-event-trigger-self-test's territory, untouched here.",
+    "Versioning trigger configs or rollback -- an update overwrites the previous config_json outright, no history kept.",
+    "Allowing a name to move between kinds (webhook -> schedule) -- refused with trigger_kind_mismatch (non-goal, AC4); the caller must remove and re-set under a new name.",
+    "host.trigger.list's name_prefix filter (P1 requirement 7) -- no AC exercises it, not built.",
+    "host.export / host.registry_publish referencing triggers by name (P2 requirement 8) -- no AC exercises it, not built.",
+    "AC8 (the live/prod fleet-board retarget against tenant joe-test) -- deferred, operator-provisioned: it needs a real deployed box and an operator-held tenant env file this build agent never provisions or touches."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -103,46 +77,48 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "test_prefix": "tgraph (PRD's own frontmatter field)",
-      "migration_number": "0063 (renumbered three times during rebase: mcphost-chart-in-a-minute claimed 0057 first, then mcphost-lineage-blast-radius claimed 0058 first, then mcphost-url-bound-tenants claimed 0059 first, all landing on main ahead of this branch)"
+      "test_file_names_use_test_prefix_trigidem": "test_prefix trigidem (the PRD's own frontmatter field): tests/trigidem_ac<NN>_<slug>.rs, same convention as every other test file in this repo.",
+      "version_bump_minor": "PRD frontmatter build_version_bump: minor -- Cargo.toml/Cargo.lock/plugin/.claude-plugin/plugin.json/CHANGELOG.md bumped 0.65.0 -> 0.66.0.",
+      "ac8_deferred_operator_provisioned": "AC8 is a Live acceptance criterion (the landed binary deployed on prod, tenant joe-test, a real fleet-post against ~/.config/mcphost/joe-test.env on orch) -- deferred, not built or tested here; a build agent never provisions, deploys to, or reads operator-held credentials on a live host.",
+      "open_question_default_taken": "Open question default taken (PRD's own 'Drafted' answer): set without name on a tenant that already has two same-kind triggers for a tool is unreachable in practice since the default name <kind>:<tool> always resolves to exactly one of them (the first inserted, pre-AC6-migration) -- no separate trigger_name_ambiguous path was needed or built; the two triggers simply have distinct names (<kind>:<tool> and <kind>:<tool>-2) after migration 0059, and a bare set(tool, kind) with no name always targets the first."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why build a new graph module instead of extending tables_model.rs's own per-table output?",
-      "a": "tables_model.rs's compute_model_sync already answers 'what is this one table' (roles, one table's own foreign_keys); the graph answers a structurally different question -- 'how do several tables connect' -- which needs a second table's model in scope at once (join_paths, next_questions' joined-category template) and its own traversal (k-hop, shortest path). Folding that into tables_model.rs would mix two different read shapes (one table vs. many) behind one module."
+      "q": "Why give triggers a name instead of just making host.trigger.set compare the full (tool, kind, config) tuple and update on an exact config_hash match?",
+      "a": "The whole point of 'set it again with a different tool/schedule/verify' is that the config is NOT identical to before -- a config_hash match can only ever catch the literal no-op case (already migration 0015's existing UNIQUE constraint), never the retarget case the 2026-09-30 incident actually hit. Only a caller-stable identity separate from the mutable config (a name) can answer 'is this the same logical trigger, just reconfigured?'."
     },
     {
       "why": 2,
-      "q": "Why is there no 'described_as' edge for a column's description annotation, despite requirement 1 listing it as an edge kind?",
-      "a": "Requirement 1's own clause immediately qualifies it: 'the annotation text is a node attribute, not a node' -- and AC8 only asserts the amount NODE carries the text as an attribute, never asserts an edge. Modeled as a plain node.attributes.description, set whenever a description annotation exists, with no separate edge -- satisfies AC8's literal wording without inventing an edge target the PRD's own clarifying sentence rules out."
+      "q": "Why default the name to <kind>:<tool_name> instead of requiring every caller to pass one explicitly?",
+      "a": "Goal 1 is that re-running an existing setup script (written before this PRD, calling set with no name argument) becomes idempotent for free -- AC1's own wording is host.trigger.set(kind: webhook, tool: ingest) with no name at all. A mandatory name would be a breaking change to every existing caller; a default makes the common one-trigger-per-tool-per-kind case idempotent automatically while an explicit distinct name remains how a caller opts into a genuine second trigger (non-goal list / goal 4)."
     },
     {
       "why": 3,
-      "q": "Why does next_questions' fourth template (measure by a category on a joined table) need a dedicated categories-style neighbor table in the AC5 fixture, when the AC's own Given clause names only expenses?",
-      "a": "expenses(id, category, amount, day) alone supports at most four of the five named templates (total-by-category, over-time, top-10, count-by-category) -- the fourth ('...on a joined table') structurally needs a second, foreign-key-connected table with its own category-role column. The AC's Given clause is the minimal description of intent, not an exhaustive fixture; the test adds one foreign-key-connected categories(category, group_name) table so all five templates actually fire, rather than inventing a sixth ad hoc template outside requirement 5's named list to pad the count."
+      "q": "Why does an update never regenerate a webhook's secret or hook_id, even when other fields (tool, verify) change?",
+      "a": "AC2 requires 'the id and hook URL are unchanged' after a tool retarget, and AC1 requires that an unchanged config_hash make 'changed: []' with no write -- a webhook's CREATE path mints a fresh random secret every call, so if UPDATE also regenerated it, the second of two identical set calls would never be a true no-op (the secret would always differ), breaking AC1 for the webhook kind specifically. Treating hook_id and the secret as immutable after creation is what keeps both AC1's idempotence and AC2's URL-stability true simultaneously."
     },
     {
       "why": 4,
-      "q": "Why did AC10's first fixture fail at 1.6s instead of the 500ms bound, and was the fix a real performance bug or a test artifact?",
-      "a": "Both, diagnosed in order: the fixture itself reused identical filler column names (col_02..col_19) across all 50 tables, which same_name's (name, type) grouping turned into ~25,000 edges from an 18-column collision -- fixed by making filler names unique per table. Separately, build_graph_for_tenant was doing one list_table_model_annotations DB round trip per table (50 sequential spawn_blocking calls) -- a real N+1 query pattern independent of the fixture bug, fixed with one batched list_table_model_annotations_for_tenant query grouped in memory. Both landed in AC10's own commit since the fixture bug was what surfaced the second, pre-existing one."
+      "q": "Why does an update only recompute next_unix when the schedule-shaped part of the config (schedule/args/tz) actually changed, not on every update?",
+      "a": "AC2's webhook case and a schedule update that only retargets tool share the same shape: a field having nothing to do with timing shouldn't silently shift when the trigger next fires. Recomputing next_unix unconditionally on any update (e.g. a tool-only retarget) would move a schedule that was already correctly due soon, which no AC asks for and would surprise an agent that only meant to change which tool runs."
     },
     {
       "why": 5,
-      "q": "Why is the graph rebuilt from stored table_models rather than re-sampling each tenant's SQLite tables directly?",
-      "a": "tables_model.rs's own tick already re-samples and stores per-table models (roles, foreign_keys) within its 30s window; re-deriving that from scratch inside tables_graph.rs would duplicate detect_foreign_keys' sibling-table sampling logic and double the per-tick SQLite work. build_graph_from_models is a pure function over already-computed model JSON instead, which is also what makes AC10's 500ms bound (over 50 tables) actually achievable -- it's JSON-to-graph processing, not 50 tables' worth of fresh SQL sampling."
+      "q": "Why does the migration backfill run unconditionally every migrate() call (like migration 0049) instead of once, gated behind the same column-presence check that adds the name column itself?",
+      "a": "Gating the Rust-side backfill on the ALTER TABLE's own one-time presence check would miss any row inserted between the ALTER TABLE and the backfill during a rolling deploy (a server process still running old code, mid-restart, could insert a NULL-name row after a newer process's migrate() already ran its one-time gate). An unconditional, idempotent-by-its-own-WHERE-clause backfill (AC6's own test re-runs migrate() twice and expects the second call to be a no-op) closes that window the same way migration 0049's own data-only backfill already does."
     }
   ],
-  "created_at": "2026-09-30T00:00:00Z",
+  "created_at": "2026-10-01T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "What exact JSON shape does host.table.join_paths' no_path response take -- the PRD only says 'no_path returns with each table's key and id columns listed as candidates'.",
-      "resolution": "{from, to, paths: [], no_path: true, candidates: {<from_table>: [...], <to_table>: [...]}} -- candidates keyed by table name, each value the list of that table's key-or-id-role column names, read directly off the graph's own column nodes."
+      "question": "Should set without name on a tenant that already has two same-kind triggers for that tool update the first or refuse as ambiguous? (PRD's own open question, drafted default: refuse trigger_name_ambiguous listing both names.)",
+      "resolution": "No separate ambiguity path was needed: after migration 0059's backfill, the two pre-existing duplicates have distinct names (<kind>:<tool> and <kind>:<tool>-2), so a bare set(tool, kind) with no name argument always resolves its default name to exactly the first one -- there is no state in which two triggers share one name for this lookup to be ambiguous over, since (tenant_id, name) is the unique index itself."
     },
     {
-      "question": "Can a column pair legitimately carry both a foreign_key edge and a same_name edge at once (e.g. two tables both declaring an FK-related column under the same name and type)?",
-      "resolution": "Yes, left as-is rather than suppressed -- each edge kind is an independent, factually true signal (requirement 1 lists them as three separate rules), and AC7's own tenant-isolation test had to be written around this exact case (orders.id/customers.id: a real foreign-key pair that also happens to share a name and type), which confirmed it doesn't break join_paths' own shortest-path-first ordering (FK's weight 1.0 still sorts ahead of same_name's 0.5 at equal step count)."
+      "question": "Does the webhook kind's existing 'name' argument (previously required, alnum/underscore only, used as the inbox_<name> state table suffix) become a second, separate argument alongside the new trigger-identity name, or the same one?",
+      "resolution": "The same one: the PRD's own AC1 wording (host.trigger.set(kind: webhook, tool: ingest) with no name at all) requires the webhook kind's name argument to become optional too, and there is only one name key in the argument shape for a caller to pass. The inbox table is now named from the resolved trigger identity (inbox_<name>, including a default like webhook:ingest) rather than a second, separately-validated field; the previous alnum-only format restriction was dropped since tenant_state_tables.table_name is an ordinary parameterized string column, not a literal SQL identifier, so a colon in a default name is structurally safe."
     }
   ]
 }

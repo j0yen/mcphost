@@ -85,6 +85,9 @@ pub fn recipe_steps(recipe: &str, tool_name: &str, spec: &Value) -> Vec<Value> {
             json!({
                 "tool": "host.trigger.set",
                 "args_example": {"tool": tool_name, "kind": "webhook", "name": tool_name},
+                "note": "name is this trigger's identity -- repeating this exact call is safe: \
+                    the second (and every later) call updates the same trigger in place \
+                    (created: false) instead of minting a duplicate webhook.",
             }),
             json!({
                 "tool": "host.trigger.test",
@@ -104,8 +107,12 @@ pub fn recipe_steps(recipe: &str, tool_name: &str, spec: &Value) -> Vec<Value> {
                 "args_example": {
                     "tool": tool_name,
                     "kind": "schedule",
+                    "name": tool_name,
                     "schedule": "*/5 * * * *",
                 },
+                "note": "name is this trigger's identity -- repeating this exact call is safe: \
+                    the second (and every later) call updates the same trigger in place \
+                    (created: false) instead of minting a duplicate schedule.",
             }),
             json!({
                 "tool": "host.trigger.fire",

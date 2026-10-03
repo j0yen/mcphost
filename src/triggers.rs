@@ -161,6 +161,7 @@ fn validate_tz(tz: &str) -> Result<(), AppError> {
 fn trigger_base_json(row: &TriggerRow, last_status: Option<String>) -> Value {
     json!({
         "id": row.id,
+        "name": row.name,
         "tool": row.tool_name,
         "kind": row.kind,
         "enabled": row.enabled,
@@ -170,6 +171,32 @@ fn trigger_base_json(row: &TriggerRow, last_status: Option<String>) -> Value {
         "last_fired_unix": row.last_fired_unix,
         "last_status": last_status,
     })
+}
+
+/// `pub(crate)`: `hooks.rs`'s `set_event_trigger` and `webhooks.rs`'s
+/// `set_webhook_trigger` reuse this rather than each hand-rolling the same
+/// `{created, changed}` envelope `host.trigger.set`'s result always carries
+/// (P0 requirement 2).
+pub(crate) fn annotate_set_result(mut value: Value, created: bool, changed: &[&str]) -> Value {
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert("created".to_string(), json!(created));
+        obj.insert("changed".to_string(), json!(changed));
+    }
+    value
+}
+
+/// P0 requirement 2's kind-mismatch refusal: `name` already names a trigger
+/// of a different kind -- `host.trigger.set` never moves a name between
+/// kinds (non-goal: "that is a remove and a set").
+fn trigger_kind_mismatch(name: &str, existing_kind: &str, requested_kind: &str) -> AppError {
+    AppError::Structured {
+        code: "trigger_kind_mismatch",
+        message: format!(
+            "'{name}' is already a {existing_kind} trigger; remove it before using \
+             kind=\"{requested_kind}\" (a name never moves between kinds)"
+        ),
+        data: json!({"name": name, "existing_kind": existing_kind, "requested_kind": requested_kind}),
+    }
 }
 
 /// Builds the tenant-facing JSON for one trigger row, reading its own
@@ -209,10 +236,16 @@ async fn trigger_to_json(state: &AppState, tenant: &Tenant, row: TriggerRow) -> 
     value
 }
 
-/// `host.trigger.set(tool, kind="schedule"|"event", ...)` (P0 requirement
-/// 2; PRD-mcphost-inbound-events P0 requirement 3 added `kind="event"`).
-/// The tool lookup is shared by both kinds; each kind's own argument shape
-/// and quota lives in [`set_schedule`]/[`crate::hooks::set_event_trigger`].
+/// `host.trigger.set(tool, kind="schedule"|"event"|"message"|"webhook",
+/// name?, ...)` (P0 requirement 2; PRD-mcphost-inbound-events P0
+/// requirement 3 added `kind="event"`). The tool lookup, the `name`
+/// default/lookup and the create-vs-update-vs-`trigger_kind_mismatch`
+/// decision are shared by every kind; each kind's own argument shape,
+/// config diffing and quota lives in
+/// [`set_schedule`]/[`crate::hooks::set_event_trigger`]/
+/// [`set_message_trigger`]/[`crate::webhooks::set_webhook_trigger`], each
+/// of which takes the resolved `name` and the existing row (`None` on
+/// create, `Some` on update) rather than doing its own lookup.
 pub async fn set(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     // PRD-mcphost-spec-unknown-field-rejection requirement 2 (AC4): refused
     // before the tool lookup/any kind-specific dispatch below -- an
@@ -230,27 +263,38 @@ pub async fn set(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Valu
         .await?
         .ok_or_else(|| AppError::ToolNotFound(tool.clone()))?;
 
+    // P0 requirement 2: a tenant-unique identity, defaulting to
+    // `<kind>:<tool>` -- re-`set`ting the same name is what makes a setup
+    // script idempotent (goal 1).
+    let name = arg_str_opt(args, "name").unwrap_or_else(|| format!("{kind}:{tool}"));
+    let existing = state.db.get_trigger_by_name(tenant.id, name.clone()).await?;
+    if let Some(row) = &existing
+        && row.kind != kind
+    {
+        return Err(trigger_kind_mismatch(&name, &row.kind, &kind));
+    }
+
     match kind.as_str() {
-        "schedule" => set_schedule(state, tenant, &tool, args).await,
+        "schedule" => set_schedule(state, tenant, &tool, &name, args, existing).await,
         // PRD-mcphost-inbound-events P0 requirement 3: the second trigger
         // kind, goal 3's "an inbound event later" finally wired up. Its own
         // verify-config validation, quota and URL-building live in
         // `hooks.rs` (that module also owns `POST /hooks/...` itself), not
         // here -- this function stays the one place that decides which
         // kind an argument shape belongs to.
-        "event" => crate::hooks::set_event_trigger(state, tenant, &tool, args).await,
+        "event" => crate::hooks::set_event_trigger(state, tenant, &tool, &name, args, existing).await,
         // PRD-mcphost-agent-wake P0 requirement 1: the third trigger kind --
         // fires when a `host.msg.send`/`reply` delivers to this tenant, own
         // config/quota logic in `set_message_trigger` below (kept in this
         // module, not `hooks.rs` or `messaging.rs`, since it needs nothing
         // HTTP- or delivery-specific, only the same generic trigger CRUD
         // `set_schedule` above already has on hand).
-        "message" => set_message_trigger(state, tenant, &tool, args).await,
+        "message" => set_message_trigger(state, tenant, &tool, &name, args, existing).await,
         // PRD-mcphost-webhook-inbox P0 requirement 1: the fourth trigger
         // kind -- own config/quota/URL-building lives in `webhooks.rs`
         // (that module also owns `POST /hook/...`), same split `hooks.rs`'s
         // `set_event_trigger` already established for `kind = "event"`.
-        "webhook" => crate::webhooks::set_webhook_trigger(state, tenant, &tool, args).await,
+        "webhook" => crate::webhooks::set_webhook_trigger(state, tenant, &tool, &name, args, existing).await,
         other => Err(trigger_invalid(
             "kind",
             format!(
@@ -274,11 +318,14 @@ pub async fn set(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Valu
 /// `UNIQUE (tenant_id, tool_name, kind, config_hash)` constraint, the same
 /// way [`set_schedule`]/`hooks::set_event_trigger` already lean on that
 /// constraint rather than a second manual existing-rows scan.
+#[allow(clippy::too_many_arguments)]
 async fn set_message_trigger(
     state: &AppState,
     tenant: &Tenant,
     tool: &str,
+    name: &str,
     args: &Value,
+    existing: Option<TriggerRow>,
 ) -> Result<Value, AppError> {
     let from = arg_str_opt(args, "from");
     // PRD-mcphost-agent-channels requirement 7 / AC6: `channel_id` scopes
@@ -291,6 +338,43 @@ async fn set_message_trigger(
     // an unrelated DM.
     let channel_id = arg_str_opt(args, "channel_id");
 
+    let config = build_message_config(from.as_deref(), channel_id.as_deref());
+    let config_json = serde_json::to_string(&config)
+        .map_err(|e| AppError::Internal(format!("trigger config serialize: {e}")))?;
+    let hash = config_hash(&config_json);
+
+    // P0 requirement 2: re-`set`ting the same name updates in place instead
+    // of minting a second trigger.
+    if let Some(existing) = existing {
+        let old_from = parse_message_trigger_from(&existing.config_json);
+        let old_channel = parse_message_trigger_channel_id(&existing.config_json);
+        let mut changed = Vec::new();
+        if tool != existing.tool_name {
+            changed.push("tool_name");
+        }
+        if from != old_from {
+            changed.push("from");
+        }
+        if channel_id != old_channel {
+            changed.push("channel_id");
+        }
+        if changed.is_empty() {
+            let value = trigger_to_json_message(state, tenant, &existing).await;
+            return Ok(annotate_set_result(value, false, &changed));
+        }
+        state
+            .db
+            .update_trigger(existing.id.clone(), tool.to_string(), config_json, hash, None)
+            .await?;
+        let row = state
+            .db
+            .get_trigger(tenant.id, existing.id.clone())
+            .await?
+            .ok_or_else(|| AppError::Internal("trigger vanished immediately after update".to_string()))?;
+        let value = trigger_to_json_message(state, tenant, &row).await;
+        return Ok(annotate_set_result(value, false, &changed));
+    }
+
     let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
         AppError::Internal(format!(
             "tenant's plan '{}' is not in the loaded plan catalog",
@@ -299,23 +383,21 @@ async fn set_message_trigger(
     })?;
     // Requirement 1: message triggers share `event_triggers_max` with event
     // triggers, not a separate quota -- see
-    // `Db::count_event_triggers_for_tenant`'s own doc comment.
-    let existing = state.db.count_event_triggers_for_tenant(tenant.id).await?;
-    if existing >= plan.event_triggers_max {
+    // `Db::count_event_triggers_for_tenant`'s own doc comment. Requirement
+    // 4: a create only, never an update, ever consumes a slot.
+    let existing_count = state.db.count_event_triggers_for_tenant(tenant.id).await?;
+    if existing_count >= plan.event_triggers_max {
         return Err(AppError::Structured {
             code: "trigger_quota_exceeded",
             message: format!(
-                "tenant already holds {existing} event/message triggers, the plan maximum of {}",
+                "tenant already holds {existing_count} event/message triggers, the plan maximum \
+                 of {}",
                 plan.event_triggers_max
             ),
             data: json!({"event_triggers_max": plan.event_triggers_max}),
         });
     }
 
-    let config = build_message_config(from.as_deref(), channel_id.as_deref());
-    let config_json = serde_json::to_string(&config)
-        .map_err(|e| AppError::Internal(format!("trigger config serialize: {e}")))?;
-    let hash = config_hash(&config_json);
     let id = new_ulid();
     state
         .db
@@ -328,6 +410,7 @@ async fn set_message_trigger(
             hash,
             None,
             None,
+            name.to_string(),
         )
         .await
         .map_err(|_| {
@@ -344,7 +427,8 @@ async fn set_message_trigger(
         .get_trigger(tenant.id, id.clone())
         .await?
         .ok_or_else(|| AppError::Internal("trigger vanished immediately after insert".to_string()))?;
-    Ok(trigger_to_json_message(state, tenant, &row).await)
+    let value = trigger_to_json_message(state, tenant, &row).await;
+    Ok(annotate_set_result(value, true, &[]))
 }
 
 fn build_message_config(from: Option<&str>, channel_id: Option<&str>) -> Value {
@@ -394,11 +478,14 @@ async fn trigger_to_json_message(state: &AppState, tenant: &Tenant, row: &Trigge
     value
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn set_schedule(
     state: &AppState,
     tenant: &Tenant,
     tool: &str,
+    name: &str,
     args: &Value,
+    existing: Option<TriggerRow>,
 ) -> Result<Value, AppError> {
     let schedule_expr = arg_str(args, "schedule")?;
     let call_args = args.get("args").cloned().unwrap_or_else(|| json!({}));
@@ -443,22 +530,63 @@ async fn set_schedule(
         }
     }
 
-    let existing = state.db.count_schedule_triggers_for_tenant(tenant.id).await?;
-    if existing >= plan.schedules_max {
+    let config = build_config(&schedule_expr, &call_args, tz.as_deref());
+    let config_json = serde_json::to_string(&config)
+        .map_err(|e| AppError::Internal(format!("trigger config serialize: {e}")))?;
+    let hash = config_hash(&config_json);
+
+    // P0 requirement 2 / AC3: re-`set`ting the same name updates the
+    // trigger in place -- `next_unix` is only recomputed (requirement 2)
+    // when the schedule-shaped part of the config actually changed, so an
+    // update that only retargets `tool` doesn't silently shift a schedule
+    // that was already due soon.
+    if let Some(existing) = existing {
+        let (old_schedule, old_args, old_tz) = parse_stored_config(&existing.config_json);
+        let mut changed = Vec::new();
+        if tool != existing.tool_name {
+            changed.push("tool_name");
+        }
+        if schedule_expr != old_schedule {
+            changed.push("schedule");
+        }
+        if call_args != old_args {
+            changed.push("args");
+        }
+        if tz.as_deref() != old_tz.as_deref() {
+            changed.push("tz");
+        }
+        if changed.is_empty() {
+            let value = trigger_to_json(state, tenant, existing).await;
+            return Ok(annotate_set_result(value, false, &changed));
+        }
+        let schedule_changed = changed.iter().any(|f| matches!(*f, "schedule" | "args" | "tz"));
+        let next_unix = if schedule_changed { Some(next1) } else { existing.next_unix };
+        state
+            .db
+            .update_trigger(existing.id.clone(), tool.to_string(), config_json, hash, next_unix)
+            .await?;
+        let row = state
+            .db
+            .get_trigger(tenant.id, existing.id.clone())
+            .await?
+            .ok_or_else(|| AppError::Internal("trigger vanished immediately after update".to_string()))?;
+        let value = trigger_to_json(state, tenant, row).await;
+        return Ok(annotate_set_result(value, false, &changed));
+    }
+
+    // Requirement 4: only a create, never an update, ever consumes a slot.
+    let existing_count = state.db.count_schedule_triggers_for_tenant(tenant.id).await?;
+    if existing_count >= plan.schedules_max {
         return Err(AppError::Structured {
             code: "trigger_quota_exceeded",
             message: format!(
-                "tenant already holds {existing} schedules, the plan maximum of {}",
+                "tenant already holds {existing_count} schedules, the plan maximum of {}",
                 plan.schedules_max
             ),
             data: json!({"schedules_max": plan.schedules_max}),
         });
     }
 
-    let config = build_config(&schedule_expr, &call_args, tz.as_deref());
-    let config_json = serde_json::to_string(&config)
-        .map_err(|e| AppError::Internal(format!("trigger config serialize: {e}")))?;
-    let hash = config_hash(&config_json);
     let id = new_ulid();
     state
         .db
@@ -471,6 +599,7 @@ async fn set_schedule(
             hash,
             Some(next1),
             None,
+            name.to_string(),
         )
         .await
         .map_err(|_| {
@@ -485,7 +614,8 @@ async fn set_schedule(
         .get_trigger(tenant.id, id.clone())
         .await?
         .ok_or_else(|| AppError::Internal("trigger vanished immediately after insert".to_string()))?;
-    Ok(trigger_to_json(state, tenant, row).await)
+    let value = trigger_to_json(state, tenant, row).await;
+    Ok(annotate_set_result(value, true, &[]))
 }
 
 /// [`CronSchedule::parse`]'s [`crate::cron::CronError`] -> [`AppError`],
@@ -509,14 +639,34 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     Ok(json!({"triggers": triggers}))
 }
 
-/// `host.trigger.get(id)`.
+/// P0 requirement 3 / AC5: every trigger verb below (`get`/`pause`/
+/// `resume`/`remove`/`fire` here, `hooks::test`/`replay` in `hooks.rs`)
+/// accepts either `id` or `name` to address a trigger -- this is the one
+/// place that decides which the caller gave and resolves it to a row, so
+/// `name`-addressed and `id`-addressed calls run the exact same lookup.
+pub(crate) async fn resolve(state: &AppState, tenant: &Tenant, args: &Value) -> Result<TriggerRow, AppError> {
+    if let Some(id) = arg_str_opt(args, "id") {
+        return state
+            .db
+            .get_trigger(tenant.id, id.clone())
+            .await?
+            .ok_or_else(|| trigger_not_found(&id));
+    }
+    if let Some(name) = arg_str_opt(args, "name") {
+        return state
+            .db
+            .get_trigger_by_name(tenant.id, name.clone())
+            .await?
+            .ok_or_else(|| trigger_not_found(&name));
+    }
+    Err(AppError::InvalidArgs(
+        "missing required argument 'id' or 'name'".to_string(),
+    ))
+}
+
+/// `host.trigger.get(id|name)`.
 pub async fn get(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    let id = arg_str(args, "id")?;
-    let row = state
-        .db
-        .get_trigger(tenant.id, id.clone())
-        .await?
-        .ok_or_else(|| trigger_not_found(&id))?;
+    let row = resolve(state, tenant, args).await?;
     Ok(trigger_to_json(state, tenant, row).await)
 }
 
@@ -526,15 +676,9 @@ async fn set_enabled(
     args: &Value,
     enabled: bool,
 ) -> Result<Value, AppError> {
-    let id = arg_str(args, "id")?;
-    let ok = state
-        .db
-        .set_trigger_enabled(tenant.id, id.clone(), enabled)
-        .await?;
-    if !ok {
-        return Err(trigger_not_found(&id));
-    }
-    Ok(json!({"id": id, "enabled": enabled}))
+    let row = resolve(state, tenant, args).await?;
+    state.db.set_trigger_enabled(tenant.id, row.id.clone(), enabled).await?;
+    Ok(json!({"id": row.id, "name": row.name, "enabled": enabled}))
 }
 
 /// `host.trigger.pause(id)`.
@@ -551,27 +695,20 @@ pub async fn resume(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
     set_enabled(state, tenant, args, true).await
 }
 
-/// `host.trigger.remove(id)` (AC7's per-trigger primitive; `host.tool_remove`
-/// disables rather than removes, see [`crate::db::Db::disable_triggers_for_tool`]).
+/// `host.trigger.remove(id|name)` (AC7's per-trigger primitive;
+/// `host.tool_remove` disables rather than removes, see
+/// [`crate::db::Db::disable_triggers_for_tool`]).
 pub async fn remove(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    let id = arg_str(args, "id")?;
-    let ok = state.db.remove_trigger(tenant.id, id.clone()).await?;
-    if !ok {
-        return Err(trigger_not_found(&id));
-    }
-    Ok(json!({"removed": id}))
+    let row = resolve(state, tenant, args).await?;
+    state.db.remove_trigger(tenant.id, row.id.clone()).await?;
+    Ok(json!({"removed": row.id, "name": row.name}))
 }
 
-/// `host.trigger.fire(id)` (P1 requirement 7 / AC10): runs the schedule
-/// once right now, independent of `next_unix`/`enabled` -- a paused
-/// trigger can still be fired manually for testing.
+/// `host.trigger.fire(id|name)` (P1 requirement 7 / AC10): runs the
+/// schedule once right now, independent of `next_unix`/`enabled` -- a
+/// paused trigger can still be fired manually for testing.
 pub async fn fire(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    let id = arg_str(args, "id")?;
-    let row = state
-        .db
-        .get_trigger(tenant.id, id.clone())
-        .await?
-        .ok_or_else(|| trigger_not_found(&id))?;
+    let row = resolve(state, tenant, args).await?;
     let (_, call_args, _) = parse_stored_config(&row.config_json);
     let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
         AppError::Internal(format!(
@@ -649,6 +786,7 @@ pub async fn admin_triggers(state: &AppState, args: &Value) -> Result<Value, App
             };
             if let Some(obj) = value.as_object_mut() {
                 obj.insert("id".to_string(), json!(row.id));
+                obj.insert("name".to_string(), json!(row.name));
                 obj.insert("tenant_id".to_string(), json!(row.tenant_id));
                 obj.insert("tool".to_string(), json!(row.tool_name));
                 obj.insert("kind".to_string(), json!(row.kind));

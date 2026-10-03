@@ -34,6 +34,27 @@ wasmtime, surfaced by the same `cargo deny check advisories` gate).
 48.0.5" to match. `deny.toml`'s RUSTSEC-2026-0316/-0314 gate-debt ignores
 are removed -- both were already `>=48.0.3` fixes the same bump covers.
 
+## v0.71.0 — 2026-10-02
+
+Triggers now have a tenant-unique `name` (default `<kind>:<tool_name>`).
+`host.trigger.set` with an existing name updates that trigger in place
+(tool, schedule, verify config) instead of minting a duplicate -- the id
+and, for a webhook, the hook URL and secret, are stable across updates --
+and returns `{id, name, created, changed: [...]}`. A name that already
+names a trigger of a different kind fails `trigger_kind_mismatch`.
+`host.trigger.get/pause/resume/remove/fire`, `host.trigger.test` and
+`host.trigger.replay`'s webhook-row branch now accept `name` wherever they
+accept `id`. Quotas count distinct names; an update never consumes a slot.
+Migration 0064 backfills every pre-existing trigger's `name` from
+`<kind>:<tool_name>`, suffixing `-2`, `-3`, ... on a same-tenant/kind/tool
+collision so no pre-existing row is lost. The `webhook-inbox` quickstart
+recipe now shows `name` on its `host.trigger.set` step and notes that
+repeating the call is safe.
+
+PRD-mcphost-trigger-set-idempotent AC1-AC7. AC8 (Live, operator-provisioned
+production rollout on prod tenant joe-test) is deferred -- not something
+this repo's own test suite can prove.
+
 ## v0.69.0 — 2026-10-02
 
 `host.quickstart kind=python` now carries `sandbox_api`: `import mcphost`
@@ -115,6 +136,23 @@ argument.
 PRD-mcphost-one-next-tool AC1-AC7, AC9 (`nexttool_*` test files). AC8
 (Live, operator-provisioned production rollout) is deferred -- not
 something this repo's own test suite can prove.
+
+## v0.66.0 — 2026-10-01
+
+Triggers now have a tenant-unique `name` (default `<kind>:<tool_name>`).
+`host.trigger.set` with an existing name updates that trigger in place
+(tool, schedule, verify config) instead of minting a duplicate -- the id
+and, for a webhook, the hook URL and secret, are stable across updates --
+and returns `{id, name, created, changed: [...]}`. A name that already
+names a trigger of a different kind fails `trigger_kind_mismatch`.
+`host.trigger.get/pause/resume/remove/fire`, `host.trigger.test` and
+`host.trigger.replay`'s webhook-row branch now accept `name` wherever they
+accept `id`. Quotas count distinct names; an update never consumes a slot.
+Migration 0064 backfills every pre-existing trigger's `name` from
+`<kind>:<tool_name>`, suffixing `-2`, `-3`, ... on a same-tenant/kind/tool
+collision so no pre-existing row is lost. The `webhook-inbox` and
+`schedules` quickstart recipes now show `name` on their `host.trigger.set`
+step and note that repeating the call is safe.
 
 ## v0.65.0 — 2026-10-01
 

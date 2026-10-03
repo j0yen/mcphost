@@ -89,13 +89,6 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     diff == 0
 }
 
-fn arg_str(args: &Value, name: &str) -> Result<String, AppError> {
-    args.get(name)
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .ok_or_else(|| AppError::InvalidArgs(format!("missing required argument '{name}'")))
-}
-
 fn webhook_not_found() -> AppError {
     AppError::Structured {
         code: "webhook_not_found",
@@ -177,21 +170,15 @@ pub fn webhook_url(state: &AppState, hook_id: &str) -> String {
 /// returns `{url, secret, ...}` -- the only time the secret is ever in a
 /// response (AC1: "`host.trigger.get` afterwards has the url and no
 /// secret").
+#[allow(clippy::too_many_arguments)]
 pub async fn set_webhook_trigger(
     state: &AppState,
     tenant: &Tenant,
     tool: &str,
+    name: &str,
     args: &Value,
+    existing: Option<TriggerRow>,
 ) -> Result<Value, AppError> {
-    let name = arg_str(args, "name")?;
-    if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-        return Err(trigger_invalid(
-            "name",
-            "name must be a non-empty string of letters, digits and underscores (it becomes the \
-             inbox_<name> state table name)"
-                .to_string(),
-        ));
-    }
     let verify = args.get("verify").and_then(Value::as_str).unwrap_or("hmac").to_string();
     if !matches!(verify.as_str(), "hmac" | "none" | "stripe") {
         return Err(trigger_invalid(
@@ -200,19 +187,61 @@ pub async fn set_webhook_trigger(
         ));
     }
 
+    // P0 requirement 2 / AC1-AC2: re-`set`ting the same name updates in
+    // place instead of minting a second trigger (and a second webhook
+    // slot) -- `hook_id`/the secret are never regenerated on update
+    // (AC2: "the id and hook URL are unchanged"; regenerating the secret
+    // on an unrelated field update would silently break every sender
+    // already configured with it, the same stability `hook_id` itself
+    // gets).
+    if let Some(existing) = existing {
+        let old_config = parse_webhook_config(&existing.config_json);
+        let old_verify = old_config.as_ref().map(|c| c.verify.clone()).unwrap_or_default();
+        let mut changed = Vec::new();
+        if tool != existing.tool_name {
+            changed.push("tool_name");
+        }
+        if verify != old_verify {
+            changed.push("verify");
+        }
+        if changed.is_empty() {
+            let value = trigger_to_json_webhook(state, tenant, &existing).await;
+            return Ok(crate::triggers::annotate_set_result(value, false, &changed));
+        }
+        let (secret_enc, secret_nonce) = old_config
+            .map(|c| (c.secret_enc, c.secret_nonce))
+            .unwrap_or_default();
+        let config = build_webhook_config(name, &verify, &secret_enc, &secret_nonce);
+        let config_json = serde_json::to_string(&config)
+            .map_err(|e| AppError::Internal(format!("trigger config serialize: {e}")))?;
+        let hash = crate::triggers::config_hash(&config_json);
+        state
+            .db
+            .update_trigger(existing.id.clone(), tool.to_string(), config_json, hash, None)
+            .await?;
+        let row = state
+            .db
+            .get_trigger(tenant.id, existing.id.clone())
+            .await?
+            .ok_or_else(|| AppError::Internal("trigger vanished immediately after update".to_string()))?;
+        let value = trigger_to_json_webhook(state, tenant, &row).await;
+        return Ok(crate::triggers::annotate_set_result(value, false, &changed));
+    }
+
     // requirement 5 / AC8: webhooks share the schedules_max quota.
+    // Requirement 4: only a create, never an update, ever consumes a slot.
     let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
         AppError::Internal(format!(
             "tenant's plan '{}' is not in the loaded plan catalog",
             tenant.plan
         ))
     })?;
-    let existing = state.db.count_schedule_triggers_for_tenant(tenant.id).await?;
-    if existing >= plan.schedules_max {
+    let existing_count = state.db.count_schedule_triggers_for_tenant(tenant.id).await?;
+    if existing_count >= plan.schedules_max {
         return Err(AppError::Structured {
             code: "trigger_quota_exceeded",
             message: format!(
-                "tenant already holds {existing} schedules/webhooks, the plan maximum of {}",
+                "tenant already holds {existing_count} schedules/webhooks, the plan maximum of {}",
                 plan.schedules_max
             ),
             data: json!({"schedules_max": plan.schedules_max}),
@@ -223,7 +252,7 @@ pub async fn set_webhook_trigger(
     let (secret_enc, secret_nonce) = state.secrets.encrypt(&secret_plain)?;
     let hook_id = new_ulid();
 
-    let config = build_webhook_config(&name, &verify, &secret_enc, &secret_nonce);
+    let config = build_webhook_config(name, &verify, &secret_enc, &secret_nonce);
     let config_json = serde_json::to_string(&config)
         .map_err(|e| AppError::Internal(format!("trigger config serialize: {e}")))?;
     let hash = crate::triggers::config_hash(&config_json);
@@ -239,6 +268,7 @@ pub async fn set_webhook_trigger(
             hash,
             None,
             Some(hook_id),
+            name.to_string(),
         )
         .await
         .map_err(|_| {
@@ -260,7 +290,7 @@ pub async fn set_webhook_trigger(
     .map_err(|e| AppError::Internal(format!("inbox schema serialize: {e}")))?;
     state
         .db
-        .state_table_create(tenant.id, inbox_table_name(&name), schema_json, None)
+        .state_table_create(tenant.id, inbox_table_name(name), schema_json, None)
         .await?;
 
     let row = state
@@ -272,7 +302,7 @@ pub async fn set_webhook_trigger(
     if let Some(obj) = out.as_object_mut() {
         obj.insert("secret".to_string(), json!(secret_plain));
     }
-    Ok(out)
+    Ok(crate::triggers::annotate_set_result(out, true, &[]))
 }
 
 /// The webhook-kind shape of `host.trigger.list`/`get`'s per-trigger JSON
