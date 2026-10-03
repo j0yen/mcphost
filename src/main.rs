@@ -53,6 +53,16 @@ enum Command {
         /// `$MCPHOST_DATA_DIR/mcphost.db` (the normal live database path).
         #[arg(long)]
         db: Option<PathBuf>,
+        /// PRD-mcphost-compat-check-unprivileged: the unprivileged user
+        /// the previous release's child process should run as, when this
+        /// process's own real uid is 0 (`mcphost-deploy` runs
+        /// `--check-compat` over ssh as root). Ignored when this process
+        /// isn't root. With no `--run-as` and real uid 0, defaults to the
+        /// live `--db` file's own owner -- the same unprivileged user
+        /// every documented deployment of mcphost (systemd **user**
+        /// units) already runs the live service as.
+        #[arg(long)]
+        run_as: Option<String>,
     },
     /// Print the version and exit.
     Version,
@@ -264,6 +274,7 @@ async fn main() -> anyhow::Result<()> {
             check_compat,
             previous,
             db: db_path,
+            run_as,
         } => {
             init_tracing();
             if check_compat {
@@ -272,7 +283,8 @@ async fn main() -> anyhow::Result<()> {
                     std::process::exit(2);
                 };
                 let live_db = db_path.unwrap_or_else(|| data_dir().join("mcphost.db"));
-                match mcphost::compat_check::run(&live_db, &previous_bin).await {
+                match mcphost::compat_check::run(&live_db, &previous_bin, run_as.as_deref()).await
+                {
                     Ok(()) => {
                         println!("check-compat: ok (previous release runs on the migrated schema)");
                         Ok(())
