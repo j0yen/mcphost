@@ -241,3 +241,44 @@ jobs:
 
       - name: scripts/flake-lint.sh tests
         run: ./scripts/flake-lint.sh tests
+
+  # Defect (10-03): a dependency bump (wasmtime 48 / cranelift 0.135, needing
+  # rustc 1.95) landed on main while `rust-version` in Cargo.toml stayed at
+  # 1.94. `gate` and `sandbox` both build with the toolchain pinned in
+  # rust-toolchain.toml (always >= the declared rust-version, since that's
+  # the toolchain actually used for development), so neither noticed -- CI
+  # stayed green for hours and only wm-build's own `msrv-verify` gate caught
+  # the mismatch, blocking every land. This job closes that gap on every PR:
+  # it reads the declared `rust-version` straight from Cargo.toml and builds
+  # with EXACTLY that toolchain, so a PR whose dependencies need a newer
+  # rustc than it declares fails here instead of silently passing `gate`.
+  # No `needs:` -- runs concurrently with the other jobs.
+  msrv:
+    name: msrv check (builds with the declared rust-version toolchain)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: read declared rust-version from Cargo.toml
+        id: msrv
+        run: |
+          v=$(grep -m1 '^rust-version' Cargo.toml | sed -E 's/^rust-version *= *"([^"]+)".*/\1/')
+          if [ -z "$v" ]; then
+            echo "::error::could not read a rust-version from Cargo.toml's [package] table"
+            exit 1
+          fi
+          echo "declared rust-version: $v"
+          echo "v=$v" >> "$GITHUB_OUTPUT"
+
+      # Same action already used by `gate`/`sandbox` above, just pointed at
+      # the declared version instead of rust-toolchain.toml's channel -- this
+      # reuses its built-in cargo cache rather than adding a new one.
+      - name: install the declared rust-version toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@9d7e65c320fdb52dcd45ffaa68deb6c02c8754d9 # v1.10.1
+        with:
+          toolchain: ${{ steps.msrv.outputs.v }}
+
+      - name: cargo check --locked --all-targets with the declared MSRV
+        run: cargo check --locked --all-targets
