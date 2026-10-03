@@ -266,7 +266,7 @@ pub(crate) fn tenant_db_path(state: &AppState, tenant_id: i64) -> PathBuf {
 /// PRD-mcphost-sqlite-busy-timeout-audit requirement 1: opens through the
 /// single factory (role `tenant_table`), which sets `busy_timeout`,
 /// `journal_mode=WAL`, `synchronous=NORMAL`, and `foreign_keys=ON`.
-fn open_conn(path: &Path, cfg: &crate::db::DbConfig) -> Result<Connection, AppError> {
+pub(crate) fn open_conn(path: &Path, cfg: &crate::db::DbConfig) -> Result<Connection, AppError> {
     let (conn, _audit) = crate::db::open_with_role(path, crate::db::ROLE_TENANT_TABLE, cfg)?;
     conn.execute_batch(&format!(
         "CREATE TABLE IF NOT EXISTS {META_TABLE} (
@@ -303,10 +303,28 @@ where
     F: FnOnce(&Connection) -> Result<T, AppError> + Send + 'static,
     T: Send + 'static,
 {
+    // PRD-mcphost-dry-run-side-effects requirement 2: inside a
+    // `dryrun::with_dry_run` scope, every table op for this call routes
+    // through that call's own dedicated, savepoint-wrapped connection
+    // (`dryrun::DryRunCtx::table_conn_sync`) instead of a fresh one -- so a
+    // `mcphost.table.append` followed by a `mcphost.table.query` in the same
+    // call sees the uncommitted append, and neither is ever committed to the
+    // tenant's own `tables/<id>.db` file.
+    let dry_run = crate::dryrun::current();
     tokio::task::spawn_blocking(move || {
-        crate::db::instrument_stmt(&counters, crate::db::ROLE_TENANT_TABLE, move || {
-            let conn = open_conn(&path, &cfg)?;
-            f(&conn)
+        crate::db::instrument_stmt(&counters, crate::db::ROLE_TENANT_TABLE, move || match &dry_run
+        {
+            Some(dry_run) => {
+                let conn = dry_run.table_conn_sync(&path, &cfg)?;
+                let guard = conn
+                    .lock()
+                    .map_err(|_| AppError::Storage("db lock poisoned".into()))?;
+                f(&guard)
+            }
+            None => {
+                let conn = open_conn(&path, &cfg)?;
+                f(&conn)
+            }
         })
     })
     .await
@@ -638,7 +656,22 @@ fn insert_rows_sync(
     schema: &LoadedSchema,
     rows: &[Map<String, Value>],
 ) -> Result<Vec<i64>, AppError> {
-    conn.execute("BEGIN IMMEDIATE", [])?;
+    // PRD-mcphost-dry-run-side-effects: under `dryrun::DryRunCtx`, `conn`
+    // already has `SAVEPOINT test_run` open (requirement 2's "savepoint
+    // depth 1" -- this is the one nested level the DB layer already uses),
+    // so a plain `BEGIN IMMEDIATE` here would fail with "cannot start a
+    // transaction within a transaction". A nested `SAVEPOINT` is always
+    // legal whether or not an outer transaction is active, but it defers
+    // lock acquisition (unlike `BEGIN IMMEDIATE`'s eager one) -- so the
+    // ordinary (non-nested) path keeps `BEGIN IMMEDIATE`'s eager locking
+    // unchanged, and only the nested case (`!conn.is_autocommit()`) takes
+    // the savepoint form.
+    let nested = !conn.is_autocommit();
+    if nested {
+        conn.execute("SAVEPOINT insert_rows", [])?;
+    } else {
+        conn.execute("BEGIN IMMEDIATE", [])?;
+    }
     let outcome: Result<Vec<i64>, AppError> = (|| {
         let mut ids = Vec::with_capacity(rows.len());
         for row in rows {
@@ -665,11 +698,20 @@ fn insert_rows_sync(
     })();
     match outcome {
         Ok(ids) => {
-            conn.execute("COMMIT", [])?;
+            if nested {
+                conn.execute("RELEASE insert_rows", [])?;
+            } else {
+                conn.execute("COMMIT", [])?;
+            }
             Ok(ids)
         }
         Err(e) => {
-            let _ = conn.execute("ROLLBACK", []);
+            if nested {
+                let _ = conn.execute("ROLLBACK TO insert_rows", []);
+                let _ = conn.execute("RELEASE insert_rows", []);
+            } else {
+                let _ = conn.execute("ROLLBACK", []);
+            }
             Err(e)
         }
     }

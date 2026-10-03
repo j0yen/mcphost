@@ -368,6 +368,10 @@ mod docstore_ac08_unsupported_mime_by_content_sniff;
 mod docstore_ac10_purge_older_than_versions;
 #[path = "docstore_ac11_export_includes_documents.rs"]
 mod docstore_ac11_export_includes_documents;
+#[path = "dryrun_ac05_chain_host_table_append_step.rs"]
+mod dryrun_ac05_chain_host_table_append_step;
+#[path = "dryrun_ac06_tools_list_mentions_dry_run.rs"]
+mod dryrun_ac06_tools_list_mentions_dry_run;
 #[path = "enduser_ac02_assertion_http_headers_and_calls_row.rs"]
 mod enduser_ac02_assertion_http_headers_and_calls_row;
 #[path = "enduser_ac03_invalid_assertion_rejected.rs"]

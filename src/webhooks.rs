@@ -403,6 +403,14 @@ async fn accept_delivery(
     config: &WebhookConfig,
     body: &[u8],
     headers: &HeaderMap,
+    // PRD-mcphost-dry-run-side-effects requirement 1 (AC3): `true` only for
+    // `host.trigger.test`'s own synthetic delivery -- threaded all the way
+    // into the enqueued run's own `test` column (migration 0018), so the
+    // async executor (`runs.rs::execute_job`) knows to run the fired tool
+    // under the same savepoint/short-circuit convention
+    // `host.tool_test`/`host.tool_run(test: true)` already use. `false` for
+    // every real `POST /hook/{id}` delivery.
+    is_test: bool,
 ) -> Result<AcceptOutcome, AppError> {
     let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
         AppError::Internal(format!(
@@ -480,6 +488,7 @@ async fn accept_delivery(
                     dedupe_key: None,
                     message_id: None,
                     args_json,
+                    test: is_test,
                 },
             )
             .await?,
@@ -543,7 +552,7 @@ pub async fn hook_receive(State(state): State<Arc<AppState>>, Path(hook_id): Pat
         return webhook_error_response(AppError::Internal("webhook trigger config is corrupt".to_string()));
     };
 
-    match accept_delivery(&state, &tenant, &lookup, &config, &body, &headers).await {
+    match accept_delivery(&state, &tenant, &lookup, &config, &body, &headers, false).await {
         Ok(outcome) => (
             StatusCode::OK,
             Json(json!({"row_id": outcome.row_id, "run_id": outcome.run_id})),
@@ -588,7 +597,7 @@ pub async fn test_webhook_trigger(state: &AppState, tenant: &Tenant, row: &Trigg
         _ => {}
     }
 
-    let outcome = accept_delivery(state, tenant, row, &config, &body_bytes, &headers).await?;
+    let outcome = accept_delivery(state, tenant, row, &config, &body_bytes, &headers, true).await?;
     Ok(json!({"row_id": outcome.row_id, "run_id": outcome.run_id, "test": true}))
 }
 

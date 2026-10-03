@@ -37,6 +37,16 @@
     "AC7": "tests/trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent.rs"
   },
   "ac_test_map_by_prefix": {
+    "dryrun": {
+      "_prd": "PRD-mcphost-dry-run-side-effects.md -- superseded by mcphost-trigger-set-idempotent at HEAD (this rebase); real test_prefix is dryrun",
+      "AC1": "tests/dryrun_ac01_table_append_rolled_back.rs",
+      "AC2": "tests/dryrun_ac02_append_then_query_same_call.rs",
+      "AC3": "tests/dryrun_ac03_trigger_test_channel_post_short_circuited.rs",
+      "AC4": "tests/dryrun_ac04_tool_run_test_state_write.rs",
+      "AC5": "tests/dryrun_ac05_chain_host_table_append_step.rs",
+      "AC6": "tests/dryrun_ac06_tools_list_mentions_dry_run.rs",
+      "AC7": "tests/dryrun_ac07_quota_real_error_table_unchanged.rs"
+    },
     "bridgedisc": {
       "_prd": "PRD-mcphost-sandbox-bridge-discoverability.md -- superseded by mcphost-chain-run-lineage at HEAD (this rebase); real test_prefix is bridgedisc",
       "AC1": "tests/bridgedisc_ac01_sandbox_api_source_of_truth.rs",
@@ -145,6 +155,29 @@
       "AC6": "tests/chanbridge_ac06_python_kind_doc_documents_channel_and_msg.rs",
       "AC7": "tests/chanbridge_ac07_channel_read_ack_resumes_from_stored_cursor.rs",
       "AC8": "deferred -- operator-provisioned; AC8 is the Live/production-only requirement (the landed binary deployed on prod, a real schedule retargeted at a real tenant, evidence pasted into the PRD's own evidence block) and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
+    },
+    "nexttool": {
+      "_prd": "PRD-mcphost-one-next-tool.md -- archived by PRD-mcphost-dry-run-side-effects's own test-map refresh (this dict key is the PRD's test_prefix, matching the convention every other entry in ac_test_map_by_prefix already follows).",
+      "AC1": "tests/nexttool_ac01_anonymous_starter_set.rs",
+      "AC2": "tests/nexttool_ac02_authenticated_listing_unchanged.rs",
+      "AC3": "tests/nexttool_ac03_signup_emits_list_changed.rs",
+      "AC4": "tests/nexttool_ac04_tool_publish_next_hint.rs",
+      "AC5": "tests/nexttool_ac05_five_distinct_tools_suppresses_hint.rs",
+      "AC6": "tests/nexttool_ac06_hints_false_suppresses_hint.rs",
+      "AC7": "tests/nexttool_ac07_header_authenticated_never_gets_hint.rs",
+      "AC8": "deferred -- operator-provisioned; AC8 is the Live/production-only requirement (implicit-signup auto-binding in production) and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list.",
+      "AC9": "tests/nexttool_ac09_host_usage_hints_shown_and_followed.rs"
+    },
+    "unkfield": {
+      "_prd": "PRD-mcphost-spec-unknown-field-rejection.md -- superseded by mcphost-dry-run-side-effects at HEAD; real test_prefix is unkfield",
+      "AC1": "tests/unkfield_ac01_write_table_rejected.rs",
+      "AC2": "tests/unkfield_ac02_misplaced_field_valid_for.rs",
+      "AC3": "tests/unkfield_ac03_near_miss_did_you_mean.rs",
+      "AC4": "tests/unkfield_ac04_trigger_set_unknown_argument.rs",
+      "AC5": "tests/unkfield_ac05_tools_list_additional_properties_false.rs",
+      "AC6": "tests/unkfield_ac06_doc_examples_never_rejected.rs",
+      "AC7": "tests/unkfield_ac07_spec_fields_doc_check_script.rs",
+      "AC8": "deferred -- operator-provisioned: Live, prod tenant joe-test; needs a real deploy this coding sandbox cannot drive. See the coder dispatch's own deferred list."
     },
     "oauthunverifiedclientconsentwarning": {
       "_prd": "PRD-mcphost-oauth-unverified-client-consent-warning.md -- superseded by mcphost-unknown-kind-routes-to-recipe at HEAD; real test_prefix is mcphost_oauth_unverified_client_consent_warning",

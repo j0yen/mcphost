@@ -82,6 +82,16 @@ mod docsqa_ac07_embeddings_reports_both_hit_rates;
 mod docsqa_ac08_zero_passages_is_structured_not_an_error;
 #[path = "docstore_ac09_python_mcphost_docs_get_without_tool_call.rs"]
 mod docstore_ac09_python_mcphost_docs_get_without_tool_call;
+#[path = "dryrun_ac01_table_append_rolled_back.rs"]
+mod dryrun_ac01_table_append_rolled_back;
+#[path = "dryrun_ac02_append_then_query_same_call.rs"]
+mod dryrun_ac02_append_then_query_same_call;
+#[path = "dryrun_ac03_trigger_test_channel_post_short_circuited.rs"]
+mod dryrun_ac03_trigger_test_channel_post_short_circuited;
+#[path = "dryrun_ac04_tool_run_test_state_write.rs"]
+mod dryrun_ac04_tool_run_test_state_write;
+#[path = "dryrun_ac07_quota_real_error_table_unchanged.rs"]
+mod dryrun_ac07_quota_real_error_table_unchanged;
 #[path = "enduser_ac01_oauth_python_env_and_calls_row.rs"]
 mod enduser_ac01_oauth_python_env_and_calls_row;
 #[path = "enduser_ac04_no_identity_env_unset_and_calls_row_null.rs"]
