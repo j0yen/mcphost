@@ -731,7 +731,8 @@ fn tool_publish_description(kinds: &KindRegistry) -> String {
 /// (`tests/surface_ac02_dry_run_descriptions.rs`) and this function read the
 /// exact same source, per the PRD's own Technical considerations.
 const TOOL_TEST_DESC: &str =
-    "Dry-run an already-published tool by name, no calls row written; for the other cases see host.quickstart.";
+    "Dry-run a published tool by name: writes are rolled back and reported under dry_run, nothing \
+     delivered; for the other cases see host.quickstart.";
 const BRIDGE_TEST_DESC: &str =
     "Dry-run an unpublished http spec against its real upstream; for the other cases see host.quickstart.";
 const SPEC_TEST_DESC: &str =
@@ -1012,6 +1013,11 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                     "args": {
                         "type": "object",
                         "description": "Arguments to pass, same shape as a real call.",
+                    },
+                    "test": {
+                        "type": "boolean",
+                        "description": "PRD-mcphost-dry-run-side-effects: run with writes rolled back and \
+                            reported under dry_run, nothing delivered; default false (a real debug run).",
                     },
                 }),
                 &["name", "args"],
@@ -2283,8 +2289,9 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              tool with a synthetic envelope (test: true, no messages row created). On a webhook \
              trigger, builds and self-signs a synthetic body exactly like a real sender would, \
              then stores and fires it through the same path POST /hook/... uses (one inbox row, \
-             one run). The run is marked test: true. A wrong signature fails signature_invalid, \
-             naming the header it checked.",
+             one run). The run is marked test: true. PRD-mcphost-dry-run-side-effects: the fired \
+             tool's own writes are rolled back and reported under dry_run, nothing delivered. A \
+             wrong signature fails signature_invalid, naming the header it checked.",
             host_schema(
                 json!({
                     "id": {"type": "string", "description": "The event, message or webhook trigger id."},
@@ -3904,6 +3911,12 @@ pub(crate) struct TenantStateBridge {
     /// identically whether a tool reaches it from inside a python sandbox
     /// or a caller reaches it directly.
     pub(crate) end_user: Option<crate::enduser::EndUser>,
+    /// PRD-mcphost-dry-run-side-effects requirement 3: `Some` only for
+    /// `host.tool_test`/`host.tool_run(test: true)`'s own construction of
+    /// this bridge -- every successful write op below is additionally
+    /// reported into it as a `dry_run.writes` entry. `None` for the real
+    /// dispatch path and `host.spec_test` (out of this PRD's tested scope).
+    pub(crate) dry_run: Option<Arc<crate::dryrun::DryRunCtx>>,
 }
 
 #[async_trait::async_trait]
@@ -3926,6 +3939,17 @@ impl StateBackend for TenantStateBridge {
             }
             other => Err(AppError::InvalidArgs(format!("unknown state op '{other}'"))),
         };
+        if result.is_ok()
+            && STATE_WRITE_OPS.contains(&op)
+            && let Some(dry_run) = &self.dry_run
+        {
+            dry_run.record_write(json!({
+                "store": "state",
+                "op": op,
+                "key": args.get("key").and_then(Value::as_str),
+                "table": args.get("table").or_else(|| args.get("name")).and_then(Value::as_str),
+            }));
+        }
         result.map_err(app_error_to_kind_error)
     }
 }
@@ -3942,6 +3966,9 @@ impl StateBackend for TenantStateBridge {
 pub(crate) struct TenantTableBridge {
     pub(crate) state: Arc<AppState>,
     pub(crate) tenant: Tenant,
+    /// PRD-mcphost-dry-run-side-effects requirement 3: see
+    /// [`TenantStateBridge::dry_run`]'s own doc comment -- same convention.
+    pub(crate) dry_run: Option<Arc<crate::dryrun::DryRunCtx>>,
 }
 
 #[async_trait::async_trait]
@@ -3969,7 +3996,56 @@ impl TableBackend for TenantTableBridge {
             "next_questions" => crate::tables_graph::next_questions(&self.state, &self.tenant, &args).await,
             other => Err(AppError::InvalidArgs(format!("unknown table op '{other}'"))),
         };
+        // PRD-mcphost-dry-run-side-effects requirement 3: `table_append`'s
+        // own `{table, appended, ids}` result already names everything a
+        // write record needs -- read back from it rather than re-deriving
+        // from `args` (which may omit `table` on a malformed call `append`
+        // itself already rejected).
+        if op == "append"
+            && let (Ok(value), Some(dry_run)) = (&result, &self.dry_run)
+        {
+            dry_run.record_write(json!({
+                "store": "table",
+                "op": "append",
+                "table": value.get("table").cloned().unwrap_or(Value::Null),
+                "rows": value.get("appended").cloned().unwrap_or(Value::Null),
+            }));
+        }
         result.map_err(app_error_to_kind_error)
+    }
+}
+
+/// PRD-mcphost-dry-run-side-effects requirement 1 (AC5): [`crate::kinds::HostDispatch`]
+/// for `host.tool_test`'s own `CallCtx.host_dispatch` -- routes a `chain`
+/// step's allowlisted `host.*` verb to the SAME `table`/`state` backends
+/// this call's `mcphost.table`/`mcphost.state` sandbox calls go through, so
+/// its write is recorded into `dry_run.writes` (and rolled back) by the
+/// exact bridge logic [`TenantTableBridge`]/[`TenantStateBridge`] already
+/// have, rather than a third copy of that bookkeeping. Distinct from
+/// [`TenantHostStepBridge`] (PRD-mcphost-chain-host-steps' own, broader,
+/// real-dispatch bridge for an ordinary, non-test call) -- that bridge
+/// routes through `dispatch_tenant_tool`, a real (committed) write outside
+/// any savepoint, which is exactly what `host.tool_test`'s dry run must
+/// never do.
+pub(crate) struct DryRunHostStepBridge {
+    pub(crate) table: Arc<dyn TableBackend>,
+    pub(crate) state: Arc<dyn StateBackend>,
+}
+
+#[async_trait::async_trait]
+impl crate::kinds::HostDispatch for DryRunHostStepBridge {
+    async fn call(&self, name: &str, args: Value) -> Result<Value, KindError> {
+        match name {
+            "host.table.append" => self.table.call("append", args).await,
+            "host.table.query" => self.table.call("query", args).await,
+            "host.table.create" => self.table.call("create", args).await,
+            "host.state.get" => self.state.call("get", args).await,
+            "host.state.set" => self.state.call("set", args).await,
+            "host.state.delete" => self.state.call("delete", args).await,
+            other => Err(KindError::Exec(format!(
+                "host step dispatch does not support '{other}' in a dry run"
+            ))),
+        }
     }
 }
 
@@ -4928,12 +5004,14 @@ impl McpHostHandler {
                     state: self.state.clone(),
                     tenant: tenant.clone(),
                     end_user: end_user.cloned(),
+                    dry_run: None,
                 }),
                 Some(log.clone() as Arc<dyn CallLog>),
             )),
             table: Arc::new(TenantTableBridge {
                 state: self.state.clone(),
                 tenant: tenant.clone(),
+                dry_run: None,
             }),
             docs: Arc::new(TenantDocsBridge {
                 state: self.state.clone(),
@@ -5298,17 +5376,24 @@ impl McpHostHandler {
         }
 
         let secrets = build_secret_resolver(&self.state, tenant.id).await?;
+        // PRD-mcphost-dry-run-side-effects requirement 2/3: every bridge
+        // write this call makes routes through this one `DryRunCtx` (shared
+        // via `TenantStateBridge`/`TenantTableBridge`), rolled back once
+        // `kind.call` below returns -- `host.tool_test` is always a test.
+        let dry_run = crate::dryrun::DryRunCtx::new(self.state.db.path().to_path_buf(), self.state.db.cfg());
         let state_backend = Arc::new(CountingStateBackend::new(
             Arc::new(TenantStateBridge {
                 state: self.state.clone(),
                 tenant: tenant.clone(),
                 end_user: None,
+                dry_run: Some(dry_run.clone()),
             }),
             None,
         ));
         let table_backend: Arc<dyn TableBackend> = Arc::new(TenantTableBridge {
             state: self.state.clone(),
             tenant: tenant.clone(),
+            dry_run: Some(dry_run.clone()),
         });
         let docs_backend: Arc<dyn DocsBackend> = Arc::new(TenantDocsBridge {
             state: self.state.clone(),
@@ -5377,11 +5462,20 @@ impl McpHostHandler {
             // to thread through.
             end_user: None,
             vault_token: None,
-            // PRD-mcphost-chain-host-steps: `host.tool_test`'s dry run
-            // (`ctx.test_mode`) never dispatches a step at all (see
-            // `kinds::chain`'s own `ctx.test_mode` branch) -- there is
-            // nothing for a host step to reach here.
-            host_dispatch: None,
+            // PRD-mcphost-dry-run-side-effects requirement 1/2 (AC5): lets a
+            // `chain` step naming an allowlisted `host.*` verb (e.g.
+            // `host.table.append`) dispatch through the SAME
+            // `table_backend`/`state_backend` this call's own
+            // `mcphost.table`/`mcphost.state` sandbox calls use -- so its
+            // write lands in this call's `DryRunCtx` savepoint and is
+            // reported into `dry_run.writes` identically. Uses
+            // `DryRunHostStepBridge`, not the real-dispatch
+            // `TenantHostStepBridge` above (that one commits outside any
+            // savepoint, which a dry run must never do).
+            host_dispatch: Some(Arc::new(DryRunHostStepBridge {
+                table: table_backend.clone(),
+                state: state_backend.clone() as Arc<dyn StateBackend>,
+            })),
             // PRD-mcphost-chain-run-lineage: `host.tool_test` writes no run
             // row of its own (same "no `calls` row, no metering" contract
             // as every other field here already documents) -- nothing for
@@ -5389,7 +5483,17 @@ impl McpHostHandler {
             parent_run_id: None,
         };
 
-        match tokio::time::timeout(resolved_timeout, kind.call(&row.spec, call_args, &ctx)).await {
+        let outcome = crate::dryrun::with_dry_run(
+            dry_run.clone(),
+            tokio::time::timeout(resolved_timeout, kind.call(&row.spec, call_args, &ctx)),
+        )
+        .await;
+        // Requirement 2: rolled back regardless of outcome (success, a
+        // tool-level error, or a timeout) -- a dry run leaves the tenant's
+        // data byte-identical either way.
+        crate::dryrun::finish(dry_run.clone()).await;
+
+        match outcome {
             // AC19: `tenant_key` may appear anywhere inside the echoed
             // request `call_tool` already redacted from `args` by key name
             // before it reached here -- this final pass catches the same
@@ -5417,6 +5521,16 @@ impl McpHostHandler {
                 }
                 if let Value::Object(map) = &mut value {
                     map.insert("state".to_string(), state_backend.snapshot().to_json());
+                    // PRD-mcphost-dry-run-side-effects requirement 3: `.entry`
+                    // (not a plain `insert`) so `chain`'s own pre-existing
+                    // top-level `dry_run: true` boolean (its requirement 3 /
+                    // AC8 dry-run report, which never dispatches a step at
+                    // all) is left alone -- `chain` targeting a host step is
+                    // PRD-mcphost-chain-host-steps' own, not-yet-landed,
+                    // scope.
+                    map.entry("dry_run".to_string()).or_insert_with(|| {
+                        json!({"writes": dry_run.writes(), "delivered": false, "rolled_back": true})
+                    });
                 }
                 Ok(value)
             }
@@ -5663,10 +5777,12 @@ impl McpHostHandler {
             state: self.state.clone(),
             tenant: tenant.clone(),
             end_user: None,
+            dry_run: None,
         });
         let table_backend: Arc<dyn TableBackend> = Arc::new(TenantTableBridge {
             state: self.state.clone(),
             tenant: tenant.clone(),
+            dry_run: None,
         });
         let docs_backend: Arc<dyn DocsBackend> = Arc::new(TenantDocsBridge {
             state: self.state.clone(),
@@ -5722,9 +5838,11 @@ impl McpHostHandler {
             // publish spec, not a real caller's identity-carrying call.
             end_user: None,
             vault_token: None,
-            // PRD-mcphost-chain-host-steps: `host.spec_test`'s dry run
-            // never dispatches a step either (same `ctx.test_mode` branch
-            // `host.tool_test` short-circuits on) -- nothing to reach here.
+            // PRD-mcphost-chain-host-steps / PRD-mcphost-dry-run-side-effects:
+            // `host.spec_test`'s dry run never dispatches a step either (same
+            // `ctx.test_mode` branch `host.tool_test` short-circuits on, but
+            // with no `DryRunCtx` savepoint backing this pre-publish check)
+            // -- nothing to reach here.
             host_dispatch: None,
             // PRD-mcphost-chain-run-lineage: same "pre-publish dry run, no
             // run row of its own" reasoning as `end_user` above.
@@ -5890,6 +6008,14 @@ impl McpHostHandler {
         }
 
         let secrets = build_secret_resolver(&self.state, tenant.id).await?;
+        // PRD-mcphost-dry-run-side-effects requirement 1 / AC4: `test: true`
+        // is this method's own opt-in (unlike `host.tool_test`, `test:
+        // false`/absent is still a real, metered-by-nothing-extra debug run
+        // -- Non-goals: "making host.tool_run dry by default").
+        let test = args.get("test").and_then(Value::as_bool).unwrap_or(false);
+        let dry_run = test.then(|| {
+            crate::dryrun::DryRunCtx::new(self.state.db.path().to_path_buf(), self.state.db.cfg())
+        });
         // requirement 5 / AC7: `host.tool_run`'s result carries a `state`
         // tally too (same shape as `host.tool_test`'s) -- read back from
         // `state_backend` after the call below.
@@ -5898,12 +6024,14 @@ impl McpHostHandler {
                 state: self.state.clone(),
                 tenant: tenant.clone(),
                 end_user: None,
+                dry_run: dry_run.clone(),
             }),
             None,
         ));
         let table_backend: Arc<dyn TableBackend> = Arc::new(TenantTableBridge {
             state: self.state.clone(),
             tenant: tenant.clone(),
+            dry_run: dry_run.clone(),
         });
         let docs_backend: Arc<dyn DocsBackend> = Arc::new(TenantDocsBridge {
             state: self.state.clone(),
@@ -5928,7 +6056,7 @@ impl McpHostHandler {
             secrets,
             deadline: Instant::now() + resolved_timeout,
             log: Arc::new(NullLog) as Arc<dyn CallLog>,
-            test_mode: false,
+            test_mode: test,
             resources: Arc::new(NullResourceSink),
             tool_name: Some(local_name.clone()),
             state: state_backend.clone() as Arc<dyn StateBackend>,
@@ -5975,8 +6103,23 @@ impl McpHostHandler {
         };
 
         let start = Instant::now();
-        let outcome =
-            tokio::time::timeout(resolved_timeout, kind.tool_run(&row.spec, call_args, &ctx)).await;
+        let outcome = match &dry_run {
+            Some(dry_run) => {
+                crate::dryrun::with_dry_run(
+                    dry_run.clone(),
+                    tokio::time::timeout(resolved_timeout, kind.tool_run(&row.spec, call_args, &ctx)),
+                )
+                .await
+            }
+            None => {
+                tokio::time::timeout(resolved_timeout, kind.tool_run(&row.spec, call_args, &ctx)).await
+            }
+        };
+        // Requirement 2: rolled back regardless of outcome, same as
+        // `host.tool_test` above.
+        if let Some(dry_run) = &dry_run {
+            crate::dryrun::finish(dry_run.clone()).await;
+        }
         let duration_ms = start.elapsed().as_millis() as i64;
 
         match outcome {
@@ -5984,6 +6127,12 @@ impl McpHostHandler {
                 if let Some(obj) = value.as_object_mut() {
                     obj.insert("duration_ms".to_string(), json!(duration_ms));
                     obj.insert("state".to_string(), state_backend.snapshot().to_json());
+                    if let Some(dry_run) = &dry_run {
+                        obj.insert(
+                            "dry_run".to_string(),
+                            json!({"writes": dry_run.writes(), "delivered": false, "rolled_back": true}),
+                        );
+                    }
                 }
                 Ok(value)
             }

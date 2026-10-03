@@ -275,65 +275,120 @@ fn resolve_args(raw: &Map<String, Value>, context: &Value) -> Result<Value, Stri
 }
 
 /// Requirement 3 / AC8: `host.tool_test`'s dry-run report for a chain --
-/// each step's resolved arguments, without ever dispatching a step. A
-/// mapping that reaches into `$.prev`/`$.steps[i]` can't be resolved for
-/// real (no step has run), so it's reported as `{"unresolved_path": "$..."}`
-/// instead of a value; `$.input.*` and literals resolve exactly as a real
-/// call would.
+/// each step's resolved arguments, without dispatching an ordinary
+/// tenant-tool step. A mapping that reaches into `$.prev`/`$.steps[i]`
+/// can't be resolved against a step that was never dispatched, so it's
+/// reported as `{"unresolved_path": "$..."}` instead of a value; `$.input.*`
+/// and literals resolve exactly as a real call would.
 ///
 /// PRD-mcphost-chain-host-steps requirement 4/AC4: each step also carries
 /// `resolved` (`"host"` for an allowlisted `host.*` verb, `"tenant"` for a
 /// sibling tool -- a step here was already resolved once, at publish time
 /// (`resolve_steps`), so this is a pure syntactic re-derivation, no DB
-/// lookup needed) and, for a `"host"` step, `side_effects: true` -- until
-/// PRD-mcphost-dry-run-side-effects lands, a dry run never dispatches ANY
-/// step (host or tenant), so a host step's own real-world write (e.g.
-/// `host.table.append`'s row) would NOT happen during this report; the flag
-/// says so explicitly rather than leaving an agent to assume dry-run safety
-/// it doesn't have yet for that step.
+/// lookup needed).
+///
+/// PRD-mcphost-dry-run-side-effects requirement 1/2 (AC5): a step naming an
+/// allowlisted `host.*` verb ([`HOST_STEPS_ALLOWED`]) actually dispatches,
+/// through `ctx.host_dispatch`, so its write lands inside the `DryRunCtx`
+/// savepoint `host.tool_test` already opened around this whole call and is
+/// reported into the envelope's `dry_run.writes` by the same bridge a
+/// sandboxed tool's own `mcphost.table`/`mcphost.state` call would go
+/// through. Its real result then feeds `$.prev`/`$.steps[i]` for any later
+/// step exactly like a real run's would. `ctx.host_dispatch` is `None`
+/// outside `host.tool_test` (e.g. `host.spec_test`'s own dry run) -- a host
+/// step there still carries `"resolved": "host"`/`side_effects: true` but
+/// is not dispatched, same as an unresolved-args host step.
+///
+/// Named `chain_dry_run` (not `dry_run`) so it never collides with the
+/// result envelope's own `dry_run: {writes, delivered, rolled_back}` key
+/// `host.tool_test`/`host.tool_run(test: true)` insert via `.entry()`.
 ///
 /// PRD-mcphost-chain-run-lineage requirement 2 (AC10): also reports
 /// `inputs_required` -- the same list [`chain_input_schema`] derives into
 /// `input_schema.required` -- alongside the existing per-step trace, so a
 /// caller dry-running a chain (with or without a complete `call_args`)
 /// learns what it must pass without needing a second `host.tool_spec` read.
-fn dry_run_report(steps: &[ParsedStep], call_args: &Value) -> Value {
-    // Only `input` is available before anything has run.
-    let context = json!({"input": call_args, "prev": Value::Null, "steps": []});
-    let report: Vec<Value> = steps
-        .iter()
-        .enumerate()
-        .map(|(i, step)| {
-            let mut resolved = Map::with_capacity(step.args.len());
-            for (k, v) in &step.args {
-                let value = match v {
-                    Value::String(s) if s.starts_with("$.") => {
-                        match Path::parse(s).ok().and_then(|p| p.resolve(&context).cloned()) {
-                            Some(v) => v,
-                            None => json!({"unresolved_path": s}),
+async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) -> Value {
+    let mut prev: Option<Value> = None;
+    let mut step_results: Vec<Value> = Vec::with_capacity(steps.len());
+    let mut report: Vec<Value> = Vec::with_capacity(steps.len());
+    for step in steps {
+        let context = json!({
+            "input": call_args,
+            "prev": prev.as_ref().map(|r| json!({"result": r})),
+            "steps": step_results.iter().map(|r| json!({"result": r})).collect::<Vec<_>>(),
+        });
+        let mut resolved = Map::with_capacity(step.args.len());
+        let mut unresolved = false;
+        for (k, v) in &step.args {
+            let value = match v {
+                Value::String(s) if s.starts_with("$.") => {
+                    match Path::parse(s).ok().and_then(|p| p.resolve(&context).cloned()) {
+                        Some(v) => v,
+                        None => {
+                            unresolved = true;
+                            json!({"unresolved_path": s})
                         }
                     }
-                    other => other.clone(),
-                };
-                resolved.insert(k.clone(), value);
+                }
+                other => other.clone(),
+            };
+            resolved.insert(k.clone(), value);
+        }
+        let step_no = report.len() + 1;
+        let is_host = HOST_STEPS_ALLOWED.contains(&step.tool.as_str());
+        if is_host
+            && !unresolved
+            && let Some(host) = ctx.host_dispatch.as_ref()
+        {
+            match host.call(&step.tool, Value::Object(resolved.clone())).await {
+                Ok(result) => {
+                    report.push(json!({
+                        "step": step_no,
+                        "tool": step.tool,
+                        "resolved_args": resolved,
+                        "resolved": "host",
+                        "side_effects": true,
+                        "dispatched": true,
+                        "result": result,
+                    }));
+                    step_results.push(result.clone());
+                    prev = Some(result);
+                    continue;
+                }
+                Err(e) => {
+                    report.push(json!({
+                        "step": step_no,
+                        "tool": step.tool,
+                        "resolved_args": resolved,
+                        "resolved": "host",
+                        "side_effects": true,
+                        "dispatched": true,
+                        "error": e.to_string(),
+                    }));
+                    step_results.push(Value::Null);
+                    prev = None;
+                    continue;
+                }
             }
-            let is_host = HOST_STEPS_ALLOWED.contains(&step.tool.as_str());
-            let mut entry = json!({
-                "step": i + 1,
-                "tool": step.tool,
-                "resolved_args": resolved,
-                "resolved": if is_host { "host" } else { "tenant" },
-            });
-            if is_host
-                && let Value::Object(map) = &mut entry
-            {
-                map.insert("side_effects".to_string(), json!(true));
-            }
-            entry
-        })
-        .collect();
+        }
+        let mut entry = json!({
+            "step": step_no,
+            "tool": step.tool,
+            "resolved_args": resolved,
+            "resolved": if is_host { "host" } else { "tenant" },
+        });
+        if is_host
+            && let Value::Object(map) = &mut entry
+        {
+            map.insert("side_effects".to_string(), json!(true));
+        }
+        report.push(entry);
+        step_results.push(Value::Null);
+        prev = None;
+    }
     let inputs_required: Vec<String> = collect_input_refs(steps).into_iter().map(|r| r.name).collect();
-    json!({"dry_run": true, "steps": report, "inputs_required": inputs_required})
+    json!({"chain_dry_run": true, "steps": report, "inputs_required": inputs_required})
 }
 
 #[async_trait::async_trait]
@@ -391,9 +446,10 @@ impl Kind for ChainKind {
         let steps = parse_steps(spec)?;
 
         // Requirement 3 / AC8: a dry run resolves what it can and executes
-        // nothing.
+        // no ordinary tenant-tool step (AC5: an allowlisted host step is the
+        // one exception -- see `dry_run_report`'s own doc comment).
         if ctx.test_mode {
-            return Ok(dry_run_report(&steps, &args));
+            return Ok(dry_run_report(&steps, &args, ctx).await);
         }
 
         // PRD-mcphost-chain-run-lineage requirement 3 (AC3): refuse before
@@ -665,10 +721,11 @@ mod tests {
         }
     }
 
-    #[test]
-    fn dry_run_resolves_input_paths_and_flags_prev_as_unresolved() {
+    #[tokio::test]
+    async fn dry_run_resolves_input_paths_and_flags_prev_as_unresolved() {
         let steps = parse_steps(&spec_two_steps()).expect("parse"); // allowlist: test-only expect inside #[cfg(test)]
-        let report = dry_run_report(&steps, &json!({"x": 42}));
+        let ctx = CallCtx::for_test(1, "t_deadbeef");
+        let report = dry_run_report(&steps, &json!({"x": 42}), &ctx).await;
         let steps_out = report["steps"].as_array().expect("steps array"); // allowlist: test-only expect inside #[cfg(test)]
         assert_eq!(steps_out[0]["resolved_args"]["x"], json!(42));
         assert!(steps_out[1]["resolved_args"]["y"]["unresolved_path"].is_string());

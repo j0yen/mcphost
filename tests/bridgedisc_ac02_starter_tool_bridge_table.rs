@@ -1,8 +1,9 @@
 //! PRD-mcphost-sandbox-bridge-discoverability
 //! AC2 (P0) -- Given the python `starter_tool` from quickstart published
 //! verbatim, When `host.tool_test` runs its `test_call`, Then the result
-//! contains a bridge `appended` count and `host.table.query` on the
-//! starter's table returns the row.
+//! contains a bridge `appended` count and the write is reported under
+//! `dry_run.writes`, rolled back per PRD-mcphost-dry-run-side-effects --
+//! `host.table.list` shows the starter's table was never persisted.
 
 use crate::common;
 use common::{TestServer, extract_structured, python_kind_registry, signup};
@@ -10,7 +11,7 @@ use mcphost::sandbox;
 use serde_json::json;
 
 #[tokio::test]
-async fn starter_tool_test_call_appends_and_the_row_is_queryable() {
+async fn starter_tool_test_call_appends_and_rolls_back() {
     // This test publishes and runs a real sandboxed python tool, which
     // needs unprivileged user namespaces -- not guaranteed on GitHub's
     // hosted runners. Same skip convention every other sandbox-dependent
@@ -61,17 +62,34 @@ async fn starter_tool_test_call_appends_and_the_row_is_queryable() {
     assert_eq!(appended, 1, "appending one note must report appended: 1: {test_structured}");
     let table = test_structured["result"]["table"]
         .as_str()
-        .unwrap_or_else(|| panic!("result.table must name the table the starter wrote to: {test_structured}"));
+        .unwrap_or_else(|| panic!("result.table must name the table the starter wrote to: {test_structured}"))
+        .to_string();
 
-    // host.table.query on that exact table returns the row the starter's
-    // own test_call just appended.
-    let queried = extract_structured(
-        &client
-            .tools_call("host.table.query", json!({"sql": format!("SELECT note FROM {table}")}))
-            .await
-            .expect("host.table.query on the starter's own table"),
+    assert_eq!(
+        test_structured["dry_run"]["writes"],
+        json!([{"store": "table", "op": "append", "table": table, "rows": 1}]),
+        "{test_structured:?}"
     );
-    let rows = queried["rows"].as_array().expect("rows array");
-    assert_eq!(rows.len(), 1, "the starter's test_call must have written exactly one row: {rows:?}");
-    assert_eq!(rows[0]["note"], json!("hello"), "the row must carry the test_call's own input: {rows:?}");
+    assert_eq!(test_structured["dry_run"]["rolled_back"], json!(true), "{test_structured:?}");
+
+    // host.tool_test is a dry run (PRD-mcphost-dry-run-side-effects): the
+    // starter's own test_call sees its write inside the savepoint
+    // (result.appended above), but nothing survives the call. The starter
+    // creates its table lazily on first use, so this is the tenant's very
+    // first test_call ever -- the create is rolled back along with the
+    // append, and the table itself never exists outside the savepoint
+    // (host.table.query on it would fail with table_not_found, not an
+    // empty row set); host.table.list is the side-effect-free way to
+    // confirm nothing persisted.
+    let listed = extract_structured(
+        &client
+            .tools_call("host.table.list", json!({}))
+            .await
+            .expect("host.table.list"),
+    );
+    let tables = listed["tables"].as_array().expect("tables array");
+    assert!(
+        !tables.iter().any(|t| t["name"] == json!(table)),
+        "a dry run must not persist the starter's table create+append: {tables:?}"
+    );
 }

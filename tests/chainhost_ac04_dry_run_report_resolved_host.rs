@@ -1,8 +1,13 @@
 //! PRD-mcphost-chain-host-steps AC4 (P0) — Given a published chain with a
 //! `host.table.append` step, When `host.tool_test` runs it, Then the
-//! dry-run report lists the step as `resolved: host` and, before
-//! PRD-mcphost-dry-run-side-effects has landed, the report carries
-//! `side_effects: true` for that step.
+//! dry-run report lists the step as `resolved: host` and the report
+//! carries `side_effects: true` for that step. Here the step's args
+//! reach into `$.prev`, which a dry run can't resolve (the prior step is
+//! an ordinary tenant tool and is never dispatched), so per
+//! PRD-mcphost-dry-run-side-effects AC5 the host step itself also stays
+//! undispatched -- the chain's own static report lives under
+//! `chain_dry_run` (not `dry_run`, which the result envelope now owns
+//! for `{writes, delivered, rolled_back}`).
 
 use crate::common;
 use common::{TestServer, chain_kind_registry, publish, signup};
@@ -47,7 +52,7 @@ async fn host_table_append_step_dry_run_reports_resolved_host_and_side_effects()
         .expect("host.tool_test must succeed -- it never dispatches a step");
     let structured = common::extract_structured(&result);
 
-    assert_eq!(structured["dry_run"], json!(true));
+    assert_eq!(structured["chain_dry_run"], json!(true));
     let steps = structured["steps"].as_array().expect("steps report");
     assert_eq!(steps.len(), 2);
 

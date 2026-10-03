@@ -3271,6 +3271,20 @@ impl SidecarBridge for ChannelSidecarBridge<'_> {
         let op = request.get("op").and_then(Value::as_str).unwrap_or("");
         let args = request.get("args").cloned().unwrap_or(Value::Null);
         if self.ctx.test_mode && op == "post" {
+            // PRD-mcphost-dry-run-side-effects requirement 4 (AC3): surfaced
+            // into the call's `dry_run.writes` the same way a table/state
+            // write is -- `current()` is `Some` under `host.tool_test`'s and
+            // a `host.trigger.test`-enqueued run's own `with_dry_run` scope
+            // alike, `None` for an ordinary real dispatch (`host.tool_run`
+            // without `test: true`, a live trigger), where this short-circuit
+            // doesn't run at all.
+            if let Some(dry_run) = crate::dryrun::current() {
+                dry_run.record_write(json!({
+                    "store": "channel",
+                    "op": "post",
+                    "channel": args.get("channel").cloned().unwrap_or(Value::Null),
+                }));
+            }
             let response = json!({"ok": true, "result": {"delivered": false, "would_post": args}});
             return Some(serde_json::to_vec(&response).unwrap_or_default());
         }
@@ -3322,6 +3336,16 @@ impl SidecarBridge for MsgSidecarBridge<'_> {
         let op = request.get("op").and_then(Value::as_str).unwrap_or("");
         let args = request.get("args").cloned().unwrap_or(Value::Null);
         if self.ctx.test_mode && op == "send" {
+            // PRD-mcphost-dry-run-side-effects requirement 4: see
+            // `ChannelSidecarBridge`'s own `"post"` short-circuit above --
+            // same convention, `store: "msg"`.
+            if let Some(dry_run) = crate::dryrun::current() {
+                dry_run.record_write(json!({
+                    "store": "msg",
+                    "op": "send",
+                    "to": args.get("to").cloned().unwrap_or(Value::Null),
+                }));
+            }
             let response = json!({"ok": true, "result": {"delivered": false, "would_post": args}});
             return Some(serde_json::to_vec(&response).unwrap_or_default());
         }

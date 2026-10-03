@@ -57,6 +57,36 @@ this repo's own test suite can prove.
 
 ## v0.69.0 — 2026-10-02
 
+A dry run now writes nothing. `host.tool_test`, `host.trigger.test`, and
+`host.tool_run(test: true)` route every `mcphost.table`/`mcphost.state`
+bridge write for the call through a dedicated, `SAVEPOINT test_run`-wrapped
+SQLite connection (`src/dryrun.rs`) held for the whole call instead of the
+real per-call connections, rolled back unconditionally once the call
+returns -- an append-then-query in the same call still sees its own
+uncommitted write (reads inside the savepoint), but nothing survives
+afterward, and a real quota (`table_rows_max`) is still evaluated, not
+bypassed. A webhook trigger's `host.trigger.test` run short-circuits its
+tool's `mcphost.channel.post`/`mcphost.msg.send` calls (`delivered: false`,
+nothing queued, no agent-wake run row) instead of delivering them. A
+`chain` step naming an allowlisted `host.*` verb (`host.table.append`,
+`host.table.query`, `host.table.create`, `host.state.{get,set,delete}`)
+now actually dispatches under `host.tool_test`, so its write lands in the
+same savepoint and is reported identically; every other call context still
+reports a chain's dry run (`chain_dry_run`, renamed from a now-conflicting
+`dry_run` key) by resolving step arguments without dispatching. Every test
+entry point's result envelope gains `dry_run: {writes: [{store, op,
+table?, rows?}, ...], delivered: false, rolled_back: true}`; `host.tool_run`
+gains an opt-in `test: true` argument (default false -- real debug runs
+are unchanged). `host.tool_test`'s and `host.trigger.test`'s `tools/list`
+descriptions now say writes are rolled back and reported under `dry_run`.
+`kinds::compose_call` now propagates the parent call's `test_mode` to a
+composed child instead of hardcoding it off.
+
+PRD-mcphost-dry-run-side-effects AC1-AC7. AC8 (Live, prod tenant joe-test)
+is left for the gate.
+
+## v0.69.0 — 2026-10-02
+
 `host.quickstart kind=python` now carries `sandbox_api`: `import mcphost`
 plus the one-line call signatures for every `mcphost.*` submodule the
 runner script registers (`state`, `table`, `docs`, `lineage`, `channel`,

@@ -815,6 +815,7 @@ async fn handle_hook(
             dedupe_key: dedupe_key.as_deref(),
             message_id: None,
             args_json,
+            test: false,
         },
     )
     .await?;
@@ -831,6 +832,12 @@ pub(crate) struct EnqueueSpec<'a> {
     pub dedupe_key: Option<&'a str>,
     pub message_id: Option<&'a str>,
     pub args_json: String,
+    /// PRD-mcphost-dry-run-side-effects requirement 1 (AC3): `true` only
+    /// for a webhook's `host.trigger.test` synthetic delivery -- stored on
+    /// the enqueued run (migration 0018) exactly like the event/message
+    /// `host.trigger.test` branches already do via their own direct
+    /// `insert_queued_run` calls. `false` for every real delivery.
+    pub test: bool,
 }
 
 /// Shared by [`handle_hook`] (kind="event") and
@@ -863,6 +870,7 @@ pub(crate) async fn enqueue_with_dedupe(
         dedupe_key,
         message_id,
         args_json,
+        test,
     } = spec;
     let run_id = new_ulid();
     if let Some(key) = dedupe_key
@@ -919,7 +927,7 @@ pub(crate) async fn enqueue_with_dedupe(
             plan.job_max_s,
             args_json,
             false,
-            false,
+            test,
             message_id.map(str::to_string),
             None,
             None,

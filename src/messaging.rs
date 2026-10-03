@@ -381,6 +381,7 @@ async fn fire_message_triggers(state: &AppState, outcome: &SendOutcome, ctx: &Me
                     dedupe_key: Some(outcome.message_id.as_str()),
                     message_id: Some(outcome.message_id.as_str()),
                     args_json: args_json.clone(),
+                    test: false,
                 },
             )
             .await

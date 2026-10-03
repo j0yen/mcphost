@@ -55,7 +55,13 @@ async fn tool_test_on_a_chain_reports_resolved_args_per_step_without_executing_a
         .expect("tool_test must succeed -- it must never dispatch a step");
     let structured = common::extract_structured(&result);
 
-    assert_eq!(structured["dry_run"], json!(true));
+    // PRD-mcphost-dry-run-side-effects: `dry_run` is now the shared result
+    // envelope's own `{writes, delivered, rolled_back}` object (every
+    // `host.tool_test` call gets one) -- `chain`'s own pre-PRD marker was
+    // renamed to `chain_dry_run` to stop the two colliding.
+    assert_eq!(structured["chain_dry_run"], json!(true));
+    assert_eq!(structured["dry_run"]["writes"], json!([]));
+    assert_eq!(structured["dry_run"]["rolled_back"], json!(true));
     let steps = structured["steps"].as_array().expect("steps report");
     assert_eq!(steps.len(), 2);
 

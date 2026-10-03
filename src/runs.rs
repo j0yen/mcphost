@@ -949,13 +949,21 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
         tenant_id: run.tenant_id,
         last_write: Mutex::new(None),
     });
+    // PRD-mcphost-dry-run-side-effects requirement 1/2/3 (AC3): a run
+    // enqueued by `host.trigger.test` (`RunRow.test`) is a dry run exactly
+    // like `host.tool_test`'s own synchronous path -- same `DryRunCtx`
+    // savepoint convention, threaded into the same two bridges, rolled back
+    // once `kind.call` below returns regardless of outcome.
+    let dry_run = run
+        .test
+        .then(|| crate::dryrun::DryRunCtx::new(state.db.path().to_path_buf(), state.db.cfg()));
     let ctx = CallCtx {
         tenant_id: tenant.id,
         namespace: tenant.namespace.clone(),
         secrets,
         deadline: Instant::now() + Duration::from_secs(deadline_s),
         log: log.clone() as Arc<dyn CallLog>,
-        test_mode: false,
+        test_mode: run.test,
         resources: resources.clone() as Arc<dyn ResourceSink>,
         tool_name: Some(local_name.clone()),
         state: Arc::new(CountingStateBackend::new(
@@ -963,12 +971,14 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
                 state: Arc::new(state.clone()),
                 tenant: tenant.clone(),
                 end_user: None,
+                dry_run: dry_run.clone(),
             }),
             Some(log.clone() as Arc<dyn CallLog>),
         )),
         table: Arc::new(TenantTableBridge {
             state: Arc::new(state.clone()),
             tenant: tenant.clone(),
+            dry_run: dry_run.clone(),
         }) as Arc<dyn TableBackend>,
         docs: Arc::new(TenantDocsBridge {
             state: Arc::new(state.clone()),
@@ -1028,7 +1038,11 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
         // which does wire this); a job-triggered chain's host step fails
         // clearly (`host-step dispatch is unavailable`) rather than
         // silently, same posture `compose_db`/`compose_kinds` already take
-        // wherever they're `None`.
+        // wherever they're `None`. PRD-mcphost-dry-run-side-effects
+        // requirement 1 (AC5) only wires `host.tool_test`'s own synchronous
+        // path either -- a dry run here (`run.test`, AC3) still reports a
+        // host step via `kinds::chain`'s own `ctx.test_mode` branch, just
+        // without dispatching it (same as `host.spec_test`'s dry run).
         host_dispatch: None,
         // PRD-mcphost-chain-run-lineage requirement 4: this job's own
         // `run.id` -- a composing `Kind` (`chain`) dispatched as a job
@@ -1038,11 +1052,17 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
         parent_run_id: Some(run.id.clone()),
     };
 
-    let outcome = tokio::time::timeout(
-        Duration::from_secs(deadline_s),
-        kind.call(&row.spec, args, &ctx),
-    )
-    .await;
+    let call_timeout = tokio::time::timeout(Duration::from_secs(deadline_s), kind.call(&row.spec, args, &ctx));
+    let outcome = match &dry_run {
+        Some(dr) => crate::dryrun::with_dry_run(dr.clone(), call_timeout).await,
+        None => call_timeout.await,
+    };
+    // Requirement 2: rolled back regardless of outcome (success, a
+    // tool-level error, or a timeout) -- a test run leaves the tenant's data
+    // byte-identical either way.
+    if let Some(dr) = &dry_run {
+        crate::dryrun::finish(dr.clone()).await;
+    }
 
     // PRD-mcphost-schedules P0 requirement 5: `host.tool_logs` lines from a
     // scheduled run carry `trigger_ref` (the trigger id) alongside
@@ -1062,7 +1082,17 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
     }
 
     match outcome {
-        Ok(Ok(value)) => JobOutcome::Done { result_value: value },
+        Ok(Ok(mut value)) => {
+            // Requirement 3 (AC3): same `dry_run` envelope shape
+            // `host.tool_test` reports, read back here so `host.runs.get`
+            // surfaces it for a run `host.trigger.test` enqueued.
+            if let (Some(dr), Value::Object(map)) = (&dry_run, &mut value) {
+                map.entry("dry_run".to_string()).or_insert_with(|| {
+                    json!({"writes": dr.writes(), "delivered": false, "rolled_back": true})
+                });
+            }
+            JobOutcome::Done { result_value: value }
+        }
         Ok(Err(kind_err)) => {
             let app_err = AppError::from(kind_err);
             JobOutcome::Error {

@@ -1150,6 +1150,12 @@ impl MsgBackend for NoMsg {
 /// allowlisted verb across every one of those stores, plus
 /// `host.channel.post`/`host.msg.send`/`host.tool_call`, which have no
 /// backend of their own.
+///
+/// PRD-mcphost-dry-run-side-effects requirement 1 (AC5) also consults this
+/// directly from [`kinds::chain`]'s own `ctx.test_mode` branch (not through
+/// [`compose_call`]), so a chain step's write lands inside the already-open
+/// `host.tool_test` `DryRunCtx` savepoint and is reported into
+/// `dry_run.writes` -- `None` there outside `host.tool_test`.
 #[async_trait::async_trait]
 pub trait HostDispatch: Send + Sync {
     async fn call(&self, name: &str, args: Value) -> Result<Value, KindError>;
@@ -1163,7 +1169,11 @@ pub trait HostDispatch: Send + Sync {
 /// a step naming one of those fails `step_tool_not_allowed` naming this
 /// exact list (`data.allowed`), the same list `host.quickstart kind=chain`
 /// reports as `host_steps_allowed` (requirement 1: "exported ... as one
-/// Rust constant").
+/// Rust constant"). PRD-mcphost-dry-run-side-effects's own
+/// `host.tool_test`-time [`HostDispatch`] (`DryRunHostStepBridge` in
+/// `handler.rs`) only ever implements the first six (table/state) of
+/// these -- a chain step naming one of the others still resolves fine at
+/// publish time but fails if dry-run-dispatched under `host.tool_test`.
 pub const HOST_STEPS_ALLOWED: &[&str] = &[
     "host.table.append",
     "host.table.query",
@@ -1369,10 +1379,18 @@ pub struct CallCtx {
     /// `kinds` depending on `handler` -- same "trait object bridge resolved
     /// by the real dispatch path" shape [`StateBackend`]/[`TableBackend`]/
     /// [`DocsBackend`]/[`LineageBackend`] already use. `None` in every
-    /// context a host step can't run in (`host.tool_test`/`host.spec_test`'s
-    /// dry runs never dispatch a step at all, `for_test`, the conformance
-    /// suite) -- [`compose_call`] reports a clear "unavailable" error rather
-    /// than panicking when a step needs it and finds `None`.
+    /// context a host step can't run as a real composed dispatch (a real
+    /// `host.tool_run`, `for_test`, the conformance suite) --
+    /// [`compose_call`] reports a clear "unavailable" error rather than
+    /// panicking when a step needs it and finds `None`.
+    ///
+    /// PRD-mcphost-dry-run-side-effects requirement 1 (AC5) also gives this
+    /// a `Some` value for `host.tool_test`'s own `CallCtx` -- there,
+    /// [`kinds::chain`]'s own `ctx.test_mode` branch consults it directly
+    /// (never through [`compose_call`], which a dry run never calls) so a
+    /// step's write lands inside the already-open `DryRunCtx` savepoint.
+    /// `host.spec_test`'s dry run leaves it `None` (no savepoint backs that
+    /// pre-publish check).
     pub host_dispatch: Option<Arc<dyn HostDispatch>>,
     /// PRD-mcphost-chain-run-lineage requirement 4: the run id [`compose_call`]
     /// should record as the `parent_run_id` of any child run row it writes
@@ -1562,7 +1580,15 @@ async fn compose_dispatch(
         secrets: ctx.secrets.clone(),
         deadline,
         log: ctx.log.clone(),
-        test_mode: false,
+        // PRD-mcphost-dry-run-side-effects requirement 1: a composed child
+        // call is still part of the same test call tree -- `ctx.table`/
+        // `ctx.state` (cloned just below) already carry this call's own
+        // `DryRunCtx` baked into their `TenantTableBridge`/`TenantStateBridge`
+        // construction, so inheriting `test_mode` here is what makes a
+        // child's own bridge writes (and any kind-specific test-mode
+        // behavior, e.g. `chain`'s own dry-run report) agree with the
+        // parent's.
+        test_mode: ctx.test_mode,
         resources: ctx.resources.clone(),
         tool_name: Some(target_name.to_string()),
         // PRD-mcphost-tenant-state: composition stays inside one tenant
@@ -1631,7 +1657,10 @@ async fn compose_dispatch(
         // (same reasoning as `state`/`table`/`docs` above) -- a nested
         // composed call (a chain step whose own tool is itself a chain) can
         // still reach a host step through the same bridge the parent call
-        // was given.
+        // was given. PRD-mcphost-dry-run-side-effects: this also means a
+        // composed child under `host.tool_test` inherits the dry-run-aware
+        // bridge, so a nested `mcphost.call`/chain step naming an
+        // allowlisted host verb still lands inside the open savepoint.
         host_dispatch: ctx.host_dispatch.clone(),
         // PRD-mcphost-chain-run-lineage requirement 4: propagate lineage
         // downward only when it's actually active for this call tree (`ctx`

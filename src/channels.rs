@@ -268,6 +268,7 @@ async fn fire_channel_message_triggers(
                     dedupe_key: Some(outcome.id.as_str()),
                     message_id: Some(outcome.id.as_str()),
                     args_json: args_json.clone(),
+                    test: false,
                 },
             )
             .await

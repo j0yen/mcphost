@@ -2106,6 +2106,14 @@ impl Db {
         self.path.parent().unwrap_or_else(|| Path::new("."))
     }
 
+    /// PRD-mcphost-dry-run-side-effects: `dryrun::DryRunCtx`'s own dedicated
+    /// state-store connection opens against this same file (never `self`'s
+    /// own shared `conn`), so a long-running test call never holds the
+    /// server's single connection for the length of a sandboxed tool call.
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
+    }
+
     /// `tables.rs`'s per-tenant connections (role `tenant_table`) open
     /// through the same [`open_with_role`] factory with this same config,
     /// so they need it too.
@@ -3220,23 +3228,48 @@ impl Db {
             .map_err(|e| AppError::Internal(e.to_string()))?
     }
 
+    /// PRD-mcphost-dry-run-side-effects requirement 2: inside a
+    /// `dryrun::with_dry_run` scope (`host.tool_test`, `host.tool_run(test:
+    /// true)`), every statement routes through that call's own dedicated,
+    /// savepoint-wrapped connection (`dryrun::DryRunCtx::state_conn_sync`)
+    /// instead of `self.conn` -- never the server's single shared
+    /// connection, so a long-running test call never blocks every other
+    /// tenant's real traffic for its duration.
     async fn with_conn<F, T>(&self, f: F) -> Result<T, AppError>
     where
         F: FnOnce(&Connection) -> Result<T, AppError> + Send + 'static,
         T: Send + 'static,
     {
-        let conn = self.conn.clone();
+        let dry_run = crate::dryrun::current();
         let counters = self.counters.clone();
-        tokio::task::spawn_blocking(move || {
-            instrument_stmt(&counters, ROLE_SERVER, move || {
-                let guard = conn
-                    .lock()
-                    .map_err(|_| AppError::Storage("db lock poisoned".into()))?;
-                f(&guard)
-            })
-        })
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?
+        match dry_run {
+            Some(dry_run) => {
+                tokio::task::spawn_blocking(move || {
+                    instrument_stmt(&counters, ROLE_SERVER, move || {
+                        let conn = dry_run.state_conn_sync()?;
+                        let guard = conn
+                            .lock()
+                            .map_err(|_| AppError::Storage("db lock poisoned".into()))?;
+                        f(&guard)
+                    })
+                })
+                .await
+                .map_err(|e| AppError::Internal(e.to_string()))?
+            }
+            None => {
+                let conn = self.conn.clone();
+                tokio::task::spawn_blocking(move || {
+                    instrument_stmt(&counters, ROLE_SERVER, move || {
+                        let guard = conn
+                            .lock()
+                            .map_err(|_| AppError::Storage("db lock poisoned".into()))?;
+                        f(&guard)
+                    })
+                })
+                .await
+                .map_err(|e| AppError::Internal(e.to_string()))?
+            }
+        }
     }
 
     // ---- health ----------------------------------------------------
