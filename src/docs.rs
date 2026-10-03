@@ -20,6 +20,7 @@ use crate::db::{DocumentRow, Tenant};
 use crate::errors::AppError;
 use crate::plans::Plan;
 use crate::state::AppState;
+use crate::tables;
 
 /// requirement 2: content ≤ this many bytes, default 2 MiB -- overridable
 /// per deployment via `MCPHOST_DOC_MAX_BYTES` (the same "read once per
@@ -349,7 +350,7 @@ pub async fn doc_put(state: &AppState, tenant: &Tenant, args: &Value) -> Result<
             tenant.id,
             new_id,
             name.clone(),
-            content_hash,
+            content_hash.clone(),
             content,
             bytes,
             mime,
@@ -367,6 +368,24 @@ pub async fn doc_put(state: &AppState, tenant: &Tenant, args: &Value) -> Result<
             .db
             .document_usage_event_insert(tenant.id, "docs.put_bytes".to_string(), outcome.bytes, now)
             .await?;
+        // PRD-mcphost-drift-review requirement 1/3: a real content change
+        // (not AC2's identical-content no-op, which bumps no version)
+        // records a `document` context version and enqueues this
+        // document's affected searches for re-run. Best-effort: logged,
+        // never fails an otherwise-successful put, same stance the
+        // lineage-edge registration below already takes.
+        if let Err(e) = crate::drift::versions::record_document_change(
+            state,
+            tenant.id,
+            Some(tenant.namespace.clone()),
+            &name,
+            outcome.version,
+            &content_hash,
+        )
+        .await
+        {
+            tracing::warn!(error = %e, tenant = %tenant.namespace, document = %name, "failed to record document drift version");
+        }
     }
 
     // PRD-mcphost-lineage-blast-radius requirement 4: "a document is put
@@ -588,27 +607,71 @@ pub async fn doc_search(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
     let prefix = search_filter_prefix(args);
     let name = search_filter_name(args);
     let requested_mode = arg_str_opt(args, "mode").unwrap_or_else(|| "auto".to_string());
-    if !matches!(requested_mode.as_str(), "auto" | "lexical" | "embeddings" | "hybrid") {
+
+    let (results, mode, idx) = search_core(state, tenant.id, &query, k, &prefix, &name, &requested_mode).await?;
+
+    let now = crate::state::now_unix();
+    let lag_seconds = index_lag_seconds(state, tenant.id, idx.indexed_watermark, now).await?;
+    let _ = state.db.document_usage_event_insert(tenant.id, "docs.search".to_string(), 1, now).await;
+    // PRD-mcphost-drift-review requirement 2: mirrors `_mcphost_query_log`
+    // in the same per-tenant-file pattern -- `drift::rerun`'s own
+    // dependency lookup for a changed document scans this, never
+    // `search_core`'s own re-run call (which must not re-log itself, or
+    // every tick's re-run would enqueue its own re-run forever).
+    log_docs_search(state, tenant.id, &query, &mode, &results).await;
+
+    Ok(json!({
+        "results": results,
+        "index": {"mode": mode, "indexed_watermark": idx.indexed_watermark, "lag_seconds": lag_seconds},
+    }))
+}
+
+/// PRD-mcphost-drift-review: `drift::rerun`'s own re-run of a logged
+/// search -- same ranking logic [`doc_search`] itself runs, minus the
+/// `_docs_search_log` write and `docs.search` usage-event metering (a
+/// background re-run must not log itself as a new dependency, or meter
+/// itself against the tenant's own quota; requirement 4 counts the whole
+/// change as one call, charged once by `drift::rerun` itself).
+pub(crate) async fn rerun_search(
+    state: &AppState,
+    tenant_id: i64,
+    query: &str,
+    mode: &str,
+) -> Result<Vec<Value>, AppError> {
+    let (results, _mode, _idx) = search_core(state, tenant_id, query, 5, &None, &None, mode).await?;
+    Ok(results)
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn search_core(
+    state: &AppState,
+    tenant_id: i64,
+    query: &str,
+    k: i64,
+    prefix: &Option<String>,
+    name: &Option<String>,
+    requested_mode: &str,
+) -> Result<(Vec<Value>, String, crate::db::DocIndexStateRow), AppError> {
+    if !matches!(requested_mode, "auto" | "lexical" | "embeddings" | "hybrid") {
         return Err(AppError::InvalidArgs(format!(
             "mode must be one of 'auto', 'lexical', 'embeddings', 'hybrid', got '{requested_mode}'"
         )));
     }
 
     let now = crate::state::now_unix();
-    state.db.doc_index_state_ensure(tenant.id, now).await?;
+    state.db.doc_index_state_ensure(tenant_id, now).await?;
     let idx = state
         .db
-        .doc_index_state_get(tenant.id)
+        .doc_index_state_get(tenant_id)
         .await?
         .ok_or_else(|| AppError::Internal("doc_index_state row missing after ensure".into()))?;
-    let lag_seconds = index_lag_seconds(state, tenant.id, idx.indexed_watermark, now).await?;
 
     let provider_ready = idx.provider == "openai-compatible"
         && idx.endpoint.is_some()
         && idx.model.is_some()
         && idx.secret_name.is_some();
 
-    if matches!(requested_mode.as_str(), "hybrid" | "embeddings") && !provider_ready {
+    if matches!(requested_mode, "hybrid" | "embeddings") && !provider_ready {
         return Err(AppError::InvalidArgs(format!(
             "mode '{requested_mode}' requires a configured embeddings provider -- call \
              host.docs.index_config with provider 'openai-compatible' first; this tenant has \
@@ -621,43 +684,73 @@ pub async fn doc_search(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
     let want_embeddings_only = requested_mode == "embeddings";
 
     let (results, mode) = if requested_mode == "lexical" {
-        let hits = lexical_hits(state, tenant.id, &query, k, &prefix, &name).await?;
+        let hits = lexical_hits(state, tenant_id, query, k, prefix, name).await?;
         (lexical_hits_to_json(&hits), "lexical".to_string())
     } else if want_embeddings_only {
-        match embed_query(state, tenant.id, &idx, &query).await {
+        match embed_query(state, tenant_id, &idx, query).await {
             Some(qvec) => {
-                let scored = dense_candidates(state, tenant.id, &qvec, &prefix, &name, k).await?;
+                let scored = dense_candidates(state, tenant_id, &qvec, prefix, name, k).await?;
                 (embeddings_hits_to_json(&scored), "embeddings".to_string())
             }
             None => {
-                let hits = lexical_hits(state, tenant.id, &query, k, &prefix, &name).await?;
+                let hits = lexical_hits(state, tenant_id, query, k, prefix, name).await?;
                 (lexical_hits_to_json(&hits), "lexical-fallback".to_string())
             }
         }
     } else if want_hybrid_or_auto_configured {
-        match embed_query(state, tenant.id, &idx, &query).await {
+        match embed_query(state, tenant_id, &idx, query).await {
             Some(qvec) => {
                 let results =
-                    hybrid_search_results(state, tenant.id, &qvec, &query, k, &prefix, &name)
+                    hybrid_search_results(state, tenant_id, &qvec, query, k, prefix, name)
                         .await?;
                 (results, "hybrid".to_string())
             }
             None => {
-                let hits = lexical_hits(state, tenant.id, &query, k, &prefix, &name).await?;
+                let hits = lexical_hits(state, tenant_id, query, k, prefix, name).await?;
                 (lexical_hits_to_json(&hits), "lexical-fallback".to_string())
             }
         }
     } else {
-        let hits = lexical_hits(state, tenant.id, &query, k, &prefix, &name).await?;
+        let hits = lexical_hits(state, tenant_id, query, k, prefix, name).await?;
         (lexical_hits_to_json(&hits), "lexical".to_string())
     };
 
-    let _ = state.db.document_usage_event_insert(tenant.id, "docs.search".to_string(), 1, now).await;
+    Ok((results, mode, idx))
+}
 
-    Ok(json!({
-        "results": results,
-        "index": {"mode": mode, "indexed_watermark": idx.indexed_watermark, "lag_seconds": lag_seconds},
-    }))
+/// PRD-mcphost-drift-review requirement 2: appends one row to this
+/// tenant's `_docs_search_log` (in its own table-store file, the same
+/// per-tenant pattern as `_mcphost_query_log`) -- `top_ids` is each
+/// result's `(name, chunk_no)`, so `drift::rerun`'s dependency lookup for
+/// a changed document can scan for a search whose top hits named it,
+/// without needing to know that document's id. Best-effort: a logging
+/// failure here must never fail the search itself, same stance
+/// `tables::log_query` already takes for `host.table.query`.
+async fn log_docs_search(state: &AppState, tenant_id: i64, query: &str, mode: &str, results: &[Value]) {
+    let top_ids: Vec<Value> = results
+        .iter()
+        .map(|r| json!({"name": r["name"], "chunk_no": r["chunk_no"]}))
+        .collect();
+    let Ok(top_ids_json) = serde_json::to_string(&top_ids) else {
+        return;
+    };
+    let path = tables::tenant_db_path(state, tenant_id);
+    let query = query.to_string();
+    let mode = mode.to_string();
+    let outcome = tables::with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+        conn.execute(
+            &format!(
+                "INSERT INTO {} (created_unix, query, mode, top_ids_json) VALUES (?1, ?2, ?3, ?4)",
+                tables::DOCS_SEARCH_LOG_TABLE
+            ),
+            rusqlite::params![crate::state::now_unix(), query, mode, top_ids_json],
+        )?;
+        Ok(())
+    })
+    .await;
+    if let Err(e) = outcome {
+        tracing::warn!(error = %e, "failed to write host.docs.search log row");
+    }
 }
 
 /// Embeds `query` through the tenant's configured provider -- `None` for

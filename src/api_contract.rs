@@ -45,6 +45,11 @@ pub const CONTRACT_BASELINE_SINCE: &str = "0.58.0";
 /// entry.
 pub const HOST_CHANGELOG_SINCE: &str = "0.58.1";
 
+/// PRD-mcphost-drift-review requirement 7/10: `host.drift.*`'s own
+/// `since`, same "kept in sync with Cargo.toml's version by this PRD's
+/// own version-bump commit" convention as [`HOST_CHANGELOG_SINCE`].
+pub const HOST_DRIFT_SINCE: &str = "0.79.0";
+
 /// requirement 1's "output envelope fields": the field every `host.*`/
 /// `billing.*` result MAY carry, added by requirement 3 (AC4) when the
 /// call used a deprecated field -- see
@@ -112,6 +117,8 @@ pub fn load_deprecations(path: &std::path::Path) -> anyhow::Result<Vec<Deprecati
 fn since_for_tool(name: &str) -> &'static str {
     if name == "host.changelog" {
         HOST_CHANGELOG_SINCE
+    } else if name.starts_with("host.drift.") {
+        HOST_DRIFT_SINCE
     } else {
         CONTRACT_BASELINE_SINCE
     }

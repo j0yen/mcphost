@@ -80,7 +80,7 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
     );
     assert_eq!(
         names.len(),
-        151,
+        155,
         "there must be exactly the sixteen host.* control-plane tools \
          (incl. host.quickstart, host.tool_run, host.bridge_test, host.spec_test -- \
          PRD-mcphost-tool-test, and host.redeem/host.key_rotate -- \
@@ -116,6 +116,8 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
          the six host.vault.* tools (PRD-mcphost-upstream-token-vault, \
          PRD-mcphost-upstream-token-vault-status) plus \
          the three host.table.graph/join_paths/next_questions tools \
-         (PRD-mcphost-table-concept-graph): {names:?}"
+         (PRD-mcphost-table-concept-graph) plus \
+         the four host.drift.reviews/review/resolve/check tools \
+         (PRD-mcphost-drift-review): {names:?}"
     );
 }

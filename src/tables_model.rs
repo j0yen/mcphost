@@ -540,7 +540,18 @@ pub async fn model_set(state: &AppState, tenant: &Tenant, args: &Value) -> Resul
     // nothing every tick picks up anyway.
     let graph_affecting = key == "role" || key == "description";
 
-    state.db.upsert_table_model_annotation(tenant.id, table.clone(), column, key.clone(), value).await?;
+    state.db.upsert_table_model_annotation(tenant.id, table.clone(), column.clone(), key.clone(), value.clone()).await?;
+
+    // PRD-mcphost-drift-review requirement 1/3 (AC1): every annotation
+    // change is a "table note" change -- versioned and enqueued for
+    // re-run. Best-effort: logged, never fails an otherwise-successful
+    // `model_set`, same stance the lineage-blast-radius notes below take.
+    if let Err(e) =
+        crate::drift::versions::record_table_note_change(state, tenant.id, Some(tenant.namespace.clone()), &table, &column, &key, &value)
+            .await
+    {
+        tracing::warn!(error = %e, table = %table, "failed to record table note drift version");
+    }
 
     if graph_affecting
         && let Err(e) = state.db.mark_table_graph_stale(tenant.id).await
@@ -632,12 +643,44 @@ pub async fn tick_once(state: &AppState) -> Result<(), AppError> {
                 continue;
             }
         };
+        let new_version = prev_version + 1;
         if let Err(e) = state
             .db
-            .upsert_table_model(tenant_id, table.clone(), prev_version + 1, model_json, row_count)
+            .upsert_table_model(tenant_id, table.clone(), new_version, model_json, row_count)
             .await
         {
             tracing::warn!(error = %e, tenant_id, table = %table, "table model store failed");
+            continue;
+        }
+
+        // PRD-mcphost-drift-review requirement 1/3 (AC4): every recompute
+        // is this hook's "table schema" change -- requirement 1's "the
+        // table-model tick (role or schema changes)" -- versioned and
+        // enqueued for re-run. `roles` carries just the type/role per
+        // column (requirement 1's own "the model's column roles and
+        // types"), not the whole model (row counts/measures/etc, which
+        // would make every recompute content-distinct and defeat
+        // requirement 3's content-hash dedupe for a no-op recompute).
+        let roles: Value = model
+            .get("columns")
+            .and_then(Value::as_object)
+            .map(|cols| {
+                let map: Map<String, Value> = cols
+                    .iter()
+                    .map(|(name, analysis)| {
+                        (
+                            name.clone(),
+                            json!({"type": analysis["type"], "role": analysis["role"]}),
+                        )
+                    })
+                    .collect();
+                Value::Object(map)
+            })
+            .unwrap_or(Value::Null);
+        if let Err(e) =
+            crate::drift::versions::record_table_schema_change(state, tenant_id, &table, new_version, &roles).await
+        {
+            tracing::warn!(error = %e, tenant_id, table = %table, "failed to record table schema drift version");
         }
     }
 
@@ -648,6 +691,15 @@ pub async fn tick_once(state: &AppState) -> Result<(), AppError> {
     // freshest models rather than racing ahead of them.
     if let Err(e) = crate::tables_graph::tick_once(state).await {
         tracing::warn!(error = %e, "table graph tick failed");
+    }
+
+    // PRD-mcphost-drift-review requirement 3: "a queue entry is processed
+    // by the existing tables tick within 60s" -- rides this same tick,
+    // after every table model/graph recompute above (so a `table_schema`
+    // change this very cycle just queued is picked up the same cycle, not
+    // the next one).
+    if let Err(e) = crate::drift::rerun::tick_once(state).await {
+        tracing::warn!(error = %e, "drift queue tick failed");
     }
     Ok(())
 }

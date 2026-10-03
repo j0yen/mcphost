@@ -537,7 +537,23 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # the smallest tested raise that re-collapses sandbox's normal buckets to
 # 1 (2 total: the one `exclusive` singleton plus this one), landing the
 # grand total back at 10.
-MAX_PER_SUITE = {"core": 810, "sandbox": 175}
+#
+# PRD-mcphost-drift-review (2026-10-03 follow-up): this PRD's own new
+# `drift` area group (11 files: 10 core, 1 sandbox -- `drift_ac12_*`
+# publishes a python tool) tipped sandbox's single normal bucket past its
+# 170 cap above, spawning a 3rd sandbox suite binary (11 total, past the
+# AC1 ceiling of 10). 170 -> 180 was the smallest tested raise that
+# re-collapses sandbox's normal bucket back to one suite, landing the
+# grand total back at 10 (8 core + 2 sandbox).
+#
+# Rebasing mcphost-drift-review onto mcphost-dry-run-side-effects
+# (2026-10-03, this rebase): both PRDs above independently raised the
+# sandbox cap from the same 170 baseline -- dry-run-side-effects bumped it
+# to 175, drift-review bumped it to 180. Landing both together needs a cap
+# that covers both PRDs' sandbox files at once; re-derived below by
+# actually running gen-test-suites.sh --check against this rebase's full
+# file set.
+MAX_PER_SUITE = {"core": 810, "sandbox": 180}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

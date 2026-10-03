@@ -20,12 +20,12 @@ use crate::db::{RunRow, Tenant};
 use crate::errors::AppError;
 use crate::handler::{
     BufferedLog, CellResourceSink, CountingStateBackend, TenantChannelBridge, TenantDocsBridge,
-    TenantLineageBridge, TenantMsgBridge, TenantStateBridge, TenantTableBridge,
+    TenantDriftBridge, TenantLineageBridge, TenantMsgBridge, TenantStateBridge, TenantTableBridge,
     build_secret_resolver,
 };
 use crate::kinds::{
-    CallCtx, CallLog, ChannelBackend, DocsBackend, LineageBackend, MsgBackend, ProgressSink,
-    ResourceSink, TableBackend,
+    CallCtx, CallLog, ChannelBackend, DocsBackend, DriftBackend, LineageBackend, MsgBackend,
+    ProgressSink, ResourceSink, TableBackend,
 };
 use crate::state::AppState;
 
@@ -988,6 +988,10 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
             state: Arc::new(state.clone()),
             tenant: tenant.clone(),
         }) as Arc<dyn LineageBackend>,
+        drift: Arc::new(TenantDriftBridge {
+            state: Arc::new(state.clone()),
+            tenant: tenant.clone(),
+        }) as Arc<dyn DriftBackend>,
         // PRD-mcphost-sandbox-channel-msg-bridge requirement 2: a
         // scheduled/async job's `mcphost.channel`/`mcphost.msg` reach this
         // same tenant's real channel/messaging service, same convention as

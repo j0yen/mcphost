@@ -1091,6 +1091,31 @@ impl LineageBackend for NoLineage {
     }
 }
 
+/// PRD-mcphost-drift-review P1 requirement 10 (AC12): `mcphost.drift`
+/// inside the python kind's sandbox -- the same shape [`LineageBackend`]
+/// gives its own report, for drift reviews instead. `op` is `"reviews"`,
+/// `args` that op's own JSON argument object (the same shape
+/// `host.drift.reviews` takes) -- so a tool gets back exactly the object
+/// that tool returns (AC12).
+#[async_trait::async_trait]
+pub trait DriftBackend: Send + Sync {
+    async fn call(&self, op: &str, args: Value) -> Result<Value, KindError>;
+}
+
+/// A backend with no drift store behind it -- [`NoLineage`]'s counterpart
+/// for [`DriftBackend`], same "fail clearly rather than silently no-op"
+/// stance.
+pub struct NoDrift;
+#[async_trait::async_trait]
+impl DriftBackend for NoDrift {
+    async fn call(&self, _op: &str, _args: Value) -> Result<Value, KindError> {
+        Err(KindError::structured(
+            "drift_unavailable",
+            "no tenant drift backend is wired for this call context",
+        ))
+    }
+}
+
 /// PRD-mcphost-sandbox-channel-msg-bridge requirement 2: `mcphost.channel`
 /// inside the python kind's sandbox -- the same shape [`TableBackend`]/
 /// [`DocsBackend`]/[`LineageBackend`] give their own stores, for
@@ -1253,6 +1278,10 @@ pub struct CallCtx {
     /// `handler.rs`'s real dispatch path (and `runs.rs`'s async job
     /// executor), which wires this call's own tenant into `lineage.rs`.
     pub lineage: Arc<dyn LineageBackend>,
+    /// See [`DriftBackend`]. Defaults to [`NoDrift`] everywhere but
+    /// `handler.rs`'s real dispatch path, which wires this call's own
+    /// tenant into `drift::review`.
+    pub drift: Arc<dyn DriftBackend>,
     /// PRD-mcphost-composition requirement 2: how many levels of
     /// composition already led to this call -- `0` for every ordinary
     /// top-level `tools/call`/`host.tool_call`. [`compose_call`] refuses a
@@ -1423,6 +1452,7 @@ impl CallCtx {
             table: Arc::new(NoTable),
             docs: Arc::new(NoDocs),
             lineage: Arc::new(NoLineage),
+            drift: Arc::new(NoDrift),
             compose_depth: 0,
             compose_children: None,
             compose_db: None,
@@ -1608,6 +1638,11 @@ async fn compose_dispatch(
         // the child's `mcphost.lineage` reaches the exact same tenant's
         // lineage graph.
         lineage: ctx.lineage.clone(),
+        // PRD-mcphost-drift-review: same reasoning as `state`/`table`/
+        // `docs`/`lineage` above -- composition stays inside one tenant,
+        // so the child's `mcphost.drift` reaches the exact same tenant's
+        // drift reviews.
+        drift: ctx.drift.clone(),
         compose_depth: next_depth,
         compose_children: Some(children.clone()),
         compose_db: Some(db.clone()),

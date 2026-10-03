@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-trigger-set-idempotent.md (test_prefix: trigidem)",
+  "ac_test_map_prd": "PRD-mcphost-drift-review.md (test_prefix: drift)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,15 +28,30 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/trigidem_ac01_webhook_set_twice_idempotent.rs",
-    "AC2": "tests/trigidem_ac02_webhook_update_tool_keeps_id_and_url.rs",
-    "AC3": "tests/trigidem_ac03_schedule_update_cron_changes_next_unix.rs",
-    "AC4": "tests/trigidem_ac04_kind_mismatch_refused.rs",
-    "AC5": "tests/trigidem_ac05_verbs_accept_name.rs",
-    "AC6": "tests/trigidem_ac06_migration_backfills_duplicate_names.rs",
-    "AC7": "tests/trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent.rs"
+    "AC1": "tests/drift_ac01_table_note_change_queues_and_completes.rs",
+    "AC2": "tests/drift_ac02_cosmetic_note_change_zero_regressions.rs",
+    "AC3": "tests/drift_ac03_identical_content_applied_twice_one_review.rs",
+    "AC4": "tests/drift_ac04_append_changes_group_by_row_count.rs",
+    "AC5": "tests/drift_ac05_dropped_table_regresses_with_error_and_alert.rs",
+    "AC6": "tests/drift_ac06_document_version_search_overlap_regression.rs",
+    "AC7": "tests/drift_ac07_resolve_hides_from_open_only_and_shows_reason.rs",
+    "AC8": "tests/drift_ac08_cross_tenant_reviews_isolated.rs",
+    "AC9": "tests/drift_ac09_fifty_queries_rerun_under_5s_one_call.rs",
+    "AC10": "tests/drift_ac10_manual_check_produces_review_without_version_change.rs",
+    "AC11": "deferred -- operator-provisioned; AC11 is the Live/production-only requirement and needs a real deploy and operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list.",
+    "AC12": "tests/drift_ac12_python_mcphost_drift_reviews_matches_tool.rs"
   },
   "ac_test_map_by_prefix": {
+    "trigidem": {
+      "_prd": "PRD-mcphost-trigger-set-idempotent.md -- superseded by mcphost-drift-review at HEAD; real test_prefix is trigidem",
+      "AC1": "tests/trigidem_ac01_webhook_set_twice_idempotent.rs",
+      "AC2": "tests/trigidem_ac02_webhook_update_tool_keeps_id_and_url.rs",
+      "AC3": "tests/trigidem_ac03_schedule_update_cron_changes_next_unix.rs",
+      "AC4": "tests/trigidem_ac04_kind_mismatch_refused.rs",
+      "AC5": "tests/trigidem_ac05_verbs_accept_name.rs",
+      "AC6": "tests/trigidem_ac06_migration_backfills_duplicate_names.rs",
+      "AC7": "tests/trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent.rs"
+    },
     "dryrun": {
       "_prd": "PRD-mcphost-dry-run-side-effects.md -- superseded by mcphost-trigger-set-idempotent at HEAD (this rebase); real test_prefix is dryrun",
       "AC1": "tests/dryrun_ac01_table_append_rolled_back.rs",

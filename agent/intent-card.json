@@ -1,111 +1,106 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-table-context-and-sql-passthrough.md",
-  "intent_slug": "mcphost-table-context-and-sql-passthrough",
-  "root_motivation": "Grounding: opportunity, not failure-derived -- visions/mcphost-killer-apps.md addendum 2026-09-30 (WWHTBT, weakest link leaf 3), an audit of src/tables.rs, src/kinds/mod.rs:939, examples/database-in-a-minute/tools/query.py, and www/llms.txt 555-590. The database-in-a-minute recipe's published query tool accepted only a six-operator {col, op, value} filter grammar (no GROUP BY, no LIKE, no aggregate joins) wrapping a real per-tenant SQLite store (host.table.query) that already runs read-only SQL behind three independent guards. The recipe's first two panel sessions scored satisfaction 0.000 on 2026-09-28 (family: publish). This PRD moves the recipe onto the SQL path directly, lets a tenant attach a plain-text note to a table/column that the schema call returns, and records every query with its row count or refusal so a tenant can see which questions failed.",
-  "user_persona": "A person with a spreadsheet and a Claude subscription who loaded a CSV into mcphost's table store and wants to ask it any question a spreadsheet pivot could answer (total by category, rows matching a pattern, average over a range) without learning a private filter grammar -- the spreadsheet_owner segment in the synthorg consumer corpus.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-drift-review.md",
+  "intent_slug": "mcphost-drift-review",
+  "root_motivation": "Grounding: opportunity -- visions/mcphost-aistack-harvest.md addendum 2026-09-30 (drift pattern), ported from ~/projects/ai-stack @ 4ef6c22 aistack-observability (store.rs grounding_records/definition_versions/drift_queue/emitted_reviews, drift.rs DriftDetector/on_version_change/QuestionDelta, review.rs DriftReviewItem, alert.rs AlertEvent, eval.rs's EvalHarness stub replaced with deterministic re-execution). After PRD-mcphost-table-context-and-sql-passthrough, the query log holds every SQL statement with its row count, documents carry a version, and table notes are annotations with updated_at and no version history -- but nothing links a change to the queries that depended on the changed thing, and nothing re-runs them. A note edit that fixes one question silently breaks another, and the only signal was the next complaint.",
+  "user_persona": "A tenant who edits a table note, appends rows that change a column's inferred role, or uploads a new document version, and the agent that answered questions from the previous state and needs to know which earlier answers are now stale.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 12
+    "target": 11
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a declared table with a table-level description annotation set through host.table.model_set, When host.table.schema is called, Then the response carries that text under description and the table/columns/rows/bytes_used keys are unchanged.",
-      "test": "tests/sqlpass_ac01_table_level_description_in_schema.rs"
+      "description": "Given a table note change through host.table.model_set, When the tick runs, Then context_versions has a new row for that target and a drift_queue entry with status queued, then done within 60 s.",
+      "test": "tests/drift_ac01_table_note_change_queues_and_completes.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a column with a description annotation, When host.table.schema is called, Then that column's entry carries the text, and columns without one carry no description key.",
-      "test": "tests/sqlpass_ac02_column_description_in_schema.rs"
+      "description": "Given 12 logged queries naming expenses and a note change on it, When the review is produced, Then it holds 12 deltas, changed_count 0, regressed_count 0, and no alert is written.",
+      "test": "tests/drift_ac02_cosmetic_note_change_zero_regressions.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a table with no annotations, When host.table.schema is called, Then the response has no description key at any level and matches the pre-change shape byte for byte.",
-      "test": "tests/sqlpass_ac03_no_annotations_shape_unchanged.rs"
+      "description": "Given the same change applied twice with identical content, When both are processed, Then one review item exists.",
+      "test": "tests/drift_ac03_identical_content_applied_twice_one_review.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a 1,000-row table, When host.table.query returns 5 rows for a GROUP BY, Then _mcphost_query_log gains one row with that sql, row_count 5, a duration_ms under 5,000, and null error_code, and the logged call added under 5 ms at p95 across 100 repetitions.",
-      "test": "tests/sqlpass_ac04_group_by_logs_row_count_and_duration.rs"
+      "description": "Given an append that changes a column's inferred role, When the review runs, Then a logged GROUP BY over that column shows before.row_count 7 and after.row_count 31 with changed: true.",
+      "test": "tests/drift_ac04_append_changes_group_by_row_count.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given an UPDATE statement, When host.table.query refuses it, Then no table row changes, the caller gets the existing read-only refusal, and the log row carries that refusal's error_code with null row_count.",
-      "test": "tests/sqlpass_ac05_update_refused_logs_error_code.rs"
+      "description": "Given a logged query that now errors after a schema change, When reviewed, Then its delta carries after.error_code, regressed_count is at least 1, and a drift_regression alert with severity warning exists.",
+      "test": "tests/drift_ac05_dropped_table_regresses_with_error_and_alert.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given two tenants that each ran queries, When tenant A calls host.table.query_log, Then only A's rows return, newest first, and limit 500 is served as 200.",
-      "test": "tests/sqlpass_ac06_query_log_tenant_isolated_and_limit_capped.rs"
+      "description": "Given a document uploaded as version 3 and 5 logged searches whose top hits included version 2, When reviewed, Then 5 search deltas exist and any with top-5 overlap under 3 counts as regressed.",
+      "test": "tests/drift_ac06_document_version_search_overlap_regression.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given a tenant with 1,000 log rows, When one more query runs, Then the log holds 1,000 rows, the oldest is gone, and host.table.schema's bytes_used includes the log.",
-      "test": "tests/sqlpass_ac07_query_log_capped_at_1000_bytes_used_includes_log.rs"
+      "description": "Given host.drift.resolve(item_id, \"cosmetic\"), When host.drift.reviews(open_only: true) is called, Then the item is absent and host.drift.review(item_id) shows the reason.",
+      "test": "tests/drift_ac07_resolve_hides_from_open_only_and_shows_reason.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given the fixture loaded through host.table.create and host.table.append, When proof.sh runs against a local mcphost, Then the equality, range, count, GROUP BY sum by category, and LIKE '%prod%' answers each match the fixture's known values and no host.tool_publish call is made.",
-      "test": "tests/sqlpass_ac08_proof_sh_sql_questions_no_publish.rs"
+      "description": "Given two tenants, When tenant A reads reviews, Then none of tenant B's appear.",
+      "test": "tests/drift_ac08_cross_tenant_reviews_isolated.rs"
     },
     {
       "id": "AC9",
       "level": "MUST",
-      "description": "Given www/llms.txt, When the database-in-a-minute section is read, Then it is under 70 lines, shows create, append, one model_set description, a GROUP BY and a LIKE question through host.table.query, and query_log, and contains no where grammar and no claim that mcphost.state.query is the only bridge path.",
-      "test": "tests/sqlpass_ac09_llms_txt_sql_path_under_70_lines.rs"
+      "description": "Given 50 affected queries on the fixture, When a change is processed, Then re-runs finish under 5 s on the builder and the tenant's daily call count rose by one.",
+      "test": "tests/drift_ac09_fifty_queries_rerun_under_5s_one_call.rs"
     },
     {
       "id": "AC10",
       "level": "SHOULD",
-      "description": "Given prod after land, When proof.sh https://mcphost.dev/mcp runs from carbon with a fresh signup, Then it exits 0 in under 30 s and host.table.query_log on that tenant lists at least five rows with non-null row_count.",
-      "test": "deferred (Live) -- operator-provisioned: needs a real run against production https://mcphost.dev/mcp from carbon after deploy, with the receipt committed under docs/receipts/; this coder dispatch has no live operator access."
+      "description": "Given host.drift.check(\"expenses\") with no version change, When the tick runs, Then a review with the current deltas is produced.",
+      "test": "tests/drift_ac10_manual_check_produces_review_without_version_change.rs"
     },
     {
       "id": "AC11",
       "level": "SHOULD",
-      "description": "Given ten host.table.query calls issued concurrently for one tenant, When they finish, Then the log holds exactly ten new rows and every one has a duration_ms.",
-      "test": "tests/sqlpass_ac11_concurrent_queries_produce_ten_log_rows.rs"
+      "description": "Given prod after land, When a fresh tenant loads the fixture, runs three queries over expenses, changes the table note, and calls host.drift.reviews, Then one open review lists three deltas with changed_count 0 (Live; evidence: mcphost-1 healthz version after deploy plus the reviews response in the receipt under docs/receipts/).",
+      "test": "deferred (Live) -- operator-provisioned: needs a real run against production after deploy, with the receipt committed under docs/receipts/; this coder dispatch never provisions, resizes, deletes, or reconfigures any server, volume, or service, so AC11 is declared deferred rather than faked."
     },
     {
       "id": "AC12",
       "level": "SHOULD",
-      "description": "Given an empty declared table, When SELECT * FROM t runs, Then zero rows return and the log row carries row_count 0 and null error_code.",
-      "test": "tests/sqlpass_ac12_empty_table_zero_rows_null_error_code.rs"
-    },
-    {
-      "id": "AC13",
-      "level": "MAY",
-      "description": "Given a 5,000-byte SELECT, When it runs, Then the log row stores the first 4,096 bytes with truncated: true and the query itself is not refused for length.",
-      "test": "tests/sqlpass_ac13_long_sql_truncated_in_log_not_refused.rs"
+      "description": "Given a python tool, When it calls mcphost.drift.reviews(), Then it receives the same list the tool returns.",
+      "test": "tests/drift_ac12_python_mcphost_drift_reviews_matches_tool.rs"
     }
   ],
   "scope": [
-    "src/tables.rs: host.table.schema merges table/column description annotations (requirement 1); host.table.query writes one row per call to a new _mcphost_query_log table inside the tenant's own tables/<tenant_id>.db, bounded at 1,000 rows with oldest-row eviction in the same transaction, sql truncated to 4,096 bytes with a truncated flag (requirements 2/3/10); host.table.query_log(limit?, before_id?) reads only the calling tenant's own log, newest first, limit default 50 capped at 200 (requirement 4).",
-    "src/handler.rs: one new tenant tool, host.table.query_log, registered alongside the other host.table.* tools.",
-    "examples/database-in-a-minute/proof.sh, examples/database-in-a-minute/synthorg-task.yaml: rewritten onto host.table.create/append/model_set/query/query_log -- no host.tool_publish step, no where grammar, GROUP BY and LIKE questions added (requirements 5/6); examples/database-in-a-minute/tools/query.py deleted.",
-    "www/llms.txt: the 'Give Claude a database in one minute' section rewritten onto the SQL path (requirement 5/9), and the stale 'mcphost.state.query is the only supported path from a python tool to your own table' sentence replaced with the mcphost.table.query(sql) bridge (requirement 7).",
-    "tests/sqlpass_ac01-13 (AC10 deferred, no test): delivered per-AC integration tests, test_prefix sqlpass.",
-    "Deletes tests/mcphost_database_in_a_minute_ac01/02/03/04/05/07_*.rs: the predecessor PRD's own tests of the six-operator where grammar, its LIKE/raw-SQL rejection, and the old host.state.*-backed recipe steps, all superseded on purpose by this PRD's requirement 5 (see the predecessor PRD's own absorbed-scope note); AC08 (Live gate) and AC09 (unrelated csv_import.py tool) are untouched.",
-    "Cargo.toml/CHANGELOG.md: version bump per the PRD's own build_version_bump: minor."
+    "src/drift/ (new): versions.rs (context_versions write hooks), queue.rs (drift_queue enqueue + content dedupe hash), rerun.rs (the tick-driven re-run engine: SQL AST table-name extraction, dependent-query/search lookup, QueryDelta/SearchDelta, regression detection), review.rs (host.drift.reviews/review/resolve), alert.rs (drift_alerts on regression).",
+    "src/db.rs: migration 0066 (context_versions, drift_queue, emitted_reviews, drift_reviews, drift_alerts) and the Db methods/row structs over them.",
+    "src/tables.rs: a new _docs_search_log-sibling sample_hash column on _mcphost_query_log, log_query extended to write it, run_query_sync made pub(crate) for rerun.rs's reuse.",
+    "src/tables_model.rs: model_set and tick_once each call the new versions:: hooks (table_note / table_schema changes); tick_once also drains the drift queue via drift::rerun::tick_once at the end of its own 10s cycle.",
+    "src/docs.rs: doc_put calls versions::record_document_change on a real content change; doc_search split into a logging wrapper plus a non-logging search_core, with a new rerun_search helper for drift's own internal re-runs so they never re-log themselves into _docs_search_log.",
+    "src/handler.rs: four new tenant tools (host.drift.reviews/review/resolve/check) and (AC12) a TenantDriftBridge bridging CallCtx.drift to drift::reviews for the python sandbox.",
+    "src/kinds/mod.rs, src/kinds/python.rs, src/runs.rs: DriftBackend/NoDrift plumbing and the mcphost.drift python shim (AC12).",
+    "Cargo.toml: minor version bump 0.78.0 -> 0.79.0 per this PRD's build_version_bump field.",
+    "Gate artifacts kept in sync with the new tool surface: contracts/host-tools.v1.json, www/llms.txt, docs/kinds/python.md, plugin/skills/mcphost/SKILL.md, plugin/.claude-plugin/plugin.json, scripts/gen-test-suites.sh (sandbox suite cap)."
   ],
   "non_goals": [
-    "host.state.query and its field op value filter grammar: unchanged -- it is a key-value store's filter, not a query language for analytics (PRD non-goal 1).",
-    "New annotation kinds: model_set already stores role, unit, description, hidden; this PRD returns description from schema, it adds no key (PRD non-goal 2).",
-    "Retention or export controls for the query log beyond the fixed 1,000-row cap (PRD non-goal 3).",
-    "Metering changes: a host.table.query call is already one tool call for billing (PRD non-goal 4).",
-    "A control-plane/admin surface for the query log -- the tenant-facing read (host.table.query_log) is the capability shipped here (PRD non-goal 5).",
-    "Changing the row cap, time cap, or the three read-only guards host.table.query already enforces (PRD non-goal 6)."
+    "Judging whether a changed answer is better or worse -- the review shows the diff; a person or the loop decides (PRD non-goal).",
+    "Model-based evaluation of any kind -- eval.rs's EvalHarness is replaced with deterministic re-execution, not ported (PRD non-goal / technical considerations).",
+    "Drift on host.state key-value data (PRD non-goal).",
+    "Retention beyond 90 days of review items -- left to the existing purge tick, not newly implemented here (PRD non-goal).",
+    "Requirement 9 (host.drift.stats) and requirement 11 (P2 value diff for queries under 100 rows) are P1/P2 requirements in the PRD body with no corresponding acceptance criterion in the PRD's own AC list (1-12) and were not in this dispatch's assigned AC list -- left unimplemented, not deferred, since they were never in scope for this pass."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -114,38 +109,47 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "test_file_names_use_underscores_not_the_prd_slugs_hyphens": "test_prefix sqlpass (the PRD's own frontmatter field), same convention as every other test file in this repo.",
-      "ac10_is_live_operator_provisioned": "AC10's Then needs a real run against production https://mcphost.dev/mcp from carbon after deploy; this coder dispatch never provisions, resizes, deletes, or reconfigures any server, volume, or service, so AC10 is declared deferred rather than faked.",
-      "shared_runner_contention_hardened_ac4_test_not_weakened": "The gate-check found this branch's runner box under severe, external, time-varying contention (load average up to ~4x its core count; /cache periodically disk-full from other concurrent sessions) that intermittently fails tight wall-clock latency assertions repo-wide, including AC4's own pre-existing p95 guardrail test and several unrelated ones (enduserctl_ac10, sharedcall_ac03, tablemodel_ac06, oauthpol_ac03). AC4's test was hardened (an ambient host.table.schema baseline measured per-iteration, subtracted from the raw overhead, plus a 10-attempt retry) to isolate the log write's own added cost from that noise, rather than loosening its 5ms budget; the guardrail's actual value is unchanged."
+      "test_file_names_use_underscores_not_the_prd_slugs_hyphens": "test_prefix drift (the PRD's own frontmatter field), same convention as every other test file in this repo.",
+      "ac11_is_live_operator_provisioned": "AC11's Then needs a real run against production after deploy, with a receipt committed under docs/receipts/; this coder dispatch never provisions, resizes, deletes, or reconfigures any server, volume, or service, so AC11 is declared deferred rather than faked.",
+      "no_committed_receipt_asserts_current_head_sha": "Per the dispatch's own instruction, no test in this PRD asserts that a committed receipt/fixture records the current HEAD sha or 'no changes since' a sha.",
+      "clippy_clean_by_construction_on_touched_checkcompat_files": "tests/checkcompat_race_ac07_suite_green_and_clippy_clean.rs forbids a new #[allow(clippy::...)] in src/tables.rs specifically (one of five files from an earlier PRD); log_query was refactored to bundle its trailing outcome fields into a QueryLogOutcome struct instead of suppressing too_many_arguments there. New drift-only functions elsewhere (src/db.rs, src/drift/queue.rs, src/drift/versions.rs) use #[allow(clippy::too_many_arguments)] following the existing Db::record_call_attributed precedent, since those files are outside that test's fixed list."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does the recipe need to stop publishing a python query tool at all, rather than just add GROUP BY/LIKE to its where grammar?",
-      "a": "Extending the hand-rolled grammar to cover joins, aggregates, and pattern matching re-derives SQL badly and gives the model no training data to speak it from -- Blankley's published numbers on domain-specific query languages put model accuracy roughly 80% below plain SQL for exactly this reason (Super Data Brothers, 2026), and the host already ships the real thing (host.table.query) behind three independent read-only guards."
+      "q": "Why re-run the stored SQL/search deterministically instead of porting ai-stack's eval.rs (an external evaluator)?",
+      "a": "mcphost already has the real, read-only execution path (host.table.query's guards, host.docs.search's ranking) that produced the original logged result -- re-running the same path and diffing is strictly more deterministic and cheaper than calling out to an evaluator, and the PRD's own technical considerations say exactly this ('mcphost can do better by re-running the stored SQL, or the stored search, and diffing')."
     },
     {
       "why": 2,
-      "q": "Why record every query (including refusals) rather than only successful ones?",
-      "a": "User story 3: when an answer looks wrong, a tenant needs to see the SQL and outcome of every recent call, including the one that hit the row cap or was refused for reaching past a write -- a log of successes alone can't distinguish a bad note from a bad query."
+      "q": "Why two separate dedupe mechanisms (a unique index on drift_queue's (tenant_id, kind, target, trigger_version) vs emitted_reviews' content hash) rather than one?",
+      "a": "AC1 requires every distinct context_versions row to be queued (so a tenant can see each edit was processed), but AC3 requires that applying the identical note value twice -- two distinct versions, identical content -- still produces only one review. Queue-level dedup (per exact version) and review-level dedup (per content hash) are different questions; collapsing them into one would fail one of the two ACs."
     },
     {
       "why": 3,
-      "q": "Why store the log in the tenant's own tables/<tenant_id>.db rather than the main mcphost.db (the documents module's document_usage_events precedent)?",
-      "a": "The tables module's design promise is that one tenant's whole table store is one file to back up, restore, or delete (src/tables.rs); a log in the main database would break that promise and need a migration plus a cascade-delete path the per-tenant-file design doesn't need."
+      "q": "Why version every table-model tick recompute as a 'table_schema change' unconditionally, rather than diffing old vs new column roles to decide if anything really changed?",
+      "a": "AC4's own scenario (an append that changes row counts under a GROUP BY) is really a question about data, not about the model's own role/type inference changing at all -- the tick recompute is conceptually the re-assessment event the PRD means by 'table schema' drift, and versioning every recompute lets the natural re-run (seeing a different row count) carry the signal, with no separate role-diff logic needed."
     },
     {
       "why": 4,
-      "q": "Why does the recipe's llms.txt section still need a line naming mcphost.table.query(sql) as a python bridge, if the recipe itself no longer publishes a python tool?",
-      "a": "Requirement 7 and user story 5 are about tool AUTHORS in general, not just this recipe: llms.txt's existing line claimed mcphost.state.query was the only supported path from a python tool to a table, which has been false since PRD-mcphost-tenant-tables landed -- leaving it uncorrected would keep misdirecting every other python-tool author who reads it."
+      "q": "Why does AC5 use host.table.drop rather than an ALTER-COLUMN-style operation to produce a genuinely erroring re-run?",
+      "a": "The host.table.* API has no column-type-narrowing or ALTER-COLUMN operation that could make a previously-valid SELECT start erroring; dropping the table after a change is already queued (but before the tick drains it) is the one real operation in the existing surface that turns a previously-successful logged query into a genuine 'no such table' SQLite error at re-run time, which is what AC5's Then actually requires."
     }
   ],
-  "created_at": "2026-09-30T00:00:00Z",
+  "created_at": "2026-10-03T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Should the query log be readable by an end user (end_user_subject) or only by the tenant key?",
-      "resolution": "Tenant key only -- the PRD's own open-questions table names this as its default, and host.table.query_log's implementation reads only the calling tenant's own file with no argument naming another tenant or an end user."
+      "question": "Does host.drift.reviews/review/resolve/check get its own 'since' version in contracts/host-tools.v1.json, or does it inherit the CONTRACT_BASELINE_SINCE every pre-existing tool shares?",
+      "resolution": "Added a dedicated HOST_DRIFT_SINCE = \"0.79.0\" constant in src/api_contract.rs (matching this PRD's own version-bump commit), following the same precedent host.changelog's own HOST_CHANGELOG_SINCE already set, rather than letting four brand-new tools silently report the 0.58.0 baseline."
+    },
+    {
+      "question": "Should drift's own internal re-run of a logged search write a new row to _docs_search_log?",
+      "resolution": "No -- doing so would make drift::rerun's own background re-run look like a new dependent search, which a later tick would then pick up again, compounding forever. docs::doc_search was split into a logging/metering wrapper plus a non-logging search_core, with a new docs::rerun_search helper (search_core only) used exclusively by drift::rerun::rerun_document."
+    },
+    {
+      "question": "Should drift_alerts reuse the existing host-wide alerts table/raise() infra in src/alerts.rs?",
+      "resolution": "No -- a dedicated drift_alerts table (migration 0066) was added instead, so this PRD controls the exact severity strings (\"warning\"/\"critical\") and shape the PRD's own AlertEvent {kind, severity, detail} names, independent of the existing AlertConfig/Severity enum's own semantics."
     }
   ]
 }
