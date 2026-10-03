@@ -13,6 +13,15 @@
 //! file exercises the new `into_error_data_at` path (the one every live
 //! HTTP call site actually uses) end to end, including the `help_url` this
 //! PRD adds on top.
+//!
+//! `internal_error_logs_one_error_line_with_request_id_and_full_detail`
+//! below is the AC's own "server log" clause -- `tests/support/
+//! busyaudit.rs`'s `capture_tracing` (same helper `plancat_ac02` uses)
+//! installs a scoped subscriber around the call and asserts on what it
+//! actually wrote, so deleting the `tracing::error!` call in `errors.rs`
+//! fails this test instead of leaving it green.
+
+use crate::busyaudit;
 
 use mcphost::errors::AppError;
 
@@ -54,4 +63,32 @@ fn internal_error_hides_stripe_detail_but_carries_request_id_and_help_url() {
 
     let help_url = data["help_url"].as_str().expect("internal must have a help_url");
     assert_eq!(help_url, "https://mcphost.dev/help/internal");
+}
+
+#[test]
+fn internal_error_logs_one_error_line_with_request_id_and_full_detail() {
+    let detail = "Stripe checkout session request: card_declined (card ending 4242)";
+
+    let (response, log) = busyaudit::capture_tracing(|| {
+        AppError::Internal(detail.to_string()).into_error_data_at(Some("https://mcphost.dev"))
+    });
+
+    let data = response.data.expect("error data object");
+    let request_id = data["request_id"].as_str().expect("request_id").to_string();
+
+    let error_lines: Vec<&str> = log.lines().filter(|l| l.contains("service error")).collect();
+    assert_eq!(
+        error_lines.len(),
+        1,
+        "expected exactly one 'service error' log line, got:\n{log}"
+    );
+    let line = error_lines[0];
+    assert!(
+        line.contains(&request_id),
+        "the log line must carry the same request_id the response carries ({request_id}): {line}"
+    );
+    assert!(
+        line.contains(detail),
+        "the log line must carry the full, un-redacted detail text: {line}"
+    );
 }
