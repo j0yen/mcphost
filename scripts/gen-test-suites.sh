@@ -528,7 +528,16 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # passthrough bumped sandbox 130 -> 170. Landing both together needs both
 # bumps; the exact combined numbers are re-derived below by actually
 # running gen-test-suites.sh --check against this rebase's full file set.
-MAX_PER_SUITE = {"core": 810, "sandbox": 170}
+#
+# PRD-mcphost-dry-run-side-effects (2026-10-03, run 352): this PRD's own
+# seven `dryrun_ac0N_*.rs` sandbox-classified files (dry-run writes must
+# exercise the real sandboxed write path to prove the rollback) tipped
+# sandbox's normal bucket past its 170 cap above into a 3rd sandbox suite
+# binary (11th overall) -- caught by the same P0 assertion. 170 -> 175 was
+# the smallest tested raise that re-collapses sandbox's normal buckets to
+# 1 (2 total: the one `exclusive` singleton plus this one), landing the
+# grand total back at 10.
+MAX_PER_SUITE = {"core": 810, "sandbox": 175}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"
