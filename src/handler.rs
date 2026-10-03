@@ -2127,12 +2127,18 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              its argument, or give it an inbound-inbox URL (kind=\"webhook\"): a verified POST \
              lands as a row in state table inbox_<name> and fires the tool with that row as its \
              argument -- the response carries {url, secret} once (host.trigger.get afterwards \
-             never returns the secret again). Each firing/delivery is a run visible in \
+             never returns the secret again). name is this trigger's identity, unique per \
+             tenant (default \"<kind>:<tool>\"): calling set again with the same name updates \
+             that trigger in place (same id, same hook URL, next_unix recomputed for a changed \
+             schedule) instead of creating a duplicate -- safe to re-run a setup script any \
+             number of times -- and returns {created: false, changed: [...changed fields]}; a \
+             name that already names a different kind fails trigger_kind_mismatch. Each \
+             firing/delivery is a run visible in \
              host.runs.list(trigger=\"schedule\"|\"event\"|\"message\"|\"webhook\"). Refuses \
              schedules_max (trigger_quota_exceeded, shared by schedule and webhook triggers), \
              event_triggers_max (shared by event and message triggers) or a too-short schedule \
-             interval (trigger_interval_too_short); an invalid expression or verify config fails \
-             trigger_invalid naming the field.",
+             interval (trigger_interval_too_short) on create only -- an update never consumes a \
+             slot; an invalid expression or verify config fails trigger_invalid naming the field.",
             host_schema(
                 json!({
                     "tool": {"type": "string", "description": "The published tool this trigger runs."},
@@ -2144,8 +2150,11 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                     },
                     "name": {
                         "type": "string",
-                        "description": "kind=\"webhook\": letters/digits/underscore -- becomes the \
-                            inbox_<name> state table each accepted delivery is stored in.",
+                        "description": "This trigger's identity, unique per tenant (default \
+                            \"<kind>:<tool>\"); re-running set with the same name updates that \
+                            trigger in place instead of creating a duplicate. kind=\"webhook\": \
+                            also becomes the inbox_<name> state table each accepted delivery is \
+                            stored in.",
                     },
                     "verify": {
                         "description": "kind=\"event\": {scheme: \"hmac-sha256\"|\"hmac-sha1\"|\
@@ -2193,16 +2202,22 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             "host.trigger.get",
             "Read one trigger's current schedule, next_unix, last_run_id and last_status.",
             host_schema(
-                json!({"id": {"type": "string", "description": "The trigger id."}}),
-                &["id"],
+                json!({
+                    "id": {"type": "string", "description": "The trigger id."},
+                    "name": {"type": "string", "description": "The trigger's name, instead of id."},
+                }),
+                &[],
             ),
         ),
         Tool::new(
             "host.trigger.pause",
             "Stop a trigger from firing until resumed; still counts toward schedules_max.",
             host_schema(
-                json!({"id": {"type": "string", "description": "The trigger id."}}),
-                &["id"],
+                json!({
+                    "id": {"type": "string", "description": "The trigger id."},
+                    "name": {"type": "string", "description": "The trigger's name, instead of id."},
+                }),
+                &[],
             ),
         ),
         Tool::new(
@@ -2210,16 +2225,22 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             "Re-enable a paused trigger; if its scheduled time already passed, the next tick \
              fires it once (a missed firing is never replayed).",
             host_schema(
-                json!({"id": {"type": "string", "description": "The trigger id."}}),
-                &["id"],
+                json!({
+                    "id": {"type": "string", "description": "The trigger id."},
+                    "name": {"type": "string", "description": "The trigger's name, instead of id."},
+                }),
+                &[],
             ),
         ),
         Tool::new(
             "host.trigger.remove",
             "Delete a trigger outright (frees its schedules_max slot, unlike pause).",
             host_schema(
-                json!({"id": {"type": "string", "description": "The trigger id."}}),
-                &["id"],
+                json!({
+                    "id": {"type": "string", "description": "The trigger id."},
+                    "name": {"type": "string", "description": "The trigger's name, instead of id."},
+                }),
+                &[],
             ),
         ),
         Tool::new(
@@ -2227,8 +2248,11 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             "Run a schedule once right now, for testing -- recorded as trigger: \"schedule\" with \
              manual: true, independent of next_unix or pause state.",
             host_schema(
-                json!({"id": {"type": "string", "description": "The trigger id."}}),
-                &["id"],
+                json!({
+                    "id": {"type": "string", "description": "The trigger id."},
+                    "name": {"type": "string", "description": "The trigger's name, instead of id."},
+                }),
+                &[],
             ),
         ),
         // PRD-mcphost-inbound-events P0 requirement 3: an event trigger's
@@ -2246,12 +2270,13 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             host_schema(
                 json!({
                     "id": {"type": "string", "description": "The event, message or webhook trigger id."},
+                    "name": {"type": "string", "description": "The trigger's name, instead of id."},
                     "body": {"description": "kind=\"event\"/\"webhook\": the payload to verify and run with -- any JSON value. kind=\"message\": the synthetic envelope's body text."},
                     "headers": {"type": "object", "description": "kind=\"event\": header name -> string value, e.g. {\"X-Hub-Signature-256\": \"sha256=...\"}."},
                     "from": {"type": "string", "description": "kind=\"message\": the synthetic envelope's from address; default \"@test\"."},
                     "data": {"description": "kind=\"message\": the synthetic envelope's data payload."},
                 }),
-                &["id"],
+                &[],
             ),
         ),
         Tool::new(
@@ -2265,6 +2290,7 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 json!({
                     "run_id": {"type": "string", "description": "The event- or message-triggered run id to replay."},
                     "id": {"type": "string", "description": "kind=\"webhook\" only: the trigger id (paired with row_id)."},
+                    "name": {"type": "string", "description": "kind=\"webhook\" only: the trigger's name, instead of id (paired with row_id)."},
                     "row_id": {"type": "integer", "description": "kind=\"webhook\" only: the inbox_<name> row id to replay (paired with id)."},
                 }),
                 &[],

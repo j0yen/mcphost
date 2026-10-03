@@ -28,12 +28,15 @@ async fn webhook_on_a_free_tenant_already_at_three_schedules_is_quota_exceeded()
         .expect("publish");
 
     // Three distinct daily schedules -- webhooks share this same
-    // schedules_max quota (requirement 5).
+    // schedules_max quota (requirement 5). Each its own name
+    // (PRD-mcphost-trigger-set-idempotent AC1: a shared default name would
+    // make calls 2 and 3 update call 1's trigger in place instead of
+    // creating their own).
     for hour in 0..3 {
         client
             .tools_call(
                 "host.trigger.set",
-                json!({"tool": "pinger", "schedule": format!("0 {hour} * * *")}),
+                json!({"tool": "pinger", "schedule": format!("0 {hour} * * *"), "name": format!("pinger_{hour}")}),
             )
             .await
             .unwrap_or_else(|e| panic!("schedule {hour} should be accepted: {} {}", e.code, e.message));

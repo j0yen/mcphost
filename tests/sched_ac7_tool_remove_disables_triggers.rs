@@ -21,10 +21,18 @@ async fn tool_remove_disables_its_triggers_and_reports_the_count() {
         .expect("publish");
 
     let mut trigger_ids = Vec::new();
-    for schedule in ["*/5 * * * *", "*/6 * * * *"] {
+    for (i, schedule) in ["*/5 * * * *", "*/6 * * * *"].into_iter().enumerate() {
+        // PRD-mcphost-trigger-set-idempotent AC1: two `set` calls on the
+        // same tool with no explicit `name` would both default to the same
+        // `schedule:pinger` identity and collapse into one updated trigger
+        // instead of two -- an explicit distinct name per call is what
+        // keeps this test's own "two schedules" precondition true.
         let set = extract_structured(
             &client
-                .tools_call("host.trigger.set", json!({"tool": "pinger", "schedule": schedule}))
+                .tools_call(
+                    "host.trigger.set",
+                    json!({"tool": "pinger", "schedule": schedule, "name": format!("pinger_{i}")}),
+                )
                 .await
                 .expect("trigger.set"),
         );

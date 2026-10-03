@@ -455,23 +455,15 @@ pub fn event_url(state: &AppState, namespace: &str, tool: &str) -> String {
 /// is keyed by `(namespace, tool)` alone, with no trigger id in the path,
 /// so a second one would be unreachable) and the plan's `event_triggers_max`
 /// (requirement 4).
+#[allow(clippy::too_many_arguments)]
 pub async fn set_event_trigger(
     state: &AppState,
     tenant: &Tenant,
     tool: &str,
+    name: &str,
     args: &Value,
+    existing: Option<TriggerRow>,
 ) -> Result<Value, AppError> {
-    let existing_on_tool = state.db.list_triggers(tenant.id, Some(tool.to_string())).await?;
-    if existing_on_tool.iter().any(|t| t.kind == "event") {
-        return Err(trigger_invalid(
-            "tool",
-            format!(
-                "'{tool}' already has an event trigger; host.trigger.remove it before adding \
-                 another (the hook URL is keyed by tool name alone)"
-            ),
-        ));
-    }
-
     let verify_arg = args
         .get("verify")
         .cloned()
@@ -488,24 +480,6 @@ pub async fn set_event_trigger(
     let dedupe_header = args.get("dedupe_header").and_then(Value::as_str).map(str::to_string);
     let call_args = args.get("args").cloned().unwrap_or_else(|| json!({}));
 
-    let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
-        AppError::Internal(format!(
-            "tenant's plan '{}' is not in the loaded plan catalog",
-            tenant.plan
-        ))
-    })?;
-    let existing = state.db.count_event_triggers_for_tenant(tenant.id).await?;
-    if existing >= plan.event_triggers_max {
-        return Err(AppError::Structured {
-            code: "trigger_quota_exceeded",
-            message: format!(
-                "tenant already holds {existing} event triggers, the plan maximum of {}",
-                plan.event_triggers_max
-            ),
-            data: json!({"event_triggers_max": plan.event_triggers_max}),
-        });
-    }
-
     let mut config = json!({"verify": verify, "args": call_args});
     if let Some(dh) = &dedupe_header
         && let Some(obj) = config.as_object_mut()
@@ -515,6 +489,88 @@ pub async fn set_event_trigger(
     let config_json = serde_json::to_string(&config)
         .map_err(|e| AppError::Internal(format!("trigger config serialize: {e}")))?;
     let hash = crate::triggers::config_hash(&config_json);
+
+    // P0 requirement 2: re-`set`ting the same name updates in place instead
+    // of minting a second trigger.
+    if let Some(existing) = existing {
+        let old_config: Value = serde_json::from_str(&existing.config_json).unwrap_or_else(|_| json!({}));
+        let mut changed = Vec::new();
+        if tool != existing.tool_name {
+            changed.push("tool_name");
+        }
+        if config.get("verify") != old_config.get("verify") {
+            changed.push("verify");
+        }
+        if config.get("dedupe_header") != old_config.get("dedupe_header") {
+            changed.push("dedupe_header");
+        }
+        if call_args != old_config.get("args").cloned().unwrap_or_else(|| json!({})) {
+            changed.push("args");
+        }
+        if changed.is_empty() {
+            let value = trigger_to_json_event(state, tenant, &existing).await;
+            return Ok(crate::triggers::annotate_set_result(value, false, &changed));
+        }
+        if tool != existing.tool_name {
+            // The URL is keyed by `(namespace, tool)` alone (no trigger id
+            // in the path) -- an update that retargets `tool` must refuse
+            // the same way a create would if the new tool already has its
+            // own event trigger, or two triggers would share one URL.
+            let existing_on_tool = state.db.list_triggers(tenant.id, Some(tool.to_string())).await?;
+            if existing_on_tool.iter().any(|t| t.kind == "event" && t.id != existing.id) {
+                return Err(trigger_invalid(
+                    "tool",
+                    format!(
+                        "'{tool}' already has an event trigger; host.trigger.remove it before \
+                         retargeting another trigger onto it (the hook URL is keyed by tool name \
+                         alone)"
+                    ),
+                ));
+            }
+        }
+        state
+            .db
+            .update_trigger(existing.id.clone(), tool.to_string(), config_json, hash, None)
+            .await?;
+        let row = state
+            .db
+            .get_trigger(tenant.id, existing.id.clone())
+            .await?
+            .ok_or_else(|| AppError::Internal("trigger vanished immediately after update".to_string()))?;
+        let value = trigger_to_json_event(state, tenant, &row).await;
+        return Ok(crate::triggers::annotate_set_result(value, false, &changed));
+    }
+
+    let existing_on_tool = state.db.list_triggers(tenant.id, Some(tool.to_string())).await?;
+    if existing_on_tool.iter().any(|t| t.kind == "event") {
+        return Err(trigger_invalid(
+            "tool",
+            format!(
+                "'{tool}' already has an event trigger; host.trigger.remove it before adding \
+                 another (the hook URL is keyed by tool name alone)"
+            ),
+        ));
+    }
+
+    let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
+        AppError::Internal(format!(
+            "tenant's plan '{}' is not in the loaded plan catalog",
+            tenant.plan
+        ))
+    })?;
+    // Requirement 4: only a create, never an update, ever consumes a slot.
+    let existing_count = state.db.count_event_triggers_for_tenant(tenant.id).await?;
+    if existing_count >= plan.event_triggers_max {
+        return Err(AppError::Structured {
+            code: "trigger_quota_exceeded",
+            message: format!(
+                "tenant already holds {existing_count} event triggers, the plan maximum of {}",
+                plan.event_triggers_max
+            ),
+            data: json!({"event_triggers_max": plan.event_triggers_max}),
+        });
+    }
+
     let id = new_ulid();
     state
         .db
@@ -527,6 +583,7 @@ pub async fn set_event_trigger(
             hash,
             None,
             None,
+            name.to_string(),
         )
         .await
         .map_err(|_| {
@@ -541,7 +598,8 @@ pub async fn set_event_trigger(
         .get_trigger(tenant.id, id.clone())
         .await?
         .ok_or_else(|| AppError::Internal("trigger vanished immediately after insert".to_string()))?;
-    Ok(trigger_to_json_event(state, tenant, &row).await)
+    let value = trigger_to_json_event(state, tenant, &row).await;
+    Ok(crate::triggers::annotate_set_result(value, true, &[]))
 }
 
 /// The event-kind shape of `host.trigger.list`/`get`'s per-trigger JSON --
@@ -563,6 +621,7 @@ pub(crate) async fn trigger_to_json_event(state: &AppState, tenant: &Tenant, row
     let unverified = verify.get("scheme").and_then(Value::as_str) == Some("none");
     json!({
         "id": row.id,
+        "name": row.name,
         "tool": row.tool_name,
         "kind": row.kind,
         "enabled": row.enabled,
@@ -922,12 +981,7 @@ fn header_map_from_value(value: &Value) -> HeaderMap {
 /// (migration 0018) rather than `trigger='event'` alone, so it's
 /// distinguishable from a live delivery in `host.runs.list`.
 pub async fn test(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    let id = arg_str(args, "id")?;
-    let row = state
-        .db
-        .get_trigger(tenant.id, id.clone())
-        .await?
-        .ok_or_else(|| crate::triggers::trigger_not_found(&id))?;
+    let row = crate::triggers::resolve(state, tenant, args).await?;
     if row.kind == "message" {
         // PRD-mcphost-agent-wake requirement 5 / AC7: a message trigger's
         // own dry run -- a synthetic envelope (`test: true`), no
@@ -1075,12 +1129,7 @@ pub async fn replay(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
     // trigger (same argument name `host.trigger.get`/`pause`/`test` already
     // use), never the run.
     if let Some(row_id) = crate::webhooks::arg_i64(args, "row_id") {
-        let id = arg_str(args, "id")?;
-        let row = state
-            .db
-            .get_trigger(tenant.id, id.clone())
-            .await?
-            .ok_or_else(|| crate::triggers::trigger_not_found(&id))?;
+        let row = crate::triggers::resolve(state, tenant, args).await?;
         if row.kind != "webhook" {
             return Err(trigger_invalid(
                 "row_id",

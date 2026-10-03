@@ -116,6 +116,14 @@ const MIGRATION_0062: &str = include_str!("../migrations/0062_runs_parent_run_id
 // blast-radius claimed 0058 first, then mcphost-url-bound-tenants claimed
 // 0059 first, all landing on main ahead of this branch.
 const MIGRATION_0063: &str = include_str!("../migrations/0063_table_graphs.sql");
+// PRD-mcphost-trigger-set-idempotent P0 requirement 1: `triggers.name`
+// plus its own unique `(tenant_id, name)` index. Renumbered from this
+// PRD's own 0059, then 0062, during rebase -- mcphost-url-bound-tenants
+// claimed 0059 first, then mcphost-one-next-tool claimed 0060, then
+// mcphost-chain-host-steps claimed 0061, then mcphost-chain-run-lineage
+// claimed 0062, then mcphost-table-concept-graph claimed 0063, all landing
+// on main ahead of this branch.
+const MIGRATION_0064: &str = include_str!("../migrations/0064_trigger_names.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -921,10 +929,15 @@ pub struct TriggerRow {
     /// PRD-mcphost-webhook-inbox migration 0030: the opaque `POST
     /// /hook/<hook_id>` path segment -- `Some` only for `kind = "webhook"`.
     pub hook_id: Option<String>,
+    /// PRD-mcphost-trigger-set-idempotent migration 0064: this trigger's
+    /// tenant-unique identity (default `<kind>:<tool_name>`, see
+    /// `triggers::set`) -- `host.trigger.set` looks a trigger up by this,
+    /// not `id`, to decide create vs. update.
+    pub name: String,
 }
 
 const TRIGGER_COLUMNS: &str = "id, tenant_id, tool_name, kind, config_json, enabled, \
-    created_unix, next_unix, last_run_id, last_fired_unix, hook_id";
+    created_unix, next_unix, last_run_id, last_fired_unix, hook_id, name";
 
 fn trigger_row_from_row(r: &Row) -> rusqlite::Result<TriggerRow> {
     Ok(TriggerRow {
@@ -939,6 +952,7 @@ fn trigger_row_from_row(r: &Row) -> rusqlite::Result<TriggerRow> {
         last_run_id: r.get(8)?,
         last_fired_unix: r.get(9)?,
         hook_id: r.get(10)?,
+        name: r.get(11)?,
     })
 }
 
@@ -1392,6 +1406,37 @@ fn backfill_tool_versions_sync(conn: &Connection) -> Result<(), AppError> {
              VALUES (?1, ?2, 1, ?3, ?4, ?5, ?6, ?7)",
             params![tenant_id, name, kind, spec, created_at, created_unix, source_sha256],
         )?;
+    }
+    Ok(())
+}
+
+/// PRD-mcphost-trigger-set-idempotent migration 0064 backfill (P0
+/// requirement 1 / AC6): assigns `<kind>:<tool_name>` to every `triggers`
+/// row still missing a `name`, suffixing `-2`, `-3`, ... within each
+/// `(tenant_id, kind, tool_name)` group (ordered by `rowid`, i.e. insertion
+/// order) so two -- or more -- pre-existing duplicate triggers for the same
+/// tool all survive with distinct names instead of colliding on the unique
+/// index migration 0064 already created. Called unconditionally by
+/// `migrate_sync` every run (not gated behind `migrate_0064_trigger_names`'s
+/// own one-time column check): its own `WHERE name IS NULL` makes a second
+/// call a no-op query once every row has a name, the same idempotency shape
+/// `backfill_unclassified_tenants_sync` above already relies on.
+fn backfill_trigger_names_sync(conn: &Connection) -> Result<(), AppError> {
+    let rows: Vec<(String, i64, String, String)> = {
+        let mut stmt = conn.prepare(
+            "SELECT id, tenant_id, tool_name, kind FROM triggers WHERE name IS NULL \
+             ORDER BY tenant_id, kind, tool_name, rowid",
+        )?;
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    let mut seen: std::collections::HashMap<(i64, String, String), i64> = std::collections::HashMap::new();
+    for (id, tenant_id, tool_name, kind) in rows {
+        let key = (tenant_id, kind.clone(), tool_name.clone());
+        let n = seen.entry(key).and_modify(|c| *c += 1).or_insert(1);
+        let base = format!("{kind}:{tool_name}");
+        let name = if *n == 1 { base } else { format!("{base}-{n}") };
+        conn.execute("UPDATE triggers SET name = ?1 WHERE id = ?2", params![name, id])?;
     }
     Ok(())
 }
@@ -2205,7 +2250,16 @@ impl Db {
         Self::migrate_0060_next_hint(&conn)?;
         Self::migrate_0061_chain_host_step_tool(&conn)?;
         Self::migrate_0062_runs_parent_run_id(&conn)?;
-        Self::migrate_0063_table_graphs(&conn)
+        Self::migrate_0063_table_graphs(&conn)?;
+        Self::migrate_0064_trigger_names(&conn)?;
+        // AC6 / requirement 1's collision-suffixing backfill: data-only,
+        // idempotent by its own `WHERE name IS NULL` clause, same
+        // "unconditional every migrate() call" posture migration 0049's
+        // own data-only backfill above already takes -- gating this on
+        // 0064's own one-time column-presence check instead would miss any
+        // row inserted between the `ALTER TABLE` and this call during a
+        // rolling deploy.
+        backfill_trigger_names_sync(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -3102,6 +3156,27 @@ impl Db {
             .exists([])?;
         if !has_table {
             conn.execute_batch(MIGRATION_0063)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-trigger-set-idempotent P0 requirement 1: same
+    /// `ALTER TABLE ADD COLUMN` + `pragma_table_info` gate 0002/.../0056
+    /// already use. `backfill_trigger_names_sync` (not this function) is
+    /// what actually fills `name` in -- see its own doc comment for why it
+    /// runs unconditionally below, every `migrate()` call, rather than once
+    /// behind this same gate. (Renumbered from this PRD's own 0059, then
+    /// 0062, during rebase: mcphost-url-bound-tenants claimed 0059 first,
+    /// then mcphost-one-next-tool claimed 0060, then mcphost-chain-host-steps
+    /// claimed 0061, then mcphost-chain-run-lineage claimed 0062, then
+    /// mcphost-table-concept-graph claimed 0063, all landing on main ahead
+    /// of this branch.)
+    fn migrate_0064_trigger_names(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('triggers') WHERE name = 'name'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0064)?;
         }
         Ok(())
     }
@@ -9428,13 +9503,61 @@ impl Db {
         config_hash: String,
         next_unix: Option<i64>,
         hook_id: Option<String>,
+        name: String,
     ) -> Result<(), AppError> {
         let now = now_unix();
         self.with_conn(move |conn| {
             conn.execute(
                 "INSERT INTO triggers (id, tenant_id, tool_name, kind, config_json, config_hash, \
-                 enabled, created_unix, next_unix, hook_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8, ?9)",
-                params![id, tenant_id, tool_name, kind, config_json, config_hash, now, next_unix, hook_id],
+                 enabled, created_unix, next_unix, hook_id, name) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8, ?9, ?10)",
+                params![id, tenant_id, tool_name, kind, config_json, config_hash, now, next_unix, hook_id, name],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `host.trigger.set`'s own-tenant lookup by the trigger's identity
+    /// name (P0 requirement 2) -- the one query that decides create vs.
+    /// update.
+    pub async fn get_trigger_by_name(
+        &self,
+        tenant_id: i64,
+        name: String,
+    ) -> Result<Option<TriggerRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                &format!("SELECT {TRIGGER_COLUMNS} FROM triggers WHERE tenant_id = ?1 AND name = ?2"),
+                params![tenant_id, name],
+                trigger_row_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// P0 requirement 2: `host.trigger.set`'s in-place update -- `id`,
+    /// `name` and `hook_id` are never touched (AC2's "the id and hook URL
+    /// are unchanged"), `enabled` is never touched either (technical
+    /// considerations: "a paused trigger stays paused through an update
+    /// unless resume is called"); only the fields a re-`set` can actually
+    /// change.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn update_trigger(
+        &self,
+        id: String,
+        tool_name: String,
+        config_json: String,
+        config_hash: String,
+        next_unix: Option<i64>,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE triggers SET tool_name = ?1, config_json = ?2, config_hash = ?3, \
+                 next_unix = ?4 WHERE id = ?5",
+                params![tool_name, config_json, config_hash, next_unix, id],
             )?;
             Ok(())
         })
@@ -11931,6 +12054,36 @@ impl Db {
         })
         .await?;
         Ok(run_id)
+    }
+
+    /// PRD-mcphost-trigger-set-idempotent AC6 test scaffolding: inserts a
+    /// `triggers` row in the PRE-MIGRATION-0064 shape (`name` left `NULL`)
+    /// -- the exact shape `backfill_trigger_names_sync` repairs. Same
+    /// "insert the old shape directly, bypassing the normal insert path,
+    /// then re-run migrate()" pattern
+    /// [`Self::insert_legacy_owner_scoped_shared_run_for_test`] above
+    /// already established. Returns the new row's id.
+    pub async fn insert_legacy_trigger_without_name_for_test(
+        &self,
+        tenant_id: i64,
+        tool_name: String,
+        kind: String,
+    ) -> Result<String, AppError> {
+        let id = crate::state::new_ulid();
+        let now = now_unix();
+        self.with_conn({
+            let id = id.clone();
+            move |conn| {
+                conn.execute(
+                    "INSERT INTO triggers (id, tenant_id, tool_name, kind, config_json, \
+                     config_hash, enabled, created_unix) VALUES (?1, ?2, ?3, ?4, '{}', ?5, 1, ?6)",
+                    params![id, tenant_id, tool_name, kind, format!("legacy-{id}"), now],
+                )?;
+                Ok(())
+            }
+        })
+        .await?;
+        Ok(id)
     }
 
     fn mesh_count_real_synth(

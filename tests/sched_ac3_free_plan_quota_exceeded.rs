@@ -20,12 +20,15 @@ async fn fourth_schedule_on_free_plan_is_quota_exceeded() {
         .expect("publish");
 
     // Three distinct daily schedules (well over free's 300s minimum
-    // interval), each its own config_hash so none collides with another.
+    // interval), each its own name (PRD-mcphost-trigger-set-idempotent
+    // AC1: a shared default name would make calls 2 and 3 update call 1's
+    // trigger in place instead of creating their own) so none collides
+    // with another.
     for hour in 0..3 {
         client
             .tools_call(
                 "host.trigger.set",
-                json!({"tool": "pinger", "schedule": format!("0 {hour} * * *")}),
+                json!({"tool": "pinger", "schedule": format!("0 {hour} * * *"), "name": format!("pinger_{hour}")}),
             )
             .await
             .unwrap_or_else(|e| panic!("schedule {hour} should be accepted: {} {}", e.code, e.message));
@@ -34,7 +37,7 @@ async fn fourth_schedule_on_free_plan_is_quota_exceeded() {
     let err = client
         .tools_call(
             "host.trigger.set",
-            json!({"tool": "pinger", "schedule": "0 3 * * *"}),
+            json!({"tool": "pinger", "schedule": "0 3 * * *", "name": "pinger_3"}),
         )
         .await
         .expect_err("fourth schedule on free plan must be refused");
