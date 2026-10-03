@@ -31,19 +31,45 @@
 //! liveness (`Child::try_wait`) every iteration, so a previous release that
 //! never comes up (like `/bin/false`) fails in one poll interval instead of
 //! after a 10s timeout (requirement 3).
+//!
+//! PRD-mcphost-compat-check-unprivileged (2026-10-03): `mcphost-deploy`
+//! runs this whole subcommand over ssh as root, so `spawn_previous`'s
+//! child used to inherit root's own real uid -- which trips
+//! `sandbox::refuse_to_serve_as_root` (`src/sandbox.rs:254`) inside the
+//! *previous* release itself, before it ever opens the migrated schema.
+//! That panic (exit 101) was being misread as a schema incompatibility by
+//! every caller, when every documented deployment of mcphost (systemd
+//! **user** units) already runs the live service unprivileged. When this
+//! process's own real uid is 0, [`resolve_run_as`] picks an unprivileged
+//! uid/gid for the child -- `--run-as <user>` if given, else the live
+//! database file's own owner -- and [`spawn_previous`] drops to it (uid,
+//! gid, and supplementary groups all cleared) before exec. Not root:
+//! behavior is unchanged. The child's own stderr (bounded to
+//! [`STDERR_TAIL_CAP`]) is also captured now and folded into a
+//! `previous-up` failure's detail, so a real panic message is visible in
+//! the deploy journal instead of only a bare exit status.
 
 use std::net::SocketAddr;
 use std::os::fd::AsRawFd;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use rand::RngCore;
 use rusqlite::Connection;
 use serde_json::{Value, json};
+use tokio::io::AsyncReadExt;
 use tokio::process::{Child, Command};
 
 use crate::db::Db;
+
+/// Shared, growable byte buffer for a child's captured stderr tail --
+/// aliased so clippy's `type_complexity` (threshold 200 in this repo's
+/// `clippy.toml`) doesn't flag the nested `Arc<Mutex<Vec<u8>>>` at every
+/// use site.
+type StderrTail = Arc<Mutex<Vec<u8>>>;
 
 /// Which step of the check failed, plus a human-readable detail. `step`
 /// values are stable strings (`"copy"`, `"migrate"`, `"spawn"`,
@@ -93,8 +119,16 @@ impl Drop for ScratchDir {
 
 /// Run the full check. `live_db_path` is the exact sqlite file to copy
 /// (opened read-only, never written to); `previous_binary` is the path to
-/// the previous release's `mcphost` executable.
-pub async fn run(live_db_path: &Path, previous_binary: &Path) -> Result<(), CompatCheckFailure> {
+/// the previous release's `mcphost` executable; `run_as` is `--run-as
+/// <user>` from the CLI (`None` lets this process pick a default -- see
+/// [`resolve_run_as`]). `run_as` is only consulted when this process's own
+/// real uid is 0; otherwise it is ignored (the child already runs under
+/// whatever unprivileged identity the checker itself does).
+pub async fn run(
+    live_db_path: &Path,
+    previous_binary: &Path,
+    run_as: Option<&str>,
+) -> Result<(), CompatCheckFailure> {
     fail_if_missing(previous_binary)?;
 
     let scratch = ScratchDir::new().map_err(|e| CompatCheckFailure {
@@ -119,19 +153,27 @@ pub async fn run(live_db_path: &Path, previous_binary: &Path) -> Result<(), Comp
         })?;
     }
 
+    // Resolved against the live database (already proven to exist by
+    // `copy_live_db` above), not the scratch copy -- the copy's ownership
+    // is this process's own (it just created it), which tells us nothing
+    // about which unprivileged user the real service runs as.
+    let resolved_run_as = resolve_run_as(run_as, live_db_path)?;
+
     let bind_plan = choose_bind_plan()?;
     let base_url = bind_plan.base_url();
     let port = bind_plan.port();
     let token = generate_compat_token();
 
-    let mut child = spawn_previous(previous_binary, &scratch.0, bind_plan, &token)?;
+    let mut spawned =
+        spawn_previous(previous_binary, &scratch.0, bind_plan, &token, resolved_run_as)?;
     tracing::info!(
-        pid = ?child.id(),
+        pid = ?spawned.child.id(),
         port,
+        run_as_uid = resolved_run_as.map(|u| u.uid),
         "check-compat: spawned previous release"
     );
-    let result = probe_previous(&base_url, port, &token, &mut child).await;
-    stop(&mut child).await;
+    let result = probe_previous(&base_url, port, &token, &mut spawned).await;
+    stop(&mut spawned.child).await;
 
     result
 }
@@ -144,6 +186,115 @@ fn fail_if_missing(bin: &Path) -> Result<(), CompatCheckFailure> {
         });
     }
     Ok(())
+}
+
+/// The unprivileged uid/gid [`spawn_previous`]'s child should drop to
+/// before exec.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RunAsUser {
+    pub(crate) uid: u32,
+    pub(crate) gid: u32,
+}
+
+/// Resolve `--run-as <user>` (or, lacking that, the live database's own
+/// file owner) to a uid/gid pair -- called once from [`run`], before any
+/// child is ever spawned, so a bad `--run-as` value or an unreadable data
+/// dir fails fast at a named step (`"spawn"`) rather than silently falling
+/// through to `spawn_previous` execing the child as root anyway.
+fn resolve_run_as(
+    explicit_user: Option<&str>,
+    live_db_path: &Path,
+) -> Result<Option<RunAsUser>, CompatCheckFailure> {
+    // SAFETY: getuid() takes no arguments and cannot fail.
+    let real_uid = unsafe { libc::getuid() };
+    if real_uid != 0 {
+        // Not root: `spawn_previous`'s child already runs under this
+        // process's own (already unprivileged) identity -- nothing to
+        // drop, exactly as before this fix. `explicit_user` is ignored
+        // rather than erroring on an unresolvable name, since a config
+        // that always passes `--run-as` must not become a hard failure
+        // the one time the checker itself happens to run unprivileged.
+        return Ok(None);
+    }
+    let user = match explicit_user {
+        Some(name) => lookup_user(name)?,
+        None => owner_of(live_db_path)?,
+    };
+    Ok(decide_run_as(real_uid, Some(user)))
+}
+
+/// Pure decision: does this real uid need the previous release's child
+/// dropped to `run_as`? Factored out of [`resolve_run_as`] as a seam --
+/// `compatfix` unit tests drive this directly with a synthetic `real_uid`
+/// (tests don't run as root, so they can't exercise `resolve_run_as`'s own
+/// `libc::getuid()` call end to end): real_uid 0 with a configured
+/// `run_as` carries that user's uid/gid through unchanged; any non-zero
+/// real_uid clears it to `None` regardless of what `run_as` was resolved
+/// to.
+fn decide_run_as(real_uid: u32, run_as: Option<RunAsUser>) -> Option<RunAsUser> {
+    if real_uid == 0 { run_as } else { None }
+}
+
+/// Default when `--run-as` isn't given and this process is root: the live
+/// database file's own owner -- the same unprivileged user every
+/// documented deployment of mcphost (systemd **user** units, never system
+/// units running as root) already runs the live `serve` process as.
+fn owner_of(path: &Path) -> Result<RunAsUser, CompatCheckFailure> {
+    let meta = std::fs::metadata(path).map_err(|e| CompatCheckFailure {
+        step: "spawn",
+        detail: format!(
+            "running check-compat as root with no --run-as <user>: could not stat {} to \
+             default to its owner: {e}",
+            path.display()
+        ),
+    })?;
+    Ok(RunAsUser {
+        uid: meta.uid(),
+        gid: meta.gid(),
+    })
+}
+
+/// Look up `name` via `getpwnam_r` (the `_r` suffix: thread-safe, unlike
+/// `getpwnam`'s static buffer -- this runs inside a multi-threaded tokio
+/// runtime).
+fn lookup_user(name: &str) -> Result<RunAsUser, CompatCheckFailure> {
+    let cname = std::ffi::CString::new(name).map_err(|_| CompatCheckFailure {
+        step: "spawn",
+        detail: format!("--run-as user name {name:?} contains an interior NUL byte"),
+    })?;
+    // SAFETY: a zeroed `libc::passwd` is a valid (if meaningless) bit pattern -- it is only ever read after `getpwnam_r` below populates it.
+    let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
+    let mut buf = vec![0u8; 16 * 1024];
+    let mut result: *mut libc::passwd = std::ptr::null_mut();
+    // SAFETY: `cname` and `buf` are valid for the duration of this call; `pwd`/`result` are out-parameters this stack frame owns exclusively.
+    let rc = unsafe {
+        libc::getpwnam_r(
+            cname.as_ptr(),
+            &mut pwd,
+            buf.as_mut_ptr() as *mut libc::c_char,
+            buf.len(),
+            &mut result,
+        )
+    };
+    if rc != 0 {
+        return Err(CompatCheckFailure {
+            step: "spawn",
+            detail: format!(
+                "--run-as {name:?}: getpwnam_r failed: {}",
+                std::io::Error::from_raw_os_error(rc)
+            ),
+        });
+    }
+    if result.is_null() {
+        return Err(CompatCheckFailure {
+            step: "spawn",
+            detail: format!("--run-as {name:?}: no such user on this box"),
+        });
+    }
+    Ok(RunAsUser {
+        uid: pwd.pw_uid,
+        gid: pwd.pw_gid,
+    })
 }
 
 /// A single-statement hot copy that works correctly against a live WAL-mode
@@ -280,24 +431,102 @@ fn set_listen_pid_to_self() -> std::io::Result<()> {
     Ok(())
 }
 
+/// How much of the previous release's own stderr `check-compat` keeps
+/// around to fold into a `previous-up` failure's detail (PRD-mcphost-
+/// compat-check-unprivileged requirement 2) -- enough for a Rust panic's
+/// full one-line message, bounded so a previous release that floods
+/// stderr can't grow this process's memory without limit.
+const STDERR_TAIL_CAP: usize = 4096;
+
+/// A spawned previous release, bundled with the tail of its own stderr --
+/// [`wait_ready`]/[`probe_previous`] read `stderr_tail` on failure so the
+/// real cause (a panic, a permissions error) is visible, not just the
+/// bare exit status.
+struct SpawnedChild {
+    child: Child,
+    stderr_tail: StderrTail,
+}
+
+/// Drain `stderr` into `tail` as it arrives, keeping only the last
+/// [`STDERR_TAIL_CAP`] bytes -- must run continuously for as long as the
+/// child is alive, or a previous release that writes enough to fill the
+/// pipe buffer would block on its own stderr forever.
+fn spawn_stderr_tail_reader(mut stderr: tokio::process::ChildStderr, tail: StderrTail) {
+    tokio::spawn(async move {
+        let mut buf = [0u8; 1024];
+        loop {
+            match stderr.read(&mut buf).await {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    let mut locked = tail.lock().unwrap_or_else(|e| e.into_inner());
+                    locked.extend_from_slice(&buf[..n]);
+                    let len = locked.len();
+                    if len > STDERR_TAIL_CAP {
+                        locked.drain(0..len - STDERR_TAIL_CAP);
+                    }
+                }
+            }
+        }
+    });
+}
+
+/// Render whatever's currently in `tail` as a trimmed, lossily-decoded
+/// string -- stderr is operator-facing text, not guaranteed-UTF8 wire
+/// data, so lossless decoding isn't the goal here.
+fn stderr_tail_text(tail: &StderrTail) -> String {
+    let locked = tail.lock().unwrap_or_else(|e| e.into_inner());
+    String::from_utf8_lossy(&locked).trim().to_string()
+}
+
+/// Drop `cmd`'s child to `user`'s uid/gid before exec, with supplementary
+/// groups cleared -- a no-op when `user` is `None` (this process isn't
+/// root; see [`resolve_run_as`]).
+fn apply_run_as(cmd: &mut Command, user: Option<RunAsUser>) {
+    let Some(user) = user else { return };
+    // Order matters and is done by hand here (not via `Command::uid`/`gid`) because those two
+    // alone leave root's own supplementary groups (gid 0, plus any wheel/sudo/docker membership)
+    // riding along on the child even after its primary uid/gid drops: `setgroups` clears them
+    // first, while this process can still call it, then `setgid` then `setuid` last, in that
+    // order, since `setuid` is what gives up the ability to change any of the three.
+    // SAFETY: this closure runs strictly between fork and exec in the freshly forked, single-threaded child -- the same window `BindPlan::Inherited`'s own `pre_exec` closure below uses.
+    unsafe {
+        cmd.pre_exec(move || {
+            if libc::setgroups(0, std::ptr::null()) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            if libc::setgid(user.gid) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            if libc::setuid(user.uid) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+}
+
 /// Spawn the previous release's binary against the scratch copy. Per
 /// requirement 2's technical considerations: reuse the caller's env
 /// contract (`/etc/mcphost/env`, already exported into this process's
 /// environment by the deploy tool) with only `MCPHOST_DATA_DIR`,
-/// `MCPHOST_COMPAT_TOKEN`, and the bind plan's env overridden.
+/// `MCPHOST_COMPAT_TOKEN`, and the bind plan's env overridden. `run_as`
+/// (resolved by [`resolve_run_as`]) drops the child to an unprivileged
+/// uid/gid first when this process itself is root -- see the module doc
+/// comment and PRD-mcphost-compat-check-unprivileged.
 fn spawn_previous(
     bin: &Path,
     data_dir: &Path,
     bind_plan: BindPlan,
     token: &str,
-) -> Result<Child, CompatCheckFailure> {
+    run_as: Option<RunAsUser>,
+) -> Result<SpawnedChild, CompatCheckFailure> {
     let mut cmd = Command::new(bin);
     cmd.arg("serve")
         .env("MCPHOST_DATA_DIR", data_dir)
         .env("MCPHOST_COMPAT_TOKEN", token)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .kill_on_drop(true);
 
     match bind_plan {
@@ -319,10 +548,22 @@ fn spawn_previous(
         }
     }
 
-    cmd.spawn().map_err(|e| CompatCheckFailure {
+    // Registered last so, if this process is root, the privilege drop
+    // happens as the final step before exec -- after the inherited-fd
+    // dup2/env setup above, neither of which needs any privilege to run.
+    apply_run_as(&mut cmd, run_as);
+
+    let mut child = cmd.spawn().map_err(|e| CompatCheckFailure {
         step: "spawn",
         detail: format!("failed to spawn {}: {e}", bin.display()),
-    })
+    })?;
+
+    let stderr_tail = Arc::new(Mutex::new(Vec::new()));
+    if let Some(stderr) = child.stderr.take() {
+        spawn_stderr_tail_reader(stderr, Arc::clone(&stderr_tail));
+    }
+
+    Ok(SpawnedChild { child, stderr_tail })
 }
 
 async fn stop(child: &mut Child) {
@@ -333,6 +574,14 @@ async fn stop(child: &mut Child) {
 const READY_TIMEOUT: Duration = Duration::from_secs(10);
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
 
+/// `port` (for the foreign-server log line) and `stderr_tail` bundled so
+/// [`wait_ready`] stays under this repo's `too-many-arguments-threshold =
+/// 5`, same reason [`RpcRequest`] exists.
+struct WaitReadyContext<'a> {
+    port: u16,
+    stderr_tail: &'a StderrTail,
+}
+
 /// Poll `{base_url}/healthz` until it answers with our own
 /// `X-Mcphost-Compat-Token` (requirement 2), the child exits (requirement
 /// 3 -- checked first, every iteration, so a previous release that can
@@ -341,25 +590,39 @@ const POLL_INTERVAL: Duration = Duration::from_millis(100);
 async fn wait_ready(
     client: &reqwest::Client,
     base_url: &str,
-    port: u16,
     token: &str,
     child: &mut Child,
+    ctx: WaitReadyContext<'_>,
 ) -> Result<(), CompatCheckFailure> {
+    let WaitReadyContext { port, stderr_tail } = ctx;
     let deadline = Instant::now() + READY_TIMEOUT;
     loop {
         if let Some(status) = child.try_wait().map_err(|e| CompatCheckFailure {
             step: "previous-up",
             detail: format!("failed to poll the previous release's process: {e}"),
         })? {
+            // Requirement 2: give the background stderr reader
+            // (`spawn_stderr_tail_reader`) a moment to drain whatever the
+            // child wrote before it exited -- the pipe's write end closed
+            // the instant the child did, but this process's own tokio
+            // task that reads it may not have been polled yet.
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            let tail = stderr_tail_text(stderr_tail);
             tracing::error!(
                 exit_status = %status,
+                stderr_tail = %tail,
                 "previous release exited before healthz became ready"
             );
+            let detail = if tail.is_empty() {
+                format!("previous release exited before healthz became ready ({status})")
+            } else {
+                format!(
+                    "previous release exited before healthz became ready ({status}); stderr: {tail}"
+                )
+            };
             return Err(CompatCheckFailure {
                 step: "previous-up",
-                detail: format!(
-                    "previous release exited before healthz became ready ({status})"
-                ),
+                detail,
             });
         }
 
@@ -380,10 +643,18 @@ async fn wait_ready(
         }
 
         if Instant::now() >= deadline {
+            let tail = stderr_tail_text(stderr_tail);
+            let detail = if tail.is_empty() {
+                "previous release did not answer /healthz with our token within 10s".to_string()
+            } else {
+                format!(
+                    "previous release did not answer /healthz with our token within 10s; \
+                     stderr: {tail}"
+                )
+            };
             return Err(CompatCheckFailure {
                 step: "previous-up",
-                detail: "previous release did not answer /healthz with our token within 10s"
-                    .into(),
+                detail,
             });
         }
         tokio::time::sleep(POLL_INTERVAL).await;
@@ -410,15 +681,36 @@ pub mod test_support {
 
     /// Spawn `bin serve` against `data_dir`, handing it `listener` as an
     /// inherited socket and `token` as `$MCPHOST_COMPAT_TOKEN` -- the same
-    /// path `run()` takes when the caller hasn't set `$MCPHOST_BIND`.
+    /// path `run()` takes when the caller hasn't set `$MCPHOST_BIND`. No
+    /// `--run-as` (`None`) -- matches every existing caller of this
+    /// wrapper, none of which care about the unprivileged-child behavior.
     pub fn spawn_previous_inherited(
         bin: &Path,
         data_dir: &Path,
         listener: std::net::TcpListener,
         token: &str,
     ) -> Result<Child, CompatCheckFailure> {
+        Ok(spawn_previous_inherited_with_tail(bin, data_dir, listener, token)?.0)
+    }
+
+    /// Same as [`spawn_previous_inherited`], but also hands back the
+    /// child's own stderr tail buffer -- PRD-mcphost-compat-check-
+    /// unprivileged's `compatfix` tests need to assert on it directly.
+    pub fn spawn_previous_inherited_with_tail(
+        bin: &Path,
+        data_dir: &Path,
+        listener: std::net::TcpListener,
+        token: &str,
+    ) -> Result<(Child, StderrTail), CompatCheckFailure> {
         let port = listener.local_addr().map(|a| a.port()).unwrap_or(0);
-        super::spawn_previous(bin, data_dir, BindPlan::Inherited { listener, port }, token)
+        let spawned = super::spawn_previous(
+            bin,
+            data_dir,
+            BindPlan::Inherited { listener, port },
+            token,
+            None,
+        )?;
+        Ok((spawned.child, spawned.stderr_tail))
     }
 
     pub async fn wait_ready(
@@ -427,8 +719,32 @@ pub mod test_support {
         token: &str,
         child: &mut Child,
     ) -> Result<(), CompatCheckFailure> {
+        let tail = Arc::new(Mutex::new(Vec::new()));
+        wait_ready_with_tail(base_url, port, token, child, &tail).await
+    }
+
+    /// Same as [`wait_ready`], but reads the stderr tail from `tail`
+    /// (as filled by a [`spawn_previous_inherited_with_tail`] child)
+    /// instead of an always-empty throwaway buffer.
+    pub async fn wait_ready_with_tail(
+        base_url: &str,
+        port: u16,
+        token: &str,
+        child: &mut Child,
+        tail: &StderrTail,
+    ) -> Result<(), CompatCheckFailure> {
         let client = reqwest::Client::new();
-        super::wait_ready(&client, base_url, port, token, child).await
+        super::wait_ready(
+            &client,
+            base_url,
+            token,
+            child,
+            super::WaitReadyContext {
+                port,
+                stderr_tail: tail,
+            },
+        )
+        .await
     }
 }
 
@@ -563,10 +879,20 @@ async fn probe_previous(
     base_url: &str,
     port: u16,
     token: &str,
-    child: &mut Child,
+    spawned: &mut SpawnedChild,
 ) -> Result<(), CompatCheckFailure> {
     let client = reqwest::Client::new();
-    wait_ready(&client, base_url, port, token, child).await?;
+    wait_ready(
+        &client,
+        base_url,
+        token,
+        &mut spawned.child,
+        WaitReadyContext {
+            port,
+            stderr_tail: &spawned.stderr_tail,
+        },
+    )
+    .await?;
     tracing::info!(port, "check-compat: previous release answered healthz with our token");
 
     rpc_call(
@@ -667,4 +993,38 @@ async fn probe_previous(
     }
 
     Ok(())
+}
+
+/// PRD-mcphost-compat-check-unprivileged (b)/(c): `decide_run_as` is the
+/// seam -- these tests can't call the real `libc::getuid()` and get 0
+/// (they don't run as root), so they drive the pure decision function
+/// directly with a synthetic `real_uid` instead.
+#[cfg(test)]
+mod compatfix_run_as_tests {
+    use super::{RunAsUser, decide_run_as};
+
+    #[test]
+    fn compatfix_root_with_configured_user_carries_its_uid_gid() {
+        let user = RunAsUser { uid: 65534, gid: 65534 };
+        let decided = decide_run_as(0, Some(user));
+        assert_eq!(decided, Some(user), "real uid 0 must carry the configured run_as through");
+    }
+
+    #[test]
+    fn compatfix_non_root_never_sets_uid_gid() {
+        let user = RunAsUser { uid: 65534, gid: 65534 };
+        let decided = decide_run_as(1000, Some(user));
+        assert_eq!(
+            decided, None,
+            "a non-root checker must never apply a uid/gid override, even if one was resolved"
+        );
+    }
+
+    #[test]
+    fn compatfix_root_with_no_configured_user_stays_none() {
+        // Shouldn't happen in practice (resolve_run_as always resolves a
+        // default before calling this), but the seam itself must not
+        // invent a uid/gid out of thin air.
+        assert_eq!(decide_run_as(0, None), None);
+    }
 }

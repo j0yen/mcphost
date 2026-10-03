@@ -304,6 +304,8 @@ mod compat_ac04_ac05_admin_and_tenant_cache_fields;
 mod compat_ac08_ac09_ac10_advertised_version;
 #[path = "compat_ac11_ac12_claude_sdk_replay.rs"]
 mod compat_ac11_ac12_claude_sdk_replay;
+#[path = "compatfix_ac1_previous_release_stderr_surfaced.rs"]
+mod compatfix_ac1_previous_release_stderr_surfaced;
 #[path = "compose_ac3_self_call_refused.rs"]
 mod compose_ac3_self_call_refused;
 #[path = "compose_ac4_depth_exceeded.rs"]
