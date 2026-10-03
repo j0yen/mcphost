@@ -80,6 +80,26 @@ python kind's `network` field help both name `import mcphost` and
 PRD-mcphost-sandbox-bridge-discoverability AC1-AC7. AC8 (Live, prod
 synthorg probe) is left for the gate.
 
+## v0.70.0 — 2026-10-01
+
+`host.tool_share(name, visibility: "url")` mints a plain-HTTPS endpoint for
+a published tool: `https://<host>/x/<token>/<tool>`, a 26-character base32
+bearer token stored hashed (and, separately, encrypted at rest so a
+re-share can redisplay the same URL). `GET`/`POST` run the tool -- the
+query string or JSON body become its arguments -- and return `{ok, result,
+run_id}`; a run past the 25s synchronous threshold answers `202 {run_id,
+poll}` instead, pollable at `GET /x/<token>/<tool>/runs/<run_id>`.
+Governed by the same controls as every other call path: a 60-call-per-
+minute-per-IP limiter (`429` + `Retry-After`), the admin kill switch
+(`503`), and `host.tool_unshare`/admin override (immediate `404`, timed
+indistinguishably from a token that was never issued). `PUT`/`DELETE` are
+`405`; `GET` carries `Access-Control-Allow-Origin: *` and `OPTIONS`
+preflights answer `204`, so a browser page on another origin can call one
+directly.
+
+PRD-mcphost-public-tool-url AC1-AC8, AC10 (`pubtool_ac*` test files). AC9
+(prod live-call receipt) is deferred to the operator at deploy time.
+
 ## v0.68.0 — 2026-10-01
 
 `host.tool_publish` and `host.spec_test` now reject any spec key a kind

@@ -1239,6 +1239,21 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         .route_service("/mcp", service)
         .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id));
 
+    // PRD-mcphost-public-tool-url requirement 11 (AC10): its own sub-router
+    // so `add_cors_header` (`route_layer`, not `.layer()`, same rationale
+    // as `tenant_mcp_router`/`root_mcp_router` above) applies only to the
+    // `/x/...` family, never the router's own default-NotFound fallback or
+    // any other route.
+    let public_tool_router = Router::new()
+        .route(
+            "/x/{token}/{tool}",
+            get(crate::public_tool::x_get)
+                .post(crate::public_tool::x_post)
+                .options(crate::public_tool::x_options),
+        )
+        .route("/x/{token}/{tool}/runs/{run_id}", get(crate::public_tool::x_poll))
+        .route_layer(middleware::from_fn(crate::public_tool::add_cors_header));
+
     Router::new()
         .route("/healthz", get(healthz))
         .route("/status.json", get(status_json_route))
@@ -1368,6 +1383,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         .merge(root_mcp_router)
         .merge(tenant_mcp_router)
         .merge(url_mcp_router)
+        .merge(public_tool_router)
         // PRD-mcphost-session-bound-tenant-after-signup requirement 7
         // (AC10): `oauth_401_upgrade` must run INSIDE (closer to the
         // router than) `protocol_version_and_log` -- axum's `.layer(L)`

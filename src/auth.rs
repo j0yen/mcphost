@@ -64,6 +64,22 @@ pub fn generate_url_secret() -> String {
     out
 }
 
+/// PRD-mcphost-public-tool-url requirement 1 (AC1): the `[a-z2-7]{26}`
+/// bearer token a public tool URL's `/x/<token>/<tool>` path segment
+/// carries -- RFC 4648 base32's alphabet, lowercased (the regex AC1 pins),
+/// 26 characters of 32-symbol entropy (130 bits, more than
+/// [`generate_key`]'s own 128-bit hex token). Each byte is reduced mod 32
+/// rather than bit-packed 5-at-a-time (the "real" base32 encoding): 32
+/// divides 256 evenly, so the reduction is uniform with no modulo bias,
+/// and a token-shaped output needs no padding/partial-byte handling this
+/// way.
+pub fn generate_public_token() -> String {
+    const ALPHABET: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
+    let mut bytes = [0u8; 26];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    bytes.iter().map(|b| ALPHABET[(*b as usize) % 32] as char).collect()
+}
+
 /// SHA-256 of a key, hex-encoded; the only form a key is ever stored in.
 pub fn hash_key(key: &str) -> String {
     let mut hasher = Sha256::new();

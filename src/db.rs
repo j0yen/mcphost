@@ -124,6 +124,14 @@ const MIGRATION_0063: &str = include_str!("../migrations/0063_table_graphs.sql")
 // claimed 0062, then mcphost-table-concept-graph claimed 0063, all landing
 // on main ahead of this branch.
 const MIGRATION_0064: &str = include_str!("../migrations/0064_trigger_names.sql");
+/// PRD-mcphost-public-tool-url P0 requirements 1/8: `tool_share_tokens`.
+// Renumbered from this PRD's own 0059, then 0062, during rebase:
+// mcphost-url-bound-tenants claimed 0059 first, then mcphost-one-next-tool
+// claimed 0060, then mcphost-chain-host-steps claimed 0061, then
+// mcphost-chain-run-lineage claimed 0062, then mcphost-table-concept-graph
+// claimed 0063, then mcphost-trigger-set-idempotent claimed 0064, all
+// landing on main ahead of this branch.
+const MIGRATION_0065: &str = include_str!("../migrations/0065_public_tool_url.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -2259,7 +2267,8 @@ impl Db {
         // 0064's own one-time column-presence check instead would miss any
         // row inserted between the `ALTER TABLE` and this call during a
         // rolling deploy.
-        backfill_trigger_names_sync(&conn)
+        backfill_trigger_names_sync(&conn)?;
+        Self::migrate_0065_public_tool_url(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -3177,6 +3186,25 @@ impl Db {
             .exists([])?;
         if !has_column {
             conn.execute_batch(MIGRATION_0064)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-public-tool-url migration (requirement 1/8):
+    /// `tool_share_tokens`, gated on its own existence -- same "new table,
+    /// guard on its presence" convention as 0058 above. (Renumbered from
+    /// this PRD's own 0059, then 0062, during rebase: mcphost-url-bound-
+    /// tenants claimed 0059 first, then mcphost-one-next-tool claimed 0060,
+    /// then mcphost-chain-host-steps claimed 0061, then mcphost-chain-run-
+    /// lineage claimed 0062, then mcphost-table-concept-graph claimed 0063,
+    /// then mcphost-trigger-set-idempotent claimed 0064, all landing on
+    /// main ahead of this branch.)
+    fn migrate_0065_public_tool_url(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tool_share_tokens'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0065)?;
         }
         Ok(())
     }
@@ -5667,6 +5695,95 @@ impl Db {
                 params![owner_namespace, name],
             )?;
             Ok(n > 0)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-public-tool-url requirement 1: the existing
+    /// `visibility = 'url'` token row for `(tenant_id, name)`, if any --
+    /// `host.tool_share`'s own "re-sharing returns the same URL" read.
+    /// Returns `(id, token_enc, token_nonce)`; the caller decrypts with its
+    /// own `AppState::secrets` (this layer never touches plaintext).
+    pub async fn find_url_share(
+        &self,
+        tenant_id: i64,
+        name: String,
+    ) -> Result<Option<(String, Vec<u8>, Vec<u8>)>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT id, token_enc, token_nonce FROM tool_share_tokens \
+                 WHERE tenant_id = ?1 AND tool_name = ?2",
+                params![tenant_id, name],
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?, r.get::<_, Vec<u8>>(2)?)),
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-public-tool-url requirement 1: mints a fresh
+    /// `tool_share_tokens` row. The caller (`sharing::tool_share`) only
+    /// reaches this after [`Self::find_url_share`] came back empty, so
+    /// `UNIQUE(tenant_id, tool_name)` here is a defensive backstop, not the
+    /// primary idempotency check.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_url_share(
+        &self,
+        id: String,
+        tenant_id: i64,
+        name: String,
+        token_hash: String,
+        token_enc: Vec<u8>,
+        token_nonce: Vec<u8>,
+        created_unix: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO tool_share_tokens (id, tenant_id, tool_name, token_hash, token_enc, token_nonce, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![id, tenant_id, name, token_hash, token_enc, token_nonce, created_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-public-tool-url requirement 8 (AC4/AC8): revokes
+    /// `(tenant_id, name)`'s public URL by deleting its token row outright
+    /// -- `GET/POST /x/{token}/{tool}` then resolves a revoked token
+    /// through the exact same "no row" path a token that was never issued
+    /// does, which is what gives AC4's constant-time guarantee without a
+    /// second branch to keep in timing sync. A no-op (not an error) when
+    /// there was no row to begin with.
+    pub async fn delete_url_share(&self, tenant_id: i64, name: String) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "DELETE FROM tool_share_tokens WHERE tenant_id = ?1 AND tool_name = ?2",
+                params![tenant_id, name],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-public-tool-url requirement 2/5: the one indexed lookup
+    /// `GET/POST /x/{token}/{tool}` resolves a bearer token through --
+    /// `token_hash` is `UNIQUE`-indexed (migration 0062), so this is a
+    /// single index seek, never a table scan, independent of how many
+    /// public URLs exist host-wide. Returns `(tenant_id, tool_name, id)`.
+    pub async fn find_url_share_by_hash(
+        &self,
+        token_hash: String,
+    ) -> Result<Option<(i64, String, String)>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT tenant_id, tool_name, id FROM tool_share_tokens WHERE token_hash = ?1",
+                params![token_hash],
+                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)),
+            )
+            .optional()
+            .map_err(AppError::from)
         })
         .await
     }

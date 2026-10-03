@@ -1024,6 +1024,11 @@ pub async fn tool_unshare(state: &AppState, args: &Value) -> Result<Value, AppEr
     if !ok {
         return Err(AppError::ToolNotFound(format!("{tenant_ns}.{name}")));
     }
+    // PRD-mcphost-public-tool-url requirement 8: an admin override revokes
+    // a live public URL the same as the owner's own `host.tool_unshare`.
+    if let Some(tenant) = state.db.find_tenant_by_namespace(tenant_ns.clone()).await? {
+        crate::public_tool::revoke_url_share(state, tenant.id, &name).await?;
+    }
     Ok(json!({ "tenant": tenant_ns, "name": name, "visibility": "private", "unshared_by": "admin" }))
 }
 

@@ -237,7 +237,7 @@ fn run_to_json(run: &RunRow) -> Value {
 /// whether the whole result fit inline as a single part or overflowed into
 /// several) becomes the wire `result` field, so a client reading `result`
 /// never needs to know which case it was.
-async fn attach_result(
+pub(crate) async fn attach_result(
     state: &AppState,
     tenant_id: i64,
     run: &RunRow,
@@ -699,6 +699,79 @@ pub async fn enqueue(
         )
         .await?;
     Ok(json!({"run_id": run_id, "status": "queued"}))
+}
+
+/// PRD-mcphost-public-tool-url requirement 2/7 (AC2/AC3/AC6): queues a run
+/// for `GET/POST /x/{token}/{tool}` -- same validate-then-`insert_queued_run`
+/// shape as [`enqueue`] above, except `trigger = "url"` (AC2's own "caller
+/// = url", read off [`run_to_json`]'s pre-existing `trigger` field -- the
+/// same field a webhook-fired run's `trigger = "webhook"` already reports,
+/// not a second, newly-added field carrying the same information) and
+/// `trigger_ref = Some(token_id)` (requirement 4: "runs started through
+/// that token only"). No end user (a public URL caller authenticates with
+/// nothing but the token itself) and no `caller_tenant_id` (the caller is
+/// not a tenant). Returns the bare run id -- `public_tool.rs` builds its
+/// own response shape around it rather than reusing `enqueue`'s
+/// `{run_id, status}`.
+pub async fn enqueue_url(
+    state: &AppState,
+    tenant: &Tenant,
+    local_name: &str,
+    args: Value,
+    token_id: &str,
+) -> Result<String, AppError> {
+    let row = state
+        .db
+        .get_tool(tenant.id, local_name.to_string())
+        .await?
+        .ok_or_else(|| AppError::ToolNotFound(local_name.to_string()))?;
+    let kind = state.kinds.get(&row.kind).ok_or_else(|| {
+        AppError::Internal(format!(
+            "published tool names unregistered kind '{}'",
+            row.kind
+        ))
+    })?;
+    let descriptor = kind.describe(&row.spec);
+    if let Ok(validator) = jsonschema::validator_for(&descriptor.input_schema)
+        && let Err(e) = validator.validate(&args)
+    {
+        let data = crate::kinds::describe_args_error(&e);
+        return Err(AppError::Structured {
+            code: "args_invalid",
+            message: e.to_string(),
+            data,
+        });
+    }
+    let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
+        AppError::Internal(format!(
+            "tenant's plan '{}' is not in the loaded plan catalog",
+            tenant.plan
+        ))
+    })?;
+    let deadline_s = plan.job_max_s;
+    let run_id = crate::state::new_ulid();
+    let args_json = serde_json::to_string(&args)
+        .map_err(|e| AppError::Internal(format!("args serialize: {e}")))?;
+    state
+        .db
+        .insert_queued_run(
+            run_id.clone(),
+            tenant.id,
+            local_name.to_string(),
+            "url".to_string(),
+            Some(token_id.to_string()),
+            None,
+            deadline_s,
+            args_json,
+            false,
+            false,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await?;
+    Ok(run_id)
 }
 
 /// PRD-mcphost-shared-tool-call-path requirement 3 (AC4): the qualified-name

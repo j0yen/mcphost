@@ -501,7 +501,14 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # 785 -> 794 (core) re-collapses core's normal buckets to 1, landing the
 # grand total back at 10; sandbox's 130 cap already covers tgraph's own
 # single sandbox file.
-MAX_PER_SUITE = {"core": 794, "sandbox": 130}
+#
+# PRD-mcphost-public-tool-url (rebased onto main at 074d6933 / v0.76.0,
+# 2026-10-03, run 354): this PRD's own nine `pubtool_ac*.rs` core-classified
+# files join the same normal bucket on top of table-concept-graph's own 794
+# cap above, spawning an 11th suite binary again -- caught by the same P0
+# assertion. 794 -> 810 (core) re-collapses core's normal buckets to 1,
+# landing the grand total back at 10.
+MAX_PER_SUITE = {"core": 810, "sandbox": 130}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"
