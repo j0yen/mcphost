@@ -3060,7 +3060,31 @@
       "since": "0.58.0"
     },
     {
-      "description": "Return one table's columns, types, row count and byte count, without running a query -- how an agent discovers its own table shape.",
+      "description": "List this tenant's own host.table.query call history, newest first: sql (as submitted, truncated to 4096 bytes with truncated: true past that), row_count (null on refusal), duration_ms, error_code and error_message (null on success). Keeps the newest 1,000 calls.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "before_id": {
+            "description": "Only rows with id less than this, for paging older rows.",
+            "type": "integer"
+          },
+          "limit": {
+            "description": "Max rows to return, 1-200; default 50.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.table.query_log",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Return one table's columns, types, row count and byte count, without running a query -- how an agent discovers its own table shape. A table-level or per-column description set via host.table.model_set is included under description wherever one exists.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {

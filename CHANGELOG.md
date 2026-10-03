@@ -113,6 +113,35 @@ false`. A new `scripts/spec-fields-doc-check.sh` keeps each kind's
 `docs/kinds/*.md` page in sync with its `known_spec_fields()` list,
 checked in its own `spec-fields-doc-check` proof-lane.
 
+## v0.68.0 — 2026-10-01
+
+`host.table.schema` now returns a `description` (table-level, and per
+column) wherever a matching `host.table.model_set` annotation exists;
+tables and columns with no annotation carry no `description` key, and the
+response shape is otherwise unchanged. Every `host.table.query` call --
+successful or refused -- now appends one row to a per-tenant
+`_mcphost_query_log` (inside the tenant's own `tables/<tenant_id>.db`,
+not the main database): `sql` (truncated to 4,096 bytes, `truncated: true`
+past that), `row_count` (null on refusal), `duration_ms`, `error_code`
+and `error_message` (both null on success). The log keeps the newest
+1,000 rows per tenant, evicting the oldest in the same transaction as
+each insert; its bytes count toward `bytes_used` and the table-store
+quota like any other row. New tenant tool `host.table.query_log(limit?,
+before_id?)` reads only the calling tenant's own log, newest first,
+`limit` defaulting to 50 and capped at 200. The "Give Claude a database
+in one minute" recipe (`www/llms.txt`, `examples/database-in-a-minute/`)
+moves onto this SQL path entirely: `host.table.create`/`append`/
+`model_set`/`query`/`query_log`, no published `query.py` tool, no
+six-operator `where` grammar -- the recipe now asks a GROUP BY and a LIKE
+question straight in SQL, both unrepresentable in the retired grammar.
+`www/llms.txt`'s claim that `mcphost.state.query` was the only path from
+a `python` tool to a table is corrected to name the `mcphost.table.query
+(sql)` bridge, which has been available since `PRD-mcphost-tenant-tables`.
+
+PRD-mcphost-table-context-and-sql-passthrough AC1-AC9, AC11-AC13. AC10
+(Live: a `proof.sh` run against `https://mcphost.dev/mcp` from carbon
+after deploy) is deferred -- operator-provisioned.
+
 ## v0.67.0 — 2026-10-01
 
 Every tenant can now be reached by one secret URL,

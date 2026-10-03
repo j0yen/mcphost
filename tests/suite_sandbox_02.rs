@@ -8,6 +8,8 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 mod ci_sandbox_support;
+#[path = "support/assertion.rs"]
+mod assertion;
 #[path = "support/chart_fixture.rs"]
 mod chart_fixture;
 #[path = "support/docs_qa.rs"]
@@ -148,16 +150,6 @@ mod limits_ac08_usage_capacity_refusals;
 mod lineage_ac01_source_scan_registers_table_edge;
 #[path = "lineage_ac12_python_bridge_trace_matches_tool.rs"]
 mod lineage_ac12_python_bridge_trace_matches_tool;
-#[path = "mcphost_database_in_a_minute_ac02_all_rows_present.rs"]
-mod mcphost_database_in_a_minute_ac02_all_rows_present;
-#[path = "mcphost_database_in_a_minute_ac03_query_answers_match_fixture.rs"]
-mod mcphost_database_in_a_minute_ac03_query_answers_match_fixture;
-#[path = "mcphost_database_in_a_minute_ac04_query_rejects_like_and_raw_sql.rs"]
-mod mcphost_database_in_a_minute_ac04_query_rejects_like_and_raw_sql;
-#[path = "mcphost_database_in_a_minute_ac05_signup_events_source_tagged.rs"]
-mod mcphost_database_in_a_minute_ac05_signup_events_source_tagged;
-#[path = "mcphost_database_in_a_minute_ac07_synthorg_task_five_completions.rs"]
-mod mcphost_database_in_a_minute_ac07_synthorg_task_five_completions;
 #[path = "mcphost_database_in_a_minute_ac09_csv_import_batches_internally.rs"]
 mod mcphost_database_in_a_minute_ac09_csv_import_batches_internally;
 #[path = "mcphost_python_dependency_policy_ac01_lock_stored_and_require_hashes.rs"]
@@ -278,3 +270,99 @@ mod runenvelope_ac2_no_declared_outputs_raw_payload;
 mod runenvelope_ac3_descriptor_and_decision_table_name_envelope;
 #[path = "runenvelope_ac4_no_calls_row_with_payload.rs"]
 mod runenvelope_ac4_no_calls_row_with_payload;
+#[path = "runoverflow_ac01_python_async_result_overflows_to_parts.rs"]
+mod runoverflow_ac01_python_async_result_overflows_to_parts;
+#[path = "runoverflow_ac02_state_quota_error_preserves_counters.rs"]
+mod runoverflow_ac02_state_quota_error_preserves_counters;
+#[path = "runoverflow_ac06_purge_drops_run_results_bytes_not_user_state.rs"]
+mod runoverflow_ac06_purge_drops_run_results_bytes_not_user_state;
+#[path = "runoverflow_ac07_llms_txt_long_running_jobs_walkthrough.rs"]
+mod runoverflow_ac07_llms_txt_long_running_jobs_walkthrough;
+#[path = "runoverflow_ac08_wait_until_counter_returns_while_running.rs"]
+mod runoverflow_ac08_wait_until_counter_returns_while_running;
+#[path = "runoverflow_ac09_sync_call_still_tool_output_too_large.rs"]
+mod runoverflow_ac09_sync_call_still_tool_output_too_large;
+#[path = "runs_ac01_async_job_runs_progress_and_result.rs"]
+mod runs_ac01_async_job_runs_progress_and_result;
+#[path = "runs_ac02_job_max_s_timeout.rs"]
+mod runs_ac02_job_max_s_timeout;
+#[path = "runs_ac03_progress_shape.rs"]
+mod runs_ac03_progress_shape;
+#[path = "runs_ac04_cancel_kills_sandbox.rs"]
+mod runs_ac04_cancel_kills_sandbox;
+#[path = "runs_ac06_jobs_concurrent_gate.rs"]
+mod runs_ac06_jobs_concurrent_gate;
+#[path = "runtime_ac1_range_typeerror_fixture.rs"]
+mod runtime_ac1_range_typeerror_fixture;
+#[path = "runtime_ac2_tool_code_phase_and_line.rs"]
+mod runtime_ac2_tool_code_phase_and_line;
+#[path = "runtime_ac3_args_coercion_phase_and_types.rs"]
+mod runtime_ac3_args_coercion_phase_and_types;
+#[path = "runtime_ac4_publish_and_first_call_latency.rs"]
+mod runtime_ac4_publish_and_first_call_latency;
+#[path = "runtime_ac5_assignment_expression_message.rs"]
+mod runtime_ac5_assignment_expression_message;
+#[path = "runtime_ac6_readme_documents_restriction.rs"]
+mod runtime_ac6_readme_documents_restriction;
+#[path = "sandboxready_ac10_sandbox_check_subcommand.rs"]
+mod sandboxready_ac10_sandbox_check_subcommand;
+#[path = "sandboxready_ac1_ac2_healthz_startup.rs"]
+mod sandboxready_ac1_ac2_healthz_startup;
+#[path = "sandboxready_ac3_ac4_publish_rejection.rs"]
+mod sandboxready_ac3_ac4_publish_rejection;
+#[path = "sandboxready_ac5_admin_recheck_recovers.rs"]
+mod sandboxready_ac5_admin_recheck_recovers;
+#[path = "sandboxready_ac6_periodic_recheck_flips_unready.rs"]
+mod sandboxready_ac6_periodic_recheck_flips_unready;
+#[path = "sandboxready_ac8_get_info_and_description_note.rs"]
+mod sandboxready_ac8_get_info_and_description_note;
+#[path = "sandboxready_ac9_failure_classification.rs"]
+mod sandboxready_ac9_failure_classification;
+#[path = "state_ac02_ac03_python_sandbox.rs"]
+mod state_ac02_ac03_python_sandbox;
+#[path = "state_ac03_network_none_default.rs"]
+mod state_ac03_network_none_default;
+#[path = "state_ac07_tool_test_observability.rs"]
+mod state_ac07_tool_test_observability;
+#[path = "state_ac10_quickstart_llms_txt.rs"]
+mod state_ac10_quickstart_llms_txt;
+#[path = "statusfeed_ac01_operational_after_three_minutes.rs"]
+mod statusfeed_ac01_operational_after_three_minutes;
+#[path = "statusfeed_ac09_alert_and_auto_incident.rs"]
+mod statusfeed_ac09_alert_and_auto_incident;
+#[path = "statusfeed_ac11_live_status_trailer.rs"]
+mod statusfeed_ac11_live_status_trailer;
+#[path = "stdlibpseudo_ac1_future_import_empty_requirements.rs"]
+mod stdlibpseudo_ac1_future_import_empty_requirements;
+#[path = "stdlibpseudo_ac2_dunder_main_no_requirement.rs"]
+mod stdlibpseudo_ac2_dunder_main_no_requirement;
+#[path = "surface_ac01_quickstart_try_before_call.rs"]
+mod surface_ac01_quickstart_try_before_call;
+#[path = "surface_ac06_python_outputs_by_path.rs"]
+mod surface_ac06_python_outputs_by_path;
+#[path = "tables_ac05_python_sandbox_table_access.rs"]
+mod tables_ac05_python_sandbox_table_access;
+#[path = "tables_ac08_docs_and_kv_vs_table_sentence.rs"]
+mod tables_ac08_docs_and_kv_vs_table_sentence;
+#[path = "tgraph_ac09_python_sandbox_join_paths.rs"]
+mod tgraph_ac09_python_sandbox_join_paths;
+#[path = "tooltest_ac13_publish_error_parity.rs"]
+mod tooltest_ac13_publish_error_parity;
+#[path = "tooltest_ac1_python_two_invocations.rs"]
+mod tooltest_ac1_python_two_invocations;
+#[path = "tooltest_ac2_python_exception_other_still_runs.rs"]
+mod tooltest_ac2_python_exception_other_still_runs;
+#[path = "unkfield_ac01_write_table_rejected.rs"]
+mod unkfield_ac01_write_table_rejected;
+#[path = "unkfield_ac02_misplaced_field_valid_for.rs"]
+mod unkfield_ac02_misplaced_field_valid_for;
+#[path = "unkfield_ac03_near_miss_did_you_mean.rs"]
+mod unkfield_ac03_near_miss_did_you_mean;
+#[path = "unkfield_ac06_doc_examples_never_rejected.rs"]
+mod unkfield_ac06_doc_examples_never_rejected;
+#[path = "warmpool_ac06_ac07_tool_run.rs"]
+mod warmpool_ac06_ac07_tool_run;
+#[path = "wasmkind_ac04_independent_of_sandbox_mechanism.rs"]
+mod wasmkind_ac04_independent_of_sandbox_mechanism;
+#[path = "xaa_ac02_python_env_and_grants_method_xaa.rs"]
+mod xaa_ac02_python_env_and_grants_method_xaa;

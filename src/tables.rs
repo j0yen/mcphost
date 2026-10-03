@@ -70,6 +70,29 @@ pub const QUERY_TIME_CAP: Duration = Duration::from_secs(5);
 
 pub(crate) const META_TABLE: &str = "_mcphost_meta";
 
+/// PRD-mcphost-table-context-and-sql-passthrough requirement 2/3: every
+/// `host.table.query` call, whether it returns rows or is refused, gets one
+/// row here -- reserved under the same leading-underscore convention
+/// [`META_TABLE`] already uses, so `host.table.create`/`host.table.drop`
+/// can never declare or drop it (neither checks this name against
+/// [`META_TABLE`]'s own rows, so `create` hits SQLite's own "table already
+/// exists" and `drop` finds no matching row to remove -- structural, like
+/// [`META_TABLE`]'s own reservation).
+pub(crate) const QUERY_LOG_TABLE: &str = "_mcphost_query_log";
+
+/// requirement 3: the query log keeps at most this many rows per tenant;
+/// the insert that would make one more evicts the oldest in the same
+/// transaction.
+pub const QUERY_LOG_CAP: i64 = 1_000;
+
+/// requirement 2 (P2 requirement 10/AC13): `sql` longer than this is stored
+/// truncated (with `truncated: true`) rather than refused for length.
+const QUERY_LOG_SQL_MAX_BYTES: usize = 4_096;
+
+/// requirement 4: `host.table.query_log`'s default and max `limit`.
+pub const QUERY_LOG_LIMIT_DEFAULT: i64 = 50;
+pub const QUERY_LOG_LIMIT_CAP: i64 = 200;
+
 /// requirement 1: the small type set `host.table.create`'s `columns`
 /// argument may declare. `Timestamp` is stored as `TEXT` (an RFC 3339
 /// string the caller provides -- this module does no timezone/format
@@ -251,6 +274,16 @@ fn open_conn(path: &Path, cfg: &crate::db::DbConfig) -> Result<Connection, AppEr
             schema_json TEXT NOT NULL,
             primary_key TEXT,
             created_unix INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS {QUERY_LOG_TABLE} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_unix INTEGER NOT NULL,
+            sql TEXT NOT NULL,
+            truncated INTEGER NOT NULL DEFAULT 0,
+            row_count INTEGER,
+            duration_ms INTEGER NOT NULL,
+            error_code TEXT,
+            error_message TEXT
         );"
     ))?;
     Ok(conn)
@@ -795,12 +828,138 @@ fn run_query_sync(conn: &Connection, sql: &str) -> Result<Vec<Value>, AppError> 
     Ok(rows_out)
 }
 
+/// requirement 2 (P2 requirement 10/AC13): truncates `sql` to at most
+/// [`QUERY_LOG_SQL_MAX_BYTES`] bytes (on a UTF-8 char boundary) for storage
+/// in the log -- the submitted query itself is never refused for length,
+/// only the stored copy is shortened.
+fn truncate_sql_for_log(sql: &str) -> (String, bool) {
+    if sql.len() <= QUERY_LOG_SQL_MAX_BYTES {
+        return (sql.to_string(), false);
+    }
+    let mut end = QUERY_LOG_SQL_MAX_BYTES;
+    while end > 0 && !sql.is_char_boundary(end) {
+        end -= 1;
+    }
+    (sql[..end].to_string(), true)
+}
+
+/// requirement 2/3: appends one row to this connection's query log,
+/// evicting the oldest row past [`QUERY_LOG_CAP`] in the same transaction.
+/// requirement 2's "logging failure never fails the query" -- any error
+/// writing the log row is warned and swallowed here, never propagated to
+/// the caller of [`table_query`].
+fn log_query(conn: &Connection, sql: &str, duration_ms: i64, row_count: Option<i64>, error: Option<&AppError>) {
+    let (stored_sql, truncated) = truncate_sql_for_log(sql);
+    let error_code = error.map(AppError::code);
+    let error_message = error.map(ToString::to_string);
+    let outcome: rusqlite::Result<()> = (|| {
+        conn.execute("BEGIN IMMEDIATE", [])?;
+        let write: rusqlite::Result<()> = (|| {
+            conn.execute(
+                &format!(
+                    "INSERT INTO {QUERY_LOG_TABLE} \
+                     (created_unix, sql, truncated, row_count, duration_ms, error_code, error_message) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
+                ),
+                params![
+                    crate::state::now_unix(),
+                    stored_sql,
+                    truncated as i64,
+                    row_count,
+                    duration_ms,
+                    error_code,
+                    error_message,
+                ],
+            )?;
+            conn.execute(
+                &format!(
+                    "DELETE FROM {QUERY_LOG_TABLE} WHERE id NOT IN \
+                     (SELECT id FROM {QUERY_LOG_TABLE} ORDER BY id DESC LIMIT ?1)"
+                ),
+                params![QUERY_LOG_CAP],
+            )?;
+            Ok(())
+        })();
+        match write {
+            Ok(()) => conn.execute("COMMIT", []).map(|_| ()),
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK", []);
+                Err(e)
+            }
+        }
+    })();
+    if let Err(e) = outcome {
+        tracing::warn!(error = %e, "failed to write host.table.query log row");
+    }
+}
+
+/// requirement 1/2/3: runs `sql` (structurally validated first) and logs
+/// exactly one row for the attempt regardless of outcome -- a parse/non-
+/// SELECT/multi-statement rejection (never reaching [`run_query_sync`]), a
+/// bound refusal, or a successful result all log the same way, `duration_ms`
+/// covering the whole attempt from just after argument parsing.
 pub async fn table_query(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let sql = arg_str(args, "sql")?;
-    validate_query_structure(&sql)?;
 
     let path = tenant_db_path(state, tenant.id);
-    let rows = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| run_query_sync(conn, &sql)).await?;
+    let sql_for_conn = sql.clone();
+    let rows = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+        let started = std::time::Instant::now();
+        let result = validate_query_structure(&sql_for_conn).and_then(|()| run_query_sync(conn, &sql_for_conn));
+        let duration_ms = started.elapsed().as_millis() as i64;
+        // run_query_sync leaves this connection in `query_only` mode; turn
+        // it back off so the log write below (and any later call to reuse
+        // this connection) isn't itself rejected as a write against a
+        // read-only connection.
+        let _ = conn.pragma_update(None, "query_only", "OFF");
+        match &result {
+            Ok(rows) => log_query(conn, &sql_for_conn, duration_ms, Some(rows.len() as i64), None),
+            Err(e) => log_query(conn, &sql_for_conn, duration_ms, None, Some(e)),
+        }
+        result
+    })
+    .await?;
+    Ok(json!({"rows": rows}))
+}
+
+/// requirement 4: `host.table.query_log(limit?, before_id?)` -- this
+/// tenant's own query log, newest first, `limit` defaulting to
+/// [`QUERY_LOG_LIMIT_DEFAULT`] and capped at [`QUERY_LOG_LIMIT_CAP`], paging
+/// by `before_id`. Reads only the calling tenant's own per-tenant file --
+/// there is no argument that names another tenant (the same structural
+/// isolation [`table_query`] itself relies on).
+pub async fn table_query_log(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let limit = args
+        .get("limit")
+        .and_then(Value::as_i64)
+        .unwrap_or(QUERY_LOG_LIMIT_DEFAULT)
+        .clamp(1, QUERY_LOG_LIMIT_CAP);
+    let before_id = args.get("before_id").and_then(Value::as_i64);
+
+    let path = tenant_db_path(state, tenant.id);
+    let rows = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+        let select = format!(
+            "SELECT id, created_unix, sql, truncated, row_count, duration_ms, error_code, error_message \
+             FROM {QUERY_LOG_TABLE} WHERE (?1 IS NULL OR id < ?1) ORDER BY id DESC LIMIT ?2"
+        );
+        let mut stmt = conn.prepare(&select)?;
+        let rows = stmt
+            .query_map(params![before_id, limit], |r| {
+                Ok(json!({
+                    "id": r.get::<_, i64>(0)?,
+                    "created_unix": r.get::<_, i64>(1)?,
+                    "sql": r.get::<_, String>(2)?,
+                    "truncated": r.get::<_, i64>(3)? != 0,
+                    "row_count": r.get::<_, Option<i64>>(4)?,
+                    "duration_ms": r.get::<_, i64>(5)?,
+                    "error_code": r.get::<_, Option<String>>(6)?,
+                    "error_message": r.get::<_, Option<String>>(7)?,
+                }))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    })
+    .await?;
     Ok(json!({"rows": rows}))
 }
 
@@ -835,6 +994,14 @@ pub async fn table_list(state: &AppState, tenant: &Tenant, _args: &Value) -> Res
 /// declared table in one shared per-tenant file, so a single table's own
 /// slice of that isn't cheaply separable without reading every row; see the
 /// module doc's SQLite-per-tenant design note).
+/// PRD-mcphost-table-context-and-sql-passthrough requirement 1/AC1-3: one
+/// table's columns, types, row count, byte count, and -- whenever a
+/// `description` annotation exists ([`crate::tables_model::model_set`]) --
+/// that text at table level and/or per column. Only `description` is
+/// merged in (not `role`/`unit`/`hidden`, which `host.table.describe`
+/// already surfaces): a column with no `description` annotation keeps its
+/// pre-change bare-string entry (`{"col": "text"}`), and a table with no
+/// annotations at all returns the identical pre-change shape (AC3).
 pub async fn table_schema(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let table = arg_str(args, "table")?;
     let path = tenant_db_path(state, tenant.id);
@@ -846,18 +1013,38 @@ pub async fn table_schema(state: &AppState, tenant: &Tenant, args: &Value) -> Re
         Ok((schema, row_count))
     })
     .await?;
-    let columns: Map<String, Value> = schema
+    let mut columns: Map<String, Value> = schema
         .columns
         .iter()
         .map(|(k, v)| (k.clone(), json!(v.as_str())))
         .collect();
+
+    let annotations = state.db.list_table_model_annotations(tenant.id, table.clone()).await?;
+    let mut table_description: Option<String> = None;
+    for ann in &annotations {
+        if ann.key != "description" {
+            continue;
+        }
+        if ann.column_name.is_empty() {
+            table_description = Some(ann.value.clone());
+        } else if let Some(Value::String(type_str)) = columns.get(&ann.column_name).cloned() {
+            columns.insert(
+                ann.column_name.clone(),
+                json!({"type": type_str, "description": ann.value}),
+            );
+        }
+    }
+
     let bytes_used = std::fs::metadata(&path_for_size).map(|m| m.len() as i64).unwrap_or(0);
-    Ok(json!({
-        "table": table,
-        "columns": columns,
-        "rows": row_count,
-        "bytes_used": bytes_used,
-    }))
+    let mut out = Map::new();
+    out.insert("table".to_string(), json!(table));
+    out.insert("columns".to_string(), Value::Object(columns));
+    out.insert("rows".to_string(), json!(row_count));
+    out.insert("bytes_used".to_string(), json!(bytes_used));
+    if let Some(description) = table_description {
+        out.insert("description".to_string(), json!(description));
+    }
+    Ok(Value::Object(out))
 }
 
 #[cfg(test)]

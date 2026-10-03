@@ -8,8 +8,6 @@
 // suite's prefix stripped, is unchanged from before consolidation).
 mod common;
 mod ci_sandbox_support;
-#[path = "support/assertion.rs"]
-mod assertion;
 #[path = "support/busyaudit.rs"]
 mod busyaudit;
 #[path = "support/chart_fixture.rs"]
@@ -708,8 +706,6 @@ mod mcphost_data_retention_ac08_host_usage_lists_retention_windows;
 mod mcphost_data_retention_ac09_prune_error_sets_last_prune_ok_false;
 #[path = "mcphost_data_retention_ac10_admin_prune_now_runs_one_cycle.rs"]
 mod mcphost_data_retention_ac10_admin_prune_now_runs_one_cycle;
-#[path = "mcphost_database_in_a_minute_ac01_llms_txt_section.rs"]
-mod mcphost_database_in_a_minute_ac01_llms_txt_section;
 #[path = "mcphost_database_in_a_minute_ac08_live_test_skipped_without_env.rs"]
 mod mcphost_database_in_a_minute_ac08_live_test_skipped_without_env;
 #[path = "mcphost_host_tool_deprecation_ac01_contract_dump_deterministic.rs"]
@@ -1288,6 +1284,30 @@ mod specpath_ac06_list_form_seen_at_hint;
 mod specpath_ac07_replay_recorded_sessions_map_form;
 #[path = "specpath_ac08_wildcard_path_rejected.rs"]
 mod specpath_ac08_wildcard_path_rejected;
+#[path = "sqlpass_ac01_table_level_description_in_schema.rs"]
+mod sqlpass_ac01_table_level_description_in_schema;
+#[path = "sqlpass_ac02_column_description_in_schema.rs"]
+mod sqlpass_ac02_column_description_in_schema;
+#[path = "sqlpass_ac03_no_annotations_shape_unchanged.rs"]
+mod sqlpass_ac03_no_annotations_shape_unchanged;
+#[path = "sqlpass_ac04_group_by_logs_row_count_and_duration.rs"]
+mod sqlpass_ac04_group_by_logs_row_count_and_duration;
+#[path = "sqlpass_ac05_update_refused_logs_error_code.rs"]
+mod sqlpass_ac05_update_refused_logs_error_code;
+#[path = "sqlpass_ac06_query_log_tenant_isolated_and_limit_capped.rs"]
+mod sqlpass_ac06_query_log_tenant_isolated_and_limit_capped;
+#[path = "sqlpass_ac07_query_log_capped_at_1000_bytes_used_includes_log.rs"]
+mod sqlpass_ac07_query_log_capped_at_1000_bytes_used_includes_log;
+#[path = "sqlpass_ac08_proof_sh_sql_questions_no_publish.rs"]
+mod sqlpass_ac08_proof_sh_sql_questions_no_publish;
+#[path = "sqlpass_ac09_llms_txt_sql_path_under_70_lines.rs"]
+mod sqlpass_ac09_llms_txt_sql_path_under_70_lines;
+#[path = "sqlpass_ac11_concurrent_queries_produce_ten_log_rows.rs"]
+mod sqlpass_ac11_concurrent_queries_produce_ten_log_rows;
+#[path = "sqlpass_ac12_empty_table_zero_rows_null_error_code.rs"]
+mod sqlpass_ac12_empty_table_zero_rows_null_error_code;
+#[path = "sqlpass_ac13_long_sql_truncated_in_log_not_refused.rs"]
+mod sqlpass_ac13_long_sql_truncated_in_log_not_refused;
 #[path = "state_ac01_kv_roundtrip.rs"]
 mod state_ac01_kv_roundtrip;
 #[path = "state_ac04_table_query.rs"]
@@ -1616,19 +1636,3 @@ mod wasmkind_ac08_cache_reuses_compiled_artifact;
 mod wasmkind_ac09_healthz_reports_wasm_runtime;
 #[path = "wasmkind_ac10_declared_output_promotion_matches_python.rs"]
 mod wasmkind_ac10_declared_output_promotion_matches_python;
-#[path = "xaa_ac01_valid_assertion_no_consent.rs"]
-mod xaa_ac01_valid_assertion_no_consent;
-#[path = "xaa_ac03_invalid_grant_reasons_are_distinct_and_audited.rs"]
-mod xaa_ac03_invalid_grant_reasons_are_distinct_and_audited;
-#[path = "xaa_ac04_invalid_client_scope_target.rs"]
-mod xaa_ac04_invalid_client_scope_target;
-#[path = "xaa_ac05_metadata_grant_types_and_trusted_issuer.rs"]
-mod xaa_ac05_metadata_grant_types_and_trusted_issuer;
-#[path = "xaa_ac06_offline_access_gates_refresh_token.rs"]
-mod xaa_ac06_offline_access_gates_refresh_token;
-#[path = "xaa_ac07_revoke_and_unrevoke_end_user.rs"]
-mod xaa_ac07_revoke_and_unrevoke_end_user;
-#[path = "xaa_ac08_trusted_issuer_quota.rs"]
-mod xaa_ac08_trusted_issuer_quota;
-#[path = "xaa_ac09_hosted_and_key_paths_unchanged.rs"]
-mod xaa_ac09_hosted_and_key_paths_unchanged;

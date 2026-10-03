@@ -1,94 +1,111 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-public-tool-url.md",
-  "intent_slug": "mcphost-public-tool-url",
-  "root_motivation": "A published tool is reachable only over MCP (/mcp, /t/{namespace}/mcp) or by another tenant via host.tool_share; the only plain-HTTP ingress to tenant code is the inbound webhook /hook/{id}, which triggers a run but returns nothing to the caller. There is no way for an agent to hand its human, or a browser, or curl, a URL that runs the function and returns its result -- without one, the human behind the agent has no reason to keep the server configured once the task that brought the agent ends, and the agent has no artifact to send to another agent.",
-  "user_persona": "An agent that just published a working tool and wants to hand its human (or another agent) a plain HTTPS URL that runs it and returns JSON, with no MCP client, key, or account on the calling side.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-table-context-and-sql-passthrough.md",
+  "intent_slug": "mcphost-table-context-and-sql-passthrough",
+  "root_motivation": "Grounding: opportunity, not failure-derived -- visions/mcphost-killer-apps.md addendum 2026-09-30 (WWHTBT, weakest link leaf 3), an audit of src/tables.rs, src/kinds/mod.rs:939, examples/database-in-a-minute/tools/query.py, and www/llms.txt 555-590. The database-in-a-minute recipe's published query tool accepted only a six-operator {col, op, value} filter grammar (no GROUP BY, no LIKE, no aggregate joins) wrapping a real per-tenant SQLite store (host.table.query) that already runs read-only SQL behind three independent guards. The recipe's first two panel sessions scored satisfaction 0.000 on 2026-09-28 (family: publish). This PRD moves the recipe onto the SQL path directly, lets a tenant attach a plain-text note to a table/column that the schema call returns, and records every query with its row count or refusal so a tenant can see which questions failed.",
+  "user_persona": "A person with a spreadsheet and a Claude subscription who loaded a CSV into mcphost's table store and wants to ask it any question a spreadsheet pivot could answer (total by category, rows matching a pattern, average over a range) without learning a private filter grammar -- the spreadsheet_owner segment in the synthorg consumer corpus.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 9
+    "target": 12
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a tenant with a published echo tool, When host.tool_share(name = \"echo\", visibility = \"url\") is called, Then the result carries url matching ^https://[^/]+/x/[a-z2-7]{26}/echo$ and a second identical call returns the same URL.",
-      "test": "tests/pubtool_ac01_tool_share_mints_stable_url.rs"
+      "description": "Given a declared table with a table-level description annotation set through host.table.model_set, When host.table.schema is called, Then the response carries that text under description and the table/columns/rows/bytes_used keys are unchanged.",
+      "test": "tests/sqlpass_ac01_table_level_description_in_schema.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given that URL, When curl -s -X POST <url> -H 'content-type: application/json' -d '{\"text\":\"hi\"}' runs, Then the response is 200 with ok = true, result.text = \"hi\", and a run_id that host.runs.get resolves with caller = \"url\".",
-      "test": "tests/pubtool_ac02_post_json_runs_tool.rs"
+      "description": "Given a column with a description annotation, When host.table.schema is called, Then that column's entry carries the text, and columns without one carry no description key.",
+      "test": "tests/sqlpass_ac02_column_description_in_schema.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given that URL, When GET <url>?text=hi&n=3 runs, Then the tool receives {text: \"hi\", n: 3} and the response is 200.",
-      "test": "tests/pubtool_ac03_get_query_runs_tool.rs"
+      "description": "Given a table with no annotations, When host.table.schema is called, Then the response has no description key at any level and matches the pre-change shape byte for byte.",
+      "test": "tests/sqlpass_ac03_no_annotations_shape_unchanged.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a revoked token (after host.tool_unshare), When the URL is called, Then 404 is returned with a body that names neither tenant nor tool, and the median response time differs from a never-issued token's by less than 20 ms over 50 requests.",
-      "test": "tests/pubtool_ac04_revoked_token_404_constant_time.rs"
+      "description": "Given a 1,000-row table, When host.table.query returns 5 rows for a GROUP BY, Then _mcphost_query_log gains one row with that sql, row_count 5, a duration_ms under 5,000, and null error_code, and the logged call added under 5 ms at p95 across 100 repetitions.",
+      "test": "tests/sqlpass_ac04_group_by_logs_row_count_and_duration.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a client IP that made 60 calls in the current minute, When it calls again, Then 429 with a Retry-After header is returned and no run is created.",
-      "test": "tests/pubtool_ac05_rate_limit_429.rs"
+      "description": "Given an UPDATE statement, When host.table.query refuses it, Then no table row changes, the caller gets the existing read-only refusal, and the log row carries that refusal's error_code with null row_count.",
+      "test": "tests/sqlpass_ac05_update_refused_logs_error_code.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a tool whose run takes 30 s, When the URL is called, Then 202 with run_id and poll is returned within 26 s, and GET <poll> returns the result once the run completes.",
-      "test": "tests/pubtool_ac06_long_run_returns_202_then_polls_to_done.rs"
+      "description": "Given two tenants that each ran queries, When tenant A calls host.table.query_log, Then only A's rows return, newest first, and limit 500 is served as 200.",
+      "test": "tests/sqlpass_ac06_query_log_tenant_isolated_and_limit_capped.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given a tenant paused by the admin kill switch, When its public URL is called, Then 503 is returned and no run is created.",
-      "test": "tests/pubtool_ac07_admin_disabled_tenant_503.rs"
+      "description": "Given a tenant with 1,000 log rows, When one more query runs, Then the log holds 1,000 rows, the oldest is gone, and host.table.schema's bytes_used includes the log.",
+      "test": "tests/sqlpass_ac07_query_log_capped_at_1000_bytes_used_includes_log.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given PUT or DELETE to the URL, When dispatched, Then 405 is returned.",
-      "test": "tests/pubtool_ac08_put_delete_405.rs"
+      "description": "Given the fixture loaded through host.table.create and host.table.append, When proof.sh runs against a local mcphost, Then the equality, range, count, GROUP BY sum by category, and LIKE '%prod%' answers each match the fixture's known values and no host.tool_publish call is made.",
+      "test": "tests/sqlpass_ac08_proof_sh_sql_questions_no_publish.rs"
     },
     {
       "id": "AC9",
       "level": "MUST",
-      "description": "Given the landed binary deployed on prod, When Joe's agent publishes an echo tool, shares it with visibility = \"url\", and Joe runs the returned curl line from his shell, Then the shell prints \"ok\":true and the prod run ledger shows the run with caller = \"url\" (Live; evidence pasted into the receipt by the operator).",
-      "test": "deferred -- operator-provisioned; AC9 is the Live/production-only requirement (the landed binary deployed on prod, a real published+shared tool, Joe's own shell curling it, evidence pasted into the PRD's own evidence block) and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
+      "description": "Given www/llms.txt, When the database-in-a-minute section is read, Then it is under 70 lines, shows create, append, one model_set description, a GROUP BY and a LIKE question through host.table.query, and query_log, and contains no where grammar and no claim that mcphost.state.query is the only bridge path.",
+      "test": "tests/sqlpass_ac09_llms_txt_sql_path_under_70_lines.rs"
     },
     {
       "id": "AC10",
       "level": "SHOULD",
-      "description": "Given a browser page on another origin, When it fetches the URL with GET, Then the response carries Access-Control-Allow-Origin: * and the preflight OPTIONS returns 204.",
-      "test": "tests/pubtool_ac10_cors_header_and_preflight.rs"
+      "description": "Given prod after land, When proof.sh https://mcphost.dev/mcp runs from carbon with a fresh signup, Then it exits 0 in under 30 s and host.table.query_log on that tenant lists at least five rows with non-null row_count.",
+      "test": "deferred (Live) -- operator-provisioned: needs a real run against production https://mcphost.dev/mcp from carbon after deploy, with the receipt committed under docs/receipts/; this coder dispatch has no live operator access."
+    },
+    {
+      "id": "AC11",
+      "level": "SHOULD",
+      "description": "Given ten host.table.query calls issued concurrently for one tenant, When they finish, Then the log holds exactly ten new rows and every one has a duration_ms.",
+      "test": "tests/sqlpass_ac11_concurrent_queries_produce_ten_log_rows.rs"
+    },
+    {
+      "id": "AC12",
+      "level": "SHOULD",
+      "description": "Given an empty declared table, When SELECT * FROM t runs, Then zero rows return and the log row carries row_count 0 and null error_code.",
+      "test": "tests/sqlpass_ac12_empty_table_zero_rows_null_error_code.rs"
+    },
+    {
+      "id": "AC13",
+      "level": "MAY",
+      "description": "Given a 5,000-byte SELECT, When it runs, Then the log row stores the first 4,096 bytes with truncated: true and the query itself is not refused for length.",
+      "test": "tests/sqlpass_ac13_long_sql_truncated_in_log_not_refused.rs"
     }
   ],
   "scope": [
-    "migrations/0059_public_tool_url.sql + src/db.rs: tool_share_tokens table (tenant_id, tool_name, token_hash UNIQUE, token_enc/token_nonce, created_unix) and its find_url_share/insert_url_share/delete_url_share/find_url_share_by_hash CRUD.",
-    "src/auth.rs: generate_public_token() -- 26-character [a-z2-7] base32 bearer token.",
-    "src/public_tool.rs (new): mint_or_reuse_url_share/revoke_url_share (called from sharing.rs), resolve_share (token-hash lookup -> tenant -> visibility check), the GET/POST /x/{token}/{tool} handlers, the GET /x/{token}/{tool}/runs/{run_id} poll handler, the per-IP rate limiter check, and the CORS route_layer/OPTIONS handler.",
-    "src/sharing.rs: host.tool_share accepts visibility: \"url\" (mints/reuses a token, returns url in the result); host.tool_unshare revokes the token; a tool_share to any other visibility revokes a previously-live url token.",
-    "src/admin.rs: admin.tool_unshare also revokes a live url token.",
-    "src/runs.rs: enqueue_url (trigger=\"url\", trigger_ref=token id) and run_to_json's additive caller field (\"url\" for a run started this way); attach_result widened to pub(crate) so public_tool.rs can inline a run's result the same way host.runs.get does.",
-    "src/state.rs: AppState::public_url_sync_deadline (default 25s, a field so tests can shrink it) and AppState::url_rate_limiter (reuses hooks::EventRateLimiter, keyed by client IP, default 60/minute).",
-    "src/http.rs: the /x/{token}/{tool} and /x/{token}/{tool}/runs/{run_id} routes, mounted as their own sub-router (public_tool_router) so the CORS middleware is scoped to this route family only."
+    "src/tables.rs: host.table.schema merges table/column description annotations (requirement 1); host.table.query writes one row per call to a new _mcphost_query_log table inside the tenant's own tables/<tenant_id>.db, bounded at 1,000 rows with oldest-row eviction in the same transaction, sql truncated to 4,096 bytes with a truncated flag (requirements 2/3/10); host.table.query_log(limit?, before_id?) reads only the calling tenant's own log, newest first, limit default 50 capped at 200 (requirement 4).",
+    "src/handler.rs: one new tenant tool, host.table.query_log, registered alongside the other host.table.* tools.",
+    "examples/database-in-a-minute/proof.sh, examples/database-in-a-minute/synthorg-task.yaml: rewritten onto host.table.create/append/model_set/query/query_log -- no host.tool_publish step, no where grammar, GROUP BY and LIKE questions added (requirements 5/6); examples/database-in-a-minute/tools/query.py deleted.",
+    "www/llms.txt: the 'Give Claude a database in one minute' section rewritten onto the SQL path (requirement 5/9), and the stale 'mcphost.state.query is the only supported path from a python tool to your own table' sentence replaced with the mcphost.table.query(sql) bridge (requirement 7).",
+    "tests/sqlpass_ac01-13 (AC10 deferred, no test): delivered per-AC integration tests, test_prefix sqlpass.",
+    "Deletes tests/mcphost_database_in_a_minute_ac01/02/03/04/05/07_*.rs: the predecessor PRD's own tests of the six-operator where grammar, its LIKE/raw-SQL rejection, and the old host.state.*-backed recipe steps, all superseded on purpose by this PRD's requirement 5 (see the predecessor PRD's own absorbed-scope note); AC08 (Live gate) and AC09 (unrelated csv_import.py tool) are untouched.",
+    "Cargo.toml/CHANGELOG.md: version bump per the PRD's own build_version_bump: minor."
   ],
   "non_goals": [
-    "Custom domains, HTML rendering, or static hosting -- PRD Non-goals.",
-    "Authentication on the public URL beyond the unguessable token -- PRD Non-goals.",
-    "Streaming responses -- a long run returns run_id/poll instead; PRD Non-goals.",
-    "A tenant-overridable per-tool caller-limit knob for the public URL path (requirement 6 mentions host.share_caller_limit as a future override) -- not built; no AC in this dispatch's assigned list exercises it, only the flat 60/minute/IP default (AC5).",
-    "host.tool_list's public_url field / host.whoami's public_urls count (P1 requirement 10) and the www/llms.txt / host.quickstart doc updates (P1 requirement 12) and ?pretty=1 (P2 requirement 13) -- no AC in this dispatch's assigned list (AC1-AC8, AC10) covers them; not built, per the dispatch instruction to implement only the listed, non-deferred ACs.",
-    "The 1 MiB request body limit / 413 response (non-functional) -- not exercised by any assigned AC; not built."
+    "host.state.query and its field op value filter grammar: unchanged -- it is a key-value store's filter, not a query language for analytics (PRD non-goal 1).",
+    "New annotation kinds: model_set already stores role, unit, description, hidden; this PRD returns description from schema, it adds no key (PRD non-goal 2).",
+    "Retention or export controls for the query log beyond the fixed 1,000-row cap (PRD non-goal 3).",
+    "Metering changes: a host.table.query call is already one tool call for billing (PRD non-goal 4).",
+    "A control-plane/admin surface for the query log -- the tenant-facing read (host.table.query_log) is the capability shipped here (PRD non-goal 5).",
+    "Changing the row cap, time cap, or the three read-only guards host.table.query already enforces (PRD non-goal 6)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -97,54 +114,38 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "test_file_names_use_test_prefix_pubtool": "test_prefix pubtool (the PRD's own frontmatter field): tests/pubtool_ac<NN>_<slug>.rs, same convention as every other test file in this repo.",
-      "version_bump_minor": "PRD frontmatter build_version_bump: minor -- Cargo.toml/Cargo.lock bumped 0.69.0 -> 0.70.0 (branch base had already absorbed sibling PRDs' bumps through 0.69.0 by the time this PRD's own bump landed; 0.67.0 was a stale target recorded before that absorption).",
-      "ac9_deferred_operator_provisioned": "AC9 is a Live acceptance criterion (the landed binary deployed on prod, a real publish+share+curl round trip, evidence pasted into the PRD's own evidence block) -- deferred, not built or tested here; a build agent never provisions, deploys to, or authorizes changes on a live/prod host.",
-      "token_stored_hashed_and_encrypted": "Requirement 1 says the token is \"stored hashed\"; requirement 1 ALSO says re-sharing returns the SAME url, which needs the plaintext recoverable -- read as: a sha256 token_hash column for the request-time lookup (the thing an attacker who reads the database could otherwise use directly), plus the plaintext AEAD-encrypted (SecretBox, the same mechanism webhook trigger secrets already use) so host.tool_share can redisplay it, unlike a webhook secret which is shown once and never again.",
-      "revocation_is_row_deletion_not_a_flag": "AC4's constant-time guarantee (revoked vs never-issued token, <20ms median difference over 50 requests) is read as: revocation (host.tool_unshare, admin.tool_unshare, or host.tool_share to a different visibility) DELETEs the tool_share_tokens row outright, so a revoked token and one that was never minted resolve through the exact same \"no row\" code path at request time -- not a revoked_unix flag needing a second branch kept in timing sync by hand.",
-      "long_run_reuses_the_existing_job_queue": "AC6's 202/poll behavior is built on the pre-existing runs::enqueue/spawn_executor job queue (trigger=\"url\") rather than a bespoke execution path -- the HTTP handler polls the run row for up to public_url_sync_deadline and falls back to 202 if it is not yet terminal; the job keeps running in the background via the same executor every other async run already uses. This does not hit the PRD's own non-functional p95-latency-under-30ms-over-host.tool_call target for a near-instant tool (the executor's 250ms tick interval dominates), but no AC in this dispatch's assigned list measures that NFR, and reusing the already-tested job/executor machinery was judged lower-risk than a second bespoke dispatch path."
+      "test_file_names_use_underscores_not_the_prd_slugs_hyphens": "test_prefix sqlpass (the PRD's own frontmatter field), same convention as every other test file in this repo.",
+      "ac10_is_live_operator_provisioned": "AC10's Then needs a real run against production https://mcphost.dev/mcp from carbon after deploy; this coder dispatch never provisions, resizes, deletes, or reconfigures any server, volume, or service, so AC10 is declared deferred rather than faked.",
+      "shared_runner_contention_hardened_ac4_test_not_weakened": "The gate-check found this branch's runner box under severe, external, time-varying contention (load average up to ~4x its core count; /cache periodically disk-full from other concurrent sessions) that intermittently fails tight wall-clock latency assertions repo-wide, including AC4's own pre-existing p95 guardrail test and several unrelated ones (enduserctl_ac10, sharedcall_ac03, tablemodel_ac06, oauthpol_ac03). AC4's test was hardened (an ambient host.table.schema baseline measured per-iteration, subtracted from the raw overhead, plus a 10-attempt retry) to isolate the log write's own added cost from that noise, rather than loosening its 5ms budget; the guardrail's actual value is unchanged."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why give AppState a new public_url_sync_deadline field instead of reusing CALL_TIMEOUT/the plan's job_max_s?",
-      "a": "The PRD's own 25s threshold is a distinct constant from CALL_TIMEOUT (30s, host.tool_call's own sandbox deadline) and job_max_s (per-plan, often far longer) -- it governs only how long the HTTP handler waits before answering 202, not how long the job itself is allowed to run. A field (not just a constant) follows the same AppState::call_timeout precedent so AC6's test can shrink it without a real 25s wait."
+      "q": "Why does the recipe need to stop publishing a python query tool at all, rather than just add GROUP BY/LIKE to its where grammar?",
+      "a": "Extending the hand-rolled grammar to cover joins, aggregates, and pattern matching re-derives SQL badly and gives the model no training data to speak it from -- Blankley's published numbers on domain-specific query languages put model accuracy roughly 80% below plain SQL for exactly this reason (Super Data Brothers, 2026), and the host already ships the real thing (host.table.query) behind three independent read-only guards."
     },
     {
       "why": 2,
-      "q": "Why build the GET/POST route as enqueue-then-poll against the existing job queue instead of calling Kind::call directly with a tokio::time::timeout like call_published_tool does?",
-      "a": "tokio::time::timeout cancels (drops) the future it wraps on timeout -- it cannot leave the call running in the background for AC6's own \"GET <poll> returns the result once the run completes\" to later observe. The job queue's executor already runs a job to completion independently of whatever polls it, which is exactly the AC6 contract; call_published_tool's own timeout-and-cancel shape is the wrong primitive here even though it IS the lower-latency one."
+      "q": "Why record every query (including refusals) rather than only successful ones?",
+      "a": "User story 3: when an answer looks wrong, a tenant needs to see the SQL and outcome of every recent call, including the one that hit the row cap or was refused for reaching past a write -- a log of successes alone can't distinguish a bad note from a bad query."
     },
     {
       "why": 3,
-      "q": "Why delete the tool_share_tokens row on revoke rather than flip a revoked_unix timestamp?",
-      "a": "AC4 explicitly measures that a revoked token and a never-issued token answer in close to the same time. Two branches (row present but revoked vs. no row at all) would need their own work to cost the same; one branch (row absent) makes the two cases literally the same code path, with no timing-parity logic to get right or drift out of sync later."
+      "q": "Why store the log in the tenant's own tables/<tenant_id>.db rather than the main mcphost.db (the documents module's document_usage_events precedent)?",
+      "a": "The tables module's design promise is that one tenant's whole table store is one file to back up, restore, or delete (src/tables.rs); a log in the main database would break that promise and need a migration plus a cascade-delete path the per-tenant-file design doesn't need."
     },
     {
       "why": 4,
-      "q": "Why is the per-IP rate limiter checked before resolve_share (the token-hash lookup) rather than after?",
-      "a": "Requirement 6 is a general abuse guard on the route, not specifically on valid tokens -- checking it first means a flood of garbage/guessed tokens never pays for even the one indexed DB lookup resolve_share does, and AC5's own \"no run created\" is satisfied either way since dispatch() (the only run-creating step) sits after both checks."
-    },
-    {
-      "why": 5,
-      "q": "Why is run_to_json's new caller field derived from the existing trigger column (\"url\" iff trigger == \"url\") instead of adding a dedicated caller column to the runs table?",
-      "a": "trigger already records how a run was created (\"call\", \"job\", \"schedule\", \"webhook\", ...) and AC2 only needs ONE new value in that same vocabulary (\"url\") plus a field named caller for the AC's own wording -- a second column holding information trigger already carries would be a duplicate source of truth for no behavior the AC needs."
+      "q": "Why does the recipe's llms.txt section still need a line naming mcphost.table.query(sql) as a python bridge, if the recipe itself no longer publishes a python tool?",
+      "a": "Requirement 7 and user story 5 are about tool AUTHORS in general, not just this recipe: llms.txt's existing line claimed mcphost.state.query was the only supported path from a python tool to a table, which has been false since PRD-mcphost-tenant-tables landed -- leaving it uncorrected would keep misdirecting every other python-tool author who reads it."
     }
   ],
-  "created_at": "2026-10-01T00:00:00Z",
+  "created_at": "2026-09-30T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Default caller limit 60/min/IP: right number for free tier? (PRD Open question, owner Joe, due 2026-10-08.)",
-      "resolution": "Left at the PRD's own drafted default, 60/minute/IP, exactly as AC5 specifies -- the open question was still open (due after this build) at build time, so no tenant-wide host.share_caller_limit override knob was built for this path (see hard_constraints/non_goals); only the flat default AC5 tests."
-    },
-    {
-      "question": "Should GET be allowed at all for tools whose spec declares side effects? (PRD Open question, drafted: yes, the token holder is the authority.)",
-      "resolution": "Built per the PRD's own draft answer: GET is allowed unconditionally (AC3), with no spec-declared-side-effects gate -- the PRD frames the open question as already leaning yes and no AC in this dispatch's list asks for a refusal path."
-    },
-    {
-      "question": "Path prefix /x/ vs /f/? (PRD Open question, drafted: /x/.)",
-      "resolution": "/x/, per the PRD's own draft and AC1's own regex (^https://[^/]+/x/[a-z2-7]{26}/echo$)."
+      "question": "Should the query log be readable by an end user (end_user_subject) or only by the tenant key?",
+      "resolution": "Tenant key only -- the PRD's own open-questions table names this as its default, and host.table.query_log's implementation reads only the calling tenant's own file with no argument naming another tenant or an end user."
     }
   ]
 }
