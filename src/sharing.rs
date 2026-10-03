@@ -35,11 +35,11 @@ fn tool_json(namespace: &str, tool: &crate::db::ToolRow) -> Value {
 }
 
 /// `host.tool_share(name, visibility, group?, description?)` (AC1, AC6):
-/// `visibility` must be `"public"` or `"group"` (a tenant shares a tool
-/// INTO one of those states; `host.tool_unshare` is the way back to
-/// `"private"`, not this tool with `visibility: "private"`). `group` is
-/// required when `visibility == "group"` and must already exist
-/// (`host.group.create`).
+/// `visibility` must be `"public"`, `"group"`, or (PRD-mcphost-public-tool-url
+/// requirement 1) `"url"` (a tenant shares a tool INTO one of those
+/// states; `host.tool_unshare` is the way back to `"private"`, not this
+/// tool with `visibility: "private"`). `group` is required when
+/// `visibility == "group"` and must already exist (`host.group.create`).
 pub async fn tool_share(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let name = arg_str(args, "name")?;
     let visibility = arg_str(args, "visibility")?;
@@ -51,6 +51,7 @@ pub async fn tool_share(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
 
     match visibility.as_str() {
         "public" => {}
+        "url" => {}
         "group" => {
             let group_name = group
                 .clone()
@@ -67,7 +68,7 @@ pub async fn tool_share(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
         }
         other => {
             return Err(AppError::InvalidArgs(format!(
-                "visibility must be 'public' or 'group', got '{other}'"
+                "visibility must be 'public', 'group', or 'url', got '{other}'"
             )));
         }
     }
@@ -98,6 +99,21 @@ pub async fn tool_share(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
         }
     }
 
+    // PRD-mcphost-public-tool-url requirement 1 (AC1): minted/reused BEFORE
+    // `set_tool_share` flips `visibility`, so a storage failure here never
+    // leaves the tool shared with no token to show for it. Requirement 8
+    // (AC8): a tool that was previously `url`-shared and is now being
+    // shared into `public`/`group` instead has its old token revoked --
+    // switching visibility is not a no-op for an already-live public URL.
+    let url = if visibility == "url" {
+        Some(crate::public_tool::mint_or_reuse_url_share(state, tenant, &name).await?)
+    } else {
+        if row.visibility == "url" {
+            crate::public_tool::revoke_url_share(state, tenant.id, &name).await?;
+        }
+        None
+    };
+
     state
         .db
         .set_tool_share(
@@ -110,13 +126,19 @@ pub async fn tool_share(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
         )
         .await?;
 
-    Ok(json!({
+    let mut result = json!({
         "name": format!("{}.{}", tenant.namespace, name),
         "visibility": visibility,
         "group": group,
         "description": description,
         "expose_spec": expose_spec,
-    }))
+    });
+    if let Some(url) = url
+        && let Some(obj) = result.as_object_mut()
+    {
+        obj.insert("url".to_string(), json!(url));
+    }
+    Ok(result)
 }
 
 /// `host.tool_unshare(name)` (AC8): back to private. `false` (not found)
@@ -127,6 +149,9 @@ pub async fn tool_unshare(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     if !removed {
         return Err(AppError::ToolNotFound(name));
     }
+    // PRD-mcphost-public-tool-url requirement 8 (AC4/AC8): a no-op when
+    // this tool never had a public URL token.
+    crate::public_tool::revoke_url_share(state, tenant.id, &name).await?;
     Ok(json!({ "name": name, "visibility": "private" }))
 }
 

@@ -1,74 +1,94 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-trigger-set-idempotent.md",
-  "intent_slug": "mcphost-trigger-set-idempotent",
-  "root_motivation": "host.trigger.set has no update verb: re-running it (an agent retargeting a hook, or a scheduled agent re-running its own setup script) always inserts, so the natural 'set it again' mints a duplicate trigger, eats a quota slot, and fires twice. The 2026-09-30 fleet board dogfood incident is the concrete case: retargeting a webhook minted a second trigger and consumed a free-plan webhook slot the coder had to remove by hand. This PRD gives every trigger a tenant-unique name (default <kind>:<tool_name>) and makes host.trigger.set an upsert keyed by that name: an existing same-kind trigger is updated in place (same id, same hook URL), a different-kind collision is refused, and every other trigger verb accepts name wherever it accepts id.",
-  "user_persona": "A workflow-orchestrator or scheduled agent that re-runs its own setup script on every boot and needs that to be safe; a hook author retargeting an existing webhook/schedule to a new tool without losing its URL or quota slot.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-public-tool-url.md",
+  "intent_slug": "mcphost-public-tool-url",
+  "root_motivation": "A published tool is reachable only over MCP (/mcp, /t/{namespace}/mcp) or by another tenant via host.tool_share; the only plain-HTTP ingress to tenant code is the inbound webhook /hook/{id}, which triggers a run but returns nothing to the caller. There is no way for an agent to hand its human, or a browser, or curl, a URL that runs the function and returns its result -- without one, the human behind the agent has no reason to keep the server configured once the task that brought the agent ends, and the agent has no artifact to send to another agent.",
+  "user_persona": "An agent that just published a working tool and wants to hand its human (or another agent) a plain HTTPS URL that runs it and returns JSON, with no MCP client, key, or account on the calling side.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 7
+    "target": 9
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given no trigger named webhook:ingest, When host.trigger.set(kind: webhook, tool: ingest) runs twice, Then the second call returns created: false, changed: [], host.trigger.list shows one row, and the quota counter is 1.",
-      "test": "tests/trigidem_ac01_webhook_set_twice_idempotent.rs"
+      "description": "Given a tenant with a published echo tool, When host.tool_share(name = \"echo\", visibility = \"url\") is called, Then the result carries url matching ^https://[^/]+/x/[a-z2-7]{26}/echo$ and a second identical call returns the same URL.",
+      "test": "tests/pubtool_ac01_tool_share_mints_stable_url.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given an existing webhook trigger, When set runs with the same name and a different tool, Then changed == [\"tool_name\"], the id and hook URL are unchanged, and a POST to the hook URL runs the new tool.",
-      "test": "tests/trigidem_ac02_webhook_update_tool_keeps_id_and_url.rs"
+      "description": "Given that URL, When curl -s -X POST <url> -H 'content-type: application/json' -d '{\"text\":\"hi\"}' runs, Then the response is 200 with ok = true, result.text = \"hi\", and a run_id that host.runs.get resolves with caller = \"url\".",
+      "test": "tests/pubtool_ac02_post_json_runs_tool.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a schedule trigger, When set runs with the same name and a new cron, Then next_unix reflects the new cron and changed includes schedule.",
-      "test": "tests/trigidem_ac03_schedule_update_cron_changes_next_unix.rs"
+      "description": "Given that URL, When GET <url>?text=hi&n=3 runs, Then the tool receives {text: \"hi\", n: 3} and the response is 200.",
+      "test": "tests/pubtool_ac03_get_query_runs_tool.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a webhook named x, When set(kind: schedule, name: \"x\") runs, Then the error class is trigger_kind_mismatch and nothing changes.",
-      "test": "tests/trigidem_ac04_kind_mismatch_refused.rs"
+      "description": "Given a revoked token (after host.tool_unshare), When the URL is called, Then 404 is returned with a body that names neither tenant nor tool, and the median response time differs from a never-issued token's by less than 20 ms over 50 requests.",
+      "test": "tests/pubtool_ac04_revoked_token_404_constant_time.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a trigger, When host.trigger.remove(name: ...), pause(name), fire(name), and test(name) run, Then each behaves identically to the id form.",
-      "test": "tests/trigidem_ac05_verbs_accept_name.rs"
+      "description": "Given a client IP that made 60 calls in the current minute, When it calls again, Then 429 with a Retry-After header is returned and no run is created.",
+      "test": "tests/pubtool_ac05_rate_limit_429.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a database with two same-kind triggers for one tool before migration, When the migration runs, Then both survive with names <kind>:<tool> and <kind>:<tool>-2 and list shows both.",
-      "test": "tests/trigidem_ac06_migration_backfills_duplicate_names.rs"
+      "description": "Given a tool whose run takes 30 s, When the URL is called, Then 202 with run_id and poll is returned within 26 s, and GET <poll> returns the result once the run completes.",
+      "test": "tests/pubtool_ac06_long_run_returns_202_then_polls_to_done.rs"
     },
     {
       "id": "AC7",
+      "level": "MUST",
+      "description": "Given a tenant paused by the admin kill switch, When its public URL is called, Then 503 is returned and no run is created.",
+      "test": "tests/pubtool_ac07_admin_disabled_tenant_503.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given PUT or DELETE to the URL, When dispatched, Then 405 is returned.",
+      "test": "tests/pubtool_ac08_put_delete_405.rs"
+    },
+    {
+      "id": "AC9",
+      "level": "MUST",
+      "description": "Given the landed binary deployed on prod, When Joe's agent publishes an echo tool, shares it with visibility = \"url\", and Joe runs the returned curl line from his shell, Then the shell prints \"ok\":true and the prod run ledger shows the run with caller = \"url\" (Live; evidence pasted into the receipt by the operator).",
+      "test": "deferred -- operator-provisioned; AC9 is the Live/production-only requirement (the landed binary deployed on prod, a real published+shared tool, Joe's own shell curling it, evidence pasted into the PRD's own evidence block) and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
+    },
+    {
+      "id": "AC10",
       "level": "SHOULD",
-      "description": "Given the quickstart webhook-inbox recipe, When read, Then its set step shows name and states that repeating the call is safe.",
-      "test": "tests/trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent.rs"
+      "description": "Given a browser page on another origin, When it fetches the URL with GET, Then the response carries Access-Control-Allow-Origin: * and the preflight OPTIONS returns 204.",
+      "test": "tests/pubtool_ac10_cors_header_and_preflight.rs"
     }
   ],
   "scope": [
-    "migrations/0059_trigger_names.sql + src/db.rs: triggers.name TEXT (nullable, backfilled), unique (tenant_id, name) index; TriggerRow.name; insert_trigger/update_trigger/get_trigger_by_name; backfill_trigger_names_sync (P0 requirement 1 / AC6's collision-suffixing backfill, run unconditionally every migrate() call).",
-    "src/triggers.rs: the host.trigger.set dispatcher resolves name (default <kind>:<tool>), looks it up, refuses trigger_kind_mismatch on a different-kind collision, and routes create vs. update to each kind's own set_* function; annotate_set_result wraps every kind's response in {created, changed}; resolve() is the shared id-or-name lookup host.trigger.get/pause/resume/remove/fire (this module) and hooks::test/replay (hooks.rs) all call.",
-    "src/triggers.rs (set_schedule) / src/hooks.rs (set_event_trigger) / src/webhooks.rs (set_webhook_trigger): each kind's create path is unchanged in shape (still validates, quota-checks, inserts with the resolved name); each gains an update path that diffs the new config against the existing row, writes only when something actually changed (config_hash/tool_name equality is a no-op, requirement 6 / AC1's own 'changed: []' case), and never touches next_unix unless the schedule-shaped part of the config changed. webhooks::set_webhook_trigger's update never regenerates hook_id or the secret (AC2).",
-    "src/handler.rs: host.trigger.set's description/schema document name and the idempotence rule; host.trigger.get/pause/resume/remove/fire/test/replay schemas add name as an id alternative and drop id from required.",
-    "src/kinds/aliases.rs: the webhook-inbox and schedules quickstart recipes' host.trigger.set step shows name and carries a note stating repeated calls are safe (P0 requirement 5 / AC7).",
-    "contracts/host-tools.v1.json: regenerated (mcphost contract dump) to match the schema changes above."
+    "migrations/0059_public_tool_url.sql + src/db.rs: tool_share_tokens table (tenant_id, tool_name, token_hash UNIQUE, token_enc/token_nonce, created_unix) and its find_url_share/insert_url_share/delete_url_share/find_url_share_by_hash CRUD.",
+    "src/auth.rs: generate_public_token() -- 26-character [a-z2-7] base32 bearer token.",
+    "src/public_tool.rs (new): mint_or_reuse_url_share/revoke_url_share (called from sharing.rs), resolve_share (token-hash lookup -> tenant -> visibility check), the GET/POST /x/{token}/{tool} handlers, the GET /x/{token}/{tool}/runs/{run_id} poll handler, the per-IP rate limiter check, and the CORS route_layer/OPTIONS handler.",
+    "src/sharing.rs: host.tool_share accepts visibility: \"url\" (mints/reuses a token, returns url in the result); host.tool_unshare revokes the token; a tool_share to any other visibility revokes a previously-live url token.",
+    "src/admin.rs: admin.tool_unshare also revokes a live url token.",
+    "src/runs.rs: enqueue_url (trigger=\"url\", trigger_ref=token id) and run_to_json's additive caller field (\"url\" for a run started this way); attach_result widened to pub(crate) so public_tool.rs can inline a run's result the same way host.runs.get does.",
+    "src/state.rs: AppState::public_url_sync_deadline (default 25s, a field so tests can shrink it) and AppState::url_rate_limiter (reuses hooks::EventRateLimiter, keyed by client IP, default 60/minute).",
+    "src/http.rs: the /x/{token}/{tool} and /x/{token}/{tool}/runs/{run_id} routes, mounted as their own sub-router (public_tool_router) so the CORS middleware is scoped to this route family only."
   ],
   "non_goals": [
-    "Changing hook signing or verification -- PRD-mcphost-event-trigger-self-test's territory, untouched here.",
-    "Versioning trigger configs or rollback -- an update overwrites the previous config_json outright, no history kept.",
-    "Allowing a name to move between kinds (webhook -> schedule) -- refused with trigger_kind_mismatch (non-goal, AC4); the caller must remove and re-set under a new name.",
-    "host.trigger.list's name_prefix filter (P1 requirement 7) -- no AC exercises it, not built.",
-    "host.export / host.registry_publish referencing triggers by name (P2 requirement 8) -- no AC exercises it, not built.",
-    "AC8 (the live/prod fleet-board retarget against tenant joe-test) -- deferred, operator-provisioned: it needs a real deployed box and an operator-held tenant env file this build agent never provisions or touches."
+    "Custom domains, HTML rendering, or static hosting -- PRD Non-goals.",
+    "Authentication on the public URL beyond the unguessable token -- PRD Non-goals.",
+    "Streaming responses -- a long run returns run_id/poll instead; PRD Non-goals.",
+    "A tenant-overridable per-tool caller-limit knob for the public URL path (requirement 6 mentions host.share_caller_limit as a future override) -- not built; no AC in this dispatch's assigned list exercises it, only the flat 60/minute/IP default (AC5).",
+    "host.tool_list's public_url field / host.whoami's public_urls count (P1 requirement 10) and the www/llms.txt / host.quickstart doc updates (P1 requirement 12) and ?pretty=1 (P2 requirement 13) -- no AC in this dispatch's assigned list (AC1-AC8, AC10) covers them; not built, per the dispatch instruction to implement only the listed, non-deferred ACs.",
+    "The 1 MiB request body limit / 413 response (non-functional) -- not exercised by any assigned AC; not built."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -77,48 +97,54 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "test_file_names_use_test_prefix_trigidem": "test_prefix trigidem (the PRD's own frontmatter field): tests/trigidem_ac<NN>_<slug>.rs, same convention as every other test file in this repo.",
-      "version_bump_minor": "PRD frontmatter build_version_bump: minor -- Cargo.toml/Cargo.lock/plugin/.claude-plugin/plugin.json/CHANGELOG.md bumped 0.65.0 -> 0.66.0.",
-      "ac8_deferred_operator_provisioned": "AC8 is a Live acceptance criterion (the landed binary deployed on prod, tenant joe-test, a real fleet-post against ~/.config/mcphost/joe-test.env on orch) -- deferred, not built or tested here; a build agent never provisions, deploys to, or reads operator-held credentials on a live host.",
-      "open_question_default_taken": "Open question default taken (PRD's own 'Drafted' answer): set without name on a tenant that already has two same-kind triggers for a tool is unreachable in practice since the default name <kind>:<tool> always resolves to exactly one of them (the first inserted, pre-AC6-migration) -- no separate trigger_name_ambiguous path was needed or built; the two triggers simply have distinct names (<kind>:<tool> and <kind>:<tool>-2) after migration 0059, and a bare set(tool, kind) with no name always targets the first."
+      "test_file_names_use_test_prefix_pubtool": "test_prefix pubtool (the PRD's own frontmatter field): tests/pubtool_ac<NN>_<slug>.rs, same convention as every other test file in this repo.",
+      "version_bump_minor": "PRD frontmatter build_version_bump: minor -- Cargo.toml/Cargo.lock bumped 0.69.0 -> 0.70.0 (branch base had already absorbed sibling PRDs' bumps through 0.69.0 by the time this PRD's own bump landed; 0.67.0 was a stale target recorded before that absorption).",
+      "ac9_deferred_operator_provisioned": "AC9 is a Live acceptance criterion (the landed binary deployed on prod, a real publish+share+curl round trip, evidence pasted into the PRD's own evidence block) -- deferred, not built or tested here; a build agent never provisions, deploys to, or authorizes changes on a live/prod host.",
+      "token_stored_hashed_and_encrypted": "Requirement 1 says the token is \"stored hashed\"; requirement 1 ALSO says re-sharing returns the SAME url, which needs the plaintext recoverable -- read as: a sha256 token_hash column for the request-time lookup (the thing an attacker who reads the database could otherwise use directly), plus the plaintext AEAD-encrypted (SecretBox, the same mechanism webhook trigger secrets already use) so host.tool_share can redisplay it, unlike a webhook secret which is shown once and never again.",
+      "revocation_is_row_deletion_not_a_flag": "AC4's constant-time guarantee (revoked vs never-issued token, <20ms median difference over 50 requests) is read as: revocation (host.tool_unshare, admin.tool_unshare, or host.tool_share to a different visibility) DELETEs the tool_share_tokens row outright, so a revoked token and one that was never minted resolve through the exact same \"no row\" code path at request time -- not a revoked_unix flag needing a second branch kept in timing sync by hand.",
+      "long_run_reuses_the_existing_job_queue": "AC6's 202/poll behavior is built on the pre-existing runs::enqueue/spawn_executor job queue (trigger=\"url\") rather than a bespoke execution path -- the HTTP handler polls the run row for up to public_url_sync_deadline and falls back to 202 if it is not yet terminal; the job keeps running in the background via the same executor every other async run already uses. This does not hit the PRD's own non-functional p95-latency-under-30ms-over-host.tool_call target for a near-instant tool (the executor's 250ms tick interval dominates), but no AC in this dispatch's assigned list measures that NFR, and reusing the already-tested job/executor machinery was judged lower-risk than a second bespoke dispatch path."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why give triggers a name instead of just making host.trigger.set compare the full (tool, kind, config) tuple and update on an exact config_hash match?",
-      "a": "The whole point of 'set it again with a different tool/schedule/verify' is that the config is NOT identical to before -- a config_hash match can only ever catch the literal no-op case (already migration 0015's existing UNIQUE constraint), never the retarget case the 2026-09-30 incident actually hit. Only a caller-stable identity separate from the mutable config (a name) can answer 'is this the same logical trigger, just reconfigured?'."
+      "q": "Why give AppState a new public_url_sync_deadline field instead of reusing CALL_TIMEOUT/the plan's job_max_s?",
+      "a": "The PRD's own 25s threshold is a distinct constant from CALL_TIMEOUT (30s, host.tool_call's own sandbox deadline) and job_max_s (per-plan, often far longer) -- it governs only how long the HTTP handler waits before answering 202, not how long the job itself is allowed to run. A field (not just a constant) follows the same AppState::call_timeout precedent so AC6's test can shrink it without a real 25s wait."
     },
     {
       "why": 2,
-      "q": "Why default the name to <kind>:<tool_name> instead of requiring every caller to pass one explicitly?",
-      "a": "Goal 1 is that re-running an existing setup script (written before this PRD, calling set with no name argument) becomes idempotent for free -- AC1's own wording is host.trigger.set(kind: webhook, tool: ingest) with no name at all. A mandatory name would be a breaking change to every existing caller; a default makes the common one-trigger-per-tool-per-kind case idempotent automatically while an explicit distinct name remains how a caller opts into a genuine second trigger (non-goal list / goal 4)."
+      "q": "Why build the GET/POST route as enqueue-then-poll against the existing job queue instead of calling Kind::call directly with a tokio::time::timeout like call_published_tool does?",
+      "a": "tokio::time::timeout cancels (drops) the future it wraps on timeout -- it cannot leave the call running in the background for AC6's own \"GET <poll> returns the result once the run completes\" to later observe. The job queue's executor already runs a job to completion independently of whatever polls it, which is exactly the AC6 contract; call_published_tool's own timeout-and-cancel shape is the wrong primitive here even though it IS the lower-latency one."
     },
     {
       "why": 3,
-      "q": "Why does an update never regenerate a webhook's secret or hook_id, even when other fields (tool, verify) change?",
-      "a": "AC2 requires 'the id and hook URL are unchanged' after a tool retarget, and AC1 requires that an unchanged config_hash make 'changed: []' with no write -- a webhook's CREATE path mints a fresh random secret every call, so if UPDATE also regenerated it, the second of two identical set calls would never be a true no-op (the secret would always differ), breaking AC1 for the webhook kind specifically. Treating hook_id and the secret as immutable after creation is what keeps both AC1's idempotence and AC2's URL-stability true simultaneously."
+      "q": "Why delete the tool_share_tokens row on revoke rather than flip a revoked_unix timestamp?",
+      "a": "AC4 explicitly measures that a revoked token and a never-issued token answer in close to the same time. Two branches (row present but revoked vs. no row at all) would need their own work to cost the same; one branch (row absent) makes the two cases literally the same code path, with no timing-parity logic to get right or drift out of sync later."
     },
     {
       "why": 4,
-      "q": "Why does an update only recompute next_unix when the schedule-shaped part of the config (schedule/args/tz) actually changed, not on every update?",
-      "a": "AC2's webhook case and a schedule update that only retargets tool share the same shape: a field having nothing to do with timing shouldn't silently shift when the trigger next fires. Recomputing next_unix unconditionally on any update (e.g. a tool-only retarget) would move a schedule that was already correctly due soon, which no AC asks for and would surprise an agent that only meant to change which tool runs."
+      "q": "Why is the per-IP rate limiter checked before resolve_share (the token-hash lookup) rather than after?",
+      "a": "Requirement 6 is a general abuse guard on the route, not specifically on valid tokens -- checking it first means a flood of garbage/guessed tokens never pays for even the one indexed DB lookup resolve_share does, and AC5's own \"no run created\" is satisfied either way since dispatch() (the only run-creating step) sits after both checks."
     },
     {
       "why": 5,
-      "q": "Why does the migration backfill run unconditionally every migrate() call (like migration 0049) instead of once, gated behind the same column-presence check that adds the name column itself?",
-      "a": "Gating the Rust-side backfill on the ALTER TABLE's own one-time presence check would miss any row inserted between the ALTER TABLE and the backfill during a rolling deploy (a server process still running old code, mid-restart, could insert a NULL-name row after a newer process's migrate() already ran its one-time gate). An unconditional, idempotent-by-its-own-WHERE-clause backfill (AC6's own test re-runs migrate() twice and expects the second call to be a no-op) closes that window the same way migration 0049's own data-only backfill already does."
+      "q": "Why is run_to_json's new caller field derived from the existing trigger column (\"url\" iff trigger == \"url\") instead of adding a dedicated caller column to the runs table?",
+      "a": "trigger already records how a run was created (\"call\", \"job\", \"schedule\", \"webhook\", ...) and AC2 only needs ONE new value in that same vocabulary (\"url\") plus a field named caller for the AC's own wording -- a second column holding information trigger already carries would be a duplicate source of truth for no behavior the AC needs."
     }
   ],
   "created_at": "2026-10-01T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Should set without name on a tenant that already has two same-kind triggers for that tool update the first or refuse as ambiguous? (PRD's own open question, drafted default: refuse trigger_name_ambiguous listing both names.)",
-      "resolution": "No separate ambiguity path was needed: after migration 0059's backfill, the two pre-existing duplicates have distinct names (<kind>:<tool> and <kind>:<tool>-2), so a bare set(tool, kind) with no name argument always resolves its default name to exactly the first one -- there is no state in which two triggers share one name for this lookup to be ambiguous over, since (tenant_id, name) is the unique index itself."
+      "question": "Default caller limit 60/min/IP: right number for free tier? (PRD Open question, owner Joe, due 2026-10-08.)",
+      "resolution": "Left at the PRD's own drafted default, 60/minute/IP, exactly as AC5 specifies -- the open question was still open (due after this build) at build time, so no tenant-wide host.share_caller_limit override knob was built for this path (see hard_constraints/non_goals); only the flat default AC5 tests."
     },
     {
-      "question": "Does the webhook kind's existing 'name' argument (previously required, alnum/underscore only, used as the inbox_<name> state table suffix) become a second, separate argument alongside the new trigger-identity name, or the same one?",
-      "resolution": "The same one: the PRD's own AC1 wording (host.trigger.set(kind: webhook, tool: ingest) with no name at all) requires the webhook kind's name argument to become optional too, and there is only one name key in the argument shape for a caller to pass. The inbox table is now named from the resolved trigger identity (inbox_<name>, including a default like webhook:ingest) rather than a second, separately-validated field; the previous alnum-only format restriction was dropped since tenant_state_tables.table_name is an ordinary parameterized string column, not a literal SQL identifier, so a colon in a default name is structurally safe."
+      "question": "Should GET be allowed at all for tools whose spec declares side effects? (PRD Open question, drafted: yes, the token holder is the authority.)",
+      "resolution": "Built per the PRD's own draft answer: GET is allowed unconditionally (AC3), with no spec-declared-side-effects gate -- the PRD frames the open question as already leaning yes and no AC in this dispatch's list asks for a refusal path."
+    },
+    {
+      "question": "Path prefix /x/ vs /f/? (PRD Open question, drafted: /x/.)",
+      "resolution": "/x/, per the PRD's own draft and AC1's own regex (^https://[^/]+/x/[a-z2-7]{26}/echo$)."
     }
   ]
 }

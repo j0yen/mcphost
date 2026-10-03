@@ -309,6 +309,8 @@ pub async fn bare_app_state() -> (AppState, TempDataDir) {
         session_bindings: mcphost::session_bind::SessionBindings::new(),
         lineage_cache: mcphost::lineage::new_cache(),
         lineage_trace_pages: mcphost::lineage::new_trace_page_cache(),
+        public_url_sync_deadline: mcphost::state::PUBLIC_URL_SYNC_DEADLINE,
+        url_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
     };
     (state, data_dir)
 }
@@ -800,6 +802,8 @@ impl TestServer {
             session_bindings: mcphost::session_bind::SessionBindings::new(),
             lineage_cache: mcphost::lineage::new_cache(),
             lineage_trace_pages: mcphost::lineage::new_trace_page_cache(),
+            public_url_sync_deadline: mcphost::state::PUBLIC_URL_SYNC_DEADLINE,
+            url_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
         });
 
         // PRD-mcphost-runs-and-jobs: every test server runs the real
@@ -1505,6 +1509,8 @@ pub async fn bare_state(dir: &std::path::Path) -> AppState {
         session_bindings: mcphost::session_bind::SessionBindings::new(),
         lineage_cache: mcphost::lineage::new_cache(),
         lineage_trace_pages: mcphost::lineage::new_trace_page_cache(),
+        public_url_sync_deadline: mcphost::state::PUBLIC_URL_SYNC_DEADLINE,
+        url_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
     }
 }
 

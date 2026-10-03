@@ -1086,6 +1086,24 @@ mod publishfirsttry_ac01_tool_publish_description;
 mod publishfirsttry_ac02_structured_error_fields;
 #[path = "publishfirsttry_ac07_signup_next.rs"]
 mod publishfirsttry_ac07_signup_next;
+#[path = "pubtool_ac01_tool_share_mints_stable_url.rs"]
+mod pubtool_ac01_tool_share_mints_stable_url;
+#[path = "pubtool_ac02_post_json_runs_tool.rs"]
+mod pubtool_ac02_post_json_runs_tool;
+#[path = "pubtool_ac03_get_query_runs_tool.rs"]
+mod pubtool_ac03_get_query_runs_tool;
+#[path = "pubtool_ac04_revoked_token_404_constant_time.rs"]
+mod pubtool_ac04_revoked_token_404_constant_time;
+#[path = "pubtool_ac05_rate_limit_429.rs"]
+mod pubtool_ac05_rate_limit_429;
+#[path = "pubtool_ac06_long_run_returns_202_then_polls_to_done.rs"]
+mod pubtool_ac06_long_run_returns_202_then_polls_to_done;
+#[path = "pubtool_ac07_admin_disabled_tenant_503.rs"]
+mod pubtool_ac07_admin_disabled_tenant_503;
+#[path = "pubtool_ac08_put_delete_405.rs"]
+mod pubtool_ac08_put_delete_405;
+#[path = "pubtool_ac10_cors_header_and_preflight.rs"]
+mod pubtool_ac10_cors_header_and_preflight;
 #[path = "revdebt_ac1_intent_card_pointers_resolve.rs"]
 mod revdebt_ac1_intent_card_pointers_resolve;
 #[path = "run_metrics_handoff_glob_regression.rs"]

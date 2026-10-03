@@ -29,6 +29,11 @@ pub const MAX_TOOL_OUTPUT_BYTES: usize = 1024 * 1024;
 /// [`crate::kinds::python::MAX_TIMEOUT_S`]) -- not the ceiling every call
 /// was silently held to before this PRD, regardless of what it declared.
 pub const CALL_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// PRD-mcphost-public-tool-url requirement 3 / non-functional "the 25 s
+/// threshold matches the synchronous ceiling used by `host.tool_call`":
+/// the default [`AppState::public_url_sync_deadline`].
+pub const PUBLIC_URL_SYNC_DEADLINE: Duration = Duration::from_secs(25);
 /// PRD-mcphost-signup-rate-configurable requirement 1: the fallback used
 /// when `$MCPHOST_SIGNUP_RATE_LIMIT_PER_HOUR` is absent or unparseable.
 /// Also the crate's default when nothing overrides it.
@@ -391,7 +396,23 @@ pub struct AppState {
     /// requirement 8 (AC7): `host.lineage.trace`'s stored, pageable
     /// downstream results -- see [`crate::lineage::TracePageCache`].
     pub lineage_trace_pages: crate::lineage::TracePageCache,
+    /// PRD-mcphost-public-tool-url requirement 3 (AC6): how long
+    /// `GET/POST /x/{token}/{tool}` waits for a run to finish before
+    /// falling back to `202 {run_id, poll}` -- the PRD's own "25 s
+    /// threshold" constant, as a field (same "a field, not just a
+    /// constant, so a test can shrink it without a real wait" convention
+    /// [`AppState::call_timeout`] already uses) rather than a bare
+    /// constant.
+    pub public_url_sync_deadline: Duration,
+    /// PRD-mcphost-public-tool-url requirement 6 (AC5): the per-client-IP
+    /// ceiling on `GET/POST /x/{token}/{tool}` calls -- same sliding-window
+    /// shape (and the exact same type) as [`AppState::event_rate_limiter`],
+    /// just keyed by source IP instead of trigger id.
+    pub url_rate_limiter: crate::hooks::EventRateLimiter,
 }
+
+/// requirement 6's own default: 60 calls per client IP per minute.
+pub const PUBLIC_URL_RATE_LIMIT_PER_MINUTE: i64 = 60;
 
 pub fn now_unix() -> i64 {
     SystemTime::now()
