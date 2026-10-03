@@ -80,15 +80,16 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
     );
     assert_eq!(
         names.len(),
-        150,
+        151,
         "there must be exactly the sixteen host.* control-plane tools \
          (incl. host.quickstart, host.tool_run, host.bridge_test, host.spec_test -- \
          PRD-mcphost-tool-test, and host.redeem/host.key_rotate -- \
          PRD-mcphost-handoff-token) plus host.tool_call plus the three \
          host.tool_history/host.tool_rollback/host.tool_diff tools \
          (PRD-mcphost-tool-versions) plus the nine host.state.* tools \
-         (PRD-mcphost-tenant-state) plus the nine host.table.* tools \
-         (PRD-mcphost-tenant-tables, PRD-mcphost-table-semantic-model) plus the nine \
+         (PRD-mcphost-tenant-state) plus the twelve host.table.* tools \
+         (PRD-mcphost-tenant-tables, PRD-mcphost-table-semantic-model, \
+         PRD-mcphost-chart-in-a-minute, PRD-mcphost-table-context-and-sql-passthrough) plus the nine \
          host.tool_share/host.tool_spec_shared/host.tool_unshare/ \
          host.group.*/host.catalog.* tools (PRD-mcphost-sharing, \
          PRD-mcphost-shared-tool-spec-readback) plus the two \

@@ -22,7 +22,7 @@ strip = true
 [package]
 autotests = false  # gen-test-suites.sh: explicit [[test]] suites below
 name = "mcphost"
-version = "0.77.0"
+version = "0.78.0"
 edition = "2024"
 rust-version = "1.95"
 description = "One MCP endpoint an agent can join and administer without a human"
@@ -217,6 +217,10 @@ name = "suite_core_07"
 path = "tests/suite_core_07.rs"
 
 [[test]]
+name = "suite_core_08"
+path = "tests/suite_core_08.rs"
+
+[[test]]
 name = "suite_env_core_01"
 path = "tests/suite_env_core_01.rs"
 
@@ -231,9 +235,5 @@ path = "tests/suite_sandbox_01.rs"
 [[test]]
 name = "suite_sandbox_02"
 path = "tests/suite_sandbox_02.rs"
-
-[[test]]
-name = "suite_sandbox_03"
-path = "tests/suite_sandbox_03.rs"
 
 # END gen-test-suites.sh generated suites

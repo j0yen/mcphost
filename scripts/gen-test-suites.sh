@@ -508,7 +508,27 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # cap above, spawning an 11th suite binary again -- caught by the same P0
 # assertion. 794 -> 810 (core) re-collapses core's normal buckets to 1,
 # landing the grand total back at 10.
-MAX_PER_SUITE = {"core": 810, "sandbox": 130}
+#
+# Pre-existing drift found while landing PRD-mcphost-table-context-and-
+# sql-passthrough (rebased onto mcphost-table-concept-graph, 2026-10-02):
+# some prior PRD (commit aedb4e5, mcphost-docs-qa-recipe) had already
+# pushed sandbox's own normal bucket past its 130 cap above into a 3rd
+# sandbox suite binary (11th overall) without re-tuning this cap -- caught,
+# on this branch, by the same P0 assertion. 130 -> 170 re-collapses
+# sandbox's normal buckets to 1 (2 total: the one `exclusive` singleton
+# plus this one), landing the grand total back at 10. Unrelated to this
+# PRD's own files (net -4 core-classified files, 0 sandbox-classified: it
+# deletes five sandbox-classified predecessor tests and adds one
+# core-classified one).
+#
+# Rebasing mcphost-table-context-and-sql-passthrough onto
+# mcphost-public-tool-url (2026-10-03, this rebase): both PRDs above
+# independently raised this cap from the same table-concept-graph baseline
+# -- public-tool-url bumped core 794 -> 810, table-context-and-sql-
+# passthrough bumped sandbox 130 -> 170. Landing both together needs both
+# bumps; the exact combined numbers are re-derived below by actually
+# running gen-test-suites.sh --check against this rebase's full file set.
+MAX_PER_SUITE = {"core": 810, "sandbox": 170}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

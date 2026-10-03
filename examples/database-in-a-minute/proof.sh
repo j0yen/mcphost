@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # proof.sh -- runnable end-to-end proof of "Give Claude a database in one
 # minute" (see www/llms.txt). One fresh tenant against $MCPHOST_URL:
-# creates the `expenses` table with `host.state.table_create`, loads
-# fixture.csv (1,000 rows) in batches of 200 with `host.state.insert`,
-# publishes `query` as a python tool, asks an equality/range/count
-# question with known fixture answers, and confirms every row is present
-# via a raw `host.state.query`.
+# creates the `expenses` table with `host.table.create`, loads
+# fixture.csv (1,000 rows) in batches of 200 with `host.table.append`,
+# attaches one `host.table.model_set` description, and asks the
+# equality/range/count/GROUP BY/LIKE questions as plain SQL through
+# `host.table.query` -- no published tool, no `where` grammar
+# (PRD-mcphost-table-context-and-sql-passthrough requirement 5 / AC8).
 #
 # Requires: bash, curl, python3. Deliberately has no jq dependency.
 #
@@ -97,31 +98,6 @@ else:
 PYEOF
 }
 
-# error_code_of <raw_json> -- prints error.data.error_code, or empty.
-error_code_of() {
-  python3 - "$1" <<'PY'
-import json, sys
-d = json.loads(sys.argv[1])
-err = d.get("error") or {}
-print((err.get("data") or {}).get("error_code", ""))
-PY
-}
-
-# mcp_call_ready <tool> <args_json> <key> -- retries while the tool's
-# sandboxed environment is still building (`tool_building`), same "cold
-# python tool" wait every sandboxed test in this repo needs (see
-# `poll_until_ready` in tests/common/mod.rs).
-mcp_call_ready() {
-  local tool="$1" args="$2" key="$3"
-  local resp
-  for _ in $(seq 1 100); do
-    resp=$(mcp_call "$tool" "$args" "$key")
-    [[ "$(error_code_of "$resp")" != "tool_building" ]] && { echo "$resp"; return; }
-    sleep 0.1
-  done
-  echo "$resp"
-}
-
 structured_of() {
   python3 - "$1" <<'PY'
 import json, sys
@@ -154,6 +130,24 @@ print(d if isinstance(d, str) else "")
 PY
 }
 
+json_num() {
+  # json_num <json> <dotted.path> -- prints the raw number at that path
+  # (rendered without a trailing .0 for whole floats), or empty if
+  # missing/not-a-number.
+  python3 - "$1" "$2" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+for p in [p for p in sys.argv[2].split(".") if p]:
+    d = d.get(p) if isinstance(d, dict) else None
+if isinstance(d, bool) or not isinstance(d, (int, float)):
+    print("")
+elif isinstance(d, float) and d.is_integer():
+    print(int(d))
+else:
+    print(d)
+PY
+}
+
 has_error() {
   python3 - "$1" <<'PY'
 import json, sys
@@ -167,20 +161,18 @@ SYNTHETIC_HEADER="recipe:database-in-a-minute"
 BATCH_SIZE=200
 
 # 1. Fresh tenant, tagged so this proof's own signup is distinguishable
-#    from real recipe traffic (requirement 4 / AC5).
+#    from real recipe traffic.
 owner_resp=$(mcp_call "signup" '{"name": "database-in-a-minute-owner"}' "" "x-mcphost-synthetic" "$SYNTHETIC_HEADER")
 owner_struct=$(structured_of "$owner_resp")
-OWNER_NS=$(json_str "$owner_struct" "tenant")
 OWNER_KEY=$(json_str "$owner_struct" "key")
 check "owner_signed_up" "$([[ -n "$OWNER_KEY" ]] && echo 1 || echo 0)"
-echo "OWNER_NS=${OWNER_NS}"
 
-# 2. Create the table -- requirement 1.
-table_resp=$(mcp_call "host.state.table_create" '{"name": "expenses", "schema": {"id": "integer", "category": "text", "amount": "real", "day": "integer"}, "primary_key": "id"}' "$OWNER_KEY")
+# 2. Declare the table -- requirement 5.
+table_resp=$(mcp_call "host.table.create" '{"name": "expenses", "columns": {"id": "integer", "category": "text", "amount": "real", "day": "integer"}, "primary_key": "id"}' "$OWNER_KEY")
 check "table_create" "$(has_error "$table_resp" && echo 0 || echo 1)"
 
-# 3. Batched insert of the 1,000-row fixture -- requirement 1/2, AC2.
-INSERT_FAILURES=0
+# 3. Batched append of the 1,000-row fixture -- requirement 5.
+APPEND_FAILURES=0
 for offset in 0 200 400 600 800; do
   batch_args=$(python3 - "fixture.csv" "$offset" "$BATCH_SIZE" <<'PY'
 import csv, json, sys
@@ -196,59 +188,67 @@ out = [
 print(json.dumps({"table": "expenses", "rows": out}))
 PY
   )
-  batch_resp=$(mcp_call "host.state.insert" "$batch_args" "$OWNER_KEY")
+  batch_resp=$(mcp_call "host.table.append" "$batch_args" "$OWNER_KEY")
   if has_error "$batch_resp"; then
-    INSERT_FAILURES=$((INSERT_FAILURES + 1))
-    echo "INSERT_BATCH_OFFSET_${offset}_ERROR=${batch_resp}"
+    APPEND_FAILURES=$((APPEND_FAILURES + 1))
+    echo "APPEND_BATCH_OFFSET_${offset}_ERROR=${batch_resp}"
   fi
 done
-check "batched_insert_five_calls_of_200_succeed" "$([[ "$INSERT_FAILURES" -eq 0 ]] && echo 1 || echo 0)"
+check "batched_append_five_calls_of_200_succeed" "$([[ "$APPEND_FAILURES" -eq 0 ]] && echo 1 || echo 0)"
 
-# 4. All rows present -- AC2: a raw host.state.query count = 1000.
-raw_query_resp=$(mcp_call "host.state.query" '{"table": "expenses"}' "$OWNER_KEY")
-check "host_state_query_succeeds" "$(has_error "$raw_query_resp" && echo 0 || echo 1)"
-raw_struct=$(structured_of "$raw_query_resp")
-RAW_ROW_COUNT=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print(len(d.get("rows") or []))' "$raw_struct")
-check "host_state_query_count_is_1000" "$([[ "$RAW_ROW_COUNT" == "1000" ]] && echo 1 || echo 0)"
-echo "HOST_STATE_QUERY_ROW_COUNT=${RAW_ROW_COUNT}"
+# 4. One table-level note -- requirement 1/5.
+model_resp=$(mcp_call "host.table.model_set" '{"table": "expenses", "key": "description", "value": "Household spending, one row per purchase."}' "$OWNER_KEY")
+check "model_set_description" "$(has_error "$model_resp" && echo 0 || echo 1)"
 
-# 5. Publish `query` as a python tool -- requirement 1/3.
-QUERY_SRC=$(cat tools/query.py)
-publish_args=$(python3 -c 'import json,sys; print(json.dumps({"name":"query","kind":"python","spec":{"source": sys.argv[1]}}))' "$QUERY_SRC")
-publish_resp=$(mcp_call "host.tool_publish" "$publish_args" "$OWNER_KEY")
-QUERY_QUALIFIED=$(json_str "$(structured_of "$publish_resp")" "name")
-check "owner_publish_query" "$([[ -n "$QUERY_QUALIFIED" ]] && echo 1 || echo 0)"
-
-# 6. Equality question -- AC3: id=777's amount is a known fixture value.
-eq_resp=$(mcp_call_ready "$QUERY_QUALIFIED" '{"where": [{"col": "id", "op": "=", "value": 777}]}' "$OWNER_KEY")
+# 5. Equality question -- id=777's amount is a known fixture value.
+eq_resp=$(mcp_call "host.table.query" '{"sql": "SELECT amount FROM expenses WHERE id = 777"}' "$OWNER_KEY")
 check "equality_question_succeeds" "$(has_error "$eq_resp" && echo 0 || echo 1)"
 eq_struct=$(structured_of "$eq_resp")
 EQ_AMOUNT=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); rows=d.get("rows") or []; print(rows[0].get("amount","") if rows else "")' "$eq_struct")
 check "equality_question_matches_known_value" "$([[ "$EQ_AMOUNT" == "317.46" ]] && echo 1 || echo 0)"
 echo "EQUALITY_AMOUNT=${EQ_AMOUNT}"
 
-# 7. Range question -- AC3: rows with amount > 300 has a known count.
-range_resp=$(mcp_call "$QUERY_QUALIFIED" '{"where": [{"col": "amount", "op": ">", "value": 300}]}' "$OWNER_KEY")
+# 6. Range question -- rows with amount > 300 has a known count.
+range_resp=$(mcp_call "host.table.query" '{"sql": "SELECT COUNT(*) AS n FROM expenses WHERE amount > 300"}' "$OWNER_KEY")
 check "range_question_succeeds" "$(has_error "$range_resp" && echo 0 || echo 1)"
 range_struct=$(structured_of "$range_resp")
-RANGE_COUNT=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print(d.get("count", -1))' "$range_struct")
+RANGE_COUNT=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); rows=d.get("rows") or []; print(rows[0].get("n","") if rows else "")' "$range_struct")
 check "range_question_matches_known_value" "$([[ "$RANGE_COUNT" == "476" ]] && echo 1 || echo 0)"
 echo "RANGE_COUNT=${RANGE_COUNT}"
 
-# 8. Count question -- AC3: rows in category "produce" has a known count.
-count_resp=$(mcp_call "$QUERY_QUALIFIED" '{"where": [{"col": "category", "op": "=", "value": "produce"}]}' "$OWNER_KEY")
+# 7. Count question -- rows in category "produce" has a known count.
+count_resp=$(mcp_call "host.table.query" "{\"sql\": \"SELECT COUNT(*) AS n FROM expenses WHERE category = 'produce'\"}" "$OWNER_KEY")
 check "count_question_succeeds" "$(has_error "$count_resp" && echo 0 || echo 1)"
 count_struct=$(structured_of "$count_resp")
-CAT_COUNT=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print(d.get("count", -1))' "$count_struct")
+CAT_COUNT=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); rows=d.get("rows") or []; print(rows[0].get("n","") if rows else "")' "$count_struct")
 check "count_question_matches_known_value" "$([[ "$CAT_COUNT" == "200" ]] && echo 1 || echo 0)"
 echo "CATEGORY_COUNT=${CAT_COUNT}"
 
-# 9. Guardrail -- AC4: LIKE and a raw SQL string are both refused, no rows.
-like_resp=$(mcp_call_ready "$QUERY_QUALIFIED" '{"where": [{"col": "category", "op": "LIKE", "value": "%prod%"}]}' "$OWNER_KEY")
-check "like_operator_rejected" "$(has_error "$like_resp" && echo 1 || echo 0)"
+# 8. GROUP BY question -- sum of amount by category, one row per category,
+#    the old six-operator grammar could not express this at all.
+groupby_resp=$(mcp_call "host.table.query" '{"sql": "SELECT category, SUM(amount) AS total FROM expenses GROUP BY category ORDER BY category"}' "$OWNER_KEY")
+check "group_by_question_succeeds" "$(has_error "$groupby_resp" && echo 0 || echo 1)"
+groupby_struct=$(structured_of "$groupby_resp")
+GROUP_BY_ROW_COUNT=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print(len(d.get("rows") or []))' "$groupby_struct")
+check "group_by_question_returns_one_row_per_category" "$([[ "$GROUP_BY_ROW_COUNT" == "5" ]] && echo 1 || echo 0)"
+echo "GROUP_BY_ROW_COUNT=${GROUP_BY_ROW_COUNT}"
 
-rawsql_resp=$(mcp_call "$QUERY_QUALIFIED" '{"where": "id = 1 OR 1=1"}' "$OWNER_KEY")
-check "raw_sql_where_rejected" "$(has_error "$rawsql_resp" && echo 1 || echo 0)"
+# 9. LIKE question -- category names containing "prod", the old grammar had
+#    no operator for this at all.
+like_resp=$(mcp_call "host.table.query" "{\"sql\": \"SELECT COUNT(*) AS n FROM expenses WHERE category LIKE '%prod%'\"}" "$OWNER_KEY")
+check "like_question_succeeds" "$(has_error "$like_resp" && echo 0 || echo 1)"
+like_struct=$(structured_of "$like_resp")
+LIKE_COUNT=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); rows=d.get("rows") or []; print(rows[0].get("n","") if rows else "")' "$like_struct")
+check "like_question_matches_known_value" "$([[ "$LIKE_COUNT" == "200" ]] && echo 1 || echo 0)"
+echo "LIKE_COUNT=${LIKE_COUNT}"
+
+# 10. The query log holds every question just asked -- requirement 3/4.
+qlog_resp=$(mcp_call "host.table.query_log" '{"limit": 10}' "$OWNER_KEY")
+check "query_log_reads" "$(has_error "$qlog_resp" && echo 0 || echo 1)"
+qlog_struct=$(structured_of "$qlog_resp")
+QLOG_ROW_COUNT=$(python3 -c 'import json,sys; d=json.loads(sys.argv[1]); print(len(d.get("rows") or []))' "$qlog_struct")
+check "query_log_holds_at_least_five_questions" "$([[ "$QLOG_ROW_COUNT" -ge 5 ]] && echo 1 || echo 0)"
+echo "QUERY_LOG_ROW_COUNT=${QLOG_ROW_COUNT}"
 
 END_EPOCH=$(python3 -c 'import time; print(time.time())')
 WALL_MS=$(python3 -c "print(int((${END_EPOCH} - ${START_EPOCH}) * 1000))")

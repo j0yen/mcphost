@@ -1622,12 +1622,30 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
         Tool::new(
             "host.table.schema",
             "Return one table's columns, types, row count and byte count, without running a \
-             query -- how an agent discovers its own table shape.",
+             query -- how an agent discovers its own table shape. A table-level or per-column \
+             description set via host.table.model_set is included under description wherever \
+             one exists.",
             host_schema(
                 json!({
                     "table": {"type": "string", "description": "Name of the declared table to describe."},
                 }),
                 &["table"],
+            ),
+        ),
+        // PRD-mcphost-table-context-and-sql-passthrough requirement 4: the
+        // query log host.table.query itself writes to on every call.
+        Tool::new(
+            "host.table.query_log",
+            "List this tenant's own host.table.query call history, newest first: sql (as \
+             submitted, truncated to 4096 bytes with truncated: true past that), row_count \
+             (null on refusal), duration_ms, error_code and error_message (null on success). \
+             Keeps the newest 1,000 calls.",
+            host_schema(
+                json!({
+                    "limit": {"type": "integer", "description": "Max rows to return, 1-200; default 50."},
+                    "before_id": {"type": "integer", "description": "Only rows with id less than this, for paging older rows."},
+                }),
+                &[],
             ),
         ),
         // PRD-mcphost-chart-in-a-minute P0 requirement 3, P1 requirements
@@ -4415,6 +4433,7 @@ impl McpHostHandler {
             "host.table.schema" => tables::table_schema(&self.state, tenant, &args).await,
             "host.table.chart" => crate::chart::table_chart(&self.state, tenant, &args).await,
             "host.table.charts" => crate::chart::table_charts_list(&self.state, tenant, &args).await,
+            "host.table.query_log" => tables::table_query_log(&self.state, tenant, &args).await,
             "host.docs.put" => docs::doc_put(&self.state, tenant, &args).await,
             "host.docs.get" => docs::doc_get(&self.state, tenant, &args).await,
             "host.docs.list" => docs::doc_list(&self.state, tenant, &args).await,
