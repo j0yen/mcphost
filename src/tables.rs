@@ -104,6 +104,41 @@ pub const QUERY_LOG_LIMIT_CAP: i64 = 200;
 pub(crate) const QUERY_STATS_WINDOW_DEFAULT_S: i64 = 86_400;
 pub(crate) const QUERY_STATS_WINDOW_MAX_S: i64 = 604_800;
 
+/// PRD-mcphost-result-handles requirement 1/6: a `hdl_` name is reserved
+/// for query-result handles -- `host.table.create`/`host.table.drop`
+/// refuse it (AC6), and it's how [`table_query`] tells a handle name
+/// apart from a declared table when deciding whether a "no such table"
+/// ought to read as `handle_not_found` instead.
+pub const HANDLE_PREFIX: &str = "hdl_";
+
+/// requirement 1: a handle's own id half (after [`HANDLE_PREFIX`]) is this
+/// many lowercase base32 characters.
+const HANDLE_ID_LEN: usize = 12;
+
+/// Lowercase RFC 4648 base32 alphabet -- requirement 1's "12 lowercase
+/// base32 characters", the same bit-packing approach `state::new_ulid`
+/// already uses for Crockford base32, just a different (lowercase)
+/// alphabet and no leading timestamp half (a handle's id carries no
+/// ordering promise the way a ULID's does).
+const HANDLE_ID_ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyz234567";
+
+/// requirement 2: a handle's summary carries a sample of at most this many
+/// rows.
+pub const HANDLE_SAMPLE_CAP: i64 = 20;
+
+/// requirement 4: `ttl_s`'s default when omitted.
+pub const HANDLE_TTL_DEFAULT_S: i64 = 3_600;
+
+/// requirement 4: `ttl_s`'s ceiling -- a caller asking for longer is
+/// refused, not silently clamped.
+pub const HANDLE_TTL_MAX_S: i64 = 86_400;
+
+/// requirement 4: the tables tick drops an expired handle within this long
+/// of its `expires_unix` -- see `spawn_tick`.
+const HANDLE_TICK_INTERVAL_SECS: u64 = 30;
+
+pub(crate) const HANDLES_META_TABLE: &str = "_mcphost_handles";
+
 /// requirement 1: the small type set `host.table.create`'s `columns`
 /// argument may declare. `Timestamp` is stored as `TEXT` (an RFC 3339
 /// string the caller provides -- this module does no timezone/format
@@ -278,7 +313,24 @@ pub(crate) fn tenant_db_path(state: &AppState, tenant_id: i64) -> PathBuf {
 /// single factory (role `tenant_table`), which sets `busy_timeout`,
 /// `journal_mode=WAL`, `synchronous=NORMAL`, and `foreign_keys=ON`.
 pub(crate) fn open_conn(path: &Path, cfg: &crate::db::DbConfig) -> Result<Connection, AppError> {
+    // PRD-mcphost-result-handles requirement 4/AC4: "`bytes_used` fell
+    // accordingly" after a handle (or a dropped declared table) is gone
+    // needs the freed pages actually returned to the file's own free
+    // space on commit, not just added to SQLite's internal freelist
+    // inside an unchanged file size -- `auto_vacuum = FULL`. `open_with_role`
+    // itself already performs a write (the journal_mode=WAL pragma) that
+    // disqualifies changing auto_vacuum afterwards without a `VACUUM`
+    // (same constraint the main db's own `migrate_0026_retention` already
+    // documents), so this checks *before* opening whether this tenant's
+    // file exists yet and, only the first time, rebuilds it under the new
+    // mode immediately -- a `VACUUM` over an empty database is trivial,
+    // and every call after the first (this file already exists) skips it.
+    let is_new = !path.exists();
     let (conn, _audit) = crate::db::open_with_role(path, crate::db::ROLE_TENANT_TABLE, cfg)?;
+    if is_new {
+        conn.pragma_update(None, "auto_vacuum", "FULL")?;
+        conn.execute_batch("VACUUM;")?;
+    }
     conn.execute_batch(&format!(
         "CREATE TABLE IF NOT EXISTS {META_TABLE} (
             name TEXT PRIMARY KEY,
@@ -327,6 +379,24 @@ pub(crate) fn open_conn(path: &Path, cfg: &crate::db::DbConfig) -> Result<Connec
         conn.execute(&format!("ALTER TABLE {QUERY_LOG_TABLE} ADD COLUMN result_bytes INTEGER"), [])?;
         conn.execute(&format!("ALTER TABLE {QUERY_LOG_TABLE} ADD COLUMN est_tokens INTEGER"), [])?;
     }
+    // PRD-mcphost-result-handles requirement 1: one row per live
+    // `host.table.query {handle: true}` handle, alongside `META_TABLE` in
+    // the same per-tenant file -- a handle's own table (`handle` doubles
+    // as its name, since a handle name *is* the `hdl_<id>` table name) is
+    // never described in `META_TABLE` (it's not a declared `host.table.*`
+    // table), so this is a second bookkeeping table rather than an
+    // overload of the first.
+    conn.execute_batch(&format!(
+        "CREATE TABLE IF NOT EXISTS {HANDLES_META_TABLE} (
+            handle TEXT PRIMARY KEY,
+            created_unix INTEGER NOT NULL,
+            expires_unix INTEGER NOT NULL,
+            sql TEXT NOT NULL,
+            bytes INTEGER NOT NULL,
+            row_count INTEGER NOT NULL,
+            last_used_unix INTEGER NOT NULL
+        );"
+    ))?;
     Ok(conn)
 }
 
@@ -439,6 +509,13 @@ pub async fn table_create(state: &AppState, tenant: &Tenant, args: &Value) -> Re
             "name: must match ^[A-Za-z_][A-Za-z0-9_]{{0,63}}$; got '{name}'"
         )));
     }
+    // PRD-mcphost-result-handles requirement 6/AC6: `hdl_` names a query
+    // result handle, never a declared table.
+    if name.starts_with(HANDLE_PREFIX) {
+        return Err(AppError::InvalidArgs(format!(
+            "name: the '{HANDLE_PREFIX}' prefix is reserved for query result handles"
+        )));
+    }
     let columns_val = args
         .get("columns")
         .and_then(Value::as_object)
@@ -540,6 +617,13 @@ pub async fn table_drop(state: &AppState, tenant: &Tenant, args: &Value) -> Resu
     let name = arg_str(args, "name")?;
     if !is_valid_ident(&name) {
         return Err(table_not_found(&name));
+    }
+    // requirement 6/AC6: `hdl_` names a handle -- `host.table.handle_drop`
+    // drops one, this tool never does.
+    if name.starts_with(HANDLE_PREFIX) {
+        return Err(AppError::InvalidArgs(format!(
+            "name: the '{HANDLE_PREFIX}' prefix is reserved for query result handles"
+        )));
     }
     let confirm = args.get("confirm").and_then(Value::as_bool).unwrap_or(false);
 
@@ -1025,13 +1109,7 @@ fn log_query(conn: &Connection, sql: &str, log_outcome: QueryLogOutcome<'_>) {
     }
 }
 
-/// requirement 1/2/3: runs `sql` (structurally validated first) and logs
-/// exactly one row for the attempt regardless of outcome -- a parse/non-
-/// SELECT/multi-statement rejection (never reaching [`run_query_sync`]), a
-/// bound refusal, or a successful result all log the same way, `duration_ms`
-/// covering the whole attempt from just after argument parsing.
-///
-/// PRD-mcphost-query-diagnosis requirement 1: what [`table_query`] learns
+/// PRD-mcphost-query-diagnosis requirement 1: what [`table_query_select`] learns
 /// from a pure (no IO) AST parse, before opening the per-tenant connection
 /// -- `column_annotation_candidates` is the one piece that genuinely needs
 /// the main database (requirement 2/AC7: a column's `description`
@@ -1119,112 +1197,13 @@ fn diagnose_sync(conn: &Connection, ctx: &QueryDiagContext, result: &Result<Vec<
 /// site) purely so the SQL string literal above reads as a named constant.
 const QUERY_DIAG_DISTINCT_VALUES_BOUND: i64 = crate::query_diag::DISTINCT_VALUES_BOUND;
 
-pub async fn table_query(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    let sql = arg_str(args, "sql")?;
-
-    // PRD-mcphost-query-diagnosis requirement 1/2: the AST parse is pure
-    // (no IO); the annotation read is the one piece of diagnosis context
-    // that genuinely needs the main database, fetched here (async) before
-    // the per-tenant connection's sync/blocking closure runs.
-    let extracted = crate::query_diag::extract_from_ast(&sql);
-    let column_annotation_candidates = if let Some(table) = &extracted.from_table {
-        let annotations = state
-            .db
-            .list_table_model_annotations(tenant.id, table.clone())
-            .await
-            .unwrap_or_default();
-        annotations
-            .iter()
-            .filter(|a| !a.column_name.is_empty() && a.key == "description")
-            .flat_map(|a| crate::query_diag::annotation_word_candidates(&a.column_name, &a.value))
-            .collect()
-    } else {
-        Vec::new()
-    };
-    let ctx = QueryDiagContext {
-        from_table: extracted.from_table,
-        where_equalities: extracted.where_equalities,
-        column_annotation_candidates,
-    };
-
-    let path = tenant_db_path(state, tenant.id);
-    let sql_for_conn = sql.clone();
-    let rows = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
-        let started = std::time::Instant::now();
-        let result = validate_query_structure(&sql_for_conn).and_then(|()| run_query_sync(conn, &sql_for_conn));
-        let duration_ms = started.elapsed().as_millis() as i64;
-        // run_query_sync leaves this connection in `query_only` mode; turn
-        // it back off so the log write below (and any later call to reuse
-        // this connection) isn't itself rejected as a write against a
-        // read-only connection.
-        let _ = conn.pragma_update(None, "query_only", "OFF");
-        let (diagnosis, hint) = diagnose_sync(conn, &ctx, &result);
-        let diagnosis_str = diagnosis.as_ref().map(|v| v.to_string());
-        match &result {
-            Ok(rows) => {
-                // requirement 3's 5ms p95 logging-overhead budget (shared
-                // with the dependency PRD's own log-write budget) means
-                // this must never serialize the result twice: the common
-                // case (<=20 rows, [`sample_hash_of`]'s own truncation
-                // bound) reuses this one serialization for both the
-                // footprint byte count and the drift sample hash; only a
-                // result over 20 rows (up to [`ROW_CAP`]) pays a second,
-                // smaller serialization of just its first 20.
-                let serialized = serde_json::to_string(rows).unwrap_or_default();
-                let bytes = serialized.len() as i64;
-                // P1 requirement 7: `mqo-session-footprint-meter`'s
-                // `tokens_from_chars` default -- `ceil(bytes / 4)`. `i64`'s
-                // `div_ceil` is unstable for signed integers; `bytes` is
-                // never negative (a serialized length), so the `(n + 3) / 4`
-                // idiom is exact and needs no feature gate.
-                let est_tokens = (bytes + 3) / 4;
-                let sample_hash = if rows.len() <= 20 {
-                    crate::billing::sha256_hex(serialized.as_bytes())
-                } else {
-                    sample_hash_of(rows)
-                };
-                log_query(
-                    conn,
-                    &sql_for_conn,
-                    QueryLogOutcome {
-                        duration_ms,
-                        row_count: Some(rows.len() as i64),
-                        sample_hash: Some(&sample_hash),
-                        error: None,
-                        diagnosis: diagnosis_str.as_deref(),
-                        hint: hint.as_deref(),
-                        result_bytes: Some(bytes),
-                        est_tokens: Some(est_tokens),
-                    },
-                )
-            }
-            Err(e) => log_query(
-                conn,
-                &sql_for_conn,
-                QueryLogOutcome {
-                    duration_ms,
-                    row_count: None,
-                    sample_hash: None,
-                    error: Some(e),
-                    diagnosis: diagnosis_str.as_deref(),
-                    hint: hint.as_deref(),
-                    result_bytes: None,
-                    est_tokens: None,
-                },
-            ),
-        }
-        result
-    })
-    .await?;
-    Ok(json!({"rows": rows}))
-}
 
 /// requirement 4: `host.table.query_log(limit?, before_id?)` -- this
 /// tenant's own query log, newest first, `limit` defaulting to
 /// [`QUERY_LOG_LIMIT_DEFAULT`] and capped at [`QUERY_LOG_LIMIT_CAP`], paging
 /// by `before_id`. Reads only the calling tenant's own per-tenant file --
 /// there is no argument that names another tenant (the same structural
-/// isolation [`table_query`] itself relies on).
+/// isolation [`table_query_select`] itself relies on).
 ///
 /// The full `_mcphost_query_log` column list, shared by every reader
 /// (`host.table.query_log`, `host.table.query_diagnose`,
@@ -1290,7 +1269,7 @@ pub async fn table_query_log(state: &AppState, tenant: &Tenant, args: &Value) ->
 
 /// PRD-mcphost-query-diagnosis P0 requirement 5/AC5: `host.table.query_diagnose(log_id)`
 /// -- this tenant's own log rows only, scoped by the per-tenant-file
-/// isolation [`table_query`]'s own cross-tenant test already relies on: a
+/// isolation [`table_query_select`]'s own cross-tenant test already relies on: a
 /// `log_id` from a different tenant's file simply has no matching row
 /// here, structurally `not_found` the same way a cross-tenant table name
 /// reads as nonexistent rather than forbidden.
@@ -1460,6 +1439,728 @@ pub async fn table_query_stats(state: &AppState, tenant: &Tenant, args: &Value) 
         }))
     })
     .await
+}
+
+/// requirement 3/AC3/AC11: a query referencing a `hdl_` name this
+/// connection's file has no live row for -- never created, expired and
+/// already dropped by the tick, or (structurally, same isolation
+/// [`tables.rs`'s module doc already gives declared tables) belonging to a
+/// different tenant's own file.
+fn handle_not_found(handle: &str) -> AppError {
+    AppError::Structured {
+        code: "handle_not_found",
+        message: format!("no handle '{handle}' exists for this tenant"),
+        data: json!({"handle": handle}),
+    }
+}
+
+/// requirement 4/AC5: a single materialisation whose own bytes alone
+/// exceed the tenant's plan's [`crate::plans::Plan::table_handle_bytes_max`]
+/// -- refused outright (the transaction this runs inside is rolled back by
+/// the caller), naming the cap so the caller knows why nothing was
+/// created.
+fn handle_quota_exceeded(plan: &str, cap_bytes: i64) -> AppError {
+    AppError::Structured {
+        code: "handle_quota_exceeded",
+        message: format!("plan '{plan}' handle byte quota exceeded (cap {cap_bytes} bytes)"),
+        data: json!({"plan": plan, "cap_bytes": cap_bytes}),
+    }
+}
+
+/// requirement 1: a fresh 12-character lowercase-base32 handle id --
+/// 60 bits of randomness via `rand` (already a dependency; same
+/// bit-packing approach `state::new_ulid` uses for its own base32 half),
+/// packed 5 bits per character.
+fn generate_handle_id() -> String {
+    use rand::RngCore;
+    let mut bytes = [0u8; 8];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    let acc = u64::from_be_bytes(bytes);
+    let mut out = String::with_capacity(HANDLE_ID_LEN);
+    for i in (0..HANDLE_ID_LEN).rev() {
+        let shift = i * 5;
+        let idx = ((acc >> shift) & 0x1f) as usize;
+        out.push(HANDLE_ID_ALPHABET[idx] as char);
+    }
+    out
+}
+
+/// Every table name `sql` references in a `FROM`/`JOIN` position (CTEs
+/// followed into their own body, derived subqueries recursed into) --
+/// technical considerations: "the parser gate already yields table
+/// names". Column/`WHERE`-subquery references are not walked: every ACs'
+/// own scenario names a handle directly in `FROM`/a top-level CTE, and
+/// this is used only to widen [`handle_not_found`]'s check and bump
+/// `last_used_unix` (requirement/AC5's eviction order), neither of which
+/// needs to be exhaustive over every SQL position a table name could
+/// theoretically appear in.
+fn collect_referenced_tables(query: &sqlparser::ast::Query, out: &mut std::collections::HashSet<String>) {
+    if let Some(with) = &query.with {
+        for cte in &with.cte_tables {
+            collect_referenced_tables(&cte.query, out);
+        }
+    }
+    collect_set_expr(&query.body, out);
+}
+
+fn collect_set_expr(body: &sqlparser::ast::SetExpr, out: &mut std::collections::HashSet<String>) {
+    use sqlparser::ast::SetExpr;
+    match body {
+        SetExpr::Select(select) => {
+            for twj in &select.from {
+                collect_table_factor(&twj.relation, out);
+                for join in &twj.joins {
+                    collect_table_factor(&join.relation, out);
+                }
+            }
+        }
+        SetExpr::Query(q) => collect_referenced_tables(q, out),
+        SetExpr::SetOperation { left, right, .. } => {
+            collect_set_expr(left, out);
+            collect_set_expr(right, out);
+        }
+        _ => {}
+    }
+}
+
+fn collect_table_factor(tf: &sqlparser::ast::TableFactor, out: &mut std::collections::HashSet<String>) {
+    use sqlparser::ast::TableFactor;
+    match tf {
+        TableFactor::Table { name, .. } => {
+            out.insert(name.to_string().trim_matches('"').to_lowercase());
+        }
+        TableFactor::Derived { subquery, .. } => collect_referenced_tables(subquery, out),
+        TableFactor::NestedJoin { table_with_joins, .. } => {
+            collect_table_factor(&table_with_joins.relation, out);
+            for j in &table_with_joins.joins {
+                collect_table_factor(&j.relation, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// [`validate_query_structure`] already proved `sql` parses to exactly one
+/// `SELECT`/CTE statement; this re-parses (cheap -- these are short
+/// strings) to walk it for [`collect_referenced_tables`].
+fn referenced_table_names(sql: &str) -> Result<std::collections::HashSet<String>, AppError> {
+    let mut statements = sqlparser::parser::Parser::parse_sql(&sqlparser::dialect::GenericDialect {}, sql)
+        .map_err(|e| query_rejected(format!("sql parse error: {e}")))?;
+    let mut out = std::collections::HashSet::new();
+    if !statements.is_empty()
+        && let sqlparser::ast::Statement::Query(q) = statements.remove(0)
+    {
+        collect_referenced_tables(&q, &mut out);
+    }
+    Ok(out)
+}
+
+/// Runs `sql` (already known read-only) and collects every row as
+/// [`value_ref_to_json`] objects, with no [`ROW_CAP`]/[`QUERY_TIME_CAP`]
+/// enforcement of its own -- the small, bounded reads
+/// [`dataset_summary_sync`] and callers inside an already-capped
+/// materialisation use (a handle's own sample/stats queries, never a
+/// caller-facing arbitrary SQL string).
+fn select_all_sync(conn: &Connection, sql: &str) -> Result<Vec<Value>, AppError> {
+    let mut stmt = conn.prepare(sql)?;
+    let column_names: Vec<String> = stmt.column_names().into_iter().map(str::to_string).collect();
+    let mut out = Vec::new();
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let mut obj = Map::new();
+        for (i, name) in column_names.iter().enumerate() {
+            obj.insert(name.clone(), value_ref_to_json(row.get_ref(i)?));
+        }
+        out.push(Value::Object(obj));
+    }
+    Ok(out)
+}
+
+/// requirement 4: a handle's byte footprint -- `SUM(pgsize)` over SQLite's
+/// `dbstat` virtual table (compiled in; see `libsqlite3-sys`'s build.rs)
+/// filtered to this one table's own pages, the real per-table page
+/// accounting `table_append`'s whole-file-size approximation can't give
+/// (declared tables share one file-wide byte quota, so that approximation
+/// was always good enough there; a handle's own quota is per-handle).
+fn handle_bytes_sync(conn: &Connection, table: &str) -> Result<i64, AppError> {
+    conn.query_row(
+        "SELECT COALESCE(SUM(pgsize), 0) FROM dbstat WHERE name = ?1",
+        params![table],
+        |r| r.get(0),
+    )
+    .map_err(AppError::from)
+}
+
+fn column_dtype_sync(conn: &Connection, table: &str, col: &str) -> Result<&'static str, AppError> {
+    let ty: Option<String> = conn
+        .query_row(
+            &format!(
+                "SELECT typeof({}) FROM {} WHERE {} IS NOT NULL LIMIT 1",
+                quote_ident(col),
+                quote_ident(table),
+                quote_ident(col),
+            ),
+            [],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(match ty.as_deref() {
+        Some("integer") => "integer",
+        Some("real") => "real",
+        Some("text") => "text",
+        Some("blob") => "blob",
+        _ => "null",
+    })
+}
+
+/// requirement 2: one column's `{min, max, sum, mean, distinct, top_k}` --
+/// one `SELECT` for the first five (technical considerations), `sum`/
+/// `mean` only for a numeric `dtype` (left `null` otherwise), plus one
+/// `GROUP BY ... LIMIT 5` for `top_k`. AC12: over an empty handle, every
+/// aggregate is SQL `NULL` and `distinct` is `0`.
+fn column_stats_sync(conn: &Connection, table: &str, col: &str, dtype: &str) -> Result<Value, AppError> {
+    let q = quote_ident(col);
+    let t = quote_ident(table);
+    let numeric = dtype == "integer" || dtype == "real";
+    let sum_expr = if numeric { format!("SUM({q})") } else { "NULL".to_string() };
+    let avg_expr = if numeric { format!("AVG({q})") } else { "NULL".to_string() };
+    let (min_v, max_v, sum_v, mean_v, distinct_v) = conn.query_row(
+        &format!("SELECT MIN({q}), MAX({q}), {sum_expr}, {avg_expr}, COUNT(DISTINCT {q}) FROM {t}"),
+        [],
+        |r| {
+            Ok((
+                value_ref_to_json(r.get_ref(0)?),
+                value_ref_to_json(r.get_ref(1)?),
+                value_ref_to_json(r.get_ref(2)?),
+                value_ref_to_json(r.get_ref(3)?),
+                r.get::<_, i64>(4)?,
+            ))
+        },
+    )?;
+
+    let top_k: Vec<Value> = select_all_sync(
+        conn,
+        &format!("SELECT {q} AS value, COUNT(*) AS count FROM {t} GROUP BY {q} ORDER BY count DESC LIMIT 5"),
+    )?
+    .into_iter()
+    .map(|row| json!({"value": row["value"], "count": row["count"]}))
+    .collect();
+
+    Ok(json!({
+        "min": min_v,
+        "max": max_v,
+        "sum": sum_v,
+        "mean": mean_v,
+        "distinct": distinct_v,
+        "top_k": top_k,
+    }))
+}
+
+/// requirement 2: `dataset-summary.v1` -- built entirely from real SQL
+/// over the freshly-materialised handle, never from the sample (Goals 2:
+/// "The handle's summary is bounded and honest: a sample, and stats over
+/// all rows").
+fn dataset_summary_sync(
+    conn: &Connection,
+    handle: &str,
+    sql: &str,
+    bytes: i64,
+    expires_unix: i64,
+) -> Result<Value, AppError> {
+    let row_count = row_count_sync(conn, handle)?;
+    let column_names: Vec<String> = {
+        let stmt = conn.prepare(&format!("SELECT * FROM {} LIMIT 0", quote_ident(handle)))?;
+        stmt.column_names().into_iter().map(str::to_string).collect()
+    };
+
+    let mut columns_meta = Vec::with_capacity(column_names.len());
+    let mut stats = Map::new();
+    for col in &column_names {
+        let dtype = column_dtype_sync(conn, handle, col)?;
+        columns_meta.push(json!({"name": col, "dtype": dtype, "nullable": true}));
+        stats.insert(col.clone(), column_stats_sync(conn, handle, col, dtype)?);
+    }
+
+    let sample = select_all_sync(
+        conn,
+        &format!("SELECT * FROM {} LIMIT {HANDLE_SAMPLE_CAP}", quote_ident(handle)),
+    )?;
+
+    Ok(json!({
+        "handle": handle,
+        "table": handle,
+        "row_count": row_count,
+        "columns": columns_meta,
+        "sample": sample,
+        "sample_cap": HANDLE_SAMPLE_CAP,
+        "stats": stats,
+        "bytes": bytes,
+        "expires_unix": expires_unix,
+        "derived_from": sql,
+    }))
+}
+
+/// requirement 4/AC5: evicts the least-recently-queried live handles
+/// (`last_used_unix` ascending; `rowid` ascending breaks a tie between two
+/// handles touched in the same second) until `new_bytes` fits alongside
+/// whatever remains under `cap` -- called only once the new handle's own
+/// bytes have already been checked to fit under `cap` alone, so this
+/// always terminates (in the worst case, every existing handle is
+/// evicted).
+fn evict_lru_handles_until_fits_sync(conn: &Connection, new_bytes: i64, cap: i64) -> Result<(), AppError> {
+    loop {
+        let existing_total: i64 = conn.query_row(
+            &format!("SELECT COALESCE(SUM(bytes), 0) FROM {HANDLES_META_TABLE}"),
+            [],
+            |r| r.get(0),
+        )?;
+        if existing_total + new_bytes <= cap {
+            return Ok(());
+        }
+        let victim: Option<String> = conn
+            .query_row(
+                &format!(
+                    "SELECT handle FROM {HANDLES_META_TABLE} ORDER BY last_used_unix ASC, rowid ASC LIMIT 1"
+                ),
+                [],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let Some(victim) = victim else { return Ok(()) };
+        drop_handle_row_sync(conn, &victim)?;
+    }
+}
+
+fn drop_handle_row_sync(conn: &Connection, handle: &str) -> Result<(), AppError> {
+    conn.execute(&format!("DROP TABLE IF EXISTS {}", quote_ident(handle)), [])?;
+    conn.execute(
+        &format!("DELETE FROM {HANDLES_META_TABLE} WHERE handle = ?1"),
+        params![handle],
+    )?;
+    Ok(())
+}
+
+/// [`materialize_handle_sync`]'s own per-call parameters beyond `conn`/
+/// `sql` -- bundled into one struct (rather than four more positional
+/// arguments) to stay under this crate's `clippy::too_many_arguments`
+/// threshold without a suppression, same "a named-field struct beats a
+/// positional call site" call `db::RejectedRun` already makes.
+struct MaterializeParams<'a> {
+    ttl_s: i64,
+    now: i64,
+    handle_bytes_max: i64,
+    plan_name: &'a str,
+}
+
+/// requirement 1/2/4: `host.table.query {sql, handle: true, ttl_s?}` --
+/// runs `sql` (still gated by [`validate_query_structure`], AC7: the same
+/// structural read-only check every other query goes through) as
+/// `CREATE TABLE hdl_<id> AS <sql>` on a connection that never sets
+/// `PRAGMA query_only` (technical considerations: "the materialise path
+/// opens its own connection without the pragma"), inside one transaction
+/// with the `_mcphost_handles` meta row, the quota/eviction check
+/// (requirement 4/AC5), and the `dataset-summary.v1` build -- a failure at
+/// any point rolls the whole transaction back, so a refused materialise
+/// (AC5's oversized case, a query-time-cap hit) never leaves a stray
+/// table or meta row behind.
+fn materialize_handle_sync(conn: &Connection, sql: &str, p: MaterializeParams<'_>) -> Result<Value, AppError> {
+    let MaterializeParams { ttl_s, now, handle_bytes_max, plan_name } = p;
+    {
+        let stmt = conn.prepare(sql)?;
+        if !stmt.readonly() {
+            return Err(query_rejected("statement is not read-only"));
+        }
+    }
+
+    let interrupt = conn.get_interrupt_handle();
+    std::thread::spawn(move || {
+        std::thread::sleep(QUERY_TIME_CAP);
+        interrupt.interrupt();
+    });
+
+    let handle = format!("{HANDLE_PREFIX}{}", generate_handle_id());
+
+    conn.execute("BEGIN IMMEDIATE", [])?;
+    let outcome: Result<Value, AppError> = (|| {
+        if let Err(e) = conn.execute(&format!("CREATE TABLE {} AS {sql}", quote_ident(&handle)), []) {
+            if let rusqlite::Error::SqliteFailure(se, _) = &e
+                && se.code == rusqlite::ErrorCode::OperationInterrupted
+            {
+                return Err(bound_exceeded("time_cap_s", QUERY_TIME_CAP.as_secs() as i64));
+            }
+            return Err(AppError::from(e));
+        }
+
+        let row_count = row_count_sync(conn, &handle)?;
+        let bytes = handle_bytes_sync(conn, &handle)?;
+
+        if bytes > handle_bytes_max {
+            return Err(handle_quota_exceeded(plan_name, handle_bytes_max));
+        }
+        evict_lru_handles_until_fits_sync(conn, bytes, handle_bytes_max)?;
+
+        conn.execute(
+            &format!(
+                "INSERT INTO {HANDLES_META_TABLE} \
+                 (handle, created_unix, expires_unix, sql, bytes, row_count, last_used_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
+            ),
+            params![handle, now, now + ttl_s, sql, bytes, row_count, now],
+        )?;
+
+        dataset_summary_sync(conn, &handle, sql, bytes, now + ttl_s)
+    })();
+
+    match outcome {
+        Ok(v) => {
+            conn.execute("COMMIT", [])?;
+            Ok(v)
+        }
+        Err(e) => {
+            let _ = conn.execute("ROLLBACK", []);
+            Err(e)
+        }
+    }
+}
+
+async fn table_query_materialize(
+    state: &AppState,
+    tenant: &Tenant,
+    sql: &str,
+    ttl_s: Option<i64>,
+) -> Result<Value, AppError> {
+    let ttl_s = ttl_s.unwrap_or(HANDLE_TTL_DEFAULT_S);
+    if !(1..=HANDLE_TTL_MAX_S).contains(&ttl_s) {
+        return Err(AppError::InvalidArgs(format!(
+            "ttl_s: must be between 1 and {HANDLE_TTL_MAX_S}; got {ttl_s}"
+        )));
+    }
+    validate_query_structure(sql)?;
+
+    let plan = plan_of(state, &tenant.plan)?;
+    let handle_bytes_max = plan.table_handle_bytes_max;
+    let plan_name = tenant.plan.clone();
+
+    let path = tenant_db_path(state, tenant.id);
+    let sql_owned = sql.to_string();
+    let now = crate::state::now_unix();
+    with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+        materialize_handle_sync(
+            conn,
+            &sql_owned,
+            MaterializeParams { ttl_s, now, handle_bytes_max, plan_name: &plan_name },
+        )
+    })
+    .await
+}
+
+/// requirement 3/AC2/AC3/AC7/AC11: every later `host.table.query` that
+/// doesn't ask for a new handle -- unchanged structural read-only check,
+/// plus (only when `sql` names a `hdl_` table) a live-handle check ahead
+/// of running it (`handle_not_found` rather than a generic "no such
+/// table") and a `last_used_unix` bump after (requirement 4's eviction
+/// order).
+///
+/// Rebase note (run 368, hand-merged with the independently-landed
+/// PRD-mcphost-table-context-and-sql-passthrough's query log; re-merged
+/// again here with the independently-landed PRD-mcphost-query-diagnosis):
+/// [`validate_query_structure`] and [`referenced_table_names`] both run
+/// *inside* the connection closure now (rather than ahead of it) so a
+/// structural refusal or a `handle_not_found` gets exactly one
+/// [`log_query`] row too, same as [`table_query_materialize`]'s sibling
+/// path did before this PRD split it in two -- requirement 2/3's own
+/// "every call, whether it returns rows or is refused, gets one row"
+/// still holds for this (non-materialising) path. The diagnosis pipeline
+/// ([`QueryDiagContext`]/[`diagnose_sync`]) that PRD-mcphost-query-diagnosis
+/// added to the pre-split `table_query` carries over unchanged, now run
+/// from here instead. Materialising calls (`table_query_materialize`) are
+/// not logged here -- out of this PRD's own scope, left for the
+/// query-log PRD to pick up if it wants handle creation logged too.
+async fn table_query_select(state: &AppState, tenant: &Tenant, sql: &str) -> Result<Value, AppError> {
+    // PRD-mcphost-query-diagnosis requirement 1/2: the AST parse is pure
+    // (no IO); the annotation read is the one piece of diagnosis context
+    // that genuinely needs the main database, fetched here (async) before
+    // the per-tenant connection's sync/blocking closure runs.
+    let extracted = crate::query_diag::extract_from_ast(sql);
+    let column_annotation_candidates = if let Some(table) = &extracted.from_table {
+        let annotations = state
+            .db
+            .list_table_model_annotations(tenant.id, table.clone())
+            .await
+            .unwrap_or_default();
+        annotations
+            .iter()
+            .filter(|a| !a.column_name.is_empty() && a.key == "description")
+            .flat_map(|a| crate::query_diag::annotation_word_candidates(&a.column_name, &a.value))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let ctx = QueryDiagContext {
+        from_table: extracted.from_table,
+        where_equalities: extracted.where_equalities,
+        column_annotation_candidates,
+    };
+
+    let path = tenant_db_path(state, tenant.id);
+    let sql_owned = sql.to_string();
+    let now = crate::state::now_unix();
+    let rows = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+        let started = std::time::Instant::now();
+        let mut referenced_handles: Vec<String> = Vec::new();
+        let result: Result<Vec<Value>, AppError> = (|| {
+            referenced_handles = referenced_table_names(&sql_owned)?
+                .into_iter()
+                .filter(|n| n.starts_with(HANDLE_PREFIX))
+                .collect();
+            for h in &referenced_handles {
+                let expires: Option<i64> = conn
+                    .query_row(
+                        &format!("SELECT expires_unix FROM {HANDLES_META_TABLE} WHERE handle = ?1"),
+                        params![h],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                match expires {
+                    Some(exp) if exp > now => {}
+                    _ => return Err(handle_not_found(h)),
+                }
+            }
+            validate_query_structure(&sql_owned)?;
+            run_query_sync(conn, &sql_owned)
+        })();
+        let duration_ms = started.elapsed().as_millis() as i64;
+        // `run_query_sync` leaves this connection's own `query_only`
+        // pragma ON for the rest of its life -- turn it back off before
+        // the log write below and the `last_used_unix` bookkeeping UPDATE
+        // (requirement 4's eviction order), neither of which is part of
+        // the caller's own read-only query.
+        let _ = conn.pragma_update(None, "query_only", "OFF");
+        let (diagnosis, hint) = diagnose_sync(conn, &ctx, &result);
+        let diagnosis_str = diagnosis.as_ref().map(|v| v.to_string());
+        match &result {
+            Ok(rows) => {
+                // requirement 3's 5ms p95 logging-overhead budget (shared
+                // with the dependency PRD's own log-write budget) means
+                // this must never serialize the result twice: the common
+                // case (<=20 rows, [`sample_hash_of`]'s own truncation
+                // bound) reuses this one serialization for both the
+                // footprint byte count and the drift sample hash; only a
+                // result over 20 rows (up to [`ROW_CAP`]) pays a second,
+                // smaller serialization of just its first 20.
+                let serialized = serde_json::to_string(rows).unwrap_or_default();
+                let bytes = serialized.len() as i64;
+                // P1 requirement 7: `mqo-session-footprint-meter`'s
+                // `tokens_from_chars` default -- `ceil(bytes / 4)`. `i64`'s
+                // `div_ceil` is unstable for signed integers; `bytes` is
+                // never negative (a serialized length), so the `(n + 3) / 4`
+                // idiom is exact and needs no feature gate.
+                let est_tokens = (bytes + 3) / 4;
+                let sample_hash = if rows.len() <= 20 {
+                    crate::billing::sha256_hex(serialized.as_bytes())
+                } else {
+                    sample_hash_of(rows)
+                };
+                log_query(
+                    conn,
+                    &sql_owned,
+                    QueryLogOutcome {
+                        duration_ms,
+                        row_count: Some(rows.len() as i64),
+                        sample_hash: Some(&sample_hash),
+                        error: None,
+                        diagnosis: diagnosis_str.as_deref(),
+                        hint: hint.as_deref(),
+                        result_bytes: Some(bytes),
+                        est_tokens: Some(est_tokens),
+                    },
+                )
+            }
+            Err(e) => log_query(
+                conn,
+                &sql_owned,
+                QueryLogOutcome {
+                    duration_ms,
+                    row_count: None,
+                    sample_hash: None,
+                    error: Some(e),
+                    diagnosis: diagnosis_str.as_deref(),
+                    hint: hint.as_deref(),
+                    result_bytes: None,
+                    est_tokens: None,
+                },
+            ),
+        }
+        let out = result?;
+        if !referenced_handles.is_empty() {
+            for h in &referenced_handles {
+                conn.execute(
+                    &format!("UPDATE {HANDLES_META_TABLE} SET last_used_unix = ?1 WHERE handle = ?2"),
+                    params![now, h],
+                )?;
+            }
+        }
+        Ok(out)
+    })
+    .await?;
+    Ok(json!({"rows": rows}))
+}
+
+pub async fn table_query(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let sql = arg_str(args, "sql")?;
+    let want_handle = args.get("handle").and_then(Value::as_bool).unwrap_or(false);
+    if want_handle {
+        let ttl_s = args.get("ttl_s").and_then(Value::as_i64);
+        return table_query_materialize(state, tenant, &sql, ttl_s).await;
+    }
+    table_query_select(state, tenant, &sql).await
+}
+
+/// requirement 5: `host.table.handles()` -- every live handle, newest
+/// first, with the fields requirement 5 names. Expired-but-not-yet-ticked
+/// handles are filtered out here too (AC4: gone from this listing well
+/// before the tick necessarily gets to them, since the tick's own cadence
+/// is the *upper* bound on when the table itself is dropped, not a lower
+/// one on when callers stop seeing it as live).
+pub async fn table_handles(state: &AppState, tenant: &Tenant, _args: &Value) -> Result<Value, AppError> {
+    let path = tenant_db_path(state, tenant.id);
+    let now = crate::state::now_unix();
+    let handles = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+        let mut stmt = conn.prepare(&format!(
+            "SELECT handle, row_count, bytes, created_unix, expires_unix, last_used_unix, sql \
+             FROM {HANDLES_META_TABLE} WHERE expires_unix > ?1 ORDER BY created_unix DESC, rowid DESC"
+        ))?;
+        let rows = stmt
+            .query_map(params![now], |r| {
+                Ok(json!({
+                    "handle": r.get::<_, String>(0)?,
+                    "row_count": r.get::<_, i64>(1)?,
+                    "bytes": r.get::<_, i64>(2)?,
+                    "created_unix": r.get::<_, i64>(3)?,
+                    "expires_unix": r.get::<_, i64>(4)?,
+                    "last_used_unix": r.get::<_, i64>(5)?,
+                    "derived_from": r.get::<_, String>(6)?,
+                }))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    })
+    .await?;
+    Ok(json!({"handles": handles}))
+}
+
+/// requirement 5: `host.table.handle_drop(handle)` -- drops one handle's
+/// table and meta row; a handle that doesn't exist (or already expired) is
+/// a no-op (`dropped: false`), not an error -- same "idempotent drop"
+/// shape [`table_drop`] already gives a declared table.
+pub async fn table_handle_drop(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let handle = arg_str(args, "handle")?;
+    let path = tenant_db_path(state, tenant.id);
+    let handle_for_conn = handle.clone();
+    let dropped = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+        let existing: i64 = conn.query_row(
+            &format!("SELECT COUNT(*) FROM {HANDLES_META_TABLE} WHERE handle = ?1"),
+            params![handle_for_conn],
+            |r| r.get(0),
+        )?;
+        if existing == 0 {
+            return Ok(false);
+        }
+        drop_handle_row_sync(conn, &handle_for_conn)?;
+        Ok(true)
+    })
+    .await?;
+    Ok(json!({"handle": handle, "dropped": dropped}))
+}
+
+/// requirement 4/AC4: drops every handle whose `expires_unix` has passed,
+/// across every tenant -- same "list every tenant, best-effort per
+/// tenant" shape `tables_model::tick_once` uses, exposed directly so a
+/// test can drive one deterministic cycle instead of waiting on the real
+/// cadence (same convention as `bans::tick_once`/`tables_model::tick_once`).
+pub async fn tick_once(state: &AppState) -> Result<(), AppError> {
+    let tenants = state.db.list_tenants().await?;
+    let now = crate::state::now_unix();
+    for tenant in tenants {
+        let path = tenant_db_path(state, tenant.id);
+        if !path.exists() {
+            continue;
+        }
+        let result = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+            let expired: Vec<String> = {
+                let mut stmt = conn.prepare(&format!(
+                    "SELECT handle FROM {HANDLES_META_TABLE} WHERE expires_unix <= ?1"
+                ))?;
+                stmt.query_map(params![now], |r| r.get(0))?
+                    .collect::<rusqlite::Result<Vec<_>>>()?
+            };
+            for handle in expired {
+                drop_handle_row_sync(conn, &handle)?;
+            }
+            Ok(())
+        })
+        .await;
+        if let Err(e) = result {
+            tracing::warn!(error = %e, tenant_id = tenant.id, "handle expiry tick failed for tenant");
+        }
+    }
+    Ok(())
+}
+
+/// P1 requirement 7/AC8: every row of `handle`, column names in
+/// declaration order, for `export.rs`'s `handle_export` to write as CSV --
+/// unlike [`run_query_sync`], never bounded by [`ROW_CAP`] (a handle
+/// export's whole point is getting every row of a result that was itself
+/// materialised specifically to get around that cap), bumping
+/// `last_used_unix` same as any other reference to the handle
+/// (requirement 4's eviction order).
+pub async fn handle_export_rows(
+    state: &AppState,
+    tenant: &Tenant,
+    handle: &str,
+) -> Result<(Vec<String>, Vec<Value>), AppError> {
+    let path = tenant_db_path(state, tenant.id);
+    let handle_owned = handle.to_string();
+    let now = crate::state::now_unix();
+    with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+        let expires: Option<i64> = conn
+            .query_row(
+                &format!("SELECT expires_unix FROM {HANDLES_META_TABLE} WHERE handle = ?1"),
+                params![handle_owned],
+                |r| r.get(0),
+            )
+            .optional()?;
+        match expires {
+            Some(exp) if exp > now => {}
+            _ => return Err(handle_not_found(&handle_owned)),
+        }
+        let column_names: Vec<String> = {
+            let stmt = conn.prepare(&format!("SELECT * FROM {} LIMIT 0", quote_ident(&handle_owned)))?;
+            stmt.column_names().into_iter().map(str::to_string).collect()
+        };
+        let rows = select_all_sync(conn, &format!("SELECT * FROM {}", quote_ident(&handle_owned)))?;
+        conn.execute(
+            &format!("UPDATE {HANDLES_META_TABLE} SET last_used_unix = ?1 WHERE handle = ?2"),
+            params![now, handle_owned],
+        )?;
+        Ok((column_names, rows))
+    })
+    .await
+}
+
+/// requirement 4: the background tick, started once alongside this
+/// crate's other tick loops (see `main.rs`) -- same spawn/sleep-loop shape
+/// as `tables_model::spawn_tick`. A 30s cadence keeps every expired
+/// handle's drop well inside the 60s `expires_unix` bound AC4 names.
+pub fn spawn_tick(state: AppState) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(HANDLE_TICK_INTERVAL_SECS)).await;
+            if let Err(e) = tick_once(&state).await {
+                tracing::warn!(error = %e, "handle expiry tick failed");
+            }
+        }
+    })
 }
 
 // ---- host.table.list / host.table.schema --------------------------------

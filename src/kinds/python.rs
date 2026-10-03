@@ -2383,8 +2383,13 @@ def _table_create(name, columns, primary_key=None):
 def _table_append(table, rows):
     return _table_call("append", table=table, rows=rows)
 
-def _table_query(sql):
-    return _table_call("query", sql=sql)
+def _table_query(sql, handle=False, ttl_s=None):
+    kwargs = {"sql": sql}
+    if handle:
+        kwargs["handle"] = True
+    if ttl_s is not None:
+        kwargs["ttl_s"] = ttl_s
+    return _table_call("query", **kwargs)
 
 def _table_list():
     return _table_call("list")
@@ -2441,6 +2446,17 @@ def _table_next_questions(table, limit=None):
         kwargs["limit"] = limit
     return _table_call("next_questions", **kwargs)
 
+# PRD-mcphost-result-handles P1 requirement 8: mcphost.table.query's own
+# handle/ttl_s kwargs above materialise a hdl_<id>; these two round out
+# the same lifecycle query already has through host.table.* --
+# mcphost.table.handles()/handle_drop(h).
+def _table_handles():
+    return _table_call("handles")
+
+def _table_handle_drop(handle):
+    return _table_call("handle_drop", handle=handle)
+
+
 
 _mcphost_table_mod = _mcphost_types.ModuleType("mcphost.table")
 _mcphost_table_mod.create = _table_create
@@ -2455,6 +2471,8 @@ _mcphost_table_mod.chart = _table_chart
 _mcphost_table_mod.graph = _table_graph
 _mcphost_table_mod.join_paths = _table_join_paths
 _mcphost_table_mod.next_questions = _table_next_questions
+_mcphost_table_mod.handles = _table_handles
+_mcphost_table_mod.handle_drop = _table_handle_drop
 _mcphost_table_mod.TableError = McphostTableError
 
 # ---- mcphost.call (PRD-mcphost-composition requirement 1) -----------------

@@ -95,17 +95,20 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
         // PRD-mcphost-drift-review):
         // 155 + 20 aliases = 175, then 175 -> 178 with host.invite.create/
         // list/revoke from PRD-mcphost-invite-links, then 178 -> 180 with
-        // host.table.query_diagnose/query_stats (PRD-mcphost-query-diagnosis).
-        180,
+        // host.table.query_diagnose/query_stats (PRD-mcphost-query-diagnosis),
+        // then r368-prep rebase (2026-10-03) 180 -> 183 with this PRD's own
+        // three new host.table.handles/handle_drop/handle_export tools.
+        183,
         "there must be exactly the sixteen host.* control-plane tools \
          (incl. host.quickstart, host.tool_run, host.bridge_test, host.spec_test -- \
          PRD-mcphost-tool-test, and host.redeem/host.key_rotate -- \
          PRD-mcphost-handoff-token) plus host.tool_call plus the three \
          host.tool_history/host.tool_rollback/host.tool_diff tools \
          (PRD-mcphost-tool-versions) plus the nine host.state.* tools \
-         (PRD-mcphost-tenant-state) plus the twelve host.table.* tools \
+         (PRD-mcphost-tenant-state) plus the eighteen host.table.* tools \
          (PRD-mcphost-tenant-tables, PRD-mcphost-table-semantic-model, \
-         PRD-mcphost-chart-in-a-minute, PRD-mcphost-table-context-and-sql-passthrough) plus the nine \
+         PRD-mcphost-chart-in-a-minute, PRD-mcphost-table-context-and-sql-passthrough, \
+         PRD-mcphost-result-handles) plus the nine \
          host.tool_share/host.tool_spec_shared/host.tool_unshare/ \
          host.group.*/host.catalog.* tools (PRD-mcphost-sharing, \
          PRD-mcphost-shared-tool-spec-readback) plus the two \

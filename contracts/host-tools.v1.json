@@ -3268,6 +3268,66 @@
       "since": "0.58.0"
     },
     {
+      "description": "Drop one query-result handle (and its table) before its TTL expires.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "handle": {
+            "description": "The hdl_<id> handle to drop.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "handle"
+        ],
+        "type": "object"
+      },
+      "name": "host.table.handle_drop",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Export one query-result handle's rows as CSV through a background job, returning a run_id; poll host.runs.get for the signed /exports/{run_id} download URL (valid 24h).",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "handle": {
+            "description": "The hdl_<id> handle to export.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "handle"
+        ],
+        "type": "object"
+      },
+      "name": "host.table.handle_export",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List this tenant's live query-result handles (host.table.query {handle: true}), newest first, each with its row_count, bytes, created_unix, expires_unix, last_used_unix and derived_from SQL.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.table.handles",
+      "since": "0.58.0"
+    },
+    {
       "description": "Return up to three shortest join paths between two declared tables, each with its own steps, a ready sql_join clause and a confidence (1.0 for an all-foreign-key path). Returns no_path: true with each table's key/id candidate columns when nothing connects them.",
       "input_schema": {
         "additionalProperties": false,
@@ -3388,17 +3448,25 @@
       "since": "0.58.0"
     },
     {
-      "description": "Run a single read-only SQL SELECT (CTEs allowed) against this tenant's own tables. Structurally rejected (not by string matching): anything but exactly one SELECT statement, a result over 1,000 rows, or a query running past 5 seconds -- each refusal names the rule or bound it hit.",
+      "description": "Run a single read-only SQL SELECT (CTEs allowed) against this tenant's own tables. Structurally rejected (not by string matching): anything but exactly one SELECT statement, a result over 1,000 rows, or a query running past 5 seconds -- each refusal names the rule or bound it hit. handle: true materialises the result as a table instead (no row cap), returning a dataset-summary.v1 (row_count, a 20-row sample, per-column stats over every row) naming a hdl_<id> you can later reference in FROM or a CTE through this same tool.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "handle": {
+            "description": "Materialise the result as a hdl_<id> table instead of returning its rows; returns a dataset-summary.v1. Default false.",
+            "type": "boolean"
+          },
           "sql": {
-            "description": "A single read-only SELECT statement (CTEs allowed) over this tenant's own declared tables.",
+            "description": "A single read-only SELECT statement (CTEs allowed) over this tenant's own declared tables (or, once materialised, its own hdl_<id> handles).",
             "type": "string"
           },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
+          },
+          "ttl_s": {
+            "description": "Only with handle: true -- seconds until the handle expires; default 3600, maximum 86400.",
+            "type": "integer"
           }
         },
         "required": [

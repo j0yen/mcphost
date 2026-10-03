@@ -120,6 +120,8 @@ mod firstpub_ac05_stub_flag_in_tools_list;
 mod firstpub_ac06_get_info_no_echo_steering;
 #[path = "firstpub_ac07_llms_txt_first_run_executes.rs"]
 mod firstpub_ac07_llms_txt_first_run_executes;
+#[path = "handle_ac09_python_sandbox_materialize_then_query.rs"]
+mod handle_ac09_python_sandbox_materialize_then_query;
 #[path = "infer_ac01_ac02_ac03_python_schema.rs"]
 mod infer_ac01_ac02_ac03_python_schema;
 #[path = "infer_ac04_python_explicit_schema.rs"]

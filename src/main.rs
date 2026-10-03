@@ -811,6 +811,10 @@ async fn main() -> anyhow::Result<()> {
             // here alongside the other background tasks.
             mcphost::statusfeed::spawn_tick((*state).clone());
             mcphost::statusfeed::spawn_daily_tick((*state).clone());
+            // PRD-mcphost-result-handles P0 requirement 4: the 30s handle
+            // expiry tick, started once here alongside the other
+            // background tasks.
+            mcphost::tables::spawn_tick((*state).clone());
 
             mcphost::http::serve_configured(bind, state).await
         }

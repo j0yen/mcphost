@@ -167,6 +167,30 @@ deprecated alias. `host.whoami`'s first answer in a session links
 description) is generated from the live registry by `mcphost gen-docs`;
 `docs/agent-quickstart.md`, `docs/sharing.md`, `plugin/skills/mcphost/
 SKILL.md`, and `www/llms.txt` now teach the canonical names.
+## v0.69.0 — 2026-10-02
+
+`host.table.query {sql, handle: true, ttl_s?}` runs a SELECT with no row
+cap and materialises it as `hdl_<id>`, a table in the tenant's own SQLite
+file, returning a `dataset-summary.v1`: `row_count`, a 20-row sample, and
+per-column `min`/`max`/`sum`/`mean`/`distinct`/`top_k` computed by SQL
+over every row, never the sample. Later `host.table.query` calls can
+reference `hdl_<id>` in `FROM` or a CTE through the same read-only guards
+a declared table already gets; a name that's never existed or has
+expired returns `handle_not_found`. Handles expire on their own
+(`ttl_s`, default 3600s, max 86400s) via a 30s tick, and a new plan quota
+`table_handle_bytes_max` (free 64 MiB, pro 512 MiB) evicts the
+least-recently-queried handles first when a materialisation would push a
+tenant over it, or refuses outright (`handle_quota_exceeded`) when a
+single materialisation alone would. `host.table.handles`/`handle_drop`
+list and drop handles; `host.table.handle_export` writes one as a signed,
+24-hour CSV download through the existing export job. `hdl_` is now a
+reserved table-name prefix (`host.table.create`/`drop` refuse it), and
+the `mcphost.table` python bridge gained the same `handle`/`ttl_s`
+arguments plus `.handles()`/`.handle_drop(h)`.
+
+PRD-mcphost-result-handles AC1-9, AC11, AC12. AC10 (Live: a fresh tenant
+loading the 1,000-row fixture after deploy, materialising then querying a
+handle against production) is deferred -- operator-provisioned.
 
 ## v0.68.0 — 2026-10-01
 
