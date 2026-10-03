@@ -433,9 +433,17 @@ async fn main() -> anyhow::Result<()> {
                         if stale {
                             std::process::exit(1);
                         }
-                        println!("gen-docs --check: {} is up to date", mcphost::gendocs::PLANS_DOC_PATH);
+                        println!(
+                            "gen-docs --check: {} and {} are up to date",
+                            mcphost::gendocs::PLANS_DOC_PATH,
+                            mcphost::gendocs::PLANS_HTML_PATH
+                        );
                     } else {
-                        println!("gen-docs: wrote {}", mcphost::gendocs::PLANS_DOC_PATH);
+                        println!(
+                            "gen-docs: wrote {} and {}",
+                            mcphost::gendocs::PLANS_DOC_PATH,
+                            mcphost::gendocs::PLANS_HTML_PATH
+                        );
                     }
                     Ok(())
                 }

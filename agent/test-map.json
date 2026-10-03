@@ -929,6 +929,18 @@
       "AC6": "tests/chainhost_ac06_usage_by_tool_step_tool.rs",
       "AC7": "tests/chainhost_ac07_table_rows_max_at_step.rs",
       "AC8": "deferred -- operator-provisioned: Live, a landed binary deployed on prod, tenant joe-test's webhook retargeted at a chain, and ~/.local/bin/fleet-post run from orch, with both JSON results pasted into the PRD's evidence block; needs a real deploy and operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
+    },
+    "support": {
+      "_prd": "PRD-mcphost-first-hour-support-surface.md -- landed as a direct-build (commit d5be828d, #88; frontmatter: 'the daemon must not admit') that bypassed the daemon's own intent-card/test-map refresh step, so this archive entry was never written at landing time; backfilled here by the mcphost-first-hour-support-surface re-dispatch (AC1-8 re-verified green, no code changes needed). real test_prefix is support.",
+      "AC1": "tests/support_ac01_bearer_invalid_help_url.rs",
+      "AC2": "tests/support_ac02_internal_error_generic_and_logged.rs",
+      "AC3": "tests/support_ac03_disk_floor_and_5xx_messages_generic.rs",
+      "AC4": "tests/support_ac04_plans_doc_and_json_consistent.rs",
+      "AC5": "tests/support_ac05_support_url_rendered_or_not_configured.rs",
+      "AC6": "tests/support_ac06_served_pages_from_docs_and_readme.rs",
+      "AC7": "tests/support_ac07_whoami_links_resolve.rs",
+      "AC8": "tests/support_ac08_release_artifact_includes_www.rs (producer half: binary needs no www/ dir) + cross-repo: /home/jsy/repos/mcphost-deploy tests/supportsurface_ac8_caddy_and_vendored_set.py (mcphost-deploy commit 83ff723, Caddy catch-all fallthrough + vendored-set exclusion for /support and /help)",
+      "AC9": "deferred -- proven by the wm-build gate itself (block=0 at landing); no hermetic test can pair a whole-suite-green claim. Declared deferred per PRD-mcphost-first-hour-support-surface.md frontmatter: 'deferred_acs: [9]'."
     }
   }
 }

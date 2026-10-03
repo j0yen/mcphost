@@ -12,10 +12,14 @@
 //! binary, and that same data must be what `docs/plans.md` was rendered
 //! from. `www/plans.html` is a static shell that fetches `/plans.json`
 //! client-side (see `help.rs`'s module doc comment) -- it carries no
-//! baked-in catalog data to go stale, so there is nothing to byte-compare
-//! there; this test instead confirms it's served non-empty (the
-//! served-pages test, AC6, covers it as a same-host link from README/
-//! llms.txt too).
+//! baked-in catalog data to go stale, but `mcphost gen-docs` still
+//! regenerates it from `gendocs::render_plans_html` byte-identically (its
+//! own "byte-identical to a fresh render" half is covered hermetically by
+//! `gendocs::tests::committed_plans_html_matches_a_fresh_render`, the exact
+//! same pattern as `docs/plans.md`); this file's own
+//! `plans_html_is_served_and_non_empty` confirms the live half -- it's
+//! served non-empty (the served-pages test, AC6, covers it as a same-host
+//! link from README/llms.txt too).
 
 use crate::common;
 use common::{McpClient, TestServer, extract_structured};
@@ -71,4 +75,13 @@ fn docs_plans_md_matches_a_fresh_render() {
     let committed = include_str!("../docs/plans.md");
     let fresh = mcphost::gendocs::render_plans_markdown(&mcphost::plans::PlanCatalog::default_catalog());
     assert_eq!(committed, fresh, "docs/plans.md has drifted -- run `mcphost gen-docs`");
+}
+
+/// AC4's other generated-file half (`www/plans.html`), expressed here too
+/// for the same reason as `docs_plans_md_matches_a_fresh_render` above.
+#[test]
+fn www_plans_html_matches_a_fresh_render() {
+    let committed = include_str!("../www/plans.html");
+    let fresh = mcphost::gendocs::render_plans_html();
+    assert_eq!(committed, fresh, "www/plans.html has drifted -- run `mcphost gen-docs`");
 }

@@ -163,9 +163,10 @@ async fn status_feed_has_no_support_warning_when_configured() {
 /// README/`docs/agent-quickstart.md`/`www/llms.txt` build-time half of AC5
 /// -- these are plain repo docs, never served at request time, so
 /// `MCPHOST_SUPPORT_URL`'s value for them is baked in at `mcphost gen-docs`
-/// time (see `help.rs`'s module doc comment) and committed; today, with no
-/// support channel chosen yet (open question in the PRD itself), that's the
-/// "not configured" phrase in all three.
+/// time (`gendocs::run` splices it via `help::splice_support_section`, see
+/// both modules' doc comments) and committed; today, with no support
+/// channel chosen yet (open question in the PRD itself), that's the "not
+/// configured" phrase in all three.
 #[test]
 fn committed_docs_carry_the_not_configured_phrase_today() {
     for (name, text) in [
@@ -177,5 +178,43 @@ fn committed_docs_carry_the_not_configured_phrase_today() {
             text.contains("support channel not configured"),
             "{name} must carry the support line (MCPHOST_SUPPORT_URL is unset today)"
         );
+    }
+}
+
+/// AC5's "given set" half for these same three build-time docs: splicing a
+/// support URL into the committed text (exactly what `mcphost gen-docs`
+/// does when `MCPHOST_SUPPORT_URL` is set) must render it into every copy
+/// -- deleting or breaking `help::splice_support_section` fails this
+/// instead of leaving it green.
+#[test]
+fn splicing_a_support_url_into_the_committed_docs_renders_it() {
+    for (name, text) in [
+        ("README.md", include_str!("../README.md")),
+        ("docs/agent-quickstart.md", include_str!("../docs/agent-quickstart.md")),
+        ("www/llms.txt", include_str!("../www/llms.txt")),
+    ] {
+        let spliced = help::splice_support_section(text, Some(TEST_URL));
+        assert!(spliced.contains(TEST_URL), "{name} must render MCPHOST_SUPPORT_URL when set:\n{spliced}");
+        assert!(
+            !spliced.contains("support channel not configured"),
+            "{name} must not still carry the not-configured phrase once a url is spliced in"
+        );
+    }
+}
+
+/// The unset-today half of the same mechanism: splicing with no url must
+/// reproduce the committed text exactly, byte for byte -- i.e. `mcphost
+/// gen-docs --check` is a no-op today, which is also what proves these
+/// three docs' committed "not configured" phrase actually came from this
+/// mechanism rather than being hand-typed prose that happens to match.
+#[test]
+fn splicing_with_no_url_reproduces_the_committed_docs_byte_for_byte() {
+    for (name, text) in [
+        ("README.md", include_str!("../README.md")),
+        ("docs/agent-quickstart.md", include_str!("../docs/agent-quickstart.md")),
+        ("www/llms.txt", include_str!("../www/llms.txt")),
+    ] {
+        let spliced = help::splice_support_section(text, None);
+        assert_eq!(spliced, text, "{name}: splicing with no url must reproduce the committed text exactly");
     }
 }

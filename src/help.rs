@@ -218,6 +218,43 @@ pub fn support_line(support_url: Option<&str>) -> String {
     }
 }
 
+/// AC5's build-time surfaces: README, `docs/agent-quickstart.md`, and
+/// `www/llms.txt` each carry one or more `<!-- support:start -->
+/// ... <!-- support:end -->` sections (same marker convention
+/// `llms_txt::TOOLS_SECTION_START`/`_END` already uses for the tools
+/// section) that `gendocs::run` splices [`support_line`]'s current value
+/// into at `mcphost gen-docs` time.
+pub const SUPPORT_SECTION_START: &str = "<!-- support:start -->";
+pub const SUPPORT_SECTION_END: &str = "<!-- support:end -->";
+
+/// Replace every section bracketed by [`SUPPORT_SECTION_START`]/
+/// [`SUPPORT_SECTION_END`] in `content` with [`support_line`]'s current
+/// rendering of `support_url`, leaving everything outside the markers
+/// (including surrounding blank lines) untouched -- unlike
+/// `llms_txt::splice_into`, which also has to find a first-run insertion
+/// point, every doc this is called on already carries the marker pair
+/// committed, so there is no first-run case to handle. A doc with no
+/// marker pair at all is returned unchanged rather than silently dropping
+/// the section.
+pub fn splice_support_section(content: &str, support_url: Option<&str>) -> String {
+    let section = format!("{SUPPORT_SECTION_START}\n{}\n{SUPPORT_SECTION_END}", support_line(support_url));
+    let mut out = String::new();
+    let mut rest = content;
+    loop {
+        match (rest.find(SUPPORT_SECTION_START), rest.find(SUPPORT_SECTION_END)) {
+            (Some(start), Some(end_marker_pos)) if end_marker_pos > start => {
+                let end = end_marker_pos + SUPPORT_SECTION_END.len();
+                out.push_str(&rest[..start]);
+                out.push_str(&section);
+                rest = &rest[end..];
+            }
+            _ => break,
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 /// requirement 4's other half, for the status feed (requirement 4: "the
 /// readiness probe ... reports it as a warning -- never a silent blank"):
 /// `Some(warning)` iff the support channel is unconfigured.
@@ -471,5 +508,43 @@ mod tests {
         record_help_served("bearer_invalid");
         let after = help_hits_snapshot()["bearer_invalid"].as_u64().unwrap_or(0);
         assert_eq!(after, before + 1);
+    }
+
+    #[test]
+    fn splice_support_section_replaces_one_section_leaving_the_rest_untouched() {
+        let content = format!(
+            "before\n\n{SUPPORT_SECTION_START}\nSupport: old\n{SUPPORT_SECTION_END}\n\nafter\n"
+        );
+        let spliced = splice_support_section(&content, Some("https://discord.gg/example"));
+        assert!(spliced.contains("https://discord.gg/example"));
+        assert!(!spliced.contains("Support: old"));
+        assert!(spliced.starts_with("before\n\n"));
+        assert!(spliced.ends_with("\n\nafter\n"));
+    }
+
+    #[test]
+    fn splice_support_section_replaces_every_occurrence() {
+        let content = format!(
+            "one\n\n{SUPPORT_SECTION_START}\nSupport: old\n{SUPPORT_SECTION_END}\n\ntwo\n\n\
+             {SUPPORT_SECTION_START}\nSupport: old\n{SUPPORT_SECTION_END}\n\nthree\n"
+        );
+        let spliced = splice_support_section(&content, Some("https://discord.gg/example"));
+        assert_eq!(spliced.matches("https://discord.gg/example").count(), 2);
+        assert!(!spliced.contains("Support: old"));
+    }
+
+    #[test]
+    fn splice_support_section_with_no_url_is_idempotent_on_already_unset_content() {
+        let content = format!(
+            "before\n\n{SUPPORT_SECTION_START}\n{}\n{SUPPORT_SECTION_END}\n\nafter\n",
+            support_line(None)
+        );
+        assert_eq!(splice_support_section(&content, None), content);
+    }
+
+    #[test]
+    fn splice_support_section_leaves_content_with_no_markers_unchanged() {
+        let content = "no markers here\n";
+        assert_eq!(splice_support_section(content, Some("https://discord.gg/example")), content);
     }
 }
