@@ -3,6 +3,15 @@
 //! `tenant_key` on a fresh argument-only call, Then the server returns
 //! `tenant_key_invalid`, not success (the example is a placeholder, never a
 //! live key).
+//!
+//! PRD-mcphost-implicit-signup: see tkparam_ac01's own note -- `admin.tenants`
+//! is the conduit for fetching the placeholder `example` below, since a
+//! bare `host.*` call implicit-signs-up now. The second call, passing that
+//! example as an explicit (present but unrecognized) `tenant_key` on a
+//! real `host.*` tool, is unaffected either way: a present tenant_key that
+//! matches no tenant resolves to `Auth::Invalid`, never the new implicit-
+//! signup branch (which only ever fires for `Auth::Anonymous`, i.e. no
+//! tenant_key at all).
 
 use crate::common;
 use common::{McpClient, TestServer};
@@ -14,10 +23,7 @@ async fn the_example_tenant_key_never_resolves_to_a_tenant() {
     let client = McpClient::new(&server.base_url);
 
     let refusal = client
-        .tools_call(
-            "host.tool_publish",
-            json!({"name": "my_tool", "kind": "echo", "spec": {}}),
-        )
+        .tools_call("admin.tenants", json!({}))
         .await
         .expect_err("a call with no tenant_key at all must be refused");
     let example = refusal

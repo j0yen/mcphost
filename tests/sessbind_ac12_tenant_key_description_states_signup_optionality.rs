@@ -17,6 +17,11 @@
 //! note, same fix as `tkparam_ac09`'s sibling file: `host_schema`'s
 //! generated `tenant_key` description (what this test actually proves) is
 //! identical regardless of auth state.
+//!
+//! PRD-mcphost-implicit-signup requirement 5: a connection with neither a
+//! header nor a prior signup no longer gets `tenant_key_missing` for
+//! omitting this argument -- it is implicitly signed up instead
+//! (requirement 1), and the description's closing clause now says that.
 
 use crate::common;
 use common::{McpClient, TestServer, signup};
@@ -58,13 +63,14 @@ async fn every_host_tools_tenant_key_description_states_signup_connection_option
             "{name}'s tenant_key description must state the key is optional on the connection \
              that ran signup: {description}"
         );
-        // The pre-existing conditions it must not lose: the header still
-        // wins, and a connection with neither still gets tenant_key_missing.
+        // The pre-existing condition it must not lose: the header still
+        // wins. PRD-mcphost-implicit-signup requirement 5: a connection with
+        // neither now gets implicitly signed up instead of refused.
         assert!(
             description.contains("the header wins")
-                && description.contains("tenant_key_missing"),
-            "{name}'s description must keep the header-wins and tenant_key_missing \
-             conditions: {description}"
+                && description.contains("implicitly signs that connection up"),
+            "{name}'s description must keep the header-wins condition and state the \
+             implicit-signup outcome: {description}"
         );
     }
 

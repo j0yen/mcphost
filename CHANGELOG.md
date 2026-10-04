@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.82.0 — 2026-10-04
+
+The first `host.*`/`billing.*` call on a fresh anonymous session on `/mcp`
+(no `Authorization` header, no `tenant_key` argument) now implicitly signs
+up instead of refusing `tenant_key_missing` (PRD-mcphost-implicit-signup):
+it mints a new tenant (named from the caller's `clientInfo.name`, or
+`agent-<8-char ulid suffix>` otherwise, `source: "implicit"`), binds the
+session the same way `signup`/`host.redeem` already do, and re-dispatches
+the original call as that tenant -- the response carries `onboarding
+.{tenant, url, note}` on that one triggering call only. Reuses `signup`'s
+own per-IP rate limiter, pause-file kill switch, and fleet-IP/synthetic
+classification verbatim; a limiter hit returns `signup_rate_limited`
+(`data.help` ending `/u/new`, `data.retry_after_s`). `tenant_key_missing`
+is no longer reachable for `host.*`/`billing.*` on bare `/mcp` -- the
+identical refusal on a real tenant's own `/t/{ns}/mcp` path, and for
+`admin.*` everywhere, is unchanged.
+
 ## v0.71.0 — 2026-10-02
 
 The tenant's own `host.table.*` tables joined into one graph

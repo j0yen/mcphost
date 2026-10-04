@@ -25,11 +25,22 @@
 # neither one is gated on an authorize/token endpoint existing.
 
 [[scenario]]
+# PRD-mcphost-implicit-signup: this scenario's own `discover_401` step
+# probed root `/mcp` with no credential expecting a 401 challenge --
+# that is exactly the bare host.*/billing.* call this PRD now answers by
+# minting an implicit tenant instead of refusing. Flipped back from
+# `pass`/`mcphost-oauth-resource-server` to `unsupported`/`unassigned`:
+# root `/mcp` no longer requires any credential at all, so there is no 401
+# for this probe to discover there anymore. The same 401 challenge on a
+# real tenant's own `/t/{ns}/mcp` path is untouched -- this PRD scopes the
+# implicit-signup branch to bare `/mcp` only -- see
+# tests/tenantprm_ac04_401_challenge_names_tenant_or_root_metadata.rs's
+# `no_credential_on_tenant_path_names_the_tenant_metadata_url`.
 name = "prm_root_discovery"
 family = "prm"
-owner_prd = "mcphost-oauth-resource-server"
+owner_prd = "unassigned"
 steps = ["discover_401", "read_prm"]
-expected = "pass"
+expected = "unsupported"
 
 [[scenario]]
 name = "iss_unknown_issuer_rejected"
@@ -81,9 +92,19 @@ family = "step_up"
 # tenant, publishes a `write`-scoped tool, and drives the full step-up
 # sequence -- a 403 `insufficient_scope` on the under-scoped call, then a
 # re-authorization with the union scope, then success -- for real.
-owner_prd = "mcphost-tool-scopes-and-consent"
+#
+# PRD-mcphost-implicit-signup: `run_step_up_probe` short-circuits on its
+# own leading `discover_401` step (same root-`/mcp` probe as
+# `prm_root_discovery` above), which now reads `Unsupported` for the same
+# reason -- root `/mcp` no longer refuses the bare, unauthenticated call
+# `discover_401` sends. The real step-up mechanism this family proves is
+# unaffected (toolscope_ac03's own end-to-end test signs up for real and
+# still passes); only this harness probe's bootstrap assumption broke.
+# Flipped from `pass`/`mcphost-tool-scopes-and-consent` back to
+# `unsupported`/`unassigned` to match.
+owner_prd = "unassigned"
 steps = ["discover_401", "read_prm", "read_as_metadata", "register", "authorize", "consent", "token", "call", "step_up"]
-expected = "pass"
+expected = "unsupported"
 
 [[scenario]]
 name = "resource_slash_without_as_metadata"

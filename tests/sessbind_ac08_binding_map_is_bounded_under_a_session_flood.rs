@@ -164,16 +164,20 @@ async fn real_signups_land_in_the_running_servers_own_map() {
         );
     }
 
-    // A connection that never signs up never earns an entry, however many
-    // requests it makes.
+    // PRD-mcphost-implicit-signup: a connection that never explicitly
+    // signs up now earns exactly ONE entry -- its first bare host.* call
+    // implicitly signs it up and binds the session, same as a real
+    // signup/redeem would (requirement 1) -- not zero, and not one per
+    // request: every later call on that same session reuses the binding.
     let anonymous = McpClient::new(&server.base_url).with_session_continuity();
     for _ in 0..10 {
         let _ = anonymous.tools_call("host.catalog.search", json!({})).await;
     }
     assert_eq!(
         server.state.session_bindings.len(),
-        5,
-        "requests alone must never grow the map -- only a signup/redeem does"
+        6,
+        "the anonymous session's own first call implicitly signs up and binds exactly once; \
+         the other nine requests on that same session must never grow the map further"
     );
 
     // Handoff mode hands back no key on this connection, so it binds nothing.
@@ -184,7 +188,7 @@ async fn real_signups_land_in_the_running_servers_own_map() {
         .expect("handoff signup");
     assert_eq!(
         server.state.session_bindings.len(),
-        5,
+        6,
         "a handoff signup returns a token, not a key, so it binds nothing yet"
     );
 }

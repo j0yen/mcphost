@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-query-diagnosis.md (test_prefix: qdiag)",
+  "ac_test_map_prd": "PRD-mcphost-implicit-signup.md (test_prefix: implsign)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,19 +28,30 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/qdiag_ac01_column_typo_fuzzy_covered_hint.rs",
-    "AC2": "tests/qdiag_ac02_table_typo_fuzzy_covered_hint.rs",
-    "AC3": "tests/qdiag_ac03_zero_row_value_absent_hint_and_latency.rs",
-    "AC4": "tests/qdiag_ac04_successful_nonempty_diagnosis_and_hint_null.rs",
-    "AC5": "tests/qdiag_ac05_query_diagnose_tool_tenant_scoped.rs",
-    "AC6": "tests/qdiag_ac06_query_stats_counts_and_percentiles.rs",
-    "AC7": "tests/qdiag_ac07_description_annotation_offers_candidate.rs",
-    "AC8": "tests/qdiag_ac08_footprint_columns_est_tokens.rs",
-    "AC9": "tests/qdiag_ac09_python_bridge_query_stats.rs -- passes in CI's sandbox (user namespaces) job; locally self-skips via sandbox::require_user_namespaces_or_ci_skip() (no user namespaces in this coding sandbox), same pre-existing limitation every other sandbox-dependent test in this crate hits here.",
-    "AC10": "deferred -- operator-provisioned: AC 10 is a live-production check that needs a deployed build; verified post-land by the live stage.",
-    "AC11": "tests/qdiag_ac11_ten_concurrent_refused_queries_all_hinted.rs"
+    "AC1": "tests/implsign_ac01_bare_call_creates_implicit_tenant_with_onboarding.rs",
+    "AC2": "tests/implsign_ac02_second_call_carries_no_onboarding.rs",
+    "AC3": "tests/implsign_ac03_rate_limit_refuses_with_help_and_retry.rs",
+    "AC4": "tests/implsign_ac04_pause_file_refuses_within_1s.rs",
+    "AC5": "tests/implsign_ac05_pre_existing_anonymous_tools_create_no_tenant.rs",
+    "AC6": "tests/implsign_ac06_unknown_tenant_key_stays_invalid.rs",
+    "AC7": "tests/implsign_ac07_no_bare_call_ever_returns_tenant_key_missing.rs (local regression sweep, in-repo); cross-repo: /home/jsy/repos/synthorg src/synthorg/toolconf.py no_key probe fix + tests/toolconf_hotfix_4xx_code_truth_test.py, tests/toolconf_hotfix_leak_selfscoped_test.py, tests/toolconf_raw_transport_test.py, tests/toolconf_ac01_all_pass_test.py, tests/toolconf_fixture.py (synthorg commit 7b610cb39c9d0e7761c5cd8346b2bc8b5243712f, master, committed not pushed) -- the tool-surface conformance harness's own no_key probe no longer expects tenant_key_missing on a bare host.*/billing.* call; see docs/receipts/implsign-ac07-synthorg-cross-repo.md",
+    "AC8": "deferred -- operator-provisioned: Live, a landed binary deployed on prod and a real agent's unattended implicit signup against it, with the session transcript pasted into the PRD's evidence block by the operator; needs a real deploy this coding sandbox does not have."
   },
   "ac_test_map_by_prefix": {
+    "qdiag": {
+      "_prd": "PRD-mcphost-query-diagnosis.md -- superseded by mcphost-implicit-signup at HEAD (this rebase); real test_prefix is qdiag",
+      "AC1": "tests/qdiag_ac01_column_typo_fuzzy_covered_hint.rs",
+      "AC2": "tests/qdiag_ac02_table_typo_fuzzy_covered_hint.rs",
+      "AC3": "tests/qdiag_ac03_zero_row_value_absent_hint_and_latency.rs",
+      "AC4": "tests/qdiag_ac04_successful_nonempty_diagnosis_and_hint_null.rs",
+      "AC5": "tests/qdiag_ac05_query_diagnose_tool_tenant_scoped.rs",
+      "AC6": "tests/qdiag_ac06_query_stats_counts_and_percentiles.rs",
+      "AC7": "tests/qdiag_ac07_description_annotation_offers_candidate.rs",
+      "AC8": "tests/qdiag_ac08_footprint_columns_est_tokens.rs",
+      "AC9": "tests/qdiag_ac09_python_bridge_query_stats.rs -- passes in CI's sandbox (user namespaces) job; locally self-skips via sandbox::require_user_namespaces_or_ci_skip() (no user namespaces in this coding sandbox), same pre-existing limitation every other sandbox-dependent test in this crate hits here.",
+      "AC10": "deferred -- operator-provisioned: AC 10 is a live-production check that needs a deployed build; verified post-land by the live stage.",
+      "AC11": "tests/qdiag_ac11_ten_concurrent_refused_queries_all_hinted.rs"
+    },
     "invite": {
       "_prd": "PRD-mcphost-invite-links.md -- superseded by mcphost-query-diagnosis at HEAD (this rebase); real test_prefix is invite",
       "AC1": "tests/invite_ac01_create_returns_url_and_list_shows_zero_uses.rs",

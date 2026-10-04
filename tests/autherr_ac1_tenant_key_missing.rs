@@ -1,8 +1,15 @@
 //! PRD-mcphost-auth-error-names-argument
-//! AC1 (P0) — Given a `host.tool_publish` call with no `tenant_key`, When
-//! it runs, Then the error has `error_code` `tenant_key_missing` and its
-//! message names `tenant_key` and `signup` and does not contain
-//! `Authorization`.
+//! AC1 (P0) — Given a call with no `tenant_key`, When it runs, Then the
+//! error has `error_code` `tenant_key_missing` and its message names
+//! `tenant_key` and `signup` and does not contain `Authorization`.
+//!
+//! PRD-mcphost-implicit-signup: a bare `host.*`/`billing.*` call on `/mcp`
+//! with no `tenant_key` at all no longer returns `tenant_key_missing` --
+//! it implicitly signs up instead (see `tests/implsign_ac01_*.rs`). This
+//! AC's own point (the error's naming/message shape) is still real for
+//! every OTHER anonymous call `admin.*` never implicit-signs-up (Non-goal),
+//! so `admin.tenants` is used here as the conduit instead of
+//! `host.tool_publish`.
 
 use crate::common;
 use common::{McpClient, TestServer};
@@ -15,10 +22,7 @@ async fn missing_tenant_key_names_the_argument_not_the_header() {
     let client = McpClient::new(&server.base_url);
 
     let err = client
-        .tools_call(
-            "host.tool_publish",
-            json!({"name": "my_tool", "kind": "echo", "spec": {}}),
-        )
+        .tools_call("admin.tenants", json!({}))
         .await
         .expect_err("a call with no tenant_key at all must be refused");
 
@@ -50,7 +54,7 @@ async fn a_non_string_tenant_key_counts_as_missing_too() {
     let client = McpClient::new(&server.base_url);
 
     let err = client
-        .tools_call("host.tool_list", json!({"tenant_key": 12345}))
+        .tools_call("admin.tenants", json!({"tenant_key": 12345}))
         .await
         .expect_err("a non-string tenant_key must be treated as absent");
 

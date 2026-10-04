@@ -1,22 +1,25 @@
 //! PRD-mcphost-session-bound-tenant-after-signup
-//! AC3 (P0) — Given a fresh session with no `signup`, no `tenant_key` and
-//! no header, When it calls `host.catalog.search`, Then the response is
-//! HTTP 401 with a `WWW-Authenticate` header, JSON-RPC `-32602`,
-//! `data.error_code` `tenant_key_missing`, byte-for-byte the v0.60.35 body
-//! shape.
+//! AC3 (P0, as landed) — Given a fresh session with no `signup`, no
+//! `tenant_key` and no header, When it calls `host.catalog.search`, Then
+//! the response is HTTP 401 with a `WWW-Authenticate` header, JSON-RPC
+//! `-32602`, `data.error_code` `tenant_key_missing`, byte-for-byte the
+//! v0.60.35 body shape.
 //!
-//! Goal 2 / non-goal: this PRD adds a session-bound fallback (see
-//! `sessbind_ac01`/`sessbind_ac04`-`ac09`) but must never change what a
-//! session that never signed up sees -- this is the regression pin for
-//! that guarantee, driven over the same real streamable-HTTP server every
-//! other test in this suite uses.
+//! PRD-mcphost-implicit-signup supersedes this exact AC: that fresh,
+//! never-signed-up session's bare `host.*` call on `/mcp` now succeeds by
+//! implicitly minting a tenant, rather than refusing (requirement 4's own
+//! "no longer reachable for host.*/billing.* on /mcp" -- see
+//! tests/implsign_ac01_*.rs). This is now the regression pin for THAT
+//! guarantee instead: a 200 with no WWW-Authenticate challenge and a real
+//! `host.catalog.search` result, byte-shape checked the same way the old
+//! 401 body used to be.
 
 use crate::common;
-use common::{McpClient, TestServer};
+use common::{McpClient, TestServer, parse_response_body};
 use serde_json::json;
 
 #[tokio::test]
-async fn no_signup_no_key_no_header_is_refused_exactly_as_before() {
+async fn no_signup_no_key_no_header_now_implicitly_signs_up() {
     let server = TestServer::start().await;
     let client = McpClient::new(&server.base_url);
 
@@ -32,31 +35,26 @@ async fn no_signup_no_key_no_header_is_refused_exactly_as_before() {
         )
         .await;
 
-    assert_eq!(resp.status(), reqwest::StatusCode::UNAUTHORIZED);
-    let www_authenticate = resp
-        .headers()
-        .get(reqwest::header::WWW_AUTHENTICATE)
-        .and_then(|v| v.to_str().ok())
-        .expect("WWW-Authenticate header present")
-        .to_string();
-    assert!(www_authenticate.starts_with("Bearer "), "must be a Bearer challenge: {www_authenticate}");
+    assert_eq!(resp.status(), reqwest::StatusCode::OK, "a bare host.* call on /mcp now succeeds");
+    assert!(
+        resp.headers().get(reqwest::header::WWW_AUTHENTICATE).is_none(),
+        "a successful call must carry no WWW-Authenticate challenge"
+    );
 
-    let body: serde_json::Value = resp.json().await.expect("parse error body");
-    let error = &body["error"];
-    assert_eq!(error["code"], json!(-32602), "JSON-RPC code must be INVALID_PARAMS: {body:?}");
-    let data = &error["data"];
-    assert_eq!(data["error_code"], json!("tenant_key_missing"), "{body:?}");
-    assert_eq!(data["field"], json!("tenant_key"), "{body:?}");
-    assert_eq!(
-        data["expected"],
-        json!("the string signup returned; required only when this connection carries no \
-            Authorization: Bearer header"),
-        "{body:?}"
+    // PRD-mcphost-implicit-signup: this call binds the session, upgrading
+    // the response to text/event-stream -- see parse_response_body's doc.
+    let body = parse_response_body(resp).await;
+    assert!(body.get("error").is_none(), "must not error: {body:?}");
+    let structured = body["result"]
+        .get("structuredContent")
+        .cloned()
+        .unwrap_or(body["result"].clone());
+    assert!(
+        structured.get("tools").is_some(),
+        "host.catalog.search must return a real result: {structured}"
     );
-    assert_eq!(
-        data["example"],
-        json!("tk_example_REPLACE_WITH_THE_KEY_SIGNUP_RETURNED"),
-        "{body:?}"
+    assert!(
+        structured.get("onboarding").is_some(),
+        "the call that created the implicit tenant must carry onboarding: {structured}"
     );
-    assert_eq!(data["docs"], json!("host.quickstart"), "{body:?}");
 }
