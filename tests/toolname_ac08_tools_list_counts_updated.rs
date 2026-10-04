@@ -16,8 +16,13 @@ use mcphost::tool_aliases::TOOL_ALIASES;
 
 /// The pre-PRD `host.*`/`billing.*` control-plane total
 /// `compat_ac04_ac05_admin_and_tenant_cache_fields.rs` asserted before
-/// this PRD landed.
-const PRE_PRD_TOTAL: usize = 147;
+/// this PRD landed, carried forward through this PRD's rebase onto main
+/// (which had grown 147 -> 150 with host.table.graph/join_paths/
+/// next_questions, then 150 -> 151 with host.table.query_log from
+/// PRD-mcphost-table-context-and-sql-passthrough, then 151 -> 155 with
+/// host.drift.reviews/review/resolve/check from PRD-mcphost-drift-review)
+/// -- same total compat_ac04_ac05's own comment pins.
+const PRE_PRD_TOTAL: usize = 155;
 
 #[test]
 fn full_registry_grew_by_exactly_the_alias_count_with_nothing_removed() {
@@ -29,5 +34,5 @@ fn full_registry_grew_by_exactly_the_alias_count_with_nothing_removed() {
         "the full host.*/billing.* registry must have grown by exactly the number of aliases \
          this PRD added, with nothing removed"
     );
-    assert_eq!(total, 167, "pin the exact new total compat_ac04_ac05's own count was updated to");
+    assert_eq!(total, 175, "pin the exact new total compat_ac04_ac05's own count was updated to");
 }

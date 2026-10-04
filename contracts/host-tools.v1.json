@@ -3894,7 +3894,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Publish a tool of a registered kind (echo) under this tenant's namespace. Call host.quickstart(kind) first for a filled-in example spec and the full publish-to-call sequence. Name must match ^[a-z][a-z0-9_]{1,40}$; a rejection names the failing field and a corrected example. Try host.tool_test before a real call.",
+      "description": "Publish a tool of a registered kind (echo) under this tenant's namespace. Call host.quickstart(kind) first for a filled-in example spec and the full publish-to-call sequence. Python's sandbox API: import mcphost (mcphost.table, mcphost.state, mcphost.docs). Name must match ^[a-z][a-z0-9_]{1,40}$; a rejection names the failing field and a corrected example. Try host.tool_test before a real call.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -3914,7 +3914,7 @@
             "type": "array"
           },
           "spec": {
-            "description": "The kind-specific spec object; see host.quickstart(kind) for a filled-in example.",
+            "description": "The kind-specific spec object; see host.quickstart(kind) for a filled-in example. For python's network field: \"none\", \"public\", or \"egress\" -- a tool's own code reaches this tenant's data with `import mcphost` (mcphost.table, mcphost.state, mcphost.docs, mcphost.lineage) even when network is \"none\".",
             "type": "object"
           },
           "tenant_key": {
@@ -4009,6 +4009,10 @@
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
             "type": "string"
+          },
+          "test": {
+            "description": "PRD-mcphost-dry-run-side-effects: run with writes rolled back and reported under dry_run, nothing delivered; default false (a real debug run).",
+            "type": "boolean"
           }
         },
         "required": [
@@ -4094,7 +4098,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Dry-run an already-published tool by name, no calls row written; for the other cases see host.quickstart.",
+      "description": "Dry-run a published tool by name: writes are rolled back and reported under dry_run, nothing delivered; for the other cases see host.quickstart.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
