@@ -126,22 +126,27 @@ async fn refused_call_logs_401_and_ok_call_logs_200() {
 
     let http = reqwest::Client::new();
 
-    // A key-less, header-less host.* call: refused tenant_key_missing at
-    // the JSON-RPC level, then rewritten to a real HTTP 401 by
+    // A key-less, header-less call: refused tenant_key_missing at the
+    // JSON-RPC level, then rewritten to a real HTTP 401 by
     // `oauth_401_upgrade`.
+    //
+    // PRD-mcphost-implicit-signup: a bare host.* call (like the
+    // `host.catalog.search` this test used to drive) now implicitly signs
+    // up instead of refusing (requirement 4), so `admin.tenants` -- which
+    // never implicit-signs-up (Non-goal) -- is the conduit here instead.
     let refused = http
         .post(format!("{}/mcp", server.base_url))
         .header("Content-Type", "application/json")
         .header("Accept", "application/json, text/event-stream")
         .header("MCP-Protocol-Version", "2026-07-28")
         .header("Mcp-Method", "tools/call")
-        .header("Mcp-Name", "host.catalog.search")
+        .header("Mcp-Name", "admin.tenants")
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "id": 1,
             "method": "tools/call",
             "params": {
-                "name": "host.catalog.search",
+                "name": "admin.tenants",
                 "arguments": {},
                 "_meta": {
                     "io.modelcontextprotocol/protocolVersion": "2026-07-28",

@@ -1,8 +1,16 @@
 //! PRD-mcphost-oauth-conformance-harness
 //! AC1 (P0) — Given an in-process host on this PRD's tree, When the
 //! `oauthconf` gate test runs every scenario, Then the verdict table
-//! equals `scenarios.toml` with `prm` and `iss` families `pass` and every
-//! other family `unsupported`, and the run finishes under 20 s.
+//! equals `scenarios.toml` (data-driven per scenario, not hardcoded here --
+//! `owner_prd == "unassigned"` reads gold-unsupported, every claimed
+//! scenario reads gold-pass), and the run finishes under 20 s.
+//!
+//! PRD-mcphost-implicit-signup: `prm_root_discovery` (family `prm`) and
+//! `step_up_403_without_as_metadata` (family `step_up`) both flipped from
+//! gold-pass back to gold-unsupported -- both probes bootstrap on a root
+//! `/mcp` call that now succeeds anonymously (implicit signup) instead of
+//! 401ing, so this file's own assertions no longer assume `prm`/`iss` are
+//! the two families that read pass; `iss` alone still does.
 
 use std::time::Instant;
 

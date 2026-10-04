@@ -563,6 +563,12 @@ pub fn tool_publish_input_schema() -> Value {
 /// that connection is already bound to the tenant it created. Reading this
 /// is how an agent that just signed up learns it does not have to repeat
 /// the key, which is the whole failure this PRD exists to remove.
+///
+/// PRD-mcphost-implicit-signup requirement 5: the final sentence no longer
+/// describes a `tenant_key_missing` refusal -- omitting this argument on a
+/// connection with neither a header nor a prior signup now implicitly
+/// signs that connection up instead (requirement 1), so the description
+/// says that, pointing at `host.whoami`'s `source` field as how to tell.
 fn host_schema(mut props: Value, required: &[&str]) -> Map<String, Value> {
     if let Some(obj) = props.as_object_mut() {
         obj.insert(
@@ -571,11 +577,11 @@ fn host_schema(mut props: Value, required: &[&str]) -> Map<String, Value> {
                 "type": "string",
                 "description": "The key `signup` returned. Optional on the connection that \
                     ran signup (or host.redeem): that connection is already bound to the \
-                    tenant it created, so later calls on it need no tenant_key. Required \
-                    only when this connection carries no Authorization: Bearer header and \
-                    never ran signup -- when both a header and this argument are present, \
-                    the header wins. Omitting it on such a connection returns \
-                    tenant_key_missing (-32602).",
+                    tenant it created, so later calls on it need no tenant_key. On a \
+                    connection with no Authorization: Bearer header and no prior signup, \
+                    omitting it implicitly signs that connection up as a brand-new tenant \
+                    and runs this call as it -- see host.whoami's source field. When both a \
+                    header and this argument are present, the header wins.",
             }),
         );
     }
@@ -4841,6 +4847,132 @@ impl McpHostHandler {
         }
     }
 
+    /// PRD-mcphost-implicit-signup requirement 1 (AC1): `call_tool`'s own
+    /// `(Auth::Anonymous, name) if ... host./billing. ...` arm funnels
+    /// here. Mints a tenant through [`control::signup`] (the exact same
+    /// limiter, fleet-IP classification, and pause kill-switch `signup`
+    /// itself uses -- Technical Considerations: "the limiter is the single
+    /// choke point; this PRD adds no second limiter"), reuses
+    /// [`bind_session_to_created_tenant`] verbatim for the session binding
+    /// and `tools/list_changed` notification, mints this tenant's personal
+    /// `/u/{secret}/mcp` URL (the same generate-then-rotate pattern
+    /// [`control::key_rotate`] uses to hand a tenant its first URL), then
+    /// re-dispatches `name`/`args` -- the call that triggered creation --
+    /// as that tenant, so the caller sees its own real result plus
+    /// `onboarding` in one response, not a separate "signed up" response
+    /// (Technical Considerations).
+    #[allow(clippy::too_many_arguments)]
+    async fn implicit_signup_and_dispatch(
+        &self,
+        ctx: &RequestContext<RoleServer>,
+        parts: &http::request::Parts,
+        source: &str,
+        session_id: Option<&str>,
+        name: &str,
+        args: Value,
+    ) -> Result<Value, AppError> {
+        let (client_name, client_version) = match peer_client_info(ctx) {
+            Some((name, version)) => (Some(name), Some(version)),
+            None => (None, None),
+        };
+        // Open question, drafted resolution: the caller's own reported
+        // `clientInfo.name` when present, else `agent-<8-char ulid
+        // suffix>` -- the PRD's own TL;DR naming.
+        let display_name = client_name.clone().unwrap_or_else(|| {
+            let ulid = crate::state::new_ulid();
+            format!("agent-{}", ulid[ulid.len() - 8..].to_lowercase())
+        });
+        let signup_value = control::signup(
+            &self.state,
+            &json!({"name": display_name, "source": "implicit"}),
+            source,
+            control::SignupAttribution {
+                synthetic_header: synthetic_header(parts).as_deref(),
+                client_name: client_name.as_deref(),
+                client_version: client_version.as_deref(),
+                user_agent: user_agent_header(parts).as_deref(),
+            },
+        )
+        .await
+        .map_err(|e| match e {
+            // Requirement 3 (AC3): the limiter's own refusal, renamed and
+            // enriched for this path alone -- the explicit `signup` tool
+            // keeps returning plain `rate_limited` (ac09_signup_rate_limit.rs
+            // and friends pin that), unaffected since this mapping only
+            // runs on the implicit branch's own call to `control::signup`.
+            AppError::RateLimited => AppError::signup_rate_limited(
+                &self.state.public_url,
+                crate::state::SIGNUP_RATE_LIMIT_WINDOW_SECS,
+            ),
+            other => other,
+        })?;
+
+        let key = signup_value
+            .get("key")
+            .and_then(Value::as_str)
+            .ok_or_else(|| AppError::Internal("implicit signup returned no key".to_string()))?
+            .to_string();
+        let tenant = self
+            .state
+            .db
+            .find_tenant_by_key_hash(hash_key(&key))
+            .await?
+            .ok_or_else(|| AppError::Internal("implicit signup's tenant vanished".to_string()))?;
+
+        // Technical Considerations: reuse `bind_session_to_created_tenant`
+        // verbatim -- the only new code here is this branch and the
+        // `onboarding` field below. Its own returned (session_bound/usage-
+        // augmented) value is discarded: the response this call actually
+        // returns is the re-dispatched tool's own result, not the signup
+        // envelope.
+        bind_session_to_created_tenant(&self.state, session_id, &ctx.peer, Ok(signup_value)).await?;
+
+        // Requirement 2's own dependency on PRD-mcphost-url-bound-tenants:
+        // mints this tenant's personal URL right away -- the onboarding
+        // note below IS that URL, so it can't wait for a separate
+        // `host.key_rotate` call.
+        let url_secret = crate::auth::generate_url_secret();
+        self.state
+            .db
+            .rotate_tenant_url_secret(tenant.id, hash_key(&url_secret))
+            .await?;
+        let url = format!(
+            "{}/u/{}/mcp",
+            self.state.public_url.trim_end_matches('/'),
+            url_secret
+        );
+
+        tracing::info!(
+            tenant = %tenant.namespace,
+            tool = %name,
+            "implicit tenant created for anonymous call"
+        );
+
+        let mut value = self
+            .dispatch_tenant_tool(&tenant, None, "key", "session", None, name, args)
+            .await?;
+        // Requirement 2 (AC1): the first response's result envelope gains
+        // `onboarding`; requirement 2's second half (AC2) holds by
+        // construction -- this function only ever runs on the call that
+        // just created the tenant, never on a later call on the same
+        // (now session-bound) connection.
+        if let Some(obj) = value.as_object_mut() {
+            obj.insert(
+                "onboarding".to_string(),
+                json!({
+                    "tenant": tenant.namespace,
+                    "url": url,
+                    "note": format!(
+                        "You are now tenant {}. Save this URL as your mcphost server address; \
+                         it is your credential. Call host.key_rotate if it leaks.",
+                        tenant.namespace
+                    ),
+                }),
+            );
+        }
+        Ok(value)
+    }
+
     async fn dispatch_admin_tool(&self, name: &str, args: Value) -> Result<Value, AppError> {
         let result = match name {
             "admin.tenants" => admin::tenants(&self.state, &args).await,
@@ -6671,6 +6803,11 @@ impl McpHostHandler {
 }
 
 impl ServerHandler for McpHostHandler {
+    /// PRD-mcphost-implicit-signup requirement 5: `instructions` used to
+    /// claim a key-less `host.*` call fails `tenant_key_missing` outright.
+    /// That is no longer true on the first such call on a fresh connection
+    /// -- it implicitly signs up instead (requirement 1) -- so the prose
+    /// says that now.
     fn get_info(&self) -> ServerInfo {
         let mut instructions = String::from(
             "Call `signup` with a display name to receive a bearer key. Recommended: pass \
@@ -6685,8 +6822,10 @@ impl ServerHandler for McpHostHandler {
                  already visible in this tools/list, before you have a key. Pass the key \
                  (from signup directly, or from host.redeem) as the `tenant_key` argument on \
                  every call after that; no reconnect and no Authorization header is required. \
-                 A `host.*` call with no `tenant_key` at all fails with `tenant_key_missing`, \
-                 and one that doesn't match any tenant fails with `tenant_key_invalid`. \
+                 A `host.*` call with no `tenant_key` and no Authorization header, on a \
+                 connection that never ran signup, no longer fails `tenant_key_missing` -- it \
+                 implicitly signs that connection up as a new tenant instead; a `tenant_key` \
+                 that doesn't match any tenant still fails `tenant_key_invalid`. \
                  Result envelope contract: \
                  when a spec declares `outputs` (field names its tool emits, or a map from \
                  field name to the exact `$.a.b[0].c`-style path to read it from), each is \
@@ -7283,6 +7422,46 @@ impl ServerHandler for McpHostHandler {
                 let redeemed = control::redeem(&self.state, &raw_args).await;
                 bind_session_to_created_tenant(&self.state, session_id.as_deref(), &ctx.peer, redeemed).await
             }
+            // PRD-mcphost-implicit-signup requirement 1 (AC1): a bare
+            // `host.*`/`billing.*` call with no `Authorization` header, no
+            // `tenant_key` argument, and (since no binding exists yet) no
+            // session binding either -- mints a tenant exactly as `signup`
+            // would, binds it to this session, and re-dispatches this very
+            // call as that tenant, so the caller's first useful call just
+            // works instead of failing `tenant_key_missing` (requirement 4).
+            // Checked after every exempted name above (`signup`,
+            // `host.quickstart`, `billing.plans`, `host.redeem`, all
+            // matched regardless of `auth`) and before the blanket
+            // `tenant_key_missing` arm below, which stays the refusal for
+            // every OTHER anonymous call (a non-`host.`/`billing.` name, or
+            // `admin.*` -- Non-goal: "admin.* never implicit-signs-up").
+            //
+            // Requirement 4's own wording scopes this to "`host.*`/
+            // `billing.*` on `/mcp`" specifically -- `tenant_path_namespace(parts)`
+            // is `Some` only on a `/t/{ns}/mcp` request, which keeps its
+            // pre-existing PRD-mcphost-tenant-resource-metadata contract
+            // (a 401 challenge naming THAT tenant's own metadata, never an
+            // implicit signup for a path that already names a specific,
+            // real tenant). A `/u/{secret}/mcp` request never reaches this
+            // arm at all: an unknown/invalid secret fails inside
+            // `resolve_path_secret_auth` before this match runs, and a
+            // valid one resolves straight to `Auth::Tenant`.
+            (Auth::Anonymous, name)
+                if via_tenant_key_arg
+                    && (name.starts_with("host.") || name.starts_with("billing."))
+                    && tenant_path_namespace(parts).is_none() =>
+            {
+                let dispatch_name = alias_canonical.unwrap_or(name);
+                self.implicit_signup_and_dispatch(
+                    &ctx,
+                    parts,
+                    &source,
+                    session_id.as_deref(),
+                    dispatch_name,
+                    args,
+                )
+                .await
+            }
             // PRD-mcphost-auth-error-names-argument requirement 1-3 /
             // AC1-4: three distinct auth failures now, not one. A header
             // was sent and didn't resolve (`!via_tenant_key_arg`) keeps the
@@ -7295,6 +7474,10 @@ impl ServerHandler for McpHostHandler {
             // the tool name -- never the key itself, which never appears
             // in `body_name` (the requested tool's name, not its
             // arguments).
+            //
+            // PRD-mcphost-implicit-signup requirement 4: no longer reachable
+            // for a `host.*`/`billing.*` name on `/mcp` (the arm above wins
+            // first) -- still the refusal for every other anonymous call.
             (Auth::Anonymous, _) if via_tenant_key_arg => {
                 let err = AppError::TenantKeyMissing;
                 tracing::warn!(code = err.code(), tool = %body_name, "host.* call refused: tenant_key missing");

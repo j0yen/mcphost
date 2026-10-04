@@ -2,6 +2,9 @@
 //! AC2 (P0) — Given the same call with `tenant_key: 12345` (non-string),
 //! When the server responds, Then the numeric code is `-32602` and
 //! `data.error_code` is `tenant_key_missing`.
+//!
+//! PRD-mcphost-implicit-signup: see tkparam_ac01's own note -- `admin.tenants`
+//! is the conduit here too, since a bare `host.*` call implicit-signs-up now.
 
 use crate::common;
 use common::{McpClient, TestServer};
@@ -13,10 +16,7 @@ async fn non_string_tenant_key_is_invalid_params() {
     let client = McpClient::new(&server.base_url);
 
     let err = client
-        .tools_call(
-            "host.tool_publish",
-            json!({"name": "my_tool", "kind": "echo", "spec": {}, "tenant_key": 12345}),
-        )
+        .tools_call("admin.tenants", json!({"tenant_key": 12345}))
         .await
         .expect_err("a non-string tenant_key must be treated as absent");
 

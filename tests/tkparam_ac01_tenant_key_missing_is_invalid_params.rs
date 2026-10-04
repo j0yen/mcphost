@@ -1,9 +1,15 @@
 //! PRD-mcphost-tenant-key-missing-is-invalid-params
-//! AC1 (P0) — Given an argument-only `tools/call` to `host.tool_publish`
-//! with no `Authorization` header and no `tenant_key`, When the server
-//! responds, Then the JSON-RPC error `code` is `-32602` (`INVALID_PARAMS`)
-//! and not `-32600`, `data.error_code` is `tenant_key_missing`, and
-//! `data.docs` is `host.quickstart`.
+//! AC1 (P0) — Given an argument-only `tools/call` with no `Authorization`
+//! header and no `tenant_key`, When the server responds, Then the
+//! JSON-RPC error `code` is `-32602` (`INVALID_PARAMS`) and not `-32600`,
+//! `data.error_code` is `tenant_key_missing`, and `data.docs` is
+//! `host.quickstart`.
+//!
+//! PRD-mcphost-implicit-signup: a bare `host.*` call on `/mcp` with no
+//! `tenant_key` at all now implicitly signs up instead of refusing (see
+//! tests/implsign_ac01_*.rs), so `admin.tenants` -- which never
+//! implicit-signs-up (Non-goal) -- is this test's conduit instead of
+//! `host.tool_publish`.
 
 use crate::common;
 use common::{McpClient, TestServer};
@@ -16,10 +22,7 @@ async fn missing_tenant_key_is_invalid_params_not_invalid_request() {
     let client = McpClient::new(&server.base_url);
 
     let err = client
-        .tools_call(
-            "host.tool_publish",
-            json!({"name": "my_tool", "kind": "echo", "spec": {}}),
-        )
+        .tools_call("admin.tenants", json!({}))
         .await
         .expect_err("a call with no tenant_key at all must be refused");
 

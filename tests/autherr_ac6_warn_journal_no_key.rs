@@ -51,8 +51,14 @@ async fn warn_line_carries_code_and_tool_but_never_the_key() {
 
     // Missing tenant_key on one tool, an unrecognized one on another --
     // exercise both new WARN sites.
+    //
+    // PRD-mcphost-implicit-signup: a bare host.* call with no tenant_key at
+    // all now implicitly signs up instead of refusing (see
+    // tests/implsign_ac01_*.rs), so `admin.tenants` -- which never
+    // implicit-signs-up (Non-goal) -- is the conduit for the
+    // missing-tenant_key WARN line instead of `host.tool_list`.
     client
-        .tools_call("host.tool_list", serde_json::json!({}))
+        .tools_call("admin.tenants", serde_json::json!({}))
         .await
         .expect_err("missing tenant_key must be refused");
     client
@@ -71,7 +77,7 @@ async fn warn_line_carries_code_and_tool_but_never_the_key() {
         "expected at least one WARN line: {captured}"
     );
     assert!(
-        captured.contains("tenant_key_missing") && captured.contains("host.tool_list"),
+        captured.contains("tenant_key_missing") && captured.contains("admin.tenants"),
         "WARN line for the missing-key call must carry its code and tool name: {captured}"
     );
     assert!(

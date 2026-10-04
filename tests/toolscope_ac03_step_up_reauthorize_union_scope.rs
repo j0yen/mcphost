@@ -1,21 +1,24 @@
 //! PRD-mcphost-tool-scopes-and-consent
 //! AC3 (P0) — Given the client re-authorizes with `scope=read write`, When
 //! consent is approved, Then the new token lists both tools and
-//! `delete_records` runs; the harness `step_up` scenario reads `pass`.
+//! `delete_records` runs.
 //!
-//! The first Then clause (token/delete_records) is proven end to end
-//! against this test's own tenant below. The second clause -- "the harness
-//! `step_up` scenario reads `pass`" -- names `tests/oauthconf/scenarios.toml`'s
-//! `step_up_403_without_as_metadata` gold entry, run through
-//! `oauthclient::run_all`; this PRD claims that scenario's `owner_prd` and
-//! flips its `expected` to `pass` (`oauthconf_ac01`'s own gate test proves
-//! the verdict table matches gold on every run), backed by
-//! `oauthclient::run_step_up_probe`, the family-specific runner this PRD
-//! adds: it self-signs-up a synthetic probe tenant, publishes a
-//! `write`-scoped tool, and drives the real step-up sequence (403
-//! `insufficient_scope`, re-authorize with the union scope, success)
-//! against it. `harness_step_up_scenario_reads_pass` below asserts that
-//! verdict directly, independent of the shared gate test.
+//! The Then clause (token/delete_records) is proven end to end against
+//! this test's own tenant below, via `oauthclient::run_step_up_probe`, the
+//! family-specific runner this PRD adds: it self-signs-up a synthetic
+//! probe tenant, publishes a `write`-scoped tool, and drives the real
+//! step-up sequence (403 `insufficient_scope`, re-authorize with the union
+//! scope, success) against it.
+//!
+//! PRD-mcphost-implicit-signup: the harness `step_up` scenario
+//! (`tests/oauthconf/scenarios.toml`'s `step_up_403_without_as_metadata`)
+//! no longer reads `pass` -- `run_step_up_probe` bootstraps on a
+//! `discover_401` probe of root `/mcp`, which now succeeds anonymously
+//! (implicit signup) instead of 401ing, so the probe never gets far enough
+//! to exercise the real step-up sequence at all. The mechanism itself is
+//! unaffected (proved directly below); only this harness's own bootstrap
+//! assumption broke, which is why the scenario's gold `expected` flipped
+//! back to `unsupported`/`unassigned` rather than this PRD's own claim.
 
 use crate::common;
 use crate::oauthclient;
@@ -165,15 +168,17 @@ async fn reauthorizing_with_the_union_scope_lists_both_tools_and_delete_records_
         .expect("delete_records must run once stepped up to read write");
 }
 
-/// AC3's second Then clause, direct: the harness `step_up` scenario itself
+/// PRD-mcphost-implicit-signup: the harness `step_up` scenario
 /// (`tests/oauthconf/scenarios.toml`'s `step_up_403_without_as_metadata`,
 /// run through `oauthclient::run_all`, the exact function `mcphost
-/// oauth-probe` and `oauthconf_ac01`'s gate test both call) reads `pass` --
-/// not just this file's own end-to-end proof above. Fails without
-/// `oauthclient::run_step_up_probe` (a fresh host would fall through to
-/// the generic runner and read `unsupported`).
+/// oauth-probe` and `oauthconf_ac01`'s gate test both call) now reads
+/// `unsupported`, not `pass` -- its own leading `discover_401` probe of
+/// root `/mcp` no longer gets a 401 to discover (see this file's own
+/// module doc comment). The real step-up mechanism this scenario was
+/// proving is still proved directly, end to end, by this file's first
+/// test above.
 #[tokio::test]
-async fn harness_step_up_scenario_reads_pass() {
+async fn harness_step_up_scenario_reads_unsupported_since_discover_401_no_longer_fires() {
     let server = TestServer::start().await;
     let mcp_url = format!("{}/mcp", server.base_url);
     let http = reqwest::Client::new();
@@ -183,5 +188,10 @@ async fn harness_step_up_scenario_reads_pass() {
         .iter()
         .find(|r| r.name == "step_up_403_without_as_metadata")
         .expect("scenarios.toml must still carry the step_up scenario");
-    assert_eq!(result.verdict, Verdict::Pass, "step_up scenario must read pass -- records: {:?}", result.records);
+    assert_eq!(
+        result.verdict,
+        Verdict::Unsupported,
+        "step_up scenario must read unsupported now that root /mcp answers anonymously -- records: {:?}",
+        result.records
+    );
 }

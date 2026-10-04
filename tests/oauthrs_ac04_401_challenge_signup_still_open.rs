@@ -3,9 +3,20 @@
 //! neither key nor bearer over streamable HTTP, Then the response is 401
 //! with a `WWW-Authenticate` header naming the metadata URL; `signup`
 //! without credentials still succeeds.
+//!
+//! PRD-mcphost-implicit-signup: the first Then clause no longer holds on
+//! bare `/mcp` -- a `host.*` call with no credential at all now implicitly
+//! signs up and runs as the new tenant instead of 401ing (requirement 4's
+//! own "no longer reachable for host.*/billing.* on /mcp" -- see
+//! tests/implsign_ac01_*.rs). The identical 401/WWW-Authenticate contract
+//! for a real tenant's own `/t/{ns}/mcp` path is untouched (this PRD scopes
+//! the implicit-signup branch to bare `/mcp` only) -- see
+//! tests/tenantprm_ac04_401_challenge_names_tenant_or_root_metadata.rs's
+//! `no_credential_on_tenant_path_names_the_tenant_metadata_url`, which
+//! still passes unchanged.
 
 use crate::common;
-use common::{McpClient, TestServer};
+use common::{McpClient, TestServer, parse_response_body};
 use serde_json::json;
 
 async fn bare_call(client: &McpClient, name: &str, args: serde_json::Value) -> reqwest::Response {
@@ -23,28 +34,31 @@ async fn bare_call(client: &McpClient, name: &str, args: serde_json::Value) -> r
 }
 
 #[tokio::test]
-async fn no_credential_gets_401_with_www_authenticate_naming_the_metadata_url() {
+async fn no_credential_on_root_now_implicitly_signs_up_instead_of_401ing() {
     let server = TestServer::start().await;
     let client = McpClient::new(&server.base_url);
 
     let resp = bare_call(&client, "host.state.get", json!({"key": "k"})).await;
-    assert_eq!(resp.status(), reqwest::StatusCode::UNAUTHORIZED);
-
-    let expected_url = format!("{}/.well-known/oauth-protected-resource", server.base_url);
-    let header = resp
-        .headers()
-        .get(reqwest::header::WWW_AUTHENTICATE)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or_default()
-        .to_string();
-    assert!(header.starts_with("Bearer "), "WWW-Authenticate must be a Bearer challenge: {header}");
+    assert_eq!(resp.status(), reqwest::StatusCode::OK, "a bare host.* call on /mcp now succeeds");
     assert!(
-        header.contains(&format!("resource_metadata=\"{expected_url}\"")),
-        "WWW-Authenticate must name the metadata URL: {header}"
+        resp.headers().get(reqwest::header::WWW_AUTHENTICATE).is_none(),
+        "a successful call must carry no WWW-Authenticate challenge"
     );
 
-    let body: serde_json::Value = resp.json().await.expect("parse error body");
-    assert_eq!(body["error"]["data"]["error_code"], json!("tenant_key_missing"));
+    // PRD-mcphost-implicit-signup: this call binds the session, upgrading
+    // the response to text/event-stream -- see parse_response_body's doc.
+    let body = parse_response_body(resp).await;
+    assert!(body.get("error").is_none(), "must not error: {body:?}");
+    let result = &body["result"];
+    let structured = result
+        .get("structuredContent")
+        .cloned()
+        .unwrap_or_else(|| result.clone());
+    assert_eq!(structured["found"], json!(false), "a fresh implicit tenant has never set key 'k'");
+    assert!(
+        structured.get("onboarding").is_some(),
+        "the call that created the implicit tenant must carry onboarding: {structured}"
+    );
 }
 
 #[tokio::test]

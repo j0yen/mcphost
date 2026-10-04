@@ -3,6 +3,9 @@
 //! contains `field` equal to `"tenant_key"`, `expected` containing both the
 //! substring `signup` and the substring `Authorization: Bearer`, and
 //! `example` a string.
+//!
+//! PRD-mcphost-implicit-signup: see tkparam_ac01's own note -- `admin.tenants`
+//! is the conduit here too, since a bare `host.*` call implicit-signs-up now.
 
 use crate::common;
 use common::{McpClient, TestServer};
@@ -14,10 +17,7 @@ async fn tenant_key_missing_data_names_field_expected_and_example() {
     let client = McpClient::new(&server.base_url);
 
     let err = client
-        .tools_call(
-            "host.tool_publish",
-            json!({"name": "my_tool", "kind": "echo", "spec": {}}),
-        )
+        .tools_call("admin.tenants", json!({}))
         .await
         .expect_err("a call with no tenant_key at all must be refused");
 

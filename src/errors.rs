@@ -526,8 +526,13 @@ impl AppError {
                 // 3/11 (AC6, AC10): the same caller-state-gate class as
                 // `rate_limited`/`banned` above -- never a bad argument,
                 // never an internal failure.
-                "rate_limited" | "signup_paused" | "banned" | "insufficient_scope"
-                | "invite_invalid" | "invite_rate_limited" => ErrorCode::INVALID_REQUEST,
+                // PRD-mcphost-implicit-signup requirement 3: the implicit-
+                // signup path's own rate-limit refusal is the same
+                // caller-state gate as `rate_limited` right above it.
+                "rate_limited" | "signup_rate_limited" | "signup_paused" | "banned"
+                | "insufficient_scope" | "invite_invalid" | "invite_rate_limited" => {
+                    ErrorCode::INVALID_REQUEST
+                }
                 // PRD-mcphost-invite-links requirement 1 (AC7): the same
                 // caller-input-quota class as `state_quota_exceeded` above.
                 "invites_quota_exceeded" => ErrorCode::INVALID_PARAMS,
@@ -1300,6 +1305,24 @@ impl AppError {
             code: "signup_paused",
             message,
             data: json!({"retry_after_secs": retry_after_secs}),
+        }
+    }
+
+    /// PRD-mcphost-implicit-signup requirement 3 (AC3): the implicit-signup
+    /// path's own rate-limit refusal -- a distinct code from the explicit
+    /// `signup` tool's plain [`Self::RateLimited`], since an anonymous
+    /// `host.*`/`billing.*` call that trips the limiter never asked to sign
+    /// up at all. `data.help` points at the human `/u/new` page and
+    /// `data.retry_after_s` is the limiter's own rolling window -- the
+    /// caller's own best current estimate of when a slot frees up again.
+    pub fn signup_rate_limited(public_url: &str, retry_after_s: i64) -> Self {
+        AppError::Structured {
+            code: "signup_rate_limited",
+            message: "too many tenants created from this address in the last hour".to_string(),
+            data: json!({
+                "help": format!("{}/u/new", public_url.trim_end_matches('/')),
+                "retry_after_s": retry_after_s,
+            }),
         }
     }
 

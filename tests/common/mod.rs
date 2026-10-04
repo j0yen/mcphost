@@ -1553,6 +1553,39 @@ pub fn parse_sse_messages(text: &str) -> Vec<Value> {
         .collect()
 }
 
+/// PRD-mcphost-implicit-signup: a bare call that implicitly signs up now
+/// binds the session and emits `notifications/tools/list_changed` before
+/// its own result, same as `signup`/`host.redeem` always have -- which
+/// upgrades the response from plain `application/json` to
+/// `text/event-stream` (see [`McpClient::call_with_extra_header`]'s own
+/// comment on the same thing). A raw [`reqwest::Response`] obtained via
+/// [`McpClient::post_with_mcp_name_override`]/[`McpClient::post_raw`] must
+/// branch on `Content-Type` the same way that helper does instead of
+/// assuming plain JSON, or parsing panics on an implicitly-signed-up call's
+/// response. The real JSON-RPC message is always the last one on the wire.
+pub async fn parse_response_body(resp: reqwest::Response) -> Value {
+    let status = resp.status();
+    let content_type = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
+    if content_type.starts_with("text/event-stream") {
+        let text = resp
+            .text()
+            .await
+            .unwrap_or_else(|e| panic!("read SSE body ({status}): {e}"));
+        parse_sse_messages(&text)
+            .pop()
+            .unwrap_or_else(|| panic!("SSE body carried no JSON-RPC message: {text}"))
+    } else {
+        resp.json()
+            .await
+            .unwrap_or_else(|e| panic!("parse response body ({status}): {e}"))
+    }
+}
+
 /// `CallToolResult::structured` puts the value in `structuredContent`;
 /// fall back to parsing the first text content block for safety.
 pub fn extract_structured(call_result: &Value) -> Value {
