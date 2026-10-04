@@ -1,8 +1,14 @@
 //! PRD-mcphost-session-bound-tenant-after-signup
-//! AC7 (P0) — Given two concurrent sessions, When session A signs up and
-//! session B (never signed up) calls without a key at the same time, Then A's
-//! calls succeed and B is refused with `tenant_key_missing`; no binding leaks
-//! across sessions.
+//! AC7 (P0, as landed) — Given two concurrent sessions, When session A
+//! signs up and session B (never signed up) calls without a key at the
+//! same time, Then A's calls succeed and B is refused with
+//! `tenant_key_missing`; no binding leaks across sessions.
+//!
+//! PRD-mcphost-implicit-signup: B's key-less call no longer refuses -- it
+//! implicitly signs B up as its own new tenant instead (requirement 4).
+//! The real invariant this AC exists to prove -- no binding leaks across
+//! sessions, B never resolves to A's tenant -- still holds and is what
+//! this file now checks instead.
 
 use crate::common;
 use common::{McpClient, TestServer, extract_structured};
@@ -40,12 +46,12 @@ async fn a_signs_up_and_succeeds_while_b_is_refused_at_the_same_time() {
         "A must run as the tenant its own session created: {a_result}"
     );
 
-    let b_err = b_result.expect_err("B never signed up, so its key-less call must be refused");
-    assert_eq!(
-        b_err.error_code.as_deref(),
-        Some("tenant_key_missing"),
-        "B must get the unchanged anonymous refusal, never A's tenant: {b_err:?}"
-    );
+    let b_result = b_result.expect("B never signed up, but its key-less call now implicitly signs it up");
+    let b_ns = extract_structured(&b_result)["tenant"]
+        .as_str()
+        .expect("B's own implicit namespace")
+        .to_string();
+    assert_ne!(b_ns, a_ns, "B must run as its OWN implicit tenant, never A's: {b_result}");
 
     assert_ne!(
         a.session_id(),
@@ -54,17 +60,25 @@ async fn a_signs_up_and_succeeds_while_b_is_refused_at_the_same_time() {
     );
     assert_eq!(
         server.state.session_bindings.len(),
-        1,
-        "only the session that actually signed up may hold a binding"
+        2,
+        "both sessions now hold a binding -- A's own signup, B's own implicit signup"
     );
 
-    // And B still cannot reach A's tenant after the fact, even having seen
-    // A's namespace go by.
+    // And B still resolves to its OWN tenant afterward, never A's, even
+    // having seen A's namespace go by.
     let b_again = b
         .tools_call("host.catalog.search", json!({}))
         .await
-        .expect_err("B stays anonymous for every later call too");
-    assert_eq!(b_again.error_code.as_deref(), Some("tenant_key_missing"), "{b_again:?}");
+        .expect("B's session is now bound to its own implicit tenant");
+    assert_eq!(
+        extract_structured(&b_again).get("onboarding"),
+        None,
+        "a later call on B's now-bound session must carry no onboarding: {b_again}"
+    );
+    let b_whoami = extract_structured(
+        &b.tools_call("host.whoami", json!({})).await.expect("host.whoami"),
+    );
+    assert_eq!(b_whoami["tenant"].as_str(), Some(b_ns.as_str()), "{b_whoami}");
 }
 
 /// The same isolation under real contention: eight sessions sign up at once

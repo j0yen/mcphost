@@ -1,8 +1,15 @@
 //! PRD-mcphost-session-bound-tenant-after-signup
-//! AC9 (P0) — Given a bound session whose tenant the operator disables, When
-//! it calls without a key, Then the response is `TenantDisabled`'s existing
-//! error and a following call on the same session returns
-//! `tenant_key_missing` (binding dropped).
+//! AC9 (P0, as landed) — Given a bound session whose tenant the operator
+//! disables, When it calls without a key, Then the response is
+//! `TenantDisabled`'s existing error and a following call on the same
+//! session returns `tenant_key_missing` (binding dropped).
+//!
+//! PRD-mcphost-implicit-signup: the dropped-binding half no longer reads
+//! `tenant_key_missing` -- that next key-less call on the (now unbound
+//! again) session implicitly signs up a brand-new tenant instead
+//! (requirement 4). The real invariant -- a dropped binding never
+//! resurrects the disabled tenant -- still holds: the session now simply
+//! runs as a DIFFERENT, fresh implicit tenant from that point on.
 
 use crate::common;
 use common::{ADMIN_KEY, McpClient, TestServer, extract_structured};
@@ -54,26 +61,34 @@ async fn disabling_the_bound_tenant_surfaces_tenant_disabled_then_drops_the_bind
         0,
         "the binding must be dropped, not left pointing at a disabled tenant"
     );
-    let next = session
-        .tools_call("host.whoami", json!({}))
-        .await
-        .expect_err("the next call on the same session must be anonymous again");
-    assert_eq!(
-        next.error_code.as_deref(),
-        Some("tenant_key_missing"),
-        "AC9's second half: binding dropped, so this reads exactly like a never-bound session: {next:?}"
+    let next = extract_structured(
+        &session
+            .tools_call("host.whoami", json!({}))
+            .await
+            .expect("the next call on the same session now implicitly signs up a fresh tenant"),
+    );
+    let fresh_namespace = next["tenant"].as_str().expect("fresh namespace").to_string();
+    assert_ne!(
+        fresh_namespace, namespace,
+        "AC9's second half: the dropped binding must never resurrect the disabled tenant: {next}"
     );
 
-    // Re-enabling does not resurrect the dropped binding -- a binding is
-    // only ever created by a signup/redeem on the session itself
-    // (requirement 5).
+    // Re-enabling the ORIGINAL (now-abandoned) tenant does not resurrect
+    // it on this session either -- a binding is only ever created by a
+    // signup/redeem/implicit-signup on the session itself (requirement 5).
     McpClient::with_bearer(&server.base_url, ADMIN_KEY)
         .tools_call("admin.tenant_enable", json!({"tenant": namespace}))
         .await
         .expect("admin.tenant_enable");
-    let after_enable = session
-        .tools_call("host.whoami", json!({}))
-        .await
-        .expect_err("a dropped binding must stay dropped");
-    assert_eq!(after_enable.error_code.as_deref(), Some("tenant_key_missing"), "{after_enable:?}");
+    let after_enable = extract_structured(
+        &session
+            .tools_call("host.whoami", json!({}))
+            .await
+            .expect("the session stays bound to its fresh implicit tenant"),
+    );
+    assert_eq!(
+        after_enable["tenant"].as_str(),
+        Some(fresh_namespace.as_str()),
+        "re-enabling the original tenant must not resurrect it on this session: {after_enable}"
+    );
 }

@@ -2,8 +2,8 @@
 //! AC9 (P2) — Given `tools/list` from an anonymous connection, When the
 //! `tenant_key` property of each of the six tools' `inputSchema` is read,
 //! Then `tenant_key` is absent from every `required` array, and its
-//! `description` contains both `Authorization: Bearer` and
-//! `tenant_key_missing`.
+//! `description` contains both `Authorization: Bearer` and a statement of
+//! what omitting it does.
 //!
 //! PRD-mcphost-one-next-tool requirement 1 narrowed an anonymous
 //! `tools/list` to a twelve-tool starter set that excludes four of these
@@ -12,6 +12,11 @@
 //! that PRD's own migration note ("switched to authenticated sessions"):
 //! `host_schema`'s generated `tenant_key` property (what this test actually
 //! proves) is identical regardless of auth state.
+//!
+//! PRD-mcphost-implicit-signup requirement 5: omitting `tenant_key` on a
+//! connection with no header and no prior signup no longer returns
+//! `tenant_key_missing` -- it implicitly signs that connection up
+//! (requirement 1), and the description now says that instead.
 
 use crate::common;
 use common::{McpClient, TestServer, signup};
@@ -57,8 +62,9 @@ async fn tenant_key_is_optional_and_self_documenting_on_every_tool() {
             "{name}: tenant_key description must mention Authorization: Bearer: {description}"
         );
         assert!(
-            description.contains("tenant_key_missing"),
-            "{name}: tenant_key description must mention tenant_key_missing: {description}"
+            description.contains("implicitly signs that connection up"),
+            "{name}: tenant_key description must state what omitting it on a bare \
+             connection now does: {description}"
         );
     }
 }

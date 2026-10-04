@@ -1,113 +1,80 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-invite-links.md",
-  "intent_slug": "mcphost-invite-links",
-  "root_motivation": "A tenant owner who wants a friend to use their tool has to run a relay protocol across two humans and two agents: five steps, two of them out of band, and a per-IP signup cap that fails a group of friends in one room. Grounding incident: Joe 2026-10-01 asked \"how can I share this new mcp server with friends?\" and the best available answer was signup(handoff: true) -> host.redeem -> carry tenant_key -> host.whoami -> paste a tenant id -> Joe runs host.tool_share/host.share_caller_limit per friend. mcphost already has every primitive an invite link needs (path-authenticated routes, session binding, shares by tenant id, consent rows, one-time claim tokens) and no link.",
-  "user_persona": "Joe, a tenant owner who wants to text one URL to a friend so their agent can read a shared tool with no other step; the friend's agent, which pastes the URL and keeps the tenant it is handed; five friends on one wifi joining the same invite within an hour; an agent relaying a shared-tool result to another agent, which needs its own invite link in hand without a second call.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-implicit-signup.md",
+  "intent_slug": "mcphost-implicit-signup",
+  "root_motivation": "Joe 2026-10-01, 'we have to make this much simpler': the bare `claude mcp add --transport http mcphost https://mcphost.dev/mcp` snippet leaves the agent on a connection where every host.* call fails tenant_key_missing until a human relays signup/tenant_key by hand. Three of the four homepage snippets produce exactly this dead connection, and the 30.7s signup-to-publish median never starts for an agent nobody coached. Every other hosted MCP hands the client a working endpoint on first contact, so an uncoached first failure reads as broken, not unauthenticated. Session binding after signup already exists (PRD-mcphost-session-bound-tenant-after-signup); the only missing piece is making that binding happen without the agent asking, reusing signup's own limiter/kill-switch/fleet-IP classification as the abuse control.",
+  "user_persona": "An agent operator who configures the bare endpoint with one claude mcp add line and expects it to just work; a person who never wants to learn what tenant_key means; the operator who needs implicit tenants to carry source: implicit and obey the same per-IP limiter and pause file as explicit signup, so a crawler cannot mint unlimited tenants.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 12
+    "target": 7
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given inviter tenant A with a published tool t, When A calls host.invite.create share=[\"t\"], Then the result has a url of the form /i/<code>/mcp, max_uses: 10, expires_at 30 days out, and host.invite.list shows it with uses: 0.",
-      "test": "tests/invite_ac01_create_returns_url_and_list_shows_zero_uses.rs"
+      "description": "Given a fresh streamable-HTTP session on /mcp with no header, When host.tool_publish is called with a valid echo spec, Then the tool is published under a new tenant, the result carries onboarding.url and onboarding.tenant, and host.whoami on the same session returns that tenant with source: \"implicit\".",
+      "test": "tests/implsign_ac01_bare_call_creates_implicit_tenant_with_onboarding.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given that URL, When a fresh session POSTs tools/call host.tool_call {name: \"<A ns>.t\"} with no header, Then a new tenant B is created with source: \"invite:<code>\", the call succeeds, the response carries onboarding.url, onboarding.invited_by, and onboarding.shared_tools: [\"t\"], and uses is 1.",
-      "test": "tests/invite_ac02_first_call_creates_tenant_with_onboarding.rs"
+      "description": "Given the same session, When a second host.* call runs, Then its result carries no onboarding field.",
+      "test": "tests/implsign_ac02_second_call_carries_no_onboarding.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given tenant B, When host.agent.contacts is called from A and from B, Then each lists the other as accepted with via: \"invite:<code>\", and host.usage by=caller tool=t on A shows B's call.",
-      "test": "tests/invite_ac03_contacts_accepted_both_ways_and_usage_shows_call.rs"
+      "description": "Given one IP that has created the limiter's maximum tenants this hour, When an anonymous host.* call arrives, Then the error class is signup_rate_limited, data.help ends in /u/new, data.retry_after_s is present, and no tenant or tool was created.",
+      "test": "tests/implsign_ac03_rate_limit_refuses_with_help_and_retry.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given an invite with max_uses: 2 and two concurrent first calls from two fresh sessions plus a third, When they race, Then exactly two tenants are created and the third receives invite_invalid.",
-      "test": "tests/invite_ac04_race_for_last_slot_yields_exactly_max_uses.rs"
+      "description": "Given the signup pause file is present, When an anonymous host.* call arrives, Then signup_paused is returned within 1s and nothing is created.",
+      "test": "tests/implsign_ac04_pause_file_refuses_within_1s.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a revoked or expired code, When any request hits /i/<code>/mcp, Then HTTP 404 invite_invalid, the browser page reveals no inviter identity, and existing invitees' shares still work.",
-      "test": "tests/invite_ac05_revoked_or_expired_404_no_identity_leak_existing_still_work.rs"
+      "description": "Given an anonymous session, When tools/list, initialize, signup, host.redeem, host.quickstart, or billing.plans are called, Then no tenant is created.",
+      "test": "tests/implsign_ac05_pre_existing_anonymous_tools_create_no_tenant.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given six fresh sessions from one IP joining via one invite within an hour, When each makes its first call, Then all six succeed (per-code limiter, not per-IP) and a 21st within the hour is refused with invite_rate_limited.",
-      "test": "tests/invite_ac06_per_code_limiter_not_per_ip.rs"
+      "description": "Given a request with an unknown tenant_key, When dispatched, Then tenant_key_invalid is returned and no tenant is created.",
+      "test": "tests/implsign_ac06_unknown_tenant_key_stays_invalid.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given a free-plan tenant with 3 live invites already created, When it calls host.invite.create again, Then it is refused with invites_quota_exceeded; When one existing invite is revoked, Then a new create succeeds.",
-      "test": "tests/invite_ac07_free_plan_invites_max_and_revoke_frees_slot.rs"
+      "description": "Given the synthorg journey and tool-surface conformance harnesses at the landing commit, When run against a build of this PRD, Then no assertion expects tenant_key_missing on /mcp and both runs are green on the fixture host (both harnesses live in ~/repos/synthorg and run hermetically against their own in-process fixture host; this repo pins the behavioral contract they assert).",
+      "test": "tests/implsign_ac07_no_bare_call_ever_returns_tenant_key_missing.rs (in-repo); cross-repo fix + test run recorded in docs/receipts/implsign-ac07-synthorg-cross-repo.md and agent/test-map.json"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Live/production deployment evidence that invite-created tenants and standing invites behave correctly against prod.",
-      "test": "deferred -- operator-provisioned: Live/prod deployment evidence; needs a real deploy and operator authorization this coding sandbox does not have."
-    },
-    {
-      "id": "AC9",
-      "level": "MUST",
-      "description": "Every tenant is born with a standing invite (kind: \"standing\", no expiry, no max_uses, share: []); host.whoami returns invite_url; the standing invite does not count toward the live-invites cap.",
-      "test": "tests/invite_ac09_standing_invite_present_at_whoami_not_counted.rs"
-    },
-    {
-      "id": "AC10",
-      "level": "MUST",
-      "description": "Standing invites are rate-limited per code (20 creations/hour) and per inviter (100/day); host.invite.revoke on a standing invite rotates it (a new URL is issued) rather than deleting it.",
-      "test": "tests/invite_ac10_standing_invite_rate_limit_and_revoke_rotates.rs"
-    },
-    {
-      "id": "AC11",
-      "level": "MUST",
-      "description": "host.agent.lookup returns invited_by and invitees_count for a tenant's lineage; host.usage gains invites: {sent_7d, accepted_7d, k}.",
-      "test": "tests/invite_ac11_lineage_chain_lookup_and_usage_k.rs"
-    },
-    {
-      "id": "AC12",
-      "level": "MUST",
-      "description": "Shares are one hop: tools shared to an invitee by an invite are visible to that invitee only; an invitee's own standing invite shares nothing by default, and an invitee cannot re-share a tool it does not own, across an invite chain of depth 3.",
-      "test": "tests/invite_ac12_shares_are_one_hop_across_a_depth_3_chain.rs"
-    },
-    {
-      "id": "AC13",
-      "level": "MUST",
-      "description": "The result of a shared-tool call made by an invitee carries _meta.invite_url of the invitee's own standing invite once per session (first shared call only).",
-      "test": "tests/invite_ac13_meta_invite_url_hint_once_per_session.rs"
+      "description": "Given the landed binary deployed on prod, When a fresh Claude Code session configured only with the bare claude mcp add line is asked to publish an echo tool with no other instruction, Then the publish succeeds, the transcript shows onboarding.url, and host.usage shows the publish as the new tenant's first metered call.",
+      "test": "deferred -- operator-provisioned: Live, a landed binary deployed on prod and a real agent's unattended implicit signup against it, with the session transcript pasted into the PRD's evidence block by the operator; needs a real deploy this coding sandbox does not have."
     }
   ],
   "scope": [
-    "src/invites.rs (new): host.invite.create/list/revoke business logic, invite_url, invite_path_code, claim_on_first_call (the narrow implicit-signup-on-/i/{code}/mcp mechanism), mint_standing_invite, InviteHintTracker (once-per-session _meta.invite_url hint).",
-    "src/db.rs: invites/invite_joins tables (migrations/0067_invite_links.sql, 0068_standing_invite_code.sql), InviteRow/ClaimedInvite/InvitesUsage7d, is_live vs is_connectable liveness split, create_invite/claim_invite (atomic BEGIN IMMEDIATE transaction)/revoke_invite/list_invites_for_tenant/invite_lineage/invites_usage_7d, tenants.invited_by_tenant_id, contacts.via.",
-    "src/handler.rs: host.invite.create/list/revoke Tool descriptors and dispatch arms; call_tool's Auth::Anonymous + /i/{code}/mcp claim gate; _meta.invite_url hint attachment alongside the existing alias-deprecation _meta.",
-    "src/http.rs: require_live_invite_code middleware and the /i/{code}/mcp router (mirrors require_known_url_secret/url_mcp_router).",
-    "src/control.rs: signup() mints a standing invite at tenant birth; whoami() returns invite_url; usage() returns invites: {sent_7d, accepted_7d, k}.",
-    "src/agents.rs: lookup() returns invited_by/invitees_count.",
-    "src/plans.rs: Plan.invites_max (free=3, pro=25).",
-    "src/errors.rs: invites_quota_exceeded, invite_invalid, invite_rate_limited.",
-    "src/state.rs: AppState.invite_hints: InviteHintTracker.",
-    "Necessary fallout (registry grew by 3 tools, no removals): docs/tools.md, www/llms.txt, contracts/host-tools.v1.json regenerated; tests/toolname_ac08_tools_list_counts_updated.rs and tests/compat_ac04_ac05_admin_and_tenant_cache_fields.rs tool-count literals updated 175->178; tests/callerusage_ac06_no_by_shape_unchanged.rs's host.usage no-by field set gained \"invites\"."
+    "src/handler.rs: a new (Auth::Anonymous, name) match arm in call_tool guarded on host.*/billing.* and tenant_path_namespace(parts).is_none() (bare /mcp only, never /t/{ns}/mcp); implicit_signup_and_dispatch (calls control::signup with source: \"implicit\", binds the session via bind_session_to_created_tenant verbatim, mints the tenant's /u/{secret}/mcp URL, re-dispatches the triggering call, attaches onboarding to that one response); host_schema's tenant_key description, host.quickstart's unauthenticated note (control.rs), and get_info's instructions rewritten to describe implicit signup instead of a tenant_key_missing refusal.",
+    "src/errors.rs: AppError::signup_rate_limited (distinct Structured code from the explicit signup tool's RateLimited, with data.help ending /u/new and data.retry_after_s) and its jsonrpc_code mapping.",
+    "src/control.rs: whoami()'s json response gains \"source\": tenant.signup_source.",
+    "tests/implsign_ac01..07_*.rs (new, test_prefix implsign); tests/common/mod.rs gains parse_response_body (a bare call that implicitly signs up now binds the session and upgrades the response to text/event-stream, same as signup/host.redeem).",
+    "~19 pre-existing tests updated to the new anonymous-call behavior per the PRD's own Migration/compatibility note: autherr_ac1/ac6, tkparam_ac01/02/03/06/07/09, tooltest_ac9_ac10, oauthrs_ac04, tenantprm_ac04, sessbind_ac01/02/03/07/08/09/10/12, oauthconf's scenarios.toml + docs/oauth-scenarios.md (prm_root_discovery, step_up_403_without_as_metadata flipped to gold-unsupported) and their dependent harness tests oauthconf_ac01/toolscope_ac03.",
+    "contracts/host-tools.v1.json regenerated via `mcphost contract dump`; CHANGELOG.md, Cargo.toml/Cargo.lock, plugin/.claude-plugin/plugin.json, plugin/.mcp.json version bump 0.81.0 -> 0.82.0; agent/test-map.json ac_test_map refreshed to implsign, prior toolname map archived under ac_test_map_by_prefix."
   ],
   "non_goals": [
-    "Inviting into an existing tenant (multi-user tenants); every invitee is a new tenant.",
-    "Human account linking or billing attachment for invitees (/claim unchanged).",
-    "Wildcard public shares; invites are targeted.",
-    "Requirement 8 (www/index.html \"Invite a friend\" section) and requirement 9 (invite-carries-a-channel) -- P1/P2, no AC in this dispatch's assigned list.",
-    "AC8 (prod/live deployment evidence) -- operator-provisioned, not reachable from this coding sandbox."
+    "Changing what truly anonymous calls to signup, host.redeem, host.quickstart, or billing.plans do -- they stay unauthenticated (PRD Non-goals).",
+    "Creating tenants on tools/list or initialize (PRD Non-goals).",
+    "admin.* implicit-signing-up anything, ever (PRD Non-goals).",
+    "Requirement 6's created_by_call field and requirement 7 (renamable implicit name via host.agent.profile_set) and requirement 8 (admin.signup_stats source:implicit breakdown) -- P1/P2 requirements with no AC in this dispatch's assigned list; only the source:\"implicit\" half of requirement 6 that AC1 actually asserts is in scope.",
+    "AC8 (prod live walkthrough) -- operator-provisioned, not reachable from this coding sandbox.",
+    "www/llms.txt step 1 rewrite -- no AC or test pins this file's prose against tenant_key_missing; left untouched rather than edited speculatively."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -116,50 +83,49 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "test_file_names_use_test_prefix_invite": "test_prefix invite (the PRD's own frontmatter field): tests/invite_ac<NN>_<slug>.rs, same convention as every other test file in this repo.",
-      "build_version_bump": "minor (the PRD's own frontmatter field)."
+      "test_file_names_use_test_prefix_implsign": "test_prefix implsign (the PRD's own frontmatter field): tests/implsign_ac<NN>_<slug>.rs, same convention as every other test file in this repo."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why build claim_on_first_call as a route-scoped mechanism in src/invites.rs rather than a crate-wide 'anonymous call implicit-signs-up' feature?",
-      "a": "This PRD's own Depends-on names PRD-mcphost-implicit-signup's mechanism, but no generic anonymous-call-creates-a-tenant path exists anywhere else in handler.rs; building it crate-wide would be new surface no other route asks for. Scoping it to Auth::Anonymous on /i/{code}/mcp is the minimal mechanism that satisfies requirement 2, and Db::claim_invite binds the session before returning so every later call on that session resolves through the ordinary session-binding step instead (requirement 6)."
+      "q": "Why call the existing control::signup() rather than writing new tenant-creation logic for the implicit path?",
+      "a": "Technical Considerations is explicit: the per-IP limiter is the single choke point and this PRD adds no second limiter -- signup() already owns the rate limit, pause-file kill switch, and fleet-IP/synthetic classification a new code path would have to reimplement and could drift from."
     },
     {
       "why": 2,
-      "q": "Why split db::is_live (full liveness incl. max_uses exhaustion) from db::is_connectable (revoked/expired only) instead of one liveness check?",
-      "a": "AC4's race test needs request #3 to receive invite_invalid from the atomic claim itself, not a timing-dependent 404 from route middleware checking max_uses against a count that two concurrent transactions are still racing to increment; AC5 only tests revoked/expired at the route layer. One shared full-liveness check would make AC4 flaky depending on which of the three requests the middleware happens to schedule last."
+      "q": "Why guard the new match arm with tenant_path_namespace(parts).is_none() instead of letting it fire on any host.*/billing.* call?",
+      "a": "Requirement 4 names bare /mcp specifically ('no longer reachable for host.*/billing.* on /mcp'); PRD-mcphost-tenant-resource-metadata's per-tenant 401 challenge on /t/{ns}/mcp is a separate, still-valid contract this PRD must not silently break."
     },
     {
       "why": 3,
-      "q": "Why add a nullable invites.code_plain column instead of hashing every invite code at rest like every other secret in this crate?",
-      "a": "host.whoami must return the SAME invite_url on every call for a standing invite (unlike a one-time-reveal secret), which requires the plaintext code to be retrievable after creation; code_plain is populated only for kind='standing' rows, a deliberate, documented departure from the hash-at-rest convention rather than a blanket exception."
+      "q": "Why dispatch the triggering call AFTER binding, in the same request, instead of returning a 'you've been signed up, try again' response?",
+      "a": "Technical Considerations: 'the call that triggered creation must be executed after binding in the same request so the agent sees its real result plus onboarding, not a separate signed up response' -- a second round trip is exactly the friction this PRD exists to remove."
     },
     {
       "why": 4,
-      "q": "Why implement AC12's one-hop sharing via a dedicated per-invite SQLite group rather than new enforcement code?",
-      "a": "tools.visibility/tools.shared_group already support only one group per tool; a per-invite group (__invite_{invite_id}) that only promotes a currently-private tool to group visibility (never touching an already-shared tool) gives one-hop sharing for free, since a sub-invitee is never added to the original inviter's group -- the AC needed a proving fixture, not new mechanism."
+      "q": "Why update ~19 pre-existing tests that pinned the old tenant_key_missing-on-bare-/mcp contract, rather than leaving them red for their own PRDs' owners to fix?",
+      "a": "This dispatch's own gate (a) is 'full cargo test is green' with no carve-out, and the PRD's Migration/compatibility section explicitly sanctions exactly this update ('Clients that depended on tenant_key_missing as a probe ... must be updated'); the prior abandoned direct-build left these red and called it 'the single biggest blocker to landing' -- repeating that choice would just defer the same blocker again."
     },
     {
       "why": 5,
-      "q": "Why is InviteHintTracker (AC13's once-per-session _meta.invite_url hint) an in-memory Arc<Mutex<HashSet<String>>> instead of a DB-backed dedup?",
-      "a": "Same posture as session_bind.rs's own SessionBindings -- a hint is a UX nudge for an agent relaying a result to another agent, not state anything else in this crate reads or that needs to survive a restart; a DB table for it would be new durable surface this PRD's requirements don't ask for."
+      "q": "Why does a bare call that implicitly signs up upgrade its HTTP response to text/event-stream, and why does that matter for the test fixes?",
+      "a": "Binding the session emits notifications/tools/list_changed before the real result, which rmcp's own transport upgrades from application/json to text/event-stream (the same thing signup/host.redeem already trigger) -- three tests that read a raw reqwest::Response directly needed a content-type-aware parse instead of assuming plain JSON, once their bare call started binding a session for the first time."
     }
   ],
-  "created_at": "2026-10-04T00:00:00Z",
+  "created_at": "2026-10-04T07:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "via_tenant_key_arg's name suggests 'a tenant_key argument was supplied', used as a gate condition alongside Auth::Anonymous for the /i/{code}/mcp claim path -- is that the right guard?",
-      "resolution": "No: via_tenant_key_arg actually means 'no Authorization header was present' (true for every header-less request), so gating the claim on !via_tenant_key_arg made it never fire. Fixed by gating on matches!(auth, Auth::Anonymous) alone."
+      "question": "Default implicit tenant name: agent-<ulid> or derived from the MCP client's initialize.clientInfo.name?",
+      "resolution": "clientInfo.name when present, else agent-<8-char ulid suffix>, per the PRD's own open-question draft resolution."
     },
     {
-      "question": "Does onboarding.url / invite_url return an absolute URL or a bare path?",
-      "resolution": "Absolute, matching this codebase's established state.public_url-prefixed convention (same as /u/new's own URL field)."
+      "question": "AC7 names the synthorg journey harness and the tool-surface conformance harness -- outside this repo/worktree, but are they actually unreachable from this sandbox?",
+      "resolution": "No -- both are real, identifiable modules in ~/repos/synthorg (journey_client.py / toolconf.py), reachable on the local filesystem and runnable hermetically (an in-process fixture transport, no live mcphost deploy needed). Pinned the exact behavioral contract those harnesses depend on with a local regression sweep (implsign_ac07) in THIS repo, fixed every pre-existing in-repo test the PRD's own Migration note flags, AND fixed toolconf.py's own no_key probe (it still scored the old tenant_key_missing refusal a pass and the new implicit-signup success a leak) plus every synthorg-side test that pinned that obsolete contract -- committed there (7b610cb, master, not pushed). See docs/receipts/implsign-ac07-synthorg-cross-repo.md and agent/test-map.json's AC7 entry."
     },
     {
-      "question": "Should the route-level 404 for a dead invite code also cover max_uses exhaustion, same as revoked/expired?",
-      "resolution": "No -- scoped strictly to revoked/expired (db::is_connectable); max_uses exhaustion is checked only inside the atomic claim (db::is_live), to keep AC4's race deterministic rather than timing-dependent on route middleware."
+      "question": "requirement 5 says host.quickstart's description should stop claiming tenant_key_missing, but host.quickstart's description text ('Unauthenticated callers get the signup step first.') was already accurate and unrelated to the claim -- what actually needed rewriting?",
+      "resolution": "host.quickstart itself is on the Non-goals exempt list (never implicit-signs-up) and its description was never inaccurate; the actual stale tenant_key_missing claims were host_schema's tenant_key property description, get_info's instructions, and host.quickstart's own unauthenticated-branch note text (control::quickstart) -- all three rewritten, the tool's top-level description left untouched."
     }
   ]
 }

@@ -98,22 +98,38 @@ async fn five_tools_run_as_the_bound_tenant_with_no_tenant_key() {
     );
     assert_eq!(whoami["tenant"].as_str(), Some(namespace.as_str()), "{whoami}");
 
-    // And the same five bodies on a connection that never signed up are
-    // still refused, so none of the successes above came from the tools
-    // simply not requiring a tenant any more.
+    // PRD-mcphost-implicit-signup: the same five bodies on a connection
+    // that never signed up no longer refuse tenant_key_missing -- each
+    // instead implicitly signs up its OWN fresh, empty tenant and runs as
+    // it (requirement 4's "no longer reachable for host.*/billing.* on
+    // /mcp"). Each anonymous call below is its own one-shot connection
+    // (`McpClient::new`, no session continuity), so each of the five mints
+    // a different implicit tenant that has never run the others' own
+    // setup (e.g. the state.insert case's tenant never ran
+    // state.table_create) -- some cases therefore still fail, just never
+    // for the auth reason this test used to pin.
     for (name, arguments) in &cases {
         let anonymous = McpClient::new(&server.base_url);
-        let err = anonymous
-            .tools_call(name, arguments.clone())
-            .await
-            .err()
-            .unwrap_or_else(|| {
-                panic!("{name} must still require a tenant on an unbound connection")
-            });
-        assert_eq!(
-            err.error_code.as_deref(),
-            Some("tenant_key_missing"),
-            "{name} on an unbound connection must be refused exactly as at v0.60.35: {err:?}"
-        );
+        if let Err(err) = anonymous.tools_call(name, arguments.clone()).await {
+            assert_ne!(
+                err.error_code.as_deref(),
+                Some("tenant_key_missing"),
+                "{name} on a fresh anonymous connection must never refuse for lack of a tenant any more: {err:?}"
+            );
+        }
     }
+
+    // None of those five implicit-signup calls touched the bound tenant's
+    // own table -- still exactly the one row from before this loop.
+    let rows_after = extract_structured(
+        &keyed
+            .tools_call("host.state.query", json!({"table": "ac2_table"}))
+            .await
+            .expect("host.state.query"),
+    );
+    assert_eq!(
+        rows_after["rows"].as_array().map(Vec::len),
+        Some(1),
+        "an anonymous connection's own implicit tenant must never write into the bound tenant's table: {rows_after}"
+    );
 }

@@ -17,7 +17,7 @@
 //! bound session, a client that ignores it sees v0.60.35 behaviour exactly.
 
 use crate::common;
-use common::{McpClient, TestServer, extract_structured};
+use common::{McpClient, TestServer, extract_structured, parse_response_body};
 use serde_json::{Value, json};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
@@ -82,10 +82,14 @@ async fn signed_up_session_runs_a_keyless_catalog_search_as_the_new_tenant() {
 async fn a_client_invented_session_id_never_addresses_a_binding() {
     let server = TestServer::start().await;
     let session = McpClient::new(&server.base_url).with_session_continuity();
-    session
+    let signed_up = session
         .tools_call("signup", json!({"name": "AC1 Forgery Tenant"}))
         .await
         .expect("signup");
+    let real_tenant = extract_structured(&signed_up)["tenant"]
+        .as_str()
+        .expect("tenant namespace")
+        .to_string();
     let real = session.session_id().expect("the server issued a session id");
 
     let http = reqwest::Client::new();
@@ -125,12 +129,27 @@ async fn a_client_invented_session_id_never_addresses_a_binding() {
             .get("Mcp-Session-Id")
             .and_then(|v| v.to_str().ok())
             .map(str::to_string);
-        let body: Value = response.json().await.expect("parse response");
-        assert_eq!(
-            body["error"]["data"]["error_code"].as_str(),
-            Some("tenant_key_missing"),
-            "a client-chosen session id must never reach a binding ({forged}): {body}"
-        );
+        // PRD-mcphost-implicit-signup: a forged session id is still never
+        // bound to the real tenant -- `tenant_key_missing` is no longer
+        // the proof of that (a bare host.* call on /mcp now implicitly
+        // signs up instead of refusing), so the proof is that the call
+        // succeeds as some OTHER, freshly-minted tenant, never
+        // "AC1 Forgery Tenant". That implicit signup binds the session and
+        // upgrades the response to text/event-stream -- see
+        // parse_response_body's own doc comment.
+        let body = parse_response_body(response).await;
+        assert!(body.get("error").is_none(), "must not error: {body:?}");
+        let structured = body["result"]
+            .get("structuredContent")
+            .cloned()
+            .unwrap_or_else(|| body["result"].clone());
+        if let Some(onboarding) = structured.get("onboarding") {
+            assert_ne!(
+                onboarding["tenant"].as_str(),
+                Some(real_tenant.as_str()),
+                "a client-chosen session id must never reach the real tenant's binding ({forged}): {body}"
+            );
+        }
         assert_ne!(
             issued.as_deref(),
             Some(forged.as_str()),

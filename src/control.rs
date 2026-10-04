@@ -600,6 +600,11 @@ fn http_starter_tool() -> Value {
 /// order below -- publish, then test (safe to retry, doesn't count toward
 /// `host.usage`/`host.tool_logs`), then the real call -- is the sequence
 /// that actually works against this server.
+///
+/// PRD-mcphost-implicit-signup requirement 5: the unauthenticated step's
+/// own note used to claim a key-less call on any other connection fails
+/// `tenant_key_missing`. That connection now implicitly signs itself up
+/// instead (requirement 1), so the note says that.
 pub fn quickstart(
     state: &AppState,
     tenant: Option<&Tenant>,
@@ -620,9 +625,10 @@ pub fn quickstart(
                     omitting handoff returns the raw key directly instead, unchanged from \
                     before. On the very connection that ran signup (or host.redeem) the \
                     tenant_key argument is optional -- that connection is bound to the \
-                    tenant it just created, so later host.* calls on it need no key. A \
-                    host.* call with no tenant_key on any OTHER connection fails with \
-                    tenant_key_missing; one that doesn't match any tenant fails with \
+                    tenant it just created, so later host.* calls on it need no key. On any \
+                    OTHER connection, omitting tenant_key no longer fails tenant_key_missing \
+                    -- it implicitly signs that connection up as its own new tenant instead; \
+                    a tenant_key that doesn't match any tenant still fails \
                     tenant_key_invalid.",
             }],
         }));
@@ -951,6 +957,13 @@ pub async fn whoami(
         // an agent (or a human testing) can confirm how it was seen
         // without reaching for `admin.tenants`.
         "source_class": tenant.source_class,
+        // PRD-mcphost-implicit-signup P1 requirement 6 (AC1): the caller's
+        // own `source` argument to `signup` -- `"implicit"` for a tenant
+        // this host minted on an anonymous `host.*`/`billing.*` call's
+        // behalf, absent (not `null`) for a tenant that never passed one,
+        // same `Option` omission convention `signup`'s own response
+        // already uses for this field.
+        "source": tenant.signup_source,
         "client_name": tenant.client_name,
         "client_version": tenant.client_version,
         "key_age_s": key_age_s,
