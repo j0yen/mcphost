@@ -1160,6 +1160,24 @@ mod pubtool_ac07_admin_disabled_tenant_503;
 mod pubtool_ac08_put_delete_405;
 #[path = "pubtool_ac10_cors_header_and_preflight.rs"]
 mod pubtool_ac10_cors_header_and_preflight;
+#[path = "qdiag_ac01_column_typo_fuzzy_covered_hint.rs"]
+mod qdiag_ac01_column_typo_fuzzy_covered_hint;
+#[path = "qdiag_ac02_table_typo_fuzzy_covered_hint.rs"]
+mod qdiag_ac02_table_typo_fuzzy_covered_hint;
+#[path = "qdiag_ac03_zero_row_value_absent_hint_and_latency.rs"]
+mod qdiag_ac03_zero_row_value_absent_hint_and_latency;
+#[path = "qdiag_ac04_successful_nonempty_diagnosis_and_hint_null.rs"]
+mod qdiag_ac04_successful_nonempty_diagnosis_and_hint_null;
+#[path = "qdiag_ac05_query_diagnose_tool_tenant_scoped.rs"]
+mod qdiag_ac05_query_diagnose_tool_tenant_scoped;
+#[path = "qdiag_ac06_query_stats_counts_and_percentiles.rs"]
+mod qdiag_ac06_query_stats_counts_and_percentiles;
+#[path = "qdiag_ac07_description_annotation_offers_candidate.rs"]
+mod qdiag_ac07_description_annotation_offers_candidate;
+#[path = "qdiag_ac08_footprint_columns_est_tokens.rs"]
+mod qdiag_ac08_footprint_columns_est_tokens;
+#[path = "qdiag_ac11_ten_concurrent_refused_queries_all_hinted.rs"]
+mod qdiag_ac11_ten_concurrent_refused_queries_all_hinted;
 #[path = "revdebt_ac1_intent_card_pointers_resolve.rs"]
 mod revdebt_ac1_intent_card_pointers_resolve;
 #[path = "run_metrics_handoff_glob_regression.rs"]
@@ -1622,17 +1640,3 @@ mod unkfield_ac04_trigger_set_unknown_argument;
 mod unkfield_ac05_tools_list_additional_properties_false;
 #[path = "unkfield_ac07_spec_fields_doc_check_script.rs"]
 mod unkfield_ac07_spec_fields_doc_check_script;
-#[path = "urltenant_ac01_path_secret_whoami_auth_method_url.rs"]
-mod urltenant_ac01_path_secret_whoami_auth_method_url;
-#[path = "urltenant_ac02_wrong_or_rotated_secret_404.rs"]
-mod urltenant_ac02_wrong_or_rotated_secret_404;
-#[path = "urltenant_ac03_key_rotate_rotates_key_and_url.rs"]
-mod urltenant_ac03_key_rotate_rotates_key_and_url;
-#[path = "urltenant_ac04_new_url_page_and_signup_limiter.rs"]
-mod urltenant_ac04_new_url_page_and_signup_limiter;
-#[path = "urltenant_ac05_browser_get_shows_explainer_page.rs"]
-mod urltenant_ac05_browser_get_shows_explainer_page;
-#[path = "urltenant_ac06_quickstart_url_bound_no_signup_step.rs"]
-mod urltenant_ac06_quickstart_url_bound_no_signup_step;
-#[path = "urltenant_ac07_header_conflict_is_auth_conflict.rs"]
-mod urltenant_ac07_header_conflict_is_auth_conflict;

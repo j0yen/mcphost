@@ -20,9 +20,11 @@ use mcphost::tool_aliases::TOOL_ALIASES;
 /// (which had grown 147 -> 150 with host.table.graph/join_paths/
 /// next_questions, then 150 -> 151 with host.table.query_log from
 /// PRD-mcphost-table-context-and-sql-passthrough, then 151 -> 155 with
-/// host.drift.reviews/review/resolve/check from PRD-mcphost-drift-review)
-/// -- same total compat_ac04_ac05's own comment pins.
-const PRE_PRD_TOTAL: usize = 155;
+/// host.drift.reviews/review/resolve/check from PRD-mcphost-drift-review,
+/// then 155 -> 157 with host.table.query_diagnose/query_stats from
+/// PRD-mcphost-query-diagnosis) -- same total compat_ac04_ac05's own
+/// comment pins.
+const PRE_PRD_TOTAL: usize = 157;
 
 /// PRD-mcphost-invite-links added host.invite.create/list/revoke (+3, no
 /// aliases) after this PRD landed.
@@ -38,5 +40,5 @@ fn full_registry_grew_by_exactly_the_alias_count_with_nothing_removed() {
         "the full host.*/billing.* registry must have grown by exactly the number of aliases \
          this PRD added, with nothing removed (plus any later PRD's own documented growth)"
     );
-    assert_eq!(total, 178, "pin the exact new total PRD-mcphost-invite-links grew it to");
+    assert_eq!(total, 180, "pin the exact new total PRD-mcphost-invite-links and this PRD's own growth grew it to");
 }

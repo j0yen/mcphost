@@ -46,6 +46,10 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 jsonschema = "0.26"
+# PRD-mcphost-query-diagnosis requirement 2: identifier-coverage scoring --
+# already a transitive dependency (Cargo.lock pins 0.11.1 before this
+# change), promoted to direct since query_diag.rs calls it by name.
+strsim = "0.11"
 aes-gcm = "0.10"
 rand = "0.8"
 sha2 = "0.10"
