@@ -463,6 +463,16 @@ pub fn rfc3339_now() -> String {
     rfc3339_from_unix(now_unix())
 }
 
+/// A bare `"YYYY-MM-DD"` calendar date from a Unix timestamp --
+/// `rfc3339_from_unix`'s date half, for callers (PRD-mcphost-tool-naming-
+/// convention-and-aliases' per-tenant-per-day `tool_deprecated_alias` log
+/// dedup) that need the day, not a full timestamp.
+pub fn date_from_unix(unix_secs: i64) -> String {
+    let days = unix_secs.div_euclid(86_400);
+    let (y, m, d) = civil_from_days(days);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
 /// Milliseconds since the Unix epoch -- [`new_ulid`]'s own time component
 /// needs millisecond resolution, coarser than [`now_unix`]'s seconds.
 pub fn now_unix_ms() -> i64 {

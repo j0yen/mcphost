@@ -1340,6 +1340,35 @@ impl AppError {
             }),
         }
     }
+
+    /// PRD-mcphost-tool-naming-convention-and-aliases requirement 6 (AC6):
+    /// `dispatch_tenant_tool`'s own `tool_not_found` for an unmatched
+    /// `host.*`/`billing.*` name -- `data.did_you_mean` names every
+    /// *canonical* candidate (never a deprecated alias: steering a typo
+    /// toward another old name would defeat this PRD's own point) within
+    /// [`MAX_DID_YOU_MEAN_DISTANCE`] edits of `requested`, nearest first,
+    /// capped at [`MAX_DID_YOU_MEAN`] -- same thresholds `did_you_mean`
+    /// (above) already uses for `UnknownKind`, reimplemented here rather
+    /// than reused because that function's signature is pinned to
+    /// `&'static str` candidates (a small, static kind registry); the
+    /// control-plane tool registry is read fresh off `AppState` per call,
+    /// so `candidates` arrives as owned `String`s instead.
+    pub fn host_tool_not_found(requested: &str, candidates: &[String]) -> Self {
+        let lower = requested.to_ascii_lowercase();
+        let mut scored: Vec<(usize, &str)> = candidates
+            .iter()
+            .map(|c| (levenshtein(&lower, &c.to_ascii_lowercase()), c.as_str()))
+            .filter(|(d, _)| *d <= MAX_DID_YOU_MEAN_DISTANCE)
+            .collect();
+        scored.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(b.1)));
+        scored.truncate(MAX_DID_YOU_MEAN);
+        let did_you_mean: Vec<&str> = scored.into_iter().map(|(_, c)| c).collect();
+        AppError::Structured {
+            code: "tool_not_found",
+            message: format!("tool not found: {requested}"),
+            data: json!({"did_you_mean": did_you_mean}),
+        }
+    }
 }
 
 impl From<KindError> for AppError {

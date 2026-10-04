@@ -51,7 +51,7 @@ pub struct HelpEntry {
 /// stable URL (not a secret, not environment-dependent), same host every
 /// `www/*.html` page already links to its own source under
 /// (`status.html`'s `docs/benchmarks/...` link is the precedent).
-const REPO_DOCS_BASE: &str = "https://github.com/j0yen/mcphost/blob/main";
+pub(crate) const REPO_DOCS_BASE: &str = "https://github.com/j0yen/mcphost/blob/main";
 
 /// Requirement 2's table, one row per [`HELP_CODES`] entry, same order.
 pub const HELP_ENTRIES: &[HelpEntry] = &[

@@ -103,7 +103,16 @@ const WALL_BUDGET_SLACK: f64 = 0.8;
 /// win the race instead of this kind's own structured `tool_timeout`. A
 /// fixed floor keeps the same absolute headroom regardless of how short the
 /// requested timeout is.
-const WALL_BUDGET_GRACE: Duration = Duration::from_millis(750);
+///
+/// FIX-PASS (PR #127, CI run 37172850039): 750ms was still too thin --
+/// `suite_core_08` runs this test alongside 32 others (OAuth, wake/trigger,
+/// the rest of the wasm kind's own suite), and under that much contention
+/// on a CI runner the epoch trip's actual landing latency occasionally
+/// exceeded 750ms, letting the generic `call_timeout` win again even
+/// though the race is correctly ordered by construction. Raised to a floor
+/// with real headroom for that contention while staying far under the 5s
+/// ceiling `wasmkind_ac03`'s own test asserts total elapsed time against.
+const WALL_BUDGET_GRACE: Duration = Duration::from_millis(2500);
 
 #[derive(Debug, Clone)]
 struct WasmSpec {

@@ -63,3 +63,27 @@ Read it with the same curl `oauth_tenants_7d` above uses:
 
     curl -s -H "Authorization: Bearer $(cat ~/.config/mcphost/admin-key)" \
       https://<host>/healthz | jq '.help_url_served'
+
+## `tool_alias_calls{tool}`
+
+PRD-mcphost-tool-naming-convention-and-aliases requirement 5: how many
+calls each deprecated alias is still drawing, versus its canonical
+replacement -- the number the sunset decision (user story: "alias calls
+per day trending to zero before the sunset") is made from.
+
+    tool_alias_calls{tool} = admin healthz's tool_alias_calls.<canonical name>
+
+A process-wide, in-memory `{canonical: {alias: n, canonical: n}}` map
+(`tool_aliases::record_call`/`tool_aliases::alias_metrics_snapshot`) --
+same reset-on-restart, not-persisted tradeoff as `help_url_served{code}`
+above. `alias` is every call made under a deprecated name that resolves to
+`<canonical name>` (`src/tool_aliases.rs`'s `TOOL_ALIASES` table, e.g.
+`host.tool_share` -> `host.tool.share`); `canonical` is every call made
+under `<canonical name>` directly. Absent from the object entirely until
+a canonical name with at least one alias has seen its first call (alias
+or canonical); present names only grow.
+
+Read it with the same curl `oauth_tenants_7d` above uses:
+
+    curl -s -H "Authorization: Bearer $(cat ~/.config/mcphost/admin-key)" \
+      https://<host>/healthz | jq '.tool_alias_calls'

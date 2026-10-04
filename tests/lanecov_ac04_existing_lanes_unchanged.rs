@@ -144,8 +144,16 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // kinds::python::BRIDGE_MODULES -- to that script's own check mode,
     // kept separate from the pre-existing docs/www/plugin lanes for the
     // same required_commands-immutability reason the sharing-docs/
-    // launch-docs lanes above already give) -- a fourteenth, intended
+    // launch-docs lanes above already give) -- a fifteenth, intended
     // addition since the baseline, not drift.
+    // PRD-mcphost-tool-naming-convention-and-aliases added its own
+    // "tool-naming" lane (routes docs/tool-naming.md, docs/tools.md,
+    // scripts/tool-naming-lint.sh, and scripts/gen-docs-tools.sh to the
+    // lint's own --run, duplicated from the pre-existing docs lane rather
+    // than folded into it, for the same required_commands-immutability
+    // reason the sharing-docs/launch-docs/spec-fields-doc-check lanes
+    // above give) -- a sixteenth, intended addition since the baseline,
+    // not drift.
     assert_eq!(
         added,
         vec![
@@ -162,11 +170,13 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "sandbox-api-docs",
             "sharing-docs",
             "spec-fields-doc-check",
+            "tool-naming",
             "vendor",
             "wasm-fixtures"
         ],
         "only admin-schemas, checkcompat-race-soak, contracts, docsearch-fixtures, examples, \
          flake-lint, launch-docs, loop-config, oauthconf-data, plugin, sandbox-api-docs, sharing-docs, \
-         spec-fields-doc-check, vendor, and wasm-fixtures may have been added since {BASELINE_REV}"
+         spec-fields-doc-check, tool-naming, vendor, and wasm-fixtures may have been added \
+         since {BASELINE_REV}"
     );
 }

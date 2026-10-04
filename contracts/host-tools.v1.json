@@ -365,6 +365,37 @@
         ],
         "type": "object"
       },
+      "name": "host.bridge.test",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Dry-run an unpublished http spec against its real upstream; for the other cases see host.quickstart.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "args": {
+            "description": "Arguments to render into the spec, same shape as a real call.",
+            "type": "object"
+          },
+          "spec": {
+            "description": "An http-kind spec, not yet published, e.g. {\"url\": \"https://api.example.com/items/{{id}}\", \"method\": \"GET\"}.",
+            "type": "object"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "spec",
+          "args"
+        ],
+        "type": "object",
+        "x-deprecated": {
+          "replaced_by": "host.bridge.test",
+          "sunset": "2026-12-31"
+        }
+      },
       "name": "host.bridge_test",
       "since": "0.58.0"
     },
@@ -1294,6 +1325,26 @@
         },
         "required": [],
         "type": "object"
+      },
+      "name": "host.key.rotate",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Issue a new tenant key and invalidate the current one immediately: every other call using the old key fails as unauthenticated from this point on. Returns the new key exactly once -- use it (as tenant_key or Authorization) for every call after this one.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-deprecated": {
+          "replaced_by": "host.key.rotate",
+          "sunset": "2026-12-31"
+        }
       },
       "name": "host.key_rotate",
       "since": "0.58.0"
@@ -2228,6 +2279,26 @@
         "required": [],
         "type": "object"
       },
+      "name": "host.registry.publish",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Publish this tenant's server.json to the configured MCP registry (requires --registry-url and admin.tenant_verify_namespace first).",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-deprecated": {
+          "replaced_by": "host.registry.publish",
+          "sunset": "2026-12-31"
+        }
+      },
       "name": "host.registry_publish",
       "since": "0.58.0"
     },
@@ -2410,7 +2481,7 @@
         "required": [],
         "type": "object"
       },
-      "name": "host.secret_list",
+      "name": "host.secret.list",
       "since": "0.58.0"
     },
     {
@@ -2437,6 +2508,57 @@
         ],
         "type": "object"
       },
+      "name": "host.secret.set",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List this tenant's secret names (never their values).",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-deprecated": {
+          "replaced_by": "host.secret.list",
+          "sunset": "2026-12-31"
+        }
+      },
+      "name": "host.secret_list",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Store an encrypted secret value under this tenant's namespace.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "Secret name, referenced from a spec as secret.<name>.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          },
+          "value": {
+            "description": "The secret value; stored AES-256-GCM encrypted, never returned.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "type": "object",
+        "x-deprecated": {
+          "replaced_by": "host.secret.set",
+          "sunset": "2026-12-31"
+        }
+      },
       "name": "host.secret_set",
       "since": "0.58.0"
     },
@@ -2452,6 +2574,26 @@
         },
         "required": [],
         "type": "object"
+      },
+      "name": "host.self.offboard",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Permanently close your own account: disables the tenant, cancels any active Stripe subscription (pro plan), and stops your key from authenticating anything further -- same as an admin-disabled tenant. Idempotent: an already-offboarded key gets the same tenant_disabled/tenant_key_invalid error every other host.*/ billing.* call already gets from it, not a crash. This does not scrub historical usage/signup records -- those stay for audit, same as today's admin-disabled tenants.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-deprecated": {
+          "replaced_by": "host.self.offboard",
+          "sunset": "2026-12-31"
+        }
       },
       "name": "host.self_offboard",
       "since": "0.58.0"
@@ -2547,6 +2689,46 @@
           "invocations"
         ],
         "type": "object"
+      },
+      "name": "host.spec.test",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Dry-run an unpublished spec of any kind with example invocations; for the other cases see host.quickstart.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "invocations": {
+            "description": "Up to 5 example call-argument objects to run through the spec, e.g. [{\"msg\": \"hi\"}].",
+            "items": {
+              "type": "object"
+            },
+            "maxItems": 5,
+            "type": "array"
+          },
+          "kind": {
+            "description": "Which registered kind the spec is for, e.g. echo, http, python.",
+            "type": "string"
+          },
+          "spec": {
+            "description": "The kind-specific spec object to test, not yet published; see host.quickstart(kind) for an example.",
+            "type": "object"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "spec",
+          "invocations"
+        ],
+        "type": "object",
+        "x-deprecated": {
+          "replaced_by": "host.spec.test",
+          "sunset": "2026-12-31"
+        }
       },
       "name": "host.spec_test",
       "since": "0.58.0"
@@ -3232,7 +3414,7 @@
         ],
         "type": "object"
       },
-      "name": "host.tool_call",
+      "name": "host.tool.call",
       "since": "0.58.0"
     },
     {
@@ -3264,7 +3446,7 @@
         ],
         "type": "object"
       },
-      "name": "host.tool_diff",
+      "name": "host.tool.diff",
       "since": "0.58.0"
     },
     {
@@ -3286,7 +3468,7 @@
         ],
         "type": "object"
       },
-      "name": "host.tool_history",
+      "name": "host.tool.history",
       "since": "0.58.0"
     },
     {
@@ -3302,7 +3484,7 @@
         "required": [],
         "type": "object"
       },
-      "name": "host.tool_list",
+      "name": "host.tool.list",
       "since": "0.58.0"
     },
     {
@@ -3328,7 +3510,7 @@
         ],
         "type": "object"
       },
-      "name": "host.tool_logs",
+      "name": "host.tool.logs",
       "since": "0.58.0"
     },
     {
@@ -3367,7 +3549,7 @@
         ],
         "type": "object"
       },
-      "name": "host.tool_publish",
+      "name": "host.tool.publish",
       "since": "0.58.0"
     },
     {
@@ -3389,7 +3571,7 @@
         ],
         "type": "object"
       },
-      "name": "host.tool_remove",
+      "name": "host.tool.remove",
       "since": "0.58.0"
     },
     {
@@ -3416,7 +3598,7 @@
         ],
         "type": "object"
       },
-      "name": "host.tool_rollback",
+      "name": "host.tool.rollback",
       "since": "0.58.0"
     },
     {
@@ -3447,7 +3629,7 @@
         ],
         "type": "object"
       },
-      "name": "host.tool_run",
+      "name": "host.tool.run",
       "since": "0.58.0"
     },
     {
@@ -3486,7 +3668,7 @@
         ],
         "type": "object"
       },
-      "name": "host.tool_share",
+      "name": "host.tool.share",
       "since": "0.58.0"
     },
     {
@@ -3508,7 +3690,7 @@
         ],
         "type": "object"
       },
-      "name": "host.tool_spec_shared",
+      "name": "host.tool.spec_shared",
       "since": "0.58.0"
     },
     {
@@ -3535,7 +3717,7 @@
         ],
         "type": "object"
       },
-      "name": "host.tool_test",
+      "name": "host.tool.test",
       "since": "0.58.0"
     },
     {
@@ -3556,6 +3738,418 @@
           "name"
         ],
         "type": "object"
+      },
+      "name": "host.tool.unshare",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Invoke a tool this tenant has already published, by its local name -- the same real, metered call as calling it directly by its namespaced name (<namespace>.<name>), for a session that has no way to see its own namespaced tool name yet. Unlike host.tool_test, this counts toward host.usage and appears in host.tool_logs. Pass async: true for a tool that needs more than the call deadline: returns {run_id, status: \"queued\"} immediately instead of running inline -- see host.runs.get/wait. Pass version to pin the call to one of host.tool_history's versions instead of whichever is current.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "args": {
+            "description": "Arguments to pass, validated against the tool's own args_schema.",
+            "type": "object"
+          },
+          "async": {
+            "description": "Run as a job instead of inline: returns {run_id, status} within ~50ms under the plan's job_max_s deadline; default false.",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Local name of the tool to invoke.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          },
+          "version": {
+            "description": "Pin the call to this version instead of whichever is current; see host.tool_history. An unknown version is an argument error.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "args"
+        ],
+        "type": "object",
+        "x-deprecated": {
+          "replaced_by": "host.tool.call",
+          "sunset": "2026-12-31"
+        }
+      },
+      "name": "host.tool_call",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Return a unified diff between two published versions of one of this tenant's tools.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "from": {
+            "description": "The earlier version number.",
+            "type": "integer"
+          },
+          "name": {
+            "description": "Local name of the tool.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          },
+          "to": {
+            "description": "The later version number.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "from",
+          "to"
+        ],
+        "type": "object",
+        "x-deprecated": {
+          "replaced_by": "host.tool.diff",
+          "sunset": "2026-12-31"
+        }
+      },
+      "name": "host.tool_diff",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List every published version of one of this tenant's tools, newest first, each with its creation time, source_sha256, and whether it's the current one.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "Local name of the tool.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "x-deprecated": {
+          "replaced_by": "host.tool.history",
+          "sunset": "2026-12-31"
+        }
+      },
+      "name": "host.tool_history",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List this tenant's published tools.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object",
+        "x-deprecated": {
+          "replaced_by": "host.tool.list",
+          "sunset": "2026-12-31"
+        }
+      },
+      "name": "host.tool_list",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Return the most recent log lines for one of this tenant's tools.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "Max lines to return, most recent first; default 20.",
+            "type": "integer"
+          },
+          "name": {
+            "description": "Local name of the tool whose log lines to return.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "x-deprecated": {
+          "replaced_by": "host.tool.logs",
+          "sunset": "2026-12-31"
+        }
+      },
+      "name": "host.tool_logs",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Publish a tool of a registered kind (echo) under this tenant's namespace. Call host.quickstart(kind) first for a filled-in example spec and the full publish-to-call sequence. Python's sandbox API: import mcphost (mcphost.table, mcphost.state, mcphost.docs). Name must match ^[a-z][a-z0-9_]{1,40}$; a rejection names the failing field and a corrected example. Try host.tool_test before a real call.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "description": "Which registered kind to publish under: chain, echo, http, python, wasm. A job-word alias also resolves here -- event, events, webhook, webhooks, inbound or trigger for an inbound webhook, cron, schedule or scheduled for a timed run -- both resolve to kind http and the descriptor comes back with resolved_from naming the alias you asked for.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Local name for the new tool; must match ^[a-z][a-z0-9_]{1,40}$.",
+            "type": "string"
+          },
+          "scopes": {
+            "description": "OAuth scopes a token must carry (directly, or via mcp) to reach this tool: catalogued names from host.oauth.scopes, or the built-ins read/write. At most 8. Omit (or [] ) to require only mcp -- unaffected by any catalog.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "spec": {
+            "description": "The kind-specific spec object; see host.quickstart(kind) for a filled-in example. For python's network field: \"none\", \"public\", or \"egress\" -- a tool's own code reaches this tenant's data with `import mcphost` (mcphost.table, mcphost.state, mcphost.docs, mcphost.lineage) even when network is \"none\".",
+            "type": "object"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "spec"
+        ],
+        "type": "object",
+        "x-deprecated": {
+          "replaced_by": "host.tool.publish",
+          "sunset": "2026-12-31"
+        }
+      },
+      "name": "host.tool_publish",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Remove a published tool by its local name.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "Local name of the tool to remove.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "x-deprecated": {
+          "replaced_by": "host.tool.remove",
+          "sunset": "2026-12-31"
+        }
+      },
+      "name": "host.tool_remove",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Make an earlier published version of one of this tenant's tools current again -- the next host.tool_call (or namespaced call) runs that version's source. See host.tool_history for the valid version numbers.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "Local name of the tool to roll back.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          },
+          "version": {
+            "description": "The version number (from host.tool_history) to make current.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "version"
+        ],
+        "type": "object",
+        "x-deprecated": {
+          "replaced_by": "host.tool.rollback",
+          "sunset": "2026-12-31"
+        }
+      },
+      "name": "host.tool_rollback",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Debug-run a published python tool: result.payload plus duration_ms and exit_code; for the other cases see host.quickstart.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "args": {
+            "description": "Arguments to pass, same shape as a real call.",
+            "type": "object"
+          },
+          "name": {
+            "description": "Local name of the already-published python tool to debug-run.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          },
+          "test": {
+            "description": "PRD-mcphost-dry-run-side-effects: run with writes rolled back and reported under dry_run, nothing delivered; default false (a real debug run).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "args"
+        ],
+        "type": "object",
+        "x-deprecated": {
+          "replaced_by": "host.tool.run",
+          "sunset": "2026-12-31"
+        }
+      },
+      "name": "host.tool_run",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Share one of this tenant's published tools with everyone (visibility: \"public\") or with a named group this tenant owns (visibility: \"group\", group: <name>). The tool keeps running in this tenant's own sandbox with this tenant's own secrets; a caller reaches it as <this tenant's namespace>.<name>.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "description": "Catalog-facing blurb; shown by host.catalog.search/get.",
+            "type": "string"
+          },
+          "expose_spec": {
+            "description": "Default false. When true, any tenant this tool is shared with may call host.tool_spec_shared to read its (redacted) spec.",
+            "type": "boolean"
+          },
+          "group": {
+            "description": "Required when visibility is \"group\"; must already exist (host.group.create).",
+            "type": "string"
+          },
+          "name": {
+            "description": "Local name of the tool to share.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          },
+          "visibility": {
+            "description": "\"public\" or \"group\".",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "visibility"
+        ],
+        "type": "object",
+        "x-deprecated": {
+          "replaced_by": "host.tool.share",
+          "sunset": "2026-12-31"
+        }
+      },
+      "name": "host.tool_share",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Read a shared tool's kind and redacted spec -- only works when the owner shared it with expose_spec: true. The spec never carries env values or secret references (see host.tool_share's expose_spec).",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          },
+          "tool": {
+            "description": "\"<owner_namespace>.<name>\", the same qualified name host.tool_call uses for a shared tool.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool"
+        ],
+        "type": "object",
+        "x-deprecated": {
+          "replaced_by": "host.tool.spec_shared",
+          "sunset": "2026-12-31"
+        }
+      },
+      "name": "host.tool_spec_shared",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Dry-run a published tool by name: writes are rolled back and reported under dry_run, nothing delivered; for the other cases see host.quickstart.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "args": {
+            "description": "Arguments to pass, same shape as a real call.",
+            "type": "object"
+          },
+          "name": {
+            "description": "Local name of the already-published tool to dry-run.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "args"
+        ],
+        "type": "object",
+        "x-deprecated": {
+          "replaced_by": "host.tool.test",
+          "sunset": "2026-12-31"
+        }
+      },
+      "name": "host.tool_test",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Take a shared tool back to private.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "Local name of the tool to unshare.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "x-deprecated": {
+          "replaced_by": "host.tool.unshare",
+          "sunset": "2026-12-31"
+        }
       },
       "name": "host.tool_unshare",
       "since": "0.58.0"

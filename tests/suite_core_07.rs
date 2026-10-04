@@ -1520,6 +1520,22 @@ mod tkparam_ac08_secretmissing_and_invalidparams_shape_unchanged;
 mod tkparam_ac09_schema_tenant_key_not_required_and_discoverable;
 #[path = "tkparam_ac11_full_suite_green_at_landing.rs"]
 mod tkparam_ac11_full_suite_green_at_landing;
+#[path = "toolname_ac01_lint_reports_violations.rs"]
+mod toolname_ac01_lint_reports_violations;
+#[path = "toolname_ac02_alias_dispatch_hint_and_log.rs"]
+mod toolname_ac02_alias_dispatch_hint_and_log;
+#[path = "toolname_ac03_tools_list_alias_entries.rs"]
+mod toolname_ac03_tools_list_alias_entries;
+#[path = "toolname_ac04_docs_names_exist_and_tools_doc_fresh.rs"]
+mod toolname_ac04_docs_names_exist_and_tools_doc_fresh;
+#[path = "toolname_ac05_alias_metrics_counter.rs"]
+mod toolname_ac05_alias_metrics_counter;
+#[path = "toolname_ac06_did_you_mean_suggests_canonical.rs"]
+mod toolname_ac06_did_you_mean_suggests_canonical;
+#[path = "toolname_ac07_whoami_naming_rule_url_once_per_session.rs"]
+mod toolname_ac07_whoami_naming_rule_url_once_per_session;
+#[path = "toolname_ac08_tools_list_counts_updated.rs"]
+mod toolname_ac08_tools_list_counts_updated;
 #[path = "toolscope_ac01_scoped_consent_and_token.rs"]
 mod toolscope_ac01_scoped_consent_and_token;
 #[path = "toolscope_ac02_scoped_token_list_and_call.rs"]
@@ -1626,19 +1642,3 @@ mod vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green;
 mod vaultst_ac09_deferral_is_justified;
 #[path = "vaultst_ac09_live_vault_status_trailer.rs"]
 mod vaultst_ac09_live_vault_status_trailer;
-#[path = "wake_ac1_message_trigger_fires_run.rs"]
-mod wake_ac1_message_trigger_fires_run;
-#[path = "wake_ac2_from_filter.rs"]
-mod wake_ac2_from_filter;
-#[path = "wake_ac3_dedupe.rs"]
-mod wake_ac3_dedupe;
-#[path = "wake_ac4_jobs_concurrent_rejects.rs"]
-mod wake_ac4_jobs_concurrent_rejects;
-#[path = "wake_ac5_pause_resume.rs"]
-mod wake_ac5_pause_resume;
-#[path = "wake_ac6_msg_wait.rs"]
-mod wake_ac6_msg_wait;
-#[path = "wake_ac7_trigger_test_synthetic_envelope.rs"]
-mod wake_ac7_trigger_test_synthetic_envelope;
-#[path = "wake_ac8_replay.rs"]
-mod wake_ac8_replay;

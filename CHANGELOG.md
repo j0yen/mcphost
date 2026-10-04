@@ -129,6 +129,27 @@ directly.
 
 PRD-mcphost-public-tool-url AC1-AC8, AC10 (`pubtool_ac*` test files). AC9
 (prod live-call receipt) is deferred to the operator at deploy time.
+## v0.70.0 — 2026-10-02
+
+One naming rule for every `host.*` tool, `host.<family>.<verb>`
+(`docs/tool-naming.md`), enforced by `scripts/tool-naming-lint.sh`. The 20
+tools that violated it (`host.tool_publish`/`host.tool_share`/... and
+`host.key_rotate`, `host.self_offboard`, `host.secret_set`,
+`host.secret_list`, `host.registry_publish`, `host.bridge_test`,
+`host.spec_test`) are now registered under their dotted canonical names
+and keep working under their old names as deprecated aliases: `tools/list`
+advertises each alias with `x-deprecated: {replaced_by, sunset}` (sunset
+2026-12-31), a successful alias call's result carries a matching
+`_meta.deprecated` hint, and a `tool_deprecated_alias` log line fires at
+most once per tenant per day (`tool_alias_calls{tool}`, documented in
+`docs/metrics.md`, counts alias vs. canonical calls for the sunset
+decision). An unmatched `host.*` name one or two edits from a canonical
+now gets `did_you_mean` in its `tool_not_found` error, never suggesting a
+deprecated alias. `host.whoami`'s first answer in a session links
+`naming_rule_url`. `docs/tools.md` (canonical name, family, aliases,
+description) is generated from the live registry by `mcphost gen-docs`;
+`docs/agent-quickstart.md`, `docs/sharing.md`, `plugin/skills/mcphost/
+SKILL.md`, and `www/llms.txt` now teach the canonical names.
 
 ## v0.68.0 — 2026-10-01
 

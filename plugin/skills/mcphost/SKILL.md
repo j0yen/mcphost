@@ -29,12 +29,12 @@ one call.
 ## 3. Publish one tool
 
 Pass the `key` from step 2 as the `tenant_key` argument and call
-`host.tool_publish(name, kind, spec)` on the same connection -- no
+`host.tool.publish(name, kind, spec)` on the same connection -- no
 reconnect needed. The `echo` kind is the fastest way to prove the pipes
 work end to end:
 
 ```
-host.tool_publish(name="hello", kind="echo", spec={"schema": {"type": "object"}})
+host.tool.publish(name="hello", kind="echo", spec={"schema": {"type": "object"}})
 ```
 
 If you publish a `python` tool instead, its own code reaches this tenant's
