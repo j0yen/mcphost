@@ -11714,81 +11714,6 @@ impl Db {
         .await
     }
 
-    /// `host.channel.post(channel, body, data?)`: `channel` may be either
-    /// the name passed to `host.channel.open` or the `channel_id` it
-    /// returned. Auto-advances the poster's own `channel_cursors` row to
-    /// the new `seq` (AC7's "stored a cursor").
-    pub async fn channel_post(
-        &self,
-        sender: Tenant,
-        channel_ref: String,
-        body: String,
-        data_json: Option<String>,
-    ) -> Result<ChannelPostOutcome, AppError> {
-        let now = now_rfc3339();
-        let now_ms = crate::state::now_unix_ms();
-        self.with_conn(move |conn| {
-            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
-            let outcome: Result<ChannelPostOutcome, AppError> = (|| {
-                let channel_id: Option<String> = conn
-                    .query_row(
-                        "SELECT id FROM channels WHERE id = ?1 OR name = ?1",
-                        params![channel_ref],
-                        |r| r.get(0),
-                    )
-                    .optional()?;
-                let Some(channel_id) = channel_id else {
-                    return Err(AppError::channel_not_found());
-                };
-                let seq: i64 = conn.query_row(
-                    "SELECT COALESCE(MAX(seq), 0) + 1 FROM channel_posts WHERE channel_id = ?1",
-                    params![channel_id],
-                    |r| r.get(0),
-                )?;
-                let post_id = crate::state::new_ulid();
-                conn.execute(
-                    "INSERT INTO channel_posts \
-                        (id, channel_id, seq, from_tenant_id, from_address, body, data_json, \
-                         synthetic, source_class, created_at, created_unix_ms) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-                    params![
-                        post_id,
-                        channel_id,
-                        seq,
-                        sender.id,
-                        sender.namespace,
-                        body,
-                        data_json,
-                        sender.synthetic,
-                        sender.source_class.as_deref().unwrap_or("external"),
-                        now,
-                        now_ms
-                    ],
-                )?;
-                conn.execute(
-                    "INSERT INTO channel_cursors (channel_id, tenant_id, seq, updated_at) \
-                     VALUES (?1, ?2, ?3, ?4) \
-                     ON CONFLICT(channel_id, tenant_id) DO UPDATE SET seq = excluded.seq, updated_at = excluded.updated_at",
-                    params![channel_id, sender.id, seq, now],
-                )?;
-                Ok(ChannelPostOutcome {
-                    id: post_id,
-                    channel_id: channel_id.clone(),
-                    seq,
-                    created_at: now.clone(),
-                })
-            })();
-            match &outcome {
-                Ok(_) => conn.execute("COMMIT", []).map(|_| ()).map_err(AppError::from)?,
-                Err(_) => {
-                    let _ = conn.execute("ROLLBACK", []);
-                }
-            }
-            outcome
-        })
-        .await
-    }
-
     // ---- group channels (PRD-mcphost-agent-channels) ----------------------
 
     /// `host.channel.open(group)` (requirement 2 / AC1): idempotent --
@@ -11880,6 +11805,38 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-channel-read-name-parity requirement 1: the other half
+    /// of `resolve_channel` (`channels.rs`) -- a migration-0027 named
+    /// channel a `channel_ref` resolves to by id or name, when
+    /// [`Self::channel_group_lookup`] already ruled out a group channel
+    /// (`group_id IS NULL` excludes one here). `owner_tenant_id` is
+    /// `channels.created_by`, `None` for a channel whose creator has since
+    /// been deleted (`ON DELETE SET NULL`) -- resolvable (so posting and
+    /// closed/frozen checks keep working, same "a deleted tenant's channel
+    /// stays readable/postable" posture migration 0027's own doc comment
+    /// describes) but ownerless, so no caller passes the owner-only
+    /// `read`/`freeze`/`close`/`unfreeze` check on it.
+    pub async fn channel_named_lookup(&self, channel_ref: String) -> Result<Option<NamedChannelCtx>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT id, created_by, closed_at, frozen_at FROM channels \
+                 WHERE (id = ?1 OR name = ?1) AND group_id IS NULL",
+                params![channel_ref],
+                |r| {
+                    Ok(NamedChannelCtx {
+                        channel_id: r.get(0)?,
+                        owner_tenant_id: r.get(1)?,
+                        closed_at: r.get(2)?,
+                        frozen_at: r.get(3)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
     /// AC1/AC2/AC5: is `tenant_id` allowed to read/post on a group channel
     /// whose group is owned by `owner_tenant_id` named `group_name` -- the
     /// owner always is (same as `host.group.add`/`remove`'s own owner-only
@@ -11898,11 +11855,13 @@ impl Db {
         self.is_group_member(ctx.owner_tenant_id, ctx.group_name.clone(), tenant_id).await
     }
 
-    /// AC9/AC10: owner-only `closed_at`/`frozen_at` toggle -- `false` when
-    /// `channel_id` doesn't exist, isn't a group channel, or isn't owned by
-    /// `owner_tenant_id` (the caller's own `host.channel.close`/`freeze`/
+    /// AC9/AC10/PRD-mcphost-channel-read-name-parity AC5: owner-only
+    /// `closed_at`/`frozen_at` toggle -- `false` when `channel_id` doesn't
+    /// exist or isn't owned by `owner_tenant_id`, whether it's a group
+    /// channel (owned via its group) or a named one (`channels.created_by`
+    /// directly) -- the caller's own `host.channel.close`/`freeze`/
     /// `unfreeze` turns that into the same [`AppError::channel_not_found`]
-    /// every other "doesn't exist or isn't yours" case in this module uses).
+    /// every other "doesn't exist or isn't yours" case in this module uses.
     async fn channel_group_set_flag(
         &self,
         owner_tenant_id: i64,
@@ -11912,8 +11871,10 @@ impl Db {
     ) -> Result<bool, AppError> {
         self.with_conn(move |conn| {
             let sql = format!(
-                "UPDATE channels SET {column} = ?1 WHERE id = ?2 AND group_id IN \
-                 (SELECT id FROM groups WHERE owner_tenant_id = ?3)"
+                "UPDATE channels SET {column} = ?1 WHERE id = ?2 AND ( \
+                     group_id IN (SELECT id FROM groups WHERE owner_tenant_id = ?3) \
+                     OR (group_id IS NULL AND created_by = ?3) \
+                 )"
             );
             let affected = conn.execute(&sql, params![value, channel_id, owner_tenant_id])?;
             Ok(affected > 0)
@@ -12007,13 +11968,12 @@ impl Db {
         .await
     }
 
-    /// AC1/AC3/AC4: `host.channel.post` on a group channel -- deliberately
-    /// NOT [`Self::channel_post`]'s own behavior of auto-advancing the
-    /// sender's read cursor to the new post: AC4 requires a poster's own
-    /// posts to still come back on its own next `host.channel.read` (a
-    /// poster is a reader too), so this table's cursor is touched only by
-    /// an explicit `ack: true` read, never by posting.
-    pub async fn channel_group_post_insert(
+    /// AC1/AC3/AC4: `host.channel.post` on a group channel, or (PRD-
+    /// mcphost-channel-read-name-parity) a named one -- never auto-advances
+    /// the sender's read cursor to the new post: a poster is a reader too,
+    /// so this table's cursor is touched only by an explicit `ack: true`
+    /// read, never by posting, for either channel kind.
+    pub async fn channel_post_insert(
         &self,
         sender: Tenant,
         channel_id: String,
@@ -17397,6 +17357,19 @@ pub struct ChannelRow {
 pub struct GroupChannelCtx {
     pub owner_tenant_id: i64,
     pub group_name: String,
+    pub closed_at: Option<String>,
+    pub frozen_at: Option<String>,
+}
+
+/// PRD-mcphost-channel-read-name-parity: what [`Db::channel_named_lookup`]
+/// resolves a migration-0027 named channel's `id`/`name` to -- the row's
+/// own canonical `id` (the input may have been its name), creator
+/// (`None` if since deleted), and its two lifecycle flags, reusing the
+/// exact same `closed_at`/`frozen_at` columns a group channel's
+/// [`GroupChannelCtx`] already exposes.
+pub struct NamedChannelCtx {
+    pub channel_id: String,
+    pub owner_tenant_id: Option<i64>,
     pub closed_at: Option<String>,
     pub frozen_at: Option<String>,
 }

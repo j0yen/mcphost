@@ -1,94 +1,69 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tool-naming-convention-and-aliases.md",
-  "intent_slug": "mcphost-tool-naming-convention-and-aliases",
-  "root_motivation": "The registry in src/handler.rs mixes host.<family>_<verb> (host.tool_publish, host.tool_share, host.key_rotate, ...) with host.<family>.<verb> (host.docs.put, host.agent.lookup, host.group.create, ...) and two un-prefixed families (signup, billing.*), with no rule written down anywhere. Synthorg's scripted explorer already invented dotted variants that don't exist (host.tool.call_shared, host.tool.recall) and a chain's ledger probe calls a nonexistent host.calls.list -- integrators guess, and guess wrong, costing a tool_not_found and a lost minute every time.",
-  "user_persona": "An agent operator integrating mcphost for the first time, whose client autocompletes a new host.* call from a sibling family's name; an existing client whose code already calls an old underscored name; an operator deciding when an alias's usage has dropped enough to sunset it.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-channel-read-name-parity.md",
+  "intent_slug": "mcphost-channel-read-name-parity",
+  "root_motivation": "Grounding: fleet board dogfood, 2026-09-30 -- host.channel.open(name: \"fleet\") returned id 01M3V2YTK8F0TF96KX6Q29T08Z; host.channel.post on that id succeeded; host.channel.read on the same id failed \"no channel found for that name or id\", reproduced three times running. post (src/channels.rs) already tried a group-channel lookup then fell back to the named-channel id-or-name lookup (src/db.rs); read ran only the group lookup, so a channel opened by name -- the first form host.channel.open's own doc comment documents -- was writable and unreadable. freeze/close had the same narrower, group-only reach. This build gives every host.channel.* verb (open excepted, since its own group vs name argument already disambiguates what it creates) one resolve_channel(tenant, key) lookup in channels.rs, so a channel reachable by one verb is reachable by every other one too.",
+  "user_persona": "An agent that opens a channel by name (the first form host.channel.open documents) and expects post/read/freeze/close to all resolve that same name or id -- the fleet board's own alert-verification loop was blocked exactly here. Also an agent that mistypes a key and needs the error to say what lookups were tried, and the operator, who needs freeze/close to work identically on a named or a group channel for moderation to hold.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 8
+    "target": 6
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the registry at the landing commit, When scripts/tool-naming-lint.sh runs, Then it exits 0, lists each documented exception with its reason, and reports violations=0 aliases=<n>; given a fixture registering host.secret_delete, Then it exits 1 naming host.secret.delete.",
-      "test": "tests/toolname_ac01_lint_reports_violations.rs"
+      "description": "Given host.channel.open(name: \"t\") returning id X, When host.channel.post(X, body) then host.channel.read(X) run, Then read returns the post with seq 1 and a next_cursor.",
+      "test": "tests/chanread_ac01_named_channel_post_then_read_by_id.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a client calling host.tool_share with valid arguments, When dispatched, Then the result equals a call to host.tool.share with the same arguments, the response carries the deprecation hint (where the protocol allows), and exactly one tool_deprecated_alias log line appears for that tenant that day across 5 calls.",
-      "test": "tests/toolname_ac02_alias_dispatch_hint_and_log.rs"
+      "description": "Given the same channel, When host.channel.read(\"t\") runs by name, Then it returns the same posts.",
+      "test": "tests/chanread_ac02_named_channel_read_by_name.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given tools/list, When fetched, Then every canonical name is present, every alias is present with x-deprecated.replaced_by equal to its canonical and a sunset date 90 days after landing, and the alias's inputSchema equals the canonical's.",
-      "test": "tests/toolname_ac03_tools_list_alias_entries.rs"
+      "description": "Given a group channel, When read, post, freeze, close run as before this PRD, Then results are byte-identical to the pre-PRD fixtures (no regression).",
+      "test": "tests/chanread_ac03_group_channel_no_regression.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given docs/** and plugin/** at the landing commit, When the docs-names test runs, Then every host.*/billing.*/signup literal exists in the registry, and docs/tools.md is byte-identical to a fresh gen-docs run.",
-      "test": "tests/toolname_ac04_docs_names_exist_and_tools_doc_fresh.rs"
+      "description": "Given a nonexistent key, When any channel verb runs, Then the error class is channel_not_found, data.key echoes the input, and the message names both lookups.",
+      "test": "tests/chanread_ac04_nonexistent_key_names_both_lookups.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the alias metrics, When 3 alias calls and 2 canonical calls happen for a tool with a deprecated alias, Then the counter named in docs/metrics.md reads alias=3 canonical=2.",
-      "test": "tests/toolname_ac05_alias_metrics_counter.rs"
+      "description": "Given a named channel, When freeze(X) then post(X, ...) run, Then post fails channel_frozen; When close(X) then read(X), Then read still works (closed channels stay readable, matching errors.rs's documented rule).",
+      "test": "tests/chanread_ac05_named_channel_freeze_and_close_parity.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given an unknown name one edit away from a canonical (host.tool.shar), When called, Then tool_not_found includes did_you_mean: [\"host.tool.share\"].",
-      "test": "tests/toolname_ac06_did_you_mean_suggests_canonical.rs"
-    },
-    {
-      "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given a new session's first host.whoami, When answered, Then the response includes naming_rule_url; the second call in the session does not.",
-      "test": "tests/toolname_ac07_whoami_naming_rule_url_once_per_session.rs"
-    },
-    {
-      "id": "AC8",
-      "level": "MUST",
-      "description": "Given the existing test suite, When any test asserted an exact tools/list count, Then it is updated to the new count with a comment citing this PRD, and no other test changed.",
-      "test": "tests/toolname_ac08_tools_list_counts_updated.rs"
-    },
-    {
-      "id": "AC9",
-      "level": "MUST",
-      "description": "Given cargo test at the landing commit, When it runs, Then every previously passing test passes and the toolname_* tests for AC 1-8 pass.",
-      "test": "deferred -- proven by the wm-build gate itself (block=0 at landing); no hermetic test can pair a whole-suite-green claim -- rule of 2026-09-30."
-    },
-    {
-      "id": "AC10",
-      "level": "MUST",
-      "description": "Given the landed binary deployed on prod and the next nightly promise/toolconf run, When they read prod's tools/list, Then every canonical name and alias from the PR's table is served, an alias call via the journey harness returns the deprecation hint, and the promise ledger reports 0 phantom names in docs/**.",
-      "test": "deferred -- operator-provisioned: Live, a landed binary deployed on prod and the next nightly promise/toolconf run reading prod's tools/list, with the tools/list excerpt and the ledger row pasted into the PRD's evidence block by the operator; needs a real deploy this coding sandbox does not have."
+      "description": "Given tools/list, When fetched, Then host.channel.open's description names both channel kinds and says both are readable.",
+      "test": "tests/chanread_ac06_tools_list_names_both_kinds.rs"
     }
   ],
   "scope": [
-    "src/tool_aliases.rs: TOOL_ALIASES (alias -> canonical table), resolve/aliases_of/is_canonical_with_aliases, alias-call metrics (record_call/alias_metrics_snapshot), per-tenant-per-day log dedup (mark_alias_logged/maybe_log_deprecated_alias), per-session naming_rule_url dedup (mark_whoami_hint_shown/naming_rule_url), SUNSET_DATE.",
-    "src/handler.rs: host_tools()'s 20 renamed Tool::new literals (host.tool_publish -> host.tool.publish, etc.) and apply_tool_aliases (injects each alias's Tool clone with x-deprecated into tools/list); dispatch_tenant_tool's matching renamed match arms and its did_you_mean-enriched tool_not_found fallback; call_tool's alias resolution before dispatch, _meta.deprecated attachment, alias-call metric/log hook, and host.whoami's naming_rule_url attachment.",
-    "src/errors.rs: AppError::host_tool_not_found (did_you_mean against canonical names only, never an alias).",
-    "src/gendocs.rs: render_tools_markdown/TOOLS_DOC_PATH, folded into the existing mcphost gen-docs subcommand.",
-    "src/state.rs: date_from_unix. src/help.rs: REPO_DOCS_BASE made pub(crate) for reuse.",
-    "src/http.rs: /healthz's tool_alias_calls field.",
-    "docs/tool-naming.md (new), docs/tools.md (generated), docs/metrics.md's tool_alias_calls{tool} section, docs/agent-quickstart.md/docs/sharing.md/plugin/skills/mcphost/SKILL.md retaught to canonical names, www/llms.txt and README.md regenerated from them.",
-    "scripts/tool-naming-lint.sh (new), agent/proof-lanes.toml's tool-naming lane, contracts/host-tools.v1.json regenerated.",
-    "Necessary fallout: tests/compat_ac04_ac05_admin_and_tenant_cache_fields.rs (147->167), tests/mcphost_share_a_tool_not_a_key_ac01_llms_txt_section.rs and tests/mcphost_shared_tool_spec_readback_ac07_docs_worked_example.rs (canonical names), tests/lanecov_ac04_existing_lanes_unchanged.rs (tool-naming lane addition)."
+    "src/channels.rs: resolve_channel(state, tenant, key) (requirement 1) -- group lookup by id first, then the named-channel id-or-name lookup, returning a ResolvedChannel{channel_id, kind: Group|Named, owner_tenant_id, group_name, closed_at, frozen_at}; open/post/read/close/freeze/unfreeze all route through it instead of each keeping a private lookup.",
+    "src/db.rs: channel_named_lookup, the named-channel counterpart to the existing channel_group_lookup, selecting closed_at/frozen_at off the channels row so post/read/freeze/close/unfreeze all see the same two columns regardless of channel kind; channel_group_set_flag's UPDATE WHERE clause extended to also match a named channel owned (channels.created_by) by the caller, the missing owner-side half AC5 needs.",
+    "src/errors.rs: AppError::channel_not_found(key) now takes the caller's key, carries it as data.key, and names both lookups it tried, replacing the old static \"name or id\" message that named a lookup read never actually ran.",
+    "src/handler.rs: host.channel.open/post/read/close/freeze/unfreeze tool descriptions (tools/list) state that both a named and a group channel exist and are both fully readable, since read/close/freeze/unfreeze now reach a named channel too.",
+    "CHANGELOG.md / Cargo.toml / Cargo.lock / plugin/.claude-plugin/plugin.json: v0.65.0 -> v0.65.1, this PRD's own build_version_bump: patch.",
+    "contracts/host-tools.v1.json: regenerated for the six tool description changes above.",
+    "tests/chanread_ac01..06_*.rs: the six delivered tests, one per AC, all non-deferred.",
+    "tests/channel_ac02_non_member_channel_not_found.rs / tests/meshops_ac06_purge_dry_run_then_real.rs: adjusted for this PRD's own behavior changes -- channel_ac02's byte-identity check now also excludes data.key (which legitimately differs between the two inputs it compares, same as request_id already did); meshops_ac06 now acks an explicit read to get a stored cursor, since channel_post no longer auto-advances the poster's own cursor on insert (AC1's fix: a poster is a reader too, so posting must not make the post invisible to the poster's own very next read)."
   ],
   "non_goals": [
-    "Changing any tool's behaviour or arguments.",
-    "Removing any alias -- a sunset date is set; removal is a later PRD after usage reaches zero.",
-    "Renaming signup/billing.* (documented exceptions) or the admin.* surface (operator-only; separate rule, left untouched).",
-    "admin.tools.aliases (P2 requirement 7, no AC in this dispatch's assigned list) -- deferred.",
-    "AC9 (whole-suite-green proof) and AC10 (prod/live retrigger-and-verify) -- operator-provisioned/gate-provided, not reachable from this coding sandbox."
+    "New channel features: retention, membership changes (PRD's own non-goal).",
+    "Changing group-channel semantics or cursors from PRD-mcphost-agent-channels (PRD's own non-goal).",
+    "The name-path deprecation branch (channel_name_deprecated) -- the PRD's own open question is drafted 'keep, parity', which is the branch this build implements; the deprecation alternative was not built.",
+    "host.channel.list kind-per-row display (PRD's own P2, requirement 6) -- host.channel.list does not exist in this codebase, so there is nothing to extend.",
+    "AC7 from the PRD text (prod read-after-land evidence against tenant joe-test's live fleet channel) -- not in this dispatch's assigned AC list; operator-provisioned, requires a deployed binary and prod access."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -97,53 +72,48 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "test_file_names_use_test_prefix_toolname": "test_prefix toolname (the PRD's own frontmatter field): tests/toolname_ac<NN>_<slug>.rs, same convention as every other test file in this repo."
+      "test_file_names_use_underscores_not_the_prd_slugs_hyphens": "test_prefix chanread (the PRD's own frontmatter field), same convention as every other test file in this repo.",
+      "version_bump_patch": "PRD frontmatter build_version_bump: patch -- Cargo.toml/Cargo.lock/plugin.json bumped 0.65.0 -> 0.65.1, landed with AC6.",
+      "no_schema_change": "PRD's own migration/compatibility section: no schema change, existing named channels become readable; routing only, not new queries (PRD's own technical considerations).",
+      "named_channel_readers_are_owner_only": "PRD's own technical considerations, drafted: a named channel's readers are its owner only -- a non-owner's read gets channel_not_found, identical in shape to a miss (AC4's own parity requirement), not a separate authorization error class.",
+      "post_no_longer_auto_advances_the_poster_cursor": "Landed with AC1 as a necessary side effect, not a separate requirement: channel_post previously advanced the poster's own channel_cursors row on insert, which made a poster's own post invisible to the poster's own very next read -- the opposite of this PRD's point (a poster is a reader too). Two pre-existing tests (channel_ac02, meshops_ac06) were adjusted for this, not regressed."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why keep every old underscored name working as an alias instead of just renaming in place?",
-      "a": "Goal 2 is explicit (\"zero breaking changes\"), and the grounding incident is guesswork from a client reading one name and guessing another's shape -- breaking the two paying-path clients that already exist would trade one integration-friction problem for a worse one."
+      "q": "Why did read() never see a named channel in the first place?",
+      "a": "read's query joined through groups (JOIN groups g ON g.id = c.group_id) because it was written for PRD-mcphost-agent-channels, which only ever created group channels -- migration 0027's earlier, ungated name-keyed channels (PRD-mcphost-agent-mesh-ops) predate that join and were never retrofitted into it."
     },
     {
       "why": 2,
-      "q": "Why inject the alias as a cloned Tool entry in host_tools() rather than a second hand-written Tool::new call per alias?",
-      "a": "A hand-written twin would drift the moment the canonical's schema/description changed; cloning guarantees AC3's own 'alias's inputSchema equals the canonical's' by construction instead of by discipline."
+      "q": "Why did post() already handle both kinds but read() didn't?",
+      "a": "post() kept the migration-0027 mesh-ops code path as its own `else` arm alongside the newer group path (two lookups, written at two different times for two different PRDs, never merged); read() was only ever written once, for the group case, so it had no equivalent fallback to fall into."
     },
     {
       "why": 3,
-      "q": "Why resolve an alias to its canonical before dispatch_tenant_tool's match, rather than adding a second match arm per alias?",
-      "a": "dispatch_tenant_tool's ~150-arm match already names each canonical exactly once; duplicating arms for 20 aliases would double the places a future edit to one handler's call site has to touch. Resolving once in call_tool keeps the match the single source of canonical-name-to-handler wiring."
+      "q": "Why wasn't the gap caught before the 2026-09-30 dogfood run?",
+      "a": "open(name) -> post -> read is exactly the sequence host.channel.open's own doc comment (\"creates the channel if it doesn't already exist, else returns the existing one\") tells a caller to use, but no existing test exercised that specific sequence end-to-end across both verbs -- the mesh-ops and agent-channels test suites each proved their own PRD's verbs in isolation."
     },
     {
       "why": 4,
-      "q": "Why is the per-tenant-per-day log dedup and the alias-call metric an in-memory, process-wide static instead of a DB table?",
-      "a": "Same tradeoff this crate's own help_url_served{code} counter already makes (help.rs's own doc comment) -- host-wide telemetry for an operator's sunset decision, not a durable per-call audit record; a DB migration for it would be new surface this PRD's requirements don't ask for."
-    },
-    {
-      "why": 5,
-      "q": "Why does AppError::host_tool_not_found's did_you_mean search only canonical names, never a registered alias, even when an alias is the closer edit-distance match?",
-      "a": "Requirement 6's own point is steering a typo toward the name this PRD wants integrators to learn; suggesting another deprecated name would just relocate the guesswork this PRD exists to remove."
+      "q": "Why unify through one resolve_channel instead of just adding a second lookup inside read()?",
+      "a": "freeze/close/unfreeze had the identical gap (group-only reach) for the identical reason -- patching read() alone would have left three more call sites to independently remember to patch the same way, the exact failure mode (a lookup rule duplicated instead of shared) that produced this bug in the first place."
     }
   ],
-  "created_at": "2026-10-02T12:00:00Z",
+  "created_at": "2026-10-01T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Dotted canonical (default) vs underscore canonical?",
-      "resolution": "Dotted, per the PRD's own open-question resolution (\"coder proceeds with dotted unless told\") and the registry's own already-dominant style (host.docs.put, host.agent.lookup, host.group.create, ...)."
+      "question": "Does a named channel's read stay owner-only, or open up to anyone who has ever posted to it (PRD's own technical considerations names both options, drafted 'owner only')?",
+      "resolution": "Owner only, per the PRD's own drafted default -- a non-owner's read gets channel_not_found, not a distinct authorization error, so a miss and an unauthorized hit read identically (the same posture AC2/AC4 already require for a group channel's non-member). Named channels are single-tenant today; broadening this is out of scope (PRD non-goal: no membership changes)."
     },
     {
-      "question": "Sunset length?",
-      "resolution": "90 days from this PRD's own landing work (2026-10-02), per the PRD's own open-question resolution (\"90 days default\") -- SUNSET_DATE = 2026-12-31, a fixed commitment rather than a rolling landing-date computation, so tools/list's x-deprecated.sunset doesn't change on every call."
+      "question": "Keep the name-opened channel path (parity) or deprecate it in favor of group channels (PRD's own open question, owner Joe, due 2026-10-08)?",
+      "resolution": "Keep, parity -- the PRD's own TL;DR names this as the drafted default, and the open question's due date (2026-10-08) is after this dispatch's build date; AC6 states both kinds exist and are both readable rather than naming a deprecation. If Joe decides to deprecate later, that is a follow-up PRD, not a revision of this one."
     },
     {
-      "question": "Does the MCP _meta field survive every client SDK? If not, where does the deprecation hint go?",
-      "resolution": "_meta.deprecated is always attached to a successful alias call's CallToolResult regardless of client support -- a client that drops _meta simply never sees it, same as any other _meta extension; tools/list's x-deprecated and the tool_deprecated_alias log line are the two channels guaranteed to survive any client."
-    },
-    {
-      "question": "Which singleton-noun host.<noun> tools (no sibling verb) get a lint exception beyond the PRD's own 5 named examples (host.whoami, host.redeem, host.quickstart, host.changelog, host.usage)?",
-      "resolution": "host.export and host.progress, found by applying the PRD's own stated rule (\"no sibling verbs route under this family\") systematically across the full registry rather than treating the 5 named examples as the exhaustive list."
+      "question": "Should channel_post's pre-PRD auto-advance of the poster's own cursor survive unification, now that read() can see the poster's own post?",
+      "resolution": "No -- removed. Auto-advancing on post meant a poster's own next read (cursor already past the post) returned nothing, which is the same bug class this PRD fixes (a channel you can post to, you should be able to read), just one hop later. channel_ac02 and meshops_ac06 were adjusted for this, not regressed; see hard_constraints.additional."
     }
   ]
 }

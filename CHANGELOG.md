@@ -193,6 +193,22 @@ PRD-mcphost-table-context-and-sql-passthrough AC1-AC9, AC11-AC13. AC10
 (Live: a `proof.sh` run against `https://mcphost.dev/mcp` from carbon
 after deploy) is deferred -- operator-provisioned.
 
+## v0.67.1 — 2026-10-01
+
+`host.channel.read`/`close`/`freeze`/`unfreeze` now resolve a named
+channel (`host.channel.open(name: ...)`) the same way `post` always did,
+by id or by name -- previously `read` only ran the group-channel lookup,
+so a channel opened by name was postable but never readable
+(`channel_not_found`, every time). `resolve_channel` (`channels.rs`) is
+the one lookup every `host.channel.*` verb now goes through;
+`channel_not_found`'s error carries the caller's own key as `data.key`
+and names both lookups it tried. `host.channel.open`'s `tools/list`
+description now names both channel kinds as readable.
+
+PRD-mcphost-channel-read-name-parity AC1-AC6 (`chanread_ac0N_*` test
+files). AC7 (Live, prod evidence against the fleet channel) is deferred to
+the operator after deploy.
+
 ## v0.67.0 — 2026-10-01
 
 Every tenant can now be reached by one secret URL,

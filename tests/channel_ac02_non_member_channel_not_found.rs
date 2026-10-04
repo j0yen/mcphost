@@ -13,10 +13,18 @@ use serde_json::{Value, json};
 /// comparing `data` -- it's a per-call correlation id, not a side channel,
 /// so two calls legitimately differing only by it are still the
 /// `channel_not_found` byte-identity this AC is actually about.
+///
+/// PRD-mcphost-channel-read-name-parity requirement 4 (AC4): `data.key` now
+/// echoes whatever key the caller passed in, so it legitimately differs
+/// between the real channel_id and the random id this test compares --
+/// excluded for the same reason as `request_id`: it reveals nothing the
+/// caller didn't already know (its own input), so two calls differing only
+/// by it are still the indistinguishability this AC is about.
 fn without_request_id(data: &Value) -> Value {
     let mut data = data.clone();
     if let Some(obj) = data.as_object_mut() {
         obj.remove("request_id");
+        obj.remove("key");
     }
     data
 }
