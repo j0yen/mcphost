@@ -168,6 +168,8 @@ mod lineage_ac01_source_scan_registers_table_edge;
 mod lineage_ac12_python_bridge_trace_matches_tool;
 #[path = "mcphost_database_in_a_minute_ac09_csv_import_batches_internally.rs"]
 mod mcphost_database_in_a_minute_ac09_csv_import_batches_internally;
+#[path = "mcphost_event_trigger_self_test_ac11_truth_tier_persona_reaches_event_run.rs"]
+mod mcphost_event_trigger_self_test_ac11_truth_tier_persona_reaches_event_run;
 #[path = "mcphost_python_dependency_policy_ac01_lock_stored_and_require_hashes.rs"]
 mod mcphost_python_dependency_policy_ac01_lock_stored_and_require_hashes;
 #[path = "mcphost_python_dependency_policy_ac02_rebuild_matches_lock.rs"]

@@ -2546,7 +2546,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "List this tenant's recent runs, newest first, optionally filtered by tool, status (queued|running|done|error|timeout|cancelled), trigger (call|job|schedule|event|composition|...), end_user_subject (the end user, if any, the run ran as), or verdict (alert|exceeded, the run's own budget.verdict). A chain's own composed step runs (trigger: \"composition\") are excluded by default -- pass parent_run_id, trigger: \"composition\", or include_children: true to see them.",
+      "description": "List this tenant's recent runs, newest first, optionally filtered by tool, status (queued|running|done|error|timeout|cancelled), trigger (call|job|schedule|event|composition|...), end_user_subject (the end user, if any, the run ran as), or verdict (alert|exceeded, the run's own budget.verdict). A chain's own composed step runs (trigger: \"composition\") are excluded by default -- pass parent_run_id, trigger: \"composition\", or include_children: true to see them. include_result: true inlines each terminal row's result when it fits one part, so a poller reading trigger=\"event\" runs doesn't need a second host.runs.get per row.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -2558,8 +2558,12 @@
             "description": "Include composed child runs (trigger: \"composition\") alongside top-level ones; default false.",
             "type": "boolean"
           },
+          "include_result": {
+            "description": "Inline each terminal row's result when it fits one part (same value host.runs.get returns), null otherwise; default false keeps every row's result null. Clamps limit to 50.",
+            "type": "boolean"
+          },
           "limit": {
-            "description": "Max runs to return; default 20.",
+            "description": "Max runs to return; default 20, clamped to 50 when include_result is true (200 otherwise).",
             "type": "integer"
           },
           "parent_run_id": {
@@ -4661,7 +4665,7 @@
             "type": "string"
           },
           "dedupe_header": {
-            "description": "kind=\"event\": a header (e.g. X-GitHub-Delivery) whose repeated value within 24h answers 202 with the original run id instead of running again.",
+            "description": "kind=\"event\": a header (e.g. X-GitHub-Delivery) whose repeated value within 24h answers 202 with the original run id instead of running again. Defaults to X-GitHub-Delivery for the \"github\" verify preset.",
             "type": "string"
           },
           "from": {
@@ -4680,6 +4684,10 @@
             "description": "kind=\"schedule\": 5-field cron expression (minute hour day-of-month month day-of-week), UTC. Supports *, lists, ranges and steps.",
             "type": "string"
           },
+          "secret": {
+            "description": "kind=\"event\" with a verify preset string (\"github\"/\"stripe\") only: the host.secret_set name to sign with.",
+            "type": "string"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"
@@ -4693,7 +4701,7 @@
             "type": "string"
           },
           "verify": {
-            "description": "kind=\"event\": {scheme: \"hmac-sha256\"|\"hmac-sha1\"|\"token\"|\"none\", header, secret (a host.secret_set name), prefix?, timestamp_header?, tolerance_s?, allow_unverified? (required true for scheme \"none\")}. kind=\"webhook\": a plain string, one of \"hmac\" (default; checks X-Mcphost-Signature: sha256=<hex>), \"none\", or \"stripe\" (checks Stripe-Signature the way Stripe itself signs, using the same generated secret)."
+            "description": "kind=\"event\": either {scheme: \"hmac-sha256\"|\"hmac-sha1\"|\"token\"|\"none\", header, secret (a host.secret_set name), prefix?, timestamp_header?, tolerance_s?, allow_unverified? (required true for scheme \"none\")}, or a preset string -- \"github\" (hmac-sha256 over X-Hub-Signature-256, prefix sha256=, dedupe_header defaulting to X-GitHub-Delivery) or \"stripe\" (hmac-sha256 t=,v1= over Stripe-Signature) -- paired with the top-level secret argument below. kind=\"webhook\": a plain string, one of \"hmac\" (default; checks X-Mcphost-Signature: sha256=<hex>), \"none\", or \"stripe\" (checks Stripe-Signature the way Stripe itself signs, using the same generated secret)."
           }
         },
         "required": [

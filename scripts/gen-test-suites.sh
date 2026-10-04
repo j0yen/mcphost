@@ -546,13 +546,13 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # 1 (2 total: the one `exclusive` singleton plus this one), landing the
 # grand total back at 10.
 #
-# PRD-mcphost-drift-review (2026-10-03 follow-up): this PRD's own new
-# `drift` area group (11 files: 10 core, 1 sandbox -- `drift_ac12_*`
-# publishes a python tool) tipped sandbox's single normal bucket past its
-# 170 cap above, spawning a 3rd sandbox suite binary (11 total, past the
-# AC1 ceiling of 10). 170 -> 180 was the smallest tested raise that
-# re-collapses sandbox's normal bucket back to one suite, landing the
-# grand total back at 10 (8 core + 2 sandbox).
+# PRD-mcphost-event-trigger-self-test (rebased onto main at 0b56ac76 /
+# v0.77.0, 2026-10-03, run 351): this PRD's own twelve
+# `mcphost_event_trigger_self_test_ac*.rs` files (also `core`-classified)
+# join the same normal bucket on top of public-tool-url's own 810 cap
+# above, spawning an 11th suite binary again -- caught by the same P0
+# assertion. 810 -> 822 (core) re-collapses core's normal buckets to 1,
+# landing the grand total back at 10.
 #
 # Rebasing mcphost-drift-review onto mcphost-dry-run-side-effects
 # (2026-10-03, this rebase): both PRDs above independently raised the
@@ -601,7 +601,18 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # buckets on top of result-handles' own 870/180 caps above -- the exact
 # combined numbers are re-derived below by actually running
 # gen-test-suites.sh --check against this rebase's full file set.
-MAX_PER_SUITE = {"core": 870, "sandbox": 180}
+#
+# Rebasing mcphost-event-trigger-self-test onto mcphost-row-policy
+# (2026-10-04, this rebase): this PRD's own twelve
+# `mcphost_event_trigger_self_test_ac*.rs` files (also `core`-classified)
+# originally raised 810 -> 834 against the public-tool-url/dry-run-side-
+# effects baseline; landing them on top of row-policy's own 870/180 caps
+# above (result-handles and row-policy both landed on main in between and
+# are not files this branch carries) spawns an 11th suite binary again --
+# caught by the same P0 assertion. The exact new cap is re-derived below
+# by actually running gen-test-suites.sh --check against this rebase's
+# full file set, same as every entry above.
+MAX_PER_SUITE = {"core": 900, "sandbox": 181}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

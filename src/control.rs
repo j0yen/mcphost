@@ -639,6 +639,13 @@ pub fn quickstart(
     // arguments (the documented "First run" flow) gets the python starter
     // recipe below rather than an `args_invalid` rejection.
     let kind_name_requested = arg_str_opt(args, "kind").unwrap_or_else(|| "python".to_string());
+    // PRD-mcphost-unknown-kind-routes-to-recipe superseded the old hard
+    // rejection here (P0 requirement 5 / AC8's original fix for the
+    // 2026-09-28/09-29 truth-tier transcripts hitting `kind 'event' is not
+    // registered`): "schedule"/"event"/"webhook" now resolve through
+    // `resolve_kind`'s alias table to the http webhook/schedule recipes
+    // below instead of erroring, and the recipe's own `host.trigger.set`
+    // step is what names the right call (kindroute_ac01/ac02).
     let (kind, alias) = resolve_kind(&state.kinds, &kind_name_requested)?;
     let kind_name = kind.name().to_string();
     let example = kind.example();
@@ -830,6 +837,12 @@ pub fn quickstart(
         "kinds": state.kinds.names(),
         "aliases": crate::kinds::aliases::alias_names(),
         "recipes": crate::kinds::aliases::recipe_names(),
+        // P0 requirement 5 / AC8: one sentence so an agent's first guess
+        // about triggers isn't `host.quickstart(kind="event")` (both
+        // 2026-09-28 and 09-29's truth-tier transcripts made exactly that
+        // guess before ever calling host.trigger.set).
+        "triggers": "Triggers (schedule, event, message, webhook) are set with \
+            host.trigger.set(tool, kind=...), not a tool kind -- see host.trigger.set.",
         "try_before_call": try_before_call,
         "starter_tool": starter_tool,
         // PRD-mcphost-sandbox-bridge-discoverability requirement 1 (AC1):
@@ -886,8 +899,53 @@ pub fn quickstart(
                 "docs": "host.quickstart",
             }),
         );
+        // PRD-mcphost-event-trigger-self-test P0 requirement 5 / AC8: the
+        // `hint` the AC demands for `kind="event"`. The AC was drafted when
+        // a trigger word made `quickstart` fail `unknown_kind` and the hint
+        // rode on that error; PRD-mcphost-unknown-kind-routes-to-recipe
+        // (landed on main since, kindroute_ac01/ac02) turned the same call
+        // into a successful recipe resolution, so the hint now rides on the
+        // success response instead of an error -- same field name, same
+        // payload (the exact `host.trigger.set(kind=...)` call to make for
+        // the word the caller asked for), reached without the agent having
+        // to recover from a rejection first.
+        map.insert(
+            "hint".to_string(),
+            json!(trigger_set_hint(alias, &kind_name_requested)),
+        );
     }
     Ok(response)
+}
+
+/// AC8's `hint` text: names the exact `host.trigger.set(kind=...)` call for
+/// the trigger word `requested` named at [`quickstart`], so an agent that
+/// guessed triggers were a tool kind reads the right call verbatim rather
+/// than inferring it from `recipe.steps`.
+///
+/// The `kind` in the hint is `requested` itself whenever that word is one
+/// `triggers::set` accepts (`"event"` -> `host.trigger.set(kind="event")`,
+/// exactly as AC8 quotes it), lowercased so `"EVENT"` hints identically
+/// (kindroute AC2's case-insensitivity). A word only the alias table knows
+/// (`"cron"`, `"inbound"`) falls back to its recipe's trigger kind, since
+/// hinting a `kind=` value `host.trigger.set` would itself reject is worse
+/// than no hint at all.
+fn trigger_set_hint(alias: &crate::kinds::aliases::KindAlias, requested: &str) -> String {
+    /// The `kind` values `triggers::set` accepts (`src/triggers.rs`).
+    const TRIGGER_KINDS: [&str; 4] = ["schedule", "event", "message", "webhook"];
+    let lower = requested.to_ascii_lowercase();
+    let trigger_kind = if TRIGGER_KINDS.contains(&lower.as_str()) {
+        lower
+    } else if alias.recipe == "schedules" {
+        "schedule".to_string()
+    } else {
+        "event".to_string()
+    };
+    format!(
+        "Triggers are not a tool kind: '{requested}' resolved to the {} kind here. \
+        Set the trigger itself with host.trigger.set(kind=\"{trigger_kind}\") on a \
+        published tool -- the recipe.steps above show it filled in.",
+        alias.kind,
+    )
 }
 
 /// `subject` (PRD-mcphost-oauth-resource-server requirement 4 / AC2): the

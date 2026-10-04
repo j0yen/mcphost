@@ -550,6 +550,13 @@ impl AppError {
                 // doesn't understand is the same caller-input problem as
                 // `invalid_spec`/`args_invalid` above.
                 | "unknown_spec_field" | "unknown_argument"
+                // PRD-mcphost-event-trigger-self-test P0 requirement 5 (AC8):
+                // host.quickstart's own hinted rejection for a trigger-kind
+                // word (schedule/event/webhook) is the same caller-input
+                // problem as AppError::UnknownKind's own INVALID_PARAMS
+                // mapping -- just carried via Structured so it can add
+                // `data.hint`.
+                | "unknown_kind"
                 // PRD-mcphost-python-kind-plain-env requirement 3 (AC4): a
                 // publish/secret_set naming a colliding env/secret key is
                 // the same caller-input problem as `invalid_spec` above.

@@ -324,6 +324,10 @@ not an echo of the input.
 host.trigger.set(tool="table_note", kind="schedule", schedule="0 * * * *")
 ```
 
+Triggers (schedule, event, message, webhook) are set with
+`host.trigger.set(tool, kind=...)`, not a tool kind -- see
+`host.trigger.set`.
+
 ### Claim
 
 Relay this sentence to your human, verbatim except for the URL itself:

@@ -154,6 +154,14 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // reason the sharing-docs/launch-docs/spec-fields-doc-check lanes
     // above give) -- a sixteenth, intended addition since the baseline,
     // not drift.
+    //
+    // Rebasing mcphost-event-trigger-self-test onto
+    // mcphost-tool-naming-convention-and-aliases (this rebase): that PRD
+    // added its own "event-trigger-self-test-fixtures" lane (routes
+    // tests/fixtures/event-trigger-self-test/** -- the real truth-tier
+    // nightly artifacts AC11's live-check bar is exercised over -- to the
+    // mcphost_event_trigger_self_test_ac11 proof tests) -- a seventeenth,
+    // intended addition since the baseline, not drift.
     assert_eq!(
         added,
         vec![
@@ -161,6 +169,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "checkcompat-race-soak",
             "contracts",
             "docsearch-fixtures",
+            "event-trigger-self-test-fixtures",
             "examples",
             "flake-lint",
             "launch-docs",
@@ -174,9 +183,9 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "vendor",
             "wasm-fixtures"
         ],
-        "only admin-schemas, checkcompat-race-soak, contracts, docsearch-fixtures, examples, \
-         flake-lint, launch-docs, loop-config, oauthconf-data, plugin, sandbox-api-docs, sharing-docs, \
-         spec-fields-doc-check, tool-naming, vendor, and wasm-fixtures may have been added \
-         since {BASELINE_REV}"
+        "only admin-schemas, checkcompat-race-soak, contracts, docsearch-fixtures, \
+         event-trigger-self-test-fixtures, examples, flake-lint, launch-docs, loop-config, \
+         oauthconf-data, plugin, sandbox-api-docs, sharing-docs, spec-fields-doc-check, tool-naming, \
+         vendor, and wasm-fixtures may have been added since {BASELINE_REV}"
     );
 }
