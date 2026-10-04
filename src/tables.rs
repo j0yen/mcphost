@@ -99,6 +99,11 @@ const QUERY_LOG_SQL_MAX_BYTES: usize = 4_096;
 pub const QUERY_LOG_LIMIT_DEFAULT: i64 = 50;
 pub const QUERY_LOG_LIMIT_CAP: i64 = 200;
 
+/// PRD-mcphost-query-diagnosis requirement 6: `host.table.query_stats`'s
+/// `window_s` default (24h) and cap (7d).
+pub(crate) const QUERY_STATS_WINDOW_DEFAULT_S: i64 = 86_400;
+pub(crate) const QUERY_STATS_WINDOW_MAX_S: i64 = 604_800;
+
 /// requirement 1: the small type set `host.table.create`'s `columns`
 /// argument may declare. `Timestamp` is stored as `TEXT` (an RFC 3339
 /// string the caller provides -- this module does no timezone/format
@@ -309,6 +314,18 @@ pub(crate) fn open_conn(path: &Path, cfg: &crate::db::DbConfig) -> Result<Connec
         .exists([])?;
     if !has_sample_hash {
         conn.execute(&format!("ALTER TABLE {QUERY_LOG_TABLE} ADD COLUMN sample_hash TEXT"), [])?;
+    }
+    // PRD-mcphost-query-diagnosis requirement 3/7: additive on an existing
+    // tenant's `_mcphost_query_log` (created before this feature) -- same
+    // idempotent-`ALTER TABLE` guard as `sample_hash` above.
+    let has_diagnosis: bool = conn
+        .prepare(&format!("SELECT 1 FROM pragma_table_info('{QUERY_LOG_TABLE}') WHERE name = 'diagnosis'"))?
+        .exists([])?;
+    if !has_diagnosis {
+        conn.execute(&format!("ALTER TABLE {QUERY_LOG_TABLE} ADD COLUMN diagnosis TEXT"), [])?;
+        conn.execute(&format!("ALTER TABLE {QUERY_LOG_TABLE} ADD COLUMN hint TEXT"), [])?;
+        conn.execute(&format!("ALTER TABLE {QUERY_LOG_TABLE} ADD COLUMN result_bytes INTEGER"), [])?;
+        conn.execute(&format!("ALTER TABLE {QUERY_LOG_TABLE} ADD COLUMN est_tokens INTEGER"), [])?;
     }
     Ok(conn)
 }
@@ -923,11 +940,20 @@ fn truncate_sql_for_log(sql: &str) -> (String, bool) {
 /// [`log_query`]'s own outcome fields, bundled so the function stays under
 /// this repo's `too-many-arguments-threshold = 5` (clippy.toml) without a
 /// suppression.
+///
+/// PRD-mcphost-query-diagnosis P0 requirement 3 / P1 requirement 7:
+/// `diagnosis`/`hint` (identifier-coverage diagnosis, computed by
+/// [`diagnose_sync`]) and `result_bytes`/`est_tokens` (the result's
+/// footprint) join the original fields here.
 struct QueryLogOutcome<'a> {
     duration_ms: i64,
     row_count: Option<i64>,
     sample_hash: Option<&'a str>,
     error: Option<&'a AppError>,
+    diagnosis: Option<&'a str>,
+    hint: Option<&'a str>,
+    result_bytes: Option<i64>,
+    est_tokens: Option<i64>,
 }
 
 /// requirement 2/3: appends one row to this connection's query log,
@@ -936,9 +962,21 @@ struct QueryLogOutcome<'a> {
 /// writing the log row is warned and swallowed here, never propagated to
 /// the caller of [`table_query`].
 fn log_query(conn: &Connection, sql: &str, log_outcome: QueryLogOutcome<'_>) {
-    let QueryLogOutcome { duration_ms, row_count, sample_hash, error } = log_outcome;
+    let QueryLogOutcome { duration_ms, row_count, sample_hash, error, diagnosis, hint, result_bytes, est_tokens } =
+        log_outcome;
     let (stored_sql, truncated) = truncate_sql_for_log(sql);
-    let error_code = error.map(AppError::code);
+    // requirement 6/AC6: `bound_exceeded` gives every bound refusal the
+    // same `table_bound_exceeded` top-level code (that's what the caller's
+    // JSON-RPC error carries), but `query_stats`'s `refused` breakdown
+    // needs to tell a row-cap refusal from a time-cap one -- so the logged
+    // (and therefore stats-keying) code is the specific `data.bound` name
+    // when present, falling back to the top-level code otherwise.
+    let error_code = error.map(|e| match e {
+        AppError::Structured { code: "table_bound_exceeded", data, .. } => {
+            data.get("bound").and_then(Value::as_str).unwrap_or("table_bound_exceeded")
+        }
+        _ => e.code(),
+    });
     let error_message = error.map(ToString::to_string);
     let outcome: rusqlite::Result<()> = (|| {
         conn.execute("BEGIN IMMEDIATE", [])?;
@@ -946,8 +984,9 @@ fn log_query(conn: &Connection, sql: &str, log_outcome: QueryLogOutcome<'_>) {
             conn.execute(
                 &format!(
                     "INSERT INTO {QUERY_LOG_TABLE} \
-                     (created_unix, sql, truncated, row_count, duration_ms, error_code, error_message, sample_hash) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"
+                     (created_unix, sql, truncated, row_count, duration_ms, error_code, error_message, \
+                      sample_hash, diagnosis, hint, result_bytes, est_tokens) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)"
                 ),
                 params![
                     crate::state::now_unix(),
@@ -958,6 +997,10 @@ fn log_query(conn: &Connection, sql: &str, log_outcome: QueryLogOutcome<'_>) {
                     error_code,
                     error_message,
                     sample_hash,
+                    diagnosis,
+                    hint,
+                    result_bytes,
+                    est_tokens,
                 ],
             )?;
             conn.execute(
@@ -987,8 +1030,122 @@ fn log_query(conn: &Connection, sql: &str, log_outcome: QueryLogOutcome<'_>) {
 /// SELECT/multi-statement rejection (never reaching [`run_query_sync`]), a
 /// bound refusal, or a successful result all log the same way, `duration_ms`
 /// covering the whole attempt from just after argument parsing.
+///
+/// PRD-mcphost-query-diagnosis requirement 1: what [`table_query`] learns
+/// from a pure (no IO) AST parse, before opening the per-tenant connection
+/// -- `column_annotation_candidates` is the one piece that genuinely needs
+/// the main database (requirement 2/AC7: a column's `description`
+/// annotation, read async via [`crate::db::Db::list_table_model_annotations`]),
+/// so it is fetched up front and carried into the sync/blocking closure
+/// alongside the AST's own findings.
+struct QueryDiagContext {
+    from_table: Option<String>,
+    where_equalities: Vec<(String, String)>,
+    column_annotation_candidates: Vec<(String, String)>,
+}
+
+/// PRD-mcphost-query-diagnosis P0 requirements 1/2/4 (AC1/AC2/AC3/AC7):
+/// computes this query's diagnosis, purely from data already in reach of
+/// the per-tenant connection plus `ctx` -- never a second query execution,
+/// never a model call. Returns `(diagnosis_json, hint)`, both `None` when
+/// there is nothing to diagnose (a successful non-empty result: AC4; a
+/// structural refusal that isn't a SQLite bind error, e.g. the UPDATE
+/// `table_query_rejected` case PRD-mcphost-table-context-and-sql-passthrough's
+/// own AC5 covers; a zero-row result with no text-column equality filter
+/// to check).
+fn diagnose_sync(conn: &Connection, ctx: &QueryDiagContext, result: &Result<Vec<Value>, AppError>) -> (Option<Value>, Option<String>) {
+    // Wrapped in an inner closure purely so every early-exit below can use
+    // `?` on `Option` ("no diagnosis for this case") without fighting this
+    // function's own `(Option<Value>, Option<String>)` return type.
+    let diag: Option<crate::query_diag::IdentifierDiagnosis> = (|| {
+        match result {
+            Err(e) => {
+                let message = e.to_string();
+                let (kind, ident) = crate::query_diag::parse_bind_error(&message)?;
+                match kind {
+                    "table" => {
+                        let all_tables = list_table_names_sync(conn).unwrap_or_default();
+                        let candidates: Vec<(String, String)> =
+                            all_tables.iter().map(|t| (t.clone(), t.clone())).collect();
+                        Some(crate::query_diag::score_identifier(&ident, "table", &candidates))
+                    }
+                    "column" => {
+                        let table = ctx.from_table.as_ref()?;
+                        let schema = load_schema_sync(conn, table).ok()?;
+                        let mut candidates: Vec<(String, String)> =
+                            schema.columns.keys().map(|c| (c.clone(), c.clone())).collect();
+                        candidates.extend(ctx.column_annotation_candidates.iter().cloned());
+                        Some(crate::query_diag::score_identifier(&ident, "column", &candidates))
+                    }
+                    _ => None,
+                }
+            }
+            Ok(rows) if rows.is_empty() => {
+                let table = ctx.from_table.as_ref()?;
+                let schema = load_schema_sync(conn, table).ok()?;
+                let (col, literal) = ctx
+                    .where_equalities
+                    .iter()
+                    .find(|(c, _)| matches!(schema.columns.get(c), Some(ColumnType::Text)))?;
+                let mut stmt = conn
+                    .prepare(&format!(
+                        "SELECT DISTINCT {} FROM {} LIMIT {}",
+                        quote_ident(col),
+                        quote_ident(table),
+                        QUERY_DIAG_DISTINCT_VALUES_BOUND
+                    ))
+                    .ok()?;
+                let distinct: Vec<String> = stmt
+                    .query_map([], |r| r.get::<_, Option<String>>(0))
+                    .ok()?
+                    .filter_map(|r| r.ok().flatten())
+                    .collect();
+                Some(crate::query_diag::score_value(literal, &distinct))
+            }
+            Ok(_) => None,
+        }
+    })();
+
+    let Some(diag) = diag else {
+        return (None, None);
+    };
+    let hint = crate::query_diag::build_hint(&diag, ctx.from_table.as_deref());
+    let diagnosis_json = json!({"identifiers": [diag.to_json()], "band": diag.band.as_str()});
+    (Some(diagnosis_json), hint)
+}
+
+/// PRD-mcphost-query-diagnosis requirement 4: distinct-value sample bound
+/// for value diagnosis, re-exported here (rather than imported per call
+/// site) purely so the SQL string literal above reads as a named constant.
+const QUERY_DIAG_DISTINCT_VALUES_BOUND: i64 = crate::query_diag::DISTINCT_VALUES_BOUND;
+
 pub async fn table_query(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let sql = arg_str(args, "sql")?;
+
+    // PRD-mcphost-query-diagnosis requirement 1/2: the AST parse is pure
+    // (no IO); the annotation read is the one piece of diagnosis context
+    // that genuinely needs the main database, fetched here (async) before
+    // the per-tenant connection's sync/blocking closure runs.
+    let extracted = crate::query_diag::extract_from_ast(&sql);
+    let column_annotation_candidates = if let Some(table) = &extracted.from_table {
+        let annotations = state
+            .db
+            .list_table_model_annotations(tenant.id, table.clone())
+            .await
+            .unwrap_or_default();
+        annotations
+            .iter()
+            .filter(|a| !a.column_name.is_empty() && a.key == "description")
+            .flat_map(|a| crate::query_diag::annotation_word_candidates(&a.column_name, &a.value))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let ctx = QueryDiagContext {
+        from_table: extracted.from_table,
+        where_equalities: extracted.where_equalities,
+        column_annotation_candidates,
+    };
 
     let path = tenant_db_path(state, tenant.id);
     let sql_for_conn = sql.clone();
@@ -1001,21 +1158,59 @@ pub async fn table_query(state: &AppState, tenant: &Tenant, args: &Value) -> Res
         // this connection) isn't itself rejected as a write against a
         // read-only connection.
         let _ = conn.pragma_update(None, "query_only", "OFF");
+        let (diagnosis, hint) = diagnose_sync(conn, &ctx, &result);
+        let diagnosis_str = diagnosis.as_ref().map(|v| v.to_string());
         match &result {
-            Ok(rows) => log_query(
+            Ok(rows) => {
+                // requirement 3's 5ms p95 logging-overhead budget (shared
+                // with the dependency PRD's own log-write budget) means
+                // this must never serialize the result twice: the common
+                // case (<=20 rows, [`sample_hash_of`]'s own truncation
+                // bound) reuses this one serialization for both the
+                // footprint byte count and the drift sample hash; only a
+                // result over 20 rows (up to [`ROW_CAP`]) pays a second,
+                // smaller serialization of just its first 20.
+                let serialized = serde_json::to_string(rows).unwrap_or_default();
+                let bytes = serialized.len() as i64;
+                // P1 requirement 7: `mqo-session-footprint-meter`'s
+                // `tokens_from_chars` default -- `ceil(bytes / 4)`. `i64`'s
+                // `div_ceil` is unstable for signed integers; `bytes` is
+                // never negative (a serialized length), so the `(n + 3) / 4`
+                // idiom is exact and needs no feature gate.
+                let est_tokens = (bytes + 3) / 4;
+                let sample_hash = if rows.len() <= 20 {
+                    crate::billing::sha256_hex(serialized.as_bytes())
+                } else {
+                    sample_hash_of(rows)
+                };
+                log_query(
+                    conn,
+                    &sql_for_conn,
+                    QueryLogOutcome {
+                        duration_ms,
+                        row_count: Some(rows.len() as i64),
+                        sample_hash: Some(&sample_hash),
+                        error: None,
+                        diagnosis: diagnosis_str.as_deref(),
+                        hint: hint.as_deref(),
+                        result_bytes: Some(bytes),
+                        est_tokens: Some(est_tokens),
+                    },
+                )
+            }
+            Err(e) => log_query(
                 conn,
                 &sql_for_conn,
                 QueryLogOutcome {
                     duration_ms,
-                    row_count: Some(rows.len() as i64),
-                    sample_hash: Some(&sample_hash_of(rows)),
-                    error: None,
+                    row_count: None,
+                    sample_hash: None,
+                    error: Some(e),
+                    diagnosis: diagnosis_str.as_deref(),
+                    hint: hint.as_deref(),
+                    result_bytes: None,
+                    est_tokens: None,
                 },
-            ),
-            Err(e) => log_query(
-                conn,
-                &sql_for_conn,
-                QueryLogOutcome { duration_ms, row_count: None, sample_hash: None, error: Some(e) },
             ),
         }
         result
@@ -1030,6 +1225,36 @@ pub async fn table_query(state: &AppState, tenant: &Tenant, args: &Value) -> Res
 /// by `before_id`. Reads only the calling tenant's own per-tenant file --
 /// there is no argument that names another tenant (the same structural
 /// isolation [`table_query`] itself relies on).
+///
+/// The full `_mcphost_query_log` column list, shared by every reader
+/// (`host.table.query_log`, `host.table.query_diagnose`,
+/// `host.table.query_stats`) so they can never drift from each other.
+const QUERY_LOG_COLS: &str = "id, created_unix, sql, truncated, row_count, duration_ms, error_code, \
+     error_message, diagnosis, hint, result_bytes, est_tokens";
+
+/// Parses one `QUERY_LOG_COLS`-ordered row into its wire JSON shape --
+/// `diagnosis` is stored as a JSON string and parsed back into a JSON
+/// value here (never left as a double-encoded string) so a caller reading
+/// either `query_log` or `query_diagnose` gets the same structured shape.
+fn query_log_row_to_json(r: &rusqlite::Row) -> rusqlite::Result<Value> {
+    let diagnosis_str: Option<String> = r.get(8)?;
+    let diagnosis = diagnosis_str.and_then(|s| serde_json::from_str::<Value>(&s).ok());
+    Ok(json!({
+        "id": r.get::<_, i64>(0)?,
+        "created_unix": r.get::<_, i64>(1)?,
+        "sql": r.get::<_, String>(2)?,
+        "truncated": r.get::<_, i64>(3)? != 0,
+        "row_count": r.get::<_, Option<i64>>(4)?,
+        "duration_ms": r.get::<_, i64>(5)?,
+        "error_code": r.get::<_, Option<String>>(6)?,
+        "error_message": r.get::<_, Option<String>>(7)?,
+        "diagnosis": diagnosis,
+        "hint": r.get::<_, Option<String>>(9)?,
+        "result_bytes": r.get::<_, Option<i64>>(10)?,
+        "est_tokens": r.get::<_, Option<i64>>(11)?,
+    }))
+}
+
 pub async fn table_query_log(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let limit = args
         .get("limit")
@@ -1040,29 +1265,201 @@ pub async fn table_query_log(state: &AppState, tenant: &Tenant, args: &Value) ->
 
     let path = tenant_db_path(state, tenant.id);
     let rows = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
-        let select = format!(
-            "SELECT id, created_unix, sql, truncated, row_count, duration_ms, error_code, error_message \
-             FROM {QUERY_LOG_TABLE} WHERE (?1 IS NULL OR id < ?1) ORDER BY id DESC LIMIT ?2"
-        );
-        let mut stmt = conn.prepare(&select)?;
-        let rows = stmt
-            .query_map(params![before_id, limit], |r| {
-                Ok(json!({
-                    "id": r.get::<_, i64>(0)?,
-                    "created_unix": r.get::<_, i64>(1)?,
-                    "sql": r.get::<_, String>(2)?,
-                    "truncated": r.get::<_, i64>(3)? != 0,
-                    "row_count": r.get::<_, Option<i64>>(4)?,
-                    "duration_ms": r.get::<_, i64>(5)?,
-                    "error_code": r.get::<_, Option<String>>(6)?,
-                    "error_message": r.get::<_, Option<String>>(7)?,
-                }))
-            })?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let to_row = query_log_row_to_json;
+        let rows = match before_id {
+            Some(before) => {
+                let mut stmt = conn.prepare(&format!(
+                    "SELECT {QUERY_LOG_COLS} FROM {QUERY_LOG_TABLE} WHERE id < ?1 ORDER BY id DESC LIMIT ?2"
+                ))?;
+                stmt.query_map(params![before, limit], to_row)?
+                    .collect::<rusqlite::Result<Vec<Value>>>()?
+            }
+            None => {
+                let mut stmt = conn.prepare(&format!(
+                    "SELECT {QUERY_LOG_COLS} FROM {QUERY_LOG_TABLE} ORDER BY id DESC LIMIT ?1"
+                ))?;
+                stmt.query_map(params![limit], to_row)?
+                    .collect::<rusqlite::Result<Vec<Value>>>()?
+            }
+        };
         Ok(rows)
     })
     .await?;
     Ok(json!({"rows": rows}))
+}
+
+/// PRD-mcphost-query-diagnosis P0 requirement 5/AC5: `host.table.query_diagnose(log_id)`
+/// -- this tenant's own log rows only, scoped by the per-tenant-file
+/// isolation [`table_query`]'s own cross-tenant test already relies on: a
+/// `log_id` from a different tenant's file simply has no matching row
+/// here, structurally `not_found` the same way a cross-tenant table name
+/// reads as nonexistent rather than forbidden.
+pub async fn table_query_diagnose(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let log_id = args
+        .get("log_id")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| AppError::InvalidArgs("missing required argument 'log_id'".to_string()))?;
+
+    let path = tenant_db_path(state, tenant.id);
+    let row = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+        conn.query_row(
+            &format!("SELECT {QUERY_LOG_COLS} FROM {QUERY_LOG_TABLE} WHERE id = ?1"),
+            params![log_id],
+            query_log_row_to_json,
+        )
+        .optional()
+        .map_err(AppError::from)
+    })
+    .await?;
+    let Some(row) = row else {
+        return Err(AppError::Structured {
+            code: "not_found",
+            message: format!("no query log row '{log_id}' for this tenant"),
+            data: json!({"log_id": log_id}),
+        });
+    };
+
+    if !row["diagnosis"].is_null() || !row["hint"].is_null() {
+        return Ok(json!({"log_id": log_id, "diagnosis": row["diagnosis"], "hint": row["hint"]}));
+    }
+
+    // requirement 5: "recomputing them against the current schema if the
+    // row predates this feature" -- reruns [`diagnose_sync`]'s own logic
+    // from the row's own stored sql/error/row_count, never by re-running
+    // the query itself.
+    let sql = row["sql"].as_str().unwrap_or_default().to_string();
+    let error_message = row["error_message"].as_str().map(str::to_string);
+    let row_count = row["row_count"].as_i64();
+
+    let extracted = crate::query_diag::extract_from_ast(&sql);
+    let column_annotation_candidates = if let Some(table) = &extracted.from_table {
+        let annotations = state
+            .db
+            .list_table_model_annotations(tenant.id, table.clone())
+            .await
+            .unwrap_or_default();
+        annotations
+            .iter()
+            .filter(|a| !a.column_name.is_empty() && a.key == "description")
+            .flat_map(|a| crate::query_diag::annotation_word_candidates(&a.column_name, &a.value))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let ctx = QueryDiagContext {
+        from_table: extracted.from_table,
+        where_equalities: extracted.where_equalities,
+        column_annotation_candidates,
+    };
+
+    // A synthetic re-creation of the original call's `Result` shape --
+    // [`diagnose_sync`] only inspects an `Err`'s message text (via
+    // `query_diag::parse_bind_error`) and an `Ok`'s emptiness, never any
+    // other field, so this round-trips exactly what it needs from the
+    // stored row without re-running the query.
+    let synthetic_result: Result<Vec<Value>, AppError> = if let Some(msg) = error_message {
+        Err(AppError::Structured { code: "storage", message: msg, data: Value::Null })
+    } else if row_count.unwrap_or(0) == 0 {
+        Ok(Vec::new())
+    } else {
+        Ok(vec![Value::Null])
+    };
+
+    let path2 = tenant_db_path(state, tenant.id);
+    let (diagnosis, hint) = with_tenant_conn(path2, state.db.cfg(), state.db.counters_handle(), move |conn| {
+        Ok(diagnose_sync(conn, &ctx, &synthetic_result))
+    })
+    .await?;
+
+    Ok(json!({"log_id": log_id, "diagnosis": diagnosis, "hint": hint}))
+}
+
+/// PRD-mcphost-query-diagnosis P0 requirement 6/AC6: `host.table.query_stats(window_s?)`
+/// -- counts, outcome breakdown, latency percentiles, result footprint,
+/// and the top 5 most common hints over the calling tenant's own query
+/// log rows created within the last `window_s` seconds (default 24h,
+/// capped at 7d). Computed from whatever the capped log currently
+/// retains (`QUERY_LOG_MAX_ROWS`): a tenant querying fast enough to evict
+/// rows out of the window sees a smaller `queries` count than it issued,
+/// the same honest-about-its-own-retention stance `query_log` itself
+/// takes.
+pub async fn table_query_stats(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let window_s = args
+        .get("window_s")
+        .and_then(Value::as_i64)
+        .unwrap_or(QUERY_STATS_WINDOW_DEFAULT_S)
+        .clamp(1, QUERY_STATS_WINDOW_MAX_S);
+    let since = crate::state::now_unix() - window_s;
+
+    let path = tenant_db_path(state, tenant.id);
+    with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+        let mut stmt = conn.prepare(&format!(
+            "SELECT row_count, duration_ms, error_code, hint, est_tokens FROM {QUERY_LOG_TABLE} \
+             WHERE created_unix >= ?1"
+        ))?;
+        // A named type alias, not an inline 5-tuple in the `let` binding
+        // below, so clippy's `type_complexity` lint has nothing to flag --
+        // `src/tables.rs` is on `checkcompat_race_ac07`'s fixed file list,
+        // which forbids a new clippy allow-attribute (clean by
+        // construction, not by suppression).
+        type StatsRow = (Option<i64>, i64, Option<String>, Option<String>, Option<i64>);
+        let rows: Vec<StatsRow> = stmt
+            .query_map(params![since], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+
+        let queries = rows.len() as i64;
+        let mut ok = 0i64;
+        let mut empty = 0i64;
+        let mut refused: BTreeMap<String, i64> = BTreeMap::new();
+        let mut durations: Vec<i64> = Vec::with_capacity(rows.len());
+        let mut result_rows_total: i64 = 0;
+        let mut est_result_tokens_total: i64 = 0;
+        let mut hint_counts: BTreeMap<String, i64> = BTreeMap::new();
+
+        for (row_count, duration_ms, error_code, hint, est_tokens) in &rows {
+            durations.push(*duration_ms);
+            match (error_code, row_count) {
+                (Some(code), _) => *refused.entry(code.clone()).or_insert(0) += 1,
+                (None, Some(0)) => empty += 1,
+                (None, _) => ok += 1,
+            }
+            if let Some(rc) = row_count {
+                result_rows_total += rc;
+            }
+            if let Some(et) = est_tokens {
+                est_result_tokens_total += et;
+            }
+            if let Some(h) = hint {
+                *hint_counts.entry(h.clone()).or_insert(0) += 1;
+            }
+        }
+        durations.sort_unstable();
+        let percentile = |p: f64| -> i64 {
+            if durations.is_empty() {
+                return 0;
+            }
+            let idx = ((durations.len() as f64) * p).ceil() as usize;
+            let idx = idx.saturating_sub(1).min(durations.len() - 1);
+            durations[idx]
+        };
+
+        let mut top_hints: Vec<(String, i64)> = hint_counts.into_iter().collect();
+        top_hints.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        top_hints.truncate(5);
+
+        Ok(json!({
+            "queries": queries,
+            "ok": ok,
+            "empty": empty,
+            "refused": Value::Object(refused.into_iter().map(|(k, v)| (k, json!(v))).collect()),
+            "p50_ms": percentile(0.50),
+            "p95_ms": percentile(0.95),
+            "result_rows_total": result_rows_total,
+            "est_result_tokens_total": est_result_tokens_total,
+            "top_hints": top_hints.into_iter().map(|(hint, count)| json!({"hint": hint, "count": count})).collect::<Vec<_>>(),
+        }))
+    })
+    .await
 }
 
 // ---- host.table.list / host.table.schema --------------------------------

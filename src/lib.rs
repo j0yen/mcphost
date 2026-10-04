@@ -53,6 +53,7 @@ pub mod oauth_stats;
 pub mod oauthclient;
 pub mod plans;
 pub mod public_tool;
+pub mod query_diag;
 pub mod registry;
 pub mod retention;
 pub mod runs;

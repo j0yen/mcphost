@@ -2395,6 +2395,19 @@ def _table_drop(name):
 def _table_schema(table):
     return _table_call("schema", table=table)
 
+# PRD-mcphost-query-diagnosis P1 requirement 8 (AC9): mirrors
+# host.table.query_diagnose/query_stats -- the sandboxed caller receives
+# the same object the tool itself returns, over this same loopback
+# channel.
+def _table_query_diagnose(log_id):
+    return _table_call("query_diagnose", log_id=log_id)
+
+def _table_query_stats(window_s=None):
+    kwargs = {}
+    if window_s is not None:
+        kwargs["window_s"] = window_s
+    return _table_call("query_stats", **kwargs)
+
 # PRD-mcphost-chart-in-a-minute AC11: mirrors host.table.chart -- the
 # sandboxed caller receives the same chart.v1 object the tool itself
 # returns, over this same loopback channel.
@@ -2436,6 +2449,8 @@ _mcphost_table_mod.query = _table_query
 _mcphost_table_mod.list = _table_list
 _mcphost_table_mod.drop = _table_drop
 _mcphost_table_mod.schema = _table_schema
+_mcphost_table_mod.query_diagnose = _table_query_diagnose
+_mcphost_table_mod.query_stats = _table_query_stats
 _mcphost_table_mod.chart = _table_chart
 _mcphost_table_mod.graph = _table_graph
 _mcphost_table_mod.join_paths = _table_join_paths
