@@ -979,10 +979,12 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
             state: Arc::new(state.clone()),
             tenant: tenant.clone(),
             dry_run: dry_run.clone(),
+            end_user: None,
         }) as Arc<dyn TableBackend>,
         docs: Arc::new(TenantDocsBridge {
             state: Arc::new(state.clone()),
             tenant: tenant.clone(),
+            end_user: None,
         }) as Arc<dyn DocsBackend>,
         lineage: Arc::new(TenantLineageBridge {
             state: Arc::new(state.clone()),

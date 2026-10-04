@@ -108,6 +108,7 @@ async fn identifier_chunk_ranked_12th_by_cosine_still_lands_in_top5_via_bm25() {
         &state,
         &tenant,
         &json!({"query": "invoice INV-20419 due date", "k": 5}),
+        None,
     )
     .await
     .expect("search ok");

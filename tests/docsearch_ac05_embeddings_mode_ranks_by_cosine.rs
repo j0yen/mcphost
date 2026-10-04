@@ -87,7 +87,12 @@ async fn rebuild_switches_to_embeddings_mode_and_search_ranks_by_cosine() {
     // embeddings (index.mode "hybrid") once a provider is configured --
     // explicit mode: "embeddings" keeps this test isolating cosine-only
     // ranking, its own original purpose.
-    let result = docs::doc_search(&state, &tenant, &json!({"query": "apple", "k": 5, "mode": "embeddings"}))
+    let result = docs::doc_search(
+        &state,
+        &tenant,
+        &json!({"query": "apple", "k": 5, "mode": "embeddings"}),
+        None,
+    )
         .await
         .expect("search ok");
     assert_eq!(result["index"]["mode"], json!("embeddings"));

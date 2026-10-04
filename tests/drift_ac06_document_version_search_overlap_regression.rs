@@ -38,9 +38,14 @@ async fn document_v3_regresses_5_searches_that_depended_on_v2() {
     docs_index::tick_once(&state).await.expect("index tick v2");
 
     for _ in 0..5 {
-        let result = docs::doc_search(&state, &tenant, &json!({"query": "zzzkeyword", "mode": "lexical", "k": 5}))
-            .await
-            .expect("search v2");
+        let result = docs::doc_search(
+            &state,
+            &tenant,
+            &json!({"query": "zzzkeyword", "mode": "lexical", "k": 5}),
+            None,
+        )
+        .await
+        .expect("search v2");
         let results = result["results"].as_array().expect("results array");
         assert!(!results.is_empty(), "v2 search must hit policy.md: {result}");
     }

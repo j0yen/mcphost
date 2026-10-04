@@ -98,7 +98,10 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
         // host.table.query_diagnose/query_stats (PRD-mcphost-query-diagnosis),
         // then r368-prep rebase (2026-10-03) 180 -> 183 with this PRD's own
         // three new host.table.handles/handle_drop/handle_export tools.
-        183,
+        // PRD-mcphost-row-policy rebase onto main (run 353, 2026-10-04):
+        // this PRD's own five host.policy.set/list/attrs_set and
+        // host.audit.chain/verify tools join on top -- 183 + 5 = 188.
+        188,
         "there must be exactly the sixteen host.* control-plane tools \
          (incl. host.quickstart, host.tool_run, host.bridge_test, host.spec_test -- \
          PRD-mcphost-tool-test, and host.redeem/host.key_rotate -- \
@@ -139,6 +142,7 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
          the four host.drift.reviews/review/resolve/check tools \
          (PRD-mcphost-drift-review) plus the 20 deprecated-alias tools \
          (PRD-mcphost-tool-naming-convention-and-aliases) plus \
-         host.table.query_diagnose/query_stats (PRD-mcphost-query-diagnosis): {names:?}"
+         host.table.query_diagnose/query_stats (PRD-mcphost-query-diagnosis) plus \
+         the five host.policy.*/host.audit.chain/host.audit.verify tools (PRD-mcphost-row-policy): {names:?}"
     );
 }

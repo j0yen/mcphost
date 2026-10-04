@@ -53,7 +53,7 @@ async fn deleting_a_document_removes_its_chunks_and_status_chunks_decreases() {
          before={chunks_before} after={chunks_after}"
     );
 
-    let names = docs::doc_search(&state, &tenant, &json!({"query": "deleted", "k": 5}))
+    let names = docs::doc_search(&state, &tenant, &json!({"query": "deleted", "k": 5}), None)
         .await
         .expect("search ok");
     let result_names: Vec<String> = names["results"]

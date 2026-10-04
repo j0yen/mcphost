@@ -107,7 +107,7 @@ async fn group_by_query_logs_a_row_and_logging_overhead_is_small() {
 
     // Warm up (first call pays one-time file-open/page-cache cost that
     // isn't part of what this AC's guardrail is measuring).
-    tables::table_query(&server.state, &tenant, &json!({"sql": sql})).await.expect("warmup query");
+    tables::table_query(&server.state, &tenant, &json!({"sql": sql}), None).await.expect("warmup query");
 
     const MAX_ATTEMPTS: u32 = 10;
     let mut last_failure: Option<String> = None;
@@ -121,7 +121,8 @@ async fn group_by_query_logs_a_row_and_logging_overhead_is_small() {
             let ambient_ms = ambient_began.elapsed().as_secs_f64() * 1000.0;
 
             let began = std::time::Instant::now();
-            let result = tables::table_query(&server.state, &tenant, &json!({"sql": sql})).await.expect("query");
+            let result =
+                tables::table_query(&server.state, &tenant, &json!({"sql": sql}), None).await.expect("query");
             let call_elapsed_ms = began.elapsed().as_secs_f64() * 1000.0;
 
             let rows = result["rows"].as_array().expect("rows array");

@@ -60,7 +60,7 @@ async fn explicit_lexical_mode_never_calls_the_provider() {
     .await
     .expect("index_config ok");
 
-    let result = docs::doc_search(&state, &tenant, &json!({"query": "refunds", "k": 5, "mode": "lexical"}))
+    let result = docs::doc_search(&state, &tenant, &json!({"query": "refunds", "k": 5, "mode": "lexical"}), None)
         .await
         .expect("search ok");
     assert_eq!(result["index"]["mode"], json!("lexical"));

@@ -37,7 +37,7 @@ async fn lexical_search_p95_latency_stays_under_50ms_at_ten_thousand_chunks() {
         let marker = (i * 97) % 10_000;
         let query = format!("wordmarker{marker}");
         let start = std::time::Instant::now();
-        let result = docs::doc_search(&state, &tenant, &json!({"query": query, "k": 5}))
+        let result = docs::doc_search(&state, &tenant, &json!({"query": query, "k": 5}), None)
             .await
             .expect("search ok");
         durations.push(start.elapsed());

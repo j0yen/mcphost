@@ -52,8 +52,10 @@ use rusqlite::{Connection, OptionalExtension, params, types::ValueRef};
 use serde_json::{Map, Value, json};
 
 use crate::db::Tenant;
+use crate::enduser::EndUser;
 use crate::errors::AppError;
 use crate::plans::Plan;
+use crate::rowpolicy;
 use crate::state::AppState;
 
 /// requirement 6/AC6: `host.table.query`'s row bound -- a query matching
@@ -921,17 +923,21 @@ pub async fn table_append(state: &AppState, tenant: &Tenant, args: &Value) -> Re
 // ---- host.table.query ---------------------------------------------------
 
 /// requirement 2/AC3: parses `sql` and refuses (structurally, not by string
-/// matching) anything but exactly one `SELECT`/CTE statement.
-pub(crate) fn validate_query_structure(sql: &str) -> Result<(), AppError> {
-    let statements = sqlparser::parser::Parser::parse_sql(&sqlparser::dialect::GenericDialect {}, sql)
+/// matching) anything but exactly one `SELECT`/CTE statement -- returning
+/// the parsed [`sqlparser::ast::Query`] so PRD-mcphost-row-policy's AST
+/// rewrite (below) can reuse this same parse rather than parsing twice.
+pub(crate) fn validate_query_structure(sql: &str) -> Result<Box<sqlparser::ast::Query>, AppError> {
+    let mut statements = sqlparser::parser::Parser::parse_sql(&sqlparser::dialect::GenericDialect {}, sql)
         .map_err(|e| query_rejected(format!("sql parse error: {e}")))?;
-    match statements.as_slice() {
-        [] => Err(query_rejected("empty statement")),
-        [sqlparser::ast::Statement::Query(_)] => Ok(()),
-        [_single_non_query] => Err(query_rejected(
-            "must be a single read-only SELECT statement, not a write or DDL statement",
-        )),
-        _multiple => Err(query_rejected(
+    match statements.len() {
+        0 => Err(query_rejected("empty statement")),
+        1 => match statements.remove(0) {
+            sqlparser::ast::Statement::Query(q) => Ok(q),
+            _ => Err(query_rejected(
+                "must be a single read-only SELECT statement, not a write or DDL statement",
+            )),
+        },
+        _ => Err(query_rejected(
             "multiple statements are not allowed; submit exactly one SELECT",
         )),
     }
@@ -958,6 +964,18 @@ pub(crate) fn value_ref_to_json(v: ValueRef<'_>) -> Value {
 /// connection it was drawn from is done with (or has dropped) its work, so
 /// there is nothing to cancel/join when the query returns first.
 pub(crate) fn run_query_sync(conn: &Connection, sql: &str) -> Result<Vec<Value>, AppError> {
+    run_query_sync_with_bindings(conn, sql, &[])
+}
+
+/// PRD-mcphost-row-policy requirement 4: same enforcement as
+/// [`run_query_sync`], but binds `bindings` (`":name"` -> value) on the
+/// prepared statement -- the row-policy AST rewrite's predicate values
+/// never appear as literals in `sql` itself, only as bound parameters.
+fn run_query_sync_with_bindings(
+    conn: &Connection,
+    sql: &str,
+    bindings: &[(String, Value)],
+) -> Result<Vec<Value>, AppError> {
     let interrupt = conn.get_interrupt_handle();
     std::thread::spawn(move || {
         std::thread::sleep(QUERY_TIME_CAP);
@@ -971,7 +989,11 @@ pub(crate) fn run_query_sync(conn: &Connection, sql: &str) -> Result<Vec<Value>,
     }
     let column_names: Vec<String> = stmt.column_names().into_iter().map(str::to_string).collect();
     let mut rows_out = Vec::new();
-    let mut rows = stmt.query([])?;
+    let sql_values: Vec<(String, rusqlite::types::Value)> =
+        bindings.iter().map(|(k, v)| (k.clone(), json_to_sql_value(v))).collect();
+    let param_refs: Vec<(&str, &dyn rusqlite::ToSql)> =
+        sql_values.iter().map(|(k, v)| (k.as_str(), v as &dyn rusqlite::ToSql)).collect();
+    let mut rows = if param_refs.is_empty() { stmt.query([])? } else { stmt.query(&param_refs[..])? };
     loop {
         let row = match rows.next() {
             Ok(Some(r)) => r,
@@ -1121,6 +1143,76 @@ struct QueryDiagContext {
     where_equalities: Vec<(String, String)>,
     column_annotation_candidates: Vec<(String, String)>,
 }
+
+/// PRD-mcphost-row-policy requirement 2: converts a resolved rule/literal
+/// value into the `rusqlite` value it's bound as.
+fn json_to_sql_value(v: &Value) -> rusqlite::types::Value {
+    match v {
+        Value::Null => rusqlite::types::Value::Null,
+        Value::Bool(b) => rusqlite::types::Value::Integer(if *b { 1 } else { 0 }),
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                rusqlite::types::Value::Integer(i)
+            } else if let Some(f) = n.as_f64() {
+                rusqlite::types::Value::Real(f)
+            } else {
+                rusqlite::types::Value::Null
+            }
+        }
+        Value::String(s) => rusqlite::types::Value::Text(s.clone()),
+        other => rusqlite::types::Value::Text(other.to_string()),
+    }
+}
+
+/// PRD-mcphost-row-policy requirement 2: substitutes `compiled`'s `{pN}`
+/// template placeholders with fresh `:<tag>N` bound-parameter names, for a
+/// one-off `SELECT COUNT(*)` against `table` rather than the AST rewrite
+/// (used by [`withheld_count_sync`] below, which only ever queries one
+/// table directly, never a rewritten user query).
+fn predicate_count_sql(
+    table: &str,
+    compiled: &rowpolicy::CompiledPolicy,
+    tag: &str,
+) -> (String, Vec<(String, Value)>) {
+    let mut predicate = compiled.rls_predicate.clone();
+    let mut bindings = Vec::new();
+    for (i, v) in compiled.rls_params.iter().enumerate() {
+        let placeholder = format!("{{p{i}}}");
+        let name = format!(":{tag}{i}");
+        predicate = predicate.replace(&placeholder, &name);
+        bindings.push((name, v.clone()));
+    }
+    let quoted = table.replace('"', "\"\"");
+    (format!("SELECT COUNT(*) FROM \"{quoted}\" WHERE {predicate}"), bindings)
+}
+
+/// requirement 6: "`withheld_count` is rows... the unfiltered read would
+/// have returned, computed only when under 10,000 candidates, else null" --
+/// computed here as the policied table's own unfiltered row count minus
+/// the count its compiled predicate admits, not the outer query's own
+/// (possibly aggregated) result shape.
+fn withheld_count_sync(
+    conn: &Connection,
+    table: &str,
+    compiled: &rowpolicy::CompiledPolicy,
+) -> Result<Option<i64>, AppError> {
+    let quoted = table.replace('"', "\"\"");
+    let total: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM \"{quoted}\""), [], |r| r.get(0))?;
+    if total >= 10_000 {
+        return Ok(None);
+    }
+    if compiled.rls_predicate == "1 = 0" {
+        return Ok(Some(total));
+    }
+    let (sql, bindings) = predicate_count_sql(table, compiled, "wc");
+    let sql_values: Vec<(String, rusqlite::types::Value)> =
+        bindings.iter().map(|(k, v)| (k.clone(), json_to_sql_value(v))).collect();
+    let param_refs: Vec<(&str, &dyn rusqlite::ToSql)> =
+        sql_values.iter().map(|(k, v)| (k.as_str(), v as &dyn rusqlite::ToSql)).collect();
+    let admitted: i64 = conn.query_row(&sql, &param_refs[..], |r| r.get(0))?;
+    Ok(Some(total - admitted))
+}
+
 
 /// PRD-mcphost-query-diagnosis P0 requirements 1/2/4 (AC1/AC2/AC3/AC7):
 /// computes this query's diagnosis, purely from data already in reach of
@@ -1876,7 +1968,12 @@ async fn table_query_materialize(
 /// from here instead. Materialising calls (`table_query_materialize`) are
 /// not logged here -- out of this PRD's own scope, left for the
 /// query-log PRD to pick up if it wants handle creation logged too.
-async fn table_query_select(state: &AppState, tenant: &Tenant, sql: &str) -> Result<Value, AppError> {
+async fn table_query_select(
+    state: &AppState,
+    tenant: &Tenant,
+    sql: &str,
+    end_user: Option<&EndUser>,
+) -> Result<Value, AppError> {
     // PRD-mcphost-query-diagnosis requirement 1/2: the AST parse is pure
     // (no IO); the annotation read is the one piece of diagnosis context
     // that genuinely needs the main database, fetched here (async) before
@@ -1903,117 +2000,273 @@ async fn table_query_select(state: &AppState, tenant: &Tenant, sql: &str) -> Res
     };
 
     let path = tenant_db_path(state, tenant.id);
-    let sql_owned = sql.to_string();
     let now = crate::state::now_unix();
-    let rows = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
-        let started = std::time::Instant::now();
-        let mut referenced_handles: Vec<String> = Vec::new();
-        let result: Result<Vec<Value>, AppError> = (|| {
-            referenced_handles = referenced_table_names(&sql_owned)?
-                .into_iter()
-                .filter(|n| n.starts_with(HANDLE_PREFIX))
-                .collect();
-            for h in &referenced_handles {
-                let expires: Option<i64> = conn
-                    .query_row(
-                        &format!("SELECT expires_unix FROM {HANDLES_META_TABLE} WHERE handle = ?1"),
-                        params![h],
-                        |r| r.get(0),
-                    )
-                    .optional()?;
-                match expires {
-                    Some(exp) if exp > now => {}
-                    _ => return Err(handle_not_found(h)),
+
+    // PRD-mcphost-row-policy requirement 1/4: a structural refusal (not a
+    // SELECT/CTE, multiple statements, a parse error) never reaches a
+    // `with_tenant_conn` closure below, but must still log exactly one row
+    // for the attempt like every other outcome does -- same reasoning as
+    // the `Err(e)` arms inside each access branch below, just with nothing
+    // to time (there's no query to run). Parsed once, here, since the
+    // row-policy rewrite below needs the AST, not just a yes/no validation.
+    let mut query = match validate_query_structure(sql) {
+        Ok(query) => query,
+        Err(e) => {
+            let sql_for_log = sql.to_string();
+            let e_for_log = e.clone();
+            let log_outcome: Result<(), AppError> =
+                with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+                    log_query(
+                        conn,
+                        &sql_for_log,
+                        QueryLogOutcome {
+                            duration_ms: 0,
+                            row_count: None,
+                            sample_hash: None,
+                            error: Some(&e_for_log),
+                            diagnosis: None,
+                            hint: None,
+                            result_bytes: None,
+                            est_tokens: None,
+                        },
+                    );
+                    Ok(())
+                })
+                .await;
+            if let Err(log_err) = log_outcome {
+                tracing::warn!(error = %log_err, "failed to log a structurally-refused host.table.query attempt");
+            }
+            return Err(e);
+        }
+    };
+
+    let access = rowpolicy::resolve_access(state, tenant.id, end_user).await?;
+    match access {
+        rowpolicy::Access::Unrestricted => {
+            let sql_owned = sql.to_string();
+            let rows = with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
+                let started = std::time::Instant::now();
+                let mut referenced_handles: Vec<String> = Vec::new();
+                let result: Result<Vec<Value>, AppError> = (|| {
+                    referenced_handles = referenced_table_names(&sql_owned)?
+                        .into_iter()
+                        .filter(|n| n.starts_with(HANDLE_PREFIX))
+                        .collect();
+                    for h in &referenced_handles {
+                        let expires: Option<i64> = conn
+                            .query_row(
+                                &format!("SELECT expires_unix FROM {HANDLES_META_TABLE} WHERE handle = ?1"),
+                                params![h],
+                                |r| r.get(0),
+                            )
+                            .optional()?;
+                        match expires {
+                            Some(exp) if exp > now => {}
+                            _ => return Err(handle_not_found(h)),
+                        }
+                    }
+                    run_query_sync(conn, &sql_owned)
+                })();
+                let duration_ms = started.elapsed().as_millis() as i64;
+                // `run_query_sync` leaves this connection's own `query_only`
+                // pragma ON for the rest of its life -- turn it back off before
+                // the log write below and the `last_used_unix` bookkeeping UPDATE
+                // (requirement 4's eviction order), neither of which is part of
+                // the caller's own read-only query.
+                let _ = conn.pragma_update(None, "query_only", "OFF");
+                let (diagnosis, hint) = diagnose_sync(conn, &ctx, &result);
+                let diagnosis_str = diagnosis.as_ref().map(|v| v.to_string());
+                match &result {
+                    Ok(rows) => {
+                        // requirement 3's 5ms p95 logging-overhead budget (shared
+                        // with the dependency PRD's own log-write budget) means
+                        // this must never serialize the result twice: the common
+                        // case (<=20 rows, [`sample_hash_of`]'s own truncation
+                        // bound) reuses this one serialization for both the
+                        // footprint byte count and the drift sample hash; only a
+                        // result over 20 rows (up to [`ROW_CAP`]) pays a second,
+                        // smaller serialization of just its first 20.
+                        let serialized = serde_json::to_string(rows).unwrap_or_default();
+                        let bytes = serialized.len() as i64;
+                        // P1 requirement 7: `mqo-session-footprint-meter`'s
+                        // `tokens_from_chars` default -- `ceil(bytes / 4)`. `i64`'s
+                        // `div_ceil` is unstable for signed integers; `bytes` is
+                        // never negative (a serialized length), so the `(n + 3) / 4`
+                        // idiom is exact and needs no feature gate.
+                        let est_tokens = (bytes + 3) / 4;
+                        let sample_hash = if rows.len() <= 20 {
+                            crate::billing::sha256_hex(serialized.as_bytes())
+                        } else {
+                            sample_hash_of(rows)
+                        };
+                        log_query(
+                            conn,
+                            &sql_owned,
+                            QueryLogOutcome {
+                                duration_ms,
+                                row_count: Some(rows.len() as i64),
+                                sample_hash: Some(&sample_hash),
+                                error: None,
+                                diagnosis: diagnosis_str.as_deref(),
+                                hint: hint.as_deref(),
+                                result_bytes: Some(bytes),
+                                est_tokens: Some(est_tokens),
+                            },
+                        )
+                    }
+                    Err(e) => log_query(
+                        conn,
+                        &sql_owned,
+                        QueryLogOutcome {
+                            duration_ms,
+                            row_count: None,
+                            sample_hash: None,
+                            error: Some(e),
+                            diagnosis: diagnosis_str.as_deref(),
+                            hint: hint.as_deref(),
+                            result_bytes: None,
+                            est_tokens: None,
+                        },
+                    ),
                 }
+                let out = result?;
+                if !referenced_handles.is_empty() {
+                    for h in &referenced_handles {
+                        conn.execute(
+                            &format!("UPDATE {HANDLES_META_TABLE} SET last_used_unix = ?1 WHERE handle = ?2"),
+                            params![now, h],
+                        )?;
+                    }
+                }
+                Ok(out)
+            })
+            .await?;
+            Ok(json!({"rows": rows}))
+        }
+        rowpolicy::Access::Restricted(rctx) => {
+            // PRD-mcphost-row-policy requirement 4: rewritten via the AST
+            // (never string concatenation) -- see src/rowpolicy/rewrite.rs.
+            // A handle-prefixed table is never policied (handles are
+            // tenant-key-only result caches, PRD-mcphost-result-handles),
+            // so there is no handle-reference check to merge in here.
+            let mut table_names = rowpolicy::rewrite::referenced_table_names(&query);
+            table_names.sort();
+
+            let mut compiled = std::collections::HashMap::new();
+            for name in &table_names {
+                let policy = rowpolicy::load_table_policy(state, tenant.id, name).await?;
+                compiled.insert(name.clone(), rowpolicy::policy::compile(&policy, &rctx));
             }
-            validate_query_structure(&sql_owned)?;
-            run_query_sync(conn, &sql_owned)
-        })();
-        let duration_ms = started.elapsed().as_millis() as i64;
-        // `run_query_sync` leaves this connection's own `query_only`
-        // pragma ON for the rest of its life -- turn it back off before
-        // the log write below and the `last_used_unix` bookkeeping UPDATE
-        // (requirement 4's eviction order), neither of which is part of
-        // the caller's own read-only query.
-        let _ = conn.pragma_update(None, "query_only", "OFF");
-        let (diagnosis, hint) = diagnose_sync(conn, &ctx, &result);
-        let diagnosis_str = diagnosis.as_ref().map(|v| v.to_string());
-        match &result {
-            Ok(rows) => {
-                // requirement 3's 5ms p95 logging-overhead budget (shared
-                // with the dependency PRD's own log-write budget) means
-                // this must never serialize the result twice: the common
-                // case (<=20 rows, [`sample_hash_of`]'s own truncation
-                // bound) reuses this one serialization for both the
-                // footprint byte count and the drift sample hash; only a
-                // result over 20 rows (up to [`ROW_CAP`]) pays a second,
-                // smaller serialization of just its first 20.
-                let serialized = serde_json::to_string(rows).unwrap_or_default();
-                let bytes = serialized.len() as i64;
-                // P1 requirement 7: `mqo-session-footprint-meter`'s
-                // `tokens_from_chars` default -- `ceil(bytes / 4)`. `i64`'s
-                // `div_ceil` is unstable for signed integers; `bytes` is
-                // never negative (a serialized length), so the `(n + 3) / 4`
-                // idiom is exact and needs no feature gate.
-                let est_tokens = (bytes + 3) / 4;
-                let sample_hash = if rows.len() <= 20 {
-                    crate::billing::sha256_hex(serialized.as_bytes())
-                } else {
-                    sample_hash_of(rows)
-                };
-                log_query(
-                    conn,
-                    &sql_owned,
-                    QueryLogOutcome {
-                        duration_ms,
-                        row_count: Some(rows.len() as i64),
-                        sample_hash: Some(&sample_hash),
-                        error: None,
-                        diagnosis: diagnosis_str.as_deref(),
-                        hint: hint.as_deref(),
-                        result_bytes: Some(bytes),
-                        est_tokens: Some(est_tokens),
-                    },
-                )
-            }
-            Err(e) => log_query(
-                conn,
-                &sql_owned,
-                QueryLogOutcome {
-                    duration_ms,
-                    row_count: None,
-                    sample_hash: None,
-                    error: Some(e),
-                    diagnosis: diagnosis_str.as_deref(),
-                    hint: hint.as_deref(),
-                    result_bytes: None,
-                    est_tokens: None,
+
+            let outcome = rowpolicy::rewrite::apply(&mut query, &compiled)?;
+            let rewritten_sql = outcome.sql;
+            let bindings = outcome.bindings;
+
+            let primary =
+                table_names.first().and_then(|name| compiled.get(name).map(|c| (name.clone(), c.clone())));
+
+            let sql_owned = sql.to_string();
+            let (rows, withheld_count) = with_tenant_conn(
+                path,
+                state.db.cfg(),
+                state.db.counters_handle(),
+                move |conn| {
+                    let started = std::time::Instant::now();
+                    let result = run_query_sync_with_bindings(conn, &rewritten_sql, &bindings);
+                    let duration_ms = started.elapsed().as_millis() as i64;
+                    // same "turn query_only back off before the log write"
+                    // reasoning as the Unrestricted branch above.
+                    let _ = conn.pragma_update(None, "query_only", "OFF");
+                    let (diagnosis, hint) = diagnose_sync(conn, &ctx, &result);
+                    let diagnosis_str = diagnosis.as_ref().map(|v| v.to_string());
+                    let rows = match result {
+                        Ok(rows) => rows,
+                        Err(e) => {
+                            log_query(
+                                conn,
+                                &sql_owned,
+                                QueryLogOutcome {
+                                    duration_ms,
+                                    row_count: None,
+                                    sample_hash: None,
+                                    error: Some(&e),
+                                    diagnosis: diagnosis_str.as_deref(),
+                                    hint: hint.as_deref(),
+                                    result_bytes: None,
+                                    est_tokens: None,
+                                },
+                            );
+                            return Err(e);
+                        }
+                    };
+                    let withheld = match &primary {
+                        Some((table, compiled)) => withheld_count_sync(conn, table, compiled)?,
+                        None => None,
+                    };
+                    let serialized = serde_json::to_string(&rows).unwrap_or_default();
+                    let bytes = serialized.len() as i64;
+                    let est_tokens = (bytes + 3) / 4;
+                    let sample_hash = if rows.len() <= 20 {
+                        crate::billing::sha256_hex(serialized.as_bytes())
+                    } else {
+                        sample_hash_of(&rows)
+                    };
+                    log_query(
+                        conn,
+                        &sql_owned,
+                        QueryLogOutcome {
+                            duration_ms,
+                            row_count: Some(rows.len() as i64),
+                            sample_hash: Some(&sample_hash),
+                            error: None,
+                            diagnosis: diagnosis_str.as_deref(),
+                            hint: hint.as_deref(),
+                            result_bytes: Some(bytes),
+                            est_tokens: Some(est_tokens),
+                        },
+                    );
+                    Ok((rows, withheld))
                 },
-            ),
-        }
-        let out = result?;
-        if !referenced_handles.is_empty() {
-            for h in &referenced_handles {
-                conn.execute(
-                    &format!("UPDATE {HANDLES_META_TABLE} SET last_used_unix = ?1 WHERE handle = ?2"),
-                    params![now, h],
-                )?;
+            )
+            .await?;
+
+            if let Some(primary_name) = table_names.first()
+                && let Some(primary_compiled) = compiled.get(primary_name)
+            {
+                state
+                    .db
+                    .audit_chain_append(
+                        tenant.id,
+                        rctx.subject.clone(),
+                        "sql".to_string(),
+                        primary_compiled.policy_hash.clone(),
+                        primary_compiled.rls_predicate.clone(),
+                        rows.len() as i64,
+                        withheld_count,
+                        crate::state::now_unix(),
+                        crate::state::new_ulid(),
+                    )
+                    .await?;
             }
+
+            Ok(json!({"rows": rows}))
         }
-        Ok(out)
-    })
-    .await?;
-    Ok(json!({"rows": rows}))
+    }
 }
 
-pub async fn table_query(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+pub async fn table_query(
+    state: &AppState,
+    tenant: &Tenant,
+    args: &Value,
+    end_user: Option<&EndUser>,
+) -> Result<Value, AppError> {
     let sql = arg_str(args, "sql")?;
     let want_handle = args.get("handle").and_then(Value::as_bool).unwrap_or(false);
     if want_handle {
         let ttl_s = args.get("ttl_s").and_then(Value::as_i64);
         return table_query_materialize(state, tenant, &sql, ttl_s).await;
     }
-    table_query_select(state, tenant, &sql).await
+    table_query_select(state, tenant, &sql, end_user).await
 }
 
 /// requirement 5: `host.table.handles()` -- every live handle, newest
@@ -2422,6 +2675,7 @@ mod tests {
             &state,
             &t,
             &json!({"sql": "SELECT metric, value FROM metrics WHERE value > 0.5 ORDER BY value DESC"}),
+            None,
         )
         .await
         .expect("query");
@@ -2460,7 +2714,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(err.code(), "table_schema_violation");
 
-        let result = table_query(&state, &t, &json!({"sql": "SELECT * FROM metrics"}))
+        let result = table_query(&state, &t, &json!({"sql": "SELECT * FROM metrics"}), None)
             .await
             .expect("query");
         assert!(
@@ -2501,6 +2755,7 @@ mod tests {
             &state,
             &tenant_b,
             &json!({"sql": "SELECT * FROM secrets_table"}),
+            None,
         )
         .await
         .unwrap_err();
@@ -2552,7 +2807,7 @@ mod tests {
             .await
             .expect("append past cap (row_cap only bounds query results, not appends)");
 
-        let err = table_query(&state, &t, &json!({"sql": "SELECT * FROM big"}))
+        let err = table_query(&state, &t, &json!({"sql": "SELECT * FROM big"}), None)
             .await
             .unwrap_err();
         assert_eq!(err.code(), "table_bound_exceeded");

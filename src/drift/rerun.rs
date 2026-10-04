@@ -206,7 +206,7 @@ fn dependent_queries_sync(
 /// tenant's current table store -- `(row_count, sample_hash, error_code)`,
 /// the exact shape a `before` or `after` side of a [`QueryDelta`] needs.
 fn execute_for_delta(conn: &rusqlite::Connection, sql: &str) -> (Option<i64>, Option<String>, Option<String>) {
-    match tables::validate_query_structure(sql).and_then(|()| tables::run_query_sync(conn, sql)) {
+    match tables::validate_query_structure(sql).and_then(|_query| tables::run_query_sync(conn, sql)) {
         Ok(rows) => (Some(rows.len() as i64), Some(tables::sample_hash_of(&rows)), None),
         Err(e) => (None, None, Some(e.code().to_string())),
     }

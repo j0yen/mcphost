@@ -47,7 +47,8 @@ async fn ac1_anonymous_tools_list_has_cache_fields() {
         12,
         "PRD-mcphost-one-next-tool requirement 1 (AC1): an anonymous tools/list now returns \
          the twelve-tool starter set (signup plus eleven host.*/billing.* tools), not the \
-         full control plane: {names:?}"
+         full control plane -- host.policy.*/host.audit.* (PRD-mcphost-row-policy) are \
+         tenant-key-only and are not in STARTER_TOOL_NAMES either: {names:?}"
     );
 }
 
@@ -129,6 +130,8 @@ async fn ac3_invalid_bearer_tools_list_has_cache_fields() {
         names.len(),
         12,
         "PRD-mcphost-one-next-tool requirement 1 (AC1): an invalid-bearer tools/list is \
-         anonymous-shaped, so it gets the same twelve-tool starter set: {names:?}"
+         anonymous-shaped, so it gets the same twelve-tool starter set (host.policy.*/ \
+         host.audit.* from PRD-mcphost-row-policy are tenant-key-only and not in it): \
+         {names:?}"
     );
 }

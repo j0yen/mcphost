@@ -140,6 +140,15 @@ const MIGRATION_0066: &str = include_str!("../migrations/0066_drift.sql");
 const MIGRATION_0067: &str = include_str!("../migrations/0067_invite_links.sql");
 /// PRD-mcphost-invite-links requirement 10 (AC9): `invites.code_plain`.
 const MIGRATION_0068: &str = include_str!("../migrations/0068_standing_invite_code.sql");
+// PRD-mcphost-row-policy requirement 1: `row_policies` + `end_user_attributes`.
+// Renumbered to 0069 during this rebase (run 353, 2026-10-04):
+// mcphost-invite-links claimed 0067/0068 first, landing on main ahead of
+// this branch (this PRD's own migration was originally numbered 0058, then
+// 0062, then 0067, each reclaimed by an earlier-landing PRD in turn).
+const MIGRATION_0069: &str = include_str!("../migrations/0069_row_policies.sql");
+// PRD-mcphost-row-policy requirement 6: `audit_chain`. Renumbered to 0070
+// for the same reason as 0069 above.
+const MIGRATION_0070: &str = include_str!("../migrations/0070_audit_chain.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -2296,7 +2305,9 @@ impl Db {
         Self::migrate_0065_public_tool_url(&conn)?;
         Self::migrate_0066_drift(&conn)?;
         Self::migrate_0067_invite_links(&conn)?;
-        Self::migrate_0068_standing_invite_code(&conn)
+        Self::migrate_0068_standing_invite_code(&conn)?;
+        Self::migrate_0069_row_policies(&conn)?;
+        Self::migrate_0070_audit_chain(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -3277,6 +3288,35 @@ impl Db {
         }
         Ok(())
     }
+
+    /// PRD-mcphost-row-policy requirement 1: `row_policies` +
+    /// `end_user_attributes`. Renumbered to 0069 during this rebase (run
+    /// 353, 2026-10-04): mcphost-invite-links claimed 0067/0068 first,
+    /// landing on main ahead of this branch (this PRD's own migrations were
+    /// originally numbered 0058, then 0062, then 0067, each reclaimed by an
+    /// earlier-landing PRD in turn).
+    fn migrate_0069_row_policies(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'row_policies'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0069)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-row-policy requirement 6: `audit_chain`. Renumbered to
+    /// 0070 for the same reason as 0069 above.
+    fn migrate_0070_audit_chain(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'audit_chain'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0070)?;
+        }
+        Ok(())
+    }
+
 
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
@@ -18985,6 +19025,382 @@ impl Db {
                     Err(e)
                 }
             }
+        })
+        .await
+    }
+}
+
+// ---- row policy (PRD-mcphost-row-policy) ----------------------------------
+//
+// `rowpolicy.rs` owns the policy model, `compile()`, the AST rewrite and the
+// audit-chain hashing; these methods are the same thin "one prepared
+// statement, one shape" layer every other section of this file already is
+// (see `vault.rs`'s own section header above for the same convention).
+
+/// A stored [`crate::rowpolicy::RowPolicy`] row. `rule_json` is the
+/// serialized `Vec<crate::rowpolicy::PolicyRule>` -- opaque here, parsed by
+/// `crate::rowpolicy::compile`'s caller.
+#[derive(Debug, Clone)]
+pub struct RowPolicyRecord {
+    pub id: i64,
+    pub tenant_id: i64,
+    pub version: i64,
+    pub target_kind: String,
+    pub target_value: String,
+    pub rule_json: String,
+    pub created_unix: i64,
+}
+
+fn row_policy_record_from_row(r: &Row) -> rusqlite::Result<RowPolicyRecord> {
+    Ok(RowPolicyRecord {
+        id: r.get(0)?,
+        tenant_id: r.get(1)?,
+        version: r.get(2)?,
+        target_kind: r.get(3)?,
+        target_value: r.get(4)?,
+        rule_json: r.get(5)?,
+        created_unix: r.get(6)?,
+    })
+}
+
+const ROW_POLICY_COLS: &str =
+    "id, tenant_id, version, target_kind, target_value, rule_json, created_unix";
+
+/// One [`crate::rowpolicy::RetrievalAuditRecord`] row.
+#[derive(Debug, Clone)]
+pub struct AuditRecordRow {
+    pub id: i64,
+    pub tenant_id: i64,
+    pub subject: String,
+    pub plane: String,
+    pub policy_hash: String,
+    pub applied: String,
+    pub returned_count: i64,
+    pub withheld_count: Option<i64>,
+    pub timestamp_unix: i64,
+    pub request_id: String,
+    pub prior_record_hash: String,
+    pub record_hash: String,
+}
+
+fn audit_record_row_from_row(r: &Row) -> rusqlite::Result<AuditRecordRow> {
+    Ok(AuditRecordRow {
+        id: r.get(0)?,
+        tenant_id: r.get(1)?,
+        subject: r.get(2)?,
+        plane: r.get(3)?,
+        policy_hash: r.get(4)?,
+        applied: r.get(5)?,
+        returned_count: r.get(6)?,
+        withheld_count: r.get(7)?,
+        timestamp_unix: r.get(8)?,
+        request_id: r.get(9)?,
+        prior_record_hash: r.get(10)?,
+        record_hash: r.get(11)?,
+    })
+}
+
+const AUDIT_RECORD_COLS: &str = "id, tenant_id, subject, plane, policy_hash, applied, \
+    returned_count, withheld_count, timestamp_unix, request_id, prior_record_hash, record_hash";
+
+impl Db {
+    /// requirement 1: the current policy for one `(target_kind,
+    /// target_value)`, or `None` if the tenant never set one -- the
+    /// caller's cue to fall back to the fail-closed synthesized policy
+    /// (goal 3).
+    pub async fn get_row_policy(
+        &self,
+        tenant_id: i64,
+        target_kind: String,
+        target_value: String,
+    ) -> Result<Option<RowPolicyRecord>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                &format!(
+                    "SELECT {ROW_POLICY_COLS} FROM row_policies \
+                     WHERE tenant_id = ?1 AND target_kind = ?2 AND target_value = ?3"
+                ),
+                params![tenant_id, target_kind, target_value],
+                row_policy_record_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 7 (`host.policy.set`): upserts the policy for one
+    /// target, replacing whatever version was there before -- dominance
+    /// (AC10) is checked by the caller against [`Self::get_row_policy`]'s
+    /// prior value before this is called.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upsert_row_policy(
+        &self,
+        tenant_id: i64,
+        target_kind: String,
+        target_value: String,
+        version: i64,
+        rule_json: String,
+        created_unix: i64,
+    ) -> Result<RowPolicyRecord, AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO row_policies (tenant_id, target_kind, target_value, version, rule_json, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
+                 ON CONFLICT(tenant_id, target_kind, target_value) DO UPDATE SET \
+                    version = excluded.version, rule_json = excluded.rule_json, created_unix = excluded.created_unix",
+                params![tenant_id, target_kind, target_value, version, rule_json, created_unix],
+            )?;
+            let id: i64 = conn.query_row(
+                "SELECT id FROM row_policies WHERE tenant_id = ?1 AND target_kind = ?2 AND target_value = ?3",
+                params![tenant_id, target_kind, target_value],
+                |r| r.get(0),
+            )?;
+            Ok(RowPolicyRecord { id, tenant_id, version, target_kind, target_value, rule_json, created_unix })
+        })
+        .await
+    }
+
+    /// requirement 7 (`host.policy.list`).
+    pub async fn list_row_policies(&self, tenant_id: i64) -> Result<Vec<RowPolicyRecord>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(&format!(
+                "SELECT {ROW_POLICY_COLS} FROM row_policies WHERE tenant_id = ?1 ORDER BY id"
+            ))?;
+            let rows = stmt
+                .query_map(params![tenant_id], row_policy_record_from_row)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// requirement 1: merges (never wholesale replaces) the given
+    /// attributes into `subject`'s attribute set for this tenant --
+    /// `host.policy.attrs_set` only ever adds/overwrites the keys it's
+    /// given.
+    pub async fn end_user_attrs_set(
+        &self,
+        tenant_id: i64,
+        subject: String,
+        attrs: std::collections::BTreeMap<String, Value>,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            for (attr, value) in &attrs {
+                let value_json =
+                    serde_json::to_string(value).map_err(|e| AppError::Internal(e.to_string()))?;
+                conn.execute(
+                    "INSERT INTO end_user_attributes (tenant_id, subject, attr, value) VALUES (?1, ?2, ?3, ?4) \
+                     ON CONFLICT(tenant_id, subject, attr) DO UPDATE SET value = excluded.value",
+                    params![tenant_id, subject, attr, value_json],
+                )?;
+            }
+            Ok(())
+        })
+        .await
+    }
+
+    /// requirement 3: the full resolved attribute set `compile()` reads an
+    /// `Attr(name)` rule value from.
+    pub async fn end_user_attrs_get(
+        &self,
+        tenant_id: i64,
+        subject: String,
+    ) -> Result<std::collections::BTreeMap<String, Value>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT attr, value FROM end_user_attributes WHERE tenant_id = ?1 AND subject = ?2",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id, subject], |r| {
+                    let attr: String = r.get(0)?;
+                    let value_json: String = r.get(1)?;
+                    Ok((attr, value_json))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            let mut out = std::collections::BTreeMap::new();
+            for (attr, value_json) in rows {
+                if let Ok(v) = serde_json::from_str::<Value>(&value_json) {
+                    out.insert(attr, v);
+                }
+            }
+            Ok(out)
+        })
+        .await
+    }
+
+    /// requirement 6: appends one audit record, chaining `prior_record_hash`
+    /// to this tenant's own last record (or [`crate::rowpolicy::audit::GENESIS_HASH`]
+    /// for its first) -- reading the last hash and inserting happen inside
+    /// the same `with_conn` closure, which (module doc: "one dedicated
+    /// blocking task services every query") is the whole tenant db's single
+    /// serialization point, so no other write can interleave between the
+    /// read and the insert.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn audit_chain_append(
+        &self,
+        tenant_id: i64,
+        subject: String,
+        plane: String,
+        policy_hash: String,
+        applied: String,
+        returned_count: i64,
+        withheld_count: Option<i64>,
+        timestamp_unix: i64,
+        request_id: String,
+    ) -> Result<AuditRecordRow, AppError> {
+        self.with_conn(move |conn| {
+            let prior_record_hash: String = conn
+                .query_row(
+                    "SELECT record_hash FROM audit_chain WHERE tenant_id = ?1 ORDER BY id DESC LIMIT 1",
+                    params![tenant_id],
+                    |r| r.get(0),
+                )
+                .optional()?
+                .unwrap_or_else(|| crate::rowpolicy::audit::GENESIS_HASH.to_string());
+
+            let record_hash = crate::rowpolicy::audit::compute_record_hash(
+                &subject,
+                tenant_id,
+                &plane,
+                &policy_hash,
+                &applied,
+                returned_count,
+                withheld_count,
+                timestamp_unix,
+                &request_id,
+                &prior_record_hash,
+            );
+
+            conn.execute(
+                "INSERT INTO audit_chain (tenant_id, subject, plane, policy_hash, applied, returned_count, \
+                    withheld_count, timestamp_unix, request_id, prior_record_hash, record_hash) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                params![
+                    tenant_id, subject, plane, policy_hash, applied, returned_count,
+                    withheld_count, timestamp_unix, request_id, prior_record_hash, record_hash
+                ],
+            )?;
+            let id = conn.last_insert_rowid();
+            Ok(AuditRecordRow {
+                id, tenant_id, subject, plane, policy_hash, applied, returned_count,
+                withheld_count, timestamp_unix, request_id, prior_record_hash, record_hash,
+            })
+        })
+        .await
+    }
+
+    /// requirement 7 (`host.audit.chain`): newest-first page, optionally
+    /// scoped to one subject and/or before a given id. `withheld_count` on
+    /// the response is `total matching - returned.len()` (AC8: "returned_count
+    /// and withheld_count").
+    pub async fn audit_chain_list(
+        &self,
+        tenant_id: i64,
+        subject: Option<String>,
+        limit: i64,
+        before_id: Option<i64>,
+    ) -> Result<(Vec<AuditRecordRow>, i64), AppError> {
+        self.with_conn(move |conn| {
+            let (records, total): (Vec<AuditRecordRow>, i64) = match (&subject, before_id) {
+                (Some(s), Some(b)) => {
+                    let total: i64 = conn.query_row(
+                        "SELECT COUNT(*) FROM audit_chain WHERE tenant_id = ?1 AND subject = ?2 AND id < ?3",
+                        params![tenant_id, s, b],
+                        |r| r.get(0),
+                    )?;
+                    let mut stmt = conn.prepare(&format!(
+                        "SELECT {AUDIT_RECORD_COLS} FROM audit_chain \
+                         WHERE tenant_id = ?1 AND subject = ?2 AND id < ?3 ORDER BY id DESC LIMIT ?4"
+                    ))?;
+                    let rows = stmt
+                        .query_map(params![tenant_id, s, b, limit], audit_record_row_from_row)?
+                        .collect::<Result<Vec<_>, _>>()?;
+                    (rows, total)
+                }
+                (Some(s), None) => {
+                    let total: i64 = conn.query_row(
+                        "SELECT COUNT(*) FROM audit_chain WHERE tenant_id = ?1 AND subject = ?2",
+                        params![tenant_id, s],
+                        |r| r.get(0),
+                    )?;
+                    let mut stmt = conn.prepare(&format!(
+                        "SELECT {AUDIT_RECORD_COLS} FROM audit_chain \
+                         WHERE tenant_id = ?1 AND subject = ?2 ORDER BY id DESC LIMIT ?3"
+                    ))?;
+                    let rows = stmt
+                        .query_map(params![tenant_id, s, limit], audit_record_row_from_row)?
+                        .collect::<Result<Vec<_>, _>>()?;
+                    (rows, total)
+                }
+                (None, Some(b)) => {
+                    let total: i64 = conn.query_row(
+                        "SELECT COUNT(*) FROM audit_chain WHERE tenant_id = ?1 AND id < ?2",
+                        params![tenant_id, b],
+                        |r| r.get(0),
+                    )?;
+                    let mut stmt = conn.prepare(&format!(
+                        "SELECT {AUDIT_RECORD_COLS} FROM audit_chain \
+                         WHERE tenant_id = ?1 AND id < ?2 ORDER BY id DESC LIMIT ?3"
+                    ))?;
+                    let rows = stmt
+                        .query_map(params![tenant_id, b, limit], audit_record_row_from_row)?
+                        .collect::<Result<Vec<_>, _>>()?;
+                    (rows, total)
+                }
+                (None, None) => {
+                    let total: i64 = conn.query_row(
+                        "SELECT COUNT(*) FROM audit_chain WHERE tenant_id = ?1",
+                        params![tenant_id],
+                        |r| r.get(0),
+                    )?;
+                    let mut stmt = conn.prepare(&format!(
+                        "SELECT {AUDIT_RECORD_COLS} FROM audit_chain \
+                         WHERE tenant_id = ?1 ORDER BY id DESC LIMIT ?2"
+                    ))?;
+                    let rows = stmt
+                        .query_map(params![tenant_id, limit], audit_record_row_from_row)?
+                        .collect::<Result<Vec<_>, _>>()?;
+                    (rows, total)
+                }
+            };
+            Ok((records, total))
+        })
+        .await
+    }
+
+    /// requirement 7 (`host.audit.verify`): every record in `[from_id,
+    /// to_id]` for this tenant, oldest first -- the shape
+    /// [`crate::rowpolicy::audit::verify_chain`] walks.
+    pub async fn audit_chain_range(
+        &self,
+        tenant_id: i64,
+        from_id: i64,
+        to_id: i64,
+    ) -> Result<Vec<AuditRecordRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(&format!(
+                "SELECT {AUDIT_RECORD_COLS} FROM audit_chain \
+                 WHERE tenant_id = ?1 AND id BETWEEN ?2 AND ?3 ORDER BY id ASC"
+            ))?;
+            let rows = stmt
+                .query_map(params![tenant_id, from_id, to_id], audit_record_row_from_row)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// Test-only, AC7's tamper case: overwrites one audit record's
+    /// `applied` field directly (bypassing `audit_chain_append`'s own hash
+    /// computation entirely), same `test_backdate_*` convention as
+    /// [`Self::test_backdate_oauth_federation_pending`] -- simulates a
+    /// row altered after the fact, not a codepath any real write ever
+    /// takes.
+    pub async fn test_tamper_audit_applied(&self, id: i64, applied: String) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute("UPDATE audit_chain SET applied = ?1 WHERE id = ?2", params![applied, id])?;
+            Ok(())
         })
         .await
     }

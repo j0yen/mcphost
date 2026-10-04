@@ -43,6 +43,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::{Value, json};
 
 use crate::db::Tenant;
+use crate::enduser::EndUser;
 use crate::errors::AppError;
 use crate::state::AppState;
 use crate::tables::{self, ColumnType};
@@ -383,13 +384,18 @@ pub fn signed_chart_url(public_url: &str, key_hash: &str, id: &str, expires_unix
 /// considerations: the same read-only path, `ROW_CAP`, `QUERY_TIME_CAP`
 /// `host.table.query` uses), then the vendored chain turns the result into
 /// a recommendation, a Vega-Lite spec, and a caption.
-pub async fn table_chart(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+pub async fn table_chart(
+    state: &AppState,
+    tenant: &Tenant,
+    args: &Value,
+    end_user: Option<&EndUser>,
+) -> Result<Value, AppError> {
     let sql = tables::arg_str(args, "sql")?;
     let title = tables::arg_str_opt(args, "title");
     let requested_mark = tables::arg_str_opt(args, "mark");
     let share = args.get("share").and_then(Value::as_bool).unwrap_or(false);
 
-    let query_result = tables::table_query(state, tenant, &json!({"sql": sql})).await?;
+    let query_result = tables::table_query(state, tenant, &json!({"sql": sql}), end_user).await?;
     let rows: Vec<Value> = query_result["rows"].as_array().cloned().unwrap_or_default();
 
     let profile = build_profile(state, tenant, &sql, &rows).await?;

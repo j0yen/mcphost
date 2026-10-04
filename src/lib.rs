@@ -56,6 +56,7 @@ pub mod public_tool;
 pub mod query_diag;
 pub mod registry;
 pub mod retention;
+pub mod rowpolicy;
 pub mod runs;
 pub mod sandbox;
 pub mod secrets;
