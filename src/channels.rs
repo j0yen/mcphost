@@ -2,18 +2,24 @@
 //!
 //! Migration 0027 (PRD-mcphost-agent-mesh-ops) built a minimal, ungated
 //! `host.channel.open(name)`/`host.channel.post(channel)` slice against a
-//! global, name-keyed `channels` table with no membership concept -- kept
-//! working unchanged below (the `else` arm of [`open`]/[`post`] that never
-//! touches a group). PRD-mcphost-agent-channels (this module's own PRD) is
-//! the group-based channel described in the PRD text: `host.channel.
-//! open(group=...)` ties a channel to a group the caller owns
-//! (`host.group.*`, `src/sharing.rs`); every current member can
-//! `host.channel.post`/`read` it; the owner can `close`/`freeze`/
-//! `unfreeze` it. Storage is migration 0028's three additive columns on
-//! the existing `channels` table plus the existing (already migration
-//! 0027) `channel_posts`/`channel_cursors` tables, reused as-is -- see that
-//! migration's own doc comment for why a group channel isn't a second,
-//! differently-named table.
+//! global, name-keyed `channels` table with no membership concept --
+//! creation (the `else` arm of [`open`]) is still that same ungated path.
+//! PRD-mcphost-agent-channels (migration 0029) is the group-based channel
+//! described in the PRD text: `host.channel.open(group=...)` ties a
+//! channel to a group the caller owns (`host.group.*`, `src/sharing.rs`);
+//! every current member can `host.channel.post`/`read` it; the owner can
+//! `close`/`freeze`/`unfreeze` it. Storage is migration 0029's three
+//! additive columns on the existing `channels` table plus the existing
+//! (already migration 0027) `channel_posts`/`channel_cursors` tables,
+//! reused as-is -- see that migration's own doc comment for why a group
+//! channel isn't a second, differently-named table.
+//!
+//! PRD-mcphost-channel-read-name-parity: [`resolve_channel`] is the one
+//! place `post`/`read`/`close`/`freeze`/`unfreeze` turn a caller-supplied
+//! key into a row of either kind, so a channel reachable by one verb is
+//! reachable (consistently: for `read`, owner/member-authorized) by every
+//! other one too -- the fleet-board bug this PRD fixes was exactly `read`
+//! keeping its own, narrower, group-only lookup.
 //!
 //! Same module shape as `messaging.rs`/`sharing.rs`: pure `AppState` +
 //! arguments in, `serde_json::Value` (or [`AppError`]) out -- `handler.rs`
@@ -25,6 +31,78 @@ use crate::db::{ChannelPostOutcome, GroupChannelCtx, Tenant};
 use crate::errors::AppError;
 use crate::plans::Plan;
 use crate::state::AppState;
+
+/// PRD-mcphost-channel-read-name-parity requirement 1: which of the two
+/// `channels` rows a key resolved to -- a migration-0029 group channel, or
+/// a migration-0027 named one. Never exposed on the wire directly; callers
+/// branch on it to apply the right authorization/quota/trigger rules.
+enum ChannelKind {
+    Group,
+    Named,
+}
+
+/// Requirement 1: what every `host.channel.*` verb (`open` excepted --
+/// its `group` vs `name` argument already disambiguates which kind it's
+/// creating) resolves `key` to before doing anything else. `owner_tenant_id`
+/// is `None` only for a named channel whose creator has since been deleted
+/// (a group channel always has one, via its group).
+struct ResolvedChannel {
+    channel_id: String,
+    kind: ChannelKind,
+    owner_tenant_id: Option<i64>,
+    group_name: Option<String>,
+    closed_at: Option<String>,
+    frozen_at: Option<String>,
+}
+
+impl ResolvedChannel {
+    fn group_ctx(&self) -> GroupChannelCtx {
+        GroupChannelCtx {
+            owner_tenant_id: self.owner_tenant_id.unwrap_or_default(),
+            group_name: self.group_name.clone().unwrap_or_default(),
+            closed_at: self.closed_at.clone(),
+            frozen_at: self.frozen_at.clone(),
+        }
+    }
+}
+
+/// `resolve_channel(tenant, key)` (requirement 1): group lookup by id
+/// first, then a named-channel lookup by id or name -- the exact two
+/// lookups `post` already ran pre-PRD (group-or-miss, then id-or-name),
+/// just named and shared so `read`/`freeze`/`unfreeze`/`close` can run
+/// them too instead of `read`'s old group-only lookup. The `tenant`
+/// parameter is unused by the lookup itself (neither query is scoped by
+/// caller) -- kept on the signature per the PRD's own text since every
+/// caller has one in hand and a future per-kind scoping rule would need
+/// it; authorization is each verb's own job, not this function's (a
+/// miss and an unauthorized hit must read identically, AC2).
+async fn resolve_channel(
+    state: &AppState,
+    _tenant: &Tenant,
+    key: &str,
+) -> Result<Option<ResolvedChannel>, AppError> {
+    if let Some(ctx) = state.db.channel_group_lookup(key.to_string()).await? {
+        return Ok(Some(ResolvedChannel {
+            channel_id: key.to_string(),
+            kind: ChannelKind::Group,
+            owner_tenant_id: Some(ctx.owner_tenant_id),
+            group_name: Some(ctx.group_name),
+            closed_at: ctx.closed_at,
+            frozen_at: ctx.frozen_at,
+        }));
+    }
+    if let Some(named) = state.db.channel_named_lookup(key.to_string()).await? {
+        return Ok(Some(ResolvedChannel {
+            channel_id: named.channel_id,
+            kind: ChannelKind::Named,
+            owner_tenant_id: named.owner_tenant_id,
+            group_name: None,
+            closed_at: named.closed_at,
+            frozen_at: named.frozen_at,
+        }));
+    }
+    Ok(None)
+}
 
 fn arg_str(args: &Value, name: &str) -> Result<String, AppError> {
     args.get(name)
@@ -94,15 +172,15 @@ pub async fn open(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
 }
 
 /// `host.channel.post(channel, body, data?)`: `channel` is either the name
-/// passed to `host.channel.open` or the `channel_id` it returned.
+/// passed to `host.channel.open` or the `channel_id` it returned --
+/// [`resolve_channel`] (PRD-mcphost-channel-read-name-parity requirement 1)
+/// decides which kind it is.
 ///
-/// When `channel` is a group channel's id (PRD-mcphost-agent-channels), the
-/// group-aware path in [`post_group`] runs instead of the legacy, ungated
-/// insert below -- a non-member gets `channel_not_found`, byte-identical to
-/// a channel id naming nothing at all (AC2), since [`crate::db::Db::
-/// channel_group_lookup`] and the legacy `channel_id = ?1 OR name = ?1`
-/// lookup below both answer "not found" the same way for anything that
-/// isn't a real group channel id.
+/// For a group channel (PRD-mcphost-agent-channels), the group-aware path
+/// in [`post_group`] runs -- a non-member gets `channel_not_found`,
+/// byte-identical to a channel id naming nothing at all (AC2), since
+/// `resolve_channel`'s two lookups answer "not found" the same way for
+/// anything that isn't a real group or named channel.
 pub async fn post(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     // PRD-mcphost-agent-mesh-ops requirement 4 / AC4: checked before
     // anything else runs, same as the mirrored check in `messaging::send`.
@@ -116,17 +194,42 @@ pub async fn post(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     }
     let data_json = parse_data_arg(args)?;
 
-    if let Some(ctx) = state.db.channel_group_lookup(channel_ref.clone()).await? {
-        return post_group(state, tenant, channel_ref, ctx, body, data_json).await;
-    }
+    let resolved = resolve_channel(state, tenant, &channel_ref)
+        .await?
+        .ok_or_else(|| AppError::channel_not_found(&channel_ref))?;
 
-    let outcome = state.db.channel_post(tenant.clone(), channel_ref, body, data_json).await?;
-    Ok(json!({
-        "post_id": outcome.id,
-        "channel_id": outcome.channel_id,
-        "seq": outcome.seq,
-        "created_at": outcome.created_at,
-    }))
+    match resolved.kind {
+        ChannelKind::Group => {
+            if !state.db.channel_group_is_authorized(&resolved.group_ctx(), tenant.id).await? {
+                return Err(AppError::channel_not_found(&channel_ref));
+            }
+            post_group(state, tenant, resolved.channel_id.clone(), resolved.group_ctx(), body, data_json).await
+        }
+        ChannelKind::Named => {
+            // PRD-mcphost-channel-read-name-parity requirement 1/2: same
+            // closed/frozen gate a group channel's post already ran --
+            // deliberately no membership check here (unlike the group
+            // path's `channel_group_is_authorized`): a named channel's
+            // post stays open to any tenant that knows its id or name,
+            // the pre-PRD behavior this PRD's non-goals keep unchanged.
+            if resolved.closed_at.is_some() {
+                return Err(AppError::channel_closed());
+            }
+            if resolved.frozen_at.is_some() {
+                return Err(AppError::channel_frozen());
+            }
+            let outcome = state
+                .db
+                .channel_post_insert(tenant.clone(), resolved.channel_id, body, data_json)
+                .await?;
+            Ok(json!({
+                "post_id": outcome.id,
+                "channel_id": outcome.channel_id,
+                "seq": outcome.seq,
+                "created_at": outcome.created_at,
+            }))
+        }
+    }
 }
 
 fn post_outcome_json(outcome: &ChannelPostOutcome, from_address: &str) -> Value {
@@ -153,7 +256,7 @@ async fn post_group(
     data_json: Option<String>,
 ) -> Result<Value, AppError> {
     if !state.db.channel_group_is_authorized(&ctx, tenant.id).await? {
-        return Err(AppError::channel_not_found());
+        return Err(AppError::channel_not_found(&channel_id));
     }
     // AC9: reads keep working past this point (see `read` above, which
     // never looks at `closed_at`); only posting is refused.
@@ -178,7 +281,7 @@ async fn post_group(
     }
     let outcome = state
         .db
-        .channel_group_post_insert(tenant.clone(), channel_id.clone(), body.clone(), data_json.clone())
+        .channel_post_insert(tenant.clone(), channel_id.clone(), body.clone(), data_json.clone())
         .await?;
     // PRD-mcphost-agent-wake requirement 4: strictly after the post's own
     // insert has committed above, never inside that transaction -- same
@@ -286,7 +389,7 @@ pub async fn close(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
     let channel_id = arg_str(args, "channel_id")?;
     let closed = state.db.channel_group_close(tenant.id, channel_id.clone()).await?;
     if !closed {
-        return Err(AppError::channel_not_found());
+        return Err(AppError::channel_not_found(&channel_id));
     }
     Ok(json!({"channel_id": channel_id, "closed": true}))
 }
@@ -298,7 +401,7 @@ async fn set_frozen(state: &AppState, tenant: &Tenant, args: &Value, frozen: boo
         .channel_group_set_frozen(tenant.id, channel_id.clone(), frozen)
         .await?;
     if !ok {
-        return Err(AppError::channel_not_found());
+        return Err(AppError::channel_not_found(&channel_id));
     }
     Ok(json!({"channel_id": channel_id, "frozen": frozen}))
 }
@@ -350,27 +453,39 @@ pub fn spawn_channel_retention(state: AppState) -> tokio::task::JoinHandle<()> {
 }
 
 /// `host.channel.read(channel_id, cursor?, limit<=100, ack?)`
-/// (PRD-mcphost-agent-channels requirement 4 / AC1, AC3, AC4, AC5, AC8):
+/// (PRD-mcphost-agent-channels requirement 4 / AC1, AC3, AC4, AC5, AC8;
+/// PRD-mcphost-channel-read-name-parity requirement 3 / AC1, AC2: a named
+/// channel resolves and reads exactly the same way, by id or by name):
 /// posts with `seq` greater than `cursor` (default: this member's own
 /// stored cursor, or 0 for a first read -- AC8's "starts at the first
 /// retained seq" falls out of that for free, since a retention-purged
 /// post's `seq` simply no longer exists to match `seq > cursor` against,
 /// whichever of the two `cursor` was), in `seq` order, plus `next_cursor`.
 /// `ack: true` stores `next_cursor` as this member's new stored cursor.
+/// `channel_cursors`/`channel_posts` are shared, kind-agnostic tables
+/// (`channels.rs`'s own module doc), so every query below runs unchanged
+/// once `channel_id` is the resolved row's own id, whichever kind it is.
 pub async fn read(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
-    let channel_id = arg_str(args, "channel_id")?;
+    let key = arg_str(args, "channel_id")?;
     let limit = arg_i64_opt(args, "limit").unwrap_or(50).clamp(1, 100);
     let ack = arg_bool(args, "ack");
     let cursor_arg = arg_i64_opt(args, "cursor");
 
-    let ctx = state
-        .db
-        .channel_group_lookup(channel_id.clone())
+    let resolved = resolve_channel(state, tenant, &key)
         .await?
-        .ok_or_else(AppError::channel_not_found)?;
-    if !state.db.channel_group_is_authorized(&ctx, tenant.id).await? {
-        return Err(AppError::channel_not_found());
+        .ok_or_else(|| AppError::channel_not_found(&key))?;
+    let authorized = match resolved.kind {
+        ChannelKind::Group => state.db.channel_group_is_authorized(&resolved.group_ctx(), tenant.id).await?,
+        // Requirement 1/technical considerations: a named channel's only
+        // "member" is its owner -- single-tenant today, so a non-owner
+        // reads byte-identical to a nonexistent key (AC2's own
+        // indistinguishability posture, extended to the named kind).
+        ChannelKind::Named => resolved.owner_tenant_id == Some(tenant.id),
+    };
+    if !authorized {
+        return Err(AppError::channel_not_found(&key));
     }
+    let channel_id = resolved.channel_id;
 
     let effective_cursor = match cursor_arg {
         Some(c) => c,

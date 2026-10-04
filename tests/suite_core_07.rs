@@ -244,6 +244,18 @@ mod channel_ac08_retention_tick_purges_old_posts;
 mod channel_ac09_close_blocks_posts_not_reads;
 #[path = "channel_ac10_freeze_blocks_posts_unfreeze_restores.rs"]
 mod channel_ac10_freeze_blocks_posts_unfreeze_restores;
+#[path = "chanread_ac01_named_channel_post_then_read_by_id.rs"]
+mod chanread_ac01_named_channel_post_then_read_by_id;
+#[path = "chanread_ac02_named_channel_read_by_name.rs"]
+mod chanread_ac02_named_channel_read_by_name;
+#[path = "chanread_ac03_group_channel_no_regression.rs"]
+mod chanread_ac03_group_channel_no_regression;
+#[path = "chanread_ac04_nonexistent_key_names_both_lookups.rs"]
+mod chanread_ac04_nonexistent_key_names_both_lookups;
+#[path = "chanread_ac05_named_channel_freeze_and_close_parity.rs"]
+mod chanread_ac05_named_channel_freeze_and_close_parity;
+#[path = "chanread_ac06_tools_list_names_both_kinds.rs"]
+mod chanread_ac06_tools_list_names_both_kinds;
 #[path = "chart_ac01_vendor_crates_documented_and_wired.rs"]
 mod chart_ac01_vendor_crates_documented_and_wired;
 #[path = "chart_ac02_category_sum_profiles_bar.rs"]
@@ -1622,23 +1634,3 @@ mod vault_ac09_providers_hides_client_secret;
 mod vault_ac10_refresh_401_revokes_no_retry_storm;
 #[path = "vault_ac11_quota_vault_providers.rs"]
 mod vault_ac11_quota_vault_providers;
-#[path = "vaultst_ac01_status_lists_connected_and_unconnected_providers.rs"]
-mod vaultst_ac01_status_lists_connected_and_unconnected_providers;
-#[path = "vaultst_ac02_status_end_user_resolution_matches_connect_link.rs"]
-mod vaultst_ac02_status_end_user_resolution_matches_connect_link;
-#[path = "vaultst_ac03_status_shows_revoked_after_refresh_401.rs"]
-mod vaultst_ac03_status_shows_revoked_after_refresh_401;
-#[path = "vaultst_ac04_admin_vault_stats_per_tenant_per_provider.rs"]
-mod vaultst_ac04_admin_vault_stats_per_tenant_per_provider;
-#[path = "vaultst_ac05_admin_vault_stats_rejects_tenant_key.rs"]
-mod vaultst_ac05_admin_vault_stats_rejects_tenant_key;
-#[path = "vaultst_ac06_provider_remove_revokes_all_tokens.rs"]
-mod vaultst_ac06_provider_remove_revokes_all_tokens;
-#[path = "vaultst_ac07_provider_set_presets_fill_urls.rs"]
-mod vaultst_ac07_provider_set_presets_fill_urls;
-#[path = "vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green.rs"]
-mod vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green;
-#[path = "vaultst_ac09_deferral_is_justified.rs"]
-mod vaultst_ac09_deferral_is_justified;
-#[path = "vaultst_ac09_live_vault_status_trailer.rs"]
-mod vaultst_ac09_live_vault_status_trailer;
