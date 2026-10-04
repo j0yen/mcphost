@@ -1648,13 +1648,27 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             "Run a single read-only SQL SELECT (CTEs allowed) against this tenant's own \
              tables. Structurally rejected (not by string matching): anything but exactly one \
              SELECT statement, a result over 1,000 rows, or a query running past 5 seconds -- \
-             each refusal names the rule or bound it hit.",
+             each refusal names the rule or bound it hit. handle: true materialises the result \
+             as a table instead (no row cap), returning a dataset-summary.v1 (row_count, a \
+             20-row sample, per-column stats over every row) naming a hdl_<id> you can later \
+             reference in FROM or a CTE through this same tool.",
             host_schema(
                 json!({
                     "sql": {
                         "type": "string",
                         "description": "A single read-only SELECT statement (CTEs allowed) \
-                            over this tenant's own declared tables.",
+                            over this tenant's own declared tables (or, once materialised, its \
+                            own hdl_<id> handles).",
+                    },
+                    "handle": {
+                        "type": "boolean",
+                        "description": "Materialise the result as a hdl_<id> table instead of \
+                            returning its rows; returns a dataset-summary.v1. Default false.",
+                    },
+                    "ttl_s": {
+                        "type": "integer",
+                        "description": "Only with handle: true -- seconds until the handle \
+                            expires; default 3600, maximum 86400.",
                     },
                 }),
                 &["sql"],
@@ -1844,6 +1858,43 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 json!({
                     "handle": {"type": "string", "description": "downstream_handle from host.lineage.trace."},
                     "offset": {"type": "integer", "description": "Row offset to start the page at; default 0."},
+                }),
+                &["handle"],
+            ),
+        ),
+        // PRD-mcphost-result-handles P0 requirement 5: list/drop for the
+        // handles host.table.query {handle: true} materialises -- a
+        // different lifecycle from a declared host.table.* table (a TTL,
+        // a byte quota of its own, eviction), so these are their own
+        // tools rather than an argument on host.table.list/drop.
+        Tool::new(
+            "host.table.handles",
+            "List this tenant's live query-result handles (host.table.query {handle: true}), \
+             newest first, each with its row_count, bytes, created_unix, expires_unix, \
+             last_used_unix and derived_from SQL.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "host.table.handle_drop",
+            "Drop one query-result handle (and its table) before its TTL expires.",
+            host_schema(
+                json!({
+                    "handle": {"type": "string", "description": "The hdl_<id> handle to drop."},
+                }),
+                &["handle"],
+            ),
+        ),
+        // PRD-mcphost-result-handles P1 requirement 7 (AC8): reuses the
+        // existing host.export job/signed-URL machinery for one handle's
+        // rows as CSV instead of the whole tenant's data as a tar.gz.
+        Tool::new(
+            "host.table.handle_export",
+            "Export one query-result handle's rows as CSV through a background job, returning \
+             a run_id; poll host.runs.get for the signed /exports/{run_id} download URL (valid \
+             24h).",
+            host_schema(
+                json!({
+                    "handle": {"type": "string", "description": "The hdl_<id> handle to export."},
                 }),
                 &["handle"],
             ),
@@ -4197,6 +4248,8 @@ impl TableBackend for TenantTableBridge {
             "graph" => crate::tables_graph::table_graph(&self.state, &self.tenant, &args).await,
             "join_paths" => crate::tables_graph::join_paths(&self.state, &self.tenant, &args).await,
             "next_questions" => crate::tables_graph::next_questions(&self.state, &self.tenant, &args).await,
+            "handles" => tables::table_handles(&self.state, &self.tenant, &args).await,
+            "handle_drop" => tables::table_handle_drop(&self.state, &self.tenant, &args).await,
             other => Err(AppError::InvalidArgs(format!("unknown table op '{other}'"))),
         };
         // PRD-mcphost-dry-run-side-effects requirement 3: `table_append`'s
@@ -4739,6 +4792,9 @@ impl McpHostHandler {
             "host.table.chart" => crate::chart::table_chart(&self.state, tenant, &args).await,
             "host.table.charts" => crate::chart::table_charts_list(&self.state, tenant, &args).await,
             "host.table.query_log" => tables::table_query_log(&self.state, tenant, &args).await,
+            "host.table.handles" => tables::table_handles(&self.state, tenant, &args).await,
+            "host.table.handle_drop" => tables::table_handle_drop(&self.state, tenant, &args).await,
+            "host.table.handle_export" => crate::export::handle_export(&self.state, tenant, &args).await,
             "host.docs.put" => docs::doc_put(&self.state, tenant, &args).await,
             "host.docs.get" => docs::doc_get(&self.state, tenant, &args).await,
             "host.docs.list" => docs::doc_list(&self.state, tenant, &args).await,

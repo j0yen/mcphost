@@ -38,6 +38,13 @@ pub const EXPORT_TOOL_NAME: &str = "host.export";
 /// own "one running at a time" check ([`crate::db::Db::start_export_run`])
 /// never collides with (or rejoins) a whole-tenant export.
 pub const ENDUSER_EXPORT_TOOL_NAME: &str = "host.enduser.export";
+/// PRD-mcphost-result-handles P1 requirement 7 (AC8): a third distinct
+/// `runs.tool_name`, same "own dedupe key, own runs row" reasoning
+/// [`ENDUSER_EXPORT_TOOL_NAME`]'s doc already gives -- a handle export
+/// running for this tenant never collides with (or rejoins) a whole-tenant
+/// or end-user one, and [`download`] tells a CSV file apart from a
+/// `.tar.gz` one by which of the three this run's own `tool_name` is.
+pub const HANDLE_EXPORT_TOOL_NAME: &str = "host.table.handle_export";
 const EXPORT_DIR: &str = "exports";
 /// AC2: a signed download URL is valid for this long.
 pub const EXPORT_URL_TTL_SECS: i64 = 24 * 60 * 60;
@@ -275,6 +282,152 @@ async fn run_enduser_export_job(state: AppState, tenant: Tenant, run_id: String,
         .db
         .finalize_run(run_id, tenant.id, status, result_ref, error_class, None, finished_unix, duration_ms)
         .await;
+}
+
+/// `host.table.handle_export {handle}` (P1 requirement 7/AC8): same
+/// runs-ledger/background-job/signed-download shape as [`export`]/
+/// [`enduser_export`] above, writing the handle's own rows as CSV
+/// (`tables::handle_export_rows` -- unbounded by `ROW_CAP`) instead of a
+/// `.tar.gz` bundle.
+pub async fn handle_export(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
+    let handle = args
+        .get("handle")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| AppError::InvalidArgs("missing required argument 'handle'".to_string()))?;
+    let plan = state.plans.get(&tenant.plan).ok_or_else(|| {
+        AppError::Internal(format!(
+            "tenant's plan '{}' is not in the loaded plan catalog",
+            tenant.plan
+        ))
+    })?;
+    let run_id = crate::state::new_ulid();
+    let args_json = serde_json::to_string(args)
+        .map_err(|e| AppError::Internal(format!("args serialize: {e}")))?;
+    let outcome = state
+        .db
+        .start_export_run(
+            tenant.id,
+            run_id.clone(),
+            HANDLE_EXPORT_TOOL_NAME.to_string(),
+            plan.job_max_s,
+            args_json,
+        )
+        .await?;
+    let run_id = match outcome {
+        StartExportRun::AlreadyRunning(existing) => {
+            return Ok(json!({"run_id": existing, "status": "running"}));
+        }
+        StartExportRun::Started(new_id) => new_id,
+    };
+    let spawn_state = state.clone();
+    let spawn_tenant = tenant.clone();
+    let spawn_run_id = run_id.clone();
+    tokio::spawn(async move {
+        run_handle_export_job(spawn_state, spawn_tenant, spawn_run_id, handle).await;
+    });
+    Ok(json!({"run_id": run_id, "status": "running"}))
+}
+
+async fn run_handle_export_job(state: AppState, tenant: Tenant, run_id: String, handle: String) {
+    let start = std::time::Instant::now();
+    let outcome = build_handle_csv(&state, &tenant, &run_id, &handle).await;
+    let finished_unix = crate::state::now_unix();
+    let duration_ms = start.elapsed().as_millis() as i64;
+
+    let (status, result_ref, error_class) = match outcome {
+        Ok(result_value) => {
+            // PRD-mcphost-run-result-overflow-to-state: same single-part
+            // convention `run_export_job`/`run_enduser_export_job` use
+            // above -- a handle export's own result (download_url, size,
+            // row_count) never overflows `MAX_TOOL_OUTPUT_BYTES`.
+            let value_json = serde_json::to_string(&result_value).unwrap_or_else(|_| "null".to_string());
+            let bytes = value_json.len() as i64;
+            let set_args = json!({"key": crate::runs::part_key(&run_id, 0), "value": result_value});
+            match crate::tenant_state::state_set(&state, &tenant, &set_args, None).await {
+                Ok(_) => {
+                    let result_ref = json!({
+                        "parts": 1,
+                        "bytes": bytes,
+                        "content_type": "application/json",
+                    })
+                    .to_string();
+                    ("done".to_string(), Some(result_ref), None)
+                }
+                Err(e) => ("error".to_string(), None, Some(e.code().to_string())),
+            }
+        }
+        Err(e) => ("error".to_string(), None, Some(e.code().to_string())),
+    };
+
+    let _ = state
+        .db
+        .finalize_run(run_id, tenant.id, status, result_ref, error_class, None, finished_unix, duration_ms)
+        .await;
+}
+
+/// RFC 4180-shaped CSV field escaping: a field containing a comma, quote,
+/// or newline is wrapped in `"..."` with embedded `"` doubled; everything
+/// else passes through -- same hand-rolled-encoding stance this crate
+/// already takes for ULIDs/RFC 3339/HMAC-SHA256 rather than adding a `csv`
+/// dependency for one small, fully-specified format.
+fn csv_field(value: &Value) -> String {
+    let raw = match value {
+        Value::Null => String::new(),
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    };
+    if raw.contains(['"', ',', '\n', '\r']) {
+        format!("\"{}\"", raw.replace('"', "\"\""))
+    } else {
+        raw
+    }
+}
+
+/// AC8: `row_count` data rows plus a header -- one CSV line per handle
+/// row, in the same column order `tables::handle_export_rows` returns
+/// (the handle's own declaration order), never truncated by `ROW_CAP`
+/// (that bound exists for `host.table.query`'s own result size, not for
+/// exporting a handle that already exists specifically to hold more rows
+/// than that).
+async fn build_handle_csv(
+    state: &AppState,
+    tenant: &Tenant,
+    run_id: &str,
+    handle: &str,
+) -> Result<Value, AppError> {
+    let (columns, rows) = crate::tables::handle_export_rows(state, tenant, handle).await?;
+
+    let mut csv = columns.iter().map(|c| csv_field(&json!(c))).collect::<Vec<_>>().join(",");
+    csv.push_str("\r\n");
+    for row in &rows {
+        let line = columns.iter().map(|c| csv_field(&row[c])).collect::<Vec<_>>().join(",");
+        csv.push_str(&line);
+        csv.push_str("\r\n");
+    }
+    let csv_bytes = csv.into_bytes();
+
+    let exports_dir = state.db.data_dir().join(EXPORT_DIR);
+    tokio::fs::create_dir_all(&exports_dir)
+        .await
+        .map_err(|e| AppError::Storage(format!("create exports dir: {e}")))?;
+    let csv_path = exports_dir.join(format!("{run_id}.csv"));
+    tokio::fs::write(&csv_path, &csv_bytes)
+        .await
+        .map_err(|e| AppError::Storage(format!("write handle export csv: {e}")))?;
+
+    // P1 requirement 7: valid 24h, same signed-URL scheme as the other
+    // export kinds.
+    let expires_unix = crate::state::now_unix() + EXPORT_URL_TTL_SECS;
+    let download_url = signed_download_url(&state.public_url, &tenant.key_hash, run_id, expires_unix);
+
+    Ok(json!({
+        "download_url": download_url,
+        "size_bytes": csv_bytes.len(),
+        "expires_unix": expires_unix,
+        "handle": handle,
+        "row_count": rows.len(),
+    }))
 }
 
 /// AC8: the bundle contains exactly this subject's `tenant_state_kv`/
@@ -577,7 +730,12 @@ pub async fn download(
     let Ok(Some(run)) = state.db.find_run_by_id(run_id.clone()).await else {
         return (StatusCode::NOT_FOUND, "export not found").into_response();
     };
-    let is_export = run.tool_name == EXPORT_TOOL_NAME || run.tool_name == ENDUSER_EXPORT_TOOL_NAME;
+    // PRD-mcphost-result-handles P1 requirement 7: a handle export is a
+    // `.csv` file, `text/csv` -- the other two kinds are always the
+    // `.tar.gz`/`application/gzip` bundle `build_archive`/
+    // `build_enduser_archive` write.
+    let is_handle_export = run.tool_name == HANDLE_EXPORT_TOOL_NAME;
+    let is_export = run.tool_name == EXPORT_TOOL_NAME || run.tool_name == ENDUSER_EXPORT_TOOL_NAME || is_handle_export;
     if !is_export || run.status != "done" {
         return (StatusCode::NOT_FOUND, "export not found").into_response();
     }
@@ -599,17 +757,25 @@ pub async fn download(
     if crate::state::now_unix() > expires_unix {
         return (StatusCode::GONE, "export link expired").into_response();
     }
-    let archive_path = state
-        .db
-        .data_dir()
-        .join(EXPORT_DIR)
-        .join(format!("{run_id}.tar.gz"));
+    let (filename, content_type) = if is_handle_export {
+        (format!("{run_id}.csv"), "text/csv")
+    } else {
+        (format!("{run_id}.tar.gz"), "application/gzip")
+    };
+    let archive_path = state.db.data_dir().join(EXPORT_DIR).join(&filename);
     match tokio::fs::read(&archive_path).await {
         Ok(bytes) => (
             StatusCode::OK,
             [
-                ("content-type", "application/gzip"),
-                ("content-disposition", "attachment; filename=\"export.tar.gz\""),
+                ("content-type", content_type),
+                (
+                    "content-disposition",
+                    if is_handle_export {
+                        "attachment; filename=\"export.csv\""
+                    } else {
+                        "attachment; filename=\"export.tar.gz\""
+                    },
+                ),
             ],
             bytes,
         )

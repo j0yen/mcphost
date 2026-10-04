@@ -30,15 +30,23 @@ const PRE_PRD_TOTAL: usize = 157;
 /// aliases) after this PRD landed.
 const POST_PRD_GROWTH: usize = 3;
 
+/// r368-prep rebase (2026-10-03): PRD-mcphost-result-handles lands after
+/// this PRD in tree order and adds three genuinely new, non-alias tools
+/// (host.table.handles/handle_drop/handle_export) -- same kind of later-
+/// PRD growth compat_ac04_ac05_admin_and_tenant_cache_fields.rs's own
+/// comment already accounts for across multiple rebasing PRDs.
+const POST_PRD_NON_ALIAS_GROWTH: usize = 3;
+
 #[test]
 fn full_registry_grew_by_exactly_the_alias_count_with_nothing_removed() {
     let kinds = KindRegistry::with_builtin();
     let total = host_tool_descriptors(&kinds).len();
     assert_eq!(
         total,
-        PRE_PRD_TOTAL + TOOL_ALIASES.len() + POST_PRD_GROWTH,
+        PRE_PRD_TOTAL + TOOL_ALIASES.len() + POST_PRD_GROWTH + POST_PRD_NON_ALIAS_GROWTH,
         "the full host.*/billing.* registry must have grown by exactly the number of aliases \
-         this PRD added, with nothing removed (plus any later PRD's own documented growth)"
+         this PRD added (plus any later-landing PRD's own non-alias tools, and any earlier- \
+         or later-landing PRD's own documented growth), with nothing removed"
     );
-    assert_eq!(total, 180, "pin the exact new total PRD-mcphost-invite-links and this PRD's own growth grew it to");
+    assert_eq!(total, 183, "pin the exact new total PRD-mcphost-invite-links and this PRD's own growth grew it to");
 }

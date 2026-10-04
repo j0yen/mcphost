@@ -553,7 +553,40 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # that covers both PRDs' sandbox files at once; re-derived below by
 # actually running gen-test-suites.sh --check against this rebase's full
 # file set.
-MAX_PER_SUITE = {"core": 810, "sandbox": 180}
+# PRD-mcphost-result-handles (hand-rebased onto main at 84a09d11 / v0.78.0
+# after run 368's stale release commit was dropped, 2026-10-03): this PRD's
+# own ten `handle_ac*.rs` core-classified files join the same normal bucket
+# on top of public-tool-url's own 810 cap, independently bumping core
+# 810 -> 870 (same reasoning as this PRD's own prior note below). This
+# PRD's own rebase never touched sandbox, so table-context-and-sql-
+# passthrough's 130 -> 170 sandbox bump (already landed on main) carries
+# forward unchanged. Combined: core takes the larger of the two
+# independent bumps (870), sandbox keeps main's landed value (170).
+#
+# PRD-mcphost-result-handles (rebased onto mcphost-public-tool-url / main at
+# a7b9f34c v0.77.0, 2026-10-03, run 368): this PRD's own ten `handle_ac*.rs`
+# core-classified files (AC9's own sandboxed python-bridge test is
+# sandbox-classified, unaffected; AC10 is deferred, no test file) join the
+# same normal bucket on top of public-tool-url's own 810 cap above,
+# spawning an 11th suite binary again -- caught by the same P0 assertion.
+# 810 -> 870 gives headroom past this PRD's own +10 rather than re-tuning
+# to the exact count, so the next PRD's ordinary handful of new tests
+# doesn't immediately re-trip the same P0 assertion.
+#
+# Rebasing mcphost-result-handles onto mcphost-table-context-and-sql-
+# passthrough (2026-10-03, this rebase): both PRDs above independently
+# raised this cap from the same public-tool-url/table-concept-graph
+# baseline -- dry-run-side-effects bumped sandbox 170 -> 175,
+# result-handles bumped core 810 -> 870. Landing both together needs both
+# bumps; re-verified below by actually running gen-test-suites.sh --check
+# against this rebase's full file set.
+# Rebasing mcphost-result-handles onto main at run-368-prep time (2026-10-03,
+# this hand-prep): main (via drift-review) independently raised sandbox to 180
+# while this branch independently raised core to 870. Per the land-conflict rule
+# (take the larger cap on each key), the merged caps are core=870 (this branch's
+# bump, larger than main's 810) and sandbox=180 (main's bump, larger than this
+# branch's 175).
+MAX_PER_SUITE = {"core": 870, "sandbox": 180}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"

@@ -1021,7 +1021,8 @@ impl StateBackend for NoState {
 /// `"chart"` -- PRD-mcphost-chart-in-a-minute AC11), or
 /// (PRD-mcphost-table-concept-graph P1 requirement 8) one of
 /// `tables_graph.rs`'s own (`"graph"`, `"join_paths"`, `"next_questions"`),
-/// and `args` is that verb's own JSON argument object.
+/// or `"handles"`/`"handle_drop"`, and `args` is that verb's own JSON
+/// argument object.
 #[async_trait::async_trait]
 pub trait TableBackend: Send + Sync {
     async fn call(&self, op: &str, args: Value) -> Result<Value, KindError>;

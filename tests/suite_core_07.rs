@@ -486,6 +486,26 @@ mod fleetips_reclassify_backfill;
 mod gatedebt_4f1112d_ac4_no_test_reads_gate_receipts;
 #[path = "gatedebt_4f1112d_ac5_no_flake_audit_selftest_names.rs"]
 mod gatedebt_4f1112d_ac5_no_flake_audit_selftest_names;
+#[path = "handle_ac01_materialize_50k_rows_summary.rs"]
+mod handle_ac01_materialize_50k_rows_summary;
+#[path = "handle_ac02_query_handle_group_by_matches_source.rs"]
+mod handle_ac02_query_handle_group_by_matches_source;
+#[path = "handle_ac03_unknown_handle_not_found.rs"]
+mod handle_ac03_unknown_handle_not_found;
+#[path = "handle_ac04_ttl_expiry_dropped_by_tick.rs"]
+mod handle_ac04_ttl_expiry_dropped_by_tick;
+#[path = "handle_ac05_quota_eviction_and_oversized_refusal.rs"]
+mod handle_ac05_quota_eviction_and_oversized_refusal;
+#[path = "handle_ac06_hdl_prefix_reserved_on_create.rs"]
+mod handle_ac06_hdl_prefix_reserved_on_create;
+#[path = "handle_ac07_update_on_handle_refused_read_only.rs"]
+mod handle_ac07_update_on_handle_refused_read_only;
+#[path = "handle_ac08_export_csv_signed_url_expiry.rs"]
+mod handle_ac08_export_csv_signed_url_expiry;
+#[path = "handle_ac11_cross_tenant_handle_not_found.rs"]
+mod handle_ac11_cross_tenant_handle_not_found;
+#[path = "handle_ac12_empty_result_materialize.rs"]
+mod handle_ac12_empty_result_materialize;
 #[path = "handoff_ac01_signup_returns_token_and_no_key.rs"]
 mod handoff_ac01_signup_returns_token_and_no_key;
 #[path = "handoff_ac02_redeem_single_use_and_expiry.rs"]
@@ -1648,3 +1668,99 @@ mod trigidem_ac05_verbs_accept_name;
 mod trigidem_ac06_migration_backfills_duplicate_names;
 #[path = "trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent.rs"]
 mod trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent;
+#[path = "unkfield_ac04_trigger_set_unknown_argument.rs"]
+mod unkfield_ac04_trigger_set_unknown_argument;
+#[path = "unkfield_ac05_tools_list_additional_properties_false.rs"]
+mod unkfield_ac05_tools_list_additional_properties_false;
+#[path = "unkfield_ac07_spec_fields_doc_check_script.rs"]
+mod unkfield_ac07_spec_fields_doc_check_script;
+#[path = "urltenant_ac01_path_secret_whoami_auth_method_url.rs"]
+mod urltenant_ac01_path_secret_whoami_auth_method_url;
+#[path = "urltenant_ac02_wrong_or_rotated_secret_404.rs"]
+mod urltenant_ac02_wrong_or_rotated_secret_404;
+#[path = "urltenant_ac03_key_rotate_rotates_key_and_url.rs"]
+mod urltenant_ac03_key_rotate_rotates_key_and_url;
+#[path = "urltenant_ac04_new_url_page_and_signup_limiter.rs"]
+mod urltenant_ac04_new_url_page_and_signup_limiter;
+#[path = "urltenant_ac05_browser_get_shows_explainer_page.rs"]
+mod urltenant_ac05_browser_get_shows_explainer_page;
+#[path = "urltenant_ac06_quickstart_url_bound_no_signup_step.rs"]
+mod urltenant_ac06_quickstart_url_bound_no_signup_step;
+#[path = "urltenant_ac07_header_conflict_is_auth_conflict.rs"]
+mod urltenant_ac07_header_conflict_is_auth_conflict;
+#[path = "vault_ac01_connect_link_redirects_to_auth_url.rs"]
+mod vault_ac01_connect_link_redirects_to_auth_url;
+#[path = "vault_ac02_callback_exchanges_code_and_stores_tokens.rs"]
+mod vault_ac02_callback_exchanges_code_and_stores_tokens;
+#[path = "vault_ac03_injects_bearer_overriding_tool_header.rs"]
+mod vault_ac03_injects_bearer_overriding_tool_header;
+#[path = "vault_ac04_call_log_never_contains_token.rs"]
+mod vault_ac04_call_log_never_contains_token;
+#[path = "vault_ac05_refresh_before_expiry_used_once.rs"]
+mod vault_ac05_refresh_before_expiry_used_once;
+#[path = "vault_ac06_unconnected_end_user_gets_connect_link.rs"]
+mod vault_ac06_unconnected_end_user_gets_connect_link;
+#[path = "vault_ac07_used_handoff_token_returns_410.rs"]
+mod vault_ac07_used_handoff_token_returns_410;
+#[path = "vault_ac08_disconnect_revokes_and_blocks_calls.rs"]
+mod vault_ac08_disconnect_revokes_and_blocks_calls;
+#[path = "vault_ac09_providers_hides_client_secret.rs"]
+mod vault_ac09_providers_hides_client_secret;
+#[path = "vault_ac10_refresh_401_revokes_no_retry_storm.rs"]
+mod vault_ac10_refresh_401_revokes_no_retry_storm;
+#[path = "vault_ac11_quota_vault_providers.rs"]
+mod vault_ac11_quota_vault_providers;
+#[path = "vaultst_ac01_status_lists_connected_and_unconnected_providers.rs"]
+mod vaultst_ac01_status_lists_connected_and_unconnected_providers;
+#[path = "vaultst_ac02_status_end_user_resolution_matches_connect_link.rs"]
+mod vaultst_ac02_status_end_user_resolution_matches_connect_link;
+#[path = "vaultst_ac03_status_shows_revoked_after_refresh_401.rs"]
+mod vaultst_ac03_status_shows_revoked_after_refresh_401;
+#[path = "vaultst_ac04_admin_vault_stats_per_tenant_per_provider.rs"]
+mod vaultst_ac04_admin_vault_stats_per_tenant_per_provider;
+#[path = "vaultst_ac05_admin_vault_stats_rejects_tenant_key.rs"]
+mod vaultst_ac05_admin_vault_stats_rejects_tenant_key;
+#[path = "vaultst_ac06_provider_remove_revokes_all_tokens.rs"]
+mod vaultst_ac06_provider_remove_revokes_all_tokens;
+#[path = "vaultst_ac07_provider_set_presets_fill_urls.rs"]
+mod vaultst_ac07_provider_set_presets_fill_urls;
+#[path = "vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green.rs"]
+mod vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green;
+#[path = "vaultst_ac09_deferral_is_justified.rs"]
+mod vaultst_ac09_deferral_is_justified;
+#[path = "vaultst_ac09_live_vault_status_trailer.rs"]
+mod vaultst_ac09_live_vault_status_trailer;
+#[path = "wake_ac1_message_trigger_fires_run.rs"]
+mod wake_ac1_message_trigger_fires_run;
+#[path = "wake_ac2_from_filter.rs"]
+mod wake_ac2_from_filter;
+#[path = "wake_ac3_dedupe.rs"]
+mod wake_ac3_dedupe;
+#[path = "wake_ac4_jobs_concurrent_rejects.rs"]
+mod wake_ac4_jobs_concurrent_rejects;
+#[path = "wake_ac5_pause_resume.rs"]
+mod wake_ac5_pause_resume;
+#[path = "wake_ac6_msg_wait.rs"]
+mod wake_ac6_msg_wait;
+#[path = "wake_ac7_trigger_test_synthetic_envelope.rs"]
+mod wake_ac7_trigger_test_synthetic_envelope;
+#[path = "wake_ac8_replay.rs"]
+mod wake_ac8_replay;
+#[path = "wasmkind_ac01_echo_component_calls_and_meters.rs"]
+mod wasmkind_ac01_echo_component_calls_and_meters;
+#[path = "wasmkind_ac02_publish_validation_errors.rs"]
+mod wasmkind_ac02_publish_validation_errors;
+#[path = "wasmkind_ac03_timeout_and_oom_recover.rs"]
+mod wasmkind_ac03_timeout_and_oom_recover;
+#[path = "wasmkind_ac05_tool_test_dry_run.rs"]
+mod wasmkind_ac05_tool_test_dry_run;
+#[path = "wasmkind_ac06_trap_is_structured_and_logged.rs"]
+mod wasmkind_ac06_trap_is_structured_and_logged;
+#[path = "wasmkind_ac07_docs_llms_and_quickstart_document_wasm.rs"]
+mod wasmkind_ac07_docs_llms_and_quickstart_document_wasm;
+#[path = "wasmkind_ac08_cache_reuses_compiled_artifact.rs"]
+mod wasmkind_ac08_cache_reuses_compiled_artifact;
+#[path = "wasmkind_ac09_healthz_reports_wasm_runtime.rs"]
+mod wasmkind_ac09_healthz_reports_wasm_runtime;
+#[path = "wasmkind_ac10_declared_output_promotion_matches_python.rs"]
+mod wasmkind_ac10_declared_output_promotion_matches_python;
