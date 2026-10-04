@@ -731,6 +731,7 @@ async fn main() -> anyhow::Result<()> {
                 oauth_healthz_cache: Default::default(),
                 verified_client_ids,
                 session_bindings: mcphost::session_bind::SessionBindings::new(),
+                invite_hints: mcphost::invites::InviteHintTracker::new(),
                 lineage_cache: mcphost::lineage::new_cache(),
                 lineage_trace_pages: mcphost::lineage::new_trace_page_cache(),
                 public_url_sync_deadline: mcphost::state::PUBLIC_URL_SYNC_DEADLINE,

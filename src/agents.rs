@@ -199,7 +199,16 @@ pub async fn lookup(state: &AppState, args: &Value) -> Result<Value, AppError> {
         .lookup_agent(address.to_string())
         .await?
         .ok_or_else(AppError::agent_not_found)?;
-    Ok(card_json(&card))
+    let mut value = card_json(&card);
+    // PRD-mcphost-invite-links requirement 12 (AC11): the lineage pair --
+    // `None` `invited_by` for a tenant that wasn't invite-created.
+    if let Some((invited_by, invitees_count)) = state.db.invite_lineage(address.to_string()).await?
+        && let Some(obj) = value.as_object_mut()
+    {
+        obj.insert("invited_by".to_string(), json!(invited_by));
+        obj.insert("invitees_count".to_string(), json!(invitees_count));
+    }
+    Ok(value)
 }
 
 /// `host.agent.search(query?, tag?, limit≤50, cursor?)` (requirement 5 /

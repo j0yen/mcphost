@@ -40,6 +40,7 @@ pub mod handler;
 pub mod help;
 pub mod hooks;
 pub mod http;
+pub mod invites;
 pub mod kinds;
 pub mod lineage;
 pub mod llms_txt;

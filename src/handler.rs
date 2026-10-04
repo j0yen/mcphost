@@ -1336,6 +1336,61 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                 &["full_name"],
             ),
         ),
+        // PRD-mcphost-invite-links requirement 1 (AC1): one URL carries
+        // tenant creation, contact, and tool visibility.
+        Tool::new(
+            "host.invite.create",
+            "Create an invite link: a friend who connects to the returned url and makes a \
+             first host.* call gets a fresh tenant whose contact with you is already accepted \
+             and whose listed tools are already shared. The free plan allows 3 live invites \
+             at once (host.invite.revoke frees a slot); your own standing invite -- its url \
+             is the invite_url field on host.whoami -- never counts against this.",
+            host_schema(
+                json!({
+                    "share": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Local names of your own tools to share with whoever \
+                            redeems this invite. Default: none.",
+                    },
+                    "max_uses": {
+                        "type": "integer",
+                        "description": "How many tenants this invite may create. Default 10, \
+                            maximum 100.",
+                    },
+                    "expires_in_days": {
+                        "type": "integer",
+                        "description": "Days until this invite stops working. Default 30, \
+                            maximum 365.",
+                    },
+                    "caller_limit_per_day": {
+                        "type": "integer",
+                        "description": "Optional calls_per_day cap applied to every invitee \
+                            for each shared tool (host.share.caller_limit). Default: no cap.",
+                    },
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.invite.list",
+            "List every invite you own (standard and your own standing invite), with uses, \
+             limits, and the namespaces of everyone who joined through each.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "host.invite.revoke",
+            "Revoke an invite by its code. A standard invite simply stops working (existing \
+             invitees keep their tenants and shares). Your standing invite is rotated instead: \
+             a fresh invite_url is returned and the old one starts answering invite_invalid.",
+            host_schema(
+                json!({
+                    "code": {"type": "string", "description": "The invite's own code, from \
+                        host.invite.create or the invite_url field on host.whoami."},
+                }),
+                &["code"],
+            ),
+        ),
         Tool::new(
             "host.secret.set",
             "Store an encrypted secret value under this tenant's namespace.",
@@ -4569,6 +4624,9 @@ impl McpHostHandler {
             "host.group.list" => crate::sharing::group_list(&self.state, tenant).await,
             "host.catalog.search" => crate::sharing::catalog_search(&self.state, &args).await,
             "host.catalog.get" => crate::sharing::catalog_get(&self.state, &args).await,
+            "host.invite.create" => crate::invites::create(&self.state, tenant, &args).await,
+            "host.invite.list" => crate::invites::list(&self.state, tenant).await,
+            "host.invite.revoke" => crate::invites::revoke(&self.state, tenant, &args).await,
             "host.secret.set" => control::secret_set(&self.state, tenant, &args).await,
             "host.secret.list" => control::secret_list(&self.state, tenant).await,
             "host.registry.publish" => control::registry_publish(&self.state, tenant, &args).await,
@@ -6843,6 +6901,30 @@ impl ServerHandler for McpHostHandler {
             auth = bound;
             via_session_binding = true;
         }
+        // PRD-mcphost-invite-links requirement 2 (AC2), requirement 6: a
+        // genuinely fresh session on `/i/{code}/mcp` -- no header, no
+        // `tenant_key` argument, and (just checked above) no existing
+        // session binding -- gets its tenant created right here, from the
+        // invite's own inviter context, rather than falling into the
+        // ordinary Anonymous-refusal arm below. `signup`/`host.redeem` are
+        // excluded: they already have their own creation path, and
+        // running both would mint two tenants for one call. Once this
+        // session is bound (inside `claim_on_first_call`), every later
+        // call on it resolves through `resolve_session_binding` above and
+        // never reaches here again.
+        let mut invite_onboarding: Option<Value> = None;
+        if matches!(auth, Auth::Anonymous)
+            && body_name != "signup"
+            && body_name != "host.redeem"
+            && let Some(code) = crate::invites::invite_path_code(parts)
+        {
+            let (tenant, onboarding) =
+                crate::invites::claim_on_first_call(&self.state, code, session_id.as_deref())
+                    .await
+                    .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
+            auth = Auth::Tenant(Box::new(tenant), None);
+            invite_onboarding = Some(onboarding);
+        }
         // PRD-mcphost-url-bound-tenants requirement 1 (AC7): a request on
         // `/u/{secret}/mcp` that ALSO carries an `Authorization: Bearer` for
         // a different tenant than the path secret's own is refused outright
@@ -7029,6 +7111,33 @@ impl ServerHandler for McpHostHandler {
         // result after the match instead.
         let deprecation_notices =
             crate::api_contract::deprecation_notices(&body_name, &args, &self.state.deprecations);
+        // PRD-mcphost-invite-links requirement 14 (AC13): the owner
+        // namespace of a cross-tenant shared-tool call, however it was
+        // dispatched -- a raw qualified `tools/call` (`name:
+        // "<owner_ns>.<local>"`) or the `host.tool.call`/`host.tool_call`
+        // wrapper (`{name: "<owner_ns>.<local>"}` inside `args`). Computed
+        // here, before the dispatch match below moves `args`, same
+        // "snapshot now, apply after the match" convention
+        // `deprecation_notices`/`alias_canonical` already use.
+        let shared_tool_call_owner_ns: Option<String> = if let Auth::Tenant(tenant, _) = &auth {
+            let qualified = if body_name.starts_with("host.") || body_name.starts_with("billing.") {
+                match body_name.as_str() {
+                    "host.tool.call" | "host.tool_call" => {
+                        args.get("name").and_then(Value::as_str).map(str::to_string)
+                    }
+                    _ => None,
+                }
+            } else {
+                Some(body_name.clone())
+            };
+            qualified.and_then(|q| {
+                q.split_once('.')
+                    .filter(|(ns, _)| *ns != tenant.namespace)
+                    .map(|(ns, _)| ns.to_string())
+            })
+        } else {
+            None
+        };
         // PRD-mcphost-tool-naming-convention-and-aliases requirement 2:
         // `Some(canonical)` iff `body_name` is a registered alias --
         // resolved once here (before the dispatch match moves `body_name`
@@ -7261,6 +7370,16 @@ impl ServerHandler for McpHostHandler {
 
         match outcome {
             Ok(mut value) => {
+                // PRD-mcphost-invite-links requirement 2 (AC2): this
+                // call's own tenant was just created from the invite --
+                // the response it was already going to carry (whatever
+                // `host.tool.call`/other dispatch produced) also gets the
+                // onboarding object.
+                if let Some(onboarding) = invite_onboarding.take()
+                    && let Some(obj) = value.as_object_mut()
+                {
+                    obj.insert("onboarding".to_string(), onboarding);
+                }
                 if !deprecation_notices.is_empty()
                     && let Some(obj) = value.as_object_mut()
                 {
@@ -7309,7 +7428,30 @@ impl ServerHandler for McpHostHandler {
                 // per day (`Auth::Tenant` only -- `Auth::Admin` never
                 // reaches a `host.*` alias; see the admin-only `host.whoami`
                 // arm above).
-                let result = if let (Some(canonical), Auth::Tenant(tenant, _)) = (alias_canonical, &auth) {
+                // PRD-mcphost-invite-links requirement 14 (AC13): once per
+                // session, an invitee's successful cross-tenant
+                // shared-tool call carries its own standing invite_url in
+                // `_meta`, so an agent relaying results to another agent
+                // has the link in hand without a second call.
+                // `invite_hints.mark_first` is checked (not just
+                // computed) here, inside the success arm, so a call that
+                // fails dispatch never consumes the once-per-session slot.
+                let invite_hint_url: Option<String> = if shared_tool_call_owner_ns.is_some()
+                    && let Auth::Tenant(tenant, _) = &auth
+                    && tenant.invited_by_tenant_id.is_some()
+                    && session_id.as_deref().is_some_and(|sid| self.state.invite_hints.mark_first(sid))
+                {
+                    match self.state.db.find_standing_invite_for_tenant(tenant.id).await {
+                        Ok(Some(invite)) => {
+                            invite.code_plain.map(|code| crate::invites::invite_url(&self.state, &code))
+                        }
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+                let mut meta = rmcp::model::MetaObject::new();
+                if let (Some(canonical), Auth::Tenant(tenant, _)) = (alias_canonical, &auth) {
                     crate::tool_aliases::maybe_log_deprecated_alias(
                         tenant.id,
                         &tenant.key_hash,
@@ -7317,7 +7459,6 @@ impl ServerHandler for McpHostHandler {
                         canonical,
                         &crate::state::date_from_unix(now_unix()),
                     );
-                    let mut meta = rmcp::model::MetaObject::new();
                     meta.0.insert(
                         "deprecated".to_string(),
                         json!({
@@ -7325,10 +7466,11 @@ impl ServerHandler for McpHostHandler {
                             "sunset": crate::tool_aliases::SUNSET_DATE,
                         }),
                     );
-                    result.with_meta(Some(meta))
-                } else {
-                    result
-                };
+                }
+                if let Some(url) = invite_hint_url {
+                    meta.0.insert("invite_url".to_string(), json!(url));
+                }
+                let result = if meta.0.is_empty() { result } else { result.with_meta(Some(meta)) };
                 Ok(CallToolResponse::from(result))
             }
             Err(app_err) => Err(app_err.into_error_data_at(Some(&self.state.public_url))),

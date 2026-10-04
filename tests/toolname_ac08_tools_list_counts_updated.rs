@@ -24,15 +24,19 @@ use mcphost::tool_aliases::TOOL_ALIASES;
 /// -- same total compat_ac04_ac05's own comment pins.
 const PRE_PRD_TOTAL: usize = 155;
 
+/// PRD-mcphost-invite-links added host.invite.create/list/revoke (+3, no
+/// aliases) after this PRD landed.
+const POST_PRD_GROWTH: usize = 3;
+
 #[test]
 fn full_registry_grew_by_exactly_the_alias_count_with_nothing_removed() {
     let kinds = KindRegistry::with_builtin();
     let total = host_tool_descriptors(&kinds).len();
     assert_eq!(
         total,
-        PRE_PRD_TOTAL + TOOL_ALIASES.len(),
+        PRE_PRD_TOTAL + TOOL_ALIASES.len() + POST_PRD_GROWTH,
         "the full host.*/billing.* registry must have grown by exactly the number of aliases \
-         this PRD added, with nothing removed"
+         this PRD added, with nothing removed (plus any later PRD's own documented growth)"
     );
-    assert_eq!(total, 175, "pin the exact new total compat_ac04_ac05's own count was updated to");
+    assert_eq!(total, 178, "pin the exact new total PRD-mcphost-invite-links grew it to");
 }

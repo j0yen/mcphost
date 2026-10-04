@@ -298,6 +298,11 @@ pub async fn contacts(state: &AppState, tenant: &Tenant, args: &Value) -> Result
         "contacts": view.contacts.iter().map(|c| json!({
             "address": c.address,
             "accepted_at": c.accepted_at,
+            // PRD-mcphost-invite-links requirement 7: how this pair became
+            // contacts -- "invite:<code>" for one accepted by invite
+            // redemption, "direct" for the pre-existing manual
+            // contact_request/contact_accept flow.
+            "via": c.via.clone().unwrap_or_else(|| "direct".to_string()),
         })).collect::<Vec<_>>(),
         "incoming": view.incoming.iter().map(contact_request_json).collect::<Vec<_>>(),
         "outgoing": view.outgoing.iter().map(contact_request_json).collect::<Vec<_>>(),

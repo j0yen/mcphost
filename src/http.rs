@@ -1074,6 +1074,55 @@ async fn require_known_url_secret(
     next.run(req).await
 }
 
+/// PRD-mcphost-invite-links requirement 4 (AC5): `/i/{code}/mcp` for a
+/// code that is unknown, revoked, expired, or already at `max_uses` is 404
+/// with error class `invite_invalid` -- same "404 before the MCP service
+/// ever sees the request" shape as [`require_known_url_secret`] above,
+/// scoped to this route. A browser's `GET` (no MCP `Accept` header) on a
+/// LIVE code gets a short explainer that never names the inviter -- it
+/// reads straight off `code` alone, never looks up (or renders) the
+/// inviter's namespace/display_name.
+async fn require_live_invite_code(
+    State(state): State<Arc<AppState>>,
+    Path(code): Path<String>,
+    req: Request<Body>,
+    next: Next,
+) -> Response {
+    let hash = crate::auth::hash_key(&code);
+    match state.db.find_invite_by_code_hash(hash).await {
+        Ok(Some(invite)) if crate::db::is_connectable(&invite, crate::state::now_unix()) => {}
+        _ => {
+            return crate::claim::html_response(
+                StatusCode::NOT_FOUND,
+                crate::claim::page(
+                    "mcphost — invite not valid",
+                    "<h1>This invite link is no longer valid</h1>\
+                     <p>It may have expired, been revoked, or already reached its use limit. \
+                     Ask whoever shared it with you for a fresh one.</p>",
+                ),
+            );
+        }
+    }
+    let wants_html = req
+        .headers()
+        .get(axum::http::header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.contains("text/html"));
+    if req.method() == Method::GET && wants_html {
+        return crate::claim::html_response(
+            StatusCode::OK,
+            crate::claim::page(
+                "mcphost — you've been invited",
+                "<h1>You've been invited to mcphost</h1>\
+                 <p>Add this URL as an MCP server in your client, then ask your agent to call \
+                 any tool -- that first call creates your own tenant and accepts the \
+                 connection, no signup step needed.</p>",
+            ),
+        );
+    }
+    next.run(req).await
+}
+
 fn render_url_explainer(state: &AppState, secret: &str) -> String {
     let url = format!("{}/u/{}/mcp", state.public_url.trim_end_matches('/'), secret);
     let url = crate::claim::html_escape(&url);
@@ -1234,6 +1283,19 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         ))
         .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id));
 
+    // PRD-mcphost-invite-links requirement 2: `/i/{code}/mcp` serves the
+    // identical streamable-HTTP service as `/mcp`/`/u/{secret}/mcp` --
+    // credential/tenant-creation resolution happens inside `handler.rs`
+    // (`handler::call_tool`'s own invite-claim step), not here. Same
+    // `route_layer` shape as `url_mcp_router` above.
+    let invite_mcp_router = Router::new()
+        .route_service("/i/{code}/mcp", service.clone())
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_live_invite_code,
+        ))
+        .route_layer(middleware::from_fn_with_state(state.clone(), issue_session_id));
+
     // PRD-mcphost-session-bound-tenant-after-signup requirement 1: only the
     // streamable-HTTP routes get a session identity, so `/healthz`, the
     // OAuth endpoints and the router's own 404 fallback are untouched. Its
@@ -1388,6 +1450,7 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         .merge(root_mcp_router)
         .merge(tenant_mcp_router)
         .merge(url_mcp_router)
+        .merge(invite_mcp_router)
         .merge(public_tool_router)
         // PRD-mcphost-session-bound-tenant-after-signup requirement 7
         // (AC10): `oauth_401_upgrade` must run INSIDE (closer to the

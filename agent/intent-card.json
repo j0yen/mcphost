@@ -1,69 +1,113 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-channel-read-name-parity.md",
-  "intent_slug": "mcphost-channel-read-name-parity",
-  "root_motivation": "Grounding: fleet board dogfood, 2026-09-30 -- host.channel.open(name: \"fleet\") returned id 01M3V2YTK8F0TF96KX6Q29T08Z; host.channel.post on that id succeeded; host.channel.read on the same id failed \"no channel found for that name or id\", reproduced three times running. post (src/channels.rs) already tried a group-channel lookup then fell back to the named-channel id-or-name lookup (src/db.rs); read ran only the group lookup, so a channel opened by name -- the first form host.channel.open's own doc comment documents -- was writable and unreadable. freeze/close had the same narrower, group-only reach. This build gives every host.channel.* verb (open excepted, since its own group vs name argument already disambiguates what it creates) one resolve_channel(tenant, key) lookup in channels.rs, so a channel reachable by one verb is reachable by every other one too.",
-  "user_persona": "An agent that opens a channel by name (the first form host.channel.open documents) and expects post/read/freeze/close to all resolve that same name or id -- the fleet board's own alert-verification loop was blocked exactly here. Also an agent that mistypes a key and needs the error to say what lookups were tried, and the operator, who needs freeze/close to work identically on a named or a group channel for moderation to hold.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-invite-links.md",
+  "intent_slug": "mcphost-invite-links",
+  "root_motivation": "A tenant owner who wants a friend to use their tool has to run a relay protocol across two humans and two agents: five steps, two of them out of band, and a per-IP signup cap that fails a group of friends in one room. Grounding incident: Joe 2026-10-01 asked \"how can I share this new mcp server with friends?\" and the best available answer was signup(handoff: true) -> host.redeem -> carry tenant_key -> host.whoami -> paste a tenant id -> Joe runs host.tool_share/host.share_caller_limit per friend. mcphost already has every primitive an invite link needs (path-authenticated routes, session binding, shares by tenant id, consent rows, one-time claim tokens) and no link.",
+  "user_persona": "Joe, a tenant owner who wants to text one URL to a friend so their agent can read a shared tool with no other step; the friend's agent, which pastes the URL and keeps the tenant it is handed; five friends on one wifi joining the same invite within an hour; an agent relaying a shared-tool result to another agent, which needs its own invite link in hand without a second call.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 6
+    "target": 12
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given host.channel.open(name: \"t\") returning id X, When host.channel.post(X, body) then host.channel.read(X) run, Then read returns the post with seq 1 and a next_cursor.",
-      "test": "tests/chanread_ac01_named_channel_post_then_read_by_id.rs"
+      "description": "Given inviter tenant A with a published tool t, When A calls host.invite.create share=[\"t\"], Then the result has a url of the form /i/<code>/mcp, max_uses: 10, expires_at 30 days out, and host.invite.list shows it with uses: 0.",
+      "test": "tests/invite_ac01_create_returns_url_and_list_shows_zero_uses.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the same channel, When host.channel.read(\"t\") runs by name, Then it returns the same posts.",
-      "test": "tests/chanread_ac02_named_channel_read_by_name.rs"
+      "description": "Given that URL, When a fresh session POSTs tools/call host.tool_call {name: \"<A ns>.t\"} with no header, Then a new tenant B is created with source: \"invite:<code>\", the call succeeds, the response carries onboarding.url, onboarding.invited_by, and onboarding.shared_tools: [\"t\"], and uses is 1.",
+      "test": "tests/invite_ac02_first_call_creates_tenant_with_onboarding.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a group channel, When read, post, freeze, close run as before this PRD, Then results are byte-identical to the pre-PRD fixtures (no regression).",
-      "test": "tests/chanread_ac03_group_channel_no_regression.rs"
+      "description": "Given tenant B, When host.agent.contacts is called from A and from B, Then each lists the other as accepted with via: \"invite:<code>\", and host.usage by=caller tool=t on A shows B's call.",
+      "test": "tests/invite_ac03_contacts_accepted_both_ways_and_usage_shows_call.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a nonexistent key, When any channel verb runs, Then the error class is channel_not_found, data.key echoes the input, and the message names both lookups.",
-      "test": "tests/chanread_ac04_nonexistent_key_names_both_lookups.rs"
+      "description": "Given an invite with max_uses: 2 and two concurrent first calls from two fresh sessions plus a third, When they race, Then exactly two tenants are created and the third receives invite_invalid.",
+      "test": "tests/invite_ac04_race_for_last_slot_yields_exactly_max_uses.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a named channel, When freeze(X) then post(X, ...) run, Then post fails channel_frozen; When close(X) then read(X), Then read still works (closed channels stay readable, matching errors.rs's documented rule).",
-      "test": "tests/chanread_ac05_named_channel_freeze_and_close_parity.rs"
+      "description": "Given a revoked or expired code, When any request hits /i/<code>/mcp, Then HTTP 404 invite_invalid, the browser page reveals no inviter identity, and existing invitees' shares still work.",
+      "test": "tests/invite_ac05_revoked_or_expired_404_no_identity_leak_existing_still_work.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given tools/list, When fetched, Then host.channel.open's description names both channel kinds and says both are readable.",
-      "test": "tests/chanread_ac06_tools_list_names_both_kinds.rs"
+      "description": "Given six fresh sessions from one IP joining via one invite within an hour, When each makes its first call, Then all six succeed (per-code limiter, not per-IP) and a 21st within the hour is refused with invite_rate_limited.",
+      "test": "tests/invite_ac06_per_code_limiter_not_per_ip.rs"
+    },
+    {
+      "id": "AC7",
+      "level": "MUST",
+      "description": "Given a free-plan tenant with 3 live invites already created, When it calls host.invite.create again, Then it is refused with invites_quota_exceeded; When one existing invite is revoked, Then a new create succeeds.",
+      "test": "tests/invite_ac07_free_plan_invites_max_and_revoke_frees_slot.rs"
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Live/production deployment evidence that invite-created tenants and standing invites behave correctly against prod.",
+      "test": "deferred -- operator-provisioned: Live/prod deployment evidence; needs a real deploy and operator authorization this coding sandbox does not have."
+    },
+    {
+      "id": "AC9",
+      "level": "MUST",
+      "description": "Every tenant is born with a standing invite (kind: \"standing\", no expiry, no max_uses, share: []); host.whoami returns invite_url; the standing invite does not count toward the live-invites cap.",
+      "test": "tests/invite_ac09_standing_invite_present_at_whoami_not_counted.rs"
+    },
+    {
+      "id": "AC10",
+      "level": "MUST",
+      "description": "Standing invites are rate-limited per code (20 creations/hour) and per inviter (100/day); host.invite.revoke on a standing invite rotates it (a new URL is issued) rather than deleting it.",
+      "test": "tests/invite_ac10_standing_invite_rate_limit_and_revoke_rotates.rs"
+    },
+    {
+      "id": "AC11",
+      "level": "MUST",
+      "description": "host.agent.lookup returns invited_by and invitees_count for a tenant's lineage; host.usage gains invites: {sent_7d, accepted_7d, k}.",
+      "test": "tests/invite_ac11_lineage_chain_lookup_and_usage_k.rs"
+    },
+    {
+      "id": "AC12",
+      "level": "MUST",
+      "description": "Shares are one hop: tools shared to an invitee by an invite are visible to that invitee only; an invitee's own standing invite shares nothing by default, and an invitee cannot re-share a tool it does not own, across an invite chain of depth 3.",
+      "test": "tests/invite_ac12_shares_are_one_hop_across_a_depth_3_chain.rs"
+    },
+    {
+      "id": "AC13",
+      "level": "MUST",
+      "description": "The result of a shared-tool call made by an invitee carries _meta.invite_url of the invitee's own standing invite once per session (first shared call only).",
+      "test": "tests/invite_ac13_meta_invite_url_hint_once_per_session.rs"
     }
   ],
   "scope": [
-    "src/channels.rs: resolve_channel(state, tenant, key) (requirement 1) -- group lookup by id first, then the named-channel id-or-name lookup, returning a ResolvedChannel{channel_id, kind: Group|Named, owner_tenant_id, group_name, closed_at, frozen_at}; open/post/read/close/freeze/unfreeze all route through it instead of each keeping a private lookup.",
-    "src/db.rs: channel_named_lookup, the named-channel counterpart to the existing channel_group_lookup, selecting closed_at/frozen_at off the channels row so post/read/freeze/close/unfreeze all see the same two columns regardless of channel kind; channel_group_set_flag's UPDATE WHERE clause extended to also match a named channel owned (channels.created_by) by the caller, the missing owner-side half AC5 needs.",
-    "src/errors.rs: AppError::channel_not_found(key) now takes the caller's key, carries it as data.key, and names both lookups it tried, replacing the old static \"name or id\" message that named a lookup read never actually ran.",
-    "src/handler.rs: host.channel.open/post/read/close/freeze/unfreeze tool descriptions (tools/list) state that both a named and a group channel exist and are both fully readable, since read/close/freeze/unfreeze now reach a named channel too.",
-    "CHANGELOG.md / Cargo.toml / Cargo.lock / plugin/.claude-plugin/plugin.json: v0.65.0 -> v0.65.1, this PRD's own build_version_bump: patch.",
-    "contracts/host-tools.v1.json: regenerated for the six tool description changes above.",
-    "tests/chanread_ac01..06_*.rs: the six delivered tests, one per AC, all non-deferred.",
-    "tests/channel_ac02_non_member_channel_not_found.rs / tests/meshops_ac06_purge_dry_run_then_real.rs: adjusted for this PRD's own behavior changes -- channel_ac02's byte-identity check now also excludes data.key (which legitimately differs between the two inputs it compares, same as request_id already did); meshops_ac06 now acks an explicit read to get a stored cursor, since channel_post no longer auto-advances the poster's own cursor on insert (AC1's fix: a poster is a reader too, so posting must not make the post invisible to the poster's own very next read)."
+    "src/invites.rs (new): host.invite.create/list/revoke business logic, invite_url, invite_path_code, claim_on_first_call (the narrow implicit-signup-on-/i/{code}/mcp mechanism), mint_standing_invite, InviteHintTracker (once-per-session _meta.invite_url hint).",
+    "src/db.rs: invites/invite_joins tables (migrations/0067_invite_links.sql, 0068_standing_invite_code.sql), InviteRow/ClaimedInvite/InvitesUsage7d, is_live vs is_connectable liveness split, create_invite/claim_invite (atomic BEGIN IMMEDIATE transaction)/revoke_invite/list_invites_for_tenant/invite_lineage/invites_usage_7d, tenants.invited_by_tenant_id, contacts.via.",
+    "src/handler.rs: host.invite.create/list/revoke Tool descriptors and dispatch arms; call_tool's Auth::Anonymous + /i/{code}/mcp claim gate; _meta.invite_url hint attachment alongside the existing alias-deprecation _meta.",
+    "src/http.rs: require_live_invite_code middleware and the /i/{code}/mcp router (mirrors require_known_url_secret/url_mcp_router).",
+    "src/control.rs: signup() mints a standing invite at tenant birth; whoami() returns invite_url; usage() returns invites: {sent_7d, accepted_7d, k}.",
+    "src/agents.rs: lookup() returns invited_by/invitees_count.",
+    "src/plans.rs: Plan.invites_max (free=3, pro=25).",
+    "src/errors.rs: invites_quota_exceeded, invite_invalid, invite_rate_limited.",
+    "src/state.rs: AppState.invite_hints: InviteHintTracker.",
+    "Necessary fallout (registry grew by 3 tools, no removals): docs/tools.md, www/llms.txt, contracts/host-tools.v1.json regenerated; tests/toolname_ac08_tools_list_counts_updated.rs and tests/compat_ac04_ac05_admin_and_tenant_cache_fields.rs tool-count literals updated 175->178; tests/callerusage_ac06_no_by_shape_unchanged.rs's host.usage no-by field set gained \"invites\"."
   ],
   "non_goals": [
-    "New channel features: retention, membership changes (PRD's own non-goal).",
-    "Changing group-channel semantics or cursors from PRD-mcphost-agent-channels (PRD's own non-goal).",
-    "The name-path deprecation branch (channel_name_deprecated) -- the PRD's own open question is drafted 'keep, parity', which is the branch this build implements; the deprecation alternative was not built.",
-    "host.channel.list kind-per-row display (PRD's own P2, requirement 6) -- host.channel.list does not exist in this codebase, so there is nothing to extend.",
-    "AC7 from the PRD text (prod read-after-land evidence against tenant joe-test's live fleet channel) -- not in this dispatch's assigned AC list; operator-provisioned, requires a deployed binary and prod access."
+    "Inviting into an existing tenant (multi-user tenants); every invitee is a new tenant.",
+    "Human account linking or billing attachment for invitees (/claim unchanged).",
+    "Wildcard public shares; invites are targeted.",
+    "Requirement 8 (www/index.html \"Invite a friend\" section) and requirement 9 (invite-carries-a-channel) -- P1/P2, no AC in this dispatch's assigned list.",
+    "AC8 (prod/live deployment evidence) -- operator-provisioned, not reachable from this coding sandbox."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -72,48 +116,50 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "test_file_names_use_underscores_not_the_prd_slugs_hyphens": "test_prefix chanread (the PRD's own frontmatter field), same convention as every other test file in this repo.",
-      "version_bump_patch": "PRD frontmatter build_version_bump: patch -- Cargo.toml/Cargo.lock/plugin.json bumped 0.65.0 -> 0.65.1, landed with AC6.",
-      "no_schema_change": "PRD's own migration/compatibility section: no schema change, existing named channels become readable; routing only, not new queries (PRD's own technical considerations).",
-      "named_channel_readers_are_owner_only": "PRD's own technical considerations, drafted: a named channel's readers are its owner only -- a non-owner's read gets channel_not_found, identical in shape to a miss (AC4's own parity requirement), not a separate authorization error class.",
-      "post_no_longer_auto_advances_the_poster_cursor": "Landed with AC1 as a necessary side effect, not a separate requirement: channel_post previously advanced the poster's own channel_cursors row on insert, which made a poster's own post invisible to the poster's own very next read -- the opposite of this PRD's point (a poster is a reader too). Two pre-existing tests (channel_ac02, meshops_ac06) were adjusted for this, not regressed."
+      "test_file_names_use_test_prefix_invite": "test_prefix invite (the PRD's own frontmatter field): tests/invite_ac<NN>_<slug>.rs, same convention as every other test file in this repo.",
+      "build_version_bump": "minor (the PRD's own frontmatter field)."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why did read() never see a named channel in the first place?",
-      "a": "read's query joined through groups (JOIN groups g ON g.id = c.group_id) because it was written for PRD-mcphost-agent-channels, which only ever created group channels -- migration 0027's earlier, ungated name-keyed channels (PRD-mcphost-agent-mesh-ops) predate that join and were never retrofitted into it."
+      "q": "Why build claim_on_first_call as a route-scoped mechanism in src/invites.rs rather than a crate-wide 'anonymous call implicit-signs-up' feature?",
+      "a": "This PRD's own Depends-on names PRD-mcphost-implicit-signup's mechanism, but no generic anonymous-call-creates-a-tenant path exists anywhere else in handler.rs; building it crate-wide would be new surface no other route asks for. Scoping it to Auth::Anonymous on /i/{code}/mcp is the minimal mechanism that satisfies requirement 2, and Db::claim_invite binds the session before returning so every later call on that session resolves through the ordinary session-binding step instead (requirement 6)."
     },
     {
       "why": 2,
-      "q": "Why did post() already handle both kinds but read() didn't?",
-      "a": "post() kept the migration-0027 mesh-ops code path as its own `else` arm alongside the newer group path (two lookups, written at two different times for two different PRDs, never merged); read() was only ever written once, for the group case, so it had no equivalent fallback to fall into."
+      "q": "Why split db::is_live (full liveness incl. max_uses exhaustion) from db::is_connectable (revoked/expired only) instead of one liveness check?",
+      "a": "AC4's race test needs request #3 to receive invite_invalid from the atomic claim itself, not a timing-dependent 404 from route middleware checking max_uses against a count that two concurrent transactions are still racing to increment; AC5 only tests revoked/expired at the route layer. One shared full-liveness check would make AC4 flaky depending on which of the three requests the middleware happens to schedule last."
     },
     {
       "why": 3,
-      "q": "Why wasn't the gap caught before the 2026-09-30 dogfood run?",
-      "a": "open(name) -> post -> read is exactly the sequence host.channel.open's own doc comment (\"creates the channel if it doesn't already exist, else returns the existing one\") tells a caller to use, but no existing test exercised that specific sequence end-to-end across both verbs -- the mesh-ops and agent-channels test suites each proved their own PRD's verbs in isolation."
+      "q": "Why add a nullable invites.code_plain column instead of hashing every invite code at rest like every other secret in this crate?",
+      "a": "host.whoami must return the SAME invite_url on every call for a standing invite (unlike a one-time-reveal secret), which requires the plaintext code to be retrievable after creation; code_plain is populated only for kind='standing' rows, a deliberate, documented departure from the hash-at-rest convention rather than a blanket exception."
     },
     {
       "why": 4,
-      "q": "Why unify through one resolve_channel instead of just adding a second lookup inside read()?",
-      "a": "freeze/close/unfreeze had the identical gap (group-only reach) for the identical reason -- patching read() alone would have left three more call sites to independently remember to patch the same way, the exact failure mode (a lookup rule duplicated instead of shared) that produced this bug in the first place."
+      "q": "Why implement AC12's one-hop sharing via a dedicated per-invite SQLite group rather than new enforcement code?",
+      "a": "tools.visibility/tools.shared_group already support only one group per tool; a per-invite group (__invite_{invite_id}) that only promotes a currently-private tool to group visibility (never touching an already-shared tool) gives one-hop sharing for free, since a sub-invitee is never added to the original inviter's group -- the AC needed a proving fixture, not new mechanism."
+    },
+    {
+      "why": 5,
+      "q": "Why is InviteHintTracker (AC13's once-per-session _meta.invite_url hint) an in-memory Arc<Mutex<HashSet<String>>> instead of a DB-backed dedup?",
+      "a": "Same posture as session_bind.rs's own SessionBindings -- a hint is a UX nudge for an agent relaying a result to another agent, not state anything else in this crate reads or that needs to survive a restart; a DB table for it would be new durable surface this PRD's requirements don't ask for."
     }
   ],
-  "created_at": "2026-10-01T00:00:00Z",
+  "created_at": "2026-10-04T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Does a named channel's read stay owner-only, or open up to anyone who has ever posted to it (PRD's own technical considerations names both options, drafted 'owner only')?",
-      "resolution": "Owner only, per the PRD's own drafted default -- a non-owner's read gets channel_not_found, not a distinct authorization error, so a miss and an unauthorized hit read identically (the same posture AC2/AC4 already require for a group channel's non-member). Named channels are single-tenant today; broadening this is out of scope (PRD non-goal: no membership changes)."
+      "question": "via_tenant_key_arg's name suggests 'a tenant_key argument was supplied', used as a gate condition alongside Auth::Anonymous for the /i/{code}/mcp claim path -- is that the right guard?",
+      "resolution": "No: via_tenant_key_arg actually means 'no Authorization header was present' (true for every header-less request), so gating the claim on !via_tenant_key_arg made it never fire. Fixed by gating on matches!(auth, Auth::Anonymous) alone."
     },
     {
-      "question": "Keep the name-opened channel path (parity) or deprecate it in favor of group channels (PRD's own open question, owner Joe, due 2026-10-08)?",
-      "resolution": "Keep, parity -- the PRD's own TL;DR names this as the drafted default, and the open question's due date (2026-10-08) is after this dispatch's build date; AC6 states both kinds exist and are both readable rather than naming a deprecation. If Joe decides to deprecate later, that is a follow-up PRD, not a revision of this one."
+      "question": "Does onboarding.url / invite_url return an absolute URL or a bare path?",
+      "resolution": "Absolute, matching this codebase's established state.public_url-prefixed convention (same as /u/new's own URL field)."
     },
     {
-      "question": "Should channel_post's pre-PRD auto-advance of the poster's own cursor survive unification, now that read() can see the poster's own post?",
-      "resolution": "No -- removed. Auto-advancing on post meant a poster's own next read (cursor already past the post) returned nothing, which is the same bug class this PRD fixes (a channel you can post to, you should be able to read), just one hop later. channel_ac02 and meshops_ac06 were adjusted for this, not regressed; see hard_constraints.additional."
+      "question": "Should the route-level 404 for a dead invite code also cover max_uses exhaustion, same as revoked/expired?",
+      "resolution": "No -- scoped strictly to revoked/expired (db::is_connectable); max_uses exhaustion is checked only inside the atomic claim (db::is_live), to keep AC4's race deterministic rather than timing-dependent on route middleware."
     }
   ]
 }
