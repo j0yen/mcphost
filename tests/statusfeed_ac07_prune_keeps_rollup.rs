@@ -11,7 +11,19 @@ use mcphost::state::{now_unix, rfc3339_from_unix};
 async fn prune_deletes_old_samples_but_keeps_the_rollup() {
     let server = TestServer::start().await;
 
-    let old_ts = now_unix() - 120 * 86_400; // 120 days ago, past the 90-day floor
+    // Anchored to noon UTC of the day 120 days ago, not to "now"'s own
+    // time-of-day: the 10 samples below are spread one minute apart (up
+    // to 9 minutes past `old_ts`), and `now_unix() - 120 * 86_400` would
+    // inherit whatever time-of-day the test happens to run at. When that
+    // falls within the last 9 minutes of a UTC day, the spread straddles
+    // the day boundary, so `rollup_day` (bounded by `day_bounds`'s exact
+    // UTC midnight-to-midnight window) only picks up the samples before
+    // midnight -- an intermittent short rollup (`total_samples` < 10)
+    // that looks like a prune bug but is really the fixture's choice of
+    // timestamp. Noon UTC keeps the whole 9-minute spread comfortably
+    // inside one calendar day regardless of wall-clock time at test run.
+    let old_day_start = now_unix().div_euclid(86_400) * 86_400 - 120 * 86_400;
+    let old_ts = old_day_start + 12 * 3_600;
     let old_day = rfc3339_from_unix(old_ts)[..10].to_string();
     for i in 0..10 {
         server
