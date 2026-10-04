@@ -15,27 +15,39 @@
 //! comment: "duration_ms covering the whole attempt").
 //!
 //! Each iteration's raw overhead also has that SAME iteration's own
-//! ambient connection-open cost subtracted out, measured immediately
-//! before it by a `host.table.schema` call against the same table (a
-//! read-only call that goes through the exact same `with_tenant_conn` ->
-//! `open_conn` path -- fresh file open, `busy_timeout`/`journal_mode`/
-//! `synchronous` pragmas, `CREATE TABLE IF NOT EXISTS` -- but no log
-//! write): `duration_ms` starts timing only once inside `table_query`'s
-//! own closure, which `with_tenant_conn` calls *after* `open_conn`
-//! finishes, so that per-call connection-open cost (deterministic, not
-//! noise, since this implementation opens a fresh connection every call
-//! by design) already lives entirely in the `call_elapsed_ms - duration_ms`
-//! gap this test measures -- a bare no-op `spawn_blocking` under-counts it
-//! by comparing to work that touches no file at all. On a shared runner,
-//! where this process's CPUs and disk are also shared with everything
-//! else `cargo test` runs in the same binary, and with whatever else is
-//! on the box, a fixed 5ms budget over raw wall-clock time would
-//! otherwise conflate that (schema call also pays, so it cancels out)
-//! with the log write's own added cost (BEGIN IMMEDIATE, INSERT,
-//! eviction DELETE, COMMIT), which is what this guardrail actually means
-//! to bound. A real regression in the log write's own cost still shows
-//! up in the baseline-adjusted p95; ambient noise on a busy box mostly
-//! cancels out, since measuring it right next to each real call tracks
+//! ambient cost subtracted out, measured immediately before it by a
+//! `host.table.append` of one row into a dedicated `_ambient_probe`
+//! table (not `sales`, so it never perturbs the GROUP BY result). That
+//! baseline goes through the same `with_tenant_conn` -> `open_conn` path
+//! -- fresh file open, `busy_timeout`/`journal_mode`/`synchronous`
+//! pragmas -- *and* a `BEGIN IMMEDIATE`/`INSERT`/`COMMIT` write of its
+//! own (`tables::insert_rows_sync`'s own eager-lock shape), so it tracks
+//! both halves of what the real call pays: the deterministic per-call
+//! connection-open cost this implementation's "fresh connection every
+//! call" design always incurs, and the write-lock/commit (fsync) cost
+//! that is the part a busy shared disk makes noisy. An earlier version
+//! of this baseline used `host.table.schema` (a read-only call): that
+//! under-counts ambient cost on a loaded box because a page-cache read
+//! and a WAL commit have very different contention sensitivity, so a
+//! read-only baseline only cancels half of what the real write pays,
+//! leaving a load-correlated (not just noisy) residual in the measured
+//! overhead -- this is what actually blocked two gate lands (wm-build
+//! runs 350/368) under load1 ~9.4, not a one-off fluke. `duration_ms`
+//! starts timing only once inside `table_query`'s own closure, which
+//! `with_tenant_conn` calls *after* `open_conn` finishes, so the
+//! connection-open cost already lives entirely in the
+//! `call_elapsed_ms - duration_ms` gap this test measures -- a bare
+//! no-op `spawn_blocking` under-counts it by comparing to work that
+//! touches no file at all. On a shared runner, where this process's
+//! CPUs and disk are also shared with everything else `cargo test` runs
+//! in the same binary, and with whatever else is on the box, a fixed 5ms
+//! budget over raw wall-clock time would otherwise conflate that (the
+//! probe append also pays it, so it cancels out) with the log write's
+//! own added cost (BEGIN IMMEDIATE, INSERT, eviction DELETE, COMMIT),
+//! which is what this guardrail actually means to bound. A real
+//! regression in the log write's own cost still shows up in the
+//! baseline-adjusted p95; ambient noise on a busy box mostly cancels
+//! out, since measuring it right next to each real call tracks
 //! contention as it moves rather than assuming one snapshot holds for
 //! the whole 100-repetition sweep.
 
@@ -67,6 +79,16 @@ async fn group_by_query_logs_a_row_and_logging_overhead_is_small() {
     .await
     .expect("create sales");
 
+    // Dedicated table for the ambient write baseline below -- kept separate
+    // from `sales` so the probe appends never change the GROUP BY result.
+    tables::table_create(
+        &server.state,
+        &tenant,
+        &json!({"name": "_ambient_probe", "columns": {"v": "integer"}}),
+    )
+    .await
+    .expect("create ambient probe");
+
     const TOTAL: usize = 1_000;
     const BATCH: usize = 200;
     let mut start = 0;
@@ -93,9 +115,9 @@ async fn group_by_query_logs_a_row_and_logging_overhead_is_small() {
         let mut overheads_ms = Vec::with_capacity(100);
         for _ in 0..100 {
             let ambient_began = std::time::Instant::now();
-            tables::table_schema(&server.state, &tenant, &json!({"table": "sales"}))
+            tables::table_append(&server.state, &tenant, &json!({"table": "_ambient_probe", "rows": [{"v": 0}]}))
                 .await
-                .expect("ambient baseline schema call");
+                .expect("ambient baseline write call");
             let ambient_ms = ambient_began.elapsed().as_secs_f64() * 1000.0;
 
             let began = std::time::Instant::now();
