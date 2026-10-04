@@ -3211,6 +3211,73 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              with any prior secret stop verifying immediately -- no overlap window.",
             host_schema(json!({}), &[]),
         ),
+        // PRD-mcphost-row-policy requirement 7. Tenant-key only.
+        Tool::new(
+            "host.policy.set",
+            "Set (or replace) the row/docs policy for one target: a declared table (target: \
+             {\"table\": name}) or a docs prefix (target: {\"doc_prefix\": prefix}). `rule` is a \
+             list of {column_or_attr, op: \"eq\"|\"in\", value: {\"literal\": <json>} | \
+             {\"attr\": \"<end_user_attr>\"}}. Refused as policy_widening if it would widen an \
+             existing literal-valued rule on the same column without replace: true.",
+            host_schema(
+                json!({
+                    "target": {
+                        "description": "{\"table\": \"<name>\"} or {\"doc_prefix\": \"<prefix>\"}.",
+                    },
+                    "rule": {
+                        "description": "A list of {column_or_attr, op, value} rules, ANDed together.",
+                    },
+                    "replace": {
+                        "type": "boolean",
+                        "description": "Confirms a rule change that would otherwise be refused as widening.",
+                    },
+                }),
+                &["target", "rule"],
+            ),
+        ),
+        Tool::new(
+            "host.policy.list",
+            "List this tenant's row/docs policies.",
+            host_schema(json!({}), &[]),
+        ),
+        Tool::new(
+            "host.policy.attrs_set",
+            "Set (merge) attributes on an end-user subject -- the values a policy's Attr(name) \
+             rule compiles against for that subject.",
+            host_schema(
+                json!({
+                    "subject": {"type": "string", "description": "The end-user subject to set attributes on."},
+                    "attrs": {"description": "An object of attribute name -> value to merge in."},
+                }),
+                &["subject", "attrs"],
+            ),
+        ),
+        Tool::new(
+            "host.audit.chain",
+            "Newest-first page of the hash-chained audit log, optionally scoped to one subject. \
+             Returns {records, returned_count, withheld_count} where withheld_count is how many \
+             more matching records exist beyond this page. Tenant-key only.",
+            host_schema(
+                json!({
+                    "subject": {"type": "string", "description": "Only records for this end-user subject."},
+                    "limit": {"type": "integer", "description": "Max records to return, 1-500; default 50."},
+                    "before_id": {"type": "integer", "description": "Only records with id less than this."},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.audit.verify",
+            "Recompute the hash-chained audit log over [from_id, to_id] and report whether it's \
+             intact, naming the first broken id if not.",
+            host_schema(
+                json!({
+                    "from_id": {"type": "integer", "description": "First audit record id to verify, inclusive."},
+                    "to_id": {"type": "integer", "description": "Last audit record id to verify, inclusive."},
+                }),
+                &["from_id", "to_id"],
+            ),
+        ),
         // PRD-mcphost-end-user-audit-and-revoke requirement 2 (AC1/AC10).
         Tool::new(
             "host.enduser.list",
@@ -4218,6 +4285,12 @@ pub(crate) struct TenantTableBridge {
     /// PRD-mcphost-dry-run-side-effects requirement 3: see
     /// [`TenantStateBridge::dry_run`]'s own doc comment -- same convention.
     pub(crate) dry_run: Option<Arc<crate::dryrun::DryRunCtx>>,
+    /// PRD-mcphost-row-policy requirement 10/AC12: this call's own end
+    /// user (if any), threaded into `table_query` exactly like
+    /// `TenantStateBridge::end_user` -- so a row policy scoped to an end
+    /// user applies identically whether `host.table.query` is reached
+    /// directly or via `mcphost.table.query` inside a python sandbox.
+    pub(crate) end_user: Option<crate::enduser::EndUser>,
 }
 
 #[async_trait::async_trait]
@@ -4226,7 +4299,9 @@ impl TableBackend for TenantTableBridge {
         let result = match op {
             "create" => tables::table_create(&self.state, &self.tenant, &args).await,
             "append" => tables::table_append(&self.state, &self.tenant, &args).await,
-            "query" => tables::table_query(&self.state, &self.tenant, &args).await,
+            "query" => {
+                tables::table_query(&self.state, &self.tenant, &args, self.end_user.as_ref()).await
+            }
             "list" => tables::table_list(&self.state, &self.tenant, &args).await,
             "drop" => tables::table_drop(&self.state, &self.tenant, &args).await,
             "schema" => tables::table_schema(&self.state, &self.tenant, &args).await,
@@ -4238,7 +4313,10 @@ impl TableBackend for TenantTableBridge {
             // PRD-mcphost-chart-in-a-minute AC11: `mcphost.table.chart`
             // inside the python sandbox receives the same `chart.v1` object
             // `host.table.chart` itself returns.
-            "chart" => crate::chart::table_chart(&self.state, &self.tenant, &args).await,
+            "chart" => {
+                crate::chart::table_chart(&self.state, &self.tenant, &args, self.end_user.as_ref())
+                    .await
+            }
             // PRD-mcphost-table-concept-graph P1 requirement 8: the same
             // three tools `host.table.graph`/`.join_paths`/
             // `.next_questions` expose, reachable from `mcphost.table` too
@@ -4316,6 +4394,12 @@ impl crate::kinds::HostDispatch for DryRunHostStepBridge {
 pub(crate) struct TenantDocsBridge {
     pub(crate) state: Arc<AppState>,
     pub(crate) tenant: Tenant,
+    /// PRD-mcphost-row-policy requirement 10: this call's own end user (if
+    /// any), threaded into `doc_search` exactly like
+    /// `TenantTableBridge::end_user` -- so a doc-prefix policy scoped to an
+    /// end user applies identically whether `host.docs.search` is reached
+    /// directly or via `mcphost.docs.search` inside a python sandbox.
+    pub(crate) end_user: Option<crate::enduser::EndUser>,
 }
 
 #[async_trait::async_trait]
@@ -4323,7 +4407,9 @@ impl DocsBackend for TenantDocsBridge {
     async fn call(&self, op: &str, args: Value) -> Result<Value, KindError> {
         let result = match op {
             "get" => docs::doc_get(&self.state, &self.tenant, &args).await,
-            "search" => docs::doc_search(&self.state, &self.tenant, &args).await,
+            "search" => {
+                docs::doc_search(&self.state, &self.tenant, &args, self.end_user.as_ref()).await
+            }
             other => Err(AppError::InvalidArgs(format!("unknown docs op '{other}'"))),
         };
         result.map_err(app_error_to_kind_error)
@@ -4753,6 +4839,14 @@ impl McpHostHandler {
             "host.state.delete_rows" => {
                 tenant_state::state_delete_rows(&self.state, tenant, &args, end_user).await
             }
+            // PRD-mcphost-row-policy requirement 7: tenant-key only.
+            "host.policy.set" => crate::rowpolicy::policy_set(&self.state, tenant, &args, end_user).await,
+            "host.policy.list" => crate::rowpolicy::policy_list(&self.state, tenant, end_user).await,
+            "host.policy.attrs_set" => {
+                crate::rowpolicy::policy_attrs_set(&self.state, tenant, &args, end_user).await
+            }
+            "host.audit.chain" => crate::rowpolicy::audit_chain(&self.state, tenant, &args, end_user).await,
+            "host.audit.verify" => crate::rowpolicy::audit_verify(&self.state, tenant, &args, end_user).await,
             "host.enduser.whoami" => Ok(crate::enduser::whoami(end_user)),
             "host.enduser.assertion_secret_rotate" => {
                 crate::enduser::assertion_secret_rotate(&self.state, tenant, &args).await
@@ -4780,7 +4874,7 @@ impl McpHostHandler {
             "host.enduser.export" => crate::export::enduser_export(&self.state, tenant, &args).await,
             "host.table.create" => tables::table_create(&self.state, tenant, &args).await,
             "host.table.append" => tables::table_append(&self.state, tenant, &args).await,
-            "host.table.query" => tables::table_query(&self.state, tenant, &args).await,
+            "host.table.query" => tables::table_query(&self.state, tenant, &args, end_user).await,
             "host.table.query_diagnose" => tables::table_query_diagnose(&self.state, tenant, &args).await,
             "host.table.query_stats" => tables::table_query_stats(&self.state, tenant, &args).await,
             "host.table.list" => tables::table_list(&self.state, tenant, &args).await,
@@ -4789,7 +4883,9 @@ impl McpHostHandler {
             "host.lineage.trace" => crate::lineage::trace(&self.state, tenant, &args).await,
             "host.lineage.trace_page" => crate::lineage::trace_page(&self.state, tenant, &args).await,
             "host.table.schema" => tables::table_schema(&self.state, tenant, &args).await,
-            "host.table.chart" => crate::chart::table_chart(&self.state, tenant, &args).await,
+            "host.table.chart" => {
+                crate::chart::table_chart(&self.state, tenant, &args, end_user).await
+            }
             "host.table.charts" => crate::chart::table_charts_list(&self.state, tenant, &args).await,
             "host.table.query_log" => tables::table_query_log(&self.state, tenant, &args).await,
             "host.table.handles" => tables::table_handles(&self.state, tenant, &args).await,
@@ -4807,7 +4903,7 @@ impl McpHostHandler {
             "host.table.graph" => crate::tables_graph::table_graph(&self.state, tenant, &args).await,
             "host.table.join_paths" => crate::tables_graph::join_paths(&self.state, tenant, &args).await,
             "host.table.next_questions" => crate::tables_graph::next_questions(&self.state, tenant, &args).await,
-            "host.docs.search" => docs::doc_search(&self.state, tenant, &args).await,
+            "host.docs.search" => docs::doc_search(&self.state, tenant, &args, end_user).await,
             "host.docs.index_config" => docs::doc_index_config(&self.state, tenant, &args).await,
             "host.docs.reindex" => docs::doc_reindex(&self.state, tenant, &args).await,
             "host.drift.reviews" => crate::drift::reviews(&self.state, tenant, &args).await,
@@ -5441,10 +5537,12 @@ impl McpHostHandler {
                 state: self.state.clone(),
                 tenant: tenant.clone(),
                 dry_run: None,
+                end_user: end_user.cloned(),
             }),
             docs: Arc::new(TenantDocsBridge {
                 state: self.state.clone(),
                 tenant: tenant.clone(),
+                end_user: end_user.cloned(),
             }),
             lineage: Arc::new(TenantLineageBridge {
                 state: self.state.clone(),
@@ -5827,10 +5925,12 @@ impl McpHostHandler {
             state: self.state.clone(),
             tenant: tenant.clone(),
             dry_run: Some(dry_run.clone()),
+            end_user: None,
         });
         let docs_backend: Arc<dyn DocsBackend> = Arc::new(TenantDocsBridge {
             state: self.state.clone(),
             tenant: tenant.clone(),
+            end_user: None,
         });
         let lineage_backend: Arc<dyn LineageBackend> = Arc::new(TenantLineageBridge {
             state: self.state.clone(),
@@ -6222,10 +6322,12 @@ impl McpHostHandler {
             state: self.state.clone(),
             tenant: tenant.clone(),
             dry_run: None,
+            end_user: None,
         });
         let docs_backend: Arc<dyn DocsBackend> = Arc::new(TenantDocsBridge {
             state: self.state.clone(),
             tenant: tenant.clone(),
+            end_user: None,
         });
         let lineage_backend: Arc<dyn LineageBackend> = Arc::new(TenantLineageBridge {
             state: self.state.clone(),
@@ -6476,10 +6578,12 @@ impl McpHostHandler {
             state: self.state.clone(),
             tenant: tenant.clone(),
             dry_run: dry_run.clone(),
+            end_user: None,
         });
         let docs_backend: Arc<dyn DocsBackend> = Arc::new(TenantDocsBridge {
             state: self.state.clone(),
             tenant: tenant.clone(),
+            end_user: None,
         });
         let lineage_backend: Arc<dyn LineageBackend> = Arc::new(TenantLineageBridge {
             state: self.state.clone(),

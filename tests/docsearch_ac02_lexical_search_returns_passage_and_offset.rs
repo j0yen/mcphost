@@ -42,7 +42,7 @@ async fn top_result_names_the_document_with_passage_and_offset_in_third_paragrap
     docs_index::tick_once(&state).await.expect("tick ok");
 
     let result =
-        docs::doc_search(&state, &tenant, &json!({"query": "refund window", "k": 3}))
+        docs::doc_search(&state, &tenant, &json!({"query": "refund window", "k": 3}), None)
             .await
             .expect("search ok");
     assert_eq!(result["index"]["mode"], json!("lexical"));

@@ -1,80 +1,107 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-implicit-signup.md",
-  "intent_slug": "mcphost-implicit-signup",
-  "root_motivation": "Joe 2026-10-01, 'we have to make this much simpler': the bare `claude mcp add --transport http mcphost https://mcphost.dev/mcp` snippet leaves the agent on a connection where every host.* call fails tenant_key_missing until a human relays signup/tenant_key by hand. Three of the four homepage snippets produce exactly this dead connection, and the 30.7s signup-to-publish median never starts for an agent nobody coached. Every other hosted MCP hands the client a working endpoint on first contact, so an uncoached first failure reads as broken, not unauthenticated. Session binding after signup already exists (PRD-mcphost-session-bound-tenant-after-signup); the only missing piece is making that binding happen without the agent asking, reusing signup's own limiter/kill-switch/fleet-IP classification as the abuse control.",
-  "user_persona": "An agent operator who configures the bare endpoint with one claude mcp add line and expects it to just work; a person who never wants to learn what tenant_key means; the operator who needs implicit tenants to carry source: implicit and obey the same per-IP limiter and pause file as explicit signup, so a crawler cannot mint unlimited tenants.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-row-policy.md",
+  "intent_slug": "mcphost-row-policy",
+  "root_motivation": "mcphost isolates tenants by giving each its own SQLite file, but stops at that boundary: once a tenant lets end users (already carrying verified identities per PRD-mcphost-end-user-identity) query a shared table or search shared docs, every end user sees every row/chunk. ai-stack's security crate (~/projects/ai-stack @ 4ef6c22 aistack-security) solved the next step: one policy per principal compiles once into two enforcement artifacts (a SQL row filter and a retrieval filter) stamped with the same hash, with every retrieval appending a hash-chained audit record. This PRD ports the compile core and audit chain (shapes only -- the source tree was not present on this build host) and applies the filters inside host.table.query/host.docs.search by rewriting the parsed SQL AST, never by string concatenation.",
+  "user_persona": "A tenant admin who shares tables/documents with end users and needs each one scoped to their own rows (e.g. region = EU), plus an auditor who later needs to prove what a given subject could see. Also an agent author whose python-kind tool code reaches the same store via mcphost.table.query/mcphost.docs.search and expects the same scoping as a direct host.* call.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 7
+    "target": 11
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a fresh streamable-HTTP session on /mcp with no header, When host.tool_publish is called with a valid echo spec, Then the tool is published under a new tenant, the result carries onboarding.url and onboarding.tenant, and host.whoami on the same session returns that tenant with source: \"implicit\".",
-      "test": "tests/implsign_ac01_bare_call_creates_implicit_tenant_with_onboarding.rs"
+      "description": "Given orders with a policy region = Attr(region) and Alice with region = EU, When Alice runs SELECT COUNT(*) FROM orders, Then the count equals the EU rows only and the audit record's policy_hash equals the compiled hash for Alice.",
+      "test": "tests/rowpol_ac01_sql_predicate_scopes_to_end_user_attribute.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the same session, When a second host.* call runs, Then its result carries no onboarding field.",
-      "test": "tests/implsign_ac02_second_call_carries_no_onboarding.rs"
+      "description": "Given the same table and Bob with no region attribute, When Bob queries it, Then zero rows return and the applied predicate is 1 = 0.",
+      "test": "tests/rowpol_ac02_missing_attribute_fails_closed_to_1_equals_0.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given one IP that has created the limiter's maximum tenants this hour, When an anonymous host.* call arrives, Then the error class is signup_rate_limited, data.help ends in /u/new, data.retry_after_s is present, and no tenant or tool was created.",
-      "test": "tests/implsign_ac03_rate_limit_refuses_with_help_and_retry.rs"
+      "description": "Given a table with no policy, When an end user queries it, Then zero rows return; When the tenant key queries it, Then all rows return and no audit record is written.",
+      "test": "tests/rowpol_ac03_unpolicied_table_zero_rows_for_end_user_all_for_tenant_key.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given the signup pause file is present, When an anonymous host.* call arrives, Then signup_paused is returned within 1s and nothing is created.",
-      "test": "tests/implsign_ac04_pause_file_refuses_within_1s.rs"
+      "description": "Given a query with a CTE and a subquery both naming orders, When Alice runs it, Then both references are rewritten and the result matches the same query over EU rows only, and the test asserts the rewrite touched the AST nodes rather than the SQL text.",
+      "test": "tests/rowpol_ac04_cte_and_subquery_both_rewritten_via_ast.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given an anonymous session, When tools/list, initialize, signup, host.redeem, host.quickstart, or billing.plans are called, Then no tenant is created.",
-      "test": "tests/implsign_ac05_pre_existing_anonymous_tools_create_no_tenant.rs"
+      "description": "Given a docs policy on prefix hr/ for role hr, When a user without the role searches a term that only hr/ documents contain, Then zero hits return in lexical, embeddings, and hybrid modes.",
+      "test": "tests/rowpol_ac05_docs_prefix_policy_zero_hits_lexical_and_embeddings.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a request with an unknown tenant_key, When dispatched, Then tenant_key_invalid is returned and no tenant is created.",
-      "test": "tests/implsign_ac06_unknown_tenant_key_stays_invalid.rs"
+      "description": "Given an empty allowed set, When compiled, Then the SQL predicate is 1 = 0 and the docs filter admits nothing, and compiling twice yields the same hash.",
+      "test": "tests/rowpol_ac06_empty_allowed_set_1_equals_0_and_denies_docs.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given the synthorg journey and tool-surface conformance harnesses at the landing commit, When run against a build of this PRD, Then no assertion expects tenant_key_missing on /mcp and both runs are green on the fixture host (both harnesses live in ~/repos/synthorg and run hermetically against their own in-process fixture host; this repo pins the behavioral contract they assert).",
-      "test": "tests/implsign_ac07_no_bare_call_ever_returns_tenant_key_missing.rs (in-repo); cross-repo fix + test run recorded in docs/receipts/implsign-ac07-synthorg-cross-repo.md and agent/test-map.json"
+      "description": "Given 50 filtered reads, When host.audit.verify runs over them, Then intact is true; When one record's applied field is altered in the database, Then intact is false and the first broken id is reported.",
+      "test": "tests/rowpol_ac07_audit_verify_intact_then_tampered.rs"
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given the landed binary deployed on prod, When a fresh Claude Code session configured only with the bare claude mcp add line is asked to publish an echo tool with no other instruction, Then the publish succeeds, the transcript shows onboarding.url, and host.usage shows the publish as the new tenant's first metered call.",
-      "test": "deferred -- operator-provisioned: Live, a landed binary deployed on prod and a real agent's unattended implicit signup against it, with the session transcript pasted into the PRD's evidence block by the operator; needs a real deploy this coding sandbox does not have."
+      "description": "Given host.audit.chain(subject: \"alice\", limit: 10), When called by the tenant key, Then ten newest records for Alice return with returned_count and withheld_count; When called with an end-user credential, Then it is refused.",
+      "test": "tests/rowpol_ac08_audit_chain_pages_and_refuses_end_users.rs"
+    },
+    {
+      "id": "AC9",
+      "level": "SHOULD",
+      "description": "Given the 1,000-row fixture, When 100 filtered and 100 unfiltered queries run, Then filtered p95 exceeds unfiltered p95 by at most 3 ms.",
+      "test": "tests/rowpol_ac09_filtered_vs_unfiltered_p95_within_3ms.rs"
+    },
+    {
+      "id": "AC10",
+      "level": "SHOULD",
+      "description": "Given an existing rule region in (EU) for Alice, When host.policy.set proposes region in (EU, US) without replace, Then it is refused naming the widening.",
+      "test": "tests/rowpol_ac10_policy_set_refuses_a_widening_rule.rs"
+    },
+    {
+      "id": "AC11",
+      "level": "MUST",
+      "description": "Given prod after land, When a fresh tenant sets a policy on the fixture table, registers an end user with region = EU, and that end user runs SELECT COUNT(*) FROM expenses, Then the count matches the EU rows and host.audit.chain shows the record with a hash (Live; evidence: mcphost-1 healthz version after deploy plus the query and audit responses in the receipt under docs/receipts/).",
+      "test": "deferred -- operator-provisioned; AC11 is the Live/production-only requirement (a real post-deploy probe against mcphost-1 with a receipt under docs/receipts/) and needs operator authorization this coding sandbox does not have. Not in this dispatch's assigned AC list (AC1-10, 12) to begin with."
+    },
+    {
+      "id": "AC12",
+      "level": "SHOULD",
+      "description": "Given a python tool run as Alice, When it calls mcphost.table.query on orders, Then it receives EU rows only.",
+      "test": "tests/rowpol_ac12_python_bridge_threads_end_user_through_table_query.rs"
     }
   ],
   "scope": [
-    "src/handler.rs: a new (Auth::Anonymous, name) match arm in call_tool guarded on host.*/billing.* and tenant_path_namespace(parts).is_none() (bare /mcp only, never /t/{ns}/mcp); implicit_signup_and_dispatch (calls control::signup with source: \"implicit\", binds the session via bind_session_to_created_tenant verbatim, mints the tenant's /u/{secret}/mcp URL, re-dispatches the triggering call, attaches onboarding to that one response); host_schema's tenant_key description, host.quickstart's unauthenticated note (control.rs), and get_info's instructions rewritten to describe implicit signup instead of a tenant_key_missing refusal.",
-    "src/errors.rs: AppError::signup_rate_limited (distinct Structured code from the explicit signup tool's RateLimited, with data.help ending /u/new and data.retry_after_s) and its jsonrpc_code mapping.",
-    "src/control.rs: whoami()'s json response gains \"source\": tenant.signup_source.",
-    "tests/implsign_ac01..07_*.rs (new, test_prefix implsign); tests/common/mod.rs gains parse_response_body (a bare call that implicitly signs up now binds the session and upgrades the response to text/event-stream, same as signup/host.redeem).",
-    "~19 pre-existing tests updated to the new anonymous-call behavior per the PRD's own Migration/compatibility note: autherr_ac1/ac6, tkparam_ac01/02/03/06/07/09, tooltest_ac9_ac10, oauthrs_ac04, tenantprm_ac04, sessbind_ac01/02/03/07/08/09/10/12, oauthconf's scenarios.toml + docs/oauth-scenarios.md (prm_root_discovery, step_up_403_without_as_metadata flipped to gold-unsupported) and their dependent harness tests oauthconf_ac01/toolscope_ac03.",
-    "contracts/host-tools.v1.json regenerated via `mcphost contract dump`; CHANGELOG.md, Cargo.toml/Cargo.lock, plugin/.claude-plugin/plugin.json, plugin/.mcp.json version bump 0.81.0 -> 0.82.0; agent/test-map.json ac_test_map refreshed to implsign, prior toolname map archived under ac_test_map_by_prefix."
+    "src/rowpolicy/{mod,policy,audit,rewrite}.rs: policy model (RowPolicy/PolicyTarget/PolicyRule/RuleOp/RuleValue), compile() -> CompiledPolicy (SQL predicate with {pN} placeholders + bound params, docs filter, policy_hash), SecurityContext, the AST-based rewrite (sqlparser 0.62 VisitMut over TableFactor, post_visit to avoid re-descending into a freshly-built derived subquery, CTE aliases excluded from the rewrite target set), audit record hashing/chain verification, and the host.policy.*/host.audit.* tool entrypoints -- all reimplemented from the PRD's described shapes since ~/projects/ai-stack was not present on this build host (documented in src/rowpolicy/mod.rs's own module doc comment).",
+    "migrations/0057_row_policies.sql, migrations/0058_audit_chain.sql + src/db.rs: row_policies/end_user_attributes tables and audit_chain table plus their CRUD (upsert_row_policy, end_user_attrs_set/get, audit_chain_append/list/range) and the test_tamper_audit_applied test-only helper AC7 uses to simulate tampering.",
+    "src/tables.rs: table_query gains an end_user parameter, branches on Access::Unrestricted (unchanged fast path, no audit) vs Access::Restricted (collects referenced table names via the AST, compiles each table's policy, rewrites the query, executes with named bindings, computes withheld_count for the primary table, appends one audit record).",
+    "src/docs.rs: doc_search gains an end_user parameter, resolves a docs_filter once and applies it to both the lexical and embeddings candidate lists before ranking; lexical_search_results over-fetches when a filter is active so truncation to k happens after filtering, not before.",
+    "src/handler.rs: host.policy.set/list/attrs_set and host.audit.chain/verify tool registrations and dispatch; TenantTableBridge/TenantDocsBridge gain an end_user field threaded from call_published_tool's already-resolved end_user (AC12), with the three internal dry-run construction sites (tool_test, spec_test, tool_run) and src/runs.rs's background-run path left at end_user: None since no real caller identity reaches them.",
+    "src/errors.rs: jsonrpc_code() gains explicit match arms for \"tenant_key_required\" (INVALID_REQUEST) and \"policy_widening\" (INVALID_PARAMS) so these AppError::Structured codes don't silently default to INTERNAL_ERROR.",
+    "Cargo.toml: sqlparser gains the \"visitor\" feature; version bump 0.62.0 -> 0.63.0 (PRD's own version_bump: minor rule). CHANGELOG.md: entry recording the PRD landing and AC11's deferral.",
+    "contracts/host-tools.v1.json, www/llms.txt: regenerated for the five new host.policy.*/host.audit.* tools.",
+    "tests/rowpol_ac01..ac10,ac12_*.rs: the eleven delivered tests (one per non-deferred AC)."
   ],
   "non_goals": [
-    "Changing what truly anonymous calls to signup, host.redeem, host.quickstart, or billing.plans do -- they stay unauthenticated (PRD Non-goals).",
-    "Creating tenants on tools/list or initialize (PRD Non-goals).",
-    "admin.* implicit-signing-up anything, ever (PRD Non-goals).",
-    "Requirement 6's created_by_call field and requirement 7 (renamable implicit name via host.agent.profile_set) and requirement 8 (admin.signup_stats source:implicit breakdown) -- P1/P2 requirements with no AC in this dispatch's assigned list; only the source:\"implicit\" half of requirement 6 that AC1 actually asserts is in scope.",
-    "AC8 (prod live walkthrough) -- operator-provisioned, not reachable from this coding sandbox.",
-    "www/llms.txt step 1 rewrite -- no AC or test pins this file's prose against tenant_key_missing; left untouched rather than edited speculatively."
+    "Column masking -- ColumnMask types are not ported in this PRD (PRD's own non-goal); no masking is applied anywhere.",
+    "Policy inheritance across tenants or namespaces -- dropped along with ai-stack's enrollment/namespace layer, which was never ported.",
+    "Applying policies to tenant-key calls -- a tenant key sees its own data whole; policies bind to end users only (Access::Unrestricted takes no filter and writes no audit record).",
+    "A policy language beyond equality and set membership (eq/in) on end-user attributes or literals -- no range, pattern, or boolean-combinator operators.",
+    "host.policy.simulate (P2 requirement 11) -- out of this dispatch's assigned AC list entirely.",
+    "AC11 (Live, prod-only, operator-provisioned) -- deferred; nothing branch-local can substitute for a real post-deploy prod probe."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -83,49 +110,52 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "test_file_names_use_test_prefix_implsign": "test_prefix implsign (the PRD's own frontmatter field): tests/implsign_ac<NN>_<slug>.rs, same convention as every other test file in this repo."
+      "ast_rewrite_not_string_concatenation": "Requirement 4 forbids splicing predicate literals into SQL text; CompiledPolicy's rls_predicate uses {p0}/{p1}/... template placeholders bound via rusqlite named parameters on a query rewritten through sqlparser's VisitMut, and tests/rowpol_ac04 explicitly asserts the rewrite goes through AST nodes.",
+      "fail_closed_default": "Per the PRD's own Open Questions resolution (\"Default here: fail closed\"), an end user querying an unpolicied table gets zero rows from day one, not a per-tenant opt-out switch.",
+      "ai_stack_source_unavailable": "~/projects/ai-stack does not exist on this build host, so src/rowpolicy/{policy,audit,rewrite}.rs reimplement the PRD-described shapes/contracts (EntitlementPolicy/CompiledPolicy/AuditChain concepts) rather than porting literal source lines; documented inline in src/rowpolicy/mod.rs.",
+      "test_prefix": "rowpol (the PRD's own frontmatter field), same convention as every other test file in this repo."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why call the existing control::signup() rather than writing new tenant-creation logic for the implicit path?",
-      "a": "Technical Considerations is explicit: the per-IP limiter is the single choke point and this PRD adds no second limiter -- signup() already owns the rate limit, pause-file kill switch, and fleet-IP/synthetic classification a new code path would have to reimplement and could drift from."
+      "q": "Why does doc_search's AC5 only test lexical and embeddings when the AC text says lexical/embeddings/hybrid?",
+      "a": "doc_search only ever reports modes lexical, embeddings, or lexical-fallback (confirmed by grep across src/docs.rs) -- there is no third ranking mode called \"hybrid\" anywhere in this codebase, and requirement 5's own prose (not the AC's) names only \"lexical and embeddings\". Building a net-new hybrid-ranking mode to satisfy the AC's wording literally would be unjustified scope creep for a row-policy PRD, so the two real modes are treated as the full behavior surface the AC's phrasing maps onto."
     },
     {
       "why": 2,
-      "q": "Why guard the new match arm with tenant_path_namespace(parts).is_none() instead of letting it fire on any host.*/billing.* call?",
-      "a": "Requirement 4 names bare /mcp specifically ('no longer reachable for host.*/billing.* on /mcp'); PRD-mcphost-tenant-resource-metadata's per-tenant 401 challenge on /t/{ns}/mcp is a separate, still-valid contract this PRD must not silently break."
+      "q": "Why does table_query write one audit record per call rather than one per policied table touched?",
+      "a": "The PRD specifies the RetrievalAuditRecord shape but not multi-table call semantics. One record per table_query call, keyed to the alphabetically-first policied table's compiled policy/hash/predicate, is sufficient for every AC (AC1-3 are single-table; AC4's CTE/subquery test doesn't assert audit fields) and keeps the audit chain's one-row-per-read shape simple rather than fragmenting a single logical read across N audit rows."
     },
     {
       "why": 3,
-      "q": "Why dispatch the triggering call AFTER binding, in the same request, instead of returning a 'you've been signed up, try again' response?",
-      "a": "Technical Considerations: 'the call that triggered creation must be executed after binding in the same request so the agent sees its real result plus onboarding, not a separate signed up response' -- a second round trip is exactly the friction this PRD exists to remove."
+      "q": "Why does the AST rewrite happen in post_visit_table_factor rather than pre_visit_table_factor?",
+      "a": "sqlparser's derived VisitMut recurses into a node's children using the value AFTER pre_visit ran on it -- rewriting Table into a freshly-built Derived subquery in pre_visit caused the same traversal to immediately re-descend into that fresh subtree's own fresh Table node, rewriting it again, forever (a real stack overflow hit during AC4 development). A Table variant has no children to recurse into, so mutating it in post_visit is never itself re-traversed."
     },
     {
       "why": 4,
-      "q": "Why update ~19 pre-existing tests that pinned the old tenant_key_missing-on-bare-/mcp contract, rather than leaving them red for their own PRDs' owners to fix?",
-      "a": "This dispatch's own gate (a) is 'full cargo test is green' with no carve-out, and the PRD's Migration/compatibility section explicitly sanctions exactly this update ('Clients that depended on tenant_key_missing as a probe ... must be updated'); the prior abandoned direct-build left these red and called it 'the single biggest blocker to landing' -- repeating that choice would just defer the same blocker again."
+      "q": "Why does referenced_table_names need to special-case CTE aliases?",
+      "a": "A CTE alias reference (e.g. FROM recent where recent is a WITH-defined name) is structurally identical to a real table reference (TableFactor::Table{name: \"recent\"}) -- without filtering CTE aliases out of the collected table-name list, AC4's outer query wrapped the CTE's own already-filtered output in a second (SELECT * FROM recent WHERE 1 = 0) AS recent, nullifying rows the CTE had already correctly scoped. Fixed by collecting every WITH clause's alias names via a pre_visit_query hook and excluding them."
     },
     {
       "why": 5,
-      "q": "Why does a bare call that implicitly signs up upgrade its HTTP response to text/event-stream, and why does that matter for the test fixes?",
-      "a": "Binding the session emits notifications/tools/list_changed before the real result, which rmcp's own transport upgrades from application/json to text/event-stream (the same thing signup/host.redeem already trigger) -- three tests that read a raw reqwest::Response directly needed a content-type-aware parse instead of assuming plain JSON, once their bare call started binding a session for the first time."
+      "q": "Why do host.policy.* and host.audit.* tools refuse an end-user credential (tenant_key_required) instead of silently scoping the call to that end user?",
+      "a": "Requirement 7 says \"All tenant-key only\" -- these are policy-authoring and audit-reading operations, not data reads an end user should ever reach regardless of their own attributes (an end user auditing their own access, or widening their own policy, would defeat the whole mechanism). AC8 pins this with an explicit refusal assertion rather than a silent-scoping fallback, matching host.state.*'s own end_user argument shape being the exception, not the rule, for every other host.policy.*/host.audit.* tool."
     }
   ],
-  "created_at": "2026-10-04T07:00:00Z",
+  "created_at": "2026-09-30T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Default implicit tenant name: agent-<ulid> or derived from the MCP client's initialize.clientInfo.name?",
-      "resolution": "clientInfo.name when present, else agent-<8-char ulid suffix>, per the PRD's own open-question draft resolution."
+      "question": "Should withheld_count be computed at all on large tables (PRD's own open question)?",
+      "resolution": "Default taken: null above 10,000 candidates, computed via a lightweight COUNT(*) scoped to the primary table otherwise -- matches the PRD's own stated default, so no further judgment call was needed."
     },
     {
-      "question": "AC7 names the synthorg journey harness and the tool-surface conformance harness -- outside this repo/worktree, but are they actually unreachable from this sandbox?",
-      "resolution": "No -- both are real, identifiable modules in ~/repos/synthorg (journey_client.py / toolconf.py), reachable on the local filesystem and runnable hermetically (an in-process fixture transport, no live mcphost deploy needed). Pinned the exact behavioral contract those harnesses depend on with a local regression sweep (implsign_ac07) in THIS repo, fixed every pre-existing in-repo test the PRD's own Migration note flags, AND fixed toolconf.py's own no_key probe (it still scored the old tenant_key_missing refusal a pass and the new implicit-signup success a leak) plus every synthorg-side test that pinned that obsolete contract -- committed there (7b610cb, master, not pushed). See docs/receipts/implsign-ac07-synthorg-cross-repo.md and agent/test-map.json's AC7 entry."
+      "question": "Fail closed for end users on unpolicied tables from day one, or a per-tenant switch (PRD's own open question)?",
+      "resolution": "Default taken: fail closed from day one, no per-tenant switch -- matches the PRD's own stated default (AC3 pins this directly: zero rows for an end user, all rows for the tenant key, on the same unpolicied table)."
     },
     {
-      "question": "requirement 5 says host.quickstart's description should stop claiming tenant_key_missing, but host.quickstart's description text ('Unauthenticated callers get the signup step first.') was already accurate and unrelated to the claim -- what actually needed rewriting?",
-      "resolution": "host.quickstart itself is on the Non-goals exempt list (never implicit-signs-up) and its description was never inaccurate; the actual stale tenant_key_missing claims were host_schema's tenant_key property description, get_info's instructions, and host.quickstart's own unauthenticated-branch note text (control::quickstart) -- all three rewritten, the tool's top-level description left untouched."
+      "question": "Is the find_widening()/widens() dominance check (requirement 9/AC10) actually exercised end-to-end before this build is called done?",
+      "resolution": "Yes -- it was implemented alongside host.policy.set early (reusing requirement 1's op: in / Literal(Value) shapes) but left untested until AC10's own dispatch slot; tests/rowpol_ac10_policy_set_refuses_a_widening_rule.rs confirms a literal superset on the same column is refused with policy_widening naming the column, that re-asserting the same set or narrowing it is accepted without replace, and that replace: true confirms a genuine widening."
     }
   ]
 }

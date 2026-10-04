@@ -108,6 +108,7 @@ async fn filter_prefix_excludes_the_stronger_match_from_both_lists_before_fusion
         &state,
         &tenant,
         &json!({"query": "deadline report", "k": 5, "filter": {"prefix": "kb/"}}),
+        None,
     )
     .await
     .expect("search ok");

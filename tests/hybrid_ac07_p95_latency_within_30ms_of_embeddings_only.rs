@@ -97,12 +97,12 @@ async fn setup_fixture(label: &str) -> Fixture {
 async fn hybrid_search_selects_hybrid_mode_and_embeddings_search_selects_embeddings_mode() {
     let fx = setup_fixture("mode").await;
 
-    let hybrid = docs::doc_search(&fx.state, &fx.tenant, &json!({"query": "wordmarker0", "k": 5}))
+    let hybrid = docs::doc_search(&fx.state, &fx.tenant, &json!({"query": "wordmarker0", "k": 5}), None)
         .await
         .expect("hybrid search ok");
     assert_eq!(hybrid["index"]["mode"], json!("hybrid"), "default mode with a provider must be hybrid: {hybrid:?}");
 
-    let embeddings = docs::doc_search(&fx.state, &fx.tenant, &json!({"query": "wordmarker0", "k": 5, "mode": "embeddings"}))
+    let embeddings = docs::doc_search(&fx.state, &fx.tenant, &json!({"query": "wordmarker0", "k": 5, "mode": "embeddings"}), None)
         .await
         .expect("embeddings-only search ok");
     assert_eq!(embeddings["index"]["mode"], json!("embeddings"));
@@ -125,7 +125,7 @@ async fn hybrid_p95_stays_within_30ms_of_embeddings_only_p95_at_1000_chunks() {
         let marker = (i * 19) % 1000;
         let query = format!("wordmarker{marker}");
         let start = std::time::Instant::now();
-        let result = docs::doc_search(&fx.state, &fx.tenant, &json!({"query": query, "k": 5}))
+        let result = docs::doc_search(&fx.state, &fx.tenant, &json!({"query": query, "k": 5}), None)
             .await
             .expect("hybrid search ok");
         hybrid_durations.push(start.elapsed());
@@ -137,7 +137,7 @@ async fn hybrid_p95_stays_within_30ms_of_embeddings_only_p95_at_1000_chunks() {
         let marker = (i * 19) % 1000;
         let query = format!("wordmarker{marker}");
         let start = std::time::Instant::now();
-        let result = docs::doc_search(&fx.state, &fx.tenant, &json!({"query": query, "k": 5, "mode": "embeddings"}))
+        let result = docs::doc_search(&fx.state, &fx.tenant, &json!({"query": query, "k": 5, "mode": "embeddings"}), None)
             .await
             .expect("embeddings-only search ok");
         embeddings_durations.push(start.elapsed());

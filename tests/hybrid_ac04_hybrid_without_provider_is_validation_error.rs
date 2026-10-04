@@ -28,7 +28,7 @@ async fn hybrid_mode_without_a_configured_provider_is_a_validation_error() {
         .await
         .expect("put ok");
 
-    let err = docs::doc_search(&state, &tenant, &json!({"query": "refunds", "k": 5, "mode": "hybrid"}))
+    let err = docs::doc_search(&state, &tenant, &json!({"query": "refunds", "k": 5, "mode": "hybrid"}), None)
         .await
         .expect_err("hybrid mode without a provider must be refused, not return results");
 
@@ -40,7 +40,7 @@ async fn hybrid_mode_without_a_configured_provider_is_a_validation_error() {
     }
 
     // Same refusal for `mode: "embeddings"` -- requirement 4 names both.
-    let err2 = docs::doc_search(&state, &tenant, &json!({"query": "refunds", "k": 5, "mode": "embeddings"}))
+    let err2 = docs::doc_search(&state, &tenant, &json!({"query": "refunds", "k": 5, "mode": "embeddings"}), None)
         .await
         .expect_err("embeddings mode without a provider must also be refused");
     assert!(matches!(err2, AppError::InvalidArgs(_)));

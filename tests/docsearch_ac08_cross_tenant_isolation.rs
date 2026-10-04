@@ -36,13 +36,13 @@ async fn identical_text_in_two_tenants_never_crosses_a_search() {
     let doc_b_id = docs::doc_get(&state, &tenant_b, &json!({"name": "policy.md"})).await.unwrap()["id"].clone();
     assert_ne!(doc_a_id, doc_b_id, "sanity: the two tenants' documents have distinct ids");
 
-    let result_a = docs::doc_search(&state, &tenant_a, &json!({"query": "refunds", "k": 10}))
+    let result_a = docs::doc_search(&state, &tenant_a, &json!({"query": "refunds", "k": 10}), None)
         .await
         .expect("search a ok");
     let results_a = result_a["results"].as_array().expect("results array");
     assert!(!results_a.is_empty(), "tenant A must find its own document: {result_a:?}");
 
-    let result_b = docs::doc_search(&state, &tenant_b, &json!({"query": "refunds", "k": 10}))
+    let result_b = docs::doc_search(&state, &tenant_b, &json!({"query": "refunds", "k": 10}), None)
         .await
         .expect("search b ok");
     let results_b = result_b["results"].as_array().expect("results array");

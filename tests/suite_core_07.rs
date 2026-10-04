@@ -1214,6 +1214,26 @@ mod qdiag_ac08_footprint_columns_est_tokens;
 mod qdiag_ac11_ten_concurrent_refused_queries_all_hinted;
 #[path = "revdebt_ac1_intent_card_pointers_resolve.rs"]
 mod revdebt_ac1_intent_card_pointers_resolve;
+#[path = "rowpol_ac01_sql_predicate_scopes_to_end_user_attribute.rs"]
+mod rowpol_ac01_sql_predicate_scopes_to_end_user_attribute;
+#[path = "rowpol_ac02_missing_attribute_fails_closed_to_1_equals_0.rs"]
+mod rowpol_ac02_missing_attribute_fails_closed_to_1_equals_0;
+#[path = "rowpol_ac03_unpolicied_table_zero_rows_for_end_user_all_for_tenant_key.rs"]
+mod rowpol_ac03_unpolicied_table_zero_rows_for_end_user_all_for_tenant_key;
+#[path = "rowpol_ac04_cte_and_subquery_both_rewritten_via_ast.rs"]
+mod rowpol_ac04_cte_and_subquery_both_rewritten_via_ast;
+#[path = "rowpol_ac05_docs_prefix_policy_zero_hits_lexical_and_embeddings.rs"]
+mod rowpol_ac05_docs_prefix_policy_zero_hits_lexical_and_embeddings;
+#[path = "rowpol_ac06_empty_allowed_set_1_equals_0_and_denies_docs.rs"]
+mod rowpol_ac06_empty_allowed_set_1_equals_0_and_denies_docs;
+#[path = "rowpol_ac07_audit_verify_intact_then_tampered.rs"]
+mod rowpol_ac07_audit_verify_intact_then_tampered;
+#[path = "rowpol_ac08_audit_chain_pages_and_refuses_end_users.rs"]
+mod rowpol_ac08_audit_chain_pages_and_refuses_end_users;
+#[path = "rowpol_ac09_filtered_vs_unfiltered_p95_within_3ms.rs"]
+mod rowpol_ac09_filtered_vs_unfiltered_p95_within_3ms;
+#[path = "rowpol_ac10_policy_set_refuses_a_widening_rule.rs"]
+mod rowpol_ac10_policy_set_refuses_a_widening_rule;
 #[path = "run_metrics_handoff_glob_regression.rs"]
 mod run_metrics_handoff_glob_regression;
 #[path = "runoverflow_ac03_progress_counter_monotonic_validation.rs"]
@@ -1746,21 +1766,3 @@ mod wake_ac6_msg_wait;
 mod wake_ac7_trigger_test_synthetic_envelope;
 #[path = "wake_ac8_replay.rs"]
 mod wake_ac8_replay;
-#[path = "wasmkind_ac01_echo_component_calls_and_meters.rs"]
-mod wasmkind_ac01_echo_component_calls_and_meters;
-#[path = "wasmkind_ac02_publish_validation_errors.rs"]
-mod wasmkind_ac02_publish_validation_errors;
-#[path = "wasmkind_ac03_timeout_and_oom_recover.rs"]
-mod wasmkind_ac03_timeout_and_oom_recover;
-#[path = "wasmkind_ac05_tool_test_dry_run.rs"]
-mod wasmkind_ac05_tool_test_dry_run;
-#[path = "wasmkind_ac06_trap_is_structured_and_logged.rs"]
-mod wasmkind_ac06_trap_is_structured_and_logged;
-#[path = "wasmkind_ac07_docs_llms_and_quickstart_document_wasm.rs"]
-mod wasmkind_ac07_docs_llms_and_quickstart_document_wasm;
-#[path = "wasmkind_ac08_cache_reuses_compiled_artifact.rs"]
-mod wasmkind_ac08_cache_reuses_compiled_artifact;
-#[path = "wasmkind_ac09_healthz_reports_wasm_runtime.rs"]
-mod wasmkind_ac09_healthz_reports_wasm_runtime;
-#[path = "wasmkind_ac10_declared_output_promotion_matches_python.rs"]
-mod wasmkind_ac10_declared_output_promotion_matches_python;

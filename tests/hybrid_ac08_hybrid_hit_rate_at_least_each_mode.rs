@@ -91,7 +91,7 @@ fn fake_embed_response(req: &Request) -> ResponseTemplate {
 async fn hit_rate(state: &mcphost::state::AppState, tenant: &mcphost::db::Tenant, gold: &[GoldQuestion], mode: &str) -> f64 {
     let mut hits = 0usize;
     for q in gold {
-        let result = docs::doc_search(state, tenant, &json!({"query": q.query, "k": 5, "mode": mode}))
+        let result = docs::doc_search(state, tenant, &json!({"query": q.query, "k": 5, "mode": mode}), None)
             .await
             .unwrap_or_else(|e| panic!("search failed for {:?} in mode {mode}: {e:?}", q.query));
         let names: Vec<String> = result["results"]

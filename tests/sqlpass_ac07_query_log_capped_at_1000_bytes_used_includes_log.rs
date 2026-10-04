@@ -38,9 +38,14 @@ async fn query_log_caps_at_1000_and_bytes_used_includes_it() {
 
     // 1,001 queries: the insert that makes the 1,001st evicts marker 0.
     for i in 0..1_001 {
-        tables::table_query(&server.state, &tenant, &json!({"sql": format!("SELECT {i} AS marker FROM t")}))
-            .await
-            .unwrap_or_else(|e| panic!("query {i}: {e}"));
+        tables::table_query(
+            &server.state,
+            &tenant,
+            &json!({"sql": format!("SELECT {i} AS marker FROM t")}),
+            None,
+        )
+        .await
+        .unwrap_or_else(|e| panic!("query {i}: {e}"));
     }
 
     // Page the whole log back (limit caps at 200 per call) and confirm

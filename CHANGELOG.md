@@ -310,6 +310,38 @@ Migration 0064 backfills every pre-existing trigger's `name` from
 collision so no pre-existing row is lost. The `webhook-inbox` and
 `schedules` quickstart recipes now show `name` on their `host.trigger.set`
 step and note that repeating the call is safe.
+A single row policy now compiles to both a SQL row filter and a docs-search
+filter under one `policy_hash`, with every policy-scoped read appended to a
+hash-chained audit trail. `host.policy.set(target, rule, replace?)` stores a
+rule (`eq`/`in` against a literal set or an end-user attribute) on a
+`table` or `doc_prefix` target; `host.policy.attrs_set(subject, attrs)`
+stores an end user's own attribute values. A `host.table.query`/
+`host.docs.search` call carrying an end-user identity (an OAuth bearer or a
+verified `end_user_assertion`) has its SQL rewritten via the `sqlparser`
+AST — never string concatenation — substituting the compiled predicate
+into every policied table reference (including inside a CTE or a
+subquery), and its docs results filtered to prefixes the subject's
+attributes satisfy; a missing attribute or an empty allowed set fails
+closed to `1 = 0`/zero hits rather than open. A tenant-key call (no end
+user) is unrestricted and writes no audit record; an unpolicied table is
+fail-closed for an end user but untouched for the tenant key.
+`host.audit.chain(subject, limit, before_id)` pages a subject's audit
+records newest-first with `returned_count`/`withheld_count`;
+`host.audit.verify()` walks the whole chain and reports the first broken
+link. Both `host.policy.*` and `host.audit.*` tools are tenant-key only
+(`tenant_key_required`) — an end-user credential is refused, never
+silently scoped. `host.policy.set` refuses a rule that widens an existing
+literal set on the same column unless `replace: true` confirms it
+(`policy_widening`). `mcphost.table.query`/`mcphost.docs.search` inside a
+python-kind sandbox now thread the real calling end user through to the
+same row-policy machinery, rather than always running unrestricted.
+Filtered-vs-unfiltered query latency stays within 3ms at p95 on a
+1,000-row table.
+
+PRD-mcphost-row-policy AC1-AC10, AC12. AC11 (Live: a one-shot prod probe
+confirming `host.audit.chain` shows a hashed record for a real end-user
+read on a fresh tenant, evidence recorded under `docs/receipts/`) is
+deferred — operator-provisioned.
 
 ## v0.65.0 — 2026-10-01
 

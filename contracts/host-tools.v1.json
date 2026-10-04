@@ -342,6 +342,61 @@
       "since": "0.58.0"
     },
     {
+      "description": "Newest-first page of the hash-chained audit log, optionally scoped to one subject. Returns {records, returned_count, withheld_count} where withheld_count is how many more matching records exist beyond this page. Tenant-key only.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "before_id": {
+            "description": "Only records with id less than this.",
+            "type": "integer"
+          },
+          "limit": {
+            "description": "Max records to return, 1-500; default 50.",
+            "type": "integer"
+          },
+          "subject": {
+            "description": "Only records for this end-user subject.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.audit.chain",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Recompute the hash-chained audit log over [from_id, to_id] and report whether it's intact, naming the first broken id if not.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "from_id": {
+            "description": "First audit record id to verify, inclusive.",
+            "type": "integer"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          },
+          "to_id": {
+            "description": "Last audit record id to verify, inclusive.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "from_id",
+          "to_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.audit.verify",
+      "since": "0.58.0"
+    },
+    {
       "description": "Dry-run an unpublished http spec against its real upstream; for the other cases see host.quickstart.",
       "input_schema": {
         "additionalProperties": false,
@@ -2259,6 +2314,77 @@
         "type": "object"
       },
       "name": "host.oauth.trusted_issuers",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Set (merge) attributes on an end-user subject -- the values a policy's Attr(name) rule compiles against for that subject.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "attrs": {
+            "description": "An object of attribute name -> value to merge in."
+          },
+          "subject": {
+            "description": "The end-user subject to set attributes on.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "attrs"
+        ],
+        "type": "object"
+      },
+      "name": "host.policy.attrs_set",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List this tenant's row/docs policies.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.policy.list",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Set (or replace) the row/docs policy for one target: a declared table (target: {\"table\": name}) or a docs prefix (target: {\"doc_prefix\": prefix}). `rule` is a list of {column_or_attr, op: \"eq\"|\"in\", value: {\"literal\": <json>} | {\"attr\": \"<end_user_attr>\"}}. Refused as policy_widening if it would widen an existing literal-valued rule on the same column without replace: true.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "replace": {
+            "description": "Confirms a rule change that would otherwise be refused as widening.",
+            "type": "boolean"
+          },
+          "rule": {
+            "description": "A list of {column_or_attr, op, value} rules, ANDed together."
+          },
+          "target": {
+            "description": "{\"table\": \"<name>\"} or {\"doc_prefix\": \"<prefix>\"}."
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target",
+          "rule"
+        ],
+        "type": "object"
+      },
+      "name": "host.policy.set",
       "since": "0.58.0"
     },
     {

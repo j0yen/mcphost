@@ -49,19 +49,19 @@ async fn eviction_makes_room_least_recently_queried_first() {
     // Three ~300 KiB handles (A, B, C), each materialised a beat apart so
     // their created_unix/last_used_unix land in distinct seconds --
     // ORDER BY last_used_unix's own resolution.
-    let a = tables::table_query(&state, &tenant, &json!({"sql": blob_sql_kib(300), "handle": true}))
+    let a = tables::table_query(&state, &tenant, &json!({"sql": blob_sql_kib(300), "handle": true}), None)
         .await
         .expect("materialize A");
     let a_handle = a["handle"].as_str().unwrap().to_string();
     tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
 
-    let b = tables::table_query(&state, &tenant, &json!({"sql": blob_sql_kib(300), "handle": true}))
+    let b = tables::table_query(&state, &tenant, &json!({"sql": blob_sql_kib(300), "handle": true}), None)
         .await
         .expect("materialize B");
     let b_handle = b["handle"].as_str().unwrap().to_string();
     tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
 
-    let c = tables::table_query(&state, &tenant, &json!({"sql": blob_sql_kib(300), "handle": true}))
+    let c = tables::table_query(&state, &tenant, &json!({"sql": blob_sql_kib(300), "handle": true}), None)
         .await
         .expect("materialize C");
     let c_handle = c["handle"].as_str().unwrap().to_string();
@@ -69,14 +69,14 @@ async fn eviction_makes_room_least_recently_queried_first() {
 
     // Touch A (query it) so it's no longer the least-recently-used --
     // requirement 4's eviction order is last_used_unix, not created_unix.
-    tables::table_query(&state, &tenant, &json!({"sql": format!("SELECT COUNT(*) FROM {a_handle}")}))
+    tables::table_query(&state, &tenant, &json!({"sql": format!("SELECT COUNT(*) FROM {a_handle}")}), None)
         .await
         .expect("touch A");
     tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
 
     // A fourth ~300 KiB handle pushes total live bytes over the 1 MB cap;
     // B (oldest untouched) must be evicted, not A (touched) or C (newest).
-    let d = tables::table_query(&state, &tenant, &json!({"sql": blob_sql_kib(300), "handle": true}))
+    let d = tables::table_query(&state, &tenant, &json!({"sql": blob_sql_kib(300), "handle": true}), None)
         .await
         .expect("materialize D triggers eviction");
     let d_handle = d["handle"].as_str().unwrap().to_string();
@@ -122,7 +122,7 @@ async fn single_oversized_materialisation_is_refused_and_creates_nothing() {
     }
     let tenant = common::bare_tenant(&state, "handle-ac05-oversized").await;
 
-    let err = tables::table_query(&state, &tenant, &json!({"sql": blob_sql_kib(2_000), "handle": true}))
+    let err = tables::table_query(&state, &tenant, &json!({"sql": blob_sql_kib(2_000), "handle": true}), None)
         .await
         .expect_err("a single materialisation over the cap alone must be refused");
     assert_eq!(err.code(), "handle_quota_exceeded", "error: {err:?}");

@@ -37,16 +37,26 @@ const POST_PRD_GROWTH: usize = 3;
 /// comment already accounts for across multiple rebasing PRDs.
 const POST_PRD_NON_ALIAS_GROWTH: usize = 3;
 
+/// PRD-mcphost-row-policy rebase onto main (run 353, 2026-10-04): this
+/// PRD's own five host.policy.set/list/attrs_set and host.audit.chain/
+/// verify tools landed on top of this PRD's own 175 total above -- not
+/// aliases, so this PRD's "grew by exactly the alias count" invariant is
+/// checked against `PRE_PRD_TOTAL + TOOL_ALIASES.len()` same as before;
+/// this constant only widens the final pinned total below to account for
+/// row-policy's own later, separate addition.
+const ROW_POLICY_TOOLS_ADDED: usize = 5;
+
 #[test]
 fn full_registry_grew_by_exactly_the_alias_count_with_nothing_removed() {
     let kinds = KindRegistry::with_builtin();
     let total = host_tool_descriptors(&kinds).len();
     assert_eq!(
         total,
-        PRE_PRD_TOTAL + TOOL_ALIASES.len() + POST_PRD_GROWTH + POST_PRD_NON_ALIAS_GROWTH,
+        PRE_PRD_TOTAL + TOOL_ALIASES.len() + POST_PRD_GROWTH + POST_PRD_NON_ALIAS_GROWTH + ROW_POLICY_TOOLS_ADDED,
         "the full host.*/billing.* registry must have grown by exactly the number of aliases \
          this PRD added (plus any later-landing PRD's own non-alias tools, and any earlier- \
-         or later-landing PRD's own documented growth), with nothing removed"
+         or later-landing PRD's own documented growth, including row-policy's own later five \
+         tools), with nothing removed"
     );
-    assert_eq!(total, 183, "pin the exact new total PRD-mcphost-invite-links and this PRD's own growth grew it to");
+    assert_eq!(total, 188, "pin the exact new total PRD-mcphost-invite-links, PRD-mcphost-result-handles, and this PRD's own growth grew it to");
 }

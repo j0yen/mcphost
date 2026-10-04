@@ -54,7 +54,7 @@ async fn default_mode_with_a_failing_provider_degrades_to_lexical_fallback() {
     // succeed, storing the chunk lexically (no vector).
     docs_index::tick_once(&state).await.expect("tick must not fail on a provider outage");
 
-    let result = docs::doc_search(&state, &tenant, &json!({"query": "refunds", "k": 5}))
+    let result = docs::doc_search(&state, &tenant, &json!({"query": "refunds", "k": 5}), None)
         .await
         .expect("search must not error even though the provider is down");
     assert_eq!(result["index"]["mode"], json!("lexical-fallback"));

@@ -278,6 +278,8 @@ mod python_ac13_capacity_admission;
 mod python_ac14_cpu_budget_rate_limit;
 #[path = "qdiag_ac09_python_bridge_query_stats.rs"]
 mod qdiag_ac09_python_bridge_query_stats;
+#[path = "rowpol_ac12_python_bridge_threads_end_user_through_table_query.rs"]
+mod rowpol_ac12_python_bridge_threads_end_user_through_table_query;
 #[path = "runenvelope_ac1_call_and_tool_run_parity.rs"]
 mod runenvelope_ac1_call_and_tool_run_parity;
 #[path = "runenvelope_ac2_no_declared_outputs_raw_payload.rs"]

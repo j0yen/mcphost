@@ -63,7 +63,7 @@ async fn provider_outage_degrades_to_lexical_results_not_an_error() {
     let status = docs::doc_status(&state, &tenant, &json!({})).await.expect("status ok");
     assert_eq!(status["index"]["mode"], json!("embeddings"), "status still reports the configured mode");
 
-    let result = docs::doc_search(&state, &tenant, &json!({"query": "refunds", "k": 5}))
+    let result = docs::doc_search(&state, &tenant, &json!({"query": "refunds", "k": 5}), None)
         .await
         .expect("search must not error even though the provider is down");
     assert_eq!(result["index"]["mode"], json!("lexical-fallback"));
