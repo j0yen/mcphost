@@ -1314,6 +1314,79 @@
       "since": "0.58.0"
     },
     {
+      "description": "Create an invite link: a friend who connects to the returned url and makes a first host.* call gets a fresh tenant whose contact with you is already accepted and whose listed tools are already shared. The free plan allows 3 live invites at once (host.invite.revoke frees a slot); your own standing invite -- its url is the invite_url field on host.whoami -- never counts against this.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "caller_limit_per_day": {
+            "description": "Optional calls_per_day cap applied to every invitee for each shared tool (host.share.caller_limit). Default: no cap.",
+            "type": "integer"
+          },
+          "expires_in_days": {
+            "description": "Days until this invite stops working. Default 30, maximum 365.",
+            "type": "integer"
+          },
+          "max_uses": {
+            "description": "How many tenants this invite may create. Default 10, maximum 100.",
+            "type": "integer"
+          },
+          "share": {
+            "description": "Local names of your own tools to share with whoever redeems this invite. Default: none.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.invite.create",
+      "since": "0.58.0"
+    },
+    {
+      "description": "List every invite you own (standard and your own standing invite), with uses, limits, and the namespaces of everyone who joined through each.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.invite.list",
+      "since": "0.58.0"
+    },
+    {
+      "description": "Revoke an invite by its code. A standard invite simply stops working (existing invitees keep their tenants and shares). Your standing invite is rotated instead: a fresh invite_url is returned and the old one starts answering invite_invalid.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "The invite's own code, from host.invite.create or the invite_url field on host.whoami.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "type": "object"
+      },
+      "name": "host.invite.revoke",
+      "since": "0.58.0"
+    },
+    {
       "description": "Issue a new tenant key and invalidate the current one immediately: every other call using the old key fails as unauthenticated from this point on. Returns the new key exactly once -- use it (as tenant_key or Authorization) for every call after this one.",
       "input_schema": {
         "additionalProperties": false,

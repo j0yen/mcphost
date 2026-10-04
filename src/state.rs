@@ -388,6 +388,10 @@ pub struct AppState {
     /// persisted, never visible to `admin.tenants`; same `Arc`-shared-
     /// across-clones rationale as [`AppState::checkout_sessions`].
     pub session_bindings: crate::session_bind::SessionBindings,
+    /// PRD-mcphost-invite-links requirement 14 (AC13): "once per session"
+    /// tracking for the `_meta.invite_url` hint on an invitee's first
+    /// shared-tool call -- see [`crate::invites::InviteHintTracker`].
+    pub invite_hints: crate::invites::InviteHintTracker,
     /// PRD-mcphost-lineage-blast-radius requirement 3: per-tenant, 30s-TTL
     /// cache of the loaded `LineageGraph` -- see
     /// [`crate::lineage::LineageCache`]. Same `Arc`-shared-across-clones

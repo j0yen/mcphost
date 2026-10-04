@@ -307,6 +307,14 @@ pub async fn signup(
     // claim link is a property of the tenant, not of which signup mode the
     // caller picked.
     let claim_url = crate::claim::issue_claim_token(state, &tenant).await?;
+    // PRD-mcphost-invite-links requirement 10 (AC9): every tenant is born
+    // with a standing invite, minted the same "right after the tenant row
+    // exists" way `claim_url` just was. Best-effort is NOT acceptable here
+    // (unlike e.g. `set_tenant_client_info`'s own best-effort calls
+    // elsewhere) -- a signup that silently left a tenant with no standing
+    // invite would make `host.whoami`'s own `invite_url` lie by omission,
+    // so a failure here fails the whole signup.
+    crate::invites::mint_standing_invite(state, tenant.id).await?;
 
     // PRD-mcphost-handoff-token requirement 1 / AC1: opt-in only -- an
     // absent (or non-true) `handoff` argument is byte-identical to today's
@@ -916,12 +924,24 @@ pub async fn whoami(
             })
         })
         .collect();
+    // PRD-mcphost-invite-links requirement 10 (AC9): `None` only for a
+    // tenant that predates migration 0067/0068 and has never had one
+    // lazily minted (out of this build's tested scope -- see
+    // `invites.rs`'s module doc comment); every tenant `signup`/
+    // `claim_on_first_call` creates from here on always has one.
+    let invite_url = state
+        .db
+        .find_standing_invite_for_tenant(tenant.id)
+        .await?
+        .and_then(|invite| invite.code_plain)
+        .map(|code| format!("{}/i/{code}/mcp", state.public_url.trim_end_matches('/')));
     Ok(json!({
         "tenant": tenant.namespace,
         "namespace": tenant.namespace,
         "display_name": tenant.display_name,
         "created_at": tenant.created_at,
         "disabled": tenant.disabled,
+        "invite_url": invite_url,
         // PRD-grand-loop-billing goal: an agent's own identity call
         // already tells it what plan it's on, with no extra round trip.
         "plan": tenant.plan,
@@ -1860,6 +1880,11 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
     // the rest of the response to use.
     let (hints_shown_7d, hints_followed_7d) =
         state.db.hints_usage(tenant.id, now_unix() - 7 * 24 * 3600).await?;
+    // PRD-mcphost-invite-links requirement 12 (AC11): a fixed 7-day
+    // lookback, independent of this response's own `window`, same
+    // "own constant window regardless of the rest of the response"
+    // convention `hints_shown_7d`/`hints_followed_7d` above already use.
+    let invites_usage = state.db.invites_usage_7d(tenant.id).await?;
     Ok(json!({
         "window": window,
         "calls": stats.calls,
@@ -1894,6 +1919,11 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
         "hints": {
             "shown_7d": hints_shown_7d,
             "followed_7d": hints_followed_7d,
+        },
+        "invites": {
+            "sent_7d": invites_usage.sent_7d,
+            "accepted_7d": invites_usage.accepted_7d,
+            "k": invites_usage.k,
         },
     }))
 }

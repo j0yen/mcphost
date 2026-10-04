@@ -522,7 +522,15 @@ impl AppError {
                 // a per-tool `insufficient_scope` refusal is the same
                 // caller-credential problem `AppError::InsufficientScope`
                 // already maps here.
-                "rate_limited" | "signup_paused" | "banned" | "insufficient_scope" => ErrorCode::INVALID_REQUEST,
+                // PRD-mcphost-invite-links requirement 4 (AC5) / requirement
+                // 3/11 (AC6, AC10): the same caller-state-gate class as
+                // `rate_limited`/`banned` above -- never a bad argument,
+                // never an internal failure.
+                "rate_limited" | "signup_paused" | "banned" | "insufficient_scope"
+                | "invite_invalid" | "invite_rate_limited" => ErrorCode::INVALID_REQUEST,
+                // PRD-mcphost-invite-links requirement 1 (AC7): the same
+                // caller-input-quota class as `state_quota_exceeded` above.
+                "invites_quota_exceeded" => ErrorCode::INVALID_PARAMS,
                 // PRD-mcphost-spec-output-paths requirement 1: a structured
                 // `invalid_spec` (kinds::http/python's own `parse_spec` and
                 // `normalize_outputs`) is exactly the same caller-input
@@ -1344,6 +1352,44 @@ impl AppError {
                 "hint": "shared tools are called as <owner_namespace>.<tool>; ask the owner \
                     to host.tool_share it with you or your group",
             }),
+        }
+    }
+
+    /// PRD-mcphost-invite-links requirement 1 (AC7): `host.invite.create`
+    /// past the plan's live-standard-invites cap. `limit` is named
+    /// `invites_max` (not the generic `limit`/`used` shape
+    /// `ShareQuotaExceeded` uses) because the PRD's own AC7 pins that exact
+    /// field name.
+    pub fn invites_quota_exceeded(limit: i64, used: i64) -> Self {
+        AppError::Structured {
+            code: "invites_quota_exceeded",
+            message: format!("tenant already has {used} live invites, the plan maximum of {limit}"),
+            data: json!({"invites_max": limit, "used": used}),
+        }
+    }
+
+    /// PRD-mcphost-invite-links requirement 4 (AC5) / requirement 3 (AC4):
+    /// a code that doesn't resolve to a live invite at all -- unknown,
+    /// revoked, expired, or (the AC4 race) already at `max_uses`. One code
+    /// for every miss reason, same non-leaking posture as
+    /// [`Self::shared_tool_not_found`]: never distinguishes "never existed"
+    /// from "existed once" from "the last slot was just taken".
+    pub fn invite_invalid() -> Self {
+        AppError::Structured {
+            code: "invite_invalid",
+            message: "this invite link is no longer valid".to_string(),
+            data: json!({}),
+        }
+    }
+
+    /// PRD-mcphost-invite-links requirement 3 / 11 (AC6, AC10): the
+    /// per-code hourly join limiter -- distinct from [`Self::invite_invalid`]
+    /// so a client can tell "come back later" from "this link is dead".
+    pub fn invite_rate_limited() -> Self {
+        AppError::Structured {
+            code: "invite_rate_limited",
+            message: "this invite has reached its hourly join limit; try again later".to_string(),
+            data: json!({}),
         }
     }
 

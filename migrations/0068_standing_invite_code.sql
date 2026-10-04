@@ -1,0 +1,18 @@
+-- compat: previous -- one additive nullable column on the existing
+-- `invites` table; no existing row's shape changes.
+-- mcphost 0068_standing_invite_code: PRD-mcphost-invite-links requirement
+-- 10 (AC9).
+--
+-- `invites.code_plain`: the plaintext code, populated ONLY for `kind =
+-- 'standing'` rows. Every other invite (`kind = 'standard'`) keeps the
+-- hash-only-at-rest convention `code_hash` already established in
+-- migration 0067 -- a standard invite's code is a bearer credential handed
+-- to someone else, returned once at creation and never re-displayed
+-- (`host.invite.list` shows no code at all). A standing invite is
+-- different: `host.whoami` must keep answering the SAME `invite_url`
+-- every time it's called (requirement 10), and nobody but the tenant
+-- itself is meant to ever see it, so storing it is the same trust
+-- boundary as the row it lives in (one tenant's own data, read back only
+-- by that tenant's own authenticated calls) rather than a credential
+-- shared with a third party.
+ALTER TABLE invites ADD COLUMN code_plain TEXT;

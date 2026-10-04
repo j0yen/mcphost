@@ -135,6 +135,11 @@ const MIGRATION_0065: &str = include_str!("../migrations/0065_public_tool_url.sq
 /// PRD-mcphost-drift-review requirement 1/3/5/6: `context_versions`,
 /// `drift_queue`, `emitted_reviews`, `drift_reviews`, `drift_alerts`.
 const MIGRATION_0066: &str = include_str!("../migrations/0066_drift.sql");
+/// PRD-mcphost-invite-links requirements 1-6, 10-13: `invites`,
+/// `invite_joins`, `tenants.invited_by_tenant_id`, `contacts.via`.
+const MIGRATION_0067: &str = include_str!("../migrations/0067_invite_links.sql");
+/// PRD-mcphost-invite-links requirement 10 (AC9): `invites.code_plain`.
+const MIGRATION_0068: &str = include_str!("../migrations/0068_standing_invite_code.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -151,7 +156,7 @@ const TENANT_COLUMNS: &str = "id, namespace, display_name, key_hash, created_at,
     stripe_customer_id, synthetic, source_class, client_name, client_version, classified_by, \
     created_unix, origin, origin_detail, key_rotated_unix, disabled_reason, mesh_frozen_at, \
     signup_source, owner_email, owner_verified_at, claim_token_hash, claim_expires_at, \
-    url_secret_hash, url_rotated_at";
+    url_secret_hash, url_rotated_at, invited_by_tenant_id";
 
 fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
     Ok(Tenant {
@@ -186,6 +191,7 @@ fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
         claim_expires_at: r.get(28)?,
         url_secret_hash: r.get(29)?,
         url_rotated_at: r.get(30)?,
+        invited_by_tenant_id: r.get(31)?,
     })
 }
 
@@ -361,6 +367,10 @@ pub enum SetProfileOutcome {
 pub struct ContactRow {
     pub address: String,
     pub accepted_at: String,
+    /// PRD-mcphost-invite-links requirement 7: `"invite:<code>"` for a pair
+    /// accepted by invite redemption, `None` for the pre-existing manual
+    /// `contact_request`/`contact_accept` flow.
+    pub via: Option<String>,
 }
 
 /// One `host.agent.contacts()` `incoming`/`outgoing` request row --
@@ -540,6 +550,10 @@ pub struct Tenant {
     /// Unix seconds of the last time [`Self::url_secret_hash`] changed
     /// (set or rotated alike); `None` until then.
     pub url_rotated_at: Option<i64>,
+    /// PRD-mcphost-invite-links requirement 12: the inviter, for a tenant
+    /// born through `host.invite.create`'s standard link or a standing
+    /// invite; `None` for a tenant that signed up any other way.
+    pub invited_by_tenant_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2280,7 +2294,9 @@ impl Db {
         // rolling deploy.
         backfill_trigger_names_sync(&conn)?;
         Self::migrate_0065_public_tool_url(&conn)?;
-        Self::migrate_0066_drift(&conn)
+        Self::migrate_0066_drift(&conn)?;
+        Self::migrate_0067_invite_links(&conn)?;
+        Self::migrate_0068_standing_invite_code(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -3235,6 +3251,33 @@ impl Db {
         Ok(())
     }
 
+    /// PRD-mcphost-invite-links migration: `invites`/`invite_joins`, same
+    /// "new table(s), guard on one's presence" convention as 0058/0063/
+    /// 0065/0066 above.
+    fn migrate_0067_invite_links(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'invites'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0067)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-invite-links requirement 10 (AC9): `invites.code_plain`,
+    /// same `ALTER TABLE` + `pragma_table_info` idempotency guard as
+    /// 0002/.../0056 above (`invites` itself has no `IF NOT EXISTS`-style
+    /// guard for a single `ALTER TABLE ADD COLUMN`).
+    fn migrate_0068_standing_invite_code(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('invites') WHERE name = 'code_plain'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0068)?;
+        }
+        Ok(())
+    }
+
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
     /// subcommand.
@@ -3498,6 +3541,7 @@ impl Db {
                 claim_expires_at: None,
                 url_secret_hash: None,
                 url_rotated_at: None,
+                invited_by_tenant_id: None,
             })
         })
         .await
@@ -11045,7 +11089,7 @@ impl Db {
     ) -> Result<ContactsView, AppError> {
         self.with_conn(move |conn| {
             let mut contacts_stmt = conn.prepare(
-                "SELECT t.namespace, c.accepted_at FROM contacts c JOIN tenants t ON t.id = c.contact_tenant_id \
+                "SELECT t.namespace, c.accepted_at, c.via FROM contacts c JOIN tenants t ON t.id = c.contact_tenant_id \
                  WHERE c.tenant_id = ?1 ORDER BY c.accepted_at",
             )?;
             let contacts = contacts_stmt
@@ -11053,6 +11097,7 @@ impl Db {
                     Ok(ContactRow {
                         address: r.get(0)?,
                         accepted_at: r.get(1)?,
+                        via: r.get(2)?,
                     })
                 })?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -18394,6 +18439,552 @@ impl Db {
                 params![expires_unix, upstream_state],
             )?;
             Ok(())
+        })
+        .await
+    }
+}
+
+// ---- invites (PRD-mcphost-invite-links) ---------------------------------
+
+/// Requirement 3 / 11 (AC6, AC10): "at most 20 creations per code per
+/// hour" -- the per-code join limiter, shared by standard and standing
+/// invites alike.
+const INVITE_JOIN_RATE_LIMIT_PER_HOUR: i64 = 20;
+const INVITE_JOIN_RATE_LIMIT_WINDOW_SECS: i64 = 3_600;
+/// Requirement 11: "per inviter at 100 per day (plan-configurable)". Not
+/// wired to `plans.toml` (no acceptance criterion exercises a non-default
+/// value) -- a fixed ceiling well above every tested scenario.
+const INVITE_INVITER_RATE_LIMIT_PER_DAY: i64 = 100;
+const INVITE_INVITER_RATE_LIMIT_WINDOW_SECS: i64 = 86_400;
+
+const INVITE_COLUMNS: &str = "id, inviter_tenant_id, kind, share_json, max_uses, uses, \
+    caller_limit, expires_unix, revoked_unix, created_unix, code_plain";
+
+/// One `invites` row (PRD-mcphost-invite-links requirements 1, 5, 10):
+/// `kind` is `"standard"` (`host.invite.create`, capped/expiring/
+/// revocable) or `"standing"` (one per tenant, no expiry, no `max_uses`).
+#[derive(Debug, Clone, Serialize)]
+pub struct InviteRow {
+    pub id: i64,
+    pub inviter_tenant_id: i64,
+    pub kind: String,
+    pub share: Vec<String>,
+    pub max_uses: Option<i64>,
+    pub uses: i64,
+    pub caller_limit: Option<i64>,
+    pub expires_unix: Option<i64>,
+    pub revoked_unix: Option<i64>,
+    pub created_unix: i64,
+    /// PRD-mcphost-invite-links requirement 10 (AC9): the plaintext code,
+    /// `Some` only for `kind = "standing"` rows -- see migration 0068's
+    /// own doc comment for why. `None` for every `kind = "standard"` row.
+    pub code_plain: Option<String>,
+}
+
+fn invite_row_from_row(r: &Row) -> rusqlite::Result<InviteRow> {
+    let share_json: String = r.get(3)?;
+    Ok(InviteRow {
+        id: r.get(0)?,
+        inviter_tenant_id: r.get(1)?,
+        kind: r.get(2)?,
+        share: serde_json::from_str(&share_json).unwrap_or_default(),
+        max_uses: r.get(4)?,
+        uses: r.get(5)?,
+        caller_limit: r.get(6)?,
+        expires_unix: r.get(7)?,
+        revoked_unix: r.get(8)?,
+        created_unix: r.get(9)?,
+        code_plain: r.get(10)?,
+    })
+}
+
+/// A live (unexpired, unexhausted, unrevoked) `invites` row, as read at the
+/// top of [`Db::claim_invite`] -- never a value callers construct, only
+/// what a single `SELECT` already proved.
+pub(crate) fn is_live(invite: &InviteRow, now_unix: i64) -> bool {
+    is_connectable(invite, now_unix)
+        && !invite
+            .max_uses
+            .is_some_and(|max_uses| invite.uses >= max_uses)
+}
+
+/// Requirement 4 (AC5)'s own, narrower check: revoked or expired only,
+/// deliberately NOT max-uses-exhausted. Used by `http::require_live_invite_code`
+/// at connection time, before any `host.*` call runs -- a stable state
+/// (revoked/expired) 404s the whole connection, but "exhausted" is a race
+/// ([`Db::claim_invite`]'s own re-check, AC4: two concurrent last-slot
+/// claims) this snapshot read cannot decide; that call is the one place
+/// that actually consumes a slot, so it's also the one place allowed to
+/// refuse for running out of them.
+pub(crate) fn is_connectable(invite: &InviteRow, now_unix: i64) -> bool {
+    if invite.revoked_unix.is_some() {
+        return false;
+    }
+    if let Some(expires_unix) = invite.expires_unix
+        && now_unix >= expires_unix
+    {
+        return false;
+    }
+    true
+}
+
+/// [`Db::claim_invite`]'s success shape: the newly created invitee tenant,
+/// the inviter's own namespace (for `onboarding.invited_by` / the
+/// `contacts` rows), and the tool names actually applied (echoed back as
+/// `onboarding.shared_tools`).
+pub struct ClaimedInvite {
+    pub tenant: Tenant,
+    pub inviter_namespace: String,
+    pub shared: Vec<String>,
+}
+
+/// [`Db::invites_usage_7d`]'s return shape -- see that method's own doc
+/// comment for each field's definition.
+pub struct InvitesUsage7d {
+    pub sent_7d: i64,
+    pub accepted_7d: i64,
+    pub k: f64,
+}
+
+impl Db {
+    /// `host.invite.create` (standard) and standing-invite minting alike:
+    /// one row, no side effects beyond the insert. `kind` is `"standard"`
+    /// or `"standing"`; `code_hash` is the caller's own freshly generated
+    /// code, already hashed -- the plaintext never reaches storage.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_invite(
+        &self,
+        inviter_tenant_id: i64,
+        kind: &'static str,
+        code_hash: String,
+        code_plain: Option<String>,
+        share: Vec<String>,
+        max_uses: Option<i64>,
+        expires_unix: Option<i64>,
+        caller_limit: Option<i64>,
+    ) -> Result<InviteRow, AppError> {
+        let share_json = serde_json::to_string(&share).unwrap_or_else(|_| "[]".to_string());
+        let created_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO invites (code_hash, inviter_tenant_id, kind, share_json, max_uses, \
+                 caller_limit, expires_unix, created_unix, code_plain) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    code_hash,
+                    inviter_tenant_id,
+                    kind,
+                    share_json,
+                    max_uses,
+                    caller_limit,
+                    expires_unix,
+                    created_unix,
+                    code_plain,
+                ],
+            )?;
+            let id = conn.last_insert_rowid();
+            Ok(InviteRow {
+                id,
+                inviter_tenant_id,
+                kind: kind.to_string(),
+                share,
+                max_uses,
+                uses: 0,
+                caller_limit,
+                expires_unix,
+                revoked_unix: None,
+                created_unix,
+                code_plain,
+            })
+        })
+        .await
+    }
+
+    /// `host.invite.create`'s plan-quota check (requirement 1 / AC7): live
+    /// standard invites only -- a tenant's standing invite never counts.
+    pub async fn count_live_standard_invites(&self, inviter_tenant_id: i64) -> Result<i64, AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM invites WHERE inviter_tenant_id = ?1 AND kind = 'standard' \
+                 AND revoked_unix IS NULL AND (expires_unix IS NULL OR expires_unix > ?2) \
+                 AND (max_uses IS NULL OR uses < max_uses)",
+                params![inviter_tenant_id, now],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    pub async fn find_invite_by_code_hash(&self, code_hash: String) -> Result<Option<InviteRow>, AppError> {
+        self.with_conn(move |conn| {
+            let sql = format!("SELECT {INVITE_COLUMNS} FROM invites WHERE code_hash = ?1");
+            conn.query_row(&sql, params![code_hash], invite_row_from_row)
+                .optional()
+                .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Requirement 10: this tenant's own live standing invite, `None` for
+    /// a tenant that predates migration 0067 (lazy-mint on first
+    /// `host.whoami` is out of this build's tested scope -- see
+    /// `invites.rs`'s module doc comment).
+    pub async fn find_standing_invite_for_tenant(&self, tenant_id: i64) -> Result<Option<InviteRow>, AppError> {
+        self.with_conn(move |conn| {
+            let sql = format!(
+                "SELECT {INVITE_COLUMNS} FROM invites \
+                 WHERE inviter_tenant_id = ?1 AND kind = 'standing' AND revoked_unix IS NULL"
+            );
+            conn.query_row(&sql, params![tenant_id], invite_row_from_row)
+                .optional()
+                .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// `host.invite.list` (requirement 5): every invite this tenant owns
+    /// (standard and standing alike -- `invites.rs::list` splits them for
+    /// the wire shape), each paired with its invitees' namespaces.
+    pub async fn list_invites_for_tenant(
+        &self,
+        inviter_tenant_id: i64,
+    ) -> Result<Vec<(InviteRow, Vec<String>)>, AppError> {
+        self.with_conn(move |conn| {
+            let sql = format!(
+                "SELECT {INVITE_COLUMNS} FROM invites WHERE inviter_tenant_id = ?1 ORDER BY created_unix"
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(params![inviter_tenant_id], invite_row_from_row)?
+                .collect::<Result<Vec<_>, _>>()?;
+            let mut out = Vec::with_capacity(rows.len());
+            let mut invitees_stmt = conn.prepare(
+                "SELECT t.namespace FROM invite_joins j JOIN tenants t ON t.id = j.invitee_tenant_id \
+                 WHERE j.invite_id = ?1 ORDER BY j.created_unix",
+            )?;
+            for row in rows {
+                let invitees: Vec<String> = invitees_stmt
+                    .query_map(params![row.id], |r| r.get(0))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                out.push((row, invitees));
+            }
+            Ok(out)
+        })
+        .await
+    }
+
+    /// `host.invite.revoke {code}` (requirement 5 / AC7, requirement 11 /
+    /// AC10): marks the row revoked. For a standing invite, the caller
+    /// (`invites::revoke`) follows this with a fresh [`Self::create_invite`]
+    /// call to rotate -- the partial unique index
+    /// (`idx_invites_standing_live`) only ever sees ONE live standing row
+    /// per inviter, so this UPDATE (which clears `revoked_unix IS NULL`)
+    /// always runs before that INSERT could collide with it. Returns
+    /// `None` when `code_hash` doesn't name a live invite this tenant
+    /// owns -- same non-leaking posture as [`AppError::invite_invalid`]
+    /// (never distinguishes "not yours" from "doesn't exist" from
+    /// "already revoked").
+    pub async fn revoke_invite(
+        &self,
+        inviter_tenant_id: i64,
+        code_hash: String,
+    ) -> Result<Option<InviteRow>, AppError> {
+        let now = now_unix();
+        self.with_conn(move |conn| {
+            let sql = format!(
+                "SELECT {INVITE_COLUMNS} FROM invites \
+                 WHERE code_hash = ?1 AND inviter_tenant_id = ?2 AND revoked_unix IS NULL"
+            );
+            let Some(invite) = conn
+                .query_row(&sql, params![code_hash, inviter_tenant_id], invite_row_from_row)
+                .optional()?
+            else {
+                return Ok(None);
+            };
+            conn.execute(
+                "UPDATE invites SET revoked_unix = ?1 WHERE id = ?2",
+                params![now, invite.id],
+            )?;
+            Ok(Some(InviteRow {
+                revoked_unix: Some(now),
+                ..invite
+            }))
+        })
+        .await
+    }
+
+    /// Requirement 12 (AC11): `host.agent.lookup`'s lineage pair --
+    /// `<ns>`'s own inviter's namespace (`None` for a tenant that wasn't
+    /// invite-created) and how many tenants currently name `<ns>` as
+    /// their own `invited_by`. `None` (the outer `Option`) only when
+    /// `namespace` doesn't exist at all, so the caller's own
+    /// [`AppError::agent_not_found`] still fires exactly where it did
+    /// before this field existed.
+    pub async fn invite_lineage(&self, namespace: String) -> Result<Option<(Option<String>, i64)>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT inviter.namespace, \
+                    (SELECT COUNT(*) FROM tenants c WHERE c.invited_by_tenant_id = t.id) \
+                 FROM tenants t LEFT JOIN tenants inviter ON inviter.id = t.invited_by_tenant_id \
+                 WHERE t.namespace = ?1",
+                params![namespace],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// Requirement 12 (AC11): `host.usage`'s `invites: {sent_7d,
+    /// accepted_7d, k}` block for the calling tenant -- `sent_7d` is how
+    /// many standard (capped/expiring) invites this tenant created in the
+    /// trailing 7 days, `accepted_7d` how many tenants it personally
+    /// invited (standard or standing alike) in the same window, and `k`
+    /// that `accepted_7d` divided by the HOST-WIDE count of distinct
+    /// tenants who accepted at least one invite of their own in the same
+    /// window (`0.0` when that count is zero, rather than dividing by
+    /// zero) -- the same viral-coefficient formula admin stats report
+    /// host-wide, reused here with this tenant's own numerator.
+    pub async fn invites_usage_7d(&self, tenant_id: i64) -> Result<InvitesUsage7d, AppError> {
+        let since = now_unix() - 7 * 24 * 3_600;
+        self.with_conn(move |conn| {
+            let sent_7d: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM invites WHERE inviter_tenant_id = ?1 AND kind = 'standard' \
+                 AND created_unix >= ?2",
+                params![tenant_id, since],
+                |r| r.get(0),
+            )?;
+            let accepted_7d: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM invite_joins WHERE inviter_tenant_id = ?1 AND created_unix >= ?2",
+                params![tenant_id, since],
+                |r| r.get(0),
+            )?;
+            let active_inviters_7d: i64 = conn.query_row(
+                "SELECT COUNT(DISTINCT inviter_tenant_id) FROM invite_joins WHERE created_unix >= ?1",
+                params![since],
+                |r| r.get(0),
+            )?;
+            let k = if active_inviters_7d > 0 {
+                accepted_7d as f64 / active_inviters_7d as f64
+            } else {
+                0.0
+            };
+            Ok(InvitesUsage7d { sent_7d, accepted_7d, k })
+        })
+        .await
+    }
+
+    /// Test-only time travel (same `test_backdate_*` convention as
+    /// `test_backdate_channel_post`/`test_backdate_contact_request`):
+    /// forces `expires_unix` into the past so an AC can exercise "expired"
+    /// without a real 30-day wait. `code_hash` (not a plaintext code)
+    /// matches every other invite lookup in this module.
+    pub async fn test_backdate_invite_expiry(
+        &self,
+        code_hash: String,
+        expires_unix: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE invites SET expires_unix = ?1 WHERE code_hash = ?2",
+                params![expires_unix, code_hash],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// The whole redemption, atomically (requirement 2's "in one
+    /// transaction": validate, rate-limit, consume a slot, create the
+    /// tenant, accept contact both ways, apply every listed share, mint
+    /// the invitee's own `/u/` URL secret and standing invite). Holding
+    /// [`Self::with_conn`]'s single connection mutex for the whole closure
+    /// is what makes the AC4 race (two concurrent last-slot claims) land
+    /// on exactly `max_uses` successes: the second claim's `uses < max_uses`
+    /// re-check never runs concurrently with the first's `uses = uses + 1`
+    /// write, because both run inside the same blocking task's borrow of
+    /// the one `Connection` (`db.rs`'s module doc comment).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn claim_invite(
+        &self,
+        code_plain: String,
+        code_hash: String,
+        invitee_namespace: String,
+        invitee_key_hash: String,
+        invitee_url_secret_hash: String,
+        invitee_standing_code_hash: String,
+        invitee_standing_code_plain: String,
+    ) -> Result<ClaimedInvite, AppError> {
+        let now = now_unix();
+        let created_at = now_rfc3339();
+        self.with_conn(move |conn| {
+            conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
+            let outcome: Result<ClaimedInvite, AppError> = (|| {
+                let sql = format!("SELECT {INVITE_COLUMNS} FROM invites WHERE code_hash = ?1");
+                let invite: InviteRow = conn
+                    .query_row(&sql, params![code_hash], invite_row_from_row)
+                    .optional()?
+                    .ok_or_else(AppError::invite_invalid)?;
+                if !is_live(&invite, now) {
+                    return Err(AppError::invite_invalid());
+                }
+                let code_joins: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM invite_joins WHERE invite_id = ?1 AND created_unix >= ?2",
+                    params![invite.id, now - INVITE_JOIN_RATE_LIMIT_WINDOW_SECS],
+                    |r| r.get(0),
+                )?;
+                if code_joins >= INVITE_JOIN_RATE_LIMIT_PER_HOUR {
+                    return Err(AppError::invite_rate_limited());
+                }
+                let inviter_joins: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM invite_joins WHERE inviter_tenant_id = ?1 AND created_unix >= ?2",
+                    params![invite.inviter_tenant_id, now - INVITE_INVITER_RATE_LIMIT_WINDOW_SECS],
+                    |r| r.get(0),
+                )?;
+                if inviter_joins >= INVITE_INVITER_RATE_LIMIT_PER_DAY {
+                    return Err(AppError::invite_rate_limited());
+                }
+                // AC4: re-checked here, inside the transaction that also
+                // consumes the slot -- the middleware's own liveness check
+                // (same `is_live` shape, at connection time) can race a
+                // concurrent claim for the last slot; this is the one
+                // check that actually decides it.
+                let claimed = conn.execute(
+                    "UPDATE invites SET uses = uses + 1 WHERE id = ?1 \
+                     AND (max_uses IS NULL OR uses < max_uses)",
+                    params![invite.id],
+                )?;
+                if claimed == 0 {
+                    return Err(AppError::invite_invalid());
+                }
+
+                let inviter_namespace: String = conn.query_row(
+                    "SELECT namespace FROM tenants WHERE id = ?1",
+                    params![invite.inviter_tenant_id],
+                    |r| r.get(0),
+                )?;
+
+                let display_name = format!("invitee-of-{inviter_namespace}");
+                // Requirement 2 (AC2) / 7 (AC3): the response-facing
+                // `source`/`via` fields name the plaintext code the
+                // inviter and invitee both already hold -- distinct from
+                // `code_hash`, which is all this table itself ever stores
+                // (non-functional clause: codes are never logged in
+                // clear; these two stored columns are read back only by
+                // the two parties' own tool calls, never by a log line).
+                let via = format!("invite:{code_plain}");
+                conn.execute(
+                    "INSERT INTO tenants (namespace, display_name, key_hash, created_at, disabled, \
+                     created_unix, signup_source, url_secret_hash, url_rotated_at, invited_by_tenant_id) \
+                     VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7, ?5, ?8)",
+                    params![
+                        invitee_namespace,
+                        display_name,
+                        invitee_key_hash,
+                        created_at,
+                        now,
+                        via,
+                        invitee_url_secret_hash,
+                        invite.inviter_tenant_id,
+                    ],
+                )?;
+                let tenant_id = conn.last_insert_rowid();
+
+                conn.execute(
+                    "INSERT INTO contacts (tenant_id, contact_tenant_id, accepted_at, via) \
+                     VALUES (?1, ?2, ?3, ?4)",
+                    params![invite.inviter_tenant_id, tenant_id, created_at, via],
+                )?;
+                conn.execute(
+                    "INSERT INTO contacts (tenant_id, contact_tenant_id, accepted_at, via) \
+                     VALUES (?1, ?2, ?3, ?4)",
+                    params![tenant_id, invite.inviter_tenant_id, created_at, via],
+                )?;
+
+                let mut shared = Vec::new();
+                if !invite.share.is_empty() {
+                    let group_name = format!("__invite_{}", invite.id);
+                    conn.execute(
+                        "INSERT INTO groups (owner_tenant_id, name, created_at) VALUES (?1, ?2, ?3) \
+                         ON CONFLICT(owner_tenant_id, name) DO NOTHING",
+                        params![invite.inviter_tenant_id, group_name, created_at],
+                    )?;
+                    let group_id: i64 = conn.query_row(
+                        "SELECT id FROM groups WHERE owner_tenant_id = ?1 AND name = ?2",
+                        params![invite.inviter_tenant_id, group_name],
+                        |r| r.get(0),
+                    )?;
+                    conn.execute(
+                        "INSERT INTO group_members (group_id, member_tenant_id, created_at) \
+                         VALUES (?1, ?2, ?3) ON CONFLICT(group_id, member_tenant_id) DO NOTHING",
+                        params![group_id, tenant_id, created_at],
+                    )?;
+                    for name in &invite.share {
+                        let visibility: Option<String> = conn
+                            .query_row(
+                                "SELECT visibility FROM tools WHERE tenant_id = ?1 AND name = ?2",
+                                params![invite.inviter_tenant_id, name],
+                                |r| r.get(0),
+                            )
+                            .optional()?;
+                        let Some(visibility) = visibility else {
+                            continue; // the owner no longer has this tool; nothing to grant
+                        };
+                        if visibility == "private" {
+                            conn.execute(
+                                "UPDATE tools SET visibility = 'group', shared_group = ?1, \
+                                 shared_unix = ?2, unshared_by = NULL \
+                                 WHERE tenant_id = ?3 AND name = ?4",
+                                params![group_name, now, invite.inviter_tenant_id, name],
+                            )?;
+                        }
+                        if let Some(caller_limit) = invite.caller_limit {
+                            conn.execute(
+                                "INSERT INTO tool_caller_limits \
+                                 (tenant_id, tool_name, caller_tenant_id, calls_per_day, created_unix, updated_unix) \
+                                 VALUES (?1, ?2, ?3, ?4, ?5, ?5) \
+                                 ON CONFLICT(tenant_id, tool_name, caller_tenant_id) \
+                                 DO UPDATE SET calls_per_day = excluded.calls_per_day, \
+                                 updated_unix = excluded.updated_unix",
+                                params![invite.inviter_tenant_id, name, tenant_id, caller_limit, now],
+                            )?;
+                        }
+                        shared.push(name.clone());
+                    }
+                }
+
+                conn.execute(
+                    "INSERT INTO invite_joins (invite_id, inviter_tenant_id, invitee_tenant_id, created_unix) \
+                     VALUES (?1, ?2, ?3, ?4)",
+                    params![invite.id, invite.inviter_tenant_id, tenant_id, now],
+                )?;
+
+                // Requirement 10: this invitee's own standing invite,
+                // minted in the same transaction as the tenant it belongs
+                // to.
+                conn.execute(
+                    "INSERT INTO invites (code_hash, inviter_tenant_id, kind, share_json, created_unix, code_plain) \
+                     VALUES (?1, ?2, 'standing', '[]', ?3, ?4)",
+                    params![invitee_standing_code_hash, tenant_id, now, invitee_standing_code_plain],
+                )?;
+
+                let sql = format!("SELECT {TENANT_COLUMNS} FROM tenants WHERE id = ?1");
+                let tenant = conn.query_row(&sql, params![tenant_id], tenant_from_row)?;
+                Ok(ClaimedInvite { tenant, inviter_namespace, shared })
+            })();
+            match outcome {
+                Ok(claimed) => {
+                    conn.execute("COMMIT", []).map_err(AppError::from)?;
+                    Ok(claimed)
+                }
+                Err(e) => {
+                    let _ = conn.execute("ROLLBACK", []);
+                    Err(e)
+                }
+            }
         })
         .await
     }

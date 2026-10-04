@@ -93,8 +93,9 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
         // PRD-mcphost-table-context-and-sql-passthrough, then 151 -> 155
         // with host.drift.reviews/review/resolve/check from
         // PRD-mcphost-drift-review):
-        // 155 + 20 aliases = 175.
-        175,
+        // 155 + 20 aliases = 175, then 175 -> 178 with host.invite.create/
+        // list/revoke from PRD-mcphost-invite-links.
+        178,
         "there must be exactly the sixteen host.* control-plane tools \
          (incl. host.quickstart, host.tool_run, host.bridge_test, host.spec_test -- \
          PRD-mcphost-tool-test, and host.redeem/host.key_rotate -- \
