@@ -21,10 +21,10 @@ use crate::auth::{constant_time_eq, extract_bearer, hash_key};
 use crate::db::{Tenant, ToolRow};
 use crate::errors::AppError;
 use crate::kinds::{
-    CallCtx, CallLog, ChannelBackend, DocsBackend, Kind, KindError, KindRegistry, LineageBackend,
-    MAX_TEST_INVOCATIONS, MsgBackend, NoChannel, NoDocs, NoLineage, NoMsg, NoState, NoTable,
-    NullLog, NullResourceSink, ResourceSink, SecretResolver, StateBackend, TableBackend,
-    describe_args_error, run_spec_test,
+    CallCtx, CallLog, ChannelBackend, DocsBackend, DriftBackend, Kind, KindError, KindRegistry,
+    LineageBackend, MAX_TEST_INVOCATIONS, MsgBackend, NoChannel, NoDocs, NoLineage, NoMsg,
+    NoState, NoTable, NullLog, NullResourceSink, ResourceSink, SecretResolver, StateBackend,
+    TableBackend, describe_args_error, run_spec_test,
 };
 use crate::state::{
     AppState, MAX_SPEC_BYTES, TOOLS_LIST_TTL_GRACE_SECS, TOOLS_LIST_TTL_MS_STEADY, now_unix,
@@ -1895,6 +1895,61 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                     "older_than_versions": {"type": "integer", "description": "How many versions back from the current one to keep."},
                 }),
                 &["older_than_versions"],
+            ),
+        ),
+        // PRD-mcphost-drift-review requirement 7: when a table note, a
+        // table's inferred schema, or a document changes, the affected
+        // logged queries/searches are re-run and diffed -- these three
+        // tools read and resolve the resulting review items.
+        Tool::new(
+            "host.drift.reviews",
+            "List this tenant's drift review items (a table note, table schema, or document \
+             change whose affected logged queries/searches were re-run), newest first. Each \
+             entry summarizes a change: changed_count and regressed_count, without the full \
+             per-query/search deltas -- call host.drift.review for those.",
+            host_schema(
+                json!({
+                    "open_only": {"type": "boolean", "description": "Only unresolved reviews (reason is still unset); default false."},
+                    "limit": {"type": "integer", "description": "Max rows to return, 1-200; default 50."},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "host.drift.review",
+            "Return one drift review item in full, including every QueryDelta/SearchDelta: \
+             before/after row_count, sample_hash, error_code (queries) or top5/overlap \
+             (searches), and which ones changed or regressed.",
+            host_schema(
+                json!({
+                    "item_id": {"type": "string", "description": "The review item's id, from host.drift.reviews."},
+                }),
+                &["item_id"],
+            ),
+        ),
+        Tool::new(
+            "host.drift.resolve",
+            "Resolve a drift review item with a reason (e.g. \"cosmetic\"); it then no longer \
+             appears under host.drift.reviews(open_only: true), and host.drift.review shows \
+             the reason.",
+            host_schema(
+                json!({
+                    "item_id": {"type": "string", "description": "The review item's id, from host.drift.reviews."},
+                    "reason": {"type": "string", "description": "Why this review is resolved, e.g. \"cosmetic\" or \"no_change\"."},
+                }),
+                &["item_id", "reason"],
+            ),
+        ),
+        Tool::new(
+            "host.drift.check",
+            "Enqueue a drift re-run for target (a declared table or a document name) without \
+             waiting for a version change -- a periodic sweep. The next tick produces a review \
+             with the current deltas even if nothing has actually changed.",
+            host_schema(
+                json!({
+                    "target": {"type": "string", "description": "Name of a declared table or a document to re-check."},
+                }),
+                &["target"],
             ),
         ),
         // PRD-mcphost-table-semantic-model requirement 4: the generated
@@ -4097,6 +4152,27 @@ impl LineageBackend for TenantLineageBridge {
     }
 }
 
+/// PRD-mcphost-drift-review P1 requirement 10 (AC12): [`TenantLineageBridge`]'s
+/// counterpart for `CallCtx.drift` -- bridges `Kind::call`'s sandboxed
+/// `mcphost.drift` requests to `drift::reviews`, the exact same function
+/// `host.drift.reviews` calls, so a tool gets back the same object that
+/// tool returns (AC12).
+pub(crate) struct TenantDriftBridge {
+    pub(crate) state: Arc<AppState>,
+    pub(crate) tenant: Tenant,
+}
+
+#[async_trait::async_trait]
+impl DriftBackend for TenantDriftBridge {
+    async fn call(&self, op: &str, args: Value) -> Result<Value, KindError> {
+        let result = match op {
+            "reviews" => crate::drift::reviews(&self.state, &self.tenant, &args).await,
+            other => Err(AppError::InvalidArgs(format!("unknown drift op '{other}'"))),
+        };
+        result.map_err(app_error_to_kind_error)
+    }
+}
+
 /// PRD-mcphost-sandbox-channel-msg-bridge requirement 2: [`TenantLineageBridge`]'s
 /// counterpart for `CallCtx.channel` -- bridges `Kind::call`'s sandboxed
 /// `mcphost.channel` requests to `channels.rs`'s real business logic for
@@ -4525,6 +4601,10 @@ impl McpHostHandler {
             "host.docs.search" => docs::doc_search(&self.state, tenant, &args).await,
             "host.docs.index_config" => docs::doc_index_config(&self.state, tenant, &args).await,
             "host.docs.reindex" => docs::doc_reindex(&self.state, tenant, &args).await,
+            "host.drift.reviews" => crate::drift::reviews(&self.state, tenant, &args).await,
+            "host.drift.review" => crate::drift::review_item(&self.state, tenant, &args).await,
+            "host.drift.resolve" => crate::drift::resolve(&self.state, tenant, &args).await,
+            "host.drift.check" => crate::drift::check(&self.state, tenant, &args).await,
             "host.runs.get" => crate::runs::get(&self.state, tenant, &args).await,
             "host.runs.list" => crate::runs::list(&self.state, tenant, &args).await,
             "host.runs.cancel" => crate::runs::cancel(&self.state, tenant, &args).await,
@@ -5021,6 +5101,10 @@ impl McpHostHandler {
                 state: self.state.clone(),
                 tenant: tenant.clone(),
             }),
+            drift: Arc::new(TenantDriftBridge {
+                state: self.state.clone(),
+                tenant: tenant.clone(),
+            }),
             // PRD-mcphost-sandbox-channel-msg-bridge requirement 2: same
             // "real tenant backend on the real dispatch path" convention
             // `state`/`table`/`docs`/`lineage` above already use.
@@ -5403,6 +5487,10 @@ impl McpHostHandler {
             state: self.state.clone(),
             tenant: tenant.clone(),
         });
+        let drift_backend: Arc<dyn DriftBackend> = Arc::new(TenantDriftBridge {
+            state: self.state.clone(),
+            tenant: tenant.clone(),
+        });
         // PRD-mcphost-sandbox-channel-msg-bridge requirement 4 (AC4): the
         // real tenant backends are wired in even for this dry-run path --
         // `ChannelSidecarBridge`/`MsgSidecarBridge` short-circuit on
@@ -5434,6 +5522,7 @@ impl McpHostHandler {
             table: table_backend.clone(),
             docs: docs_backend.clone(),
             lineage: lineage_backend.clone(),
+            drift: drift_backend.clone(),
             channel: channel_backend.clone(),
             msg: msg_backend.clone(),
             sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
@@ -5600,6 +5689,7 @@ impl McpHostHandler {
             table: Arc::new(NoTable),
             docs: Arc::new(NoDocs),
             lineage: Arc::new(NoLineage),
+            drift: Arc::new(crate::kinds::NoDrift),
             // `host.bridge_test` always dispatches to the `http` kind
             // (fixed above), which has no notion of `mcphost.channel`/
             // `mcphost.msg` either -- same `NoChannel`/`NoMsg` reasoning as
@@ -5792,6 +5882,10 @@ impl McpHostHandler {
             state: self.state.clone(),
             tenant: tenant.clone(),
         });
+        let drift_backend: Arc<dyn DriftBackend> = Arc::new(TenantDriftBridge {
+            state: self.state.clone(),
+            tenant: tenant.clone(),
+        });
         // PRD-mcphost-sandbox-channel-msg-bridge requirement 4 (AC4): same
         // "real backend, short-circuited on `test_mode` inside the bridge
         // itself" wiring `tool_test` above uses -- `spec` here may be a
@@ -5821,6 +5915,7 @@ impl McpHostHandler {
             table: table_backend.clone(),
             docs: docs_backend.clone(),
             lineage: lineage_backend.clone(),
+            drift: drift_backend.clone(),
             channel: channel_backend.clone(),
             msg: msg_backend.clone(),
             sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),
@@ -6041,6 +6136,10 @@ impl McpHostHandler {
             state: self.state.clone(),
             tenant: tenant.clone(),
         });
+        let drift_backend: Arc<dyn DriftBackend> = Arc::new(TenantDriftBridge {
+            state: self.state.clone(),
+            tenant: tenant.clone(),
+        });
         let channel_backend: Arc<dyn ChannelBackend> = Arc::new(TenantChannelBridge {
             state: self.state.clone(),
             tenant: tenant.clone(),
@@ -6063,6 +6162,7 @@ impl McpHostHandler {
             table: table_backend.clone(),
             docs: docs_backend.clone(),
             lineage: lineage_backend.clone(),
+            drift: drift_backend.clone(),
             channel: channel_backend.clone(),
             msg: msg_backend.clone(),
             sidecar_ops: Arc::new(std::sync::atomic::AtomicI64::new(0)),

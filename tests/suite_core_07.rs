@@ -368,6 +368,26 @@ mod docstore_ac08_unsupported_mime_by_content_sniff;
 mod docstore_ac10_purge_older_than_versions;
 #[path = "docstore_ac11_export_includes_documents.rs"]
 mod docstore_ac11_export_includes_documents;
+#[path = "drift_ac01_table_note_change_queues_and_completes.rs"]
+mod drift_ac01_table_note_change_queues_and_completes;
+#[path = "drift_ac02_cosmetic_note_change_zero_regressions.rs"]
+mod drift_ac02_cosmetic_note_change_zero_regressions;
+#[path = "drift_ac03_identical_content_applied_twice_one_review.rs"]
+mod drift_ac03_identical_content_applied_twice_one_review;
+#[path = "drift_ac04_append_changes_group_by_row_count.rs"]
+mod drift_ac04_append_changes_group_by_row_count;
+#[path = "drift_ac05_dropped_table_regresses_with_error_and_alert.rs"]
+mod drift_ac05_dropped_table_regresses_with_error_and_alert;
+#[path = "drift_ac06_document_version_search_overlap_regression.rs"]
+mod drift_ac06_document_version_search_overlap_regression;
+#[path = "drift_ac07_resolve_hides_from_open_only_and_shows_reason.rs"]
+mod drift_ac07_resolve_hides_from_open_only_and_shows_reason;
+#[path = "drift_ac08_cross_tenant_reviews_isolated.rs"]
+mod drift_ac08_cross_tenant_reviews_isolated;
+#[path = "drift_ac09_fifty_queries_rerun_under_5s_one_call.rs"]
+mod drift_ac09_fifty_queries_rerun_under_5s_one_call;
+#[path = "drift_ac10_manual_check_produces_review_without_version_change.rs"]
+mod drift_ac10_manual_check_produces_review_without_version_change;
 #[path = "dryrun_ac05_chain_host_table_append_step.rs"]
 mod dryrun_ac05_chain_host_table_append_step;
 #[path = "dryrun_ac06_tools_list_mentions_dry_run.rs"]
@@ -1622,21 +1642,3 @@ mod wake_ac6_msg_wait;
 mod wake_ac7_trigger_test_synthetic_envelope;
 #[path = "wake_ac8_replay.rs"]
 mod wake_ac8_replay;
-#[path = "wasmkind_ac01_echo_component_calls_and_meters.rs"]
-mod wasmkind_ac01_echo_component_calls_and_meters;
-#[path = "wasmkind_ac02_publish_validation_errors.rs"]
-mod wasmkind_ac02_publish_validation_errors;
-#[path = "wasmkind_ac03_timeout_and_oom_recover.rs"]
-mod wasmkind_ac03_timeout_and_oom_recover;
-#[path = "wasmkind_ac05_tool_test_dry_run.rs"]
-mod wasmkind_ac05_tool_test_dry_run;
-#[path = "wasmkind_ac06_trap_is_structured_and_logged.rs"]
-mod wasmkind_ac06_trap_is_structured_and_logged;
-#[path = "wasmkind_ac07_docs_llms_and_quickstart_document_wasm.rs"]
-mod wasmkind_ac07_docs_llms_and_quickstart_document_wasm;
-#[path = "wasmkind_ac08_cache_reuses_compiled_artifact.rs"]
-mod wasmkind_ac08_cache_reuses_compiled_artifact;
-#[path = "wasmkind_ac09_healthz_reports_wasm_runtime.rs"]
-mod wasmkind_ac09_healthz_reports_wasm_runtime;
-#[path = "wasmkind_ac10_declared_output_promotion_matches_python.rs"]
-mod wasmkind_ac10_declared_output_promotion_matches_python;

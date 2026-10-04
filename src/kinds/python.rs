@@ -103,8 +103,8 @@ use tokio::sync::Semaphore;
 
 use super::infer;
 use super::{
-    CallCtx, DocsBackend, Kind, KindError, KindExample, LineageBackend, OutputDecl, StateBackend,
-    TableBackend, ToolDescriptor,
+    CallCtx, DocsBackend, DriftBackend, Kind, KindError, KindExample, LineageBackend, OutputDecl,
+    StateBackend, TableBackend, ToolDescriptor,
 };
 use crate::sandbox::{
     self, IsolationMechanism, NetworkMode, PersistentCallOutcome, PersistentSandbox,
@@ -2007,6 +2007,13 @@ pub const BRIDGE_MODULES: &[BridgeModule] = &[
         ],
     },
     BridgeModule {
+        name: "drift",
+        purpose: "list drift review items (same list host.drift.reviews returns)",
+        signatures: &[
+            "mcphost.drift.reviews(open_only=None, limit=None) -- list this tenant's drift review items",
+        ],
+    },
+    BridgeModule {
         name: "channel",
         purpose: "post to or read a tenant channel (same store host.channel.* uses)",
         signatures: &[
@@ -2572,6 +2579,47 @@ _mcphost_lineage_mod.trace = _lineage_trace
 _mcphost_lineage_mod.blast_radius = _lineage_blast_radius
 _mcphost_lineage_mod.LineageError = McphostLineageError
 
+# ---- mcphost.drift (PRD-mcphost-drift-review P1 requirement 10/AC12) ------
+#
+# Same synchronous request-line-out/response-line-in round trip as
+# `mcphost.state`/`mcphost.table`/`mcphost.docs`/`mcphost.lineage` above,
+# marked `__mcphost_drift__` so the host side (`kinds::python::DriftSidecarBridge`)
+# can tell it apart on the same stdin/stdout pair. `reviews()` returns
+# exactly the object `host.drift.reviews` itself returns (AC12) -- this is
+# a thin pass-through to that same host-side logic, not a separate
+# implementation.
+class McphostDriftError(Exception):
+    def __init__(self, code, message, data=None):
+        super().__init__(message)
+        self.code = code
+        self.data = data or {}
+
+def _drift_call(op, **kwargs):
+    _real_stdout.write(json.dumps({"__mcphost_drift__": True, "op": op, "args": kwargs}))
+    _real_stdout.write("\n")
+    _real_stdout.flush()
+    line = sys.stdin.readline()
+    if not line:
+        raise McphostDriftError("drift_unavailable", "the drift channel closed")
+    resp = json.loads(line)
+    if not resp.get("ok"):
+        raise McphostDriftError(
+            resp.get("code", "drift_error"), resp.get("message", "drift call failed"), resp.get("data")
+        )
+    return resp.get("result")
+
+def _drift_reviews(open_only=None, limit=None):
+    kwargs = {}
+    if open_only is not None:
+        kwargs["open_only"] = open_only
+    if limit is not None:
+        kwargs["limit"] = limit
+    return _drift_call("reviews", **kwargs)
+
+_mcphost_drift_mod = _mcphost_types.ModuleType("mcphost.drift")
+_mcphost_drift_mod.reviews = _drift_reviews
+_mcphost_drift_mod.DriftError = McphostDriftError
+
 # ---- mcphost.channel / mcphost.msg (PRD-mcphost-sandbox-channel-msg-bridge)
 #
 # Same synchronous request-line-out/response-line-in round trip as
@@ -2688,6 +2736,7 @@ _mcphost_mod.state = _mcphost_state_mod
 _mcphost_mod.table = _mcphost_table_mod
 _mcphost_mod.docs = _mcphost_docs_mod
 _mcphost_mod.lineage = _mcphost_lineage_mod
+_mcphost_mod.drift = _mcphost_drift_mod
 _mcphost_mod.channel = _mcphost_channel_mod
 _mcphost_mod.msg = _mcphost_msg_mod
 _mcphost_mod.call = _mcphost_call
@@ -2723,6 +2772,7 @@ sys.modules["mcphost.state"] = _mcphost_state_mod
 sys.modules["mcphost.table"] = _mcphost_table_mod
 sys.modules["mcphost.docs"] = _mcphost_docs_mod
 sys.modules["mcphost.lineage"] = _mcphost_lineage_mod
+sys.modules["mcphost.drift"] = _mcphost_drift_mod
 sys.modules["mcphost.channel"] = _mcphost_channel_mod
 sys.modules["mcphost.msg"] = _mcphost_msg_mod
 
@@ -3206,6 +3256,46 @@ impl SidecarBridge for LineageSidecarBridge<'_> {
     }
 }
 
+/// PRD-mcphost-drift-review P1 requirement 10 (AC12): [`StateSidecarBridge`]'s
+/// counterpart for `CallCtx.drift` -- `PY_RUNNER_SCRIPT`'s `mcphost.drift`
+/// functions emit `{"__mcphost_drift__": true, "op": ..., "args": {...}}`
+/// and block reading the response line this produces.
+struct DriftSidecarBridge<'a> {
+    drift: &'a Arc<dyn DriftBackend>,
+}
+
+#[async_trait::async_trait]
+impl SidecarBridge for DriftSidecarBridge<'_> {
+    async fn intercept(&self, line: &[u8]) -> Option<Vec<u8>> {
+        let request: Value = serde_json::from_slice(line).ok()?;
+        if request.get("__mcphost_drift__").and_then(Value::as_bool) != Some(true) {
+            return None;
+        }
+        let op = request.get("op").and_then(Value::as_str).unwrap_or("");
+        let args = request.get("args").cloned().unwrap_or(Value::Null);
+        let response = match self.drift.call(op, args).await {
+            Ok(result) => json!({"ok": true, "result": result}),
+            Err(e) => {
+                let (code, message, data) = match e {
+                    KindError::Structured {
+                        code,
+                        message,
+                        data,
+                    } => (code, message, data),
+                    KindError::InvalidArgs(m) => ("drift_args_invalid", m, Value::Null),
+                    KindError::InvalidSpec(m) => ("drift_args_invalid", m, Value::Null),
+                    KindError::Exec(m) => ("drift_error", m, Value::Null),
+                };
+                json!({"ok": false, "code": code, "message": message, "data": data})
+            }
+        };
+        Some(serde_json::to_vec(&response).unwrap_or_else(|_| {
+            br#"{"ok":false,"code":"drift_error","message":"internal: response not serializable"}"#
+                .to_vec()
+        }))
+    }
+}
+
 /// PRD-mcphost-sandbox-channel-msg-bridge requirement 5 (AC5): checked by
 /// both [`ChannelSidecarBridge`] and [`MsgSidecarBridge`] before every call
 /// reaches `ctx.channel`/`ctx.msg` -- increments `ctx.sidecar_ops` (shared
@@ -3500,6 +3590,12 @@ impl SidecarBridge for HostSidecarBridge<'_> {
             lineage: &self.ctx.lineage,
         };
         if let Some(response) = lineage_bridge.intercept(line).await {
+            return Some(response);
+        }
+        let drift_bridge = DriftSidecarBridge {
+            drift: &self.ctx.drift,
+        };
+        if let Some(response) = drift_bridge.intercept(line).await {
             return Some(response);
         }
         let channel_bridge = ChannelSidecarBridge { ctx: self.ctx };
@@ -5661,6 +5757,7 @@ mod tests {
             state: Arc::new(crate::kinds::NoState),
             table: Arc::new(crate::kinds::NoTable),
             lineage: Arc::new(crate::kinds::NoLineage),
+            drift: Arc::new(crate::kinds::NoDrift),
             docs: Arc::new(crate::kinds::NoDocs),
             compose_depth: 0,
             compose_children: None,
@@ -5974,6 +6071,7 @@ mod tests {
             state: Arc::new(crate::kinds::NoState),
             table: Arc::new(crate::kinds::NoTable),
             lineage: Arc::new(crate::kinds::NoLineage),
+            drift: Arc::new(crate::kinds::NoDrift),
             docs: Arc::new(crate::kinds::NoDocs),
             compose_depth: 0,
             compose_children: None,

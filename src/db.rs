@@ -132,6 +132,9 @@ const MIGRATION_0064: &str = include_str!("../migrations/0064_trigger_names.sql"
 // claimed 0063, then mcphost-trigger-set-idempotent claimed 0064, all
 // landing on main ahead of this branch.
 const MIGRATION_0065: &str = include_str!("../migrations/0065_public_tool_url.sql");
+/// PRD-mcphost-drift-review requirement 1/3/5/6: `context_versions`,
+/// `drift_queue`, `emitted_reviews`, `drift_reviews`, `drift_alerts`.
+const MIGRATION_0066: &str = include_str!("../migrations/0066_drift.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -2276,7 +2279,8 @@ impl Db {
         // row inserted between the `ALTER TABLE` and this call during a
         // rolling deploy.
         backfill_trigger_names_sync(&conn)?;
-        Self::migrate_0065_public_tool_url(&conn)
+        Self::migrate_0065_public_tool_url(&conn)?;
+        Self::migrate_0066_drift(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -3217,6 +3221,19 @@ impl Db {
         Ok(())
     }
 
+    /// PRD-mcphost-drift-review requirement 1/3/5/6 migration:
+    /// `context_versions`/`drift_queue`/`emitted_reviews`/`drift_reviews`/
+    /// `drift_alerts` -- same "new table(s), guard on one's presence"
+    /// convention 0058/0063/0065 above use.
+    fn migrate_0066_drift(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'context_versions'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0066)?;
+        }
+        Ok(())
+    }
 
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
@@ -14000,6 +14017,294 @@ impl Db {
         .await
     }
 
+    // ---- PRD-mcphost-drift-review: context_versions / drift_queue /
+    // emitted_reviews / drift_reviews / drift_alerts --------------------
+
+    /// requirement 1: the next version number for a (tenant, kind, target)
+    /// triple (1 for the first change ever recorded) and the row just
+    /// inserted. Caller already knows `definition_json`/`actor`; this is
+    /// the one write path every hook (`model_set`, the table-model tick,
+    /// `doc_put`) funnels through.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_context_version(
+        &self,
+        tenant_id: i64,
+        kind: String,
+        target: String,
+        version: i64,
+        definition_json: String,
+        actor: Option<String>,
+    ) -> Result<i64, AppError> {
+        let observed_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO context_versions \
+                 (tenant_id, kind, target, version, definition_json, actor, observed_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![tenant_id, kind, target, version, definition_json, actor, observed_unix],
+            )?;
+            Ok(conn.last_insert_rowid())
+        })
+        .await
+    }
+
+    /// requirement 1: the latest recorded version for a (tenant, kind,
+    /// target) triple, or `None` when this is the first change ever seen
+    /// for it (the caller then records version 1).
+    pub async fn latest_context_version(
+        &self,
+        tenant_id: i64,
+        kind: String,
+        target: String,
+    ) -> Result<Option<i64>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT MAX(version) FROM context_versions WHERE tenant_id = ?1 AND kind = ?2 AND target = ?3",
+                params![tenant_id, kind, target],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 3: enqueues one `drift_queue` row, `INSERT OR IGNORE` on
+    /// the `(tenant_id, kind, target, trigger_version)` unique index so a
+    /// change already queued (or already processed) for this exact version
+    /// enqueues at most once. Returns `true` when a row was actually
+    /// inserted (`false` when this exact change was already queued).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn enqueue_drift(
+        &self,
+        tenant_id: i64,
+        kind: String,
+        target: String,
+        trigger_version: i64,
+        actor: Option<String>,
+        dedupe_hash: String,
+    ) -> Result<bool, AppError> {
+        let queued_unix = now_unix();
+        self.with_conn(move |conn| {
+            let changed = conn.execute(
+                "INSERT OR IGNORE INTO drift_queue \
+                 (tenant_id, kind, target, trigger_version, actor, dedupe_hash, queued_unix, status) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'queued')",
+                params![tenant_id, kind, target, trigger_version, actor, dedupe_hash, queued_unix],
+            )?;
+            Ok(changed > 0)
+        })
+        .await
+    }
+
+    /// requirement 3: every `queued` row across every tenant --
+    /// [`crate::drift::rerun::tick_once`]'s own worklist, run at the end of
+    /// [`crate::tables_model::tick_once`] within the same tick cycle.
+    pub async fn list_queued_drift(&self) -> Result<Vec<DriftQueueRow>, AppError> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, tenant_id, kind, target, trigger_version, actor, dedupe_hash, queued_unix \
+                 FROM drift_queue WHERE status = 'queued' ORDER BY id",
+            )?;
+            let rows = stmt
+                .query_map([], |r| {
+                    Ok(DriftQueueRow {
+                        id: r.get(0)?,
+                        tenant_id: r.get(1)?,
+                        kind: r.get(2)?,
+                        target: r.get(3)?,
+                        trigger_version: r.get(4)?,
+                        actor: r.get(5)?,
+                        dedupe_hash: r.get(6)?,
+                        queued_unix: r.get(7)?,
+                    })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// requirement 3: "queued, then done within 60s" -- the tick marks a
+    /// row `done` once it has been processed (re-run attempted and, unless
+    /// deduped, a review emitted), regardless of whether that processing
+    /// hit an error for one affected query -- a single bad query must never
+    /// strand the whole queue entry at `queued` forever.
+    pub async fn mark_drift_queue_done(&self, id: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute("UPDATE drift_queue SET status = 'done' WHERE id = ?1", params![id])?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// requirement 3/AC3: `INSERT OR IGNORE` on `(tenant_id, dedupe_hash)`'s
+    /// unique index -- `true` when this is the first time this exact change
+    /// content has been seen (a review should be emitted), `false` when a
+    /// review for it already exists (the queue entry still reaches `done`,
+    /// just with no second review row).
+    pub async fn try_emit_review(&self, tenant_id: i64, dedupe_hash: String) -> Result<bool, AppError> {
+        let created_unix = now_unix();
+        self.with_conn(move |conn| {
+            let changed = conn.execute(
+                "INSERT OR IGNORE INTO emitted_reviews (tenant_id, dedupe_hash, created_unix) VALUES (?1, ?2, ?3)",
+                params![tenant_id, dedupe_hash, created_unix],
+            )?;
+            Ok(changed > 0)
+        })
+        .await
+    }
+
+    /// requirement 5: the one write path for a `DriftReviewItem`.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_drift_review(
+        &self,
+        item_id: String,
+        tenant_id: i64,
+        kind: String,
+        target: String,
+        old_version: Option<i64>,
+        new_version: i64,
+        actor: Option<String>,
+        deltas_json: String,
+        changed_count: i64,
+        regressed_count: i64,
+    ) -> Result<(), AppError> {
+        let created_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO drift_reviews \
+                 (item_id, tenant_id, kind, target, old_version, new_version, actor, created_unix, \
+                  reason, deltas_json, changed_count, regressed_count) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL, ?9, ?10, ?11)",
+                params![
+                    item_id, tenant_id, kind, target, old_version, new_version, actor, created_unix,
+                    deltas_json, changed_count, regressed_count,
+                ],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// requirement 7: `host.drift.reviews(open_only?, limit?)` -- newest
+    /// first, `open_only` filtering to `reason IS NULL`. Tenant-scoped
+    /// (AC8): the `WHERE tenant_id = ?` below is the whole isolation
+    /// guarantee, the same structural stance every other per-tenant list in
+    /// this file takes.
+    pub async fn list_drift_reviews(
+        &self,
+        tenant_id: i64,
+        open_only: bool,
+        limit: i64,
+    ) -> Result<Vec<DriftReviewRow>, AppError> {
+        self.with_conn(move |conn| {
+            let sql = format!(
+                "SELECT item_id, tenant_id, kind, target, old_version, new_version, actor, \
+                 created_unix, reason, deltas_json, changed_count, regressed_count \
+                 FROM drift_reviews WHERE tenant_id = ?1 {} ORDER BY id DESC LIMIT ?2",
+                if open_only { "AND reason IS NULL" } else { "" }
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(params![tenant_id, limit], drift_review_from_row)?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// requirement 7: `host.drift.review(item_id)` -- `None` when
+    /// `item_id` doesn't exist, or belongs to a different tenant (AC8):
+    /// scoped by `tenant_id` exactly like [`Self::list_drift_reviews`], so
+    /// a cross-tenant `item_id` reads as not-found rather than forbidden.
+    pub async fn get_drift_review(
+        &self,
+        tenant_id: i64,
+        item_id: String,
+    ) -> Result<Option<DriftReviewRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT item_id, tenant_id, kind, target, old_version, new_version, actor, \
+                 created_unix, reason, deltas_json, changed_count, regressed_count \
+                 FROM drift_reviews WHERE tenant_id = ?1 AND item_id = ?2",
+                params![tenant_id, item_id],
+                drift_review_from_row,
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 7: `host.drift.resolve(item_id, reason)` -- `false` when
+    /// `item_id` doesn't exist, or belongs to a different tenant, same
+    /// isolation stance as [`Self::get_drift_review`].
+    pub async fn resolve_drift_review(
+        &self,
+        tenant_id: i64,
+        item_id: String,
+        reason: String,
+    ) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let changed = conn.execute(
+                "UPDATE drift_reviews SET reason = ?1 WHERE tenant_id = ?2 AND item_id = ?3",
+                params![reason, tenant_id, item_id],
+            )?;
+            Ok(changed > 0)
+        })
+        .await
+    }
+
+    /// requirement 6: the one write path for a `drift_regression`
+    /// `AlertEvent`.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_drift_alert(
+        &self,
+        tenant_id: i64,
+        review_item_id: String,
+        kind: String,
+        severity: String,
+        detail_json: String,
+    ) -> Result<(), AppError> {
+        let created_unix = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO drift_alerts (tenant_id, review_item_id, kind, severity, detail_json, created_unix) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![tenant_id, review_item_id, kind, severity, detail_json, created_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Test-only: every `drift_alerts` row for a tenant, newest first --
+    /// AC5's own proof that a `drift_regression` alert was actually raised,
+    /// same "test reads the db handle `TestServer` exposes" convention
+    /// `get_alert_for_test` already uses.
+    pub async fn list_drift_alerts_for_test(&self, tenant_id: i64) -> Result<Vec<DriftAlertRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT tenant_id, review_item_id, kind, severity, detail_json, created_unix \
+                 FROM drift_alerts WHERE tenant_id = ?1 ORDER BY id DESC",
+            )?;
+            let rows = stmt
+                .query_map(params![tenant_id], |r| {
+                    Ok(DriftAlertRow {
+                        tenant_id: r.get(0)?,
+                        review_item_id: r.get(1)?,
+                        kind: r.get(2)?,
+                        severity: r.get(3)?,
+                        detail_json: r.get(4)?,
+                        created_unix: r.get(5)?,
+                    })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
     /// PRD-mcphost-alerting-webhook requirement 2 / AC4: host-wide `(total,
     /// errors)` call counts since `since_unix`, for
     /// [`crate::alerts::tick_once`]'s minute tick -- `total` is every row
@@ -17415,6 +17720,67 @@ fn table_graph_from_row(r: &Row) -> rusqlite::Result<TableGraphRow> {
         computed_at: r.get(3)?,
         stale: r.get(4)?,
     })
+}
+
+// ---- PRD-mcphost-drift-review row types -----------------------------------
+
+/// One `drift_queue` row -- [`crate::drift::rerun::tick_once`]'s own
+/// worklist entry.
+#[derive(Debug, Clone)]
+pub struct DriftQueueRow {
+    pub id: i64,
+    pub tenant_id: i64,
+    pub kind: String,
+    pub target: String,
+    pub trigger_version: i64,
+    pub actor: Option<String>,
+    pub dedupe_hash: String,
+    pub queued_unix: i64,
+}
+
+/// One `drift_reviews` row -- `host.drift.reviews`/`.review`'s own shape.
+#[derive(Debug, Clone)]
+pub struct DriftReviewRow {
+    pub item_id: String,
+    pub tenant_id: i64,
+    pub kind: String,
+    pub target: String,
+    pub old_version: Option<i64>,
+    pub new_version: i64,
+    pub actor: Option<String>,
+    pub created_unix: i64,
+    pub reason: Option<String>,
+    pub deltas_json: String,
+    pub changed_count: i64,
+    pub regressed_count: i64,
+}
+
+fn drift_review_from_row(r: &Row) -> rusqlite::Result<DriftReviewRow> {
+    Ok(DriftReviewRow {
+        item_id: r.get(0)?,
+        tenant_id: r.get(1)?,
+        kind: r.get(2)?,
+        target: r.get(3)?,
+        old_version: r.get(4)?,
+        new_version: r.get(5)?,
+        actor: r.get(6)?,
+        created_unix: r.get(7)?,
+        reason: r.get(8)?,
+        deltas_json: r.get(9)?,
+        changed_count: r.get(10)?,
+        regressed_count: r.get(11)?,
+    })
+}
+
+/// One `drift_alerts` row -- test-only reader's own shape (AC5).
+#[derive(Debug, Clone)]
+pub struct DriftAlertRow {
+    pub tenant_id: i64,
+    pub review_item_id: String,
+    pub kind: String,
+    pub severity: String,
+    pub detail_json: String,
+    pub created_unix: i64,
 }
 
 // ---- PRD-mcphost-hosted-authorization-server row types --------------------

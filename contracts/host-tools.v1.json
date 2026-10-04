@@ -862,6 +862,101 @@
       "since": "0.58.0"
     },
     {
+      "description": "Enqueue a drift re-run for target (a declared table or a document name) without waiting for a version change -- a periodic sweep. The next tick produces a review with the current deltas even if nothing has actually changed.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "target": {
+            "description": "Name of a declared table or a document to re-check.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "type": "object"
+      },
+      "name": "host.drift.check",
+      "since": "0.79.0"
+    },
+    {
+      "description": "Resolve a drift review item with a reason (e.g. \"cosmetic\"); it then no longer appears under host.drift.reviews(open_only: true), and host.drift.review shows the reason.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "item_id": {
+            "description": "The review item's id, from host.drift.reviews.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why this review is resolved, e.g. \"cosmetic\" or \"no_change\".",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "name": "host.drift.resolve",
+      "since": "0.79.0"
+    },
+    {
+      "description": "Return one drift review item in full, including every QueryDelta/SearchDelta: before/after row_count, sample_hash, error_code (queries) or top5/overlap (searches), and which ones changed or regressed.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "item_id": {
+            "description": "The review item's id, from host.drift.reviews.",
+            "type": "string"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id"
+        ],
+        "type": "object"
+      },
+      "name": "host.drift.review",
+      "since": "0.79.0"
+    },
+    {
+      "description": "List this tenant's drift review items (a table note, table schema, or document change whose affected logged queries/searches were re-run), newest first. Each entry summarizes a change: changed_count and regressed_count, without the full per-query/search deltas -- call host.drift.review for those.",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "Max rows to return, 1-200; default 50.",
+            "type": "integer"
+          },
+          "open_only": {
+            "description": "Only unresolved reviews (reason is still unset); default false.",
+            "type": "boolean"
+          },
+          "tenant_key": {
+            "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. Required only when this connection carries no Authorization: Bearer header and never ran signup -- when both a header and this argument are present, the header wins. Omitting it on such a connection returns tenant_key_missing (-32602).",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "host.drift.reviews",
+      "since": "0.79.0"
+    },
+    {
       "description": "Generate and store a new per-tenant secret for signing end_user_assertion (HS256 compact JWS, claims sub/iat/exp with exp <= iat + 3600). Returns the secret once; it is never shown again and never appears in host.secret_list. Assertions signed with any prior secret stop verifying immediately -- no overlap window.",
       "input_schema": {
         "additionalProperties": false,

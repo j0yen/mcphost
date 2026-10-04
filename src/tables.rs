@@ -80,6 +80,12 @@ pub(crate) const META_TABLE: &str = "_mcphost_meta";
 /// [`META_TABLE`]'s own reservation).
 pub(crate) const QUERY_LOG_TABLE: &str = "_mcphost_query_log";
 
+/// PRD-mcphost-drift-review requirement 2: `host.docs.search`'s own call
+/// log, in the same per-tenant-file pattern as [`QUERY_LOG_TABLE`] --
+/// `drift::rerun`'s dependency lookup for a changed document scans this
+/// table (within the last 30 days) for a search whose top hits named it.
+pub(crate) const DOCS_SEARCH_LOG_TABLE: &str = "_docs_search_log";
+
 /// requirement 3: the query log keeps at most this many rows per tenant;
 /// the insert that would make one more evicts the oldest in the same
 /// transaction.
@@ -284,8 +290,26 @@ pub(crate) fn open_conn(path: &Path, cfg: &crate::db::DbConfig) -> Result<Connec
             duration_ms INTEGER NOT NULL,
             error_code TEXT,
             error_message TEXT
+        );
+        CREATE TABLE IF NOT EXISTS {DOCS_SEARCH_LOG_TABLE} (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_unix INTEGER NOT NULL,
+            query TEXT NOT NULL,
+            mode TEXT NOT NULL,
+            top_ids_json TEXT NOT NULL
         );"
     ))?;
+    // PRD-mcphost-drift-review requirement 4: `sample_hash` is additive on
+    // an existing tenant's `_mcphost_query_log` (created by the dependency
+    // PRD before this column existed) -- same `pragma_table_info` guard
+    // `Db::migrate_0002_tenant_last_tool_change`'s own doc comment explains
+    // SQLite needs for an `ALTER TABLE ADD COLUMN` to stay idempotent.
+    let has_sample_hash: bool = conn
+        .prepare(&format!("SELECT 1 FROM pragma_table_info('{QUERY_LOG_TABLE}') WHERE name = 'sample_hash'"))?
+        .exists([])?;
+    if !has_sample_hash {
+        conn.execute(&format!("ALTER TABLE {QUERY_LOG_TABLE} ADD COLUMN sample_hash TEXT"), [])?;
+    }
     Ok(conn)
 }
 
@@ -832,7 +856,7 @@ pub(crate) fn value_ref_to_json(v: ValueRef<'_>) -> Value {
 /// documented-safe on rusqlite's `InterruptHandle` even after the
 /// connection it was drawn from is done with (or has dropped) its work, so
 /// there is nothing to cancel/join when the query returns first.
-fn run_query_sync(conn: &Connection, sql: &str) -> Result<Vec<Value>, AppError> {
+pub(crate) fn run_query_sync(conn: &Connection, sql: &str) -> Result<Vec<Value>, AppError> {
     let interrupt = conn.get_interrupt_handle();
     std::thread::spawn(move || {
         std::thread::sleep(QUERY_TIME_CAP);
@@ -870,6 +894,17 @@ fn run_query_sync(conn: &Connection, sql: &str) -> Result<Vec<Value>, AppError> 
     Ok(rows_out)
 }
 
+/// PRD-mcphost-drift-review requirement 4: a hash of the first 20 rows, in
+/// the order returned -- `drift::rerun`'s own `before`/`after` comparison
+/// for a re-run query, and what [`table_query`] stores alongside `row_count`
+/// at log time so there's something to compare a re-run's result against
+/// later (the original rows themselves are never kept, only this hash).
+pub(crate) fn sample_hash_of(rows: &[Value]) -> String {
+    let sample = &rows[..rows.len().min(20)];
+    let serialized = serde_json::to_string(sample).unwrap_or_default();
+    crate::billing::sha256_hex(serialized.as_bytes())
+}
+
 /// requirement 2 (P2 requirement 10/AC13): truncates `sql` to at most
 /// [`QUERY_LOG_SQL_MAX_BYTES`] bytes (on a UTF-8 char boundary) for storage
 /// in the log -- the submitted query itself is never refused for length,
@@ -885,12 +920,23 @@ fn truncate_sql_for_log(sql: &str) -> (String, bool) {
     (sql[..end].to_string(), true)
 }
 
+/// [`log_query`]'s own outcome fields, bundled so the function stays under
+/// this repo's `too-many-arguments-threshold = 5` (clippy.toml) without a
+/// suppression.
+struct QueryLogOutcome<'a> {
+    duration_ms: i64,
+    row_count: Option<i64>,
+    sample_hash: Option<&'a str>,
+    error: Option<&'a AppError>,
+}
+
 /// requirement 2/3: appends one row to this connection's query log,
 /// evicting the oldest row past [`QUERY_LOG_CAP`] in the same transaction.
 /// requirement 2's "logging failure never fails the query" -- any error
 /// writing the log row is warned and swallowed here, never propagated to
 /// the caller of [`table_query`].
-fn log_query(conn: &Connection, sql: &str, duration_ms: i64, row_count: Option<i64>, error: Option<&AppError>) {
+fn log_query(conn: &Connection, sql: &str, log_outcome: QueryLogOutcome<'_>) {
+    let QueryLogOutcome { duration_ms, row_count, sample_hash, error } = log_outcome;
     let (stored_sql, truncated) = truncate_sql_for_log(sql);
     let error_code = error.map(AppError::code);
     let error_message = error.map(ToString::to_string);
@@ -900,8 +946,8 @@ fn log_query(conn: &Connection, sql: &str, duration_ms: i64, row_count: Option<i
             conn.execute(
                 &format!(
                     "INSERT INTO {QUERY_LOG_TABLE} \
-                     (created_unix, sql, truncated, row_count, duration_ms, error_code, error_message) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
+                     (created_unix, sql, truncated, row_count, duration_ms, error_code, error_message, sample_hash) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)"
                 ),
                 params![
                     crate::state::now_unix(),
@@ -911,6 +957,7 @@ fn log_query(conn: &Connection, sql: &str, duration_ms: i64, row_count: Option<i
                     duration_ms,
                     error_code,
                     error_message,
+                    sample_hash,
                 ],
             )?;
             conn.execute(
@@ -955,8 +1002,21 @@ pub async fn table_query(state: &AppState, tenant: &Tenant, args: &Value) -> Res
         // read-only connection.
         let _ = conn.pragma_update(None, "query_only", "OFF");
         match &result {
-            Ok(rows) => log_query(conn, &sql_for_conn, duration_ms, Some(rows.len() as i64), None),
-            Err(e) => log_query(conn, &sql_for_conn, duration_ms, None, Some(e)),
+            Ok(rows) => log_query(
+                conn,
+                &sql_for_conn,
+                QueryLogOutcome {
+                    duration_ms,
+                    row_count: Some(rows.len() as i64),
+                    sample_hash: Some(&sample_hash_of(rows)),
+                    error: None,
+                },
+            ),
+            Err(e) => log_query(
+                conn,
+                &sql_for_conn,
+                QueryLogOutcome { duration_ms, row_count: None, sample_hash: None, error: Some(e) },
+            ),
         }
         result
     })

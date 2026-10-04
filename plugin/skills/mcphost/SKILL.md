@@ -47,6 +47,7 @@ A python tool's own code does `import mcphost` to reach this tenant's data witho
 - `mcphost.table` -- per-tenant SQL tables (same store host.table.* uses)
 - `mcphost.docs` -- read or search this tenant's stored documents (same store host.docs.* uses)
 - `mcphost.lineage` -- trace an artifact's lineage or estimate a change's blast radius (same report host.lineage.* uses)
+- `mcphost.drift` -- list drift review items (same list host.drift.reviews returns)
 - `mcphost.channel` -- post to or read a tenant channel (same store host.channel.* uses)
 - `mcphost.msg` -- send or read direct messages (same store host.msg.* uses)
 <!-- mcphost-sandbox-api:end -->
