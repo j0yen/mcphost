@@ -19,10 +19,14 @@
 //!  "args": {}}
 //! ```
 //! `verify.secret` is a *secret name* (resolved through `secrets.rs` at
-//! verify time), never a plaintext value -- safe to return from
-//! `host.trigger.list`/`get`/admin.triggers.
+//! verify time), never a plaintext value -- `admin.triggers` still returns
+//! it (operator-only visibility); `host.trigger.list`/`get`'s own `verify`
+//! (tenant-facing) drops it entirely (PRD-mcphost-event-trigger-self-test
+//! AC4), surfacing only `scheme`/`header`/`prefix` plus a sibling `preset`
+//! field.
 
 use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -108,6 +112,17 @@ fn run_not_found(run_id: &str) -> AppError {
 pub struct EventCounters {
     received: Arc<Mutex<VecDeque<Instant>>>,
     rejected: Arc<Mutex<VecDeque<Instant>>>,
+    /// P1 requirement 7 / AC10: `/healthz`'s `triggers.event_self_tests_total`
+    /// -- every `host.trigger.test` call against a `kind="event"` trigger,
+    /// whatever its outcome. Cumulative since process start (not a sliding
+    /// window like `received`/`rejected` above -- a self-test rate is a much
+    /// lower-volume signal than live delivery traffic, so a simple running
+    /// total is the more useful number here).
+    self_tests: Arc<AtomicI64>,
+    /// `/healthz`'s `triggers.event_self_test_signature_invalid_total` --
+    /// the subset of `self_tests` above that failed the strict (caller
+    /// supplied the configured header) verification path.
+    self_test_signature_invalid: Arc<AtomicI64>,
 }
 
 impl EventCounters {
@@ -157,6 +172,24 @@ impl EventCounters {
 
     pub fn rejected_1h(&self) -> i64 {
         Self::count(&self.rejected)
+    }
+
+    /// `host.trigger.test`'s own entry, for every `kind="event"` trigger
+    /// (P1 requirement 7 / AC10).
+    pub fn record_self_test(&self) {
+        self.self_tests.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn record_self_test_signature_invalid(&self) {
+        self.self_test_signature_invalid.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn self_tests_total(&self) -> i64 {
+        self.self_tests.load(Ordering::Relaxed)
+    }
+
+    pub fn self_test_signature_invalid_total(&self) -> i64 {
+        self.self_test_signature_invalid.load(Ordering::Relaxed)
     }
 }
 
@@ -251,6 +284,38 @@ fn hmac_hex(scheme: &str, secret: &[u8], message: &[u8]) -> String {
         to_hex(&hmac_sha1(secret, message))
     } else {
         to_hex(&crate::billing::hmac_sha256(secret, message))
+    }
+}
+
+/// `host.trigger.test`'s own self-signing (requirement 1): the exact
+/// inverse of [`verify_event`]'s hmac-* and token branches, factored out so
+/// [`test`] can build the header value it's about to verify instead of
+/// demanding the caller compute it -- webhooks.rs:30-37 does the same
+/// self-signing for its own `kind="webhook"` sibling, just inline (that
+/// kind has only two schemes; this one has four). `scheme = "none"` is
+/// never passed in here -- that config has no `header` to self-sign, so
+/// [`test`] never reaches this function for it.
+fn sign_event(verify: &Value, secret: &str, body: &[u8]) -> String {
+    let scheme = verify.get("scheme").and_then(Value::as_str).unwrap_or("none");
+    match scheme {
+        "hmac-sha256" | "hmac-sha1" => {
+            if verify.get("timestamp_header").and_then(Value::as_str).is_some() {
+                // Stripe-style: the same `t=<unix>,v1=<hex>` shape
+                // `verify_stripe_style` parses back, signed over `"{t}.{body}"`.
+                let t = now_unix();
+                let signed_payload = [t.to_string().as_bytes(), b".", body].concat();
+                let sig = hmac_hex(scheme, secret.as_bytes(), &signed_payload);
+                format!("t={t},v1={sig}")
+            } else {
+                let prefix = verify.get("prefix").and_then(Value::as_str).unwrap_or("");
+                format!("{prefix}{}", hmac_hex(scheme, secret.as_bytes(), body))
+            }
+        }
+        // "token": a plain shared secret, not a computed signature -- the
+        // header value IS the secret itself (verify_event's own token
+        // branch checks for exactly that).
+        "token" => secret.to_string(),
+        _ => String::new(),
     }
 }
 
@@ -424,6 +489,56 @@ fn validate_verify_config(verify: &Value) -> Result<Value, AppError> {
     }
 }
 
+/// P0 requirement 3 / AC4-AC5: `host.trigger.set(kind="event", verify:
+/// "github" | "stripe", secret: <name>)` -- a named preset expanding to the
+/// same `verify` shape a caller would otherwise hand-assemble, saving them
+/// from mistyping `scheme`/`header`/`prefix`. `secret` is a top-level
+/// `host.trigger.set` argument (not nested under `verify`, since a bare
+/// string has nowhere to nest it) naming a `host.secret_set` entry, same as
+/// the object form's own `verify.secret`.
+const KNOWN_VERIFY_PRESETS: &[&str] = &["github", "stripe"];
+
+fn expand_verify_preset(name: &str, args: &Value) -> Result<Value, AppError> {
+    let secret = args
+        .get("secret")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            trigger_invalid(
+                "secret",
+                format!(
+                    "verify: \"{name}\" needs a top-level secret argument naming a host.secret_set entry"
+                ),
+            )
+        })?;
+    match name {
+        "github" => Ok(json!({
+            "scheme": "hmac-sha256",
+            "header": "X-Hub-Signature-256",
+            "prefix": "sha256=",
+            "secret": secret,
+        })),
+        // Stripe's own `t=,v1=` scheme reads its timestamp out of the same
+        // header it signs (see `verify_event`'s `timestamp_header` branch --
+        // it names the HTTP header to read, not a separate "t" header), so
+        // `header` and `timestamp_header` are the same name here.
+        "stripe" => Ok(json!({
+            "scheme": "hmac-sha256",
+            "header": "Stripe-Signature",
+            "timestamp_header": "Stripe-Signature",
+            "tolerance_s": DEFAULT_TOLERANCE_S,
+            "secret": secret,
+        })),
+        other => Err(trigger_invalid(
+            "verify",
+            format!(
+                "verify: '{other}' is not a known preset -- must be one of {}",
+                KNOWN_VERIFY_PRESETS.join(", ")
+            ),
+        )),
+    }
+}
+
 async fn resolve_secret(
     state: &AppState,
     tenant_id: i64,
@@ -468,7 +583,14 @@ pub async fn set_event_trigger(
         .get("verify")
         .cloned()
         .ok_or_else(|| AppError::InvalidArgs("missing required argument 'verify'".to_string()))?;
-    let verify = validate_verify_config(&verify_arg)?;
+    // P0 requirement 3 / AC4-AC5: a bare string names a preset instead of
+    // the full object shape.
+    let preset = verify_arg.as_str().map(str::to_string);
+    let verify_expanded = match &preset {
+        Some(name) => expand_verify_preset(name, args)?,
+        None => verify_arg,
+    };
+    let mut verify = validate_verify_config(&verify_expanded)?;
     if let Some(secret_name) = verify.get("secret").and_then(Value::as_str) {
         state
             .db
@@ -476,8 +598,25 @@ pub async fn set_event_trigger(
             .await?
             .ok_or_else(|| AppError::SecretMissing(secret_name.to_string()))?;
     }
+    if let Some(name) = &preset
+        && let Some(obj) = verify.as_object_mut()
+    {
+        obj.insert("preset".to_string(), json!(name));
+    }
 
-    let dedupe_header = args.get("dedupe_header").and_then(Value::as_str).map(str::to_string);
+    // Open question 3 (default: yes): the github preset defaults
+    // dedupe_header to X-GitHub-Delivery unless the caller names its own.
+    let dedupe_header = args
+        .get("dedupe_header")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .or_else(|| {
+            if preset.as_deref() == Some("github") {
+                Some("X-GitHub-Delivery".to_string())
+            } else {
+                None
+            }
+        });
     let call_args = args.get("args").cloned().unwrap_or_else(|| json!({}));
 
     let mut config = json!({"verify": verify, "args": call_args});
@@ -603,8 +742,13 @@ pub async fn set_event_trigger(
 }
 
 /// The event-kind shape of `host.trigger.list`/`get`'s per-trigger JSON --
-/// `url`/`verify`/`unverified`/`dedupe_header` instead of a schedule's
-/// `schedule`/`args`/`tz`.
+/// `url`/`verify`/`preset`/`unverified`/`dedupe_header` instead of a
+/// schedule's `schedule`/`args`/`tz`. AC4: `verify` never carries the
+/// secret's name (previously safe-to-return but now dropped so a tenant
+/// reading its own trigger back sees exactly the scheme/header/prefix
+/// shape it would hand-assemble, nothing it must first filter out) or the
+/// `preset` tag it was created from -- that surfaces as its own sibling
+/// `preset` field instead.
 pub(crate) async fn trigger_to_json_event(state: &AppState, tenant: &Tenant, row: &TriggerRow) -> Value {
     let last_status = match &row.last_run_id {
         Some(run_id) => state
@@ -617,8 +761,13 @@ pub(crate) async fn trigger_to_json_event(state: &AppState, tenant: &Tenant, row
         None => None,
     };
     let config: Value = serde_json::from_str(&row.config_json).unwrap_or_else(|_| json!({}));
-    let verify = config.get("verify").cloned().unwrap_or(json!({}));
+    let mut verify = config.get("verify").cloned().unwrap_or(json!({}));
     let unverified = verify.get("scheme").and_then(Value::as_str) == Some("none");
+    let preset = verify.get("preset").cloned().unwrap_or(Value::Null);
+    if let Some(obj) = verify.as_object_mut() {
+        obj.remove("secret");
+        obj.remove("preset");
+    }
     json!({
         "id": row.id,
         "name": row.name,
@@ -631,6 +780,7 @@ pub(crate) async fn trigger_to_json_event(state: &AppState, tenant: &Tenant, row
         "last_status": last_status,
         "url": event_url(state, &tenant.namespace, &row.tool_name),
         "verify": verify,
+        "preset": preset,
         "unverified": unverified,
         "dedupe_header": config.get("dedupe_header").cloned().unwrap_or(Value::Null),
     })
@@ -1013,8 +1163,17 @@ pub async fn test(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     }
 
     let body_value = args.get("body").cloned().unwrap_or_else(|| json!({}));
-    let body_bytes = serde_json::to_vec(&body_value).unwrap_or_default();
-    let headers = header_map_from_value(&args.get("headers").cloned().unwrap_or_else(|| json!({})));
+    // P1 requirement 6 / AC9: a `body` given as a JSON string is signed and
+    // delivered byte-for-byte, exactly as written -- the only way a caller
+    // whose real sender's canonical form isn't compact JSON (or who has no
+    // shell to compute a signature at all) gets bytes that round-trip
+    // exactly. An object/array/number/bool/null `body` keeps today's
+    // `serde_json::to_vec` compact re-serialization.
+    let body_bytes: Vec<u8> = match &body_value {
+        Value::String(s) => s.clone().into_bytes(),
+        other => serde_json::to_vec(other).unwrap_or_default(),
+    };
+    let mut headers = header_map_from_value(&args.get("headers").cloned().unwrap_or_else(|| json!({})));
 
     let config: Value = serde_json::from_str(&row.config_json).unwrap_or_else(|_| json!({}));
     let verify = config
@@ -1022,7 +1181,59 @@ pub async fn test(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         .cloned()
         .unwrap_or_else(|| json!({"scheme": "none", "allow_unverified": true}));
     let secret = resolve_secret(state, tenant.id, &verify).await?;
-    verify_event(&verify, secret.as_deref(), &body_bytes, &headers)?;
+
+    // Requirement 1: self-sign when the caller didn't supply the trigger's
+    // own configured header AT ALL (case-insensitive lookup -- HeaderMap's
+    // own key comparison already is) -- the PRD's own "weakest link": a
+    // header present but empty or wrong must still fall through to the
+    // strict verify below and fail, never silently upgrade to a passing
+    // self-signed delivery (AC2).
+    let header_name = verify.get("header").and_then(Value::as_str).map(str::to_string);
+    let self_sign = header_name.as_deref().is_some_and(|h| !headers.contains_key(h));
+
+    let signed = if self_sign {
+        let header_name = header_name.expect("self_sign implies header_name is Some");
+        let secret_plain = secret.as_deref().unwrap_or("");
+        let header_value = sign_event(&verify, secret_plain, &body_bytes);
+
+        let mut signed_headers = serde_json::Map::new();
+        if let (Ok(name), Ok(val)) =
+            (HeaderName::from_bytes(header_name.as_bytes()), HeaderValue::from_str(&header_value))
+        {
+            headers.insert(name, val);
+        }
+        signed_headers.insert(header_name, json!(header_value));
+
+        headers.insert("content-type", HeaderValue::from_static("application/json"));
+        signed_headers.insert("content-type".to_string(), json!("application/json"));
+
+        // Open question 3 (default: yes): the github preset's own
+        // dedupe_header gets a synthetic `test-<ulid>` value too, so a
+        // self-tested delivery never collides with a real one's dedupe key.
+        let dedupe_header = config.get("dedupe_header").and_then(Value::as_str).map(str::to_string);
+        if let Some(dh) = &dedupe_header {
+            let dedupe_value = format!("test-{}", new_ulid());
+            if let (Ok(name), Ok(val)) = (HeaderName::from_bytes(dh.as_bytes()), HeaderValue::from_str(&dedupe_value)) {
+                headers.insert(name, val);
+            }
+            signed_headers.insert(dh.clone(), json!(dedupe_value));
+        }
+
+        Some(json!({
+            "body": String::from_utf8_lossy(&body_bytes).to_string(),
+            "headers": Value::Object(signed_headers),
+        }))
+    } else {
+        None
+    };
+
+    if let Err(e) = verify_event(&verify, secret.as_deref(), &body_bytes, &headers) {
+        if e.code() == "signature_invalid" {
+            state.event_counters.record_self_test_signature_invalid();
+        }
+        return Err(e);
+    }
+    state.event_counters.record_self_test();
 
     let dedupe_header = config.get("dedupe_header").and_then(Value::as_str).map(str::to_string);
     let allow = allowed_headers(&verify, dedupe_header.as_deref());
@@ -1057,7 +1268,11 @@ pub async fn test(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
             None,
         )
         .await?;
-    Ok(json!({"run_id": run_id, "status": "queued", "test": true}))
+    let mut response = json!({"run_id": run_id, "status": "queued", "test": true});
+    if let Some(signed) = signed {
+        response["signed"] = signed;
+    }
+    Ok(response)
 }
 
 /// PRD-mcphost-agent-wake requirement 5 / AC7: `host.trigger.test`'s

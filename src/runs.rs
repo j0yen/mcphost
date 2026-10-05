@@ -322,8 +322,32 @@ pub async fn part(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     Ok(json!({"n": n, "parts": parts, "bytes": bytes, "data": data}))
 }
 
+/// [`list`]'s own, narrower version of [`attach_result`] (P0 requirement 4
+/// / AC6-AC7): inlines only when the stored result fits in exactly one
+/// part. `host.runs.get`/`wait` always inline part 0 even for an
+/// overflowed multi-part result (their contract is "the first chunk");
+/// `list`'s contract is "the whole thing, or nothing", so a client paging
+/// many runs at once never mistakes a lone chunk for the complete result.
+async fn attach_result_if_single_part(
+    state: &AppState,
+    tenant_id: i64,
+    run: &RunRow,
+    value: Value,
+) -> Result<Value, AppError> {
+    let parts = run
+        .result_ref
+        .as_deref()
+        .and_then(|s| serde_json::from_str::<Value>(s).ok())
+        .and_then(|r| r.get("parts").and_then(Value::as_i64));
+    if parts == Some(1) {
+        attach_result(state, tenant_id, run, value).await
+    } else {
+        Ok(value)
+    }
+}
+
 /// `host.runs.list(tool?, status?, trigger?, end_user_subject?,
-/// parent_run_id?, include_children?, verdict?, limit?)`.
+/// parent_run_id?, include_children?, verdict?, include_result?, limit?)`.
 /// PRD-mcphost-runs-end-user-subject P0 requirement 4 (AC2): `end_user_subject`
 /// filters within this tenant; a subject with no runs (even `carol`, never
 /// heard of) returns an empty list, never an error.
@@ -356,6 +380,12 @@ pub async fn part(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
 /// (`"alert"`/`"exceeded"`) filters to runs whose
 /// `progress_json.budget.verdict` matches -- a run with no budget block at
 /// all (pre-PRD, or purged) never matches any `verdict` filter.
+///
+/// PRD-mcphost-event-trigger-self-test P0 requirement 4 (AC6/AC7):
+/// `include_result` inlines each terminal row's single-part result the same
+/// way `host.runs.get` does -- default `false` keeps every existing row
+/// byte-identical (`result: null`); `limit` clamps to 50 rather than 200
+/// when set, since 200 rows x one 256 KiB part each would be 51 MB.
 pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let tool = arg_str_opt(args, "tool");
     let status = arg_str_opt(args, "status");
@@ -364,7 +394,9 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     let parent_run_id = arg_str_opt(args, "parent_run_id");
     let include_children = args.get("include_children").and_then(Value::as_bool).unwrap_or(false);
     let verdict = arg_str_opt(args, "verdict");
-    let limit = arg_i64_opt(args, "limit").unwrap_or(20).clamp(1, 200);
+    let include_result = args.get("include_result").and_then(Value::as_bool).unwrap_or(false);
+    let max_limit = if include_result { 50 } else { 200 };
+    let limit = arg_i64_opt(args, "limit").unwrap_or(20).clamp(1, max_limit);
     // requirement 7: `verdict` isn't a stored column -- fetched over a
     // wider window (still bounded) and filtered/truncated in process, same
     // "post-filter, then re-cap to the caller's own limit" shape a
@@ -400,17 +432,20 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
             by_parent.entry(parent).or_default().push(run_to_json(child));
         }
     }
-    let runs: Vec<Value> = rows
-        .iter()
-        .map(|row| {
-            let mut value = run_to_json(row);
-            if let Some(obj) = value.as_object_mut() {
-                let own = by_parent.remove(row.id.as_str()).unwrap_or_default();
-                obj.insert("children".to_string(), Value::Array(own));
-            }
+    let mut runs = Vec::with_capacity(rows.len());
+    for row in &rows {
+        let mut value = run_to_json(row);
+        if let Some(obj) = value.as_object_mut() {
+            let own = by_parent.remove(row.id.as_str()).unwrap_or_default();
+            obj.insert("children".to_string(), Value::Array(own));
+        }
+        let value = if include_result {
+            attach_result_if_single_part(state, tenant.id, row, value).await?
+        } else {
             value
-        })
-        .collect();
+        };
+        runs.push(value);
+    }
     Ok(json!({"runs": runs}))
 }
 

@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-run-budget-governor.md",
-  "intent_slug": "mcphost-run-budget-governor",
-  "root_motivation": "A chain's only ceiling was COMPOSE_CHILDREN_MAX (50 child calls) and a run's only stop was its deadline_s -- both cliffs with no warning and no per-tenant/per-call setting, so a looping chain looked healthy until the 50th call and a tenant had no way to ask for a cheaper run. ai-stack's mcp-query-budget-governor (~/projects/ai-stack @ 4ef6c22) already has the right shape for this: a small ledger over four Option dimensions, an alert at a configurable fraction, a hard stop at the limit. This build ports that ledger verbatim, threads it through compose_call (checked before each child, recorded after) and the run executor (built from the plan's defaults or a validated per-call override, persisted into progress_json.budget on every tick), and surfaces it in host.runs.get/list.",
-  "user_persona": "A tenant running chains and async tool calls who wants a bound on what a run may spend (PRD user stories 1/2/4: a 10-child ceiling that halts the 11th step with a named error, a live fraction/verdict while still running, a synthetic panel task proving a recipe is cheap under a tiny budget); the operator watching the fleet, who wants free/pro defaults readable in plans.rs and runs listable by which ones crossed their budget (user story 3).",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-event-trigger-self-test.md",
+  "intent_slug": "mcphost-event-trigger-self-test",
+  "root_motivation": "Grounding (truth-tier failures.md 2026-09-29 and 2026-09-28: 'signature in \\'X-Hub-Signature-256\\' did not match' from host.trigger.test, and 'host_quickstart: kind \\'event\\' is not registered' both nights). mcphost's kind=\"event\" self-test demands a caller-computed HMAC over bytes (serde_json::to_vec re-serialization at src/hooks.rs:954) the caller never sees, while the sibling kind=\"webhook\" self-test already self-signs (src/webhooks.rs:14-43). A shell-less agent either publishes a helper tool to compute HMAC or guesses -- the recipe integration-specialist-github-push-webhook-handler sits at 0.00 both nights. Fix: host.trigger.test self-signs when the caller doesn't supply the configured header, returns the exact signed bytes+headers for replay at the real URL, adds github/stripe verify presets, inlines a run's result from host.runs.list when it fits one part, and points host.quickstart/llms.txt at host.trigger.set instead of letting an agent guess triggers are a tool kind.",
+  "user_persona": "Five (PRD User stories): a shell-less integration-specialist agent proving a GitHub push hook in <=4 calls; a workflow-orchestrator using verify:\"github\" instead of hand-assembling scheme/header/prefix; a rag_indexer agent reading a fired run's result from host.runs.list(trigger=\"event\"); a SaaS operator whose fired runs keep end_user_subject; a first-run agent learning triggers are host.trigger.set(kind=...), not a tool kind.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,85 +14,88 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the ported ledger, When the seven carried-over unit tests run, Then they pass, including Alert at 0.8 and Exceeded at 1.0 on each dimension.",
-      "test": "tests/budget_ac01_ported_ledger_seven_tests.rs"
+      "description": "Given an event trigger with verify scheme hmac-sha256, header X-Hub-Signature-256, prefix sha256=, secret name hook-secret-1, When host.trigger.test(id, body={\"commits\":[{\"id\":\"a\"},{\"id\":\"b\"},{\"id\":\"c\"}]}) is called with no headers, Then the response has status: \"queued\", test: true, signed.headers[\"X-Hub-Signature-256\"] == \"sha256=\" + hex(HMAC-SHA256(secret, signed.body)), and host.runs.wait(run_id) reaches done with the tool having received event.body.commits of length 3.",
+      "test": "tests/mcphost_event_trigger_self_test_ac01_self_sign_when_no_headers.rs -- self-signs with no headers argument at all, checks the HMAC equality directly, then host.runs.wait to done."
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a chain of 12 steps and budget: {max_child_calls: 10}, When it runs, Then exactly 10 children execute, the run ends error with error_class budget_exceeded and error_data_json.dimension child_calls.",
-      "test": "tests/budget_ac02_chain_child_calls_halts_at_ten.rs"
+      "description": "Given the same trigger, When host.trigger.test is called with headers: {\"X-Hub-Signature-256\": \"\"} or a wrong value, Then it fails signature_invalid with message \"signature in 'X-Hub-Signature-256' did not match\" and no run row is created.",
+      "test": "tests/mcphost_event_trigger_self_test_ac02_present_header_stays_strict.rs -- empty-value and wrong-value cases, both asserting the exact message and zero run rows created."
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a free-plan tenant passing max_child_calls: 100, When host.tool_call is invoked, Then a validation error names the plan ceiling 20 and no run starts.",
-      "test": "tests/budget_ac03_free_plan_override_ceiling_validation.rs"
+      "description": "Given a self-signed test response, When a client POSTs signed.body verbatim with signed.headers to the trigger's public url, Then POST /hooks/... answers 202 with a new run id (the signature verifies on the live path too).",
+      "test": "tests/mcphost_event_trigger_self_test_ac03_signed_replay_hits_live_url.rs -- replays signed.body/signed.headers via a real reqwest POST at the trigger's own url, asserts 202 and a run id distinct from the self-test's own."
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a chain whose third child returns a 400 KB result, When max_est_tokens is 150,000, Then the run halts before the fourth child with dimension est_tokens and used >= 100,000.",
-      "test": "tests/budget_ac04_est_tokens_halts_before_fourth_child.rs"
+      "description": "Given host.trigger.set(tool, kind=\"event\", verify=\"github\", secret=\"hook-secret-1\"), When host.trigger.get(id) is read, Then verify shows {scheme:\"hmac-sha256\", header:\"X-Hub-Signature-256\", prefix:\"sha256=\"}, preset: \"github\", dedupe_header: \"X-GitHub-Delivery\", and the secret value is never present.",
+      "test": "tests/mcphost_event_trigger_self_test_ac04_github_preset_expands_and_hides_secret.rs -- asserts the exact verify/preset/dedupe_header shape on both the set response and a follow-up get, and that the plaintext secret never appears in either."
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a running chain at 9 of 10 child calls, When host.runs.get is polled, Then progress_json.budget.fraction is 0.9 and verdict is alert.",
-      "test": "tests/budget_ac05_progress_fraction_and_alert_verdict_while_running.rs"
+      "description": "Given host.trigger.set(kind=\"event\", verify=\"paypal\"), When called, Then it fails trigger_invalid naming verify and listing github, stripe as the presets.",
+      "test": "tests/mcphost_event_trigger_self_test_ac05_unknown_verify_preset_rejected.rs -- verify: \"paypal\", asserts trigger_invalid naming field \"verify\" and the message listing github, stripe."
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a plain async host.tool_call with no budget, When it runs, Then budget.limits equal the plan defaults and verdict is ok on completion.",
-      "test": "tests/budget_ac06_plain_async_call_defaults_and_ok_verdict.rs"
+      "description": "Given a done run whose result is 1 KiB, When host.runs.list(trigger=\"event\", include_result=true) is called, Then that row's result equals host.runs.get(run_id).result; and When called without include_result, Then result is null and the row is byte-identical to today's shape.",
+      "test": "tests/mcphost_event_trigger_self_test_ac06_runs_list_include_result_inlines_single_part.rs -- drives a real event-triggered run to done, compares runs.list(include_result=true)'s row against runs.get's own result, and confirms the default-false row is byte-identical apart from result."
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given 200 child calls across runs, When timed, Then the budget check adds at most 1 ms p95 per child on the builder.",
-      "test": "tests/budget_ac07_check_overhead_p95_under_1ms.rs"
+      "description": "Given a done run whose result is 300 KiB (two parts), When host.runs.list(include_result=true) is called, Then result is null and result_ref.parts == 2.",
+      "test": "tests/mcphost_event_trigger_self_test_ac07_runs_list_include_result_skips_multi_part.rs -- a 300 KiB result never actually crosses the executor's own 1 MiB chunking gate, so this pokes a done run row with result_ref.parts=2 directly into the db (same pattern as wake_ac4_jobs_concurrent_rejects.rs) to exercise list's own single-part-only inlining decision."
     },
     {
       "id": "AC8",
-      "level": "SHOULD",
-      "description": "Given a run crossing 0.8, When it continues, Then one run.budget_alert event exists for it and alerted_at_unix is set once.",
-      "test": "tests/budget_ac08_alert_event_written_once.rs"
+      "level": "MUST",
+      "description": "Given host.quickstart(kind=\"event\"), When called, Then the response carries hint containing host.trigger.set(kind=\"event\"), and host.quickstart()'s text plus llms.txt's first-run walkthrough contain the sentence naming host.trigger.set for triggers. The hint now rides PRD-mcphost-unknown-kind-routes-to-recipe's successful alias-resolution response (kindroute_ac01/ac02, must not regress), not an unknown_kind error as originally drafted.",
+      "test": "tests/mcphost_event_trigger_self_test_ac08_quickstart_and_llms_txt_name_triggers.rs -- asserts quickstart(kind=\"event\")'s response hint contains the literal host.trigger.set(kind=\"event\") (and that an alias host.trigger.set would reject, \"cron\", hints kind=\"schedule\" instead), that the same response still resolves to the http webhook-inbox recipe naming host.trigger.set, that host.quickstart()'s triggers sentence names host.trigger.set, and that www/llms.txt's First run section does too."
     },
     {
       "id": "AC9",
-      "level": "SHOULD",
-      "description": "Given host.runs.list(verdict: \"exceeded\"), When called, Then only runs with budget_exceeded return.",
-      "test": "tests/budget_ac09_runs_list_verdict_exceeded_filter.rs"
+      "level": "MUST",
+      "description": "Given body passed as the string {\"a\":1, \"b\":2} (with a space), When self-signed, Then signed.body is exactly that string and the signature verifies over it.",
+      "test": "tests/mcphost_event_trigger_self_test_ac09_string_body_signed_byte_for_byte.rs -- body: \"{\\\"a\\\":1, \\\"b\\\":2}\" (raw string, space included), asserts signed.body equals it exactly and the HMAC verifies over those same bytes."
     },
     {
       "id": "AC10",
       "level": "MUST",
-      "description": "Given prod after land, When a fresh tenant runs the docs-qa recipe's chain with budget: {max_child_calls: 3}, Then the run ends with budget_exceeded, and the same chain with plan defaults completes (Live; evidence: mcphost-1 healthz version after deploy plus both host.runs.get responses in the receipt under docs/receipts/).",
-      "test": "deferred -- operator-provisioned; needs a real deploy to production mcphost-1 and a post-deploy receipt, neither reachable from this build sandbox. Not in this dispatch's assigned AC list."
+      "description": "Given three self-tests and one strict-path rejection, When /healthz is read, Then triggers.event_self_tests_total == 3 and triggers.event_self_test_signature_invalid_total == 1.",
+      "test": "tests/mcphost_event_trigger_self_test_ac10_healthz_self_test_counters.rs -- reads /healthz before/after three successful self-tests plus one strict-path rejection, asserts both counters' deltas."
     },
     {
       "id": "AC11",
       "level": "MUST",
-      "description": "Given the five recipe proof scripts, When run under plan defaults on the builder, Then none ends with budget_exceeded.",
-      "test": "tests/budget_ac11_five_recipe_proofs_stay_under_budget.rs"
+      "description": "Given prod mcphost with this PRD deployed and PRD-synthorg-truth-tier-probe-as-tenant landed, When one nightly truth-tier run executes integration-specialist-github-push-webhook-handler, Then the persona reaches a trigger=event run with status=done using <=1 host.trigger.test call and the recipe scores >=0.75 (live: nightly synthorg consume --tier truth on orch).",
+      "test": "deferred -- operator-provisioned: AC11's Then is a nightly `synthorg consume --tier truth` run on orch against prod after deploy (gated on both this PRD and PRD-synthorg-truth-tier-probe-as-tenant being deployed); this dispatch has no live operator access, no prod deploy rights and none of the credentials that run needs. Declared in PRD-mcphost-event-trigger-self-test.md's frontmatter (deferred_acs: [11] plus a mock_justifications entry) and locked by tests/mcphost_event_trigger_self_test_ac11_deferral_is_justified.rs. The only test that can ever claim AC11 is tests/mcphost_event_trigger_self_test_ac11_truth_tier_persona_reaches_event_run.rs::live_truth_tier_persona_run_meets_the_target (MCPHOST_LIVE=1), which fails until the operator's post-deploy nightly reports satisfaction >= 0.75 with <= 1 host.trigger.test call. That file's always-on tests replay the corpus task's persona path against a real in-process mcphost and run the live bar over the real pre-feature 2026-09-29T20:06:55Z nightly's own artifacts -- the branch's own half, not counted as AC11's proof."
     }
   ],
   "scope": [
-    "src/budget.rs (new): BudgetLimits/Dimension/Verdict/BudgetLedger (pure, ported), BudgetTracker (stateful: check/record/persist, the run.budget_alert alert, alerted_at_unix), resolve_and_validate, estimate_tokens.",
-    "src/plans.rs: Plan gains budget_max_child_calls/max_est_tokens/max_tool_latency_ms/max_wall_ms (free 20/200k/30k/60k, pro 50/2M/120k/600k) round-tripped through plans.toml, and Plan::budget_defaults().",
-    "src/kinds/mod.rs: CallCtx gains budget: Option<Arc<BudgetTracker>>; compose_call checks before each child dispatch (Exceeded refuses without dispatching) and records+persists after a successful one.",
-    "src/runs.rs: enqueue/enqueue_shared resolve+validate+store the run's effective limits in counters_json.budget.limits before insert; execute_job reconstructs the tracker, does an initial ok-verdict persist before dispatch, and threads it into the job's CallCtx; JobOutcome::Error now carries structured error_data through to finalize_run; list() gains a verdict filter.",
-    "src/handler.rs: host.tool_call validates a budget argument against the plan ceiling ahead of both sync and async dispatch; host.tool_call/host.runs.list wire schemas document budget/verdict.",
-    "src/errors.rs: budget_ceiling_exceeded (INVALID_PARAMS) and budget_exceeded (INVALID_REQUEST) jsonrpc_code mappings.",
-    "contracts/host-tools.v1.json: regenerated (mcphost contract dump) for both new wire arguments.",
-    "Cargo.toml/Cargo.lock: 0.62.0 -> 0.63.0 (PRD's own version_bump: minor rule)."
+    "src/hooks.rs: host.trigger.test's kind=\"event\" branch self-signs (sign_event helper factoring the hmac-sha256/hmac-sha1/token/stripe-style inverse of verify_event) when the caller's headers omit the trigger's configured verify header; returns signed:{body, headers}. A JSON-string body is signed byte-for-byte (no re-serialization); any other JSON value keeps the existing compact serde_json::to_vec. host.trigger.set(kind=\"event\", verify: \"github\"|\"stripe\", secret: <name>) expands to the full verify object, tagging config_json with preset; host.trigger.get/list's tenant-facing verify now drops secret and preset entirely (preset surfaces as its own sibling field). EventCounters gains self_tests/self_test_signature_invalid cumulative counters.",
+    "src/runs.rs: host.runs.list(include_result?) inlines a terminal row's single-part result (attach_result_if_single_part); include_result=true clamps limit to 50 (down from 200); default false is byte-identical to today.",
+    "src/control.rs: host.quickstart(kind=\"schedule\"|\"event\"|\"webhook\") fails unknown_kind with data.hint naming host.trigger.set; every authenticated quickstart response carries a one-sentence triggers pointer.",
+    "src/errors.rs: AppError::Structured{code:\"unknown_kind\",..}'s own jsonrpc_code mapped to INVALID_PARAMS (previously only the AppError::UnknownKind enum variant was), so quickstart's new hinted rejection carries the same wire error class as the pre-existing bare one.",
+    "src/http.rs: /healthz gains triggers.event_self_tests_total / triggers.event_self_test_signature_invalid_total.",
+    "src/handler.rs: host.trigger.set's verify/secret/dedupe_header schema descriptions document the preset form; host.runs.list's schema gains include_result and documents limit's new clamp.",
+    "www/llms.txt: First run walkthrough (after the Schedule step, before Claim) gains the one-sentence triggers pointer -- same sentence host.quickstart's response carries.",
+    "tests/mcphost_event_trigger_self_test_ac0[1-9]_*.rs, tests/mcphost_event_trigger_self_test_ac10_*.rs (new, one per non-deferred AC); tests/suite_core_07.rs regenerated by scripts/gen-test-suites.sh to include them.",
+    "agent/test-map.json: ac_test_map repointed at this PRD's ACs; the prior PRD's (docs-qa-recipe) map archived under ac_test_map_by_prefix.docsqa.",
+    "Cargo.toml/Cargo.lock: minor version bump; CHANGELOG.md: new entry."
   ],
   "non_goals": [
-    "Billing changes -- estimated tokens are for the budget only, never for metering (PRD's own non-goal 1); no calls.rs/billing.rs touched.",
-    "Model-token accounting inside a python or wasm tool -- the estimate stays chars/4 over the args/result the host itself sees (non-goal 2).",
-    "Raising plan ceilings -- resolve_and_validate can only lower a plan's own default, never exceed it (non-goal 3); AC3 is the direct proof.",
-    "Alert delivery to external channels -- progress_json is the surface; run.budget_alert rides the existing alerts.rs store (delivery to a configured webhook/inbox is that module's own pre-existing, unmodified behavior), not a new channel (non-goal 4)."
+    "No change to the public POST /hooks/... accept path, verification schemes, dedupe, or quotas -- PRD's own Non-goals.",
+    "No generic BaaS surface -- PRD's own Non-goals.",
+    "No new trigger kinds; no change to kind=\"webhook\" (already self-signing) or kind=\"message\" -- PRD's own Non-goals.",
+    "No result inlining for a run whose result exceeds one part -- PRD's own Non-goals; those keep result: null, result_ref.",
+    "AC11 (the live nightly truth-tier recipe score) -- operator-provisioned, deferred; needs both this PRD and PRD-synthorg-truth-tier-probe-as-tenant deployed to prod and a real nightly synthorg consume --tier truth run on orch, none of which this coder dispatch can do."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -101,50 +104,49 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "test_file_names_use_the_prd_test_prefix": "test_prefix budget (the PRD's own frontmatter field): tests/budget_ac<NN>_<short_desc>.rs, one file per non-deferred AC.",
-      "never_amend_a_committed_ac": "Work AC-by-AC, one commit per AC (or per requirement with no AC of its own); a commit is never rewritten once the build has moved past it."
+      "byte_exact_body_is_string_passthrough_not_preserve_order": "Open question 1 defaults to 'raw-slice for host.trigger.test only' (capturing the JSON-RPC argument's own original text via serde_json::value::RawValue) if unanswered, to make an OBJECT body's key order/whitespace byte-exact. No non-deferred AC actually tests object-body byte-exactness, though -- AC1 only checks the HMAC is self-consistent (computed over whatever bytes were sent), and AC9 (the one AC that does test exact-string preservation) passes body as a JSON STRING, whose content is already preserved character-for-character by ordinary JSON deserialization with no raw-slice capture needed. Resolved by the simpler mechanism requirement 6 already specifies: a string body is used verbatim; any other JSON value keeps the existing compact serde_json::to_vec re-serialization. This avoids a repo-wide serde_json preserve_order feature (technical considerations' own flagged risk: 'audit tests/ for order-sensitive assertions first') and a handler.rs-level RawValue plumbing change, neither of which any AC requires.",
+      "stripe_preset_timestamp_header_names_the_same_header_as_header": "Requirement 3's prose reads stripe -> {..., timestamp_header:\"t\", ...}, but verify_event's own hmac-* branch (src/hooks.rs) reads header_str(headers, ts_header) -- ts_header names an actual HTTP HEADER to read the whole t=,v1= value from, not a literal sub-field named 't' (the existing verify_event_stripe_style_* unit tests already construct their verify config with timestamp_header: \"Stripe-Signature\", the same name as header). No AC pins the stripe preset's exact stored shape (AC5 only tests the unknown- preset rejection). Resolved by setting timestamp_header equal to header (\"Stripe-Signature\") in the stripe preset, matching the mechanism that already exists rather than the PRD prose's literal 't'.",
+      "verify_secret_stripped_for_every_event_trigger_not_just_presets": "AC4 only exercises the github preset, but the fix (dropping verify.secret from host.trigger.get/list's tenant-facing response) is applied uniformly to every kind=\"event\" trigger, preset or hand-assembled object form alike -- narrowing it to preset-only would leave the exact same 'the response, on generation, returns the secret's plaintext value once' contract this module's own doc comment already promised never happens, just re-worded to 'except the secret's own name, sometimes' for no benefit; a single code path is simpler and matches AC4's intent (the secret must never be present) more literally than a preset-conditional one would.",
+      "quickstart_hint_scoped_to_exactly_the_three_words_requirement_5_names": "kind=\"message\" is also a trigger word an agent could plausibly guess at host.quickstart, but requirement 5 and AC8 both name only schedule/event/webhook. Resolved by matching the literal enumeration -- message stays on the bare unknown_kind path (registered-kinds list only, no hint) rather than guessing the PRD's silence on it was an oversight.",
+      "quickstart_text_is_the_structured_content_stringified_not_a_separate_field": "AC8 says host.quickstart()'s TEXT must contain the sentence; this host's tools/call responses carry the JSON structured content as their own text content block too (tests/common/mod.rs's extract_structured falls back to parsing content[0].text when structuredContent is absent, and the two already carry the same JSON in this codebase's existing tool responses) -- so adding the sentence as a new top-level triggers field on the JSON response satisfies both structuredContent and the text block with one change, with no separate human-prose field needed."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does budget enforcement only wire into the async job path (runs::execute_job), never the synchronous call_published_tool path?",
-      "a": "Every listed AC that exercises actual halting/recording (AC2, AC4, AC5, AC8, AC9) frames its scenario as 'the run' finalizing or being polled via host.runs.get while running -- only an async job has a 'running' row a concurrent poll can observe (a synchronous call's own runs row, per runs_ac05, is written only AFTER the call already finished). AC3's validation is the one budget-adjacent behavior that DOES apply to sync calls, and it's checked at host_tool_call's top regardless of the async flag, before either dispatch path runs."
+      "q": "Why did the recipe score 0.00 both nights?",
+      "a": "The self-test rejected the persona's delivery, so no trigger=event run with the expected result ever existed for the scorer to read."
     },
     {
       "why": 2,
-      "q": "Why store the resolved BudgetLimits in counters_json.budget.limits at enqueue time rather than re-resolving from the tenant's plan when execute_job later leases the row?",
-      "a": "Requirement 3 says this in so many words ('the effective limits are stored on the run row in counters_json.budget.limits'), and it also closes a real race: a plan edit between enqueue and lease (the executor can sit behind other queued work) must not change a run's own budget out from under it after the caller already saw it accepted."
+      "q": "Why did host.trigger.test reject a signature the persona computed itself?",
+      "a": "The persona signed its own JSON text (or guessed); mcphost verified over a canonical re-serialization (serde_json::to_vec of the parsed body) it never returned to the caller."
     },
     {
       "why": 3,
-      "q": "Why does compose_call's own child_calls counter never count the run's own top-level (non-composed) call?",
-      "a": "COMPOSE_CHILDREN_MAX's existing atomic counter (ctx.compose_children) already only counts actual composed dispatches, never the root call -- mirroring that meant a plain non-chain async call (AC6) legitimately reports child_calls: 0 at completion, and an initial ok-verdict snapshot persisted before dispatch (independent of whether anything ever calls compose_call) is what makes AC6's budget.limits/verdict observable at all for a tool with no children."
+      "q": "Why does the event kind demand a caller-supplied signature at all, when the sibling webhook kind self-signs?",
+      "a": "hooks.rs's test() was built to drive the exact same verify-then-enqueue path handle_hook does, so real-sender rejections stay reproducible; webhooks.rs (built later) chose self-signing instead, and the two kinds' own self-tests were never reconciled."
     },
     {
       "why": 4,
-      "q": "Why does AC11's uptime-probes leg drive tests/support/uptime_probes.rs's helpers directly instead of shelling out to examples/uptime-probes/proof.sh like the other four legs?",
-      "a": "That recipe's probe tool declares network: \"public\", pro-plan-gated since PRD-mcphost-sandbox-egress-allowlist; proof.sh signs up its own fresh (free-plan) tenant via the public API and has no way to self-upgrade before its own publish step. Racing a Rust-side admin.plan_set against a bash subprocess's signup timing was considered and rejected as genuinely flaky; every existing in-repo runner for this recipe's real workload already solves this the same way this build does."
+      "q": "Why wasn't this caught before a persona hit it in truth-tier?",
+      "a": "Every existing Rust test computes the HMAC over serde_json::to_vec directly, from inside the same process -- no test modeled a caller that cannot run code and only sees the tool's own JSON schema."
     },
     {
       "why": 5,
-      "q": "Why does the run.budget_alert event key on run.budget_alert:<run_id> rather than a single shared run.budget_alert key?",
-      "a": "alerts::raise collapses a repeated raise under the same key within its cooldown window (900s default) into one row's repeat_count -- a shared key across many different runs' alerts in the same test/window would make 'one event exists for THIS run' ambiguous to assert. Keying per run_id makes AC8's 'one run.budget_alert event exists for it' checkable in isolation regardless of what else alerted recently."
+      "q": "Why does host.quickstart(kind=\"event\") make the problem worse rather than just failing cleanly?",
+      "a": "Its bare registered-kinds list (echo/http/python/wasm/chain, none named event) reads as 'this feature doesn't exist' rather than 'wrong tool, try host.trigger.set instead' -- costing the persona a full turn before it even reaches the self-test rejection above."
     }
   ],
-  "created_at": "2026-09-30T00:00:00Z",
+  "created_at": "2026-09-29T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Requirement 6/AC8 says the alert event is 'written to the tenant's event stream the existing alert module owns' -- is that the per-tenant host.msg inbox, or alerts.rs's own (host-wide, key-scoped) alerts table?",
-      "resolution": "alerts.rs's own alerts table: it's the only store 'the existing alert module' (the phrase's own antecedent) owns, and admin.alerts.list is directly queryable/assertable. 'the tenant's event stream' is read as describing whose run the event is ABOUT (body.tenant_id/run_id), not a claim that a second, per-tenant-scoped store exists -- alerts.rs has none."
+      "question": "Should host.trigger.test's self-sign path apply to scheme: \"token\" (a plain shared secret, not a computed HMAC), or only the hmac-* schemes AC1/AC2 exercise directly?",
+      "resolution": "Applied uniformly: sign_event's token branch returns the secret itself as the header value (verify_event's own token branch checks for exactly that), matching requirement 1's plain wording ('the configured scheme's signature', not 'the configured HMAC scheme's signature') rather than narrowing self-sign to the two schemes the P0 ACs happen to name."
     },
     {
-      "question": "Does a per-call budget override apply to a synchronous (non-async) host.tool_call, or only to async/job dispatch?",
-      "resolution": "Validation (AC3, budget_ceiling_exceeded) applies to both -- checked once at host_tool_call's top before either dispatch branch. Actual ledger enforcement (checking/recording per child) only wires into the async executor path (see five_whys #1); a synchronous chain call's own runs row is unaffected by this PRD."
-    },
-    {
-      "question": "PRD technical considerations: 'the budget's wall limit defaults to the deadline so they agree' -- does a per-call budget override get allowed to raise max_wall_ms past the plan's own deadline_s-derived ceiling?",
-      "resolution": "No: max_wall_ms is validated against the plan's own budget_max_wall_ms default exactly like every other dimension (non-goal 3, 'lower only') -- this build does not additionally cross-check it against job_max_s/deadline_s, since the two are already the same numeric default per plan (60s/600s) and the PRD names no distinct ceiling for one over the other."
+      "question": "Does a github preset's default dedupe_header (X-GitHub-Delivery, open question 3) apply even when the caller already named their own dedupe_header?",
+      "resolution": "No -- an explicit dedupe_header argument always wins; the preset default only fills in when the caller passed none at all, the same 'explicit beats default' precedent every other optional-argument default in this module already follows."
     }
   ]
 }

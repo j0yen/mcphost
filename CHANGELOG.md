@@ -71,6 +71,32 @@ repeating the call is safe.
 PRD-mcphost-trigger-set-idempotent AC1-AC7. AC8 (Live, operator-provisioned
 production rollout on prod tenant joe-test) is deferred -- not something
 this repo's own test suite can prove.
+## v0.70.0 — 2026-10-02
+
+`host.trigger.test` on a `kind="event"` trigger now signs the delivery
+itself whenever the caller's `headers` omit the trigger's configured verify
+header (parity with `kind="webhook"`'s own self-signing), returning
+`signed: {body, headers}` — the exact bytes and header values it verified —
+so a shell-less agent can prove its hook and replay the identical envelope
+at the trigger's real `POST /hooks/...` URL. A header present (even empty
+or wrong) still takes the existing strict, caller-signed path unchanged.
+`host.trigger.set(kind="event", verify: "github"|"stripe", secret: <name>)`
+expands to the full `{scheme, header, prefix/timestamp_header}` shape
+instead of making the caller hand-assemble it (`github` also defaults
+`dedupe_header` to `X-GitHub-Delivery`); `host.trigger.get`/`list`'s
+tenant-facing `verify` now never carries the secret's name, and echoes back
+`preset`. `host.runs.list(include_result: true)` inlines a terminal run's
+result when it fits one part (same value `host.runs.get` returns), so a
+poller reading `trigger="event"` runs doesn't need a second call per row;
+`limit` clamps to 50 with `include_result: true`. `host.quickstart`'s
+response and `www/llms.txt`'s First run walkthrough now name
+`host.trigger.set` directly for triggers. `/healthz` gains
+`triggers.event_self_tests_total`/`triggers.event_self_test_signature_invalid_total`.
+
+PRD-mcphost-event-trigger-self-test AC1-AC10, all hermetically paired. AC11
+(the live nightly truth-tier recipe score, gated on this PRD and
+PRD-synthorg-truth-tier-probe-as-tenant both being deployed to prod) is
+deferred — operator-provisioned.
 
 ## v0.69.0 — 2026-10-02
 
@@ -541,6 +567,9 @@ PRD-mcphost-session-bound-tenant-after-signup AC1-AC13, all hermetically paired 
 A `chain` tool's `inputSchema` now names exactly the `$.input.*` fields its steps actually read (derived from the same step-argument mapping `compose_call` already resolves at call time) instead of the empty `{"type": "object"}` every chain published before -- a call missing one now refuses up front with `compose_input_missing` (naming every missing field, plus the first step and tool that needed it) before dispatching step one, rather than failing confusingly partway through; `host.tool_test`'s dry-run report gains the same `inputs_required` list. Every `compose_call` dispatch -- each step of a chain, and the `mcphost.call` sidecar bridge -- now writes its own `runs` row (`trigger: "composition"`, `parent_run_id`, `step_no`, `parent_tool`, status `done`/`failed`, migration `0057_runs_parent_run_id.sql`, three additive nullable columns) alongside the parent's own row, which is unchanged; a child inherits the parent's `end_user` and meters as part of the same call, not a second one. `host.runs.list` gains `parent_run_id`/`include_children` (default: top-level rows only, same as before this PRD); `host.runs.get` inlines one level of `children`. Deleting a tenant or purging a run's result window cascades to every composed child the same way it already did for a top-level run. `/healthz` gains `runs.composition_children_total`/`runs.composition_parents_failed_input_total`.
 
 PRD-mcphost-chain-run-lineage AC1-AC12. AC13 (Live: a real multi-step chain run against production after deploy, its parent and children visible via `host.runs.get`) is deferred -- operator-provisioned.
+`host.trigger.test` on a `kind="event"` trigger now signs the delivery itself whenever the caller's `headers` omit the trigger's configured verify header (parity with `kind="webhook"`'s own self-signing), returning `signed: {body, headers}` -- the exact bytes and header values it verified -- so a shell-less agent can prove its hook and replay the identical envelope at the trigger's real `POST /hooks/...` URL. A header present (even empty or wrong) still takes the existing strict, caller-signed path unchanged. `host.trigger.set(kind="event", verify: "github"|"stripe", secret: <name>)` expands to the full `{scheme, header, prefix/timestamp_header}` shape instead of making the caller hand-assemble it (`github` also defaults `dedupe_header` to `X-GitHub-Delivery`); `host.trigger.get`/`list`'s tenant-facing `verify` now never carries the secret's name, and echoes back `preset`. `host.runs.list(include_result: true)` inlines a terminal run's result when it fits one part (same value `host.runs.get` returns), so a poller reading `trigger="event"` runs doesn't need a second call per row; `limit` clamps to 50 with `include_result: true`. `host.quickstart(kind="schedule"|"event"|"webhook")` now fails with a `hint` pointing at `host.trigger.set`, and every quickstart response plus `www/llms.txt`'s First run walkthrough name it directly. `/healthz` gains `triggers.event_self_tests_total`/`triggers.event_self_test_signature_invalid_total`.
+
+PRD-mcphost-event-trigger-self-test AC1-AC10, all hermetically paired. AC11 (the live nightly truth-tier recipe score, gated on this PRD and PRD-synthorg-truth-tier-probe-as-tenant both being deployed to prod) is deferred -- operator-provisioned.
 
 ## v0.60.17 — 2026-09-26
 

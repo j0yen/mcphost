@@ -349,6 +349,18 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
             json!(state.event_counters.rejected_1h()),
         );
     }
+    // PRD-mcphost-event-trigger-self-test P1 requirement 7 (AC10): the
+    // strict-path rejection rate for `host.trigger.test` on `kind="event"`
+    // triggers -- previously only visible per-row in the `runs` ledger.
+    if let Some(obj) = body.as_object_mut() {
+        obj.insert(
+            "triggers".to_string(),
+            json!({
+                "event_self_tests_total": state.event_counters.self_tests_total(),
+                "event_self_test_signature_invalid_total": state.event_counters.self_test_signature_invalid_total(),
+            }),
+        );
+    }
     // PRD-mcphost-data-retention P1 requirement 6 (AC9): `true` (nothing
     // has failed yet) until the first prune cycle that errors.
     if let Some(obj) = body.as_object_mut() {

@@ -820,6 +820,28 @@ mod mcphost_data_retention_ac09_prune_error_sets_last_prune_ok_false;
 mod mcphost_data_retention_ac10_admin_prune_now_runs_one_cycle;
 #[path = "mcphost_database_in_a_minute_ac08_live_test_skipped_without_env.rs"]
 mod mcphost_database_in_a_minute_ac08_live_test_skipped_without_env;
+#[path = "mcphost_event_trigger_self_test_ac01_self_sign_when_no_headers.rs"]
+mod mcphost_event_trigger_self_test_ac01_self_sign_when_no_headers;
+#[path = "mcphost_event_trigger_self_test_ac02_present_header_stays_strict.rs"]
+mod mcphost_event_trigger_self_test_ac02_present_header_stays_strict;
+#[path = "mcphost_event_trigger_self_test_ac03_signed_replay_hits_live_url.rs"]
+mod mcphost_event_trigger_self_test_ac03_signed_replay_hits_live_url;
+#[path = "mcphost_event_trigger_self_test_ac04_github_preset_expands_and_hides_secret.rs"]
+mod mcphost_event_trigger_self_test_ac04_github_preset_expands_and_hides_secret;
+#[path = "mcphost_event_trigger_self_test_ac05_unknown_verify_preset_rejected.rs"]
+mod mcphost_event_trigger_self_test_ac05_unknown_verify_preset_rejected;
+#[path = "mcphost_event_trigger_self_test_ac06_runs_list_include_result_inlines_single_part.rs"]
+mod mcphost_event_trigger_self_test_ac06_runs_list_include_result_inlines_single_part;
+#[path = "mcphost_event_trigger_self_test_ac07_runs_list_include_result_skips_multi_part.rs"]
+mod mcphost_event_trigger_self_test_ac07_runs_list_include_result_skips_multi_part;
+#[path = "mcphost_event_trigger_self_test_ac08_quickstart_and_llms_txt_name_triggers.rs"]
+mod mcphost_event_trigger_self_test_ac08_quickstart_and_llms_txt_name_triggers;
+#[path = "mcphost_event_trigger_self_test_ac09_string_body_signed_byte_for_byte.rs"]
+mod mcphost_event_trigger_self_test_ac09_string_body_signed_byte_for_byte;
+#[path = "mcphost_event_trigger_self_test_ac10_healthz_self_test_counters.rs"]
+mod mcphost_event_trigger_self_test_ac10_healthz_self_test_counters;
+#[path = "mcphost_event_trigger_self_test_ac11_deferral_is_justified.rs"]
+mod mcphost_event_trigger_self_test_ac11_deferral_is_justified;
 #[path = "mcphost_host_tool_deprecation_ac01_contract_dump_deterministic.rs"]
 mod mcphost_host_tool_deprecation_ac01_contract_dump_deterministic;
 #[path = "mcphost_host_tool_deprecation_ac02_removed_field_without_deprecation_fails.rs"]
@@ -1768,3 +1790,37 @@ mod vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green;
 mod vaultst_ac09_deferral_is_justified;
 #[path = "vaultst_ac09_live_vault_status_trailer.rs"]
 mod vaultst_ac09_live_vault_status_trailer;
+#[path = "wake_ac1_message_trigger_fires_run.rs"]
+mod wake_ac1_message_trigger_fires_run;
+#[path = "wake_ac2_from_filter.rs"]
+mod wake_ac2_from_filter;
+#[path = "wake_ac3_dedupe.rs"]
+mod wake_ac3_dedupe;
+#[path = "wake_ac4_jobs_concurrent_rejects.rs"]
+mod wake_ac4_jobs_concurrent_rejects;
+#[path = "wake_ac5_pause_resume.rs"]
+mod wake_ac5_pause_resume;
+#[path = "wake_ac6_msg_wait.rs"]
+mod wake_ac6_msg_wait;
+#[path = "wake_ac7_trigger_test_synthetic_envelope.rs"]
+mod wake_ac7_trigger_test_synthetic_envelope;
+#[path = "wake_ac8_replay.rs"]
+mod wake_ac8_replay;
+#[path = "wasmkind_ac01_echo_component_calls_and_meters.rs"]
+mod wasmkind_ac01_echo_component_calls_and_meters;
+#[path = "wasmkind_ac02_publish_validation_errors.rs"]
+mod wasmkind_ac02_publish_validation_errors;
+#[path = "wasmkind_ac03_timeout_and_oom_recover.rs"]
+mod wasmkind_ac03_timeout_and_oom_recover;
+#[path = "wasmkind_ac05_tool_test_dry_run.rs"]
+mod wasmkind_ac05_tool_test_dry_run;
+#[path = "wasmkind_ac06_trap_is_structured_and_logged.rs"]
+mod wasmkind_ac06_trap_is_structured_and_logged;
+#[path = "wasmkind_ac07_docs_llms_and_quickstart_document_wasm.rs"]
+mod wasmkind_ac07_docs_llms_and_quickstart_document_wasm;
+#[path = "wasmkind_ac08_cache_reuses_compiled_artifact.rs"]
+mod wasmkind_ac08_cache_reuses_compiled_artifact;
+#[path = "wasmkind_ac09_healthz_reports_wasm_runtime.rs"]
+mod wasmkind_ac09_healthz_reports_wasm_runtime;
+#[path = "wasmkind_ac10_declared_output_promotion_matches_python.rs"]
+mod wasmkind_ac10_declared_output_promotion_matches_python;

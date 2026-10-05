@@ -2239,7 +2239,9 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
              any, the run ran as), or verdict (alert|exceeded, the run's own budget.verdict). \
              A chain's own composed step runs (trigger: \"composition\") \
              are excluded by default -- pass parent_run_id, trigger: \"composition\", or \
-             include_children: true to see them.",
+             include_children: true to see them. include_result: true inlines each terminal \
+             row's result when it fits one part, so a poller reading trigger=\"event\" runs \
+             doesn't need a second host.runs.get per row.",
             host_schema(
                 json!({
                     "tool": {"type": "string", "description": "Only runs of this tool name."},
@@ -2263,7 +2265,17 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                         "description": "Only runs whose progress.budget.verdict is this value \
                             (alert|exceeded) -- a run with no budget block never matches.",
                     },
-                    "limit": {"type": "integer", "description": "Max runs to return; default 20."},
+                    "include_result": {
+                        "type": "boolean",
+                        "description": "Inline each terminal row's result when it fits one part \
+                            (same value host.runs.get returns), null otherwise; default false \
+                            keeps every row's result null. Clamps limit to 50.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max runs to return; default 20, clamped to 50 when \
+                            include_result is true (200 otherwise).",
+                    },
                 }),
                 &[],
             ),
@@ -2399,19 +2411,29 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                             stored in.",
                     },
                     "verify": {
-                        "description": "kind=\"event\": {scheme: \"hmac-sha256\"|\"hmac-sha1\"|\
-                            \"token\"|\"none\", header, secret (a host.secret_set name), prefix?, \
-                            timestamp_header?, tolerance_s?, allow_unverified? (required true for \
-                            scheme \"none\")}. kind=\"webhook\": a plain string, one of \"hmac\" \
-                            (default; checks X-Mcphost-Signature: sha256=<hex>), \"none\", or \
-                            \"stripe\" (checks Stripe-Signature the way Stripe itself signs, using \
-                            the same generated secret).",
+                        "description": "kind=\"event\": either {scheme: \"hmac-sha256\"|\
+                            \"hmac-sha1\"|\"token\"|\"none\", header, secret (a host.secret_set \
+                            name), prefix?, timestamp_header?, tolerance_s?, allow_unverified? \
+                            (required true for scheme \"none\")}, or a preset string -- \"github\" \
+                            (hmac-sha256 over X-Hub-Signature-256, prefix sha256=, dedupe_header \
+                            defaulting to X-GitHub-Delivery) or \"stripe\" (hmac-sha256 t=,v1= over \
+                            Stripe-Signature) -- paired with the top-level secret argument below. \
+                            kind=\"webhook\": a plain string, one of \"hmac\" (default; checks \
+                            X-Mcphost-Signature: sha256=<hex>), \"none\", or \"stripe\" (checks \
+                            Stripe-Signature the way Stripe itself signs, using the same generated \
+                            secret).",
+                    },
+                    "secret": {
+                        "type": "string",
+                        "description": "kind=\"event\" with a verify preset string (\"github\"/\
+                            \"stripe\") only: the host.secret_set name to sign with.",
                     },
                     "dedupe_header": {
                         "type": "string",
                         "description": "kind=\"event\": a header (e.g. X-GitHub-Delivery) whose \
                             repeated value within 24h answers 202 with the original run id instead \
-                            of running again.",
+                            of running again. Defaults to X-GitHub-Delivery for the \"github\" \
+                            verify preset.",
                     },
                     "from": {
                         "type": "string",
