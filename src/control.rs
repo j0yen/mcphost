@@ -166,6 +166,46 @@ pub struct SignupAttribution<'a> {
     pub user_agent: Option<&'a str>,
 }
 
+/// PRD-mcphost-first-call-gift requirement 1: `remember`'s own byte cap --
+/// checked before any tenant/state row exists (AC2: "no tenant and no
+/// state row is created" for an over-long value).
+const MAX_REMEMBER_BYTES: usize = 4096;
+
+/// requirement 1: `signup`/`host.quickstart`'s shared `remember` argument
+/// parse -- `None` for an absent or `null` value ("absent input changes
+/// nothing"), `Some(text)` for a valid 1..=4096-byte string, or
+/// `remember_too_long` (AC2) for anything longer.
+fn validate_remember_arg(args: &Value) -> Result<Option<String>, AppError> {
+    match args.get("remember") {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(s)) => {
+            if s.len() > MAX_REMEMBER_BYTES {
+                Err(AppError::remember_too_long(s.len()))
+            } else {
+                Ok(Some(s.clone()))
+            }
+        }
+        Some(_) => Err(AppError::InvalidArgs("remember: must be a string".to_string())),
+    }
+}
+
+/// requirement 3: "paste `memory_line` into your memory file ..." --
+/// verbatim on every first-contact response that carries a `memory_line`.
+pub(crate) const MEMORY_HINT: &str =
+    "paste `memory_line` into your memory file (CLAUDE.md, memory/, or your client's equivalent)";
+
+/// requirement 3: one line of at most 200 characters naming the one call
+/// that reads this tenant's notes back -- the personal URL
+/// (PRD-mcphost-url-bound-tenants) when this session already has one,
+/// else `host.whoami` (AC1's own "containing the tenant's URL or
+/// host.whoami"). Never embeds a key (Technical considerations).
+pub(crate) fn memory_line(url: Option<&str>) -> String {
+    match url {
+        Some(url) => format!("mcphost: {url}  notes: host.state.list prefix=notes/"),
+        None => "mcphost: host.whoami  notes: host.state.list prefix=notes/".to_string(),
+    }
+}
+
 pub async fn signup(
     state: &AppState,
     args: &Value,
@@ -199,6 +239,10 @@ pub async fn signup(
     // validated before the rate-limit admit/tenant insert below, so a
     // rejected `source` never consumes a rate-limit slot or creates a row.
     let signup_source = validate_source(args)?;
+    // PRD-mcphost-first-call-gift requirement 1 / AC2: validated before the
+    // rate-limit admit/tenant insert below, same "never consumes a slot or
+    // creates a row" placement as `signup_source` right above.
+    let remember = validate_remember_arg(args)?;
 
     // Requirement 1: `source_class` first (loopback IP or the harness
     // marker header; known-fleet display name, synthorg client name, or
@@ -316,6 +360,23 @@ pub async fn signup(
     // so a failure here fails the whole signup.
     crate::invites::mint_standing_invite(state, tenant.id).await?;
 
+    // PRD-mcphost-first-call-gift requirement 1/2 (AC1): stored under the
+    // new tenant, same request -- `remember` was already validated (and,
+    // if too long, refused) before this tenant ever existed. Requirement 3
+    // (AC1): `memory_line`/`memory_hint` are unconditional -- every
+    // first-contact response carries them, `remember` or not. `signup`
+    // itself never binds a session to a `/u/<secret>/mcp` URL (only
+    // `host.key_rotate`/the implicit-signup path do), so this call always
+    // takes the `host.whoami` branch of [`memory_line`].
+    let remembered = match &remember {
+        Some(text) => {
+            let key = crate::tenant_state::store_first_contact_note(state, &tenant, text).await?;
+            Some(json!({"key": key, "text": text}))
+        }
+        None => None,
+    };
+    let memory_line_value = memory_line(None);
+
     // PRD-mcphost-handoff-token requirement 1 / AC1: opt-in only -- an
     // absent (or non-true) `handoff` argument is byte-identical to today's
     // response below (requirement 5 / AC5). In handoff mode, `key` never
@@ -367,6 +428,13 @@ pub async fn signup(
         {
             obj.insert("source".to_string(), json!(source));
         }
+        if let Some(obj) = response.as_object_mut() {
+            if let Some(r) = &remembered {
+                obj.insert("remembered".to_string(), r.clone());
+            }
+            obj.insert("memory_line".to_string(), json!(memory_line_value));
+            obj.insert("memory_hint".to_string(), json!(MEMORY_HINT));
+        }
         return Ok(response);
     }
 
@@ -395,6 +463,13 @@ pub async fn signup(
         && let Some(obj) = response.as_object_mut()
     {
         obj.insert("source".to_string(), json!(source));
+    }
+    if let Some(obj) = response.as_object_mut() {
+        if let Some(r) = &remembered {
+            obj.insert("remembered".to_string(), r.clone());
+        }
+        obj.insert("memory_line".to_string(), json!(memory_line_value));
+        obj.insert("memory_hint".to_string(), json!(MEMORY_HINT));
     }
     Ok(response)
 }
@@ -1956,6 +2031,16 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
     // "own constant window regardless of the rest of the response"
     // convention `hints_shown_7d`/`hints_followed_7d` above already use.
     let invites_usage = state.db.invites_usage_7d(tenant.id).await?;
+    // PRD-mcphost-first-call-gift requirement 7 (AC7): host-wide, not
+    // per-tenant -- same "a per-tenant call surfaces one host-wide
+    // aggregate" shape `invites_usage_7d`'s own `k` above already uses.
+    let (first_contact_total_7d, first_contact_with_note_7d) =
+        state.db.first_contact_remember_counts_7d().await?;
+    let remember_rate_7d = if first_contact_total_7d > 0 {
+        first_contact_with_note_7d as f64 / first_contact_total_7d as f64
+    } else {
+        0.0
+    };
     Ok(json!({
         "window": window,
         "calls": stats.calls,
@@ -1995,6 +2080,9 @@ pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Va
             "sent_7d": invites_usage.sent_7d,
             "accepted_7d": invites_usage.accepted_7d,
             "k": invites_usage.k,
+        },
+        "first_contact": {
+            "remember_rate_7d": remember_rate_7d,
         },
     }))
 }

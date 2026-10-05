@@ -169,10 +169,19 @@ pub async fn profile_set(state: &AppState, tenant: &Tenant, args: &Value) -> Res
         Some(Value::Bool(b)) => Some(*b),
         Some(_) => return Err(AppError::InvalidArgs("hints: must be a boolean".to_string())),
     };
+    // PRD-mcphost-first-call-gift requirement 5 (AC5): `welcome_back =
+    // false` permanently opts the tenant out of its own `welcome_back`
+    // envelope, the same "omit to leave unchanged, no other value
+    // re-enables it except true" shape `hints` above already uses.
+    let welcome_back = match args.get("welcome_back") {
+        None => None,
+        Some(Value::Bool(b)) => Some(*b),
+        Some(_) => return Err(AppError::InvalidArgs("welcome_back: must be a boolean".to_string())),
+    };
 
     match state
         .db
-        .set_agent_profile(tenant.id, handle, description, tags, contact_policy, hints)
+        .set_agent_profile(tenant.id, handle, description, tags, contact_policy, hints, welcome_back)
         .await?
     {
         SetProfileOutcome::HandleTaken => Err(AppError::handle_taken()),
@@ -183,6 +192,7 @@ pub async fn profile_set(state: &AppState, tenant: &Tenant, args: &Value) -> Res
             "tags": profile.tags,
             "contact_policy": profile.contact_policy,
             "hints": profile.hints,
+            "welcome_back": profile.welcome_back,
         })),
     }
 }

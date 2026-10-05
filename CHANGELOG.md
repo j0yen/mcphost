@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.85.0 — 2026-10-04
+
+`signup` accepts an optional `remember` string (1-4096 bytes; longer
+returns `remember_too_long`, no tenant or state row created): stored as the
+new tenant's first `host.state` note under `notes/<ulid>` in the same
+request, echoed back as `remembered: {key, text}` (PRD-mcphost-first-call-
+gift). Every first-contact response (`signup`, the implicit-signup
+`onboarding` envelope) now also carries `memory_line` (the tenant's
+personal URL when the session already has one, else `host.whoami`) and
+`memory_hint`. A tenant with an earlier session now gets `welcome_back:
+{notes, last_note, last_seen}` on the first successful `host.*` call of a
+later URL-bound or session-bound session, never twice in the same session,
+and never for a header/`tenant_key`-argument-authenticated session or a
+tenant that called `host.agent.profile_set(welcome_back = false)`.
+`host.usage` adds `first_contact.remember_rate_7d`.
+
 ## v0.82.0 — 2026-10-04
 
 The first `host.*`/`billing.*` call on a fresh anonymous session on `/mcp`

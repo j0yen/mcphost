@@ -71,7 +71,10 @@ async fn usage_without_by_keeps_the_pre_prd_shape() {
     // every other pre-existing field. `hints` is PRD-mcphost-one-next-tool
     // requirement 9 (AC9)'s own addition, landed after this test. `invites`
     // is PRD-mcphost-invite-links' own addition (sent_7d/accepted_7d/k),
-    // landed after that.
+    // landed after that. `first_contact` is PRD-mcphost-first-call-gift
+    // requirement 7 (AC7)'s own addition (remember_rate_7d), landed after
+    // that -- same "additive fields only" migration note this PRD's own
+    // AC6 fixture already documents.
     let expected_keys: BTreeSet<&str> = [
         "window",
         "calls",
@@ -88,6 +91,7 @@ async fn usage_without_by_keeps_the_pre_prd_shape() {
         "run_results_bytes",
         "hints",
         "invites",
+        "first_contact",
     ]
     .into_iter()
     .collect();

@@ -4796,6 +4796,78 @@ impl McpHostHandler {
         }
     }
 
+    /// PRD-mcphost-first-call-gift requirement 4/5 (AC3-5): `welcome_back`
+    /// on the first successful `host.*` call of a session, for a tenant
+    /// with at least one earlier session -- never twice in the same
+    /// session (requirement 4 / AC4), and never at all for a
+    /// header/`tenant_key`-argument-authenticated session or a tenant that
+    /// opted out (requirement 5 / AC5): `via_session_binding`/
+    /// `via_url_secret` are the only two auth paths this ever fires on.
+    ///
+    /// `tenant.last_seen_unix` was loaded by this call's own auth resolver
+    /// (`resolve_session_binding`/`resolve_path_secret_auth`) BEFORE it
+    /// bumped the column, so a `Some` here already proves an earlier
+    /// session's own last call, never this one's -- a brand-new tenant (no
+    /// earlier authenticated call at all) is `None`, which is exactly how
+    /// this stays mutually exclusive with `onboarding` (requirement:
+    /// "a brand-new tenant has no earlier session").
+    ///
+    /// `session_id`'s "already shown this session" check reuses
+    /// [`crate::invites::InviteHintTracker`] (`self.state.invite_hints`)
+    /// under a distinct `welcome_back:`-prefixed key, rather than a new
+    /// `AppState` field -- it is already exactly the generic "has this
+    /// session_id been marked before" set this needs, for a different `X`.
+    #[allow(clippy::too_many_arguments)]
+    async fn maybe_attach_welcome_back(
+        &self,
+        tenant: &Tenant,
+        via_session_binding: bool,
+        via_url_secret: bool,
+        session_id: Option<&str>,
+        called: &str,
+        value: &mut Value,
+    ) {
+        if !called.starts_with("host.") || !(via_session_binding || via_url_secret) {
+            return;
+        }
+        let Some(last_seen_unix) = tenant.last_seen_unix else {
+            return;
+        };
+        let Some(sid) = session_id else {
+            return;
+        };
+        if !self.state.invite_hints.mark_first(&format!("welcome_back:{sid}")) {
+            return;
+        }
+        let profile = match self.state.db.agent_profile(tenant.id).await {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!(tenant = %tenant.namespace, error = %e, "agent_profile lookup failed");
+                return;
+            }
+        };
+        if !profile.welcome_back {
+            return;
+        }
+        let (notes, last_note) = match tenant_state::first_contact_summary(&self.state, tenant.id).await {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(tenant = %tenant.namespace, error = %e, "first_contact_summary failed");
+                return;
+            }
+        };
+        if let Some(obj) = value.as_object_mut() {
+            obj.insert(
+                "welcome_back".to_string(),
+                json!({
+                    "notes": notes,
+                    "last_note": last_note,
+                    "last_seen": crate::state::rfc3339_from_unix(last_seen_unix),
+                }),
+            );
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn dispatch_tenant_tool(
         &self,
@@ -5154,6 +5226,18 @@ impl McpHostHandler {
                          it is your credential. Call host.key_rotate if it leaks.",
                         tenant.namespace
                     ),
+                    // PRD-mcphost-first-call-gift requirement 3 (AC8): this
+                    // session is already URL-bound (the `url` above), so
+                    // `memory_line` carries it rather than falling back to
+                    // `host.whoami`. No `welcome_back` on this same
+                    // response -- this tenant was just created, so it has
+                    // no earlier session (mutually exclusive by
+                    // construction: the outer `auth` this call resolved
+                    // stays `Auth::Anonymous` throughout this function,
+                    // which is exactly what gates `welcome_back` off in
+                    // `call_tool`'s own success handler).
+                    "memory_line": control::memory_line(Some(&url)),
+                    "memory_hint": control::MEMORY_HINT,
                 }),
             );
         }
@@ -7841,6 +7925,19 @@ impl ServerHandler for McpHostHandler {
                 if let Auth::Tenant(tenant, _) = &auth {
                     self.maybe_attach_next_hint(tenant, !via_tenant_key_arg, &body_name, &mut value)
                         .await;
+                    // PRD-mcphost-first-call-gift requirement 4 (AC3, AC4):
+                    // checked after `maybe_attach_next_hint` -- distinct
+                    // keys on the same `value` object, so order doesn't
+                    // matter between them.
+                    self.maybe_attach_welcome_back(
+                        tenant,
+                        via_session_binding,
+                        via_url_secret,
+                        session_id.as_deref(),
+                        &body_name,
+                        &mut value,
+                    )
+                    .await;
                 }
                 // PRD-mcphost-tool-naming-convention-and-aliases
                 // requirement 6 (P1, AC7): `host.whoami`'s first answer in

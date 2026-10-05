@@ -570,6 +570,10 @@ impl AppError {
                 "state_schema_violation" | "state_quota_exceeded" | "state_table_not_found" => {
                     ErrorCode::INVALID_PARAMS
                 }
+                // PRD-mcphost-first-call-gift requirement 1 (AC2): an
+                // over-long `remember` argument is the same caller-input
+                // problem as the `state_*` group above.
+                "remember_too_long" => ErrorCode::INVALID_PARAMS,
                 // PRD-mcphost-schedules requirements 2/4: a bad cron
                 // expression, an over-quota schedules_max, or a too-short
                 // schedule_min_interval_s are all caller-input problems,
@@ -1330,6 +1334,18 @@ impl AppError {
             code: "signup_paused",
             message,
             data: json!({"retry_after_secs": retry_after_secs}),
+        }
+    }
+
+    /// PRD-mcphost-first-call-gift requirement 1 (AC2): `signup`/
+    /// `host.quickstart`'s own `remember` argument over the 4096-byte cap --
+    /// never partially stored (checked before the tenant/state row would be
+    /// written).
+    pub fn remember_too_long(len: usize) -> Self {
+        AppError::Structured {
+            code: "remember_too_long",
+            message: format!("remember must be at most 4096 bytes; got {len}"),
+            data: json!({"max_bytes": 4096, "len": len}),
         }
     }
 
