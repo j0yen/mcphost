@@ -63,13 +63,35 @@ fn warm_up_db_audit_callsites() {
     });
 }
 
+/// Process-wide lock serializing the whole install-subscriber ->
+/// rebuild-interest-cache -> run `f` -> read-capture sequence below across
+/// every concurrently-running call to `capture_tracing` in this suite
+/// binary (AC1, AC2, ...). `rebuild_interest_cache()` is not scoped to its
+/// own callsites or its own thread -- it is a process-global operation
+/// that recomputes cached `Interest` for *every* registered callsite,
+/// `db_audit`'s included, against whatever dispatcher happens to be
+/// current on the calling thread at that exact moment. Two `capture_tracing`
+/// calls racing on different threads can each invalidate/recompute that
+/// shared cache while the other is mid-`f()` -- concretely, in the real
+/// disk I/O gap `db.rs::open_with_cfg` leaves between its `role=server` and
+/// `role=prune` audit lines (busyaudit_ac01 flaked exactly here, 1/3 runs
+/// on the gate box, 2026-10-05). `warm_up_db_audit_callsites` above only
+/// closes the *first-ever-registration* gap; it does nothing once both
+/// call sites are already registered and a second, concurrent rebuild can
+/// still land between this call's own rebuild and its second audit line.
+/// Serializing here removes that overlap for every busyaudit test.
+static CAPTURE_LOCK: Mutex<()> = Mutex::new(());
+
 /// Runs `f` with a scoped (thread-local, not global) tracing subscriber
 /// installed and returns `f`'s result alongside everything it logged as
 /// plain text -- safe to call from multiple tests running concurrently in
 /// the same suite binary since [`tracing::subscriber::with_default`] is
-/// thread-local, unlike `tracing::subscriber::set_global_default`.
+/// thread-local, unlike `tracing::subscriber::set_global_default`, and
+/// since [`CAPTURE_LOCK`] above keeps those concurrent calls from
+/// interleaving their shared, process-global interest-cache rebuilds.
 pub fn capture_tracing<T>(f: impl FnOnce() -> T) -> (T, String) {
     warm_up_db_audit_callsites();
+    let _guard = CAPTURE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let buf = CapturedLog::default();
     let subscriber = tracing_subscriber::fmt()
         .with_writer(buf.clone())
