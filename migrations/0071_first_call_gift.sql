@@ -1,0 +1,11 @@
+-- compat: previous -- one additive `agent_profiles.welcome_back` column
+-- (ALTER TABLE, defaulting every existing row to enabled); nothing
+-- existing changes shape. Notes themselves need no migration -- they are
+-- ordinary `tenant_state_kv` rows under the `notes/` key prefix.
+-- mcphost 0069_first_call_gift: PRD-mcphost-first-call-gift requirement 5
+-- (AC5): `host.agent.profile_set(welcome_back = false)` flips this to 0,
+-- permanently suppressing the tenant's own `welcome_back` envelope;
+-- defaults to enabled (1) for every tenant, including rows that predate
+-- this column -- same convention migration 0060's `agent_profiles.hints`
+-- column already uses.
+ALTER TABLE agent_profiles ADD COLUMN welcome_back INTEGER NOT NULL DEFAULT 1;

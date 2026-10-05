@@ -292,6 +292,39 @@ pub async fn state_delete(
     ))
 }
 
+/// PRD-mcphost-first-call-gift requirement 1 (AC1): writes the tenant's
+/// first-contact note as an ordinary tenant-wide `host.state` row under
+/// `notes/<ulid>` -- the exact storage `host.state.list(prefix: "notes/")`
+/// already reads back, so this needs no new table (Non-goals). Reuses
+/// [`state_set`] itself (quota checks included) rather than writing to
+/// `tenant_state_kv` directly, so a note counts against the tenant's state
+/// quota exactly like any other `host.state.set` write.
+pub async fn store_first_contact_note(state: &AppState, tenant: &Tenant, text: &str) -> Result<String, AppError> {
+    let key = format!("notes/{}", crate::state::new_ulid());
+    let value = json!({"text": text, "source": "first_call", "at": crate::state::now_unix()});
+    let args = json!({"key": key.clone(), "value": value});
+    state_set(state, tenant, &args, None).await?;
+    Ok(key)
+}
+
+/// requirement 4 (AC3): the note count under `notes/` plus the text of
+/// the most recently written one -- the exact pair `welcome_back` needs,
+/// read with the same `state_kv_list` prefix scan `host.state.list` itself
+/// uses.
+pub async fn first_contact_summary(state: &AppState, tenant_id: i64) -> Result<(i64, Option<String>), AppError> {
+    let rows = state
+        .db
+        .state_kv_list(tenant_id, Some("notes/".to_string()), 1000, String::new())
+        .await?;
+    let notes = rows.len() as i64;
+    let last_note = rows
+        .iter()
+        .max_by_key(|(_, _, updated_unix)| *updated_unix)
+        .and_then(|(_, value_json, _)| serde_json::from_str::<Value>(value_json).ok())
+        .and_then(|v| v.get("text").and_then(Value::as_str).map(str::to_string));
+    Ok((notes, last_note))
+}
+
 pub async fn state_list(
     state: &AppState,
     tenant: &Tenant,

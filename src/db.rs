@@ -149,6 +149,11 @@ const MIGRATION_0069: &str = include_str!("../migrations/0069_row_policies.sql")
 // PRD-mcphost-row-policy requirement 6: `audit_chain`. Renumbered to 0070
 // for the same reason as 0069 above.
 const MIGRATION_0070: &str = include_str!("../migrations/0070_audit_chain.sql");
+/// PRD-mcphost-first-call-gift requirement 5 (AC5): `agent_profiles.welcome_back`.
+/// Renumbered to 0071 during this rebase (run 386, 2026-10-05):
+/// mcphost-row-policy claimed 0069/0070 first, landing on main ahead of
+/// this branch (this PRD's own migration was originally numbered 0069).
+const MIGRATION_0071: &str = include_str!("../migrations/0071_first_call_gift.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -165,7 +170,7 @@ const TENANT_COLUMNS: &str = "id, namespace, display_name, key_hash, created_at,
     stripe_customer_id, synthetic, source_class, client_name, client_version, classified_by, \
     created_unix, origin, origin_detail, key_rotated_unix, disabled_reason, mesh_frozen_at, \
     signup_source, owner_email, owner_verified_at, claim_token_hash, claim_expires_at, \
-    url_secret_hash, url_rotated_at, invited_by_tenant_id";
+    url_secret_hash, url_rotated_at, invited_by_tenant_id, last_seen_unix";
 
 fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
     Ok(Tenant {
@@ -201,6 +206,7 @@ fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
         url_secret_hash: r.get(29)?,
         url_rotated_at: r.get(30)?,
         invited_by_tenant_id: r.get(31)?,
+        last_seen_unix: r.get(32)?,
     })
 }
 
@@ -337,6 +343,12 @@ pub struct AgentProfileRow {
     /// called it, including rows that predate this column (migration 0059's
     /// own `DEFAULT 1`).
     pub hints: bool,
+    /// PRD-mcphost-first-call-gift requirement 5 (AC5): `host.agent.
+    /// profile_set(welcome_back = false)` clears this, permanently
+    /// suppressing the tenant's own `welcome_back` envelope; `true` for
+    /// every tenant that has never called it, including rows that predate
+    /// this column (migration 0069's own `DEFAULT 1`).
+    pub welcome_back: bool,
 }
 
 impl Default for AgentProfileRow {
@@ -347,6 +359,7 @@ impl Default for AgentProfileRow {
             tags: Vec::new(),
             contact_policy: String::new(),
             hints: true,
+            welcome_back: true,
         }
     }
 }
@@ -359,6 +372,7 @@ fn agent_profile_row_from_row(r: &Row) -> rusqlite::Result<AgentProfileRow> {
         tags: serde_json::from_str(&tags_json).unwrap_or_default(),
         contact_policy: r.get(3)?,
         hints: r.get::<_, i64>(4)? != 0,
+        welcome_back: r.get::<_, i64>(5)? != 0,
     })
 }
 
@@ -563,6 +577,16 @@ pub struct Tenant {
     /// born through `host.invite.create`'s standard link or a standing
     /// invite; `None` for a tenant that signed up any other way.
     pub invited_by_tenant_id: Option<i64>,
+    /// PRD-mcphost-agent-directory migration 0020: this tenant's most
+    /// recent authenticated request, bumped by `handler::resolve_auth`/
+    /// `resolve_tenant_key_auth`/`resolve_path_secret_auth`/
+    /// `resolve_session_binding` -- all four `SELECT` this row before they
+    /// bump the column, so a `Tenant` loaded by any of them carries the
+    /// PREVIOUS call's timestamp, never this one's. PRD-mcphost-first-call-
+    /// gift requirement 4 (AC3) reads exactly that property: `Some` here
+    /// already proves an earlier session's own last call, since a brand
+    /// new tenant (or one with no earlier authenticated call) is `None`.
+    pub last_seen_unix: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2307,7 +2331,8 @@ impl Db {
         Self::migrate_0067_invite_links(&conn)?;
         Self::migrate_0068_standing_invite_code(&conn)?;
         Self::migrate_0069_row_policies(&conn)?;
-        Self::migrate_0070_audit_chain(&conn)
+        Self::migrate_0070_audit_chain(&conn)?;
+        Self::migrate_0071_first_call_gift(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -3317,6 +3342,20 @@ impl Db {
         Ok(())
     }
 
+    /// PRD-mcphost-first-call-gift requirement 5 (AC5):
+    /// `agent_profiles.welcome_back`, same `ALTER TABLE` + `pragma_table_info`
+    /// idempotency guard as 0068 above. Renumbered to 0071 during this
+    /// rebase (run 386, 2026-10-05): mcphost-row-policy claimed 0069/0070
+    /// first, landing on main ahead of this branch.
+    fn migrate_0071_first_call_gift(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('agent_profiles') WHERE name = 'welcome_back'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0071)?;
+        }
+        Ok(())
+    }
 
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
@@ -3582,6 +3621,7 @@ impl Db {
                 url_secret_hash: None,
                 url_rotated_at: None,
                 invited_by_tenant_id: None,
+                last_seen_unix: None,
             })
         })
         .await
@@ -3787,8 +3827,8 @@ impl Db {
 
     fn query_agent_profile(conn: &Connection, tenant_id: i64) -> Result<AgentProfileRow, AppError> {
         conn.query_row(
-            "SELECT handle, description, tags_json, contact_policy, hints FROM agent_profiles \
-             WHERE tenant_id = ?1",
+            "SELECT handle, description, tags_json, contact_policy, hints, welcome_back \
+             FROM agent_profiles WHERE tenant_id = ?1",
             params![tenant_id],
             agent_profile_row_from_row,
         )
@@ -3823,6 +3863,7 @@ impl Db {
         tags: Option<Vec<String>>,
         contact_policy: Option<String>,
         hints: Option<bool>,
+        welcome_back: Option<bool>,
     ) -> Result<SetProfileOutcome, AppError> {
         self.with_conn(move |conn| {
             conn.execute("BEGIN IMMEDIATE", []).map_err(AppError::from)?;
@@ -3850,20 +3891,32 @@ impl Db {
                 let new_tags = tags.unwrap_or_else(|| current.tags.clone());
                 let new_contact_policy = contact_policy.unwrap_or(current.contact_policy);
                 let new_hints = hints.unwrap_or(current.hints);
+                let new_welcome_back = welcome_back.unwrap_or(current.welcome_back);
                 let tags_json = serde_json::to_string(&new_tags).unwrap_or_else(|_| "[]".to_string());
                 let now = now_rfc3339();
                 conn.execute(
                     "INSERT INTO agent_profiles \
-                         (tenant_id, handle, description, tags_json, contact_policy, hints, updated_at) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) \
+                         (tenant_id, handle, description, tags_json, contact_policy, hints, \
+                          welcome_back, updated_at) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) \
                      ON CONFLICT(tenant_id) DO UPDATE SET \
                          handle = excluded.handle, \
                          description = excluded.description, \
                          tags_json = excluded.tags_json, \
                          contact_policy = excluded.contact_policy, \
                          hints = excluded.hints, \
+                         welcome_back = excluded.welcome_back, \
                          updated_at = excluded.updated_at",
-                    params![tenant_id, new_handle, new_description, tags_json, new_contact_policy, new_hints as i64, now],
+                    params![
+                        tenant_id,
+                        new_handle,
+                        new_description,
+                        tags_json,
+                        new_contact_policy,
+                        new_hints as i64,
+                        new_welcome_back as i64,
+                        now
+                    ],
                 )?;
                 Ok(SetProfileOutcome::Ok(AgentProfileRow {
                     handle: new_handle,
@@ -3871,6 +3924,7 @@ impl Db {
                     tags: new_tags,
                     contact_policy: new_contact_policy,
                     hints: new_hints,
+                    welcome_back: new_welcome_back,
                 }))
             })();
             match &outcome {
@@ -18813,6 +18867,37 @@ impl Db {
                 0.0
             };
             Ok(InvitesUsage7d { sent_7d, accepted_7d, k })
+        })
+        .await
+    }
+
+    /// PRD-mcphost-first-call-gift requirement 7 (AC7): `host.usage`'s
+    /// `first_contact.remember_rate_7d` -- host-wide, not per-tenant, same
+    /// "a per-tenant call surfaces one host-wide aggregate" shape
+    /// `invites_usage_7d`'s own `active_inviters_7d`/`k` above already
+    /// uses. `total_7d` is every tenant created in the trailing 7 days;
+    /// `with_note_7d` is how many of those wrote a first-contact note
+    /// (`host.state` row under `notes/` with `source: "first_call"`,
+    /// [`crate::tenant_state::store_first_contact_note`]'s own shape) --
+    /// matched by a `LIKE` scan over `tenant_state_kv.value_json` rather
+    /// than `json_extract`, since this crate controls that column's exact
+    /// serialization (`serde_json::to_string` of a fixed-key-order `json!`
+    /// literal) and never needs a second index for it.
+    pub async fn first_contact_remember_counts_7d(&self) -> Result<(i64, i64), AppError> {
+        let since = now_unix() - 7 * 24 * 3_600;
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(DISTINCT t.id), \
+                        COUNT(DISTINCT CASE WHEN k.tenant_id IS NOT NULL THEN t.id END) \
+                 FROM tenants t \
+                 LEFT JOIN tenant_state_kv k \
+                     ON k.tenant_id = t.id AND k.key LIKE 'notes/%' \
+                     AND k.value_json LIKE '%\"source\":\"first_call\"%' \
+                 WHERE t.created_unix >= ?1",
+                params![since],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(AppError::from)
         })
         .await
     }

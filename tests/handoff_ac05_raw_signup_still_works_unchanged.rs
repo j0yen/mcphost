@@ -36,6 +36,11 @@ async fn signup_without_handoff_argument_is_unchanged() {
     // `tenant_key` on every call see no change"). It is `true` exactly when
     // this signup bound its connection to the new tenant, which every
     // `/mcp` signup does -- see `sessbind_ac06_*`.
+    //
+    // PRD-mcphost-first-call-gift requirement 3 (AC1): `memory_line`/
+    // `memory_hint` are two more additive fields every signup response now
+    // carries unconditionally (Migration/compatibility: "Additive fields
+    // only").
     let expected: BTreeSet<String> = [
         "tenant",
         "key",
@@ -45,6 +50,8 @@ async fn signup_without_handoff_argument_is_unchanged() {
         "next",
         "claim_url",
         "session_bound",
+        "memory_line",
+        "memory_hint",
     ]
     .into_iter()
     .map(str::to_string)
