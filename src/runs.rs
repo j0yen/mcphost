@@ -323,7 +323,7 @@ pub async fn part(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
 }
 
 /// `host.runs.list(tool?, status?, trigger?, end_user_subject?,
-/// parent_run_id?, include_children?, limit?)`.
+/// parent_run_id?, include_children?, verdict?, limit?)`.
 /// PRD-mcphost-runs-end-user-subject P0 requirement 4 (AC2): `end_user_subject`
 /// filters within this tenant; a subject with no runs (even `carol`, never
 /// heard of) returns an empty list, never an error.
@@ -351,6 +351,11 @@ pub async fn part(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
 /// `[]` for a leaf step; the array never recurses, so a nested chain's
 /// grandchildren appear only on the row that is their own parent, the same
 /// one-level rule [`get`] follows.
+///
+/// PRD-mcphost-run-budget-governor P1 requirement 7 (AC9): `verdict`
+/// (`"alert"`/`"exceeded"`) filters to runs whose
+/// `progress_json.budget.verdict` matches -- a run with no budget block at
+/// all (pre-PRD, or purged) never matches any `verdict` filter.
 pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let tool = arg_str_opt(args, "tool");
     let status = arg_str_opt(args, "status");
@@ -358,7 +363,13 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
     let end_user_subject = arg_str_opt(args, "end_user_subject");
     let parent_run_id = arg_str_opt(args, "parent_run_id");
     let include_children = args.get("include_children").and_then(Value::as_bool).unwrap_or(false);
+    let verdict = arg_str_opt(args, "verdict");
     let limit = arg_i64_opt(args, "limit").unwrap_or(20).clamp(1, 200);
+    // requirement 7: `verdict` isn't a stored column -- fetched over a
+    // wider window (still bounded) and filtered/truncated in process, same
+    // "post-filter, then re-cap to the caller's own limit" shape a
+    // verdict-less call never pays for.
+    let fetch_limit = if verdict.is_some() { (limit * 10).min(2_000) } else { limit };
     let rows = state
         .db
         .list_runs(
@@ -369,9 +380,17 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
             end_user_subject,
             parent_run_id,
             include_children,
-            limit,
+            fetch_limit,
         )
         .await?;
+    let rows: Vec<_> = match &verdict {
+        Some(want) => rows
+            .into_iter()
+            .filter(|r| run_budget_verdict(r).as_deref() == Some(want.as_str()))
+            .take(limit as usize)
+            .collect(),
+        None => rows,
+    };
     // One query for the whole page's children, not one per row.
     let parent_ids: Vec<String> = rows.iter().map(|r| r.id.clone()).collect();
     let children = state.db.list_run_children_for_parents(tenant.id, parent_ids).await?;
@@ -393,6 +412,18 @@ pub async fn list(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Val
         })
         .collect();
     Ok(json!({"runs": runs}))
+}
+
+/// AC9: this run's `progress_json.budget.verdict`, `None` for a run with no
+/// budget block (pre-PRD, or a purged run whose `progress_json` never held
+/// one).
+fn run_budget_verdict(run: &RunRow) -> Option<String> {
+    let progress: Value = run.progress_json.as_deref().and_then(|s| serde_json::from_str(s).ok())?;
+    progress
+        .get("budget")?
+        .get("verdict")?
+        .as_str()
+        .map(str::to_string)
 }
 
 /// `host.runs.cancel(run_id)` (AC4). Marks the run `cancelled` in the
@@ -631,6 +662,7 @@ pub async fn admin_runs_reap(state: &AppState) -> Result<Value, AppError> {
 /// async call fails immediately, synchronously, rather than silently
 /// sitting `queued` forever to fail invisibly once the executor picks it
 /// up. AC1: returns within 50ms -- a single-row insert, no sandbox touched.
+#[allow(clippy::too_many_arguments)]
 pub async fn enqueue(
     state: &AppState,
     tenant: &Tenant,
@@ -640,6 +672,11 @@ pub async fn enqueue(
     // end user `handler.rs` already resolved before dispatch, so the
     // queued run's own row carries it.
     end_user: Option<&crate::enduser::EndUser>,
+    // PRD-mcphost-run-budget-governor requirement 3: the caller's own
+    // `budget` override (already validated once by `handler.rs`'s
+    // `host_tool_call`, re-validated here since this is the function that
+    // actually persists it -- the plan's defaults when `None`).
+    budget_arg: Option<&Value>,
 ) -> Result<Value, AppError> {
     let row = state
         .db
@@ -672,6 +709,9 @@ pub async fn enqueue(
             tenant.plan
         ))
     })?;
+    // PRD-mcphost-run-budget-governor requirement 3: resolved and validated
+    // before the row is inserted -- a rejected override starts no run.
+    let budget_limits = crate::budget::resolve_and_validate(plan, budget_arg)?;
     let deadline_s = plan.job_max_s;
     let run_id = crate::state::new_ulid();
     let args_json = serde_json::to_string(&args)
@@ -698,6 +738,11 @@ pub async fn enqueue(
             end_user_method,
         )
         .await?;
+    // requirement 3: "the effective limits are stored on the run row in
+    // counters_json.budget.limits" -- `execute_job` reads this back to
+    // reconstruct the tracker it dispatches the job under.
+    let counters_json = json!({"budget": {"limits": budget_limits.to_json()}}).to_string();
+    state.db.update_run_counters(run_id.clone(), tenant.id, counters_json).await?;
     Ok(json!({"run_id": run_id, "status": "queued"}))
 }
 
@@ -783,12 +828,16 @@ pub async fn enqueue_url(
 /// as the full qualified `<owner_ns>.<local_name>` string so
 /// [`execute_job`] can tell a shared run apart from an own-tool one and
 /// resolve it against the owner's tool, not the caller's, at lease time.
+#[allow(clippy::too_many_arguments)]
 pub async fn enqueue_shared(
     state: &AppState,
     caller: &Tenant,
     owner_ns: &str,
     local_name: &str,
     args: Value,
+    // PRD-mcphost-run-budget-governor requirement 3: see [`enqueue`]'s own
+    // doc on this parameter.
+    budget_arg: Option<&Value>,
 ) -> Result<Value, AppError> {
     let (_owner, row) = crate::sharing::resolve_shared_tool(state, caller, owner_ns, local_name).await?;
     let kind = state.kinds.get(&row.kind).ok_or_else(|| {
@@ -817,6 +866,7 @@ pub async fn enqueue_shared(
             caller.plan
         ))
     })?;
+    let budget_limits = crate::budget::resolve_and_validate(plan, budget_arg)?;
     let deadline_s = plan.job_max_s;
     let run_id = crate::state::new_ulid();
     let args_json = serde_json::to_string(&args)
@@ -840,6 +890,8 @@ pub async fn enqueue_shared(
             None,
         )
         .await?;
+    let counters_json = json!({"budget": {"limits": budget_limits.to_json()}}).to_string();
+    state.db.update_run_counters(run_id.clone(), caller.id, counters_json).await?;
     Ok(json!({"run_id": run_id, "status": "queued"}))
 }
 
@@ -883,7 +935,7 @@ impl ProgressSink for DbProgressSink {
 /// The outcome `run_one_job` finalizes into a `runs` row.
 enum JobOutcome {
     Done { result_value: Value },
-    Error { error_class: String },
+    Error { error_class: String, error_data: Option<String> },
     Timeout,
 }
 
@@ -897,6 +949,7 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
     let Ok(Some(run_tenant)) = state.db.find_tenant_by_id(run.tenant_id).await else {
         return JobOutcome::Error {
             error_class: "tenant_not_found".to_string(),
+            error_data: None,
         };
     };
     // PRD-mcphost-shared-tool-call-path requirement 3 (AC4): a shared async
@@ -913,6 +966,7 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
             Err(_) => {
                 return JobOutcome::Error {
                     error_class: "tool_not_found".to_string(),
+                    error_data: None,
                 };
             }
         },
@@ -921,6 +975,7 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
             _ => {
                 return JobOutcome::Error {
                     error_class: "tool_not_found".to_string(),
+                    error_data: None,
                 };
             }
         },
@@ -928,6 +983,7 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
     let Some(kind) = state.kinds.get(&row.kind) else {
         return JobOutcome::Error {
             error_class: "internal".to_string(),
+            error_data: None,
         };
     };
     let args: Value = run
@@ -939,6 +995,7 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
     let Ok(secrets) = build_secret_resolver(state, tenant.id).await else {
         return JobOutcome::Error {
             error_class: "internal".to_string(),
+            error_data: None,
         };
     };
     let log = Arc::new(BufferedLog(std::sync::Mutex::new(Vec::new())));
@@ -957,6 +1014,39 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
     let dry_run = run
         .test
         .then(|| crate::dryrun::DryRunCtx::new(state.db.path().to_path_buf(), state.db.cfg()));
+    // PRD-mcphost-run-budget-governor requirement 3/4: `enqueue`/
+    // `enqueue_shared` already resolved and stored this run's effective
+    // limits in `counters_json.budget.limits` -- reconstructed here rather
+    // than re-resolved, so a plan edit between enqueue and lease never
+    // changes a run's own budget mid-flight. A run with no such block (pre-
+    // PRD, per Migration/compatibility) falls back to the plan's current
+    // defaults.
+    let budget_limits = run
+        .counters_json
+        .as_deref()
+        .and_then(|s| serde_json::from_str::<Value>(s).ok())
+        .and_then(|v| v.get("budget").and_then(|b| b.get("limits")).cloned())
+        .map(|v| crate::budget::BudgetLimits::from_json(&v))
+        .unwrap_or_else(|| {
+            state
+                .plans
+                .get(&tenant.plan)
+                .map(crate::plans::Plan::budget_defaults)
+                .unwrap_or_else(crate::budget::BudgetLimits::unconstrained)
+        });
+    let budget_now_ms = crate::state::now_unix_ms();
+    let budget = crate::budget::BudgetTracker::new(
+        state.clone(),
+        tenant.id,
+        run.id.clone(),
+        budget_limits,
+        budget_now_ms,
+    );
+    // requirement 5: an initial snapshot (every dimension at 0, verdict
+    // `ok`) so `host.runs.get` sees `budget.limits`/`verdict` even for a
+    // job whose own call never reaches `kinds::compose_call` (AC6: a plain
+    // async call with no children).
+    budget.persist(budget_now_ms).await;
     let ctx = CallCtx {
         tenant_id: tenant.id,
         namespace: tenant.namespace.clone(),
@@ -1056,6 +1146,10 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
         // like `handler.rs::call_published_tool`'s synchronous path
         // attributes to its own pre-generated run id.
         parent_run_id: Some(run.id.clone()),
+        // PRD-mcphost-run-budget-governor requirement 4: this job's own
+        // ledger -- checked/recorded by `kinds::compose_call` for every
+        // child call this dispatch makes (chain or otherwise).
+        budget: Some(budget.clone()),
     };
 
     let call_timeout = tokio::time::timeout(Duration::from_secs(deadline_s), kind.call(&row.spec, args, &ctx));
@@ -1101,8 +1195,18 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
         }
         Ok(Err(kind_err)) => {
             let app_err = AppError::from(kind_err);
+            // PRD-mcphost-run-budget-governor requirement 4 (AC2/AC4): a
+            // `budget_exceeded` error carries `{dimension, limit, used}` --
+            // the same "the raw Structured data, not into_error_data()'s
+            // wire envelope" convention `run_one_job`'s own state_quota arm
+            // already uses below.
+            let error_data = match &app_err {
+                AppError::Structured { data, .. } => Some(data.to_string()),
+                _ => None,
+            };
             JobOutcome::Error {
                 error_class: app_err.code().to_string(),
+                error_data,
             }
         }
         Err(_elapsed) => {
@@ -1200,7 +1304,9 @@ async fn run_one_job(state: AppState, run: RunRow) {
                 ),
             }
         }
-        JobOutcome::Error { error_class } => ("error".to_string(), None, Some(error_class), None),
+        JobOutcome::Error { error_class, error_data } => {
+            ("error".to_string(), None, Some(error_class), error_data)
+        }
         JobOutcome::Timeout => ("timeout".to_string(), None, None, None),
     };
 

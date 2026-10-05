@@ -40,6 +40,8 @@ mod bridgedisc_ac04_runtime_unknown_import_no_traceback;
 mod bridgedisc_ac05_network_public_plan_named;
 #[path = "bridgedisc_ac06_tools_list_mentions_import_mcphost.rs"]
 mod bridgedisc_ac06_tools_list_mentions_import_mcphost;
+#[path = "budget_ac11_five_recipe_proofs_stay_under_budget.rs"]
+mod budget_ac11_five_recipe_proofs_stay_under_budget;
 #[path = "chainhost_ac05_quickstart_chain_example_resolves.rs"]
 mod chainhost_ac05_quickstart_chain_example_resolves;
 #[path = "chanbridge_ac01_python_channel_post_seq_and_host_sees_tenant.rs"]

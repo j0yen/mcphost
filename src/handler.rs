@@ -1057,6 +1057,13 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                         "description": "Pin the call to this version instead of whichever is \
                             current; see host.tool_history. An unknown version is an argument error.",
                     },
+                    "budget": {
+                        "type": "object",
+                        "description": "Lowers this call's budget below the plan default: any \
+                            subset of max_child_calls, max_est_tokens, max_tool_latency_ms, \
+                            max_wall_ms. A value above the plan's own ceiling is a validation \
+                            error naming it; see host.runs.get's progress.budget.",
+                    },
                 }),
                 &["name", "args"],
             ),
@@ -2228,8 +2235,9 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             "host.runs.list",
             "List this tenant's recent runs, newest first, optionally filtered by tool, \
              status (queued|running|done|error|timeout|cancelled), trigger \
-             (call|job|schedule|event|composition|...) or end_user_subject (the end user, if \
-             any, the run ran as). A chain's own composed step runs (trigger: \"composition\") \
+             (call|job|schedule|event|composition|...), end_user_subject (the end user, if \
+             any, the run ran as), or verdict (alert|exceeded, the run's own budget.verdict). \
+             A chain's own composed step runs (trigger: \"composition\") \
              are excluded by default -- pass parent_run_id, trigger: \"composition\", or \
              include_children: true to see them.",
             host_schema(
@@ -2249,6 +2257,11 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                         "type": "boolean",
                         "description": "Include composed child runs (trigger: \"composition\") \
                              alongside top-level ones; default false.",
+                    },
+                    "verdict": {
+                        "type": "string",
+                        "description": "Only runs whose progress.budget.verdict is this value \
+                            (alert|exceeded) -- a run with no budget block never matches.",
                     },
                     "limit": {"type": "integer", "description": "Max runs to return; default 20."},
                 }),
@@ -5603,6 +5616,11 @@ impl McpHostHandler {
                 step_tool: step_tool_cell.clone(),
             })),
             parent_run_id: Some(run_id.clone()),
+            // PRD-mcphost-run-budget-governor requirement 4: budget
+            // enforcement is only wired into the run executor's own job
+            // dispatch (`runs::execute_job`) -- an ordinary synchronous call
+            // carries no ledger to check or record against.
+            budget: None,
         };
         // requirement 4 (AC1/AC2): the three `calls` columns every branch
         // below's `record_call_attributed_with_end_user` writes.
@@ -6019,6 +6037,7 @@ impl McpHostHandler {
             // as every other field here already documents) -- nothing for
             // a composed child to attribute to, same as `compose_db` above.
             parent_run_id: None,
+            budget: None,
         };
 
         let outcome = crate::dryrun::with_dry_run(
@@ -6173,6 +6192,7 @@ impl McpHostHandler {
             // unpublished spec has no run row of its own to hang a
             // composed child from.
             parent_run_id: None,
+            budget: None,
         };
 
         match tokio::time::timeout(resolved_timeout, kind.call(&spec, call_args, &ctx)).await {
@@ -6393,6 +6413,7 @@ impl McpHostHandler {
             // PRD-mcphost-chain-run-lineage: same "pre-publish dry run, no
             // run row of its own" reasoning as `end_user` above.
             parent_run_id: None,
+            budget: None,
         })
         .await;
 
@@ -6653,6 +6674,7 @@ impl McpHostHandler {
             // PRD-mcphost-chain-run-lineage: same "no composition tree,
             // no run row" reasoning as `compose_db`/`end_user` above.
             parent_run_id: None,
+            budget: None,
         };
 
         let start = Instant::now();
@@ -6741,6 +6763,21 @@ impl McpHostHandler {
         // inside it -- see the dispatch match arm below).
         let version = args.get("version").and_then(Value::as_i64);
         let is_async = args.get("async").and_then(Value::as_bool) == Some(true);
+        // PRD-mcphost-run-budget-governor requirement 3 (AC3): validated
+        // before any dispatch (sync or async) -- a `budget` above the
+        // plan's own ceiling never starts a run. Every call reaching this
+        // point already has a loaded plan row (`tenant.plan` is set at
+        // signup and never points at an unregistered plan).
+        let budget_arg = args.get("budget");
+        if budget_arg.is_some_and(|v| !v.is_null()) {
+            let plan = self.state.plans.get(&tenant.plan).ok_or_else(|| {
+                AppError::Internal(format!(
+                    "tenant's plan '{}' is not in the loaded plan catalog",
+                    tenant.plan
+                ))
+            })?;
+            crate::budget::resolve_and_validate(plan, budget_arg)?;
+        }
         // AC15: `call_published_tool`'s `get_tool` lookup is already scoped
         // to `tenant.id`, so a name only some other tenant published simply
         // isn't found here -- `ToolNotFound`, with nothing in the error to
@@ -6760,7 +6797,7 @@ impl McpHostHandler {
         match name.split_once('.') {
             Some((ns, local)) if ns == tenant.namespace => {
                 if is_async {
-                    return crate::runs::enqueue(&self.state, tenant, local, call_args, end_user)
+                    return crate::runs::enqueue(&self.state, tenant, local, call_args, end_user, budget_arg)
                         .await;
                 }
                 self.call_published_tool(tenant, local, call_args, false, None, version, end_user, auth_method, None)
@@ -6768,7 +6805,7 @@ impl McpHostHandler {
             }
             Some((ns, local)) => {
                 if is_async {
-                    return crate::runs::enqueue_shared(&self.state, tenant, ns, local, call_args)
+                    return crate::runs::enqueue_shared(&self.state, tenant, ns, local, call_args, budget_arg)
                         .await;
                 }
                 self.call_shared_tool(tenant, ns, local, call_args, false, version, end_user, auth_method)
@@ -6776,7 +6813,7 @@ impl McpHostHandler {
             }
             None => {
                 if is_async {
-                    return crate::runs::enqueue(&self.state, tenant, &name, call_args, end_user)
+                    return crate::runs::enqueue(&self.state, tenant, &name, call_args, end_user, budget_arg)
                         .await;
                 }
                 self.call_published_tool(tenant, &name, call_args, false, None, version, end_user, auth_method, None)

@@ -5809,6 +5809,7 @@ mod tests {
             sidecar_ops_max: i64::MAX,
             host_dispatch: None,
             parent_run_id: None,
+            budget: None,
         }
     }
 
@@ -6123,6 +6124,7 @@ mod tests {
             sidecar_ops_max: i64::MAX,
             host_dispatch: None,
             parent_run_id: None,
+            budget: None,
         }
     }
 

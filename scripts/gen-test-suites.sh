@@ -452,6 +452,22 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # re-collapses core's normal buckets to 1, landing the grand total back
 # at 10.
 #
+# PRD-mcphost-session-bound-tenant-after-signup (2026-09-30, fixing
+# verifier findings for AC1/AC2/AC4-AC9/AC11/AC12): this PRD's own ten
+# `sessbind_ac*.rs` files (also `core`-classified) join the same normal
+# bucket on top of the oauth-unverified-client-consent-warning PRD's own
+# 680 cap above, spawning an 11th suite binary again -- caught by the same
+# P0 assertion. 680 -> 700 re-collapses core's normal buckets to 1,
+# landing the grand total back at 10.
+#
+# PRD-mcphost-run-budget-governor (2026-09-30): this PRD's own nine
+# `budget_ac*.rs` core-classified files (AC1-AC9; AC11 is
+# sandbox-classified, joining `suite_sandbox_02.rs` instead) join the same
+# normal bucket on top of the session-bound-tenant PRD's own 700 cap above,
+# spawning an 11th suite binary again -- caught by the same P0 assertion.
+# 700 -> 720 re-collapses core's normal buckets to 1, landing the grand
+# total back at 10.
+#
 # PRD-mcphost-chart-in-a-minute (2026-09-30): this PRD's own thirteen
 # `chart_ac*.rs` core-classified files (AC11's own sandboxed python-bridge
 # test is `sandbox`-classified, unaffected) join the same normal bucket on
