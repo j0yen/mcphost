@@ -13,6 +13,7 @@ pub mod auth;
 pub mod authz;
 pub mod bans;
 pub mod billing;
+pub mod budget;
 pub mod channels;
 pub mod chart;
 pub mod claim;

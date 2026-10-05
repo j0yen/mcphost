@@ -232,6 +232,38 @@ pub struct Plan {
     /// least-recently-queried handles first; a single materialisation that
     /// alone exceeds it is refused with `handle_quota_exceeded`.
     pub table_handle_bytes_max: i64,
+    /// PRD-mcphost-run-budget-governor requirement 2: a run's default
+    /// `budget.max_child_calls`, clamped to
+    /// [`crate::kinds::COMPOSE_CHILDREN_MAX`] by [`Plan::budget_defaults`].
+    /// Requirement 2 names both defaults directly: "free 20 child calls".
+    pub budget_max_child_calls: i64,
+    /// requirement 2: a run's default `budget.max_est_tokens`. "free
+    /// 200,000 est tokens".
+    pub budget_max_est_tokens: i64,
+    /// requirement 2: a run's default `budget.max_tool_latency_ms`. "free
+    /// 30,000 ms tool latency".
+    pub budget_max_tool_latency_ms: i64,
+    /// requirement 2: a run's default `budget.max_wall_ms`. "free 60,000 ms
+    /// wall".
+    pub budget_max_wall_ms: i64,
+}
+
+impl Plan {
+    /// requirement 2/3: this plan's default [`crate::budget::BudgetLimits`]
+    /// -- `max_child_calls` never exceeds
+    /// [`crate::kinds::COMPOSE_CHILDREN_MAX`], even for a hand-edited
+    /// `plans.toml` that names a higher one.
+    pub fn budget_defaults(&self) -> crate::budget::BudgetLimits {
+        crate::budget::BudgetLimits {
+            max_child_calls: Some(
+                self.budget_max_child_calls.min(crate::kinds::COMPOSE_CHILDREN_MAX as i64),
+            ),
+            max_est_tokens: Some(self.budget_max_est_tokens),
+            max_tool_latency_ms: Some(self.budget_max_tool_latency_ms),
+            max_wall_ms: Some(self.budget_max_wall_ms),
+            alert_fraction: crate::budget::DEFAULT_ALERT_FRACTION,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -332,6 +364,13 @@ impl PlanCatalog {
                     // PRD-mcphost-result-handles Open Questions: "free 64
                     // MiB" of live query-result handles.
                     table_handle_bytes_max: 64 * 1024 * 1024,
+                    // PRD-mcphost-run-budget-governor requirement 2: "free:
+                    // 20 child calls, 200,000 est tokens, 30,000 ms tool
+                    // latency, 60,000 ms wall".
+                    budget_max_child_calls: 20,
+                    budget_max_est_tokens: 200_000,
+                    budget_max_tool_latency_ms: 30_000,
+                    budget_max_wall_ms: 60_000,
                 },
                 Plan {
                     name: "pro".to_string(),
@@ -426,6 +465,13 @@ impl PlanCatalog {
                     // tenant's declared tables, so an 8x bump to 512 MiB
                     // is plenty of headroom without matching that ratio).
                     table_handle_bytes_max: 512 * 1024 * 1024,
+                    // PRD-mcphost-run-budget-governor requirement 2: "pro:
+                    // 50 child calls, 2,000,000 est tokens, 120,000 ms tool
+                    // latency, 600,000 ms wall".
+                    budget_max_child_calls: 50,
+                    budget_max_est_tokens: 2_000_000,
+                    budget_max_tool_latency_ms: 120_000,
+                    budget_max_wall_ms: 600_000,
                 },
             ],
         }
@@ -548,6 +594,19 @@ impl PlanCatalog {
                 "table_handle_bytes_max = {}\n",
                 p.table_handle_bytes_max
             ));
+            out.push_str(&format!(
+                "budget_max_child_calls = {}\n",
+                p.budget_max_child_calls
+            ));
+            out.push_str(&format!(
+                "budget_max_est_tokens = {}\n",
+                p.budget_max_est_tokens
+            ));
+            out.push_str(&format!(
+                "budget_max_tool_latency_ms = {}\n",
+                p.budget_max_tool_latency_ms
+            ));
+            out.push_str(&format!("budget_max_wall_ms = {}\n", p.budget_max_wall_ms));
             out.push('\n');
         }
         out
@@ -632,6 +691,12 @@ impl PlanCatalog {
                 "vault_providers_max" => builder.vault_providers_max = Some(int_value()),
                 "invites_max" => builder.invites_max = Some(int_value()),
                 "table_handle_bytes_max" => builder.table_handle_bytes_max = Some(int_value()),
+                "budget_max_child_calls" => builder.budget_max_child_calls = Some(int_value()),
+                "budget_max_est_tokens" => builder.budget_max_est_tokens = Some(int_value()),
+                "budget_max_tool_latency_ms" => {
+                    builder.budget_max_tool_latency_ms = Some(int_value())
+                }
+                "budget_max_wall_ms" => builder.budget_max_wall_ms = Some(int_value()),
                 _ => {}
             }
         }
@@ -709,6 +774,10 @@ struct PlanBuilder {
     vault_providers_max: Option<i64>,
     invites_max: Option<i64>,
     table_handle_bytes_max: Option<i64>,
+    budget_max_child_calls: Option<i64>,
+    budget_max_est_tokens: Option<i64>,
+    budget_max_tool_latency_ms: Option<i64>,
+    budget_max_wall_ms: Option<i64>,
 }
 
 impl PlanBuilder {
@@ -773,6 +842,10 @@ impl PlanBuilder {
             vault_providers_max: quota!(vault_providers_max),
             invites_max: quota!(invites_max),
             table_handle_bytes_max: quota!(table_handle_bytes_max),
+            budget_max_child_calls: quota!(budget_max_child_calls),
+            budget_max_est_tokens: quota!(budget_max_est_tokens),
+            budget_max_tool_latency_ms: quota!(budget_max_tool_latency_ms),
+            budget_max_wall_ms: quota!(budget_max_wall_ms),
         };
         Ok((plan, defaulted))
     }
@@ -881,6 +954,38 @@ mod tests {
         assert_eq!(pro.table_bytes_max, 500 * 1024 * 1024);
         assert!(pro.table_tables_max > free.table_tables_max);
         assert!(pro.table_bytes_max > free.table_bytes_max);
+    }
+
+    /// PRD-mcphost-run-budget-governor requirement 2: "free: 20 child
+    /// calls, 200,000 est tokens, 30,000 ms tool latency, 60,000 ms wall;
+    /// pro: 50, 2,000,000, 120,000, 600,000."
+    #[test]
+    fn default_catalog_has_budget_quotas() {
+        let catalog = PlanCatalog::default_catalog();
+        let free = catalog.get("free").expect("free plan");
+        assert_eq!(free.budget_max_child_calls, 20);
+        assert_eq!(free.budget_max_est_tokens, 200_000);
+        assert_eq!(free.budget_max_tool_latency_ms, 30_000);
+        assert_eq!(free.budget_max_wall_ms, 60_000);
+        let pro = catalog.get("pro").expect("pro plan");
+        assert_eq!(pro.budget_max_child_calls, 50);
+        assert_eq!(pro.budget_max_est_tokens, 2_000_000);
+        assert_eq!(pro.budget_max_tool_latency_ms, 120_000);
+        assert_eq!(pro.budget_max_wall_ms, 600_000);
+    }
+
+    /// requirement 2: `max_child_calls` never exceeds
+    /// `COMPOSE_CHILDREN_MAX`, even for a hand-edited `plans.toml` naming a
+    /// higher one.
+    #[test]
+    fn budget_defaults_clamps_max_child_calls_to_compose_children_max() {
+        let mut plan = PlanCatalog::default_catalog().plans.remove(0);
+        plan.budget_max_child_calls = 999;
+        let limits = plan.budget_defaults();
+        assert_eq!(
+            limits.max_child_calls,
+            Some(crate::kinds::COMPOSE_CHILDREN_MAX as i64)
+        );
     }
 
     #[test]

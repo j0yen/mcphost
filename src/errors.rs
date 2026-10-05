@@ -668,6 +668,15 @@ impl AppError {
                 // problem, same INVALID_PARAMS bucket as `invalid_spec`.
                 "tenant_key_required" => ErrorCode::INVALID_REQUEST,
                 "policy_widening" => ErrorCode::INVALID_PARAMS,
+                // PRD-mcphost-run-budget-governor requirement 3 (AC3): a
+                // per-call `budget` override above the plan's own ceiling is
+                // a caller-input problem, same INVALID_PARAMS bucket as the
+                // `state_*`/`table_*` groups above; requirement 4: a run
+                // whose ledger crossed `Exceeded` is a caller-state gate
+                // (the run itself, not this one call, is at fault), same
+                // INVALID_REQUEST bucket as `rate_limited`/`banned` above.
+                "budget_ceiling_exceeded" => ErrorCode::INVALID_PARAMS,
+                "budget_exceeded" => ErrorCode::INVALID_REQUEST,
                 _ => ErrorCode::INTERNAL_ERROR,
             },
             AppError::MultiInvalid { errors, .. } => errors

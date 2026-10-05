@@ -13,6 +13,8 @@ use std::time::{Duration, Instant};
 use jsonschema::error::{TypeKind, ValidationErrorKind};
 use serde_json::{Map, Value, json};
 
+use crate::budget::Verdict;
+
 pub mod aliases;
 pub mod chain;
 pub mod conformance;
@@ -1435,6 +1437,14 @@ pub struct CallCtx {
     /// no run row at all when this is `None`, composition lineage simply
     /// isn't recorded, exactly like today.
     pub parent_run_id: Option<String>,
+    /// PRD-mcphost-run-budget-governor requirement 4: this call tree's
+    /// shared budget ledger, `Some` only for a dispatch [`crate::runs`]'s
+    /// executor is running as a job (every ordinary synchronous call,
+    /// `for_test`, and the conformance suite carry `None` -- no budget is
+    /// enforced there). [`compose_call`] checks it before dispatching a
+    /// child and records that child's cost after -- see
+    /// [`crate::budget::BudgetTracker`].
+    pub budget: Option<Arc<crate::budget::BudgetTracker>>,
 }
 
 impl CallCtx {
@@ -1471,6 +1481,7 @@ impl CallCtx {
             sidecar_ops_max: i64::MAX,
             host_dispatch: None,
             parent_run_id: None,
+            budget: None,
         }
     }
 
@@ -1708,9 +1719,48 @@ async fn compose_dispatch(
         // (`ctx.parent_run_id` is `None`), matching every other
         // composition-unavailable field above.
         parent_run_id: ctx.parent_run_id.is_some().then(|| child_run_id.to_string()),
+        // PRD-mcphost-run-budget-governor requirement 4: the whole call
+        // tree shares one ledger, same propagation shape as
+        // `compose_children` above.
+        budget: ctx.budget.clone(),
     };
 
-    kind.call(&row.spec, args, &child_ctx).await
+    // PRD-mcphost-run-budget-governor requirement 4: "records the previous
+    // child's estimated tokens and latency, then checks the verdict before
+    // dispatching the next child" -- checked here, ahead of the dispatch
+    // below, using whatever this call tree's ledger already holds from
+    // earlier children. `Exceeded` refuses this child outright (it is never
+    // dispatched at all) and persists the terminal verdict so a concurrent
+    // `host.runs.get` reads `exceeded`, not a stale `alert`/`ok` from the
+    // last child that actually ran.
+    if let Some(budget) = ctx.budget.as_ref() {
+        let now_ms = crate::state::now_unix_ms();
+        if let Verdict::Exceeded { dimension } = budget.check(now_ms) {
+            let detail = budget.exceeded_detail(dimension, now_ms);
+            budget.persist(now_ms).await;
+            return Err(KindError::structured_with(
+                "budget_exceeded",
+                format!(
+                    "this run's budget is exceeded on dimension '{}'",
+                    dimension.as_str()
+                ),
+                detail,
+            ));
+        }
+    }
+
+    let args_for_estimate = args.clone();
+    let dispatch_start = Instant::now();
+    let result = kind.call(&row.spec, args, &child_ctx).await;
+    let latency_ms = dispatch_start.elapsed().as_millis() as i64;
+
+    if let (Ok(value), Some(budget)) = (&result, ctx.budget.as_ref()) {
+        let est_tokens = crate::budget::estimate_tokens(&args_for_estimate, value);
+        budget.record(est_tokens, latency_ms);
+        budget.persist(crate::state::now_unix_ms()).await;
+    }
+
+    result
 }
 
 /// PRD-mcphost-composition requirements 1/2: dispatches `target_name` (in

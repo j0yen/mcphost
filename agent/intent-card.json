@@ -1,107 +1,98 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-row-policy.md",
-  "intent_slug": "mcphost-row-policy",
-  "root_motivation": "mcphost isolates tenants by giving each its own SQLite file, but stops at that boundary: once a tenant lets end users (already carrying verified identities per PRD-mcphost-end-user-identity) query a shared table or search shared docs, every end user sees every row/chunk. ai-stack's security crate (~/projects/ai-stack @ 4ef6c22 aistack-security) solved the next step: one policy per principal compiles once into two enforcement artifacts (a SQL row filter and a retrieval filter) stamped with the same hash, with every retrieval appending a hash-chained audit record. This PRD ports the compile core and audit chain (shapes only -- the source tree was not present on this build host) and applies the filters inside host.table.query/host.docs.search by rewriting the parsed SQL AST, never by string concatenation.",
-  "user_persona": "A tenant admin who shares tables/documents with end users and needs each one scoped to their own rows (e.g. region = EU), plus an auditor who later needs to prove what a given subject could see. Also an agent author whose python-kind tool code reaches the same store via mcphost.table.query/mcphost.docs.search and expects the same scoping as a direct host.* call.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-run-budget-governor.md",
+  "intent_slug": "mcphost-run-budget-governor",
+  "root_motivation": "A chain's only ceiling was COMPOSE_CHILDREN_MAX (50 child calls) and a run's only stop was its deadline_s -- both cliffs with no warning and no per-tenant/per-call setting, so a looping chain looked healthy until the 50th call and a tenant had no way to ask for a cheaper run. ai-stack's mcp-query-budget-governor (~/projects/ai-stack @ 4ef6c22) already has the right shape for this: a small ledger over four Option dimensions, an alert at a configurable fraction, a hard stop at the limit. This build ports that ledger verbatim, threads it through compose_call (checked before each child, recorded after) and the run executor (built from the plan's defaults or a validated per-call override, persisted into progress_json.budget on every tick), and surfaces it in host.runs.get/list.",
+  "user_persona": "A tenant running chains and async tool calls who wants a bound on what a run may spend (PRD user stories 1/2/4: a 10-child ceiling that halts the 11th step with a named error, a live fraction/verdict while still running, a synthetic panel task proving a recipe is cheap under a tiny budget); the operator watching the fleet, who wants free/pro defaults readable in plans.rs and runs listable by which ones crossed their budget (user story 3).",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 11
+    "target": 10
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given orders with a policy region = Attr(region) and Alice with region = EU, When Alice runs SELECT COUNT(*) FROM orders, Then the count equals the EU rows only and the audit record's policy_hash equals the compiled hash for Alice.",
-      "test": "tests/rowpol_ac01_sql_predicate_scopes_to_end_user_attribute.rs"
+      "description": "Given the ported ledger, When the seven carried-over unit tests run, Then they pass, including Alert at 0.8 and Exceeded at 1.0 on each dimension.",
+      "test": "tests/budget_ac01_ported_ledger_seven_tests.rs"
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the same table and Bob with no region attribute, When Bob queries it, Then zero rows return and the applied predicate is 1 = 0.",
-      "test": "tests/rowpol_ac02_missing_attribute_fails_closed_to_1_equals_0.rs"
+      "description": "Given a chain of 12 steps and budget: {max_child_calls: 10}, When it runs, Then exactly 10 children execute, the run ends error with error_class budget_exceeded and error_data_json.dimension child_calls.",
+      "test": "tests/budget_ac02_chain_child_calls_halts_at_ten.rs"
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a table with no policy, When an end user queries it, Then zero rows return; When the tenant key queries it, Then all rows return and no audit record is written.",
-      "test": "tests/rowpol_ac03_unpolicied_table_zero_rows_for_end_user_all_for_tenant_key.rs"
+      "description": "Given a free-plan tenant passing max_child_calls: 100, When host.tool_call is invoked, Then a validation error names the plan ceiling 20 and no run starts.",
+      "test": "tests/budget_ac03_free_plan_override_ceiling_validation.rs"
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a query with a CTE and a subquery both naming orders, When Alice runs it, Then both references are rewritten and the result matches the same query over EU rows only, and the test asserts the rewrite touched the AST nodes rather than the SQL text.",
-      "test": "tests/rowpol_ac04_cte_and_subquery_both_rewritten_via_ast.rs"
+      "description": "Given a chain whose third child returns a 400 KB result, When max_est_tokens is 150,000, Then the run halts before the fourth child with dimension est_tokens and used >= 100,000.",
+      "test": "tests/budget_ac04_est_tokens_halts_before_fourth_child.rs"
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a docs policy on prefix hr/ for role hr, When a user without the role searches a term that only hr/ documents contain, Then zero hits return in lexical, embeddings, and hybrid modes.",
-      "test": "tests/rowpol_ac05_docs_prefix_policy_zero_hits_lexical_and_embeddings.rs"
+      "description": "Given a running chain at 9 of 10 child calls, When host.runs.get is polled, Then progress_json.budget.fraction is 0.9 and verdict is alert.",
+      "test": "tests/budget_ac05_progress_fraction_and_alert_verdict_while_running.rs"
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given an empty allowed set, When compiled, Then the SQL predicate is 1 = 0 and the docs filter admits nothing, and compiling twice yields the same hash.",
-      "test": "tests/rowpol_ac06_empty_allowed_set_1_equals_0_and_denies_docs.rs"
+      "description": "Given a plain async host.tool_call with no budget, When it runs, Then budget.limits equal the plan defaults and verdict is ok on completion.",
+      "test": "tests/budget_ac06_plain_async_call_defaults_and_ok_verdict.rs"
     },
     {
       "id": "AC7",
       "level": "MUST",
-      "description": "Given 50 filtered reads, When host.audit.verify runs over them, Then intact is true; When one record's applied field is altered in the database, Then intact is false and the first broken id is reported.",
-      "test": "tests/rowpol_ac07_audit_verify_intact_then_tampered.rs"
+      "description": "Given 200 child calls across runs, When timed, Then the budget check adds at most 1 ms p95 per child on the builder.",
+      "test": "tests/budget_ac07_check_overhead_p95_under_1ms.rs"
     },
     {
       "id": "AC8",
-      "level": "MUST",
-      "description": "Given host.audit.chain(subject: \"alice\", limit: 10), When called by the tenant key, Then ten newest records for Alice return with returned_count and withheld_count; When called with an end-user credential, Then it is refused.",
-      "test": "tests/rowpol_ac08_audit_chain_pages_and_refuses_end_users.rs"
+      "level": "SHOULD",
+      "description": "Given a run crossing 0.8, When it continues, Then one run.budget_alert event exists for it and alerted_at_unix is set once.",
+      "test": "tests/budget_ac08_alert_event_written_once.rs"
     },
     {
       "id": "AC9",
       "level": "SHOULD",
-      "description": "Given the 1,000-row fixture, When 100 filtered and 100 unfiltered queries run, Then filtered p95 exceeds unfiltered p95 by at most 3 ms.",
-      "test": "tests/rowpol_ac09_filtered_vs_unfiltered_p95_within_3ms.rs"
+      "description": "Given host.runs.list(verdict: \"exceeded\"), When called, Then only runs with budget_exceeded return.",
+      "test": "tests/budget_ac09_runs_list_verdict_exceeded_filter.rs"
     },
     {
       "id": "AC10",
-      "level": "SHOULD",
-      "description": "Given an existing rule region in (EU) for Alice, When host.policy.set proposes region in (EU, US) without replace, Then it is refused naming the widening.",
-      "test": "tests/rowpol_ac10_policy_set_refuses_a_widening_rule.rs"
+      "level": "MUST",
+      "description": "Given prod after land, When a fresh tenant runs the docs-qa recipe's chain with budget: {max_child_calls: 3}, Then the run ends with budget_exceeded, and the same chain with plan defaults completes (Live; evidence: mcphost-1 healthz version after deploy plus both host.runs.get responses in the receipt under docs/receipts/).",
+      "test": "deferred -- operator-provisioned; needs a real deploy to production mcphost-1 and a post-deploy receipt, neither reachable from this build sandbox. Not in this dispatch's assigned AC list."
     },
     {
       "id": "AC11",
       "level": "MUST",
-      "description": "Given prod after land, When a fresh tenant sets a policy on the fixture table, registers an end user with region = EU, and that end user runs SELECT COUNT(*) FROM expenses, Then the count matches the EU rows and host.audit.chain shows the record with a hash (Live; evidence: mcphost-1 healthz version after deploy plus the query and audit responses in the receipt under docs/receipts/).",
-      "test": "deferred -- operator-provisioned; AC11 is the Live/production-only requirement (a real post-deploy probe against mcphost-1 with a receipt under docs/receipts/) and needs operator authorization this coding sandbox does not have. Not in this dispatch's assigned AC list (AC1-10, 12) to begin with."
-    },
-    {
-      "id": "AC12",
-      "level": "SHOULD",
-      "description": "Given a python tool run as Alice, When it calls mcphost.table.query on orders, Then it receives EU rows only.",
-      "test": "tests/rowpol_ac12_python_bridge_threads_end_user_through_table_query.rs"
+      "description": "Given the five recipe proof scripts, When run under plan defaults on the builder, Then none ends with budget_exceeded.",
+      "test": "tests/budget_ac11_five_recipe_proofs_stay_under_budget.rs"
     }
   ],
   "scope": [
-    "src/rowpolicy/{mod,policy,audit,rewrite}.rs: policy model (RowPolicy/PolicyTarget/PolicyRule/RuleOp/RuleValue), compile() -> CompiledPolicy (SQL predicate with {pN} placeholders + bound params, docs filter, policy_hash), SecurityContext, the AST-based rewrite (sqlparser 0.62 VisitMut over TableFactor, post_visit to avoid re-descending into a freshly-built derived subquery, CTE aliases excluded from the rewrite target set), audit record hashing/chain verification, and the host.policy.*/host.audit.* tool entrypoints -- all reimplemented from the PRD's described shapes since ~/projects/ai-stack was not present on this build host (documented in src/rowpolicy/mod.rs's own module doc comment).",
-    "migrations/0057_row_policies.sql, migrations/0058_audit_chain.sql + src/db.rs: row_policies/end_user_attributes tables and audit_chain table plus their CRUD (upsert_row_policy, end_user_attrs_set/get, audit_chain_append/list/range) and the test_tamper_audit_applied test-only helper AC7 uses to simulate tampering.",
-    "src/tables.rs: table_query gains an end_user parameter, branches on Access::Unrestricted (unchanged fast path, no audit) vs Access::Restricted (collects referenced table names via the AST, compiles each table's policy, rewrites the query, executes with named bindings, computes withheld_count for the primary table, appends one audit record).",
-    "src/docs.rs: doc_search gains an end_user parameter, resolves a docs_filter once and applies it to both the lexical and embeddings candidate lists before ranking; lexical_search_results over-fetches when a filter is active so truncation to k happens after filtering, not before.",
-    "src/handler.rs: host.policy.set/list/attrs_set and host.audit.chain/verify tool registrations and dispatch; TenantTableBridge/TenantDocsBridge gain an end_user field threaded from call_published_tool's already-resolved end_user (AC12), with the three internal dry-run construction sites (tool_test, spec_test, tool_run) and src/runs.rs's background-run path left at end_user: None since no real caller identity reaches them.",
-    "src/errors.rs: jsonrpc_code() gains explicit match arms for \"tenant_key_required\" (INVALID_REQUEST) and \"policy_widening\" (INVALID_PARAMS) so these AppError::Structured codes don't silently default to INTERNAL_ERROR.",
-    "Cargo.toml: sqlparser gains the \"visitor\" feature; version bump 0.62.0 -> 0.63.0 (PRD's own version_bump: minor rule). CHANGELOG.md: entry recording the PRD landing and AC11's deferral.",
-    "contracts/host-tools.v1.json, www/llms.txt: regenerated for the five new host.policy.*/host.audit.* tools.",
-    "tests/rowpol_ac01..ac10,ac12_*.rs: the eleven delivered tests (one per non-deferred AC)."
+    "src/budget.rs (new): BudgetLimits/Dimension/Verdict/BudgetLedger (pure, ported), BudgetTracker (stateful: check/record/persist, the run.budget_alert alert, alerted_at_unix), resolve_and_validate, estimate_tokens.",
+    "src/plans.rs: Plan gains budget_max_child_calls/max_est_tokens/max_tool_latency_ms/max_wall_ms (free 20/200k/30k/60k, pro 50/2M/120k/600k) round-tripped through plans.toml, and Plan::budget_defaults().",
+    "src/kinds/mod.rs: CallCtx gains budget: Option<Arc<BudgetTracker>>; compose_call checks before each child dispatch (Exceeded refuses without dispatching) and records+persists after a successful one.",
+    "src/runs.rs: enqueue/enqueue_shared resolve+validate+store the run's effective limits in counters_json.budget.limits before insert; execute_job reconstructs the tracker, does an initial ok-verdict persist before dispatch, and threads it into the job's CallCtx; JobOutcome::Error now carries structured error_data through to finalize_run; list() gains a verdict filter.",
+    "src/handler.rs: host.tool_call validates a budget argument against the plan ceiling ahead of both sync and async dispatch; host.tool_call/host.runs.list wire schemas document budget/verdict.",
+    "src/errors.rs: budget_ceiling_exceeded (INVALID_PARAMS) and budget_exceeded (INVALID_REQUEST) jsonrpc_code mappings.",
+    "contracts/host-tools.v1.json: regenerated (mcphost contract dump) for both new wire arguments.",
+    "Cargo.toml/Cargo.lock: 0.62.0 -> 0.63.0 (PRD's own version_bump: minor rule)."
   ],
   "non_goals": [
-    "Column masking -- ColumnMask types are not ported in this PRD (PRD's own non-goal); no masking is applied anywhere.",
-    "Policy inheritance across tenants or namespaces -- dropped along with ai-stack's enrollment/namespace layer, which was never ported.",
-    "Applying policies to tenant-key calls -- a tenant key sees its own data whole; policies bind to end users only (Access::Unrestricted takes no filter and writes no audit record).",
-    "A policy language beyond equality and set membership (eq/in) on end-user attributes or literals -- no range, pattern, or boolean-combinator operators.",
-    "host.policy.simulate (P2 requirement 11) -- out of this dispatch's assigned AC list entirely.",
-    "AC11 (Live, prod-only, operator-provisioned) -- deferred; nothing branch-local can substitute for a real post-deploy prod probe."
+    "Billing changes -- estimated tokens are for the budget only, never for metering (PRD's own non-goal 1); no calls.rs/billing.rs touched.",
+    "Model-token accounting inside a python or wasm tool -- the estimate stays chars/4 over the args/result the host itself sees (non-goal 2).",
+    "Raising plan ceilings -- resolve_and_validate can only lower a plan's own default, never exceed it (non-goal 3); AC3 is the direct proof.",
+    "Alert delivery to external channels -- progress_json is the surface; run.budget_alert rides the existing alerts.rs store (delivery to a configured webhook/inbox is that module's own pre-existing, unmodified behavior), not a new channel (non-goal 4)."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -110,52 +101,50 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "ast_rewrite_not_string_concatenation": "Requirement 4 forbids splicing predicate literals into SQL text; CompiledPolicy's rls_predicate uses {p0}/{p1}/... template placeholders bound via rusqlite named parameters on a query rewritten through sqlparser's VisitMut, and tests/rowpol_ac04 explicitly asserts the rewrite goes through AST nodes.",
-      "fail_closed_default": "Per the PRD's own Open Questions resolution (\"Default here: fail closed\"), an end user querying an unpolicied table gets zero rows from day one, not a per-tenant opt-out switch.",
-      "ai_stack_source_unavailable": "~/projects/ai-stack does not exist on this build host, so src/rowpolicy/{policy,audit,rewrite}.rs reimplement the PRD-described shapes/contracts (EntitlementPolicy/CompiledPolicy/AuditChain concepts) rather than porting literal source lines; documented inline in src/rowpolicy/mod.rs.",
-      "test_prefix": "rowpol (the PRD's own frontmatter field), same convention as every other test file in this repo."
+      "test_file_names_use_the_prd_test_prefix": "test_prefix budget (the PRD's own frontmatter field): tests/budget_ac<NN>_<short_desc>.rs, one file per non-deferred AC.",
+      "never_amend_a_committed_ac": "Work AC-by-AC, one commit per AC (or per requirement with no AC of its own); a commit is never rewritten once the build has moved past it."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does doc_search's AC5 only test lexical and embeddings when the AC text says lexical/embeddings/hybrid?",
-      "a": "doc_search only ever reports modes lexical, embeddings, or lexical-fallback (confirmed by grep across src/docs.rs) -- there is no third ranking mode called \"hybrid\" anywhere in this codebase, and requirement 5's own prose (not the AC's) names only \"lexical and embeddings\". Building a net-new hybrid-ranking mode to satisfy the AC's wording literally would be unjustified scope creep for a row-policy PRD, so the two real modes are treated as the full behavior surface the AC's phrasing maps onto."
+      "q": "Why does budget enforcement only wire into the async job path (runs::execute_job), never the synchronous call_published_tool path?",
+      "a": "Every listed AC that exercises actual halting/recording (AC2, AC4, AC5, AC8, AC9) frames its scenario as 'the run' finalizing or being polled via host.runs.get while running -- only an async job has a 'running' row a concurrent poll can observe (a synchronous call's own runs row, per runs_ac05, is written only AFTER the call already finished). AC3's validation is the one budget-adjacent behavior that DOES apply to sync calls, and it's checked at host_tool_call's top regardless of the async flag, before either dispatch path runs."
     },
     {
       "why": 2,
-      "q": "Why does table_query write one audit record per call rather than one per policied table touched?",
-      "a": "The PRD specifies the RetrievalAuditRecord shape but not multi-table call semantics. One record per table_query call, keyed to the alphabetically-first policied table's compiled policy/hash/predicate, is sufficient for every AC (AC1-3 are single-table; AC4's CTE/subquery test doesn't assert audit fields) and keeps the audit chain's one-row-per-read shape simple rather than fragmenting a single logical read across N audit rows."
+      "q": "Why store the resolved BudgetLimits in counters_json.budget.limits at enqueue time rather than re-resolving from the tenant's plan when execute_job later leases the row?",
+      "a": "Requirement 3 says this in so many words ('the effective limits are stored on the run row in counters_json.budget.limits'), and it also closes a real race: a plan edit between enqueue and lease (the executor can sit behind other queued work) must not change a run's own budget out from under it after the caller already saw it accepted."
     },
     {
       "why": 3,
-      "q": "Why does the AST rewrite happen in post_visit_table_factor rather than pre_visit_table_factor?",
-      "a": "sqlparser's derived VisitMut recurses into a node's children using the value AFTER pre_visit ran on it -- rewriting Table into a freshly-built Derived subquery in pre_visit caused the same traversal to immediately re-descend into that fresh subtree's own fresh Table node, rewriting it again, forever (a real stack overflow hit during AC4 development). A Table variant has no children to recurse into, so mutating it in post_visit is never itself re-traversed."
+      "q": "Why does compose_call's own child_calls counter never count the run's own top-level (non-composed) call?",
+      "a": "COMPOSE_CHILDREN_MAX's existing atomic counter (ctx.compose_children) already only counts actual composed dispatches, never the root call -- mirroring that meant a plain non-chain async call (AC6) legitimately reports child_calls: 0 at completion, and an initial ok-verdict snapshot persisted before dispatch (independent of whether anything ever calls compose_call) is what makes AC6's budget.limits/verdict observable at all for a tool with no children."
     },
     {
       "why": 4,
-      "q": "Why does referenced_table_names need to special-case CTE aliases?",
-      "a": "A CTE alias reference (e.g. FROM recent where recent is a WITH-defined name) is structurally identical to a real table reference (TableFactor::Table{name: \"recent\"}) -- without filtering CTE aliases out of the collected table-name list, AC4's outer query wrapped the CTE's own already-filtered output in a second (SELECT * FROM recent WHERE 1 = 0) AS recent, nullifying rows the CTE had already correctly scoped. Fixed by collecting every WITH clause's alias names via a pre_visit_query hook and excluding them."
+      "q": "Why does AC11's uptime-probes leg drive tests/support/uptime_probes.rs's helpers directly instead of shelling out to examples/uptime-probes/proof.sh like the other four legs?",
+      "a": "That recipe's probe tool declares network: \"public\", pro-plan-gated since PRD-mcphost-sandbox-egress-allowlist; proof.sh signs up its own fresh (free-plan) tenant via the public API and has no way to self-upgrade before its own publish step. Racing a Rust-side admin.plan_set against a bash subprocess's signup timing was considered and rejected as genuinely flaky; every existing in-repo runner for this recipe's real workload already solves this the same way this build does."
     },
     {
       "why": 5,
-      "q": "Why do host.policy.* and host.audit.* tools refuse an end-user credential (tenant_key_required) instead of silently scoping the call to that end user?",
-      "a": "Requirement 7 says \"All tenant-key only\" -- these are policy-authoring and audit-reading operations, not data reads an end user should ever reach regardless of their own attributes (an end user auditing their own access, or widening their own policy, would defeat the whole mechanism). AC8 pins this with an explicit refusal assertion rather than a silent-scoping fallback, matching host.state.*'s own end_user argument shape being the exception, not the rule, for every other host.policy.*/host.audit.* tool."
+      "q": "Why does the run.budget_alert event key on run.budget_alert:<run_id> rather than a single shared run.budget_alert key?",
+      "a": "alerts::raise collapses a repeated raise under the same key within its cooldown window (900s default) into one row's repeat_count -- a shared key across many different runs' alerts in the same test/window would make 'one event exists for THIS run' ambiguous to assert. Keying per run_id makes AC8's 'one run.budget_alert event exists for it' checkable in isolation regardless of what else alerted recently."
     }
   ],
   "created_at": "2026-09-30T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Should withheld_count be computed at all on large tables (PRD's own open question)?",
-      "resolution": "Default taken: null above 10,000 candidates, computed via a lightweight COUNT(*) scoped to the primary table otherwise -- matches the PRD's own stated default, so no further judgment call was needed."
+      "question": "Requirement 6/AC8 says the alert event is 'written to the tenant's event stream the existing alert module owns' -- is that the per-tenant host.msg inbox, or alerts.rs's own (host-wide, key-scoped) alerts table?",
+      "resolution": "alerts.rs's own alerts table: it's the only store 'the existing alert module' (the phrase's own antecedent) owns, and admin.alerts.list is directly queryable/assertable. 'the tenant's event stream' is read as describing whose run the event is ABOUT (body.tenant_id/run_id), not a claim that a second, per-tenant-scoped store exists -- alerts.rs has none."
     },
     {
-      "question": "Fail closed for end users on unpolicied tables from day one, or a per-tenant switch (PRD's own open question)?",
-      "resolution": "Default taken: fail closed from day one, no per-tenant switch -- matches the PRD's own stated default (AC3 pins this directly: zero rows for an end user, all rows for the tenant key, on the same unpolicied table)."
+      "question": "Does a per-call budget override apply to a synchronous (non-async) host.tool_call, or only to async/job dispatch?",
+      "resolution": "Validation (AC3, budget_ceiling_exceeded) applies to both -- checked once at host_tool_call's top before either dispatch branch. Actual ledger enforcement (checking/recording per child) only wires into the async executor path (see five_whys #1); a synchronous chain call's own runs row is unaffected by this PRD."
     },
     {
-      "question": "Is the find_widening()/widens() dominance check (requirement 9/AC10) actually exercised end-to-end before this build is called done?",
-      "resolution": "Yes -- it was implemented alongside host.policy.set early (reusing requirement 1's op: in / Literal(Value) shapes) but left untested until AC10's own dispatch slot; tests/rowpol_ac10_policy_set_refuses_a_widening_rule.rs confirms a literal superset on the same column is refused with policy_widening naming the column, that re-asserting the same set or narrowing it is accepted without replace, and that replace: true confirms a genuine widening."
+      "question": "PRD technical considerations: 'the budget's wall limit defaults to the deadline so they agree' -- does a per-call budget override get allowed to raise max_wall_ms past the plan's own deadline_s-derived ceiling?",
+      "resolution": "No: max_wall_ms is validated against the plan's own budget_max_wall_ms default exactly like every other dimension (non-goal 3, 'lower only') -- this build does not additionally cross-check it against job_max_s/deadline_s, since the two are already the same numeric default per plan (60s/600s) and the PRD names no distinct ceiling for one over the other."
     }
   ]
 }

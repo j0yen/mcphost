@@ -2546,7 +2546,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "List this tenant's recent runs, newest first, optionally filtered by tool, status (queued|running|done|error|timeout|cancelled), trigger (call|job|schedule|event|composition|...) or end_user_subject (the end user, if any, the run ran as). A chain's own composed step runs (trigger: \"composition\") are excluded by default -- pass parent_run_id, trigger: \"composition\", or include_children: true to see them.",
+      "description": "List this tenant's recent runs, newest first, optionally filtered by tool, status (queued|running|done|error|timeout|cancelled), trigger (call|job|schedule|event|composition|...), end_user_subject (the end user, if any, the run ran as), or verdict (alert|exceeded, the run's own budget.verdict). A chain's own composed step runs (trigger: \"composition\") are excluded by default -- pass parent_run_id, trigger: \"composition\", or include_children: true to see them.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -2580,6 +2580,10 @@
           },
           "trigger": {
             "description": "Only runs of this trigger kind.",
+            "type": "string"
+          },
+          "verdict": {
+            "description": "Only runs whose progress.budget.verdict is this value (alert|exceeded) -- a run with no budget block never matches.",
             "type": "string"
           }
         },
@@ -3704,6 +3708,10 @@
             "description": "Run as a job instead of inline: returns {run_id, status} within ~50ms under the plan's job_max_s deadline; default false.",
             "type": "boolean"
           },
+          "budget": {
+            "description": "Lowers this call's budget below the plan default: any subset of max_child_calls, max_est_tokens, max_tool_latency_ms, max_wall_ms. A value above the plan's own ceiling is a validation error naming it; see host.runs.get's progress.budget.",
+            "type": "object"
+          },
           "name": {
             "description": "Local name of the tool to invoke.",
             "type": "string"
@@ -4063,6 +4071,10 @@
           "async": {
             "description": "Run as a job instead of inline: returns {run_id, status} within ~50ms under the plan's job_max_s deadline; default false.",
             "type": "boolean"
+          },
+          "budget": {
+            "description": "Lowers this call's budget below the plan default: any subset of max_child_calls, max_est_tokens, max_tool_latency_ms, max_wall_ms. A value above the plan's own ceiling is a validation error naming it; see host.runs.get's progress.budget.",
+            "type": "object"
           },
           "name": {
             "description": "Local name of the tool to invoke.",

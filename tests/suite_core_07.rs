@@ -172,6 +172,24 @@ mod billing_ac11_healthz_paying_tenants;
 mod billing_ac13_checkout_reuse;
 #[path = "bridgedisc_ac07_sandbox_api_doc_check.rs"]
 mod bridgedisc_ac07_sandbox_api_doc_check;
+#[path = "budget_ac01_ported_ledger_seven_tests.rs"]
+mod budget_ac01_ported_ledger_seven_tests;
+#[path = "budget_ac02_chain_child_calls_halts_at_ten.rs"]
+mod budget_ac02_chain_child_calls_halts_at_ten;
+#[path = "budget_ac03_free_plan_override_ceiling_validation.rs"]
+mod budget_ac03_free_plan_override_ceiling_validation;
+#[path = "budget_ac04_est_tokens_halts_before_fourth_child.rs"]
+mod budget_ac04_est_tokens_halts_before_fourth_child;
+#[path = "budget_ac05_progress_fraction_and_alert_verdict_while_running.rs"]
+mod budget_ac05_progress_fraction_and_alert_verdict_while_running;
+#[path = "budget_ac06_plain_async_call_defaults_and_ok_verdict.rs"]
+mod budget_ac06_plain_async_call_defaults_and_ok_verdict;
+#[path = "budget_ac07_check_overhead_p95_under_1ms.rs"]
+mod budget_ac07_check_overhead_p95_under_1ms;
+#[path = "budget_ac08_alert_event_written_once.rs"]
+mod budget_ac08_alert_event_written_once;
+#[path = "budget_ac09_runs_list_verdict_exceeded_filter.rs"]
+mod budget_ac09_runs_list_verdict_exceeded_filter;
 #[path = "busyaudit_ac01_startup_pragma_audit_default_config.rs"]
 mod busyaudit_ac01_startup_pragma_audit_default_config;
 #[path = "busyaudit_ac02_env_override_busy_timeout.rs"]
@@ -1750,19 +1768,3 @@ mod vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green;
 mod vaultst_ac09_deferral_is_justified;
 #[path = "vaultst_ac09_live_vault_status_trailer.rs"]
 mod vaultst_ac09_live_vault_status_trailer;
-#[path = "wake_ac1_message_trigger_fires_run.rs"]
-mod wake_ac1_message_trigger_fires_run;
-#[path = "wake_ac2_from_filter.rs"]
-mod wake_ac2_from_filter;
-#[path = "wake_ac3_dedupe.rs"]
-mod wake_ac3_dedupe;
-#[path = "wake_ac4_jobs_concurrent_rejects.rs"]
-mod wake_ac4_jobs_concurrent_rejects;
-#[path = "wake_ac5_pause_resume.rs"]
-mod wake_ac5_pause_resume;
-#[path = "wake_ac6_msg_wait.rs"]
-mod wake_ac6_msg_wait;
-#[path = "wake_ac7_trigger_test_synthetic_envelope.rs"]
-mod wake_ac7_trigger_test_synthetic_envelope;
-#[path = "wake_ac8_replay.rs"]
-mod wake_ac8_replay;
