@@ -159,6 +159,12 @@ pub async fn run(
     // about which unprivileged user the real service runs as.
     let resolved_run_as = resolve_run_as(run_as, live_db_path)?;
 
+    // Created above while this process was still root (`ScratchDir::new`'s
+    // `create_dir_all`, `copy_live_db`'s `VACUUM INTO`) -- chown to the uid/gid
+    // `spawn_previous` is about to drop the child to, or its writes under the
+    // scratch dir fail EACCES. No-op when `resolved_run_as` is `None`.
+    chown_scratch_for(resolved_run_as, &scratch.0)?;
+
     let bind_plan = choose_bind_plan()?;
     let base_url = bind_plan.base_url();
     let port = bind_plan.port();
@@ -478,6 +484,58 @@ fn stderr_tail_text(tail: &StderrTail) -> String {
     String::from_utf8_lossy(&locked).trim().to_string()
 }
 
+/// Chown `scratch` and every file directly under it (the copied
+/// `mcphost.db` plus any `-wal`/`-shm` sidecar) to `run_as`'s uid/gid --
+/// called once `resolved_run_as` is known, before [`spawn_previous`] drops
+/// the child to that identity. No-op when `run_as` is `None` (not root;
+/// see [`resolve_run_as`]). Without this the scratch dir stays owned by
+/// this process's real (root) uid while the child runs unprivileged, and
+/// every write under it fails EACCES -- the production `previous-up`
+/// failure this fixes (`write plans.toml: Permission denied (os error
+/// 13)`).
+fn chown_scratch_for(
+    run_as: Option<RunAsUser>,
+    scratch: &Path,
+) -> Result<(), CompatCheckFailure> {
+    let Some(user) = run_as else { return Ok(()) };
+    let chown_one = |path: &Path| -> Result<(), CompatCheckFailure> {
+        std::os::unix::fs::chown(path, Some(user.uid), Some(user.gid)).map_err(|e| {
+            CompatCheckFailure {
+                step: "spawn",
+                detail: format!(
+                    "chown {} to uid={} gid={} failed: {e}",
+                    path.display(),
+                    user.uid,
+                    user.gid
+                ),
+            }
+        })
+    };
+    chown_one(scratch)?;
+    let entries = std::fs::read_dir(scratch).map_err(|e| CompatCheckFailure {
+        step: "spawn",
+        detail: format!("cannot list scratch dir {} to chown it: {e}", scratch.display()),
+    })?;
+    for entry in entries {
+        let entry = entry.map_err(|e| CompatCheckFailure {
+            step: "spawn",
+            detail: format!(
+                "cannot read scratch dir entry under {}: {e}",
+                scratch.display()
+            ),
+        })?;
+        chown_one(&entry.path())?;
+    }
+    tracing::info!(
+        uid = user.uid,
+        gid = user.gid,
+        "compat-check: scratch chowned to uid={} gid={}",
+        user.uid,
+        user.gid
+    );
+    Ok(())
+}
+
 /// Drop `cmd`'s child to `user`'s uid/gid before exec, with supplementary
 /// groups cleared -- a no-op when `user` is `None` (this process isn't
 /// root; see [`resolve_run_as`]).
@@ -711,6 +769,16 @@ pub mod test_support {
             None,
         )?;
         Ok((spawned.child, spawned.stderr_tail))
+    }
+
+    /// Wraps [`super::chown_scratch_for`] for `tests/compatchown_*.rs` --
+    /// takes a plain `(uid, gid)` tuple rather than [`RunAsUser`] (which is
+    /// `pub(crate)` and so unnameable from an integration test crate).
+    pub fn chown_scratch_for(
+        run_as: Option<(u32, u32)>,
+        scratch: &Path,
+    ) -> Result<(), CompatCheckFailure> {
+        super::chown_scratch_for(run_as.map(|(uid, gid)| RunAsUser { uid, gid }), scratch)
     }
 
     pub async fn wait_ready(
