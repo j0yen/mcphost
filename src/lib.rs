@@ -58,6 +58,7 @@ pub mod query_diag;
 pub mod reach;
 pub mod registry;
 pub mod retention;
+pub mod returns;
 pub mod rowpolicy;
 pub mod runs;
 pub mod sandbox;

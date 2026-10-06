@@ -172,6 +172,13 @@ const MIGRATION_0075: &str = include_str!("../migrations/0075_claim_email_events
 /// first, landing on main ahead of this branch (this PRD's own migration
 /// was originally numbered 0073).
 const MIGRATION_0076: &str = include_str!("../migrations/0076_upgrade_moment.sql");
+/// PRD-mcphost-second-session-nudge requirement 1: `nudged_unix`,
+/// `nudge_channel`, `nudge_attempts` on `tenants`. Renumbered to 0077
+/// during this rebase (run 428, 2026-10-06): mcphost-ownership-moment
+/// claimed 0073-0075 first, then mcphost-upgrade-moment claimed 0076, both
+/// landing on main ahead of this branch (this PRD's own migration was
+/// originally numbered 0073).
+const MIGRATION_0077: &str = include_str!("../migrations/0077_second_session_nudge.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -471,6 +478,28 @@ pub struct FunnelRow {
     /// `"manual"` by `admin::funnel`'s `upgrades_by_trigger`, same as a
     /// real `source: "manual"` checkout).
     pub paid_source: Option<String>,
+    /// PRD-mcphost-second-session-nudge requirement 5 (AC7): `admin.funnel`'s
+    /// `by_source.<class>.nudged`/`returned_after_nudge`/`return_rate` all
+    /// key off this -- `Some` once the daily sweep has finished processing
+    /// this tenant (sent, recorded as unreachable, or abandoned after
+    /// three failures), `None` for a tenant the sweep hasn't reached yet.
+    pub nudged_unix: Option<i64>,
+}
+
+/// PRD-mcphost-second-session-nudge requirement 1: one row per tenant the
+/// daily sweep (`returns::sweep`) needs to decide what to do -- a
+/// dedicated, narrow `SELECT` (same "own query, not the whole `Tenant`"
+/// convention as [`FunnelRow`]) rather than widening [`Tenant`]/
+/// [`TENANT_COLUMNS`] with nudge-only columns every other caller of
+/// `tenant_from_row` would otherwise carry.
+#[derive(Debug, Clone)]
+pub struct ReturnCandidate {
+    pub id: i64,
+    pub display_name: String,
+    pub owner_email: Option<String>,
+    pub owner_verified_at: Option<i64>,
+    pub last_seen_unix: Option<i64>,
+    pub nudge_attempts: i64,
 }
 
 /// [`Db::agent_contacts`]'s whole return shape.
@@ -2532,7 +2561,8 @@ impl Db {
         Self::migrate_0073_claim_token_plain(&conn)?;
         Self::migrate_0074_claim_nudged_unix(&conn)?;
         Self::migrate_0075_claim_email_events(&conn)?;
-        Self::migrate_0076_upgrade_moment(&conn)
+        Self::migrate_0076_upgrade_moment(&conn)?;
+        Self::migrate_0077_second_session_nudge(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -3626,6 +3656,22 @@ impl Db {
         Ok(())
     }
 
+    /// PRD-mcphost-second-session-nudge requirement 1: same idempotency
+    /// pattern as 0002-0076, gated on `tenants.nudged_unix`. Renumbered to
+    /// migration 0077 during this rebase (run 428, 2026-10-06):
+    /// mcphost-ownership-moment claimed 0073-0075 first, then
+    /// mcphost-upgrade-moment claimed 0076.
+    fn migrate_0077_second_session_nudge(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'nudged_unix'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0077)?;
+        }
+        Ok(())
+    }
+
+
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
     /// subcommand.
@@ -4195,6 +4241,15 @@ impl Db {
             "second_session_unix" => "UPDATE tenants SET second_session_unix = ?1 WHERE id = ?2",
             "claimed_unix" => "UPDATE tenants SET claimed_unix = ?1 WHERE id = ?2",
             "paid_unix" => "UPDATE tenants SET paid_unix = ?1 WHERE id = ?2",
+            // PRD-mcphost-second-session-nudge AC6: backdates the same
+            // column `resolve_session_binding`/`resolve_path_secret_auth`
+            // bump on every authenticated call, so a test can simulate "N
+            // hours/days since the last call" without a real wait.
+            "last_seen_unix" => "UPDATE tenants SET last_seen_unix = ?1 WHERE id = ?2",
+            // AC7: lets a test set up `admin.funnel`'s `nudged`/
+            // `returned_after_nudge` inputs directly, without running a
+            // real sweep.
+            "nudged_unix" => "UPDATE tenants SET nudged_unix = ?1 WHERE id = ?2",
             other => {
                 return Err(AppError::Internal(format!(
                     "set_tenant_stamp_for_test: unknown column '{other}'"
@@ -4204,6 +4259,160 @@ impl Db {
         self.with_conn(move |conn| {
             conn.execute(sql, params![unix, tenant_id])?;
             Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-second-session-nudge requirement 1 (AC1-AC5): the
+    /// tenants the next sweep run will process -- a first call at least
+    /// `MCPHOST_RETURN_NUDGE_AFTER_HOURS` old, no second session yet,
+    /// excluding `source_class` fleet/test (requirement 1, AC4), and
+    /// either never processed (`nudge_channel IS NULL`) or a failed send
+    /// that still has retries left (requirement 2, AC5). `COALESCE(...,
+    /// '')` treats an unclassified (`NULL`) `source_class` as excludable
+    /// from neither fleet nor test, same as every classified real tenant.
+    pub async fn returns_sweep_candidates(
+        &self,
+        cutoff_unix: i64,
+        limit: i64,
+    ) -> Result<Vec<ReturnCandidate>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, display_name, owner_email, owner_verified_at, last_seen_unix, \
+                 nudge_attempts FROM tenants \
+                 WHERE first_call_unix IS NOT NULL AND first_call_unix <= ?1 \
+                 AND second_session_unix IS NULL \
+                 AND COALESCE(source_class, '') NOT IN ('fleet', 'test') \
+                 AND (nudge_channel IS NULL \
+                      OR (nudge_channel = 'email-failed' AND nudge_attempts < 3)) \
+                 ORDER BY id LIMIT ?2",
+            )?;
+            let rows = stmt
+                .query_map(params![cutoff_unix, limit], |r| {
+                    Ok(ReturnCandidate {
+                        id: r.get(0)?,
+                        display_name: r.get(1)?,
+                        owner_email: r.get(2)?,
+                        owner_verified_at: r.get(3)?,
+                        last_seen_unix: r.get(4)?,
+                        nudge_attempts: r.get(5)?,
+                    })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// AC1: a sent `return` email -- `nudge_channel = 'email'`,
+    /// `nudged_unix` set so this tenant is never selected again (AC2).
+    pub async fn record_nudge_sent(&self, tenant_id: i64, unix: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tenants SET nudged_unix = ?1, nudge_channel = 'email' WHERE id = ?2",
+                params![unix, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// AC3: an unclaimed tenant (or, requirement 7, the send disabled by
+    /// `MCPHOST_RETURN_NUDGE=off`) -- counted and never re-selected, no
+    /// send attempted.
+    pub async fn record_nudge_none(&self, tenant_id: i64, unix: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tenants SET nudged_unix = ?1, nudge_channel = 'none' WHERE id = ?2",
+                params![unix, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// AC5: a provider failure with retries left -- `nudge_attempts`
+    /// incremented, `nudge_channel = 'email-failed'`, `nudged_unix` left
+    /// NULL so `returns_sweep_candidates` selects this row again tomorrow.
+    pub async fn record_nudge_failed(&self, tenant_id: i64, attempts: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tenants SET nudge_attempts = ?1, nudge_channel = 'email-failed' WHERE id = ?2",
+                params![attempts, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// AC5: the third straight provider failure -- `nudge_channel =
+    /// 'email-abandoned'`, `nudged_unix` set (finalized, no more retries).
+    pub async fn record_nudge_abandoned(
+        &self,
+        tenant_id: i64,
+        unix: i64,
+        attempts: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tenants SET nudged_unix = ?1, nudge_channel = 'email-abandoned', \
+                 nudge_attempts = ?2 WHERE id = ?3",
+                params![unix, attempts, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// AC1/AC2/AC3/AC5: the nudge columns' current state for one tenant --
+    /// `(nudged_unix, nudge_channel, nudge_attempts, second_session_unix)`,
+    /// `None` for a tenant id that doesn't exist. Used by this PRD's own
+    /// tests (and, later, `admin.returns`) to read back what `sweep` wrote
+    /// without widening [`Tenant`]/[`TENANT_COLUMNS`].
+    pub async fn nudge_status(
+        &self,
+        tenant_id: i64,
+    ) -> Result<Option<(Option<i64>, Option<String>, i64, Option<i64>)>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT nudged_unix, nudge_channel, nudge_attempts, second_session_unix \
+                 FROM tenants WHERE id = ?1",
+                params![tenant_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-second-session-nudge requirement 4 (AC6): completed
+    /// runs since `since_unix` -- same `tenant_id, started_unix` shape
+    /// [`Self::count_calls_since`] already reads for `host.usage`.
+    pub async fn count_runs_done_since(&self, tenant_id: i64, since_unix: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM runs WHERE tenant_id = ?1 AND status = 'done' \
+                 AND started_unix >= ?2",
+                params![tenant_id, since_unix],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// requirement 4 (AC6): unread inbox messages waiting right now --
+    /// same `message_receipts.read_at IS NULL` test [`Self::msg_inbox`]'s
+    /// own `unread_only` filter uses.
+    pub async fn count_unread_messages(&self, tenant_id: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM message_receipts WHERE tenant_id = ?1 AND read_at IS NULL",
+                params![tenant_id],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
         })
         .await
     }
@@ -5372,7 +5581,8 @@ impl Db {
                         (SELECT be.source FROM billing_events be \
                          WHERE be.tenant_id = t.id AND be.event_type = 'checkout.session.completed' \
                            AND be.mode = 'live' \
-                         ORDER BY be.id DESC LIMIT 1) \
+                         ORDER BY be.id DESC LIMIT 1), \
+                        t.nudged_unix \
                  FROM tenants t \
                  WHERE t.created_unix IS NOT NULL AND t.created_unix >= ?1 \
                  AND (?2 IS NULL OR t.signup_source = ?2)",
@@ -5390,6 +5600,7 @@ impl Db {
                         claimed_unix: r.get(7)?,
                         paid_unix: r.get(8)?,
                         paid_source: r.get(9)?,
+                        nudged_unix: r.get(10)?,
                     })
                 })?
                 .collect::<rusqlite::Result<Vec<_>>>()?;

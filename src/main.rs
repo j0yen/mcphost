@@ -820,6 +820,10 @@ async fn main() -> anyhow::Result<()> {
             // expiry tick, started once here alongside the other
             // background tasks.
             mcphost::tables::spawn_tick((*state).clone());
+            // PRD-mcphost-second-session-nudge requirement 1: the daily
+            // return-nudge sweep, started once here alongside the other
+            // background tasks.
+            mcphost::returns::spawn_sweep_scheduler((*state).clone());
 
             mcphost::http::serve_configured(bind, state).await
         }

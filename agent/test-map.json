@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-upgrade-moment.md (test_prefix: upgrade)",
+  "ac_test_map_prd": "PRD-mcphost-second-session-nudge.md (test_prefix: nudge)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,15 +28,14 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/upgrade_ac01_calls_per_day_next_checkout.rs",
-    "AC2": "tests/upgrade_ac02_billing_off_refusal_text.rs",
-    "AC3": "tests/upgrade_ac03_checkout_source_metadata.rs",
-    "AC4": "tests/upgrade_ac04_webhook_stamps_paid_unix.rs",
-    "AC5": "tests/upgrade_ac05_billing_status_receipt.rs",
-    "AC6": "tests/upgrade_ac06_admin_funnel_upgrades_by_trigger.rs",
-    "AC7": "tests/upgrade_ac07_admin_upgrades_listing.rs",
-    "AC8": "deferred -- operator-provisioned: AC8's Then is a live, post-promotion observation (the fleet's weekly live checkout or the first real upgrade produces a billing_events row with source, billing.status returns the receipt, and admin.funnel's upgrades_by_trigger line appears in the morning digest); not in this dispatch's assigned AC list."
-
+    "AC1": "tests/nudge_ac01_claimed_tenant_gets_one_return_email.rs",
+    "AC2": "tests/nudge_ac02_second_sweep_sends_nothing_more.rs",
+    "AC3": "tests/nudge_ac03_unclaimed_tenant_recorded_as_none.rs",
+    "AC4": "tests/nudge_ac04_fleet_tenant_excluded.rs",
+    "AC5": "tests/nudge_ac05_provider_failure_retries_then_abandons.rs",
+    "AC6": "tests/nudge_ac06_welcome_back_since_you_left.rs",
+    "AC7": "tests/nudge_ac07_funnel_reports_nudged_and_return_rate.rs",
+    "AC8": "deferred -- operator-provisioned: AC8's Then is a live, post-promotion observation (the first daily sweep on prod stamping a real external tenant's nudged_unix, and admin.funnel printing the nudged column in the morning digest); not in this dispatch's assigned AC list."
   },
   "ac_test_map_by_prefix": {
     "funnel": {
@@ -61,6 +60,18 @@
       "AC7": "tests/ownmt_ac07_claim_page_shows_remember_note.rs",
       "AC8": "deferred -- operator-provisioned: AC8's Then is a real external tenant publishing and its human completing the claim flow against prod after mail is configured by the operator and this PRD is deployed (healthz claims.external >= 1, nudged_then_claimed >= 1); this dispatch has no live operator access, no prod deploy rights, and none of the credentials that observation needs. Declared out of this dispatch's required-AC list by the task itself (\"AC8 is explicitly Live/deferred\"). The always-on mechanism AC8 would be measured through -- host.whoami.owner_verified, /healthz claims.external/nudged_then_claimed -- is already proven unconditionally by tests/ownmt_ac01_claim_url_on_every_onboarding_path.rs, tests/ownmt_ac02_claim_nudge_on_first_publish.rs, and tests/ownmt_ac04_healthz_claims_block.rs; AC8 itself is the Live observation on top of that mechanism, not a mechanism this worktree can fabricate."
     },
+    "upgrade": {
+      "_prd": "PRD-mcphost-upgrade-moment.md (test_prefix: upgrade) -- superseded by mcphost-second-session-nudge at HEAD (this rebase); real test_prefix is upgrade",
+      "AC1": "tests/upgrade_ac01_calls_per_day_next_checkout.rs",
+      "AC2": "tests/upgrade_ac02_billing_off_refusal_text.rs",
+      "AC3": "tests/upgrade_ac03_checkout_source_metadata.rs",
+      "AC4": "tests/upgrade_ac04_webhook_stamps_paid_unix.rs",
+      "AC5": "tests/upgrade_ac05_billing_status_receipt.rs",
+      "AC6": "tests/upgrade_ac06_admin_funnel_upgrades_by_trigger.rs",
+      "AC7": "tests/upgrade_ac07_admin_upgrades_listing.rs",
+      "AC8": "deferred -- operator-provisioned: AC8's Then is a live, post-promotion observation (the fleet's weekly live checkout or the first real upgrade produces a billing_events row with source, billing.status returns the receipt, and admin.funnel's upgrades_by_trigger line appears in the morning digest); not in this dispatch's assigned AC list."
+    },
+
 
     "owncopy": {
       "_prd": "PRD-mcphost-ownership-copy.md -- superseded by mcphost-activation-funnel at HEAD (this rebase); real test_prefix is owncopy",

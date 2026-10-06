@@ -4927,16 +4927,47 @@ impl McpHostHandler {
                 return;
             }
         };
+        // PRD-mcphost-second-session-nudge requirement 4 (AC6):
+        // `since_you_left` -- calls/runs since the earlier session's own
+        // last call, inbox messages waiting right now, and how many whole
+        // days have passed. Best-effort: a lookup failure here still
+        // leaves `notes`/`last_note`/`last_seen` on the envelope rather
+        // than dropping `welcome_back` entirely.
+        let since_you_left = match self.since_you_left(tenant.id, last_seen_unix).await {
+            Ok(v) => Some(v),
+            Err(e) => {
+                tracing::warn!(tenant = %tenant.namespace, error = %e, "since_you_left failed");
+                None
+            }
+        };
         if let Some(obj) = value.as_object_mut() {
-            obj.insert(
-                "welcome_back".to_string(),
-                json!({
-                    "notes": notes,
-                    "last_note": last_note,
-                    "last_seen": crate::state::rfc3339_from_unix(last_seen_unix),
-                }),
-            );
+            let mut envelope = json!({
+                "notes": notes,
+                "last_note": last_note,
+                "last_seen": crate::state::rfc3339_from_unix(last_seen_unix),
+            });
+            if let Some(since_you_left) = since_you_left
+                && let Some(envelope_obj) = envelope.as_object_mut()
+            {
+                envelope_obj.insert("since_you_left".to_string(), since_you_left);
+            }
+            obj.insert("welcome_back".to_string(), envelope);
         }
+    }
+
+    /// PRD-mcphost-second-session-nudge requirement 4 (AC6):
+    /// `{calls, runs, inbox, days}` since `last_seen_unix` -- `calls`/`runs`
+    /// reuse the same `tenant_id, started_unix`-indexed queries
+    /// `host.usage` already runs (`Db::count_calls_since`/
+    /// `Db::count_runs_done_since`); `inbox` is unread messages waiting
+    /// right now, not windowed by `last_seen_unix` (a message delivered
+    /// and read during the gap shouldn't count as still "waiting").
+    async fn since_you_left(&self, tenant_id: i64, last_seen_unix: i64) -> Result<Value, AppError> {
+        let calls = self.state.db.count_calls_since(tenant_id, last_seen_unix, false).await?;
+        let runs = self.state.db.count_runs_done_since(tenant_id, last_seen_unix).await?;
+        let inbox = self.state.db.count_unread_messages(tenant_id).await?;
+        let days = ((now_unix() - last_seen_unix) / 86_400).max(0);
+        Ok(json!({"calls": calls, "runs": runs, "inbox": inbox, "days": days}))
     }
 
     #[allow(clippy::too_many_arguments)]
