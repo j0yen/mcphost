@@ -115,13 +115,24 @@ pub async fn create(state: &AppState, tenant: &Tenant, args: &Value) -> Result<V
         )
         .await?;
 
-    Ok(json!({
+    let mut body = json!({
         "code": code,
         "url": invite_url(state, &code),
         "max_uses": invite.max_uses,
         "expires_at": invite.expires_unix,
         "share": share,
-    }))
+    });
+    // PRD-mcphost-reachability-alt-host requirement 2 / goal "JSON
+    // responses get alt_url/alt_endpoint fields": present only when
+    // alternates are configured (AC5 keeps today's response byte-for-byte
+    // otherwise -- no key added, not an absent-vs-null distinction).
+    if let (Some(alt), Value::Object(map)) = (state.alt_public_urls.first(), &mut body) {
+        map.insert(
+            "alt_url".to_string(),
+            json!(format!("{}/i/{code}/mcp", alt.trim_end_matches('/'))),
+        );
+    }
+    Ok(body)
 }
 
 /// `host.invite.list` (requirement 5 / AC1, requirement 10 / AC9): every

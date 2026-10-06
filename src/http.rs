@@ -11,7 +11,10 @@ use std::time::Instant;
 
 use axum::body::{Body, Bytes};
 use axum::extract::{ConnectInfo, Path, Query, State};
-use axum::http::{HeaderMap, HeaderValue, Method, Request, StatusCode, header::CACHE_CONTROL};
+use axum::http::{
+    HeaderMap, HeaderValue, Method, Request, StatusCode,
+    header::{CACHE_CONTROL, STRICT_TRANSPORT_SECURITY},
+};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -1260,6 +1263,26 @@ async fn issue_session_id(
     response
 }
 
+/// PRD-mcphost-reachability-alt-host requirement 4 / AC4: `Strict-
+/// Transport-Security` on every response this binary serves, when
+/// `MCPHOST_PUBLIC_URL` itself is configured `https://` -- gated on the
+/// scheme (not unconditional) because a loopback dev server or test
+/// harness running on a bare `http://127.0.0.1:PORT` `public_url` must
+/// never tell a browser to upgrade an address it doesn't actually serve
+/// over TLS. `max-age=15552000` (180 days) meets the AC's `>= 15552000`
+/// floor.
+const HSTS_HEADER_VALUE: &str = "max-age=15552000; includeSubDomains";
+
+async fn hsts(State(state): State<Arc<AppState>>, req: Request<Body>, next: Next) -> Response {
+    let mut response = next.run(req).await;
+    if state.public_url.starts_with("https://") {
+        response
+            .headers_mut()
+            .insert(STRICT_TRANSPORT_SECURITY, HeaderValue::from_static(HSTS_HEADER_VALUE));
+    }
+    response
+}
+
 pub fn build_router(state: Arc<AppState>) -> Router {
     build_router_with_session_mode(state, false)
 }
@@ -1380,6 +1403,11 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
 
     Router::new()
         .route("/healthz", get(healthz))
+        // PRD-mcphost-reachability-alt-host requirement 3 / AC3: a human
+        // or an agent (or an ISP's own classifier) can probe any public
+        // hostname for an unauthenticated, content-free ok -- same no-
+        // side-effects contract `/healthz`'s anonymous body already has.
+        .route("/reach", get(crate::reach::reach))
         .route("/status.json", get(status_json_route))
         // mcphost-polish-p0-20260930 (audit finding 1), generalized by
         // PRD-mcphost-first-hour-support-surface: see `static_page`'s own
@@ -1523,6 +1551,13 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         // whatever `oauth_401_upgrade` (now inner) already rewrote.
         .layer(middleware::from_fn_with_state(state.clone(), oauth_401_upgrade))
         .layer(middleware::from_fn(protocol_version_and_log))
+        // PRD-mcphost-reachability-alt-host requirement 4: added LAST, so
+        // (same "last `.layer()` call becomes the outermost middleware"
+        // rule the comment above already spells out for
+        // `oauth_401_upgrade`/`protocol_version_and_log`) it runs on
+        // literally every response this router produces, including the
+        // default 404 fallback.
+        .layer(middleware::from_fn_with_state(state.clone(), hsts))
         .with_state(state)
 }
 

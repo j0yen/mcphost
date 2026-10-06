@@ -55,6 +55,7 @@ pub mod oauthclient;
 pub mod plans;
 pub mod public_tool;
 pub mod query_diag;
+pub mod reach;
 pub mod registry;
 pub mod retention;
 pub mod rowpolicy;

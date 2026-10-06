@@ -550,6 +550,10 @@ async fn main() -> anyhow::Result<()> {
 
             let bind: std::net::SocketAddr = env_or("MCPHOST_BIND", "127.0.0.1:8080").parse()?;
             let public_url = env_or("MCPHOST_PUBLIC_URL", &format!("http://{bind}"));
+            // PRD-mcphost-reachability-alt-host requirement 1: read once at
+            // startup, same convention as `fleet_ips`/`verified_client_ids`
+            // below.
+            let alt_public_urls = mcphost::reach::alt_public_urls_from_env();
             let admin_key = std::env::var("MCPHOST_ADMIN_KEY").ok();
             let secret_key = env_or("MCPHOST_SECRET_KEY", "mcphost-dev-secret-key-change-me");
 
@@ -683,6 +687,7 @@ async fn main() -> anyhow::Result<()> {
                 secrets: SecretBox::from_passphrase(&secret_key),
                 admin_key,
                 public_url,
+                alt_public_urls,
                 call_timeout: mcphost::state::CALL_TIMEOUT,
                 registry,
                 http_client: reqwest::Client::builder()

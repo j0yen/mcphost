@@ -96,6 +96,16 @@ mod alert_ac09_min_severity_filters_delivery;
 mod alert_ac10_healthz_reports_open_and_last_raised_at;
 #[path = "alert_ac11_raise_body_size_limit.rs"]
 mod alert_ac11_raise_body_size_limit;
+#[path = "althost_ac01_fallback_lines_on_claim_invite_quickstart.rs"]
+mod althost_ac01_fallback_lines_on_claim_invite_quickstart;
+#[path = "althost_ac02_alt_host_header_served_identically.rs"]
+mod althost_ac02_alt_host_header_served_identically;
+#[path = "althost_ac03_reach_endpoint_unauthenticated.rs"]
+mod althost_ac03_reach_endpoint_unauthenticated;
+#[path = "althost_ac04_hsts_header_on_https_public_url.rs"]
+mod althost_ac04_hsts_header_on_https_public_url;
+#[path = "althost_ac05_no_alt_no_fallback_lines.rs"]
+mod althost_ac05_no_alt_no_fallback_lines;
 #[path = "attrib_ac1_loopback_signup_unstamped.rs"]
 mod attrib_ac1_loopback_signup_unstamped;
 #[path = "attrib_ac2_clientinfo_captured.rs"]

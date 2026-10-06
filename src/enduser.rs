@@ -361,6 +361,7 @@ mod tests {
             secrets,
             admin_key: None,
             public_url: "http://127.0.0.1:0".to_string(),
+            alt_public_urls: Vec::new(),
             call_timeout: crate::state::CALL_TIMEOUT,
             registry: None,
             http_client: reqwest::Client::new(),

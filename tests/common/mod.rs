@@ -264,6 +264,7 @@ pub async fn bare_app_state() -> (AppState, TempDataDir) {
         secrets: SecretBox::from_passphrase("test-secret-key"),
         admin_key: Some("test-admin-key".to_string()),
         public_url: "http://127.0.0.1:0".to_string(),
+        alt_public_urls: Vec::new(),
         call_timeout: mcphost::state::CALL_TIMEOUT,
         registry: None,
         http_client: reqwest::Client::new(),
@@ -386,6 +387,7 @@ impl TestServer {
             mcphost::alerts::AlertConfig::default(),
             mcphost::state::parse_fleet_ips(Some(fleet_ips_raw)),
             mcphost::state::VerifiedClientIds::empty(),
+            Vec::new(),
         )
         .await
     }
@@ -417,6 +419,7 @@ impl TestServer {
             mcphost::alerts::AlertConfig::default(),
             mcphost::state::FleetIps::empty(),
             mcphost::state::parse_verified_client_ids(Some(&client_ids.join(","))),
+            Vec::new(),
         )
         .await
     }
@@ -604,6 +607,74 @@ impl TestServer {
             mcphost::alerts::AlertConfig::default(),
             mcphost::state::FleetIps::empty(),
             mcphost::state::VerifiedClientIds::empty(),
+            Vec::new(),
+        )
+        .await
+    }
+
+    /// PRD-mcphost-reachability-alt-host: same shape as
+    /// [`Self::start_with_email`] (a caller-supplied, inspectable fake
+    /// email client) plus `alt_public_urls` set directly on `AppState` --
+    /// same "field, not process environment, since tests run in parallel
+    /// in one binary" rationale as every other `start_with_*` override
+    /// above. Exercises AC1 (the claim email's fallback lines).
+    pub async fn start_with_email_and_alts(
+        email_client: Arc<mcphost::email::FakeEmailClient>,
+        alt_public_urls: Vec<String>,
+    ) -> Self {
+        Self::start_full_with_email(
+            Some(ADMIN_KEY.to_string()),
+            KindRegistry::with_builtin(),
+            mcphost::state::CALL_TIMEOUT,
+            None,
+            mcphost::state::SIGNUP_RATE_LIMIT_PER_HOUR,
+            mcphost::billing::BillingConfig::default(),
+            Arc::new(mcphost::billing::FakeBillingClient::new(
+                mcphost::state::now_unix(),
+            )),
+            Vec::new(),
+            mcphost::email::EmailConfig {
+                api_url: Some("https://email.invalid/send".to_string()),
+                api_key: Some("test-email-key".to_string()),
+                from: Some("noreply@mcphost.invalid".to_string()),
+            },
+            email_client,
+            mcphost::state::CLAIM_TOKEN_TTL_SECS_DEFAULT,
+            mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
+            mcphost::db::DbConfig::from_env(),
+            mcphost::alerts::AlertConfig::default(),
+            mcphost::state::FleetIps::empty(),
+            mcphost::state::VerifiedClientIds::empty(),
+            alt_public_urls,
+        )
+        .await
+    }
+
+    /// PRD-mcphost-reachability-alt-host: a server with
+    /// `alt_public_urls` set directly on `AppState` and no other override
+    /// -- for AC2/AC3/AC5 tests that don't need an inspectable email
+    /// client.
+    pub async fn start_with_alts(alt_public_urls: Vec<String>) -> Self {
+        Self::start_full_with_email(
+            Some(ADMIN_KEY.to_string()),
+            KindRegistry::with_builtin(),
+            mcphost::state::CALL_TIMEOUT,
+            None,
+            mcphost::state::SIGNUP_RATE_LIMIT_PER_HOUR,
+            mcphost::billing::BillingConfig::default(),
+            Arc::new(mcphost::billing::FakeBillingClient::new(
+                mcphost::state::now_unix(),
+            )),
+            Vec::new(),
+            mcphost::email::EmailConfig::default(),
+            Arc::new(mcphost::email::FakeEmailClient::new()),
+            mcphost::state::CLAIM_TOKEN_TTL_SECS_DEFAULT,
+            mcphost::state::CLAIM_RATE_LIMIT_PER_HOUR_DEFAULT,
+            mcphost::db::DbConfig::from_env(),
+            mcphost::alerts::AlertConfig::default(),
+            mcphost::state::FleetIps::empty(),
+            mcphost::state::VerifiedClientIds::empty(),
+            alt_public_urls,
         )
         .await
     }
@@ -633,6 +704,7 @@ impl TestServer {
             mcphost::alerts::AlertConfig::default(),
             mcphost::state::FleetIps::empty(),
             mcphost::state::VerifiedClientIds::empty(),
+            Vec::new(),
         )
         .await
     }
@@ -661,6 +733,7 @@ impl TestServer {
             alert_config,
             mcphost::state::FleetIps::empty(),
             mcphost::state::VerifiedClientIds::empty(),
+            Vec::new(),
         )
         .await
     }
@@ -697,6 +770,7 @@ impl TestServer {
             mcphost::alerts::AlertConfig::default(),
             mcphost::state::FleetIps::empty(),
             mcphost::state::VerifiedClientIds::empty(),
+            Vec::new(),
         )
         .await
     }
@@ -706,8 +780,11 @@ impl TestServer {
     /// `claim_token_ttl_secs`/`claim_rate_limit_per_hour` are the fields
     /// PRD-mcphost-human-claim-magic-link added to `AppState`; `db_cfg` is
     /// PRD-mcphost-sqlite-busy-timeout-audit's own addition (AC2) and
-    /// `alert_config` is PRD-mcphost-alerting-webhook's own addition; every
-    /// other field is unchanged from before those PRDs.
+    /// `alert_config` is PRD-mcphost-alerting-webhook's own addition;
+    /// `alt_public_urls` is PRD-mcphost-reachability-alt-host's own
+    /// addition (every existing caller above passes `Vec::new()` -- AC5's
+    /// "no alternates" default); every other field is unchanged from
+    /// before those PRDs.
     #[allow(clippy::too_many_arguments)]
     pub async fn start_full_with_email(
         admin_key: Option<String>,
@@ -726,6 +803,7 @@ impl TestServer {
         alert_config: mcphost::alerts::AlertConfig,
         fleet_ips: mcphost::state::FleetIps,
         verified_client_ids: mcphost::state::VerifiedClientIds,
+        alt_public_urls: Vec<String>,
     ) -> Self {
         let data_dir = TempDataDir::new();
         let db = Db::open_with_cfg(&data_dir.0, db_cfg).expect("open db");
@@ -755,6 +833,7 @@ impl TestServer {
             secrets: SecretBox::from_passphrase("test-secret-key"),
             admin_key,
             public_url: base_url.clone(),
+            alt_public_urls,
             call_timeout,
             registry,
             http_client: reqwest::Client::new(),
@@ -1466,6 +1545,7 @@ pub async fn bare_state(dir: &std::path::Path) -> AppState {
         secrets: SecretBox::from_passphrase("test-secret-key"),
         admin_key: Some(ADMIN_KEY.to_string()),
         public_url: "http://127.0.0.1:0".to_string(),
+        alt_public_urls: Vec::new(),
         call_timeout: mcphost::state::CALL_TIMEOUT,
         registry: None,
         http_client: reqwest::Client::new(),

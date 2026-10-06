@@ -456,6 +456,36 @@ pub async fn signup(
         // to discover `host.quickstart` on its own.
         "next": "host.quickstart",
     });
+    // PRD-mcphost-reachability-alt-host requirement 2 / AC1: the signup
+    // response's own `endpoint`/`claim_url` get `alt_endpoint`/
+    // `alt_claim_url` siblings, plus the shared `reachability` template
+    // text -- present only when alternates are configured (AC5: today's
+    // response otherwise, byte for byte). `claim_url`'s alt form repeats
+    // the token path on the first alternate host, same construction
+    // `claim::claim_url` itself uses for the primary.
+    if let Some(first_alt) = state.alt_public_urls.first()
+        && let Value::Object(map) = &mut response
+    {
+        let alt_host = first_alt
+            .trim_end_matches('/')
+            .trim_start_matches("https://")
+            .trim_start_matches("http://");
+        map.insert(
+            "alt_endpoint".to_string(),
+            json!(format!("{}/mcp", first_alt.trim_end_matches('/'))),
+        );
+        if let Some(token) = claim_url.rsplit('/').next() {
+            map.insert(
+                "alt_claim_url".to_string(),
+                json!(format!("https://{alt_host}/claim/{token}")),
+            );
+        }
+        if let Some(block) =
+            crate::reach::fallback_block(&state.public_url, &state.alt_public_urls, "/mcp")
+        {
+            map.insert("reachability".to_string(), json!(block));
+        }
+    }
     // PRD-mcphost-signup-kill-switch-and-source requirement 1 / AC1-2: the
     // response echoes `source` back only when the caller sent a valid one
     // (AC2: "the response omits ... source" when absent).
@@ -946,6 +976,24 @@ pub fn quickstart(
             "concurrent_calls_host": crate::kinds::python::DEFAULT_MAX_CONCURRENT_CALLS,
         },
     });
+    // PRD-mcphost-reachability-alt-host requirement 2 / AC1: `endpoint` is
+    // additive (every other field above is unchanged); `alt_endpoint` and
+    // `reachability` (the shared three-line template, requirement 5) are
+    // present only when alternates are configured (AC5: today's response
+    // otherwise, byte for byte).
+    if let Value::Object(map) = &mut response {
+        let endpoint = format!("{}/mcp", state.public_url.trim_end_matches('/'));
+        if let Some(block) = crate::reach::fallback_block(&state.public_url, &state.alt_public_urls, "/mcp")
+        {
+            let alt_endpoint = format!(
+                "{}/mcp",
+                state.alt_public_urls[0].trim_end_matches('/')
+            );
+            map.insert("alt_endpoint".to_string(), json!(alt_endpoint));
+            map.insert("reachability".to_string(), json!(block));
+        }
+        map.insert("endpoint".to_string(), json!(endpoint));
+    }
     // PRD-mcphost-chain-host-steps requirement 1: `host.quickstart
     // kind=chain`'s own allowlist of step-nameable `host.*` verbs --
     // exported under this exact key so `host.tool_publish`'s

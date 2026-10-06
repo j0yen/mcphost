@@ -428,13 +428,23 @@ async fn send_verify_email(state: &AppState, tenant: &Tenant, email: &str) -> Re
     let display_name = &tenant.display_name;
     let from = state.email_config.from.clone().unwrap_or_default();
     let reply_to = crate::email::reply_to_address(&from);
+    // PRD-mcphost-reachability-alt-host requirement 2 / AC1: the claim
+    // email's own fallback line -- `None` (no change to this text at all)
+    // when no alternates are configured (AC5).
+    let fallback = crate::reach::fallback_block(
+        &state.public_url,
+        &state.alt_public_urls,
+        &format!("/claim/verify/{code}"),
+    )
+    .map(|block| format!("\n\n{block}"))
+    .unwrap_or_default();
     let message = EmailMessage {
         to: email.to_string(),
         from,
         reply_to,
         subject: format!("Your agent set up {display_name} on mcphost — is this yours?"),
         text_body: format!(
-            "Hi,\n\nAn AI agent entered this address at mcphost.dev a moment ago. It has been\nbuilding a small backend there called \"{display_name}\" — which may include tools it published, schedules it set, and workflows that it is managing.\n\nIf that agent works for you, this link makes you its owner:\n\n{verify_url}\n\nOwning it means you can see what the agent built, get back in if it loses\nits key, and optionally upgrade to Pro. The link works once and stops working in 30 minutes.\n\nIf this wasn't your agent, do nothing; nothing changes.\n\n— mcphost\nmcphost.dev · a home for things your agent builds"
+            "Hi,\n\nAn AI agent entered this address at mcphost.dev a moment ago. It has been\nbuilding a small backend there called \"{display_name}\" — which may include tools it published, schedules it set, and workflows that it is managing.\n\nIf that agent works for you, this link makes you its owner:\n\n{verify_url}\n\nOwning it means you can see what the agent built, get back in if it loses\nits key, and optionally upgrade to Pro. The link works once and stops working in 30 minutes.\n\nIf this wasn't your agent, do nothing; nothing changes.\n\n— mcphost\nmcphost.dev · a home for things your agent builds{fallback}"
         ),
     };
     let result = send_with_retry(state, message).await;
