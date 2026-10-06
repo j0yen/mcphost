@@ -228,33 +228,30 @@ Paste one line into your client and it has mcphost. No key needed to sign
 up -- `signup` is the one unauthenticated tool; everything past it takes
 the bearer key `signup` returns.
 
+<!-- install-links:start -->
 **Claude Code**
 
 ```
 claude mcp add --transport http mcphost https://mcphost.dev/mcp
 ```
 
+**Cursor** -- [Add to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=mcphost&config=eyJ1cmwiOiJodHRwczovL21jcGhvc3QuZGV2L21jcCJ9), or add `https://mcphost.dev/mcp` to `mcp.json` directly.
+
+**VS Code** -- [Add to VS Code](vscode:mcp/install?%7B%22name%22%3A%22mcphost%22%2C%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fmcphost%2Edev%2Fmcp%22%7D), or add `https://mcphost.dev/mcp` to your MCP config directly.
+
+**Claude.ai**
+
+1. Open Settings, then Connectors, then Add custom connector.
+2. Name: mcphost
+3. Remote MCP server URL: https://mcphost.dev/mcp
+4. Save, then enable the connector in a chat to connect.
+<!-- install-links:end -->
+
 **Codex CLI**
 
 ```
 codex mcp add mcphost --url https://mcphost.dev/mcp
 ```
-
-**Cursor** -- add this block to `mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "mcphost": {
-      "url": "https://mcphost.dev/mcp",
-      "headers": { "Authorization": "Bearer <key>" }
-    }
-  }
-}
-```
-
-**Claude.ai** -- Settings -> Connectors -> Add custom connector, then paste
-`https://mcphost.dev/mcp` as the URL.
 
 See the live [status page](/status.html) and the
 [Acceptable Use Policy](/aup.html) before you point production traffic at

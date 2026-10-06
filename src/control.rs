@@ -730,10 +730,22 @@ fn http_starter_tool() -> Value {
 /// own note used to claim a key-less call on any other connection fails
 /// `tenant_key_missing`. That connection now implicitly signs itself up
 /// instead (requirement 1), so the note says that.
+/// `path_url_secret` (PRD-mcphost-client-install-links P0 requirement 3,
+/// AC3): `Some(secret)` only when THIS call authenticated over
+/// `/u/{secret}/mcp` (`handler::url_path_secret` on the request's own
+/// URI) -- the one case this host can show a REAL personal install link
+/// without a DB write, since the raw secret is never stored in plaintext
+/// (only its hash is; see `db::Db::find_tenant_by_url_secret_hash`'s own
+/// doc comment) and so is otherwise unrecoverable after the moment it was
+/// minted (`key_rotate`/`signup`/`/u/new`). A header- or `tenant_key`-
+/// authenticated call carries no such secret and so gets no
+/// `install_links` field at all -- additive, best-effort, same shape as
+/// `plan_limits`'s own degrade above.
 pub fn quickstart(
     state: &AppState,
     tenant: Option<&Tenant>,
     args: &Value,
+    path_url_secret: Option<&str>,
 ) -> Result<Value, AppError> {
     let Some(tenant) = tenant else {
         return Ok(json!({
@@ -1013,6 +1025,15 @@ pub fn quickstart(
             map.insert("reachability".to_string(), json!(block));
         }
         map.insert("endpoint".to_string(), json!(endpoint));
+    }
+    // PRD-mcphost-client-install-links P0 requirement 3 (AC3): the same
+    // four install forms `/connect` renders, now for the caller's own
+    // personal `/u/<secret>/mcp` URL -- only when THIS call is itself
+    // authenticated over that path (see `path_url_secret`'s own doc
+    // comment above for why no other auth path can supply one).
+    if let (Some(secret), Value::Object(map)) = (path_url_secret, &mut response) {
+        let base = format!("{}/u/{}", state.public_url.trim_end_matches('/'), secret);
+        map.insert("install_links".to_string(), json!(crate::install_links::for_url(&base)));
     }
     // PRD-mcphost-chain-host-steps requirement 1: `host.quickstart
     // kind=chain`'s own allowlist of step-nameable `host.*` verbs --

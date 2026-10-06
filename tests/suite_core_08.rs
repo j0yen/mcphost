@@ -12,6 +12,20 @@ mod assertion;
 #[path = "support/oauth.rs"]
 mod oauth;
 
+#[path = "trigidem_ac01_webhook_set_twice_idempotent.rs"]
+mod trigidem_ac01_webhook_set_twice_idempotent;
+#[path = "trigidem_ac02_webhook_update_tool_keeps_id_and_url.rs"]
+mod trigidem_ac02_webhook_update_tool_keeps_id_and_url;
+#[path = "trigidem_ac03_schedule_update_cron_changes_next_unix.rs"]
+mod trigidem_ac03_schedule_update_cron_changes_next_unix;
+#[path = "trigidem_ac04_kind_mismatch_refused.rs"]
+mod trigidem_ac04_kind_mismatch_refused;
+#[path = "trigidem_ac05_verbs_accept_name.rs"]
+mod trigidem_ac05_verbs_accept_name;
+#[path = "trigidem_ac06_migration_backfills_duplicate_names.rs"]
+mod trigidem_ac06_migration_backfills_duplicate_names;
+#[path = "trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent.rs"]
+mod trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent;
 #[path = "unkfield_ac04_trigger_set_unknown_argument.rs"]
 mod unkfield_ac04_trigger_set_unknown_argument;
 #[path = "unkfield_ac05_tools_list_additional_properties_false.rs"]

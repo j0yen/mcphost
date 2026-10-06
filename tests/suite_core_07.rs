@@ -334,6 +334,18 @@ mod ci_sandbox_ac04_incapable_outside_ci_fails_loudly;
 mod ci_sandbox_ac06_sandbox_suites_run_as_a_parallel_job;
 #[path = "classify_ac9_is_within_proptest.rs"]
 mod classify_ac9_is_within_proptest;
+#[path = "clink_ac01_for_url_pinned_fixtures.rs"]
+mod clink_ac01_for_url_pinned_fixtures;
+#[path = "clink_ac02_connect_page_unauthenticated.rs"]
+mod clink_ac02_connect_page_unauthenticated;
+#[path = "clink_ac03_quickstart_personal_install_links.rs"]
+mod clink_ac03_quickstart_personal_install_links;
+#[path = "clink_ac04_readme_install_links_drift.rs"]
+mod clink_ac04_readme_install_links_drift;
+#[path = "clink_ac05_connect_go_records_click_and_redirects.rs"]
+mod clink_ac05_connect_go_records_click_and_redirects;
+#[path = "clink_ac06_digest_install_link_clicks_humans_only.rs"]
+mod clink_ac06_digest_install_link_clicks_humans_only;
 #[path = "compat_ac01_ac02_ac03_cache_fields.rs"]
 mod compat_ac01_ac02_ac03_cache_fields;
 #[path = "compat_ac04_ac05_admin_and_tenant_cache_fields.rs"]
@@ -1812,17 +1824,3 @@ mod tooltest_ac6_quota_and_metering;
 mod tooltest_ac7_too_many_invocations;
 #[path = "tooltest_ac9_ac10_listing_and_auth.rs"]
 mod tooltest_ac9_ac10_listing_and_auth;
-#[path = "trigidem_ac01_webhook_set_twice_idempotent.rs"]
-mod trigidem_ac01_webhook_set_twice_idempotent;
-#[path = "trigidem_ac02_webhook_update_tool_keeps_id_and_url.rs"]
-mod trigidem_ac02_webhook_update_tool_keeps_id_and_url;
-#[path = "trigidem_ac03_schedule_update_cron_changes_next_unix.rs"]
-mod trigidem_ac03_schedule_update_cron_changes_next_unix;
-#[path = "trigidem_ac04_kind_mismatch_refused.rs"]
-mod trigidem_ac04_kind_mismatch_refused;
-#[path = "trigidem_ac05_verbs_accept_name.rs"]
-mod trigidem_ac05_verbs_accept_name;
-#[path = "trigidem_ac06_migration_backfills_duplicate_names.rs"]
-mod trigidem_ac06_migration_backfills_duplicate_names;
-#[path = "trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent.rs"]
-mod trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent;

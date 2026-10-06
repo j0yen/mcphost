@@ -41,6 +41,7 @@ pub mod handler;
 pub mod help;
 pub mod hooks;
 pub mod http;
+pub mod install_links;
 pub mod invites;
 pub mod kinds;
 pub mod lineage;
