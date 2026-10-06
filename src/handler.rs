@@ -465,6 +465,20 @@ fn synthetic_header(parts: &http::request::Parts) -> Option<String> {
         .map(str::to_string)
 }
 
+/// PRD-mcphost-funnel-truth requirement 2: the raw `X-Mcphost-Origin`
+/// header value, unvalidated -- same HTTP-layer-extraction-only division
+/// of labor as [`synthetic_header`] above. `control::signup`/the invite
+/// implicit-signup path (via [`crate::state::classify_funnel_origin`]) is
+/// where "only honoured from a fleet IP, and only the literal value
+/// `probe`" actually gets decided.
+fn origin_header(parts: &http::request::Parts) -> Option<String> {
+    parts
+        .headers
+        .get("x-mcphost-origin")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string)
+}
+
 /// PRD-mcphost-tenant-attribution requirement 2: `signup_events.user_agent`,
 /// when the transport exposes one -- best-effort, same as `mcp_name_header`
 /// above (an absent or non-UTF-8 header is silently `None`, never an
@@ -5256,6 +5270,7 @@ impl McpHostHandler {
                 client_name: client_name.as_deref(),
                 client_version: client_version.as_deref(),
                 user_agent: user_agent_header(parts).as_deref(),
+                origin_header: origin_header(parts).as_deref(),
             },
         )
         .await
@@ -7531,10 +7546,24 @@ impl ServerHandler for McpHostHandler {
             && body_name != "host.redeem"
             && let Some(code) = crate::invites::invite_path_code(parts)
         {
-            let (tenant, onboarding) =
-                crate::invites::claim_on_first_call(&self.state, code, session_id.as_deref())
-                    .await
-                    .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
+            // PRD-mcphost-funnel-truth AC1: this is a tenant-creating
+            // handler too -- same header/fleet-IP classification
+            // `control::signup` does inline, computed here since
+            // `claim_on_first_call` has no other reason to reach back into
+            // `handler.rs`'s own header/IP extraction helpers.
+            let probe_header = origin_header(parts)
+                .as_deref()
+                .is_some_and(|h| h.trim().eq_ignore_ascii_case("probe"));
+            let funnel_origin =
+                crate::state::classify_funnel_origin(&source, probe_header, &self.state.fleet_ips);
+            let (tenant, onboarding) = crate::invites::claim_on_first_call(
+                &self.state,
+                code,
+                session_id.as_deref(),
+                funnel_origin,
+            )
+            .await
+            .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
             auth = Auth::Tenant(Box::new(tenant), None);
             invite_onboarding = Some(onboarding);
         }
@@ -7778,6 +7807,7 @@ impl ServerHandler for McpHostHandler {
                         client_name: client_name.as_deref(),
                         client_version: client_version.as_deref(),
                         user_agent: user_agent_header(parts).as_deref(),
+                        origin_header: origin_header(parts).as_deref(),
                     },
                 )
                 .await;

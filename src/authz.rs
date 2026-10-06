@@ -894,7 +894,8 @@ pub async fn get_authorize(
     // up" and "consented" rather than only the requests that already
     // passed every check. Best-effort: never fails the request that
     // carries it.
-    let _ = state.db.record_oauth_funnel_event("authorize_request").await;
+    let funnel_origin = crate::state::classify_funnel_origin(&ip, false, &state.fleet_ips);
+    let _ = state.db.record_oauth_funnel_event("authorize_request", funnel_origin).await;
     let (identity, redirect_uri, resource, resolved_scope, resource_tenant) =
         match validate_authorize_params(&state, &params, &ip).await {
             Ok(ok) => ok,
@@ -998,6 +999,7 @@ async fn mint_code_and_redirect(
     resource: &str,
     scope: &str,
     state_param: &str,
+    funnel_origin: &str,
 ) -> Response {
     let code = crate::auth::generate_key();
     let code_hash = crate::auth::hash_key(&code);
@@ -1024,7 +1026,7 @@ async fn mint_code_and_redirect(
     // PRD-mcphost-oauth-demand-signal requirement 3 (AC4): a code minted
     // here IS consent granted -- `admin.oauth.demand_stats`'s `consents_7d`.
     // Best-effort: never fails the redirect that carries the real code.
-    let _ = state.db.record_oauth_funnel_event("consent").await;
+    let _ = state.db.record_oauth_funnel_event("consent", funnel_origin).await;
     let Ok(mut url) = reqwest::Url::parse(redirect_uri) else {
         return render_inline_error("invalid_request", "redirect_uri is malformed");
     };
@@ -1047,7 +1049,8 @@ pub async fn post_authorize(
     // PRD-mcphost-oauth-demand-signal requirement 3 (AC4): same
     // count-every-hit rationale as `get_authorize`'s own copy of this line
     // -- the consent-page submission is its own distinct authorize request.
-    let _ = state.db.record_oauth_funnel_event("authorize_request").await;
+    let funnel_origin = crate::state::classify_funnel_origin(&ip, false, &state.fleet_ips);
+    let _ = state.db.record_oauth_funnel_event("authorize_request", funnel_origin).await;
     let params = consent_form_params(&form);
     let (identity, redirect_uri, resource, resolved_scope, resource_tenant) =
         match validate_authorize_params(&state, &params, &ip).await {
@@ -1111,6 +1114,7 @@ pub async fn post_authorize(
                         &resource,
                         &resolved_scope,
                         &state_param,
+                        funnel_origin,
                     )
                     .await
                 }
@@ -1451,7 +1455,19 @@ pub(crate) async fn issue_tokens_for_subject(
     // `authorization_code` grant and a later `refresh_token` rotation --
     // counts toward `tokens_issued_7d`. Best-effort: never fails the
     // response that carries the real tokens.
-    let _ = state.db.record_oauth_funnel_event("token_issued").await;
+    //
+    // PRD-mcphost-funnel-truth AC1: `"human"` is a documented
+    // simplification, not a live classification -- this shared success
+    // path (`POST /oauth/token`, every grant type) carries no caller IP
+    // (unlike `get_authorize`/`post_authorize` above, it was never given a
+    // `ConnectInfo`/`HeaderMap` extractor, and widening it would touch
+    // every grant-type handler for a count no digest/host_progress AC
+    // reads). Defaulting to `human` (never `unknown`, satisfying AC1)
+    // is conservative in the direction that matters: it can only
+    // undercount fleet/probe token exchanges, never inflate the human
+    // headline by hiding a real fleet/probe row inside it on a table
+    // `admin::funnel`/`funnel_7d_external` don't aggregate from anyway.
+    let _ = state.db.record_oauth_funnel_event("token_issued", "human").await;
     (StatusCode::OK, Json(body)).into_response()
 }
 

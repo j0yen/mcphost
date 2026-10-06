@@ -180,6 +180,10 @@ const MIGRATION_0076: &str = include_str!("../migrations/0076_upgrade_moment.sql
 /// originally numbered 0073).
 const MIGRATION_0077: &str = include_str!("../migrations/0077_second_session_nudge.sql");
 
+/// PRD-mcphost-funnel-truth P0 requirement 1: `funnel_origin` on `tenants`,
+/// `oauth_funnel_events`, `claim_email_events`.
+const MIGRATION_0078: &str = include_str!("../migrations/0078_funnel_origin.sql");
+
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
 const EVENT_DEDUPE_WINDOW_S: i64 = 86_400;
@@ -197,7 +201,7 @@ const TENANT_COLUMNS: &str = "id, namespace, display_name, key_hash, created_at,
     signup_source, owner_email, owner_verified_at, claim_token_hash, claim_expires_at, \
     url_secret_hash, url_rotated_at, invited_by_tenant_id, last_seen_unix, \
     first_call_unix, first_publish_unix, first_own_call_unix, second_session_unix, \
-    claimed_unix, paid_unix, created_session_id, claim_token_plain, paid_test_unix";
+    claimed_unix, paid_unix, created_session_id, claim_token_plain, paid_test_unix, funnel_origin";
 
 fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
     Ok(Tenant {
@@ -243,6 +247,7 @@ fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
         created_session_id: r.get(39)?,
         claim_token_plain: r.get(40)?,
         paid_test_unix: r.get(41)?,
+        funnel_origin: r.get(42)?,
     })
 }
 
@@ -484,6 +489,11 @@ pub struct FunnelRow {
     /// this tenant (sent, recorded as unreachable, or abandoned after
     /// three failures), `None` for a tenant the sweep hasn't reached yet.
     pub nudged_unix: Option<i64>,
+    /// PRD-mcphost-funnel-truth P0 requirement 4 (AC4): `human`/`fleet`/
+    /// `probe` (never `unknown` for a tenant a live handler created --
+    /// AC1), what `admin::funnel`/`admin::funnel_7d_external`'s own
+    /// `by_origin` breakdowns group by.
+    pub funnel_origin: String,
 }
 
 /// PRD-mcphost-second-session-nudge requirement 1: one row per tenant the
@@ -724,6 +734,44 @@ pub struct Tenant {
     /// during this rebase -- mcphost-ownership-moment claimed 0073-0075
     /// first).
     pub paid_test_unix: Option<i64>,
+    /// PRD-mcphost-funnel-truth P0 requirement 1/2: `'human'|'fleet'|'probe'`,
+    /// `state::classify_funnel_origin`'s own output at signup time -- a
+    /// DIFFERENT split than [`Self::origin`]/[`Self::source_class`] above
+    /// (see migration 0078's own doc comment on why this is its own
+    /// column). `'unknown'` only for a tenant inserted before this column
+    /// existed, or by a path this PRD's P1 backfill hasn't reached yet --
+    /// never written intentionally by a live handler (AC1).
+    pub funnel_origin: String,
+}
+
+/// PRD-mcphost-funnel-truth: the three tables migration 0078 added
+/// `funnel_origin` to -- [`Db::funnel_origin_counts`]'s only valid inputs,
+/// so that query is never built from a caller-controlled table name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FunnelOriginTable {
+    Tenants,
+    OauthFunnelEvents,
+    ClaimEmailEvents,
+}
+
+impl FunnelOriginTable {
+    fn as_str(self) -> &'static str {
+        match self {
+            FunnelOriginTable::Tenants => "tenants",
+            FunnelOriginTable::OauthFunnelEvents => "oauth_funnel_events",
+            FunnelOriginTable::ClaimEmailEvents => "claim_email_events",
+        }
+    }
+}
+
+/// [`Db::backfill_funnel_origin`]'s return shape -- how many rows each
+/// pass actually changed, for `mcphost admin backfill-origin`'s own
+/// printed report and AC5's idempotency proof (a second call must report
+/// zero for both).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FunnelOriginBackfillCounts {
+    pub tenants_changed: i64,
+    pub claim_email_events_changed: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2562,7 +2610,8 @@ impl Db {
         Self::migrate_0074_claim_nudged_unix(&conn)?;
         Self::migrate_0075_claim_email_events(&conn)?;
         Self::migrate_0076_upgrade_moment(&conn)?;
-        Self::migrate_0077_second_session_nudge(&conn)
+        Self::migrate_0077_second_session_nudge(&conn)?;
+        Self::migrate_0078_funnel_origin(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -3671,6 +3720,17 @@ impl Db {
         Ok(())
     }
 
+    /// PRD-mcphost-funnel-truth P0 requirement 1: same idempotency pattern
+    /// as 0002-0077, gated on `tenants.funnel_origin`.
+    fn migrate_0078_funnel_origin(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'funnel_origin'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0078)?;
+        }
+        Ok(())
+    }
 
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
@@ -3853,6 +3913,14 @@ impl Db {
             origin,
             origin_detail,
             None,
+            // PRD-mcphost-funnel-truth: this wrapper's own callers are
+            // every pre-existing test fixture that creates a tenant
+            // directly against `Db` rather than through `control::signup`
+            // -- never a live handler (AC1 scopes "never unknown" to
+            // handler-written rows) -- so it keeps the column's own
+            // migration-time default instead of guessing a classification
+            // it has no IP to base one on.
+            "unknown".to_string(),
         )
         .await
     }
@@ -3878,6 +3946,7 @@ impl Db {
         origin: String,
         origin_detail: Option<String>,
         signup_source: Option<String>,
+        funnel_origin: String,
     ) -> Result<Tenant, AppError> {
         let created_at = now_rfc3339();
         let created_unix = now_unix();
@@ -3885,8 +3954,8 @@ impl Db {
             conn.execute(
                 "INSERT INTO tenants (namespace, display_name, key_hash, created_at, disabled, \
                  synthetic, source_class, client_name, client_version, created_unix, origin, origin_detail, \
-                 signup_source) \
-                 VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                 signup_source, funnel_origin) \
+                 VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                 params![
                     namespace,
                     display_name,
@@ -3900,6 +3969,7 @@ impl Db {
                     origin,
                     origin_detail,
                     signup_source,
+                    funnel_origin,
                 ],
             )?;
             let id = conn.last_insert_rowid();
@@ -3946,6 +4016,109 @@ impl Db {
                 created_session_id: None,
                 claim_token_plain: None,
                 paid_test_unix: None,
+                funnel_origin,
+            })
+        })
+        .await
+    }
+
+    /// PRD-mcphost-funnel-truth P1 requirement 5 (AC5): `SELECT
+    /// funnel_origin, COUNT(*) FROM <table> GROUP BY funnel_origin` for
+    /// whichever of the three tables migration 0078 touched -- shared by
+    /// `mcphost admin backfill-origin`'s own printed report and by tests
+    /// that need to assert against it independently (AC5's own wording:
+    /// "the printed counts match `select origin, count(*)`").
+    pub async fn funnel_origin_counts(
+        &self,
+        table: FunnelOriginTable,
+    ) -> Result<Vec<(String, i64)>, AppError> {
+        let table_name = table.as_str();
+        self.with_conn(move |conn| {
+            let sql = format!("SELECT funnel_origin, COUNT(*) FROM {table_name} GROUP BY funnel_origin");
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-funnel-truth P1 requirement 5 (AC5): `mcphost admin
+    /// backfill-origin`'s own idempotent reclassification of every row
+    /// still at the migration-time `'unknown'` default. Three passes, in
+    /// order:
+    ///
+    /// 1. `tenants`: `fleet` wherever `source_class = 'fleet'` -- that
+    ///    column was already derived from the SAME fleet-IP list at
+    ///    signup time (`state::classify_source_class`), durably, even for
+    ///    the fleet-IP-bypass signups that never got a `signup_events`
+    ///    row at all (`control::signup`'s own "no `try_admit_signup` call"
+    ///    comment) -- so it is reachable with no IP lookup of its own,
+    ///    unlike the Technical Considerations' "join `claim_email_events`/
+    ///    `oauth_funnel_events` timestamps to tenants" framing, which only
+    ///    applies to those two tables' own backfill below.
+    /// 2. `tenants`: `probe` wherever `created_unix` falls within
+    ///    [`crate::state::FUNNEL_ORIGIN_PROBE_WINDOW_SECS`] of any
+    ///    `release_timestamps` entry (empty -- the common case absent
+    ///    `$MCPHOST_DEPLOY_RELEASE_TIMESTAMPS` -- is a no-op, never an
+    ///    error). Every row neither pass reaches stays `'unknown'` (Goals
+    ///    section: "stay queryable as `unknown` where neither applies" --
+    ///    this is a backfill-only outcome; AC1's "never unknown" is a
+    ///    live-write-path guarantee, not retroactive).
+    /// 3. `claim_email_events`: inherits its owning tenant's own
+    ///    (possibly just-backfilled-above) `funnel_origin`, same
+    ///    subselect [`Self::record_claim_email_failure`] already writes
+    ///    at insert time -- only for a row whose tenant now resolves to
+    ///    something other than `'unknown'`, so a tenant this backfill
+    ///    couldn't classify leaves its claim-email rows `'unknown'` too
+    ///    rather than copying one sentinel onto another.
+    ///
+    /// `oauth_funnel_events` has no tenant link and no stored IP (requirement
+    /// 3's own design: "host-wide scalars, not split by tenant"), so no
+    /// signal exists to backfill it against -- it is read, not written, by
+    /// this method (its own rows already got a real value at insert time
+    /// going forward, same AC1 guarantee as the other two tables).
+    ///
+    /// Idempotent: every `WHERE` clause below is `funnel_origin = 'unknown'`,
+    /// so a second call touches zero rows (AC5) -- the same "no selected
+    /// rows left, nothing to change" shape every other one-shot
+    /// `backfill_*` method in this file already has.
+    pub async fn backfill_funnel_origin(
+        &self,
+        release_timestamps: Vec<i64>,
+    ) -> Result<FunnelOriginBackfillCounts, AppError> {
+        self.with_conn(move |conn| {
+            let tenants_fleet = conn.execute(
+                "UPDATE tenants SET funnel_origin = 'fleet' \
+                 WHERE funnel_origin = 'unknown' AND source_class = 'fleet'",
+                [],
+            )?;
+            let mut tenants_probe = 0usize;
+            if !release_timestamps.is_empty() {
+                let window = crate::state::FUNNEL_ORIGIN_PROBE_WINDOW_SECS;
+                let clauses: Vec<String> = release_timestamps
+                    .iter()
+                    .map(|ts| format!("(created_unix BETWEEN {} AND {})", ts - window, ts + window))
+                    .collect();
+                let sql = format!(
+                    "UPDATE tenants SET funnel_origin = 'probe' \
+                     WHERE funnel_origin = 'unknown' AND ({})",
+                    clauses.join(" OR ")
+                );
+                tenants_probe = conn.execute(&sql, [])?;
+            }
+            let claim_email_events = conn.execute(
+                "UPDATE claim_email_events SET funnel_origin = \
+                     (SELECT t.funnel_origin FROM tenants t WHERE t.id = claim_email_events.tenant_id) \
+                 WHERE funnel_origin = 'unknown' \
+                   AND (SELECT t.funnel_origin FROM tenants t WHERE t.id = claim_email_events.tenant_id) \
+                       != 'unknown'",
+                [],
+            )?;
+            Ok(FunnelOriginBackfillCounts {
+                tenants_changed: (tenants_fleet + tenants_probe) as i64,
+                claim_email_events_changed: claim_email_events as i64,
             })
         })
         .await
@@ -5245,6 +5418,13 @@ impl Db {
     /// `claim::send_with_retry`'s attempts) -- `status_code` only, never
     /// the provider's response body or `MCPHOST_EMAIL_API_KEY` (neither of
     /// which this function is even given).
+    ///
+    /// PRD-mcphost-funnel-truth P0 requirement 1 (AC1): `funnel_origin`
+    /// rides along too, read straight off the owning tenant's own column
+    /// (set at signup, never mutated) rather than threading a source IP
+    /// through `claim::send_with_retry` -- this journal row's whole point
+    /// is "which tenant's claim email failed," so it inherits that
+    /// tenant's own already-correct origin instead of re-deriving one.
     pub async fn record_claim_email_failure(
         &self,
         tenant_id: i64,
@@ -5253,8 +5433,8 @@ impl Db {
         let created_unix = crate::state::now_unix();
         self.with_conn(move |conn| {
             conn.execute(
-                "INSERT INTO claim_email_events (tenant_id, status_code, created_unix) \
-                 VALUES (?1, ?2, ?3)",
+                "INSERT INTO claim_email_events (tenant_id, status_code, created_unix, funnel_origin) \
+                 VALUES (?1, ?2, ?3, (SELECT funnel_origin FROM tenants WHERE id = ?1))",
                 params![tenant_id, status_code.map(i64::from), created_unix],
             )?;
             Ok(())
@@ -5582,7 +5762,7 @@ impl Db {
                          WHERE be.tenant_id = t.id AND be.event_type = 'checkout.session.completed' \
                            AND be.mode = 'live' \
                          ORDER BY be.id DESC LIMIT 1), \
-                        t.nudged_unix \
+                        t.nudged_unix, t.funnel_origin \
                  FROM tenants t \
                  WHERE t.created_unix IS NOT NULL AND t.created_unix >= ?1 \
                  AND (?2 IS NULL OR t.signup_source = ?2)",
@@ -5601,6 +5781,7 @@ impl Db {
                         paid_unix: r.get(8)?,
                         paid_source: r.get(9)?,
                         nudged_unix: r.get(10)?,
+                        funnel_origin: r.get(11)?,
                     })
                 })?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -8878,12 +9059,22 @@ impl Db {
     /// requirement 3: appends one funnel event (`authorize_request`,
     /// `consent`, or `token_issued`) -- see migration 0053's own doc comment
     /// on `oauth_funnel_events` for what each means.
-    pub async fn record_oauth_funnel_event(&self, event: &'static str) -> Result<(), AppError> {
+    ///
+    /// PRD-mcphost-funnel-truth P0 requirement 1 (AC1): `funnel_origin`
+    /// (`human`/`fleet`, this table's own calls never carry the probe
+    /// header -- that's a `signup`-only marker) rides along with every
+    /// row, same `human`/`fleet`/`probe` three-way as `tenants.funnel_origin`.
+    pub async fn record_oauth_funnel_event(
+        &self,
+        event: &'static str,
+        funnel_origin: &str,
+    ) -> Result<(), AppError> {
         let now = now_unix();
+        let funnel_origin = funnel_origin.to_string();
         self.with_conn(move |conn| {
             conn.execute(
-                "INSERT INTO oauth_funnel_events (event, created_unix) VALUES (?1, ?2)",
-                params![event, now],
+                "INSERT INTO oauth_funnel_events (event, created_unix, funnel_origin) VALUES (?1, ?2, ?3)",
+                params![event, now, funnel_origin],
             )?;
             Ok(())
         })
@@ -19887,6 +20078,7 @@ impl Db {
         invitee_url_secret_hash: String,
         invitee_standing_code_hash: String,
         invitee_standing_code_plain: String,
+        funnel_origin: String,
     ) -> Result<ClaimedInvite, AppError> {
         let now = now_unix();
         let created_at = now_rfc3339();
@@ -19948,8 +20140,9 @@ impl Db {
                 let via = format!("invite:{code_plain}");
                 conn.execute(
                     "INSERT INTO tenants (namespace, display_name, key_hash, created_at, disabled, \
-                     created_unix, signup_source, url_secret_hash, url_rotated_at, invited_by_tenant_id) \
-                     VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7, ?5, ?8)",
+                     created_unix, signup_source, url_secret_hash, url_rotated_at, invited_by_tenant_id, \
+                     funnel_origin) \
+                     VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6, ?7, ?5, ?8, ?9)",
                     params![
                         invitee_namespace,
                         display_name,
@@ -19959,6 +20152,7 @@ impl Db {
                         via,
                         invitee_url_secret_hash,
                         invite.inviter_tenant_id,
+                        funnel_origin,
                     ],
                 )?;
                 let tenant_id = conn.last_insert_rowid();

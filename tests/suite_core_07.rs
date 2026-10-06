@@ -536,6 +536,16 @@ mod flakelint_ac04_allow_list;
 mod flakelint_ac06_perf_budget_skip_and_median;
 #[path = "fleetips_reclassify_backfill.rs"]
 mod fleetips_reclassify_backfill;
+#[path = "ftruth_ac01_never_unknown_at_insert.rs"]
+mod ftruth_ac01_never_unknown_at_insert;
+#[path = "ftruth_ac02_fleet_ip_vs_human.rs"]
+mod ftruth_ac02_fleet_ip_vs_human;
+#[path = "ftruth_ac03_probe_header_requires_fleet_ip.rs"]
+mod ftruth_ac03_probe_header_requires_fleet_ip;
+#[path = "ftruth_ac04_digest_and_funnel_report_human_headline.rs"]
+mod ftruth_ac04_digest_and_funnel_report_human_headline;
+#[path = "ftruth_ac05_backfill_origin_idempotent.rs"]
+mod ftruth_ac05_backfill_origin_idempotent;
 #[path = "funnel_ac01_activation_stamps_set_once.rs"]
 mod funnel_ac01_activation_stamps_set_once;
 #[path = "funnel_ac02_shared_call_not_own_call.rs"]
@@ -1816,9 +1826,3 @@ mod trigidem_ac05_verbs_accept_name;
 mod trigidem_ac06_migration_backfills_duplicate_names;
 #[path = "trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent.rs"]
 mod trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent;
-#[path = "unkfield_ac04_trigger_set_unknown_argument.rs"]
-mod unkfield_ac04_trigger_set_unknown_argument;
-#[path = "unkfield_ac05_tools_list_additional_properties_false.rs"]
-mod unkfield_ac05_tools_list_additional_properties_false;
-#[path = "unkfield_ac07_spec_fields_doc_check_script.rs"]
-mod unkfield_ac07_spec_fields_doc_check_script;

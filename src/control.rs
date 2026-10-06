@@ -164,6 +164,12 @@ pub struct SignupAttribution<'a> {
     pub client_version: Option<&'a str>,
     /// The transport's `User-Agent` header, when it exposes one.
     pub user_agent: Option<&'a str>,
+    /// PRD-mcphost-funnel-truth requirement 2: the raw `X-Mcphost-Origin`
+    /// header value, unvalidated -- `signup`'s own job (not `handler.rs`'s)
+    /// is deciding whether this is honoured (only the literal value
+    /// `"probe"`, and only from a fleet IP), same HTTP-extraction/
+    /// business-logic split `synthetic_header` above already uses.
+    pub origin_header: Option<&'a str>,
 }
 
 /// PRD-mcphost-first-call-gift requirement 1: `remember`'s own byte cap --
@@ -286,6 +292,19 @@ pub async fn signup(
     let (origin, origin_detail) = crate::state::derive_origin(class, synthetic.as_deref());
     let ip_class = crate::state::classify_ip_class(source_ip).to_string();
 
+    // PRD-mcphost-funnel-truth P0 requirements 1-3 (AC1-AC3): the
+    // human/fleet/probe verdict for the digest, independent of the
+    // synthetic/external `origin` just above (migration 0078's own doc
+    // comment on why these are two different columns). The header is only
+    // ever honoured when it's the literal value `"probe"` -- anything else
+    // a caller sends is simply not a probe marker, same silent-ignore
+    // posture `validate_synthetic_header` takes for an invalid label.
+    let probe_header = attribution
+        .origin_header
+        .is_some_and(|h| h.trim().eq_ignore_ascii_case("probe"));
+    let funnel_origin =
+        crate::state::classify_funnel_origin(source_ip, probe_header, &state.fleet_ips).to_string();
+
     // PRD-mcphost-call-limits-honest requirement 4 (AC5): the rate-limit
     // check and the signup-event write are now one atomic DB call
     // (`Db::try_admit_signup`) -- see that method's doc comment for why the
@@ -343,6 +362,7 @@ pub async fn signup(
             origin.to_string(),
             origin_detail,
             signup_source,
+            funnel_origin,
         )
         .await?;
 

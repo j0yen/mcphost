@@ -233,6 +233,7 @@ pub async fn claim_on_first_call(
     state: &AppState,
     code: &str,
     session_id: Option<&str>,
+    funnel_origin: &str,
 ) -> Result<(Tenant, Value), AppError> {
     let code_hash = crate::auth::hash_key(code);
     let invitee_namespace = crate::auth::generate_namespace();
@@ -252,6 +253,7 @@ pub async fn claim_on_first_call(
             invitee_url_secret_hash,
             invitee_standing_code_hash,
             invitee_standing_code,
+            funnel_origin.to_string(),
         )
         .await?;
 

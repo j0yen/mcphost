@@ -1050,21 +1050,23 @@ impl McpClient {
         mcp_protocol_version_header: Option<&str>,
         mcp_name_override: Option<&str>,
     ) -> reqwest::Response {
-        self.post_with_extra(body, mcp_protocol_version_header, mcp_name_override, None)
+        self.post_with_extra(body, mcp_protocol_version_header, mcp_name_override, &[])
             .await
     }
 
-    /// Same as [`Self::post_with`], plus one arbitrary extra header --
-    /// PRD-mcphost-synthetic-flag's `x-mcphost-synthetic` is the only user
-    /// today (see [`Self::tools_call_with_header`]), kept generic rather
-    /// than hardcoding that name so a future header-driven AC doesn't need
-    /// its own copy of this method.
+    /// Same as [`Self::post_with`], plus zero or more arbitrary extra
+    /// headers -- PRD-mcphost-synthetic-flag's `x-mcphost-synthetic` was
+    /// the first user (see [`Self::tools_call_with_header`]); PRD-mcphost-funnel-truth's
+    /// `x-mcphost-origin` needs a SECOND header (`x-forwarded-for`) on the
+    /// same call (see [`Self::tools_call_with_headers`]), which is why this
+    /// takes a slice rather than the single `Option<(&str, &str)>` it used
+    /// to.
     async fn post_with_extra(
         &self,
         body: &Value,
         mcp_protocol_version_header: Option<&str>,
         mcp_name_override: Option<&str>,
-        extra_header: Option<(&str, &str)>,
+        extra_headers: &[(&str, &str)],
     ) -> reqwest::Response {
         let method = body.get("method").and_then(Value::as_str).unwrap_or("");
         let mcp_name = mcp_name_override.map(str::to_string).or_else(|| {
@@ -1093,8 +1095,8 @@ impl McpClient {
         if let Some(key) = &self.bearer {
             req = req.header("Authorization", format!("Bearer {key}"));
         }
-        if let Some((name, value)) = extra_header {
-            req = req.header(name, value);
+        for (name, value) in extra_headers {
+            req = req.header(*name, *value);
         }
         if self.session_continuity
             && let Some(id) = self.session_id()
@@ -1152,14 +1154,14 @@ impl McpClient {
     }
 
     async fn call(&self, method: &str, params: Value) -> Result<Value, RpcError> {
-        self.call_with_extra_header(method, params, None).await
+        self.call_with_extra_headers(method, params, &[]).await
     }
 
-    async fn call_with_extra_header(
+    async fn call_with_extra_headers(
         &self,
         method: &str,
         mut params: Value,
-        extra_header: Option<(&str, &str)>,
+        extra_headers: &[(&str, &str)],
     ) -> Result<Value, RpcError> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         // Stateless 2026-07-28 requests carry the client context SEP-2575
@@ -1190,7 +1192,7 @@ impl McpClient {
             "params": params,
         });
         let resp = self
-            .post_with_extra(&body, Some("2026-07-28"), None, extra_header)
+            .post_with_extra(&body, Some("2026-07-28"), None, extra_headers)
             .await;
         let status = resp.status();
         // PRD-mcphost-one-next-tool requirement 3 (AC3): a call that binds
@@ -1263,10 +1265,23 @@ impl McpClient {
         arguments: Value,
         header: (&str, &str),
     ) -> Result<Value, RpcError> {
-        self.call_with_extra_header(
+        self.tools_call_with_headers(name, arguments, &[header]).await
+    }
+
+    /// PRD-mcphost-funnel-truth AC3: same as [`Self::tools_call_with_header`],
+    /// for a test that needs BOTH `x-forwarded-for` (to simulate a fleet or
+    /// non-fleet source IP) and `x-mcphost-origin` on the same `signup`
+    /// call.
+    pub async fn tools_call_with_headers(
+        &self,
+        name: &str,
+        arguments: Value,
+        headers: &[(&str, &str)],
+    ) -> Result<Value, RpcError> {
+        self.call_with_extra_headers(
             "tools/call",
             json!({"name": name, "arguments": arguments}),
-            Some(header),
+            headers,
         )
         .await
     }
@@ -1300,7 +1315,7 @@ impl McpClient {
             "params": params,
         });
         let resp = self
-            .post_with_extra(&body, Some("2026-07-28"), Some(name), None)
+            .post_with_extra(&body, Some("2026-07-28"), Some(name), &[])
             .await;
         let status = resp.status();
         let content_type = resp

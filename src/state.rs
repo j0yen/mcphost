@@ -1021,6 +1021,68 @@ pub fn derive_origin(
     }
 }
 
+/// PRD-mcphost-funnel-truth P0 requirement 2: the three-way `human`/
+/// `fleet`/`probe` verdict every tenant, oauth funnel event, and
+/// claim-email row now carries -- a DIFFERENT question than
+/// [`SourceClass`]/[`derive_origin`] above answer ("is this safe to treat
+/// as a real paying customer" vs. this function's "whose signup is this,
+/// for the digest"; see migration 0078's own doc comment). Classification
+/// order, per the requirement: the `X-Mcphost-Origin: probe` header wins
+/// only when `source_ip` is itself in `fleet_ips` (`probe_header` is
+/// `true` iff the caller already checked the header's value was exactly
+/// `"probe"` -- same HTTP-extraction/business-logic split
+/// `classify_source_class`'s own `harness_marker_present` uses) -- so a
+/// stranger outside the fleet can never forge the header to hide as a
+/// probe (requirement 2's own "a stranger cannot hide as a probe," and
+/// the Migration/compatibility section's "ignored from non-fleet IPs").
+/// Otherwise a fleet-IP match reads `fleet`; everything else is `human`.
+/// Never returns `"unknown"` -- that string is reserved for a row this
+/// function was never consulted for (a pre-migration row, or one `mcphost
+/// admin backfill-origin` hasn't reached, P1 requirement 5).
+pub fn classify_funnel_origin(source_ip: &str, probe_header: bool, fleet_ips: &FleetIps) -> &'static str {
+    let is_fleet = fleet_ips.contains(source_ip);
+    if probe_header && is_fleet {
+        "probe"
+    } else if is_fleet {
+        "fleet"
+    } else {
+        "human"
+    }
+}
+
+/// `mcphost admin backfill-origin`'s own "probe where the signup time is
+/// within 120 s of a recorded release" window (P1 requirement 5).
+pub const FUNNEL_ORIGIN_PROBE_WINDOW_SECS: i64 = 120;
+
+/// Comma-separated `$MCPHOST_DEPLOY_RELEASE_TIMESTAMPS` (unix seconds) ->
+/// a list of release moments the backfill command matches tenant
+/// `created_unix` stamps against. Pure, same parse/env-read split as
+/// [`parse_fleet_ips`]/[`fleet_ips_from_env`] -- an invalid entry is
+/// logged and skipped, never fatal. The deploy tool's own release journal
+/// lives outside this crate (`~/.local/state/mcphost-deploy/journal.log`
+/// on the ops box); this env var is the one portable way an operator (or
+/// a future sibling tool) hands this backfill a release's timestamp
+/// without this crate reading another process's file directly.
+pub fn parse_release_timestamps(raw: Option<&str>) -> Vec<i64> {
+    let Some(raw) = raw else { return Vec::new() };
+    raw.split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .filter_map(|s| match s.parse::<i64>() {
+            Ok(ts) => Some(ts),
+            Err(_) => {
+                tracing::warn!(entry = %s, "invalid MCPHOST_DEPLOY_RELEASE_TIMESTAMPS entry; skipping");
+                None
+            }
+        })
+        .collect()
+}
+
+pub fn release_timestamps_from_env() -> Vec<i64> {
+    let raw = std::env::var("MCPHOST_DEPLOY_RELEASE_TIMESTAMPS").ok();
+    parse_release_timestamps(raw.as_deref())
+}
+
 /// PRD-mcphost-provenance-audit P1 requirement 5: loopback/private/public
 /// triage for `signup_events.ip_class`, independent of `origin` (a fleet
 /// signup from a public IP is still `synthetic` origin but `public` ip
@@ -1326,6 +1388,31 @@ mod tests {
         // the valid entry alongside them still matches.
         let mixed = parse_fleet_ips(Some("not-an-ip,46.225.110.44,10.0.0.0/99"));
         assert!(mixed.contains("46.225.110.44"));
+    }
+
+    #[test]
+    fn funnel_origin_classification() {
+        let fleet = parse_fleet_ips(Some("46.225.110.44"));
+        let no_fleet = FleetIps::empty();
+
+        // AC2: fleet IP, no header -> fleet; non-fleet IP, no header ->
+        // human.
+        assert_eq!(classify_funnel_origin("46.225.110.44", false, &fleet), "fleet");
+        assert_eq!(classify_funnel_origin("8.8.8.8", false, &fleet), "human");
+
+        // AC3: the probe header only takes effect from a fleet IP; the
+        // same header from a non-fleet IP still reads human (a stranger
+        // cannot hide as a probe).
+        assert_eq!(classify_funnel_origin("46.225.110.44", true, &fleet), "probe");
+        assert_eq!(classify_funnel_origin("8.8.8.8", true, &fleet), "human");
+
+        // An empty fleet list never classifies anything fleet/probe, even
+        // with the header present.
+        assert_eq!(classify_funnel_origin("46.225.110.44", true, &no_fleet), "human");
+        assert_eq!(classify_funnel_origin("46.225.110.44", false, &no_fleet), "human");
+
+        // Never "unknown" -- every input resolves to one of the three.
+        assert_ne!(classify_funnel_origin("unknown", false, &fleet), "unknown");
     }
 
     #[test]
