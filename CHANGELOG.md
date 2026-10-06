@@ -12,6 +12,31 @@ drop operator-only detail (env var names) from the page in favor of the
 log line (PRD-mcphost-ownership-copy). No visible string in the flow
 says "claim", "verify", or "tenant" outside a URL or HTML attribute.
 
+## v0.90.0 — 2026-10-05
+
+The claim link is delivered, nudged once, and counted (PRD-mcphost-
+ownership-moment). `claim_url` now rides every onboarding envelope
+(implicit first call, `/u/new`, a URL-bound tenant's first call, and an
+invite join) and `host.whoami` carries it until the tenant claims --
+after that, `host.whoami` carries `owner: {verified_at}` instead. The
+first successful `host.tool_publish` of an unclaimed external tenant
+carries one `_meta.next = {kind: "claim", url, text}` nudge (never a
+second time, and never for a synthetic tenant). `src/email.rs` sends the
+claim email through whichever provider `MCPHOST_EMAIL_PROVIDER` names
+(`resend`, the default, or `postmark`); a send failure returns
+`claim_email_failed` with a `request_id` and journals the provider's
+status code, never the key. `/healthz` gains a `claims: {external,
+synthetic, median_minutes_to_claim, nudged, nudged_then_claimed}` block
+over the trailing 30 days. The claim summary page now shows the agent's
+first-call `remember` note alongside the published tool list. On the
+deploy side, `mcphost-deploy`'s `probe` already failed
+`claim-email-unconfigured` when a prod host's mail env was unset; this
+release also promotes the daily journey's `claim` step out of
+`NON_P0_STEPS` in `~/repos/mcphost-deploy` and gives `~/repos/synthorg`'s
+journey harness a real magic-link round trip for it (`claim_start`,
+`read_mail_sink`, `claim_verify`) instead of the permanent skip stub it
+carried before -- a broken claim page now fails the whole journey.
+
 ## v0.85.0 — 2026-10-04
 
 `signup` accepts an optional `remember` string (1-4096 bytes; longer

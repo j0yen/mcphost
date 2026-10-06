@@ -250,12 +250,20 @@ pub async fn claim_on_first_call(
             .bind(session_id, claimed.tenant.id, crate::state::now_unix());
     }
 
+    // PRD-mcphost-ownership-moment requirement 1 (AC1): `claim_invite`'s
+    // own transaction mints the invitee's URL/standing invite but no claim
+    // token (unlike `control::signup`) -- minted here, right after the
+    // tenant row exists, same "issue right after creation" convention
+    // `control::signup` already uses for its own claim_url.
+    let claim_url = crate::claim::issue_claim_token(state, &claimed.tenant).await?;
+
     // Requirement 6: the invitee's own personal URL (PRD-mcphost-url-bound-tenants),
     // minted in the same call as the tenant itself.
     let onboarding = json!({
         "url": format!("{}/u/{}/mcp", state.public_url.trim_end_matches('/'), invitee_url_secret),
         "invited_by": claimed.inviter_namespace,
         "shared_tools": claimed.shared,
+        "claim_url": claim_url,
     });
     Ok((claimed.tenant, onboarding))
 }

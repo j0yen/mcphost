@@ -10,6 +10,33 @@ use serde_json::json;
 
 use crate::errors::AppError;
 
+/// PRD-mcphost-ownership-moment requirement 3 (AC3): `MCPHOST_EMAIL_PROVIDER`
+/// selects the outbound request's own shape -- Resend's `{from, to,
+/// subject, text}` plus a bearer `Authorization`, or Postmark's
+/// `{From, To, Subject, TextBody}` plus an `X-Postmark-Server-Token`
+/// header. Behind one enum, not a trait per provider (technical
+/// considerations: "no new crate" -- there's no vendor SDK here to begin
+/// with, just two JSON shapes [`HttpEmailClient::send`] switches on).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum EmailProvider {
+    #[default]
+    Resend,
+    Postmark,
+}
+
+impl EmailProvider {
+    /// Open question, decided 2026-10-05 (Joe): Resend is the default;
+    /// `MCPHOST_EMAIL_PROVIDER=postmark` is the only other recognized
+    /// value. Anything else (including unset) is Resend -- an operator
+    /// typo must never silently stop mail from sending.
+    pub fn from_env() -> Self {
+        match std::env::var("MCPHOST_EMAIL_PROVIDER").ok().as_deref() {
+            Some("postmark") => Self::Postmark,
+            _ => Self::Resend,
+        }
+    }
+}
+
 /// One outbound email: the magic-link send, and nothing else today.
 /// `from`/`reply_to` travel with the message (rather than living on the
 /// client) so the display-name form of `$MCPHOST_EMAIL_FROM` (e.g.
@@ -44,6 +71,10 @@ pub struct EmailConfig {
     pub api_url: Option<String>,
     pub api_key: Option<String>,
     pub from: Option<String>,
+    /// PRD-mcphost-ownership-moment requirement 3 (AC3): resolved once,
+    /// here, from `$MCPHOST_EMAIL_PROVIDER` -- every other field predates
+    /// this PRD.
+    pub provider: EmailProvider,
 }
 
 impl EmailConfig {
@@ -52,6 +83,7 @@ impl EmailConfig {
             api_url: std::env::var("MCPHOST_EMAIL_API_URL").ok(),
             api_key: std::env::var("MCPHOST_EMAIL_API_KEY").ok(),
             from: std::env::var("MCPHOST_EMAIL_FROM").ok(),
+            provider: EmailProvider::from_env(),
         }
     }
 
@@ -84,36 +116,58 @@ pub struct HttpEmailClient {
     http: reqwest::Client,
     api_url: String,
     api_key: Option<String>,
+    provider: EmailProvider,
 }
 
 impl HttpEmailClient {
-    pub fn new(http: reqwest::Client, api_url: String, api_key: Option<String>) -> Self {
-        Self { http, api_url, api_key }
+    pub fn new(
+        http: reqwest::Client,
+        api_url: String,
+        api_key: Option<String>,
+        provider: EmailProvider,
+    ) -> Self {
+        Self { http, api_url, api_key, provider }
     }
 }
 
 #[async_trait::async_trait]
 impl EmailClient for HttpEmailClient {
     async fn send(&self, message: &EmailMessage) -> Result<(), AppError> {
-        let mut req = self.http.post(&self.api_url).json(&json!({
-            "from": message.from,
-            "to": message.to,
-            "reply_to": message.reply_to,
-            "subject": message.subject,
-            "text": message.text_body,
-        }));
-        if let Some(key) = self.api_key.as_deref() {
-            req = req.bearer_auth(key);
-        }
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| AppError::Internal(format!("email provider request failed: {e}")))?;
+        // AC3: the request shape (body keys and auth header) is selected
+        // by `self.provider` alone -- `api_url`/`api_key` stay the same
+        // two env-driven values either way; `from`/`reply_to` travel on
+        // the message (requirement 2).
+        let req = match self.provider {
+            EmailProvider::Resend => {
+                let mut req = self.http.post(&self.api_url).json(&json!({
+                    "from": message.from,
+                    "to": message.to,
+                    "reply_to": message.reply_to,
+                    "subject": message.subject,
+                    "text": message.text_body,
+                }));
+                if let Some(key) = self.api_key.as_deref() {
+                    req = req.bearer_auth(key);
+                }
+                req
+            }
+            EmailProvider::Postmark => {
+                let mut req = self.http.post(&self.api_url).json(&json!({
+                    "From": message.from,
+                    "To": message.to,
+                    "ReplyTo": message.reply_to,
+                    "Subject": message.subject,
+                    "TextBody": message.text_body,
+                }));
+                if let Some(key) = self.api_key.as_deref() {
+                    req = req.header("X-Postmark-Server-Token", key);
+                }
+                req
+            }
+        };
+        let resp = req.send().await.map_err(|_| AppError::claim_email_failed(None))?;
         if !resp.status().is_success() {
-            return Err(AppError::Internal(format!(
-                "email provider rejected the send: HTTP {}",
-                resp.status()
-            )));
+            return Err(AppError::claim_email_failed(Some(resp.status().as_u16())));
         }
         Ok(())
     }
@@ -169,9 +223,7 @@ impl EmailClient for FakeEmailClient {
         if remaining > 0 {
             self.fail_next
                 .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-            return Err(AppError::Internal(
-                "fake email provider: HTTP 500".to_string(),
-            ));
+            return Err(AppError::claim_email_failed(Some(500)));
         }
         if let Ok(mut guard) = self.sends.lock() {
             guard.push(message.clone());

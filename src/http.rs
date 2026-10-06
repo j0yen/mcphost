@@ -409,6 +409,24 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
             json!({"external": claimed_external, "synthetic": claimed_synthetic}),
         );
     }
+    // PRD-mcphost-ownership-moment requirement 4 (AC4): the market test's
+    // own number -- claims by source class and time-to-claim, over the
+    // trailing 30 days (distinct from `tenants_claimed` above, which is
+    // all-time and carries no nudge/median fields).
+    if let Some(obj) = body.as_object_mut() {
+        let since = crate::state::now_unix() - 30 * 86_400;
+        let summary = state.db.claims_summary(since).await.unwrap_or_default();
+        obj.insert(
+            "claims".to_string(),
+            json!({
+                "external": summary.external,
+                "synthetic": summary.synthetic,
+                "median_minutes_to_claim": summary.median_minutes_to_claim,
+                "nudged": summary.nudged,
+                "nudged_then_claimed": summary.nudged_then_claimed,
+            }),
+        );
+    }
     // PRD-mcphost-abuse-guard-ban-list requirement 7 / AC11.
     if let Some(obj) = body.as_object_mut() {
         let (active, auto_active, hits_24h) = state.db.ban_healthz_counts().await.unwrap_or((0, 0, 0));
@@ -977,8 +995,21 @@ fn render_new_url_storage_error() -> String {
 /// requirement 4 (AC4): the four copy snippets the page shows once a URL
 /// exists -- Claude Code, Claude Desktop/claude.ai (paste), Cursor (JSON),
 /// and generic JSON, in that order.
-fn render_new_url_result_page(url: &str) -> String {
+fn render_new_url_result_page(url: &str, claim_url: Option<&str>) -> String {
     let url = crate::claim::html_escape(url);
+    // PRD-mcphost-ownership-moment requirement 1 (AC1): this mint's own
+    // `onboarding` envelope -- `/u/new` is an HTML page, not a tool
+    // response, so the claim link rides the page itself rather than a JSON
+    // field. Best-effort (`Option`): the page still works if, somehow, no
+    // claim token was minted.
+    let claim_html = claim_url
+        .map(|u| {
+            let u = crate::claim::html_escape(u);
+            format!(
+                "<p>Own this tenant: open <code>{u}</code> and verify your email to claim it.</p>"
+            )
+        })
+        .unwrap_or_default();
     crate::claim::page(
         "mcphost — your URL",
         &format!(
@@ -991,7 +1022,8 @@ fn render_new_url_result_page(url: &str) -> String {
              <p>Claude Desktop / claude.ai: paste this URL into \"Add custom connector\".</p>\
              <p>Cursor (<code>mcp.json</code>):</p>\
              <p><code>{{&quot;mcpServers&quot;: {{&quot;mcphost&quot;: {{&quot;url&quot;: &quot;{url}&quot;}}}}}}</code></p>\
-             <p>Generic JSON:</p><p><code>{{&quot;url&quot;: &quot;{url}&quot;}}</code></p>",
+             <p>Generic JSON:</p><p><code>{{&quot;url&quot;: &quot;{url}&quot;}}</code></p>\
+             {claim_html}",
         ),
     )
 }
@@ -1014,7 +1046,7 @@ async fn post_new_url(
         crate::control::SignupAttribution::default(),
     )
     .await;
-    let tenant_id = match signup_result {
+    let (tenant_id, claim_url) = match signup_result {
         Ok(value) => {
             let Some(namespace) = value.get("tenant").and_then(Value::as_str) else {
                 return crate::claim::html_response(
@@ -1022,8 +1054,9 @@ async fn post_new_url(
                     render_new_url_storage_error(),
                 );
             };
+            let claim_url = value.get("claim_url").and_then(Value::as_str).map(str::to_string);
             match state.db.find_tenant_by_namespace(namespace.to_string()).await {
-                Ok(Some(tenant)) => tenant.id,
+                Ok(Some(tenant)) => (tenant.id, claim_url),
                 _ => {
                     return crate::claim::html_response(
                         StatusCode::INTERNAL_SERVER_ERROR,
@@ -1058,7 +1091,10 @@ async fn post_new_url(
         );
     }
     let url = format!("{}/u/{}/mcp", state.public_url.trim_end_matches('/'), url_secret);
-    crate::claim::html_response(StatusCode::OK, render_new_url_result_page(&url))
+    crate::claim::html_response(
+        StatusCode::OK,
+        render_new_url_result_page(&url, claim_url.as_deref()),
+    )
 }
 
 /// PRD-mcphost-url-bound-tenants requirement 1/5 (AC2, AC5): `/u/{secret}/mcp`

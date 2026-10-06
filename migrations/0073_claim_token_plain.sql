@@ -1,0 +1,13 @@
+-- compat: previous -- one additive nullable column on `tenants`; an old
+-- release simply never queries it, no existing row's shape changes.
+-- mcphost 0073_claim_token_plain: PRD-mcphost-ownership-moment requirement 1
+-- (AC1): `signup`'s `claim_url` was previously a write-once secret -- shown
+-- in that one response and never again, because only its sha256 hash
+-- (`claim_token_hash`) was ever persisted. `host.whoami`/the `onboarding`
+-- envelope now need to keep handing back the SAME url on every later call
+-- until the tenant is claimed, so the plaintext token has to be readable
+-- back -- same "hash for lookup, plaintext for redisplay" shape
+-- `invites.code_plain` (migration 0068) already uses for a standing invite
+-- code. Cleared alongside `claim_token_hash`/`claim_expires_at` the moment
+-- `Db::verify_claim_code` actually claims the tenant.
+ALTER TABLE tenants ADD COLUMN claim_token_plain TEXT;

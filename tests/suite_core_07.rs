@@ -1206,6 +1206,20 @@ mod owncopy_ac03_pages_match_draft_text;
 mod owncopy_ac04_error_pages_match_draft_no_env_var;
 #[path = "owncopy_ac05_no_claim_verify_tenant_in_visible_text.rs"]
 mod owncopy_ac05_no_claim_verify_tenant_in_visible_text;
+#[path = "ownmt_ac01_claim_url_on_every_onboarding_path.rs"]
+mod ownmt_ac01_claim_url_on_every_onboarding_path;
+#[path = "ownmt_ac02_claim_nudge_on_first_publish.rs"]
+mod ownmt_ac02_claim_nudge_on_first_publish;
+#[path = "ownmt_ac03_email_provider_shape_and_failure_journal.rs"]
+mod ownmt_ac03_email_provider_shape_and_failure_journal;
+#[path = "ownmt_ac04_healthz_claims_block.rs"]
+mod ownmt_ac04_healthz_claims_block;
+#[path = "ownmt_ac05_claim_email_configured_signal.rs"]
+mod ownmt_ac05_claim_email_configured_signal;
+#[path = "ownmt_ac06_claim_round_trip_for_journey_claim_step.rs"]
+mod ownmt_ac06_claim_round_trip_for_journey_claim_step;
+#[path = "ownmt_ac07_claim_page_shows_remember_note.rs"]
+mod ownmt_ac07_claim_page_shows_remember_note;
 #[path = "plancat_ac01_missing_state_quotas_default_from_catalog.rs"]
 mod plancat_ac01_missing_state_quotas_default_from_catalog;
 #[path = "plancat_ac02_startup_logs_defaulted_fields.rs"]
@@ -1808,23 +1822,3 @@ mod vault_ac09_providers_hides_client_secret;
 mod vault_ac10_refresh_401_revokes_no_retry_storm;
 #[path = "vault_ac11_quota_vault_providers.rs"]
 mod vault_ac11_quota_vault_providers;
-#[path = "vaultst_ac01_status_lists_connected_and_unconnected_providers.rs"]
-mod vaultst_ac01_status_lists_connected_and_unconnected_providers;
-#[path = "vaultst_ac02_status_end_user_resolution_matches_connect_link.rs"]
-mod vaultst_ac02_status_end_user_resolution_matches_connect_link;
-#[path = "vaultst_ac03_status_shows_revoked_after_refresh_401.rs"]
-mod vaultst_ac03_status_shows_revoked_after_refresh_401;
-#[path = "vaultst_ac04_admin_vault_stats_per_tenant_per_provider.rs"]
-mod vaultst_ac04_admin_vault_stats_per_tenant_per_provider;
-#[path = "vaultst_ac05_admin_vault_stats_rejects_tenant_key.rs"]
-mod vaultst_ac05_admin_vault_stats_rejects_tenant_key;
-#[path = "vaultst_ac06_provider_remove_revokes_all_tokens.rs"]
-mod vaultst_ac06_provider_remove_revokes_all_tokens;
-#[path = "vaultst_ac07_provider_set_presets_fill_urls.rs"]
-mod vaultst_ac07_provider_set_presets_fill_urls;
-#[path = "vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green.rs"]
-mod vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green;
-#[path = "vaultst_ac09_deferral_is_justified.rs"]
-mod vaultst_ac09_deferral_is_justified;
-#[path = "vaultst_ac09_live_vault_status_trailer.rs"]
-mod vaultst_ac09_live_vault_status_trailer;

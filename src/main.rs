@@ -613,6 +613,7 @@ async fn main() -> anyhow::Result<()> {
                     email_http_client,
                     email_config.api_url.clone().unwrap_or_default(),
                     email_config.api_key.clone(),
+                    email_config.provider,
                 ));
             let claim_token_ttl_secs = mcphost::state::claim_token_ttl_secs_from_env();
             let claim_rate_limit_per_hour = mcphost::state::claim_rate_limit_per_hour_from_env();

@@ -5291,6 +5291,10 @@ impl McpHostHandler {
                     // `call_tool`'s own success handler).
                     "memory_line": control::memory_line(Some(&url)),
                     "memory_hint": control::MEMORY_HINT,
+                    // PRD-mcphost-ownership-moment requirement 1 (AC1): the
+                    // same stable claim link `host.whoami` will keep
+                    // reporting until this tenant is claimed.
+                    "claim_url": crate::claim::claim_url_for_tenant(&self.state.public_url, &tenant),
                 }),
             );
         }
@@ -7977,6 +7981,31 @@ impl ServerHandler for McpHostHandler {
                 {
                     obj.insert("onboarding".to_string(), onboarding);
                 }
+                // PRD-mcphost-ownership-moment requirement 1 (AC1): a
+                // URL-bound tenant's (`/u/new`'s own mint) first real MCP
+                // call never carried an `onboarding` envelope at all before
+                // this PRD -- `via_url_secret` and a `None` `last_seen_unix`
+                // (loaded by `resolve_path_secret_auth` BEFORE it bumped the
+                // column, same property `maybe_attach_welcome_back` already
+                // relies on) together mean exactly "this tenant's first
+                // authenticated call ever, and it arrived on its own
+                // `/u/{secret}/mcp` link". Mutually exclusive with the
+                // invite/implicit-signup onboarding above: an invite join
+                // never sets `via_url_secret`, and implicit signup's own
+                // `auth` stays `Auth::Anonymous` throughout.
+                else if via_url_secret
+                    && let Auth::Tenant(tenant, _) = &auth
+                    && tenant.last_seen_unix.is_none()
+                    && let Some(obj) = value.as_object_mut()
+                {
+                    obj.insert(
+                        "onboarding".to_string(),
+                        json!({
+                            "tenant": tenant.namespace,
+                            "claim_url": crate::claim::claim_url_for_tenant(&self.state.public_url, tenant),
+                        }),
+                    );
+                }
                 if !deprecation_notices.is_empty()
                     && let Some(obj) = value.as_object_mut()
                 {
@@ -7988,6 +8017,15 @@ impl ServerHandler for McpHostHandler {
                 // safe to call unconditionally for every `Auth::Tenant`
                 // success, including a namespaced/shared-tool call and
                 // `billing.*` (requirement 8).
+                // PRD-mcphost-ownership-moment requirement 2 (AC2): the one
+                // "hand this claim link to your human" nudge, computed here
+                // (where the dispatched tool name and tenant are both in
+                // hand) but inserted into the response's real wire `_meta`
+                // below, alongside `deprecated`/`invite_url` -- a distinct
+                // channel from `maybe_attach_next_hint`'s own `next` field
+                // on `value` itself, so the two can never collide on the
+                // same `host.tool_publish` call.
+                let mut claim_nudge: Option<Value> = None;
                 if let Auth::Tenant(tenant, _) = &auth {
                     self.maybe_attach_next_hint(tenant, !via_tenant_key_arg, &body_name, &mut value)
                         .await;
@@ -8004,6 +8042,29 @@ impl ServerHandler for McpHostHandler {
                         &mut value,
                     )
                     .await;
+                    // requirement 2 (AC2): "first successful host.tool_publish"
+                    // -- gated on `origin == "external"` (never fleet, never
+                    // synthetic) and `owner_verified_at` still null;
+                    // `mark_claim_nudged_if_unset`'s own atomic `UPDATE ...
+                    // WHERE claim_nudged_unix IS NULL` is what makes this
+                    // "exactly once ever", not just "once per call".
+                    if (body_name == "host.tool_publish" || body_name == "host.tool.publish")
+                        && tenant.owner_verified_at.is_none()
+                        && tenant.origin == "external"
+                        && self
+                            .state
+                            .db
+                            .mark_claim_nudged_if_unset(tenant.id, now_unix())
+                            .await
+                            .unwrap_or(false)
+                        && let Some(url) = crate::claim::claim_url_for_tenant(&self.state.public_url, tenant)
+                    {
+                        claim_nudge = Some(json!({
+                            "kind": "claim",
+                            "url": url,
+                            "text": format!("hand this claim link to your human: {url}"),
+                        }));
+                    }
                 }
                 // PRD-mcphost-tool-naming-convention-and-aliases
                 // requirement 6 (P1, AC7): `host.whoami`'s first answer in
@@ -8079,6 +8140,9 @@ impl ServerHandler for McpHostHandler {
                 }
                 if let Some(url) = invite_hint_url {
                     meta.0.insert("invite_url".to_string(), json!(url));
+                }
+                if let Some(nudge) = claim_nudge {
+                    meta.0.insert("next".to_string(), nudge);
                 }
                 let result = if meta.0.is_empty() { result } else { result.with_meta(Some(meta)) };
                 Ok(CallToolResponse::from(result))
