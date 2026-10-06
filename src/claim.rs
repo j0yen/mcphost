@@ -136,70 +136,110 @@ fn render_storage_error() -> String {
     page("mcphost — storage error", "<h1>Something went wrong</h1><p>Please try again in a minute.</p>")
 }
 
-/// AC4: the literal phrase the acceptance criterion names.
+/// requirement 4 (error table, "expired" row): covers both an
+/// unknown/expired claim token ([`resolve_claim_token`]) and an
+/// unknown/expired verify code -- a guess shouldn't distinguish "never
+/// existed" from "expired" (resolve_claim_token's own doc comment), and
+/// this is the same page either way.
 fn render_expired() -> String {
     page(
-        "mcphost — link expired",
-        "<h1>This link expired</h1><p>Ask your agent to sign up again, or ask the operator for a fresh claim link.</p>",
+        "mcphost — that link has expired",
+        "<h1>That link has expired</h1><p>Links last 30 minutes. Ask your agent for a new one, \
+         or go back to the page it gave you and request another.</p>",
     )
 }
 
-/// AC3's second-open case: the code was already consumed.
-fn render_verify_gone() -> String {
+/// requirement 4 (error table, "already used" row): the verify code was
+/// valid and already consumed on an earlier visit.
+fn render_already_used() -> String {
     page(
-        "mcphost — link already used",
-        "<h1>This link has already been used</h1><p>If you already finished claiming this tenant, you're done -- no further action needed.</p>",
+        "mcphost — this link was already used",
+        "<h1>This link was already used</h1><p>If you finished on an earlier visit, you're done. \
+         If not, ask your agent for a fresh link.</p>",
     )
 }
 
+/// requirement 4 (error table, "someone else first" row): AC7's losing
+/// side of a race between two verify codes for the same tenant.
 fn render_conflict() -> String {
     page(
-        "mcphost — already claimed",
-        "<h1>Someone else just claimed this tenant</h1><p>Another verification for this tenant completed first. If that wasn't you, contact the operator.</p>",
+        "mcphost — someone else finished first",
+        "<h1>Someone else finished first</h1><p>Another address became the owner of this backend \
+         before this link was opened. If that wasn't you, write to hello@mcphost.dev.</p>",
     )
 }
 
-/// AC6: the literal phrase the acceptance criterion names.
+/// requirement 4 (error table, "mail not configured" row): the operator
+/// detail (which env var is unset) moves to the log line at the call
+/// site, never onto the page.
 fn render_email_not_configured() -> String {
     page(
-        "mcphost — claim your tenant",
-        "<h1>Claim your tenant</h1><p>Sorry, email delivery is not configured on this host yet. \
-         Ask the operator to set MCPHOST_EMAIL_API_URL, then reload this page.</p>",
+        "mcphost — we can't send email from this host yet",
+        "<h1>We can't send email from this host yet</h1><p>The operator hasn't set up outgoing \
+         mail. Try again later.</p>",
     )
 }
 
-fn render_claim_form(token: &str, error: Option<&str>) -> String {
+/// requirement 3: the enter-address page, in the approved draft's voice --
+/// `display_name` comes from the tenant the token resolved to, never a
+/// caller-supplied value, so it's trusted data, but still HTML-escaped
+/// since it ultimately came from `signup`'s free-text `name` argument.
+fn render_claim_form(display_name: &str, token: &str, error: Option<&str>) -> String {
+    let name = html_escape(display_name);
     let error_html = error
         .map(|e| format!("<p class=\"err\">{}</p>", html_escape(e)))
         .unwrap_or_default();
     page(
-        "mcphost — claim your tenant",
+        &format!("mcphost — Make {name} yours"),
         &format!(
-            "<h1>Claim your tenant</h1>\
-             <p>Enter your email and we'll send a link to verify you own this tenant.</p>\
+            "<h1>Make {name} yours</h1>\
+             <p>An agent set up \"{name}\" on mcphost. Enter your email and we'll send a \
+             one-time link that makes you its owner.</p>\
              {error_html}\
              <form method=\"post\" action=\"/claim/{token}\">\
              <input type=\"email\" name=\"email\" placeholder=\"you@example.com\" required>\
-             <button type=\"submit\">Send verification link</button>\
-             </form>"
+             <button type=\"submit\">Send me the link</button>\
+             </form>\
+             <p class=\"self-asserted\">We send one email and store the address only as the \
+             owner of this backend.</p>"
         ),
     )
 }
 
-/// AC2/AC10: the literal phrase the acceptance criteria name.
-fn render_check_inbox() -> String {
+/// requirement 3: "first char, three stars, domain" (technical
+/// considerations) -- `j***@gmail.com` for `jsmith@gmail.com`.
+fn mask_email(email: &str) -> String {
+    match email.split_once('@') {
+        Some((local, domain)) => {
+            let first = local.chars().next().unwrap_or('*');
+            format!("{first}***@{domain}")
+        }
+        None => email.to_string(),
+    }
+}
+
+/// requirement 3: the after-send page -- `email_masked` is already masked
+/// by the caller ([`mask_email`]), but still HTML-escaped since the local
+/// part/domain are caller-controlled.
+fn render_check_inbox(token: &str, email_masked: &str) -> String {
+    let masked = html_escape(email_masked);
     page(
-        "mcphost — check your inbox",
-        "<h1>Check your inbox</h1><p>We sent a verification link to your email. It expires in 30 minutes.</p>",
+        "mcphost — one more step",
+        &format!(
+            "<h1>One more step: open your email</h1>\
+             <p>We sent a link to <code>{masked}</code>. It works once and stops working in 30 \
+             minutes. Didn't get it? Check spam, then \
+             <a href=\"/claim/{token}\">send it again</a>.</p>"
+        ),
     )
 }
 
-/// requirement 7 / AC8: the literal 429 page every rate-limited
-/// `GET`/`POST /claim/*` gets.
+/// requirement 7 / AC8 / requirement 4 (error table, "rate limited" row):
+/// every rate-limited `GET`/`POST /claim/*` gets this page.
 fn render_rate_limited() -> String {
     page(
-        "mcphost — too many requests",
-        "<h1>Too many requests</h1><p>Try again later.</p>",
+        "mcphost — too many tries",
+        "<h1>Too many tries</h1><p>Wait a few minutes and try again.</p>",
     )
 }
 
@@ -208,26 +248,28 @@ fn render_rate_limited() -> String {
 /// even when the ban is `public: true` (the HTML page is not the JSON-RPC
 /// `data` object AC3 governs; keeping this page fixed avoids a second
 /// place that could leak an operator's free-text reason to a browser).
+/// requirement 4 (error table, "banned" row).
 fn render_banned() -> String {
     page(
-        "mcphost — banned",
-        "<h1>This address is banned</h1><p>Contact the operator if you believe this is a mistake.</p>",
+        "mcphost — this address can't be used here",
+        "<h1>This address can't be used here</h1><p>Write to hello@mcphost.dev if you think \
+         that's a mistake.</p>",
     )
 }
 
+/// requirement 4 (error table, "send failed" row).
 fn render_send_error(token: &str) -> String {
     page(
-        "mcphost — could not send",
+        "mcphost — we couldn't send the email",
         &format!(
-            "<h1>We could not send the email, try again in a minute</h1>\
-             <p><a href=\"/claim/{token}\">Try again</a></p>"
+            "<h1>We couldn't send the email</h1>\
+             <p>Try again in a minute. <a href=\"/claim/{token}\">Try again</a></p>"
         ),
     )
 }
 
-/// requirement 4 / AC3: namespace, tool count and names, schedules and
-/// webhooks (count, next fire), calls today vs plan limit, state bytes vs
-/// quota, plan name, and an upgrade note -- everything is best-effort
+/// requirement 3 / AC3: the done page -- tool/schedule/webhook counts,
+/// calls today vs plan limit, and state bytes vs quota, all best-effort
 /// (`unwrap_or_default`/`unwrap_or(0)`): a summary field failing to load
 /// must never turn a successful claim into an error page.
 async fn render_summary(state: &AppState, tenant: &Tenant, owner_email: &str) -> String {
@@ -239,11 +281,6 @@ async fn render_summary(state: &AppState, tenant: &Tenant, owner_email: &str) ->
         .unwrap_or_default();
     let schedule_count = triggers.iter().filter(|t| t.kind == "schedule").count();
     let webhook_count = triggers.iter().filter(|t| t.kind == "webhook").count();
-    let next_fire = triggers
-        .iter()
-        .filter(|t| t.kind == "schedule")
-        .filter_map(|t| t.next_unix)
-        .min();
     let calls_today = state
         .db
         .count_calls_since(
@@ -255,40 +292,30 @@ async fn render_summary(state: &AppState, tenant: &Tenant, owner_email: &str) ->
         .unwrap_or(0);
     let state_bytes = state.db.state_bytes_used(tenant.id).await.unwrap_or(0);
     let plan = state.plans.get(&tenant.plan);
-
-    let tool_names_html = if tools.is_empty() {
-        "<li>(none published yet)</li>".to_string()
-    } else {
-        tools
-            .iter()
-            .map(|t| format!("<li><code>{}</code></li>", html_escape(&t.name)))
-            .collect::<Vec<_>>()
-            .join("")
-    };
-    let next_fire_html = next_fire
-        .map(|u| format!(" (next fire: {})", crate::state::rfc3339_from_unix(u)))
-        .unwrap_or_default();
     let (calls_limit, state_bytes_max) = plan
         .map(|p| (p.calls_per_day, p.state_bytes_max))
         .unwrap_or((0, 0));
 
+    let name = html_escape(&tenant.display_name);
+    let email = html_escape(owner_email);
+
     page(
-        "mcphost — you're in",
+        &format!("mcphost — {name} is yours"),
         &format!(
-            "<h1>You've claimed {namespace}</h1>\
-             <p>Verified as <code>{email}</code>.</p>\
-             <p>Plan: <code>{plan}</code></p>\
-             <p>Tools published ({tool_count}):</p><ul>{tool_names_html}</ul>\
-             <p>Schedules: {schedule_count}{next_fire_html}</p>\
-             <p>Webhooks: {webhook_count}</p>\
-             <p>Calls today: {calls_today} / {calls_limit}</p>\
-             <p>State used: {state_bytes} / {state_bytes_max} bytes</p>\
-             <p>Want more headroom? Ask your agent to call \
-             <code>billing.checkout({{\"plan\": \"pro\", \"customer_email\": \"{email}\"}})</code> \
-             to upgrade to Pro.</p>",
-            namespace = html_escape(&tenant.namespace),
-            email = html_escape(owner_email),
-            plan = html_escape(&tenant.plan),
+            "<h1>{name} is yours</h1>\
+             <p>Signed in as <code>{email}</code>. Your agent keeps working exactly as before; \
+             you now hold the keys.</p>\
+             <p><b>What's here</b></p>\
+             <p>{tool_count} tools · {schedule_count} schedules · {webhook_count} webhooks · \
+             {calls_today}/{calls_limit} calls this month · {state_bytes}/{state_bytes_max} bytes \
+             of state</p>\
+             <p><b>What owning it gives you</b></p>\
+             <ul>\
+             <li>see everything the agent builds</li>\
+             <li>get a new key if the agent loses its own</li>\
+             <li><a href=\"/plans.html\">choose a plan when the free tier stops being enough</a></li>\
+             </ul>\
+             <p>Nothing else to do. You can close this page.</p>",
             tool_count = tools.len(),
         ),
     )
@@ -351,12 +378,16 @@ async fn send_verify_email(state: &AppState, tenant: &Tenant, email: &str) -> Re
             .trim_start_matches("http://");
         format!("https://{host}/claim/verify/{code}")
     };
+    let display_name = &tenant.display_name;
+    let from = state.email_config.from.clone().unwrap_or_default();
+    let reply_to = crate::email::reply_to_address(&from);
     let message = EmailMessage {
         to: email.to_string(),
-        subject: "Claim your mcphost tenant".to_string(),
+        from,
+        reply_to,
+        subject: format!("Your agent set up {display_name} on mcphost — is this yours?"),
         text_body: format!(
-            "Click to verify your email and finish claiming your mcphost tenant:\n\n{verify_url}\n\n\
-             This link expires in 30 minutes. If you didn't request this, ignore it."
+            "Hi,\n\nAn AI agent entered this address at mcphost.dev a moment ago. It has been\nbuilding a small backend there called \"{display_name}\" — which may include tools it published, schedules it set, and workflows that it is managing.\n\nIf that agent works for you, this link makes you its owner:\n\n{verify_url}\n\nOwning it means you can see what the agent built, get back in if it loses\nits key, and optionally upgrade to Pro. The link works once and stops working in 30 minutes.\n\nIf this wasn't your agent, do nothing; nothing changes.\n\n— mcphost\nmcphost.dev · a home for things your agent builds"
         ),
     };
     send_with_retry(state, message).await
@@ -444,13 +475,15 @@ pub async fn get_claim(
     if let Some(response) = check_claim_rate_limit(&state, &headers, peer).await {
         return response;
     }
-    if let Err(response) = resolve_claim_token(&state, &token).await {
-        return *response;
-    }
+    let tenant = match resolve_claim_token(&state, &token).await {
+        Ok(tenant) => tenant,
+        Err(response) => return *response,
+    };
     if !state.email_config.is_configured() {
+        tracing::warn!("claim page: email delivery not configured (MCPHOST_EMAIL_API_URL unset)");
         return html_response(StatusCode::OK, render_email_not_configured());
     }
-    html_response(StatusCode::OK, render_claim_form(&token, None))
+    html_response(StatusCode::OK, render_claim_form(&tenant.display_name, &token, None))
 }
 
 #[derive(Deserialize)]
@@ -480,7 +513,7 @@ pub async fn post_claim(
     if !is_valid_email(email) {
         return html_response(
             StatusCode::BAD_REQUEST,
-            render_claim_form(&token, Some("Enter a valid email address.")),
+            render_claim_form(&tenant.display_name, &token, Some("Enter a valid email address.")),
         );
     }
     // PRD-mcphost-abuse-guard-ban-list requirement 2: the claim flow's own
@@ -492,7 +525,7 @@ pub async fn post_claim(
         return html_response(StatusCode::FORBIDDEN, render_banned());
     }
     match send_verify_email(&state, &tenant, email).await {
-        Ok(()) => html_response(StatusCode::OK, render_check_inbox()),
+        Ok(()) => html_response(StatusCode::OK, render_check_inbox(&token, &mask_email(email))),
         Err(_) => html_response(StatusCode::OK, render_send_error(&token)),
     }
 }
@@ -521,11 +554,12 @@ pub async fn get_verify(
             }
         }
         Ok(ClaimVerifyOutcome::Conflict) => html_response(StatusCode::CONFLICT, render_conflict()),
-        Ok(
-            ClaimVerifyOutcome::NotFound
-            | ClaimVerifyOutcome::Expired
-            | ClaimVerifyOutcome::AlreadyConsumed,
-        ) => html_response(StatusCode::GONE, render_verify_gone()),
+        Ok(ClaimVerifyOutcome::NotFound | ClaimVerifyOutcome::Expired) => {
+            html_response(StatusCode::GONE, render_expired())
+        }
+        Ok(ClaimVerifyOutcome::AlreadyConsumed) => {
+            html_response(StatusCode::GONE, render_already_used())
+        }
         Err(_) => html_response(StatusCode::INTERNAL_SERVER_ERROR, render_storage_error()),
     }
 }

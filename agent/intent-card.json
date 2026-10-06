@@ -1,101 +1,62 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-event-trigger-self-test.md",
-  "intent_slug": "mcphost-event-trigger-self-test",
-  "root_motivation": "Grounding (truth-tier failures.md 2026-09-29 and 2026-09-28: 'signature in \\'X-Hub-Signature-256\\' did not match' from host.trigger.test, and 'host_quickstart: kind \\'event\\' is not registered' both nights). mcphost's kind=\"event\" self-test demands a caller-computed HMAC over bytes (serde_json::to_vec re-serialization at src/hooks.rs:954) the caller never sees, while the sibling kind=\"webhook\" self-test already self-signs (src/webhooks.rs:14-43). A shell-less agent either publishes a helper tool to compute HMAC or guesses -- the recipe integration-specialist-github-push-webhook-handler sits at 0.00 both nights. Fix: host.trigger.test self-signs when the caller doesn't supply the configured header, returns the exact signed bytes+headers for replay at the real URL, adds github/stripe verify presets, inlines a run's result from host.runs.list when it fits one part, and points host.quickstart/llms.txt at host.trigger.set instead of letting an agent guess triggers are a tool kind.",
-  "user_persona": "Five (PRD User stories): a shell-less integration-specialist agent proving a GitHub push hook in <=4 calls; a workflow-orchestrator using verify:\"github\" instead of hand-assembling scheme/header/prefix; a rag_indexer agent reading a fired run's result from host.runs.list(trigger=\"event\"); a SaaS operator whose fired runs keep end_user_subject; a first-run agent learning triggers are host.trigger.set(kind=...), not a tool kind.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-ownership-copy.md",
+  "intent_slug": "mcphost-ownership-copy",
+  "root_motivation": "Grounding (2026-10-05 4:58pm PDT): the first real ownership email ever sent from prod reached Joe's Gmail and he judged it spammy on sight. origin/main's src/claim.rs carries three phishing-filter tells -- subject 'Claim your mcphost tenant', body 'Click to verify your email and finish claiming your mcphost tenant: {verify_url}', an imperative subject, sender claim@mcphost.dev with no display name -- and never states what happened or why this address got mail. Joe drafted and approved replacement copy (notes/drafts/mcphost-claim-copy-2026-10-05.md): the email states what an agent did and what the link does, the sender has a name, the claim-flow pages and error pages speak in the same voice, and no visible string says 'claim' or 'verify'.",
+  "user_persona": "Three (PRD User stories): the stranger human who receives the ownership email and must trust it enough to click; the agent that relays skill step 5's sentence to its human; the operator (Joe) who diffs live strings against the approved draft file.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 10
+    "target": 5
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given an event trigger with verify scheme hmac-sha256, header X-Hub-Signature-256, prefix sha256=, secret name hook-secret-1, When host.trigger.test(id, body={\"commits\":[{\"id\":\"a\"},{\"id\":\"b\"},{\"id\":\"c\"}]}) is called with no headers, Then the response has status: \"queued\", test: true, signed.headers[\"X-Hub-Signature-256\"] == \"sha256=\" + hex(HMAC-SHA256(secret, signed.body)), and host.runs.wait(run_id) reaches done with the tool having received event.body.commits of length 3.",
-      "test": "tests/mcphost_event_trigger_self_test_ac01_self_sign_when_no_headers.rs -- self-signs with no headers argument at all, checks the HMAC equality directly, then host.runs.wait to done."
+      "description": "Given a tenant named \"my-agent\" and a verify link, When the ownership email is rendered, Then its subject is `Your agent set up my-agent on mcphost — is this yours?` and its body equals the approved draft text with the placeholders filled, in plain text.",
+      "test": "tests/owncopy_ac01_email_subject_and_body_match_draft.rs -- fn ownership_email_subject_and_body_match_the_approved_draft drives signup+POST /claim/{token}, asserts the fake provider's captured subject/text_body against a hardcoded expectation copied from the draft."
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given the same trigger, When host.trigger.test is called with headers: {\"X-Hub-Signature-256\": \"\"} or a wrong value, Then it fails signature_invalid with message \"signature in 'X-Hub-Signature-256' did not match\" and no run row is created.",
-      "test": "tests/mcphost_event_trigger_self_test_ac02_present_header_stays_strict.rs -- empty-value and wrong-value cases, both asserting the exact message and zero run rows created."
+      "description": "Given `MCPHOST_EMAIL_FROM=\"mcphost <hello@mcphost.dev>\"`, When an email is sent through the fake provider, Then the request's `from` is that exact string and `reply_to` is `hello@mcphost.dev`.",
+      "test": "tests/owncopy_ac02_from_and_reply_to_passed_verbatim.rs -- fn from_is_passed_verbatim_and_reply_to_is_the_bare_address spawns the real `mcphost serve` binary with MCPHOST_EMAIL_FROM set in its environment (exercising EmailConfig::from_env()), asserts the request a local wiremock fake provider received has that from/reply_to."
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given a self-signed test response, When a client POSTs signed.body verbatim with signed.headers to the trigger's public url, Then POST /hooks/... answers 202 with a new run id (the signature verifies on the live path too).",
-      "test": "tests/mcphost_event_trigger_self_test_ac03_signed_replay_hits_live_url.rs -- replays signed.body/signed.headers via a real reqwest POST at the trigger's own url, asserts 202 and a run id distinct from the self-test's own."
+      "description": "Given the three pages rendered with sample data, When their text is compared to the draft, Then titles, leads, button label, masked address, counts and closing lines match, and the done page shows the three \"what owning it gives you\" lines.",
+      "test": "tests/owncopy_ac03_pages_match_draft_text.rs -- fn the_three_pages_match_the_approved_draft GETs/POSTs the enter-address, after-send and done pages against a real published tool, asserting each draft substring."
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given host.trigger.set(tool, kind=\"event\", verify=\"github\", secret=\"hook-secret-1\"), When host.trigger.get(id) is read, Then verify shows {scheme:\"hmac-sha256\", header:\"X-Hub-Signature-256\", prefix:\"sha256=\"}, preset: \"github\", dedupe_header: \"X-GitHub-Delivery\", and the secret value is never present.",
-      "test": "tests/mcphost_event_trigger_self_test_ac04_github_preset_expands_and_hides_secret.rs -- asserts the exact verify/preset/dedupe_header shape on both the set response and a follow-up get, and that the plaintext secret never appears in either."
+      "description": "Given each of the seven error cases, When its page is rendered, Then the title and body are the draft's and no environment-variable name appears on the page.",
+      "test": "tests/owncopy_ac04_error_pages_match_draft_no_env_var.rs -- seven #[tokio::test]s, one per case (expired, already used, someone else first, mail not configured, rate limited, banned, send failed), each asserting the draft's title/body and the absence of any MCPHOST_ substring."
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given host.trigger.set(kind=\"event\", verify=\"paypal\"), When called, Then it fails trigger_invalid naming verify and listing github, stripe as the presets.",
-      "test": "tests/mcphost_event_trigger_self_test_ac05_unknown_verify_preset_rejected.rs -- verify: \"paypal\", asserts trigger_invalid naming field \"verify\" and the message listing github, stripe."
-    },
-    {
-      "id": "AC6",
-      "level": "MUST",
-      "description": "Given a done run whose result is 1 KiB, When host.runs.list(trigger=\"event\", include_result=true) is called, Then that row's result equals host.runs.get(run_id).result; and When called without include_result, Then result is null and the row is byte-identical to today's shape.",
-      "test": "tests/mcphost_event_trigger_self_test_ac06_runs_list_include_result_inlines_single_part.rs -- drives a real event-triggered run to done, compares runs.list(include_result=true)'s row against runs.get's own result, and confirms the default-false row is byte-identical apart from result."
-    },
-    {
-      "id": "AC7",
-      "level": "MUST",
-      "description": "Given a done run whose result is 300 KiB (two parts), When host.runs.list(include_result=true) is called, Then result is null and result_ref.parts == 2.",
-      "test": "tests/mcphost_event_trigger_self_test_ac07_runs_list_include_result_skips_multi_part.rs -- a 300 KiB result never actually crosses the executor's own 1 MiB chunking gate, so this pokes a done run row with result_ref.parts=2 directly into the db (same pattern as wake_ac4_jobs_concurrent_rejects.rs) to exercise list's own single-part-only inlining decision."
-    },
-    {
-      "id": "AC8",
-      "level": "MUST",
-      "description": "Given host.quickstart(kind=\"event\"), When called, Then the response carries hint containing host.trigger.set(kind=\"event\"), and host.quickstart()'s text plus llms.txt's first-run walkthrough contain the sentence naming host.trigger.set for triggers. The hint now rides PRD-mcphost-unknown-kind-routes-to-recipe's successful alias-resolution response (kindroute_ac01/ac02, must not regress), not an unknown_kind error as originally drafted.",
-      "test": "tests/mcphost_event_trigger_self_test_ac08_quickstart_and_llms_txt_name_triggers.rs -- asserts quickstart(kind=\"event\")'s response hint contains the literal host.trigger.set(kind=\"event\") (and that an alias host.trigger.set would reject, \"cron\", hints kind=\"schedule\" instead), that the same response still resolves to the http webhook-inbox recipe naming host.trigger.set, that host.quickstart()'s triggers sentence names host.trigger.set, and that www/llms.txt's First run section does too."
-    },
-    {
-      "id": "AC9",
-      "level": "MUST",
-      "description": "Given body passed as the string {\"a\":1, \"b\":2} (with a space), When self-signed, Then signed.body is exactly that string and the signature verifies over it.",
-      "test": "tests/mcphost_event_trigger_self_test_ac09_string_body_signed_byte_for_byte.rs -- body: \"{\\\"a\\\":1, \\\"b\\\":2}\" (raw string, space included), asserts signed.body equals it exactly and the HMAC verifies over those same bytes."
-    },
-    {
-      "id": "AC10",
-      "level": "MUST",
-      "description": "Given three self-tests and one strict-path rejection, When /healthz is read, Then triggers.event_self_tests_total == 3 and triggers.event_self_test_signature_invalid_total == 1.",
-      "test": "tests/mcphost_event_trigger_self_test_ac10_healthz_self_test_counters.rs -- reads /healthz before/after three successful self-tests plus one strict-path rejection, asserts both counters' deltas."
-    },
-    {
-      "id": "AC11",
-      "level": "MUST",
-      "description": "Given prod mcphost with this PRD deployed and PRD-synthorg-truth-tier-probe-as-tenant landed, When one nightly truth-tier run executes integration-specialist-github-push-webhook-handler, Then the persona reaches a trigger=event run with status=done using <=1 host.trigger.test call and the recipe scores >=0.75 (live: nightly synthorg consume --tier truth on orch).",
-      "test": "deferred -- operator-provisioned: AC11's Then is a nightly `synthorg consume --tier truth` run on orch against prod after deploy (gated on both this PRD and PRD-synthorg-truth-tier-probe-as-tenant being deployed); this dispatch has no live operator access, no prod deploy rights and none of the credentials that run needs. Declared in PRD-mcphost-event-trigger-self-test.md's frontmatter (deferred_acs: [11] plus a mock_justifications entry) and locked by tests/mcphost_event_trigger_self_test_ac11_deferral_is_justified.rs. The only test that can ever claim AC11 is tests/mcphost_event_trigger_self_test_ac11_truth_tier_persona_reaches_event_run.rs::live_truth_tier_persona_run_meets_the_target (MCPHOST_LIVE=1), which fails until the operator's post-deploy nightly reports satisfaction >= 0.75 with <= 1 host.trigger.test call. That file's always-on tests replay the corpus task's persona path against a real in-process mcphost and run the live bar over the real pre-feature 2026-09-29T20:06:55Z nightly's own artifacts -- the branch's own half, not counted as AC11's proof."
+      "description": "Given the guard test over the email and every page, When it runs, Then no visible text contains `claim`, `verify` or `tenant` (case-insensitive) outside URLs and attributes.",
+      "test": "tests/owncopy_ac05_no_claim_verify_tenant_in_visible_text.rs -- fn no_visible_text_in_the_email_or_any_page_says_claim_verify_or_tenant renders the email and all ten pages (3 flow + 7 error), strips HTML tags (which drops attribute values with them) and skips URL-shaped tokens before scanning for the three forbidden words."
     }
   ],
   "scope": [
-    "src/hooks.rs: host.trigger.test's kind=\"event\" branch self-signs (sign_event helper factoring the hmac-sha256/hmac-sha1/token/stripe-style inverse of verify_event) when the caller's headers omit the trigger's configured verify header; returns signed:{body, headers}. A JSON-string body is signed byte-for-byte (no re-serialization); any other JSON value keeps the existing compact serde_json::to_vec. host.trigger.set(kind=\"event\", verify: \"github\"|\"stripe\", secret: <name>) expands to the full verify object, tagging config_json with preset; host.trigger.get/list's tenant-facing verify now drops secret and preset entirely (preset surfaces as its own sibling field). EventCounters gains self_tests/self_test_signature_invalid cumulative counters.",
-    "src/runs.rs: host.runs.list(include_result?) inlines a terminal row's single-part result (attach_result_if_single_part); include_result=true clamps limit to 50 (down from 200); default false is byte-identical to today.",
-    "src/control.rs: host.quickstart(kind=\"schedule\"|\"event\"|\"webhook\") fails unknown_kind with data.hint naming host.trigger.set; every authenticated quickstart response carries a one-sentence triggers pointer.",
-    "src/errors.rs: AppError::Structured{code:\"unknown_kind\",..}'s own jsonrpc_code mapped to INVALID_PARAMS (previously only the AppError::UnknownKind enum variant was), so quickstart's new hinted rejection carries the same wire error class as the pre-existing bare one.",
-    "src/http.rs: /healthz gains triggers.event_self_tests_total / triggers.event_self_test_signature_invalid_total.",
-    "src/handler.rs: host.trigger.set's verify/secret/dedupe_header schema descriptions document the preset form; host.runs.list's schema gains include_result and documents limit's new clamp.",
-    "www/llms.txt: First run walkthrough (after the Schedule step, before Claim) gains the one-sentence triggers pointer -- same sentence host.quickstart's response carries.",
-    "tests/mcphost_event_trigger_self_test_ac0[1-9]_*.rs, tests/mcphost_event_trigger_self_test_ac10_*.rs (new, one per non-deferred AC); tests/suite_core_07.rs regenerated by scripts/gen-test-suites.sh to include them.",
-    "agent/test-map.json: ac_test_map repointed at this PRD's ACs; the prior PRD's (docs-qa-recipe) map archived under ac_test_map_by_prefix.docsqa.",
-    "Cargo.toml/Cargo.lock: minor version bump; CHANGELOG.md: new entry."
+    "src/claim.rs: email subject/body template (requirement 1), the enter-address/after-send/done page renderers plus a mask_email helper (requirement 3), and the seven error-page renderers with the operator-only env-var detail moved to a tracing::warn! log line instead of the page (requirement 4).",
+    "src/email.rs: EmailMessage gains from/reply_to fields and a reply_to_address(from) helper; HttpEmailClient drops its own `from` constructor field in favor of the per-message value (requirement 2).",
+    "src/main.rs: HttpEmailClient::new call site drops the now-removed `from` argument.",
+    "www/skill.md, plugin/skills/mcphost/SKILL.md: step 5 says \"Give your human this link; it makes them the owner\" instead of \"Claim this backend so it belongs to you\" (requirement 6, P1, no AC of its own).",
+    "tests/owncopy_ac0[1-5]_*.rs (new, one per non-deferred AC); tests/suite_core_07.rs/suite_core_08.rs regenerated by scripts/gen-test-suites.sh to include them.",
+    "tests/mcphost_human_claim_magic_link_ac02/ac03/ac04/ac06_*.rs and tests/banlist_ac05_*.rs: assertions updated from the old copy's literal strings to the new draft's (collateral of rewriting the pages those pre-existing PRDs' own ACs render).",
+    "agent/test-map.json: ac_test_map repointed at this PRD's ACs; the prior PRD's (mcphost-event-trigger-self-test) map archived under ac_test_map_by_prefix.mcphost_event_trigger_self_test.",
+    "Cargo.toml/Cargo.lock/plugin/.claude-plugin/plugin.json/plugin/.mcp.json: patch version bump (0.89.0 -> 0.89.1); CHANGELOG.md: new entry."
   ],
   "non_goals": [
-    "No change to the public POST /hooks/... accept path, verification schemes, dedupe, or quotas -- PRD's own Non-goals.",
-    "No generic BaaS surface -- PRD's own Non-goals.",
-    "No new trigger kinds; no change to kind=\"webhook\" (already self-signing) or kind=\"message\" -- PRD's own Non-goals.",
-    "No result inlining for a run whose result exceeds one part -- PRD's own Non-goals; those keep result: null, result_ref.",
-    "AC11 (the live nightly truth-tier recipe score) -- operator-provisioned, deferred; needs both this PRD and PRD-synthorg-truth-tier-probe-as-tenant deployed to prod and a real nightly synthorg consume --tier truth run on orch, none of which this coder dispatch can do."
+    "No change to the claim flow's mechanics, token lifetime, rate limits, or nudge mechanics -- PRD's own Non-goals (that's PRD-mcphost-ownership-moment).",
+    "No HTML email; the body stays plain text -- PRD's own Non-goals.",
+    "No localisation -- PRD's own Non-goals.",
+    "AC6 (Live: the next real send to Joe's inbox after deploy, with the new MCPHOST_EMAIL_FROM set on mcphost-1) is not in this dispatch's assigned AC list and needs operator deploy access this coding sandbox does not have; not attempted."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -104,49 +65,42 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "byte_exact_body_is_string_passthrough_not_preserve_order": "Open question 1 defaults to 'raw-slice for host.trigger.test only' (capturing the JSON-RPC argument's own original text via serde_json::value::RawValue) if unanswered, to make an OBJECT body's key order/whitespace byte-exact. No non-deferred AC actually tests object-body byte-exactness, though -- AC1 only checks the HMAC is self-consistent (computed over whatever bytes were sent), and AC9 (the one AC that does test exact-string preservation) passes body as a JSON STRING, whose content is already preserved character-for-character by ordinary JSON deserialization with no raw-slice capture needed. Resolved by the simpler mechanism requirement 6 already specifies: a string body is used verbatim; any other JSON value keeps the existing compact serde_json::to_vec re-serialization. This avoids a repo-wide serde_json preserve_order feature (technical considerations' own flagged risk: 'audit tests/ for order-sensitive assertions first') and a handler.rs-level RawValue plumbing change, neither of which any AC requires.",
-      "stripe_preset_timestamp_header_names_the_same_header_as_header": "Requirement 3's prose reads stripe -> {..., timestamp_header:\"t\", ...}, but verify_event's own hmac-* branch (src/hooks.rs) reads header_str(headers, ts_header) -- ts_header names an actual HTTP HEADER to read the whole t=,v1= value from, not a literal sub-field named 't' (the existing verify_event_stripe_style_* unit tests already construct their verify config with timestamp_header: \"Stripe-Signature\", the same name as header). No AC pins the stripe preset's exact stored shape (AC5 only tests the unknown- preset rejection). Resolved by setting timestamp_header equal to header (\"Stripe-Signature\") in the stripe preset, matching the mechanism that already exists rather than the PRD prose's literal 't'.",
-      "verify_secret_stripped_for_every_event_trigger_not_just_presets": "AC4 only exercises the github preset, but the fix (dropping verify.secret from host.trigger.get/list's tenant-facing response) is applied uniformly to every kind=\"event\" trigger, preset or hand-assembled object form alike -- narrowing it to preset-only would leave the exact same 'the response, on generation, returns the secret's plaintext value once' contract this module's own doc comment already promised never happens, just re-worded to 'except the secret's own name, sometimes' for no benefit; a single code path is simpler and matches AC4's intent (the secret must never be present) more literally than a preset-conditional one would.",
-      "quickstart_hint_scoped_to_exactly_the_three_words_requirement_5_names": "kind=\"message\" is also a trigger word an agent could plausibly guess at host.quickstart, but requirement 5 and AC8 both name only schedule/event/webhook. Resolved by matching the literal enumeration -- message stays on the bare unknown_kind path (registered-kinds list only, no hint) rather than guessing the PRD's silence on it was an oversight.",
-      "quickstart_text_is_the_structured_content_stringified_not_a_separate_field": "AC8 says host.quickstart()'s TEXT must contain the sentence; this host's tools/call responses carry the JSON structured content as their own text content block too (tests/common/mod.rs's extract_structured falls back to parsing content[0].text when structuredContent is absent, and the two already carry the same JSON in this codebase's existing tool responses) -- so adding the sentence as a new top-level triggers field on the JSON response satisfies both structuredContent and the text block with one change, with no separate human-prose field needed."
+      "state_line_format_fills_the_drafts_single_state_placeholder": "The draft's What's here line reads '{calls}/{limit} calls this month · {state} of state' with one {state} placeholder, not {state_used}/{state_max}. Resolved by formatting {state} as 'state_bytes/state_bytes_max bytes' (symmetric with the calls fraction), rendering e.g. '0/5242880 bytes of state' -- no AC pins a different exact phrasing.",
+      "upgrade_link_target_is_plans_html_not_an_authenticated_checkout_url": "The draft's done-page bullet 'choose a plan when the free tier stops being enough' 'links to upgrade', but the visitor on this page has no bearer key to call billing.checkout -- resolved by linking to the pre-existing /plans.html informational page (no price in its own heading either), not an authenticated checkout URL no unauthenticated page can mint.",
+      "already_used_split_out_of_the_old_combined_verify_gone_page": "ClaimVerifyOutcome already distinguishes NotFound/Expired/AlreadyConsumed at the DB layer, but the pre-existing code rendered all three identically. Resolved by keeping NotFound+Expired on the expired page (preserving resolve_claim_token's own never-leak-which-one-a-guess-was property -- AlreadyConsumed requires a code that was valid and already consumed, so splitting it out leaks nothing new) and giving AlreadyConsumed its own already-used page, matching the draft's two separate error-table rows."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why did the recipe score 0.00 both nights?",
-      "a": "The self-test rejected the persona's delivery, so no trigger=event run with the expected result ever existed for the scorer to read."
+      "q": "Why did Joe judge the first real ownership email spammy on sight?",
+      "a": "The subject was an imperative ('Claim your mcphost tenant') and the body opened with 'Click to verify your email' -- both classic phishing-filter tells, with a sender address (claim@mcphost.dev) carrying no display name."
     },
     {
       "why": 2,
-      "q": "Why did host.trigger.test reject a signature the persona computed itself?",
-      "a": "The persona signed its own JSON text (or guessed); mcphost verified over a canonical re-serialization (serde_json::to_vec of the parsed body) it never returned to the caller."
+      "q": "Why did the shipped copy carry those tells?",
+      "a": "It was written as a developer's description of the mechanism (claim a tenant, verify an email) rather than as a message to a person who never asked for mail and has no context for why they got it."
     },
     {
       "why": 3,
-      "q": "Why does the event kind demand a caller-supplied signature at all, when the sibling webhook kind self-signs?",
-      "a": "hooks.rs's test() was built to drive the exact same verify-then-enqueue path handle_hook does, so real-sender rejections stay reproducible; webhooks.rs (built later) chose self-signing instead, and the two kinds' own self-tests were never reconciled."
+      "q": "Why wasn't this caught before the first real send?",
+      "a": "Every pre-existing test on the claim flow asserted the mechanism (a link exists, it sends once, it expires) never the literal copy a human would actually read."
     },
     {
       "why": 4,
-      "q": "Why wasn't this caught before a persona hit it in truth-tier?",
-      "a": "Every existing Rust test computes the HMAC over serde_json::to_vec directly, from inside the same process -- no test modeled a caller that cannot run code and only sees the tool's own JSON schema."
-    },
-    {
-      "why": 5,
-      "q": "Why does host.quickstart(kind=\"event\") make the problem worse rather than just failing cleanly?",
-      "a": "Its bare registered-kinds list (echo/http/python/wasm/chain, none named event) reads as 'this feature doesn't exist' rather than 'wrong tool, try host.trigger.set instead' -- costing the persona a full turn before it even reaches the self-test rejection above."
+      "q": "Why does the wording matter this much for a flow that otherwise works end to end?",
+      "a": "The human behind the agent is the market test's own weakest link (PRD problem statement); a recipient who deletes the email on sight never reaches the working flow at all, and a stranger with less context than Joe deletes faster."
     }
   ],
-  "created_at": "2026-09-29T00:00:00Z",
+  "created_at": "2026-10-05T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Should host.trigger.test's self-sign path apply to scheme: \"token\" (a plain shared secret, not a computed HMAC), or only the hmac-* schemes AC1/AC2 exercise directly?",
-      "resolution": "Applied uniformly: sign_event's token branch returns the secret itself as the header value (verify_event's own token branch checks for exactly that), matching requirement 1's plain wording ('the configured scheme's signature', not 'the configured HMAC scheme's signature') rather than narrowing self-sign to the two schemes the P0 ACs happen to name."
+      "question": "requirement 6 (www/skill.md and plugin SKILL.md step 5 wording) has no AC of its own in the task's assigned AC1-5 list -- is it in scope for this dispatch?",
+      "resolution": "Yes: the task instructions say the PRD's Requirements section is what to build (Acceptance criteria is what tests must prove), and the dispatch instructions call for one commit per requirement that has no AC of its own. Built and committed separately from AC1-5, with no new test file since none is required."
     },
     {
-      "question": "Does a github preset's default dedupe_header (X-GitHub-Delivery, open question 3) apply even when the caller already named their own dedupe_header?",
-      "resolution": "No -- an explicit dedupe_header argument always wins; the preset default only fills in when the caller passed none at all, the same 'explicit beats default' precedent every other optional-argument default in this module already follows."
+      "question": "Does the done page keep itemizing published tool names and each schedule's next-fire time (the pre-existing behavior two other PRDs' tests asserted), or does the draft's terser 'What's here' counts line replace that detail?",
+      "resolution": "Replaced: the approved draft's 'What's here' section is explicitly just counts ('{tools} tools · {schedules} schedules · {webhooks} webhooks · ...'), with no per-tool-name list or per-schedule next-fire detail. The two pre-existing tests that asserted the old itemized text (tool name 'pinger', 'Schedules: 1') were updated to assert the new counts instead, as collateral of this PRD's own copy rewrite."
     }
   ]
 }

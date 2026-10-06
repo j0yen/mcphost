@@ -60,11 +60,11 @@ Give the tenant a recurring job with `host.trigger.set`:
 host.trigger.set(tool="hello", kind="schedule", schedule="0 * * * *")
 ```
 
-## 5. Hand the claim link to your human
+## 5. Hand your human this link
 
 Relay this sentence to your human, verbatim except for the URL itself:
-"Claim this backend so it belongs to you: `<claim_url>` (link expires in 7
-days)." Rule: never print the key in any message, log, or transcript your
-human can see -- the bearer key from step 2 stays inside your own tool
-calls only. If your human needs direct access later, they claim the
-tenant at `claim_url` and manage it from there.
+"Give your human this link; it makes them the owner: `<claim_url>` (link
+expires in 7 days)." Rule: never print the key in any message, log, or
+transcript your human can see -- the bearer key from step 2 stays inside
+your own tool calls only. If your human needs direct access later, they
+can open `claim_url` to get it.

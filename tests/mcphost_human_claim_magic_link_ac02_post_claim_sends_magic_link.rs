@@ -2,7 +2,8 @@
 //! AC2 (P0) — Given a valid unexpired claim token and a fake email
 //! provider, When `POST /claim/{token}` is sent with `email=a@b.co`, Then
 //! exactly one provider send is recorded containing a verify URL, and the
-//! page body contains "check your inbox".
+//! page body contains "open your email" (PRD-mcphost-ownership-copy's
+//! after-send copy).
 
 use crate::common;
 use common::{McpClient, TestServer, extract_structured};
@@ -36,7 +37,7 @@ async fn post_claim_sends_exactly_one_magic_link() {
         .expect("POST /claim/{token}");
     assert_eq!(resp.status(), reqwest::StatusCode::OK);
     let body = resp.text().await.expect("body");
-    assert!(body.contains("check your inbox"), "body: {body}");
+    assert!(body.contains("open your email"), "body: {body}");
 
     assert_eq!(fake.send_count(), 1, "exactly one provider send");
     let sends = fake.sends();

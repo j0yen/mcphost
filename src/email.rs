@@ -11,11 +11,27 @@ use serde_json::json;
 use crate::errors::AppError;
 
 /// One outbound email: the magic-link send, and nothing else today.
+/// `from`/`reply_to` travel with the message (rather than living on the
+/// client) so the display-name form of `$MCPHOST_EMAIL_FROM` (e.g.
+/// `mcphost <hello@mcphost.dev>`) reaches the provider verbatim.
 #[derive(Debug, Clone)]
 pub struct EmailMessage {
     pub to: String,
+    pub from: String,
+    pub reply_to: String,
     pub subject: String,
     pub text_body: String,
+}
+
+/// requirement 2: the bare address a human can actually reply to --
+/// `"mcphost <hello@mcphost.dev>"` -> `"hello@mcphost.dev"`; a `from`
+/// with no `<...>` display-name form is already bare and comes back
+/// unchanged.
+pub fn reply_to_address(from: &str) -> String {
+    match (from.find('<'), from.find('>')) {
+        (Some(start), Some(end)) if end > start => from[start + 1..end].trim().to_string(),
+        _ => from.trim().to_string(),
+    }
 }
 
 /// `$MCPHOST_EMAIL_API_URL`/`$MCPHOST_EMAIL_API_KEY`/`$MCPHOST_EMAIL_FROM`;
@@ -68,12 +84,11 @@ pub struct HttpEmailClient {
     http: reqwest::Client,
     api_url: String,
     api_key: Option<String>,
-    from: String,
 }
 
 impl HttpEmailClient {
-    pub fn new(http: reqwest::Client, api_url: String, api_key: Option<String>, from: String) -> Self {
-        Self { http, api_url, api_key, from }
+    pub fn new(http: reqwest::Client, api_url: String, api_key: Option<String>) -> Self {
+        Self { http, api_url, api_key }
     }
 }
 
@@ -81,8 +96,9 @@ impl HttpEmailClient {
 impl EmailClient for HttpEmailClient {
     async fn send(&self, message: &EmailMessage) -> Result<(), AppError> {
         let mut req = self.http.post(&self.api_url).json(&json!({
-            "from": self.from,
+            "from": message.from,
             "to": message.to,
+            "reply_to": message.reply_to,
             "subject": message.subject,
             "text": message.text_body,
         }));

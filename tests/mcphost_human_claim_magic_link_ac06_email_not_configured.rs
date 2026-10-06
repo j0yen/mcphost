@@ -1,7 +1,8 @@
 //! PRD-mcphost-human-claim-magic-link
 //! AC6 (P0) — Given `MCPHOST_EMAIL_API_URL` unset, When `GET
-//! /claim/{token}` is requested, Then the page renders with "email
-//! delivery is not configured" and admin healthz reports
+//! /claim/{token}` is requested, Then the page renders with "can't send
+//! email from this host yet" (PRD-mcphost-ownership-copy's draft copy,
+//! naming no env var) and admin healthz reports
 //! `claim_email_configured=false`.
 
 use crate::common;
@@ -35,7 +36,7 @@ async fn unconfigured_email_shows_message_and_healthz_flag() {
     assert_eq!(resp.status(), reqwest::StatusCode::OK);
     let body = resp.text().await.expect("body");
     assert!(
-        body.contains("email delivery is not configured"),
+        body.contains("can't send email from this host yet"),
         "body: {body}"
     );
 

@@ -44,7 +44,7 @@ async fn thirty_claim_rate_events_in_ten_minutes_auto_bans_the_address_then_veri
     assert_eq!(resp.status(), reqwest::StatusCode::FORBIDDEN);
     let body = resp.text().await.expect("body");
     assert!(
-        body.to_lowercase().contains("banned"),
+        body.contains("This address can't be used here"),
         "expected the banned page, got: {body}"
     );
 }
