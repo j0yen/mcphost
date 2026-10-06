@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-event-trigger-self-test.md (test_prefix: mcphost_event_trigger_self_test)",
+  "ac_test_map_prd": "PRD-mcphost-ownership-copy.md (test_prefix: owncopy)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,19 +28,27 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/mcphost_event_trigger_self_test_ac01_self_sign_when_no_headers.rs",
-    "AC2": "tests/mcphost_event_trigger_self_test_ac02_present_header_stays_strict.rs",
-    "AC3": "tests/mcphost_event_trigger_self_test_ac03_signed_replay_hits_live_url.rs",
-    "AC4": "tests/mcphost_event_trigger_self_test_ac04_github_preset_expands_and_hides_secret.rs",
-    "AC5": "tests/mcphost_event_trigger_self_test_ac05_unknown_verify_preset_rejected.rs",
-    "AC6": "tests/mcphost_event_trigger_self_test_ac06_runs_list_include_result_inlines_single_part.rs",
-    "AC7": "tests/mcphost_event_trigger_self_test_ac07_runs_list_include_result_skips_multi_part.rs",
-    "AC8": "tests/mcphost_event_trigger_self_test_ac08_quickstart_and_llms_txt_name_triggers.rs",
-    "AC9": "tests/mcphost_event_trigger_self_test_ac09_string_body_signed_byte_for_byte.rs",
-    "AC10": "tests/mcphost_event_trigger_self_test_ac10_healthz_self_test_counters.rs",
-    "AC11": "deferred -- operator-provisioned: AC11's Then is a nightly `synthorg consume --tier truth` run on orch against prod after deploy (gated on both this PRD and PRD-synthorg-truth-tier-probe-as-tenant being deployed); this dispatch has no live operator access, no prod deploy rights and none of the credentials that run needs. Declared in PRD-mcphost-event-trigger-self-test.md's frontmatter (deferred_acs: [11] plus a mock_justifications entry) and locked by tests/mcphost_event_trigger_self_test_ac11_deferral_is_justified.rs. The only test that can ever claim AC11 is tests/mcphost_event_trigger_self_test_ac11_truth_tier_persona_reaches_event_run.rs::live_truth_tier_persona_run_meets_the_target (MCPHOST_LIVE=1), which fails until the operator's post-deploy nightly reports satisfaction >= 0.75 with <= 1 host.trigger.test call. That file's always-on tests replay the corpus task's persona path against a real in-process mcphost and run the live bar over the real pre-feature 2026-09-29T20:06:55Z nightly's own artifacts -- the branch's own half, not counted as AC11's proof."
+    "AC1": "tests/owncopy_ac01_email_subject_and_body_match_draft.rs",
+    "AC2": "tests/owncopy_ac02_from_and_reply_to_passed_verbatim.rs",
+    "AC3": "tests/owncopy_ac03_pages_match_draft_text.rs",
+    "AC4": "tests/owncopy_ac04_error_pages_match_draft_no_env_var.rs",
+    "AC5": "tests/owncopy_ac05_no_claim_verify_tenant_in_visible_text.rs"
   },
   "ac_test_map_by_prefix": {
+    "mcphost_event_trigger_self_test": {
+      "_prd": "PRD-mcphost-event-trigger-self-test.md -- superseded by mcphost-ownership-copy at HEAD; real test_prefix is mcphost_event_trigger_self_test",
+      "AC1": "tests/mcphost_event_trigger_self_test_ac01_self_sign_when_no_headers.rs",
+      "AC2": "tests/mcphost_event_trigger_self_test_ac02_present_header_stays_strict.rs",
+      "AC3": "tests/mcphost_event_trigger_self_test_ac03_signed_replay_hits_live_url.rs",
+      "AC4": "tests/mcphost_event_trigger_self_test_ac04_github_preset_expands_and_hides_secret.rs",
+      "AC5": "tests/mcphost_event_trigger_self_test_ac05_unknown_verify_preset_rejected.rs",
+      "AC6": "tests/mcphost_event_trigger_self_test_ac06_runs_list_include_result_inlines_single_part.rs",
+      "AC7": "tests/mcphost_event_trigger_self_test_ac07_runs_list_include_result_skips_multi_part.rs",
+      "AC8": "tests/mcphost_event_trigger_self_test_ac08_quickstart_and_llms_txt_name_triggers.rs",
+      "AC9": "tests/mcphost_event_trigger_self_test_ac09_string_body_signed_byte_for_byte.rs",
+      "AC10": "tests/mcphost_event_trigger_self_test_ac10_healthz_self_test_counters.rs",
+      "AC11": "deferred -- operator-provisioned: AC11's Then is a nightly `synthorg consume --tier truth` run on orch against prod after deploy (gated on both this PRD and PRD-synthorg-truth-tier-probe-as-tenant being deployed); this dispatch has no live operator access, no prod deploy rights and none of the credentials that run needs. Declared in PRD-mcphost-event-trigger-self-test.md's frontmatter (deferred_acs: [11] plus a mock_justifications entry) and locked by tests/mcphost_event_trigger_self_test_ac11_deferral_is_justified.rs. The only test that can ever claim AC11 is tests/mcphost_event_trigger_self_test_ac11_truth_tier_persona_reaches_event_run.rs::live_truth_tier_persona_run_meets_the_target (MCPHOST_LIVE=1), which fails until the operator's post-deploy nightly reports satisfaction >= 0.75 with <= 1 host.trigger.test call. That file's always-on tests replay the corpus task's persona path against a real in-process mcphost and run the live bar over the real pre-feature 2026-09-29T20:06:55Z nightly's own artifacts -- the branch's own half, not counted as AC11's proof."
+    },
     "budget": {
       "_prd": "PRD-mcphost-run-budget-governor.md -- superseded by mcphost-event-trigger-self-test at HEAD (this rebase); real test_prefix is budget",
       "AC1": "tests/budget_ac01_ported_ledger_seven_tests.rs",

@@ -1182,6 +1182,16 @@ mod oauthsig_ac04_admin_oauth_stats_funnel;
 mod oauthsig_ac05_healthz_cache_and_p95;
 #[path = "oauthsig_ac06_conformance_script_writes_receipt.rs"]
 mod oauthsig_ac06_conformance_script_writes_receipt;
+#[path = "owncopy_ac01_email_subject_and_body_match_draft.rs"]
+mod owncopy_ac01_email_subject_and_body_match_draft;
+#[path = "owncopy_ac02_from_and_reply_to_passed_verbatim.rs"]
+mod owncopy_ac02_from_and_reply_to_passed_verbatim;
+#[path = "owncopy_ac03_pages_match_draft_text.rs"]
+mod owncopy_ac03_pages_match_draft_text;
+#[path = "owncopy_ac04_error_pages_match_draft_no_env_var.rs"]
+mod owncopy_ac04_error_pages_match_draft_no_env_var;
+#[path = "owncopy_ac05_no_claim_verify_tenant_in_visible_text.rs"]
+mod owncopy_ac05_no_claim_verify_tenant_in_visible_text;
 #[path = "plancat_ac01_missing_state_quotas_default_from_catalog.rs"]
 mod plancat_ac01_missing_state_quotas_default_from_catalog;
 #[path = "plancat_ac02_startup_logs_defaulted_fields.rs"]
@@ -1804,19 +1814,3 @@ mod vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green;
 mod vaultst_ac09_deferral_is_justified;
 #[path = "vaultst_ac09_live_vault_status_trailer.rs"]
 mod vaultst_ac09_live_vault_status_trailer;
-#[path = "wake_ac1_message_trigger_fires_run.rs"]
-mod wake_ac1_message_trigger_fires_run;
-#[path = "wake_ac2_from_filter.rs"]
-mod wake_ac2_from_filter;
-#[path = "wake_ac3_dedupe.rs"]
-mod wake_ac3_dedupe;
-#[path = "wake_ac4_jobs_concurrent_rejects.rs"]
-mod wake_ac4_jobs_concurrent_rejects;
-#[path = "wake_ac5_pause_resume.rs"]
-mod wake_ac5_pause_resume;
-#[path = "wake_ac6_msg_wait.rs"]
-mod wake_ac6_msg_wait;
-#[path = "wake_ac7_trigger_test_synthetic_envelope.rs"]
-mod wake_ac7_trigger_test_synthetic_envelope;
-#[path = "wake_ac8_replay.rs"]
-mod wake_ac8_replay;

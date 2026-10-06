@@ -1,8 +1,9 @@
 //! PRD-mcphost-human-claim-magic-link
 //! AC3 (P0) — Given the verify URL from AC2, When it is opened once, Then
 //! `tenants.owner_email` is `a@b.co`, `owner_verified_at` is set, the
-//! summary page lists the tenant's published tool names and schedule
-//! count, and opening the same verify URL again returns 410.
+//! summary page shows the tenant's published tool and schedule counts
+//! (PRD-mcphost-ownership-copy's `{tools} tools · {schedules} schedules`
+//! line), and opening the same verify URL again returns 410.
 
 use crate::common;
 use common::{McpClient, TestServer, extract_structured};
@@ -68,8 +69,8 @@ async fn verify_sets_owner_and_shows_summary_then_410s_on_reuse() {
         .expect("GET /claim/verify/{code}");
     assert_eq!(verify_resp.status(), reqwest::StatusCode::OK);
     let body = verify_resp.text().await.expect("body");
-    assert!(body.contains("pinger"), "summary must list the tool name: {body}");
-    assert!(body.contains("Schedules: 1"), "summary must show the schedule count: {body}");
+    assert!(body.contains("1 tools"), "summary must show the tool count: {body}");
+    assert!(body.contains("1 schedules"), "summary must show the schedule count: {body}");
 
     let tenant = server
         .state

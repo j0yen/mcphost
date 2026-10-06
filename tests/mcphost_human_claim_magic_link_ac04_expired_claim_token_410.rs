@@ -1,7 +1,8 @@
 //! PRD-mcphost-human-claim-magic-link
 //! AC4 (P0) — Given an expired claim token (TTL forced to 1 s in test),
-//! When `GET /claim/{token}` is requested, Then 410 with "link expired"
-//! and no provider send occurs.
+//! When `GET /claim/{token}` is requested, Then 410 with "link has
+//! expired" (PRD-mcphost-ownership-copy's draft copy) and no provider
+//! send occurs.
 
 use crate::common;
 use common::{McpClient, TestServer, extract_structured};
@@ -44,7 +45,7 @@ async fn expired_claim_token_returns_410_link_expired() {
         .expect("GET /claim/{token}");
     assert_eq!(resp.status(), reqwest::StatusCode::GONE);
     let body = resp.text().await.expect("body");
-    assert!(body.contains("link expired"), "body: {body}");
+    assert!(body.contains("link has expired"), "body: {body}");
 
     assert_eq!(fake.send_count(), 0, "no provider send for an expired token");
 }

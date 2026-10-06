@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.89.1 — 2026-10-05
+
+The ownership email and the three claim-flow pages (enter address,
+after-send, done) now use Joe's approved copy instead of the original
+"Claim your mcphost tenant" / "Click to verify" strings a recipient
+judged spammy on sight: the subject and body say what an agent did and
+what the link does, the sender renders as `mcphost <hello@mcphost.dev>`
+with mail replying to that address, and the seven claim error pages
+drop operator-only detail (env var names) from the page in favor of the
+log line (PRD-mcphost-ownership-copy). No visible string in the flow
+says "claim", "verify", or "tenant" outside a URL or HTML attribute.
+
 ## v0.85.0 — 2026-10-04
 
 `signup` accepts an optional `remember` string (1-4096 bytes; longer
