@@ -49,7 +49,7 @@ async fn claim_email_invite_and_quickstart_all_carry_the_alt_fallback() {
     let key = result["key"].as_str().expect("key");
     let authed = McpClient::with_bearer(&server.base_url, key);
     let quickstart_raw = authed
-        .tools_call("host.quickstart", json!({}))
+        .tools_call("host.quickstart", json!({"kind": "echo"}))
         .await
         .expect("host.quickstart");
     let quickstart = extract_structured(&quickstart_raw);

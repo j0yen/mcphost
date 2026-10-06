@@ -46,7 +46,10 @@ async fn no_alternates_configured_means_no_fallback_fields_anywhere() {
     let key = result["key"].as_str().expect("key");
     let authed = McpClient::with_bearer(&server.base_url, key);
     let quickstart = extract_structured(
-        &authed.tools_call("host.quickstart", json!({})).await.expect("host.quickstart"),
+        &authed
+            .tools_call("host.quickstart", json!({"kind": "echo"}))
+            .await
+            .expect("host.quickstart"),
     );
     assert!(quickstart.get("alt_endpoint").is_none());
     assert!(quickstart.get("reachability").is_none());
