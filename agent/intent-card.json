@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-activation-funnel.md",
-  "intent_slug": "mcphost-activation-funnel",
-  "root_motivation": "Grounding (failure-derived, 2026-10-05): /healthz on mcphost-1 counts signups (external 14, synthetic 1,759), tenants_claimed (0), and paying_tenants (0) and nothing between -- the tenants table holds created_unix/last_seen_unix (migration 0020), the claim stamps (0034) and plan_since (0006), and no first-call, first-publish, own-tool-call, or second-session stamp (migrations 0002-0071, src/db.rs:170-209). mcphost-deploy measure refuses to report until five tenants are hand-labelled and last wrote on 2026-09-27; funnel-top covers pre-signup demand only. The market test's hypothesis H1 (activation) is therefore unmeasurable. Fix: stamp six activation moments on the tenant at the instant they happen, expose admin.funnel with counts/medians per stage by source class, and put a seven-day funnel block on /healthz, so the market test measures activation without a label ritual.",
-  "user_persona": "Four (PRD User stories): Operator Joe, who asks admin.funnel {days: 7, source_class: \"external\"} and sees signups -> first calls -> publishes -> own calls -> returns -> claims, with medians; an agent whose host.usage shows its own milestones so a returning agent can say 'I published on day one'; the morning digest, which gets one admin call for its numbers; and the harness, whose synthetic tenants are stamped too but excluded by source class so panel runs never pollute the external funnel.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-ownership-moment.md",
+  "intent_slug": "mcphost-ownership-moment",
+  "root_motivation": "Grounding (mcphost-1 /healthz read 2026-10-05 2:55pm PDT): claim_email_configured: false, tenants_claimed: {external: 0, synthetic: 0} against signups.external: 14 and paying_tenants: 0; src/email.rs:21-25 reads MCPHOST_EMAIL_API_URL/API_KEY/FROM and :62 said 'Resend or Postmark is still undecided at build time'; journey.py:62 listed claim in NON_P0_STEPS, so the daily journey passed 12/12 with the claim path unexercised; the market-test vision's weakest link (leaf 5, 'the human will open a claim link, verify an email, and pay -- assumed') had had no data since the claim PRD shipped 09-24. Fourteen strangers had signed up and zero were claimable: the agent is told (skill.md step 5) to relay a link that leads to a page that cannot send the email. The one assumption the whole market test exists to measure had no sensor.",
+  "user_persona": "Four (PRD User stories): an agent on its first successful publish, told once to hand its human the claim link; a human who opens it, enters an email, clicks the magic link, and sees what their agent built; the operator (Joe), whose deploy probe must go red on prod until mail env is set and whose healthz must show claimed tenants per week; the daily journey, which must exercise the claim page for real against the test mail client and fail the run if it breaks.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,71 +14,75 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a fresh external tenant, When it makes its first authenticated call, publishes a tool, calls that tool, and reconnects 15 minutes later on a new session, Then first_call_unix, first_publish_unix, first_own_call_unix, and second_session_unix are set once each and repeating the events leaves them unchanged.",
-      "test": "tests/funnel_ac01_activation_stamps_set_once.rs -- signup + key-less publish + own call on one session-bound connection, repeats each event to prove idempotency, then backdates created_unix 15 minutes and reconnects on a brand-new /u/{secret}/mcp session to prove second_session_unix fires once and survives a further repeat."
+      "description": "Given an implicit first call, a /u/new mint, a URL-bound first call, and an invite join, When each response's onboarding envelope is read, Then it carries claim_url, and host.whoami carries the same URL until the tenant is claimed.",
+      "test": "tests/ownmt_ac01_claim_url_on_every_onboarding_path.rs -- five tests: implicit_first_call_carries_claim_url, u_new_mint_page_carries_a_claim_link, url_bound_first_call_carries_claim_url_matching_the_mint_page, invite_join_carries_claim_url, whoami_drops_claim_url_and_gains_owner_once_claimed."
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a tenant that calls a tool shared by another tenant, When admin.funnel is read, Then that call does not count as first_own_call.",
-      "test": "tests/funnel_ac02_shared_call_not_own_call.rs -- owner publishes and shares a tool publicly, a second tenant calls it cross-tenant; asserts neither tenant's first_own_call_unix is set and admin.funnel's first_own_call stage count is 0."
+      "description": "Given an unclaimed external tenant's first successful host.tool_publish, When the response is read, Then _meta.next.kind = \"claim\" with the URL; given its second publish, Then no claim nudge is present; given a synthetic tenant, Then never.",
+      "test": "tests/ownmt_ac02_claim_nudge_on_first_publish.rs -- three tests, using mcphost::control::signup(..., \"8.8.8.8\", ...) directly to force origin: \"external\" (the harness's own default tenants are loopback/synthetic and would never qualify); exercises the real wire-level _meta object, not structuredContent's next field (see hard_constraints)."
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given 10 external and 50 synthetic signups in the window with 4 external publishes, When admin.funnel {days: 7, source_class: \"external\"} is read, Then signups = 10, the first_publish stage shows count = 4, share = 0.4 and a median in minutes; the synthetic rows are absent.",
-      "test": "tests/funnel_ac03_external_filter_share_and_median.rs -- 10 external (control::signup with a fake external IP, the same seam attrib_ac4 uses) + 50 loopback-sourced synthetic signups; 4 externals publish at known backdated gaps (1/2/5/12 min) for an exact median."
+      "description": "Given MCPHOST_EMAIL_PROVIDER = postmark and a fake API, When a claim email is issued, Then the request matches Postmark's shape; given resend (default), Then Resend's; given a 500 from the API, Then the claim call returns claim_email_failed with a request_id and the journal row carries the status code and no key.",
+      "test": "tests/ownmt_ac03_email_provider_shape_and_failure_journal.rs -- three tests built on a server_with_provider(mock, provider) helper that points a real HttpEmailClient at a wiremock::MockServer, asserting the outbound request/header shape per provider and the journal row's status code (and absence of the key) on a simulated 500."
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given /healthz, When read, Then funnel_7d lists the external stage counts and no synthetic tenant is counted.",
-      "test": "tests/funnel_ac04_healthz_funnel_7d_external_only.rs -- one external tenant publishes, 5 synthetic tenants sign up; /healthz's funnel_7d.signups/first_call/first_publish all read 1, carrying no median/stage-array fields."
+      "description": "Given three external claims and one synthetic claim in the window, When /healthz is read, Then claims.external = 3, claims.synthetic = 1, and median_minutes_to_claim is computed from owner_verified_at - created_unix.",
+      "test": "tests/ownmt_ac04_healthz_claims_block.rs -- one test using a claimed_tenant() helper that signs up then back-dates via db::set_claim_timing_for_test to control the 30-day window deterministically."
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a tenant that was claimed before this release, When the migration runs, Then its claimed_unix equals its owner_verified_at; given a Pro tenant, Then paid_unix equals its plan_since.",
-      "test": "tests/funnel_ac05_claim_and_plan_backfill.rs -- seeds owner_verified_at/plan_since directly over a raw connection (mimicking a pre-0072 row, same technique attrib_ac3_backfill_migration.rs uses) and calls Db::backfill_activation_claims_and_plans directly; also proves the re-run is a no-op."
+      "description": "Given a host whose env contract requires mail and claim_email_configured = false, When mcphost-deploy probe runs, Then the artifact check fails with claim-email-unconfigured and doctor names the missing variables; given the variables set, Then the check passes.",
+      "test": "tests/ownmt_ac05_claim_email_configured_signal.rs -- pins the mcphost-side claim_email_configured healthz field that mcphost-deploy's probe reads. The probe/doctor/env-contract behavior itself was already fully implemented in ~/repos/mcphost-deploy by a prior commit (41a8398, env_contract.py/probe.py/cli.py/artifact.py, with its own test_mail_env_ac1/ac2/ac3 files) before this dispatch began; this test closes the local gate-ready criterion without duplicating that work."
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given a stage with two tenants, When admin.funnel is read, Then that stage's median_minutes is null and its count is 2.",
-      "test": "tests/funnel_ac06_median_null_under_three.rs -- exactly two tenants make their first authenticated call on a fresh server; first_call.count == 2 and median_minutes is null (admin::median_minutes's own < 3 floor)."
+      "description": "Given the journey in test mode, When the claim step runs, Then it completes the magic-link page through the fake mail client and the step is P0 (a failure fails the journey).",
+      "test": "tests/ownmt_ac06_claim_round_trip_for_journey_claim_step.rs -- pins the one contract the journey step actually depends on: signup's claim_url, POST /claim/{token} (form email), the magic-link token extractable from the fake mail client's captured message by the exact /claim/verify/([A-Za-z0-9_-]+) pattern the journey step's own extractor uses, GET /claim/verify/{code}, and host.whoami.owner_verified flipping true. The journey harness itself (synthorg's journey.py claim step, promoted from an always-skip P1 stub to this real round trip) and mcphost-deploy's rollback wiring (claim leaving NON_P0_STEPS; journey.py reading payload[\"claim\"] directly) are real commits in ~/repos/synthorg (cc0d1e6, branch wm-build/mcphost-ownership-moment-journey-claim-p0) and ~/repos/mcphost-deploy (fbf6892, same branch name), not this repo -- see hard_constraints for the ordering bug found and fixed there."
     },
     {
       "id": "AC7",
       "level": "SHOULD",
-      "description": "Given invite-born and organic tenants in the window, When admin.funnel {invited: true} is read, Then only invite-born tenants are counted and k is reported.",
-      "test": "tests/funnel_ac07_invited_split_and_k.rs -- 2 organic signups plus an inviter/invitee pair joined via a standing invite; invited: true counts only the invitee (k = 1.0), invited: false counts the 3 organic tenants, same k."
+      "description": "Given a tenant with a first-call remember note, When its claim page renders, Then the note is shown with the tool list.",
+      "test": "tests/ownmt_ac07_claim_page_shows_remember_note.rs -- two tests: claim_summary_page_shows_the_remember_note_with_the_tool_list (the note renders beside the tool list when one was ever sent) and claim_summary_page_omits_the_note_block_when_none_was_ever_sent."
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given prod after deploy, When the next external tenant publishes its first tool, Then funnel_7d.first_publish on /healthz increases (Live; evidence: /healthz funnel_7d.first_publish >= 1 within 7 days of the deploy timestamp).",
-      "test": "deferred -- operator-provisioned: AC8's Then is a post-deploy observation of a real external tenant's first publish against prod /healthz within 7 days of the deploy timestamp. This dispatch has no prod deploy rights and no live traffic to observe; the coder's own dispatch instructions list only AC1-7 as non-deferred. funnel_7d itself (AC4) is fully built and tested against a real in-process server -- AC8 only adds the live, post-deploy observation on top of it."
+      "description": "Given prod with mail configured by the operator, When the next external tenant publishes and its human claims, Then healthz counts it (Live; evidence: /healthz claims.external >= 1 with nudged_then_claimed >= 1).",
+      "test": "deferred -- operator-provisioned: AC8's Then is a real external tenant publishing and its human completing the claim flow against prod after mail is configured by the operator and this PRD is deployed; this dispatch has no live operator access, no prod deploy rights, and none of the credentials that observation needs. Declared out of this dispatch's required-AC list by the task itself (\"AC8 is explicitly Live/deferred\"). The always-on mechanism AC8 would be measured through -- host.whoami.owner_verified, /healthz claims.external/nudged_then_claimed -- is already proven unconditionally by tests/ownmt_ac01_claim_url_on_every_onboarding_path.rs, tests/ownmt_ac02_claim_nudge_on_first_publish.rs, and tests/ownmt_ac04_healthz_claims_block.rs; AC8 itself is the Live observation on top of that mechanism, not a mechanism this worktree can fabricate."
     }
   ],
   "scope": [
-    "migrations/0072_activation_funnel.sql: six nullable activation stamps (first_call_unix, first_publish_unix, first_own_call_unix, second_session_unix, claimed_unix, paid_unix) plus created_session_id on tenants, and an idx_tenants_funnel(source_class, created_unix) index.",
-    "src/db.rs: Tenant/TENANT_COLUMNS/tenant_from_row/create_tenant grow the seven new fields; touch_last_seen also stamps first_call_unix via COALESCE in the same UPDATE; new touch_first_publish/touch_first_own_call/touch_second_session/set_created_session_id/set_tenant_stamp_for_test (test-only); new FunnelRow/funnel_rows/invites_k_factor_since for admin.funnel's reads; backfill_activation_claims_and_plans(_sync) for AC5, wired into migrate_0072_activation_funnel.",
-    "src/handler.rs: resolve_path_secret_auth and bind_session_to_created_tenant both consult the new maybe_stamp_second_session helper; call_published_tool's success branch stamps first_own_call_unix only for a same-tenant call (caller: None); dispatch_admin_tool routes admin.funnel.",
-    "src/control.rs: tool_publish stamps first_publish_unix once upsert_tool succeeds; upgrade_tenant_plan's own UPDATE also stamps paid_unix (COALESCE) when the new plan isn't free; Db::verify_claim_code's own UPDATE also stamps claimed_unix alongside owner_verified_at.",
-    "src/admin.rs: new admin::funnel (days/source_class/signup_source/invited) and admin::funnel_7d_external, plus the shared FUNNEL_STAGES table and median_minutes/funnel_stage_stats/funnel_by_source helpers.",
-    "src/http.rs: /healthz gains funnel_7d (external-only stage counts, no medians).",
-    "src/state.rs: new unix_from_rfc3339 (the inverse of rfc3339_from_unix), used only by the AC5 backfill.",
-    "tests/funnel_ac0[1-7]_*.rs (new, one per non-deferred AC); tests/suite_core_0[7-8].rs regenerated by scripts/gen-test-suites.sh to include them.",
-    "plugin/.claude-plugin/plugin.json: version synced to the Cargo.toml bump below.",
-    "agent/test-map.json: ac_test_map repointed at this PRD's ACs; the prior PRD's (mcphost-event-trigger-self-test) map archived under ac_test_map_by_prefix.mcphost_event_trigger_self_test.",
-    "Cargo.toml/Cargo.lock: minor version bump (0.89.0 -> 0.90.0)."
+    "src/claim.rs: issue_claim_token now persists the plaintext token (claim_token_plain, mirroring invites.code_plain's hash-at-rest-plus-plaintext-for-redisplay pattern); new claim_url_for_tenant(public_url, tenant) helper rides every onboarding envelope; send_verify_email journals a failure via db::record_claim_email_failure, extracting the provider's status code via AppError::claim_email_status(); render_summary shows the agent's first-call remember note (tenant_state::first_contact_summary) in a block before the tool list.",
+    "src/control.rs: host.whoami's response gains claim_url while owner_verified_at is null, or owner: {verified_at} once claimed.",
+    "src/handler.rs: the onboarding envelope (implicit signup, and a URL-bound tenant's first-ever call) gains claim_url; call_tool's success arm computes a claim_nudge (gated on host.tool_publish/host.tool.publish, tenant.owner_verified_at.is_none(), tenant.origin == \"external\", and db::mark_claim_nudged_if_unset returning true) inserted into the real wire-level _meta object (meta.0.insert(\"next\", ...)) alongside the pre-existing deprecated/invite_url entries.",
+    "src/invites.rs: claim_on_first_call issues a claim token (crate::claim::issue_claim_token) and adds claim_url to the invite-join onboarding json.",
+    "src/http.rs: render_new_url_result_page and post_new_url thread an optional claim_url onto the /u/new mint page; /healthz gains a claims block (state.db.claims_summary(now - 30d)) distinct from the pre-existing tenants_claimed counter.",
+    "src/email.rs: EmailProvider enum (Resend default, Postmark) selected by MCPHOST_EMAIL_PROVIDER; HttpEmailClient.send branches on provider for the Resend {from,to,subject,text}+bearer vs Postmark {From,To,Subject,TextBody}+X-Postmark-Server-Token request shape; failures return AppError::claim_email_failed(status) instead of a generic error; FakeEmailClient's simulated failure does the same.",
+    "src/errors.rs: AppError::claim_email_failed(status: Option<u16>) / claim_email_status(&self) -- a Structured variant carrying a request_id, never the API key.",
+    "src/db.rs: migrations 0073-0075 (claim_token_plain, claim_nudged_unix, claim_email_events; renumbered during the run 428 rebase -- mcphost-activation-funnel claimed 0072 first) with idempotent pragma_table_info/sqlite_master presence guards; mark_claim_nudged_if_unset (single-winner atomic UPDATE ... WHERE claim_nudged_unix IS NULL), claims_summary(since_unix) -> ClaimsSummary, record_claim_email_failure, and their _for_test helpers.",
+    "migrations/0073_claim_token_plain.sql, 0074_claim_nudged_unix.sql, 0075_claim_email_events.sql (new).",
+    "src/main.rs, tests/common/mod.rs: HttpEmailClient::new and the test EmailConfig literal updated for the new provider field.",
+    "tests/ownmt_ac0[1-7]_*.rs (new, one per non-deferred AC); tests/suite_core_07.rs/suite_core_08.rs regenerated by scripts/gen-test-suites.sh to include them.",
+    "~/repos/mcphost-deploy (requirement 5/AC5, already shipped at commit 41a8398 on main before this dispatch began) and (requirement 6/AC6, this dispatch's own commit fbf6892 on branch wm-build/mcphost-ownership-moment-journey-claim-p0): journey.py's _evaluate_steps now also reads payload[\"claim\"] directly (claim was always a separate top-level key, never a steps list entry, so its prior NON_P0_STEPS membership was dead code -- removing the dead entry alone would not have changed rollback behavior) and returns a fail JourneyResult when claim.verdict == \"fail\".",
+    "~/repos/synthorg (this dispatch's own commit cc0d1e6, same branch name): journey.py's _claim_result promoted from a permanent skip stub (based on the mtproof.run_claim precedent) to a real magic-link round trip; claim_start/read_mail_sink/claim_verify added to the JourneyTransport Protocol, LiveJourneyClient (real httpx2 calls), the FakeJourneyHost test fixture, and toolconf.py's ToolconfTransport (required for mypy structural-typing compatibility, per its own documented 'carries the full JourneyTransport shape' design); JourneyResult.ok now also fails when claim.verdict == \"fail\".",
+    "Cargo.toml/Cargo.lock: minor version bump; CHANGELOG.md: new entry.",
+    "agent/test-map.json: ac_test_map repointed at this PRD's ACs; the prior PRD's (mcphost-event-trigger-self-test) map archived under ac_test_map_by_prefix.mcphost_event_trigger_self_test."
   ],
   "non_goals": [
-    "Pre-signup demand -- funnel-top already covers it (PRD's own Non-goals).",
-    "Replacing measure's MRR logic -- the digest PRD reads both (PRD's own Non-goals).",
-    "Any per-end-user or per-call analytics beyond the six stamps (PRD's own Non-goals).",
-    "admin.funnel {export: true} (P2 requirement 7) -- not in this dispatch's assigned AC list; no AC exercises it.",
-    "AC8 (the live post-deploy /healthz observation) -- operator-provisioned, deferred; needs a real prod deploy and a real external tenant's first publish, neither of which this coder dispatch can produce."
+    "Choosing the provider in code -- PRD's own Non-goals; env-driven (MCPHOST_EMAIL_PROVIDER), Resend recommended as the default, and Joe's own Open-questions answer already names Resend/claim@mcphost.dev for prod.",
+    "Billing changes -- PRD's own Non-goals; claimed -> Pro stays the existing Stripe path.",
+    "A second nudge to the human by email -- PRD's own Non-goals; left as an Open question, owner Joe, due after 20 external claims of real data.",
+    "Requirement 8 (P2, host.whoami.owner.email_masked after claim) has no numbered acceptance criterion in the PRD's own Acceptance criteria section and was not part of this dispatch's required-AC list -- left unimplemented.",
+    "AC8 (the Live healthz-counts-a-real-claim observation) -- operator-provisioned, deferred; needs mail configured on prod by the operator and a real external tenant's human completing the claim flow there, neither of which this dispatch can do."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -87,53 +91,52 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "second_session_only_watches_the_two_mechanisms_requirement_2_names": "Requirement 2 names exactly bind_session_to_created_tenant and URL-path auth (resolve_path_secret_auth) as second_session_unix's triggers -- not every authenticated-call resolver (resolve_auth/resolve_tenant_key_auth/resolve_session_binding also exist). A stateless client that never echoes Mcp-Session-Id gets a brand-new session id on literally every call, so wiring this into the plain header/tenant_key paths too would fire on a caller's very next ordinary call rather than a real reconnect. mcphost's own typical external-tenant pattern (host.key_rotate mints a personal /u/{secret}/mcp URL) makes the URL-path mechanism the realistic 'reconnect' surface, matching the PRD's literal enumeration.",
-      "created_session_id_set_once_at_the_first_bind_only": "bind_session_to_created_tenant fires for both signup and host.redeem; created_session_id is set only the FIRST time a tenant is ever bound (tenant.created_session_id.is_none()) -- a later bind (e.g. host.redeem on a different connection than a handoff signup) is itself evaluated as a candidate second session, never silently overwrites the original creating session.",
-      "first_own_call_is_a_same_tenant_distinction_not_an_owner_distinction": "call_published_tool's caller parameter is None for every same-tenant call (direct <ns>.<tool>, or host.tool_call dispatched against the caller's own namespace) and Some(&caller) only for a cross-tenant shared-tool call -- first_own_call_unix is gated on caller.is_none() precisely because that parameter already distinguishes 'self' from 'borrowed' regardless of which function (call_published_tool directly, or via call_shared_tool/host_tool_call) reached it.",
-      "k_is_host_wide_over_the_same_window_not_filtered_by_invited": "admin.funnel's k figure (requirement 6) measures INVITERS' own activity (accepted joins per active inviter), a different population than the invitee rows invited narrows admin.funnel's signups/stages to -- so k is computed over every invite_joins row in the same days window regardless of the invited argument's value, generalizing invites_usage_7d's existing per-tenant/fixed-7d k shape to a host-wide figure over an arbitrary window.",
-      "by_source_is_never_narrowed_by_the_top_level_source_class_filter": "admin.funnel's source_class argument narrows signups/stages only; by_source's whole purpose is the breakdown ACROSS every source_class value, so it is built from the signup_source/invited-filtered rows but never the source_class-filtered ones -- narrowing by_source too would make a {source_class: \"external\"} call's own by_source degenerate to a single external:{...} entry, defeating the field."
+      "claim_nudge_rides_the_real_meta_object_not_structured_content_next": "PRD-mcphost-one-next-tool already attaches a next hint to structuredContent for a young tenant's early calls (maybe_attach_next_hint), and its own pinned test (nexttool_ac04) asserts that field carries exactly {tool, why} and nothing else -- adding a second, differently-shaped next entry there would break that assertion. Requirement 2's own wording ('_meta.next') also names the real wire-level MCP _meta object literally, distinct from structuredContent. Resolved by inserting the claim nudge into meta.0 (the real _meta map already carrying deprecated/invite_url entries) instead, leaving nexttool's own channel untouched.",
+      "ac5_already_shipped_by_a_prior_mcphost_deploy_commit": "Investigation (git log/grep in ~/repos/mcphost-deploy) found requirement 5's env_contract.py/probe.py/cli.py/artifact.py changes, and their own test_mail_env_ac1/ac2/ac3 test files, already landed on main at commit 41a8398 before this dispatch began. Rather than duplicate that work, this dispatch added only tests/ownmt_ac05_claim_email_configured_signal.rs on the mcphost side, pinning the one field (claim_email_configured on /healthz) that probe actually reads.",
+      "ac6_claim_step_ordering_bug_found_and_fixed_in_synthorg": "The first implementation of synthorg's _claim_result called it from run_journey AFTER _run_once returned -- by then the journey's own teardown step had already called host.self_offboard, removing the tenant from the fixture/live host, so host.whoami's owner_verified check spuriously read as unclaimed even when claim_verify itself had succeeded. Diagnosed from a failing pytest's StepResult output plus journey_steps.toml's step order (teardown is last). Fixed by moving the _claim_result call inside _run_once's own loop, immediately before the teardown step runs, and widening _run_once's return type to a 4-tuple carrying the claim StepResult.",
+      "claim_token_plain_persisted_for_repeated_redisplay": "set_claim_token now stores the plaintext token alongside its hash, mirroring the existing invites.code_plain pattern -- needed because claim_url (now read on every onboarding envelope and host.whoami call, not just the original single claim response) must keep returning the same working link across calls, not just once at mint time."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why is there no funnel number?",
-      "a": "measure refuses to report without five hand-labeled tenants and has not written since 2026-09-27; the nightly chain's preflight has been red (demand_alarm_streak=15) and skips the measure step while red."
+      "q": "Why do agents still perform the retired key-flow ritual and why can nobody claim a tenant?",
+      "a": "The claim path needs an outbound email and no provider is configured on prod; the open question ('Resend or Postmark', market-test vision, owner Joe) was never closed before the original claim PRD shipped on 09-24, so it shipped provider-agnostic."
     },
     {
       "why": 2,
-      "q": "Why does the sensor depend on hand labels?",
-      "a": "It was built to classify real vs harness tenants for paid_mrr_usd when synthetic traffic dominated (1,759 synthetic vs 14 external signups); with source_class now stamped at signup, the label gate guards nothing the host doesn't already know."
+      "q": "Why did an unconfigured mail provider reach prod at all?",
+      "a": "Nothing in mcphost-deploy's probe fails when claim_email_configured is false -- a missing env var produces a silently-passing deploy, not a red one."
     },
     {
       "why": 3,
-      "q": "Why are there no stages between signup and claim?",
-      "a": "Each onboarding PRD measured its own moment (first-call-gift's AC6 counts remember, invite-links counts k); nobody owns the tenant lifecycle, so the host stores created_unix/last_seen_unix/owner_verified_at/plan_since and nothing in between."
+      "q": "Why did nothing flag the gap for ten days after it shipped?",
+      "a": "The readiness list treated claim as a feature that had already shipped; journey.py marked claim a NON_P0_STEPS member (line 62), so the daily journey passed 12/12 with the claim step unexercised the entire time."
     },
     {
       "why": 4,
-      "q": "Why is activation specifically unmeasurable, not just slow to compute?",
-      "a": "The six moments this PRD stamps (first call, first publish, first own-tool call, second session, claim, paid) are never written anywhere -- there is no column, no event log, and no derived read that could answer 'did this tenant activate' even with unlimited compute."
+      "q": "Why was claim allowed to sit in NON_P0_STEPS instead of gating the journey like every other customer-facing step?",
+      "a": "synthorg's own journey.py reported claim as a separate top-level key, never a steps list entry, so its NON_P0_STEPS membership in mcphost-deploy's journey.py was already dead code -- nobody had noticed the set entry did nothing, which is a different, deeper bug than merely 'claim should be P0'."
     },
     {
       "why": 5,
-      "q": "Why wasn't this caught before the market test needed it?",
-      "a": "With 14 real tenants and a lifecycle nobody owned, activation simply never came up as a question until Joe's market test asked it first -- the deepest actionable level: the host does not record activation, and the tool that should report it is gated on a label ritual and a chain that is red."
+      "q": "Why was the ownership moment allowed to be optional at every one of these levels?",
+      "a": "The product's persona is the agent (profile thesis); the human was added as the payer late, and nothing after the claim page was built to pull the human in -- the agent is told once (skill.md step 5) to relay a link that cannot be delivered, and nothing downstream of that single mention ever checks that it was. Deepest actionable level: the human's entry was documented as the agent's job and instrumented as nobody's."
     }
   ],
   "created_at": "2026-10-05T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Does the 'second session' rule require a different client (clientInfo), not just a different session id?",
-      "resolution": "No -- the PRD's own Open Questions table drafts this as 'no' explicitly ('the digest can split by client later'), so second_session_unix compares session ids only, never clientInfo."
+      "question": "Does the claim nudge ride structuredContent.next (PRD-mcphost-one-next-tool's existing hint channel) or the real wire-level MCP _meta object the requirement's own text names?",
+      "resolution": "The real _meta object (meta.0.insert(\"next\", ...)). structuredContent.next is already asserted by nexttool_ac04 to carry exactly {tool, why} for a young tenant's early calls; a second, claim-shaped entry there would break that pinned test. The harness's own default test tenants are loopback/synthetic and would never qualify for an external-only claim nudge regardless, but the _meta channel was chosen on architectural grounds (literal match to the requirement's own wording) independent of that fact."
     },
     {
-      "question": "When tenant.created_session_id is None (no session was ever recorded at creation -- a stateless client, or a pre-migration tenant), does second_session_unix ever fire at all?",
-      "resolution": "Yes, via the time-only half of the rule the technical considerations name explicitly ('fall back to the 10-minute rule when no session id exists'): any authenticated call through one of the two named mechanisms at least 10 minutes after created_unix counts, since there's nothing to compare the session id against."
+      "question": "Was requirement 5 (mcphost-deploy probe fails claim-email-unconfigured) still open work for this dispatch?",
+      "resolution": "No -- git history in ~/repos/mcphost-deploy showed it already landed at commit 41a8398 before this dispatch began, with its own env_contract.py/probe.py/cli.py/artifact.py changes and test_mail_env_ac1/ac2/ac3 tests. This dispatch added only a thin mcphost-side pinning test (AC5) rather than re-implementing or duplicating that commit."
     },
     {
-      "question": "Does admin.funnel's by_source breakdown report share/median per bucket, or counts only?",
-      "resolution": "Counts only (signups + a per-stage count per source_class bucket) -- no AC exercises by_source's internal shape, and the top-level stages array already carries share/median for whichever population the caller asked about; by_source's own job is just the cross-class split."
+      "question": "For requirement 6 (journey claim step promoted to P0), was removing \"claim\" from mcphost-deploy's NON_P0_STEPS set sufficient on its own?",
+      "resolution": "No -- that set was never actually consulted for claim (synthorg reports claim as a top-level key, not a steps list entry), so removing the dead set entry alone would not have changed rollback behavior at all. The real fix was making journey.py's _evaluate_steps read payload[\"claim\"] directly and fail when its verdict is \"fail\"."
     }
   ]
 }

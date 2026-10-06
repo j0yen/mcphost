@@ -157,6 +157,15 @@ const MIGRATION_0071: &str = include_str!("../migrations/0071_first_call_gift.sq
 /// PRD-mcphost-activation-funnel requirement 1: six activation stamps plus
 /// `created_session_id` on `tenants`.
 const MIGRATION_0072: &str = include_str!("../migrations/0072_activation_funnel.sql");
+/// PRD-mcphost-ownership-moment requirement 1 (AC1): `tenants.claim_token_plain`.
+/// Renumbered to 0073 during this rebase (run 428, 2026-10-06):
+/// mcphost-activation-funnel claimed 0072 first, landing on main ahead of
+/// this branch (this PRD's own migration was originally numbered 0072).
+const MIGRATION_0073: &str = include_str!("../migrations/0073_claim_token_plain.sql");
+/// PRD-mcphost-ownership-moment requirement 2 (AC2): `tenants.claim_nudged_unix`.
+const MIGRATION_0074: &str = include_str!("../migrations/0074_claim_nudged_unix.sql");
+/// PRD-mcphost-ownership-moment requirement 3 (AC3): `claim_email_events`.
+const MIGRATION_0075: &str = include_str!("../migrations/0075_claim_email_events.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -175,7 +184,7 @@ const TENANT_COLUMNS: &str = "id, namespace, display_name, key_hash, created_at,
     signup_source, owner_email, owner_verified_at, claim_token_hash, claim_expires_at, \
     url_secret_hash, url_rotated_at, invited_by_tenant_id, last_seen_unix, \
     first_call_unix, first_publish_unix, first_own_call_unix, second_session_unix, \
-    claimed_unix, paid_unix, created_session_id";
+    claimed_unix, paid_unix, created_session_id, claim_token_plain";
 
 fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
     Ok(Tenant {
@@ -219,6 +228,7 @@ fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
         claimed_unix: r.get(37)?,
         paid_unix: r.get(38)?,
         created_session_id: r.get(39)?,
+        claim_token_plain: r.get(40)?,
     })
 }
 
@@ -650,6 +660,15 @@ pub struct Tenant {
     /// never redeemed). [`Self::second_session_unix`]'s own write compares
     /// every later session's id against this one.
     pub created_session_id: Option<String>,
+    /// PRD-mcphost-ownership-moment requirement 1 (AC1): the plaintext of
+    /// [`Self::claim_token_hash`] (migration 0073; renumbered during this
+    /// rebase -- mcphost-activation-funnel claimed 0072 first) -- kept
+    /// alongside the hash so `host.whoami`/the `onboarding` envelope can
+    /// keep handing back the same `claim_url` on every later call, not
+    /// just the one response that minted it. `None` once claimed (cleared
+    /// together with `claim_token_hash`/`claim_expires_at`) or before any
+    /// token has been minted.
+    pub claim_token_plain: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1241,6 +1260,17 @@ pub enum ClaimVerifyOutcome {
     /// AC7: this code was valid and got consumed, but another verify
     /// already won the race to set this tenant's owner first.
     Conflict,
+}
+
+/// PRD-mcphost-ownership-moment requirement 4 (AC4): [`Db::claims_summary`]'s
+/// own `/healthz` `claims` block, over a trailing window.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct ClaimsSummary {
+    pub external: i64,
+    pub synthetic: i64,
+    pub median_minutes_to_claim: Option<f64>,
+    pub nudged: i64,
+    pub nudged_then_claimed: i64,
 }
 
 fn now_rfc3339() -> String {
@@ -2432,7 +2462,10 @@ impl Db {
         Self::migrate_0069_row_policies(&conn)?;
         Self::migrate_0070_audit_chain(&conn)?;
         Self::migrate_0071_first_call_gift(&conn)?;
-        Self::migrate_0072_activation_funnel(&conn)
+        Self::migrate_0072_activation_funnel(&conn)?;
+        Self::migrate_0073_claim_token_plain(&conn)?;
+        Self::migrate_0074_claim_nudged_unix(&conn)?;
+        Self::migrate_0075_claim_email_events(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -3473,6 +3506,45 @@ impl Db {
         Ok(())
     }
 
+    /// PRD-mcphost-ownership-moment migration 0073: same idempotency guard
+    /// as 0002/0059 above -- a bare `ALTER TABLE ADD COLUMN`, gated on
+    /// `claim_token_plain`'s own presence. Renumbered during this rebase
+    /// (run 428, 2026-10-06): mcphost-activation-funnel claimed 0072 first.
+    fn migrate_0073_claim_token_plain(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'claim_token_plain'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0073)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-ownership-moment migration 0074: same idempotency guard
+    /// as 0073 above, gated on `claim_nudged_unix`'s own presence.
+    fn migrate_0074_claim_nudged_unix(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'claim_nudged_unix'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0074)?;
+        }
+        Ok(())
+    }
+
+    /// PRD-mcphost-ownership-moment migration 0075: same new-table
+    /// idempotency guard as 0035 above, gated on `claim_email_events`'
+    /// own existence.
+    fn migrate_0075_claim_email_events(conn: &Connection) -> Result<(), AppError> {
+        let has_table: bool = conn
+            .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'claim_email_events'")?
+            .exists([])?;
+        if !has_table {
+            conn.execute_batch(MIGRATION_0075)?;
+        }
+        Ok(())
+    }
+
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
     /// subcommand.
@@ -3745,6 +3817,7 @@ impl Db {
                 claimed_unix: None,
                 paid_unix: None,
                 created_session_id: None,
+                claim_token_plain: None,
             })
         })
         .await
@@ -4638,16 +4711,21 @@ impl Db {
     /// outstanding claim link at a time; a later call (a fresh `signup`
     /// re-run is not possible, but a future `admin.tenant_claim_url`
     /// would) simply overwrites it.
+    /// PRD-mcphost-ownership-moment requirement 1 (AC1): also persists the
+    /// plaintext (`claim_token_plain`, migration 0072) alongside the hash
+    /// -- see that column's own doc comment on [`Tenant`] for why.
     pub async fn set_claim_token(
         &self,
         tenant_id: i64,
         token_hash: String,
+        token_plain: String,
         expires_unix: i64,
     ) -> Result<(), AppError> {
         self.with_conn(move |conn| {
             conn.execute(
-                "UPDATE tenants SET claim_token_hash = ?1, claim_expires_at = ?2 WHERE id = ?3",
-                params![token_hash, expires_unix, tenant_id],
+                "UPDATE tenants SET claim_token_hash = ?1, claim_expires_at = ?2, \
+                 claim_token_plain = ?3 WHERE id = ?4",
+                params![token_hash, expires_unix, token_plain, tenant_id],
             )?;
             Ok(())
         })
@@ -4797,7 +4875,7 @@ impl Db {
             }
             let set = conn.execute(
                 "UPDATE tenants SET owner_email = ?1, owner_verified_at = ?2, \
-                 claim_token_hash = NULL, claim_expires_at = NULL \
+                 claim_token_hash = NULL, claim_expires_at = NULL, claim_token_plain = NULL \
                  WHERE id = ?3 AND owner_verified_at IS NULL",
                 params![email, now, tenant_id],
             )?;
@@ -4805,6 +4883,110 @@ impl Db {
                 return Ok(ClaimVerifyOutcome::Conflict);
             }
             Ok(ClaimVerifyOutcome::Verified { tenant_id, email })
+        })
+        .await
+    }
+
+    /// Test-only: back-dates one tenant's `origin`/`created_unix`/
+    /// `owner_verified_at`/`claim_nudged_unix` directly, so AC4's healthz
+    /// test can pin exact `median_minutes_to_claim` values without a real
+    /// multi-minute wait -- same "flip several internal knobs for a test"
+    /// shape as [`Self::expire_claim_token_for_test`] above, just four
+    /// columns at once instead of one.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn set_claim_timing_for_test(
+        &self,
+        tenant_id: i64,
+        origin: String,
+        created_unix: i64,
+        owner_verified_at: Option<i64>,
+        claim_nudged_unix: Option<i64>,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tenants SET origin = ?1, created_unix = ?2, owner_verified_at = ?3, \
+                 claim_nudged_unix = ?4 WHERE id = ?5",
+                params![origin, created_unix, owner_verified_at, claim_nudged_unix, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Test-only: read back `tenants.claim_nudged_unix` directly -- it
+    /// isn't on the [`Tenant`] struct (nothing outside this module needs it
+    /// as a value; [`Self::mark_claim_nudged_if_unset`] is the one write
+    /// path), so a test needs its own narrow read. Same "flip/read one
+    /// internal knob for a test" shape as
+    /// [`Self::expire_claim_token_for_test`] above.
+    pub async fn claim_nudged_unix_for_test(&self, tenant_id: i64) -> Result<Option<i64>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT claim_nudged_unix FROM tenants WHERE id = ?1",
+                params![tenant_id],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-ownership-moment requirement 2 (AC2): the single-winner
+    /// `UPDATE ... WHERE claim_nudged_unix IS NULL` that makes "never
+    /// twice" hold even if two `host.tool_publish` calls for the same
+    /// unclaimed tenant somehow raced -- same shape as
+    /// [`Self::verify_claim_code`]'s own `owner_verified_at IS NULL` guard.
+    /// `true` only for whichever caller actually flipped the column (the
+    /// one that should show the nudge); `false` for every later caller.
+    pub async fn mark_claim_nudged_if_unset(&self, tenant_id: i64, now_unix: i64) -> Result<bool, AppError> {
+        self.with_conn(move |conn| {
+            let set = conn.execute(
+                "UPDATE tenants SET claim_nudged_unix = ?1 WHERE id = ?2 AND claim_nudged_unix IS NULL",
+                params![now_unix, tenant_id],
+            )?;
+            Ok(set > 0)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-ownership-moment requirement 3 (AC3): one journal row
+    /// per claim-email send that ultimately failed (both of
+    /// `claim::send_with_retry`'s attempts) -- `status_code` only, never
+    /// the provider's response body or `MCPHOST_EMAIL_API_KEY` (neither of
+    /// which this function is even given).
+    pub async fn record_claim_email_failure(
+        &self,
+        tenant_id: i64,
+        status_code: Option<u16>,
+    ) -> Result<(), AppError> {
+        let created_unix = crate::state::now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO claim_email_events (tenant_id, status_code, created_unix) \
+                 VALUES (?1, ?2, ?3)",
+                params![tenant_id, status_code.map(i64::from), created_unix],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Test-only: the most recent [`Self::record_claim_email_failure`] row
+    /// for one tenant, if any.
+    pub async fn most_recent_claim_email_failure_for_test(
+        &self,
+        tenant_id: i64,
+    ) -> Result<Option<i64>, AppError> {
+        self.with_conn(move |conn| {
+            let row: Option<Option<i64>> = conn
+                .query_row(
+                    "SELECT status_code FROM claim_email_events WHERE tenant_id = ?1 \
+                     ORDER BY id DESC LIMIT 1",
+                    params![tenant_id],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            Ok(row.flatten())
         })
         .await
     }
@@ -4940,6 +5122,62 @@ impl Db {
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-ownership-moment requirement 4 (AC4): `/healthz`'s
+    /// `claims` block over a trailing window (30 days) -- distinct from
+    /// [`Self::count_claimed_tenants_by_origin`]'s own all-time, unwindowed
+    /// count. `median_minutes_to_claim` is the median of
+    /// `(owner_verified_at - created_unix) / 60` across every tenant
+    /// claimed in the window, external and synthetic together (the AC
+    /// names no split); `None` when nothing was claimed in the window at
+    /// all, rather than a misleading `0`.
+    pub async fn claims_summary(&self, since_unix: i64) -> Result<ClaimsSummary, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT origin, owner_verified_at, created_unix FROM tenants \
+                 WHERE owner_verified_at IS NOT NULL AND owner_verified_at >= ?1",
+            )?;
+            let rows: Vec<(String, i64, i64)> = stmt
+                .query_map(params![since_unix], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+                .collect::<Result<Vec<_>, _>>()?;
+            let external = rows.iter().filter(|(origin, ..)| origin == "external").count() as i64;
+            let synthetic = rows.iter().filter(|(origin, ..)| origin == "synthetic").count() as i64;
+            let mut minutes: Vec<f64> = rows
+                .iter()
+                .map(|(_, verified_at, created_unix)| (verified_at - created_unix) as f64 / 60.0)
+                .collect();
+            minutes.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let median_minutes_to_claim = if minutes.is_empty() {
+                None
+            } else {
+                let mid = minutes.len() / 2;
+                Some(if minutes.len().is_multiple_of(2) {
+                    (minutes[mid - 1] + minutes[mid]) / 2.0
+                } else {
+                    minutes[mid]
+                })
+            };
+            let nudged: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM tenants WHERE claim_nudged_unix IS NOT NULL AND claim_nudged_unix >= ?1",
+                params![since_unix],
+                |r| r.get(0),
+            )?;
+            let nudged_then_claimed: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM tenants WHERE claim_nudged_unix IS NOT NULL \
+                 AND claim_nudged_unix >= ?1 AND owner_verified_at IS NOT NULL",
+                params![since_unix],
+                |r| r.get(0),
+            )?;
+            Ok(ClaimsSummary {
+                external,
+                synthetic,
+                median_minutes_to_claim,
+                nudged,
+                nudged_then_claimed,
+            })
         })
         .await
     }

@@ -1074,7 +1074,13 @@ pub async fn whoami(
         .await?
         .and_then(|invite| invite.code_plain)
         .map(|code| format!("{}/i/{code}/mcp", state.public_url.trim_end_matches('/')));
-    Ok(json!({
+    // PRD-mcphost-ownership-moment requirement 1 (AC1): `claim_url` rides
+    // on every `host.whoami` response while this tenant is unclaimed, the
+    // same stable URL [`crate::claim::issue_claim_token`] minted -- never
+    // re-minted here, which would silently invalidate a link already
+    // relayed to the human.
+    let claim_url_value = crate::claim::claim_url_for_tenant(&state.public_url, tenant);
+    let mut response = json!({
         "tenant": tenant.namespace,
         "namespace": tenant.namespace,
         "display_name": tenant.display_name,
@@ -1131,7 +1137,19 @@ pub async fn whoami(
         // required -- same `state.public_url` base every other link on this
         // response already uses.
         "links": crate::help::surface_links(&state.public_url),
-    }))
+    });
+    if let Some(obj) = response.as_object_mut() {
+        if let Some(url) = claim_url_value {
+            obj.insert("claim_url".to_string(), json!(url));
+        }
+        // requirement 1 (AC1): once claimed, `owner.verified_at` replaces
+        // `claim_url` -- `owner_verified` above stays the pre-existing
+        // bool-only read for callers that only need "is it claimed".
+        if let Some(verified_at) = tenant.owner_verified_at {
+            obj.insert("owner".to_string(), json!({"verified_at": verified_at}));
+        }
+    }
+    Ok(response)
 }
 
 /// PRD-mcphost-admin-schema-contract P2 requirement 7 (AC7): `host.whoami`

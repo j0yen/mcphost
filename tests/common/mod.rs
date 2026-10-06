@@ -595,6 +595,7 @@ impl TestServer {
                 api_url: Some("https://email.invalid/send".to_string()),
                 api_key: Some("test-email-key".to_string()),
                 from: Some("noreply@mcphost.invalid".to_string()),
+                provider: mcphost::email::EmailProvider::default(),
             },
             email_client,
             mcphost::state::CLAIM_TOKEN_TTL_SECS_DEFAULT,

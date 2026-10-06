@@ -1401,6 +1401,33 @@ impl AppError {
         }
     }
 
+    /// PRD-mcphost-ownership-moment requirement 3 (AC3): the claim magic
+    /// link's own send failure -- a non-2xx from the provider (`status`
+    /// carries its HTTP status) or a pure transport failure (`status:
+    /// None`, DNS/connect/timeout). `message`/`data` never carry the
+    /// provider's response body or `MCPHOST_EMAIL_API_KEY` -- only the
+    /// status code, same "name the fact, not the detail" posture
+    /// [`Self::disk_floor`] already takes.
+    pub fn claim_email_failed(status: Option<u16>) -> Self {
+        AppError::Structured {
+            code: "claim_email_failed",
+            message: "could not send the claim email".to_string(),
+            data: json!({"status": status}),
+        }
+    }
+
+    /// The companion read for [`Self::claim_email_failed`]: the provider
+    /// status code it carried, for a journal write -- `None` for every
+    /// other variant, and for a transport failure (no status to report).
+    pub fn claim_email_status(&self) -> Option<u16> {
+        match self {
+            AppError::Structured { code: "claim_email_failed", data, .. } => {
+                data.get("status").and_then(Value::as_u64).map(|v| v as u16)
+            }
+            _ => None,
+        }
+    }
+
     /// PRD-mcphost-shared-tool-call-path requirement 2 (AC2, AC3): the
     /// cross-tenant `<owner_ns>.<local_name>` not-found shape --
     /// [`crate::sharing::resolve_shared_tool`]'s only error, identical bytes

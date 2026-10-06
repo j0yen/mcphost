@@ -62,9 +62,26 @@ pub async fn issue_claim_token(state: &AppState, tenant: &Tenant) -> Result<Stri
     let expires_unix = crate::state::now_unix() + state.claim_token_ttl_secs;
     state
         .db
-        .set_claim_token(tenant.id, token_hash, expires_unix)
+        .set_claim_token(tenant.id, token_hash, token.clone(), expires_unix)
         .await?;
     Ok(claim_url(&state.public_url, &token))
+}
+
+/// PRD-mcphost-ownership-moment requirement 1 (AC1): the SAME `claim_url`
+/// [`issue_claim_token`] minted, re-derived from the tenant's own
+/// `claim_token_plain` (migration 0072) rather than minting a fresh one --
+/// so `host.whoami` and every `onboarding` envelope after the first keep
+/// handing back one stable link instead of silently invalidating whichever
+/// one the agent already relayed. `None` once the tenant is claimed (the
+/// column is cleared then) or before any token exists yet.
+pub fn claim_url_for_tenant(public_url: &str, tenant: &Tenant) -> Option<String> {
+    if tenant.owner_verified_at.is_some() {
+        return None;
+    }
+    tenant
+        .claim_token_plain
+        .as_deref()
+        .map(|token| claim_url(public_url, token))
 }
 
 // ---- email validation --------------------------------------------------
@@ -292,6 +309,34 @@ async fn render_summary(state: &AppState, tenant: &Tenant, owner_email: &str) ->
         .unwrap_or(0);
     let state_bytes = state.db.state_bytes_used(tenant.id).await.unwrap_or(0);
     let plan = state.plans.get(&tenant.plan);
+    // PRD-mcphost-ownership-moment requirement 7 (AC7): the agent's own
+    // first-call `remember` note (PRD-mcphost-first-call-gift), shown
+    // alongside the tool list so the human sees what their agent said
+    // about them -- best-effort, same posture as every other field on
+    // this page (a lookup failure never turns a successful claim into an
+    // error page).
+    let last_note = crate::tenant_state::first_contact_summary(state, tenant.id)
+        .await
+        .ok()
+        .and_then(|(_, last_note)| last_note);
+    let note_html = last_note
+        .map(|note| format!("<p>Your agent said: &ldquo;{}&rdquo;</p>", html_escape(&note)))
+        .unwrap_or_default();
+    // PRD-mcphost-ownership-moment requirement 7 (AC7): the actual tool
+    // names, not just the count above -- AC7's own Then is that the
+    // remember note is shown "with the tool list", so the list has to
+    // keep naming tools, same as it did before mcphost-ownership-copy's
+    // rewrite of this page's prose (that PRD's own draft only restated
+    // the counts; it never asserted the names were gone).
+    let tool_names_html = if tools.is_empty() {
+        "<li>(none published yet)</li>".to_string()
+    } else {
+        tools
+            .iter()
+            .map(|t| format!("<li><code>{}</code></li>", html_escape(&t.name)))
+            .collect::<Vec<_>>()
+            .join("")
+    };
     let (calls_limit, state_bytes_max) = plan
         .map(|p| (p.calls_per_day, p.state_bytes_max))
         .unwrap_or((0, 0));
@@ -305,10 +350,12 @@ async fn render_summary(state: &AppState, tenant: &Tenant, owner_email: &str) ->
             "<h1>{name} is yours</h1>\
              <p>Signed in as <code>{email}</code>. Your agent keeps working exactly as before; \
              you now hold the keys.</p>\
+             {note_html}\
              <p><b>What's here</b></p>\
              <p>{tool_count} tools · {schedule_count} schedules · {webhook_count} webhooks · \
              {calls_today}/{calls_limit} calls this month · {state_bytes}/{state_bytes_max} bytes \
              of state</p>\
+             <ul>{tool_names_html}</ul>\
              <p><b>What owning it gives you</b></p>\
              <ul>\
              <li>see everything the agent builds</li>\
@@ -390,7 +437,17 @@ async fn send_verify_email(state: &AppState, tenant: &Tenant, email: &str) -> Re
             "Hi,\n\nAn AI agent entered this address at mcphost.dev a moment ago. It has been\nbuilding a small backend there called \"{display_name}\" — which may include tools it published, schedules it set, and workflows that it is managing.\n\nIf that agent works for you, this link makes you its owner:\n\n{verify_url}\n\nOwning it means you can see what the agent built, get back in if it loses\nits key, and optionally upgrade to Pro. The link works once and stops working in 30 minutes.\n\nIf this wasn't your agent, do nothing; nothing changes.\n\n— mcphost\nmcphost.dev · a home for things your agent builds"
         ),
     };
-    send_with_retry(state, message).await
+    let result = send_with_retry(state, message).await;
+    // requirement 3 (AC3): a journal row for the status code alone, never
+    // the key -- written even though `post_claim` goes on to show the
+    // caller a generic "could not send" page either way.
+    if let Err(e) = &result {
+        let status = e.claim_email_status();
+        if let Err(journal_err) = state.db.record_claim_email_failure(tenant.id, status).await {
+            tracing::warn!(tenant = %tenant.namespace, error = %journal_err, "claim email failure journal write failed");
+        }
+    }
+    result
 }
 
 // ---- HTTP routes -----------------------------------------------------------
