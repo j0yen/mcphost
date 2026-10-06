@@ -514,6 +514,20 @@ mod flakelint_ac04_allow_list;
 mod flakelint_ac06_perf_budget_skip_and_median;
 #[path = "fleetips_reclassify_backfill.rs"]
 mod fleetips_reclassify_backfill;
+#[path = "funnel_ac01_activation_stamps_set_once.rs"]
+mod funnel_ac01_activation_stamps_set_once;
+#[path = "funnel_ac02_shared_call_not_own_call.rs"]
+mod funnel_ac02_shared_call_not_own_call;
+#[path = "funnel_ac03_external_filter_share_and_median.rs"]
+mod funnel_ac03_external_filter_share_and_median;
+#[path = "funnel_ac04_healthz_funnel_7d_external_only.rs"]
+mod funnel_ac04_healthz_funnel_7d_external_only;
+#[path = "funnel_ac05_claim_and_plan_backfill.rs"]
+mod funnel_ac05_claim_and_plan_backfill;
+#[path = "funnel_ac06_median_null_under_three.rs"]
+mod funnel_ac06_median_null_under_three;
+#[path = "funnel_ac07_invited_split_and_k.rs"]
+mod funnel_ac07_invited_split_and_k;
 #[path = "gatedebt_4f1112d_ac4_no_test_reads_gate_receipts.rs"]
 mod gatedebt_4f1112d_ac4_no_test_reads_gate_receipts;
 #[path = "gatedebt_4f1112d_ac5_no_flake_audit_selftest_names.rs"]

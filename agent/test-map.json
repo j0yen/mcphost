@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-ownership-copy.md (test_prefix: owncopy)",
+  "ac_test_map_prd": "PRD-mcphost-activation-funnel.md (test_prefix: funnel)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,13 +28,24 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/owncopy_ac01_email_subject_and_body_match_draft.rs",
-    "AC2": "tests/owncopy_ac02_from_and_reply_to_passed_verbatim.rs",
-    "AC3": "tests/owncopy_ac03_pages_match_draft_text.rs",
-    "AC4": "tests/owncopy_ac04_error_pages_match_draft_no_env_var.rs",
-    "AC5": "tests/owncopy_ac05_no_claim_verify_tenant_in_visible_text.rs"
+    "AC1": "tests/funnel_ac01_activation_stamps_set_once.rs",
+    "AC2": "tests/funnel_ac02_shared_call_not_own_call.rs",
+    "AC3": "tests/funnel_ac03_external_filter_share_and_median.rs",
+    "AC4": "tests/funnel_ac04_healthz_funnel_7d_external_only.rs",
+    "AC5": "tests/funnel_ac05_claim_and_plan_backfill.rs",
+    "AC6": "tests/funnel_ac06_median_null_under_three.rs",
+    "AC7": "tests/funnel_ac07_invited_split_and_k.rs",
+    "AC8": "deferred -- operator-provisioned: AC8's Then is a live, post-deploy /healthz observation (funnel_7d.first_publish >= 1 within 7 days of the deploy timestamp); not in this dispatch's assigned AC list."
   },
   "ac_test_map_by_prefix": {
+    "owncopy": {
+      "_prd": "PRD-mcphost-ownership-copy.md -- superseded by mcphost-activation-funnel at HEAD (this rebase); real test_prefix is owncopy",
+      "AC1": "tests/owncopy_ac01_email_subject_and_body_match_draft.rs",
+      "AC2": "tests/owncopy_ac02_from_and_reply_to_passed_verbatim.rs",
+      "AC3": "tests/owncopy_ac03_pages_match_draft_text.rs",
+      "AC4": "tests/owncopy_ac04_error_pages_match_draft_no_env_var.rs",
+      "AC5": "tests/owncopy_ac05_no_claim_verify_tenant_in_visible_text.rs"
+    },
     "mcphost_event_trigger_self_test": {
       "_prd": "PRD-mcphost-event-trigger-self-test.md -- superseded by mcphost-ownership-copy at HEAD; real test_prefix is mcphost_event_trigger_self_test",
       "AC1": "tests/mcphost_event_trigger_self_test_ac01_self_sign_when_no_headers.rs",
@@ -79,7 +90,7 @@
       "AC12": "tests/rowpol_ac12_python_bridge_threads_end_user_through_table_query.rs"
     },
     "mcphost_chain_run_lineage": {
-      "_prd": "PRD-mcphost-chain-run-lineage.md -- superseded by mcphost-run-budget-governor at HEAD (this rebase); real test_prefix is mcphost_chain_run_lineage",
+      "_prd": "PRD-mcphost-chain-run-lineage.md (test_prefix: mcphost_chain_run_lineage) -- superseded by mcphost-tool-naming-convention-and-aliases at HEAD (this rebase); real test_prefix is mcphost_chain_run_lineage",
       "AC1": "tests/mcphost_chain_run_lineage_ac01_chain_declares_required_inputs.rs",
       "AC2": "tests/mcphost_chain_run_lineage_ac02_no_input_paths_keeps_plain_schema.rs",
       "AC3": "tests/mcphost_chain_run_lineage_ac03_compose_input_missing_before_step_one.rs",
@@ -188,7 +199,7 @@
       "AC12": "tests/drift_ac12_python_mcphost_drift_reviews_matches_tool.rs"
     },
     "trigidem": {
-      "_prd": "PRD-mcphost-trigger-set-idempotent.md -- superseded by mcphost-drift-review at HEAD; real test_prefix is trigidem",
+      "_prd": "PRD-mcphost-trigger-set-idempotent.md -- superseded by mcphost-event-trigger-self-test at HEAD (this rebase); real test_prefix is trigidem",
       "AC1": "tests/trigidem_ac01_webhook_set_twice_idempotent.rs",
       "AC2": "tests/trigidem_ac02_webhook_update_tool_keeps_id_and_url.rs",
       "AC3": "tests/trigidem_ac03_schedule_update_cron_changes_next_unix.rs",
@@ -207,16 +218,6 @@
       "AC6": "tests/dryrun_ac06_tools_list_mentions_dry_run.rs",
       "AC7": "tests/dryrun_ac07_quota_real_error_table_unchanged.rs"
     },
-    "trigidem": {
-      "_prd": "PRD-mcphost-trigger-set-idempotent.md -- superseded by mcphost-event-trigger-self-test at HEAD (this rebase); real test_prefix is trigidem",
-      "AC1": "tests/trigidem_ac01_webhook_set_twice_idempotent.rs",
-      "AC2": "tests/trigidem_ac02_webhook_update_tool_keeps_id_and_url.rs",
-      "AC3": "tests/trigidem_ac03_schedule_update_cron_changes_next_unix.rs",
-      "AC4": "tests/trigidem_ac04_kind_mismatch_refused.rs",
-      "AC5": "tests/trigidem_ac05_verbs_accept_name.rs",
-      "AC6": "tests/trigidem_ac06_migration_backfills_duplicate_names.rs",
-      "AC7": "tests/trigidem_ac07_webhook_inbox_quickstart_shows_name_idempotent.rs"
-    },
     "bridgedisc": {
       "_prd": "PRD-mcphost-sandbox-bridge-discoverability.md -- superseded by mcphost-tool-naming-convention-and-aliases at HEAD (this rebase); real test_prefix is bridgedisc",
       "AC1": "tests/bridgedisc_ac01_sandbox_api_source_of_truth.rs",
@@ -228,24 +229,8 @@
       "AC7": "tests/bridgedisc_ac07_sandbox_api_doc_check.rs",
       "AC8": "deferred -- operator-provisioned; AC8 is the Live/production-only requirement (a fresh tenant created by the synthorg explore persona on a real deploy, host.usage evidence pasted into the PRD's evidence block) and needs operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
     },
-    "mcphost_chain_run_lineage": {
-      "_prd": "PRD-mcphost-chain-run-lineage.md -- superseded by mcphost-result-handles at HEAD (this rebase); real test_prefix is mcphost_chain_run_lineage",
-      "AC1": "tests/mcphost_chain_run_lineage_ac01_chain_declares_required_inputs.rs",
-      "AC2": "tests/mcphost_chain_run_lineage_ac02_no_input_paths_keeps_plain_schema.rs",
-      "AC3": "tests/mcphost_chain_run_lineage_ac03_compose_input_missing_before_step_one.rs",
-      "AC4": "tests/mcphost_chain_run_lineage_ac04_child_run_rows_per_step.rs",
-      "AC5": "tests/mcphost_chain_run_lineage_ac05_runs_list_filters_children.rs",
-      "AC6": "tests/mcphost_chain_run_lineage_ac06_on_error_stop_partial_children.rs",
-      "AC7": "tests/mcphost_chain_run_lineage_ac07_children_inherit_end_user.rs",
-      "AC8": "tests/mcphost_chain_run_lineage_ac08_chain_meters_as_one_call.rs",
-      "AC9": "tests/mcphost_chain_run_lineage_ac09_lifecycle_delete_and_purge_cascade.rs",
-      "AC10": "tests/mcphost_chain_run_lineage_ac10_tool_test_reports_inputs_required.rs",
-      "AC11": "tests/mcphost_chain_run_lineage_ac11_failed_child_carries_step_no_and_parent_tool.rs",
-      "AC12": "tests/mcphost_chain_run_lineage_ac12_healthz_composition_counters.rs",
-      "AC13": "deferred -- operator-provisioned: AC13's Then is a truth-tier `synthorg consume --tier truth --endpoint https://mcphost.dev/mcp` run against prod after this PRD lands, scoring data-pipeline-builder-daily-pipeline-chain >= 0.75 (~$5 and ~40 min of billed frontier calls, driven from ~/repos/synthorg by the operator's nightly timer on host orch, needing the operator's ANTHROPIC_API_KEY / SYNTHORG_PROD_ENDPOINT / SYNTHORG_TRUTH_BRIEF that this sandbox does not hold, and gated on the separate PRD-synthorg-truth-tier-probe-as-tenant). Declared in PRD-mcphost-chain-run-lineage.md's frontmatter: 'deferred_acs: [13]' plus its mock_justifications entry for AC13. The live check that fails until the operator's run has happened: tests/mcphost_chain_run_lineage_ac13_daily_pipeline_persona_trailer.rs::persona_two_call_sequence_yields_three_done_children (MCPHOST_LIVE=1, MCPHOST_URL). Conjunct 4 (the >= 0.75 score) is narrowed, not deferred whole: synthorg's own scorer is `timeliness * accuracy * helpfulness` (`_classify_gold_agreement`) meaned over the recipe's scored sessions against RECIPE_SATISFACTION_TARGET = 0.75 (`_recipe_satisfaction`), `helpfulness` is one of three judge labels and `_accuracy_score` one of three values, so accuracy == 1.0 is strictly necessary for the bar (0.5 * 1.0 * 1.0 = 0.5 < 0.75) and accuracy == 1.0 takes the gold observation this branch supplies. That scorer is ported and asserted against the branch's real observation by the same trailer file's the_recipe_bar_is_unreachable_without_the_children_this_prd_inlines and the_ported_scorer_matches_synthorgs_own_arithmetic. The probe's runs-order half is landed cross-repo in /home/jsy/repos/synthorg (master, commit c07c297, committed not pushed: normalize_probed_runs + _emit_host_context_probe(runs_order=...), proven by tests/chainlineage_ac13_probe_runs_order_test.py). What stays operator-provisioned is only the two factors this branch does not own -- the nightly judge's own `helped` label and the persona's own wall clock -- from a paid run against a prod deployment. That file's always-on tests prove the branch's own mechanism and conjunct 4's product-side factor (schema-derived compose_input_missing refusal, the same-shape retry succeeding, host.runs.list(tool=...)'s most-recent row inlining exactly 3 done children) against a real server built from this branch -- the branch's mechanism, not AC13, and not counted as AC13's proof. tests/mcphost_chain_run_lineage_ac13_deferral_is_justified.rs locks this paper trail (frontmatter vs test-map vs intent-card). Requirements 1-9 (schema derivation, compose_input_missing, child run rows, read-back filters, accounting, lifecycle parity) are all proven standalone by AC1-AC12 above, per the PRD's own Technical Considerations note that the live AC is a soft coupling, not a build-order gate."
-    },
     "chainhost": {
-      "_prd": "PRD-mcphost-chain-host-steps.md -- superseded by mcphost-tool-naming-convention-and-aliases at HEAD; real test_prefix is chainhost",
+      "_prd": "PRD-mcphost-chain-host-steps.md (test_prefix: chainhost) -- superseded by mcphost-result-handles at HEAD; real test_prefix is chainhost",
       "AC1": "tests/chainhost_ac01_host_table_append_step.rs",
       "AC2": "tests/chainhost_ac02_step_tool_not_found.rs",
       "AC3": "tests/chainhost_ac03_step_tool_not_allowed.rs",
@@ -1037,43 +1022,19 @@
       "AC13": "tests/chart_ac13_llms_txt_section_under_50_lines.rs",
       "AC14": "tests/chart_ac14_ten_concurrent_calls_p95_under_250ms.rs"
     },
-    "chainhost": {
-      "_prd": "PRD-mcphost-chain-host-steps.md (test_prefix: chainhost) -- superseded by mcphost-result-handles at HEAD; real test_prefix is chainhost",
-      "AC1": "tests/chainhost_ac01_host_table_append_step.rs",
-      "AC2": "tests/chainhost_ac02_step_tool_not_found.rs",
-      "AC3": "tests/chainhost_ac03_step_tool_not_allowed.rs",
-      "AC4": "tests/chainhost_ac04_dry_run_report_resolved_host.rs",
-      "AC5": "tests/chainhost_ac05_quickstart_chain_example_resolves.rs",
-      "AC6": "tests/chainhost_ac06_usage_by_tool_step_tool.rs",
-      "AC7": "tests/chainhost_ac07_table_rows_max_at_step.rs",
-      "AC8": "deferred -- operator-provisioned: Live, a landed binary deployed on prod, tenant joe-test's webhook retargeted at a chain, and ~/.local/bin/fleet-post run from orch, with both JSON results pasted into the PRD's evidence block; needs a real deploy and operator authorization this coding sandbox does not have. See the coder dispatch's own deferred list."
-    },
-    "unkfield": {
-      "_prd": "PRD-mcphost-spec-unknown-field-rejection.md (test_prefix: unkfield) -- superseded by mcphost-chain-host-steps at HEAD; real test_prefix is unkfield",
-      "AC1": "tests/unkfield_ac01_write_table_rejected.rs",
-      "AC2": "tests/unkfield_ac02_misplaced_field_valid_for.rs",
-      "AC3": "tests/unkfield_ac03_near_miss_did_you_mean.rs",
-      "AC4": "tests/unkfield_ac04_trigger_set_unknown_argument.rs",
-      "AC5": "tests/unkfield_ac05_tools_list_additional_properties_false.rs",
-      "AC6": "tests/unkfield_ac06_doc_examples_never_rejected.rs",
-      "AC7": "tests/unkfield_ac07_spec_fields_doc_check_script.rs",
-      "AC8": "deferred -- operator-provisioned: Live, prod tenant joe-test; needs a real deploy this coding sandbox cannot drive. See the coder dispatch's own deferred list."
-    },
-    "mcphost_chain_run_lineage": {
-      "_prd": "PRD-mcphost-chain-run-lineage.md (test_prefix: mcphost_chain_run_lineage) -- superseded by mcphost-tool-naming-convention-and-aliases at HEAD (this rebase); real test_prefix is mcphost_chain_run_lineage",
-      "AC1": "tests/mcphost_chain_run_lineage_ac01_chain_declares_required_inputs.rs",
-      "AC2": "tests/mcphost_chain_run_lineage_ac02_no_input_paths_keeps_plain_schema.rs",
-      "AC3": "tests/mcphost_chain_run_lineage_ac03_compose_input_missing_before_step_one.rs",
-      "AC4": "tests/mcphost_chain_run_lineage_ac04_child_run_rows_per_step.rs",
-      "AC5": "tests/mcphost_chain_run_lineage_ac05_runs_list_filters_children.rs",
-      "AC6": "tests/mcphost_chain_run_lineage_ac06_on_error_stop_partial_children.rs",
-      "AC7": "tests/mcphost_chain_run_lineage_ac07_children_inherit_end_user.rs",
-      "AC8": "tests/mcphost_chain_run_lineage_ac08_chain_meters_as_one_call.rs",
-      "AC9": "tests/mcphost_chain_run_lineage_ac09_lifecycle_delete_and_purge_cascade.rs",
-      "AC10": "tests/mcphost_chain_run_lineage_ac10_tool_test_reports_inputs_required.rs",
-      "AC11": "tests/mcphost_chain_run_lineage_ac11_failed_child_carries_step_no_and_parent_tool.rs",
-      "AC12": "tests/mcphost_chain_run_lineage_ac12_healthz_composition_counters.rs",
-      "AC13": "deferred -- operator-provisioned: AC13's Then is a truth-tier `synthorg consume --tier truth --endpoint https://mcphost.dev/mcp` run against prod after this PRD lands, scoring data-pipeline-builder-daily-pipeline-chain >= 0.75 (~$5 and ~40 min of billed frontier calls, driven from ~/repos/synthorg by the operator's nightly timer on host orch, needing the operator's ANTHROPIC_API_KEY / SYNTHORG_PROD_ENDPOINT / SYNTHORG_TRUTH_BRIEF that this sandbox does not hold, and gated on the separate PRD-synthorg-truth-tier-probe-as-tenant). Declared in PRD-mcphost-chain-run-lineage.md's frontmatter: 'deferred_acs: [13]' plus its mock_justifications entry for AC13. The live check that fails until the operator's run has happened: tests/mcphost_chain_run_lineage_ac13_daily_pipeline_persona_trailer.rs::persona_two_call_sequence_yields_three_done_children (MCPHOST_LIVE=1, MCPHOST_URL). Conjunct 4 (the >= 0.75 score) is narrowed, not deferred whole: synthorg's own scorer is `timeliness * accuracy * helpfulness` (`_classify_gold_agreement`) meaned over the recipe's scored sessions against RECIPE_SATISFACTION_TARGET = 0.75 (`_recipe_satisfaction`), `helpfulness` is one of three judge labels and `_accuracy_score` one of three values, so accuracy == 1.0 is strictly necessary for the bar (0.5 * 1.0 * 1.0 = 0.5 < 0.75) and accuracy == 1.0 takes the gold observation this branch supplies. That scorer is ported and asserted against the branch's real observation by the same trailer file's the_recipe_bar_is_unreachable_without_the_children_this_prd_inlines and the_ported_scorer_matches_synthorgs_own_arithmetic. The probe's runs-order half is landed cross-repo in /home/jsy/repos/synthorg (master, commit c07c297, committed not pushed: normalize_probed_runs + _emit_host_context_probe(runs_order=...), proven by tests/chainlineage_ac13_probe_runs_order_test.py). What stays operator-provisioned is only the two factors this branch does not own -- the nightly judge's own `helped` label and the persona's own wall clock -- from a paid run against a prod deployment. That file's always-on tests prove the branch's own mechanism and conjunct 4's product-side factor (schema-derived compose_input_missing refusal, the same-shape retry succeeding, host.runs.list(tool=...)'s most-recent row inlining exactly 3 done children) against a real server built from this branch -- the branch's mechanism, not AC13, and not counted as AC13's proof. tests/mcphost_chain_run_lineage_ac13_deferral_is_justified.rs locks this paper trail (frontmatter vs test-map vs intent-card). Requirements 1-9 (schema derivation, compose_input_missing, child run rows, read-back filters, accounting, lifecycle parity) are all proven standalone by AC1-AC12 above, per the PRD's own Technical Considerations note that the live AC is a soft coupling, not a build-order gate."
+    "mcphost_event_trigger_self_test": {
+      "AC1": "tests/mcphost_event_trigger_self_test_ac01_self_sign_when_no_headers.rs",
+      "AC2": "tests/mcphost_event_trigger_self_test_ac02_present_header_stays_strict.rs",
+      "AC3": "tests/mcphost_event_trigger_self_test_ac03_signed_replay_hits_live_url.rs",
+      "AC4": "tests/mcphost_event_trigger_self_test_ac04_github_preset_expands_and_hides_secret.rs",
+      "AC5": "tests/mcphost_event_trigger_self_test_ac05_unknown_verify_preset_rejected.rs",
+      "AC6": "tests/mcphost_event_trigger_self_test_ac06_runs_list_include_result_inlines_single_part.rs",
+      "AC7": "tests/mcphost_event_trigger_self_test_ac07_runs_list_include_result_skips_multi_part.rs",
+      "AC8": "tests/mcphost_event_trigger_self_test_ac08_quickstart_and_llms_txt_name_triggers.rs",
+      "AC9": "tests/mcphost_event_trigger_self_test_ac09_string_body_signed_byte_for_byte.rs",
+      "AC10": "tests/mcphost_event_trigger_self_test_ac10_healthz_self_test_counters.rs",
+      "AC11": "deferred -- operator-provisioned: AC11's Then is a nightly `synthorg consume --tier truth` run on orch against prod after deploy (gated on both this PRD and PRD-synthorg-truth-tier-probe-as-tenant being deployed); this dispatch has no live operator access, no prod deploy rights and none of the credentials that run needs. Declared in PRD-mcphost-event-trigger-self-test.md's frontmatter (deferred_acs: [11] plus a mock_justifications entry) and locked by tests/mcphost_event_trigger_self_test_ac11_deferral_is_justified.rs. The only test that can ever claim AC11 is tests/mcphost_event_trigger_self_test_ac11_truth_tier_persona_reaches_event_run.rs::live_truth_tier_persona_run_meets_the_target (MCPHOST_LIVE=1), which fails until the operator's post-deploy nightly reports satisfaction >= 0.75 with <= 1 host.trigger.test call. That file's always-on tests replay the corpus task's persona path against a real in-process mcphost and run the live bar over the real pre-feature 2026-09-29T20:06:55Z nightly's own artifacts -- the branch's own half, not counted as AC11's proof.",
+      "_prd": "PRD-mcphost-event-trigger-self-test.md -- superseded by mcphost-activation-funnel at HEAD (this rebase); real test_prefix is mcphost_event_trigger_self_test"
     }
   }
 }

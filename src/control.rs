@@ -1558,6 +1558,16 @@ pub async fn tool_publish(
         )
         .await?;
 
+    // PRD-mcphost-activation-funnel requirement 2: every successful publish
+    // (fresh or a republish) proves the tenant has published at least
+    // once -- stamped only the first time (technical considerations: skip
+    // the write once the in-memory tenant row already shows it set).
+    if tenant.first_publish_unix.is_none()
+        && let Err(e) = state.db.touch_first_publish(tenant.id, now_unix()).await
+    {
+        tracing::warn!(error = %e, tenant = %tenant.namespace, "failed to bump first_publish_unix");
+    }
+
     // PRD-mcphost-lineage-blast-radius requirement 4 (AC1): register this
     // publish's lineage edges -- a `python`/`wasm` tool's source scan plus
     // declared `reads`, or (for `chain`) each step's own tool. Best-effort:
