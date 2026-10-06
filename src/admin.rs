@@ -1690,7 +1690,34 @@ fn funnel_by_source(rows: &[crate::db::FunnelRow]) -> Value {
             let count = bucket_rows.iter().filter(|r| getter(r).is_some()).count();
             stages.insert((*name).to_string(), json!(count));
         }
-        out.insert(class, json!({"signups": signups, "stages": stages}));
+        // PRD-mcphost-second-session-nudge requirement 5 (AC7): `nudged`
+        // is every row this source's tenants have a finished nudge-sweep
+        // outcome for (`nudged_unix` set, whatever the channel);
+        // `returned_after_nudge` narrows that to a `second_session_unix`
+        // strictly later than `nudged_unix` -- the sweep ran, then the
+        // tenant came back. `return_rate` is `0.0`, not `NaN`, when this
+        // source has never been nudged (AC7 only exercises the nonzero
+        // case, but a never-nudged source is the common one before the
+        // first sweep runs).
+        let nudged = bucket_rows.iter().filter(|r| r.nudged_unix.is_some()).count() as i64;
+        let returned_after_nudge = bucket_rows
+            .iter()
+            .filter(|r| match (r.nudged_unix, r.second_session_unix) {
+                (Some(n), Some(s)) => s > n,
+                _ => false,
+            })
+            .count() as i64;
+        let return_rate = if nudged > 0 { returned_after_nudge as f64 / nudged as f64 } else { 0.0 };
+        out.insert(
+            class,
+            json!({
+                "signups": signups,
+                "stages": stages,
+                "nudged": nudged,
+                "returned_after_nudge": returned_after_nudge,
+                "return_rate": return_rate,
+            }),
+        );
     }
     Value::Object(out)
 }
@@ -1778,6 +1805,19 @@ pub async fn funnel_7d_external(state: &AppState) -> Result<Value, AppError> {
         let count = external.iter().filter(|r| getter(r).is_some()).count();
         obj.insert((*name).to_string(), json!(count));
     }
+    // PRD-mcphost-second-session-nudge requirement 5: `return_rate` over
+    // the same external, trailing-7-day set -- same `nudged_unix`/
+    // `second_session_unix` comparison `funnel_by_source` uses.
+    let nudged = external.iter().filter(|r| r.nudged_unix.is_some()).count() as i64;
+    let returned_after_nudge = external
+        .iter()
+        .filter(|r| match (r.nudged_unix, r.second_session_unix) {
+            (Some(n), Some(s)) => s > n,
+            _ => false,
+        })
+        .count() as i64;
+    let return_rate = if nudged > 0 { returned_after_nudge as f64 / nudged as f64 } else { 0.0 };
+    obj.insert("return_rate".to_string(), json!(return_rate));
     Ok(Value::Object(obj))
 }
 
