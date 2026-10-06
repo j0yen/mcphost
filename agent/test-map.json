@@ -2,7 +2,7 @@
   "schema": "autobuilder.test_map.v1",
   "note": "This project's real AC tests are prefixed per PRD (tests/<test_prefix>_ac<NN>_*.rs), NOT the tests/acceptance_<id>.rs the scaffold template generates. scripts/run-metrics.sh carries a project-local fallback (see its 'PROJECT_AC_FILES' section) so the harness's ac_passing_count/ac_total_count scalars count these real files instead of reporting 0.",
   "ac_test_map_contract": "ac_test_map is the AC-to-test mapping for the PRD CURRENTLY BUILDING AT HEAD -- not a repo-lifetime constant. scripts/intent-card-refresh.sh (build skill) is its only consumer: it fills agent/intent-card.json's acceptance_criteria[].test from this flat dict by bare AC number. Every PRD in this repo numbers its own ACs from 1, so a map left frozen at an earlier PRD silently re-binds the new PRD's ACs to the older PRD's tests -- the card then claims proof from files that prove something else. That defect was flagged by reviewer-agent and 'fixed in place' at least three times (see agent/intent-card.json ambiguities_resolved: 2026-09-12 'intent-card-ac-test-field-stale-pointers', and 2026-09-17 'ac-test-field-pointers-semantically-wrong') without ever touching this file, which is why it kept recurring. A rust-extend dispatch that adds tests/<prefix>_ac*.rs files MUST update ac_test_map to its own PRD's ACs before the pre-gate intent-card refresh runs, and archive its predecessor under ac_test_map_by_prefix below so nothing is lost.",
-  "ac_test_map_prd": "PRD-mcphost-docs-one-url-flow.md (test_prefix: docurl)",
+  "ac_test_map_prd": "PRD-mcphost-funnel-truth.md (test_prefix: ftruth)",
   "routes": [
     {
       "glob": "src/**",
@@ -28,16 +28,25 @@
     }
   ],
   "ac_test_map": {
-    "AC1": "tests/docurl_ac01_quickstart_connect_first_call_save_url.rs",
-    "AC2": "tests/docurl_ac02_skill_one_url_no_ritual.rs",
-    "AC3": "tests/docurl_ac03_index_connect_no_bearer_placeholder.rs",
-    "AC4": "tests/docurl_ac04_quickstart_description_no_signup_first.rs",
-    "AC5": "tests/docurl_ac05_quickstart_doc_truth.rs",
-    "AC6": "tests/docurl_ac06_starter_set_covers_pre_bind_tools.rs",
-    "AC7": "tests/docurl_ac07_u_new_and_help_name_onboarding_url.rs",
-    "AC8": "deferred -- operator-provisioned: AC8's Then is the www truth probe recording the new llms.txt hash on prod after deploy and a stranger's implicit signup appearing within the week on /healthz (signups_by_source.external.implicit). This dispatch has no prod deploy rights or live operator access; the probe mechanism itself is PRD-mcphost-deploy-www-truth-probe's own, already proven there."
+    "AC1": "tests/ftruth_ac01_never_unknown_at_insert.rs",
+    "AC2": "tests/ftruth_ac02_fleet_ip_vs_human.rs",
+    "AC3": "tests/ftruth_ac03_probe_header_requires_fleet_ip.rs",
+    "AC4": "tests/ftruth_ac04_digest_and_funnel_report_human_headline.rs",
+    "AC5": "tests/ftruth_ac05_backfill_origin_idempotent.rs",
+    "AC6": "deferred -- operator-provisioned: AC6's Then is a live, post-promotion observation (the deploy tool's own smoke signup against a real server running this PRD, and the next release's tenant row on mcphost-1 reading origin = 'probe'). This dispatch has no prod deploy rights, no access to the sibling mcphost-deploy repo the header change ships in, and no live release to observe; AC2/AC3 already prove the header+fleet-IP classification rule itself end-to-end against an in-process server."
   },
   "ac_test_map_by_prefix": {
+    "docurl": {
+      "_prd": "PRD-mcphost-docs-one-url-flow.md (test_prefix: docurl) -- superseded by mcphost-funnel-truth at HEAD (this rebase); real test_prefix is docurl",
+      "AC1": "tests/docurl_ac01_quickstart_connect_first_call_save_url.rs",
+      "AC2": "tests/docurl_ac02_skill_one_url_no_ritual.rs",
+      "AC3": "tests/docurl_ac03_index_connect_no_bearer_placeholder.rs",
+      "AC4": "tests/docurl_ac04_quickstart_description_no_signup_first.rs",
+      "AC5": "tests/docurl_ac05_quickstart_doc_truth.rs",
+      "AC6": "tests/docurl_ac06_starter_set_covers_pre_bind_tools.rs",
+      "AC7": "tests/docurl_ac07_u_new_and_help_name_onboarding_url.rs",
+      "AC8": "deferred -- operator-provisioned: AC8's Then is the www truth probe recording the new llms.txt hash on prod after deploy and a stranger's implicit signup appearing within the week on /healthz (signups_by_source.external.implicit). This dispatch has no prod deploy rights or live operator access; the probe mechanism itself is PRD-mcphost-deploy-www-truth-probe's own, already proven there."
+    },
     "nudge": {
       "_prd": "PRD-mcphost-second-session-nudge.md (test_prefix: nudge) -- superseded by mcphost-docs-one-url-flow at HEAD (this rebase); real test_prefix is nudge",
       "AC1": "tests/nudge_ac01_claimed_tenant_gets_one_return_email.rs",

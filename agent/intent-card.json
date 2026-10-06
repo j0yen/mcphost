@@ -1,84 +1,73 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-upgrade-moment.md",
-  "intent_slug": "mcphost-upgrade-moment",
-  "root_motivation": "A tenant that hits a free-plan limit is told only the number it exceeded: budget_exceeded/quota_exceeded refusals say \"500 exceeds plan's 500\" and stop (src/errors.rs:690, src/budget.rs:237) -- no checkout_url/upgrade field exists anywhere (git grep checkout_url empty). An agent reading that has no tool name, no plan, no reset time, so it either retries until midnight or tells its human \"it failed\". When a payment does happen, the webhook never stamps paid_unix live (only a one-time migration backfill from plan_since exists), so the funnel's paid stage stays invisible and unattributed to which refusal earned it; the market test's one assumed leaf (a refusal with a next step converts at all) is unmeasurable. Fix: every plan/budget refusal carries next:{tool,plan,why,resets_at}; checkout(source) tags the Stripe session; the webhook stamps paid_unix/paid_test_unix by mode; billing.status returns a receipt; admin.funnel/admin.upgrades report by trigger.",
-  "user_persona": "Four (PRD user stories): the agent whose 501st call returns next.tool=billing.checkout/why/resets_at, calls checkout(source) and hands the URL to its human with instructions; the human who pays and sees billing.status's receipt (plan, amount, paid_at, invoice_ref); Operator Joe, whose admin.funnel shows paid 3 and upgrades_by_trigger by limit; the self-hosting agent on a billing-off host, whose refusal says next.tool is null, so it waits instead of looping.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-funnel-truth.md",
+  "intent_slug": "mcphost-funnel-truth",
+  "root_motivation": "Prod cannot say how many of its 4,771 tenants are people: every signup, funnel event, and claim-email row has no origin label, so three deploy-probe signups counted as real signups (coinciding to the minute with 0.93.0/0.94.0/0.95.0 releases), claim_email_events holds 0 rows, and oauth_funnel_events has no origin column at all. The fleet-IP signup-limit exemption proved fleet traffic was already known at the code level, just never written as data. Fix: a funnel_origin column (human|fleet|probe) written at insert time from the X-Mcphost-Origin header (only honoured from a fleet IP) and the existing fleet IP list, surfaced as a human-only headline plus a fleet/probe breakdown on admin.funnel and /healthz's funnel_7d, with a P1 backfill command for existing rows.",
+  "user_persona": "Operator Joe, whose 10-07 digest reads \"humans: signups 0 ... (fleet 41, probe 3)\" instead of one conflated number; the deploy tool, whose smoke signup sends X-Mcphost-Origin: probe and is excluded from the human headline; a wm-build live verifier signing up from orch's IP, counted as fleet without sending any header.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 7
+    "target": 5
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a free tenant at 500 calls today, When it makes one more call, Then the refusal's error_data_json.next is { tool: \"billing.checkout\", plan: \"pro\", why: \"calls_per_day 500/500\", resets_at: <next window> }.",
-      "test": "tests/upgrade_ac01_calls_per_day_next_checkout.rs -- seeds 500 ok calls via Db::record_call, asserts the 501st call's quota_exceeded error carries the exact next block against a server configured with a test-mode Stripe key."
+      "description": "Given the migration applied, When a tenant, funnel event, or claim-email row is inserted by any handler, Then it carries origin (funnel_origin) in {human, fleet, probe} and never unknown.",
+      "test": "tests/ftruth_ac01_never_unknown_at_insert.rs -- checks the migration's schema shape (NOT NULL DEFAULT 'unknown' on all three tables) and that control::signup, a real GET /oauth/authorize hit, and a failed claim-email send (full wiremock-500 flow) each leave their own row at one of the three real values, never at the migration-time default."
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given billing mode off, When any plan refusal occurs, Then next.tool is null, why and resets_at are present, and the text says billing is not enabled on this host.",
-      "test": "tests/upgrade_ac02_billing_off_refusal_text.rs -- same 500-calls seed against TestServer::start()'s default (no Stripe key); asserts next.tool is null and the refusal message contains the billing-off sentence."
+      "description": "Given a signup from an IP in the fleet list with no header, When the tenant is created, Then origin = 'fleet'; and from an IP outside the list, origin = 'human'.",
+      "test": "tests/ftruth_ac02_fleet_ip_vs_human.rs -- two control::signup calls against a server configured with one fleet IP, one from that IP (no header) asserted fleet, one from an unrelated IP asserted human."
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given billing.checkout(plan: \"pro\", source: \"calls_per_day\"), When the Stripe session is created (test mode), Then its metadata carries source = calls_per_day and the response echoes source; an unknown source is rejected with a validation error.",
-      "test": "tests/upgrade_ac03_checkout_source_metadata.rs -- three cases against a FakeBillingClient: known source echoed and on metadata, default \"manual\" with no source arg, and an unknown source rejected as invalid_params with zero Stripe calls."
+      "description": "Given a signup with X-Mcphost-Origin: probe from a fleet IP, When created, Then origin = 'probe'; the same header from a non-fleet IP yields origin = 'human'.",
+      "test": "tests/ftruth_ac03_probe_header_requires_fleet_ip.rs -- the probe header from the configured fleet IP asserted probe; the identical header from an IP outside the list asserted human (a stranger cannot hide as a probe)."
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given a live-mode checkout.session.completed webhook for a tenant with paid_unix null, When it is processed, Then paid_unix is set, billing_events.source equals the session metadata, and a second identical webhook changes nothing; given test mode, Then paid_test_unix is set and paid_unix stays null.",
-      "test": "tests/upgrade_ac04_webhook_stamps_paid_unix.rs -- one server with a live key (livemode: true agrees with it) proves paid_unix stamps once and a duplicate event_id adds no row; a second server with a test key (livemode: false) proves paid_test_unix stamps and paid_unix stays null."
+      "description": "Given rows of all three origins on one day, When the digest and host_progress (admin.funnel / /healthz's funnel_7d, the digest's own data source) run, Then the headline counts only human rows and the per-origin breakdown lists fleet and probe separately, with existing fields unchanged.",
+      "test": "tests/ftruth_ac04_digest_and_funnel_report_human_headline.rs -- seeds one tenant of each origin, asserts admin.funnel's pre-existing signups field is unchanged (counts 3) alongside the new signups_human (1) and by_origin (human/fleet/probe each 1), and the same shape on /healthz's funnel_7d."
     },
     {
       "id": "AC5",
-      "level": "MUST",
-      "description": "Given a tenant with one completed checkout, When billing.status is called, Then receipt carries plan, amount_cents, currency, paid_at, invoice_ref and mode; given none, Then receipt is absent.",
-      "test": "tests/upgrade_ac05_billing_status_receipt.rs -- asserts receipt is absent before any webhook, then present with all six fields (invoice_ref = the tenant's own billing_ref) after one checkout.session.completed webhook."
+      "level": "SHOULD",
+      "description": "Given existing unlabeled rows, When mcphost admin backfill-origin runs twice, Then the second run changes zero rows and the printed counts match select origin, count(*).",
+      "test": "tests/ftruth_ac05_backfill_origin_idempotent.rs -- seeds a pre-PRD fleet tenant and an unclassified tenant plus a claim-email failure row, runs the real mcphost admin backfill-origin subprocess twice, and asserts the first run's counts, the second run's zero-change counts, and that the printed per-table breakdown matches a direct SELECT funnel_origin, COUNT(*) GROUP BY funnel_origin."
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given three paid tenants with sources calls_per_day, calls_per_day, tools_max, When admin.funnel runs, Then paid 3 and upgrades_by_trigger { calls_per_day: 2, tools_max: 1 }.",
-      "test": "tests/upgrade_ac06_admin_funnel_upgrades_by_trigger.rs -- three tenants paid via live-mode webhooks with distinct sources; asserts the pre-existing \"paid\" funnel stage counts 3 and the new upgrades_by_trigger field matches exactly."
-    },
-    {
-      "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given two checkouts started yesterday of which one completed, When admin.upgrades --since 7d runs, Then both are listed with source, state and time to completion.",
-      "test": "tests/upgrade_ac07_admin_upgrades_listing.rs -- two tenants each start a checkout (self-ledgered checkout.started rows); one is completed via webhook correlated by session_id, the other stays pending; admin.upgrades {days:7} lists both with source/state/time_to_completion_s."
-    },
-    {
-      "id": "AC8",
-      "level": "MUST",
-      "description": "Given prod after promotion, When the fleet's weekly live checkout runs (or the first real upgrade happens), Then the billing_events row carries source, billing.status returns the receipt, and admin.funnel prints upgrades_by_trigger (Live; evidence: the prod billing_events row with source and the funnel line in the morning digest).",
-      "test": "deferred -- operator-provisioned: AC8's Then is a live, post-promotion observation of the fleet's own weekly checkout or the first real tenant upgrade against prod, plus the morning digest actually printing the upgrades_by_trigger line. This dispatch has no prod deploy rights and no live traffic to observe; the coder's own dispatch instructions list only AC1-7 as non-deferred. AC3/AC4/AC5/AC6 together prove source tagging, webhook stamping, the receipt, and the funnel breakdown end-to-end against a real in-process server with a FakeBillingClient -- AC8 only adds the live, post-promotion observation on top of that."
+      "description": "Given the deploy tool's smoke signup, When a release runs against a server with this PRD, Then the created tenant is origin = 'probe' (Live; evidence: the next release's tenant row on mcphost-1).",
+      "test": "deferred -- operator-provisioned: AC6's Then is a live, post-promotion observation of the deploy tool's own smoke signup against a real server running this PRD, read back from the next release's tenant row on mcphost-1. This dispatch has no prod deploy rights, no access to the sibling mcphost-deploy repo the one-line header change ships in (a separate repo, out of this worktree's scope per the dispatch instructions), and no live release to observe. AC2/AC3 already prove the header+fleet-IP classification rule itself end-to-end against an in-process server with the exact header/IP combination the real deploy tool would send."
     }
   ],
   "scope": [
-    "migrations/0073_upgrade_moment.sql: tenants.paid_test_unix, billing_events.source, billing_events.session_id -- three additive nullable columns (one more than the PRD's migration section names; session_id is needed to correlate AC7's checkout.started/checkout.session.completed pair and has no other home -- see ambiguities_resolved).",
-    "src/billing.rs: next_upgrade (the shared {tool,plan,why,resets_at} builder reading the plan catalog + billing mode), quota_exceeded/quota_exceeded_for (now take the catalog so tools_max/secrets_max/calls_per_day all carry next; quota_exceeded_for exists because src/tables.rs's three quota sites run inside a spawn_blocking closure that can't borrow AppState), KNOWN_CHECKOUT_SOURCES + checkout(source) validation/metadata/echo, CHECKOUT_SESSION_TTL_SECS, one self-ledgered checkout.started billing_events row per real session creation (never on a P1 AC13 cache-hit reuse), apply_checkout_completed stamping paid_unix/paid_test_unix by mode and carrying metadata.source + the session id onto the ledger row, status() gaining receipt.",
-    "src/budget.rs: resolve_and_validate takes &AppState so budget_ceiling_exceeded also carries next; BudgetTracker gains a plan field so budget_exceeded's exceeded_detail does too (both P0 requirement 1, no AC of their own -- see the separate non-AC commit).",
-    "src/control.rs/src/handler.rs: the three plan-limit quota_exceeded call sites pass state; billing.checkout's schema gains source; admin.upgrades registered + dispatched.",
-    "src/tables.rs: table_tables_max/table_rows_max/table_bytes_max's own quota_exceeded calls switch to quota_exceeded_for with a cloned catalog (incidental consequence of the quota_exceeded signature change, not a requested feature -- they get next too, harmlessly).",
-    "src/db.rs: Tenant/TENANT_COLUMNS/tenant_from_row grow paid_test_unix; stamp_paid_unix/stamp_paid_test_unix (COALESCE, first-time-only); BillingEventInsert/BillingEventRow/insert_billing_event/list_billing_events grow source/session_id; ReceiptRow/latest_completed_checkout for AC5; CheckoutAttemptRow/list_checkout_attempts for AC7; FunnelRow grows paid_source (a correlated subquery over the tenant's own latest live-mode checkout.session.completed row) for AC6.",
-    "src/admin.rs: funnel() adds upgrades_by_trigger (grouped over the same window/filters stages already uses); new upgrades(state, args) for AC7.",
-    "contracts/host-tools.v1.json regenerated (billing.checkout's new source schema field); docs/tools.md/docs/plans.md/www/plans.html checked but unaffected (name/description-only tables).",
-    "tests/upgrade_ac0[1-7]_*.rs (new, one per non-deferred AC) plus two pre-existing tests (billing_ac02/billing_ac03) updated for next's new object shape; tests/suite_core_0[7-8].rs regenerated by scripts/gen-test-suites.sh.",
-    "agent/test-map.json: ac_test_map repointed at this PRD's ACs; the prior PRD's (mcphost-activation-funnel) map archived under ac_test_map_by_prefix.funnel.",
-    "Cargo.toml/Cargo.lock: minor version bump (0.90.0 -> 0.91.0)."
+    "migrations/0078_funnel_origin.sql: funnel_origin TEXT NOT NULL DEFAULT 'unknown' on tenants, oauth_funnel_events, claim_email_events -- a NEW column, deliberately not reusing the pre-existing tenants.origin/source_class (synthetic/external/loopback-fleet-external, migration 0010/0012), which answers a different question (see migration's own doc comment, same precedent as migration 0032's signup_source picking its own name over origin).",
+    "src/state.rs: classify_funnel_origin(source_ip, probe_header, fleet_ips) -> human|fleet|probe (reuses the existing FleetIps/fleet_ips_from_env this crate already had for the signup rate-limit exemption, per the PRD's own 'fleet list = the existing signup-exemption IPs'); parse_release_timestamps/release_timestamps_from_env (MCPHOST_DEPLOY_RELEASE_TIMESTAMPS) and FUNNEL_ORIGIN_PROBE_WINDOW_SECS for the P1 backfill's probe-matching rule.",
+    "src/control.rs: SignupAttribution gains origin_header; signup() classifies funnel_origin and threads it into tenant creation.",
+    "src/handler.rs: origin_header() HTTP-layer extractor (X-Mcphost-Origin); both SignupAttribution construction sites (explicit signup, implicit bare-/mcp signup) wired; the invite-redemption implicit-signup path (claim_on_first_call) classifies and threads funnel_origin too, since it is also a tenant-creating handler.",
+    "src/invites.rs / src/db.rs: claim_on_first_call/Db::claim_invite take funnel_origin; Db::create_tenant_attributed_with_source gains a funnel_origin parameter (create_tenant_attributed/create_tenant's own signatures stay unchanged for their many existing test callers, passing the literal 'unknown' default through); Db::record_oauth_funnel_event takes funnel_origin; Db::record_claim_email_failure inherits its owning tenant's own funnel_origin via a subselect at insert time; Db::funnel_origin_counts and Db::backfill_funnel_origin for the P1 backfill.",
+    "src/authz.rs: the three oauth-funnel-event call sites (GET/POST /oauth/authorize, the consent redirect) classify funnel_origin from the request's own source IP (no probe header concept there -- that marker is signup-specific); POST /oauth/token's shared success path has no caller IP available without widening every grant-type handler for a count no AC reads, so it defaults to 'human' (documented simplification, never 'unknown').",
+    "src/db.rs: FunnelRow/funnel_rows carry each tenant's own funnel_origin.",
+    "src/admin.rs: funnel_breakdown_by (shared by by_source and the new by_origin); admin::funnel gains signups_human + by_origin; admin::funnel_7d_external (the digest's own /healthz funnel_7d data source) gains the same two fields over the full row set, every pre-existing field's own definition untouched.",
+    "src/main.rs: new `mcphost admin backfill-origin` CLI subcommand (Command::Admin/AdminCommand::BackfillOrigin), distinct from the MCP-tool admin.* surface.",
+    "tests/ftruth_ac0[1-5]_*.rs (new, one per non-deferred AC); tests/common/mod.rs's post_with_extra/call_with_extra_header widened from one optional header to a slice (tools_call_with_headers added) for AC3's two-header case; tests/sessbind_ac06_* updated for SignupAttribution's new field; tests/suite_core_0[7-8].rs regenerated by scripts/gen-test-suites.sh.",
+    "agent/test-map.json: ac_test_map repointed at this PRD's ACs; the prior PRD's (mcphost-docs-one-url-flow) map archived under ac_test_map_by_prefix.docurl."
   ],
   "non_goals": [
-    "New plans, prices, or metering changes -- plans stay as in src/plans.rs (PRD's own Non-goals).",
-    "Dunning, failed-payment recovery, cancellation flows (PRD's own Non-goals).",
-    "Emailing the human about the refusal -- the agent carries the next step (PRD's own Non-goals).",
-    "MCPHOST_UPGRADE_NEXT=off (P2 requirement 7) -- not in this dispatch's assigned AC list; no AC exercises it.",
-    "AC8 (the live post-promotion billing_events/receipt/digest observation) -- operator-provisioned, deferred; needs a real prod promotion and a real checkout, neither of which this coder dispatch can produce."
+    "Bot or abuse detection beyond the fleet list and the probe header (PRD's own Non-goals).",
+    "Changing rate limits or the exemption list format (PRD's own Non-goals).",
+    "New funnel stages beyond activation-funnel's own (PRD's own Non-goals).",
+    "A funnel table-chart in host_table_charts (P2 requirement, optional, not in this dispatch's assigned AC list; no AC exercises it).",
+    "The deploy tool's own one-line header change (mcphost-deploy, a separate repo/PRD-sibling-PR, out of this worktree's scope).",
+    "AC6 (the live post-promotion deploy-probe observation) -- operator-provisioned, deferred; needs a real prod release and the sibling mcphost-deploy repo change, neither of which this coder dispatch can produce."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -87,58 +76,53 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "next_off_mode_lives_in_the_message_not_a_new_next_field": "AC1's next is exactly {tool,plan,why,resets_at} (no fifth key); AC2 says 'the text says billing is not enabled on this host' without naming a next subfield for it, so that sentence was read as the refusal's own outer message (already operator-authored prose per every other Structured error in this crate), not a new key inside next -- next itself stays the same 4-key shape in both modes, only tool flips to null.",
-      "invoice_ref_reuses_tenant_billing_ref_not_a_new_column": "requirement 4 names invoice_ref alongside plan/amount_cents/currency/paid_at/mode on the receipt, but the PRD's own migration section lists only billing_events.source and tenants.paid_test_unix as new columns. tenant.billing_ref (the Stripe customer/subscription id, already loaded on every billing.status call) is exactly 'a reference a human could match against their Stripe receipt' and needs no schema change, so the receipt's invoice_ref is that field, not a new billing_events column.",
-      "session_id_added_beyond_the_named_migration_for_ac7s_correlation": "AC7 (admin.upgrades) needs to pair a 'checkout started' moment with its eventual completion/expiry, but the PRD names no persisted checkout-attempts table and no session-id column. billing_events already gets a schema touch for source (named); adding session_id to the SAME migration (rather than a second one) is the minimal extension that lets a self-ledgered checkout.started row (written by billing::checkout at session-creation time, never on a P1 AC13 cache-hit reuse) correlate with the webhook's own checkout.session.completed row by Stripe's own session id -- no new table.",
-      "checkout_source_allowlist_is_every_limit_name_and_dimension_plus_manual": "requirement 2 says source is validated against 'the refusal codes plus manual' -- read as the limit_name/dimension identifiers next_upgrade's five sites each put in their own why (calls_per_day/tools_max/secrets_max from the three plan-limit sites, max_child_calls/max_est_tokens/max_tool_latency_ms/max_wall_ms from budget_ceiling_exceeded's field keys, child_calls/est_tokens/tool_latency_ms/wall_ms from budget_exceeded's dimensions), not the AppError `code` field (which is just 'quota_exceeded' for all three plan-limit sites and so can't disambiguate which limit).",
-      "admin_funnel_paid_3_is_the_pre_existing_stage_not_a_new_top_level_scalar": "AC6 says 'paid 3 and upgrades_by_trigger {...}'; activation-funnel's own FUNNEL_STAGES already includes a 'paid' stage (count from paid_unix) in admin.funnel's stages array, so once this PRD's webhook actually stamps paid_unix that stage already reads 3 with zero new code -- only upgrades_by_trigger (grouped by billing_events.source) is new.",
-      "budget_ceiling_exceeded_and_budget_exceeded_get_next_but_no_dedicated_ac": "requirement 1 (P0) names all five refusal sites (the three plan-limit ones plus budget_ceiling_exceeded and budget_exceeded) as carrying next, but only AC1/AC2 are testable against a concrete scenario (both calls_per_day-shaped); the other two are built (resolve_and_validate takes &AppState, BudgetTracker gains a plan field) in their own non-AC commit per the dispatch's own 'one commit per requirement with no AC of its own' rule, proven by the pre-existing budget_ac* suite staying green rather than a new upgrade_ac* file."
+      "funnel_origin_is_a_new_column_not_a_repurposed_origin": "The PRD's own requirement 1 says 'migration adds origin ... to tenants, oauth_funnel_events, activation_funnel, claim_email_events' -- but tenants.origin already exists (migration 0012, synthetic/external) with dozens of existing callers/queries. Reusing that name for this PRD's human/fleet/probe verdict would silently corrupt every existing origin-keyed read. Resolved the same way migration 0032's signup_source resolved an identical naming collision with origin/origin_detail: a new column, funnel_origin, not a rename or reuse.",
+      "activation_funnel_has_no_table_of_its_own": "The PRD's migration bullet names 'activation_funnel' as a fourth table alongside tenants/oauth_funnel_events/claim_email_events, but migration 0072 (PRD-mcphost-activation-funnel) added the activation stamps as COLUMNS on tenants, not a separate table -- there is no activation_funnel table to migrate. AC1's 'tenant ... row' already covers this; no fourth migration target exists.",
+      "oauth_funnel_events_has_no_tenant_link_so_no_backfill_signal": "requirement 3's oauth_funnel_events table (migration 0053) deliberately carries no tenant_id (host-wide scalars, not split by tenant) and no source IP. The P1 backfill (AC5) therefore has no signal to reclassify an existing oauth_funnel_events row against and leaves the table read-only in Db::backfill_funnel_origin -- only its own insert-time classification (AC1, done going forward) applies.",
+      "post_oauth_token_defaults_human_not_a_live_ip_classification": "The shared POST /oauth/token success path (authorization_code and refresh_token grants, plus the JWT-bearer grant in assertion.rs) has never taken a ConnectInfo/HeaderMap extractor; widening every grant-type handler to thread an IP through for a funnel_origin no admin.funnel/healthz AC actually reads was judged disproportionate. It defaults to the literal string 'human' (never 'unknown', satisfying AC1) -- documented in record_oauth_funnel_event's own call site as a conservative simplification, not a live classification.",
+      "host_progress_in_ac4_reads_as_admin_funnel_slash_healthz_funnel_7d_not_admin_tenants": "AC4 names 'the digest and host_progress' as the two surfaces to update; no literal host_progress symbol exists anywhere in this crate. admin.tenants (a per-tenant listing that could also plausibly be called 'progress') is gated by PRD-mcphost-admin-schema-contract's own schema_version/additionalProperties:false contract and a pinned exact-field-list test (mcphost_admin_schema_contract_ac01) belonging to a different, already-landed PRD -- adding a field there would require bumping that PRD's own schema version and rewriting its locked test, well outside this dispatch's assigned AC list. Read 'host_progress' as 'this host's own progress/funnel query layer' (the Engineering target's own phrasing, 'host_progress / digest query layer', as one thing, not two) -- i.e. admin::funnel (the operator-facing, per-tenant-aggregated report) and admin::funnel_7d_external (the literal /healthz funnel_7d field the digest tool reads)."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does a refusal with a next step matter if there is no paying traffic yet?",
-      "a": "This is the funnel's last stage being wired before the first wave (PRD grounding: 'not failure'); PRD-grand-loop-billing's own goal 4 (next: billing.checkout on quota refusals) was drafted but never built, so the very first real conversion would already be invisible without this PRD."
+      "q": "Why does an origin label matter if the fleet traffic was already excluded from the real/synthetic split?",
+      "a": "It wasn't reliably excluded: the grounding shows three deploy-probe signups in the last 24h counted toward the raw daily total, and the fleet-IP bypass path (loop/mcphost-fleet-signup-limit) skips signup_events entirely for true fleet IPs, so the only durable signal of 'who signed up' was never written as data for either case."
     },
     {
       "why": 2,
-      "q": "Why is a refusal with no next step a problem for an agent specifically, not just a human?",
-      "a": "An agent has no UI to discover billing.checkout exists -- it only ever sees the tool list it was given and the error payload in front of it; without next.tool in that payload it has no path from 'quota_exceeded' to 'call billing.checkout', so it retries the same call until the day rolls over or reports failure upward."
+      "q": "Why can't the digest just reuse tenants.source_class (already loopback/fleet/external)?",
+      "a": "source_class answers 'is this safe to treat as a real customer,' computed from loopback/known-display-name/synthorg-client-name/fleet-IP together -- it has no way to distinguish a deploy-probe signup (fleet IP + a deliberate marker) from an ordinary fleet-IP signup with no marker, which is exactly the AC3 distinction the digest needs (probe excluded from BOTH the human headline and silently folded into 'fleet' counts, vs. reported on its own line)."
     },
     {
       "why": 3,
-      "q": "Why does paid_unix staying null matter if plan already flips to pro on checkout?",
-      "a": "plan flipping is enough to unlock the tenant, but PRD-mcphost-activation-funnel's own FUNNEL_STAGES array already has a 'paid' stage reading paid_unix -- with nothing stamping it live (only a one-time migration backfill from plan_since), every NEW paid tenant after that migration ran is invisible to admin.funnel/healthz, breaking the exact stage the market test was built to watch."
+      "q": "Why does oauth_funnel_events/claim_email_events need their own origin instead of joining to the signup-time value?",
+      "a": "claim_email_events already has a tenant_id to join through (and does, via a subselect at insert time); oauth_funnel_events deliberately has no tenant_id (requirement 3's own 'host-wide scalars' design) and no IP of its own at most call sites, so a live classification at write time was the only option for requirement 1's 'any handler' guarantee."
     },
     {
       "why": 4,
-      "q": "Why can't the funnel say which refusal earned a conversion today?",
-      "a": "billing_events (migration 0006) carries event_type/plan/amount/mode but no source -- the webhook has always applied a checkout.session.completed event without ever reading back which limit the tenant's own checkout() call was started in response to, because checkout() itself never recorded or forwarded that context to Stripe or the ledger."
+      "q": "Why wasn't the fleet IP list enough on its own, without a header too?",
+      "a": "The fleet IP list already drives the rate-limit exemption and the loopback/fleet/external split, but it cannot distinguish a deploy release's own smoke signup from the ordinary synthetic-fleet traffic from the same box (orch/hub) -- the digest's whole point (AC6's user story) is reporting the deploy probe on its own line, which needs the tool to say so explicitly."
     },
     {
       "why": 5,
-      "q": "Why wasn't this wired when the billing rails themselves (grand-loop-billing) shipped?",
-      "a": "grand-loop-billing's own scope was proving a real $19 payment end-to-end (checkout session, webhook, ledger) -- it explicitly deferred the 'next step' UX and per-refusal attribution as goal 4, and nothing since has revisited the refusal/attribution half until Joe's market test needed to measure conversion by trigger."
+      "q": "Why wasn't this wired when the fleet-IP exemption itself shipped (loop/mcphost-fleet-signup-limit, 09-27)?",
+      "a": "That PRD's own scope was keeping the rate limiter from throttling the fleet's hundreds-per-hour signups -- a guard, not a reporting feature; the grounding's own why-chain (requirement 3) names this directly: 'the fleet exemption was built as a guard, not as data.'"
     }
   ],
-  "created_at": "2026-10-06T00:00:00Z",
+  "created_at": "2026-10-06T15:43:25Z",
   "ambiguities_resolved": [
     {
-      "question": "When billing is off, does next keep a plan field (the catalog still has a next plan up), or does it drop to just {tool: null, why, resets_at}?",
-      "resolution": "Kept: requirement 1 defines plan as a general rule (next plan up per plans.rs) and only calls out tool/the message text as the billing-off override, so plan stays populated even when tool is null -- an operator reading the refusal still learns what plan would unlock the limit, even on a host with no Stripe key."
+      "question": "Does funnel_origin reuse the existing tenants.origin column (the PRD's migration bullet literally says 'adds origin ... to tenants'), or get its own column?",
+      "resolution": "Its own column, funnel_origin -- tenants.origin already exists (migration 0012, synthetic/external) with many existing callers; see hard_constraints.funnel_origin_is_a_new_column_not_a_repurposed_origin."
     },
     {
-      "question": "Does a P1 AC13 cache-hit checkout (the same open session reused for a second billing.checkout call) get its own checkout.started row for admin.upgrades?",
-      "resolution": "No -- it is the same Stripe session, not a new attempt; only the branch that actually calls BillingClient::create_checkout_session self-ledgers checkout.started, so admin.upgrades never double-counts a tenant polling billing.checkout before its first session expires."
+      "question": "Does the P1 backfill (AC5) need to actually parse the deploy tool's release journal (on a different host, in a different repo) to classify historical probes?",
+      "resolution": "No -- MCPHOST_DEPLOY_RELEASE_TIMESTAMPS (comma-separated unix seconds) is the portable mechanism; absent (the common case), the probe-backfill pass is a no-op and matching rows stay 'unknown', which the PRD's own Goals section explicitly allows ('stay queryable as unknown where neither applies')."
     },
     {
-      "question": "Does the funnel's upgrades_by_trigger (AC6) count every paid tenant host-wide, or only those inside admin.funnel's own days/source_class/signup_source/invited filters?",
-      "resolution": "Scoped to the same filtered rows stages already reports over (via a new FunnelRow.paid_source field populated by a correlated subquery) -- consistent with every other field admin.funnel already returns, and what the AC6 test (three tenants paid \"now\", well inside the default 7-day window) exercises."
-    },
-    {
-      "question": "Does apply_checkout_completed's existing plan-upgrade behavior (upgrade_tenant_plan fires regardless of live/test mode, proven by the pre-existing billing_ac06 test with livemode:false) change under this PRD?",
-      "resolution": "No -- only the NEW paid_unix/paid_test_unix stamps are mode-gated; the pre-existing plan flip stays unconditional (a self-hoster's test-mode trial checkout still unlocks pro), since billing_ac06 already pins that behavior and the PRD's own guardrail (test-mode checkout never counts as paid) is about the funnel's paid_unix signal specifically, not plan access."
+      "question": "Does 'host_progress' in AC4 mean admin.tenants' per-tenant listing?",
+      "resolution": "No -- see hard_constraints.host_progress_in_ac4_reads_as_admin_funnel_slash_healthz_funnel_7d_not_admin_tenants; admin.tenants is schema-version-gated by a different, already-landed PRD and out of this dispatch's assigned scope."
     }
   ]
 }

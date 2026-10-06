@@ -1669,18 +1669,23 @@ fn funnel_stage_stats(rows: &[&crate::db::FunnelRow], signups: i64) -> Vec<Value
         .collect()
 }
 
-/// Requirement 3's `by_source: {...}` -- every `source_class` value
-/// present among `rows` (an unclassified tenant groups under
-/// `"unclassified"`), each with its own `signups`/per-stage counts. Built
-/// off the SAME rows `admin::funnel` already filtered by `signup_source`/
-/// `invited` -- only `source_class` itself is deliberately NOT filtered
-/// here, since this object's whole point is the breakdown by it.
-fn funnel_by_source(rows: &[crate::db::FunnelRow]) -> Value {
+/// Requirement 3's `by_source: {...}` / PRD-mcphost-funnel-truth P0
+/// requirement 4 (AC4)'s `by_origin: {...}` -- every bucket `key` maps a
+/// row to (an unclassified tenant groups under `"unclassified"` for
+/// `funnel_by_source`; `funnel_by_origin`'s own `human`/`fleet`/`probe`
+/// buckets are never unclassified, AC1), each with its own
+/// `signups`/per-stage counts. Built off the SAME rows the caller already
+/// filtered by `signup_source`/`invited` -- only the bucketing dimension
+/// itself is deliberately NOT filtered here, since this object's whole
+/// point is the breakdown by it.
+fn funnel_breakdown_by(
+    rows: &[crate::db::FunnelRow],
+    key: impl Fn(&crate::db::FunnelRow) -> String,
+) -> Value {
     let mut buckets: std::collections::BTreeMap<String, Vec<&crate::db::FunnelRow>> =
         std::collections::BTreeMap::new();
     for row in rows {
-        let key = row.source_class.clone().unwrap_or_else(|| "unclassified".to_string());
-        buckets.entry(key).or_default().push(row);
+        buckets.entry(key(row)).or_default().push(row);
     }
     let mut out = serde_json::Map::new();
     for (class, bucket_rows) in buckets {
@@ -1720,6 +1725,19 @@ fn funnel_by_source(rows: &[crate::db::FunnelRow]) -> Value {
         );
     }
     Value::Object(out)
+}
+
+fn funnel_by_source(rows: &[crate::db::FunnelRow]) -> Value {
+    funnel_breakdown_by(rows, |r| r.source_class.clone().unwrap_or_else(|| "unclassified".to_string()))
+}
+
+/// PRD-mcphost-funnel-truth P0 requirement 4 (AC4): the per-origin
+/// breakdown `admin.funnel`'s own `by_origin` field reports, lists
+/// `fleet`/`probe` separately from the `human` headline (never merges
+/// `human` into a catch-all the way `source_class = external` used to
+/// read as "everyone not fleet/loopback").
+fn funnel_by_origin(rows: &[crate::db::FunnelRow]) -> Value {
+    funnel_breakdown_by(rows, |r| r.funnel_origin.clone())
 }
 
 /// PRD-mcphost-upgrade-moment requirement 5 (AC6): how many of `rows`
@@ -1766,12 +1784,19 @@ pub async fn funnel(state: &AppState, args: &Value) -> Result<Value, AppError> {
 
     let signups = filtered.len() as i64;
     let by_source_rows: Vec<crate::db::FunnelRow> = invited_rows.into_iter().cloned().collect();
+    // PRD-mcphost-funnel-truth P0 requirement 4 (AC4): the headline counts
+    // only `human` rows -- `signups` above stays exactly what it always
+    // was (every filtered row, any origin), additive alongside it rather
+    // than replacing it (requirement 4's own "existing fields unchanged").
+    let signups_human = filtered.iter().filter(|r| r.funnel_origin == "human").count() as i64;
 
     let mut response = json!({
         "window": {"days": days, "since_unix": since_unix},
         "signups": signups,
+        "signups_human": signups_human,
         "stages": funnel_stage_stats(&filtered, signups),
         "by_source": funnel_by_source(&by_source_rows),
+        "by_origin": funnel_by_origin(&by_source_rows),
         "upgrades_by_trigger": upgrades_by_trigger(&filtered),
     });
     let obj = response.as_object_mut().expect("response is always an object");
@@ -1818,6 +1843,17 @@ pub async fn funnel_7d_external(state: &AppState) -> Result<Value, AppError> {
         .count() as i64;
     let return_rate = if nudged > 0 { returned_after_nudge as f64 / nudged as f64 } else { 0.0 };
     obj.insert("return_rate".to_string(), json!(return_rate));
+    // PRD-mcphost-funnel-truth P0 requirement 4 (AC4): additive, every
+    // field above stays exactly as it was (`source_class = external`'s own
+    // definition is unchanged) -- `signups_human` is the new headline
+    // (`funnel_origin = 'human'`, independent of `source_class`), and
+    // `by_origin` is the fleet/probe breakdown the digest reports
+    // alongside it, over the SAME unfiltered trailing-7-day `rows` (not
+    // narrowed to `external`, since `by_origin`'s whole point is to show
+    // every origin, not just one).
+    let signups_human = rows.iter().filter(|r| r.funnel_origin == "human").count();
+    obj.insert("signups_human".to_string(), json!(signups_human));
+    obj.insert("by_origin".to_string(), funnel_by_origin(&rows));
     Ok(Value::Object(obj))
 }
 

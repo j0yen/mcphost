@@ -192,6 +192,27 @@ enum Command {
         #[arg(long)]
         tenant_key: String,
     },
+    /// PRD-mcphost-funnel-truth: offline `mcphost admin <action>`
+    /// subcommands -- distinct from the MCP-tool `admin.*` surface
+    /// (`admin.rs`), which needs a running server and a bearer key; these
+    /// run against the data dir directly, same convention as `Funnel`
+    /// above.
+    Admin {
+        #[command(subcommand)]
+        action: AdminCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum AdminCommand {
+    /// P1 requirement 5 (AC5): labels every pre-existing `tenants`/
+    /// `claim_email_events` row still at migration 0078's `'unknown'`
+    /// default -- `fleet` where `source_class` already says so, `probe`
+    /// where `created_unix` falls within 120s of a
+    /// `$MCPHOST_DEPLOY_RELEASE_TIMESTAMPS` entry, else left `unknown`.
+    /// Idempotent: a second run changes zero rows. Prints the counts
+    /// changed and, per table, the post-run `funnel_origin` breakdown.
+    BackfillOrigin,
 }
 
 #[derive(Subcommand)]
@@ -391,6 +412,36 @@ async fn main() -> anyhow::Result<()> {
             }
             Ok(())
         }
+        Command::Admin { action } => match action {
+            AdminCommand::BackfillOrigin => {
+                // Deliberately no `init_tracing()`: same rationale as
+                // `Funnel` above -- this subcommand's contract is plain
+                // stdout a shell (or an operator) parses.
+                let dir = data_dir();
+                let db = Db::open(&dir)?;
+                db.migrate().await?;
+                let release_timestamps = mcphost::state::release_timestamps_from_env();
+                let counts = db.backfill_funnel_origin(release_timestamps).await?;
+                println!(
+                    "backfill-origin: tenants changed={} claim_email_events changed={}",
+                    counts.tenants_changed, counts.claim_email_events_changed
+                );
+                for (label, table) in [
+                    ("tenants", mcphost::db::FunnelOriginTable::Tenants),
+                    ("oauth_funnel_events", mcphost::db::FunnelOriginTable::OauthFunnelEvents),
+                    ("claim_email_events", mcphost::db::FunnelOriginTable::ClaimEmailEvents),
+                ] {
+                    let by_origin = db.funnel_origin_counts(table).await?;
+                    let breakdown = by_origin
+                        .iter()
+                        .map(|(origin, count)| format!("{origin}={count}"))
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    println!("{label}: {breakdown}");
+                }
+                Ok(())
+            }
+        },
         Command::LlmsTxt { check, path } => {
             // Deliberately no `init_tracing()`: same rationale as
             // `SandboxCheck`/`Funnel` above -- this subcommand's contract is

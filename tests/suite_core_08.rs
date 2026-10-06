@@ -12,6 +12,12 @@ mod assertion;
 #[path = "support/oauth.rs"]
 mod oauth;
 
+#[path = "unkfield_ac04_trigger_set_unknown_argument.rs"]
+mod unkfield_ac04_trigger_set_unknown_argument;
+#[path = "unkfield_ac05_tools_list_additional_properties_false.rs"]
+mod unkfield_ac05_tools_list_additional_properties_false;
+#[path = "unkfield_ac07_spec_fields_doc_check_script.rs"]
+mod unkfield_ac07_spec_fields_doc_check_script;
 #[path = "upgrade_ac01_calls_per_day_next_checkout.rs"]
 mod upgrade_ac01_calls_per_day_next_checkout;
 #[path = "upgrade_ac02_billing_off_refusal_text.rs"]

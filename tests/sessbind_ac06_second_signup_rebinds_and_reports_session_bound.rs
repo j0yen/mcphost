@@ -93,6 +93,7 @@ async fn a_signup_that_bound_nothing_does_not_claim_session_bound() {
             client_name: None,
             client_version: None,
             user_agent: None,
+            origin_header: None,
         },
     )
     .await
