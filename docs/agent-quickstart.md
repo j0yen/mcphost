@@ -13,17 +13,85 @@ own tool is **42.4s**.
 
 ## Quickstart for agents
 
+1. Connect to `https://mcphost.dev/mcp` -- paste that URL into your MCP
+   client's config. No signup call, no credentials, nothing to paste into
+   a header.
+2. Make your first call. `host.quickstart()` is read-only and hands back
+   a worked example before you commit to anything; any other `host.*`/
+   `billing.*` call creates your tenant right then, on this connection,
+   with no `signup` call at all -- `host.whoami()` is the simplest:
+   ```
+   host.whoami()
+   ```
+3. Read `onboarding.url` once, in that same response, and save it -- it's
+   this tenant's own address and its credential in one; reconnecting
+   through it later is how you come back as this same tenant.
+   `onboarding.memory_hint` names where agents conventionally keep it.
+4. Publish a tool. `host.quickstart()`'s own `starter_tool` is a
+   ready-to-publish `python` spec; its `publish_call` is exactly:
+   ```
+   host.tool_publish(name="table_note", kind="python", spec={"source": "import mcphost\n\ndef main(args):\n    mcphost.table.create(name='quickstart_notes', columns={'note': 'text'})\n    mcphost.table.append(table='quickstart_notes', rows=[{'note': args.get('note', '')}])\n    return {'appended': 1}\n"})
+   ```
+   Two real kinds: submit code (`python` -- source required,
+   `args_schema`/`requirements` inferred if omitted) or wrap an API you
+   already use (`http` -- url and method required, `args_schema` inferred
+   if omitted). `echo` is a stub for testing the pipes, not a real tool.
+   Before publishing anything, dry-run with `host.tool_publish({...,
+   dry_run: true})` -- every gate (secrets, env, network, deps, name,
+   kind, spec size) reported at once, no tool row written -- or
+   `host.spec_test(kind, spec, invocations)` for up to 5 example calls
+   through the same sandbox a real call uses.
+5. Call it -- `host.tool_test(name, args)` dry-runs an already-published
+   tool by name, or call it directly as `<namespace>.<tool_name>` (its
+   own entry in your `tools/list`):
+   ```
+   host.tool_test(name="table_note", args={"note": "hello"})
+   ```
+6. Share it with a teammate: `host.invite.create()` returns an
+   `/i/<code>/mcp` URL -- whoever connects there and makes their own
+   first call gets a fresh tenant already in contact with you, with any
+   tool names passed as `share` already shared (see "Share a tool, not a
+   key" in `www/llms.txt` for sharing one tool while keeping its own key
+   hidden):
+   ```
+   host.invite.create()
+   ```
+7. Relay the claim link to your human: hand them `onboarding.url` and the
+   sentence "Claim this backend so it belongs to you: `<url>`." Never
+   print the personal URL or the key anywhere but that one handoff.
+
+Also useful once you're past the first call: `billing.plans()`/
+`billing.status()` for plan and quota; `host.tool.list()`/
+`host.tool.logs(name)`/`host.tool.remove(name)`/`host.usage(window)` to
+inspect and manage; `host.secret.set`/`host.secret.list()` for
+credentials a published tool needs (secrets stored AES-256-GCM encrypted,
+with a separate plain `env` map alongside for everything that isn't one).
+Pass `expose_spec: true` on `host.tool.share` (or `share` names on
+`host.invite.create`) to also let a sharee read a tool's source, not
+just call it -- they read it with
+`host.tool.spec_shared(tool="<owner_namespace>.<name>")`; shared without
+`expose_spec`, the same call fails `spec_not_exposed` (see "Share a tool,
+not a key" in `www/llms.txt` for the full worked example).
+
+<!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
+
+## Explicit signup (clients that cannot keep a session)
+
+A client that can't hold a persistent connection across calls -- so there
+is no session for mcphost to implicitly bind a tenant to -- signs up
+directly instead of relying on its first call to create one:
+
 1. Connect to the endpoint and call `tools/list` with no credentials. The
    only tool offered is `signup`.
 2. Call `signup(name)`. The response contains `tenant`, `key` (a bearer
-   token, shown once), `namespace`, and `endpoint`. Signup is rate-limited
-   to 5 per IP per hour. Pass `source` (e.g. `signup(name, source: "hn")`)
-   to tag which channel this signup came from -- recommended values are
-   `hn`, `reddit`, `discord`, `registry`, `plugin`, `docs`; it's echoed
-   back in the response and broken out in admin healthz, but never
-   required. If signups are paused (an operator's kill switch for an
-   abuse spike), the call fails with `signup_paused` and a
-   `retry_after_secs`; try again later.
+   token, shown once), `namespace`, `endpoint`, and `claim_url`. Signup is
+   rate-limited to 5 per IP per hour. Pass `source` (e.g.
+   `signup(name, source: "hn")`) to tag which channel this signup came
+   from -- recommended values are `hn`, `reddit`, `discord`, `registry`,
+   `plugin`, `docs`; it's echoed back in the response and broken out in
+   admin healthz, but never required. If signups are paused (an
+   operator's kill switch for an abuse spike), the call fails with
+   `signup_paused` and a `retry_after_secs`; try again later.
    Recommended: `signup(name, handoff: true)` returns a short-lived,
    single-use `handoff_token` instead of `key`; call
    `host.redeem(handoff_token)` once to get the key, so a transcript of
@@ -34,67 +102,6 @@ own tool is **42.4s**.
    here on -- e.g. `host.tool.publish`, `host.tool.call`. No reconnect or
    `Authorization` header needed; a client that holds a persistent
    connection can use `Authorization: Bearer <key>` instead.
-4. Publish a tool: `host.tool.publish(name, kind, spec)`. Call
-   `host.quickstart` first — its `starter_tool` is a ready-to-publish
-   `python` spec (appends a note through `mcphost.table`, the sandbox's
-   `import mcphost` bridge -- see `sandbox_api` in the same response) plus
-   the exact `publish_call`/`test_call` to run; the documented first
-   publish is a real tool, not a stub. Two real kinds: submit code (`python` — source
-   required, `args_schema`/`requirements` inferred if omitted) or wrap an
-   API you already use (`http` — url and method required, `args_schema`
-   inferred if omitted). `echo` (returns its arguments; spec is a JSON
-   Schema) is a stub for testing the pipes, not a real tool — it carries
-   `stub: true` in `tools/list`. Before publishing anything, dry-run with
-   `host.tool.publish({..., dry_run: true})` — every gate (secrets, env,
-   network, deps, name, kind, spec size) reported at once, no tool row
-   written — or `host.spec.test(kind, spec, invocations)` for up to 5
-   example calls through the same sandbox a real call uses.
-5. Call your tool. Two equivalent ways over the same streamable-HTTP
-   connection: as `<namespace>.<tool_name>` (its own entry in
-   `tools/list`), or `host.tool.call(name, args)` (same dispatch path,
-   useful when your client doesn't refresh `tools/list` between publish
-   and call). `host.tool.test(name, args)` dry-runs an already-published
-   tool by name instead of a raw spec.
-6. Check the plan and quota before you rely on volume:
-   `billing.plans()` — the plan catalog, works anonymously.
-   `billing.status()` — this tenant's plan and usage against each quota.
-7. Inspect and manage: `host.tool.list()`, `host.tool.logs(name)`,
-   `host.tool.remove(name)`, `host.usage(window)`,
-   `host.secret.set`/`host.secret.list()` (secrets stored AES-256-GCM
-   encrypted). A `python` spec's plain, non-secret configuration lives in a
-   separate `env` map (up to 16 entries / 4 KiB total, names matching
-   `^[A-Z][A-Z0-9_]{0,63}$`) — shown verbatim in `host.tool.test`, unlike
-   `secrets`, which stay redacted there.
-8. Share a tool with `host.tool.share(name, visibility, group?)` (see "Share
-   a tool, not a key" in `www/llms.txt` for the full recipe). Pass
-   `expose_spec: true` to also let every sharee read the tool's source, not
-   just call it — the point when you want others to fork what you built,
-   the way `visions/synthorg-compete.md`'s round-two builders fork
-   round-one winners. A sharee reads it with
-   `host.tool.spec_shared(tool: "<owner_namespace>.<name>")`, which returns
-   `{tool, kind, spec, exposed_at}` — `spec` never carries `env` or a secret
-   reference, only `source`/`args_schema`/`requirements`/`timeout_s`/
-   `network`. Worked example, after step 4 published `nightly_scrape` as a
-   `python` tool:
-   ```
-   host.group.create(name="arena-builders")
-   host.group.add(name="arena-builders", namespace="<their_namespace>")
-   host.tool.share(name="nightly_scrape", visibility="group",
-                    group="arena-builders", expose_spec=true)
-   ```
-   A group member then reads it (never through `host.tool.call`, which only
-   runs it) with:
-   ```
-   host.tool.spec_shared(tool="<your_namespace>.nightly_scrape")
-   # -> {"tool": "<your_namespace>.nightly_scrape", "kind": "python",
-   #     "spec": {"source": "...", "args_schema": {...}}, "exposed_at": "..."}
-   ```
-   Shared without `expose_spec` (the default), the same call fails with
-   `spec_not_exposed`; not shared with them at all, it fails exactly like
-   `host.tool.call` would — `tool_not_found`, never revealing the tool
-   exists.
-
-<!-- cite: docs/benchmarks/measure-0.26.3-20260908T085001Z.md -->
 
 ## Leaving
 

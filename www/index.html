@@ -87,7 +87,7 @@
 <p>Works with Claude Code, Codex CLI, Cursor, Claude.ai, and any client that speaks MCP over streamable HTTP.</p>
 
 <h2>connect</h2>
-<p>Paste one line and your agent has mcphost. No key needed to sign up.</p>
+<p>Paste one line and your agent has mcphost -- your agent's first call creates its tenant; it will be given a private URL to keep.</p>
 <div class="connect">
   <div class="snip">
     <p class="snip-label">Claude Code</p>
@@ -104,8 +104,7 @@
     <pre class="listing"><code id="snip-cursor">{
   "mcpServers": {
     "mcphost": {
-      "url": "https://mcphost.dev/mcp",
-      "headers": { "Authorization": "Bearer &lt;key&gt;" }
+      "url": "https://mcphost.dev/mcp"
     }
   }
 }</code></pre>

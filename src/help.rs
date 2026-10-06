@@ -65,8 +65,8 @@ pub const HELP_ENTRIES: &[HelpEntry] = &[
     HelpEntry {
         code: "tenant_key_missing",
         meaning: "A tenant_key argument was required for this call (no Authorization header was sent on this connection) and none was given, or it wasn't a string.",
-        cause: "Usually a client that reconnects without carrying the bearer header forward, falling back to the tenant_key argument form and forgetting to pass it.",
-        fix: "Pass tenant_key: \"<the key signup returned>\" as a call argument, or attach Authorization: Bearer <key> to the connection instead.",
+        cause: "Usually a direct namespaced call (<namespace>.<tool>) or a /t/{namespace}/mcp request made with no credential at all -- no key is needed on the bare /mcp endpoint: your first host.*/billing.* call there creates a tenant implicitly and returns its own onboarding.url, no tenant_key required.",
+        fix: "On /mcp, just make a host.*/billing.* call -- the response's onboarding.url is this tenant's own address from then on. On a direct namespaced or /t/{namespace}/mcp call, pass tenant_key: \"<the key signup returned>\" as a call argument, or attach Authorization: Bearer <key> to the connection instead.",
         doc_link: "docs/agent-quickstart.md#quickstart-for-agents",
     },
     HelpEntry {

@@ -408,6 +408,18 @@ mod docstore_ac08_unsupported_mime_by_content_sniff;
 mod docstore_ac10_purge_older_than_versions;
 #[path = "docstore_ac11_export_includes_documents.rs"]
 mod docstore_ac11_export_includes_documents;
+#[path = "docurl_ac01_quickstart_connect_first_call_save_url.rs"]
+mod docurl_ac01_quickstart_connect_first_call_save_url;
+#[path = "docurl_ac02_skill_one_url_no_ritual.rs"]
+mod docurl_ac02_skill_one_url_no_ritual;
+#[path = "docurl_ac03_index_connect_no_bearer_placeholder.rs"]
+mod docurl_ac03_index_connect_no_bearer_placeholder;
+#[path = "docurl_ac04_quickstart_description_no_signup_first.rs"]
+mod docurl_ac04_quickstart_description_no_signup_first;
+#[path = "docurl_ac06_starter_set_covers_pre_bind_tools.rs"]
+mod docurl_ac06_starter_set_covers_pre_bind_tools;
+#[path = "docurl_ac07_u_new_and_help_name_onboarding_url.rs"]
+mod docurl_ac07_u_new_and_help_name_onboarding_url;
 #[path = "drift_ac01_table_note_change_queues_and_completes.rs"]
 mod drift_ac01_table_note_change_queues_and_completes;
 #[path = "drift_ac02_cosmetic_note_change_zero_regressions.rs"]
@@ -1810,17 +1822,3 @@ mod unkfield_ac04_trigger_set_unknown_argument;
 mod unkfield_ac05_tools_list_additional_properties_false;
 #[path = "unkfield_ac07_spec_fields_doc_check_script.rs"]
 mod unkfield_ac07_spec_fields_doc_check_script;
-#[path = "upgrade_ac01_calls_per_day_next_checkout.rs"]
-mod upgrade_ac01_calls_per_day_next_checkout;
-#[path = "upgrade_ac02_billing_off_refusal_text.rs"]
-mod upgrade_ac02_billing_off_refusal_text;
-#[path = "upgrade_ac03_checkout_source_metadata.rs"]
-mod upgrade_ac03_checkout_source_metadata;
-#[path = "upgrade_ac04_webhook_stamps_paid_unix.rs"]
-mod upgrade_ac04_webhook_stamps_paid_unix;
-#[path = "upgrade_ac05_billing_status_receipt.rs"]
-mod upgrade_ac05_billing_status_receipt;
-#[path = "upgrade_ac06_admin_funnel_upgrades_by_trigger.rs"]
-mod upgrade_ac06_admin_funnel_upgrades_by_trigger;
-#[path = "upgrade_ac07_admin_upgrades_listing.rs"]
-mod upgrade_ac07_admin_upgrades_listing;

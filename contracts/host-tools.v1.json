@@ -2426,7 +2426,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Return the shortest ordered sequence of calls to a working tool of `kind`, with your namespace and a filled-in example already substituted in, plus the current limits and a try_before_call table naming the one dry-run tool for each case. Read-only. Call this before host.tool_publish if you're not sure what a spec should look like. Unauthenticated callers get the signup step first.",
+      "description": "Return the shortest ordered sequence of calls to a working tool of `kind`, with your namespace and a filled-in example already substituted in, plus the current limits and a try_before_call table naming the one dry-run tool for each case. Read-only -- this call alone never creates a tenant. Call this before host.tool_publish if you're not sure what a spec should look like. Unauthenticated callers get a worked example with no tenant data; any other host.*/billing.* call creates a tenant on first use, no signup required.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {

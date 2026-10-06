@@ -713,11 +713,14 @@ fn end_user_arg_schema() -> Value {
 pub(crate) fn signup_tool() -> Tool {
     Tool::new(
         "signup",
-        "Create a tenant and receive a bearer key and namespace. Unauthenticated. Recommended: \
-         pass handoff: true to receive a short-lived, single-use handoff_token instead of the \
-         raw key -- redeem it once with host.redeem to get the key, so a transcript of this \
-         call and the redeem call, if it leaks, carries a dead credential. The raw-key path \
-         (handoff omitted) stays fully supported.",
+        "Explicit signup, for a client that cannot keep a session across calls: create a \
+         tenant and receive a bearer key and namespace. Unauthenticated. Most clients never \
+         need this -- any other host.*/billing.* call from a fresh connection creates a \
+         tenant implicitly and returns its own /u/<secret>/mcp URL in the response's \
+         onboarding field. Recommended here: pass handoff: true to receive a short-lived, \
+         single-use handoff_token instead of the raw key -- redeem it once with host.redeem \
+         to get the key, so a transcript of this call and the redeem call, if it leaks, \
+         carries a dead credential. The raw-key path (handoff omitted) stays fully supported.",
         schema(
             json!({
                 "name": {"type": "string", "description": "display name"},
@@ -977,9 +980,10 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             "Return the shortest ordered sequence of calls to a working tool of `kind`, \
              with your namespace and a filled-in example already substituted in, plus the \
              current limits and a try_before_call table naming the one dry-run tool for \
-             each case. Read-only. Call this before host.tool_publish if you're not sure \
-             what a spec should look like. Unauthenticated callers get the signup step \
-             first.",
+             each case. Read-only -- this call alone never creates a tenant. Call this \
+             before host.tool_publish if you're not sure what a spec should look like. \
+             Unauthenticated callers get a worked example with no tenant data; any other \
+             host.*/billing.* call creates a tenant on first use, no signup required.",
             host_schema(
                 json!({
                     "kind": {

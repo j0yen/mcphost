@@ -1,7 +1,12 @@
 //! AC5 (PRD-mcphost-claude-code-plugin-and-snippets) — Given
 //! `plugin/skills/mcphost/SKILL.md`, When grepped, Then it contains
 //! `handoff`, `redeem`, `source: "plugin"`, `claim_url`, and the phrase
-//! "never print the key".
+//! "never print the personal URL or the key".
+//!
+//! PRD-mcphost-docs-one-url-flow requirement 2: the skill's flow moved to
+//! the one-URL (implicit-signup) story, and its key-secrecy rule now also
+//! covers the personal URL the implicit path hands back -- "never print
+//! the key" alone no longer describes what the skill actually guards.
 
 const SKILL_MD: &str = include_str!("../plugin/skills/mcphost/SKILL.md");
 
@@ -28,10 +33,10 @@ fn skill_md_walks_handoff_signup_and_redeem() {
 }
 
 #[test]
-fn skill_md_relays_claim_url_and_never_prints_the_key() {
+fn skill_md_relays_claim_url_and_never_prints_the_personal_url_or_key() {
     assert!(SKILL_MD.contains("claim_url"), "SKILL.md must mention claim_url");
     assert!(
-        SKILL_MD.contains("never print the key"),
-        "SKILL.md must contain the phrase \"never print the key\""
+        SKILL_MD.contains("never print the personal URL or the key"),
+        "SKILL.md must contain the phrase \"never print the personal URL or the key\""
     );
 }

@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.94.0 — 2026-10-06
+
+Every document an agent reads before acting now teaches the one-URL flow
+instead of the retired signup/redeem ritual (PRD-mcphost-docs-one-url-
+flow): `docs/agent-quickstart.md` (and the `README.md`/`www/llms.txt`/
+`www/llms-full.txt` it generates into), `www/skill.md`, and
+`plugin/skills/mcphost/SKILL.md` walk connect -> first call -> save
+`onboarding.url` -> publish -> share with `host.invite.create` -> relay
+the claim link; `signup`/`host.redeem` move to an "Explicit signup"
+section for clients that cannot keep a session. `www/index.html`'s
+connect section drops the Cursor snippet's `Authorization: Bearer <key>`
+placeholder and states the same first-call note. `signup`'s and
+`host.quickstart`'s tool descriptions describe the implicit path first.
+`/u/new` and `/help/tenant_key_missing` both say no key is needed on
+`/mcp` and name `onboarding.url`. A doc-truth test
+(`tests/docurl_ac05_*`) parses and executes the quickstart's own fenced
+snippets against a real server and fails naming any snippet that calls
+`signup`/`host.redeem` or cannot run.
+
 ## v0.92.0 — 2026-10-06
 
 `MCPHOST_ALT_PUBLIC_URLS` (comma-separated, optional) names a second
