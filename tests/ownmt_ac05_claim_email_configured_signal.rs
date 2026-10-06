@@ -64,6 +64,7 @@ async fn configured_once_the_three_mail_variables_are_set() {
         mcphost::alerts::AlertConfig::default(),
         mcphost::state::FleetIps::empty(),
         mcphost::state::VerifiedClientIds::empty(),
+        Vec::new(),
     )
     .await;
 
