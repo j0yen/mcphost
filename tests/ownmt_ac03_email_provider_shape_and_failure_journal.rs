@@ -49,6 +49,7 @@ async fn server_with_provider(mock: &MockServer, provider: EmailProvider) -> Tes
         mcphost::alerts::AlertConfig::default(),
         mcphost::state::FleetIps::empty(),
         mcphost::state::VerifiedClientIds::empty(),
+        Vec::new(),
     )
     .await
 }

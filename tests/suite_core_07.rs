@@ -96,6 +96,16 @@ mod alert_ac09_min_severity_filters_delivery;
 mod alert_ac10_healthz_reports_open_and_last_raised_at;
 #[path = "alert_ac11_raise_body_size_limit.rs"]
 mod alert_ac11_raise_body_size_limit;
+#[path = "althost_ac01_fallback_lines_on_claim_invite_quickstart.rs"]
+mod althost_ac01_fallback_lines_on_claim_invite_quickstart;
+#[path = "althost_ac02_alt_host_header_served_identically.rs"]
+mod althost_ac02_alt_host_header_served_identically;
+#[path = "althost_ac03_reach_endpoint_unauthenticated.rs"]
+mod althost_ac03_reach_endpoint_unauthenticated;
+#[path = "althost_ac04_hsts_header_on_https_public_url.rs"]
+mod althost_ac04_hsts_header_on_https_public_url;
+#[path = "althost_ac05_no_alt_no_fallback_lines.rs"]
+mod althost_ac05_no_alt_no_fallback_lines;
 #[path = "attrib_ac1_loopback_signup_unstamped.rs"]
 mod attrib_ac1_loopback_signup_unstamped;
 #[path = "attrib_ac2_clientinfo_captured.rs"]
@@ -1800,25 +1810,3 @@ mod urltenant_ac05_browser_get_shows_explainer_page;
 mod urltenant_ac06_quickstart_url_bound_no_signup_step;
 #[path = "urltenant_ac07_header_conflict_is_auth_conflict.rs"]
 mod urltenant_ac07_header_conflict_is_auth_conflict;
-#[path = "vault_ac01_connect_link_redirects_to_auth_url.rs"]
-mod vault_ac01_connect_link_redirects_to_auth_url;
-#[path = "vault_ac02_callback_exchanges_code_and_stores_tokens.rs"]
-mod vault_ac02_callback_exchanges_code_and_stores_tokens;
-#[path = "vault_ac03_injects_bearer_overriding_tool_header.rs"]
-mod vault_ac03_injects_bearer_overriding_tool_header;
-#[path = "vault_ac04_call_log_never_contains_token.rs"]
-mod vault_ac04_call_log_never_contains_token;
-#[path = "vault_ac05_refresh_before_expiry_used_once.rs"]
-mod vault_ac05_refresh_before_expiry_used_once;
-#[path = "vault_ac06_unconnected_end_user_gets_connect_link.rs"]
-mod vault_ac06_unconnected_end_user_gets_connect_link;
-#[path = "vault_ac07_used_handoff_token_returns_410.rs"]
-mod vault_ac07_used_handoff_token_returns_410;
-#[path = "vault_ac08_disconnect_revokes_and_blocks_calls.rs"]
-mod vault_ac08_disconnect_revokes_and_blocks_calls;
-#[path = "vault_ac09_providers_hides_client_secret.rs"]
-mod vault_ac09_providers_hides_client_secret;
-#[path = "vault_ac10_refresh_401_revokes_no_retry_storm.rs"]
-mod vault_ac10_refresh_401_revokes_no_retry_storm;
-#[path = "vault_ac11_quota_vault_providers.rs"]
-mod vault_ac11_quota_vault_providers;

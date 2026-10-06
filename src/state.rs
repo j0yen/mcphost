@@ -189,6 +189,15 @@ pub struct AppState {
     pub secrets: SecretBox,
     pub admin_key: Option<String>,
     pub public_url: String,
+    /// PRD-mcphost-reachability-alt-host requirement 1: the parsed
+    /// `$MCPHOST_ALT_PUBLIC_URLS` list (empty when unset -- AC5). Every
+    /// human-facing link builder appends an `alt:`/`alt_url` form from
+    /// `alts[0]` when non-empty (requirement 2); the server itself never
+    /// gates a route on the request's `Host` header (requirement 1's other
+    /// half -- see `http.rs::build_router_with_session_mode`'s own
+    /// `disable_allowed_hosts` comment), so any listed host already works
+    /// today without a routing change.
+    pub alt_public_urls: Vec<String>,
     /// The `Kind::call` deadline (PRD requirement 11: 30s). A field rather
     /// than only the [`CALL_TIMEOUT`] constant so integration tests can
     /// shrink it (AC15) without a real 30-second wait.
