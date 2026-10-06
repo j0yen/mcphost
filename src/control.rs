@@ -1600,6 +1600,7 @@ pub async fn tool_publish(
         let effective_max = plan.tools_max.min(MAX_TOOLS_PER_TENANT);
         if count >= effective_max {
             return Err(crate::billing::quota_exceeded(
+                state,
                 &tenant.plan,
                 "tools_max",
                 effective_max,
@@ -2213,6 +2214,7 @@ pub async fn secret_set(
         let count = state.db.count_secrets(tenant.id).await?;
         if count >= plan.secrets_max {
             return Err(crate::billing::quota_exceeded(
+                state,
                 &tenant.plan,
                 "secrets_max",
                 plan.secrets_max,

@@ -13,6 +13,10 @@
             "description": "Which plan to check out; default: pro.",
             "type": "string"
           },
+          "source": {
+            "description": "Which refusal started this checkout (e.g. calls_per_day, tools_max, secrets_max), or manual; default: manual. Echoed back in the response and recorded on the eventual payment's ledger row.",
+            "type": "string"
+          },
           "tenant_key": {
             "description": "The key `signup` returned. Optional on the connection that ran signup (or host.redeem): that connection is already bound to the tenant it created, so later calls on it need no tenant_key. On a connection with no Authorization: Bearer header and no prior signup, omitting it implicitly signs that connection up as a brand-new tenant and runs this call as it -- see host.whoami's source field. When both a header and this argument are present, the header wins.",
             "type": "string"

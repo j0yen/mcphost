@@ -20,6 +20,7 @@ use serde_json::{Value, json};
 
 use crate::errors::AppError;
 use crate::plans::Plan;
+use crate::state::AppState;
 
 /// requirement 1: the default `checkin_fraction` -- an `Alert` fires once
 /// any active dimension's fraction reaches 80% of its limit.
@@ -216,7 +217,15 @@ impl BudgetLedger {
 /// the ceiling (AC3) -- non-goal 3: "a per-call budget can only lower the
 /// plan default", so this never raises a field above [`Plan::budget_defaults`].
 /// `requested: None` (or JSON `null`) returns the plan defaults unchanged.
-pub fn resolve_and_validate(plan: &Plan, requested: Option<&Value>) -> Result<BudgetLimits, AppError> {
+///
+/// PRD-mcphost-upgrade-moment requirement 1: `budget_ceiling_exceeded` is
+/// one of the five refusal sites that carries `next` (`state` is only
+/// needed for that -- the plan catalog and billing mode).
+pub fn resolve_and_validate(
+    state: &AppState,
+    plan: &Plan,
+    requested: Option<&Value>,
+) -> Result<BudgetLimits, AppError> {
     let defaults = plan.budget_defaults();
     let Some(requested) = requested.filter(|v| !v.is_null()) else {
         return Ok(defaults);
@@ -233,6 +242,15 @@ pub fn resolve_and_validate(plan: &Plan, requested: Option<&Value>) -> Result<Bu
                 })?;
                 let ceiling = defaults.$slot.unwrap_or(i64::MAX);
                 if requested_value > ceiling {
+                    let next = crate::billing::next_upgrade(
+                        &state.plans,
+                        state.billing_config.billing_mode(),
+                        &plan.name,
+                        $key,
+                        requested_value,
+                        ceiling,
+                        None,
+                    );
                     return Err(AppError::Structured {
                         code: "budget_ceiling_exceeded",
                         message: format!(
@@ -243,6 +261,7 @@ pub fn resolve_and_validate(plan: &Plan, requested: Option<&Value>) -> Result<Bu
                             "field": format!("budget.{}", $key),
                             "ceiling": ceiling,
                             "requested": requested_value,
+                            "next": next,
                         }),
                     });
                 }
@@ -284,12 +303,20 @@ pub struct BudgetTracker {
     state: crate::state::AppState,
     tenant_id: i64,
     run_id: String,
+    /// PRD-mcphost-upgrade-moment requirement 1: the tenant's plan name at
+    /// construction time, so [`Self::exceeded_detail`]'s `next` block can
+    /// name the next plan up without a DB round trip back through
+    /// `tenant_id` (this tracker already outlives the `Tenant` its own
+    /// caller resolved it from).
+    plan: String,
 }
 
 impl BudgetTracker {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         state: crate::state::AppState,
         tenant_id: i64,
+        plan: String,
         run_id: String,
         limits: BudgetLimits,
         now_ms: i64,
@@ -301,6 +328,7 @@ impl BudgetTracker {
             state,
             tenant_id,
             run_id,
+            plan,
         })
     }
 
@@ -312,11 +340,21 @@ impl BudgetTracker {
         self.ledger.lock().unwrap_or_else(|e| e.into_inner()).record(est_tokens, latency_ms);
     }
 
-    /// requirement 4's `Exceeded` error detail: `{dimension, limit, used}`.
+    /// requirement 4's `Exceeded` error detail: `{dimension, limit, used}`,
+    /// plus (PRD-mcphost-upgrade-moment requirement 1) `next`.
     pub fn exceeded_detail(&self, dimension: Dimension, now_ms: i64) -> Value {
         let ledger = self.ledger.lock().unwrap_or_else(|e| e.into_inner());
         let (used, limit) = ledger.used_and_limit(&self.limits, dimension, now_ms);
-        json!({"dimension": dimension.as_str(), "limit": limit, "used": used})
+        let next = crate::billing::next_upgrade(
+            &self.state.plans,
+            self.state.billing_config.billing_mode(),
+            &self.plan,
+            dimension.as_str(),
+            used,
+            limit,
+            None,
+        );
+        json!({"dimension": dimension.as_str(), "limit": limit, "used": used, "next": next})
     }
 
     /// requirement 5: `{limits, used, fraction, verdict}`, plus

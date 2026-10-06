@@ -583,6 +583,8 @@ pub async fn plan_set(state: &AppState, args: &Value) -> Result<Value, AppError>
             currency: None,
             mode: if mode == "off" { "test".to_string() } else { mode.to_string() },
             payload_sha256: crate::billing::sha256_hex(payload.to_string().as_bytes()),
+            source: None,
+            session_id: None,
         })
         .await?;
 
@@ -1693,6 +1695,22 @@ fn funnel_by_source(rows: &[crate::db::FunnelRow]) -> Value {
     Value::Object(out)
 }
 
+/// PRD-mcphost-upgrade-moment requirement 5 (AC6): how many of `rows`
+/// (already narrowed to the same window/filters `stages` reports over)
+/// paid, grouped by which refusal's `source` started the checkout --
+/// `"manual"` for a paid tenant with no recorded source (a checkout from
+/// before this PRD, or a genuinely manual one).
+fn upgrades_by_trigger(rows: &[&crate::db::FunnelRow]) -> Value {
+    let mut counts: std::collections::BTreeMap<String, i64> = std::collections::BTreeMap::new();
+    for row in rows {
+        if row.paid_unix.is_some() {
+            let key = row.paid_source.clone().unwrap_or_else(|| "manual".to_string());
+            *counts.entry(key).or_insert(0) += 1;
+        }
+    }
+    json!(counts)
+}
+
 /// `admin.funnel {days?, source_class?, signup_source?, invited?}`
 /// (PRD-mcphost-activation-funnel requirements 3, 6; AC2, AC3, AC6, AC7):
 /// per-stage counts/shares/medians for every tenant that signed up in the
@@ -1727,6 +1745,7 @@ pub async fn funnel(state: &AppState, args: &Value) -> Result<Value, AppError> {
         "signups": signups,
         "stages": funnel_stage_stats(&filtered, signups),
         "by_source": funnel_by_source(&by_source_rows),
+        "upgrades_by_trigger": upgrades_by_trigger(&filtered),
     });
     let obj = response.as_object_mut().expect("response is always an object");
     if let Some(sc) = &source_class {
@@ -1760,4 +1779,36 @@ pub async fn funnel_7d_external(state: &AppState) -> Result<Value, AppError> {
         obj.insert((*name).to_string(), json!(count));
     }
     Ok(Value::Object(obj))
+}
+
+/// `admin.upgrades {days?}` (PRD-mcphost-upgrade-moment requirement 6 /
+/// AC7): every checkout started in the trailing `days` (default 7), with
+/// its `source`, `state` (`completed`/`expired`/`pending`), and
+/// `time_to_completion_s` (only present once `state` is `completed`) --
+/// newest-started first.
+pub async fn upgrades(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let days = args.get("days").and_then(Value::as_i64).unwrap_or(7).clamp(1, 365);
+    let since_unix = crate::state::now_unix() - days * 86_400;
+    let rows = state.db.list_checkout_attempts(since_unix).await?;
+    let now = crate::state::now_unix();
+    let upgrades: Vec<Value> = rows
+        .into_iter()
+        .map(|r| {
+            let (state_str, time_to_completion_s) = match r.completed_unix {
+                Some(completed_unix) => ("completed", Some(completed_unix - r.started_unix)),
+                None if now - r.started_unix > crate::billing::CHECKOUT_SESSION_TTL_SECS => {
+                    ("expired", None)
+                }
+                None => ("pending", None),
+            };
+            json!({
+                "tenant": r.tenant,
+                "source": r.source,
+                "state": state_str,
+                "started_at": crate::state::rfc3339_from_unix(r.started_unix),
+                "time_to_completion_s": time_to_completion_s,
+            })
+        })
+        .collect();
+    Ok(json!({"window": {"days": days, "since_unix": since_unix}, "upgrades": upgrades}))
 }

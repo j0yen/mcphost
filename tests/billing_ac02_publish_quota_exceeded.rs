@@ -46,7 +46,10 @@ async fn fifty_first_publish_is_rejected_with_quota_exceeded() {
     assert_eq!(err.data["limit"]["name"], json!("tools_max"));
     assert_eq!(err.data["limit"]["value"], json!(50));
     assert_eq!(err.data["used"], json!(50));
-    assert_eq!(err.data["next"], json!("billing.checkout"));
+    // PRD-mcphost-upgrade-moment AC1/AC2: `next` is now the structured
+    // `{tool, plan, why, resets_at}` block; this test's server runs with
+    // billing off (`TestServer::start()`'s default), so `tool` is null.
+    assert_eq!(err.data["next"]["tool"], serde_json::Value::Null, "{:?}", err.data);
 
     // No tool was created for the rejected name.
     let tools = client

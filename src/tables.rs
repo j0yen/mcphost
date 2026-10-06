@@ -556,6 +556,13 @@ pub async fn table_create(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     let plan = plan_of(state, &tenant.plan)?;
     let tables_max = plan.table_tables_max;
     let plan_name = tenant.plan.clone();
+    // PRD-mcphost-upgrade-moment requirement 1: `quota_exceeded`'s `next`
+    // block needs the plan catalog and billing mode, but this whole
+    // closure crosses into `with_tenant_conn`'s `spawn_blocking` task
+    // (`Send + 'static`), so a cloned catalog travels with it rather than
+    // a borrowed `&AppState`.
+    let catalog = state.plans.clone();
+    let billing_mode = state.billing_config.billing_mode();
     let schema_json = serde_json::to_string(&Value::Object(
         columns.iter().map(|(c, t)| (c.clone(), json!(t.as_str()))).collect(),
     ))
@@ -566,7 +573,9 @@ pub async fn table_create(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     with_tenant_conn(path, state.db.cfg(), state.db.counters_handle(), move |conn| {
         let existing: i64 = conn.query_row(&format!("SELECT COUNT(*) FROM {META_TABLE}"), [], |r| r.get(0))?;
         if existing >= tables_max {
-            return Err(crate::billing::quota_exceeded(
+            return Err(crate::billing::quota_exceeded_for(
+                &catalog,
+                billing_mode,
                 &plan_name,
                 "table_tables_max",
                 tables_max,
@@ -860,6 +869,11 @@ pub async fn table_append(state: &AppState, tenant: &Tenant, args: &Value) -> Re
     let rows_max = plan.table_rows_max;
     let bytes_max = plan.table_bytes_max;
     let plan_name = tenant.plan.clone();
+    // PRD-mcphost-upgrade-moment requirement 1: same cloned-catalog
+    // rationale as `table_create`'s own `tables_max` check above -- this
+    // closure also crosses into `with_tenant_conn`'s `spawn_blocking` task.
+    let catalog = state.plans.clone();
+    let billing_mode = state.billing_config.billing_mode();
     let additional_bytes: i64 = rows
         .iter()
         .map(|r| serde_json::to_string(r).map(|s| s.len() as i64).unwrap_or(0))
@@ -873,7 +887,9 @@ pub async fn table_append(state: &AppState, tenant: &Tenant, args: &Value) -> Re
 
         let existing_rows = row_count_sync(conn, &table_for_conn)?;
         if existing_rows + rows.len() as i64 > rows_max {
-            return Err(crate::billing::quota_exceeded(
+            return Err(crate::billing::quota_exceeded_for(
+                &catalog,
+                billing_mode,
                 &plan_name,
                 "table_rows_max",
                 rows_max,
@@ -887,7 +903,9 @@ pub async fn table_append(state: &AppState, tenant: &Tenant, args: &Value) -> Re
             .map(|m| m.len() as i64)
             .unwrap_or(0);
         if file_bytes + additional_bytes > bytes_max {
-            return Err(crate::billing::quota_exceeded(
+            return Err(crate::billing::quota_exceeded_for(
+                &catalog,
+                billing_mode,
                 &plan_name,
                 "table_bytes_max",
                 bytes_max,

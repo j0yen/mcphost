@@ -2634,6 +2634,12 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
             host_schema(
                 json!({
                     "plan": {"type": "string", "description": "Which plan to check out; default: pro."},
+                    "source": {
+                        "type": "string",
+                        "description": "Which refusal started this checkout (e.g. calls_per_day, \
+                            tools_max, secrets_max), or manual; default: manual. Echoed back in the \
+                            response and recorded on the eventual payment's ledger row.",
+                    },
                 }),
                 &[],
             ),
@@ -3774,6 +3780,18 @@ fn admin_tools() -> Vec<Tool> {
                     "since": {"type": "integer"},
                     "until": {"type": "integer"},
                     "tenant": {"type": "string"},
+                }),
+                &[],
+            ),
+        ),
+        Tool::new(
+            "admin.upgrades",
+            "Every checkout started in the trailing days (default 7), with its source, \
+             state (completed/expired/pending), and time_to_completion_s once completed -- \
+             newest-started first.",
+            schema(
+                json!({
+                    "days": {"type": "integer"},
                 }),
                 &[],
             ),
@@ -5384,6 +5402,8 @@ impl McpHostHandler {
             "admin.enduser.stats" => admin::enduser_stats(&self.state).await,
             // PRD-mcphost-activation-funnel requirements 3, 6.
             "admin.funnel" => admin::funnel(&self.state, &args).await,
+            // PRD-mcphost-upgrade-moment requirement 6 (AC7).
+            "admin.upgrades" => admin::upgrades(&self.state, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         };
 
@@ -5461,6 +5481,7 @@ impl McpHostHandler {
             }
             let resets_at = crate::state::rfc3339_from_unix(midnight + 86_400);
             return Err(crate::billing::quota_exceeded(
+                &self.state,
                 &tenant.plan,
                 "calls_per_day",
                 plan.calls_per_day,
@@ -6952,7 +6973,7 @@ impl McpHostHandler {
                     tenant.plan
                 ))
             })?;
-            crate::budget::resolve_and_validate(plan, budget_arg)?;
+            crate::budget::resolve_and_validate(&self.state, plan, budget_arg)?;
         }
         // AC15: `call_published_tool`'s `get_tool` lookup is already scoped
         // to `tenant.id`, so a name only some other tenant published simply
