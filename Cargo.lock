@@ -2431,6 +2431,7 @@ dependencies = [
  "mqo-chart-vocab",
  "mqo-result-profiler",
  "mqo-vega-emitter",
+ "percent-encoding",
  "proptest",
  "rand 0.8.8",
  "rcgen",
