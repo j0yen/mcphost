@@ -22,7 +22,7 @@ strip = true
 [package]
 autotests = false  # gen-test-suites.sh: explicit [[test]] suites below
 name = "mcphost"
-version = "0.96.0"
+version = "0.97.0"
 edition = "2024"
 rust-version = "1.95"
 description = "One MCP endpoint an agent can join and administer without a human"
@@ -108,6 +108,14 @@ wasmtime-wasi = "48.0.4"
 # the spec JSON (the same transport python's `source` field already uses for
 # text, per this PRD's technical considerations) -- needed only to decode it.
 base64 = "0.22"
+# PRD-mcphost-client-install-links P0 requirement 1: the Cursor/VS Code
+# install deep links each carry a JSON config as a query-string value
+# (`cursor://.../mcp/install?...&config=<base64>`, `vscode:mcp/install?
+# <percent-encoded json>`) -- already a transitive dependency (Cargo.lock
+# pins 2.3.2 before this change, via axum/reqwest's own `url` crate),
+# promoted to direct since install_links.rs calls it by name, same call
+# strsim's own Cargo.toml comment already made for a transitive-promoted dep.
+percent-encoding = "2"
 # PRD-mcphost-tenant-data-export P0 requirement 1: `host.export`'s archive
 # is a real `.tar.gz` -- unlike the small hand-rolled encodings elsewhere in
 # this crate (ULIDs, RFC 3339, HMAC-SHA256), a correct tar layout plus DEFLATE

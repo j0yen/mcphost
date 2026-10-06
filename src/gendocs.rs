@@ -275,7 +275,21 @@ pub fn render_tools_markdown(kinds: &KindRegistry) -> String {
 pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
     let catalog = PlanCatalog::default_catalog();
     let support_url = std::env::var("MCPHOST_SUPPORT_URL").ok();
-    let support_docs = support_spliced_docs(support_url.as_deref())?;
+    let mut support_docs = support_spliced_docs(support_url.as_deref())?;
+    // PRD-mcphost-client-install-links P0 requirement 4 (AC4): README also
+    // carries `<!-- install-links:start/end -->`, a second, disjoint
+    // marker pair in the SAME file the support splice above just touched
+    // -- chained onto that splice's own output (not re-read from disk), so
+    // this function's one write to README.md below carries both splices'
+    // effects rather than one clobbering the other.
+    for (path, _current, spliced) in &mut support_docs {
+        if *path == "README.md" {
+            *spliced = crate::install_links::splice_install_links_section(
+                spliced.as_str(),
+                crate::install_links::CANONICAL_PUBLIC_URL,
+            );
+        }
+    }
     let mut stale = false;
 
     for (path, rendered) in [

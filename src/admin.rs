@@ -1799,7 +1799,18 @@ pub async fn funnel(state: &AppState, args: &Value) -> Result<Value, AppError> {
         "by_origin": funnel_by_origin(&by_source_rows),
         "upgrades_by_trigger": upgrades_by_trigger(&filtered),
     });
+    // PRD-mcphost-client-install-links P1 requirement 6 (AC6): "the digest
+    // ... lists clicks per client for humans only" -- additive, same
+    // `since_unix` window as every other field above.
+    let install_link_clicks: serde_json::Map<String, Value> = state
+        .db
+        .install_link_click_counts_by_client(since_unix)
+        .await?
+        .into_iter()
+        .map(|(client, count)| (client, json!(count)))
+        .collect();
     let obj = response.as_object_mut().expect("response is always an object");
+    obj.insert("install_link_clicks".to_string(), Value::Object(install_link_clicks));
     if let Some(sc) = &source_class {
         obj.insert("source_class".to_string(), json!(sc));
     }

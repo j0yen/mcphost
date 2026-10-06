@@ -9081,6 +9081,39 @@ impl Db {
         .await
     }
 
+    /// PRD-mcphost-client-install-links P1 requirement 6 (AC6): per-client
+    /// click counts for `install_link:<client>` events (`http::connect_go`'s
+    /// own `record_oauth_funnel_event` calls), `funnel_origin = 'human'`
+    /// only -- "the digest ... lists clicks per client for humans only".
+    /// Reuses `oauth_funnel_events` rather than a new table (Migration/
+    /// compatibility: "no schema change beyond a new funnel event kind"),
+    /// same table [`Self::oauth_funnel_counts`] already reads, so this is
+    /// one more `LIKE`-scoped, indexed (`idx_oauth_funnel_events_event_created`)
+    /// count rather than a new query shape. Returns `(client, count)`
+    /// pairs, client names with the `install_link:` prefix stripped,
+    /// ordered by client name.
+    pub async fn install_link_click_counts_by_client(
+        &self,
+        since_unix: i64,
+    ) -> Result<Vec<(String, i64)>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT event, COUNT(*) FROM oauth_funnel_events \
+                 WHERE event LIKE 'install_link:%' AND funnel_origin = 'human' AND created_unix >= ?1 \
+                 GROUP BY event ORDER BY event",
+            )?;
+            let rows = stmt
+                .query_map(params![since_unix], |r| {
+                    let event: String = r.get(0)?;
+                    let count: i64 = r.get(1)?;
+                    Ok((event.trim_start_matches("install_link:").to_string(), count))
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
     // ---- runs ledger (PRD-mcphost-runs-and-jobs) --------------------------
 
     /// P0 requirement 3: inserts a `queued` run and returns its new id, for

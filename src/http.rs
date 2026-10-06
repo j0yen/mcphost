@@ -13,7 +13,7 @@ use axum::body::{Body, Bytes};
 use axum::extract::{ConnectInfo, Path, Query, State};
 use axum::http::{
     HeaderMap, HeaderValue, Method, Request, StatusCode,
-    header::{CACHE_CONTROL, STRICT_TRANSPORT_SECURITY},
+    header::{CACHE_CONTROL, LOCATION, STRICT_TRANSPORT_SECURITY},
 };
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -1103,6 +1103,134 @@ async fn post_new_url(
     )
 }
 
+/// PRD-mcphost-client-install-links P0 requirement 2 (AC2): `GET /connect`
+/// -- plain HTML, no JavaScript, reachable with no `Authorization` header
+/// at all. Renders the four [`crate::install_links::for_url`] forms over
+/// this host's own `state.public_url` by default.
+///
+/// P0 requirement 2's "the personal-URL variant renders when the request
+/// carries a valid tenant": the only way this host can show a REAL
+/// personal URL (never stored in plaintext -- only its hash is, see
+/// `require_known_url_secret`'s own doc comment) is for the caller to
+/// already possess it. `?u=<personal mcp url>` (P2 requirement 8's own
+/// mechanism: "a `?u=<personal url>` query renders personal links for a
+/// logged-out second device, link carried by the claim email") covers
+/// exactly that case with no DB lookup and no auth at all -- the caller
+/// already has the secret, same trust boundary as pasting it into a
+/// client directly. See [`personal_base_from_query`] for why this can
+/// never become an open-redirect/arbitrary-link surface.
+#[derive(serde::Deserialize)]
+struct ConnectQuery {
+    u: Option<String>,
+}
+
+async fn connect_page(State(state): State<Arc<AppState>>, Query(params): Query<ConnectQuery>) -> Response {
+    let base = personal_base_from_query(&state, params.u.as_deref())
+        .unwrap_or_else(|| state.public_url.clone());
+    let links = crate::install_links::for_url(&base);
+    crate::claim::html_response(StatusCode::OK, render_connect_page(&links))
+}
+
+/// `u` must be EXACTLY this host's own `{public_url}/u/{secret}/mcp` shape
+/// (secret: non-empty, ASCII alphanumeric only -- the same alphabet
+/// [`crate::auth::generate_url_secret`] actually draws from); anything
+/// else (a foreign URL, a path-shaped string with extra segments, a
+/// secret carrying HTML-significant characters) is ignored, falling back
+/// to the anonymous endpoint, rather than ever being reflected into the
+/// page verbatim.
+fn personal_base_from_query(state: &AppState, u: Option<&str>) -> Option<String> {
+    let prefix = format!("{}/u/", state.public_url.trim_end_matches('/'));
+    let secret = u?.strip_prefix(&prefix)?.strip_suffix("/mcp")?;
+    if secret.is_empty() || !secret.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return None;
+    }
+    Some(format!("{prefix}{secret}"))
+}
+
+/// AC2: every one of [`crate::install_links::Links`]'s four forms, plus
+/// the plain `mcp_url` text (Migration note: "clients without deep-link
+/// support still get the plain URL on the page").
+///
+/// P1 requirement 5 (AC5): the Cursor/VS Code links point at
+/// `/connect/go/{client}`, not the deep link directly -- that route
+/// records an `install_link` funnel event and 302s on to the real deep
+/// link (see [`connect_go`]'s own doc comment); Claude Code/Claude.ai have
+/// no deep link of their own, so their blocks stay plain `<code>` text,
+/// no link to route through.
+fn render_connect_page(links: &crate::install_links::Links) -> String {
+    let mcp_url = crate::claim::html_escape(&links.mcp_url);
+    let claude_code_command = crate::claim::html_escape(&links.claude_code_command);
+    let steps: Vec<String> = links.claude_ai_steps.iter().map(|s| crate::claim::html_escape(s)).collect();
+    crate::claim::page(
+        "mcphost — connect",
+        &format!(
+            "<h1>Connect mcphost</h1>\
+             <p>Pick your client -- one click, or one pasted command, and the server is \
+             connected. No JavaScript runs on this page; every link below is a plain, \
+             navigable URL, and the raw endpoint always works too: <code>{mcp_url}</code></p>\
+             <h2>Cursor</h2>\
+             <p><a href=\"/connect/go/cursor\">Add to Cursor</a> -- or add <code>{mcp_url}</code> to \
+             <code>mcp.json</code> directly.</p>\
+             <h2>VS Code</h2>\
+             <p><a href=\"/connect/go/vscode\">Add to VS Code</a> -- or add <code>{mcp_url}</code> to \
+             your MCP config directly.</p>\
+             <h2>Claude Code</h2>\
+             <p>Run: <code>{claude_code_command}</code></p>\
+             <h2>Claude.ai</h2>\
+             <ol><li>{s0}</li><li>{s1}</li><li>{s2}</li><li>{s3}</li></ol>",
+            s0 = steps[0],
+            s1 = steps[1],
+            s2 = steps[2],
+            s3 = steps[3],
+        ),
+    )
+}
+
+/// `GET /connect/go/{client}` (PRD-mcphost-client-install-links P1
+/// requirement 5, AC5): records an `install_link` funnel event --
+/// `event: "install_link:<client>"`, reusing `oauth_funnel_events` rather
+/// than a new table (Migration/compatibility: "no schema change beyond a
+/// new funnel event kind") with [`crate::state::classify_funnel_origin`]'s
+/// verdict for this request's own source IP -- then 302s to the client's
+/// real deep link. `client` outside the four known names is 404, same
+/// "unmapped path" shape every other unknown-id route in this file
+/// already has. Claude Code/Claude.ai carry no deep link of their own
+/// (see [`render_connect_page`]'s own doc comment), so this route only
+/// ever serves Cursor/VS Code in practice, but both names are accepted
+/// for symmetry -- redirecting back to `/connect` rather than 404ing.
+async fn connect_go(
+    State(state): State<Arc<AppState>>,
+    Path(client): Path<String>,
+    headers: HeaderMap,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+) -> Response {
+    let event: &'static str = match client.as_str() {
+        "cursor" => "install_link:cursor",
+        "vscode" => "install_link:vscode",
+        "claude-code" => "install_link:claude-code",
+        "claude-ai" => "install_link:claude-ai",
+        _ => return StatusCode::NOT_FOUND.into_response(),
+    };
+    let ip = crate::claim::source_ip(&headers, peer);
+    let origin = crate::state::classify_funnel_origin(&ip, false, &state.fleet_ips);
+    if let Err(e) = state.db.record_oauth_funnel_event(event, origin).await {
+        tracing::warn!(error = %e, client = %client, "failed to record install_link funnel event");
+    }
+    let links = crate::install_links::for_url(&state.public_url);
+    let target = match client.as_str() {
+        "cursor" => links.cursor,
+        "vscode" => links.vscode,
+        _ => "/connect".to_string(),
+    };
+    let Ok(location) = HeaderValue::from_str(&target) else {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
+    match Response::builder().status(StatusCode::FOUND).header(LOCATION, location).body(Body::empty()) {
+        Ok(resp) => resp,
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
 /// PRD-mcphost-url-bound-tenants requirement 1/5 (AC2, AC5): `/u/{secret}/mcp`
 /// for a secret that names no tenant at all is 404, byte-identical to any
 /// other unmapped path -- same shape as [`require_known_tenant_namespace`]
@@ -1535,6 +1663,12 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         // signup page -- `GET` renders it, `POST` mints the tenant and its
         // first URL.
         .route("/u/new", get(get_new_url).post(post_new_url))
+        // PRD-mcphost-client-install-links P0 requirement 2 (AC2): the
+        // one-click-install landing page -- see `connect_page`'s own doc
+        // comment.
+        .route("/connect", get(connect_page))
+        // P1 requirement 5 (AC5): see `connect_go`'s own doc comment.
+        .route("/connect/go/{client}", get(connect_go))
         .merge(root_mcp_router)
         .merge(tenant_mcp_router)
         .merge(url_mcp_router)

@@ -108,7 +108,7 @@ fn extended_gates_prd_path_resolves_and_matches_intent_card() {
     // a missing-environment condition, not a paper-trail defect, so skip
     // rather than fail when the resolved path's parent directory itself
     // is not present on this host.
-    if resolved.parent().map_or(true, |p| !p.is_dir()) {
+    if resolved.parent().is_none_or(|p| !p.is_dir()) {
         eprintln!(
             "skip extended_gates_prd_path_resolves_and_matches_intent_card: \
              extended-gates.toml's prd_path ({prd_path_rel}) resolves to {}, whose parent \

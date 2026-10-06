@@ -7824,7 +7824,13 @@ impl ServerHandler for McpHostHandler {
             // Anonymous/Invalid -> auth-error arm below, the same way
             // `signup` itself is.
             (Auth::Tenant(tenant, _), "host.quickstart") => {
-                match control::quickstart(&self.state, Some(tenant), &args) {
+                // PRD-mcphost-client-install-links P0 requirement 3 (AC3):
+                // `Some` only when THIS call authenticated over
+                // `/u/{secret}/mcp` -- see `control::quickstart`'s own doc
+                // comment on `path_url_secret` for why this is the only
+                // auth path that can supply one.
+                let path_url_secret = url_path_secret(parts);
+                match control::quickstart(&self.state, Some(tenant), &args, path_url_secret) {
                     Ok(mut result) => {
                         // PRD-mcphost-composition requirement 6: once this
                         // tenant has at least two tools of its own,
@@ -7861,7 +7867,7 @@ impl ServerHandler for McpHostHandler {
                     Err(e) => Err(e),
                 }
             }
-            (_, "host.quickstart") => control::quickstart(&self.state, None, &args),
+            (_, "host.quickstart") => control::quickstart(&self.state, None, &args, None),
             // PRD-grand-loop-billing AC1: "billing.plans (anonymous and
             // tenant)" -- reachable exactly like host.quickstart, before
             // signup and regardless of auth, since it carries no
