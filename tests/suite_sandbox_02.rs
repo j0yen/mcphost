@@ -84,6 +84,8 @@ mod docsqa_ac07_embeddings_reports_both_hit_rates;
 mod docsqa_ac08_zero_passages_is_structured_not_an_error;
 #[path = "docstore_ac09_python_mcphost_docs_get_without_tool_call.rs"]
 mod docstore_ac09_python_mcphost_docs_get_without_tool_call;
+#[path = "docurl_ac05_quickstart_doc_truth.rs"]
+mod docurl_ac05_quickstart_doc_truth;
 #[path = "drift_ac12_python_mcphost_drift_reviews_matches_tool.rs"]
 mod drift_ac12_python_mcphost_drift_reviews_matches_tool;
 #[path = "dryrun_ac01_table_append_rolled_back.rs"]

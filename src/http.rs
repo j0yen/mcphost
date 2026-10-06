@@ -972,6 +972,9 @@ fn render_new_url_page() -> String {
          <p>One click gets you a private mcphost URL -- no account, no email. Paste it into \
          Claude Code, Claude Desktop, claude.ai, or Cursor, and your agent's next message can \
          publish a tool.</p>\
+         <p>No key is needed on /mcp either way: an agent that connects there directly and \
+         makes its own first call gets this same URL back as <code>onboarding.url</code> in \
+         the response, with no signup call of its own.</p>\
          <form method=\"post\" action=\"/u/new\"><button type=\"submit\">Get my URL</button></form>",
     )
 }

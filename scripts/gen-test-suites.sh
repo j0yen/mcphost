@@ -612,7 +612,7 @@ CLASSIFY_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ci-test-partition.sh")
 # caught by the same P0 assertion. The exact new cap is re-derived below
 # by actually running gen-test-suites.sh --check against this rebase's
 # full file set, same as every entry above.
-MAX_PER_SUITE = {"core": 900, "sandbox": 181}
+MAX_PER_SUITE = {"core": 900, "sandbox": 200}
 
 
 GEN_MARK_BEGIN = "# BEGIN gen-test-suites.sh generated suites -- do not edit by hand"
