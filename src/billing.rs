@@ -243,6 +243,12 @@ pub struct CheckoutSessionRequest {
     pub metered_price_id: Option<String>,
     pub client_reference_id: String,
     pub tenant_namespace: String,
+    /// PRD-mcphost-upgrade-moment requirement 2 (AC3): which refusal (or
+    /// `"manual"`) started this checkout -- rides on the Stripe session's
+    /// own `metadata[source]` so the webhook can read it back, and lands
+    /// on the `billing_events` row for this session's eventual
+    /// `checkout.session.completed` event.
+    pub source: String,
     pub success_url: String,
     pub cancel_url: String,
     /// AC3: `true` whenever billing is configured at all (Stripe Tax is
@@ -361,6 +367,7 @@ impl BillingClient for StripeClient {
                 "metadata[tenant_namespace]",
                 req.tenant_namespace.as_str(),
             ),
+            ("metadata[source]", req.source.as_str()),
             ("success_url", req.success_url.as_str()),
             ("cancel_url", req.cancel_url.as_str()),
         ];
@@ -633,6 +640,7 @@ pub struct CheckoutSessionRequestSnapshot {
     pub metered_price_id: Option<String>,
     pub client_reference_id: String,
     pub tenant_namespace: String,
+    pub source: String,
     pub success_url: String,
     pub cancel_url: String,
     pub automatic_tax: bool,
@@ -738,6 +746,7 @@ impl BillingClient for FakeBillingClient {
                 metered_price_id: req.metered_price_id.clone(),
                 client_reference_id: req.client_reference_id.clone(),
                 tenant_namespace: req.tenant_namespace.clone(),
+                source: req.source.clone(),
                 success_url: req.success_url.clone(),
                 cancel_url: req.cancel_url.clone(),
                 automatic_tax: req.automatic_tax,
@@ -747,7 +756,7 @@ impl BillingClient for FakeBillingClient {
         Ok(CheckoutSessionResponse {
             id: format!("cs_test_fake_{n}"),
             url: format!("https://checkout.stripe.com/c/pay/cs_test_fake_{n}"),
-            expires_at: self.now_unix + 24 * 3600,
+            expires_at: self.now_unix + CHECKOUT_SESSION_TTL_SECS,
         })
     }
 
@@ -797,30 +806,124 @@ impl BillingClient for FakeBillingClient {
 
 // ---- quota vocabulary -----------------------------------------------------
 
+/// PRD-mcphost-upgrade-moment requirement 1: the `next` block every plan-
+/// limit refusal (`tools_max`/`secrets_max`/`calls_per_day`), plus
+/// `budget_ceiling_exceeded` and `budget_exceeded`, carries inside its own
+/// `error_data_json`. `plan` is the next plan up from `current_plan` in
+/// `catalog.plans`' own order (`Free -> Pro` today; a third plan later
+/// needs no call-site change, only a longer catalog) -- `None` when
+/// `current_plan` is already the last one. `tool` is `"billing.checkout"`
+/// whenever billing is configured AND a next plan exists, else `null` (a
+/// self-host with no Stripe key, or a tenant already on the top plan) --
+/// AC2's "billing is not enabled on this host" wording lives in the
+/// refusal's own message, not here, so `why`/`resets_at` stay identical
+/// between the two cases and only `tool` (and the outer message) differ.
+#[allow(clippy::too_many_arguments)]
+pub fn next_upgrade(
+    catalog: &crate::plans::PlanCatalog,
+    billing_mode: &str,
+    current_plan: &str,
+    limit_name: &str,
+    used: i64,
+    limit: i64,
+    resets_at: Option<String>,
+) -> Value {
+    let next_plan = catalog
+        .plans
+        .iter()
+        .position(|p| p.name == current_plan)
+        .and_then(|i| catalog.plans.get(i + 1))
+        .map(|p| p.name.clone());
+    let why = format!("{limit_name} {used}/{limit}");
+    let tool = if billing_mode != "off" && next_plan.is_some() {
+        Some("billing.checkout")
+    } else {
+        None
+    };
+    let mut obj = json!({
+        "tool": tool,
+        "why": why,
+        "resets_at": resets_at,
+    });
+    if let (Some(plan), Some(map)) = (next_plan, obj.as_object_mut()) {
+        map.insert("plan".to_string(), json!(plan));
+    }
+    obj
+}
+
 /// The shape every quota rejection carries (requirement "Enforcement" /
-/// AC2/AC3): `code: quota_exceeded`, `plan`, `limit: {name, value}`,
-/// `used`, an optional `resets_at` (only meaningful for `calls_per_day`),
-/// and `next: "billing.checkout"` so an agent always knows what to do
-/// instead of retrying.
+/// AC2/AC3; PRD-mcphost-upgrade-moment requirement 1 / AC1/AC2): `code:
+/// quota_exceeded`, `plan`, `limit: {name, value}`, `used`, an optional
+/// top-level `resets_at` (only meaningful for `calls_per_day`), and `next`
+/// (see [`next_upgrade`]) so an agent always knows what to do instead of
+/// retrying -- or, when billing is off on this host, knows there is
+/// nothing to retry toward.
+#[allow(clippy::too_many_arguments)]
 pub fn quota_exceeded(
+    state: &AppState,
     plan: &str,
     limit_name: &'static str,
     limit_value: i64,
     used: i64,
     resets_at: Option<String>,
 ) -> AppError {
+    quota_exceeded_for(
+        &state.plans,
+        state.billing_config.billing_mode(),
+        plan,
+        limit_name,
+        limit_value,
+        used,
+        resets_at,
+    )
+}
+
+/// [`quota_exceeded`]'s own logic, taking the plan catalog and billing
+/// mode by value rather than a borrowed `&AppState` -- `src/tables.rs`'s
+/// quota sites run inside a `with_tenant_conn` closure that must be
+/// `Send + 'static` (it crosses into a `spawn_blocking` task), so they
+/// capture a cloned [`crate::plans::PlanCatalog`] and the
+/// (already-`'static`) billing-mode string ahead of the closure instead
+/// of borrowing `AppState` across that boundary.
+#[allow(clippy::too_many_arguments)]
+pub fn quota_exceeded_for(
+    catalog: &crate::plans::PlanCatalog,
+    billing_mode: &str,
+    plan: &str,
+    limit_name: &'static str,
+    limit_value: i64,
+    used: i64,
+    resets_at: Option<String>,
+) -> AppError {
+    let next = next_upgrade(
+        catalog,
+        billing_mode,
+        plan,
+        limit_name,
+        used,
+        limit_value,
+        resets_at.clone(),
+    );
     let mut data = json!({
         "plan": plan,
         "limit": {"name": limit_name, "value": limit_value},
         "used": used,
-        "next": "billing.checkout",
+        "next": next,
     });
     if let (Some(resets_at), Some(obj)) = (resets_at, data.as_object_mut()) {
         obj.insert("resets_at".to_string(), json!(resets_at));
     }
+    let message = if billing_mode == "off" {
+        format!(
+            "plan '{plan}' quota exceeded: {limit_name} (limit {limit_value}); \
+             billing is not enabled on this host"
+        )
+    } else {
+        format!("plan '{plan}' quota exceeded: {limit_name} (limit {limit_value})")
+    };
     AppError::Structured {
         code: "quota_exceeded",
-        message: format!("plan '{plan}' quota exceeded: {limit_name} (limit {limit_value})"),
+        message,
         data,
     }
 }
@@ -954,6 +1057,22 @@ pub async fn status(state: &AppState, tenant: &Tenant) -> Result<Value, AppError
             obj.insert("metered_usage".to_string(), metered_usage);
         }
     }
+    // PRD-mcphost-upgrade-moment requirement 4 (AC5): a receipt line an
+    // agent can hand its human, from the latest completed checkout --
+    // absent entirely for a tenant that has never completed one.
+    if let Some(receipt_row) = state.db.latest_completed_checkout(tenant.id).await? {
+        let receipt = json!({
+            "plan": receipt_row.plan,
+            "amount_cents": receipt_row.amount_cents,
+            "currency": receipt_row.currency,
+            "paid_at": crate::state::rfc3339_from_unix(receipt_row.paid_at_unix),
+            "invoice_ref": tenant.billing_ref,
+            "mode": receipt_row.mode,
+        });
+        if let Some(obj) = result.as_object_mut() {
+            obj.insert("receipt".to_string(), receipt);
+        }
+    }
     Ok(result)
 }
 
@@ -989,6 +1108,14 @@ pub type CheckoutSessionCache =
 /// cached number is at most this many seconds stale.
 pub const ACCEPTED_USAGE_CACHE_TTL_SECS: i64 = 60;
 
+/// How long a Stripe Checkout Session stays open before expiring --
+/// [`FakeBillingClient`]'s own `expires_at` (matching Stripe's real
+/// default for a `subscription`-mode session) and, PRD-mcphost-upgrade-
+/// moment requirement 6 (AC7), what `admin.upgrades` uses to call a
+/// `checkout.started` row with no matching completion "expired" rather
+/// than "pending" once this long has passed.
+pub const CHECKOUT_SESSION_TTL_SECS: i64 = 24 * 3600;
+
 /// One cached [`BillingClient::accepted_usage`] read: the value and the
 /// unix time it was fetched at.
 #[derive(Debug, Clone, Copy)]
@@ -1002,11 +1129,39 @@ pub struct CachedAcceptedUsage {
 /// [`CheckoutSessionCache`].
 pub type AcceptedUsageCache = std::sync::Arc<std::sync::Mutex<std::collections::HashMap<i64, CachedAcceptedUsage>>>;
 
+/// PRD-mcphost-upgrade-moment requirement 2 (AC3): every `source`
+/// `billing.checkout` accepts -- the `limit_name`/`dimension` identifier
+/// each of the five `next`-carrying refusal sites names in its own `why`
+/// (see [`next_upgrade`]), plus `"manual"` (the default: a checkout
+/// started with no refusal behind it).
+const KNOWN_CHECKOUT_SOURCES: &[&str] = &[
+    "calls_per_day",
+    "tools_max",
+    "secrets_max",
+    "max_child_calls",
+    "max_est_tokens",
+    "max_tool_latency_ms",
+    "max_wall_ms",
+    "child_calls",
+    "est_tokens",
+    "tool_latency_ms",
+    "wall_ms",
+    "manual",
+];
+
 /// `billing.checkout` (tenant, `plan` defaulting to `pro`, AC4/AC5): create
 /// (or reuse -- P1 AC13) a Stripe Checkout Session and return its URL,
-/// expiry, mode, and one paragraph of instructions.
+/// expiry, mode, `source`, and one paragraph of instructions.
 pub async fn checkout(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {
     let plan_name = arg_str(args, "plan").unwrap_or_else(|| "pro".to_string());
+    // PRD-mcphost-upgrade-moment requirement 2 (AC3): which refusal (if
+    // any) started this checkout, echoed back in the response and carried
+    // on the Stripe session's own metadata -- validated before anything
+    // else so an unknown source never reaches Stripe.
+    let source = arg_str(args, "source").unwrap_or_else(|| "manual".to_string());
+    if !KNOWN_CHECKOUT_SOURCES.contains(&source.as_str()) {
+        return Err(AppError::InvalidParams(format!("unknown source '{source}'")));
+    }
     let Some(secret_key) = state.billing_config.secret_key.as_deref() else {
         return Err(billing_unavailable(
             "billing is not configured on this host (no MCPHOST_STRIPE_SECRET_KEY)",
@@ -1039,6 +1194,7 @@ pub async fn checkout(state: &AppState, tenant: &Tenant, args: &Value) -> Result
             "url": open.url,
             "expires_at": open.expires_at,
             "mode": mode,
+            "source": source,
             "instructions": CHECKOUT_INSTRUCTIONS,
         }));
     }
@@ -1052,6 +1208,7 @@ pub async fn checkout(state: &AppState, tenant: &Tenant, args: &Value) -> Result
         metered_price_id: state.billing_config.metered_price_id.clone(),
         client_reference_id: tenant.namespace.clone(),
         tenant_namespace: tenant.namespace.clone(),
+        source: source.clone(),
         success_url,
         cancel_url,
         // AC3: this whole function only reaches here once billing is
@@ -1071,10 +1228,32 @@ pub async fn checkout(state: &AppState, tenant: &Tenant, args: &Value) -> Result
         );
     }
 
+    // PRD-mcphost-upgrade-moment requirement 6 (AC7): one self-ledgered
+    // `checkout.started` row per real session creation (never for a P1
+    // AC13 cache-hit reuse above, which is the same session, not a new
+    // attempt) -- `admin.upgrades` correlates this with the webhook's
+    // eventual `checkout.session.completed` row by `session_id`.
+    state
+        .db
+        .insert_billing_event(crate::db::BillingEventInsert {
+            event_id: format!("checkout_started:{}", session.id),
+            event_type: "checkout.started".to_string(),
+            tenant_id: Some(tenant.id),
+            plan: Some(plan_name),
+            amount_cents: None,
+            currency: None,
+            mode: mode.to_string(),
+            payload_sha256: sha256_hex(session.id.as_bytes()),
+            source: Some(source.clone()),
+            session_id: Some(session.id.clone()),
+        })
+        .await?;
+
     Ok(json!({
         "url": session.url,
         "expires_at": session.expires_at,
         "mode": mode,
+        "source": source,
         "instructions": CHECKOUT_INSTRUCTIONS,
     }))
 }
@@ -1183,6 +1362,8 @@ pub async fn process_webhook(
                 currency: None,
                 mode: ev_mode.to_string(),
                 payload_sha256,
+                source: None,
+                session_id: None,
             })
             .await?;
         return Ok(json!({"received": true, "mode_mismatch": true}));
@@ -1213,6 +1394,8 @@ pub async fn process_webhook(
                     currency,
                     mode: ev_mode.to_string(),
                     payload_sha256,
+                    source: None,
+                    session_id: None,
                 })
                 .await?;
             Ok(json!({"received": true}))
@@ -1238,6 +1421,20 @@ async fn apply_checkout_completed(
         .or_else(|| event.object.get("subscription").and_then(Value::as_str))
         .map(str::to_string);
     let plan_name = "pro".to_string();
+    // PRD-mcphost-upgrade-moment requirement 3 (AC4): the session's own
+    // metadata, written by `billing::checkout`'s `CheckoutSessionRequest`
+    // -- `None` for a session created before this PRD (or outside this
+    // crate, e.g. a hand-built test fixture).
+    let source = event
+        .object
+        .get("metadata")
+        .and_then(|m| m.get("source"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    // requirement 6 (AC7): the Checkout Session's own id -- shared with
+    // `billing::checkout`'s own self-ledgered `checkout.started` row for
+    // the same session.
+    let session_id = event.object.get("id").and_then(Value::as_str).map(str::to_string);
 
     let tenant = match tenant_ns.as_deref() {
         Some(ns) => state.db.find_tenant_by_namespace(ns.to_string()).await?,
@@ -1267,6 +1464,16 @@ async fn apply_checkout_completed(
         if let Some(customer_id) = stripe_customer_id {
             state.db.set_stripe_customer_id(tenant.id, customer_id).await?;
         }
+        // requirement 3 (AC4): live mode stamps `paid_unix` (first time
+        // only); test mode stamps `paid_test_unix` instead and never
+        // touches `paid_unix`, so the fleet's own test-mode checkouts
+        // never count as paid.
+        let now = crate::state::now_unix();
+        if mode == "live" {
+            state.db.stamp_paid_unix(tenant.id, now).await?;
+        } else {
+            state.db.stamp_paid_test_unix(tenant.id, now).await?;
+        }
     }
 
     state
@@ -1280,6 +1487,8 @@ async fn apply_checkout_completed(
             currency,
             mode: mode.to_string(),
             payload_sha256,
+            source,
+            session_id,
         })
         .await?;
     Ok(json!({"received": true}))
@@ -1318,6 +1527,8 @@ async fn apply_invoice_paid(
             currency,
             mode: mode.to_string(),
             payload_sha256,
+            source: None,
+            session_id: None,
         })
         .await?;
     Ok(json!({"received": true}))
@@ -1352,6 +1563,8 @@ async fn apply_downgrade(
             currency: None,
             mode: mode.to_string(),
             payload_sha256,
+            source: None,
+            session_id: None,
         })
         .await?;
     Ok(json!({"received": true}))

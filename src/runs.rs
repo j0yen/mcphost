@@ -746,7 +746,7 @@ pub async fn enqueue(
     })?;
     // PRD-mcphost-run-budget-governor requirement 3: resolved and validated
     // before the row is inserted -- a rejected override starts no run.
-    let budget_limits = crate::budget::resolve_and_validate(plan, budget_arg)?;
+    let budget_limits = crate::budget::resolve_and_validate(state, plan, budget_arg)?;
     let deadline_s = plan.job_max_s;
     let run_id = crate::state::new_ulid();
     let args_json = serde_json::to_string(&args)
@@ -901,7 +901,7 @@ pub async fn enqueue_shared(
             caller.plan
         ))
     })?;
-    let budget_limits = crate::budget::resolve_and_validate(plan, budget_arg)?;
+    let budget_limits = crate::budget::resolve_and_validate(state, plan, budget_arg)?;
     let deadline_s = plan.job_max_s;
     let run_id = crate::state::new_ulid();
     let args_json = serde_json::to_string(&args)
@@ -1073,6 +1073,7 @@ async fn execute_job(state: &AppState, run: &RunRow, cancel_pid: CancelPidSlot) 
     let budget = crate::budget::BudgetTracker::new(
         state.clone(),
         tenant.id,
+        tenant.plan.clone(),
         run.id.clone(),
         budget_limits,
         budget_now_ms,

@@ -166,6 +166,12 @@ const MIGRATION_0073: &str = include_str!("../migrations/0073_claim_token_plain.
 const MIGRATION_0074: &str = include_str!("../migrations/0074_claim_nudged_unix.sql");
 /// PRD-mcphost-ownership-moment requirement 3 (AC3): `claim_email_events`.
 const MIGRATION_0075: &str = include_str!("../migrations/0075_claim_email_events.sql");
+/// PRD-mcphost-upgrade-moment requirements 3/6: `tenants.paid_test_unix` plus
+/// `billing_events.source`/`session_id`. Renumbered to 0076 during this
+/// rebase (run 444, 2026-10-06): mcphost-ownership-moment claimed 0073-0075
+/// first, landing on main ahead of this branch (this PRD's own migration
+/// was originally numbered 0073).
+const MIGRATION_0076: &str = include_str!("../migrations/0076_upgrade_moment.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -184,7 +190,7 @@ const TENANT_COLUMNS: &str = "id, namespace, display_name, key_hash, created_at,
     signup_source, owner_email, owner_verified_at, claim_token_hash, claim_expires_at, \
     url_secret_hash, url_rotated_at, invited_by_tenant_id, last_seen_unix, \
     first_call_unix, first_publish_unix, first_own_call_unix, second_session_unix, \
-    claimed_unix, paid_unix, created_session_id, claim_token_plain";
+    claimed_unix, paid_unix, created_session_id, claim_token_plain, paid_test_unix";
 
 fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
     Ok(Tenant {
@@ -229,6 +235,7 @@ fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
         paid_unix: r.get(38)?,
         created_session_id: r.get(39)?,
         claim_token_plain: r.get(40)?,
+        paid_test_unix: r.get(41)?,
     })
 }
 
@@ -457,6 +464,13 @@ pub struct FunnelRow {
     pub second_session_unix: Option<i64>,
     pub claimed_unix: Option<i64>,
     pub paid_unix: Option<i64>,
+    /// PRD-mcphost-upgrade-moment requirement 5 (AC6): the `source` off
+    /// this tenant's own latest live-mode `checkout.session.completed`
+    /// `billing_events` row -- `None` for an unpaid tenant, or a paid one
+    /// whose checkout predates `source` existing (grouped under
+    /// `"manual"` by `admin::funnel`'s `upgrades_by_trigger`, same as a
+    /// real `source: "manual"` checkout).
+    pub paid_source: Option<String>,
 }
 
 /// [`Db::agent_contacts`]'s whole return shape.
@@ -650,9 +664,14 @@ pub struct Tenant {
     /// one-shot `Db::backfill_activation_claims_and_plans` for a tenant
     /// claimed before this column existed).
     pub claimed_unix: Option<i64>,
-    /// The first time `plan_since` was set while `plan != 'free'` --
-    /// stamped in `Db::upgrade_tenant_plan`'s own `UPDATE` (or backfilled,
-    /// same as [`Self::claimed_unix`]). Never unset by a later downgrade.
+    /// First-time-only (`COALESCE`) stamp, set by
+    /// `Db::stamp_paid_unix` from a LIVE-mode `checkout.session.completed`
+    /// webhook (PRD-mcphost-upgrade-moment requirement 3 / AC4) -- or
+    /// backfilled from `plan_since` for a tenant that predates this
+    /// column. A test-mode checkout stamps [`Self::paid_test_unix`]
+    /// instead and never touches this field, so the fleet's own
+    /// test-mode checkouts never count as paid. Never unset by a later
+    /// downgrade.
     pub paid_unix: Option<i64>,
     /// The session id `handler::bind_session_to_created_tenant` recorded
     /// the moment this tenant was created -- `None` for a tenant whose
@@ -669,6 +688,13 @@ pub struct Tenant {
     /// together with `claim_token_hash`/`claim_expires_at`) or before any
     /// token has been minted.
     pub claim_token_plain: Option<String>,
+    /// PRD-mcphost-upgrade-moment requirement 3 / AC4: [`Self::paid_unix`]'s
+    /// test-mode sibling, stamped (first time only, via
+    /// `Db::stamp_paid_test_unix`) from a TEST-mode
+    /// `checkout.session.completed` webhook. Migration 0076 (renumbered
+    /// during this rebase -- mcphost-ownership-moment claimed 0073-0075
+    /// first).
+    pub paid_test_unix: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1130,6 +1156,18 @@ pub struct BillingEventInsert {
     pub currency: Option<String>,
     pub mode: String,
     pub payload_sha256: String,
+    /// PRD-mcphost-upgrade-moment requirement 3 (AC4): which refusal (or
+    /// `manual`) started the checkout behind this event, read off the
+    /// Stripe session's own `metadata[source]` for a real webhook event,
+    /// or set directly by `billing::checkout` for its own self-ledgered
+    /// `checkout.started` row (requirement 6 / AC7). `None` for every
+    /// event type that isn't checkout-shaped.
+    pub source: Option<String>,
+    /// requirement 6 (AC7): the Stripe Checkout Session id -- shared by a
+    /// `checkout.started` row and the `checkout.session.completed` row
+    /// for the same session, so `admin.upgrades` can correlate "started"
+    /// with "completed"/"expired".
+    pub session_id: Option<String>,
 }
 
 /// A `billing_events` row read back for `admin.billing_ledger` (AC9), with
@@ -1145,6 +1183,34 @@ pub struct BillingEventRow {
     pub currency: Option<String>,
     pub mode: String,
     pub received_at: String,
+    /// PRD-mcphost-upgrade-moment requirement 3 (AC4): which refusal (or
+    /// `manual`) started the checkout behind this event; `None` for every
+    /// event type that isn't checkout-shaped.
+    pub source: Option<String>,
+}
+
+/// [`Db::latest_completed_checkout`]'s own row (PRD-mcphost-upgrade-moment
+/// requirement 4 / AC5) -- `billing::status`'s `receipt` adds `invoice_ref`
+/// (the already-loaded [`Tenant::billing_ref`], not read off this row).
+#[derive(Debug, Clone)]
+pub struct ReceiptRow {
+    pub plan: Option<String>,
+    pub amount_cents: Option<i64>,
+    pub currency: Option<String>,
+    pub mode: String,
+    pub paid_at_unix: i64,
+}
+
+/// [`Db::list_checkout_attempts`]'s own row (PRD-mcphost-upgrade-moment
+/// requirement 6 / AC7) -- `admin::upgrades` turns `completed_unix.is_none()`
+/// into "pending" or "expired" depending on how long ago `started_unix`
+/// was.
+#[derive(Debug, Clone)]
+pub struct CheckoutAttemptRow {
+    pub tenant: Option<String>,
+    pub source: Option<String>,
+    pub started_unix: i64,
+    pub completed_unix: Option<i64>,
 }
 
 /// PRD-mcphost-handoff-token requirement 2 / AC2: [`Db::redeem_handoff_token`]'s
@@ -2465,7 +2531,8 @@ impl Db {
         Self::migrate_0072_activation_funnel(&conn)?;
         Self::migrate_0073_claim_token_plain(&conn)?;
         Self::migrate_0074_claim_nudged_unix(&conn)?;
-        Self::migrate_0075_claim_email_events(&conn)
+        Self::migrate_0075_claim_email_events(&conn)?;
+        Self::migrate_0076_upgrade_moment(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -3545,6 +3612,20 @@ impl Db {
         Ok(())
     }
 
+    /// PRD-mcphost-upgrade-moment requirements 3/6: `tenants.paid_test_unix`
+    /// plus `billing_events.source`/`session_id`, additive like every
+    /// migration above. Renumbered to 0076 during this rebase (run 444,
+    /// 2026-10-06): mcphost-ownership-moment claimed 0073-0075 first.
+    fn migrate_0076_upgrade_moment(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'paid_test_unix'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0076)?;
+        }
+        Ok(())
+    }
+
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
     /// subcommand.
@@ -3818,6 +3899,7 @@ impl Db {
                 paid_unix: None,
                 created_session_id: None,
                 claim_token_plain: None,
+                paid_test_unix: None,
             })
         })
         .await
@@ -5284,11 +5366,16 @@ impl Db {
     ) -> Result<Vec<FunnelRow>, AppError> {
         self.with_conn(move |conn| {
             let mut stmt = conn.prepare(
-                "SELECT source_class, invited_by_tenant_id, created_unix, first_call_unix, \
-                 first_publish_unix, first_own_call_unix, second_session_unix, claimed_unix, \
-                 paid_unix FROM tenants \
-                 WHERE created_unix IS NOT NULL AND created_unix >= ?1 \
-                 AND (?2 IS NULL OR signup_source = ?2)",
+                "SELECT t.source_class, t.invited_by_tenant_id, t.created_unix, \
+                        t.first_call_unix, t.first_publish_unix, t.first_own_call_unix, \
+                        t.second_session_unix, t.claimed_unix, t.paid_unix, \
+                        (SELECT be.source FROM billing_events be \
+                         WHERE be.tenant_id = t.id AND be.event_type = 'checkout.session.completed' \
+                           AND be.mode = 'live' \
+                         ORDER BY be.id DESC LIMIT 1) \
+                 FROM tenants t \
+                 WHERE t.created_unix IS NOT NULL AND t.created_unix >= ?1 \
+                 AND (?2 IS NULL OR t.signup_source = ?2)",
             )?;
             let rows = stmt
                 .query_map(params![since_unix, signup_source], |r| {
@@ -5302,6 +5389,7 @@ impl Db {
                         second_session_unix: r.get(6)?,
                         claimed_unix: r.get(7)?,
                         paid_unix: r.get(8)?,
+                        paid_source: r.get(9)?,
                     })
                 })?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -5414,6 +5502,37 @@ impl Db {
                 "UPDATE tenants SET plan = ?1, plan_since = ?2, \
                  billing_ref = COALESCE(?3, billing_ref) WHERE id = ?4",
                 params![plan, plan_since, billing_ref, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-upgrade-moment requirement 3 / AC4: first-time-only
+    /// (`COALESCE`) stamp from a LIVE-mode `checkout.session.completed`
+    /// webhook -- a second identical (or later) webhook changes nothing.
+    /// Deliberately separate from [`Self::upgrade_tenant_plan`] (which
+    /// `admin.plan_set`'s support override also calls, and which runs
+    /// for a test-mode checkout too) so only a real payment ever sets
+    /// this column.
+    pub async fn stamp_paid_unix(&self, tenant_id: i64, unix: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tenants SET paid_unix = COALESCE(paid_unix, ?1) WHERE id = ?2",
+                params![unix, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// [`Self::stamp_paid_unix`]'s test-mode sibling -- from a TEST-mode
+    /// `checkout.session.completed` webhook, never touching `paid_unix`.
+    pub async fn stamp_paid_test_unix(&self, tenant_id: i64, unix: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tenants SET paid_test_unix = COALESCE(paid_test_unix, ?1) WHERE id = ?2",
+                params![unix, tenant_id],
             )?;
             Ok(())
         })
@@ -9970,8 +10089,9 @@ impl Db {
         self.with_conn(move |conn| {
             conn.execute(
                 "INSERT INTO billing_events \
-                 (event_id, event_type, tenant_id, plan, amount_cents, currency, mode, received_at, payload_sha256) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                 (event_id, event_type, tenant_id, plan, amount_cents, currency, mode, \
+                  received_at, payload_sha256, source, session_id) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                 params![
                     event.event_id,
                     event.event_type,
@@ -9982,6 +10102,8 @@ impl Db {
                     event.mode,
                     received_at,
                     event.payload_sha256,
+                    event.source,
+                    event.session_id,
                 ],
             )?;
             Ok(())
@@ -10005,7 +10127,7 @@ impl Db {
         self.with_conn(move |conn| {
             let mut sql = String::from(
                 "SELECT be.event_id, be.event_type, t.namespace, be.plan, be.amount_cents, \
-                        be.currency, be.mode, be.received_at, be.id \
+                        be.currency, be.mode, be.received_at, be.id, be.source \
                  FROM billing_events be LEFT JOIN tenants t ON t.id = be.tenant_id \
                  WHERE 1 = 1",
             );
@@ -10038,9 +10160,82 @@ impl Db {
                         currency: r.get(5)?,
                         mode: r.get(6)?,
                         received_at: r.get(7)?,
+                        source: r.get(9)?,
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-upgrade-moment requirement 4 (AC5): the latest
+    /// `checkout.session.completed` row for `tenant_id`, if any -- what
+    /// `billing::status`'s own `receipt` field is built from. `None` for a
+    /// tenant that has never completed a checkout.
+    pub async fn latest_completed_checkout(
+        &self,
+        tenant_id: i64,
+    ) -> Result<Option<ReceiptRow>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT plan, amount_cents, currency, mode, \
+                        CAST(substr(received_at, 6) AS REAL) \
+                 FROM billing_events \
+                 WHERE tenant_id = ?1 AND event_type = 'checkout.session.completed' \
+                 ORDER BY id DESC LIMIT 1",
+                params![tenant_id],
+                |r| {
+                    Ok(ReceiptRow {
+                        plan: r.get(0)?,
+                        amount_cents: r.get(1)?,
+                        currency: r.get(2)?,
+                        mode: r.get(3)?,
+                        paid_at_unix: r.get::<_, f64>(4)? as i64,
+                    })
+                },
+            )
+            .optional()
+            .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-upgrade-moment requirement 6 (AC7): `admin.upgrades`'s
+    /// own read -- every `billing::checkout`-self-ledgered
+    /// `checkout.started` row at or after `since_unix`, each correlated
+    /// (by `session_id`) with its own eventual `checkout.session.completed`
+    /// row, if any. `completed_unix` is `None` for a checkout that never
+    /// completed (still open, or expired) -- `admin::upgrades` is what
+    /// turns that into "pending" vs "expired".
+    pub async fn list_checkout_attempts(
+        &self,
+        since_unix: i64,
+    ) -> Result<Vec<CheckoutAttemptRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT t.namespace, started.source, \
+                        CAST(substr(started.received_at, 6) AS REAL), \
+                        (SELECT CAST(substr(completed.received_at, 6) AS REAL) \
+                         FROM billing_events completed \
+                         WHERE completed.session_id = started.session_id \
+                           AND completed.event_type = 'checkout.session.completed') \
+                 FROM billing_events started \
+                 LEFT JOIN tenants t ON t.id = started.tenant_id \
+                 WHERE started.event_type = 'checkout.started' \
+                   AND CAST(substr(started.received_at, 6) AS REAL) >= ?1 \
+                 ORDER BY started.id DESC",
+            )?;
+            let rows = stmt
+                .query_map(params![since_unix], |r| {
+                    Ok(CheckoutAttemptRow {
+                        tenant: r.get(0)?,
+                        source: r.get(1)?,
+                        started_unix: r.get::<_, f64>(2)? as i64,
+                        completed_unix: r.get::<_, Option<f64>>(3)?.map(|f| f as i64),
+                    })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
             Ok(rows)
         })
         .await

@@ -1,9 +1,9 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-ownership-moment.md",
-  "intent_slug": "mcphost-ownership-moment",
-  "root_motivation": "Grounding (mcphost-1 /healthz read 2026-10-05 2:55pm PDT): claim_email_configured: false, tenants_claimed: {external: 0, synthetic: 0} against signups.external: 14 and paying_tenants: 0; src/email.rs:21-25 reads MCPHOST_EMAIL_API_URL/API_KEY/FROM and :62 said 'Resend or Postmark is still undecided at build time'; journey.py:62 listed claim in NON_P0_STEPS, so the daily journey passed 12/12 with the claim path unexercised; the market-test vision's weakest link (leaf 5, 'the human will open a claim link, verify an email, and pay -- assumed') had had no data since the claim PRD shipped 09-24. Fourteen strangers had signed up and zero were claimable: the agent is told (skill.md step 5) to relay a link that leads to a page that cannot send the email. The one assumption the whole market test exists to measure had no sensor.",
-  "user_persona": "Four (PRD User stories): an agent on its first successful publish, told once to hand its human the claim link; a human who opens it, enters an email, clicks the magic link, and sees what their agent built; the operator (Joe), whose deploy probe must go red on prod until mail env is set and whose healthz must show claimed tenants per week; the daily journey, which must exercise the claim page for real against the test mail client and fail the run if it breaks.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-upgrade-moment.md",
+  "intent_slug": "mcphost-upgrade-moment",
+  "root_motivation": "A tenant that hits a free-plan limit is told only the number it exceeded: budget_exceeded/quota_exceeded refusals say \"500 exceeds plan's 500\" and stop (src/errors.rs:690, src/budget.rs:237) -- no checkout_url/upgrade field exists anywhere (git grep checkout_url empty). An agent reading that has no tool name, no plan, no reset time, so it either retries until midnight or tells its human \"it failed\". When a payment does happen, the webhook never stamps paid_unix live (only a one-time migration backfill from plan_since exists), so the funnel's paid stage stays invisible and unattributed to which refusal earned it; the market test's one assumed leaf (a refusal with a next step converts at all) is unmeasurable. Fix: every plan/budget refusal carries next:{tool,plan,why,resets_at}; checkout(source) tags the Stripe session; the webhook stamps paid_unix/paid_test_unix by mode; billing.status returns a receipt; admin.funnel/admin.upgrades report by trigger.",
+  "user_persona": "Four (PRD user stories): the agent whose 501st call returns next.tool=billing.checkout/why/resets_at, calls checkout(source) and hands the URL to its human with instructions; the human who pays and sees billing.status's receipt (plan, amount, paid_at, invoice_ref); Operator Joe, whose admin.funnel shows paid 3 and upgrades_by_trigger by limit; the self-hosting agent on a billing-off host, whose refusal says next.tool is null, so it waits instead of looping.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
@@ -14,75 +14,71 @@
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given an implicit first call, a /u/new mint, a URL-bound first call, and an invite join, When each response's onboarding envelope is read, Then it carries claim_url, and host.whoami carries the same URL until the tenant is claimed.",
-      "test": "tests/ownmt_ac01_claim_url_on_every_onboarding_path.rs -- five tests: implicit_first_call_carries_claim_url, u_new_mint_page_carries_a_claim_link, url_bound_first_call_carries_claim_url_matching_the_mint_page, invite_join_carries_claim_url, whoami_drops_claim_url_and_gains_owner_once_claimed."
+      "description": "Given a free tenant at 500 calls today, When it makes one more call, Then the refusal's error_data_json.next is { tool: \"billing.checkout\", plan: \"pro\", why: \"calls_per_day 500/500\", resets_at: <next window> }.",
+      "test": "tests/upgrade_ac01_calls_per_day_next_checkout.rs -- seeds 500 ok calls via Db::record_call, asserts the 501st call's quota_exceeded error carries the exact next block against a server configured with a test-mode Stripe key."
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given an unclaimed external tenant's first successful host.tool_publish, When the response is read, Then _meta.next.kind = \"claim\" with the URL; given its second publish, Then no claim nudge is present; given a synthetic tenant, Then never.",
-      "test": "tests/ownmt_ac02_claim_nudge_on_first_publish.rs -- three tests, using mcphost::control::signup(..., \"8.8.8.8\", ...) directly to force origin: \"external\" (the harness's own default tenants are loopback/synthetic and would never qualify); exercises the real wire-level _meta object, not structuredContent's next field (see hard_constraints)."
+      "description": "Given billing mode off, When any plan refusal occurs, Then next.tool is null, why and resets_at are present, and the text says billing is not enabled on this host.",
+      "test": "tests/upgrade_ac02_billing_off_refusal_text.rs -- same 500-calls seed against TestServer::start()'s default (no Stripe key); asserts next.tool is null and the refusal message contains the billing-off sentence."
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given MCPHOST_EMAIL_PROVIDER = postmark and a fake API, When a claim email is issued, Then the request matches Postmark's shape; given resend (default), Then Resend's; given a 500 from the API, Then the claim call returns claim_email_failed with a request_id and the journal row carries the status code and no key.",
-      "test": "tests/ownmt_ac03_email_provider_shape_and_failure_journal.rs -- three tests built on a server_with_provider(mock, provider) helper that points a real HttpEmailClient at a wiremock::MockServer, asserting the outbound request/header shape per provider and the journal row's status code (and absence of the key) on a simulated 500."
+      "description": "Given billing.checkout(plan: \"pro\", source: \"calls_per_day\"), When the Stripe session is created (test mode), Then its metadata carries source = calls_per_day and the response echoes source; an unknown source is rejected with a validation error.",
+      "test": "tests/upgrade_ac03_checkout_source_metadata.rs -- three cases against a FakeBillingClient: known source echoed and on metadata, default \"manual\" with no source arg, and an unknown source rejected as invalid_params with zero Stripe calls."
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given three external claims and one synthetic claim in the window, When /healthz is read, Then claims.external = 3, claims.synthetic = 1, and median_minutes_to_claim is computed from owner_verified_at - created_unix.",
-      "test": "tests/ownmt_ac04_healthz_claims_block.rs -- one test using a claimed_tenant() helper that signs up then back-dates via db::set_claim_timing_for_test to control the 30-day window deterministically."
+      "description": "Given a live-mode checkout.session.completed webhook for a tenant with paid_unix null, When it is processed, Then paid_unix is set, billing_events.source equals the session metadata, and a second identical webhook changes nothing; given test mode, Then paid_test_unix is set and paid_unix stays null.",
+      "test": "tests/upgrade_ac04_webhook_stamps_paid_unix.rs -- one server with a live key (livemode: true agrees with it) proves paid_unix stamps once and a duplicate event_id adds no row; a second server with a test key (livemode: false) proves paid_test_unix stamps and paid_unix stays null."
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given a host whose env contract requires mail and claim_email_configured = false, When mcphost-deploy probe runs, Then the artifact check fails with claim-email-unconfigured and doctor names the missing variables; given the variables set, Then the check passes.",
-      "test": "tests/ownmt_ac05_claim_email_configured_signal.rs -- pins the mcphost-side claim_email_configured healthz field that mcphost-deploy's probe reads. The probe/doctor/env-contract behavior itself was already fully implemented in ~/repos/mcphost-deploy by a prior commit (41a8398, env_contract.py/probe.py/cli.py/artifact.py, with its own test_mail_env_ac1/ac2/ac3 files) before this dispatch began; this test closes the local gate-ready criterion without duplicating that work."
+      "description": "Given a tenant with one completed checkout, When billing.status is called, Then receipt carries plan, amount_cents, currency, paid_at, invoice_ref and mode; given none, Then receipt is absent.",
+      "test": "tests/upgrade_ac05_billing_status_receipt.rs -- asserts receipt is absent before any webhook, then present with all six fields (invoice_ref = the tenant's own billing_ref) after one checkout.session.completed webhook."
     },
     {
       "id": "AC6",
       "level": "MUST",
-      "description": "Given the journey in test mode, When the claim step runs, Then it completes the magic-link page through the fake mail client and the step is P0 (a failure fails the journey).",
-      "test": "tests/ownmt_ac06_claim_round_trip_for_journey_claim_step.rs -- pins the one contract the journey step actually depends on: signup's claim_url, POST /claim/{token} (form email), the magic-link token extractable from the fake mail client's captured message by the exact /claim/verify/([A-Za-z0-9_-]+) pattern the journey step's own extractor uses, GET /claim/verify/{code}, and host.whoami.owner_verified flipping true. The journey harness itself (synthorg's journey.py claim step, promoted from an always-skip P1 stub to this real round trip) and mcphost-deploy's rollback wiring (claim leaving NON_P0_STEPS; journey.py reading payload[\"claim\"] directly) are real commits in ~/repos/synthorg (cc0d1e6, branch wm-build/mcphost-ownership-moment-journey-claim-p0) and ~/repos/mcphost-deploy (fbf6892, same branch name), not this repo -- see hard_constraints for the ordering bug found and fixed there."
+      "description": "Given three paid tenants with sources calls_per_day, calls_per_day, tools_max, When admin.funnel runs, Then paid 3 and upgrades_by_trigger { calls_per_day: 2, tools_max: 1 }.",
+      "test": "tests/upgrade_ac06_admin_funnel_upgrades_by_trigger.rs -- three tenants paid via live-mode webhooks with distinct sources; asserts the pre-existing \"paid\" funnel stage counts 3 and the new upgrades_by_trigger field matches exactly."
     },
     {
       "id": "AC7",
       "level": "SHOULD",
-      "description": "Given a tenant with a first-call remember note, When its claim page renders, Then the note is shown with the tool list.",
-      "test": "tests/ownmt_ac07_claim_page_shows_remember_note.rs -- two tests: claim_summary_page_shows_the_remember_note_with_the_tool_list (the note renders beside the tool list when one was ever sent) and claim_summary_page_omits_the_note_block_when_none_was_ever_sent."
+      "description": "Given two checkouts started yesterday of which one completed, When admin.upgrades --since 7d runs, Then both are listed with source, state and time to completion.",
+      "test": "tests/upgrade_ac07_admin_upgrades_listing.rs -- two tenants each start a checkout (self-ledgered checkout.started rows); one is completed via webhook correlated by session_id, the other stays pending; admin.upgrades {days:7} lists both with source/state/time_to_completion_s."
     },
     {
       "id": "AC8",
       "level": "MUST",
-      "description": "Given prod with mail configured by the operator, When the next external tenant publishes and its human claims, Then healthz counts it (Live; evidence: /healthz claims.external >= 1 with nudged_then_claimed >= 1).",
-      "test": "deferred -- operator-provisioned: AC8's Then is a real external tenant publishing and its human completing the claim flow against prod after mail is configured by the operator and this PRD is deployed; this dispatch has no live operator access, no prod deploy rights, and none of the credentials that observation needs. Declared out of this dispatch's required-AC list by the task itself (\"AC8 is explicitly Live/deferred\"). The always-on mechanism AC8 would be measured through -- host.whoami.owner_verified, /healthz claims.external/nudged_then_claimed -- is already proven unconditionally by tests/ownmt_ac01_claim_url_on_every_onboarding_path.rs, tests/ownmt_ac02_claim_nudge_on_first_publish.rs, and tests/ownmt_ac04_healthz_claims_block.rs; AC8 itself is the Live observation on top of that mechanism, not a mechanism this worktree can fabricate."
+      "description": "Given prod after promotion, When the fleet's weekly live checkout runs (or the first real upgrade happens), Then the billing_events row carries source, billing.status returns the receipt, and admin.funnel prints upgrades_by_trigger (Live; evidence: the prod billing_events row with source and the funnel line in the morning digest).",
+      "test": "deferred -- operator-provisioned: AC8's Then is a live, post-promotion observation of the fleet's own weekly checkout or the first real tenant upgrade against prod, plus the morning digest actually printing the upgrades_by_trigger line. This dispatch has no prod deploy rights and no live traffic to observe; the coder's own dispatch instructions list only AC1-7 as non-deferred. AC3/AC4/AC5/AC6 together prove source tagging, webhook stamping, the receipt, and the funnel breakdown end-to-end against a real in-process server with a FakeBillingClient -- AC8 only adds the live, post-promotion observation on top of that."
     }
   ],
   "scope": [
-    "src/claim.rs: issue_claim_token now persists the plaintext token (claim_token_plain, mirroring invites.code_plain's hash-at-rest-plus-plaintext-for-redisplay pattern); new claim_url_for_tenant(public_url, tenant) helper rides every onboarding envelope; send_verify_email journals a failure via db::record_claim_email_failure, extracting the provider's status code via AppError::claim_email_status(); render_summary shows the agent's first-call remember note (tenant_state::first_contact_summary) in a block before the tool list.",
-    "src/control.rs: host.whoami's response gains claim_url while owner_verified_at is null, or owner: {verified_at} once claimed.",
-    "src/handler.rs: the onboarding envelope (implicit signup, and a URL-bound tenant's first-ever call) gains claim_url; call_tool's success arm computes a claim_nudge (gated on host.tool_publish/host.tool.publish, tenant.owner_verified_at.is_none(), tenant.origin == \"external\", and db::mark_claim_nudged_if_unset returning true) inserted into the real wire-level _meta object (meta.0.insert(\"next\", ...)) alongside the pre-existing deprecated/invite_url entries.",
-    "src/invites.rs: claim_on_first_call issues a claim token (crate::claim::issue_claim_token) and adds claim_url to the invite-join onboarding json.",
-    "src/http.rs: render_new_url_result_page and post_new_url thread an optional claim_url onto the /u/new mint page; /healthz gains a claims block (state.db.claims_summary(now - 30d)) distinct from the pre-existing tenants_claimed counter.",
-    "src/email.rs: EmailProvider enum (Resend default, Postmark) selected by MCPHOST_EMAIL_PROVIDER; HttpEmailClient.send branches on provider for the Resend {from,to,subject,text}+bearer vs Postmark {From,To,Subject,TextBody}+X-Postmark-Server-Token request shape; failures return AppError::claim_email_failed(status) instead of a generic error; FakeEmailClient's simulated failure does the same.",
-    "src/errors.rs: AppError::claim_email_failed(status: Option<u16>) / claim_email_status(&self) -- a Structured variant carrying a request_id, never the API key.",
-    "src/db.rs: migrations 0073-0075 (claim_token_plain, claim_nudged_unix, claim_email_events; renumbered during the run 428 rebase -- mcphost-activation-funnel claimed 0072 first) with idempotent pragma_table_info/sqlite_master presence guards; mark_claim_nudged_if_unset (single-winner atomic UPDATE ... WHERE claim_nudged_unix IS NULL), claims_summary(since_unix) -> ClaimsSummary, record_claim_email_failure, and their _for_test helpers.",
-    "migrations/0073_claim_token_plain.sql, 0074_claim_nudged_unix.sql, 0075_claim_email_events.sql (new).",
-    "src/main.rs, tests/common/mod.rs: HttpEmailClient::new and the test EmailConfig literal updated for the new provider field.",
-    "tests/ownmt_ac0[1-7]_*.rs (new, one per non-deferred AC); tests/suite_core_07.rs/suite_core_08.rs regenerated by scripts/gen-test-suites.sh to include them.",
-    "~/repos/mcphost-deploy (requirement 5/AC5, already shipped at commit 41a8398 on main before this dispatch began) and (requirement 6/AC6, this dispatch's own commit fbf6892 on branch wm-build/mcphost-ownership-moment-journey-claim-p0): journey.py's _evaluate_steps now also reads payload[\"claim\"] directly (claim was always a separate top-level key, never a steps list entry, so its prior NON_P0_STEPS membership was dead code -- removing the dead entry alone would not have changed rollback behavior) and returns a fail JourneyResult when claim.verdict == \"fail\".",
-    "~/repos/synthorg (this dispatch's own commit cc0d1e6, same branch name): journey.py's _claim_result promoted from a permanent skip stub (based on the mtproof.run_claim precedent) to a real magic-link round trip; claim_start/read_mail_sink/claim_verify added to the JourneyTransport Protocol, LiveJourneyClient (real httpx2 calls), the FakeJourneyHost test fixture, and toolconf.py's ToolconfTransport (required for mypy structural-typing compatibility, per its own documented 'carries the full JourneyTransport shape' design); JourneyResult.ok now also fails when claim.verdict == \"fail\".",
-    "Cargo.toml/Cargo.lock: minor version bump; CHANGELOG.md: new entry.",
-    "agent/test-map.json: ac_test_map repointed at this PRD's ACs; the prior PRD's (mcphost-event-trigger-self-test) map archived under ac_test_map_by_prefix.mcphost_event_trigger_self_test."
+    "migrations/0073_upgrade_moment.sql: tenants.paid_test_unix, billing_events.source, billing_events.session_id -- three additive nullable columns (one more than the PRD's migration section names; session_id is needed to correlate AC7's checkout.started/checkout.session.completed pair and has no other home -- see ambiguities_resolved).",
+    "src/billing.rs: next_upgrade (the shared {tool,plan,why,resets_at} builder reading the plan catalog + billing mode), quota_exceeded/quota_exceeded_for (now take the catalog so tools_max/secrets_max/calls_per_day all carry next; quota_exceeded_for exists because src/tables.rs's three quota sites run inside a spawn_blocking closure that can't borrow AppState), KNOWN_CHECKOUT_SOURCES + checkout(source) validation/metadata/echo, CHECKOUT_SESSION_TTL_SECS, one self-ledgered checkout.started billing_events row per real session creation (never on a P1 AC13 cache-hit reuse), apply_checkout_completed stamping paid_unix/paid_test_unix by mode and carrying metadata.source + the session id onto the ledger row, status() gaining receipt.",
+    "src/budget.rs: resolve_and_validate takes &AppState so budget_ceiling_exceeded also carries next; BudgetTracker gains a plan field so budget_exceeded's exceeded_detail does too (both P0 requirement 1, no AC of their own -- see the separate non-AC commit).",
+    "src/control.rs/src/handler.rs: the three plan-limit quota_exceeded call sites pass state; billing.checkout's schema gains source; admin.upgrades registered + dispatched.",
+    "src/tables.rs: table_tables_max/table_rows_max/table_bytes_max's own quota_exceeded calls switch to quota_exceeded_for with a cloned catalog (incidental consequence of the quota_exceeded signature change, not a requested feature -- they get next too, harmlessly).",
+    "src/db.rs: Tenant/TENANT_COLUMNS/tenant_from_row grow paid_test_unix; stamp_paid_unix/stamp_paid_test_unix (COALESCE, first-time-only); BillingEventInsert/BillingEventRow/insert_billing_event/list_billing_events grow source/session_id; ReceiptRow/latest_completed_checkout for AC5; CheckoutAttemptRow/list_checkout_attempts for AC7; FunnelRow grows paid_source (a correlated subquery over the tenant's own latest live-mode checkout.session.completed row) for AC6.",
+    "src/admin.rs: funnel() adds upgrades_by_trigger (grouped over the same window/filters stages already uses); new upgrades(state, args) for AC7.",
+    "contracts/host-tools.v1.json regenerated (billing.checkout's new source schema field); docs/tools.md/docs/plans.md/www/plans.html checked but unaffected (name/description-only tables).",
+    "tests/upgrade_ac0[1-7]_*.rs (new, one per non-deferred AC) plus two pre-existing tests (billing_ac02/billing_ac03) updated for next's new object shape; tests/suite_core_0[7-8].rs regenerated by scripts/gen-test-suites.sh.",
+    "agent/test-map.json: ac_test_map repointed at this PRD's ACs; the prior PRD's (mcphost-activation-funnel) map archived under ac_test_map_by_prefix.funnel.",
+    "Cargo.toml/Cargo.lock: minor version bump (0.90.0 -> 0.91.0)."
   ],
   "non_goals": [
-    "Choosing the provider in code -- PRD's own Non-goals; env-driven (MCPHOST_EMAIL_PROVIDER), Resend recommended as the default, and Joe's own Open-questions answer already names Resend/claim@mcphost.dev for prod.",
-    "Billing changes -- PRD's own Non-goals; claimed -> Pro stays the existing Stripe path.",
-    "A second nudge to the human by email -- PRD's own Non-goals; left as an Open question, owner Joe, due after 20 external claims of real data.",
-    "Requirement 8 (P2, host.whoami.owner.email_masked after claim) has no numbered acceptance criterion in the PRD's own Acceptance criteria section and was not part of this dispatch's required-AC list -- left unimplemented.",
-    "AC8 (the Live healthz-counts-a-real-claim observation) -- operator-provisioned, deferred; needs mail configured on prod by the operator and a real external tenant's human completing the claim flow there, neither of which this dispatch can do."
+    "New plans, prices, or metering changes -- plans stay as in src/plans.rs (PRD's own Non-goals).",
+    "Dunning, failed-payment recovery, cancellation flows (PRD's own Non-goals).",
+    "Emailing the human about the refusal -- the agent carries the next step (PRD's own Non-goals).",
+    "MCPHOST_UPGRADE_NEXT=off (P2 requirement 7) -- not in this dispatch's assigned AC list; no AC exercises it.",
+    "AC8 (the live post-promotion billing_events/receipt/digest observation) -- operator-provisioned, deferred; needs a real prod promotion and a real checkout, neither of which this coder dispatch can produce."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -91,52 +87,58 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "claim_nudge_rides_the_real_meta_object_not_structured_content_next": "PRD-mcphost-one-next-tool already attaches a next hint to structuredContent for a young tenant's early calls (maybe_attach_next_hint), and its own pinned test (nexttool_ac04) asserts that field carries exactly {tool, why} and nothing else -- adding a second, differently-shaped next entry there would break that assertion. Requirement 2's own wording ('_meta.next') also names the real wire-level MCP _meta object literally, distinct from structuredContent. Resolved by inserting the claim nudge into meta.0 (the real _meta map already carrying deprecated/invite_url entries) instead, leaving nexttool's own channel untouched.",
-      "ac5_already_shipped_by_a_prior_mcphost_deploy_commit": "Investigation (git log/grep in ~/repos/mcphost-deploy) found requirement 5's env_contract.py/probe.py/cli.py/artifact.py changes, and their own test_mail_env_ac1/ac2/ac3 test files, already landed on main at commit 41a8398 before this dispatch began. Rather than duplicate that work, this dispatch added only tests/ownmt_ac05_claim_email_configured_signal.rs on the mcphost side, pinning the one field (claim_email_configured on /healthz) that probe actually reads.",
-      "ac6_claim_step_ordering_bug_found_and_fixed_in_synthorg": "The first implementation of synthorg's _claim_result called it from run_journey AFTER _run_once returned -- by then the journey's own teardown step had already called host.self_offboard, removing the tenant from the fixture/live host, so host.whoami's owner_verified check spuriously read as unclaimed even when claim_verify itself had succeeded. Diagnosed from a failing pytest's StepResult output plus journey_steps.toml's step order (teardown is last). Fixed by moving the _claim_result call inside _run_once's own loop, immediately before the teardown step runs, and widening _run_once's return type to a 4-tuple carrying the claim StepResult.",
-      "claim_token_plain_persisted_for_repeated_redisplay": "set_claim_token now stores the plaintext token alongside its hash, mirroring the existing invites.code_plain pattern -- needed because claim_url (now read on every onboarding envelope and host.whoami call, not just the original single claim response) must keep returning the same working link across calls, not just once at mint time."
+      "next_off_mode_lives_in_the_message_not_a_new_next_field": "AC1's next is exactly {tool,plan,why,resets_at} (no fifth key); AC2 says 'the text says billing is not enabled on this host' without naming a next subfield for it, so that sentence was read as the refusal's own outer message (already operator-authored prose per every other Structured error in this crate), not a new key inside next -- next itself stays the same 4-key shape in both modes, only tool flips to null.",
+      "invoice_ref_reuses_tenant_billing_ref_not_a_new_column": "requirement 4 names invoice_ref alongside plan/amount_cents/currency/paid_at/mode on the receipt, but the PRD's own migration section lists only billing_events.source and tenants.paid_test_unix as new columns. tenant.billing_ref (the Stripe customer/subscription id, already loaded on every billing.status call) is exactly 'a reference a human could match against their Stripe receipt' and needs no schema change, so the receipt's invoice_ref is that field, not a new billing_events column.",
+      "session_id_added_beyond_the_named_migration_for_ac7s_correlation": "AC7 (admin.upgrades) needs to pair a 'checkout started' moment with its eventual completion/expiry, but the PRD names no persisted checkout-attempts table and no session-id column. billing_events already gets a schema touch for source (named); adding session_id to the SAME migration (rather than a second one) is the minimal extension that lets a self-ledgered checkout.started row (written by billing::checkout at session-creation time, never on a P1 AC13 cache-hit reuse) correlate with the webhook's own checkout.session.completed row by Stripe's own session id -- no new table.",
+      "checkout_source_allowlist_is_every_limit_name_and_dimension_plus_manual": "requirement 2 says source is validated against 'the refusal codes plus manual' -- read as the limit_name/dimension identifiers next_upgrade's five sites each put in their own why (calls_per_day/tools_max/secrets_max from the three plan-limit sites, max_child_calls/max_est_tokens/max_tool_latency_ms/max_wall_ms from budget_ceiling_exceeded's field keys, child_calls/est_tokens/tool_latency_ms/wall_ms from budget_exceeded's dimensions), not the AppError `code` field (which is just 'quota_exceeded' for all three plan-limit sites and so can't disambiguate which limit).",
+      "admin_funnel_paid_3_is_the_pre_existing_stage_not_a_new_top_level_scalar": "AC6 says 'paid 3 and upgrades_by_trigger {...}'; activation-funnel's own FUNNEL_STAGES already includes a 'paid' stage (count from paid_unix) in admin.funnel's stages array, so once this PRD's webhook actually stamps paid_unix that stage already reads 3 with zero new code -- only upgrades_by_trigger (grouped by billing_events.source) is new.",
+      "budget_ceiling_exceeded_and_budget_exceeded_get_next_but_no_dedicated_ac": "requirement 1 (P0) names all five refusal sites (the three plan-limit ones plus budget_ceiling_exceeded and budget_exceeded) as carrying next, but only AC1/AC2 are testable against a concrete scenario (both calls_per_day-shaped); the other two are built (resolve_and_validate takes &AppState, BudgetTracker gains a plan field) in their own non-AC commit per the dispatch's own 'one commit per requirement with no AC of its own' rule, proven by the pre-existing budget_ac* suite staying green rather than a new upgrade_ac* file."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why do agents still perform the retired key-flow ritual and why can nobody claim a tenant?",
-      "a": "The claim path needs an outbound email and no provider is configured on prod; the open question ('Resend or Postmark', market-test vision, owner Joe) was never closed before the original claim PRD shipped on 09-24, so it shipped provider-agnostic."
+      "q": "Why does a refusal with a next step matter if there is no paying traffic yet?",
+      "a": "This is the funnel's last stage being wired before the first wave (PRD grounding: 'not failure'); PRD-grand-loop-billing's own goal 4 (next: billing.checkout on quota refusals) was drafted but never built, so the very first real conversion would already be invisible without this PRD."
     },
     {
       "why": 2,
-      "q": "Why did an unconfigured mail provider reach prod at all?",
-      "a": "Nothing in mcphost-deploy's probe fails when claim_email_configured is false -- a missing env var produces a silently-passing deploy, not a red one."
+      "q": "Why is a refusal with no next step a problem for an agent specifically, not just a human?",
+      "a": "An agent has no UI to discover billing.checkout exists -- it only ever sees the tool list it was given and the error payload in front of it; without next.tool in that payload it has no path from 'quota_exceeded' to 'call billing.checkout', so it retries the same call until the day rolls over or reports failure upward."
     },
     {
       "why": 3,
-      "q": "Why did nothing flag the gap for ten days after it shipped?",
-      "a": "The readiness list treated claim as a feature that had already shipped; journey.py marked claim a NON_P0_STEPS member (line 62), so the daily journey passed 12/12 with the claim step unexercised the entire time."
+      "q": "Why does paid_unix staying null matter if plan already flips to pro on checkout?",
+      "a": "plan flipping is enough to unlock the tenant, but PRD-mcphost-activation-funnel's own FUNNEL_STAGES array already has a 'paid' stage reading paid_unix -- with nothing stamping it live (only a one-time migration backfill from plan_since), every NEW paid tenant after that migration ran is invisible to admin.funnel/healthz, breaking the exact stage the market test was built to watch."
     },
     {
       "why": 4,
-      "q": "Why was claim allowed to sit in NON_P0_STEPS instead of gating the journey like every other customer-facing step?",
-      "a": "synthorg's own journey.py reported claim as a separate top-level key, never a steps list entry, so its NON_P0_STEPS membership in mcphost-deploy's journey.py was already dead code -- nobody had noticed the set entry did nothing, which is a different, deeper bug than merely 'claim should be P0'."
+      "q": "Why can't the funnel say which refusal earned a conversion today?",
+      "a": "billing_events (migration 0006) carries event_type/plan/amount/mode but no source -- the webhook has always applied a checkout.session.completed event without ever reading back which limit the tenant's own checkout() call was started in response to, because checkout() itself never recorded or forwarded that context to Stripe or the ledger."
     },
     {
       "why": 5,
-      "q": "Why was the ownership moment allowed to be optional at every one of these levels?",
-      "a": "The product's persona is the agent (profile thesis); the human was added as the payer late, and nothing after the claim page was built to pull the human in -- the agent is told once (skill.md step 5) to relay a link that cannot be delivered, and nothing downstream of that single mention ever checks that it was. Deepest actionable level: the human's entry was documented as the agent's job and instrumented as nobody's."
+      "q": "Why wasn't this wired when the billing rails themselves (grand-loop-billing) shipped?",
+      "a": "grand-loop-billing's own scope was proving a real $19 payment end-to-end (checkout session, webhook, ledger) -- it explicitly deferred the 'next step' UX and per-refusal attribution as goal 4, and nothing since has revisited the refusal/attribution half until Joe's market test needed to measure conversion by trigger."
     }
   ],
-  "created_at": "2026-10-05T00:00:00Z",
+  "created_at": "2026-10-06T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Does the claim nudge ride structuredContent.next (PRD-mcphost-one-next-tool's existing hint channel) or the real wire-level MCP _meta object the requirement's own text names?",
-      "resolution": "The real _meta object (meta.0.insert(\"next\", ...)). structuredContent.next is already asserted by nexttool_ac04 to carry exactly {tool, why} for a young tenant's early calls; a second, claim-shaped entry there would break that pinned test. The harness's own default test tenants are loopback/synthetic and would never qualify for an external-only claim nudge regardless, but the _meta channel was chosen on architectural grounds (literal match to the requirement's own wording) independent of that fact."
+      "question": "When billing is off, does next keep a plan field (the catalog still has a next plan up), or does it drop to just {tool: null, why, resets_at}?",
+      "resolution": "Kept: requirement 1 defines plan as a general rule (next plan up per plans.rs) and only calls out tool/the message text as the billing-off override, so plan stays populated even when tool is null -- an operator reading the refusal still learns what plan would unlock the limit, even on a host with no Stripe key."
     },
     {
-      "question": "Was requirement 5 (mcphost-deploy probe fails claim-email-unconfigured) still open work for this dispatch?",
-      "resolution": "No -- git history in ~/repos/mcphost-deploy showed it already landed at commit 41a8398 before this dispatch began, with its own env_contract.py/probe.py/cli.py/artifact.py changes and test_mail_env_ac1/ac2/ac3 tests. This dispatch added only a thin mcphost-side pinning test (AC5) rather than re-implementing or duplicating that commit."
+      "question": "Does a P1 AC13 cache-hit checkout (the same open session reused for a second billing.checkout call) get its own checkout.started row for admin.upgrades?",
+      "resolution": "No -- it is the same Stripe session, not a new attempt; only the branch that actually calls BillingClient::create_checkout_session self-ledgers checkout.started, so admin.upgrades never double-counts a tenant polling billing.checkout before its first session expires."
     },
     {
-      "question": "For requirement 6 (journey claim step promoted to P0), was removing \"claim\" from mcphost-deploy's NON_P0_STEPS set sufficient on its own?",
-      "resolution": "No -- that set was never actually consulted for claim (synthorg reports claim as a top-level key, not a steps list entry), so removing the dead set entry alone would not have changed rollback behavior at all. The real fix was making journey.py's _evaluate_steps read payload[\"claim\"] directly and fail when its verdict is \"fail\"."
+      "question": "Does the funnel's upgrades_by_trigger (AC6) count every paid tenant host-wide, or only those inside admin.funnel's own days/source_class/signup_source/invited filters?",
+      "resolution": "Scoped to the same filtered rows stages already reports over (via a new FunnelRow.paid_source field populated by a correlated subquery) -- consistent with every other field admin.funnel already returns, and what the AC6 test (three tenants paid \"now\", well inside the default 7-day window) exercises."
+    },
+    {
+      "question": "Does apply_checkout_completed's existing plan-upgrade behavior (upgrade_tenant_plan fires regardless of live/test mode, proven by the pre-existing billing_ac06 test with livemode:false) change under this PRD?",
+      "resolution": "No -- only the NEW paid_unix/paid_test_unix stamps are mode-gated; the pre-existing plan flip stays unconditional (a self-hoster's test-mode trial checkout still unlocks pro), since billing_ac06 already pins that behavior and the PRD's own guardrail (test-mode checkout never counts as paid) is about the funnel's paid_unix signal specifically, not plan access."
     }
   ]
 }
