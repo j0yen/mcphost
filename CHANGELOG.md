@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.92.0 — 2026-10-06
+
+`MCPHOST_ALT_PUBLIC_URLS` (comma-separated, optional) names a second
+public hostname on an unrelated registrable domain: when set, the claim
+email, the `host.quickstart`/signup responses, and the
+`host.invite.create` response all carry an `alt:`/`alt_url`/
+`alt_endpoint` fallback form from one shared template, so a client
+whose gateway blocks the primary domain (the 2026-10-05 Xfinity xFi
+Advanced Security false-positive against mcphost.dev) has a second way
+in. `GET /reach` answers `{host, ok: true, served_at}` unauthenticated
+and content-free on every hostname, and every HTTPS response now
+carries `Strict-Transport-Security` (PRD-mcphost-reachability-alt-host).
+No `MCPHOST_ALT_PUBLIC_URLS` set means no visible change at all.
+
 ## v0.89.1 — 2026-10-05
 
 The ownership email and the three claim-flow pages (enter address,
