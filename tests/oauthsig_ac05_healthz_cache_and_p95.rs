@@ -60,7 +60,16 @@ async fn second_read_within_60s_serves_the_cached_aggregate_and_ttl_expiry_recom
         second["oauth"]["calls_7d"]["issuer_jwt"], json!(0),
         "a read within the 60s TTL must serve the cached aggregate, not recompute: {second:?}"
     );
-    assert_eq!(second, first, "byte-identical to the first read while the cache is still fresh");
+    // Compare only the `oauth` sub-object the healthz cache actually serves
+    // (`oauth_healthz_cache` / `healthz_json`) -- the whole-response
+    // comparison this replaced also caught process-global counters like
+    // `tool_names`/`host.tool.publish` that other tests in the same binary
+    // bump between the two reads, making this test flake on noise the
+    // cache under test never claims to hold steady (run 416 gate evidence).
+    assert_eq!(
+        second["oauth"], first["oauth"],
+        "cached aggregate must be byte-identical to the first read while the cache is still fresh"
+    );
 
     // Fast-forward the cache's own clock past the 60s TTL (no real sleep)
     // and confirm the NEXT read recomputes and picks up the new call.
