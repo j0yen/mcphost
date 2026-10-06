@@ -213,9 +213,50 @@ async fn resolve_path_secret_auth(
             if let Err(e) = state.db.touch_last_seen(t.id, now_unix()).await {
                 tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump last_seen_unix");
             }
+            // PRD-mcphost-activation-funnel requirement 2: a
+            // `/u/{secret}/mcp` call is one of the two mechanisms
+            // `second_session_unix` watches -- see
+            // `maybe_stamp_second_session`'s own doc comment.
+            maybe_stamp_second_session(state, &t, session_id(parts).as_deref()).await;
             Ok(Some(Auth::Tenant(Box::new(t), None)))
         }
         None => Ok(None),
+    }
+}
+
+/// PRD-mcphost-activation-funnel requirement 2 / technical considerations:
+/// `second_session_unix` fires on the first authenticated call whose
+/// session differs from [`Tenant::created_session_id`], at least 10
+/// minutes after `created_unix` -- never on the creating session's own
+/// reconnects. Consulted from the two mechanisms the PRD names: a later
+/// [`bind_session_to_created_tenant`] bind (e.g. `host.redeem` on a
+/// different connection than the handoff-signup session) and
+/// [`resolve_path_secret_auth`] (a `/u/{secret}/mcp` reconnect). When
+/// `tenant.created_session_id` is `None` (no session was ever recorded at
+/// creation -- a stateless client, or a tenant born before this
+/// migration) this falls back to the time-only half of the rule: any call
+/// at least 10 minutes after `created_unix` counts, since there is
+/// nothing to compare the session id against.
+async fn maybe_stamp_second_session(state: &AppState, tenant: &Tenant, session_id: Option<&str>) {
+    const MIN_GAP_SECS: i64 = 600;
+    if tenant.second_session_unix.is_some() {
+        return;
+    }
+    let Some(created_unix) = tenant.created_unix else {
+        return;
+    };
+    let now = now_unix();
+    if now - created_unix < MIN_GAP_SECS {
+        return;
+    }
+    let is_second_session = match (tenant.created_session_id.as_deref(), session_id) {
+        (Some(created), Some(current)) => created != current,
+        _ => true,
+    };
+    if is_second_session
+        && let Err(e) = state.db.touch_second_session(tenant.id, now).await
+    {
+        tracing::warn!(error = %e, tenant = %tenant.namespace, "failed to bump second_session_unix");
     }
 }
 
@@ -268,6 +309,18 @@ async fn bind_session_to_created_tenant(
     };
     if !state.session_bindings.bind(session_id, tenant.id, now_unix()) {
         return Ok(value);
+    }
+    // PRD-mcphost-activation-funnel requirement 2: the FIRST bind this
+    // tenant ever gets records the creating session; a LATER one (e.g.
+    // `host.redeem` on a different connection than the handoff-signup
+    // session) is itself a candidate "second session" -- see
+    // `maybe_stamp_second_session`'s own doc comment.
+    if tenant.created_session_id.is_none() {
+        if let Err(e) = state.db.set_created_session_id(tenant.id, session_id.to_string()).await {
+            tracing::warn!(error = %e, tenant = %tenant.namespace, "failed to record created_session_id");
+        }
+    } else {
+        maybe_stamp_second_session(state, &tenant, Some(session_id)).await;
     }
     tracing::info!(tenant = %tenant.namespace, "session bound to tenant after signup");
     if let Err(e) = peer.notify_tool_list_changed().await {
@@ -5325,6 +5378,8 @@ impl McpHostHandler {
             "admin.vault.stats" => admin::vault_stats(&self.state).await,
             // PRD-mcphost-end-user-audit-and-revoke P1 requirement 7 (AC9).
             "admin.enduser.stats" => admin::enduser_stats(&self.state).await,
+            // PRD-mcphost-activation-funnel requirements 3, 6.
+            "admin.funnel" => admin::funnel(&self.state, &args).await,
             other => Err(AppError::ToolNotFound(other.to_string())),
         };
 
@@ -5842,6 +5897,17 @@ impl McpHostHandler {
                     tenant = %tenant.namespace, method = "tools/call", tool = %local_name,
                     duration_ms, status = "ok", outcome = call_outcome, mcp_name_mismatch,
                 );
+                // PRD-mcphost-activation-funnel requirement 2 (AC2): only a
+                // same-tenant call (`caller: None`) counts as "a call to a
+                // tool this tenant owns" -- a cross-tenant shared-tool call
+                // (`caller: Some(_)`) stamps neither the owner's nor the
+                // caller's `first_own_call_unix`.
+                if caller.is_none()
+                    && tenant.first_own_call_unix.is_none()
+                    && let Err(e) = self.state.db.touch_first_own_call(tenant.id, now_unix()).await
+                {
+                    tracing::warn!(error = %e, tenant = %tenant.namespace, "failed to bump first_own_call_unix");
+                }
                 // PRD-mcphost-tool-versions requirement 6 (AC7): an
                 // unpinned sharer's result carries `version_changed` once,
                 // the call after a real change on the owner's side --

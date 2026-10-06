@@ -1610,3 +1610,154 @@ pub async fn enduser_stats(state: &AppState) -> Result<Value, AppError> {
         .collect();
     Ok(json!({ "tenants": tenants }))
 }
+
+/// PRD-mcphost-activation-funnel requirement 3: the six stages
+/// `admin.funnel`/`admin::funnel_7d_external` both report, in the order
+/// the PRD's own operator user story names them -- a `(name, getter)`
+/// table rather than six near-identical match arms, so adding a seventh
+/// stage later is a one-line change.
+type FunnelStageGetter = fn(&crate::db::FunnelRow) -> Option<i64>;
+const FUNNEL_STAGES: &[(&str, FunnelStageGetter)] = &[
+    ("first_call", |r| r.first_call_unix),
+    ("first_publish", |r| r.first_publish_unix),
+    ("first_own_call", |r| r.first_own_call_unix),
+    ("second_session", |r| r.second_session_unix),
+    ("claimed", |r| r.claimed_unix),
+    ("paid", |r| r.paid_unix),
+];
+
+/// Requirement 3: "a stage with count < 3 reports `median_minutes: null`"
+/// (AC6) -- `None` below that floor, else the usual even/odd-length
+/// median, in minutes (`FUNNEL_STAGES`' own timestamps are unix seconds).
+fn median_minutes(mut minutes: Vec<f64>) -> Option<f64> {
+    if minutes.len() < 3 {
+        return None;
+    }
+    minutes.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let n = minutes.len();
+    let mid = n / 2;
+    Some(if n.is_multiple_of(2) {
+        (minutes[mid - 1] + minutes[mid]) / 2.0
+    } else {
+        minutes[mid]
+    })
+}
+
+/// Requirement 3's `stages: [{name, count, share, median_minutes}]`, over
+/// whichever rows the caller has already filtered to `signups` of.
+fn funnel_stage_stats(rows: &[&crate::db::FunnelRow], signups: i64) -> Vec<Value> {
+    FUNNEL_STAGES
+        .iter()
+        .map(|(name, getter)| {
+            let mut minutes = Vec::new();
+            for row in rows {
+                if let Some(stamp) = getter(row) {
+                    minutes.push((stamp - row.created_unix) as f64 / 60.0);
+                }
+            }
+            let count = minutes.len() as i64;
+            let share = if signups > 0 { count as f64 / signups as f64 } else { 0.0 };
+            json!({
+                "name": name,
+                "count": count,
+                "share": share,
+                "median_minutes": median_minutes(minutes),
+            })
+        })
+        .collect()
+}
+
+/// Requirement 3's `by_source: {...}` -- every `source_class` value
+/// present among `rows` (an unclassified tenant groups under
+/// `"unclassified"`), each with its own `signups`/per-stage counts. Built
+/// off the SAME rows `admin::funnel` already filtered by `signup_source`/
+/// `invited` -- only `source_class` itself is deliberately NOT filtered
+/// here, since this object's whole point is the breakdown by it.
+fn funnel_by_source(rows: &[crate::db::FunnelRow]) -> Value {
+    let mut buckets: std::collections::BTreeMap<String, Vec<&crate::db::FunnelRow>> =
+        std::collections::BTreeMap::new();
+    for row in rows {
+        let key = row.source_class.clone().unwrap_or_else(|| "unclassified".to_string());
+        buckets.entry(key).or_default().push(row);
+    }
+    let mut out = serde_json::Map::new();
+    for (class, bucket_rows) in buckets {
+        let signups = bucket_rows.len() as i64;
+        let mut stages = serde_json::Map::new();
+        for (name, getter) in FUNNEL_STAGES {
+            let count = bucket_rows.iter().filter(|r| getter(r).is_some()).count();
+            stages.insert((*name).to_string(), json!(count));
+        }
+        out.insert(class, json!({"signups": signups, "stages": stages}));
+    }
+    Value::Object(out)
+}
+
+/// `admin.funnel {days?, source_class?, signup_source?, invited?}`
+/// (PRD-mcphost-activation-funnel requirements 3, 6; AC2, AC3, AC6, AC7):
+/// per-stage counts/shares/medians for every tenant that signed up in the
+/// trailing `days` (default 7), optionally narrowed to one `source_class`
+/// or `signup_source`, and (requirement 6) split organic/invite-born via
+/// `invited`, which also adds the host-wide invite `k`-factor alongside.
+pub async fn funnel(state: &AppState, args: &Value) -> Result<Value, AppError> {
+    let days = args.get("days").and_then(Value::as_i64).unwrap_or(7).clamp(1, 365);
+    let source_class = arg_str_opt(args, "source_class");
+    let signup_source = arg_str_opt(args, "signup_source");
+    let invited = args.get("invited").and_then(Value::as_bool);
+    let since_unix = crate::state::now_unix() - days * 86_400;
+
+    let rows = state.db.funnel_rows(since_unix, signup_source.clone()).await?;
+    // Requirement 6 (AC7): `invited` narrows BOTH `stages`/`signups` and
+    // `by_source` -- "only invite-born tenants are counted" at every
+    // altitude of the response. `source_class` narrows `stages`/`signups`
+    // ONLY -- `by_source`'s whole point is the breakdown across it.
+    let invited_rows: Vec<&crate::db::FunnelRow> =
+        rows.iter().filter(|r| invited.is_none_or(|want| r.invited == want)).collect();
+    let filtered: Vec<&crate::db::FunnelRow> = invited_rows
+        .iter()
+        .filter(|r| source_class.as_deref().is_none_or(|sc| r.source_class.as_deref() == Some(sc)))
+        .copied()
+        .collect();
+
+    let signups = filtered.len() as i64;
+    let by_source_rows: Vec<crate::db::FunnelRow> = invited_rows.into_iter().cloned().collect();
+
+    let mut response = json!({
+        "window": {"days": days, "since_unix": since_unix},
+        "signups": signups,
+        "stages": funnel_stage_stats(&filtered, signups),
+        "by_source": funnel_by_source(&by_source_rows),
+    });
+    let obj = response.as_object_mut().expect("response is always an object");
+    if let Some(sc) = &source_class {
+        obj.insert("source_class".to_string(), json!(sc));
+    }
+    if let Some(ss) = &signup_source {
+        obj.insert("signup_source".to_string(), json!(ss));
+    }
+    if let Some(want_invited) = invited {
+        let k = state.db.invites_k_factor_since(since_unix).await?;
+        obj.insert("invited".to_string(), json!(want_invited));
+        obj.insert("k".to_string(), json!(k));
+    }
+    Ok(response)
+}
+
+/// `/healthz`'s `funnel_7d` (PRD-mcphost-activation-funnel requirement 4;
+/// AC4): the external-class stage COUNTS only (no medians, no shares, no
+/// `by_source`) over the trailing 7 days -- a fixed window regardless of
+/// `admin.funnel`'s own `days` argument, and never includes a synthetic
+/// (non-`external`) tenant.
+pub async fn funnel_7d_external(state: &AppState) -> Result<Value, AppError> {
+    let since_unix = crate::state::now_unix() - 7 * 86_400;
+    let rows = state.db.funnel_rows(since_unix, None).await?;
+    let external: Vec<&crate::db::FunnelRow> =
+        rows.iter().filter(|r| r.source_class.as_deref() == Some("external")).collect();
+    let mut obj = serde_json::Map::new();
+    obj.insert("signups".to_string(), json!(external.len()));
+    for (name, getter) in FUNNEL_STAGES {
+        let count = external.iter().filter(|r| getter(r).is_some()).count();
+        obj.insert((*name).to_string(), json!(count));
+    }
+    Ok(Value::Object(obj))
+}

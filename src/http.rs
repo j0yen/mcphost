@@ -484,6 +484,15 @@ async fn healthz_response(state: &Arc<AppState>, headers: &HeaderMap) -> Respons
             ),
         );
     }
+    // PRD-mcphost-activation-funnel requirement 4 (AC4): the external-class
+    // stage counts over the trailing 7 days, next to `signups_by_source` --
+    // no synthetic (non-`external`) tenant is ever counted in it.
+    if let Some(obj) = body.as_object_mut() {
+        obj.insert(
+            "funnel_7d".to_string(),
+            crate::admin::funnel_7d_external(state).await.unwrap_or_else(|_| json!({})),
+        );
+    }
     Json(body).into_response()
 }
 

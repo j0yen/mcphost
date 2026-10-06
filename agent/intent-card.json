@@ -1,62 +1,84 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-ownership-copy.md",
-  "intent_slug": "mcphost-ownership-copy",
-  "root_motivation": "Grounding (2026-10-05 4:58pm PDT): the first real ownership email ever sent from prod reached Joe's Gmail and he judged it spammy on sight. origin/main's src/claim.rs carries three phishing-filter tells -- subject 'Claim your mcphost tenant', body 'Click to verify your email and finish claiming your mcphost tenant: {verify_url}', an imperative subject, sender claim@mcphost.dev with no display name -- and never states what happened or why this address got mail. Joe drafted and approved replacement copy (notes/drafts/mcphost-claim-copy-2026-10-05.md): the email states what an agent did and what the link does, the sender has a name, the claim-flow pages and error pages speak in the same voice, and no visible string says 'claim' or 'verify'.",
-  "user_persona": "Three (PRD User stories): the stranger human who receives the ownership email and must trust it enough to click; the agent that relays skill step 5's sentence to its human; the operator (Joe) who diffs live strings against the approved draft file.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-activation-funnel.md",
+  "intent_slug": "mcphost-activation-funnel",
+  "root_motivation": "Grounding (failure-derived, 2026-10-05): /healthz on mcphost-1 counts signups (external 14, synthetic 1,759), tenants_claimed (0), and paying_tenants (0) and nothing between -- the tenants table holds created_unix/last_seen_unix (migration 0020), the claim stamps (0034) and plan_since (0006), and no first-call, first-publish, own-tool-call, or second-session stamp (migrations 0002-0071, src/db.rs:170-209). mcphost-deploy measure refuses to report until five tenants are hand-labelled and last wrote on 2026-09-27; funnel-top covers pre-signup demand only. The market test's hypothesis H1 (activation) is therefore unmeasurable. Fix: stamp six activation moments on the tenant at the instant they happen, expose admin.funnel with counts/medians per stage by source class, and put a seven-day funnel block on /healthz, so the market test measures activation without a label ritual.",
+  "user_persona": "Four (PRD User stories): Operator Joe, who asks admin.funnel {days: 7, source_class: \"external\"} and sees signups -> first calls -> publishes -> own calls -> returns -> claims, with medians; an agent whose host.usage shows its own milestones so a returning agent can say 'I published on day one'; the morning digest, which gets one admin call for its numbers; and the harness, whose synthetic tenants are stamped too but excluded by source class so panel runs never pollute the external funnel.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 5
+    "target": 7
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given a tenant named \"my-agent\" and a verify link, When the ownership email is rendered, Then its subject is `Your agent set up my-agent on mcphost — is this yours?` and its body equals the approved draft text with the placeholders filled, in plain text.",
-      "test": "tests/owncopy_ac01_email_subject_and_body_match_draft.rs -- fn ownership_email_subject_and_body_match_the_approved_draft drives signup+POST /claim/{token}, asserts the fake provider's captured subject/text_body against a hardcoded expectation copied from the draft."
+      "description": "Given a fresh external tenant, When it makes its first authenticated call, publishes a tool, calls that tool, and reconnects 15 minutes later on a new session, Then first_call_unix, first_publish_unix, first_own_call_unix, and second_session_unix are set once each and repeating the events leaves them unchanged.",
+      "test": "tests/funnel_ac01_activation_stamps_set_once.rs -- signup + key-less publish + own call on one session-bound connection, repeats each event to prove idempotency, then backdates created_unix 15 minutes and reconnects on a brand-new /u/{secret}/mcp session to prove second_session_unix fires once and survives a further repeat."
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given `MCPHOST_EMAIL_FROM=\"mcphost <hello@mcphost.dev>\"`, When an email is sent through the fake provider, Then the request's `from` is that exact string and `reply_to` is `hello@mcphost.dev`.",
-      "test": "tests/owncopy_ac02_from_and_reply_to_passed_verbatim.rs -- fn from_is_passed_verbatim_and_reply_to_is_the_bare_address spawns the real `mcphost serve` binary with MCPHOST_EMAIL_FROM set in its environment (exercising EmailConfig::from_env()), asserts the request a local wiremock fake provider received has that from/reply_to."
+      "description": "Given a tenant that calls a tool shared by another tenant, When admin.funnel is read, Then that call does not count as first_own_call.",
+      "test": "tests/funnel_ac02_shared_call_not_own_call.rs -- owner publishes and shares a tool publicly, a second tenant calls it cross-tenant; asserts neither tenant's first_own_call_unix is set and admin.funnel's first_own_call stage count is 0."
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the three pages rendered with sample data, When their text is compared to the draft, Then titles, leads, button label, masked address, counts and closing lines match, and the done page shows the three \"what owning it gives you\" lines.",
-      "test": "tests/owncopy_ac03_pages_match_draft_text.rs -- fn the_three_pages_match_the_approved_draft GETs/POSTs the enter-address, after-send and done pages against a real published tool, asserting each draft substring."
+      "description": "Given 10 external and 50 synthetic signups in the window with 4 external publishes, When admin.funnel {days: 7, source_class: \"external\"} is read, Then signups = 10, the first_publish stage shows count = 4, share = 0.4 and a median in minutes; the synthetic rows are absent.",
+      "test": "tests/funnel_ac03_external_filter_share_and_median.rs -- 10 external (control::signup with a fake external IP, the same seam attrib_ac4 uses) + 50 loopback-sourced synthetic signups; 4 externals publish at known backdated gaps (1/2/5/12 min) for an exact median."
     },
     {
       "id": "AC4",
       "level": "MUST",
-      "description": "Given each of the seven error cases, When its page is rendered, Then the title and body are the draft's and no environment-variable name appears on the page.",
-      "test": "tests/owncopy_ac04_error_pages_match_draft_no_env_var.rs -- seven #[tokio::test]s, one per case (expired, already used, someone else first, mail not configured, rate limited, banned, send failed), each asserting the draft's title/body and the absence of any MCPHOST_ substring."
+      "description": "Given /healthz, When read, Then funnel_7d lists the external stage counts and no synthetic tenant is counted.",
+      "test": "tests/funnel_ac04_healthz_funnel_7d_external_only.rs -- one external tenant publishes, 5 synthetic tenants sign up; /healthz's funnel_7d.signups/first_call/first_publish all read 1, carrying no median/stage-array fields."
     },
     {
       "id": "AC5",
       "level": "MUST",
-      "description": "Given the guard test over the email and every page, When it runs, Then no visible text contains `claim`, `verify` or `tenant` (case-insensitive) outside URLs and attributes.",
-      "test": "tests/owncopy_ac05_no_claim_verify_tenant_in_visible_text.rs -- fn no_visible_text_in_the_email_or_any_page_says_claim_verify_or_tenant renders the email and all ten pages (3 flow + 7 error), strips HTML tags (which drops attribute values with them) and skips URL-shaped tokens before scanning for the three forbidden words."
+      "description": "Given a tenant that was claimed before this release, When the migration runs, Then its claimed_unix equals its owner_verified_at; given a Pro tenant, Then paid_unix equals its plan_since.",
+      "test": "tests/funnel_ac05_claim_and_plan_backfill.rs -- seeds owner_verified_at/plan_since directly over a raw connection (mimicking a pre-0072 row, same technique attrib_ac3_backfill_migration.rs uses) and calls Db::backfill_activation_claims_and_plans directly; also proves the re-run is a no-op."
+    },
+    {
+      "id": "AC6",
+      "level": "MUST",
+      "description": "Given a stage with two tenants, When admin.funnel is read, Then that stage's median_minutes is null and its count is 2.",
+      "test": "tests/funnel_ac06_median_null_under_three.rs -- exactly two tenants make their first authenticated call on a fresh server; first_call.count == 2 and median_minutes is null (admin::median_minutes's own < 3 floor)."
+    },
+    {
+      "id": "AC7",
+      "level": "SHOULD",
+      "description": "Given invite-born and organic tenants in the window, When admin.funnel {invited: true} is read, Then only invite-born tenants are counted and k is reported.",
+      "test": "tests/funnel_ac07_invited_split_and_k.rs -- 2 organic signups plus an inviter/invitee pair joined via a standing invite; invited: true counts only the invitee (k = 1.0), invited: false counts the 3 organic tenants, same k."
+    },
+    {
+      "id": "AC8",
+      "level": "MUST",
+      "description": "Given prod after deploy, When the next external tenant publishes its first tool, Then funnel_7d.first_publish on /healthz increases (Live; evidence: /healthz funnel_7d.first_publish >= 1 within 7 days of the deploy timestamp).",
+      "test": "deferred -- operator-provisioned: AC8's Then is a post-deploy observation of a real external tenant's first publish against prod /healthz within 7 days of the deploy timestamp. This dispatch has no prod deploy rights and no live traffic to observe; the coder's own dispatch instructions list only AC1-7 as non-deferred. funnel_7d itself (AC4) is fully built and tested against a real in-process server -- AC8 only adds the live, post-deploy observation on top of it."
     }
   ],
   "scope": [
-    "src/claim.rs: email subject/body template (requirement 1), the enter-address/after-send/done page renderers plus a mask_email helper (requirement 3), and the seven error-page renderers with the operator-only env-var detail moved to a tracing::warn! log line instead of the page (requirement 4).",
-    "src/email.rs: EmailMessage gains from/reply_to fields and a reply_to_address(from) helper; HttpEmailClient drops its own `from` constructor field in favor of the per-message value (requirement 2).",
-    "src/main.rs: HttpEmailClient::new call site drops the now-removed `from` argument.",
-    "www/skill.md, plugin/skills/mcphost/SKILL.md: step 5 says \"Give your human this link; it makes them the owner\" instead of \"Claim this backend so it belongs to you\" (requirement 6, P1, no AC of its own).",
-    "tests/owncopy_ac0[1-5]_*.rs (new, one per non-deferred AC); tests/suite_core_07.rs/suite_core_08.rs regenerated by scripts/gen-test-suites.sh to include them.",
-    "tests/mcphost_human_claim_magic_link_ac02/ac03/ac04/ac06_*.rs and tests/banlist_ac05_*.rs: assertions updated from the old copy's literal strings to the new draft's (collateral of rewriting the pages those pre-existing PRDs' own ACs render).",
+    "migrations/0072_activation_funnel.sql: six nullable activation stamps (first_call_unix, first_publish_unix, first_own_call_unix, second_session_unix, claimed_unix, paid_unix) plus created_session_id on tenants, and an idx_tenants_funnel(source_class, created_unix) index.",
+    "src/db.rs: Tenant/TENANT_COLUMNS/tenant_from_row/create_tenant grow the seven new fields; touch_last_seen also stamps first_call_unix via COALESCE in the same UPDATE; new touch_first_publish/touch_first_own_call/touch_second_session/set_created_session_id/set_tenant_stamp_for_test (test-only); new FunnelRow/funnel_rows/invites_k_factor_since for admin.funnel's reads; backfill_activation_claims_and_plans(_sync) for AC5, wired into migrate_0072_activation_funnel.",
+    "src/handler.rs: resolve_path_secret_auth and bind_session_to_created_tenant both consult the new maybe_stamp_second_session helper; call_published_tool's success branch stamps first_own_call_unix only for a same-tenant call (caller: None); dispatch_admin_tool routes admin.funnel.",
+    "src/control.rs: tool_publish stamps first_publish_unix once upsert_tool succeeds; upgrade_tenant_plan's own UPDATE also stamps paid_unix (COALESCE) when the new plan isn't free; Db::verify_claim_code's own UPDATE also stamps claimed_unix alongside owner_verified_at.",
+    "src/admin.rs: new admin::funnel (days/source_class/signup_source/invited) and admin::funnel_7d_external, plus the shared FUNNEL_STAGES table and median_minutes/funnel_stage_stats/funnel_by_source helpers.",
+    "src/http.rs: /healthz gains funnel_7d (external-only stage counts, no medians).",
+    "src/state.rs: new unix_from_rfc3339 (the inverse of rfc3339_from_unix), used only by the AC5 backfill.",
+    "tests/funnel_ac0[1-7]_*.rs (new, one per non-deferred AC); tests/suite_core_0[7-8].rs regenerated by scripts/gen-test-suites.sh to include them.",
+    "plugin/.claude-plugin/plugin.json: version synced to the Cargo.toml bump below.",
     "agent/test-map.json: ac_test_map repointed at this PRD's ACs; the prior PRD's (mcphost-event-trigger-self-test) map archived under ac_test_map_by_prefix.mcphost_event_trigger_self_test.",
-    "Cargo.toml/Cargo.lock/plugin/.claude-plugin/plugin.json/plugin/.mcp.json: patch version bump (0.89.0 -> 0.89.1); CHANGELOG.md: new entry."
+    "Cargo.toml/Cargo.lock: minor version bump (0.89.0 -> 0.90.0)."
   ],
   "non_goals": [
-    "No change to the claim flow's mechanics, token lifetime, rate limits, or nudge mechanics -- PRD's own Non-goals (that's PRD-mcphost-ownership-moment).",
-    "No HTML email; the body stays plain text -- PRD's own Non-goals.",
-    "No localisation -- PRD's own Non-goals.",
-    "AC6 (Live: the next real send to Joe's inbox after deploy, with the new MCPHOST_EMAIL_FROM set on mcphost-1) is not in this dispatch's assigned AC list and needs operator deploy access this coding sandbox does not have; not attempted."
+    "Pre-signup demand -- funnel-top already covers it (PRD's own Non-goals).",
+    "Replacing measure's MRR logic -- the digest PRD reads both (PRD's own Non-goals).",
+    "Any per-end-user or per-call analytics beyond the six stamps (PRD's own Non-goals).",
+    "admin.funnel {export: true} (P2 requirement 7) -- not in this dispatch's assigned AC list; no AC exercises it.",
+    "AC8 (the live post-deploy /healthz observation) -- operator-provisioned, deferred; needs a real prod deploy and a real external tenant's first publish, neither of which this coder dispatch can produce."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -65,42 +87,53 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "state_line_format_fills_the_drafts_single_state_placeholder": "The draft's What's here line reads '{calls}/{limit} calls this month · {state} of state' with one {state} placeholder, not {state_used}/{state_max}. Resolved by formatting {state} as 'state_bytes/state_bytes_max bytes' (symmetric with the calls fraction), rendering e.g. '0/5242880 bytes of state' -- no AC pins a different exact phrasing.",
-      "upgrade_link_target_is_plans_html_not_an_authenticated_checkout_url": "The draft's done-page bullet 'choose a plan when the free tier stops being enough' 'links to upgrade', but the visitor on this page has no bearer key to call billing.checkout -- resolved by linking to the pre-existing /plans.html informational page (no price in its own heading either), not an authenticated checkout URL no unauthenticated page can mint.",
-      "already_used_split_out_of_the_old_combined_verify_gone_page": "ClaimVerifyOutcome already distinguishes NotFound/Expired/AlreadyConsumed at the DB layer, but the pre-existing code rendered all three identically. Resolved by keeping NotFound+Expired on the expired page (preserving resolve_claim_token's own never-leak-which-one-a-guess-was property -- AlreadyConsumed requires a code that was valid and already consumed, so splitting it out leaks nothing new) and giving AlreadyConsumed its own already-used page, matching the draft's two separate error-table rows."
+      "second_session_only_watches_the_two_mechanisms_requirement_2_names": "Requirement 2 names exactly bind_session_to_created_tenant and URL-path auth (resolve_path_secret_auth) as second_session_unix's triggers -- not every authenticated-call resolver (resolve_auth/resolve_tenant_key_auth/resolve_session_binding also exist). A stateless client that never echoes Mcp-Session-Id gets a brand-new session id on literally every call, so wiring this into the plain header/tenant_key paths too would fire on a caller's very next ordinary call rather than a real reconnect. mcphost's own typical external-tenant pattern (host.key_rotate mints a personal /u/{secret}/mcp URL) makes the URL-path mechanism the realistic 'reconnect' surface, matching the PRD's literal enumeration.",
+      "created_session_id_set_once_at_the_first_bind_only": "bind_session_to_created_tenant fires for both signup and host.redeem; created_session_id is set only the FIRST time a tenant is ever bound (tenant.created_session_id.is_none()) -- a later bind (e.g. host.redeem on a different connection than a handoff signup) is itself evaluated as a candidate second session, never silently overwrites the original creating session.",
+      "first_own_call_is_a_same_tenant_distinction_not_an_owner_distinction": "call_published_tool's caller parameter is None for every same-tenant call (direct <ns>.<tool>, or host.tool_call dispatched against the caller's own namespace) and Some(&caller) only for a cross-tenant shared-tool call -- first_own_call_unix is gated on caller.is_none() precisely because that parameter already distinguishes 'self' from 'borrowed' regardless of which function (call_published_tool directly, or via call_shared_tool/host_tool_call) reached it.",
+      "k_is_host_wide_over_the_same_window_not_filtered_by_invited": "admin.funnel's k figure (requirement 6) measures INVITERS' own activity (accepted joins per active inviter), a different population than the invitee rows invited narrows admin.funnel's signups/stages to -- so k is computed over every invite_joins row in the same days window regardless of the invited argument's value, generalizing invites_usage_7d's existing per-tenant/fixed-7d k shape to a host-wide figure over an arbitrary window.",
+      "by_source_is_never_narrowed_by_the_top_level_source_class_filter": "admin.funnel's source_class argument narrows signups/stages only; by_source's whole purpose is the breakdown ACROSS every source_class value, so it is built from the signup_source/invited-filtered rows but never the source_class-filtered ones -- narrowing by_source too would make a {source_class: \"external\"} call's own by_source degenerate to a single external:{...} entry, defeating the field."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why did Joe judge the first real ownership email spammy on sight?",
-      "a": "The subject was an imperative ('Claim your mcphost tenant') and the body opened with 'Click to verify your email' -- both classic phishing-filter tells, with a sender address (claim@mcphost.dev) carrying no display name."
+      "q": "Why is there no funnel number?",
+      "a": "measure refuses to report without five hand-labeled tenants and has not written since 2026-09-27; the nightly chain's preflight has been red (demand_alarm_streak=15) and skips the measure step while red."
     },
     {
       "why": 2,
-      "q": "Why did the shipped copy carry those tells?",
-      "a": "It was written as a developer's description of the mechanism (claim a tenant, verify an email) rather than as a message to a person who never asked for mail and has no context for why they got it."
+      "q": "Why does the sensor depend on hand labels?",
+      "a": "It was built to classify real vs harness tenants for paid_mrr_usd when synthetic traffic dominated (1,759 synthetic vs 14 external signups); with source_class now stamped at signup, the label gate guards nothing the host doesn't already know."
     },
     {
       "why": 3,
-      "q": "Why wasn't this caught before the first real send?",
-      "a": "Every pre-existing test on the claim flow asserted the mechanism (a link exists, it sends once, it expires) never the literal copy a human would actually read."
+      "q": "Why are there no stages between signup and claim?",
+      "a": "Each onboarding PRD measured its own moment (first-call-gift's AC6 counts remember, invite-links counts k); nobody owns the tenant lifecycle, so the host stores created_unix/last_seen_unix/owner_verified_at/plan_since and nothing in between."
     },
     {
       "why": 4,
-      "q": "Why does the wording matter this much for a flow that otherwise works end to end?",
-      "a": "The human behind the agent is the market test's own weakest link (PRD problem statement); a recipient who deletes the email on sight never reaches the working flow at all, and a stranger with less context than Joe deletes faster."
+      "q": "Why is activation specifically unmeasurable, not just slow to compute?",
+      "a": "The six moments this PRD stamps (first call, first publish, first own-tool call, second session, claim, paid) are never written anywhere -- there is no column, no event log, and no derived read that could answer 'did this tenant activate' even with unlimited compute."
+    },
+    {
+      "why": 5,
+      "q": "Why wasn't this caught before the market test needed it?",
+      "a": "With 14 real tenants and a lifecycle nobody owned, activation simply never came up as a question until Joe's market test asked it first -- the deepest actionable level: the host does not record activation, and the tool that should report it is gated on a label ritual and a chain that is red."
     }
   ],
   "created_at": "2026-10-05T00:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "requirement 6 (www/skill.md and plugin SKILL.md step 5 wording) has no AC of its own in the task's assigned AC1-5 list -- is it in scope for this dispatch?",
-      "resolution": "Yes: the task instructions say the PRD's Requirements section is what to build (Acceptance criteria is what tests must prove), and the dispatch instructions call for one commit per requirement that has no AC of its own. Built and committed separately from AC1-5, with no new test file since none is required."
+      "question": "Does the 'second session' rule require a different client (clientInfo), not just a different session id?",
+      "resolution": "No -- the PRD's own Open Questions table drafts this as 'no' explicitly ('the digest can split by client later'), so second_session_unix compares session ids only, never clientInfo."
     },
     {
-      "question": "Does the done page keep itemizing published tool names and each schedule's next-fire time (the pre-existing behavior two other PRDs' tests asserted), or does the draft's terser 'What's here' counts line replace that detail?",
-      "resolution": "Replaced: the approved draft's 'What's here' section is explicitly just counts ('{tools} tools · {schedules} schedules · {webhooks} webhooks · ...'), with no per-tool-name list or per-schedule next-fire detail. The two pre-existing tests that asserted the old itemized text (tool name 'pinger', 'Schedules: 1') were updated to assert the new counts instead, as collateral of this PRD's own copy rewrite."
+      "question": "When tenant.created_session_id is None (no session was ever recorded at creation -- a stateless client, or a pre-migration tenant), does second_session_unix ever fire at all?",
+      "resolution": "Yes, via the time-only half of the rule the technical considerations name explicitly ('fall back to the 10-minute rule when no session id exists'): any authenticated call through one of the two named mechanisms at least 10 minutes after created_unix counts, since there's nothing to compare the session id against."
+    },
+    {
+      "question": "Does admin.funnel's by_source breakdown report share/median per bucket, or counts only?",
+      "resolution": "Counts only (signups + a per-stage count per source_class bucket) -- no AC exercises by_source's internal shape, and the top-level stages array already carries share/median for whichever population the caller asked about; by_source's own job is just the cross-class split."
     }
   ]
 }

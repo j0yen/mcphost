@@ -560,6 +560,41 @@ pub(crate) fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
     era * 146_097 + doe as i64 - 719_468
 }
 
+/// The inverse of [`rfc3339_from_unix`]: parses `"YYYY-MM-DDTHH:MM:SSZ"`
+/// back into unix seconds -- PRD-mcphost-activation-funnel's one-shot
+/// migration backfill of `paid_unix` from `tenants.plan_since`, the only
+/// format this crate ever writes there (`rfc3339_now`). `None` for
+/// anything else, rather than guessing at a looser parse.
+pub(crate) fn unix_from_rfc3339(s: &str) -> Option<i64> {
+    let b = s.as_bytes();
+    if b.len() != 20
+        || b[4] != b'-'
+        || b[7] != b'-'
+        || b[10] != b'T'
+        || b[13] != b':'
+        || b[16] != b':'
+        || b[19] != b'Z'
+    {
+        return None;
+    }
+    let digit = |pos: usize| -> Option<i64> {
+        let c = *b.get(pos)?;
+        c.is_ascii_digit().then(|| (c - b'0') as i64)
+    };
+    let two = |pos: usize| -> Option<i64> { Some(digit(pos)? * 10 + digit(pos + 1)?) };
+    let year = two(0)? * 100 + two(2)?;
+    let month = two(5)?;
+    let day = two(8)?;
+    let hour = two(11)?;
+    let minute = two(14)?;
+    let second = two(17)?;
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) || hour > 23 || minute > 59 || second > 59 {
+        return None;
+    }
+    let days = days_from_civil(year, month as u32, day as u32);
+    Some(days * 86_400 + hour * 3_600 + minute * 60 + second)
+}
+
 /// The unix timestamp of `now_unix`'s UTC month, day 1, 00:00:00 --
 /// PRD-mcphost-metered-overage's "current month" boundary for
 /// `admin.meter_status`'s per-tenant emitted counts and `billing.status`'s
@@ -1349,6 +1384,21 @@ mod tests {
         assert_eq!(rfc3339_from_unix(951_782_400), "2000-02-29T00:00:00Z");
         // Round-trips through the time-of-day fields too, not just the date.
         assert_eq!(rfc3339_from_unix(86_400 + 3661), "1970-01-02T01:01:01Z");
+    }
+
+    /// PRD-mcphost-activation-funnel: `unix_from_rfc3339` round-trips
+    /// `rfc3339_from_unix`'s own output, including the same leap-year/
+    /// century-boundary edge the sibling test above exercises, and rejects
+    /// anything that isn't exactly its fixed-width shape.
+    #[test]
+    fn unix_from_rfc3339_round_trips_and_rejects_malformed_input() {
+        for unix in [0_i64, 86_400, 951_782_400, 86_400 + 3_661] {
+            assert_eq!(unix_from_rfc3339(&rfc3339_from_unix(unix)), Some(unix));
+        }
+        assert_eq!(unix_from_rfc3339("not-a-timestamp"), None);
+        assert_eq!(unix_from_rfc3339("2026-13-01T00:00:00Z"), None); // month 13
+        assert_eq!(unix_from_rfc3339("2026-10-05 00:00:00Z"), None); // no 'T'
+        assert_eq!(unix_from_rfc3339("2026-10-05T00:00:00.000Z"), None); // wrong width
     }
 
     /// PRD-mcphost-metered-overage: `utc_month_start_unix` against known

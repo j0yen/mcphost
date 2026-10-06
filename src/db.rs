@@ -154,6 +154,9 @@ const MIGRATION_0070: &str = include_str!("../migrations/0070_audit_chain.sql");
 /// mcphost-row-policy claimed 0069/0070 first, landing on main ahead of
 /// this branch (this PRD's own migration was originally numbered 0069).
 const MIGRATION_0071: &str = include_str!("../migrations/0071_first_call_gift.sql");
+/// PRD-mcphost-activation-funnel requirement 1: six activation stamps plus
+/// `created_session_id` on `tenants`.
+const MIGRATION_0072: &str = include_str!("../migrations/0072_activation_funnel.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -170,7 +173,9 @@ const TENANT_COLUMNS: &str = "id, namespace, display_name, key_hash, created_at,
     stripe_customer_id, synthetic, source_class, client_name, client_version, classified_by, \
     created_unix, origin, origin_detail, key_rotated_unix, disabled_reason, mesh_frozen_at, \
     signup_source, owner_email, owner_verified_at, claim_token_hash, claim_expires_at, \
-    url_secret_hash, url_rotated_at, invited_by_tenant_id, last_seen_unix";
+    url_secret_hash, url_rotated_at, invited_by_tenant_id, last_seen_unix, \
+    first_call_unix, first_publish_unix, first_own_call_unix, second_session_unix, \
+    claimed_unix, paid_unix, created_session_id";
 
 fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
     Ok(Tenant {
@@ -207,6 +212,13 @@ fn tenant_from_row(r: &Row) -> rusqlite::Result<Tenant> {
         url_rotated_at: r.get(30)?,
         invited_by_tenant_id: r.get(31)?,
         last_seen_unix: r.get(32)?,
+        first_call_unix: r.get(33)?,
+        first_publish_unix: r.get(34)?,
+        first_own_call_unix: r.get(35)?,
+        second_session_unix: r.get(36)?,
+        claimed_unix: r.get(37)?,
+        paid_unix: r.get(38)?,
+        created_session_id: r.get(39)?,
     })
 }
 
@@ -420,6 +432,23 @@ fn contact_request_row_from_row(r: &Row) -> rusqlite::Result<ContactRequestRow> 
     })
 }
 
+/// PRD-mcphost-activation-funnel requirement 3: one tenant's window-scoped
+/// activation data, as [`Db::funnel_rows`] reads it -- `admin::funnel` and
+/// `admin::funnel_7d_external` both aggregate a `Vec` of these in Rust
+/// rather than pushing per-filter SQL down to the query itself.
+#[derive(Debug, Clone)]
+pub struct FunnelRow {
+    pub source_class: Option<String>,
+    pub invited: bool,
+    pub created_unix: i64,
+    pub first_call_unix: Option<i64>,
+    pub first_publish_unix: Option<i64>,
+    pub first_own_call_unix: Option<i64>,
+    pub second_session_unix: Option<i64>,
+    pub claimed_unix: Option<i64>,
+    pub paid_unix: Option<i64>,
+}
+
 /// [`Db::agent_contacts`]'s whole return shape.
 pub struct ContactsView {
     pub contacts: Vec<ContactRow>,
@@ -587,6 +616,40 @@ pub struct Tenant {
     /// already proves an earlier session's own last call, since a brand
     /// new tenant (or one with no earlier authenticated call) is `None`.
     pub last_seen_unix: Option<i64>,
+    /// PRD-mcphost-activation-funnel requirement 2: this tenant's first
+    /// authenticated call of any kind (header, `tenant_key` argument,
+    /// session binding, or URL secret alike) -- bumped in the same
+    /// `UPDATE` as [`Self::last_seen_unix`] (`Db::touch_last_seen`), so a
+    /// repeat call costs nothing extra once set. `None` for a tenant that
+    /// has never made an authenticated call (migration 0072).
+    pub first_call_unix: Option<i64>,
+    /// The first successful `host.tool_publish`, set once right after
+    /// `Db::upsert_tool` returns. `None` until this tenant has published.
+    pub first_publish_unix: Option<i64>,
+    /// The first successful call to a tool THIS tenant owns (never a
+    /// cross-tenant shared-tool call -- `call_published_tool`'s own
+    /// `caller: None` is exactly that case). `None` until then.
+    pub first_own_call_unix: Option<i64>,
+    /// The first authenticated call on a session other than
+    /// [`Self::created_session_id`], at least 10 minutes after
+    /// `created_unix` (technical considerations: never the creating
+    /// session's own reconnects). `None` until this tenant reconnects.
+    pub second_session_unix: Option<i64>,
+    /// Alias of `owner_verified_at`, set in the same `UPDATE` by
+    /// `Db::verify_claim_code` (or backfilled from it by this migration's
+    /// one-shot `Db::backfill_activation_claims_and_plans` for a tenant
+    /// claimed before this column existed).
+    pub claimed_unix: Option<i64>,
+    /// The first time `plan_since` was set while `plan != 'free'` --
+    /// stamped in `Db::upgrade_tenant_plan`'s own `UPDATE` (or backfilled,
+    /// same as [`Self::claimed_unix`]). Never unset by a later downgrade.
+    pub paid_unix: Option<i64>,
+    /// The session id `handler::bind_session_to_created_tenant` recorded
+    /// the moment this tenant was created -- `None` for a tenant whose
+    /// creating call never bound a session (e.g. a `signup(handoff: true)`
+    /// never redeemed). [`Self::second_session_unix`]'s own write compares
+    /// every later session's id against this one.
+    pub created_session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1273,6 +1336,42 @@ fn backfill_unclassified_tenants_sync(conn: &Connection) -> Result<i64, AppError
 /// behind the directly-testable [`Db::backfill_provenance`] -- same split
 /// as `backfill_unclassified_tenants_sync`/`Db::backfill_unclassified_tenants`
 /// above.
+/// PRD-mcphost-activation-funnel requirement 1 (AC5): the one-shot
+/// backfill `migrate_0072_activation_funnel` calls right after its own
+/// `ALTER TABLE`s land -- `claimed_unix` from `owner_verified_at` (plain
+/// copy, both already unix seconds) and `paid_unix` from `plan_since`
+/// (parsed via `state::unix_from_rfc3339`, the only format this crate
+/// ever wrote there) for every tenant on a non-`free` plan. Both halves
+/// are idempotent on their own `WHERE ... IS NULL` guard, same convention
+/// as [`backfill_provenance_sync`] below -- a tenant claimed/upgraded
+/// AFTER this migration already got its stamp from the live write path
+/// (`Db::verify_claim_code`/`Db::upgrade_tenant_plan`), so this never
+/// overwrites one.
+fn backfill_activation_claims_and_plans_sync(conn: &Connection) -> Result<(i64, i64), AppError> {
+    let claimed = conn.execute(
+        "UPDATE tenants SET claimed_unix = owner_verified_at \
+         WHERE owner_verified_at IS NOT NULL AND claimed_unix IS NULL",
+        [],
+    )?;
+
+    let candidates: Vec<(i64, String)> = {
+        let mut stmt = conn.prepare(
+            "SELECT id, plan_since FROM tenants \
+             WHERE plan != 'free' AND plan_since IS NOT NULL AND paid_unix IS NULL",
+        )?;
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    let mut paid = 0i64;
+    for (id, plan_since) in candidates {
+        if let Some(unix) = crate::state::unix_from_rfc3339(&plan_since) {
+            conn.execute("UPDATE tenants SET paid_unix = ?1 WHERE id = ?2", params![unix, id])?;
+            paid += 1;
+        }
+    }
+    Ok((claimed as i64, paid))
+}
+
 fn backfill_provenance_sync(conn: &Connection) -> Result<ProvenanceBackfillCounts, AppError> {
     let mut counts = ProvenanceBackfillCounts::default();
 
@@ -2332,7 +2431,8 @@ impl Db {
         Self::migrate_0068_standing_invite_code(&conn)?;
         Self::migrate_0069_row_policies(&conn)?;
         Self::migrate_0070_audit_chain(&conn)?;
-        Self::migrate_0071_first_call_gift(&conn)
+        Self::migrate_0071_first_call_gift(&conn)?;
+        Self::migrate_0072_activation_funnel(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -3357,6 +3457,22 @@ impl Db {
         Ok(())
     }
 
+    /// PRD-mcphost-activation-funnel requirement 1: same idempotency
+    /// pattern as 0002-0071, gated on `tenants.first_call_unix`.
+    fn migrate_0072_activation_funnel(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'first_call_unix'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0072)?;
+        }
+        let (claimed, paid) = backfill_activation_claims_and_plans_sync(conn)?;
+        if claimed > 0 || paid > 0 {
+            tracing::info!(claimed, paid, "activation-funnel claim/plan backfill complete");
+        }
+        Ok(())
+    }
+
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
     /// subcommand.
@@ -3622,6 +3738,13 @@ impl Db {
                 url_rotated_at: None,
                 invited_by_tenant_id: None,
                 last_seen_unix: None,
+                first_call_unix: None,
+                first_publish_unix: None,
+                first_own_call_unix: None,
+                second_session_unix: None,
+                claimed_unix: None,
+                paid_unix: None,
+                created_session_id: None,
             })
         })
         .await
@@ -3634,6 +3757,16 @@ impl Db {
     /// rows reclassified (0 once nothing is left `source_class IS NULL`).
     pub async fn backfill_unclassified_tenants(&self) -> Result<i64, AppError> {
         self.with_conn(backfill_unclassified_tenants_sync).await
+    }
+
+    /// PRD-mcphost-activation-funnel requirement 1 (AC5): the public,
+    /// directly-testable entry point for
+    /// [`backfill_activation_claims_and_plans_sync`] -- returns `(claimed,
+    /// paid)`, the count of tenants each half actually stamped. Also what
+    /// `migrate_0072_activation_funnel` calls once, right after migration
+    /// 0072's `ALTER TABLE`s land.
+    pub async fn backfill_activation_claims_and_plans(&self) -> Result<(i64, i64), AppError> {
+        self.with_conn(backfill_activation_claims_and_plans_sync).await
     }
 
     /// PRD-mcphost-provenance-audit requirement 1 / AC3: the public,
@@ -3807,12 +3940,114 @@ impl Db {
     /// `handler::resolve_auth`/`resolve_tenant_key_auth` on every call that
     /// resolves to a live tenant. Best-effort from the caller's side (a
     /// failure here must never fail the request it rode in on).
+    /// PRD-mcphost-activation-funnel requirement 2: also stamps
+    /// `first_call_unix` via `COALESCE`, in the same `UPDATE` every
+    /// authenticated-call resolver (`resolve_auth`/`resolve_tenant_key_auth`/
+    /// `resolve_session_binding`/`resolve_path_secret_auth`) already runs
+    /// unconditionally -- "the first authenticated call of any kind" costs
+    /// no extra round trip, set or not.
     pub async fn touch_last_seen(&self, tenant_id: i64, unix: i64) -> Result<(), AppError> {
         self.with_conn(move |conn| {
             conn.execute(
-                "UPDATE tenants SET last_seen_unix = ?1 WHERE id = ?2",
+                "UPDATE tenants SET last_seen_unix = ?1, \
+                 first_call_unix = COALESCE(first_call_unix, ?1) WHERE id = ?2",
                 params![unix, tenant_id],
             )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-activation-funnel requirement 2: `control::tool_publish`'s
+    /// own stamp, called only when the in-memory `Tenant` still shows
+    /// `first_publish_unix: None` (technical considerations: "the handler
+    /// should also skip the write when the in-memory tenant row shows the
+    /// stamp set") -- the `COALESCE` here is still the single source of
+    /// truth against a race, this check just avoids the round trip once set.
+    pub async fn touch_first_publish(&self, tenant_id: i64, unix: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tenants SET first_publish_unix = COALESCE(first_publish_unix, ?1) WHERE id = ?2",
+                params![unix, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `handler::call_published_tool`'s own stamp for a same-tenant call
+    /// (`caller: None` -- never a cross-tenant shared-tool call, AC2).
+    pub async fn touch_first_own_call(&self, tenant_id: i64, unix: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tenants SET first_own_call_unix = COALESCE(first_own_call_unix, ?1) WHERE id = ?2",
+                params![unix, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `handler::maybe_stamp_second_session`'s own stamp: the first
+    /// authenticated call this tenant makes on a session other than
+    /// [`Tenant::created_session_id`], at least 10 minutes after
+    /// `created_unix`.
+    pub async fn touch_second_session(&self, tenant_id: i64, unix: i64) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tenants SET second_session_unix = COALESCE(second_session_unix, ?1) WHERE id = ?2",
+                params![unix, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `handler::bind_session_to_created_tenant`'s own write: records the
+    /// session id this tenant was created on, exactly once (`None ->
+    /// Some`, never overwritten after). Unconditional `UPDATE` rather than
+    /// a `WHERE created_session_id IS NULL` guard -- every caller already
+    /// checks the in-memory `Tenant` first, same convention as
+    /// [`Self::touch_first_publish`].
+    pub async fn set_created_session_id(&self, tenant_id: i64, session_id: String) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "UPDATE tenants SET created_session_id = ?1 WHERE id = ?2",
+                params![session_id, tenant_id],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Test-only: backdates a single activation-funnel-related timestamp
+    /// column, so a test can simulate "N minutes have passed" without a
+    /// real sleep (same convention as
+    /// [`Self::set_oauth_grant_created_unix_for_test`]). `column` is
+    /// matched against a fixed allowlist rather than interpolated, so this
+    /// can never become a SQL-injection seam even in test code.
+    pub async fn set_tenant_stamp_for_test(
+        &self,
+        tenant_id: i64,
+        column: &'static str,
+        unix: i64,
+    ) -> Result<(), AppError> {
+        let sql = match column {
+            "created_unix" => "UPDATE tenants SET created_unix = ?1 WHERE id = ?2",
+            "first_call_unix" => "UPDATE tenants SET first_call_unix = ?1 WHERE id = ?2",
+            "first_publish_unix" => "UPDATE tenants SET first_publish_unix = ?1 WHERE id = ?2",
+            "first_own_call_unix" => "UPDATE tenants SET first_own_call_unix = ?1 WHERE id = ?2",
+            "second_session_unix" => "UPDATE tenants SET second_session_unix = ?1 WHERE id = ?2",
+            "claimed_unix" => "UPDATE tenants SET claimed_unix = ?1 WHERE id = ?2",
+            "paid_unix" => "UPDATE tenants SET paid_unix = ?1 WHERE id = ?2",
+            other => {
+                return Err(AppError::Internal(format!(
+                    "set_tenant_stamp_for_test: unknown column '{other}'"
+                )));
+            }
+        };
+        self.with_conn(move |conn| {
+            conn.execute(sql, params![unix, tenant_id])?;
             Ok(())
         })
         .await
@@ -4795,6 +5030,72 @@ impl Db {
                     .collect::<rusqlite::Result<Vec<_>>>()?,
             };
             Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-activation-funnel requirement 3: one row per tenant,
+    /// windowed and (optionally) `signup_source`-filtered -- the shared
+    /// read `admin::funnel` and `admin::funnel_7d_external` (`/healthz`)
+    /// both aggregate in Rust, so a `source_class`/`invited` filter never
+    /// needs its own query shape.
+    pub async fn funnel_rows(
+        &self,
+        since_unix: i64,
+        signup_source: Option<String>,
+    ) -> Result<Vec<FunnelRow>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT source_class, invited_by_tenant_id, created_unix, first_call_unix, \
+                 first_publish_unix, first_own_call_unix, second_session_unix, claimed_unix, \
+                 paid_unix FROM tenants \
+                 WHERE created_unix IS NOT NULL AND created_unix >= ?1 \
+                 AND (?2 IS NULL OR signup_source = ?2)",
+            )?;
+            let rows = stmt
+                .query_map(params![since_unix, signup_source], |r| {
+                    Ok(FunnelRow {
+                        source_class: r.get(0)?,
+                        invited: r.get::<_, Option<i64>>(1)?.is_some(),
+                        created_unix: r.get(2)?,
+                        first_call_unix: r.get(3)?,
+                        first_publish_unix: r.get(4)?,
+                        first_own_call_unix: r.get(5)?,
+                        second_session_unix: r.get(6)?,
+                        claimed_unix: r.get(7)?,
+                        paid_unix: r.get(8)?,
+                    })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-activation-funnel requirement 6: the host-wide k-factor
+    /// (accepted invites per active inviter) over the same window
+    /// `admin.funnel {invited}` reads -- same `accepted / distinct active
+    /// inviters` shape as [`Self::invites_usage_7d`]'s own `k`, generalized
+    /// from that call's fixed 7-day window to an arbitrary one and from
+    /// one tenant's own `accepted_7d` to every tenant's, since this is a
+    /// host-wide figure, not a per-tenant one.
+    pub async fn invites_k_factor_since(&self, since_unix: i64) -> Result<f64, AppError> {
+        self.with_conn(move |conn| {
+            let accepted: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM invite_joins WHERE created_unix >= ?1",
+                params![since_unix],
+                |r| r.get(0),
+            )?;
+            let active_inviters: i64 = conn.query_row(
+                "SELECT COUNT(DISTINCT inviter_tenant_id) FROM invite_joins WHERE created_unix >= ?1",
+                params![since_unix],
+                |r| r.get(0),
+            )?;
+            Ok(if active_inviters > 0 {
+                accepted as f64 / active_inviters as f64
+            } else {
+                0.0
+            })
         })
         .await
     }
