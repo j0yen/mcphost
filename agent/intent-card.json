@@ -1,71 +1,80 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-registry-listing.md",
-  "intent_slug": "mcphost-registry-listing",
-  "root_motivation": "Prod has no distinguishable human signups and the site (mcphost.dev) is the only public surface -- nothing lists mcphost where MCP users actually browse for servers. The public MCP registry (registry.modelcontextprotocol.io) accepts a server.json with a remotes entry for hosted servers; its schema and publisher CLI are fetched at build time and pinned in the repo. Fix: the binary emits its own registry entry from the same constants it serves (name, description, version, public endpoint, transport), the artifact is committed and CI-validated against the pinned schema on every push, and the entry points at the bare one-URL endpoint so a reader of the listing is one connection away from a tenant.",
-  "user_persona": "A visitor who searches the registry for \"mcphost\", opens the entry, and copies the remote URL into Cursor to get a personal tenant URL on the first call; Operator Joe, who tags a release and expects the registry to show the new version within the hour; CI, which fails a push the moment registry/server.json drifts from what the binary would generate.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-tool-call-host-verb-forward.md",
+  "intent_slug": "mcphost-tool-call-host-verb-forward",
+  "root_motivation": "An agent on a fresh tenant follows the host's own hint (host.quickstart kind=webhook -> 'Set the trigger itself with host.trigger.set(kind=\"webhook\") on a published tool') and sends that name through host.tool_call/host.tool_test, which knows only tenant tools and answers tool_not_found -- three truth-tier sessions failed exactly that way on 10-06, one recipe scored 0.000. dispatch_tenant_tool's own did-you-mean only ever suggests tenant-tool candidates, never the verb, because the host-verb registry and the tenant-tool registry were never cross-checked by one shared normalizer. This PRD forwards any spelling of a host verb sent through host.tool_call/host.tool_test to the verb itself, or refuses with the exact client-visible name and arguments to call instead.",
+  "user_persona": "An agent building a webhook inbox that reads the host's own hint and calls host_tool_call(name=\"trigger.set\", ...) expecting it to work, the same way a direct host.tool_call to a published tool works; an operator who wants to count how often hints misroute agents into the wrapper instead of the verb (host_tool_usage.via).",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 5
+    "target": 7
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given the binary, When `mcphost registry-manifest` runs, Then it prints JSON with name, description, version equal to Cargo.toml, a `remotes` entry whose URL is `MCPHOST_PUBLIC_URL` + `/mcp`, and transport `streamable-http`.",
-      "test": "tests/reglist_ac01_manifest_fields_match_cargo_and_endpoint.rs -- spawns the real binary with $MCPHOST_PUBLIC_URL set to a test value and, separately, unset, asserting the printed JSON's description/version against env!(\"CARGO_PKG_DESCRIPTION\")/env!(\"CARGO_PKG_VERSION\") and the remote's url/type."
+      "description": "Given a tenant with no tool named trigger_set and a published tool inbox_handler, When host.tool_call name=\"trigger.set\" args={tool:\"inbox_handler\", kind:\"event\", name:\"inbox_hook\"} runs, Then the trigger is created, the response carries forwarded_to: \"host.trigger.set\" and client_tool: \"host_trigger_set\", and host.trigger.list shows inbox_hook.",
+      "test": "tests/verbfwd_ac01_trigger_set_dotted_forwards.rs -- publishes inbox_handler (echo), calls host.tool_call with the dotted spelling trigger.set, asserts forwarded_to/client_tool and created:true, then confirms host.trigger.list names inbox_hook."
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given a committed `registry/server.json` equal to the generator's output, When `--check` runs, Then exit 0; after a description change in source, exit non-zero with a diff.",
-      "test": "tests/reglist_ac02_check_detects_drift.rs -- one case runs --check against the real committed registry/server.json (must exit 0); the other points --check --path at a scratch file with a stale description (can't mutate Cargo.toml's own description for one test in a shared suite binary) and asserts exit 1 plus a +/- diff naming both the stale and fresh lines."
+      "description": "Given the same tenant, When host.tool_call is sent host_trigger_set, host.trigger_set, and trigger_set with the same args, Then all three forward identically and host.trigger.list shows exactly one trigger per distinct name.",
+      "test": "tests/verbfwd_ac02_every_spelling_forwards_identically.rs -- sends all three spellings with identical args (no explicit name, so all three share the default <kind>:<tool> identity), asserts the first call creates and the other two update the same row, and host.trigger.list shows exactly one trigger."
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given the pinned schema, When the test suite validates the committed `server.json`, Then it passes, and an entry missing `remotes` fails.",
-      "test": "tests/reglist_ac03_schema_validates_committed_entry_and_rejects_missing_remotes.rs -- validates registry/server.json against registry/schema.json composed with this host's own required:[\"remotes\"] rule (the raw upstream schema alone leaves remotes optional, since a server may ship packages instead -- see hard_constraints below), then re-validates with remotes stripped and asserts a validation error."
+      "description": "Given a tenant that owns a tool literally named trigger_set, When host.tool_call name=\"trigger_set\" runs, Then the tenant tool runs and nothing is forwarded.",
+      "test": "tests/verbfwd_ac03_tenant_tool_name_wins_over_verb.rs -- publishes an echo tool literally named trigger_set, calls host.tool_call name=\"trigger_set\", asserts the echo result (no forwarded_to/client_tool fields) and that host.trigger.list stays empty."
     },
     {
       "id": "AC4",
-      "level": "SHOULD",
-      "description": "Given a push to any branch, When the registry workflow runs on the free runner, Then it executes `--check` and schema validation and fails the push on drift.",
-      "test": "tests/reglist_ac04_workflow_checks_manifest_and_schema_on_every_push.rs -- text assertions over .github/workflows/registry.yml: the `on:` trigger has no `branches:` filter, the `check` job runs on `ubuntu-latest` and both `registry-manifest --check` and the reglist_ac03 suite, and `publish` needs `check` and gates on a `refs/tags/v` ref."
+      "level": "MUST",
+      "description": "Given host.tool_call name=\"admin.tenants_list\", When it runs, Then the response is tool_not_found with data.host_verb: \"admin.tenants_list\", data.call_instead.tool: \"admin_tenants_list\", and no admin verb executed.",
+      "test": "tests/verbfwd_ac04_admin_verb_refused_never_forwarded.rs -- asserts the refusal shape (error_code, data.host_verb, data.call_instead.tool) and that the tenant's own key still works afterward (no admin side effect reached this tenant's account)."
     },
     {
       "id": "AC5",
-      "level": "SHOULD",
-      "description": "Given a tag `v*`, When the workflow runs with the documented secret present, Then it publishes the entry and the registry returns the new version (Live; evidence: registry lookup after the first tag post-deploy).",
-      "test": "deferred -- operator-provisioned: a live, post-tag observation needing the dev.mcphost DNS TXT verification record at mcphost.dev and the MCPHOST_REGISTRY_PRIVATE_KEY repository secret, both Joe's own open questions per the PRD, neither available to this dispatch. AC2-AC4 already prove --check, schema validation, and the workflow's own structure (including the publish job's tag gate and its graceful no-op until the secret exists) end-to-end short of the live network call."
+      "level": "MUST",
+      "description": "Given host.tool_test name=\"host.trigger.set\" args={...}, When the verb supports dry_run, Then the dry run result is returned with forwarded_to; given a verb without a dry run, Then the response is unverifiable with call_instead and nothing is created.",
+      "test": "tests/verbfwd_ac05_tool_test_forwards_dry_run_or_unverifiable.rs -- two tests: host.trigger.set's dry run (forwarded_to + dry_run.rolled_back:true + host.trigger.list stays empty) and host.trigger.list (a forwardable verb with no dry run) returning error_code unverifiable with call_instead.tool."
     },
     {
       "id": "AC6",
-      "level": "MUST",
-      "description": "Given the README, When a reader opens it, Then it contains the registry link and the one-URL quickstart link, both resolving with HTTP 200.",
-      "test": "tests/reglist_ac06_readme_registry_and_quickstart_links_resolve.rs -- the always-on half parses README's own \"Find it in the registry\" line for its two markdown links and pins them to the published entry in registry/server.json: the first must be an https registry.modelcontextprotocol.io query whose search term carries that entry's server name, its anchor text must be the full published name, and the second must equal the entry's websiteUrl (so a dropped, re-hosted or drifted link fails with no network). The GETs that prove \"resolves with HTTP 200\" are Live, gated on MCPHOST_LIVE=1 since not every build environment has egress to registry.modelcontextprotocol.io (same convention as tests/mcphost_team_memory_ac08_live_test_skipped_without_env.rs), and carry a negative control in the same run: a non-existent route on the same registry host, through the same client, must come back non-200. The registry's ?search= path is cold-cache slow (~15s measured before first byte, sub-second on repeat), which is why resolve_status allows a 60s per-request timeout and retries transport failures only -- the earlier 15s flat timeout failed on a cold cache with \"error sending request for url\", indistinguishable from an environment with no egress."
+      "level": "SHOULD",
+      "description": "Given every hint string the server can emit (quickstart kinds, next-hint table, trigger_set_hint), When the hint-parity test runs, Then every verb named in a hint resolves through the normalizer and each hint prints the underscore tool name once.",
+      "test": "tests/verbfwd_ac06_hint_parity_underscore_form_resolves.rs -- walks every host.quickstart alias's hint field, the triggers sentence, and control::next_hint_table()'s every (from, tool) pair, asserting verbforward::resolve succeeds for each and the underscore form (host_trigger_set) appears exactly once in each printed sentence."
+    },
+    {
+      "id": "AC7",
+      "level": "SHOULD",
+      "description": "Given a forwarded host.trigger.set, When usage is recorded, Then host_tool_usage has one row with via: \"tool_call\" and the tenant's tool-call quota counter is unchanged.",
+      "test": "tests/verbfwd_ac07_forwarded_call_metered_via_tool_call_no_quota.rs -- forwards host.trigger.set for a tenant with no prior usage row, asserts db::host_tool_usage_via returns \"tool_call\", and that count_calls_since (the tool-call quota counter) is unchanged before/after."
+    },
+    {
+      "id": "AC8",
+      "level": "SHOULD",
+      "description": "Given prod mcphost.dev after deploy, When the next truth-tier panel runs the webhook-inbox recipe, Then no session records 'tool not found: trigger.set' or 'tool not found: host.trigger.set' (Live; evidence: truth-tier sessions/*.jsonl of the first nightly after deploy).",
+      "test": "deferred -- operator-provisioned: AC8's Then is a live, post-deploy observation of a real truth-tier panel run against prod, read back from that run's own sessions/*.jsonl. This dispatch has no prod deploy rights and no live truth-tier panel to run. AC1-AC7 already prove the forwarding/refusal mechanism end-to-end -- the exact 'tool not found: trigger.set'/'tool not found: host.trigger.set' failure this PRD exists to fix -- against an in-process server."
     }
   ],
   "scope": [
-    "src/registry_manifest.rs (new): build_manifest/render/public_url_from_env/full_name, plus the NAMESPACE/REPOSITORY_URL/MANIFEST_PATH/SCHEMA_PATH/SCHEMA_URL constants. Distinct from the pre-existing src/registry.rs (host.registry_publish, a tenant-facing tool for a TENANT's own namespace, PRD-mcphost-registry-publish) -- named registry_manifest, not registry, so the two never collide.",
-    "src/main.rs: new `mcphost registry-manifest [--write <path>] [--check] [--path <path>]` subcommand.",
-    "registry/schema.json (new, pinned 2026-10-06 from https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json, URL recorded in its own $comment); registry/server.json (new, the generator's own committed output, `mcphost registry-manifest --write registry/server.json`).",
-    ".github/workflows/registry.yml (new): `check` job (every push, no branch filter) runs --check and the reglist_ac03 schema suite on ubuntu-latest; `publish` job (needs: check, if: a v* tag) runs the dev.mcphost DNS-verified mcp-publisher CLI, no-op with a warning until MCPHOST_REGISTRY_PRIVATE_KEY exists.",
-    "README.md: a \"Find it in the registry\" line (registry search link + mcphost.dev as the one-URL quickstart) and a new \"This host's own registry listing\" subsection documenting the subcommand and the publish secret.",
-    "Cargo.toml/plugin/.claude-plugin/plugin.json/plugin/.mcp.json: version bump 0.96.0 -> 0.97.0 (PRD's build_version_bump: minor), carried into both plugin pinned-version files the pre-existing mcphost_claude_code_plugin_and_snippets_ac02 test already enforces against Cargo.toml.",
-    "agent/proof-lanes.toml: new `registry-manifest` lane routing registry/** (lanecov_ac01 requires every tracked path to route; not folded into the pre-existing `meta` lane, which already covers the unrelated root server.json from a different, tenant-facing PRD, since lanecov_ac04 pins every pre-existing lane's required_commands as an immutable baseline).",
-    "tests/reglist_ac0[1,2,3,4,6]_*.rs (new, one per non-deferred AC); tests/suite_core_0[7,8].rs regenerated by scripts/gen-test-suites.sh; tests/ac01_extended_gates_prd_path_resolves_and_matches_card.rs: one clippy fixup (map_or(true, ..) -> is_none_or(..)) surfaced by --all-targets once this PRD's new test landed in the same consolidated suite binary.",
-    "agent/test-map.json: ac_test_map repointed at this PRD's ACs; the prior PRD's (mcphost-funnel-truth) map archived under ac_test_map_by_prefix.ftruth."
+    "src/verbforward.rs (new): resolve(name, kinds) -> Option<String> (the one pure fold-based normalizer host.tool_call's forwarding, host.tool_test's forwarding, and the AC6 hint-parity test all share), FORWARD_DENYLIST (host.tool.call/host.tool.test/host.key.rotate/host.self.offboard), DRY_RUN_FORWARDABLE (host.trigger.set only), client_tool_name/is_denylisted/supports_dry_run.",
+    "src/handler.rs: host_tool_call's own dispatch tries the existing tenant-tool/shared-tool resolution first, unchanged; only a tool_not_found-coded miss falls through to verbforward::resolve and, on a match, forward_host_verb (dispatches through the same dispatch_tenant_tool match every direct host.* call uses, tags forwarded_to/client_tool, records host_tool_usage via:\"tool_call\"). admin.*/billing.* names are refused immediately via the new AppError::host_verb_not_forwarded, before any lookup. tool_test gets the identical miss-then-forward precedence plus test_forward_host_verb (a real dry run, via dryrun::with_dry_run, for DRY_RUN_FORWARDABLE verbs; unverifiable otherwise). dispatch_tenant_tool <-> host_tool_call/tool_test <-> forward_host_verb/test_forward_host_verb is a real recursion in the type graph (a denylisted verb would re-enter host_tool_call/tool_test) resolved with Box::pin at both call sites.",
+    "src/errors.rs: AppError::host_verb_not_forwarded(host_verb, call_args) -- the shared tool_not_found refusal shape (data.host_verb/data.call_instead/data.hint) for both a denylisted real verb and an admin.*/billing.* name; a new \"unverifiable\" Structured code (INVALID_REQUEST) for host.tool_test on a verb with no dry run.",
+    "src/db.rs + migrations/0079_host_tool_usage_via.sql: host_tool_usage gains a via TEXT NOT NULL DEFAULT 'direct' column; record_host_tool_use(tenant_id, tool_name, via, now_unix) threads it through (the pre-existing maybe_attach_next_hint call site now passes \"direct\"; forward_host_verb passes \"tool_call\"); host_tool_usage_via(tenant_id, tool_name) is the AC7 test's own read path.",
+    "src/control.rs: trigger_set_hint and quickstart()'s own triggers sentence each gain a trailing \"(tool name: host_trigger_set)\" (P1 hint-parity requirement) without disturbing the exact host.trigger.set(kind=\"...\") substring an earlier PRD's own pinned test (mcphost_event_trigger_self_test_ac08) asserts. next_hint_table() exposes the static NEXT_HINT_TABLE for the AC6 test (next_hint_for only ever answers one lookup at a time). quickstart's limits block gains forwarding: true (P2, no AC of its own) so synthorg can assert the feature is live.",
+    "tests/verbfwd_ac0[1-7]_*.rs (new, one per non-deferred AC); tests/suite_core_08.rs regenerated by scripts/gen-test-suites.sh.",
+    "agent/test-map.json: ac_test_map repointed at this PRD's ACs; the prior PRD's (mcphost-client-install-links) map archived under ac_test_map_by_prefix.clink.",
+    "Cargo.toml/Cargo.lock/plugin/.claude-plugin/plugin.json/plugin/.mcp.json: minor version bump (0.97.0 -> 0.98.0)."
   ],
   "non_goals": [
-    "Listing on third-party directories that require manual forms (PRD's own non-goal; an operator task, not code).",
-    "Changing the server's tool surface or descriptions for marketing (PRD's own non-goal).",
-    "Paid CI -- registry.yml runs on the free public-repo runner only (PRD's own non-goal).",
-    "Requirement 5 (P2, no AC of its own): folding the three starter tools' names into the entry's description so directory search matches them. Out of this dispatch's assigned AC list (1/2/3/4/6 only) and genuinely underspecified -- no PRD text names which three tools -- so left undone rather than guessed.",
-    "AC5 (the live post-tag publish reaching the real registry) -- operator-provisioned, deferred; needs the dev.mcphost DNS TXT record and the MCPHOST_REGISTRY_PRIVATE_KEY secret, neither of which this coder dispatch can produce.",
-    "Touching src/registry.rs or tests/ac19_registry_publish.rs (host.registry_publish) -- the PRD's own grounding states this tenant-facing tool is unrelated."
+    "Renaming host verbs or changing the dotted canonical form in tools/list (PRD's own Non-goals).",
+    "Forwarding admin.* or billing.* through host.tool_call -- refused with the name, never forwarded (PRD's own Non-goals); this dispatch refuses them unconditionally and immediately, before any registry lookup.",
+    "A generic 'wrap every verb's dispatch in the dry-run savepoint' mechanism for host.tool_test -- DRY_RUN_FORWARDABLE is an explicit, audited allow-list (host.trigger.set only) rather than blanket coverage, since several host verbs have real outbound/external side effects (host.trigger.fire, host.msg.send, host.channel.post, ...) the savepoint-rollback mechanism does not protect against; see hard_constraints.dry_run_is_an_explicit_allowlist_not_every_db_writing_verb.",
+    "AC8 (the live, post-deploy truth-tier observation) -- operator-provisioned, deferred; needs prod deploy rights and a live truth-tier panel run, neither of which this coder dispatch can produce."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -74,53 +83,57 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "name_is_not_literally_cargo_pkg_name": "AC1's own wording (\"name, description, version equal to Cargo.toml\") could be read as all three fields being exact Cargo.toml literals, but the upstream schema requires `name` to be `<namespace>/<server-name>` (exactly one `/`, pattern `^[a-zA-Z0-9.-]+/[a-zA-Z0-9._-]+$`) -- Cargo.toml's bare package name \"mcphost\" would fail that pattern outright. Resolved by pairing Cargo.toml's package name with the dev.mcphost namespace Joe decided (PRD Open Questions, 2026-10-06), so `name` is built FROM Cargo.toml plus the decided namespace, not a second independent literal; `description`/`version` are the direct Cargo.toml fields.",
-      "license_field_is_not_in_the_upstream_schema": "The PRD's own requirement 2 lists `license` alongside name/description/version/endpoint/transport/repository, but the fetched-and-pinned upstream server.schema.json's Server/ServerDetail definitions have no `license` property at all. Resolved by adding it as a plain top-level field anyway -- neither definition sets `additionalProperties: false`, so an extra `license` key validates cleanly; confirmed by AC3's own passing test against the real pinned schema.",
-      "remotes_required_is_a_project_rule_layered_on_the_pinned_schema_not_upstream_itself": "AC3 says an entry missing `remotes` must fail schema validation, but the upstream schema's ServerDetail leaves `remotes` optional (a server can ship `packages` instead) -- a bare pinned-schema check against a remotes-less entry would still pass. tests/reglist_ac03_*.rs composes the pinned schema (its own `definitions` lifted to the composed document's root, since a $ref nested inside a new `allOf` would otherwise resolve against the wrapper's root instead) with this host's own `required: [\"remotes\"]`, since mcphost never ships `packages` and a remotes-less entry here has no endpoint left to publish.",
-      "ac5_is_deferred_not_implemented": "AC5's Then (\"the registry returns the new version\") is a live, post-tag, operator-gated observation -- this dispatch has no DNS access for the dev.mcphost TXT record and no repository-secrets access for MCPHOST_REGISTRY_PRIVATE_KEY, both Joe's own open questions. The publish job is still fully wired in registry.yml (gated on the tag ref, needs: check) so it starts working the moment both exist, rather than being left unwritten.",
-      "requirement_5_p2_is_out_of_this_dispatch_scope": "Requirement 5 (P2, \"the entry's description includes the three starter tools' names\") has no AC of its own and is not in this dispatch's assigned AC list (1/2/3/4/6); the PRD also never names which three tools, so implementing it would mean guessing. Left undone per the dispatch's own \"do not start any work beyond this list\" instruction -- see non_goals."
+      "normalizer_folds_rather_than_naively_joins_dots_and_underscores": "A naive 'strip host./host_, then replace every remaining _ with .' breaks on verbs whose leaf word itself contains an underscore that is NOT a family separator (e.g. host.state.table_create, host.tool.spec_shared) -- replacing every underscore with a dot would turn table_create into table.create, which matches nothing real. verbforward::fold instead strips the optional host./host_ prefix, then removes ALL '.' and '_' characters from both the wire name and every real candidate name before comparing, so host.state.table_create, host_state_table_create, and state.table.create all fold to the identical 'statetablecreate' and compare correctly regardless of which positions the caller happened to use which separator.",
+      "resolve_filters_out_registered_aliases_from_the_candidate_pool": "host_tool_descriptors(kinds) lists both a verb's canonical dotted name (host.tool.call) AND each of its own registered underscore aliases (host.tool_call, from tool_aliases::TOOL_ALIASES) as separate Tool entries -- an alias folds identically to its own canonical target by construction. Without filtering those out first, resolve() could non-deterministically return the alias spelling itself, which dispatch_tenant_tool's match (dotted canonical names only) would never match, silently breaking the very forwarding this PRD exists to add. resolve() filters the candidate pool with the same tool_aliases::resolve(n).is_none() check dispatch_tenant_tool's own did-you-mean fallback already uses for the identical reason, caught by a dedicated src/verbforward.rs unit test (no_two_registered_verbs_fold_to_the_same_value) asserting the filtered pool has zero fold collisions.",
+      "dry_run_is_an_explicit_allowlist_not_every_db_writing_verb": "db::Db::with_conn already transparently routes through dryrun::DryRunCtx's savepoint connection inside a dryrun::with_dry_run scope (the exact mechanism host.tool_test already uses for a published tool's kind.call), so wrapping ANY verb's dispatch in that scope would silently 'succeed' at rolling back its DB writes -- but several host verbs have real side effects the savepoint does NOT protect (host.trigger.fire enqueues/runs a job on a background executor outside this request's task-local scope; host.msg.send/host.channel.post could, in a kind that performs the delivery inline, already have delivered before any rollback). verbforward::DRY_RUN_FORWARDABLE is therefore a small, explicitly audited allow-list (host.trigger.set only, today) rather than 'every verb that happens to write only through state.db.*' -- adding a new entry means verifying its entire effect really is contained DB writes, not inferring it from the absence of an obvious API call.",
+      "tenant_tool_precedence_is_structural_not_a_separate_check": "AC3's 'a tenant tool named like a verb wins' falls out of the implementation for free rather than needing its own guard: host_tool_call/tool_test run the EXACT pre-existing tenant-tool/shared-tool resolution unchanged and first; verbforward::resolve is only ever consulted inside the Err(err) if err.code() == \"tool_not_found\" branch, so an existing tenant tool short-circuits with Ok(value) before verb-forwarding code runs at all.",
+      "host_tool_usage_via_is_first_use_wins_not_last_use": "host_tool_usage's primary key is (tenant_id, tool_name) and record_host_tool_use uses INSERT OR IGNORE -- adding a via column preserves that 'first successful use ever' semantics rather than switching to 'most recent use', so a tenant that called host.trigger.set directly once, then later reached it via a forwarded hint, keeps via=\"direct\" (its true first use) rather than the later call overwriting it. AC7's own test uses a tenant with NO prior usage of host.trigger.set specifically so its forwarded call is unambiguously the first (and only) row."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why does a committed, generated server.json matter instead of hand-writing one entry once and forgetting it?",
-      "a": "The PRD's own grounding and the pre-existing root server.json (a different, tenant-reconcile-owned artifact, PRD-mcphost-registry-publish) both show the failure mode directly: docs/launch/wave1-checklist.md records that file going stale at version 0.14.0 against the repo's real 0.64.0. A generator plus a --check CI gate makes that drift a build failure instead of a silent, discovered-months-later mismatch."
+      "q": "Why does an agent following the host's own hint (host.trigger.set(kind=\"webhook\")) lose the session instead of creating the trigger?",
+      "a": "host.tool_call/host.tool_test only ever resolve name against the tenant's own published tools (or, for a dotted name, another tenant's shared tool) -- a host verb's dotted or underscore spelling was never cross-checked against the host-verb registry at all, so it falls straight through to tool_not_found with tenant-tool-shaped did-you-mean candidates that never name the verb."
     },
     {
       "why": 2,
-      "q": "Why can't this reuse the pre-existing host.registry_publish / src/registry.rs machinery instead of a new module?",
-      "a": "That machinery publishes a TENANT's own domain-verified namespace entry at runtime, with no Cargo.toml involvement at all -- it answers \"what is this tenant's tool server,\" not \"what is mcphost itself.\" The PRD's own grounding states this directly: \"host_registry_publish ... is unrelated.\""
+      "q": "Why would a client ever send a host verb through host.tool_call/host.tool_test in the first place, instead of calling it directly?",
+      "a": "The host's own hints (host.quickstart's per-kind hint, the triggers sentence, trigger_set_hint) print the dotted form (host.trigger.set) with no indication that a client whose only verb-dispatch primitive is host.tool_call/host.tool_test (rather than raw tools/call with the dotted name) needs a DIFFERENT call shape entirely -- the grounding's own five-whys-chain-A level 5 names this precisely: 'no rule that every name a hint prints resolves on every path a client can send it'."
     },
     {
       "why": 3,
-      "q": "Why does the committed artifact need its own pinned schema file instead of just trusting the generator's own shape?",
-      "a": "The generator is this crate's own code, so a bug in it would pass its own output trivially; AC3's whole point is an independent check against the real upstream contract (registry.modelcontextprotocol.io's own schema) that the generator can't quietly drift from without a test noticing."
+      "q": "Why forward rather than just making every hint print the exact host.tool_call-wrapped call shape?",
+      "a": "host.tool_call/tool_test still need to work for an agent that already knows to send a bare verb name that way (admin_agent panel turns 14-15 sent both trigger.set and host.trigger.set through host_tool_call, not raw tools/call) -- fixing only the hint text leaves the dispatch path itself broken for any other client, present or future, that reaches a verb name through this wrapper by any route."
     },
     {
       "why": 4,
-      "q": "Why gate the live publish on a tag instead of publishing on every green push?",
-      "a": "The registry's own version field is meant to track actual releases, not every commit; the PRD's own requirement 4 and AC5 both say \"on tag v*\", matching the existing release convention (CHANGELOG.md's own version-per-tag entries) rather than inventing a second cadence."
+      "q": "Why does the normalizer need to be one shared pure function rather than three separate fixups (dispatch, hints, errors)?",
+      "a": "The failure mode this PRD is closing is exactly 'the verb registry and the tenant-tool registry drifted apart' -- three independent ad-hoc string-munging implementations (one in dispatch, one in the hint text, one in the error did-you-mean) would just move the drift-risk to 'these three now have to agree with each other', the same class of bug, one layer up. One function, tested once (verbforward's own fold-collision unit test) and reused by dispatch + the AC6 hint-parity test, is the only way a future verb addition can't silently reopen this gap."
     },
     {
       "why": 5,
-      "q": "Why default $MCPHOST_PUBLIC_URL to https://mcphost.dev here specifically, instead of reusing `mcphost serve`'s own http://{bind} fallback?",
-      "a": "This subcommand's whole job is describing the already-public listing for a reader who is not this process's own operator -- an unset env var here means \"the production default\", where `serve`'s own fallback exists only to give a freshly-bound socket with no public DNS yet SOME url to put in its own responses before the operator sets one."
+      "q": "Why refuse admin.*/billing.* outright rather than forwarding them too, for symmetry?",
+      "a": "admin.* verbs are operator/support-only control-plane actions dispatched through a completely separate Auth::Admin path a tenant key structurally cannot reach -- forwarding them through a tenant's own host.tool_call would at best be a confusing no-op and at worst (if that separation were ever weakened elsewhere) a privilege-boundary risk for zero benefit, since no truth-tier failure this PRD is grounded in ever involved a tenant trying to reach an admin verb."
     }
   ],
+  "created_at": "2026-10-07T02:00:00Z",
   "ambiguities_resolved": [
     {
-      "question": "Does AC1's \"name, description, version equal to Cargo.toml\" mean `name` is literally Cargo.toml's bare package name?",
-      "resolution": "No -- the upstream schema requires `name` to contain exactly one `/` (namespace/server-name), which \"mcphost\" alone fails. `name` is built from Cargo.toml's package name plus the dev.mcphost namespace Joe decided; see hard_constraints.name_is_not_literally_cargo_pkg_name."
+      "question": "What exactly does 'forward only on a miss' (technical considerations) mean when the dotted name could ALSO plausibly be a cross-tenant shared-tool call (<owner_ns>.<local>)?",
+      "resolution": "Run the existing resolution (own-namespace local tool, cross-tenant shared tool, or bare local name) completely unchanged first; only a tool_not_found-CODED failure (AppError::ToolNotFound and sharing::resolve_shared_tool's own shared_tool_not_found both carry that code) falls through to verb-forwarding. A real other-tenant namespace that happens to not exist still gets the ordinary shared-tool-not-found treatment if it also fails to fold-match a real verb; a namespace prefix that DOES fold-match a verb (e.g. 'trigger' in 'trigger.set') is forwarded instead of spending a DB round trip looking for a tenant literally named 'trigger'."
     },
     {
-      "question": "Should `license` be added even though it's not in the pinned upstream schema's own field list?",
-      "resolution": "Yes -- the PRD's own requirement 2 asks for it, and neither Server nor ServerDetail sets additionalProperties:false, so it validates cleanly. See hard_constraints.license_field_is_not_in_the_upstream_schema."
+      "question": "What counts as 'the verb supports dry_run' for AC5, given no host verb has an explicit dry_run argument today?",
+      "resolution": "Reuse the existing dryrun::with_dry_run savepoint scope (already built for host.tool_test's published-tool path) rather than adding a new per-verb dry_run argument -- but only for an explicit, audited allow-list (verbforward::DRY_RUN_FORWARDABLE), not generically for every verb whose writes happen to go through state.db.*. See hard_constraints.dry_run_is_an_explicit_allowlist_not_every_db_writing_verb."
     },
     {
-      "question": "Is requirement 5 (P2, starter-tool names in the description) in scope for this dispatch?",
-      "resolution": "No -- it has no AC of its own, is not in the dispatch's assigned AC list, and the PRD never names which three tools; implementing it would mean guessing. See hard_constraints.requirement_5_p2_is_out_of_this_dispatch_scope."
+      "question": "Does 'the next-hint table prints both forms once' (P1) mean rewriting NEXT_HINT_TABLE's tool field to a non-tool-name string like 'host.trigger.set (tool name: host_trigger_set)'?",
+      "resolution": "No -- NEXT_HINT_TABLE's tool field is a structured, machine-read value (next.tool in the response JSON) a client is meant to call verbatim, not printed prose; rewriting it would break that contract. The hint-parity requirement's 'prints the underscore tool name once' clause applies to natural-language hint STRINGS (trigger_set_hint's hint field, quickstart's triggers sentence); the next-hint table's own obligation is just 'every verb named resolves through the normalizer', which AC6's test proves directly against the real table via control::next_hint_table()."
+    },
+    {
+      "question": "Should host.whoami (not denylisted, but reading subject/auth_method the forwarding path doesn't have) be excluded from the forward allow-list too?",
+      "resolution": "No explicit exclusion -- forward_host_verb passes subject: None, auth_method: \"key\" into dispatch_tenant_tool, the identical precedent kinds::mod.rs's own TenantHostStepBridge already sets for every HOST_STEPS_ALLOWED verb (host.whoami is likewise never on that allow-list, same rationale: of every forwardable verb, only host.whoami reads either parameter, and a hint-misrouted call has no caller identity of its own to lose by not re-deriving it here). No AC exercises host.whoami forwarding specifically."
     }
-  ],
-  "created_at": "2026-10-06T20:00:00Z"
+  ]
 }

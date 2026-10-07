@@ -184,6 +184,10 @@ const MIGRATION_0077: &str = include_str!("../migrations/0077_second_session_nud
 /// `oauth_funnel_events`, `claim_email_events`.
 const MIGRATION_0078: &str = include_str!("../migrations/0078_funnel_origin.sql");
 
+/// PRD-mcphost-tool-call-host-verb-forward requirement 2 (AC7):
+/// `host_tool_usage.via`.
+const MIGRATION_0079: &str = include_str!("../migrations/0079_host_tool_usage_via.sql");
+
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
 const EVENT_DEDUPE_WINDOW_S: i64 = 86_400;
@@ -2611,7 +2615,8 @@ impl Db {
         Self::migrate_0075_claim_email_events(&conn)?;
         Self::migrate_0076_upgrade_moment(&conn)?;
         Self::migrate_0077_second_session_nudge(&conn)?;
-        Self::migrate_0078_funnel_origin(&conn)
+        Self::migrate_0078_funnel_origin(&conn)?;
+        Self::migrate_0079_host_tool_usage_via(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -3732,6 +3737,18 @@ impl Db {
         Ok(())
     }
 
+    /// PRD-mcphost-tool-call-host-verb-forward requirement 2: same
+    /// idempotency pattern as 0002-0078, gated on `host_tool_usage.via`.
+    fn migrate_0079_host_tool_usage_via(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('host_tool_usage') WHERE name = 'via'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0079)?;
+        }
+        Ok(())
+    }
+
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
     /// subcommand.
@@ -4746,17 +4763,50 @@ impl Db {
 
     /// PRD-mcphost-one-next-tool requirement 4: records that `tool_name`
     /// succeeded for this tenant at least once -- idempotent (a second
-    /// success for the same tool is a no-op), called on every successful
+    /// success for the same tool is a no-op, `via` included: first use
+    /// wins, same as `first_used_unix`), called on every successful
     /// `host.*` dispatch regardless of whether a hint was eligible, so the
     /// distinct count stays accurate past the five-tool cutoff too.
-    pub async fn record_host_tool_use(&self, tenant_id: i64, tool_name: String, now_unix: i64) -> Result<(), AppError> {
+    ///
+    /// PRD-mcphost-tool-call-host-verb-forward requirement 2 (AC7): `via`
+    /// is `"tool_call"` for a verb reached through
+    /// `handler::McpHostHandler::forward_host_verb`, `"direct"` for every
+    /// other `host.*` dispatch (a raw namespaced call or the
+    /// `host.tool_call`/`host.tool_test` wrapper itself) -- lets an
+    /// operator (or a test) tell how often a hint actually misroutes an
+    /// agent into the wrapper instead of the verb.
+    pub async fn record_host_tool_use(
+        &self,
+        tenant_id: i64,
+        tool_name: String,
+        via: String,
+        now_unix: i64,
+    ) -> Result<(), AppError> {
         self.with_conn(move |conn| {
             conn.execute(
-                "INSERT OR IGNORE INTO host_tool_usage (tenant_id, tool_name, first_used_unix) \
-                 VALUES (?1, ?2, ?3)",
-                params![tenant_id, tool_name, now_unix],
+                "INSERT OR IGNORE INTO host_tool_usage (tenant_id, tool_name, first_used_unix, via) \
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![tenant_id, tool_name, now_unix, via],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-tool-call-host-verb-forward requirement 2 (AC7): the
+    /// `via` a tenant's `tool_name` row recorded on its first-ever success,
+    /// `None` if `tool_name` has never succeeded for this tenant at all --
+    /// test-only read path, the write side (`record_host_tool_use`) has no
+    /// other reader for this column today.
+    pub async fn host_tool_usage_via(&self, tenant_id: i64, tool_name: String) -> Result<Option<String>, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT via FROM host_tool_usage WHERE tenant_id = ?1 AND tool_name = ?2",
+                params![tenant_id, tool_name],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(AppError::from)
         })
         .await
     }
