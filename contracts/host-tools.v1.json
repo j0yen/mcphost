@@ -4019,7 +4019,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Dry-run a published tool by name: writes are rolled back and reported under dry_run, nothing delivered; for the other cases see host.quickstart.",
+      "description": "Dry-run a published tool by name: verdict (pass/will_fail/unverifiable), writes rolled back (dry_run); see host.quickstart.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {
@@ -4427,7 +4427,7 @@
       "since": "0.58.0"
     },
     {
-      "description": "Dry-run a published tool by name: writes are rolled back and reported under dry_run, nothing delivered; for the other cases see host.quickstart.",
+      "description": "Dry-run a published tool by name: verdict (pass/will_fail/unverifiable), writes rolled back (dry_run); see host.quickstart.",
       "input_schema": {
         "additionalProperties": false,
         "properties": {

@@ -368,6 +368,10 @@ mod surface_ac06_python_outputs_by_path;
 mod tables_ac05_python_sandbox_table_access;
 #[path = "tables_ac08_docs_and_kv_vs_table_sentence.rs"]
 mod tables_ac08_docs_and_kv_vs_table_sentence;
+#[path = "testtruth_ac04_python_compose_unverifiable_in_dry_run.rs"]
+mod testtruth_ac04_python_compose_unverifiable_in_dry_run;
+#[path = "testtruth_ac05_verdict_on_every_kind_dry_run.rs"]
+mod testtruth_ac05_verdict_on_every_kind_dry_run;
 #[path = "tgraph_ac09_python_sandbox_join_paths.rs"]
 mod tgraph_ac09_python_sandbox_join_paths;
 #[path = "tooltest_ac13_publish_error_parity.rs"]

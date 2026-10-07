@@ -1462,6 +1462,19 @@ pub async fn tool_publish(
         crate::kinds::chain::resolve_steps(&state.db, tenant.id, &spec).await?;
     }
 
+    // PRD-mcphost-tool-test-truth P1 requirement 1 (AC6): the same static
+    // `$.prev`/`$.steps[i]` mapping verdict `host.tool_test` computes
+    // (`kinds::chain::verdict`), computed here too so the two can never
+    // disagree about the same spec -- `None` for every other kind. Purely
+    // advisory either way (Open questions: "stay advisory" was the
+    // default): a `will_fail` chain still publishes once every other gate
+    // passes, same as before this PRD.
+    let chain_verdict: Option<Value> = if kind_name == "chain" {
+        Some(crate::kinds::chain::verdict(&state.db, &state.kinds, tenant.id, &spec).await)
+    } else {
+        None
+    };
+
     // PRD-mcphost-first-publish-real-kind requirement 4 (AC3/AC4): from here
     // on, every remaining pre-check is "collectible" -- it's recorded as its
     // own `gates` entry and evaluated regardless of whether an earlier one
@@ -1618,6 +1631,28 @@ pub async fn tool_publish(
     }
 
     let gates_ok = gates.iter().all(|g| g["ok"] == json!(true));
+    // PRD-mcphost-tool-test-truth P1 requirement 1 (AC6): pushed AFTER
+    // `gates_ok` is computed, so a `will_fail` verdict never blocks
+    // publish (advisory, see `chain_verdict`'s own doc comment above) --
+    // it's still visible in the `gates` array `dry_run`'s response
+    // carries, same gate-level shape (`gate`/`ok`) plus the verdict's own
+    // `verdict`/`failures`/`reason`/`next` fields.
+    if let Some(v) = &chain_verdict {
+        let mut gate = json!({"gate": "verdict", "ok": true});
+        if let Value::Object(map) = &mut gate {
+            map.insert("verdict".to_string(), v["verdict"].clone());
+            if let Some(failures) = v.get("failures") {
+                map.insert("failures".to_string(), failures.clone());
+            }
+            if let Some(reason) = v.get("reason") {
+                map.insert("reason".to_string(), reason.clone());
+            }
+            if let Some(next) = v.get("next") {
+                map.insert("next".to_string(), next.clone());
+            }
+        }
+        gates.push(gate);
+    }
     if dry_run {
         return Ok(json!({"ok": gates_ok, "gates": gates}));
     }
@@ -1781,6 +1816,23 @@ pub async fn tool_publish(
     // runtime name above.
     if let (Some(_), Value::Object(map)) = (alias, &mut response) {
         map.insert("resolved_from".to_string(), json!(kind_name_requested));
+    }
+    // PRD-mcphost-tool-test-truth P1 requirement 1 (AC6): "without
+    // dry_run ... the response carries the advisory verdict" -- a real
+    // publish of a `will_fail` chain still landed above (advisory, never
+    // blocking); this is the one place that outcome is visible on a
+    // non-`dry_run` call.
+    if let (Some(v), Value::Object(map)) = (&chain_verdict, &mut response) {
+        map.insert("verdict".to_string(), v["verdict"].clone());
+        if let Some(failures) = v.get("failures") {
+            map.insert("failures".to_string(), failures.clone());
+        }
+        if let Some(reason) = v.get("reason") {
+            map.insert("reason".to_string(), reason.clone());
+        }
+        if let Some(next) = v.get("next") {
+            map.insert("next".to_string(), next.clone());
+        }
     }
     Ok(response)
 }

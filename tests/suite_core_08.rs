@@ -14,6 +14,22 @@ mod oauth;
 #[path = "support/oauthclient.rs"]
 mod oauthclient;
 
+#[path = "toolname_ac01_lint_reports_violations.rs"]
+mod toolname_ac01_lint_reports_violations;
+#[path = "toolname_ac02_alias_dispatch_hint_and_log.rs"]
+mod toolname_ac02_alias_dispatch_hint_and_log;
+#[path = "toolname_ac03_tools_list_alias_entries.rs"]
+mod toolname_ac03_tools_list_alias_entries;
+#[path = "toolname_ac04_docs_names_exist_and_tools_doc_fresh.rs"]
+mod toolname_ac04_docs_names_exist_and_tools_doc_fresh;
+#[path = "toolname_ac05_alias_metrics_counter.rs"]
+mod toolname_ac05_alias_metrics_counter;
+#[path = "toolname_ac06_did_you_mean_suggests_canonical.rs"]
+mod toolname_ac06_did_you_mean_suggests_canonical;
+#[path = "toolname_ac07_whoami_naming_rule_url_once_per_session.rs"]
+mod toolname_ac07_whoami_naming_rule_url_once_per_session;
+#[path = "toolname_ac08_tools_list_counts_updated.rs"]
+mod toolname_ac08_tools_list_counts_updated;
 #[path = "toolscope_ac01_scoped_consent_and_token.rs"]
 mod toolscope_ac01_scoped_consent_and_token;
 #[path = "toolscope_ac02_scoped_token_list_and_call.rs"]

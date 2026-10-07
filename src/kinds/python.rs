@@ -3980,6 +3980,45 @@ fn redact_kind_error(err: KindError, secrets: &[String]) -> KindError {
     }
 }
 
+/// PRD-mcphost-tool-test-truth P0 requirement 3 (AC4): `err`'s own message,
+/// IF it's this tool's `mcphost.call` raising `McphostCallError` -- matched
+/// by `data.exception_class` (the python exception's own stable class
+/// name, set by `map_envelope_error` above from `type(e).__name__`), never
+/// by substring-matching the free-text message (Technical considerations:
+/// "matched by a stable error code ... not by substring, so a wording
+/// change cannot regress the verdict"). `ctx.compose_db`/`compose_kinds`
+/// are always `None` under `host.tool_test` (`handler::tool_test`'s own
+/// `CallCtx`), so ANY `mcphost.call` a tool's sandboxed code attempts
+/// there raises exactly this exception (`compose_dispatch`'s own
+/// "composition is unavailable in this call context") -- this is the one
+/// case `call`'s `ctx.test_mode` branch turns into `verdict: unverifiable`
+/// rather than a hard error.
+fn composition_unverifiable_detail(err: &KindError) -> Option<String> {
+    match err {
+        KindError::Structured { code, message, data }
+            if *code == "tool_exception"
+                && data.get("exception_class").and_then(Value::as_str) == Some("McphostCallError") =>
+        {
+            Some(message.clone())
+        }
+        _ => None,
+    }
+}
+
+/// PRD-mcphost-tool-test-truth P0 requirement 3 (AC4): the `host.tool_test`
+/// success value in place of the hard error [`composition_unverifiable_detail`]
+/// matched -- `reason`/`next.tool` exactly as the requirement names them;
+/// the raw `McphostCallError` text (still naming the tool.py line) moves to
+/// `detail` instead of becoming this call's own JSON-RPC error.
+fn composition_unverifiable_value(detail: String) -> Value {
+    json!({
+        "verdict": "unverifiable",
+        "reason": "composition is not executed in a dry run",
+        "next": {"tool": "host_tool_call"},
+        "detail": detail,
+    })
+}
+
 /// PRD-mcphost-python-kind-plain-env requirement 5 (AC5): `host.tool_test`'s
 /// one rendered-environment listing -- every plain `env` entry shown
 /// verbatim (`kind: "env"`), every declared secret name shown redacted
@@ -4592,7 +4631,16 @@ impl PythonKind {
                             Ok(redacted)
                         }
                     }
-                    Err(e) => Err(redact_kind_error(e, secret_values)),
+                    Err(e) => {
+                        let e = redact_kind_error(e, secret_values);
+                        // PRD-mcphost-tool-test-truth P0 requirement 3
+                        // (AC4): same warm-path mirror as the cold path's
+                        // own match below.
+                        match (ctx.test_mode, composition_unverifiable_detail(&e)) {
+                            (true, Some(detail)) => Ok(composition_unverifiable_value(detail)),
+                            _ => Err(e),
+                        }
+                    }
                 })
             }
             // AC5: the deadline passed -- `call_timeout`, the sandbox is
@@ -5291,7 +5339,18 @@ impl Kind for PythonKind {
                     Ok(redacted)
                 }
             }
-            Err(e) => Err(redact_kind_error(e, &secret_values)),
+            Err(e) => {
+                let e = redact_kind_error(e, &secret_values);
+                // PRD-mcphost-tool-test-truth P0 requirement 3 (AC4): a
+                // composing tool's `host.tool_test` succeeds with
+                // `verdict: unverifiable` instead of this call's own
+                // `tool_exception` error -- see
+                // `composition_unverifiable_detail`'s own doc comment.
+                match (ctx.test_mode, composition_unverifiable_detail(&e)) {
+                    (true, Some(detail)) => Ok(composition_unverifiable_value(detail)),
+                    _ => Err(e),
+                }
+            }
         }
     }
 

@@ -42,7 +42,9 @@
 
 use serde_json::{Map, Value, json};
 
-use super::{CallCtx, HOST_STEPS_ALLOWED, Kind, KindError, KindExample, Path, ToolDescriptor, compose_call};
+use super::{
+    CallCtx, HOST_STEPS_ALLOWED, Kind, KindError, KindExample, KindRegistry, Path, ToolDescriptor, compose_call,
+};
 use crate::errors::AppError;
 
 pub struct ChainKind;
@@ -107,6 +109,200 @@ pub async fn resolve_steps(db: &crate::db::Db, tenant_id: i64, spec: &Value) -> 
         });
     }
     Ok(())
+}
+
+/// PRD-mcphost-tool-test-truth P0 requirement 2 (AC1/AC2/AC3): which step a
+/// `$.prev...`/`$.steps[i]...` path's prefix names (1-based, same numbering
+/// as everywhere else in this module), and the first segment immediately
+/// following that prefix -- the inner `Option` is `None` for a bare
+/// `$.prev`/`$.steps[i]` with nothing further (the whole predecessor value
+/// is mapped as-is, nothing to check against a schema). The outer
+/// `Option` is `None` for anything else: a
+/// literal, a `$.input.*` path, or a malformed `$.steps[...]` index --
+/// none of this check's concern (a malformed path is `resolve_args`'s own
+/// call-time error to report, not a publish/test-time one). Deliberately
+/// raw-string parsing (like [`input_arg_name`] above), not [`Path::parse`]
+/// -- this only needs the prefix and first segment, and [`Path`]'s own
+/// segments are private to this crate's call-time resolution.
+fn step_ref_and_first_segment(raw: &str, this_step_no: usize) -> Option<(usize, Option<String>)> {
+    if let Some(rest) = raw.strip_prefix("$.prev") {
+        let predecessor_no = this_step_no.checked_sub(1).filter(|n| *n > 0)?;
+        return Some((predecessor_no, next_path_segment(rest)));
+    }
+    if let Some(rest) = raw.strip_prefix("$.steps[") {
+        let end = rest.find(']')?;
+        let idx: usize = rest[..end].parse().ok()?;
+        return Some((idx + 1, next_path_segment(&rest[end + 1..])));
+    }
+    None
+}
+
+/// The first dotted/bracketed segment of `rest` (which itself follows
+/// right after a `$.prev`/`$.steps[i]` prefix, so `rest` is either empty or
+/// starts with `.`/`[`) -- `None` for an empty `rest` (nothing follows the
+/// prefix at all).
+fn next_path_segment(rest: &str) -> Option<String> {
+    let rest = rest.strip_prefix('.')?;
+    let end = rest.find(['.', '[']).unwrap_or(rest.len());
+    (!rest[..end].is_empty()).then(|| rest[..end].to_string())
+}
+
+/// Requirement 2: the declared output field names of tenant tool
+/// `tool_name` ([`super::Kind::declared_outputs`], e.g. an `http`/`python`/
+/// `wasm` spec's own `outputs`) -- `None` when `tool_name` isn't one of
+/// this tenant's own published tools (a bare lookup miss, or an
+/// allowlisted `host.*` verb, which has no stored spec at all) or its kind
+/// is unregistered; `Some(vec![])` when it resolves but declares no
+/// outputs (`echo`, or any kind's spec with an empty/absent `outputs`).
+/// The two `None`/`Some(empty)` cases are deliberately NOT collapsed --
+/// [`check_step_ref`] treats both as "no output schema," but keeps them as
+/// separate match arms for whichever future caller wants to tell "unknown
+/// tool" apart from "known tool, declares nothing."
+async fn declared_output_names(
+    db: &crate::db::Db,
+    kinds: &KindRegistry,
+    tenant_id: i64,
+    tool_name: &str,
+) -> Option<Vec<String>> {
+    let row = db.get_tool(tenant_id, tool_name.to_string()).await.ok()??;
+    let kind = kinds.get(&row.kind)?;
+    Some(kind.declared_outputs(&row.spec).into_iter().map(|d| d.name).collect())
+}
+
+/// Requirement 2: how one `$.prev`/`$.steps[i]` mapping, whose first
+/// segment is `segment` and whose predecessor step names tool
+/// `predecessor_tool`, classifies. `db`/`kinds` are `None` whenever a
+/// caller has no descriptor lookup available at all ([`CallCtx::for_test`]'s
+/// own `compose_db`/`compose_kinds`, left unset there) -- that degrades to
+/// `Unverifiable`, same as a lookup miss, rather than panicking or
+/// guessing.
+enum RefCheck {
+    Pass,
+    WillFail(Vec<String>),
+    Unverifiable,
+}
+
+async fn check_step_ref(
+    db: Option<&crate::db::Db>,
+    kinds: Option<&KindRegistry>,
+    tenant_id: i64,
+    predecessor_tool: &str,
+    segment: &str,
+) -> RefCheck {
+    let (Some(db), Some(kinds)) = (db, kinds) else {
+        return RefCheck::Unverifiable;
+    };
+    match declared_output_names(db, kinds, tenant_id, predecessor_tool).await {
+        Some(names) if !names.is_empty() => {
+            if names.iter().any(|n| n == segment) {
+                RefCheck::Pass
+            } else {
+                RefCheck::WillFail(names)
+            }
+        }
+        _ => RefCheck::Unverifiable,
+    }
+}
+
+/// PRD-mcphost-tool-test-truth P0 requirement 2 (AC1/AC2/AC3): the static,
+/// call-args-independent verdict engine for a chain's own `$.prev`/
+/// `$.steps[i]` mappings -- shared by [`verdict`] (`host.tool_publish`'s
+/// gate, AC6) and [`dry_run_report`] (`host.tool_test`'s own dry run,
+/// AC1-3), so the two never compute a different answer for the same spec.
+/// Checks only the FIRST segment immediately after a `$.prev`/
+/// `$.steps[i]` reference (Requirement 2's own words) against the
+/// predecessor's declared output names -- a deliberately shallow,
+/// schema-level check (Technical considerations), not a replay of the
+/// real mapping grammar's deeper `$.prev.result.payload.<field>`
+/// convention (unchanged, Non-goals). `will_fail` takes priority over
+/// `unverifiable` when a spec has both, since a proven failure is more
+/// actionable than "cannot tell."
+struct StepsVerdict {
+    /// `{"verdict": "pass"}`, `{"verdict": "will_fail", "failures":
+    /// [{"step", "path", "predecessor_keys"}, ...]}` (every failing
+    /// mapping, not just the first), or `{"verdict": "unverifiable",
+    /// "reason": "no output schema for step <i>", "next": {"tool":
+    /// "host_tool_call"}}` (the first one found).
+    overall: Value,
+    /// Every `(step_no, raw_path)` this check confirmed resolves to a real
+    /// predecessor field -- [`dry_run_report`] skips the `unresolved_path`
+    /// wrapper for exactly these (still no real VALUE to report without
+    /// dispatching the step, but no longer claimed broken either).
+    passes: std::collections::HashSet<(usize, String)>,
+}
+
+async fn steps_verdict(
+    db: Option<&crate::db::Db>,
+    kinds: Option<&KindRegistry>,
+    tenant_id: i64,
+    steps: &[ParsedStep],
+) -> StepsVerdict {
+    let mut failures: Vec<Value> = Vec::new();
+    let mut unverifiable_step: Option<usize> = None;
+    let mut passes = std::collections::HashSet::new();
+    for (i, step) in steps.iter().enumerate() {
+        let step_no = i + 1;
+        for v in step.args.values() {
+            let Value::String(raw) = v else { continue };
+            let Some((predecessor_no, segment)) = step_ref_and_first_segment(raw, step_no) else {
+                continue;
+            };
+            let Some(segment) = segment else {
+                continue; // whole-value mapping -- nothing to check.
+            };
+            let Some(predecessor) = steps.get(predecessor_no - 1) else {
+                continue; // out of range -- not this check's concern.
+            };
+            match check_step_ref(db, kinds, tenant_id, &predecessor.tool, &segment).await {
+                RefCheck::Pass => {
+                    passes.insert((step_no, raw.clone()));
+                }
+                RefCheck::WillFail(names) => {
+                    failures.push(json!({
+                        "step": step_no,
+                        "path": raw,
+                        "predecessor_keys": names,
+                    }));
+                }
+                RefCheck::Unverifiable => {
+                    if unverifiable_step.is_none() {
+                        unverifiable_step = Some(predecessor_no);
+                    }
+                }
+            }
+        }
+    }
+
+    let overall = if !failures.is_empty() {
+        json!({"verdict": "will_fail", "failures": failures})
+    } else if let Some(predecessor_no) = unverifiable_step {
+        json!({
+            "verdict": "unverifiable",
+            "reason": format!("no output schema for step {predecessor_no}"),
+            "next": {"tool": "host_tool_call"},
+        })
+    } else {
+        json!({"verdict": "pass"})
+    };
+    StepsVerdict { overall, passes }
+}
+
+/// PRD-mcphost-tool-test-truth P1 requirement 1 (AC6): `host.tool_publish`'s
+/// own entry point into [`steps_verdict`] -- parses `spec` (an
+/// already-published chain's spec always parses; `validate` already
+/// rejected anything else at publish time, so the fallback below exists
+/// only so an unpublished/malformed spec never panics) and discards the
+/// per-field `passes` set, which only [`dry_run_report`] needs.
+pub(crate) async fn verdict(
+    db: &crate::db::Db,
+    kinds: &KindRegistry,
+    tenant_id: i64,
+    spec: &Value,
+) -> Value {
+    let Ok(steps) = parse_steps(spec) else {
+        return json!({"verdict": "unverifiable", "reason": "spec does not parse"});
+    };
+    steps_verdict(Some(db), Some(kinds), tenant_id, &steps).await.overall
 }
 
 /// PRD-mcphost-chain-run-lineage requirement 1: one `$.input.<name>`
@@ -278,8 +474,18 @@ fn resolve_args(raw: &Map<String, Value>, context: &Value) -> Result<Value, Stri
 /// each step's resolved arguments, without dispatching an ordinary
 /// tenant-tool step. A mapping that reaches into `$.prev`/`$.steps[i]`
 /// can't be resolved against a step that was never dispatched, so it's
-/// reported as `{"unresolved_path": "$..."}` instead of a value; `$.input.*`
-/// and literals resolve exactly as a real call would.
+/// reported as `{"unresolved_path": "$..."}` instead of a value -- UNLESS
+/// [`verdict`]'s own static check (PRD-mcphost-tool-test-truth AC2) has
+/// already confirmed that exact mapping resolves against its predecessor's
+/// declared outputs, in which case it's left out of `resolved_args`
+/// entirely (still no real value to report without dispatching, but no
+/// longer claimed broken either); `$.input.*` and literals resolve exactly
+/// as a real call would.
+///
+/// PRD-mcphost-tool-test-truth P0 requirement 1/2 (AC1): a `will_fail`
+/// verdict short-circuits before this function's own per-step loop ever
+/// runs (even its host-step dispatch, AC5 below) -- see this function's
+/// own early return.
 ///
 /// PRD-mcphost-chain-host-steps requirement 4/AC4: each step also carries
 /// `resolved` (`"host"` for an allowlisted `host.*` verb, `"tenant"` for a
@@ -309,10 +515,29 @@ fn resolve_args(raw: &Map<String, Value>, context: &Value) -> Result<Value, Stri
 /// caller dry-running a chain (with or without a complete `call_args`)
 /// learns what it must pass without needing a second `host.tool_spec` read.
 async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) -> Value {
+    let inputs_required: Vec<String> = collect_input_refs(steps).into_iter().map(|r| r.name).collect();
+    let sv = steps_verdict(
+        ctx.compose_db.as_ref(),
+        ctx.compose_kinds.as_ref(),
+        ctx.tenant_id,
+        steps,
+    )
+    .await;
+    if sv.overall["verdict"] == json!("will_fail") {
+        return json!({
+            "chain_dry_run": true,
+            "steps": [],
+            "inputs_required": inputs_required,
+            "verdict": "will_fail",
+            "failures": sv.overall["failures"].clone(),
+        });
+    }
+
     let mut prev: Option<Value> = None;
     let mut step_results: Vec<Value> = Vec::with_capacity(steps.len());
     let mut report: Vec<Value> = Vec::with_capacity(steps.len());
-    for step in steps {
+    for (i, step) in steps.iter().enumerate() {
+        let step_no = i + 1;
         let context = json!({
             "input": call_args,
             "prev": prev.as_ref().map(|r| json!({"result": r})),
@@ -325,6 +550,7 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
                 Value::String(s) if s.starts_with("$.") => {
                     match Path::parse(s).ok().and_then(|p| p.resolve(&context).cloned()) {
                         Some(v) => v,
+                        None if sv.passes.contains(&(step_no, s.clone())) => Value::Null,
                         None => {
                             unresolved = true;
                             json!({"unresolved_path": s})
@@ -335,7 +561,6 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
             };
             resolved.insert(k.clone(), value);
         }
-        let step_no = report.len() + 1;
         let is_host = HOST_STEPS_ALLOWED.contains(&step.tool.as_str());
         if is_host
             && !unresolved
@@ -387,8 +612,20 @@ async fn dry_run_report(steps: &[ParsedStep], call_args: &Value, ctx: &CallCtx) 
         step_results.push(Value::Null);
         prev = None;
     }
-    let inputs_required: Vec<String> = collect_input_refs(steps).into_iter().map(|r| r.name).collect();
-    json!({"chain_dry_run": true, "steps": report, "inputs_required": inputs_required})
+    let mut out = json!({"chain_dry_run": true, "steps": report, "inputs_required": inputs_required});
+    // PRD-mcphost-tool-test-truth P0 requirement 1 (AC2/AC3): `pass` or
+    // `unverifiable` (`will_fail` already returned early above) --
+    // `reason`/`next` present only for `unverifiable`.
+    if let Value::Object(map) = &mut out {
+        map.insert("verdict".to_string(), sv.overall["verdict"].clone());
+        if let Some(reason) = sv.overall.get("reason") {
+            map.insert("reason".to_string(), reason.clone());
+        }
+        if let Some(next) = sv.overall.get("next") {
+            map.insert("next".to_string(), next.clone());
+        }
+    }
+    out
 }
 
 #[async_trait::async_trait]
@@ -635,11 +872,18 @@ impl Kind for ChainKind {
             spec: json!({
                 "steps": [
                     {"tool": crate::control::STARTER_TOOL_NAME, "args": {"text": "$.input.text"}},
-                    {"tool": "host.table.append", "args": {"table": "runs", "rows": "$.prev.result"}}
+                    {"tool": "host.table.append", "args": {"table": "runs", "rows": "$.prev.result.appended"}}
                 ]
             }),
             call_args: json!({"text": "hello"}),
-            blurb: "steps run in order; each step's args may pull from $.input (this call's own args), $.prev (the previous step's result), or $.steps[i] (any earlier step's result by 0-based index). A step may also name an allowlisted host.* verb (host.quickstart's own host_steps_allowed) -- it runs under this chain's own tenant, metered as one step.".to_string(),
+            // PRD-mcphost-tool-test-truth P1 requirement 2 (AC7): the
+            // mapping above is now `$.prev.result.<field>` (not the bare
+            // `$.prev.result` every earlier version of this example used),
+            // and this blurb names `verdict` -- the field `host.tool_test`'s
+            // dry run now reports for every `$.prev`/`$.steps[i]` mapping
+            // (`pass`, `will_fail` naming the predecessor's actual declared
+            // outputs, or `unverifiable` naming the next call).
+            blurb: "steps run in order; each step's args may pull from $.input (this call's own args), $.prev (the previous step's result, e.g. $.prev.result.<field>), or $.steps[i] (any earlier step's result by 0-based index). A step may also name an allowlisted host.* verb (host.quickstart's own host_steps_allowed) -- it runs under this chain's own tenant, metered as one step. host.tool_test's dry run reports a verdict (pass, will_fail, or unverifiable) for every $.prev/$.steps mapping.".to_string(),
         }
     }
 }
