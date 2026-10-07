@@ -4849,6 +4849,19 @@ impl McpHostHandler {
         Self { state }
     }
 
+    /// PRD-mcphost-kind-ask-routing requirement 5 (AC6): best-effort ledger
+    /// write for a `did_you_mean` hit; a failed write only logs.
+    async fn record_did_you_mean(&self, tenant: &Tenant, called: &str, outcome: &str) {
+        if let Err(e) = self
+            .state
+            .db
+            .record_did_you_mean(tenant.id, called.to_string(), outcome.to_string(), now_unix())
+            .await
+        {
+            tracing::warn!(tenant = %tenant.namespace, error = %e, "record_did_you_mean failed");
+        }
+    }
+
     /// PRD-mcphost-one-next-tool requirement 4 (AC4, AC5), requirement 5
     /// (AC6, AC7): attaches `next: {tool, why}` to a successful `host.*`
     /// tenant result when every condition holds:
@@ -8480,6 +8493,15 @@ impl ServerHandler for McpHostHandler {
                 // on `value` itself, so the two can never collide on the
                 // same `host.tool_publish` call.
                 let mut claim_nudge: Option<Value> = None;
+                // PRD-mcphost-kind-ask-routing requirement 5 (AC6): a
+                // `host.quickstart {kind: <outcome>}` recipe is a
+                // did_you_mean hit too.
+                if let Auth::Tenant(tenant, _) = &auth
+                    && value.get("verdict").and_then(Value::as_str) == Some("recipe")
+                    && let Some(outcome) = value.get("outcome").and_then(Value::as_str)
+                {
+                    self.record_did_you_mean(tenant, &body_name, outcome).await;
+                }
                 if let Auth::Tenant(tenant, _) = &auth {
                     self.maybe_attach_next_hint(tenant, !via_tenant_key_arg, &body_name, &mut value)
                         .await;
@@ -8601,7 +8623,17 @@ impl ServerHandler for McpHostHandler {
                 let result = if meta.0.is_empty() { result } else { result.with_meta(Some(meta)) };
                 Ok(CallToolResponse::from(result))
             }
-            Err(app_err) => Err(app_err.into_error_data_at(Some(&self.state.public_url))),
+            Err(app_err) => {
+                // PRD-mcphost-kind-ask-routing requirement 5 (AC6): the
+                // `unknown_kind` error carried a `did_you_mean` outcome.
+                if let AppError::UnknownKind { requested, .. } = &app_err
+                    && let Auth::Tenant(tenant, _) = &auth
+                    && let Some(outcome) = crate::kinds::outcomes::find(requested)
+                {
+                    self.record_did_you_mean(tenant, &body_name, outcome.outcome).await;
+                }
+                Err(app_err.into_error_data_at(Some(&self.state.public_url)))
+            }
         }
     }
 

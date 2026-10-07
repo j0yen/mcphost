@@ -924,10 +924,15 @@ impl AppError {
         if let AppError::UnknownKind { requested, registered, aliases } = &self {
             obj.insert("registered".to_string(), json!(registered));
             obj.insert("aliases".to_string(), json!(aliases));
-            obj.insert(
-                "did_you_mean".to_string(),
-                json!(did_you_mean(requested, registered, aliases)),
-            );
+            // PRD-mcphost-kind-ask-routing requirement 2 (AC1): an outcome
+            // word ("docs", "message", ...) answers with the verbs/example
+            // that deliver it; any other unknown kind keeps the
+            // edit-distance list.
+            let suggestion = match crate::kinds::outcomes::find(requested) {
+                Some(outcome) => outcome.to_json(),
+                None => json!(did_you_mean(requested, registered, aliases)),
+            };
+            obj.insert("did_you_mean".to_string(), suggestion);
         }
         if let Some(field) = field {
             obj.insert("field".to_string(), json!(field));

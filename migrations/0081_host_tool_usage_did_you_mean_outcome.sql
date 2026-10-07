@@ -1,0 +1,14 @@
+-- compat: previous -- one additive nullable column on a pre-existing table
+-- (`host_tool_usage.did_you_mean_outcome`); an old release never selects
+-- it and the existing `INSERT`s name their columns, so no statement's
+-- result set changes (PRD-mcphost-migration-safety requirement 4).
+-- mcphost 0081_host_tool_usage_did_you_mean_outcome:
+-- PRD-mcphost-kind-ask-routing requirement 5 (AC6).
+--
+-- `did_you_mean_outcome`: the outcome word ('docs', 'message', ...) a
+-- `did_you_mean` answer (an unknown `kind` error, or a
+-- `host.quickstart {kind: <outcome>}` recipe) routed this tenant to. NULL
+-- on every ordinary row -- a plain first-success row records no hit. A hit
+-- row's `tool_name` is `did_you_mean:<tool>:<outcome>` so it can never
+-- collide with, or read as, a real first success of `<tool>`.
+ALTER TABLE host_tool_usage ADD COLUMN did_you_mean_outcome TEXT;

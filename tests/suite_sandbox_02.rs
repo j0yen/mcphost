@@ -146,6 +146,8 @@ mod infer_ac16_syntax_error_precedence;
 mod kindhonor_ac2_kind_mismatch_refused;
 #[path = "kindroute_ac04_unknown_kind_carries_recipe_hints.rs"]
 mod kindroute_ac04_unknown_kind_carries_recipe_hints;
+#[path = "kindroute_ac05_sandbox_docs_help_names_write_path.rs"]
+mod kindroute_ac05_sandbox_docs_help_names_write_path;
 #[path = "kindroute_ac05_startup_aliases_and_recipe_tools_are_registered.rs"]
 mod kindroute_ac05_startup_aliases_and_recipe_tools_are_registered;
 #[path = "lanecov_ac04_existing_lanes_unchanged.rs"]
