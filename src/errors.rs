@@ -664,6 +664,14 @@ impl AppError {
                 // `Structured` variant only because it carries `data.hint`,
                 // not because it's a different class of error.
                 "tool_not_found" => ErrorCode::RESOURCE_NOT_FOUND,
+                // PRD-mcphost-tool-call-host-verb-forward requirement 3
+                // (AC5): `host.tool_test` on a forwardable host verb with no
+                // dry run yet -- a caller-input problem (the caller asked
+                // for a verification mode this verb doesn't support), same
+                // bucket as `end_user_assertion_invalid` above, never
+                // `tool_not_found`'s RESOURCE_NOT_FOUND (the verb itself was
+                // found and is real; only its dry run is missing).
+                "unverifiable" => ErrorCode::INVALID_REQUEST,
                 // PRD-mcphost-lineage-blast-radius requirement 7: a drop
                 // refused because a breaking consumer exists is a
                 // caller-input problem (the caller omitted `confirm: true`),
@@ -1496,6 +1504,32 @@ impl AppError {
     /// `&'static str` candidates (a small, static kind registry); the
     /// control-plane tool registry is read fresh off `AppState` per call,
     /// so `candidates` arrives as owned `String`s instead.
+    /// PRD-mcphost-tool-call-host-verb-forward requirement 2 (AC4): a
+    /// `host.tool_call`/`host.tool_test` name this host will never forward --
+    /// an `admin.*`/`billing.*` name (Non-goals: never forwarded, whatever
+    /// the registry says) or one of `verbforward::FORWARD_DENYLIST`'s own
+    /// four. `host_verb` is `name` exactly as the caller sent it (for
+    /// `admin.*`/`billing.*`, which this host never resolves against the
+    /// verb registry at all) or the normalizer's own canonical dotted form
+    /// (for a denylisted real verb); `call_instead` always names the
+    /// client-visible (underscore) tool and echoes back the same `args`
+    /// the caller already sent, so the hint is a call the caller can make
+    /// verbatim.
+    pub fn host_verb_not_forwarded(host_verb: &str, call_args: &Value) -> Self {
+        let client_tool = host_verb.replace('.', "_");
+        AppError::Structured {
+            code: "tool_not_found",
+            message: format!("tool not found: {host_verb}"),
+            data: json!({
+                "host_verb": host_verb,
+                "call_instead": {"tool": client_tool, "args": call_args},
+                "hint": format!(
+                    "{host_verb} is not forwarded through host.tool_call/host.tool_test -- call {client_tool} directly"
+                ),
+            }),
+        }
+    }
+
     pub fn host_tool_not_found(requested: &str, candidates: &[String]) -> Self {
         let lower = requested.to_ascii_lowercase();
         let mut scored: Vec<(usize, &str)> = candidates

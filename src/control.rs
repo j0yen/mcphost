@@ -979,7 +979,8 @@ pub fn quickstart(
         // 2026-09-28 and 09-29's truth-tier transcripts made exactly that
         // guess before ever calling host.trigger.set).
         "triggers": "Triggers (schedule, event, message, webhook) are set with \
-            host.trigger.set(tool, kind=...), not a tool kind -- see host.trigger.set.",
+            host.trigger.set(tool, kind=...) (tool name: host_trigger_set), not a tool \
+            kind -- see host.trigger.set.",
         "try_before_call": try_before_call,
         "starter_tool": starter_tool,
         // PRD-mcphost-sandbox-bridge-discoverability requirement 1 (AC1):
@@ -1006,6 +1007,13 @@ pub fn quickstart(
             "request_body_bytes_max": MAX_REQUEST_BODY_BYTES,
             "concurrent_calls_per_tenant": concurrent_calls_per_tenant,
             "concurrent_calls_host": crate::kinds::python::DEFAULT_MAX_CONCURRENT_CALLS,
+            // PRD-mcphost-tool-call-host-verb-forward requirement P2: lets
+            // synthorg (or any other reader of this response) assert that
+            // a host verb sent through host.tool_call/host.tool_test is
+            // forwarded rather than refused -- always true now that the
+            // feature is unconditional, so this is a plain constant, not a
+            // per-tenant/per-plan computed value.
+            "forwarding": true,
         },
     });
     // PRD-mcphost-reachability-alt-host requirement 2 / AC1: `endpoint` is
@@ -1106,8 +1114,8 @@ fn trigger_set_hint(alias: &crate::kinds::aliases::KindAlias, requested: &str) -
     };
     format!(
         "Triggers are not a tool kind: '{requested}' resolved to the {} kind here. \
-        Set the trigger itself with host.trigger.set(kind=\"{trigger_kind}\") on a \
-        published tool -- the recipe.steps above show it filled in.",
+        Set the trigger itself with host.trigger.set(kind=\"{trigger_kind}\") (tool name: \
+        host_trigger_set) on a published tool -- the recipe.steps above show it filled in.",
         alias.kind,
     )
 }
@@ -2092,6 +2100,15 @@ pub fn next_hint_for(called: &str) -> (&'static str, &'static str) {
         .find(|(from, _, _)| *from == called)
         .map(|(_, tool, why)| (*tool, *why))
         .unwrap_or(NEXT_HINT_DEFAULT)
+}
+
+/// PRD-mcphost-tool-call-host-verb-forward requirement 1 (AC6): every
+/// `(from, tool, why)` row [`next_hint_for`] can return, for the
+/// hint-parity test -- `next_hint_for` only ever answers one `called` at a
+/// time, so a test that must walk every `tool` this host can ever suggest
+/// needs the whole table, not a lookup.
+pub fn next_hint_table() -> &'static [(&'static str, &'static str, &'static str)] {
+    NEXT_HINT_TABLE
 }
 
 pub async fn usage(state: &AppState, tenant: &Tenant, args: &Value) -> Result<Value, AppError> {

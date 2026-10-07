@@ -4880,7 +4880,17 @@ impl McpHostHandler {
                 _ => {}
             }
         }
-        if let Err(e) = self.state.db.record_host_tool_use(tenant.id, called.to_string(), now_unix()).await {
+        // PRD-mcphost-tool-call-host-verb-forward requirement 2 (AC7):
+        // `"direct"` -- this is the generic per-successful-call site for
+        // every `host.*` dispatch, wrapper call included; a forwarded verb
+        // gets its own, separate `"tool_call"`-tagged record from
+        // `forward_host_verb`.
+        if let Err(e) = self
+            .state
+            .db
+            .record_host_tool_use(tenant.id, called.to_string(), "direct".to_string(), now_unix())
+            .await
+        {
             tracing::warn!(tenant = %tenant.namespace, error = %e, "record_host_tool_use failed");
         }
     }
@@ -6122,12 +6132,25 @@ impl McpHostHandler {
             .cloned()
             .unwrap_or_else(|| Value::Object(Default::default()));
 
-        let row: ToolRow = self
-            .state
-            .db
-            .get_tool(tenant.id, local_name.clone())
-            .await?
-            .ok_or_else(|| AppError::ToolNotFound(local_name.clone()))?;
+        // PRD-mcphost-tool-call-host-verb-forward requirement 3 (AC5):
+        // `name` already failed to resolve to a published tool -- the exact
+        // same "tenant tool wins, forward only on a miss" precedence
+        // `host_tool_call` uses, applied here since a tenant could in
+        // principle publish a tool literally named like a verb and still
+        // expect `host.tool_test` to dry-run THAT tool, not the verb.
+        let row: Option<ToolRow> = self.state.db.get_tool(tenant.id, local_name.clone()).await?;
+        let row: ToolRow = match row {
+            Some(row) => row,
+            None => {
+                return match crate::verbforward::resolve(&local_name, &self.state.kinds) {
+                    Some(canonical) if crate::verbforward::is_denylisted(&canonical) => {
+                        Err(AppError::host_verb_not_forwarded(&canonical, &call_args))
+                    }
+                    Some(canonical) => self.test_forward_host_verb(tenant, &canonical, call_args).await,
+                    None => Err(AppError::ToolNotFound(local_name)),
+                };
+            }
+        };
         let kind: Arc<dyn Kind> = self.state.kinds.get(&row.kind).ok_or_else(|| {
             AppError::Internal(format!(
                 "published tool names unregistered kind '{}'",
@@ -7041,32 +7064,180 @@ impl McpHostHandler {
         // goes through `call_shared_tool`/`runs::enqueue_shared`, the same
         // functions raw dispatch already uses, so metering/quota/audit
         // behavior is identical either way.
-        match name.split_once('.') {
+        // PRD-mcphost-tool-call-host-verb-forward Non-goals: an `admin.*`/
+        // `billing.*` name is never forwarded, whatever the verb registry
+        // says -- refused immediately, before any tenant-tool/shared-tool
+        // lookup, so no DB round trip is ever spent on it and (AC4) no
+        // admin verb is ever one dispatch away from an agent that merely
+        // guessed at a dotted name.
+        if name.starts_with("admin.") || name.starts_with("billing.") {
+            return Err(AppError::host_verb_not_forwarded(&name, &call_args));
+        }
+
+        // Technical considerations: "resolve tenant tools first, forward
+        // only on a miss" -- the exact pre-existing resolution below
+        // (own-namespace local tool, cross-tenant shared tool, or a bare
+        // local name) runs unchanged and unconditionally first, so a
+        // tenant tool that happens to be named like a verb (AC3) always
+        // wins. Only a `tool_not_found`-coded miss (both
+        // `AppError::ToolNotFound` and `sharing::resolve_shared_tool`'s own
+        // `shared_tool_not_found` carry that code) falls through to
+        // verb-forwarding below.
+        let dispatch_args = call_args.clone();
+        let result: Result<Value, AppError> = match name.split_once('.') {
             Some((ns, local)) if ns == tenant.namespace => {
                 if is_async {
-                    return crate::runs::enqueue(&self.state, tenant, local, call_args, end_user, budget_arg)
-                        .await;
+                    crate::runs::enqueue(&self.state, tenant, local, dispatch_args, end_user, budget_arg).await
+                } else {
+                    self.call_published_tool(tenant, local, dispatch_args, false, None, version, end_user, auth_method, None)
+                        .await
                 }
-                self.call_published_tool(tenant, local, call_args, false, None, version, end_user, auth_method, None)
-                    .await
             }
             Some((ns, local)) => {
                 if is_async {
-                    return crate::runs::enqueue_shared(&self.state, tenant, ns, local, call_args, budget_arg)
-                        .await;
+                    crate::runs::enqueue_shared(&self.state, tenant, ns, local, dispatch_args, budget_arg).await
+                } else {
+                    self.call_shared_tool(tenant, ns, local, dispatch_args, false, version, end_user, auth_method)
+                        .await
                 }
-                self.call_shared_tool(tenant, ns, local, call_args, false, version, end_user, auth_method)
-                    .await
             }
             None => {
                 if is_async {
-                    return crate::runs::enqueue(&self.state, tenant, &name, call_args, end_user, budget_arg)
-                        .await;
+                    crate::runs::enqueue(&self.state, tenant, &name, dispatch_args, end_user, budget_arg).await
+                } else {
+                    self.call_published_tool(tenant, &name, dispatch_args, false, None, version, end_user, auth_method, None)
+                        .await
                 }
-                self.call_published_tool(tenant, &name, call_args, false, None, version, end_user, auth_method, None)
-                    .await
             }
+        };
+
+        match result {
+            Ok(value) => Ok(value),
+            Err(err) if err.code() == "tool_not_found" => {
+                match crate::verbforward::resolve(&name, &self.state.kinds) {
+                    Some(canonical) if crate::verbforward::is_denylisted(&canonical) => {
+                        Err(AppError::host_verb_not_forwarded(&canonical, &call_args))
+                    }
+                    Some(canonical) => {
+                        self.forward_host_verb(tenant, &canonical, call_args, auth_method, end_user).await
+                    }
+                    None => Err(err),
+                }
+            }
+            Err(err) => Err(err),
         }
+    }
+
+    /// PRD-mcphost-tool-call-host-verb-forward requirement 1 (AC1, AC2):
+    /// `host_tool_call`'s own fallback once the tenant/shared-tool lookup
+    /// above misses and `name` normalizes to a real, forwardable host verb.
+    /// Dispatches through the exact same `dispatch_tenant_tool` match every
+    /// direct `host.*` call goes through, so the result is byte-identical
+    /// to calling `canonical` directly, then tags the success with
+    /// `forwarded_to`/`client_tool` and records usage with `via:
+    /// "tool_call"` (requirement 2) -- distinct from the generic per-call
+    /// `record_host_tool_use` `maybe_attach_next_hint` already does for the
+    /// wrapper call itself. Never touches the tenant's tool-call quota or
+    /// the `calls` table: those only ever happen inside
+    /// `call_published_tool`/`call_shared_tool`, neither of which this path
+    /// reaches.
+    ///
+    /// `subject: None, auth_method: "key"`: same rationale as
+    /// [`TenantHostStepBridge`]'s own doc comment -- of every forwardable
+    /// verb, only `host.whoami` (never allowlisted there either) reads
+    /// either parameter, and a hint-misrouted call has no chain-step
+    /// identity of its own to lose by not re-deriving it here.
+    #[allow(clippy::too_many_arguments)]
+    async fn forward_host_verb(
+        &self,
+        tenant: &Tenant,
+        canonical: &str,
+        call_args: Value,
+        calls_auth_method: &str,
+        end_user: Option<&crate::enduser::EndUser>,
+    ) -> Result<Value, AppError> {
+        // `Box::pin`: `dispatch_tenant_tool` -> `host_tool_call` ->
+        // `forward_host_verb` -> `dispatch_tenant_tool` is a real cycle in
+        // the type graph (rustc can't see that `canonical` is never one of
+        // the two `host.tool.*` arms that would re-enter `host_tool_call`),
+        // so the recursive `async fn` needs one Box indirection to have a
+        // known size.
+        let mut value = Box::pin(self.dispatch_tenant_tool(
+            tenant,
+            None,
+            "key",
+            calls_auth_method,
+            end_user,
+            canonical,
+            call_args,
+        ))
+        .await?;
+        if let Some(obj) = value.as_object_mut() {
+            obj.insert("forwarded_to".to_string(), json!(canonical));
+            obj.insert(
+                "client_tool".to_string(),
+                json!(crate::verbforward::client_tool_name(canonical)),
+            );
+        }
+        if let Err(e) = self
+            .state
+            .db
+            .record_host_tool_use(tenant.id, canonical.to_string(), "tool_call".to_string(), now_unix())
+            .await
+        {
+            tracing::warn!(tenant = %tenant.namespace, error = %e, "record_host_tool_use failed");
+        }
+        Ok(value)
+    }
+
+    /// PRD-mcphost-tool-call-host-verb-forward requirement 3 (AC5):
+    /// `host.tool_test`'s own fallback once the published-tool lookup
+    /// above misses and `name` normalizes to a real, forwardable host
+    /// verb. A [`crate::verbforward::DRY_RUN_FORWARDABLE`] verb gets a real
+    /// dry run -- the same savepoint `dryrun::with_dry_run` scope
+    /// `host.tool_test` already opens for a published tool's `kind.call`,
+    /// so the verb's own `state.db.*` writes land in the dedicated,
+    /// rolled-back connection (`db::Db::with_conn`'s own dry-run branch)
+    /// instead of the real one. Every other verb has no dry run yet:
+    /// `unverifiable`, naming the same `call_instead` a denylisted verb's
+    /// refusal does, and nothing is ever dispatched for it.
+    async fn test_forward_host_verb(
+        &self,
+        tenant: &Tenant,
+        canonical: &str,
+        call_args: Value,
+    ) -> Result<Value, AppError> {
+        if !crate::verbforward::supports_dry_run(canonical) {
+            let client_tool = crate::verbforward::client_tool_name(canonical);
+            return Err(AppError::Structured {
+                code: "unverifiable",
+                message: format!("{canonical} has no dry run yet -- call it for real to verify"),
+                data: json!({
+                    "host_verb": canonical,
+                    "call_instead": {"tool": client_tool, "args": call_args},
+                }),
+            });
+        }
+        let dry_run = crate::dryrun::DryRunCtx::new(self.state.db.path().to_path_buf(), self.state.db.cfg());
+        // `Box::pin`: see `forward_host_verb`'s own doc comment -- the same
+        // `dispatch_tenant_tool` <-> `host.tool_test`/`host.tool_call`
+        // recursion, through `tool_test` this time.
+        let outcome = crate::dryrun::with_dry_run(
+            dry_run.clone(),
+            Box::pin(self.dispatch_tenant_tool(tenant, None, "key", "key", None, canonical, call_args)),
+        )
+        .await;
+        // Rolled back regardless of outcome, same as `host.tool_test`'s own
+        // published-tool path below.
+        crate::dryrun::finish(dry_run.clone()).await;
+        let mut value = outcome?;
+        if let Some(obj) = value.as_object_mut() {
+            obj.insert("forwarded_to".to_string(), json!(canonical));
+            obj.entry("dry_run".to_string()).or_insert_with(|| {
+                json!({"writes": dry_run.writes(), "delivered": false, "rolled_back": true})
+            });
+        }
+        Ok(value)
     }
 
     /// PRD-mcphost-sharing P0 requirement 2 (AC1-3): resolve `<owner_ns>.

@@ -116,6 +116,20 @@ mod vaultst_ac08_llms_txt_documents_vault_and_sharing_check_green;
 mod vaultst_ac09_deferral_is_justified;
 #[path = "vaultst_ac09_live_vault_status_trailer.rs"]
 mod vaultst_ac09_live_vault_status_trailer;
+#[path = "verbfwd_ac01_trigger_set_dotted_forwards.rs"]
+mod verbfwd_ac01_trigger_set_dotted_forwards;
+#[path = "verbfwd_ac02_every_spelling_forwards_identically.rs"]
+mod verbfwd_ac02_every_spelling_forwards_identically;
+#[path = "verbfwd_ac03_tenant_tool_name_wins_over_verb.rs"]
+mod verbfwd_ac03_tenant_tool_name_wins_over_verb;
+#[path = "verbfwd_ac04_admin_verb_refused_never_forwarded.rs"]
+mod verbfwd_ac04_admin_verb_refused_never_forwarded;
+#[path = "verbfwd_ac05_tool_test_forwards_dry_run_or_unverifiable.rs"]
+mod verbfwd_ac05_tool_test_forwards_dry_run_or_unverifiable;
+#[path = "verbfwd_ac06_hint_parity_underscore_form_resolves.rs"]
+mod verbfwd_ac06_hint_parity_underscore_form_resolves;
+#[path = "verbfwd_ac07_forwarded_call_metered_via_tool_call_no_quota.rs"]
+mod verbfwd_ac07_forwarded_call_metered_via_tool_call_no_quota;
 #[path = "wake_ac1_message_trigger_fires_run.rs"]
 mod wake_ac1_message_trigger_fires_run;
 #[path = "wake_ac2_from_filter.rs"]

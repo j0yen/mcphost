@@ -1,0 +1,14 @@
+-- compat: previous -- one additive column on a pre-existing table
+-- (`host_tool_usage.via`); an old release simply never queries it, no
+-- existing statement's result set changes (PRD-mcphost-migration-safety
+-- requirement 4).
+-- mcphost 0079_host_tool_usage_via: PRD-mcphost-tool-call-host-verb-forward
+-- requirement 2 (AC7).
+--
+-- `via` ('direct' | 'tool_call'): how this tenant's first-ever success on
+-- `tool_name` was reached -- a raw namespaced call or the
+-- `host.tool_call`/`host.tool_test` wrapper itself ('direct'), or a verb
+-- `host.tool_call` forwarded a misrouted name to ('tool_call'). `NOT NULL
+-- DEFAULT 'direct'`: every row written before this migration landed was,
+-- by construction, a direct dispatch (forwarding did not exist yet).
+ALTER TABLE host_tool_usage ADD COLUMN via TEXT NOT NULL DEFAULT 'direct';
