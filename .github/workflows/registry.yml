@@ -1,0 +1,81 @@
+name: registry
+
+# PRD-mcphost-registry-listing P1 requirement 4 (AC4): plain `on: push`,
+# no `branches:`/`tags:` filter, so this runs on a push to ANY branch (the
+# AC's own wording) as well as on a `v*` tag push -- the `publish` job
+# below narrows to tags itself via `if:`.
+on:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: registry-manifest --check + schema validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: install rust toolchain (pinned by rust-toolchain.toml)
+        uses: actions-rust-lang/setup-rust-toolchain@9d7e65c320fdb52dcd45ffaa68deb6c02c8754d9 # v1.10.1
+
+      # AC2: fails the push the moment registry/server.json disagrees with
+      # a fresh render (a Cargo.toml version/description bump landed
+      # without regenerating it, for example).
+      - name: registry-manifest --check
+        run: cargo run --bin mcphost -- registry-manifest --check
+
+      # AC3: registry/server.json validates against the pinned schema,
+      # and a remotes-less entry would fail it -- reuses the reglist_ac0N
+      # suite rather than re-deriving the same check in shell/YAML.
+      - name: schema-validate registry/server.json
+        run: cargo test --workspace reglist_ac03
+
+  # PRD requirement 4 / AC5 (deferred -- operator-provisioned: needs the
+  # DNS TXT verification record at mcphost.dev and the
+  # MCPHOST_REGISTRY_PRIVATE_KEY repository secret, both Joe's own open
+  # questions per the PRD, neither available to this dispatch). Still
+  # wired up so the publish step runs for real the moment both exist --
+  # until then it prints a warning and exits 0 rather than failing every
+  # tag push.
+  publish:
+    name: publish to the MCP registry
+    needs: check
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: install rust toolchain (pinned by rust-toolchain.toml)
+        uses: actions-rust-lang/setup-rust-toolchain@9d7e65c320fdb52dcd45ffaa68deb6c02c8754d9 # v1.10.1
+
+      # The committed registry/server.json is deliberately version-stale
+      # between a PRD land (which commits it) and the next release tag
+      # (which bumps Cargo.toml's version): `registry-manifest --check`
+      # tolerates that one field, but the entry actually PUBLISHED here
+      # must carry the real, just-tagged version -- so regenerate it with
+      # `--write` before publishing rather than publishing the committed
+      # copy as-is.
+      - name: regenerate registry/server.json at the real tagged version
+        run: cargo run --bin mcphost -- registry-manifest --write registry/server.json
+
+      # Registry namespace `dev.mcphost/mcphost` (PRD Open Questions,
+      # decided by Joe 2026-10-06) is DNS-verified against mcphost.dev --
+      # `login dns` needs the matching private key as a repository secret,
+      # documented in README's "Registry publish" section.
+      - name: publish via the registry publisher CLI (dev.mcphost, DNS-verified)
+        env:
+          MCPHOST_REGISTRY_PRIVATE_KEY: ${{ secrets.MCPHOST_REGISTRY_PRIVATE_KEY }}
+        run: |
+          if [ -z "$MCPHOST_REGISTRY_PRIVATE_KEY" ]; then
+            echo "::warning::MCPHOST_REGISTRY_PRIVATE_KEY is not set -- skipping publish until the dev.mcphost DNS TXT verification record is live and the operator adds this secret (PRD-mcphost-registry-listing AC5)."
+            exit 0
+          fi
+          curl -fsSL https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz | tar xz mcp-publisher
+          ./mcp-publisher login dns --domain mcphost.dev --private-key "$MCPHOST_REGISTRY_PRIVATE_KEY"
+          ./mcp-publisher publish registry/server.json

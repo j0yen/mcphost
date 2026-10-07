@@ -1364,6 +1364,16 @@ mod qdiag_ac07_description_annotation_offers_candidate;
 mod qdiag_ac08_footprint_columns_est_tokens;
 #[path = "qdiag_ac11_ten_concurrent_refused_queries_all_hinted.rs"]
 mod qdiag_ac11_ten_concurrent_refused_queries_all_hinted;
+#[path = "reglist_ac01_manifest_fields_match_cargo_and_endpoint.rs"]
+mod reglist_ac01_manifest_fields_match_cargo_and_endpoint;
+#[path = "reglist_ac02_check_detects_drift.rs"]
+mod reglist_ac02_check_detects_drift;
+#[path = "reglist_ac03_schema_validates_committed_entry_and_rejects_missing_remotes.rs"]
+mod reglist_ac03_schema_validates_committed_entry_and_rejects_missing_remotes;
+#[path = "reglist_ac04_workflow_checks_manifest_and_schema_on_every_push.rs"]
+mod reglist_ac04_workflow_checks_manifest_and_schema_on_every_push;
+#[path = "reglist_ac06_readme_registry_and_quickstart_links_resolve.rs"]
+mod reglist_ac06_readme_registry_and_quickstart_links_resolve;
 #[path = "revdebt_ac1_intent_card_pointers_resolve.rs"]
 mod revdebt_ac1_intent_card_pointers_resolve;
 #[path = "rowpol_ac01_sql_predicate_scopes_to_end_user_attribute.rs"]
@@ -1812,17 +1822,3 @@ mod toolscope_ac06_scope_change_takes_effect_next_call;
 mod toolscope_ac07_metadata_scopes_supported;
 #[path = "toolscope_ac08_admin_stats_consents_by_scope.rs"]
 mod toolscope_ac08_admin_stats_consents_by_scope;
-#[path = "tooltest_ac12_log_marking.rs"]
-mod tooltest_ac12_log_marking;
-#[path = "tooltest_ac3_http_dry_run.rs"]
-mod tooltest_ac3_http_dry_run;
-#[path = "tooltest_ac4_echo_verbatim.rs"]
-mod tooltest_ac4_echo_verbatim;
-#[path = "tooltest_ac5_validation_error_taxonomy.rs"]
-mod tooltest_ac5_validation_error_taxonomy;
-#[path = "tooltest_ac6_quota_and_metering.rs"]
-mod tooltest_ac6_quota_and_metering;
-#[path = "tooltest_ac7_too_many_invocations.rs"]
-mod tooltest_ac7_too_many_invocations;
-#[path = "tooltest_ac9_ac10_listing_and_auth.rs"]
-mod tooltest_ac9_ac10_listing_and_auth;
