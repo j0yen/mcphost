@@ -1790,10 +1790,19 @@ pub async fn funnel(state: &AppState, args: &Value) -> Result<Value, AppError> {
     // than replacing it (requirement 4's own "existing fields unchanged").
     let signups_human = filtered.iter().filter(|r| r.funnel_origin == "human").count() as i64;
 
+    // PRD-mcphost-session-bound-tenant-key requirement 3 (AC6): per-day
+    // count of refused second implicit signups, next to `signups` -- this
+    // is a `signup_events` count, not a `tenants`/`FunnelRow` one (a
+    // blocked attempt creates no tenant), so it's independent of every
+    // `source_class`/`signup_source`/`invited` filter above.
+    let implicit_second_signup_blocked =
+        state.db.count_implicit_second_signup_blocked(since_unix).await?;
+
     let mut response = json!({
         "window": {"days": days, "since_unix": since_unix},
         "signups": signups,
         "signups_human": signups_human,
+        "implicit_second_signup_blocked": implicit_second_signup_blocked,
         "stages": funnel_stage_stats(&filtered, signups),
         "by_source": funnel_by_source(&by_source_rows),
         "by_origin": funnel_by_origin(&by_source_rows),

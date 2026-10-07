@@ -34,8 +34,11 @@ own tool is **42.4s**.
    this tenant's own address and its credential in one; reconnecting
    through it later is how you come back as this same tenant.
    `onboarding.memory_hint` names where agents conventionally keep it.
-4. Publish a tool. `host.quickstart()`'s own `starter_tool` is a
-   ready-to-publish `python` spec; its `publish_call` is exactly:
+4. Publish a tool. A later call on this SAME connection without a key is
+   refused, naming the tenant you already are -- reconnect through
+   `onboarding.url` first, then call `host.tool_publish` there.
+   `host.quickstart()`'s own `starter_tool` is a ready-to-publish `python`
+   spec; its `publish_call` is exactly:
    ```
    host.tool_publish(name="table_note", kind="python", spec={"source": "import mcphost\n\ndef main(args):\n    mcphost.table.create(name='quickstart_notes', columns={'note': 'text'})\n    mcphost.table.append(table='quickstart_notes', rows=[{'note': args.get('note', '')}])\n    return {'appended': 1}\n"})
    ```

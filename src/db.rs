@@ -183,10 +183,16 @@ const MIGRATION_0077: &str = include_str!("../migrations/0077_second_session_nud
 /// PRD-mcphost-funnel-truth P0 requirement 1: `funnel_origin` on `tenants`,
 /// `oauth_funnel_events`, `claim_email_events`.
 const MIGRATION_0078: &str = include_str!("../migrations/0078_funnel_origin.sql");
-
 /// PRD-mcphost-tool-call-host-verb-forward requirement 2 (AC7):
 /// `host_tool_usage.via`.
 const MIGRATION_0079: &str = include_str!("../migrations/0079_host_tool_usage_via.sql");
+
+/// PRD-mcphost-session-bound-tenant-key requirement 3: `kind` on
+/// `signup_events`. Renumbered to 0080 during this rebase: mcphost-tool-
+/// call-host-verb-forward claimed 0079 first, landing on main ahead of this
+/// branch (this PRD's own migration was originally numbered 0079).
+const MIGRATION_0080: &str =
+    include_str!("../migrations/0080_implicit_second_signup_blocked.sql");
 
 /// PRD-mcphost-inbound-events P1 requirement 7 / AC11: "a repeated id
 /// *within 24 h*" -- [`Db::claim_event_dedupe`]'s own freshness window.
@@ -2616,7 +2622,8 @@ impl Db {
         Self::migrate_0076_upgrade_moment(&conn)?;
         Self::migrate_0077_second_session_nudge(&conn)?;
         Self::migrate_0078_funnel_origin(&conn)?;
-        Self::migrate_0079_host_tool_usage_via(&conn)
+        Self::migrate_0079_host_tool_usage_via(&conn)?;
+        Self::migrate_0080_implicit_second_signup_blocked(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -3748,6 +3755,19 @@ impl Db {
         }
         Ok(())
     }
+
+    /// PRD-mcphost-session-bound-tenant-key requirement 3: same idempotency
+    /// pattern as 0002-0079, gated on `signup_events.kind`.
+    fn migrate_0080_implicit_second_signup_blocked(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('signup_events') WHERE name = 'kind'")?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0080)?;
+        }
+        Ok(())
+    }
+
 
     /// Run pending migrations. Idempotent (every statement is `IF NOT
     /// EXISTS`); used by both `serve` at start and the standalone `migrate`
@@ -6266,8 +6286,15 @@ impl Db {
         since_unix: i64,
     ) -> Result<i64, AppError> {
         self.with_conn(move |conn| {
+            // PRD-mcphost-session-bound-tenant-key requirement 3: a blocked
+            // second implicit signup never created a tenant, so it must not
+            // also count against this source's real signup rate limit --
+            // every row this query ever counted before this PRD already has
+            // `kind = 'signup'` (the column's own backfill default), so this
+            // filter changes nothing for them.
             conn.query_row(
-                "SELECT COUNT(*) FROM signup_events WHERE source_ip = ?1 AND created_unix >= ?2",
+                "SELECT COUNT(*) FROM signup_events WHERE source_ip = ?1 AND created_unix >= ?2 \
+                 AND kind = 'signup'",
                 params![source_ip, since_unix],
                 |r| r.get(0),
             )
@@ -6306,11 +6333,16 @@ impl Db {
     ) -> Result<bool, AppError> {
         let ts = now_unix();
         self.with_conn(move |conn| {
+            // PRD-mcphost-session-bound-tenant-key requirement 3: same
+            // `kind = 'signup'` exclusion as `signup_count_since` above --
+            // this INSERT always writes the column's own default
+            // (`kind = 'signup'`, a real admitted signup), so the filter
+            // only ever narrows the subselect's count, never this row.
             let inserted = conn.execute(
                 "INSERT INTO signup_events (source_ip, created_unix, synthetic, user_agent, origin, origin_detail, ip_class) \
                  SELECT ?1, ?2, ?3, ?4, ?7, ?8, ?9 \
                  WHERE (SELECT COUNT(*) FROM signup_events \
-                        WHERE source_ip = ?1 AND created_unix >= ?5) < ?6",
+                        WHERE source_ip = ?1 AND created_unix >= ?5 AND kind = 'signup') < ?6",
                 params![source_ip, ts, synthetic, user_agent, since_unix, limit, origin, origin_detail, ip_class],
             )?;
             Ok(inserted > 0)
@@ -6436,6 +6468,41 @@ impl Db {
                 params![source_ip, ts, synthetic, user_agent],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-session-bound-tenant-key requirement 3 (AC2): a key-less
+    /// `host.*`/`billing.*` call refused because this connection already
+    /// implicitly signed up -- never routed through
+    /// `try_admit_signup`/`record_signup_event_attributed` (both of which
+    /// write the rate-limit-counted `kind = 'signup'` default): this call
+    /// created no tenant, so it must not consume that same limit.
+    pub async fn record_blocked_implicit_second_signup(&self, source_ip: String) -> Result<(), AppError> {
+        let ts = now_unix();
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT INTO signup_events (source_ip, created_unix, kind) \
+                 VALUES (?1, ?2, 'implicit_second_signup_blocked')",
+                params![source_ip, ts],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// `admin.funnel`'s own `implicit_second_signup_blocked` count
+    /// (requirement 3 / AC6): every [`Self::record_blocked_implicit_second_signup`]
+    /// row in the trailing window.
+    pub async fn count_implicit_second_signup_blocked(&self, since_unix: i64) -> Result<i64, AppError> {
+        self.with_conn(move |conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM signup_events WHERE kind = 'implicit_second_signup_blocked' \
+                 AND created_unix >= ?1",
+                params![since_unix],
+                |r| r.get(0),
+            )
+            .map_err(AppError::from)
         })
         .await
     }

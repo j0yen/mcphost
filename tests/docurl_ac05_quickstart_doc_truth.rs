@@ -129,8 +129,15 @@ fn parse_doc_call(snippet: &str) -> (String, Value) {
 async fn run_quickstart_doc_truth(calls: &[(String, Value)]) -> Result<Value, String> {
     let envs_dir = common::TempDataDir::new();
     let server = TestServer::start_with_kinds(python_kind_registry(&envs_dir.0)).await;
-    let client = McpClient::new(&server.base_url).with_session_continuity();
+    let bare = McpClient::new(&server.base_url).with_session_continuity();
 
+    // PRD-mcphost-session-bound-tenant-key requirement 2 (AC2/AC7): the
+    // quickstart's own step 4 was updated to reconnect through
+    // `onboarding.url` for every call after the first key-less one, so
+    // this replay does the same -- the first snippet runs bare, every
+    // later snippet runs over the tenant's own `/u/{secret}/mcp` URL that
+    // first call's own onboarding envelope minted.
+    let mut client = bare;
     let mut last = Value::Null;
     for (idx, (name, args)) in calls.iter().enumerate() {
         if name == "signup" || name == "host.redeem" {
@@ -145,6 +152,14 @@ async fn run_quickstart_doc_truth(calls: &[(String, Value)]) -> Result<Value, St
             .tools_call(name, args.clone())
             .await
             .map_err(|e| format!("snippet {idx} ({name}) failed to run: {e:?}"))?;
+        if idx == 0 {
+            let onboarding_url = common::extract_structured(&last)["onboarding"]["url"]
+                .as_str()
+                .ok_or_else(|| "snippet 0's response must carry onboarding.url".to_string())?
+                .to_string();
+            let path = onboarding_url.trim_start_matches(&server.base_url).to_string();
+            client = McpClient::new(&server.base_url).with_path(&path);
+        }
     }
 
     let tool_list = client

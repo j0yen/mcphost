@@ -342,6 +342,38 @@ async fn bind_session_to_created_tenant(
     Ok(value)
 }
 
+/// PRD-mcphost-session-bound-tenant-key requirement 1/3: the implicit-signup
+/// counterpart of [`bind_session_to_created_tenant`] above, for the ONE call
+/// site that creates a tenant with no explicit `signup`/`host.redeem` at all
+/// ([`McpHostHandler::implicit_signup_and_dispatch`]). Deliberately does NOT
+/// write to `state.session_bindings` -- that map's own `resolve_session_binding`
+/// unconditionally trusts whatever it finds, which is exactly right for an
+/// explicit signup/redeem (the caller asked for a tenant) but wrong here: a
+/// second key-less call on this same connection must be refused and named by
+/// default (requirement 2), not silently served. `tenant` is always a
+/// freshly-created row (`tenant.created_session_id` is always `None` on
+/// entry), so unlike `bind_session_to_created_tenant` this never has a
+/// "rebind an existing tenant" branch to consider.
+async fn record_implicit_signup_memory(
+    state: &AppState,
+    session_id: Option<&str>,
+    peer: &Peer<RoleServer>,
+    tenant: &Tenant,
+) {
+    let Some(session_id) = session_id else {
+        return;
+    };
+    if !state.implicit_signup_memory.bind(session_id, tenant.id, now_unix()) {
+        return;
+    }
+    if let Err(e) = state.db.set_created_session_id(tenant.id, session_id.to_string()).await {
+        tracing::warn!(error = %e, tenant = %tenant.namespace, "failed to record created_session_id");
+    }
+    if let Err(e) = peer.notify_tool_list_changed().await {
+        tracing::warn!(tenant = %tenant.namespace, error = %e, "notify_tool_list_changed failed");
+    }
+}
+
 /// PRD-mcphost-session-bound-tenant-after-signup requirement 1: the third
 /// and last step of the precedence rule (requirement 2 -- header, then
 /// explicit `tenant_key`, then the session's bound tenant). `call_tool`
@@ -4672,6 +4704,7 @@ impl crate::kinds::HostDispatch for TenantHostStepBridge {
                 "key",
                 &self.calls_auth_method,
                 self.end_user.as_ref(),
+                None,
                 name,
                 args,
             )
@@ -4998,6 +5031,23 @@ impl McpHostHandler {
         Ok(json!({"calls": calls, "runs": runs, "inbox": inbox, "days": days}))
     }
 
+    /// PRD-mcphost-session-bound-tenant-key P1 requirement 4 (AC6): the
+    /// namespace of the tenant THIS session's own memory holds -- an
+    /// implicit signup, or a successful `tenant_key`-argument auth --
+    /// independent of however the CURRENT call itself authenticated.
+    /// `None` when there's no session id at all, neither memory holds an
+    /// entry, or the remembered tenant has since been deleted.
+    async fn session_tenant_namespace(&self, session_id: Option<&str>) -> Option<String> {
+        let sid = session_id?;
+        let now = now_unix();
+        let tenant_id = self
+            .state
+            .implicit_signup_memory
+            .lookup(sid, now)
+            .or_else(|| self.state.tenant_key_arg_memory.lookup(sid, now))?;
+        self.state.db.find_tenant_by_id(tenant_id).await.ok()?.map(|t| t.namespace)
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn dispatch_tenant_tool(
         &self,
@@ -5012,11 +5062,20 @@ impl McpHostHandler {
         // neither call site has to remember which domain the other reads.
         calls_auth_method: &str,
         end_user: Option<&crate::enduser::EndUser>,
+        // PRD-mcphost-session-bound-tenant-key P1 requirement 4 (AC6):
+        // this connection's own server-issued session id, when the dispatch
+        // has one at all (the chain-host-step bridge call site has none --
+        // there is no HTTP request here) -- only `host.whoami` reads it,
+        // to report `session_tenant`.
+        session_id: Option<&str>,
         name: &str,
         args: Value,
     ) -> Result<Value, AppError> {
         match name {
-            "host.whoami" => control::whoami(&self.state, tenant, subject, auth_method).await,
+            "host.whoami" => {
+                let session_tenant = self.session_tenant_namespace(session_id).await;
+                control::whoami(&self.state, tenant, subject, auth_method, session_tenant.as_deref()).await
+            }
             "host.key.rotate" => control::key_rotate(&self.state, tenant).await,
             "host.self.offboard" => control::self_offboard(&self.state, tenant).await,
             "host.tool.publish" => control::tool_publish(&self.state, tenant, &args).await,
@@ -5309,13 +5368,14 @@ impl McpHostHandler {
             .await?
             .ok_or_else(|| AppError::Internal("implicit signup's tenant vanished".to_string()))?;
 
-        // Technical Considerations: reuse `bind_session_to_created_tenant`
-        // verbatim -- the only new code here is this branch and the
-        // `onboarding` field below. Its own returned (session_bound/usage-
-        // augmented) value is discarded: the response this call actually
-        // returns is the re-dispatched tool's own result, not the signup
-        // envelope.
-        bind_session_to_created_tenant(&self.state, session_id, &ctx.peer, Ok(signup_value)).await?;
+        // PRD-mcphost-session-bound-tenant-key requirement 1/3: records this
+        // connection's own implicit signup into `implicit_signup_memory`,
+        // NOT `state.session_bindings` the way this call site used to
+        // (via `bind_session_to_created_tenant`) -- a second implicit
+        // signup attempt on this same connection must be refused and named
+        // by default (requirement 2), never silently served the way an
+        // explicit `signup`/`host.redeem` binding still is.
+        record_implicit_signup_memory(&self.state, session_id, &ctx.peer, &tenant).await;
 
         // Requirement 2's own dependency on PRD-mcphost-url-bound-tenants:
         // mints this tenant's personal URL right away -- the onboarding
@@ -5339,7 +5399,7 @@ impl McpHostHandler {
         );
 
         let mut value = self
-            .dispatch_tenant_tool(&tenant, None, "key", "session", None, name, args)
+            .dispatch_tenant_tool(&tenant, None, "key", "session", None, session_id, name, args)
             .await?;
         // Requirement 2 (AC1): the first response's result envelope gains
         // `onboarding`; requirement 2's second half (AC2) holds by
@@ -5352,9 +5412,17 @@ impl McpHostHandler {
                 json!({
                     "tenant": tenant.namespace,
                     "url": url,
+                    // PRD-mcphost-session-bound-tenant-key P2 requirement 5
+                    // (the note "names the rule"): a later key-less call on
+                    // THIS connection is refused and named, not a second
+                    // implicit signup -- so an agent that reads this once
+                    // never has to discover `tenant_key_missing` the hard
+                    // way.
                     "note": format!(
-                        "You are now tenant {}. Save this URL as your mcphost server address; \
-                         it is your credential. Call host.key_rotate if it leaks.",
+                        "You are now tenant {0}. Save this URL as your mcphost server address; \
+                         it is your credential. Call host.key_rotate if it leaks. Later calls on \
+                         this connection without tenant_key will be refused, not re-signed-up as \
+                         a new tenant -- pass {0}'s own key (or reconnect over the URL above).",
                         tenant.namespace
                     ),
                     // PRD-mcphost-first-call-gift requirement 3 (AC8): this
@@ -7168,6 +7236,7 @@ impl McpHostHandler {
             "key",
             calls_auth_method,
             end_user,
+            None,
             canonical,
             call_args,
         ))
@@ -7224,7 +7293,7 @@ impl McpHostHandler {
         // recursion, through `tool_test` this time.
         let outcome = crate::dryrun::with_dry_run(
             dry_run.clone(),
-            Box::pin(self.dispatch_tenant_tool(tenant, None, "key", "key", None, canonical, call_args)),
+            Box::pin(self.dispatch_tenant_tool(tenant, None, "key", "key", None, None, canonical, call_args)),
         )
         .await;
         // Rolled back regardless of outcome, same as `host.tool_test`'s own
@@ -7679,6 +7748,17 @@ impl ServerHandler for McpHostHandler {
             auth = resolve_tenant_key_auth(&self.state, &raw_args)
                 .await
                 .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
+            // PRD-mcphost-session-bound-tenant-key requirement 1: this is
+            // `resolve_tenant_key_auth`'s own single call site, and the
+            // place its doc comment names as where "the memory write goes"
+            // -- a later key-less call on this same connection consults
+            // `tenant_key_arg_memory` (see the refuse-or-reuse block below)
+            // instead of silently earning a second implicit signup.
+            if let Auth::Tenant(tenant, _) = &auth
+                && let Some(sid) = session_id(parts).as_deref()
+            {
+                self.state.tenant_key_arg_memory.bind(sid, tenant.id, now_unix());
+            }
         }
         // PRD-mcphost-session-bound-tenant-after-signup requirements 1-2
         // (AC1, AC2, AC4, AC5): the last step of the precedence rule. Gated
@@ -7699,6 +7779,89 @@ impl ServerHandler for McpHostHandler {
         {
             auth = bound;
             via_session_binding = true;
+        }
+        // PRD-mcphost-session-bound-tenant-key requirement 2/3 (AC2, AC3):
+        // consulted only when every resolver above (header, `tenant_key`
+        // argument, explicit signup/redeem session binding) still came back
+        // `Anonymous`, and scoped exactly like the implicit-signup arm this
+        // sits in front of below -- a `host.`/`billing.` name, on bare
+        // `/mcp` (never a `/t/{ns}/mcp` request, which keeps its own
+        // tenant-resource-metadata contract untouched). `implicit_signup_memory`
+        // wins over `tenant_key_arg_memory` on the practical impossibility
+        // of a session holding both: a connection's very first call is
+        // either key-less (earns the former) or keyed (earns the latter),
+        // and nothing ever writes the other map for an already-memoed
+        // session.
+        if via_tenant_key_arg
+            && matches!(auth, Auth::Anonymous)
+            && (body_name.starts_with("host.") || body_name.starts_with("billing."))
+            && tenant_path_namespace(parts).is_none()
+            && let Some(sid) = session_id.as_deref()
+        {
+            let now = now_unix();
+            let remembered = self
+                .state
+                .implicit_signup_memory
+                .lookup(sid, now)
+                .map(|id| (id, true))
+                .or_else(|| self.state.tenant_key_arg_memory.lookup(sid, now).map(|id| (id, false)));
+            if let Some((tenant_id, from_implicit_signup)) = remembered {
+                match self
+                    .state
+                    .db
+                    .find_tenant_by_id(tenant_id)
+                    .await
+                    .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?
+                {
+                    Some(t) if t.disabled => {
+                        self.state.implicit_signup_memory.drop_binding(sid);
+                        self.state.tenant_key_arg_memory.drop_binding(sid);
+                        return Err(AppError::TenantDisabled.into_error_data_at(Some(&self.state.public_url)));
+                    }
+                    // Requirement 2's config escape hatch: serve the call as
+                    // the remembered tenant instead of refusing it --
+                    // `via_session_binding` is reused rather than a new flag
+                    // (same downstream `calls_auth_method`/"session" label
+                    // AC3's own "runs as A with auth: session" asks for).
+                    Some(t) if self.state.reuse_session_tenant.load(std::sync::atomic::Ordering::Relaxed) => {
+                        if let Err(e) = self.state.db.touch_last_seen(t.id, now_unix()).await {
+                            tracing::warn!(error = %e, tenant = %t.namespace, "failed to bump last_seen_unix");
+                        }
+                        auth = Auth::Tenant(Box::new(t), None);
+                        via_session_binding = true;
+                    }
+                    // Default ("refuse-and-name"): no tenant is created,
+                    // the refusal names the tenant this connection already
+                    // is (AC2, AC3) -- and (AC2 only) a blocked second
+                    // IMPLICIT signup is counted, never a blocked
+                    // tenant_key-argument omission (AC3 carries no such
+                    // count in its own Then).
+                    Some(t) => {
+                        if from_implicit_signup
+                            && let Err(e) =
+                                self.state.db.record_blocked_implicit_second_signup(source.clone()).await
+                        {
+                            tracing::warn!(error = %e, tenant = %t.namespace, "failed to record implicit_second_signup_blocked");
+                        }
+                        tracing::warn!(
+                            tenant = %t.namespace,
+                            tool = %body_name,
+                            "host.* call refused: connection already named a tenant, tenant_key missing"
+                        );
+                        return Err(
+                            AppError::TenantKeyMissing(Some(t.namespace)).into_error_data_at(Some(&self.state.public_url))
+                        );
+                    }
+                    // The remembered tenant was deleted since: drop the
+                    // stale binding(s) and fall through to ordinary
+                    // resolution below (a fresh implicit signup can proceed,
+                    // same as a connection with no memory at all).
+                    None => {
+                        self.state.implicit_signup_memory.drop_binding(sid);
+                        self.state.tenant_key_arg_memory.drop_binding(sid);
+                    }
+                }
+            }
         }
         // PRD-mcphost-invite-links requirement 2 (AC2), requirement 6: a
         // genuinely fresh session on `/i/{code}/mcp` -- no header, no
@@ -8115,7 +8278,7 @@ impl ServerHandler for McpHostHandler {
             // for a `host.*`/`billing.*` name on `/mcp` (the arm above wins
             // first) -- still the refusal for every other anonymous call.
             (Auth::Anonymous, _) if via_tenant_key_arg => {
-                let err = AppError::TenantKeyMissing;
+                let err = AppError::TenantKeyMissing(None);
                 tracing::warn!(code = err.code(), tool = %body_name, "host.* call refused: tenant_key missing");
                 Err(err)
             }
@@ -8174,6 +8337,7 @@ impl ServerHandler for McpHostHandler {
                     auth_method,
                     calls_method,
                     end_user.as_ref(),
+                    session_id.as_deref(),
                     dispatch_name,
                     args,
                 )

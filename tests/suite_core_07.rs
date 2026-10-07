@@ -1488,6 +1488,20 @@ mod sessbind_ac11_session_bound_calls_are_metered_and_counted;
 mod sessbind_ac12_tenant_key_description_states_signup_optionality;
 #[path = "sessbind_ac13_regression_gate.rs"]
 mod sessbind_ac13_regression_gate;
+#[path = "sessbind_ac14_fresh_connection_implicit_signup_unchanged.rs"]
+mod sessbind_ac14_fresh_connection_implicit_signup_unchanged;
+#[path = "sessbind_ac15_second_bare_call_is_refused_and_named.rs"]
+mod sessbind_ac15_second_bare_call_is_refused_and_named;
+#[path = "sessbind_ac16_tenant_key_arg_then_omit_refused_or_reused.rs"]
+mod sessbind_ac16_tenant_key_arg_then_omit_refused_or_reused;
+#[path = "sessbind_ac17_concurrent_connections_isolated_memory.rs"]
+mod sessbind_ac17_concurrent_connections_isolated_memory;
+#[path = "sessbind_ac18_reconnect_without_key_is_a_fresh_client.rs"]
+mod sessbind_ac18_reconnect_without_key_is_a_fresh_client;
+#[path = "sessbind_ac19_funnel_blocked_count_and_whoami_session_tenant.rs"]
+mod sessbind_ac19_funnel_blocked_count_and_whoami_session_tenant;
+#[path = "sessbind_ac20_docs_and_help_name_the_reconnect_rule.rs"]
+mod sessbind_ac20_docs_and_help_name_the_reconnect_rule;
 #[path = "sessionkey_ac02_ac03_discovery_shape.rs"]
 mod sessionkey_ac02_ac03_discovery_shape;
 #[path = "sessionkey_ac04_signup_usage_field.rs"]
@@ -1806,19 +1820,3 @@ mod toolname_ac06_did_you_mean_suggests_canonical;
 mod toolname_ac07_whoami_naming_rule_url_once_per_session;
 #[path = "toolname_ac08_tools_list_counts_updated.rs"]
 mod toolname_ac08_tools_list_counts_updated;
-#[path = "toolscope_ac01_scoped_consent_and_token.rs"]
-mod toolscope_ac01_scoped_consent_and_token;
-#[path = "toolscope_ac02_scoped_token_list_and_call.rs"]
-mod toolscope_ac02_scoped_token_list_and_call;
-#[path = "toolscope_ac03_step_up_reauthorize_union_scope.rs"]
-mod toolscope_ac03_step_up_reauthorize_union_scope;
-#[path = "toolscope_ac04_mcp_key_and_pre_prd_token_unaffected.rs"]
-mod toolscope_ac04_mcp_key_and_pre_prd_token_unaffected;
-#[path = "toolscope_ac05_publish_scope_validation.rs"]
-mod toolscope_ac05_publish_scope_validation;
-#[path = "toolscope_ac06_scope_change_takes_effect_next_call.rs"]
-mod toolscope_ac06_scope_change_takes_effect_next_call;
-#[path = "toolscope_ac07_metadata_scopes_supported.rs"]
-mod toolscope_ac07_metadata_scopes_supported;
-#[path = "toolscope_ac08_admin_stats_consents_by_scope.rs"]
-mod toolscope_ac08_admin_stats_consents_by_scope;

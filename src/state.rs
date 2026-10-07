@@ -422,6 +422,35 @@ pub struct AppState {
     /// shape (and the exact same type) as [`AppState::event_rate_limiter`],
     /// just keyed by source IP instead of trigger id.
     pub url_rate_limiter: crate::hooks::EventRateLimiter,
+    /// PRD-mcphost-session-bound-tenant-key requirement 1/3: the tenant this
+    /// session created via an *implicit* signup (a bare `host.`/`billing.`
+    /// call with no header, no `tenant_key` argument, and no binding of any
+    /// kind yet). Deliberately a separate map from [`AppState::session_bindings`]
+    /// (explicit `signup`/`host.redeem`, which keeps its own unconditional
+    /// reuse, untouched by this PRD): a later key-less call that finds an
+    /// entry here is a second implicit-signup attempt, refused and named by
+    /// default (requirement 2) rather than silently served.
+    pub implicit_signup_memory: crate::session_bind::SessionBindings,
+    /// requirement 1: the tenant this session most recently authenticated as
+    /// via a successful `tenant_key` *argument* (never the `Authorization`
+    /// header -- see `resolve_tenant_key_auth`'s own call site, the single
+    /// place that writes here). Consulted the same way as
+    /// [`AppState::implicit_signup_memory`] above.
+    pub tenant_key_arg_memory: crate::session_bind::SessionBindings,
+    /// requirement 2: `implicit_signup.reuse_session_tenant` -- default
+    /// `false` ("refuse-and-name": a key-less call on a connection [`AppState::implicit_signup_memory`]/
+    /// [`AppState::tenant_key_arg_memory`] already remembers a tenant for is
+    /// refused with `tenant_key_missing` naming that tenant, never served).
+    /// `true` instead serves the call as that tenant (`auth_method:
+    /// "session"`). An `Arc<AtomicBool>` -- `Arc`-shared for the same
+    /// cheap-`Clone` reason as [`AppState::checkout_sessions`] (a plain
+    /// `AtomicBool` isn't `Clone` at all), and atomic rather than a plain
+    /// `bool` so a test can flip it after `TestServer::start()` without
+    /// threading a new parameter through every builder layer -- same
+    /// "field, not env var, since tests run in parallel in one binary"
+    /// rationale this crate's test harness already documents for its other
+    /// `start_with_*` overrides.
+    pub reuse_session_tenant: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// requirement 6's own default: 60 calls per client IP per minute.
@@ -1172,6 +1201,24 @@ pub fn signup_rate_limit_per_hour_from_env() -> i64 {
         "signup rate limit configured"
     );
     limit
+}
+
+/// PRD-mcphost-session-bound-tenant-key requirement 2: pure parse for
+/// `$MCPHOST_IMPLICIT_SIGNUP_REUSE_SESSION_TENANT` -- `true` only for `"1"`
+/// or a case-insensitive `"true"`, everything else (unset, empty, a typo)
+/// is the PRD's own stated default, "refuse-and-name".
+pub fn parse_reuse_session_tenant(raw: Option<&str>) -> bool {
+    matches!(raw, Some(v) if v == "1" || v.eq_ignore_ascii_case("true"))
+}
+
+/// Reads `$MCPHOST_IMPLICIT_SIGNUP_REUSE_SESSION_TENANT` once at startup and
+/// logs the effective value, same convention as
+/// [`signup_rate_limit_per_hour_from_env`] above.
+pub fn reuse_session_tenant_from_env() -> bool {
+    let raw = std::env::var("MCPHOST_IMPLICIT_SIGNUP_REUSE_SESSION_TENANT").ok();
+    let reuse = parse_reuse_session_tenant(raw.as_deref());
+    tracing::info!(reuse_session_tenant = reuse, "implicit signup session-tenant reuse configured");
+    reuse
 }
 
 /// Same pure-parse-then-fallback shape as [`parse_signup_rate_limit_per_hour`],

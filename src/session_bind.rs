@@ -148,6 +148,26 @@ impl Default for SessionBindings {
 }
 
 impl SessionBindings {
+    /// PRD-mcphost-session-bound-tenant-key requirement 1: a second (or
+    /// third) independently-bounded binding map over the SAME session
+    /// identity space as `other` -- an id `other.issue()` minted
+    /// (`is_server_issued`/`bind`/`lookup` all check the HMAC tag against
+    /// `self.secret`) validates here too, since this shares that exact
+    /// secret, but starts with its own empty map: a `bind` here is
+    /// invisible to `other.lookup`, and vice versa. Needed because
+    /// `AppState::implicit_signup_memory`/`tenant_key_arg_memory` must
+    /// remember a DIFFERENT fact than `AppState::session_bindings` (explicit
+    /// signup/redeem) about the very same session id `http::issue_session_id`
+    /// mints through `session_bindings.issue()` -- a fresh `SessionBindings::new()`
+    /// would mint its own random secret and could never verify an id it
+    /// didn't itself issue.
+    pub fn new_sharing_secret(other: &SessionBindings) -> Self {
+        Self {
+            secret: other.secret.clone(),
+            inner: Arc::new(Mutex::new(Inner::default())),
+        }
+    }
+
     pub fn new() -> Self {
         let mut secret = [0u8; 32];
         rand::thread_rng().fill_bytes(&mut secret);
@@ -264,6 +284,17 @@ mod tests {
         assert!(!bindings.is_server_issued(&format!("{}.{}", "0".repeat(32), "0".repeat(32))));
         // A different process's secret never validates here.
         assert!(!SessionBindings::new().is_server_issued(&id));
+    }
+
+    #[test]
+    fn a_shared_secret_instance_validates_the_originals_id_but_keeps_its_own_map() {
+        let original = SessionBindings::new();
+        let shared = SessionBindings::new_sharing_secret(&original);
+        let id = original.issue();
+        assert!(shared.is_server_issued(&id), "shares the original's secret");
+        assert!(shared.bind(&id, 7, 0));
+        assert_eq!(shared.lookup(&id, 0), Some(7));
+        assert_eq!(original.lookup(&id, 0), None, "binding one map never binds the other");
     }
 
     #[test]

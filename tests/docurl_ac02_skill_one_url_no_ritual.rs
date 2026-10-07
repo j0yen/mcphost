@@ -5,7 +5,7 @@
 //! `host.redeem`.
 
 use crate::common;
-use common::{McpClient, TestServer};
+use common::{McpClient, TestServer, extract_structured};
 use serde_json::Value;
 
 const SKILL_MD: &str = include_str!("../plugin/skills/mcphost/SKILL.md");
@@ -146,15 +146,40 @@ async fn skill_md_steps_create_a_tenant_and_publish_a_tool_with_no_ritual_call()
     }
 
     let server = TestServer::start().await;
-    let client = McpClient::new(&server.base_url).with_session_continuity();
+    let bare = McpClient::new(&server.base_url).with_session_continuity();
 
-    for (name, args) in &calls {
+    // PRD-mcphost-session-bound-tenant-key requirement 2 (AC2/AC7): the
+    // skill's own step 2 (the first, key-less call) still implicitly signs
+    // this connection up, but a LATER key-less call on it is now refused
+    // and named by default -- the skill's own step 4 was updated to
+    // reconnect through `onboarding.url` for every call after the first,
+    // so this replay does the same: the first block runs bare, every
+    // later block runs over the tenant's own `/u/{secret}/mcp` URL that
+    // first call's own onboarding envelope minted.
+    let mut calls = calls.into_iter();
+    let (first_name, first_args) = calls.next().expect("the skill has at least one step");
+    assert!(
+        first_args.get("tenant_key").is_none(),
+        "step {first_name} must not carry a tenant_key argument"
+    );
+    let first_result = bare
+        .tools_call(&first_name, first_args.clone())
+        .await
+        .unwrap_or_else(|e| panic!("skill step {first_name}({first_args}) must succeed verbatim: {e:?}"));
+    let onboarding_url = extract_structured(&first_result)["onboarding"]["url"]
+        .as_str()
+        .expect("the skill's first call must carry onboarding.url")
+        .to_string();
+    let path = onboarding_url.trim_start_matches(&server.base_url).to_string();
+    let client = McpClient::new(&server.base_url).with_path(&path);
+
+    for (name, args) in calls {
         assert!(
             args.get("tenant_key").is_none(),
             "step {name} must not carry a tenant_key argument"
         );
         client
-            .tools_call(name, args.clone())
+            .tools_call(&name, args.clone())
             .await
             .unwrap_or_else(|e| panic!("skill step {name}({args}) must succeed verbatim: {e:?}"));
     }

@@ -76,19 +76,22 @@ async fn disabling_the_bound_tenant_surfaces_tenant_disabled_then_drops_the_bind
     // Re-enabling the ORIGINAL (now-abandoned) tenant does not resurrect
     // it on this session either -- a binding is only ever created by a
     // signup/redeem/implicit-signup on the session itself (requirement 5).
+    //
+    // PRD-mcphost-session-bound-tenant-key requirement 2 supersedes this
+    // block's original "the session stays bound" expectation: the call at
+    // line 64 above was this session's own (fresh) implicit signup, so
+    // THIS call is a SECOND key-less call on it -- by default refused and
+    // named, naming the fresh tenant, never the re-enabled original one.
     McpClient::with_bearer(&server.base_url, ADMIN_KEY)
         .tools_call("admin.tenant_enable", json!({"tenant": namespace}))
         .await
         .expect("admin.tenant_enable");
-    let after_enable = extract_structured(
-        &session
-            .tools_call("host.whoami", json!({}))
-            .await
-            .expect("the session stays bound to its fresh implicit tenant"),
-    );
+    let after_enable = session.tools_call("host.whoami", json!({})).await;
+    let err = after_enable.expect_err("a second key-less call on the fresh implicit tenant's session must be refused");
+    assert_eq!(err.error_code.as_deref(), Some("tenant_key_missing"));
     assert_eq!(
-        after_enable["tenant"].as_str(),
+        err.data.get("tenant").and_then(serde_json::Value::as_str),
         Some(fresh_namespace.as_str()),
-        "re-enabling the original tenant must not resurrect it on this session: {after_enable}"
+        "re-enabling the original tenant must not resurrect it on this session: {err:?}"
     );
 }

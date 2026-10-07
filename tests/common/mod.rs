@@ -258,6 +258,7 @@ pub async fn bare_app_state() -> (AppState, TempDataDir) {
     let data_dir = TempDataDir::new();
     let db = Db::open(&data_dir.0).expect("open db");
     db.migrate().await.expect("migrate");
+    let session_bindings = mcphost::session_bind::SessionBindings::new();
     let state = AppState {
         db,
         kinds: KindRegistry::with_builtin(),
@@ -307,12 +308,15 @@ pub async fn bare_app_state() -> (AppState, TempDataDir) {
         end_user_activity: Default::default(),
         oauth_healthz_cache: Default::default(),
         verified_client_ids: mcphost::state::VerifiedClientIds::empty(),
-        session_bindings: mcphost::session_bind::SessionBindings::new(),
         invite_hints: mcphost::invites::InviteHintTracker::new(),
         lineage_cache: mcphost::lineage::new_cache(),
         lineage_trace_pages: mcphost::lineage::new_trace_page_cache(),
         public_url_sync_deadline: mcphost::state::PUBLIC_URL_SYNC_DEADLINE,
         url_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
+        implicit_signup_memory: mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
+        tenant_key_arg_memory: mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
+        reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        session_bindings,
     };
     (state, data_dir)
 }
@@ -828,6 +832,7 @@ impl TestServer {
         let wasm_runtime_version = kinds
             .get("wasm")
             .map(|_| mcphost::kinds::wasm::WASM_RUNTIME_VERSION);
+        let session_bindings = mcphost::session_bind::SessionBindings::new();
         let state = Arc::new(AppState {
             db,
             kinds,
@@ -881,12 +886,15 @@ impl TestServer {
             end_user_activity: Default::default(),
             oauth_healthz_cache: Default::default(),
             verified_client_ids,
-            session_bindings: mcphost::session_bind::SessionBindings::new(),
             invite_hints: mcphost::invites::InviteHintTracker::new(),
             lineage_cache: mcphost::lineage::new_cache(),
             lineage_trace_pages: mcphost::lineage::new_trace_page_cache(),
             public_url_sync_deadline: mcphost::state::PUBLIC_URL_SYNC_DEADLINE,
             url_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
+            implicit_signup_memory: mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
+            tenant_key_arg_memory: mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
+            reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            session_bindings,
         });
 
         // PRD-mcphost-runs-and-jobs: every test server runs the real
@@ -1555,6 +1563,7 @@ pub fn wasm_fixture_b64(name: &str) -> String {
 pub async fn bare_state(dir: &std::path::Path) -> AppState {
     let db = mcphost::db::Db::open(dir).expect("open db");
     db.migrate().await.expect("migrate");
+    let session_bindings = mcphost::session_bind::SessionBindings::new();
     AppState {
         db,
         kinds: mcphost::kinds::KindRegistry::with_builtin(),
@@ -1605,12 +1614,15 @@ pub async fn bare_state(dir: &std::path::Path) -> AppState {
         end_user_activity: Default::default(),
         oauth_healthz_cache: Default::default(),
         verified_client_ids: mcphost::state::VerifiedClientIds::empty(),
-        session_bindings: mcphost::session_bind::SessionBindings::new(),
         invite_hints: mcphost::invites::InviteHintTracker::new(),
         lineage_cache: mcphost::lineage::new_cache(),
         lineage_trace_pages: mcphost::lineage::new_trace_page_cache(),
         public_url_sync_deadline: mcphost::state::PUBLIC_URL_SYNC_DEADLINE,
         url_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
+        implicit_signup_memory: mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
+        tenant_key_arg_memory: mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
+        reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        session_bindings,
     }
 }
 
