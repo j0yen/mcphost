@@ -162,6 +162,15 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
     // nightly artifacts AC11's live-check bar is exercised over -- to the
     // mcphost_event_trigger_self_test_ac11 proof tests) -- a seventeenth,
     // intended addition since the baseline, not drift.
+    // PRD-mcphost-registry-listing added its own "registry-manifest" lane
+    // (routes registry/** -- the committed, generator-written
+    // registry/server.json and the pinned registry/schema.json -- to a
+    // name-filtered cargo test run over the reglist_ac0N proof tests, kept
+    // separate from the pre-existing `meta` lane -- which already covers
+    // the unrelated root-level server.json from a different, tenant-facing
+    // PRD -- for the same required_commands-immutability reason the
+    // sharing-docs/launch-docs/tool-naming lanes above give) -- an
+    // eighteenth, intended addition since the baseline, not drift.
     assert_eq!(
         added,
         vec![
@@ -176,6 +185,7 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
             "loop-config",
             "oauthconf-data",
             "plugin",
+            "registry-manifest",
             "sandbox-api-docs",
             "sharing-docs",
             "spec-fields-doc-check",
@@ -185,7 +195,8 @@ fn lanecov_ac04_loop_config_is_the_only_added_lane() {
         ],
         "only admin-schemas, checkcompat-race-soak, contracts, docsearch-fixtures, \
          event-trigger-self-test-fixtures, examples, flake-lint, launch-docs, loop-config, \
-         oauthconf-data, plugin, sandbox-api-docs, sharing-docs, spec-fields-doc-check, tool-naming, \
-         vendor, and wasm-fixtures may have been added since {BASELINE_REV}"
+         oauthconf-data, plugin, registry-manifest, sandbox-api-docs, sharing-docs, \
+         spec-fields-doc-check, tool-naming, vendor, and wasm-fixtures may have been added since \
+         {BASELINE_REV}"
     );
 }

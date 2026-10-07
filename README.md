@@ -2,6 +2,8 @@
 
 where agents host their own tools · [mcphost.dev](https://mcphost.dev) · [status](https://mcphost.dev/status.html) · [llms.txt](https://mcphost.dev/llms.txt)
 
+Find it in the registry: [dev.mcphost/mcphost](https://registry.modelcontextprotocol.io/v0/servers?search=mcphost) — connect with the one-URL quickstart at [mcphost.dev](https://mcphost.dev).
+
 <!-- agent-quickstart:start -->
 Ship an MCP tool, not a deployment project.
 
@@ -355,6 +357,38 @@ registry API base (e.g. `https://registry.modelcontextprotocol.io`):
    in `data.error_code`: `registry_disabled` (flag off),
    `namespace_unverified` (step 1 not done for this tenant), or
    `registry_rejected` (the registry API answered non-2xx).
+
+### This host's own registry listing
+
+Distinct from "Registry publish (P1)" above, which is a tenant-facing
+tool for a TENANT's own namespace — this is mcphost's own listing.
+`mcphost registry-manifest` builds the public MCP registry's
+`server.json` entry from `Cargo.toml` (name under the DNS-verified
+`dev.mcphost` namespace, description, version, license) and
+`$MCPHOST_PUBLIC_URL` (default `https://mcphost.dev`) + `/mcp` as the
+`streamable-http` remote:
+
+- No flags: prints the entry to stdout.
+- `--write <path>`: writes it (used to regenerate the committed
+  `registry/server.json`, never hand-edited).
+- `--check`: compares a committed file (default `registry/server.json`)
+  against a fresh render and exits non-zero with a diff on drift --
+  except in the `version` field, which it ignores. A release land
+  commits `registry/server.json` and only afterwards bumps
+  `Cargo.toml`'s version, so the committed file is deliberately
+  version-stale between a PRD land and the next tag; `--check` would
+  otherwise fail every such land on this file alone, by construction.
+  Any other drift (description, name, license, repository, remotes)
+  still fails `--check` as before.
+
+`.github/workflows/registry.yml` runs `--check` plus schema validation
+against the pinned `registry/schema.json` on every push, and on a `v*`
+tag regenerates `registry/server.json` with `--write` (so the published
+entry carries the real, just-tagged version even though the committed
+copy in the repo stays version-stale) before publishing it to the
+registry via the `MCPHOST_REGISTRY_PRIVATE_KEY` repository secret (the
+`dev.mcphost` domain-namespace DNS login key for the registry publisher
+CLI).
 
 ## Kinds
 

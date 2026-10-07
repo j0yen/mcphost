@@ -58,6 +58,7 @@ pub mod public_tool;
 pub mod query_diag;
 pub mod reach;
 pub mod registry;
+pub mod registry_manifest;
 pub mod retention;
 pub mod returns;
 pub mod rowpolicy;

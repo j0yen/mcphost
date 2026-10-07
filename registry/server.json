@@ -1,0 +1,18 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "description": "One MCP endpoint an agent can join and administer without a human",
+  "license": "MIT OR Apache-2.0",
+  "name": "dev.mcphost/mcphost",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcphost.dev/mcp"
+    }
+  ],
+  "repository": {
+    "source": "github",
+    "url": "https://github.com/j0yen/mcphost"
+  },
+  "version": "0.97.0",
+  "websiteUrl": "https://mcphost.dev"
+}

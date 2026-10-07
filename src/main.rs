@@ -201,6 +201,30 @@ enum Command {
         #[command(subcommand)]
         action: AdminCommand,
     },
+    /// PRD-mcphost-registry-listing P0 requirement 1 (AC1/AC2): prints the
+    /// public MCP registry `server.json` entry built from `Cargo.toml` and
+    /// `$MCPHOST_PUBLIC_URL`. `--write <path>` writes it instead of
+    /// printing; `--check` compares a committed file (default
+    /// `registry/server.json`) against a fresh render and exits non-zero
+    /// with a diff on drift -- except in the committed file's `version`
+    /// field, which a release land bumps after this file is committed
+    /// (see `mcphost::registry_manifest::matches_ignoring_version`); the
+    /// registry workflow regenerates the file with `--write` at tag time,
+    /// so the published entry still carries the real version.
+    RegistryManifest {
+        /// Write the rendered manifest to this path instead of printing it.
+        #[arg(long)]
+        write: Option<PathBuf>,
+        /// Compare the committed file against a fresh render, ignoring
+        /// the `version` field; exit 1 and print a diff if anything else
+        /// differs, without writing.
+        #[arg(long)]
+        check: bool,
+        /// The file `--check` compares against. Defaults to
+        /// `registry/server.json`.
+        #[arg(long)]
+        path: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -442,6 +466,47 @@ async fn main() -> anyhow::Result<()> {
                 Ok(())
             }
         },
+        Command::RegistryManifest { write, check, path } => {
+            // Deliberately no `init_tracing()`: same rationale as
+            // `LlmsTxt`/`Funnel` above -- this subcommand's contract is
+            // plain stdout (JSON, or a diff on stderr) plus an exit code.
+            let manifest = mcphost::registry_manifest::build_manifest(
+                &mcphost::registry_manifest::public_url_from_env(),
+            );
+            let rendered = mcphost::registry_manifest::render(&manifest);
+            if check {
+                let path = path
+                    .unwrap_or_else(|| PathBuf::from(mcphost::registry_manifest::MANIFEST_PATH));
+                let committed = std::fs::read_to_string(&path).unwrap_or_default();
+                if mcphost::registry_manifest::matches_ignoring_version(&committed, &rendered) {
+                    println!(
+                        "registry-manifest --check: {} is up to date (version-tolerant)",
+                        path.display()
+                    );
+                    Ok(())
+                } else {
+                    let diff = mcphost::difftext::unified_diff(
+                        &committed,
+                        &rendered,
+                        &path.display().to_string(),
+                        "generated",
+                    );
+                    eprintln!(
+                        "registry-manifest --check: {} is stale (run `mcphost registry-manifest --write {}`)\n{diff}",
+                        path.display(),
+                        path.display()
+                    );
+                    std::process::exit(1);
+                }
+            } else if let Some(write_path) = write {
+                std::fs::write(&write_path, &rendered)?;
+                println!("registry-manifest: wrote {}", write_path.display());
+                Ok(())
+            } else {
+                print!("{rendered}");
+                Ok(())
+            }
+        }
         Command::LlmsTxt { check, path } => {
             // Deliberately no `init_tracing()`: same rationale as
             // `SandboxCheck`/`Funnel` above -- this subcommand's contract is

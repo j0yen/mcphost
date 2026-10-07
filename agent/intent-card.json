@@ -1,79 +1,71 @@
 {
   "schema": "autobuilder.intent_card.v1",
-  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-client-install-links.md",
-  "intent_slug": "mcphost-client-install-links",
-  "root_motivation": "Prod shows no distinguishable human signups after the one-URL fleet shipped (PRD-mcphost-funnel-truth, 10-06): the public surfaces today (mcphost.dev, the docs landed by PRD-mcphost-docs-one-url-flow) tell a reader to paste a URL into their client's own MCP settings, a path with at least three manual steps where other MCP servers offer one link. MCP clients already accept install links (Cursor's cursor://.../mcp/install deep link, VS Code's vscode:mcp/install deep link, Claude Code's `claude mcp add` command, Claude.ai's Add-custom-connector flow) -- this PRD renders those four forms from the running server's own hostname on a new /connect page, in the README, and in host_quickstart's response, so they never drift from the deployed endpoint, and counts clicks per client as funnel events with the origin label PRD-mcphost-funnel-truth already defined.",
-  "user_persona": "A Cursor/VS Code/Claude Code/Claude.ai user who heard of mcphost and wants to try it in the client they already use, in one step, instead of hand-copying a URL into settings they have to go find; Operator Joe, whose digest (admin.funnel) gains an install_link_clicks line listing cursor/vscode/claude-code clicks by human visitors.",
+  "prd_source": "/home/jsy/Documents/PRDs/build-queue/PRD-mcphost-registry-listing.md",
+  "intent_slug": "mcphost-registry-listing",
+  "root_motivation": "Prod has no distinguishable human signups and the site (mcphost.dev) is the only public surface -- nothing lists mcphost where MCP users actually browse for servers. The public MCP registry (registry.modelcontextprotocol.io) accepts a server.json with a remotes entry for hosted servers; its schema and publisher CLI are fetched at build time and pinned in the repo. Fix: the binary emits its own registry entry from the same constants it serves (name, description, version, public endpoint, transport), the artifact is committed and CI-validated against the pinned schema on every push, and the entry points at the bare one-URL endpoint so a reader of the listing is one connection away from a tenant.",
+  "user_persona": "A visitor who searches the registry for \"mcphost\", opens the entry, and copies the remote URL into Cursor to get a personal tenant URL on the first call; Operator Joe, who tags a release and expects the registry to show the new version within the hour; CI, which fails a push the moment registry/server.json drifts from what the binary would generate.",
   "unfakeable_metric": {
     "name": "acceptance_tests_passing_count",
     "lower_is_better": false,
     "harness_command": "scripts/run-metrics.sh",
-    "target": 6
+    "target": 5
   },
   "acceptance_criteria": [
     {
       "id": "AC1",
       "level": "MUST",
-      "description": "Given MCPHOST_PUBLIC_URL=https://mcphost.dev, When install_links::for_url runs, Then the Cursor link, VS Code link, Claude Code command, and Claude.ai steps match the pinned fixtures byte for byte.",
-      "test": "tests/clink_ac01_for_url_pinned_fixtures.rs -- asserts install_links::for_url(\"https://mcphost.dev\") against fixture constants for all four forms (plus mcp_url) and that a trailing slash on base is tolerated identically to control::key_rotate's own {base}/mcp convention."
+      "description": "Given the binary, When `mcphost registry-manifest` runs, Then it prints JSON with name, description, version equal to Cargo.toml, a `remotes` entry whose URL is `MCPHOST_PUBLIC_URL` + `/mcp`, and transport `streamable-http`.",
+      "test": "tests/reglist_ac01_manifest_fields_match_cargo_and_endpoint.rs -- spawns the real binary with $MCPHOST_PUBLIC_URL set to a test value and, separately, unset, asserting the printed JSON's description/version against env!(\"CARGO_PKG_DESCRIPTION\")/env!(\"CARGO_PKG_VERSION\") and the remote's url/type."
     },
     {
       "id": "AC2",
       "level": "MUST",
-      "description": "Given an unauthenticated GET /connect, When rendered, Then the page contains all four forms pointing at https://mcphost.dev/mcp, without JavaScript, with HTTP 200.",
-      "test": "tests/clink_ac02_connect_page_unauthenticated.rs -- GETs /connect against a real in-process TestServer with no Authorization header, asserts 200/text-html, that the body shows the plain mcp_url, links Cursor/VS Code through /connect/go/<client> (AC5's own tracked redirect), carries the Claude Code command and every Claude.ai step, and contains no <script tag."
+      "description": "Given a committed `registry/server.json` equal to the generator's output, When `--check` runs, Then exit 0; after a description change in source, exit non-zero with a diff.",
+      "test": "tests/reglist_ac02_check_detects_drift.rs -- one case runs --check against the real committed registry/server.json (must exit 0); the other points --check --path at a scratch file with a stale description (can't mutate Cargo.toml's own description for one test in a shared suite binary) and asserts exit 1 plus a +/- diff naming both the stale and fresh lines."
     },
     {
       "id": "AC3",
       "level": "MUST",
-      "description": "Given an authenticated tenant, When it calls host_quickstart, Then the response has install_links whose URLs contain the caller's personal /u/<secret>/mcp path.",
-      "test": "tests/clink_ac03_quickstart_personal_install_links.rs -- signs up, host.key_rotate's the personal /u/{secret}/mcp URL, reconnects over that exact path, calls host.quickstart, and asserts install_links.mcp_url equals that URL verbatim plus that the Claude Code command/Claude.ai steps/decoded Cursor config all carry it too."
+      "description": "Given the pinned schema, When the test suite validates the committed `server.json`, Then it passes, and an entry missing `remotes` fails.",
+      "test": "tests/reglist_ac03_schema_validates_committed_entry_and_rejects_missing_remotes.rs -- validates registry/server.json against registry/schema.json composed with this host's own required:[\"remotes\"] rule (the raw upstream schema alone leaves remotes optional, since a server may ship packages instead -- see hard_constraints below), then re-validates with remotes stripped and asserts a validation error."
     },
     {
       "id": "AC4",
-      "level": "MUST",
-      "description": "Given the README generated block, When the docs check runs after a hostname or format change in source, Then it fails with a diff; after regeneration it passes.",
-      "test": "tests/clink_ac04_readme_install_links_drift.rs -- hermetic byte-for-byte match of README's committed <!-- install-links:start/end --> block against a fresh render over install_links::CANONICAL_PUBLIC_URL, a changed-hostname sensitivity check proving the splice would actually surface a real drift, and a direct gendocs::run(true, ...) call proving the splice is wired into the real `mcphost gen-docs --check` path, not just callable standalone."
+      "level": "SHOULD",
+      "description": "Given a push to any branch, When the registry workflow runs on the free runner, Then it executes `--check` and schema validation and fails the push on drift.",
+      "test": "tests/reglist_ac04_workflow_checks_manifest_and_schema_on_every_push.rs -- text assertions over .github/workflows/registry.yml: the `on:` trigger has no `branches:` filter, the `check` job runs on `ubuntu-latest` and both `registry-manifest --check` and the reglist_ac03 suite, and `publish` needs `check` and gates on a `refs/tags/v` ref."
     },
     {
       "id": "AC5",
       "level": "SHOULD",
-      "description": "Given a click on /connect/go/cursor from a non-fleet IP, When the server handles it, Then an install_link event with client=cursor and origin=human is recorded and the response is a 302 to the Cursor deep link.",
-      "test": "tests/clink_ac05_connect_go_records_click_and_redirects.rs -- GETs /connect/go/cursor from the test harness's own loopback (unconfigured in any fleet list, so it classifies human), asserts a literal 302 status (not axum's default 303), the Location header equals install_links::for_url's own Cursor deep link, and db::install_link_click_counts_by_client's cursor count increased by exactly one."
+      "description": "Given a tag `v*`, When the workflow runs with the documented secret present, Then it publishes the entry and the registry returns the new version (Live; evidence: registry lookup after the first tag post-deploy).",
+      "test": "deferred -- operator-provisioned: a live, post-tag observation needing the dev.mcphost DNS TXT verification record at mcphost.dev and the MCPHOST_REGISTRY_PRIVATE_KEY repository secret, both Joe's own open questions per the PRD, neither available to this dispatch. AC2-AC4 already prove --check, schema validation, and the workflow's own structure (including the publish job's tag gate and its graceful no-op until the secret exists) end-to-end short of the live network call."
     },
     {
       "id": "AC6",
-      "level": "SHOULD",
-      "description": "Given install-link events of mixed origins, When the digest runs, Then it lists clicks per client for humans only.",
-      "test": "tests/clink_ac06_digest_install_link_clicks_humans_only.rs -- two human cursor clicks, one human vscode click, and one fleet-IP cursor click (via start_with_signup_rate_limit_and_fleet_ips), then asserts admin.funnel's install_link_clicks counts cursor=2/vscode=1 and that a client with zero human clicks (claude-code) is simply absent."
-    },
-    {
-      "id": "AC7",
-      "level": "SHOULD",
-      "description": "Given the deployed server, When a tester opens /connect and clicks \"Add to Cursor\" on a machine with Cursor, Then Cursor shows the mcphost server pre-filled and the first tool call returns a personal URL (Live; evidence: a screenshot or Cursor's mcp.json diff plus the resulting tenant row with origin=human).",
-      "test": "deferred -- operator-provisioned: AC7's Then is a live, deployed-server observation requiring a real Cursor installation, a human tester's click, and the resulting tenant row read back from prod. This dispatch has no real Cursor client, no prod deploy rights, and no live tester to observe. AC1 (the deep link's exact byte shape), AC2 (the page that serves it), and AC5 (the click-tracking redirect) together prove every mechanical piece of this flow end-to-end against an in-process server; only the live human-with-Cursor observation itself is out of reach here."
+      "level": "MUST",
+      "description": "Given the README, When a reader opens it, Then it contains the registry link and the one-URL quickstart link, both resolving with HTTP 200.",
+      "test": "tests/reglist_ac06_readme_registry_and_quickstart_links_resolve.rs -- the always-on half parses README's own \"Find it in the registry\" line for its two markdown links and pins them to the published entry in registry/server.json: the first must be an https registry.modelcontextprotocol.io query whose search term carries that entry's server name, its anchor text must be the full published name, and the second must equal the entry's websiteUrl (so a dropped, re-hosted or drifted link fails with no network). The GETs that prove \"resolves with HTTP 200\" are Live, gated on MCPHOST_LIVE=1 since not every build environment has egress to registry.modelcontextprotocol.io (same convention as tests/mcphost_team_memory_ac08_live_test_skipped_without_env.rs), and carry a negative control in the same run: a non-existent route on the same registry host, through the same client, must come back non-200. The registry's ?search= path is cold-cache slow (~15s measured before first byte, sub-second on repeat), which is why resolve_status allows a 60s per-request timeout and retries transport failures only -- the earlier 15s flat timeout failed on a cold cache with \"error sending request for url\", indistinguishable from an environment with no egress."
     }
   ],
   "scope": [
-    "src/install_links.rs (new): for_url(base) -> Links (mcp_url, cursor, vscode, claude_code_command, claude_ai_steps) -- the one module building all four client forms, with a dated doc-comment citation of each client's own install-link doc (Cursor/VS Code/Claude Code); CANONICAL_PUBLIC_URL (https://mcphost.dev, for the static README render); render_readme_section/splice_install_links_section for the <!-- install-links:start/end --> marker pair, same splice shape as help::splice_support_section.",
-    "src/http.rs: GET /connect (connect_page, personal_base_from_query for the P2 ?u=<personal url> mechanism) and GET /connect/go/{client} (connect_go -- records an install_link:<client> funnel event via classify_funnel_origin, then 302s -- built manually with Response::builder since axum's Redirect::to is a 303, not the 302 AC5 pins, same pattern vault.rs's own dynamic-Location redirect already uses).",
-    "src/control.rs: quickstart gains a path_url_secret: Option<&str> parameter; when Some (this call authenticated over /u/{secret}/mcp), the response gains install_links built from that tenant's own /u/{secret} base -- the only auth path that can supply a REAL personal URL, since the secret is never stored in plaintext (only its hash is).",
-    "src/handler.rs: both host.quickstart dispatch arms thread url_path_secret(parts) through to control::quickstart.",
-    "src/db.rs: install_link_click_counts_by_client(since_unix) -- per-client, humans-only click counts, grouped over the existing oauth_funnel_events table (LIKE 'install_link:%' AND funnel_origin = 'human'), no new table (Migration/compatibility: \"no schema change beyond a new funnel event kind\").",
-    "src/admin.rs: admin::funnel gains install_link_clicks (additive, same since_unix window as every other field), reusing db::install_link_click_counts_by_client.",
-    "src/gendocs.rs: README's install-links splice folded into the SAME support_docs pass that already splices <!-- support:start/end --> into README -- chained onto that splice's own output (not a second independent read/write of the file), since the two marker pairs are disjoint regions of one file and an independent read-write of either would clobber the other's change.",
-    "README.md: the \"## Connect\" section's hand-written Claude Code/Cursor/Claude.ai blocks become the generated <!-- install-links:start/end --> block (now also naming VS Code); Codex CLI's own block (not one of this PRD's four forms) stays hand-written, moved just after the generated block.",
-    "Cargo.toml: percent-encoding (already a transitive dependency) promoted to direct, for the Cursor/VS Code query-string encoding.",
-    "tests/clink_ac0[1-6]_*.rs (new, one per non-deferred AC); tests/suite_core_0[7-8].rs regenerated by scripts/gen-test-suites.sh.",
-    "agent/test-map.json: ac_test_map repointed at this PRD's ACs; the prior PRD's (mcphost-funnel-truth) map archived under ac_test_map_by_prefix.ftruth.",
-    "Cargo.toml/Cargo.lock/plugin/.claude-plugin/plugin.json/plugin/.mcp.json: minor version bump (0.96.0 -> 0.97.0; plugin.json's version is pinned against Cargo.toml's by mcphost_claude_code_plugin_and_snippets_ac02's own test)."
+    "src/registry_manifest.rs (new): build_manifest/render/public_url_from_env/full_name, plus the NAMESPACE/REPOSITORY_URL/MANIFEST_PATH/SCHEMA_PATH/SCHEMA_URL constants. Distinct from the pre-existing src/registry.rs (host.registry_publish, a tenant-facing tool for a TENANT's own namespace, PRD-mcphost-registry-publish) -- named registry_manifest, not registry, so the two never collide.",
+    "src/main.rs: new `mcphost registry-manifest [--write <path>] [--check] [--path <path>]` subcommand.",
+    "registry/schema.json (new, pinned 2026-10-06 from https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json, URL recorded in its own $comment); registry/server.json (new, the generator's own committed output, `mcphost registry-manifest --write registry/server.json`).",
+    ".github/workflows/registry.yml (new): `check` job (every push, no branch filter) runs --check and the reglist_ac03 schema suite on ubuntu-latest; `publish` job (needs: check, if: a v* tag) runs the dev.mcphost DNS-verified mcp-publisher CLI, no-op with a warning until MCPHOST_REGISTRY_PRIVATE_KEY exists.",
+    "README.md: a \"Find it in the registry\" line (registry search link + mcphost.dev as the one-URL quickstart) and a new \"This host's own registry listing\" subsection documenting the subcommand and the publish secret.",
+    "Cargo.toml/plugin/.claude-plugin/plugin.json/plugin/.mcp.json: version bump 0.96.0 -> 0.97.0 (PRD's build_version_bump: minor), carried into both plugin pinned-version files the pre-existing mcphost_claude_code_plugin_and_snippets_ac02 test already enforces against Cargo.toml.",
+    "agent/proof-lanes.toml: new `registry-manifest` lane routing registry/** (lanecov_ac01 requires every tracked path to route; not folded into the pre-existing `meta` lane, which already covers the unrelated root server.json from a different, tenant-facing PRD, since lanecov_ac04 pins every pre-existing lane's required_commands as an immutable baseline).",
+    "tests/reglist_ac0[1,2,3,4,6]_*.rs (new, one per non-deferred AC); tests/suite_core_0[7,8].rs regenerated by scripts/gen-test-suites.sh; tests/ac01_extended_gates_prd_path_resolves_and_matches_card.rs: one clippy fixup (map_or(true, ..) -> is_none_or(..)) surfaced by --all-targets once this PRD's new test landed in the same consolidated suite binary.",
+    "agent/test-map.json: ac_test_map repointed at this PRD's ACs; the prior PRD's (mcphost-funnel-truth) map archived under ac_test_map_by_prefix.ftruth."
   ],
   "non_goals": [
-    "Changing www.mcphost.dev -- outside this repo; it may link to /connect (PRD's own Non-goals, and its own Open question defers whether it should to Joe, after this lands).",
-    "OAuth-based client flows -- the links point at the bare one-URL endpoint by design (PRD's own Non-goals).",
-    "Per-client installers or packages (PRD's own Non-goals).",
-    "Whether Claude.ai's custom connector accepts the bare /mcp URL with no OAuth metadata (PRD's own Open question, owner: Claude, due: before archive) -- the Claude.ai steps this PRD renders are the documented UI flow regardless of that answer; no AC in this dispatch's assigned list depends on it.",
-    "AC7 (the live, deployed-server, real-Cursor observation) -- operator-provisioned, deferred; needs a real Cursor install, a human tester, and prod deploy rights, none of which this coder dispatch can produce."
+    "Listing on third-party directories that require manual forms (PRD's own non-goal; an operator task, not code).",
+    "Changing the server's tool surface or descriptions for marketing (PRD's own non-goal).",
+    "Paid CI -- registry.yml runs on the free public-repo runner only (PRD's own non-goal).",
+    "Requirement 5 (P2, no AC of its own): folding the three starter tools' names into the entry's description so directory search matches them. Out of this dispatch's assigned AC list (1/2/3/4/6 only) and genuinely underspecified -- no PRD text names which three tools -- so left undone rather than guessed.",
+    "AC5 (the live post-tag publish reaching the real registry) -- operator-provisioned, deferred; needs the dev.mcphost DNS TXT record and the MCPHOST_REGISTRY_PRIVATE_KEY secret, neither of which this coder dispatch can produce.",
+    "Touching src/registry.rs or tests/ac19_registry_publish.rs (host.registry_publish) -- the PRD's own grounding states this tenant-facing tool is unrelated."
   ],
   "hard_constraints": {
     "rust_edition": "2024",
@@ -82,58 +74,53 @@
     "max_deps": null,
     "msrv": null,
     "additional": {
-      "personal_url_only_recoverable_from_path_secret_auth": "AC3 wants host_quickstart's install_links to carry the caller's personal /u/<secret>/mcp URL, but this host never stores a url secret in plaintext -- only its hash (db::find_tenant_by_url_secret_hash). The only call shape where the raw secret is available at all is a request that itself authenticated over /u/{secret}/mcp (handler::url_path_secret(parts) reads it straight off the live request's own URI). A header- or tenant_key-authenticated host.quickstart call therefore gets no install_links field at all -- additive, best-effort, same degrade shape control.rs's own plan_limits block already uses for a catalog-miss. This is exactly the PRD's own 'Tenant (any client)' user story: reconnecting through the personal URL and calling host.quickstart hands back the same four forms pre-filled, so a second machine connects pre-linked.",
-      "oauth_funnel_events_reused_with_client_encoded_in_event_not_a_new_column": "Technical considerations says 'reuses record_oauth_funnel_event's table or the activation funnel table (builder's choice)' and Migration/compatibility says 'no schema change beyond a new funnel event kind'. oauth_funnel_events (migration 0053) has no client column, so the client name rides inside the event string itself (install_link:cursor, install_link:vscode, ...) -- one more distinct event VALUE in an existing free-text column, not a new column or table, matching the PRD's own 'no schema change' line literally.",
-      "the_digest_means_admin_funnel_and_healthz_funnel_7d_not_a_new_mcphost_funnel_cli_line": "This crate has two unrelated things both colloquially called 'funnel': the mcphost funnel CLI subcommand (src/funnel.rs, PRD-mcphost-tenant-attribution's real/synthetic split) and admin.funnel / /healthz's funnel_7d (the operator-facing report PRD-mcphost-funnel-truth's own AC4 test -- ftruth_ac04_digest_and_funnel_report_human_headline.rs -- explicitly calls 'the digest'). AC6's 'the digest' is read as the latter (the surface ftruth already extended with signups_human/by_origin), not the former, since that PRD's own test file names it that way and this PRD's own Technical considerations reuses the SAME funnel_origin vocabulary ftruth defined.",
-      "connect_go_must_be_302_not_axum_redirects_default_303": "AC5 pins '302 to the Cursor deep link' literally; axum::response::Redirect::to() is a 303 See Other by its own doc comment (Redirect::temporary/permanent are 307/308; there is no public 302 constructor), so connect_go builds the response manually via Response::builder().status(StatusCode::FOUND) -- the exact pattern src/vault.rs's own get_connect already uses for its dynamic-Location 302.",
-      "four_forms_means_four_install_methods_not_literal_html_form_tags": "Requirement 2's 'renders HTML with the four forms' and AC2's 'the page contains all four forms' read, in context of the Goals section ('Four install forms rendered from MCPHOST_PUBLIC_URL: Cursor deep link, VS Code deep link, Claude Code command, Claude.ai steps'), as four install METHODS -- not four literal <form> elements. /connect renders each as a plain <a href> (Cursor/VS Code, routed through /connect/go/<client> for AC5's click tracking) or <code>/<ol> text (Claude Code's command, Claude.ai's steps), all of it plain markup with zero JavaScript.",
-      "claude_ai_steps_wording_avoids_a_literal_greater_than_character": "The first Claude.ai step originally read 'Open Settings -> Connectors -> Add custom connector.'; render_connect_page HTML-escapes every interpolated string (claim::html_escape), which would turn that literal '>' into '&gt;' in the rendered page -- silently breaking the no-JS page's own readability and any test comparing against the raw string. Reworded to 'Open Settings, then Connectors, then Add custom connector.' (no HTML-significant characters at all) rather than special-casing escaping for this one string."
+      "name_is_not_literally_cargo_pkg_name": "AC1's own wording (\"name, description, version equal to Cargo.toml\") could be read as all three fields being exact Cargo.toml literals, but the upstream schema requires `name` to be `<namespace>/<server-name>` (exactly one `/`, pattern `^[a-zA-Z0-9.-]+/[a-zA-Z0-9._-]+$`) -- Cargo.toml's bare package name \"mcphost\" would fail that pattern outright. Resolved by pairing Cargo.toml's package name with the dev.mcphost namespace Joe decided (PRD Open Questions, 2026-10-06), so `name` is built FROM Cargo.toml plus the decided namespace, not a second independent literal; `description`/`version` are the direct Cargo.toml fields.",
+      "license_field_is_not_in_the_upstream_schema": "The PRD's own requirement 2 lists `license` alongside name/description/version/endpoint/transport/repository, but the fetched-and-pinned upstream server.schema.json's Server/ServerDetail definitions have no `license` property at all. Resolved by adding it as a plain top-level field anyway -- neither definition sets `additionalProperties: false`, so an extra `license` key validates cleanly; confirmed by AC3's own passing test against the real pinned schema.",
+      "remotes_required_is_a_project_rule_layered_on_the_pinned_schema_not_upstream_itself": "AC3 says an entry missing `remotes` must fail schema validation, but the upstream schema's ServerDetail leaves `remotes` optional (a server can ship `packages` instead) -- a bare pinned-schema check against a remotes-less entry would still pass. tests/reglist_ac03_*.rs composes the pinned schema (its own `definitions` lifted to the composed document's root, since a $ref nested inside a new `allOf` would otherwise resolve against the wrapper's root instead) with this host's own `required: [\"remotes\"]`, since mcphost never ships `packages` and a remotes-less entry here has no endpoint left to publish.",
+      "ac5_is_deferred_not_implemented": "AC5's Then (\"the registry returns the new version\") is a live, post-tag, operator-gated observation -- this dispatch has no DNS access for the dev.mcphost TXT record and no repository-secrets access for MCPHOST_REGISTRY_PRIVATE_KEY, both Joe's own open questions. The publish job is still fully wired in registry.yml (gated on the tag ref, needs: check) so it starts working the moment both exist, rather than being left unwritten.",
+      "requirement_5_p2_is_out_of_this_dispatch_scope": "Requirement 5 (P2, \"the entry's description includes the three starter tools' names\") has no AC of its own and is not in this dispatch's assigned AC list (1/2/3/4/6); the PRD also never names which three tools, so implementing it would mean guessing. Left undone per the dispatch's own \"do not start any work beyond this list\" instruction -- see non_goals."
     }
   },
   "five_whys_trace": [
     {
       "why": 1,
-      "q": "Why would rendering install links actually move the needle, when the mechanism behind them (implicit signup on bare /mcp) is already built and live?",
-      "a": "The PRD's own Failure-under-this-seed line says so directly: this is a missing arrival SURFACE, not a broken mechanism -- the one-URL flow already turns a first call into a tenant, but a visitor who doesn't know their client's own MCP settings path never gets there. Three manual steps (find settings, find the URL, paste it correctly) is enough friction that most visitors who 'heard of mcphost' never try it."
+      "q": "Why does a committed, generated server.json matter instead of hand-writing one entry once and forgetting it?",
+      "a": "The PRD's own grounding and the pre-existing root server.json (a different, tenant-reconcile-owned artifact, PRD-mcphost-registry-publish) both show the failure mode directly: docs/launch/wave1-checklist.md records that file going stale at version 0.14.0 against the repo's real 0.64.0. A generator plus a --check CI gate makes that drift a build failure instead of a silent, discovered-months-later mismatch."
     },
     {
       "why": 2,
-      "q": "Why four separate forms instead of one generic 'paste this URL' instruction everywhere?",
-      "a": "Each client's own install mechanism is different and already documented by that client (Cursor/VS Code's own URI-scheme deep links skip the settings-navigation step entirely; Claude Code has no deep link, only a CLI command; Claude.ai has neither, only a UI flow) -- rendering each client's own preferred mechanism is strictly fewer steps than making every client follow the lowest-common-denominator 'paste a URL' path."
+      "q": "Why can't this reuse the pre-existing host.registry_publish / src/registry.rs machinery instead of a new module?",
+      "a": "That machinery publishes a TENANT's own domain-verified namespace entry at runtime, with no Cargo.toml involvement at all -- it answers \"what is this tenant's tool server,\" not \"what is mcphost itself.\" The PRD's own grounding states this directly: \"host_registry_publish ... is unrelated.\""
     },
     {
       "why": 3,
-      "q": "Why build one install_links module instead of writing the Cursor/VS Code/Claude Code strings directly into /connect, host_quickstart, and the README separately?",
-      "a": "Technical considerations says it directly: 'deep-link formats change; keep them in one module with fixtures and a comment per client naming the doc page and the date checked' -- three hand-copies of the same format drift independently the moment one client changes its deep-link shape, the exact failure mode this module's own doc comment and clink_ac01's fixtures exist to catch."
+      "q": "Why does the committed artifact need its own pinned schema file instead of just trusting the generator's own shape?",
+      "a": "The generator is this crate's own code, so a bug in it would pass its own output trivially; AC3's whole point is an independent check against the real upstream contract (registry.modelcontextprotocol.io's own schema) that the generator can't quietly drift from without a test noticing."
     },
     {
       "why": 4,
-      "q": "Why click-tracking (AC5/AC6) at all, if the goal is just 'make it easier to connect'?",
-      "a": "The PRD's own success metrics table has no way to measure 'did this surface work' without it -- 'human install-link clicks per week' is a named target metric (>= 5, two weeks after deploy), and without per-client click events there is no signal distinguishing 'nobody found /connect' from 'people found it but didn't click through', which is exactly the gap PRD-mcphost-funnel-truth's own grounding (no distinguishable human signups after the one-URL fleet shipped) is trying to close."
+      "q": "Why gate the live publish on a tag instead of publishing on every green push?",
+      "a": "The registry's own version field is meant to track actual releases, not every commit; the PRD's own requirement 4 and AC5 both say \"on tag v*\", matching the existing release convention (CHANGELOG.md's own version-per-tag entries) rather than inventing a second cadence."
     },
     {
       "why": 5,
-      "q": "Why humans-only in the digest (AC6), rather than every click regardless of origin?",
-      "a": "PRD-mcphost-funnel-truth already established that fleet/probe traffic (deploy smoke tests, wm-build live verifiers) hits this host's own routes regardless of any real visitor, and a digest that can't tell a human's click from a deploy probe's is exactly the conflated-number problem that PRD existed to fix -- this PRD's own Requirements line says 'funnel events reuse ... with origin set per funnel-truth' specifically so AC6 doesn't reintroduce that same conflation one surface later."
+      "q": "Why default $MCPHOST_PUBLIC_URL to https://mcphost.dev here specifically, instead of reusing `mcphost serve`'s own http://{bind} fallback?",
+      "a": "This subcommand's whole job is describing the already-public listing for a reader who is not this process's own operator -- an unset env var here means \"the production default\", where `serve`'s own fallback exists only to give a freshly-bound socket with no public DNS yet SOME url to put in its own responses before the operator sets one."
     }
   ],
-  "created_at": "2026-10-06T19:42:48Z",
   "ambiguities_resolved": [
     {
-      "question": "Can host_quickstart's install_links show a REAL personal /u/<secret>/mcp URL for every authenticated call, or only some?",
-      "resolution": "Only when the call itself authenticated over /u/{secret}/mcp -- see hard_constraints.personal_url_only_recoverable_from_path_secret_auth. A header-/tenant_key-authenticated call gets no install_links field; this is additive and best-effort, not a regression, since no prior response had this field either."
+      "question": "Does AC1's \"name, description, version equal to Cargo.toml\" mean `name` is literally Cargo.toml's bare package name?",
+      "resolution": "No -- the upstream schema requires `name` to contain exactly one `/` (namespace/server-name), which \"mcphost\" alone fails. `name` is built from Cargo.toml's package name plus the dev.mcphost namespace Joe decided; see hard_constraints.name_is_not_literally_cargo_pkg_name."
     },
     {
-      "question": "Does the install_link funnel event need a new table/column for the client name, given oauth_funnel_events has none?",
-      "resolution": "No -- the client name rides inside the event string itself (install_link:cursor, etc.), one more value in an existing free-text column; see hard_constraints.oauth_funnel_events_reused_with_client_encoded_in_event_not_a_new_column."
+      "question": "Should `license` be added even though it's not in the pinned upstream schema's own field list?",
+      "resolution": "Yes -- the PRD's own requirement 2 asks for it, and neither Server nor ServerDetail sets additionalProperties:false, so it validates cleanly. See hard_constraints.license_field_is_not_in_the_upstream_schema."
     },
     {
-      "question": "Does AC5's '302' tolerate axum::response::Redirect::to's default 303?",
-      "resolution": "No -- read literally; axum's Redirect::to is documented as 303 See Other, so connect_go builds the 302 response manually. See hard_constraints.connect_go_must_be_302_not_axum_redirects_default_303."
-    },
-    {
-      "question": "Which existing surface does AC6's 'the digest' refer to -- the mcphost funnel CLI, or admin.funnel/healthz's funnel_7d?",
-      "resolution": "admin.funnel/healthz's funnel_7d -- the surface PRD-mcphost-funnel-truth's own AC4 test explicitly calls 'the digest'. See hard_constraints.the_digest_means_admin_funnel_and_healthz_funnel_7d_not_a_new_mcphost_funnel_cli_line."
+      "question": "Is requirement 5 (P2, starter-tool names in the description) in scope for this dispatch?",
+      "resolution": "No -- it has no AC of its own, is not in the dispatch's assigned AC list, and the PRD never names which three tools; implementing it would mean guessing. See hard_constraints.requirement_5_p2_is_out_of_this_dispatch_scope."
     }
-  ]
+  ],
+  "created_at": "2026-10-06T20:00:00Z"
 }
