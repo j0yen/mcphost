@@ -783,7 +783,22 @@ pub fn quickstart(
     // `resolve_kind`'s alias table to the http webhook/schedule recipes
     // below instead of erroring, and the recipe's own `host.trigger.set`
     // step is what names the right call (kindroute_ac01/ac02).
-    let (kind, alias) = resolve_kind(&state.kinds, &kind_name_requested)?;
+    // PRD-mcphost-kind-ask-routing requirement 3 (AC2): an outcome word
+    // that is neither a registered kind nor a kind alias ("docs",
+    // "message", ...) answers with the recipe that delivers it instead of
+    // `unknown_kind`.
+    let (kind, alias) = match resolve_kind(&state.kinds, &kind_name_requested) {
+        Ok(resolved) => resolved,
+        Err(AppError::UnknownKind { .. })
+            if let Some(outcome) = crate::kinds::outcomes::find(&kind_name_requested) =>
+        {
+            let mut response = outcome.to_json();
+            response["verdict"] = json!("recipe");
+            response["resolved_from"] = json!(kind_name_requested);
+            return Ok(response);
+        }
+        Err(e) => return Err(e),
+    };
     let kind_name = kind.name().to_string();
     let example = kind.example();
     let tool_name = "my_tool";
@@ -1816,6 +1831,13 @@ pub async fn tool_publish(
     // runtime name above.
     if let (Some(_), Value::Object(map)) = (alias, &mut response) {
         map.insert("resolved_from".to_string(), json!(kind_name_requested));
+    }
+    // PRD-mcphost-kind-ask-routing requirement 6 (AC7): a hand-rolled http
+    // query tool over a fixture database points at the shipped recipe.
+    if let (Some(hint), Value::Object(map)) =
+        (crate::kinds::outcomes::publish_hint(&kind_name, &spec), &mut response)
+    {
+        map.insert("hint".to_string(), json!(hint));
     }
     // PRD-mcphost-tool-test-truth P1 requirement 1 (AC6): "without
     // dry_run ... the response carries the advisory verdict" -- a real

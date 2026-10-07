@@ -187,6 +187,11 @@ const MIGRATION_0078: &str = include_str!("../migrations/0078_funnel_origin.sql"
 /// `host_tool_usage.via`.
 const MIGRATION_0079: &str = include_str!("../migrations/0079_host_tool_usage_via.sql");
 
+/// PRD-mcphost-kind-ask-routing requirement 5 (AC6):
+/// `host_tool_usage.did_you_mean_outcome`.
+const MIGRATION_0081: &str =
+    include_str!("../migrations/0081_host_tool_usage_did_you_mean_outcome.sql");
+
 /// PRD-mcphost-session-bound-tenant-key requirement 3: `kind` on
 /// `signup_events`. Renumbered to 0080 during this rebase: mcphost-tool-
 /// call-host-verb-forward claimed 0079 first, landing on main ahead of this
@@ -2623,7 +2628,8 @@ impl Db {
         Self::migrate_0077_second_session_nudge(&conn)?;
         Self::migrate_0078_funnel_origin(&conn)?;
         Self::migrate_0079_host_tool_usage_via(&conn)?;
-        Self::migrate_0080_implicit_second_signup_blocked(&conn)
+        Self::migrate_0080_implicit_second_signup_blocked(&conn)?;
+        Self::migrate_0081_host_tool_usage_did_you_mean_outcome(&conn)
     }
 
     /// 0002 is a single `ALTER TABLE ADD COLUMN`, which SQLite has no
@@ -3756,6 +3762,20 @@ impl Db {
         Ok(())
     }
 
+    /// PRD-mcphost-kind-ask-routing requirement 5: same idempotency pattern
+    /// as 0002-0080, gated on `host_tool_usage.did_you_mean_outcome`.
+    fn migrate_0081_host_tool_usage_did_you_mean_outcome(conn: &Connection) -> Result<(), AppError> {
+        let has_column: bool = conn
+            .prepare(
+                "SELECT 1 FROM pragma_table_info('host_tool_usage') WHERE name = 'did_you_mean_outcome'",
+            )?
+            .exists([])?;
+        if !has_column {
+            conn.execute_batch(MIGRATION_0081)?;
+        }
+        Ok(())
+    }
+
     /// PRD-mcphost-session-bound-tenant-key requirement 3: same idempotency
     /// pattern as 0002-0079, gated on `signup_events.kind`.
     fn migrate_0080_implicit_second_signup_blocked(conn: &Connection) -> Result<(), AppError> {
@@ -4760,7 +4780,7 @@ impl Db {
     pub async fn count_distinct_host_tools_used(&self, tenant_id: i64) -> Result<i64, AppError> {
         self.with_conn(move |conn| {
             conn.query_row(
-                "SELECT COUNT(*) FROM host_tool_usage WHERE tenant_id = ?1",
+                "SELECT COUNT(*) FROM host_tool_usage WHERE tenant_id = ?1 AND did_you_mean_outcome IS NULL",
                 params![tenant_id],
                 |r| r.get(0),
             )
@@ -4774,7 +4794,7 @@ impl Db {
     /// tool the tenant has already used.
     pub async fn host_tool_already_used(&self, tenant_id: i64, tool_name: String) -> Result<bool, AppError> {
         self.with_conn(move |conn| {
-            conn.prepare("SELECT 1 FROM host_tool_usage WHERE tenant_id = ?1 AND tool_name = ?2")?
+            conn.prepare("SELECT 1 FROM host_tool_usage WHERE tenant_id = ?1 AND tool_name = ?2 AND did_you_mean_outcome IS NULL")?
                 .exists(params![tenant_id, tool_name])
                 .map_err(AppError::from)
         })
@@ -4827,6 +4847,45 @@ impl Db {
             )
             .optional()
             .map_err(AppError::from)
+        })
+        .await
+    }
+
+    /// PRD-mcphost-kind-ask-routing requirement 5 (AC6): records that a
+    /// `did_you_mean` answer routed `tool_name`'s caller to `outcome`
+    /// (first hit per tenant/tool/outcome wins, same as `first_used_unix`).
+    /// Excluded from the distinct-tools count and `host_tool_already_used`
+    /// above -- a routed miss is not a success.
+    pub async fn record_did_you_mean(
+        &self,
+        tenant_id: i64,
+        tool_name: String,
+        outcome: String,
+        now_unix: i64,
+    ) -> Result<(), AppError> {
+        self.with_conn(move |conn| {
+            conn.execute(
+                "INSERT OR IGNORE INTO host_tool_usage \
+                 (tenant_id, tool_name, first_used_unix, via, did_you_mean_outcome) \
+                 VALUES (?1, ?2, ?3, 'direct', ?4)",
+                params![tenant_id, format!("did_you_mean:{tool_name}:{outcome}"), now_unix, outcome],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// PRD-mcphost-kind-ask-routing requirement 5 (AC6): every
+    /// `did_you_mean_outcome` this tenant's ledger rows carry -- the
+    /// operator's per-outcome hit count reads the same column.
+    pub async fn did_you_mean_outcomes(&self, tenant_id: i64) -> Result<Vec<String>, AppError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT did_you_mean_outcome FROM host_tool_usage \
+                 WHERE tenant_id = ?1 AND did_you_mean_outcome IS NOT NULL ORDER BY tool_name",
+            )?;
+            let rows = stmt.query_map(params![tenant_id], |r| r.get::<_, String>(0))?;
+            rows.collect::<Result<Vec<_>, _>>().map_err(AppError::from)
         })
         .await
     }

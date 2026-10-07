@@ -2057,6 +2057,15 @@ pub fn build_sandbox_api(modules: &[BridgeModule]) -> Value {
     })
 }
 
+/// The runner script up to (not including) `def run_one(`: everything that
+/// builds and registers the `mcphost.*` modules, with nothing that reads
+/// stdin. PRD-mcphost-kind-ask-routing AC5 execs this under `python3` and
+/// reads `help(mcphost.docs)` back, so the docstring is proven on the real
+/// module rather than by grepping source text.
+pub fn runner_script_module_prelude() -> &'static str {
+    PY_RUNNER_SCRIPT.split("\ndef run_one(").next().unwrap_or(PY_RUNNER_SCRIPT)
+}
+
 /// AC1: the independent check that [`BRIDGE_MODULES`] hasn't drifted from
 /// what [`PY_RUNNER_SCRIPT`] actually registers -- parses every
 /// `sys.modules["mcphost.<name>"] = ...` line back out of the script text
@@ -2537,6 +2546,10 @@ def _docs_call(op, **kwargs):
     return resp.get("result")
 
 def _docs_get(id=None, name=None):
+    """Read a stored document's extracted text.
+
+    writes: host.docs.put (control plane); this module is read-only.
+    """
     kwargs = {"text": True}
     if id is not None:
         kwargs["id"] = id
@@ -2555,6 +2568,10 @@ def _docs_get(id=None, name=None):
 # `host.docs.search` itself returns, unlike `get`'s text-only shortcut,
 # since a caller needs each result's own `name`/`offset` for its citation.
 def _docs_search(query, k=None, filter=None):
+    """Search this tenant's stored documents; returns the host.docs.search envelope.
+
+    writes: host.docs.put (control plane); this module is read-only.
+    """
     kwargs = {"query": query}
     if k is not None:
         kwargs["k"] = k
@@ -2562,7 +2579,11 @@ def _docs_search(query, k=None, filter=None):
         kwargs["filter"] = filter
     return _docs_call("search", **kwargs)
 
-_mcphost_docs_mod = _mcphost_types.ModuleType("mcphost.docs")
+_mcphost_docs_mod = _mcphost_types.ModuleType(
+    "mcphost.docs",
+    "Read or search this tenant's stored documents (get, search).\n\n"
+    "writes: host.docs.put (control plane); this module is read-only.",
+)
 _mcphost_docs_mod.get = _docs_get
 _mcphost_docs_mod.search = _docs_search
 _mcphost_docs_mod.DocsError = McphostDocsError
