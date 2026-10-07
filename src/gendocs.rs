@@ -237,7 +237,8 @@ pub fn render_tools_markdown(kinds: &KindRegistry) -> String {
     let alias_names: HashSet<&str> = tool_aliases::TOOL_ALIASES.iter().map(|a| a.alias).collect();
     let mut tools = crate::handler::host_tool_descriptors(kinds);
     tools.push(crate::handler::signup_tool());
-    tools.retain(|t| !alias_names.contains(t.name.as_ref()));
+    let canonical: HashSet<String> = crate::handler::canonical_control_plane_names(kinds).into_iter().collect();
+    tools.retain(|t| !alias_names.contains(t.name.as_ref()) && (canonical.contains(t.name.as_ref()) || t.name == "signup"));
     tools.sort_by(|a, b| a.name.cmp(&b.name));
 
     let mut out = String::new();
@@ -253,7 +254,11 @@ pub fn render_tools_markdown(kinds: &KindRegistry) -> String {
     out.push_str("|---|---|---|---|\n");
     for t in &tools {
         let family = family_of(&t.name);
-        let aliases = tool_aliases::aliases_of(&t.name).join(", ");
+        // Deprecated aliases, then the flattened `a_b_c` form -- every other
+        // name `tools/list` advertises for this tool.
+        let mut names: Vec<String> = tool_aliases::aliases_of(&t.name).into_iter().map(String::from).collect();
+        names.extend(tool_aliases::flattened_form(&t.name));
+        let aliases = names.join(", ");
         let description = t
             .description
             .clone()

@@ -1705,6 +1705,9 @@ pub async fn serve_on_listener(
     listener: tokio::net::TcpListener,
     state: Arc<AppState>,
 ) -> anyhow::Result<()> {
+    // PRD-mcphost-tools-list-alias-truth AC4: two tools whose flattened
+    // names collide stop the server before it accepts a connection.
+    crate::handler::validate_tool_registry(&state.kinds)?;
     let app = build_router(state);
     tracing::info!(addr = ?listener.local_addr().ok(), "mcphost listening");
     axum::serve(

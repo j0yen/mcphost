@@ -3705,6 +3705,7 @@ fn apply_tool_aliases(tools: &mut Vec<Tool>) {
         };
         let mut clone = canonical.clone();
         clone.name = Cow::Borrowed(a.alias);
+        set_alias_of(&mut clone, a.canonical);
         Arc::make_mut(&mut clone.input_schema).insert(
             "x-deprecated".to_string(),
             json!({
@@ -3714,6 +3715,84 @@ fn apply_tool_aliases(tools: &mut Vec<Tool>) {
         );
         tools.push(clone);
     }
+    // PRD-mcphost-tools-list-alias-truth requirement 2: the flattened
+    // `a_b_c` form of every canonical, cloned from it (no `x-deprecated`:
+    // it is the name MCP clients derive, not a retired one). A collision is
+    // reported by `validate_tool_registry` at startup; here it just skips.
+    let canonicals: Vec<String> = tools
+        .iter()
+        .map(|t| t.name.to_string())
+        .filter(|n| crate::tool_aliases::resolve(n).is_none())
+        .collect();
+    let refs: Vec<&str> = canonicals.iter().map(String::as_str).collect();
+    let Ok(registry) = crate::tool_aliases::build_registry(&refs) else {
+        return;
+    };
+    for entry in registry {
+        let Some(flat) = entry.flattened else { continue };
+        let Some(canonical) = tools.iter().find(|t| t.name == entry.canonical.as_str()) else {
+            continue;
+        };
+        let mut clone = canonical.clone();
+        clone.name = Cow::Owned(flat);
+        set_alias_of(&mut clone, &entry.canonical);
+        tools.push(clone);
+    }
+}
+
+/// PRD-mcphost-tools-list-alias-truth requirement 6: an alias (dotted or
+/// flattened) entry carries `_meta.alias_of: <canonical>` so clients can
+/// collapse the extra names; canonical entries never carry it.
+fn set_alias_of(tool: &mut Tool, canonical: &str) {
+    let meta = tool.meta.get_or_insert_with(rmcp::model::MetaObject::new);
+    meta.0.insert("alias_of".to_string(), json!(canonical));
+}
+
+/// PRD-mcphost-tools-list-alias-truth requirement 3: the one
+/// `unknown_tool` error for a `host.*`/`billing.*` name nothing dispatches,
+/// with `nearest` drawn from exactly what `tools/list` advertises.
+fn unknown_host_tool(kinds: &KindRegistry, requested: &str) -> AppError {
+    let advertised: Vec<String> = host_tools(kinds, true).into_iter().map(|t| t.name.to_string()).collect();
+    let canonical = canonical_control_plane_names(kinds);
+    AppError::host_tool_not_found(requested, &canonical, &advertised)
+}
+
+/// Canonical control-plane names (dotted `host.*`/`billing.*` plus bare
+/// `signup`-style names); aliases and flattened clones excluded.
+pub fn canonical_control_plane_names(kinds: &KindRegistry) -> Vec<String> {
+    host_tools(kinds, true)
+        .into_iter()
+        .map(|t| t.name.to_string())
+        .filter(|n| {
+            crate::tool_aliases::resolve(n).is_none()
+                && (n.contains('.') || !(n.starts_with("host_") || n.starts_with("billing_")))
+        })
+        .collect()
+}
+
+/// Startup check (PRD-mcphost-tools-list-alias-truth AC4): refuses a
+/// registry whose flattened forms collide, naming both tools.
+pub fn validate_tool_registry(kinds: &KindRegistry) -> Result<(), crate::tool_aliases::RegistryCollision> {
+    let names = canonical_control_plane_names(kinds);
+    let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    crate::tool_aliases::build_registry(&refs).map(|_| ())
+}
+
+/// `host_tool_run` -> `host.tool.run`: the canonical a flattened wire name
+/// stands for, `None` for any other name.
+fn flattened_to_canonical(kinds: &KindRegistry, name: &str) -> Option<String> {
+    static MAP: std::sync::OnceLock<HashMap<String, String>> = std::sync::OnceLock::new();
+    if !(name.starts_with("host_") || name.starts_with("billing_")) {
+        return None;
+    }
+    MAP.get_or_init(|| {
+        canonical_control_plane_names(kinds)
+            .into_iter()
+            .filter_map(|c| crate::tool_aliases::flattened_form(&c).map(|f| (f, c)))
+            .collect()
+    })
+    .get(name)
+    .cloned()
 }
 
 fn admin_tools() -> Vec<Tool> {
@@ -5303,14 +5382,7 @@ impl McpHostHandler {
             // `ToolNotFound` every other unmatched-name case in this crate
             // still uses (those have no "nearby real name" universe this
             // cheap to compute at the call site).
-            other => {
-                let candidates: Vec<String> = host_tools(&self.state.kinds, true)
-                    .into_iter()
-                    .filter(|t| crate::tool_aliases::resolve(&t.name).is_none())
-                    .map(|t| t.name.to_string())
-                    .collect();
-                Err(AppError::host_tool_not_found(other, &candidates))
-            }
+            other => Err(unknown_host_tool(&self.state.kinds, other)),
         }
     }
 
@@ -7229,6 +7301,7 @@ impl McpHostHandler {
                     Some(canonical) => {
                         self.forward_host_verb(tenant, &canonical, call_args, auth_method, end_user).await
                     }
+                    None if name.starts_with("host.") => Err(unknown_host_tool(&self.state.kinds, &name)),
                     None => Err(err),
                 }
             }
@@ -7747,6 +7820,11 @@ impl ServerHandler for McpHostHandler {
         let header_name = mcp_name_header(parts);
         let body_name = request.name.to_string();
         let mismatch = header_name.is_some_and(|h| h != body_name);
+        // PRD-mcphost-tools-list-alias-truth requirement 2: a flattened wire
+        // name (`host_tool_run`) is the same tool as its dotted canonical;
+        // every check below sees the canonical. `mismatch` above already
+        // compared the header against the name as the caller sent it.
+        let body_name = flattened_to_canonical(&self.state.kinds, &body_name).unwrap_or(body_name);
 
         // PRD-mcphost-url-bound-tenants requirement 1: path secret is the
         // new highest-precedence step in the `Auth` chain ("path secret ->

@@ -1557,7 +1557,14 @@ impl AppError {
         }
     }
 
-    pub fn host_tool_not_found(requested: &str, candidates: &[String]) -> Self {
+    ///
+    /// PRD-mcphost-tools-list-alias-truth requirement 3: the same error
+    /// also carries the `unknown_tool` shape -- `error`, `name`, and
+    /// `nearest`, up to [`MAX_DID_YOU_MEAN`] names from `advertised` (the
+    /// exact `tools/list` set, aliases and flattened forms included) by
+    /// edit distance with no distance cutoff, so a caller is never left
+    /// with an empty hint. Advice only: nothing is auto-corrected.
+    pub fn host_tool_not_found(requested: &str, candidates: &[String], advertised: &[String]) -> Self {
         let lower = requested.to_ascii_lowercase();
         let mut scored: Vec<(usize, &str)> = candidates
             .iter()
@@ -1567,10 +1574,19 @@ impl AppError {
         scored.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(b.1)));
         scored.truncate(MAX_DID_YOU_MEAN);
         let did_you_mean: Vec<&str> = scored.into_iter().map(|(_, c)| c).collect();
+        let mut near: Vec<(usize, &str)> =
+            advertised.iter().map(|c| (levenshtein(&lower, &c.to_ascii_lowercase()), c.as_str())).collect();
+        near.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(b.1)));
+        let nearest: Vec<&str> = near.into_iter().take(MAX_DID_YOU_MEAN).map(|(_, c)| c).collect();
         AppError::Structured {
             code: "tool_not_found",
-            message: format!("tool not found: {requested}"),
-            data: json!({"did_you_mean": did_you_mean}),
+            message: format!("unknown tool {requested}; nearest: {}", nearest.join(", ")),
+            data: json!({
+                "error": "unknown_tool",
+                "name": requested,
+                "nearest": nearest,
+                "did_you_mean": did_you_mean,
+            }),
         }
     }
 }
