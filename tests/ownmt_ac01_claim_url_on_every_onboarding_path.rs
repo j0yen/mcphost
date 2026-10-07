@@ -46,11 +46,23 @@ async fn implicit_first_call_carries_claim_url() {
         .to_string();
     assert!(is_claim_url(&claim_url), "not a claim url: {claim_url}");
 
+    // PRD-mcphost-session-bound-tenant-key requirement 2 (AC2): a second
+    // key-less call on this same session is now refused and named by
+    // default, rather than silently served -- so this AC's own "host.whoami
+    // on the bound session" is read over the tenant's own `/u/` URL (the
+    // `onboarding.url` this very call just minted), its real credential,
+    // not the now-refused key-less continuation.
+    let claim_url_path = published["onboarding"]["url"]
+        .as_str()
+        .expect("onboarding.url present")
+        .to_string();
+    let url_client =
+        McpClient::new(&server.base_url).with_path(claim_url_path.trim_start_matches(&server.base_url));
     let whoami = extract_structured(
-        &session
+        &url_client
             .tools_call("host.whoami", json!({}))
             .await
-            .expect("host.whoami on the bound session"),
+            .expect("host.whoami over this tenant's own /u/ URL"),
     );
     assert_eq!(
         whoami["claim_url"].as_str(),

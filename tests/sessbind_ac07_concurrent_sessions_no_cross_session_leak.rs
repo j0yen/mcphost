@@ -58,27 +58,34 @@ async fn a_signs_up_and_succeeds_while_b_is_refused_at_the_same_time() {
         b.session_id(),
         "two concurrent connections must hold two distinct server-issued session ids"
     );
+    // PRD-mcphost-session-bound-tenant-key requirement 1/3 supersedes this
+    // assertion's original expectation: B's own implicit signup no longer
+    // lands in state.session_bindings (explicit signup/redeem's own map,
+    // untouched here -- still exactly A's one entry) -- it lands in the
+    // separate implicit_signup_memory instead.
     assert_eq!(
         server.state.session_bindings.len(),
-        2,
-        "both sessions now hold a binding -- A's own signup, B's own implicit signup"
+        1,
+        "only A's own explicit signup binds state.session_bindings"
+    );
+    assert_eq!(
+        server.state.implicit_signup_memory.len(),
+        1,
+        "B's own implicit signup memoes separately"
     );
 
-    // And B still resolves to its OWN tenant afterward, never A's, even
-    // having seen A's namespace go by.
-    let b_again = b
-        .tools_call("host.catalog.search", json!({}))
-        .await
-        .expect("B's session is now bound to its own implicit tenant");
+    // And a LATER key-less call on B's connection no longer resolves to
+    // either tenant silently -- by default it's refused and named, naming
+    // B's own tenant (requirement 2), never A's (the invariant this AC
+    // exists to prove: no binding ever leaks across sessions).
+    let b_again = b.tools_call("host.catalog.search", json!({})).await;
+    let err = b_again.expect_err("a second key-less call on B's own connection must be refused");
+    assert_eq!(err.error_code.as_deref(), Some("tenant_key_missing"));
     assert_eq!(
-        extract_structured(&b_again).get("onboarding"),
-        None,
-        "a later call on B's now-bound session must carry no onboarding: {b_again}"
+        err.data.get("tenant").and_then(serde_json::Value::as_str),
+        Some(b_ns.as_str()),
+        "the refusal must name B's OWN tenant, never A's: {err:?}"
     );
-    let b_whoami = extract_structured(
-        &b.tools_call("host.whoami", json!({})).await.expect("host.whoami"),
-    );
-    assert_eq!(b_whoami["tenant"].as_str(), Some(b_ns.as_str()), "{b_whoami}");
 }
 
 /// The same isolation under real contention: eight sessions sign up at once

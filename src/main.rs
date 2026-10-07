@@ -797,6 +797,17 @@ async fn main() -> anyhow::Result<()> {
             // there is no readiness gate to run before it goes live.
             kinds.register(std::sync::Arc::new(mcphost::kinds::wasm::WasmKind::new()));
 
+            // PRD-mcphost-session-bound-tenant-key requirement 1: the two
+            // new memories below must validate the SAME session ids
+            // `session_bindings.issue()` mints (see
+            // `SessionBindings::new_sharing_secret`'s own doc comment), so
+            // this is built first and shared, not three independent
+            // `SessionBindings::new()` calls.
+            let session_bindings = mcphost::session_bind::SessionBindings::new();
+            let implicit_signup_memory =
+                mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings);
+            let tenant_key_arg_memory =
+                mcphost::session_bind::SessionBindings::new_sharing_secret(&session_bindings);
             let state = Arc::new(AppState {
                 db,
                 kinds,
@@ -851,12 +862,17 @@ async fn main() -> anyhow::Result<()> {
                 end_user_activity: Default::default(),
                 oauth_healthz_cache: Default::default(),
                 verified_client_ids,
-                session_bindings: mcphost::session_bind::SessionBindings::new(),
+                session_bindings,
                 invite_hints: mcphost::invites::InviteHintTracker::new(),
                 lineage_cache: mcphost::lineage::new_cache(),
                 lineage_trace_pages: mcphost::lineage::new_trace_page_cache(),
                 public_url_sync_deadline: mcphost::state::PUBLIC_URL_SYNC_DEADLINE,
                 url_rate_limiter: mcphost::hooks::EventRateLimiter::new(),
+                implicit_signup_memory,
+                tenant_key_arg_memory,
+                reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(
+                    mcphost::state::reuse_session_tenant_from_env(),
+                )),
             });
             // PRD-mcphost-abuse-guard-ban-list requirement 6: load the ban
             // cache once before this process ever serves a request, so the

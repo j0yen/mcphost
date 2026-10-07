@@ -1132,6 +1132,7 @@ pub async fn whoami(
     tenant: &Tenant,
     subject: Option<&str>,
     auth_method: &str,
+    session_tenant: Option<&str>,
 ) -> Result<Value, AppError> {
     // PRD-mcphost-handoff-token P1 requirement 7 / AC8: age is measured
     // from the last rotation when there's been one, else from the
@@ -1244,6 +1245,16 @@ pub async fn whoami(
         // bool-only read for callers that only need "is it claimed".
         if let Some(verified_at) = tenant.owner_verified_at {
             obj.insert("owner".to_string(), json!({"verified_at": verified_at}));
+        }
+        // PRD-mcphost-session-bound-tenant-key P1 requirement 4 (AC6):
+        // the tenant THIS connection's own memory holds (an implicit
+        // signup, or a successful tenant_key-argument auth) -- present
+        // regardless of how THIS call itself authenticated, so an agent
+        // that authenticated some other way can still see what the
+        // connection remembers. Absent (not `null`) when neither memory
+        // holds anything for this session.
+        if let Some(ns) = session_tenant {
+            obj.insert("session_tenant".to_string(), json!(ns));
         }
     }
     Ok(response)

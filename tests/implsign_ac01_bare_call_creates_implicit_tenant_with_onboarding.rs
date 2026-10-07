@@ -58,17 +58,32 @@ async fn bare_publish_call_mints_an_implicit_tenant_and_carries_onboarding() {
     assert_eq!(tenants.len(), 1, "exactly one tenant must have been created");
     assert_eq!(tenants[0].namespace, implicit_tenant);
 
-    // host.whoami on the SAME session returns that tenant with
-    // source: "implicit".
-    let whoami = session
+    // PRD-mcphost-session-bound-tenant-key requirement 2 / AC2 supersedes
+    // this AC's own original expectation here: a SECOND key-less call on
+    // the very same session is no longer silently served as the tenant it
+    // implicitly signed up -- by default it's refused and named instead
+    // (see sessbind_ac15 for the dedicated proof). This AC's own Then
+    // ("host.whoami on the same session returns that tenant with source:
+    // implicit") still holds, just reached over the tenant's own `/u/`
+    // URL -- its real credential -- rather than riding the now-refused
+    // key-less continuation.
+    let second = session.tools_call("host.whoami", json!({})).await;
+    assert_eq!(
+        second.as_ref().err().and_then(|e| e.error_code.clone()),
+        Some("tenant_key_missing".to_string()),
+        "a second key-less call on the same session must now be refused, not served: {second:?}"
+    );
+
+    let url_client = McpClient::new(&server.base_url).with_path(url.trim_start_matches(&server.base_url));
+    let whoami = url_client
         .tools_call("host.whoami", json!({}))
         .await
-        .expect("a key-less host.whoami on the bound session must succeed");
+        .expect("host.whoami over this tenant's own /u/ URL must succeed");
     let whoami = extract_structured(&whoami);
     assert_eq!(
         whoami["tenant"].as_str(),
         Some(implicit_tenant.as_str()),
-        "host.whoami must report the same tenant this session was bound to: {whoami}"
+        "host.whoami must report the tenant this implicit signup created: {whoami}"
     );
     assert_eq!(
         whoami["source"].as_str(),

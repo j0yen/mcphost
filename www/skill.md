@@ -37,9 +37,10 @@ handoff in step 6.
 
 ## 4. Publish one tool
 
-Pass `onboarding.url` (or the connection you already have) and call
-`host.tool_publish(name, kind, spec)` -- no reconnect needed. The `echo`
-kind is the fastest way to prove the pipes work end to end:
+A later call on this SAME connection without a key is refused, naming the
+tenant you already are -- reconnect through `onboarding.url` and call
+`host.tool_publish(name, kind, spec)` there. The `echo` kind is the
+fastest way to prove the pipes work end to end:
 
 ```
 host.tool_publish(name="hello", kind="echo", spec={"schema": {"type": "object"}})
@@ -62,7 +63,8 @@ A python tool's own code does `import mcphost` to reach this tenant's data witho
 
 ## 5. Set one schedule
 
-Give the tenant a recurring job with `host.trigger.set`:
+Over that same reconnected URL, give the tenant a recurring job with
+`host.trigger.set`:
 
 ```
 host.trigger.set(tool="hello", kind="schedule", schedule="0 * * * *")

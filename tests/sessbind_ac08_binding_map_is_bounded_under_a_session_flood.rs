@@ -164,19 +164,30 @@ async fn real_signups_land_in_the_running_servers_own_map() {
         );
     }
 
-    // PRD-mcphost-implicit-signup: a connection that never explicitly
-    // signs up now earns exactly ONE entry -- its first bare host.* call
-    // implicitly signs it up and binds the session, same as a real
-    // signup/redeem would (requirement 1) -- not zero, and not one per
-    // request: every later call on that same session reuses the binding.
+    // PRD-mcphost-session-bound-tenant-key requirement 1/3 supersedes this
+    // block's original expectation: an implicit signup no longer lands in
+    // `state.session_bindings` at all (that map stays exactly what explicit
+    // `signup`/`host.redeem` left it at, above) -- it lands in the
+    // separate `state.implicit_signup_memory`, and by default a later
+    // key-less call on the same session is refused and named rather than
+    // silently reusing the binding (see sessbind_ac15 for the dedicated
+    // proof of that refusal). What's unaffected either way: not zero, and
+    // not one per request -- the map gains exactly one entry for the
+    // session's first call and never grows further from it.
     let anonymous = McpClient::new(&server.base_url).with_session_continuity();
     for _ in 0..10 {
         let _ = anonymous.tools_call("host.catalog.search", json!({})).await;
     }
     assert_eq!(
         server.state.session_bindings.len(),
-        6,
-        "the anonymous session's own first call implicitly signs up and binds exactly once; \
+        5,
+        "an implicit signup must never grow state.session_bindings -- that map stays exactly \
+         what the five explicit signups above left it at"
+    );
+    assert_eq!(
+        server.state.implicit_signup_memory.len(),
+        1,
+        "the anonymous session's own first call implicitly signs up and memoes exactly once; \
          the other nine requests on that same session must never grow the map further"
     );
 
@@ -188,7 +199,7 @@ async fn real_signups_land_in_the_running_servers_own_map() {
         .expect("handoff signup");
     assert_eq!(
         server.state.session_bindings.len(),
-        6,
+        5,
         "a handoff signup returns a token, not a key, so it binds nothing yet"
     );
 }

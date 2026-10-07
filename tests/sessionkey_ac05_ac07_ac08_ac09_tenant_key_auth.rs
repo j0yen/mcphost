@@ -56,6 +56,13 @@ async fn whoami_via_tenant_key_matches_the_bearer_path() {
     // tenant does -- that asymmetry is this PRD's own intent, not a
     // violation of "same payload", so strip it before the equivalence check.
     arg_result.as_object_mut().unwrap().remove("next");
+    // PRD-mcphost-session-bound-tenant-key requirement 1 (AC3/AC6):
+    // resolve_tenant_key_auth's own successful argument auth is this
+    // connection's own call site that writes AppState::tenant_key_arg_memory
+    // -- a bearer-header call never does (the PRD's own single-write-site
+    // design) -- so the argument path alone gains session_tenant on this
+    // very call. Same deliberate-asymmetry treatment as `next` above.
+    arg_result.as_object_mut().unwrap().remove("session_tenant");
     assert_eq!(
         bearer_result, arg_result,
         "an argument-authenticated whoami must return exactly what the bearer path returns"

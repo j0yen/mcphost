@@ -195,8 +195,17 @@ pub enum AppError {
     /// `INVALID_REQUEST` here as "token expired", sending the caller to fix
     /// a token it never had instead of the one string argument it forgot.
     /// The next split of the auth variants should keep it here.
+    /// PRD-mcphost-session-bound-tenant-key requirement 2 (AC2, AC3):
+    /// `Some(namespace)` when this connection already named a tenant --
+    /// either an earlier successful `tenant_key` argument or an implicit
+    /// signup this exact session performed (see `AppState::implicit_signup_memory`/
+    /// `AppState::tenant_key_arg_memory`) -- so the refusal can name it
+    /// (`data.tenant`/`data.hint`) instead of just saying the argument is
+    /// missing. `None` keeps the original, unnamed refusal for every other
+    /// `host.*`/`billing.*` call with neither header nor argument on a
+    /// connection with no memory at all.
     #[error("tenant_key is required: pass the key that signup returned as the tenant_key argument")]
-    TenantKeyMissing,
+    TenantKeyMissing(Option<String>),
     /// PRD-mcphost-auth-error-names-argument requirement 2 / AC2-3: a
     /// `tenant_key` argument present but matching no tenant (or a disabled
     /// one, which stays [`AppError::TenantDisabled`] -- unchanged, see
@@ -410,7 +419,7 @@ impl AppError {
             // distinct from the two argument-path codes below now that
             // there are three ways to fail auth instead of one.
             AppError::Unauthorized => "bearer_invalid",
-            AppError::TenantKeyMissing => "tenant_key_missing",
+            AppError::TenantKeyMissing(_) => "tenant_key_missing",
             AppError::TenantKeyInvalid => "tenant_key_invalid",
             AppError::Forbidden => "forbidden",
             AppError::TenantDisabled => "tenant_disabled",
@@ -482,7 +491,7 @@ impl AppError {
             // missing/non-string tenant_key argument is a bad parameter,
             // the same class as every other "you forgot an argument" error
             // here, not a rejected credential.
-            | AppError::TenantKeyMissing => ErrorCode::INVALID_PARAMS,
+            | AppError::TenantKeyMissing(_) => ErrorCode::INVALID_PARAMS,
             AppError::IssuerNotFound(_) => ErrorCode::RESOURCE_NOT_FOUND,
             AppError::Storage(_)
             | AppError::Internal(_)
@@ -736,7 +745,7 @@ impl AppError {
             // 4 (AC6): names the argument and both ways to satisfy it, so a
             // caller (or its agent) reading `data` can fix its next call
             // without parsing the message.
-            AppError::TenantKeyMissing => (
+            AppError::TenantKeyMissing(_) => (
                 Some("tenant_key".to_string()),
                 Some(
                     "the string signup returned; required only when this connection \
@@ -895,6 +904,19 @@ impl AppError {
         if let AppError::TrustedIssuerQuotaExceeded { limit, used } = &self {
             obj.insert("limit".to_string(), json!(limit));
             obj.insert("used".to_string(), json!(used));
+        }
+        // PRD-mcphost-session-bound-tenant-key requirement 2 (AC2, AC3):
+        // `data.tenant` (namespace only, never the key) and a hint naming
+        // it, so a caller that dropped `tenant_key` learns which tenant
+        // this connection already is without parsing the message.
+        if let AppError::TenantKeyMissing(Some(namespace)) = &self {
+            obj.insert("tenant".to_string(), json!(namespace));
+            obj.insert(
+                "hint".to_string(),
+                json!(format!(
+                    "this connection authenticated as {namespace}; pass its tenant_key"
+                )),
+            );
         }
         // PRD-mcphost-unknown-kind-routes-to-recipe requirement 4 (AC4):
         // `registered`/`aliases` ride straight through from the variant;

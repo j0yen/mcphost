@@ -11,7 +11,25 @@ mod common;
 mod assertion;
 #[path = "support/oauth.rs"]
 mod oauth;
+#[path = "support/oauthclient.rs"]
+mod oauthclient;
 
+#[path = "toolscope_ac01_scoped_consent_and_token.rs"]
+mod toolscope_ac01_scoped_consent_and_token;
+#[path = "toolscope_ac02_scoped_token_list_and_call.rs"]
+mod toolscope_ac02_scoped_token_list_and_call;
+#[path = "toolscope_ac03_step_up_reauthorize_union_scope.rs"]
+mod toolscope_ac03_step_up_reauthorize_union_scope;
+#[path = "toolscope_ac04_mcp_key_and_pre_prd_token_unaffected.rs"]
+mod toolscope_ac04_mcp_key_and_pre_prd_token_unaffected;
+#[path = "toolscope_ac05_publish_scope_validation.rs"]
+mod toolscope_ac05_publish_scope_validation;
+#[path = "toolscope_ac06_scope_change_takes_effect_next_call.rs"]
+mod toolscope_ac06_scope_change_takes_effect_next_call;
+#[path = "toolscope_ac07_metadata_scopes_supported.rs"]
+mod toolscope_ac07_metadata_scopes_supported;
+#[path = "toolscope_ac08_admin_stats_consents_by_scope.rs"]
+mod toolscope_ac08_admin_stats_consents_by_scope;
 #[path = "tooltest_ac12_log_marking.rs"]
 mod tooltest_ac12_log_marking;
 #[path = "tooltest_ac3_http_dry_run.rs"]

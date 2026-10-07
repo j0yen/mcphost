@@ -2530,6 +2530,7 @@ mod tests {
     async fn bare_state(dir: &Path) -> AppState {
         let db = crate::db::Db::open(dir).expect("open db");
         db.migrate().await.expect("migrate");
+        let session_bindings = crate::session_bind::SessionBindings::new();
         AppState {
             db,
             kinds: crate::kinds::KindRegistry::with_builtin(),
@@ -2580,12 +2581,15 @@ mod tests {
             end_user_activity: Default::default(),
             oauth_healthz_cache: Default::default(),
             verified_client_ids: crate::state::VerifiedClientIds::empty(),
-            session_bindings: crate::session_bind::SessionBindings::new(),
+            session_bindings: session_bindings.clone(),
             invite_hints: crate::invites::InviteHintTracker::new(),
             lineage_cache: crate::lineage::new_cache(),
             lineage_trace_pages: crate::lineage::new_trace_page_cache(),
             public_url_sync_deadline: crate::state::PUBLIC_URL_SYNC_DEADLINE,
             url_rate_limiter: crate::hooks::EventRateLimiter::new(),
+            implicit_signup_memory: crate::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
+            tenant_key_arg_memory: crate::session_bind::SessionBindings::new_sharing_secret(&session_bindings),
+            reuse_session_tenant: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 
