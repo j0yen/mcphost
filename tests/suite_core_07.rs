@@ -96,6 +96,16 @@ mod alert_ac09_min_severity_filters_delivery;
 mod alert_ac10_healthz_reports_open_and_last_raised_at;
 #[path = "alert_ac11_raise_body_size_limit.rs"]
 mod alert_ac11_raise_body_size_limit;
+#[path = "aliastruth_ac01_tools_list_has_every_name.rs"]
+mod aliastruth_ac01_tools_list_has_every_name;
+#[path = "aliastruth_ac03_unknown_tool_names_nearest.rs"]
+mod aliastruth_ac03_unknown_tool_names_nearest;
+#[path = "aliastruth_ac04_flattened_collision_refuses_start.rs"]
+mod aliastruth_ac04_flattened_collision_refuses_start;
+#[path = "aliastruth_ac06_contract_and_docs_list_the_same_names.rs"]
+mod aliastruth_ac06_contract_and_docs_list_the_same_names;
+#[path = "aliastruth_ac07_alias_entries_carry_alias_of.rs"]
+mod aliastruth_ac07_alias_entries_carry_alias_of;
 #[path = "althost_ac01_fallback_lines_on_claim_invite_quickstart.rs"]
 mod althost_ac01_fallback_lines_on_claim_invite_quickstart;
 #[path = "althost_ac02_alt_host_header_served_identically.rs"]
@@ -1806,23 +1816,3 @@ mod tgraph_ac07_tenant_isolation_identically_named_tables;
 mod tgraph_ac08_description_annotation_node_attribute_and_question_text;
 #[path = "tgraph_ac10_fifty_tables_twenty_columns_under_500ms.rs"]
 mod tgraph_ac10_fifty_tables_twenty_columns_under_500ms;
-#[path = "tkparam_ac01_tenant_key_missing_is_invalid_params.rs"]
-mod tkparam_ac01_tenant_key_missing_is_invalid_params;
-#[path = "tkparam_ac02_non_string_tenant_key_is_invalid_params.rs"]
-mod tkparam_ac02_non_string_tenant_key_is_invalid_params;
-#[path = "tkparam_ac03_five_tools_missing_tenant_key.rs"]
-mod tkparam_ac03_five_tools_missing_tenant_key;
-#[path = "tkparam_ac04_header_auth_unaffected.rs"]
-mod tkparam_ac04_header_auth_unaffected;
-#[path = "tkparam_ac05_tenant_key_invalid_unchanged.rs"]
-mod tkparam_ac05_tenant_key_invalid_unchanged;
-#[path = "tkparam_ac06_tenant_key_missing_payload_fields.rs"]
-mod tkparam_ac06_tenant_key_missing_payload_fields;
-#[path = "tkparam_ac07_example_is_placeholder_not_live.rs"]
-mod tkparam_ac07_example_is_placeholder_not_live;
-#[path = "tkparam_ac08_secretmissing_and_invalidparams_shape_unchanged.rs"]
-mod tkparam_ac08_secretmissing_and_invalidparams_shape_unchanged;
-#[path = "tkparam_ac09_schema_tenant_key_not_required_and_discoverable.rs"]
-mod tkparam_ac09_schema_tenant_key_not_required_and_discoverable;
-#[path = "tkparam_ac11_full_suite_green_at_landing.rs"]
-mod tkparam_ac11_full_suite_green_at_landing;

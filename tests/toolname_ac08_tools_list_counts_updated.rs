@@ -46,17 +46,31 @@ const POST_PRD_NON_ALIAS_GROWTH: usize = 3;
 /// row-policy's own later, separate addition.
 const ROW_POLICY_TOOLS_ADDED: usize = 5;
 
+/// PRD-mcphost-tools-list-alias-truth: one flattened `a_b_c` clone per
+/// dotted canonical, read off the registry rather than a literal.
+fn flattened_count(kinds: &KindRegistry) -> usize {
+    mcphost::handler::canonical_control_plane_names(kinds)
+        .iter()
+        .filter(|n| mcphost::tool_aliases::flattened_form(n).is_some())
+        .count()
+}
+
 #[test]
 fn full_registry_grew_by_exactly_the_alias_count_with_nothing_removed() {
     let kinds = KindRegistry::with_builtin();
     let total = host_tool_descriptors(&kinds).len();
     assert_eq!(
         total,
-        PRE_PRD_TOTAL + TOOL_ALIASES.len() + POST_PRD_GROWTH + POST_PRD_NON_ALIAS_GROWTH + ROW_POLICY_TOOLS_ADDED,
+        PRE_PRD_TOTAL
+            + TOOL_ALIASES.len()
+            + POST_PRD_GROWTH
+            + POST_PRD_NON_ALIAS_GROWTH
+            + ROW_POLICY_TOOLS_ADDED
+            + flattened_count(&kinds),
         "the full host.*/billing.* registry must have grown by exactly the number of aliases \
          this PRD added (plus any later-landing PRD's own non-alias tools, and any earlier- \
          or later-landing PRD's own documented growth, including row-policy's own later five \
          tools), with nothing removed"
     );
-    assert_eq!(total, 188, "pin the exact new total PRD-mcphost-invite-links, PRD-mcphost-result-handles, and this PRD's own growth grew it to");
+    assert_eq!(total, 356, "pin the exact new total (188 + 168 flattened forms, PRD-mcphost-tools-list-alias-truth); PRD-mcphost-invite-links, PRD-mcphost-result-handles, and this PRD's own growth grew it to");
 }

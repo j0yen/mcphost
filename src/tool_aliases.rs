@@ -88,6 +88,77 @@ pub fn aliases_of(canonical: &str) -> Vec<&'static str> {
     TOOL_ALIASES.iter().filter(|a| a.canonical == canonical).map(|a| a.alias).collect()
 }
 
+// ---- PRD-mcphost-tools-list-alias-truth: one registry --------------------
+
+/// One row of the name registry: a canonical tool, every deprecated alias
+/// pointing at it, and its flattened (`a_b_c`) form -- the name MCP clients
+/// build from `mcp__<server>__<name>`. `tools/list`, the dispatcher, the
+/// contract dump and the docs all read these rows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegistryEntry {
+    pub canonical: String,
+    pub aliases: Vec<&'static str>,
+    /// `None` when the canonical has no `.` to flatten (e.g. `signup`).
+    pub flattened: Option<String>,
+}
+
+/// A flattened name that would shadow a different tool.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegistryCollision {
+    pub flattened: String,
+    pub first: String,
+    pub second: String,
+}
+
+impl std::fmt::Display for RegistryCollision {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "tool name collision: `{}` and `{}` both resolve to `{}`",
+            self.first, self.second, self.flattened
+        )
+    }
+}
+
+impl std::error::Error for RegistryCollision {}
+
+/// `host.tool.run` -> `host_tool_run`; `None` for a name with no `.`.
+pub fn flattened_form(canonical: &str) -> Option<String> {
+    canonical.contains('.').then(|| canonical.replace('.', "_"))
+}
+
+/// The single registry function: `(canonical, aliases[], flattened)` per
+/// canonical name in `canonicals`. Fails when two tools claim one flattened
+/// name (`a.b_c` vs `a_b.c`), or a flattened name equals another tool's
+/// exact name or alias.
+pub fn build_registry(canonicals: &[&str]) -> Result<Vec<RegistryEntry>, RegistryCollision> {
+    // exact name (canonical or alias) -> owning canonical
+    let mut owners: HashMap<String, String> = HashMap::new();
+    for c in canonicals {
+        owners.insert((*c).to_string(), (*c).to_string());
+        for a in aliases_of(c) {
+            owners.entry(a.to_string()).or_insert_with(|| (*c).to_string());
+        }
+    }
+    let mut claimed: HashMap<String, String> = HashMap::new();
+    let mut out = Vec::with_capacity(canonicals.len());
+    for c in canonicals {
+        let flattened = flattened_form(c);
+        if let Some(f) = &flattened {
+            if let Some(other) = owners.get(f).filter(|o| o.as_str() != *c) {
+                return Err(RegistryCollision { flattened: f.clone(), first: other.clone(), second: (*c).to_string() });
+            }
+            if let Some(other) = claimed.insert(f.clone(), (*c).to_string())
+                && other != *c
+            {
+                return Err(RegistryCollision { flattened: f.clone(), first: other, second: (*c).to_string() });
+            }
+        }
+        out.push(RegistryEntry { canonical: (*c).to_string(), aliases: aliases_of(c), flattened });
+    }
+    Ok(out)
+}
+
 // ---- requirement 5: alias-call metrics -------------------------------
 
 /// `{canonical: (alias_calls, canonical_calls)}`.

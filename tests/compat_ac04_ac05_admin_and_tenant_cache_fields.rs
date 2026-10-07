@@ -75,7 +75,7 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
     assert!(
         names
             .iter()
-            .all(|n| n.starts_with("host.") || n.starts_with("billing.")),
+            .all(|n| n.starts_with("host.") || n.starts_with("billing.") || n.starts_with("host_") || n.starts_with("billing_")),
         "a tenant with no published tools must see only host.*/billing.* tools: {names:?}"
     );
     // PRD-mcphost-tool-naming-convention-and-aliases requirement 2/3: 147
@@ -101,7 +101,9 @@ async fn ac5_fresh_tenant_tools_list_has_cache_fields() {
         // PRD-mcphost-row-policy rebase onto main (run 353, 2026-10-04):
         // this PRD's own five host.policy.set/list/attrs_set and
         // host.audit.chain/verify tools join on top -- 183 + 5 = 188.
-        188,
+        // PRD-mcphost-tools-list-alias-truth: +168 flattened `a_b_c` forms
+        // (one per dotted canonical), 188 + 168 = 356.
+        356,
         "there must be exactly the sixteen host.* control-plane tools \
          (incl. host.quickstart, host.tool_run, host.bridge_test, host.spec_test -- \
          PRD-mcphost-tool-test, and host.redeem/host.key_rotate -- \

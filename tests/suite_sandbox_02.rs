@@ -28,6 +28,10 @@ mod uptime_probes;
 
 #[path = "ac17_kind_conformance.rs"]
 mod ac17_kind_conformance;
+#[path = "aliastruth_ac02_flattened_call_runs_canonical.rs"]
+mod aliastruth_ac02_flattened_call_runs_canonical;
+#[path = "aliastruth_ac05_contract_next_hints_are_advertised.rs"]
+mod aliastruth_ac05_contract_next_hints_are_advertised;
 #[path = "bridgedisc_ac01_sandbox_api_source_of_truth.rs"]
 mod bridgedisc_ac01_sandbox_api_source_of_truth;
 #[path = "bridgedisc_ac02_starter_tool_bridge_table.rs"]
