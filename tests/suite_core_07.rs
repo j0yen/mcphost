@@ -1766,6 +1766,16 @@ mod tenantprm_ac06_whoami_carries_resource_and_metadata_url;
 mod tenantprm_ac07_key_and_oauth_suites_unchanged;
 #[path = "tenantprm_ac09_llms_txt_documents_tenant_oauth.rs"]
 mod tenantprm_ac09_llms_txt_documents_tenant_oauth;
+#[path = "testtruth_ac01_chain_prev_will_fail.rs"]
+mod testtruth_ac01_chain_prev_will_fail;
+#[path = "testtruth_ac02_chain_prev_result_pass.rs"]
+mod testtruth_ac02_chain_prev_result_pass;
+#[path = "testtruth_ac03_chain_prev_no_output_schema_unverifiable.rs"]
+mod testtruth_ac03_chain_prev_no_output_schema_unverifiable;
+#[path = "testtruth_ac06_publish_gate_verdict.rs"]
+mod testtruth_ac06_publish_gate_verdict;
+#[path = "testtruth_ac07_quickstart_chain_verdict_blurb.rs"]
+mod testtruth_ac07_quickstart_chain_verdict_blurb;
 #[path = "tgraph_ac01_foreign_key_edge_and_graph_includes_both_tables.rs"]
 mod tgraph_ac01_foreign_key_edge_and_graph_includes_both_tables;
 #[path = "tgraph_ac02_join_paths_one_step_foreign_key.rs"]
@@ -1804,19 +1814,3 @@ mod tkparam_ac08_secretmissing_and_invalidparams_shape_unchanged;
 mod tkparam_ac09_schema_tenant_key_not_required_and_discoverable;
 #[path = "tkparam_ac11_full_suite_green_at_landing.rs"]
 mod tkparam_ac11_full_suite_green_at_landing;
-#[path = "toolname_ac01_lint_reports_violations.rs"]
-mod toolname_ac01_lint_reports_violations;
-#[path = "toolname_ac02_alias_dispatch_hint_and_log.rs"]
-mod toolname_ac02_alias_dispatch_hint_and_log;
-#[path = "toolname_ac03_tools_list_alias_entries.rs"]
-mod toolname_ac03_tools_list_alias_entries;
-#[path = "toolname_ac04_docs_names_exist_and_tools_doc_fresh.rs"]
-mod toolname_ac04_docs_names_exist_and_tools_doc_fresh;
-#[path = "toolname_ac05_alias_metrics_counter.rs"]
-mod toolname_ac05_alias_metrics_counter;
-#[path = "toolname_ac06_did_you_mean_suggests_canonical.rs"]
-mod toolname_ac06_did_you_mean_suggests_canonical;
-#[path = "toolname_ac07_whoami_naming_rule_url_once_per_session.rs"]
-mod toolname_ac07_whoami_naming_rule_url_once_per_session;
-#[path = "toolname_ac08_tools_list_counts_updated.rs"]
-mod toolname_ac08_tools_list_counts_updated;

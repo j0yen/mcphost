@@ -136,6 +136,19 @@ pub fn chain_kind_registry() -> KindRegistry {
     kinds
 }
 
+/// `echo` (base) + `chain` + a test-relaxed `http` -- PRD-mcphost-tool-
+/// test-truth's `testtruth_ac0[1-3]*.rs` fixtures publish an `http` step
+/// so they can declare `outputs` (checked by `kinds::chain::verdict`'s own
+/// static mapping check) without needing a real sandbox; the dry run never
+/// actually reaches the upstream, so its URL need not be reachable.
+pub fn chain_and_http_kind_registry() -> KindRegistry {
+    let mut kinds = KindRegistry::with_builtin();
+    kinds.register(Arc::new(mcphost::kinds::chain::ChainKind));
+    let lookup: Arc<dyn NameLookup> = Arc::new(FixedLookup(HashMap::new()));
+    kinds.register(Arc::new(HttpKind::for_test("127.0.0.1", lookup)));
+    kinds
+}
+
 /// PRD-mcphost-sandbox-ready: a shell script body for
 /// `PythonKind::set_selftest_interpreter_for_test` that writes
 /// `stderr_line` to stderr and exits 1 -- simulates one specific sandbox

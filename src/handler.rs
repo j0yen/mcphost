@@ -838,9 +838,15 @@ fn tool_publish_description(kinds: &KindRegistry) -> String {
 /// than inlined into the `Tool::new` calls below -- so the length test
 /// (`tests/surface_ac02_dry_run_descriptions.rs`) and this function read the
 /// exact same source, per the PRD's own Technical considerations.
+// PRD-mcphost-tool-test-truth P0 requirement 1: names `verdict` (AC5's
+// own contract test checks every kind's dry-run response carries one) --
+// kept under the 160-char cap `tests/surface_ac02_dry_run_descriptions.rs`
+// enforces, so something had to go; "writes are rolled back and reported
+// under dry_run" compresses to "writes rolled back" without losing its
+// meaning.
 const TOOL_TEST_DESC: &str =
-    "Dry-run a published tool by name: writes are rolled back and reported under dry_run, nothing \
-     delivered; for the other cases see host.quickstart.";
+    "Dry-run a published tool by name: verdict (pass/will_fail/unverifiable), writes rolled back \
+     (dry_run); see host.quickstart.";
 const BRIDGE_TEST_DESC: &str =
     "Dry-run an unpublished http spec against its real upstream; for the other cases see host.quickstart.";
 const SPEC_TEST_DESC: &str =
@@ -6334,12 +6340,24 @@ impl McpHostHandler {
             sidecar_ops_max: self.sidecar_ops_cap(tenant),
             // PRD-mcphost-composition requirement 3/AC8: `chain`'s dry run
             // (`ctx.test_mode`) resolves only literal and `$.input.*`
-            // mappings -- it never dispatches a step, so it never needs
-            // `compose_db`/`compose_kinds` here.
+            // mappings -- it never dispatches a step.
+            //
+            // PRD-mcphost-tool-test-truth P0 requirement 2 (AC1-3): `chain`'s
+            // own dry run still needs read-only descriptor lookups (a
+            // predecessor step's declared outputs) to give `$.prev`/
+            // `$.steps[i]` a verdict, so `compose_db`/`compose_kinds` ARE
+            // populated here -- `compose_children` stays `None` either way,
+            // and [`crate::kinds::compose_dispatch`] checks `compose_children`
+            // before it ever reaches `compose_db`/`compose_kinds`, so a
+            // composing python tool's `mcphost.call` still refuses with
+            // `composition is unavailable in this call context` exactly as
+            // before (AC4's own non-goal: no real dispatch inside a dry
+            // run) -- only `chain`'s own lookup-only use of these two
+            // fields changes.
             compose_depth: 0,
             compose_children: None,
-            compose_db: None,
-            compose_kinds: None,
+            compose_db: Some(self.state.db.clone()),
+            compose_kinds: Some(self.state.kinds.clone()),
             concurrent_calls_per_tenant: self.concurrent_calls_cap(tenant),
             // PRD-mcphost-sandbox-egress-allowlist requirement 1/2/3: resolved
             // from the tenant's plan here, once, same convention as
@@ -6426,6 +6444,15 @@ impl McpHostHandler {
                     map.entry("dry_run".to_string()).or_insert_with(|| {
                         json!({"writes": dry_run.writes(), "delivered": false, "rolled_back": true})
                     });
+                    // PRD-mcphost-tool-test-truth P0 requirement 1 (AC5):
+                    // `.entry` (not a plain `insert`) so a kind that already
+                    // set its own `verdict` -- `chain`'s own `pass`/
+                    // `will_fail`/`unverifiable` (AC1-3), or a composing
+                    // python tool's `unverifiable` (AC4) -- is left alone;
+                    // every other dry run that got this far ran/resolved
+                    // cleanly with no composition to doubt, so it defaults
+                    // to `pass`.
+                    map.entry("verdict".to_string()).or_insert_with(|| json!("pass"));
                 }
                 Ok(value)
             }
