@@ -575,7 +575,17 @@ fn render_consent_page(
     resolved_scope: &str,
     scope_groups: &str,
     error: Option<&str>,
+    offer_new_workspace: bool,
 ) -> String {
+    // PRD-mcphost-oauth-first-grant-signup requirement 1: the third form,
+    // only where a brand-new tenant could actually own the grant (never a
+    // per-tenant resource, whose consent must prove THAT tenant).
+    let new_workspace_html = if offer_new_workspace {
+        "<p>...or, if you have no workspace yet:</p>\
+         <button type=\"submit\" name=\"new_workspace\" value=\"1\">Create a new workspace</button>"
+    } else {
+        ""
+    };
     let error_html = error
         .map(|e| format!("<p class=\"err\">{}</p>", html_escape(e)))
         .unwrap_or_default();
@@ -620,6 +630,7 @@ fn render_consent_page(
              <p>...or with a claim code from your email:</p>\
              <input type=\"text\" name=\"claim_code\" placeholder=\"claim code\">\
              <button type=\"submit\">Approve</button>\
+             {new_workspace_html}\
              </form>",
             resource = html_escape(resource),
             response_type = html_escape(opt_str(&params.response_type)),
@@ -918,6 +929,7 @@ pub async fn get_authorize(
             &resolved_scope,
             &scope_groups,
             None,
+            resource_tenant.is_none(),
         ),
     )
 }
@@ -943,6 +955,10 @@ pub struct ConsentForm {
     pub tenant_key: Option<String>,
     #[serde(default)]
     pub claim_code: Option<String>,
+    /// PRD-mcphost-oauth-first-grant-signup requirement 1: the "Create a
+    /// new workspace" submit button's own value.
+    #[serde(default)]
+    pub new_workspace: Option<String>,
 }
 
 fn consent_form_params(form: &ConsentForm) -> AuthorizeParams {
@@ -984,6 +1000,55 @@ async fn resolve_consent_tenant(
         }
     }
     None
+}
+
+/// PRD-mcphost-oauth-first-grant-signup requirement 2/3: mints the tenant
+/// through [`crate::control::signup`] -- the same limiter, fleet-IP
+/// classification, ban check and pause file implicit signup uses -- and
+/// renders its refusal on the consent page with the same error code.
+async fn create_first_grant_tenant(
+    state: &AppState,
+    headers: &HeaderMap,
+    ip: &str,
+) -> Result<crate::db::Tenant, Box<Response>> {
+    let ulid = crate::state::new_ulid();
+    let name = format!("agent-{}", ulid[ulid.len() - 8..].to_lowercase());
+    let user_agent = headers.get("user-agent").and_then(|v| v.to_str().ok());
+    let signup = crate::control::signup(
+        state,
+        &json!({"name": name, "source": "oauth"}),
+        ip,
+        crate::control::SignupAttribution {
+            synthetic_header: None,
+            client_name: None,
+            client_version: None,
+            user_agent,
+            origin_header: None,
+        },
+    )
+    .await;
+    let refusal = |err: AppError| {
+        let err = match err {
+            AppError::RateLimited => {
+                AppError::signup_rate_limited(&state.public_url, crate::state::SIGNUP_RATE_LIMIT_WINDOW_SECS)
+            }
+            other => other,
+        };
+        let status = match err.code() {
+            "signup_rate_limited" | "signup_paused" => StatusCode::TOO_MANY_REQUESTS,
+            _ => StatusCode::BAD_REQUEST,
+        };
+        Box::new(render_inline_error_status(status, err.code(), &err.to_string()))
+    };
+    let value = signup.map_err(refusal)?;
+    let key = value
+        .get("key")
+        .and_then(Value::as_str)
+        .ok_or_else(|| Box::new(render_inline_error("server_error", "could not create a workspace")))?;
+    match state.db.find_tenant_by_key_hash(crate::auth::hash_key(key)).await {
+        Ok(Some(tenant)) => Ok(tenant),
+        _ => Err(Box::new(render_inline_error("server_error", "could not create a workspace"))),
+    }
 }
 
 /// requirement 3/4: mints a single-use authorization code for `tenant` and
@@ -1071,7 +1136,22 @@ pub async fn post_authorize(
             "this tenant's resource requires federated login, not a tenant key",
         );
     }
-    let proven_tenant = resolve_consent_tenant(&state, form.tenant_key.as_deref(), form.claim_code.as_deref()).await;
+    // PRD-mcphost-oauth-first-grant-signup requirement 2: neither credential
+    // posted + the new-workspace button + a host-wide resource (a per-tenant
+    // resource must prove THAT tenant) mints a fresh tenant for this grant.
+    let blank = |v: &Option<String>| v.as_deref().is_none_or(str::is_empty);
+    let first_grant_signup = !blank(&form.new_workspace)
+        && blank(&form.tenant_key)
+        && blank(&form.claim_code)
+        && resource_tenant.is_none();
+    let proven_tenant = if first_grant_signup {
+        match create_first_grant_tenant(&state, &headers, &ip).await {
+            Ok(tenant) => Some(tenant),
+            Err(resp) => return *resp,
+        }
+    } else {
+        resolve_consent_tenant(&state, form.tenant_key.as_deref(), form.claim_code.as_deref()).await
+    };
     // PRD-mcphost-tool-scopes-and-consent requirement 2: for a per-tenant
     // resource, the proof of ownership must be for THAT tenant -- another
     // tenant's own valid key proves nothing about `resource`'s catalog.
@@ -1105,6 +1185,34 @@ pub async fn post_authorize(
                         Some(&ip),
                     )
                     .await;
+                    // PRD-mcphost-oauth-first-grant-signup requirement 5: the
+                    // tenant exists because of this grant -- one
+                    // `first_grant_signup` event naming the client, in the
+                    // tenant's own `host.oauth.audit` and the operator's
+                    // `admin_audit` (`admin.audit_log`). Best-effort, same
+                    // posture as the consent row above.
+                    if first_grant_signup {
+                        let _ = crate::oauth_policy::record_audit(
+                            &state,
+                            Some(tenant.id),
+                            "first_grant_signup",
+                            Some(identity.client_id.as_str()),
+                            Some(identity.method),
+                            None,
+                            None,
+                            Some(&ip),
+                        )
+                        .await;
+                        let _ = state
+                            .db
+                            .record_admin_audit(
+                                "oauth".to_string(),
+                                "first_grant_signup".to_string(),
+                                Some(tenant.namespace.clone()),
+                                Some(identity.client_id.clone()),
+                            )
+                            .await;
+                    }
                     mint_code_and_redirect(
                         &state,
                         &tenant,
@@ -1168,6 +1276,7 @@ pub async fn post_authorize(
                     &resolved_scope,
                     &scope_groups,
                     Some("that key or claim code did not verify -- try again"),
+                    resource_tenant.is_none(),
                 ),
             )
         }
