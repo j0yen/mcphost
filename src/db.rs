@@ -9242,10 +9242,11 @@ impl Db {
     /// row, same `human`/`fleet`/`probe` three-way as `tenants.funnel_origin`.
     pub async fn record_oauth_funnel_event(
         &self,
-        event: &'static str,
+        event: &str,
         funnel_origin: &str,
     ) -> Result<(), AppError> {
         let now = now_unix();
+        let event = event.to_string();
         let funnel_origin = funnel_origin.to_string();
         self.with_conn(move |conn| {
             conn.execute(

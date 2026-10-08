@@ -288,7 +288,7 @@ pub fn run(check: bool, kinds: &KindRegistry) -> std::io::Result<bool> {
     // this function's one write to README.md below carries both splices'
     // effects rather than one clobbering the other.
     for (path, _current, spliced) in &mut support_docs {
-        if *path == "README.md" {
+        if *path == "README.md" || *path == "www/llms.txt" {
             *spliced = crate::install_links::splice_install_links_section(
                 spliced.as_str(),
                 crate::install_links::CANONICAL_PUBLIC_URL,

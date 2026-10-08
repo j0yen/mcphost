@@ -834,6 +834,20 @@ mod lineage_ac09_model_set_role_change_notes_chart;
 mod lineage_ac10_blast_radius_1000_nodes_3000_edges_under_50ms;
 #[path = "lineage_ac11_chart_store_registers_edge_and_gates_drop.rs"]
 mod lineage_ac11_chart_store_registers_edge_and_gates_drop;
+#[path = "mcphost-install-links-more-clients_ac01_twelve_surfaces.rs"]
+mod mcphost_install_links_more_clients_ac01_twelve_surfaces;
+#[path = "mcphost-install-links-more-clients_ac02_command_artefacts_carry_url_once.rs"]
+mod mcphost_install_links_more_clients_ac02_command_artefacts_carry_url_once;
+#[path = "mcphost-install-links-more-clients_ac03_connect_page_groups_every_surface.rs"]
+mod mcphost_install_links_more_clients_ac03_connect_page_groups_every_surface;
+#[path = "mcphost-install-links-more-clients_ac04_connect_go_every_id.rs"]
+mod mcphost_install_links_more_clients_ac04_connect_go_every_id;
+#[path = "mcphost-install-links-more-clients_ac05_quickstart_twelve_personal_surfaces.rs"]
+mod mcphost_install_links_more_clients_ac05_quickstart_twelve_personal_surfaces;
+#[path = "mcphost-install-links-more-clients_ac06_docs_block_regenerates_from_table.rs"]
+mod mcphost_install_links_more_clients_ac06_docs_block_regenerates_from_table;
+#[path = "mcphost-install-links-more-clients_ac07_prior_prd_tests_still_apply.rs"]
+mod mcphost_install_links_more_clients_ac07_prior_prd_tests_still_apply;
 #[path = "mcphost_admin_schema_contract_ac01_tenants_schema_version.rs"]
 mod mcphost_admin_schema_contract_ac01_tenants_schema_version;
 #[path = "mcphost_admin_schema_contract_ac02_listings_validate_v1_schema.rs"]
@@ -1798,21 +1812,3 @@ mod testtruth_ac03_chain_prev_no_output_schema_unverifiable;
 mod testtruth_ac06_publish_gate_verdict;
 #[path = "testtruth_ac07_quickstart_chain_verdict_blurb.rs"]
 mod testtruth_ac07_quickstart_chain_verdict_blurb;
-#[path = "tgraph_ac01_foreign_key_edge_and_graph_includes_both_tables.rs"]
-mod tgraph_ac01_foreign_key_edge_and_graph_includes_both_tables;
-#[path = "tgraph_ac02_join_paths_one_step_foreign_key.rs"]
-mod tgraph_ac02_join_paths_one_step_foreign_key;
-#[path = "tgraph_ac03_two_step_same_name_path.rs"]
-mod tgraph_ac03_two_step_same_name_path;
-#[path = "tgraph_ac04_no_shared_columns_returns_no_path_with_candidates.rs"]
-mod tgraph_ac04_no_shared_columns_returns_no_path_with_candidates;
-#[path = "tgraph_ac05_next_questions_five_entries_all_runnable.rs"]
-mod tgraph_ac05_next_questions_five_entries_all_runnable;
-#[path = "tgraph_ac06_stale_after_append_tick_clears.rs"]
-mod tgraph_ac06_stale_after_append_tick_clears;
-#[path = "tgraph_ac07_tenant_isolation_identically_named_tables.rs"]
-mod tgraph_ac07_tenant_isolation_identically_named_tables;
-#[path = "tgraph_ac08_description_annotation_node_attribute_and_question_text.rs"]
-mod tgraph_ac08_description_annotation_node_attribute_and_question_text;
-#[path = "tgraph_ac10_fifty_tables_twenty_columns_under_500ms.rs"]
-mod tgraph_ac10_fifty_tables_twenty_columns_under_500ms;
