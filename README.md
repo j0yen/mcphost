@@ -237,9 +237,19 @@ the bearer key `signup` returns.
 claude mcp add --transport http mcphost https://mcphost.dev/mcp
 ```
 
-**Cursor** -- [Add to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=mcphost&config=eyJ1cmwiOiJodHRwczovL21jcGhvc3QuZGV2L21jcCJ9), or add `https://mcphost.dev/mcp` to `mcp.json` directly.
+Docs: <https://code.claude.com/docs/en/mcp> (checked 2026-10-07)
 
-**VS Code** -- [Add to VS Code](vscode:mcp/install?%7B%22name%22%3A%22mcphost%22%2C%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fmcphost%2Edev%2Fmcp%22%7D), or add `https://mcphost.dev/mcp` to your MCP config directly.
+**Cursor**
+
+[Add to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=mcphost&config=eyJ1cmwiOiJodHRwczovL21jcGhvc3QuZGV2L21jcCJ9), or add `https://mcphost.dev/mcp` to your MCP config directly.
+
+Docs: <https://docs.cursor.com/en/tools/mcp> (checked 2026-10-07)
+
+**VS Code**
+
+[Add to VS Code](vscode:mcp/install?%7B%22name%22%3A%22mcphost%22%2C%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fmcphost%2Edev%2Fmcp%22%7D), or add `https://mcphost.dev/mcp` to your MCP config directly.
+
+Docs: <https://code.visualstudio.com/api/extension-guides/ai/mcp> (checked 2026-10-07)
 
 **Claude.ai**
 
@@ -247,13 +257,87 @@ claude mcp add --transport http mcphost https://mcphost.dev/mcp
 2. Name: mcphost
 3. Remote MCP server URL: https://mcphost.dev/mcp
 4. Save, then enable the connector in a chat to connect.
-<!-- install-links:end -->
+
+Docs: <https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp> (checked 2026-10-07)
 
 **Codex CLI**
 
 ```
 codex mcp add mcphost --url https://mcphost.dev/mcp
 ```
+
+Docs: <https://developers.openai.com/codex/mcp> (checked 2026-10-07)
+
+**Gemini CLI**
+
+```
+gemini mcp add --transport http mcphost https://mcphost.dev/mcp
+```
+
+Docs: <https://geminicli.com/docs/tools/mcp-server/> (checked 2026-10-07)
+
+**OpenCode**
+
+```
+opencode mcp add mcphost --url https://mcphost.dev/mcp
+```
+
+Docs: <https://opencode.ai/docs/mcp-servers/> (checked 2026-10-07)
+
+**Amp**
+
+```
+amp mcp add mcphost https://mcphost.dev/mcp
+```
+
+Docs: <https://ampcode.com/manual#mcp> (checked 2026-10-07)
+
+**Goose**
+
+1. In a Goose session, type /extension.
+2. Choose Add Remote Extension (Streamable HTTP).
+3. Name: mcphost
+4. Endpoint URL: https://mcphost.dev/mcp
+
+Docs: <https://block.github.io/goose/docs/getting-started/using-extensions/> (checked 2026-10-07)
+
+**Warp**
+
+1. In a Warp agent session, type /agent-add-mcp.
+2. Paste this server config: {"mcphost":{"url":"https://mcphost.dev/mcp"}}
+3. Save; Warp starts the server and lists its tools.
+
+Docs: <https://docs.warp.dev/agent-platform/capabilities/mcp> (checked 2026-10-07)
+
+**Windsurf**
+
+```json
+{
+  "mcpServers": {
+    "mcphost": {
+      "url": "https://mcphost.dev/mcp"
+    }
+  }
+}
+```
+
+Docs: <https://docs.windsurf.com/windsurf/cascade/mcp> (checked 2026-10-07)
+
+**Cline / Roo**
+
+```json
+{
+  "mcpServers": {
+    "mcphost": {
+      "type": "streamableHttp",
+      "url": "https://mcphost.dev/mcp"
+    }
+  }
+}
+```
+
+Docs: <https://docs.cline.bot/mcp/configuring-mcp-servers> (checked 2026-10-07)
+<!-- install-links:end -->
 
 See the live [status page](/status.html) and the
 [Acceptable Use Policy](/aup.html) before you point production traffic at

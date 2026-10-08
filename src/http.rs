@@ -1158,32 +1158,46 @@ fn personal_base_from_query(state: &AppState, u: Option<&str>) -> Option<String>
 /// no deep link of their own, so their blocks stay plain `<code>` text,
 /// no link to route through.
 fn render_connect_page(links: &crate::install_links::Links) -> String {
-    let mcp_url = crate::claim::html_escape(&links.mcp_url);
-    let claude_code_command = crate::claim::html_escape(&links.claude_code_command);
-    let steps: Vec<String> = links.claude_ai_steps.iter().map(|s| crate::claim::html_escape(s)).collect();
-    crate::claim::page(
-        "mcphost — connect",
-        &format!(
-            "<h1>Connect mcphost</h1>\
-             <p>Pick your client -- one click, or one pasted command, and the server is \
-             connected. No JavaScript runs on this page; every link below is a plain, \
-             navigable URL, and the raw endpoint always works too: <code>{mcp_url}</code></p>\
-             <h2>Cursor</h2>\
-             <p><a href=\"/connect/go/cursor\">Add to Cursor</a> -- or add <code>{mcp_url}</code> to \
-             <code>mcp.json</code> directly.</p>\
-             <h2>VS Code</h2>\
-             <p><a href=\"/connect/go/vscode\">Add to VS Code</a> -- or add <code>{mcp_url}</code> to \
-             your MCP config directly.</p>\
-             <h2>Claude Code</h2>\
-             <p>Run: <code>{claude_code_command}</code></p>\
-             <h2>Claude.ai</h2>\
-             <ol><li>{s0}</li><li>{s1}</li><li>{s2}</li><li>{s3}</li></ol>",
-            s0 = steps[0],
-            s1 = steps[1],
-            s2 = steps[2],
-            s3 = steps[3],
-        ),
-    )
+    use crate::install_links::Kind;
+    let esc = |s: &str| crate::claim::html_escape(s);
+    let mut body = format!(
+        "<h1>Connect mcphost</h1>\
+         <p>Pick your client -- one click, or one pasted command, and the server is \
+         connected. No JavaScript runs on this page; every link below is a plain, \
+         navigable URL, and the raw endpoint always works too: <code>{}</code></p>",
+        esc(&links.mcp_url)
+    );
+    for kind in Kind::ALL {
+        body.push_str(&format!("<h2>{}</h2>", kind.heading()));
+        for s in links.iter().filter(|s| s.kind == kind) {
+            body.push_str(&format!("<h3 id=\"{}\">{}</h3>", s.id, esc(s.label)));
+            match kind {
+                Kind::Command => body.push_str(&format!("<p>Run: <code>{}</code></p>", esc(&s.artefact))),
+                Kind::Deeplink => body.push_str(&format!(
+                    "<p><a href=\"/connect/go/{id}\">Add to {label}</a> -- or add <code>{url}</code> \
+                     to your MCP config directly.</p>",
+                    id = s.id,
+                    label = esc(s.label),
+                    url = esc(&links.mcp_url),
+                )),
+                Kind::Json => body.push_str(&format!("<pre><code>{}</code></pre>", esc(&s.artefact))),
+                Kind::Steps => {
+                    body.push_str("<ol>");
+                    for line in s.artefact.lines() {
+                        let text = line.split_once(". ").map_or(line, |(_, rest)| rest);
+                        body.push_str(&format!("<li>{}</li>", esc(text)));
+                    }
+                    body.push_str("</ol>");
+                }
+            }
+            body.push_str(&format!(
+                "<p><small>Docs: <a href=\"{url}\">{url}</a> (checked {checked})</small></p>",
+                url = esc(s.doc_url),
+                checked = esc(s.checked),
+            ));
+        }
+    }
+    crate::claim::page("mcphost — connect", &body)
 }
 
 /// `GET /connect/go/{client}` (PRD-mcphost-client-install-links P1
@@ -1192,36 +1206,30 @@ fn render_connect_page(links: &crate::install_links::Links) -> String {
 /// than a new table (Migration/compatibility: "no schema change beyond a
 /// new funnel event kind") with [`crate::state::classify_funnel_origin`]'s
 /// verdict for this request's own source IP -- then 302s to the client's
-/// real deep link. `client` outside the four known names is 404, same
-/// "unmapped path" shape every other unknown-id route in this file
-/// already has. Claude Code/Claude.ai carry no deep link of their own
-/// (see [`render_connect_page`]'s own doc comment), so this route only
-/// ever serves Cursor/VS Code in practice, but both names are accepted
-/// for symmetry -- redirecting back to `/connect` rather than 404ing.
+/// deep link (`deeplink` kind) or renders the surface's instruction page
+/// (every other kind). Any `client` outside the install table's twelve ids
+/// is 404 and records nothing.
 async fn connect_go(
     State(state): State<Arc<AppState>>,
     Path(client): Path<String>,
     headers: HeaderMap,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
 ) -> Response {
-    let event: &'static str = match client.as_str() {
-        "cursor" => "install_link:cursor",
-        "vscode" => "install_link:vscode",
-        "claude-code" => "install_link:claude-code",
-        "claude-ai" => "install_link:claude-ai",
-        _ => return StatusCode::NOT_FOUND.into_response(),
+    // Legacy hyphenated ids (`claude-code`, `claude-ai`) still resolve.
+    let id = client.replace('-', "_");
+    let Some(surface) = crate::install_links::surface_for(&state.public_url, &id) else {
+        return StatusCode::NOT_FOUND.into_response();
     };
     let ip = crate::claim::source_ip(&headers, peer);
     let origin = crate::state::classify_funnel_origin(&ip, false, &state.fleet_ips);
-    if let Err(e) = state.db.record_oauth_funnel_event(event, origin).await {
+    let event = format!("install_link:{}", surface.id);
+    if let Err(e) = state.db.record_oauth_funnel_event(&event, origin).await {
         tracing::warn!(error = %e, client = %client, "failed to record install_link funnel event");
     }
-    let links = crate::install_links::for_url(&state.public_url);
-    let target = match client.as_str() {
-        "cursor" => links.cursor,
-        "vscode" => links.vscode,
-        _ => "/connect".to_string(),
-    };
+    if surface.kind != crate::install_links::Kind::Deeplink {
+        return crate::claim::html_response(StatusCode::OK, render_instruction_page(&surface));
+    }
+    let target = surface.artefact;
     let Ok(location) = HeaderValue::from_str(&target) else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
@@ -1229,6 +1237,33 @@ async fn connect_go(
         Ok(resp) => resp,
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
+}
+
+/// `/connect/go/{id}` for a surface with no link of its own (command, JSON,
+/// steps): the same artefact `/connect` shows, on a page of its own.
+fn render_instruction_page(s: &crate::install_links::Surface) -> String {
+    let esc = |t: &str| crate::claim::html_escape(t);
+    let body = match s.kind {
+        crate::install_links::Kind::Steps => {
+            let items: String = s
+                .artefact
+                .lines()
+                .map(|l| format!("<li>{}</li>", esc(l.split_once(". ").map_or(l, |(_, r)| r))))
+                .collect();
+            format!("<ol>{items}</ol>")
+        }
+        _ => format!("<pre><code>{}</code></pre>", esc(&s.artefact)),
+    };
+    crate::claim::page(
+        &format!("mcphost — connect {}", s.label),
+        &format!(
+            "<h1>Connect {label}</h1>{body}<p><small>Docs: <a href=\"{url}\">{url}</a> (checked {checked})</small></p>\
+             <p><a href=\"/connect\">All clients</a></p>",
+            label = esc(s.label),
+            url = esc(s.doc_url),
+            checked = esc(s.checked),
+        ),
+    )
 }
 
 /// PRD-mcphost-url-bound-tenants requirement 1/5 (AC2, AC5): `/u/{secret}/mcp`

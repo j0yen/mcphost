@@ -14,6 +14,24 @@ mod oauth;
 #[path = "support/oauthclient.rs"]
 mod oauthclient;
 
+#[path = "tgraph_ac01_foreign_key_edge_and_graph_includes_both_tables.rs"]
+mod tgraph_ac01_foreign_key_edge_and_graph_includes_both_tables;
+#[path = "tgraph_ac02_join_paths_one_step_foreign_key.rs"]
+mod tgraph_ac02_join_paths_one_step_foreign_key;
+#[path = "tgraph_ac03_two_step_same_name_path.rs"]
+mod tgraph_ac03_two_step_same_name_path;
+#[path = "tgraph_ac04_no_shared_columns_returns_no_path_with_candidates.rs"]
+mod tgraph_ac04_no_shared_columns_returns_no_path_with_candidates;
+#[path = "tgraph_ac05_next_questions_five_entries_all_runnable.rs"]
+mod tgraph_ac05_next_questions_five_entries_all_runnable;
+#[path = "tgraph_ac06_stale_after_append_tick_clears.rs"]
+mod tgraph_ac06_stale_after_append_tick_clears;
+#[path = "tgraph_ac07_tenant_isolation_identically_named_tables.rs"]
+mod tgraph_ac07_tenant_isolation_identically_named_tables;
+#[path = "tgraph_ac08_description_annotation_node_attribute_and_question_text.rs"]
+mod tgraph_ac08_description_annotation_node_attribute_and_question_text;
+#[path = "tgraph_ac10_fifty_tables_twenty_columns_under_500ms.rs"]
+mod tgraph_ac10_fifty_tables_twenty_columns_under_500ms;
 #[path = "tkparam_ac01_tenant_key_missing_is_invalid_params.rs"]
 mod tkparam_ac01_tenant_key_missing_is_invalid_params;
 #[path = "tkparam_ac02_non_string_tenant_key_is_invalid_params.rs"]

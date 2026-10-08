@@ -882,7 +882,7 @@ def suite_content(members_meta):
         parts.append("\n".join(support_seen[name]) + "\n")
     parts.append("\n")
     for stem, _c, _s, _h in members_meta:
-        parts.append(f'#[path = "{stem}.rs"]\nmod {stem};\n')
+        parts.append(f'#[path = "{stem}.rs"]\nmod {stem.replace("-", "_")};\n')
     return "".join(parts)
 
 

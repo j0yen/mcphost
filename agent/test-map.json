@@ -38,6 +38,17 @@
     "AC8": "deferred -- operator-provisioned: AC8's Then is a live, post-deploy truth-tier nightly observation (sessions/*.jsonl on prod after deploy showing no resolved-to-nothing call failure following a verdict: pass dry run of the same spec); not in this dispatch's assigned AC list (AC1-7)."
   },
   "ac_test_map_by_prefix": {
+    "mcphost-install-links-more-clients": {
+      "_prd": "PRD-mcphost-install-links-more-clients.md (test_prefix: mcphost-install-links-more-clients)",
+      "AC1": "tests/mcphost-install-links-more-clients_ac01_twelve_surfaces.rs",
+      "AC2": "tests/mcphost-install-links-more-clients_ac02_command_artefacts_carry_url_once.rs",
+      "AC3": "tests/mcphost-install-links-more-clients_ac03_connect_page_groups_every_surface.rs",
+      "AC4": "tests/mcphost-install-links-more-clients_ac04_connect_go_every_id.rs",
+      "AC5": "tests/mcphost-install-links-more-clients_ac05_quickstart_twelve_personal_surfaces.rs",
+      "AC6": "tests/mcphost-install-links-more-clients_ac06_docs_block_regenerates_from_table.rs",
+      "AC7": "tests/mcphost-install-links-more-clients_ac07_prior_prd_tests_still_apply.rs",
+      "AC8": "deferred -- operator-provisioned: live prod observation after deploy (deploy journal tag line + digest line)"
+    },
     "clink": {
       "_prd": "PRD-mcphost-client-install-links.md (test_prefix: clink) -- superseded by mcphost-tool-test-truth at HEAD (this rebase); real test_prefix is clink",
       "AC1": "tests/clink_ac01_for_url_pinned_fixtures.rs",

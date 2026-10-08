@@ -39,10 +39,71 @@ pub const CLIENT_NAME: &str = "mcphost";
 /// already committed throughout this README.
 pub const CANONICAL_PUBLIC_URL: &str = "https://mcphost.dev";
 
-/// AC1's four forms, plus the `mcp_url` they were all built from (so a
-/// caller -- `/connect`'s page, `host_quickstart`'s response -- can show
-/// the plain URL too, per the PRD's migration note: "clients without
-/// deep-link support still get the plain URL on the page").
+/// How a surface's [`Surface::artefact`] is meant to be used: `command` is
+/// one line to paste into a shell, `deeplink` is a URL the client's own
+/// handler opens, `json` is a complete config block to paste into the
+/// client's config file, `steps` is numbered instructions for a client
+/// with no machine-readable install path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Kind {
+    Command,
+    Deeplink,
+    Json,
+    Steps,
+}
+
+impl Kind {
+    /// Display order of the `/connect` page's per-kind headings.
+    pub const ALL: [Kind; 4] = [Kind::Command, Kind::Deeplink, Kind::Json, Kind::Steps];
+
+    pub fn heading(self) -> &'static str {
+        match self {
+            Kind::Command => "Run a command",
+            Kind::Deeplink => "One-click install",
+            Kind::Json => "Paste a JSON config",
+            Kind::Steps => "Follow the steps",
+        }
+    }
+}
+
+/// One row of the install table (PRD-mcphost-install-links-more-clients
+/// requirement 1): everything `/connect`, `/connect/go/{id}`,
+/// `host.quickstart.install_links`, and the README/llms.txt block render.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Surface {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub kind: Kind,
+    pub artefact: String,
+    pub doc_url: &'static str,
+    pub checked: &'static str,
+}
+
+/// The twelve surface ids, in table order.
+pub const SURFACE_IDS: [&str; 12] = [
+    "claude_code",
+    "cursor",
+    "vscode",
+    "claude_ai",
+    "codex_cli",
+    "gemini_cli",
+    "opencode",
+    "amp",
+    "goose",
+    "warp",
+    "windsurf",
+    "cline",
+];
+
+/// Date every row's `doc_url` was last read against its artefact.
+const CHECKED: &str = "2026-10-07";
+
+/// The full install table built from one base URL, plus the `mcp_url` it
+/// was built from and the original four forms under their original field
+/// names: a thin compatibility view (the PRD's technical considerations),
+/// so PRD-mcphost-client-install-links' callers and tests keep working.
+/// Derefs to the 12-row `[Surface]` table.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Links {
     pub mcp_url: String,
@@ -50,17 +111,45 @@ pub struct Links {
     pub vscode: String,
     pub claude_code_command: String,
     pub claude_ai_steps: Vec<String>,
+    pub surfaces: Vec<Surface>,
+}
+
+impl std::ops::Deref for Links {
+    type Target = [Surface];
+    fn deref(&self) -> &[Surface] {
+        &self.surfaces
+    }
+}
+
+impl<'a> IntoIterator for &'a Links {
+    type Item = &'a Surface;
+    type IntoIter = std::slice::Iter<'a, Surface>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.surfaces.iter()
+    }
 }
 
 fn percent_encode(s: &str) -> String {
     utf8_percent_encode(s, NON_ALPHANUMERIC).to_string()
 }
 
-/// AC1: builds every form from `base` (e.g. `MCPHOST_PUBLIC_URL` for the
+fn numbered(steps: &[String]) -> String {
+    steps.iter().enumerate().map(|(i, s)| format!("{}. {s}", i + 1)).collect::<Vec<_>>().join("\n")
+}
+
+/// AC1: builds every surface from `base` (e.g. `MCPHOST_PUBLIC_URL` for the
 /// anonymous case, or a tenant's own `/u/<secret>` prefix for the personal
 /// case) -- trailing slash tolerated the same way every other `{base}/mcp`
 /// endpoint in this crate already is (see e.g. `control::key_rotate`'s own
 /// `trim_end_matches('/')`).
+///
+/// Rows added by PRD-mcphost-install-links-more-clients (each `doc_url`
+/// read 2026-10-07; flag spellings are the ones that page documents):
+/// Codex CLI `codex mcp add <name> --url <url>`; Gemini CLI
+/// `gemini mcp add --transport http <name> <url>`; OpenCode
+/// `opencode mcp add <name> --url <url>`; Amp `amp mcp add <name> <url>`;
+/// Goose `/extension`; Warp `/agent-add-mcp`; Windsurf `mcp_config.json`;
+/// Cline `cline_mcp_settings.json`.
 pub fn for_url(base: &str) -> Links {
     let mcp_url = format!("{}/mcp", base.trim_end_matches('/'));
 
@@ -84,7 +173,55 @@ pub fn for_url(base: &str) -> Links {
         "Save, then enable the connector in a chat to connect.".to_string(),
     ];
 
-    Links { mcp_url, cursor, vscode, claude_code_command, claude_ai_steps }
+    let goose_steps = vec![
+        "In a Goose session, type /extension.".to_string(),
+        "Choose Add Remote Extension (Streamable HTTP).".to_string(),
+        format!("Name: {CLIENT_NAME}"),
+        format!("Endpoint URL: {mcp_url}"),
+    ];
+    let warp_steps = vec![
+        "In a Warp agent session, type /agent-add-mcp.".to_string(),
+        format!("Paste this server config: {}", json!({CLIENT_NAME: {"url": mcp_url}})),
+        "Save; Warp starts the server and lists its tools.".to_string(),
+    ];
+    let json_block = |extra: serde_json::Value| {
+        let mut server = json!({"url": mcp_url});
+        if let (Some(obj), Some(extra)) = (server.as_object_mut(), extra.as_object()) {
+            obj.extend(extra.clone());
+        }
+        serde_json::to_string_pretty(&json!({"mcpServers": {CLIENT_NAME: server}})).unwrap_or_default()
+    };
+
+    let row = |id, label, kind, artefact: String, doc_url| Surface {
+        id,
+        label,
+        kind,
+        artefact,
+        doc_url,
+        checked: CHECKED,
+    };
+    let surfaces = vec![
+        row("claude_code", "Claude Code", Kind::Command, claude_code_command.clone(), "https://code.claude.com/docs/en/mcp"),
+        row("cursor", "Cursor", Kind::Deeplink, cursor.clone(), "https://docs.cursor.com/en/tools/mcp"),
+        row("vscode", "VS Code", Kind::Deeplink, vscode.clone(), "https://code.visualstudio.com/api/extension-guides/ai/mcp"),
+        row("claude_ai", "Claude.ai", Kind::Steps, numbered(&claude_ai_steps), "https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp"),
+        row("codex_cli", "Codex CLI", Kind::Command, format!("codex mcp add {CLIENT_NAME} --url {mcp_url}"), "https://developers.openai.com/codex/mcp"),
+        row("gemini_cli", "Gemini CLI", Kind::Command, format!("gemini mcp add --transport http {CLIENT_NAME} {mcp_url}"), "https://geminicli.com/docs/tools/mcp-server/"),
+        row("opencode", "OpenCode", Kind::Command, format!("opencode mcp add {CLIENT_NAME} --url {mcp_url}"), "https://opencode.ai/docs/mcp-servers/"),
+        row("amp", "Amp", Kind::Command, format!("amp mcp add {CLIENT_NAME} {mcp_url}"), "https://ampcode.com/manual#mcp"),
+        row("goose", "Goose", Kind::Steps, numbered(&goose_steps), "https://block.github.io/goose/docs/getting-started/using-extensions/"),
+        row("warp", "Warp", Kind::Steps, numbered(&warp_steps), "https://docs.warp.dev/agent-platform/capabilities/mcp"),
+        row("windsurf", "Windsurf", Kind::Json, json_block(json!({})), "https://docs.windsurf.com/windsurf/cascade/mcp"),
+        row("cline", "Cline / Roo", Kind::Json, json_block(json!({"type": "streamableHttp"})), "https://docs.cline.bot/mcp/configuring-mcp-servers"),
+    ];
+
+    Links { mcp_url, cursor, vscode, claude_code_command, claude_ai_steps, surfaces }
+}
+
+/// Looks one surface up by id in the table built from `base`; `None` for
+/// any id outside [`SURFACE_IDS`].
+pub fn surface_for(base: &str, id: &str) -> Option<Surface> {
+    for_url(base).surfaces.into_iter().find(|s| s.id == id)
 }
 
 // ---- README generated block (P0 requirement 4, AC4) -----------------------
@@ -103,27 +240,27 @@ pub const INSTALL_LINKS_SECTION_END: &str = "<!-- install-links:end -->";
 /// never disagree on what "generated" means.
 pub fn render_readme_section(base: &str) -> String {
     let links = for_url(base);
-    format!(
-        "**Claude Code**\n\n\
-         ```\n\
-         {claude_code_command}\n\
-         ```\n\n\
-         **Cursor** -- [Add to Cursor]({cursor}), or add `{mcp_url}` to `mcp.json` directly.\n\n\
-         **VS Code** -- [Add to VS Code]({vscode}), or add `{mcp_url}` to your MCP config directly.\n\n\
-         **Claude.ai**\n\n\
-         1. {step1}\n\
-         2. {step2}\n\
-         3. {step3}\n\
-         4. {step4}",
-        claude_code_command = links.claude_code_command,
-        cursor = links.cursor,
-        vscode = links.vscode,
-        mcp_url = links.mcp_url,
-        step1 = links.claude_ai_steps[0],
-        step2 = links.claude_ai_steps[1],
-        step3 = links.claude_ai_steps[2],
-        step4 = links.claude_ai_steps[3],
-    )
+    let mut blocks = Vec::new();
+    for s in &links {
+        let body = match s.kind {
+            Kind::Command => format!("```\n{}\n```", s.artefact),
+            Kind::Deeplink => format!(
+                "[Add to {label}]({artefact}), or add `{mcp_url}` to your MCP config directly.",
+                label = s.label,
+                artefact = s.artefact,
+                mcp_url = links.mcp_url,
+            ),
+            Kind::Json => format!("```json\n{}\n```", s.artefact),
+            Kind::Steps => s.artefact.clone(),
+        };
+        blocks.push(format!(
+            "**{label}**\n\n{body}\n\nDocs: <{doc_url}> (checked {checked})",
+            label = s.label,
+            doc_url = s.doc_url,
+            checked = s.checked,
+        ));
+    }
+    blocks.join("\n\n")
 }
 
 /// Replace every section bracketed by [`INSTALL_LINKS_SECTION_START`]/
