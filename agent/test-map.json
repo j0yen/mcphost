@@ -48,6 +48,16 @@
       "AC7": "tests/testtruth_ac07_quickstart_chain_verdict_blurb.rs",
       "AC8": "deferred -- operator-provisioned: AC8's Then is a live, post-deploy truth-tier nightly observation (sessions/*.jsonl on prod after deploy showing no resolved-to-nothing call failure following a verdict: pass dry run of the same spec); not in this dispatch's assigned AC list (AC1-7)."
     },
+    "mcphost-chatgpt-submission-pack": {
+      "_prd": "PRD-mcphost-chatgpt-submission-pack.md (test_prefix: mcphost-chatgpt-submission-pack)",
+      "AC6": "tests/mcphost-chatgpt-submission-pack_ac06_reviewer_notes_first_call.rs",
+      "AC5": "tests/mcphost-chatgpt-submission-pack_ac05_chatgpt_profile_empty_tenant_table.rs",
+      "AC4": "tests/mcphost-chatgpt-submission-pack_ac04_chatgpt_surface_everywhere.rs",
+      "AC3": "tests/mcphost-chatgpt-submission-pack_ac03_descriptions_identical.rs",
+      "AC2": "tests/mcphost-chatgpt-submission-pack_ac02_check_detects_drift.rs",
+      "AC1": "tests/mcphost-chatgpt-submission-pack_ac01_pack_validates_against_schema.rs",
+      "AC7": "deferred -- operator-provisioned: live prod curl of privacy and terms URLs after deploy"
+    },
     "mcphost-install-links-more-clients": {
       "_prd": "PRD-mcphost-install-links-more-clients.md (test_prefix: mcphost-install-links-more-clients)",
       "AC1": "tests/mcphost-install-links-more-clients_ac01_twelve_surfaces.rs",

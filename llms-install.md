@@ -67,6 +67,20 @@ Follow these steps:
 
 Docs: <https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp> (checked 2026-10-07)
 
+## ChatGPT (`chatgpt`)
+
+Follow these steps:
+
+```text
+1. Open ChatGPT, then Plugins, then Add.
+2. Choose Create custom MCP server.
+3. Name: mcphost
+4. MCP server URL: https://mcphost.dev/mcp
+5. Choose OAuth, then Create. On the consent page press Create a new workspace.
+```
+
+Docs: <https://platform.openai.com/docs/mcp> (checked 2026-10-07)
+
 ## Codex CLI (`codex_cli`)
 
 Run this command in a shell:

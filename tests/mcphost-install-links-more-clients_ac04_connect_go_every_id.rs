@@ -54,7 +54,7 @@ async fn every_table_id_is_accepted_and_nonsense_is_a_404_that_records_nothing()
         assert!(status == 200 || status == 302, "{id} answered {status}");
     }
     let before = clicks(&server).await;
-    assert_eq!(before.len(), 12, "one human click per id: {before:?}");
+    assert_eq!(before.len(), mcphost::install_links::SURFACE_IDS.len(), "one human click per id: {before:?}");
 
     let response = no_redirect()
         .get(format!("{}/connect/go/nonsense", server.base_url))

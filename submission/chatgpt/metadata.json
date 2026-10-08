@@ -1,0 +1,14 @@
+{
+  "auth": "oauth",
+  "countries": "all",
+  "developer_name": "mcphost",
+  "icon": "icon-64.png",
+  "long_description": "Hosted MCP runtime where your agent publishes its own tools by tool call and keeps working. Connect with one URL: no account form and no API key to paste.",
+  "mcp_url": "https://mcphost.dev/mcp",
+  "name": "mcphost",
+  "privacy_url": "https://mcphost.dev/privacy",
+  "reviewer_notes": "No test account or credential is needed. Follow these steps in order in a fresh ChatGPT session.\n1. Open ChatGPT, then Plugins, then Add.\n2. Choose Create custom MCP server.\n3. Name: mcphost\n4. MCP server URL: https://mcphost.dev/mcp\n5. Choose OAuth, then Create. On the consent page press Create a new workspace.\nThe consent page creates a fresh workspace for the reviewer (first-grant signup); nothing is typed.\nThen, in a new chat, call host.quickstart kind=echo. It returns a working echo tool and an onboarding block, again with no credential typed.\n",
+  "short_description": "Hosted MCP runtime where your agent publishes its own tools by tool call and keeps working.",
+  "terms_url": "https://mcphost.dev/terms",
+  "website_url": "https://mcphost.dev"
+}

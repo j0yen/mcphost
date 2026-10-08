@@ -225,6 +225,20 @@ enum Command {
         #[arg(long)]
         path: Option<PathBuf>,
     },
+    /// PRD-mcphost-chatgpt-submission-pack: writes everything the ChatGPT
+    /// Apps submission form asks for (`metadata.json`, `icon-64.png`,
+    /// reviewer notes, screenshot list) into `<dir>` from the same
+    /// constants `registry-manifest` reads. With `--check`, writes nothing:
+    /// compares `<dir>` (the committed `submission/chatgpt/`) against a
+    /// fresh render and exits 1 naming each drifted file.
+    SubmissionPack {
+        /// Output directory (or, with `--check`, the committed pack).
+        #[arg(long, value_name = "DIR")]
+        chatgpt: PathBuf,
+        /// Compare `<dir>` against a fresh render instead of writing.
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -504,6 +518,33 @@ async fn main() -> anyhow::Result<()> {
                 Ok(())
             } else {
                 print!("{rendered}");
+                Ok(())
+            }
+        }
+        Command::SubmissionPack { chatgpt, check } => {
+            // Plain stdout/stderr + exit code, no tracing line: same
+            // contract as `RegistryManifest` above.
+            let files = mcphost::submission_pack::render_pack(
+                &mcphost::registry_manifest::public_url_from_env(),
+                mcphost::submission_pack::shared_description(),
+            );
+            if check {
+                let drifted = mcphost::submission_pack::check_pack(&chatgpt, &files);
+                if drifted.is_empty() {
+                    println!("submission-pack --check: {} is up to date", chatgpt.display());
+                    Ok(())
+                } else {
+                    eprintln!(
+                        "submission-pack --check: {} drifted: {} (run `mcphost submission-pack --chatgpt {}`)",
+                        chatgpt.display(),
+                        drifted.join(", "),
+                        chatgpt.display()
+                    );
+                    std::process::exit(1);
+                }
+            } else {
+                mcphost::submission_pack::write_pack(&chatgpt, &files)?;
+                println!("submission-pack: wrote {} files to {}", files.len(), chatgpt.display());
                 Ok(())
             }
         }

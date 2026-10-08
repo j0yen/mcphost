@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "Limits of the ChatGPT Apps submission form; `mcphost submission-pack --chatgpt` output must validate against this. PRD-mcphost-chatgpt-submission-pack.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name", "short_description", "long_description", "developer_name", "website_url",
+    "privacy_url", "terms_url", "mcp_url", "auth", "countries", "icon", "reviewer_notes"
+  ],
+  "properties": {
+    "name": {"type": "string", "minLength": 1, "maxLength": 30},
+    "short_description": {"type": "string", "minLength": 1, "maxLength": 160},
+    "long_description": {"type": "string", "minLength": 1},
+    "developer_name": {"type": "string", "minLength": 1},
+    "website_url": {"type": "string", "pattern": "^https://"},
+    "privacy_url": {"type": "string", "pattern": "^https://"},
+    "terms_url": {"type": "string", "pattern": "^https://"},
+    "mcp_url": {"type": "string", "pattern": "^https://"},
+    "auth": {"type": "string", "enum": ["oauth"]},
+    "countries": {"type": "string", "enum": ["all"]},
+    "icon": {"type": "string", "enum": ["icon-64.png"]},
+    "reviewer_notes": {"type": "string", "minLength": 1}
+  }
+}

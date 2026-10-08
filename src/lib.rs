@@ -69,6 +69,7 @@ pub mod session_bind;
 pub mod sharing;
 pub mod state;
 pub mod statusfeed;
+pub mod submission_pack;
 pub mod tables;
 pub mod tables_graph;
 pub mod tables_model;
