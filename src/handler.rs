@@ -5538,6 +5538,39 @@ impl McpHostHandler {
         Ok(value)
     }
 
+    /// PRD-mcphost-oauth-first-grant-signup requirement 4: the
+    /// `onboarding` envelope for a tenant OAuth consent created. Mints the
+    /// tenant's personal `/u/{secret}/mcp` URL here (the secret is stored
+    /// hashed, so the first call is the only moment it can be shown), the
+    /// same generate-then-rotate [`Self::implicit_signup_and_dispatch`] uses.
+    async fn first_grant_onboarding(&self, tenant: &Tenant) -> Result<Value, AppError> {
+        let url_secret = crate::auth::generate_url_secret();
+        self.state
+            .db
+            .rotate_tenant_url_secret(tenant.id, hash_key(&url_secret))
+            .await?;
+        let url = format!("{}/u/{}/mcp", self.state.public_url.trim_end_matches('/'), url_secret);
+        let invite_url = self
+            .state
+            .db
+            .find_standing_invite_for_tenant(tenant.id)
+            .await?
+            .and_then(|invite| invite.code_plain)
+            .map(|code| crate::invites::invite_url(&self.state, &code));
+        Ok(json!({
+            "tenant": tenant.namespace,
+            "url": url,
+            "invite_url": invite_url,
+            "note": format!(
+                "You are now tenant {0}, created when you approved this connection. Save this URL \
+                 as your mcphost server address; it is your credential. Call host.key_rotate if \
+                 it leaks. invite_url is the link to share with others.",
+                tenant.namespace
+            ),
+            "claim_url": crate::claim::claim_url_for_tenant(&self.state.public_url, tenant),
+        }))
+    }
+
     async fn dispatch_admin_tool(&self, name: &str, args: Value) -> Result<Value, AppError> {
         let result = match name {
             "admin.tenants" => admin::tenants(&self.state, &args).await,
@@ -8550,6 +8583,22 @@ impl ServerHandler for McpHostHandler {
                             "claim_url": crate::claim::claim_url_for_tenant(&self.state.public_url, tenant),
                         }),
                     );
+                }
+                // PRD-mcphost-oauth-first-grant-signup requirement 4: the
+                // first authenticated call on a grant whose tenant consent
+                // itself created (`source: "oauth"`, no earlier call --
+                // `last_seen_unix` is read before this call bumps it) carries
+                // the same `onboarding` envelope implicit signup sends.
+                else if let Auth::Tenant(tenant, Some(_)) = &auth
+                    && tenant.signup_source.as_deref() == Some("oauth")
+                    && tenant.last_seen_unix.is_none()
+                    && let Some(obj) = value.as_object_mut()
+                {
+                    let onboarding = self
+                        .first_grant_onboarding(tenant)
+                        .await
+                        .map_err(|e| e.into_error_data_at(Some(&self.state.public_url)))?;
+                    obj.insert("onboarding".to_string(), onboarding);
                 }
                 if !deprecation_notices.is_empty()
                     && let Some(obj) = value.as_object_mut()

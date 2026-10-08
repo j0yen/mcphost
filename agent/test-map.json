@@ -434,6 +434,17 @@
       "AC7": "tests/unkfield_ac07_spec_fields_doc_check_script.rs",
       "AC8": "deferred -- operator-provisioned: Live, prod tenant joe-test; needs a real deploy this coding sandbox cannot drive. See the coder dispatch's own deferred list."
     },
+    "oauthfirstgrantsignup": {
+      "_prd": "PRD-mcphost-oauth-first-grant-signup.md; test_prefix is mcphost_oauth_first_grant_signup",
+      "AC1": "tests/mcphost_oauth_first_grant_signup_ac01_new_workspace_choice_creates_tenant_and_token.rs",
+      "AC2": "tests/mcphost_oauth_first_grant_signup_ac02_first_call_carries_onboarding_once.rs",
+      "AC3": "tests/mcphost_oauth_first_grant_signup_ac03_tenant_key_consent_unchanged.rs",
+      "AC4": "tests/mcphost_oauth_first_grant_signup_ac04_rate_limit_refuses_new_workspace.rs",
+      "AC5": "tests/mcphost_oauth_first_grant_signup_ac05_pause_file_refuses_new_workspace.rs",
+      "AC6": "tests/mcphost_oauth_first_grant_signup_ac06_first_grant_signup_audit_event.rs",
+      "AC7": "tests/mcphost_oauth_first_grant_signup_ac07_claude_chatgpt_profiles_reach_tools_list.rs",
+      "AC8": "deferred -- operator-provisioned: live Claude.ai connector against prod after deploy."
+    },
     "oauthunverifiedclientconsentwarning": {
       "_prd": "PRD-mcphost-oauth-unverified-client-consent-warning.md -- superseded by mcphost-unknown-kind-routes-to-recipe at HEAD; real test_prefix is mcphost_oauth_unverified_client_consent_warning",
       "AC1": "tests/mcphost_oauth_unverified_client_consent_warning_ac01_dcr_unverified_caution_renders.rs",
