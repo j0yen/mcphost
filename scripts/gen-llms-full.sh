@@ -15,6 +15,7 @@
 #   scripts/gen-llms-full.sh          regenerate www/llms-full.txt
 #   scripts/gen-llms-full.sh --check  exit 1 if www/llms-full.txt is stale
 set -uo pipefail
+export LC_ALL=C  # glob order must not depend on the host locale (CI runs C, orch en_US)
 cd "$(dirname "$0")/.."
 
 OUT="www/llms-full.txt"
