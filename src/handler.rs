@@ -1172,6 +1172,9 @@ fn host_tools(kinds: &KindRegistry, authenticated: bool) -> Vec<Tool> {
                             subset of max_child_calls, max_est_tokens, max_tool_latency_ms, \
                             max_wall_ms. A value above the plan's own ceiling is a validation \
                             error naming it; see host.runs.get's progress.budget.",
+                        "properties": crate::plans::Plan::budget_schema_properties(
+                            &crate::plans::PlanCatalog::default_catalog(),
+                        ),
                     },
                 }),
                 &["name", "args"],
@@ -6571,12 +6574,41 @@ impl McpHostHandler {
                     // cleanly with no composition to doubt, so it defaults
                     // to `pass`.
                     map.entry("verdict".to_string()).or_insert_with(|| json!("pass"));
+                    // PRD-mcphost-plan-limits-generated requirement 5: the
+                    // tool's declared timeout can sit above the caller
+                    // plan's `budget.max_tool_latency_ms` ceiling, which a
+                    // real call with a budget would be refused for.
+                    if let Some(warning) = self.latency_ceiling_warning(tenant, resolved_timeout) {
+                        map.entry("warnings".to_string())
+                            .or_insert_with(|| json!([]));
+                        if let Some(Value::Array(list)) = map.get_mut("warnings") {
+                            list.push(json!(warning));
+                        }
+                    }
                 }
                 Ok(value)
             }
             Ok(Err(kind_err)) => Err(AppError::from(kind_err)),
             Err(_elapsed) => Err(AppError::CallTimeout(resolved_timeout.as_secs())),
         }
+    }
+
+    /// PRD-mcphost-plan-limits-generated requirement 5 (AC6): the warning
+    /// `host.tool_test` attaches when a tool's resolved timeout exceeds the
+    /// caller plan's `budget_max_tool_latency_ms`, naming both numbers.
+    fn latency_ceiling_warning(&self, tenant: &Tenant, timeout: Duration) -> Option<String> {
+        let plan = self.state.plans.get(&tenant.plan)?;
+        let ceiling_ms = plan.budget_max_tool_latency_ms;
+        let timeout_ms = timeout.as_millis() as i64;
+        (timeout_ms > ceiling_ms).then(|| {
+            format!(
+                "timeout_s {} ({timeout_ms} ms) exceeds the {} plan's budget.max_tool_latency_ms \
+                 ceiling of {ceiling_ms} ms; calls with a budget are refused above the ceiling \
+                 -- see host.quickstart limits.plan",
+                timeout.as_secs(),
+                plan.name
+            )
+        })
     }
 
     /// `host.bridge_test` (PRD-mcphost-rest-bridge P1 requirement, AC6):

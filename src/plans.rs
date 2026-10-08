@@ -248,7 +248,95 @@ pub struct Plan {
     pub budget_max_wall_ms: i64,
 }
 
+/// Numeric [`Plan`] fields that are not ceilings an agent can hit.
+pub const NON_CEILING_FIELDS: &[&str] = &["price_usd_month"];
+
+/// Prefix of the [`Plan`] fields that render under `limits.plan.budget`.
+pub const BUDGET_FIELD_PREFIX: &str = "budget_";
+
 impl Plan {
+    /// PRD-mcphost-plan-limits-generated: every numeric ceiling of this
+    /// plan, derived from the struct's own serialisation (so a field added
+    /// to [`Plan`] appears here with no edit). Flat names for most; the
+    /// `budget_*` fields nest under `"budget"` with the prefix stripped.
+    pub fn ceilings_json(&self) -> serde_json::Value {
+        let mut out = serde_json::Map::new();
+        let mut budget = serde_json::Map::new();
+        if let Ok(serde_json::Value::Object(fields)) = serde_json::to_value(self) {
+            for (key, value) in fields {
+                if !value.is_number() || NON_CEILING_FIELDS.contains(&key.as_str()) {
+                    continue;
+                }
+                match key.strip_prefix(BUDGET_FIELD_PREFIX) {
+                    Some(rest) => budget.insert(rest.to_string(), value),
+                    None => out.insert(key, value),
+                };
+            }
+        }
+        out.insert("budget".to_string(), serde_json::Value::Object(budget));
+        serde_json::Value::Object(out)
+    }
+
+    /// PRD-mcphost-plan-limits-generated: [`Self::ceilings_json`] flattened
+    /// to `(dotted_name, value)` pairs (`budget.max_wall_ms`), the shape the
+    /// generated docs table renders one row per.
+    pub fn ceilings_flat(&self) -> Vec<(String, i64)> {
+        let mut out = Vec::new();
+        if let serde_json::Value::Object(map) = self.ceilings_json() {
+            for (key, value) in map {
+                match value {
+                    serde_json::Value::Object(inner) => {
+                        for (k, v) in inner {
+                            if let Some(n) = v.as_i64() {
+                                out.push((format!("{key}.{k}"), n));
+                            }
+                        }
+                    }
+                    other => {
+                        if let Some(n) = other.as_i64() {
+                            out.push((key, n));
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// PRD-mcphost-plan-limits-generated: the `budget` object schema
+    /// `host.tool_call` advertises. One property per `budget_*` field of
+    /// [`Plan`] (derived, not listed); `maximum` is the `free` ceiling
+    /// (tools/list is per server, not per tenant, so it carries the floor)
+    /// and the description names the `pro` ceiling.
+    pub fn budget_schema_properties(catalog: &PlanCatalog) -> serde_json::Value {
+        let ceilings = |name: &str| {
+            catalog
+                .get(name)
+                .and_then(|p| p.ceilings_json().get("budget").cloned())
+                .and_then(|b| b.as_object().cloned())
+                .unwrap_or_default()
+        };
+        let free = ceilings("free");
+        let pro = ceilings("pro");
+        let mut props = serde_json::Map::new();
+        for (field, free_max) in &free {
+            let pro_max = pro.get(field).cloned().unwrap_or_else(|| free_max.clone());
+            props.insert(
+                field.clone(),
+                serde_json::json!({
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": free_max,
+                    "description": format!(
+                        "Free-plan ceiling {free_max}; pro ceiling {pro_max}. Maximum shown is \
+                         the free floor -- see host.quickstart limits.plan.budget for your plan."
+                    ),
+                }),
+            );
+        }
+        serde_json::Value::Object(props)
+    }
+
     /// requirement 2/3: this plan's default [`crate::budget::BudgetLimits`]
     /// -- `max_child_calls` never exceeds
     /// [`crate::kinds::COMPOSE_CHILDREN_MAX`], even for a hand-edited

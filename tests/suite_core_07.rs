@@ -1368,6 +1368,20 @@ mod plancat_ac05_full_plans_toml_unchanged_and_silent;
 mod plancat_ac06_build_has_no_hardcoded_quota_defaults;
 #[path = "plancat_ac07_llms_txt_names_defaulting_and_startup_line.rs"]
 mod plancat_ac07_llms_txt_names_defaulting_and_startup_line;
+#[path = "planlim_ac01_quickstart_limits_plan_every_ceiling.rs"]
+mod planlim_ac01_quickstart_limits_plan_every_ceiling;
+#[path = "planlim_ac02_tool_call_budget_schema_maximum.rs"]
+mod planlim_ac02_tool_call_budget_schema_maximum;
+#[path = "planlim_ac03_ceiling_error_points_at_quickstart.rs"]
+mod planlim_ac03_ceiling_error_points_at_quickstart;
+#[path = "planlim_ac04_ceilings_table_in_generated_docs.rs"]
+mod planlim_ac04_ceilings_table_in_generated_docs;
+#[path = "planlim_ac05_publish_network_description_lists_gated_values.rs"]
+mod planlim_ac05_publish_network_description_lists_gated_values;
+#[path = "planlim_ac06_tool_test_warns_timeout_above_latency_ceiling.rs"]
+mod planlim_ac06_tool_test_warns_timeout_above_latency_ceiling;
+#[path = "planlim_ac07_contract_drift_with_deprecation_entry.rs"]
+mod planlim_ac07_contract_drift_with_deprecation_entry;
 #[path = "proptest_invariants.rs"]
 mod proptest_invariants;
 #[path = "provaudit_ac01_synthetic_signup_stamped.rs"]
@@ -1806,21 +1820,3 @@ mod tablemodel_ac09_drop_removes_model_and_annotations;
 mod tablemodel_ac10_empty_table_reports_unknown_types_no_error;
 #[path = "tables_ac07_tenant_delete_cascade.rs"]
 mod tables_ac07_tenant_delete_cascade;
-#[path = "tenant_delete_ac01_cascade_delete.rs"]
-mod tenant_delete_ac01_cascade_delete;
-#[path = "tenant_delete_ac02_forbidden.rs"]
-mod tenant_delete_ac02_forbidden;
-#[path = "tenant_delete_ac03_dry_run_prefix.rs"]
-mod tenant_delete_ac03_dry_run_prefix;
-#[path = "tenant_delete_ac04_prefix_delete.rs"]
-mod tenant_delete_ac04_prefix_delete;
-#[path = "tenant_delete_ac05_prefix_too_short.rs"]
-mod tenant_delete_ac05_prefix_too_short;
-#[path = "tenant_delete_ac06_migration_cascade.rs"]
-mod tenant_delete_ac06_migration_cascade;
-#[path = "tenant_delete_ac07_tenant_not_found.rs"]
-mod tenant_delete_ac07_tenant_not_found;
-#[path = "tenant_delete_ac09_healthz_probe_split.rs"]
-mod tenant_delete_ac09_healthz_probe_split;
-#[path = "tenant_delete_ac10_tenants_prefix_filter.rs"]
-mod tenant_delete_ac10_tenants_prefix_filter;

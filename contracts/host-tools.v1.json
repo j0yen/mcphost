@@ -3774,6 +3774,32 @@
           },
           "budget": {
             "description": "Lowers this call's budget below the plan default: any subset of max_child_calls, max_est_tokens, max_tool_latency_ms, max_wall_ms. A value above the plan's own ceiling is a validation error naming it; see host.runs.get's progress.budget.",
+            "properties": {
+              "max_child_calls": {
+                "description": "Free-plan ceiling 20; pro ceiling 50. Maximum shown is the free floor -- see host.quickstart limits.plan.budget for your plan.",
+                "maximum": 20,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "max_est_tokens": {
+                "description": "Free-plan ceiling 200000; pro ceiling 2000000. Maximum shown is the free floor -- see host.quickstart limits.plan.budget for your plan.",
+                "maximum": 200000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "max_tool_latency_ms": {
+                "description": "Free-plan ceiling 30000; pro ceiling 120000. Maximum shown is the free floor -- see host.quickstart limits.plan.budget for your plan.",
+                "maximum": 30000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "max_wall_ms": {
+                "description": "Free-plan ceiling 60000; pro ceiling 600000. Maximum shown is the free floor -- see host.quickstart limits.plan.budget for your plan.",
+                "maximum": 60000,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
             "type": "object"
           },
           "name": {
@@ -3915,7 +3941,7 @@
             "type": "array"
           },
           "spec": {
-            "description": "The kind-specific spec object; see host.quickstart(kind) for a filled-in example. For python's network field: \"none\", \"public\", or \"egress\" -- a tool's own code reaches this tenant's data with `import mcphost` (mcphost.table, mcphost.state, mcphost.docs, mcphost.lineage) even when network is \"none\".",
+            "description": "The kind-specific spec object; see host.quickstart(kind) for a filled-in example. For python's network field: \"none\" (every plan), \"public\" (requires the pro plan), \"egress\" (requires the pro plan) -- a tool's own code reaches this tenant's data with `import mcphost` (mcphost.table, mcphost.state, mcphost.docs, mcphost.lineage) even when network is \"none\".",
             "type": "object"
           },
           "tenant_key": {
@@ -4138,6 +4164,32 @@
           },
           "budget": {
             "description": "Lowers this call's budget below the plan default: any subset of max_child_calls, max_est_tokens, max_tool_latency_ms, max_wall_ms. A value above the plan's own ceiling is a validation error naming it; see host.runs.get's progress.budget.",
+            "properties": {
+              "max_child_calls": {
+                "description": "Free-plan ceiling 20; pro ceiling 50. Maximum shown is the free floor -- see host.quickstart limits.plan.budget for your plan.",
+                "maximum": 20,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "max_est_tokens": {
+                "description": "Free-plan ceiling 200000; pro ceiling 2000000. Maximum shown is the free floor -- see host.quickstart limits.plan.budget for your plan.",
+                "maximum": 200000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "max_tool_latency_ms": {
+                "description": "Free-plan ceiling 30000; pro ceiling 120000. Maximum shown is the free floor -- see host.quickstart limits.plan.budget for your plan.",
+                "maximum": 30000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "max_wall_ms": {
+                "description": "Free-plan ceiling 60000; pro ceiling 600000. Maximum shown is the free floor -- see host.quickstart limits.plan.budget for your plan.",
+                "maximum": 60000,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
             "type": "object"
           },
           "name": {
@@ -4299,7 +4351,7 @@
             "type": "array"
           },
           "spec": {
-            "description": "The kind-specific spec object; see host.quickstart(kind) for a filled-in example. For python's network field: \"none\", \"public\", or \"egress\" -- a tool's own code reaches this tenant's data with `import mcphost` (mcphost.table, mcphost.state, mcphost.docs, mcphost.lineage) even when network is \"none\".",
+            "description": "The kind-specific spec object; see host.quickstart(kind) for a filled-in example. For python's network field: \"none\" (every plan), \"public\" (requires the pro plan), \"egress\" (requires the pro plan) -- a tool's own code reaches this tenant's data with `import mcphost` (mcphost.table, mcphost.state, mcphost.docs, mcphost.lineage) even when network is \"none\".",
             "type": "object"
           },
           "tenant_key": {
@@ -8504,6 +8556,32 @@
           },
           "budget": {
             "description": "Lowers this call's budget below the plan default: any subset of max_child_calls, max_est_tokens, max_tool_latency_ms, max_wall_ms. A value above the plan's own ceiling is a validation error naming it; see host.runs.get's progress.budget.",
+            "properties": {
+              "max_child_calls": {
+                "description": "Free-plan ceiling 20; pro ceiling 50. Maximum shown is the free floor -- see host.quickstart limits.plan.budget for your plan.",
+                "maximum": 20,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "max_est_tokens": {
+                "description": "Free-plan ceiling 200000; pro ceiling 2000000. Maximum shown is the free floor -- see host.quickstart limits.plan.budget for your plan.",
+                "maximum": 200000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "max_tool_latency_ms": {
+                "description": "Free-plan ceiling 30000; pro ceiling 120000. Maximum shown is the free floor -- see host.quickstart limits.plan.budget for your plan.",
+                "maximum": 30000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "max_wall_ms": {
+                "description": "Free-plan ceiling 60000; pro ceiling 600000. Maximum shown is the free floor -- see host.quickstart limits.plan.budget for your plan.",
+                "maximum": 60000,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
             "type": "object"
           },
           "name": {
@@ -8645,7 +8723,7 @@
             "type": "array"
           },
           "spec": {
-            "description": "The kind-specific spec object; see host.quickstart(kind) for a filled-in example. For python's network field: \"none\", \"public\", or \"egress\" -- a tool's own code reaches this tenant's data with `import mcphost` (mcphost.table, mcphost.state, mcphost.docs, mcphost.lineage) even when network is \"none\".",
+            "description": "The kind-specific spec object; see host.quickstart(kind) for a filled-in example. For python's network field: \"none\" (every plan), \"public\" (requires the pro plan), \"egress\" (requires the pro plan) -- a tool's own code reaches this tenant's data with `import mcphost` (mcphost.table, mcphost.state, mcphost.docs, mcphost.lineage) even when network is \"none\".",
             "type": "object"
           },
           "tenant_key": {

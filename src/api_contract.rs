@@ -285,6 +285,31 @@ fn schema_enum(schema: &Value) -> Option<&Vec<Value>> {
     schema.get("enum").and_then(Value::as_array)
 }
 
+/// PRD-mcphost-plan-limits-generated: a `maximum` that is new, or lower than
+/// before, on `schema` itself or on any property one level down (the shape of
+/// `host.tool_call`'s `budget` object) narrows what a caller may send.
+fn maximum_narrowed(old: &Value, new: &Value) -> Option<String> {
+    fn bound(v: &Value) -> Option<f64> {
+        v.get("maximum").and_then(Value::as_f64)
+    }
+    let narrowed = |o: &Value, n: &Value| match (bound(o), bound(n)) {
+        (None, Some(_)) => true,
+        (Some(a), Some(b)) => b < a,
+        _ => false,
+    };
+    if narrowed(old, new) {
+        return Some("maximum narrowed".to_string());
+    }
+    let new_props = new.get("properties").and_then(Value::as_object)?;
+    for (field, new_field) in new_props {
+        let old_field = old.get("properties").and_then(|p| p.get(field)).unwrap_or(&Value::Null);
+        if narrowed(old_field, new_field) {
+            return Some(format!("maximum narrowed on {field}"));
+        }
+    }
+    None
+}
+
 /// requirement 2 / Technical considerations: "narrowed type" = the new
 /// schema does not accept every instance the old one did. Checked
 /// structurally (type change, enum shrink, newly required) rather than by
@@ -302,6 +327,9 @@ fn narrowing_reason(old: &Value, new: &Value, was_required: bool, is_required: b
         && old_type != new_type
     {
         return Some(format!("type changed from {old_type} to {new_type}"));
+    }
+    if let Some(detail) = maximum_narrowed(old, new) {
+        return Some(detail);
     }
     if let Some(new_enum) = schema_enum(new) {
         match schema_enum(old) {
