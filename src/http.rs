@@ -755,6 +755,35 @@ fn static_markdown_page(content: &'static str) -> Response {
         .into_response()
 }
 
+/// `GET /llms-install.md` (PRD-mcphost-llms-install-doc): the install
+/// document an agent reads to configure its own client, rendered from the
+/// install table over this server's public URL -- the same bytes the repo
+/// root `llms-install.md` commits (`mcphost gen-docs`). No auth; cacheable
+/// for ten minutes. P1 requirement 4 (AC6): each fetch records an
+/// `install_doc` funnel event, `origin` by IP class
+/// ([`crate::state::classify_funnel_origin`]) -- same table and origin
+/// vocabulary as `connect_go`'s `install_link:<client>` events.
+async fn llms_install_doc(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+) -> Response {
+    let ip = crate::claim::source_ip(&headers, peer);
+    let origin = crate::state::classify_funnel_origin(&ip, false, &state.fleet_ips);
+    if let Err(e) = state.db.record_oauth_funnel_event("install_doc", origin).await {
+        tracing::warn!(error = %e, "failed to record install_doc funnel event");
+    }
+    (
+        StatusCode::OK,
+        [
+            ("content-type", "text/markdown; charset=utf-8"),
+            ("cache-control", "public, max-age=600"),
+        ],
+        crate::install_links::render_install_doc(&state.public_url),
+    )
+        .into_response()
+}
+
 /// `GET /help/<code>` (requirement 2, AC1-AC2): rendered at request time
 /// from `help::HELP_ENTRIES` plus whatever `MCPHOST_SUPPORT_URL` this
 /// process has *right now* -- not a committed file -- so an operator
@@ -1598,6 +1627,21 @@ pub fn build_router_with_session_mode(state: Arc<AppState>, legacy_session_mode:
         // prod's Caddy route was the only thing serving it (404'd from
         // here, the same gap status.html/aup.html's own hotfix closed).
         .route("/skill.md", get(|| async { static_markdown_page(include_str!("../www/skill.md")) }))
+        .route("/llms-install.md", get(llms_install_doc))
+        // PRD-mcphost-llms-install-doc requirement 5: the sitemap lists
+        // `/llms-install.md`; served here so the file is not only a deploy
+        // artefact.
+        .route(
+            "/sitemap.xml",
+            get(|| async {
+                (
+                    StatusCode::OK,
+                    [("content-type", "application/xml; charset=utf-8")],
+                    include_str!("../www/sitemap.xml"),
+                )
+                    .into_response()
+            }),
+        )
         // requirement 2/4 (AC1, AC2, AC7): request-time-rendered, not
         // embedded -- see `help_page`'s doc comment.
         .route("/help/{code}", get(help_page))

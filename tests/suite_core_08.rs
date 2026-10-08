@@ -14,6 +14,16 @@ mod oauth;
 #[path = "support/oauthclient.rs"]
 mod oauthclient;
 
+#[path = "testtruth_ac01_chain_prev_will_fail.rs"]
+mod testtruth_ac01_chain_prev_will_fail;
+#[path = "testtruth_ac02_chain_prev_result_pass.rs"]
+mod testtruth_ac02_chain_prev_result_pass;
+#[path = "testtruth_ac03_chain_prev_no_output_schema_unverifiable.rs"]
+mod testtruth_ac03_chain_prev_no_output_schema_unverifiable;
+#[path = "testtruth_ac06_publish_gate_verdict.rs"]
+mod testtruth_ac06_publish_gate_verdict;
+#[path = "testtruth_ac07_quickstart_chain_verdict_blurb.rs"]
+mod testtruth_ac07_quickstart_chain_verdict_blurb;
 #[path = "tgraph_ac01_foreign_key_edge_and_graph_includes_both_tables.rs"]
 mod tgraph_ac01_foreign_key_edge_and_graph_includes_both_tables;
 #[path = "tgraph_ac02_join_paths_one_step_foreign_key.rs"]

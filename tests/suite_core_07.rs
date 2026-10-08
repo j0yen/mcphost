@@ -848,6 +848,18 @@ mod mcphost_install_links_more_clients_ac05_quickstart_twelve_personal_surfaces;
 mod mcphost_install_links_more_clients_ac06_docs_block_regenerates_from_table;
 #[path = "mcphost-install-links-more-clients_ac07_prior_prd_tests_still_apply.rs"]
 mod mcphost_install_links_more_clients_ac07_prior_prd_tests_still_apply;
+#[path = "mcphost-llms-install-doc_ac01_generator_sections.rs"]
+mod mcphost_llms_install_doc_ac01_generator_sections;
+#[path = "mcphost-llms-install-doc_ac02_served_unauthenticated.rs"]
+mod mcphost_llms_install_doc_ac02_served_unauthenticated;
+#[path = "mcphost-llms-install-doc_ac03_committed_copy_drift.rs"]
+mod mcphost_llms_install_doc_ac03_committed_copy_drift;
+#[path = "mcphost-llms-install-doc_ac04_linked_from_every_entry_point.rs"]
+mod mcphost_llms_install_doc_ac04_linked_from_every_entry_point;
+#[path = "mcphost-llms-install-doc_ac05_sitemap_lists_the_page.rs"]
+mod mcphost_llms_install_doc_ac05_sitemap_lists_the_page;
+#[path = "mcphost-llms-install-doc_ac06_install_doc_funnel_event.rs"]
+mod mcphost_llms_install_doc_ac06_install_doc_funnel_event;
 #[path = "mcphost_admin_schema_contract_ac01_tenants_schema_version.rs"]
 mod mcphost_admin_schema_contract_ac01_tenants_schema_version;
 #[path = "mcphost_admin_schema_contract_ac02_listings_validate_v1_schema.rs"]
@@ -1816,13 +1828,3 @@ mod tenantprm_ac06_whoami_carries_resource_and_metadata_url;
 mod tenantprm_ac07_key_and_oauth_suites_unchanged;
 #[path = "tenantprm_ac09_llms_txt_documents_tenant_oauth.rs"]
 mod tenantprm_ac09_llms_txt_documents_tenant_oauth;
-#[path = "testtruth_ac01_chain_prev_will_fail.rs"]
-mod testtruth_ac01_chain_prev_will_fail;
-#[path = "testtruth_ac02_chain_prev_result_pass.rs"]
-mod testtruth_ac02_chain_prev_result_pass;
-#[path = "testtruth_ac03_chain_prev_no_output_schema_unverifiable.rs"]
-mod testtruth_ac03_chain_prev_no_output_schema_unverifiable;
-#[path = "testtruth_ac06_publish_gate_verdict.rs"]
-mod testtruth_ac06_publish_gate_verdict;
-#[path = "testtruth_ac07_quickstart_chain_verdict_blurb.rs"]
-mod testtruth_ac07_quickstart_chain_verdict_blurb;

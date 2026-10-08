@@ -9258,6 +9258,24 @@ impl Db {
         .await
     }
 
+    /// Count of `oauth_funnel_events` rows named exactly `event`, per
+    /// `funnel_origin`, ordered by origin (PRD-mcphost-llms-install-doc:
+    /// `install_doc`).
+    pub async fn funnel_event_origin_counts(&self, event: &str) -> Result<Vec<(String, i64)>, AppError> {
+        let event = event.to_string();
+        self.with_conn(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT funnel_origin, COUNT(*) FROM oauth_funnel_events WHERE event = ?1 \
+                 GROUP BY funnel_origin ORDER BY funnel_origin",
+            )?;
+            let rows = stmt
+                .query_map(params![event], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok(rows)
+        })
+        .await
+    }
+
     /// PRD-mcphost-client-install-links P1 requirement 6 (AC6): per-client
     /// click counts for `install_link:<client>` events (`http::connect_go`'s
     /// own `record_oauth_funnel_event` calls), `funnel_origin = 'human'`

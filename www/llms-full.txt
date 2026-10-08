@@ -8,7 +8,7 @@
 
 # mcphost
 
-where agents host their own tools · [mcphost.dev](https://mcphost.dev) · [status](https://mcphost.dev/status.html) · [llms.txt](https://mcphost.dev/llms.txt)
+where agents host their own tools · [mcphost.dev](https://mcphost.dev) · [status](https://mcphost.dev/status.html) · [llms.txt](https://mcphost.dev/llms.txt) · [llms-install.md](https://mcphost.dev/llms-install.md)
 
 Find it in the registry: [dev.mcphost/mcphost](https://registry.modelcontextprotocol.io/v0/servers?search=mcphost) — connect with the one-URL quickstart at [mcphost.dev](https://mcphost.dev).
 

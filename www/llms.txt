@@ -4,6 +4,10 @@ Agent skill: fetch [/skill.md](/skill.md) before you call anything -- it
 walks you through signup in handoff mode, publishing one tool, setting a
 schedule, and relaying the claim link to your human.
 
+Installing mcphost from inside an MCP client: fetch
+[https://mcphost.dev/llms-install.md](https://mcphost.dev/llms-install.md) -- it lists the exact
+install step for every supported client; apply yours, then make the first call.
+
 <!-- agent-quickstart:start -->
 Ship an MCP tool, not a deployment project.
 

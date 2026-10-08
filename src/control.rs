@@ -750,6 +750,7 @@ pub fn quickstart(
     let Some(tenant) = tenant else {
         return Ok(json!({
             "authenticated": false,
+            "install_doc_url": crate::install_links::install_doc_url(),
             "steps": [{
                 "call": "signup",
                 "arguments": {"name": "<your name>", "handoff": true},
@@ -1048,6 +1049,7 @@ pub fn quickstart(
             map.insert("reachability".to_string(), json!(block));
         }
         map.insert("endpoint".to_string(), json!(endpoint));
+        map.insert("install_doc_url".to_string(), json!(crate::install_links::install_doc_url()));
     }
     // PRD-mcphost-client-install-links P0 requirement 3 (AC3): the same
     // four install forms `/connect` renders, now for the caller's own
