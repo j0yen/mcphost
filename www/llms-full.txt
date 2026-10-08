@@ -10,6 +10,8 @@
 
 where agents host their own tools · [mcphost.dev](https://mcphost.dev) · [status](https://mcphost.dev/status.html) · [llms.txt](https://mcphost.dev/llms.txt)
 
+Find it in the registry: [dev.mcphost/mcphost](https://registry.modelcontextprotocol.io/v0/servers?search=mcphost) — connect with the one-URL quickstart at [mcphost.dev](https://mcphost.dev).
+
 <!-- agent-quickstart:start -->
 Ship an MCP tool, not a deployment project.
 
@@ -236,11 +238,35 @@ Paste one line into your client and it has mcphost. No key needed to sign
 up -- `signup` is the one unauthenticated tool; everything past it takes
 the bearer key `signup` returns.
 
+<!-- install-links:start -->
 **Claude Code**
 
 ```
 claude mcp add --transport http mcphost https://mcphost.dev/mcp
 ```
+
+Docs: <https://code.claude.com/docs/en/mcp> (checked 2026-10-07)
+
+**Cursor**
+
+[Add to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=mcphost&config=eyJ1cmwiOiJodHRwczovL21jcGhvc3QuZGV2L21jcCJ9), or add `https://mcphost.dev/mcp` to your MCP config directly.
+
+Docs: <https://docs.cursor.com/en/tools/mcp> (checked 2026-10-07)
+
+**VS Code**
+
+[Add to VS Code](vscode:mcp/install?%7B%22name%22%3A%22mcphost%22%2C%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fmcphost%2Edev%2Fmcp%22%7D), or add `https://mcphost.dev/mcp` to your MCP config directly.
+
+Docs: <https://code.visualstudio.com/api/extension-guides/ai/mcp> (checked 2026-10-07)
+
+**Claude.ai**
+
+1. Open Settings, then Connectors, then Add custom connector.
+2. Name: mcphost
+3. Remote MCP server URL: https://mcphost.dev/mcp
+4. Save, then enable the connector in a chat to connect.
+
+Docs: <https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp> (checked 2026-10-07)
 
 **Codex CLI**
 
@@ -248,21 +274,78 @@ claude mcp add --transport http mcphost https://mcphost.dev/mcp
 codex mcp add mcphost --url https://mcphost.dev/mcp
 ```
 
-**Cursor** -- add this block to `mcp.json`:
+Docs: <https://developers.openai.com/codex/mcp> (checked 2026-10-07)
+
+**Gemini CLI**
+
+```
+gemini mcp add --transport http mcphost https://mcphost.dev/mcp
+```
+
+Docs: <https://geminicli.com/docs/tools/mcp-server/> (checked 2026-10-07)
+
+**OpenCode**
+
+```
+opencode mcp add mcphost --url https://mcphost.dev/mcp
+```
+
+Docs: <https://opencode.ai/docs/mcp-servers/> (checked 2026-10-07)
+
+**Amp**
+
+```
+amp mcp add mcphost https://mcphost.dev/mcp
+```
+
+Docs: <https://ampcode.com/manual#mcp> (checked 2026-10-07)
+
+**Goose**
+
+1. In a Goose session, type /extension.
+2. Choose Add Remote Extension (Streamable HTTP).
+3. Name: mcphost
+4. Endpoint URL: https://mcphost.dev/mcp
+
+Docs: <https://block.github.io/goose/docs/getting-started/using-extensions/> (checked 2026-10-07)
+
+**Warp**
+
+1. In a Warp agent session, type /agent-add-mcp.
+2. Paste this server config: {"mcphost":{"url":"https://mcphost.dev/mcp"}}
+3. Save; Warp starts the server and lists its tools.
+
+Docs: <https://docs.warp.dev/agent-platform/capabilities/mcp> (checked 2026-10-07)
+
+**Windsurf**
 
 ```json
 {
   "mcpServers": {
     "mcphost": {
-      "url": "https://mcphost.dev/mcp",
-      "headers": { "Authorization": "Bearer <key>" }
+      "url": "https://mcphost.dev/mcp"
     }
   }
 }
 ```
 
-**Claude.ai** -- Settings -> Connectors -> Add custom connector, then paste
-`https://mcphost.dev/mcp` as the URL.
+Docs: <https://docs.windsurf.com/windsurf/cascade/mcp> (checked 2026-10-07)
+
+**Cline / Roo**
+
+```json
+{
+  "mcpServers": {
+    "mcphost": {
+      "type": "streamableHttp",
+      "url": "https://mcphost.dev/mcp"
+    }
+  }
+}
+```
+
+Docs: <https://docs.cline.bot/mcp/configuring-mcp-servers> (checked 2026-10-07)
+<!-- install-links:end -->
 
 See the live [status page](/status.html) and the
 [Acceptable Use Policy](/aup.html) before you point production traffic at
@@ -366,6 +449,38 @@ registry API base (e.g. `https://registry.modelcontextprotocol.io`):
    in `data.error_code`: `registry_disabled` (flag off),
    `namespace_unverified` (step 1 not done for this tenant), or
    `registry_rejected` (the registry API answered non-2xx).
+
+### This host's own registry listing
+
+Distinct from "Registry publish (P1)" above, which is a tenant-facing
+tool for a TENANT's own namespace — this is mcphost's own listing.
+`mcphost registry-manifest` builds the public MCP registry's
+`server.json` entry from `Cargo.toml` (name under the DNS-verified
+`dev.mcphost` namespace, description, version, license) and
+`$MCPHOST_PUBLIC_URL` (default `https://mcphost.dev`) + `/mcp` as the
+`streamable-http` remote:
+
+- No flags: prints the entry to stdout.
+- `--write <path>`: writes it (used to regenerate the committed
+  `registry/server.json`, never hand-edited).
+- `--check`: compares a committed file (default `registry/server.json`)
+  against a fresh render and exits non-zero with a diff on drift --
+  except in the `version` field, which it ignores. A release land
+  commits `registry/server.json` and only afterwards bumps
+  `Cargo.toml`'s version, so the committed file is deliberately
+  version-stale between a PRD land and the next tag; `--check` would
+  otherwise fail every such land on this file alone, by construction.
+  Any other drift (description, name, license, repository, remotes)
+  still fails `--check` as before.
+
+`.github/workflows/registry.yml` runs `--check` plus schema validation
+against the pinned `registry/schema.json` on every push, and on a `v*`
+tag regenerates `registry/server.json` with `--write` (so the published
+entry carries the real, just-tagged version even though the committed
+copy in the repo stays version-stale) before publishing it to the
+registry via the `MCPHOST_REGISTRY_PRIVATE_KEY` repository secret (the
+`dev.mcphost` domain-namespace DNS login key for the registry publisher
+CLI).
 
 ## Kinds
 
